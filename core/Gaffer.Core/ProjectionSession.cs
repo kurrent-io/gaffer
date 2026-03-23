@@ -8,9 +8,11 @@ public sealed class ProjectionSession : IDisposable
 {
     private readonly JintProjectionHandler _handler;
     private readonly QuerySources _sources;
-    private readonly Dictionary<string, string?> _partitionStates = new();
+    private readonly Dictionary<string, string?> _stateCache = new();
+    private string? _sharedState;
     private readonly TimeSpan _handlerTimeout;
     private readonly Stopwatch _handlerStopwatch = new();
+    private bool _sharedStateInitialized;
 
     public Action<EmittedEvent>? OnEmit { get; set; }
     public Action<string>? OnLog { get; set; }
@@ -38,11 +40,20 @@ public sealed class ProjectionSession : IDisposable
     public void Feed(ProjectionEvent @event)
     {
         var partition = ResolvePartition(@event);
-        EnsurePartitionInitialized(partition);
-        LoadPartitionState(partition);
 
         if (!ShouldProcess(@event))
             return;
+
+        var isNewPartition = LoadPartitionState(partition);
+        LoadSharedState();
+
+        if (isNewPartition)
+        {
+            _handler.ProcessPartitionCreated(partition, @event, out var createdEmitted);
+            if (createdEmitted != null)
+                foreach (var e in createdEmitted)
+                    OnEmit?.Invoke(e);
+        }
 
         _handlerStopwatch.Restart();
         _handler.ProcessEvent(
@@ -57,37 +68,35 @@ public sealed class ProjectionSession : IDisposable
         if (_handlerStopwatch.Elapsed > _handlerTimeout)
             OnSlowHandler?.Invoke(@event.EventType, (int)_handlerStopwatch.ElapsedMilliseconds);
 
-        if (newState != null)
-        {
-            _partitionStates[partition] = newState;
-            OnStateChanged?.Invoke(partition, newState);
-        }
+        // Cache state (even if null - tracks that partition has been seen)
+        _stateCache[partition] = newState;
 
-        if (newSharedState != null)
-        {
-            _partitionStates[""] = newSharedState;
-        }
+        if (newState != null)
+            OnStateChanged?.Invoke(partition, newState);
+
+        if (_sources.IsBiState && newSharedState != null)
+            _sharedState = newSharedState;
 
         if (emittedEvents != null)
-        {
             foreach (var emitted in emittedEvents)
                 OnEmit?.Invoke(emitted);
-        }
     }
 
     public string? GetState(string? partition = null) =>
-        _partitionStates.TryGetValue(partition ?? "", out var state) ? state : null;
+        _stateCache.TryGetValue(partition ?? "", out var state) ? state : null;
+
+    public string? GetSharedState() => _sharedState;
 
     public void SetState(string? partition, string stateJson)
     {
-        _partitionStates[partition ?? ""] = stateJson;
+        _stateCache[partition ?? ""] = stateJson;
     }
 
     public string? GetResult(string? partition = null)
     {
         var key = partition ?? "";
-        EnsurePartitionInitialized(key);
         LoadPartitionState(key);
+        LoadSharedState();
         return _handler.TransformStateToResult();
     }
 
@@ -118,27 +127,46 @@ public sealed class ProjectionSession : IDisposable
         return _sources.Events.Contains(@event.EventType);
     }
 
-    private readonly HashSet<string> _initializedPartitions = new();
-
-    private void EnsurePartitionInitialized(string partition)
+    /// <summary>
+    /// Loads partition state from cache or initializes fresh.
+    /// Returns true if the partition is new (not previously seen).
+    /// Matches V2 PartitionProcessor.LoadPartitionState behavior.
+    /// </summary>
+    private bool LoadPartitionState(string partition)
     {
-        if (_initializedPartitions.Contains(partition))
-            return;
+        // ContainsKey (not TryGetValue) - tracks partitions with null state too
+        if (_stateCache.ContainsKey(partition))
+        {
+            var cached = _stateCache[partition];
+            if (cached != null)
+                _handler.Load(cached);
+            else
+                _handler.Load(null);
+            return false;
+        }
 
-        _initializedPartitions.Add(partition);
+        _handler.Initialize();
+        return true;
     }
 
-    private void LoadPartitionState(string partition)
+    /// <summary>
+    /// Loads shared state for biState projections.
+    /// InitializeShared called once, LoadShared for subsequent events.
+    /// Matches V2 PartitionProcessor.LoadSharedState behavior.
+    /// </summary>
+    private void LoadSharedState()
     {
-        _handler.Initialize();
-        if (_sources.IsBiState)
+        if (!_sources.IsBiState) return;
+
+        if (!_sharedStateInitialized)
+        {
             _handler.InitializeShared();
-
-        if (_partitionStates.TryGetValue(partition, out var state))
-            _handler.Load(state);
-
-        if (_sources.IsBiState && _partitionStates.TryGetValue("", out var sharedState))
-            _handler.LoadShared(sharedState);
+            _sharedStateInitialized = true;
+        }
+        else if (_sharedState != null)
+        {
+            _handler.LoadShared(_sharedState);
+        }
     }
 }
 

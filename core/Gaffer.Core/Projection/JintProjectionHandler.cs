@@ -1101,7 +1101,12 @@ internal sealed class JintProjectionHandler : IDisposable
                 case Types.Boolean:
                     writer.WriteBooleanValue(ReferenceEquals(value, JsBoolean.False) ? false : true); break;
                 case Types.Number:
-                    writer.WriteNumberValue(value.AsNumber()); break;
+                    var num = value.AsNumber();
+                    if (double.IsNaN(num) || double.IsInfinity(num))
+                        writer.WriteNullValue();
+                    else
+                        writer.WriteNumberValue(num);
+                    break;
                 case Types.BigInt:
                     writer.WriteStringValue(value.ToString()); break;
                 case Types.String:

@@ -1,4 +1,4 @@
-import koffi from "koffi";
+import koffi, { type IKoffiRegisteredCallback } from "koffi";
 import { existsSync } from "fs";
 import { resolve, join } from "path";
 import { createRequire } from "module";
@@ -100,16 +100,20 @@ export interface NativeBindings {
 			data: string | null,
 			metadata: string | null,
 		) => void,
-	): void;
-	onLog(handle: number, cb: (message: string) => void): void;
+	): IKoffiRegisteredCallback;
+	onLog(
+		handle: number,
+		cb: (message: string) => void,
+	): IKoffiRegisteredCallback;
 	onSlowHandler(
 		handle: number,
 		cb: (handler: string, durationMs: number) => void,
-	): void;
+	): IKoffiRegisteredCallback;
 	onStateChanged(
 		handle: number,
 		cb: (partition: string, state: string | null) => void,
-	): void;
+	): IKoffiRegisteredCallback;
+	unregisterCallback(cb: IKoffiRegisteredCallback): void;
 }
 
 let bindings: NativeBindings | null = null;
@@ -205,12 +209,14 @@ export function getNativeBindings(): NativeBindings {
 				koffi.pointer(emitCbType),
 			);
 			onEmit(handle, nativeCb, null);
+			return nativeCb;
 		},
 		onLog: (handle, cb) => {
 			const nativeCb = koffi.register((message: string, _userData: unknown) => {
 				cb(message);
 			}, koffi.pointer(logCbType));
 			onLog(handle, nativeCb, null);
+			return nativeCb;
 		},
 		onSlowHandler: (handle, cb) => {
 			const nativeCb = koffi.register(
@@ -220,6 +226,7 @@ export function getNativeBindings(): NativeBindings {
 				koffi.pointer(slowHandlerCbType),
 			);
 			onSlowHandler(handle, nativeCb, null);
+			return nativeCb;
 		},
 		onStateChanged: (handle, cb) => {
 			const nativeCb = koffi.register(
@@ -229,6 +236,10 @@ export function getNativeBindings(): NativeBindings {
 				koffi.pointer(stateChangedCbType),
 			);
 			onStateChanged(handle, nativeCb, null);
+			return nativeCb;
+		},
+		unregisterCallback: (cb) => {
+			koffi.unregister(cb);
 		},
 	};
 

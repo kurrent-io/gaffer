@@ -1,4 +1,5 @@
 import { getNativeBindings } from "./native.js";
+import type { IKoffiRegisteredCallback } from "koffi";
 import type {
 	EmittedEvent,
 	ProjectionEvent,
@@ -13,6 +14,7 @@ import type {
 export class ProjectionSession {
 	private handle: number;
 	private disposed = false;
+	private registeredCallbacks: IKoffiRegisteredCallback[] = [];
 
 	constructor(source: string, options?: SessionOptions) {
 		const native = getNativeBindings();
@@ -26,7 +28,7 @@ export class ProjectionSession {
 	/** Register a callback for emitted events (emit and linkTo). */
 	onEmit(cb: (event: EmittedEvent) => void): void {
 		this.ensureNotDisposed();
-		getNativeBindings().onEmit(
+		const handle = getNativeBindings().onEmit(
 			this.handle,
 			(stream, type, data, metadataJson) => {
 				const metadata = metadataJson
@@ -41,18 +43,21 @@ export class ProjectionSession {
 				});
 			},
 		);
+		this.registeredCallbacks.push(handle);
 	}
 
 	/** Register a callback for console.log output. */
 	onLog(cb: (message: string) => void): void {
 		this.ensureNotDisposed();
-		getNativeBindings().onLog(this.handle, cb);
+		const handle = getNativeBindings().onLog(this.handle, cb);
+		this.registeredCallbacks.push(handle);
 	}
 
 	/** Register a callback for slow handler warnings. */
 	onSlowHandler(cb: (handlerName: string, durationMs: number) => void): void {
 		this.ensureNotDisposed();
-		getNativeBindings().onSlowHandler(this.handle, cb);
+		const handle = getNativeBindings().onSlowHandler(this.handle, cb);
+		this.registeredCallbacks.push(handle);
 	}
 
 	/** Register a callback for state changes. */
@@ -60,7 +65,8 @@ export class ProjectionSession {
 		cb: (partition: string, stateJson: string | null) => void,
 	): void {
 		this.ensureNotDisposed();
-		getNativeBindings().onStateChanged(this.handle, cb);
+		const handle = getNativeBindings().onStateChanged(this.handle, cb);
+		this.registeredCallbacks.push(handle);
 	}
 
 	/** Feed a single event to the projection. */
@@ -138,7 +144,12 @@ export class ProjectionSession {
 	dispose(): void {
 		if (this.disposed) return;
 		this.disposed = true;
-		getNativeBindings().sessionDestroy(this.handle);
+		const native = getNativeBindings();
+		for (const cb of this.registeredCallbacks) {
+			native.unregisterCallback(cb);
+		}
+		this.registeredCallbacks = [];
+		native.sessionDestroy(this.handle);
 	}
 
 	/** Implements Symbol.dispose for `using` syntax. */

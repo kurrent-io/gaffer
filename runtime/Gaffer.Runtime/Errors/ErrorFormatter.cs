@@ -12,7 +12,7 @@ internal static class ErrorFormatter {
 	public static string FormatHandlerError(
 		string description, string source, string eventType, string streamId,
 		long sequenceNumber, string? partition, string? jsStack, int? line, int? column) {
-		var result = $"Error processing event\n\nerror: {description}\n";
+		var result = $"Error in '{eventType}' handler\n\nHandler threw: {description}\n";
 		if (line != null && column != null)
 			result += FormatSnippet(source, description, line.Value, column.Value);
 		if (jsStack != null)

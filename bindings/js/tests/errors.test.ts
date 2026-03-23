@@ -114,9 +114,9 @@ describe("Error types", () => {
 			expect(e.event.sequenceNumber).toBe(42);
 			expect(e.event.partition).toBeUndefined();
 			expect(e.message).toMatchInlineSnapshot(`
-				"Error processing event
+				"Error in 'Test' handler
 
-				error: boom
+				Handler threw: boom
 				    ┌─ 3:31
 				    │
 				  1 │ fromAll().when({
@@ -149,9 +149,9 @@ describe("Error types", () => {
 			const e = err as ProjectionHandlerError;
 			expect(e.event.partition).toBe("s-1");
 			expect(e.message).toMatchInlineSnapshot(`
-				"Error processing event
+				"Error in 'Test' handler
 
-				error: fail
+				Handler threw: fail
 				    ┌─ 3:31
 				    │
 				  1 │ fromAll().foreachStream().when({

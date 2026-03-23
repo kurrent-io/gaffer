@@ -1,6 +1,6 @@
-﻿Error processing event
+﻿Error in 'Test' handler
 
-error: boom
+Handler threw: boom
     ┌─ 3:31
     │
   1 │ fromAll().when({

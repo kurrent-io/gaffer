@@ -1,6 +1,6 @@
-﻿Error processing event
+﻿Error in 'Test' handler
 
-error: fail
+Handler threw: fail
     ┌─ 3:31
     │
   1 │ fromAll().foreachStream().when({

@@ -1,6 +1,10 @@
 default:
     @just --list
 
+# Restore NuGet packages
+init:
+    dotnet restore
+
 # Build the runtime
 build:
     dotnet build

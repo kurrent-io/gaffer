@@ -32,6 +32,7 @@ func mustGetState(t *testing.T, session *Session, partition *string) string {
 	state := SessionGetState(session, partition)
 	if state == nil {
 		t.Fatal("SessionGetState returned nil")
+		return "" // unreachable, satisfies staticcheck
 	}
 	return *state
 }
@@ -103,6 +104,7 @@ func TestGetSources(t *testing.T) {
 	sources := SessionGetSources(session)
 	if sources == nil {
 		t.Fatal("SessionGetSources returned nil")
+		return
 	}
 	if !strings.Contains(*sources, `"ByStreams":true`) {
 		t.Fatalf("expected ByStreams:true in sources, got %s", *sources)
@@ -167,6 +169,7 @@ func TestFeedError(t *testing.T) {
 	errMsg := SessionGetError(session)
 	if errMsg == nil {
 		t.Fatal("expected error message")
+		return
 	}
 	if !strings.Contains(*errMsg, "boom") {
 		t.Fatalf("expected error to contain 'boom', got: %s", *errMsg)

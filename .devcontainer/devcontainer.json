@@ -12,5 +12,5 @@
       "version": "22"
     }
   },
-  "postCreateCommand": "curl -sSf https://just.systems/install.sh | sudo bash -s -- --to /usr/local/bin"
+  "postCreateCommand": "curl -sSf https://just.systems/install.sh | sudo bash -s -- --to /usr/local/bin && just init"
 }

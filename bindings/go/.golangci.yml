@@ -1,0 +1,29 @@
+version: "2"
+
+linters:
+  enable-all: true
+
+  settings:
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-keys-type
+        - name: error-return
+        - name: range
+        - name: time-naming
+        - name: errorf
+        - name: empty-block
+        - name: unreachable-code
+        - name: unexported-return
+
+    exhaustruct:
+      exclude:
+        - 'testing\.T'
+
+formatters:
+  enable:
+    - goimports
+    - gofumpt
+  settings:
+    golines:
+      max-len: 120

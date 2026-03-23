@@ -1,4 +1,7 @@
 default:
     @just --list
 
+# Install all binding dependencies
+init: go::init
+
 mod go

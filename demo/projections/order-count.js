@@ -2,11 +2,11 @@ fromCategory('order')
   .foreachStream()
   .when({
     $init: function() {
-      return { count: 0, totalAmount: 0 };
+      return { count: 0, totalCents: 0 };
     },
     OrderPlaced: function(state, event) {
       state.count++;
-      state.totalAmount += event.data.amount;
+      state.totalCents += event.data.cents;
       return state;
     },
     OrderShipped: function(state, event) {

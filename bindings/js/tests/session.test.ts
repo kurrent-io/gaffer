@@ -1,5 +1,9 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { ProjectionSession } from "../src/index.js";
+import {
+	ProjectionSession,
+	InvalidProjectionError,
+	ProjectionHandlerError,
+} from "../src/index.js";
 import type { EmittedEvent } from "../src/index.js";
 
 describe("ProjectionSession", () => {
@@ -21,7 +25,7 @@ describe("ProjectionSession", () => {
 
 	it("throws on invalid JS", () => {
 		expect(() => new ProjectionSession("this is not valid {{{{")).toThrow(
-			/Failed to create projection session/,
+			InvalidProjectionError,
 		);
 	});
 
@@ -187,7 +191,7 @@ describe("ProjectionSession", () => {
 				eventId: "00000000-0000-0000-0000-000000000000",
 				timestamp: "2026-01-01T00:00:00Z",
 			}),
-		).toThrow(/boom/);
+		).toThrow(ProjectionHandlerError);
 	});
 
 	it("returns null for unknown partition", () => {

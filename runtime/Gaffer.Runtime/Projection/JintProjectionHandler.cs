@@ -224,9 +224,9 @@ internal sealed class JintProjectionHandler : IDisposable {
 		var stream = EnsureNonNullStringValue(parameters.At(0), "streamId");
 		var @event = EnsureNonNullObjectValue(parameters.At(1), "event");
 
-		if (!@event.TryGetValue("sequenceNumber", out var numberValue) |
-			!@event.TryGetValue("streamId", out var sourceValue) ||
-			!numberValue.IsNumber() || !sourceValue.IsString())
+		var hasNumber = @event.TryGetValue("sequenceNumber", out var numberValue);
+		var hasSource = @event.TryGetValue("streamId", out var sourceValue);
+		if (!hasNumber || !hasSource || !numberValue.IsNumber() || !sourceValue.IsString())
 			throw new Exception($"Invalid link to event {numberValue}@{sourceValue}");
 
 		var number = (long)numberValue.AsNumber();

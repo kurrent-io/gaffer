@@ -267,7 +267,7 @@ func assertSourcesMatch(t *testing.T, sourcesJSON string, expected map[string]js
 
 func TestFixtures_Sources(t *testing.T)    { runFixtures(t, "sources.json") }
 func TestFixtures_State(t *testing.T)      { runFixtures(t, "state.json") }
-func TestFixtures_Callbacks(t *testing.T)   { runFixtures(t, "callbacks.json") }
-func TestFixtures_Errors(t *testing.T)      { runFixtures(t, "errors.json") }
-func TestFixtures_Transforms(t *testing.T)  { runFixtures(t, "transforms.json") }
-func TestFixtures_Deletion(t *testing.T)    { runFixtures(t, "deletion.json") }
+func TestFixtures_Callbacks(t *testing.T)  { runFixtures(t, "callbacks.json") }
+func TestFixtures_Errors(t *testing.T)     { runFixtures(t, "errors.json") }
+func TestFixtures_Transforms(t *testing.T) { runFixtures(t, "transforms.json") }
+func TestFixtures_Deletion(t *testing.T)   { runFixtures(t, "deletion.json") }

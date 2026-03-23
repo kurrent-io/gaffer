@@ -1,0 +1,3 @@
+[[projection]]
+  name = "order-count"
+  entry = "projections/order-count.js"

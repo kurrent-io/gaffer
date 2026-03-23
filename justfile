@@ -11,7 +11,7 @@ init: runtime::init bindings::init
 build: runtime::build runtime::publish cli::build
 
 # Run all tests (publishes runtime first for FFI tests)
-test: runtime::test runtime::publish bindings::go::test
+test: runtime::test cli::test runtime::publish bindings::go::test
 
 # Check formatting and linting across all projects
 check: runtime::check bindings::go::check cli::check

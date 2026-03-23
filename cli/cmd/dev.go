@@ -69,6 +69,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Running %s with %d events\n\n", name, len(events))
 
+	partitions := make(map[string]bool)
 	for i, evt := range events {
 		result := gafferruntime.SessionFeed(session, evt)
 		if result != 0 {
@@ -84,14 +85,26 @@ func runDev(cmd *cobra.Command, args []string) error {
 			eventType, _ := parsed["eventType"].(string)
 			streamId, _ := parsed["streamId"].(string)
 			fmt.Printf("  [%d] %s @ %s\n", i+1, eventType, streamId)
+			if streamId != "" {
+				partitions[streamId] = true
+			}
 		}
 	}
 
 	fmt.Println()
 
+	// Try default (unpartitioned) state first
 	state := gafferruntime.SessionGetState(session, nil)
 	if state != nil {
 		fmt.Printf("State: %s\n", *state)
+	}
+
+	// Print per-partition state for partitioned projections
+	for partition := range partitions {
+		pState := gafferruntime.SessionGetState(session, &partition)
+		if pState != nil {
+			fmt.Printf("State [%s]: %s\n", partition, *pState)
+		}
 	}
 
 	return nil

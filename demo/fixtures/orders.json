@@ -1,0 +1,7 @@
+[
+  { "eventType": "OrderPlaced", "streamId": "order-1", "data": "{\"amount\": 29.99, \"item\": \"Widget\"}" },
+  { "eventType": "OrderPlaced", "streamId": "order-2", "data": "{\"amount\": 49.99, \"item\": \"Gadget\"}" },
+  { "eventType": "OrderShipped", "streamId": "order-1", "data": "{\"trackingId\": \"TRK-001\"}" },
+  { "eventType": "OrderPlaced", "streamId": "order-1", "data": "{\"amount\": 15.00, \"item\": \"Doohickey\"}" },
+  { "eventType": "OrderPlaced", "streamId": "order-3", "data": "{\"amount\": 99.99, \"item\": \"Thingamajig\"}" }
+]

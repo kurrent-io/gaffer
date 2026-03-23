@@ -5,6 +5,10 @@ default:
 build:
     CGO_ENABLED=1 go build -o gaffer .
 
+# Run tests
+test:
+    go test ./...
+
 # Run the CLI
 run *args:
     CGO_ENABLED=1 go run . {{args}}

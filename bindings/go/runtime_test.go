@@ -1,60 +1,62 @@
 package gafferruntime
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
 
 func mustCreateSession(t *testing.T, source string) *Session {
 	t.Helper()
-	session := SessionCreate(source, nil)
-	if session == nil {
-		t.Fatal("SessionCreate returned nil")
+	session, err := NewSession(source, nil)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
 	}
-	t.Cleanup(func() { SessionDestroy(session) })
+	t.Cleanup(func() { session.Destroy() })
 	return session
 }
 
 func mustFeed(t *testing.T, session *Session, eventJSON string) {
 	t.Helper()
-	result := SessionFeed(session, eventJSON)
-	if result != 0 {
-		errMsg := SessionGetError(session)
-		if errMsg != nil {
-			t.Fatalf("SessionFeed failed: %s", *errMsg)
-		}
-		t.Fatal("SessionFeed failed with unknown error")
+	if err := session.Feed(eventJSON); err != nil {
+		t.Fatalf("Feed failed: %v", err)
 	}
 }
 
 func mustGetState(t *testing.T, session *Session, partition *string) string {
 	t.Helper()
-	state := SessionGetState(session, partition)
+	state := session.GetState(partition)
 	if state == nil {
-		t.Fatal("SessionGetState returned nil")
-		return "" // unreachable, satisfies staticcheck
+		t.Fatal("GetState returned nil")
+		return ""
 	}
 	return *state
 }
 
 func TestSessionCreateAndDestroy(t *testing.T) {
-	session := SessionCreate(`
+	session, err := NewSession(`
 		fromAll().when({
 			$init: function() { return {}; },
 			Ping: function(s, e) { return s; }
 		})
 	`, nil)
-	if session == nil {
-		t.Fatal("SessionCreate returned nil")
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
 	}
-	SessionDestroy(session)
+	session.Destroy()
 }
 
 func TestCreateWithInvalidJS(t *testing.T) {
-	session := SessionCreate("this is not valid {{{{", nil)
-	if session != nil {
-		SessionDestroy(session)
-		t.Fatal("expected nil for invalid JS")
+	_, err := NewSession("this is not valid {{{{", nil)
+	if err == nil {
+		t.Fatal("expected error for invalid JS")
+	}
+	var projErr *InvalidProjectionError
+	if !errors.As(err, &projErr) {
+		t.Fatalf("expected InvalidProjectionError, got %T", err)
+	}
+	if projErr.Location == nil {
+		t.Fatal("expected location on parse error")
 	}
 }
 
@@ -101,9 +103,9 @@ func TestGetSources(t *testing.T) {
 		})
 	`)
 
-	sources := SessionGetSources(session)
+	sources := session.GetSources()
 	if sources == nil {
-		t.Fatal("SessionGetSources returned nil")
+		t.Fatal("GetSources returned nil")
 		return
 	}
 	if !strings.Contains(*sources, `"ByStreams":true`) {
@@ -144,7 +146,7 @@ func TestSetAndRestoreState(t *testing.T) {
 		})
 	`)
 
-	SessionSetState(session, nil, `{"count":10}`)
+	session.SetState(nil, `{"count":10}`)
 	mustFeed(t, session, `{"eventType":"Ping","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
 
 	state := mustGetState(t, session, nil)
@@ -161,33 +163,34 @@ func TestFeedError(t *testing.T) {
 		})
 	`)
 
-	result := SessionFeed(session, `{"eventType":"Bad","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
-	if result == 0 {
-		t.Fatal("expected non-zero for JS error")
+	err := session.Feed(`{"eventType":"Bad","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	if err == nil {
+		t.Fatal("expected error")
 	}
-
-	errMsg := SessionGetError(session)
-	if errMsg == nil {
-		t.Fatal("expected error message")
-		return
+	var handlerErr *ProjectionHandlerError
+	if !errors.As(err, &handlerErr) {
+		t.Fatalf("expected ProjectionHandlerError, got %T", err)
 	}
-	if !strings.Contains(*errMsg, "boom") {
-		t.Fatalf("expected error to contain 'boom', got: %s", *errMsg)
+	if handlerErr.Desc != "boom" {
+		t.Fatalf("expected description 'boom', got %s", handlerErr.Desc)
+	}
+	if handlerErr.Event.EventType != "Bad" {
+		t.Fatalf("expected eventType 'Bad', got %s", handlerErr.Event.EventType)
 	}
 }
 
 func TestCreateWithOptions(t *testing.T) {
 	opts := `{"handlerTimeoutMs":100,"compilationTimeoutMs":10000}`
-	session := SessionCreate(`
+	session, err := NewSession(`
 		fromAll().when({
 			$init: function() { return {}; },
 			Ping: function(s, e) { return s; }
 		})
 	`, &opts)
-	if session == nil {
-		t.Fatal("SessionCreate with options returned nil")
+	if err != nil {
+		t.Fatalf("NewSession with options failed: %v", err)
 	}
-	SessionDestroy(session)
+	session.Destroy()
 }
 
 func TestUnknownPartitionReturnsNil(t *testing.T) {
@@ -199,24 +202,24 @@ func TestUnknownPartitionReturnsNil(t *testing.T) {
 	`)
 
 	p := "nonexistent"
-	state := SessionGetState(session, &p)
+	state := session.GetState(&p)
 	if state != nil {
 		t.Fatalf("expected nil, got %s", *state)
 	}
 }
 
 func TestDoubleDestroyIsSafe(t *testing.T) {
-	session := SessionCreate(`
+	session, err := NewSession(`
 		fromAll().when({
 			$init: function() { return {}; },
 			Ping: function(s, e) { return s; }
 		})
 	`, nil)
-	if session == nil {
-		t.Fatal("SessionCreate returned nil")
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
 	}
-	SessionDestroy(session)
-	SessionDestroy(session) // second destroy should not panic
+	session.Destroy()
+	session.Destroy()
 }
 
 func TestOnEmitCallback(t *testing.T) {
@@ -231,7 +234,7 @@ func TestOnEmitCallback(t *testing.T) {
 	`)
 
 	var emitted []struct{ streamID, eventType, data string }
-	SessionOnEmit(session, func(streamID, eventType, data, _ string, _, _ bool) {
+	session.OnEmit(func(streamID, eventType, data, _ string, _, _ bool) {
 		emitted = append(emitted, struct{ streamID, eventType, data string }{streamID, eventType, data})
 	})
 
@@ -262,7 +265,7 @@ func TestOnLogCallback(t *testing.T) {
 	`)
 
 	var logs []string
-	SessionOnLog(session, func(message string) {
+	session.OnLog(func(message string) {
 		logs = append(logs, message)
 	})
 
@@ -280,17 +283,17 @@ func TestOnStateChangedCallback(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().when({
 			$init: function() { return { count: 0 }; },
-			Ping: function(s, e) { s.count++; return s; }
+			ItemAdded: function(s, e) { s.count++; return s; }
 		})
 	`)
 
 	var changes []string
-	SessionOnStateChanged(session, func(_ string, stateJSON string) {
+	session.OnStateChanged(func(_ string, stateJSON string) {
 		changes = append(changes, stateJSON)
 	})
 
-	mustFeed(t, session, `{"eventType":"Ping","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
-	mustFeed(t, session, `{"eventType":"Ping","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
 
 	if len(changes) != 2 {
 		t.Fatalf("expected 2 state changes, got %d", len(changes))
@@ -305,7 +308,7 @@ func TestOnStateChangedCallback(t *testing.T) {
 
 func TestOnSlowHandlerCallback(t *testing.T) {
 	opts := `{"handlerTimeoutMs":1}`
-	session := SessionCreate(`
+	session, err := NewSession(`
 		fromAll().when({
 			$init: function() { return {}; },
 			Slow: function(s, e) {
@@ -315,16 +318,16 @@ func TestOnSlowHandlerCallback(t *testing.T) {
 			}
 		})
 	`, &opts)
-	if session == nil {
-		t.Fatal("SessionCreate returned nil")
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
 	}
-	defer SessionDestroy(session)
+	defer session.Destroy()
 
 	var warnings []struct {
 		handler string
 		ms      int
 	}
-	SessionOnSlowHandler(session, func(handler string, ms int) {
+	session.OnSlowHandler(func(handler string, ms int) {
 		warnings = append(warnings, struct {
 			handler string
 			ms      int
@@ -366,7 +369,7 @@ func TestBiStateSharedState(t *testing.T) {
 		t.Fatalf("expected count:2 in state, got %s", state)
 	}
 
-	shared := SessionGetSharedState(session)
+	shared := session.GetSharedState()
 	if shared == nil {
 		t.Fatal("expected shared state")
 		return
@@ -388,7 +391,10 @@ func TestGetResultWithTransformBy(t *testing.T) {
 
 	mustFeed(t, session, `{"eventType":"Ping","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
 
-	result := SessionGetResult(session, nil)
+	result, err := session.GetResult(nil)
+	if err != nil {
+		t.Fatalf("GetResult failed: %v", err)
+	}
 	if result == nil {
 		t.Fatal("expected result")
 		return
@@ -408,7 +414,7 @@ func TestGetPartitionKey(t *testing.T) {
 		})
 	`)
 
-	key := SessionGetPartitionKey(session, `{"eventType":"Event","streamId":"s-1","sequenceNumber":0,"data":"{\"region\":\"eu\"}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	key := session.GetPartitionKey(`{"eventType":"Event","streamId":"s-1","sequenceNumber":0,"data":"{\"region\":\"eu\"}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
 	if key == nil {
 		t.Fatal("expected partition key")
 		return

@@ -14,13 +14,15 @@ package gafferruntime
 import "C"
 import "unsafe"
 
-// Session is an opaque handle to a projection runtime session.
-type Session = C.gaffer_session
+// Session wraps a projection runtime session.
+// Not thread-safe - do not use from multiple goroutines concurrently.
+type Session struct {
+	handle *C.gaffer_session
+	source string
+}
 
-// SessionCreate compiles a projection from JavaScript source and returns a session.
-// Returns nil if the source is invalid. Pass optionsJSON for non-default settings
-// (version, handlerTimeoutMs, compilationTimeoutMs, executionTimeoutMs, debug, enableContentTypeValidation).
-func SessionCreate(source string, optionsJSON *string) *Session {
+// NewSession compiles a projection from JavaScript source and returns a session.
+func NewSession(source string, optionsJSON *string) (*Session, error) {
 	cs := C.CString(source)
 	defer C.free(unsafe.Pointer(cs))
 	var opts *C.char
@@ -28,65 +30,73 @@ func SessionCreate(source string, optionsJSON *string) *Session {
 		opts = C.CString(*optionsJSON)
 		defer C.free(unsafe.Pointer(opts))
 	}
-	return C.gaffer_session_create(cs, opts)
-}
-
-// SessionDestroy frees all resources associated with a session.
-func SessionDestroy(session *Session) {
-	cleanupCallbacks(session)
-	C.gaffer_session_destroy(session)
-}
-
-// SessionGetPartitionKey returns the partition key that would be computed for an event.
-func SessionGetPartitionKey(session *Session, eventJSON string) *string {
-	cs := C.CString(eventJSON)
-	defer C.free(unsafe.Pointer(cs))
-	result := C.gaffer_session_get_partition_key(session, cs)
-	if result == nil {
-		return nil
+	handle := C.gaffer_session_create(cs, opts)
+	if handle == nil {
+		return nil, getLastError(source)
 	}
-	s := C.GoString(result)
-	return &s
+	return &Session{handle: handle, source: source}, nil
 }
 
-// SessionFeed sends a single event to the projection. Returns 0 on success,
-// non-zero on error. Call SessionGetError for the error message.
-// The eventJSON must contain at least "eventType" and "streamId" fields.
-func SessionFeed(session *Session, eventJSON string) int {
+// Destroy frees all resources associated with the session.
+func (s *Session) Destroy() {
+	if s.handle == nil {
+		return
+	}
+	cleanupCallbacks(s.handle)
+	C.gaffer_session_destroy(s.handle)
+	s.handle = nil
+}
+
+func (s *Session) ensureAlive() {
+	if s.handle == nil {
+		panic("use of destroyed session")
+	}
+}
+
+// Feed sends a single event to the projection.
+func (s *Session) Feed(eventJSON string) error {
+	s.ensureAlive()
 	cs := C.CString(eventJSON)
 	defer C.free(unsafe.Pointer(cs))
-	return int(C.gaffer_session_feed(session, cs))
+	result := int(C.gaffer_session_feed(s.handle, cs))
+	if result != 0 {
+		return getLastError(s.source)
+	}
+	return nil
 }
 
-// SessionGetState returns the current state for a partition, or nil if the
+// GetState returns the current state for a partition, or nil if the
 // partition has not been seen. Pass nil for the default (unpartitioned) state.
-func SessionGetState(session *Session, partition *string) *string {
+func (s *Session) GetState(partition *string) *string {
+	s.ensureAlive()
 	var cp *C.char
 	if partition != nil {
 		cp = C.CString(*partition)
 		defer C.free(unsafe.Pointer(cp))
 	}
-	result := C.gaffer_session_get_state(session, cp)
+	result := C.gaffer_session_get_state(s.handle, cp)
 	if result == nil {
 		return nil
 	}
-	s := C.GoString(result)
-	return &s
+	str := C.GoString(result)
+	return &str
 }
 
-// SessionGetSharedState returns the shared state for biState projections, or nil.
-func SessionGetSharedState(session *Session) *string {
-	result := C.gaffer_session_get_shared_state(session)
+// GetSharedState returns the shared state for biState projections, or nil.
+func (s *Session) GetSharedState() *string {
+	s.ensureAlive()
+	result := C.gaffer_session_get_shared_state(s.handle)
 	if result == nil {
 		return nil
 	}
-	s := C.GoString(result)
-	return &s
+	str := C.GoString(result)
+	return &str
 }
 
-// SessionSetState restores state for a partition (e.g. from a cache).
+// SetState restores state for a partition (e.g. from a cache).
 // Pass nil for the default partition.
-func SessionSetState(session *Session, partition *string, stateJSON string) {
+func (s *Session) SetState(partition *string, stateJSON string) {
+	s.ensureAlive()
 	var cp *C.char
 	if partition != nil {
 		cp = C.CString(*partition)
@@ -94,42 +104,69 @@ func SessionSetState(session *Session, partition *string, stateJSON string) {
 	}
 	cs := C.CString(stateJSON)
 	defer C.free(unsafe.Pointer(cs))
-	C.gaffer_session_set_state(session, cp, cs)
+	C.gaffer_session_set_state(s.handle, cp, cs)
 }
 
-// SessionGetResult returns the transformed result for a partition (applies
+// GetResult returns the transformed result for a partition (applies
 // transformBy/filterBy). Returns nil for unknown partitions or filtered results.
-func SessionGetResult(session *Session, partition *string) *string {
+func (s *Session) GetResult(partition *string) (*string, error) {
+	s.ensureAlive()
 	var cp *C.char
 	if partition != nil {
 		cp = C.CString(*partition)
 		defer C.free(unsafe.Pointer(cp))
 	}
-	result := C.gaffer_session_get_result(session, cp)
-	if result == nil {
-		return nil
+	result := C.gaffer_session_get_result(s.handle, cp)
+	if err := checkLastError(s.source); err != nil {
+		return nil, err
 	}
-	s := C.GoString(result)
-	return &s
+	if result == nil {
+		return nil, nil
+	}
+	str := C.GoString(result)
+	return &str, nil
 }
 
-// SessionGetSources returns the projection's source definition as JSON
-// (what streams/events it reads, partitioning mode, etc).
-func SessionGetSources(session *Session) *string {
-	result := C.gaffer_session_get_sources(session)
+// GetSources returns the projection's source definition as JSON.
+func (s *Session) GetSources() *string {
+	s.ensureAlive()
+	result := C.gaffer_session_get_sources(s.handle)
 	if result == nil {
 		return nil
 	}
-	s := C.GoString(result)
-	return &s
+	str := C.GoString(result)
+	return &str
 }
 
-// SessionGetError returns the last error message for a session, or nil if no error.
-func SessionGetError(session *Session) *string {
-	result := C.gaffer_session_get_error(session)
+// GetPartitionKey returns the partition key that would be computed for an event.
+func (s *Session) GetPartitionKey(eventJSON string) *string {
+	s.ensureAlive()
+	cs := C.CString(eventJSON)
+	defer C.free(unsafe.Pointer(cs))
+	result := C.gaffer_session_get_partition_key(s.handle, cs)
 	if result == nil {
 		return nil
 	}
-	s := C.GoString(result)
-	return &s
+	str := C.GoString(result)
+	return &str
+}
+
+// OnEmit registers a callback for emitted events (emit and linkTo).
+func (s *Session) OnEmit(cb EmitCallback) {
+	sessionOnEmit(s.handle, cb)
+}
+
+// OnLog registers a callback for console.log output.
+func (s *Session) OnLog(cb LogCallback) {
+	sessionOnLog(s.handle, cb)
+}
+
+// OnSlowHandler registers a callback for slow handler warnings.
+func (s *Session) OnSlowHandler(cb SlowHandlerCallback) {
+	sessionOnSlowHandler(s.handle, cb)
+}
+
+// OnStateChanged registers a callback for state changes.
+func (s *Session) OnStateChanged(cb StateChangedCallback) {
+	sessionOnStateChanged(s.handle, cb)
 }

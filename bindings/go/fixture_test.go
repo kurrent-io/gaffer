@@ -2,6 +2,7 @@ package gafferruntime
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,7 +23,6 @@ type fixture struct {
 }
 
 type fixtureExpect struct {
-	Valid       *bool                      `json:"valid,omitempty"`
 	Sources     map[string]json.RawMessage `json:"sources,omitempty"`
 	State       json.RawMessage            `json:"state,omitempty"`
 	States      map[string]json.RawMessage `json:"states,omitempty"`
@@ -30,7 +30,13 @@ type fixtureExpect struct {
 	Result      json.RawMessage            `json:"result,omitempty"`
 	Emitted     []fixtureEmitted           `json:"emitted,omitempty"`
 	Logs        []string                   `json:"logs,omitempty"`
-	Error       *string                    `json:"error,omitempty"`
+	Error       *fixtureError              `json:"error,omitempty"`
+	GetResult   *bool                      `json:"getResult,omitempty"`
+}
+
+type fixtureError struct {
+	Code        string `json:"code"`
+	Description string `json:"description,omitempty"`
 }
 
 type fixtureEmitted struct {
@@ -72,25 +78,25 @@ func runFixture(t *testing.T, f fixture) {
 		opts = &s
 	}
 
-	// Check validity
-	if f.Expect.Valid != nil && !*f.Expect.Valid {
-		session := SessionCreate(f.Source, opts)
-		if session != nil {
-			SessionDestroy(session)
-			t.Fatal("expected invalid projection to return nil")
+	// Creation error (no events, no getResult)
+	if f.Expect.Error != nil && len(f.Events) == 0 && (f.Expect.GetResult == nil || !*f.Expect.GetResult) {
+		_, err := NewSession(f.Source, opts)
+		if err == nil {
+			t.Fatal("expected error on create")
 		}
+		assertFixtureError(t, err, f.Expect.Error)
 		return
 	}
 
-	session := SessionCreate(f.Source, opts)
-	if session == nil {
-		t.Fatal("SessionCreate returned nil")
+	session, err := NewSession(f.Source, opts)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
 	}
-	defer SessionDestroy(session)
+	defer session.Destroy()
 
 	// Check sources
 	if f.Expect.Sources != nil {
-		sourcesJSON := SessionGetSources(session)
+		sourcesJSON := session.GetSources()
 		if sourcesJSON == nil {
 			t.Fatal("GetSources returned nil")
 		}
@@ -99,58 +105,84 @@ func runFixture(t *testing.T, f fixture) {
 
 	// Set state
 	if f.SetState != nil {
-		var partition *string
-		if f.SetState.Partition != nil {
-			partition = f.SetState.Partition
-		}
-		SessionSetState(session, partition, f.SetState.State)
-	}
-
-	if len(f.Events) == 0 {
-		return
+		session.SetState(f.SetState.Partition, f.SetState.State)
 	}
 
 	// Feed events
-	var lastError string
-	var lastEmitted []struct{ streamID, eventType, data string }
-	var lastLogs []string
+	if len(f.Events) > 0 {
+		var lastEmitted []struct{ streamID, eventType, data string }
+		var lastLogs []string
+		var lastFeedErr error
 
-	SessionOnEmit(session, func(streamID, eventType, data, _ string, _, _ bool) {
-		lastEmitted = append(lastEmitted, struct{ streamID, eventType, data string }{streamID, eventType, data})
-	})
-	SessionOnLog(session, func(message string) {
-		lastLogs = append(lastLogs, message)
-	})
+		session.OnEmit(func(streamID, eventType, data, _ string, _, _ bool) {
+			lastEmitted = append(lastEmitted, struct{ streamID, eventType, data string }{streamID, eventType, data})
+		})
+		session.OnLog(func(message string) {
+			lastLogs = append(lastLogs, message)
+		})
 
-	for _, evRaw := range f.Events {
-		lastEmitted = nil
-		lastLogs = nil
+		for _, evRaw := range f.Events {
+			lastEmitted = nil
+			lastLogs = nil
+			if feedErr := session.Feed(string(evRaw)); feedErr != nil {
+				lastFeedErr = feedErr
+			}
+		}
 
-		result := SessionFeed(session, string(evRaw))
-		if result != 0 {
-			errMsg := SessionGetError(session)
-			if errMsg != nil {
-				lastError = *errMsg
-			} else {
-				lastError = "unknown error"
+		// Check feed error (not getResult)
+		if f.Expect.Error != nil && (f.Expect.GetResult == nil || !*f.Expect.GetResult) {
+			if lastFeedErr == nil {
+				t.Fatal("expected feed error")
+			}
+			assertFixtureError(t, lastFeedErr, f.Expect.Error)
+			return
+		}
+
+		// Check emitted
+		if f.Expect.Emitted != nil {
+			if len(f.Expect.Emitted) != len(lastEmitted) {
+				t.Fatalf("expected %d emitted events, got %d", len(f.Expect.Emitted), len(lastEmitted))
+			}
+			for i, exp := range f.Expect.Emitted {
+				act := lastEmitted[i]
+				if exp.StreamID != act.streamID {
+					t.Fatalf("emitted[%d] streamId: expected %q, got %q", i, exp.StreamID, act.streamID)
+				}
+				if exp.EventType != act.eventType {
+					t.Fatalf("emitted[%d] eventType: expected %q, got %q", i, exp.EventType, act.eventType)
+				}
+				if exp.Data != "" && exp.Data != act.data {
+					t.Fatalf("emitted[%d] data: expected %q, got %q", i, exp.Data, act.data)
+				}
+			}
+		}
+
+		// Check logs
+		if f.Expect.Logs != nil {
+			if len(f.Expect.Logs) != len(lastLogs) {
+				t.Fatalf("expected %d logs, got %d", len(f.Expect.Logs), len(lastLogs))
+			}
+			for i, exp := range f.Expect.Logs {
+				if exp != lastLogs[i] {
+					t.Fatalf("log[%d]: expected %q, got %q", i, exp, lastLogs[i])
+				}
 			}
 		}
 	}
 
-	// Check error
-	if f.Expect.Error != nil {
-		if lastError == "" {
-			t.Fatalf("expected error containing %q, got no error", *f.Expect.Error)
+	// Check getResult error
+	if f.Expect.GetResult != nil && *f.Expect.GetResult && f.Expect.Error != nil {
+		_, err := session.GetResult(nil)
+		if err == nil {
+			t.Fatal("expected getResult error")
 		}
-		if !strings.Contains(lastError, *f.Expect.Error) {
-			t.Fatalf("expected error containing %q, got %q", *f.Expect.Error, lastError)
-		}
+		assertFixtureError(t, err, f.Expect.Error)
 		return
 	}
 
 	// Check state
 	if f.Expect.State != nil {
-		state := SessionGetState(session, nil)
+		state := session.GetState(nil)
 		if state == nil {
 			t.Fatal("GetState returned nil")
 		}
@@ -160,7 +192,7 @@ func runFixture(t *testing.T, f fixture) {
 	// Check per-partition states
 	for partition, expected := range f.Expect.States {
 		p := partition
-		state := SessionGetState(session, &p)
+		state := session.GetState(&p)
 		if string(expected) == "null" {
 			if state != nil {
 				t.Fatalf("expected nil state for partition %q, got %s", partition, *state)
@@ -175,7 +207,7 @@ func runFixture(t *testing.T, f fixture) {
 
 	// Check shared state
 	if f.Expect.SharedState != nil {
-		shared := SessionGetSharedState(session)
+		shared := session.GetSharedState()
 		if shared == nil {
 			t.Fatal("GetSharedState returned nil")
 		}
@@ -185,48 +217,37 @@ func runFixture(t *testing.T, f fixture) {
 	// Check result
 	if f.Expect.Result != nil {
 		if string(f.Expect.Result) == "null" {
-			result := SessionGetResult(session, nil)
+			result, err := session.GetResult(nil)
+			if err != nil {
+				t.Fatalf("GetResult error: %v", err)
+			}
 			if result != nil {
 				t.Fatalf("expected nil result, got %s", *result)
 			}
 		} else {
-			result := SessionGetResult(session, nil)
+			result, err := session.GetResult(nil)
+			if err != nil {
+				t.Fatalf("GetResult error: %v", err)
+			}
 			if result == nil {
 				t.Fatal("GetResult returned nil")
 			}
 			assertJSONEqual(t, "result", string(f.Expect.Result), *result)
 		}
 	}
+}
 
-	// Check emitted
-	if f.Expect.Emitted != nil {
-		if len(f.Expect.Emitted) != len(lastEmitted) {
-			t.Fatalf("expected %d emitted events, got %d", len(f.Expect.Emitted), len(lastEmitted))
-		}
-		for i, exp := range f.Expect.Emitted {
-			act := lastEmitted[i]
-			if exp.StreamID != act.streamID {
-				t.Fatalf("emitted[%d] streamId: expected %q, got %q", i, exp.StreamID, act.streamID)
-			}
-			if exp.EventType != act.eventType {
-				t.Fatalf("emitted[%d] eventType: expected %q, got %q", i, exp.EventType, act.eventType)
-			}
-			if exp.Data != "" && exp.Data != act.data {
-				t.Fatalf("emitted[%d] data: expected %q, got %q", i, exp.Data, act.data)
-			}
-		}
+func assertFixtureError(t *testing.T, err error, expected *fixtureError) {
+	t.Helper()
+	var ge GafferError
+	if !errors.As(err, &ge) {
+		t.Fatalf("expected GafferError, got %T: %v", err, err)
 	}
-
-	// Check logs
-	if f.Expect.Logs != nil {
-		if len(f.Expect.Logs) != len(lastLogs) {
-			t.Fatalf("expected %d logs, got %d", len(f.Expect.Logs), len(lastLogs))
-		}
-		for i, exp := range f.Expect.Logs {
-			if exp != lastLogs[i] {
-				t.Fatalf("log[%d]: expected %q, got %q", i, exp, lastLogs[i])
-			}
-		}
+	if ge.ErrorCode() != expected.Code {
+		t.Fatalf("expected code %q, got %q", expected.Code, ge.ErrorCode())
+	}
+	if expected.Description != "" && !strings.Contains(ge.ErrorDescription(), expected.Description) {
+		t.Fatalf("expected description containing %q, got %q", expected.Description, ge.ErrorDescription())
 	}
 }
 
@@ -270,5 +291,5 @@ func TestFixtures_State(t *testing.T)      { runFixtures(t, "state.json") }
 func TestFixtures_Callbacks(t *testing.T)  { runFixtures(t, "callbacks.json") }
 func TestFixtures_Errors(t *testing.T)     { runFixtures(t, "errors.json") }
 func TestFixtures_Transforms(t *testing.T) { runFixtures(t, "transforms.json") }
-func TestFixtures_Deletion(t *testing.T)    { runFixtures(t, "deletion.json") }
-func TestFixtures_Versioning(t *testing.T)  { runFixtures(t, "versioning.json") }
+func TestFixtures_Deletion(t *testing.T)   { runFixtures(t, "deletion.json") }
+func TestFixtures_Versioning(t *testing.T) { runFixtures(t, "versioning.json") }

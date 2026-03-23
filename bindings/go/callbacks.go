@@ -33,12 +33,11 @@ var (
 	changedCallbacks = make(map[uintptr]StateChangedCallback)
 )
 
-func sessionKey(session *Session) uintptr {
+func sessionKey(session *C.gaffer_session) uintptr {
 	return uintptr(unsafe.Pointer(session))
 }
 
-// SessionOnEmit registers a callback for emitted events (emit and linkTo).
-func SessionOnEmit(session *Session, cb EmitCallback) {
+func sessionOnEmit(session *C.gaffer_session, cb EmitCallback) {
 	key := sessionKey(session)
 	callbackMu.Lock()
 	emitCallbacks[key] = cb
@@ -46,8 +45,7 @@ func SessionOnEmit(session *Session, cb EmitCallback) {
 	C.gaffer_on_emit(session, (*[0]byte)(C.goEmitCallback), unsafe.Pointer(session))
 }
 
-// SessionOnLog registers a callback for console.log output.
-func SessionOnLog(session *Session, cb LogCallback) {
+func sessionOnLog(session *C.gaffer_session, cb LogCallback) {
 	key := sessionKey(session)
 	callbackMu.Lock()
 	logCallbacks[key] = cb
@@ -55,8 +53,7 @@ func SessionOnLog(session *Session, cb LogCallback) {
 	C.gaffer_on_log(session, (*[0]byte)(C.goLogCallback), unsafe.Pointer(session))
 }
 
-// SessionOnSlowHandler registers a callback for slow handler warnings.
-func SessionOnSlowHandler(session *Session, cb SlowHandlerCallback) {
+func sessionOnSlowHandler(session *C.gaffer_session, cb SlowHandlerCallback) {
 	key := sessionKey(session)
 	callbackMu.Lock()
 	slowCallbacks[key] = cb
@@ -64,8 +61,7 @@ func SessionOnSlowHandler(session *Session, cb SlowHandlerCallback) {
 	C.gaffer_on_slow_handler(session, (*[0]byte)(C.goSlowHandlerCallback), unsafe.Pointer(session))
 }
 
-// SessionOnStateChanged registers a callback for state changes.
-func SessionOnStateChanged(session *Session, cb StateChangedCallback) {
+func sessionOnStateChanged(session *C.gaffer_session, cb StateChangedCallback) {
 	key := sessionKey(session)
 	callbackMu.Lock()
 	changedCallbacks[key] = cb
@@ -73,8 +69,7 @@ func SessionOnStateChanged(session *Session, cb StateChangedCallback) {
 	C.gaffer_on_state_changed(session, (*[0]byte)(C.goStateChangedCallback), unsafe.Pointer(session))
 }
 
-// cleanupCallbacks removes all callbacks for a session.
-func cleanupCallbacks(session *Session) {
+func cleanupCallbacks(session *C.gaffer_session) {
 	key := sessionKey(session)
 	callbackMu.Lock()
 	delete(emitCallbacks, key)

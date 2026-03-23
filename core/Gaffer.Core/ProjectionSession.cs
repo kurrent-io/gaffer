@@ -82,6 +82,19 @@ public sealed class ProjectionSession : IDisposable
                 OnEmit?.Invoke(emitted);
     }
 
+    public void DeletePartition(string partition)
+    {
+        LoadPartitionState(partition);
+        LoadSharedState();
+
+        _handler.ProcessPartitionDeleted(partition, out var newState);
+
+        _stateCache[partition] = newState;
+
+        if (newState != null)
+            OnStateChanged?.Invoke(partition, newState);
+    }
+
     public string? GetState(string? partition = null) =>
         _stateCache.TryGetValue(partition ?? "", out var state) ? state : null;
 

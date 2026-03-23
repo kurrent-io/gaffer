@@ -36,6 +36,17 @@ export const RecordedEventSchema = v.object({
 	created: v.optional(v.any()),
 });
 
+const StrictRecordedEventSchema = v.object({
+	type: v.string(),
+	streamId: v.string(),
+	data: v.optional(v.union([v.string(), v.instance(Uint8Array), v.any()])),
+	metadata: v.optional(v.any()),
+	revision: v.union([v.number(), v.pipe(v.bigint(), v.transform(Number))]),
+	id: v.string(),
+	isJson: v.boolean(),
+	created: v.union([v.string(), v.date()]),
+});
+
 export const ResolvedEventSchema = v.object({
 	event: RecordedEventSchema,
 });
@@ -110,18 +121,19 @@ function normalizeTestEvent(event: ParsedTestEvent): NormalizedEvent {
 }
 
 function normalizeRecordedEvent(event: ParsedRecordedEvent): NormalizedEvent {
+	const strict = v.parse(StrictRecordedEventSchema, event);
 	return {
-		eventType: event.type,
-		streamId: event.streamId,
-		sequenceNumber: event.revision as number,
-		isJson: event.isJson as boolean,
-		eventId: event.id as string,
+		eventType: strict.type,
+		streamId: strict.streamId,
+		sequenceNumber: strict.revision,
+		isJson: strict.isJson,
+		eventId: strict.id,
 		timestamp:
-			event.created instanceof Date
-				? event.created.toISOString()
-				: (event.created as string),
-		data: stringifyData(event.data),
-		metadata: stringifyData(event.metadata),
+			strict.created instanceof Date
+				? strict.created.toISOString()
+				: strict.created,
+		data: stringifyData(strict.data),
+		metadata: stringifyData(strict.metadata),
 	};
 }
 

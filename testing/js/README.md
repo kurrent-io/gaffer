@@ -27,12 +27,14 @@ for (const { state } of projection.run([
 		eventType: "ItemAdded",
 		streamId: "cart-1",
 		sequenceNumber: 0,
+		isJson: true,
 		data: { id: 1 },
 	},
 	{
 		eventType: "ItemAdded",
 		streamId: "cart-1",
 		sequenceNumber: 1,
+		isJson: true,
 		data: { id: 2 },
 	},
 ])) {
@@ -42,9 +44,17 @@ for (const { state } of projection.run([
 
 ## API
 
-### `createProjection<TState>(source)`
+### `createProjection<TState>(source, options?)`
 
 Create a projection from JavaScript source. Does not compile until `validate`, `run`, or `test` is called.
+
+Options:
+
+- `version` - `"v1"` or `"v2"` (default `"v2"`). V1 drops non-JSON events.
+- `compilationTimeoutMs` - max compilation time in ms (default 5000)
+- `executionTimeoutMs` - max handler execution time per event in ms (default 5000)
+- `handlerTimeoutMs` - threshold for slow handler warnings in ms (default 250)
+- `enableContentTypeValidation` - validate event content types, V2 only (default false)
 
 ### `projection.validate()`
 
@@ -56,7 +66,7 @@ if (result.valid) {
 	console.log(result.info.source); // { type: "all" }
 	console.log(result.info.events); // ["ItemAdded"] or "all"
 } else {
-	console.error(result.error);
+	console.error(result.error.message);
 }
 ```
 
@@ -90,6 +100,7 @@ const step = test.feed({
 	eventType: "ItemAdded",
 	streamId: "cart-1",
 	sequenceNumber: 0,
+	isJson: true,
 	data: { id: 1 },
 });
 
@@ -109,12 +120,14 @@ test.feed({
 	eventType: "ItemAdded",
 	streamId: "cart-1",
 	sequenceNumber: 0,
+	isJson: true,
 	data: {},
 });
 test.feed({
 	eventType: "ItemAdded",
 	streamId: "cart-2",
 	sequenceNumber: 1,
+	isJson: true,
 	data: {},
 });
 
@@ -139,32 +152,44 @@ test.feed(systemEvents.streamDeleted("cart-123", 5));
 Three event shapes are accepted:
 
 ```typescript
-// Manual test events
-{ eventType: 'OrderPlaced', streamId: 'order-1', sequenceNumber: 0, data: { amount: 99 } }
+// Manual test events (isJson is required)
+{ eventType: 'OrderPlaced', streamId: 'order-1', sequenceNumber: 0, isJson: true, data: { amount: 99 } }
 
 // KurrentDB RecordedEvent (from client)
-{ type: 'OrderPlaced', streamId: 'order-1', revision: 0n, ... }
+{ type: 'OrderPlaced', streamId: 'order-1', revision: 0n, isJson: true, id: '...', created: new Date(), ... }
 
 // KurrentDB ResolvedEvent (from subscriptions)
-{ event: { type: 'OrderPlaced', streamId: 'order-1', revision: 0n, ... } }
+{ event: { type: 'OrderPlaced', streamId: 'order-1', revision: 0n, isJson: true, ... } }
 ```
 
 `data` and `metadata` accept objects (auto-stringified to JSON) or strings (passed through).
 
 ## Errors
 
-When a projection handler throws, a `ProjectionError` is raised with structured properties:
+Errors from the runtime propagate as typed `ProjectionError` subclasses with structured fields and formatted messages:
 
 ```typescript
+import {
+	ProjectionHandlerError,
+	InvalidProjectionError,
+	ProjectionError,
+} from "@kurrent/projections-testing";
+
 try {
 	test.feed(event);
 } catch (err) {
+	if (err instanceof ProjectionHandlerError) {
+		err.description; // "boom"
+		err.event.eventType; // "OrderPlaced"
+		err.event.streamId; // "order-1"
+		err.event.sequenceNumber; // 42
+		err.message; // formatted with source snippet and caret
+	}
+
+	// or catch all projection errors
 	if (err instanceof ProjectionError) {
-		err.normalized.eventType; // "OrderPlaced"
-		err.normalized.streamId; // "order-1"
-		err.normalized.data; // '{"amount":99}'
-		err.cause; // original runtime error
-		err.event; // original input event
+		err.code; // "handler-error", "malformed-event", etc.
+		err.description; // human-readable description
 	}
 }
 ```

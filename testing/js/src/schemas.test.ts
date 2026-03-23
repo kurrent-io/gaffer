@@ -176,6 +176,10 @@ describe("normalizeEvent", () => {
 		const result = normalizeEvent({
 			type: "Ping",
 			streamId: "s-1",
+			revision: 0,
+			isJson: true,
+			id: "00000000-0000-0000-0000-000000000000",
+			created: "2026-01-01T00:00:00Z",
 			data: '{"count":1}',
 		});
 		expect(result.eventType).toBe("Ping");
@@ -184,7 +188,15 @@ describe("normalizeEvent", () => {
 
 	it("normalizes ResolvedEvent", () => {
 		const result = normalizeEvent({
-			event: { type: "Ping", streamId: "s-1", data: '{"count":1}' },
+			event: {
+				type: "Ping",
+				streamId: "s-1",
+				revision: 0,
+				isJson: true,
+				id: "00000000-0000-0000-0000-000000000000",
+				created: "2026-01-01T00:00:00Z",
+				data: '{"count":1}',
+			},
 		});
 		expect(result.eventType).toBe("Ping");
 		expect(result.streamId).toBe("s-1");
@@ -194,6 +206,10 @@ describe("normalizeEvent", () => {
 		const result = normalizeEvent({
 			type: "Ping",
 			streamId: "s-1",
+			revision: 0,
+			isJson: true,
+			id: "00000000-0000-0000-0000-000000000000",
+			created: "2026-01-01T00:00:00Z",
 			data: new TextEncoder().encode('{"count":1}'),
 		});
 		expect(result.data).toBe('{"count":1}');
@@ -236,10 +252,19 @@ describe("normalizeEvent", () => {
 		const result = normalizeEvent({
 			type: "Ping",
 			streamId: "s-1",
-			data: "{}",
 			revision: 42,
+			isJson: true,
+			id: "00000000-0000-0000-0000-000000000000",
+			created: "2026-01-01T00:00:00Z",
+			data: "{}",
 		});
 		expect(result.sequenceNumber).toBe(42);
+	});
+
+	it("throws on RecordedEvent missing required fields", () => {
+		expect(() =>
+			normalizeEvent({ type: "Ping", streamId: "s-1", data: "{}" }),
+		).toThrow();
 	});
 
 	it("normalizes full KurrentDB RecordedEvent", () => {

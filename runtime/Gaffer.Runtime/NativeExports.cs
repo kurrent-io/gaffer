@@ -61,22 +61,26 @@ internal static unsafe class NativeExports {
 			json = SerializeUnexpectedError(ex);
 
 		var bytes = Encoding.UTF8.GetBytes(json);
+		if (bytes.Length >= errorBufSize && ex is GafferException ge2)
+			bytes = Encoding.UTF8.GetBytes(SerializeGafferError(ge2, truncate: true));
+
 		var len = Math.Min(bytes.Length, errorBufSize - 1);
 		bytes.AsSpan(0, len).CopyTo(new Span<byte>(errorBuf, len));
 		errorBuf[len] = 0;
 	}
 
-	private static string SerializeGafferError(GafferException ex) {
+	internal static string SerializeGafferError(GafferException ex, bool truncate = false) {
+		var description = truncate && ex.Description.Length > 200
+			? ex.Description[..197] + "..."
+			: ex.Description;
 		using var stream = new System.IO.MemoryStream();
 		using var writer = new Utf8JsonWriter(stream);
 		writer.WriteStartObject();
 		writer.WriteString("code", ex.Code);
-		writer.WriteString("description", ex.Description);
+		writer.WriteString("description", description);
 
 		switch (ex) {
 			case InvalidProjectionException ip:
-				if (ip.Index != null)
-					writer.WriteNumber("index", ip.Index.Value);
 				if (ip.Line != null)
 					writer.WriteNumber("line", ip.Line.Value);
 				if (ip.Column != null)
@@ -90,7 +94,7 @@ internal static unsafe class NativeExports {
 				writer.WriteString("field", ia.Field);
 				break;
 			case ProjectionHandlerException ph:
-				if (ph.JsStack != null)
+				if (ph.JsStack != null && !truncate)
 					writer.WriteString("jsStack", ph.JsStack);
 				if (ph.Line != null)
 					writer.WriteNumber("line", ph.Line.Value);
@@ -126,7 +130,7 @@ internal static unsafe class NativeExports {
 					writer.WriteString("partition", ss.Partition);
 				break;
 			case ProjectionTransformException pt:
-				if (pt.JsStack != null)
+				if (pt.JsStack != null && !truncate)
 					writer.WriteString("jsStack", pt.JsStack);
 				if (pt.Line != null)
 					writer.WriteNumber("line", pt.Line.Value);

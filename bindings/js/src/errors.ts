@@ -1,10 +1,122 @@
+function formatSnippet(
+	source: string,
+	description: string,
+	location: { line: number; column: number },
+): string {
+	const lines = source.split("\n");
+	const { line, column } = location;
+	const errorLine = lines[line - 1] ?? "";
+	const startContext = Math.max(0, line - 3);
+	const contextLines = lines.slice(startContext, line - 1);
+	const gutter = String(line).length + 1;
+
+	const allLines = [...contextLines, errorLine];
+	const minIndent = allLines.reduce((min, l) => {
+		if (l.trim().length === 0) return min;
+		const indent = l.match(/^[\t ]*/)?.[0].length ?? 0;
+		return Math.min(min, indent);
+	}, Infinity);
+	const strip = minIndent === Infinity ? 0 : minIndent;
+
+	const pad = " ".repeat(gutter);
+	let result = ` ${pad} ┌─ ${line}:${column - strip + 1}\n`;
+	result += ` ${pad} │\n`;
+
+	for (let i = 0; i < contextLines.length; i++) {
+		const num = startContext + i + 1;
+		result += ` ${String(num).padStart(gutter)} │ ${contextLines[i].slice(strip)}\n`;
+	}
+
+	const strippedError = errorLine.slice(strip);
+	const adjustedColumn = column - strip;
+	result += ` ${String(line).padStart(gutter)} │ ${strippedError}\n`;
+	const caretPad = strippedError
+		.slice(0, adjustedColumn)
+		.replace(/[^\t]/g, " ");
+	result += ` ${pad} │ ${caretPad}^ ${description}\n`;
+	result += ` ${pad} │\n`;
+
+	return result;
+}
+
+function formatEventContext(event: EventContext): string {
+	let result = `Event: ${event.sequenceNumber}@${event.streamId}\n`;
+	result += `Type:  ${event.eventType}\n`;
+	if (event.partition) {
+		result += `Partition: ${event.partition}\n`;
+	}
+	return result;
+}
+
+function formatInvalidProjectionMessage(
+	description: string,
+	source: string,
+	location?: { line: number; column: number },
+): string {
+	if (!location) {
+		return `Invalid projection definition\n\nerror: ${description}\n`;
+	}
+	return (
+		`Failed to compile projection\n\nerror: ${description}\n` +
+		formatSnippet(source, description, location)
+	);
+}
+
+function formatJsError(
+	description: string,
+	source: string,
+	jsStack?: string,
+	location?: { line: number; column: number },
+): string {
+	let result = `error: ${description}\n`;
+	if (location) {
+		result += formatSnippet(source, description, location);
+	}
+	if (jsStack) {
+		for (const line of jsStack.split("\n")) {
+			result += `  ${line.trim()}\n`;
+		}
+	}
+	return result;
+}
+
+function formatHandlerMessage(
+	description: string,
+	source: string,
+	event: EventContext,
+	jsStack?: string,
+	location?: { line: number; column: number },
+): string {
+	let result = `Error processing event\n\n`;
+	result += formatJsError(description, source, jsStack, location);
+	result += `\n`;
+	result += formatEventContext(event);
+	return result;
+}
+
+function formatTransformMessage(
+	description: string,
+	source: string,
+	jsStack?: string,
+	location?: { line: number; column: number },
+): string {
+	let result = `Transform error\n\n`;
+	result += formatJsError(description, source, jsStack, location);
+	return result;
+}
+
 export class GafferError extends Error {
 	readonly code: string;
 	readonly description: string;
 	override readonly cause: unknown;
 
-	constructor(code: string, description: string, cause?: unknown) {
-		super(description);
+	constructor(
+		code: string,
+		description: string,
+		cause?: unknown,
+		message?: string,
+	) {
+		super(message ?? description);
 		this.name = this.constructor.name;
 		this.code = code;
 		this.description = description;
@@ -13,47 +125,23 @@ export class GafferError extends Error {
 }
 
 export class InvalidProjectionError extends GafferError {
-	readonly location?: { index: number; line: number; column: number };
+	readonly location?: { line: number; column: number };
 	readonly source: string;
 
 	constructor(
 		description: string,
 		source: string,
-		location?: { index: number; line: number; column: number },
+		location?: { line: number; column: number },
 		cause?: unknown,
 	) {
-		super("invalid-projection", description, cause);
+		super(
+			"invalid-projection",
+			description,
+			cause,
+			formatInvalidProjectionMessage(description, source, location),
+		);
 		this.source = source;
 		this.location = location;
-	}
-
-	override get message(): string {
-		if (!this.location) {
-			return `Invalid projection definition\n\n  error: ${this.description}\n`;
-		}
-
-		const lines = this.source.split("\n");
-		const { line, column } = this.location;
-		const errorLine = lines[line - 1] ?? "";
-		const startContext = Math.max(0, line - 3);
-		const contextLines = lines.slice(startContext, line - 1);
-		const gutter = String(line).length + 1;
-
-		let result = `Failed to compile projection\n\n`;
-		result += `  error: ${this.description}\n`;
-		result += `   ${"┌─"} ${line}:${column + 1}\n`;
-		result += `   ${"│"}\n`;
-
-		for (let i = 0; i < contextLines.length; i++) {
-			const num = startContext + i + 1;
-			result += ` ${String(num).padStart(gutter)} ${"│"} ${contextLines[i]}\n`;
-		}
-
-		result += ` ${String(line).padStart(gutter)} ${"│"} ${errorLine}\n`;
-		result += ` ${" ".repeat(gutter)} ${"│"} ${" ".repeat(column)}^ ${this.description}\n`;
-		result += `   ${"│"}\n`;
-
-		return result;
 	}
 }
 
@@ -103,50 +191,16 @@ export class ProjectionHandlerError extends GafferError {
 		location?: { line: number; column: number },
 		cause?: unknown,
 	) {
-		super("handler-error", description, cause);
+		super(
+			"handler-error",
+			description,
+			cause,
+			formatHandlerMessage(description, source, event, jsStack, location),
+		);
 		this.event = event;
 		this.source = source;
 		this.jsStack = jsStack;
 		this.location = location;
-	}
-
-	override get message(): string {
-		let result = `Error processing event\n\n`;
-		result += `  error: ${this.description}\n`;
-
-		if (this.location) {
-			const lines = this.source.split("\n");
-			const { line, column } = this.location;
-			const errorLine = lines[line - 1] ?? "";
-			const startContext = Math.max(0, line - 3);
-			const contextLines = lines.slice(startContext, line - 1);
-			const gutter = String(line).length + 1;
-
-			result += `   ${"┌─"} ${line}:${column + 1}\n`;
-			result += `   ${"│"}\n`;
-
-			for (let i = 0; i < contextLines.length; i++) {
-				const num = startContext + i + 1;
-				result += ` ${String(num).padStart(gutter)} ${"│"} ${contextLines[i]}\n`;
-			}
-
-			result += ` ${String(line).padStart(gutter)} ${"│"} ${errorLine}\n`;
-			result += ` ${" ".repeat(gutter)} ${"│"} ${" ".repeat(column)}^ ${this.description}\n`;
-			result += `   ${"│"}\n`;
-		}
-
-		if (this.jsStack) {
-			result += `  ${this.jsStack}\n`;
-		}
-
-		result += `\n`;
-		result += `  Event: ${this.event.sequenceNumber}@${this.event.streamId}\n`;
-		result += `  Type:  ${this.event.eventType}\n`;
-		if (this.event.partition) {
-			result += `  Partition: ${this.event.partition}\n`;
-		}
-
-		return result;
 	}
 }
 
@@ -199,7 +253,12 @@ export class ProjectionTransformError extends GafferError {
 		location?: { line: number; column: number },
 		cause?: unknown,
 	) {
-		super("projection-transform-error", description, cause);
+		super(
+			"projection-transform-error",
+			description,
+			cause,
+			formatTransformMessage(description, source, jsStack, location),
+		);
 		this.source = source;
 		this.jsStack = jsStack;
 		this.location = location;
@@ -209,7 +268,6 @@ export class ProjectionTransformError extends GafferError {
 interface ErrorJson {
 	code: string;
 	description: string;
-	index?: number;
 	line?: number;
 	column?: number;
 	elapsed?: number;
@@ -230,9 +288,7 @@ export function parseErrorJson(json: string, source: string): GafferError {
 			return new InvalidProjectionError(
 				err.description,
 				source,
-				err.line != null
-					? { index: err.index!, line: err.line, column: err.column! }
-					: undefined,
+				err.line != null ? { line: err.line, column: err.column! } : undefined,
 			);
 
 		case "compilation-timeout":

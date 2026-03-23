@@ -60,12 +60,19 @@ public sealed class ProjectionSession : IDisposable {
 		} catch (ScriptPreparationException ex) when (ex.InnerException is ParseErrorException parseError) {
 			throw new InvalidProjectionException(
 				parseError.Description,
-				parseError.Error.Index,
 				parseError.LineNumber,
 				parseError.Column,
 				ex);
 		} catch (ScriptPreparationException ex) {
 			throw new InvalidProjectionException(ex.InnerException?.Message ?? ex.Message, ex);
+		} catch (JavaScriptException ex) when (ex.Location.Start.Line > 0) {
+			throw new InvalidProjectionException(
+				ex.Message,
+				ex.Location.Start.Line,
+				ex.Location.Start.Column,
+				ex);
+		} catch (JavaScriptException ex) {
+			throw new InvalidProjectionException(ex.Message, ex);
 		} catch (TimeConstraintException ex) when (ex.IsCompilation) {
 			throw new CompilationTimeoutException(
 				"Projection script took too long to compile",
@@ -213,6 +220,10 @@ public sealed class ProjectionSession : IDisposable {
 		} catch (TimeConstraintException ex) {
 			throw new ProjectionTransformException(
 				"Projection transform took too long to execute",
+				innerException: ex);
+		} catch (StateSerializationException ex) {
+			throw new ProjectionTransformException(
+				ex.Description,
 				innerException: ex);
 		} catch (Exception ex) when (ex is not GafferException) {
 			throw new ProjectionTransformException(ex.Message, innerException: ex);

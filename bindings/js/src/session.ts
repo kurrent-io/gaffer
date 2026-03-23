@@ -1,5 +1,5 @@
 import { getNativeBindings, ERROR_BUF_SIZE, readErrorBuf } from "./native.js";
-import { parseErrorJson, GafferError } from "./errors.js";
+import { parseErrorJson } from "./errors.js";
 import type { IKoffiRegisteredCallback } from "koffi";
 import type {
 	EmittedEvent,
@@ -30,7 +30,8 @@ export class ProjectionSession {
 			ERROR_BUF_SIZE,
 		);
 		if (this.handle === 0) {
-			throw this.parseError(errorBuf);
+			this.checkError(errorBuf);
+			throw new Error("Failed to create projection session");
 		}
 	}
 
@@ -92,7 +93,8 @@ export class ProjectionSession {
 			ERROR_BUF_SIZE,
 		);
 		if (result !== 0) {
-			throw this.parseError(errorBuf);
+			this.checkError(errorBuf);
+			throw new Error("Unknown projection error");
 		}
 	}
 
@@ -100,12 +102,14 @@ export class ProjectionSession {
 	getState(partition?: string): string | null {
 		this.ensureNotDisposed();
 		const errorBuf = Buffer.alloc(ERROR_BUF_SIZE);
-		return getNativeBindings().sessionGetState(
+		const result = getNativeBindings().sessionGetState(
 			this.handle,
 			partition ?? null,
 			errorBuf,
 			ERROR_BUF_SIZE,
 		);
+		this.checkError(errorBuf);
+		return result;
 	}
 
 	/** Get current state parsed as JSON. */
@@ -118,11 +122,13 @@ export class ProjectionSession {
 	getSharedState(): string | null {
 		this.ensureNotDisposed();
 		const errorBuf = Buffer.alloc(ERROR_BUF_SIZE);
-		return getNativeBindings().sessionGetSharedState(
+		const result = getNativeBindings().sessionGetSharedState(
 			this.handle,
 			errorBuf,
 			ERROR_BUF_SIZE,
 		);
+		this.checkError(errorBuf);
+		return result;
 	}
 
 	/** Get shared state parsed as JSON. */
@@ -147,10 +153,7 @@ export class ProjectionSession {
 			errorBuf,
 			ERROR_BUF_SIZE,
 		);
-		const errorJson = readErrorBuf(errorBuf);
-		if (errorJson) {
-			throw this.parseError(errorBuf);
-		}
+		this.checkError(errorBuf);
 		return result;
 	}
 
@@ -172,12 +175,14 @@ export class ProjectionSession {
 	getPartitionKey(event: ProjectionEvent): string | null {
 		this.ensureNotDisposed();
 		const errorBuf = Buffer.alloc(ERROR_BUF_SIZE);
-		return getNativeBindings().sessionGetPartitionKey(
+		const result = getNativeBindings().sessionGetPartitionKey(
 			this.handle,
 			JSON.stringify(event),
 			errorBuf,
 			ERROR_BUF_SIZE,
 		);
+		this.checkError(errorBuf);
+		return result;
 	}
 
 	/** Release the session and free native resources. */
@@ -197,12 +202,11 @@ export class ProjectionSession {
 		this.dispose();
 	}
 
-	private parseError(errorBuf: Buffer): GafferError {
+	private checkError(errorBuf: Buffer): void {
 		const json = readErrorBuf(errorBuf);
 		if (json) {
-			return parseErrorJson(json, this.source);
+			throw parseErrorJson(json, this.source);
 		}
-		return new GafferError("unexpected", "Unknown error");
 	}
 
 	private ensureNotDisposed(): void {

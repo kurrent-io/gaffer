@@ -11,6 +11,13 @@
  * next API call on the same session. Callers must copy if they need to keep
  * the data. Callback string arguments are valid for the duration of the
  * callback only.
+ *
+ * Error handling: Functions that can fail accept an error_buf/error_buf_size
+ * pair. On failure, the runtime writes a JSON object with a "code" field
+ * (kebab-case string) and "description" field, plus error-specific fields.
+ * Error codes: "invalid-projection", "compilation-timeout", "invalid-argument",
+ * "handler-error", "execution-timeout", "malformed-event",
+ * "state-serialization-error", "projection-transform-error", "unexpected".
  */
 
 #ifndef GAFFER_H
@@ -33,20 +40,28 @@ typedef struct gaffer_session gaffer_session;
  * Create a new projection session.
  *
  * Compiles and validates the projection JS source. Returns NULL on error
- * (invalid JS, compilation timeout, etc).
+ * (invalid JS, compilation timeout, etc). On failure, writes structured
+ * error JSON to error_buf.
  *
- * @param source       Projection JavaScript source code (UTF-8)
- * @param options_json JSON options string, or NULL for defaults.
- *                     Supported fields:
- *                       - "version": "v1" | "v2" (default "v2")
- *                       - "handlerTimeoutMs": int (default 250)
- *                       - "compilationTimeoutMs": int (default 5000)
- *                       - "executionTimeoutMs": int (default 5000)
- *                       - "enableContentTypeValidation": bool (default false)
- *                       - "debug": bool (default false)
+ * @param source         Projection JavaScript source code (UTF-8)
+ * @param options_json   JSON options string, or NULL for defaults.
+ *                       Supported fields:
+ *                         - "version": "v1" | "v2" (default "v2")
+ *                         - "handlerTimeoutMs": int (default 250)
+ *                         - "compilationTimeoutMs": int (default 5000)
+ *                         - "executionTimeoutMs": int (default 5000)
+ *                         - "enableContentTypeValidation": bool (default false)
+ *                         - "debug": bool (default false)
+ * @param error_buf      Buffer for error JSON on failure, or NULL
+ * @param error_buf_size Size of error_buf in bytes
  * @return Session handle, or NULL on error
  */
-gaffer_session* gaffer_session_create(const char* source, const char* options_json);
+gaffer_session* gaffer_session_create(
+    const char* source,
+    const char* options_json,
+    char* error_buf,
+    int error_buf_size
+);
 
 /**
  * Destroy a session and free all associated memory.
@@ -119,20 +134,21 @@ void gaffer_on_state_changed(gaffer_session* session, gaffer_state_changed_cb cb
  * soft delete ($metadata on $$stream with $tb=long.MaxValue) internally,
  * routing to the $deleted handler if defined.
  *
- * @param session    Session handle
- * @param event_json JSON event string (UTF-8). Expected shape:
- *                   {
- *                     "eventType": "ItemAdded",
- *                     "streamId": "cart-123",
- *                     "data": "{ ... }",
- *                     "metadata": "{ ... }",
- *                     "sequenceNumber": 42,
- *                     "isJson": true
- *                   }
- * @return 0 on success, non-zero on error. Call gaffer_session_get_error
- *         for the error message.
+ * @param session        Session handle
+ * @param event_json     JSON event string (UTF-8). Required fields:
+ *                         "eventType", "streamId", "sequenceNumber",
+ *                         "isJson", "eventId", "timestamp"
+ *                       Optional: "data", "metadata", "linkMetadata"
+ * @param error_buf      Buffer for error JSON on failure, or NULL
+ * @param error_buf_size Size of error_buf in bytes
+ * @return 0 on success, -1 on error
  */
-int gaffer_session_feed(gaffer_session* session, const char* event_json);
+int gaffer_session_feed(
+    gaffer_session* session,
+    const char* event_json,
+    char* error_buf,
+    int error_buf_size
+);
 
 /* --------------------------------------------------------------------------
  * State
@@ -140,18 +156,31 @@ int gaffer_session_feed(gaffer_session* session, const char* event_json);
 
 /**
  * Get current state for a partition.
- * @param partition Partition key, or NULL for the default (unpartitioned) state.
+ * @param partition      Partition key, or NULL for the default (unpartitioned) state.
+ * @param error_buf      Buffer for error JSON on failure, or NULL
+ * @param error_buf_size Size of error_buf in bytes
  * @return State JSON string, or NULL if the partition has not been seen.
  *         Valid until the next API call on this session.
  */
-const char* gaffer_session_get_state(gaffer_session* session, const char* partition);
+const char* gaffer_session_get_state(
+    gaffer_session* session,
+    const char* partition,
+    char* error_buf,
+    int error_buf_size
+);
 
 /**
  * Get shared state for biState projections.
+ * @param error_buf      Buffer for error JSON on failure, or NULL
+ * @param error_buf_size Size of error_buf in bytes
  * @return Shared state JSON, or NULL if not a biState projection or no
  *         events have been processed. Valid until the next API call.
  */
-const char* gaffer_session_get_shared_state(gaffer_session* session);
+const char* gaffer_session_get_shared_state(
+    gaffer_session* session,
+    char* error_buf,
+    int error_buf_size
+);
 
 /**
  * Restore state for a partition (e.g. from a cache).
@@ -162,11 +191,18 @@ void gaffer_session_set_state(gaffer_session* session, const char* partition, co
 
 /**
  * Get the transformed result for a partition (applies transformBy/filterBy).
- * @param partition Partition key, or NULL for the default.
+ * @param partition      Partition key, or NULL for the default.
+ * @param error_buf      Buffer for error JSON on failure, or NULL
+ * @param error_buf_size Size of error_buf in bytes
  * @return Result JSON, or NULL if the partition is unknown or filtered out.
  *         Valid until the next API call.
  */
-const char* gaffer_session_get_result(gaffer_session* session, const char* partition);
+const char* gaffer_session_get_result(
+    gaffer_session* session,
+    const char* partition,
+    char* error_buf,
+    int error_buf_size
+);
 
 /**
  * Get the source definition - what events/streams the projection reads.
@@ -178,21 +214,17 @@ const char* gaffer_session_get_sources(gaffer_session* session);
 /**
  * Get the partition key that would be computed for an event.
  * Only meaningful for projections using partitionBy or foreachStream.
- * @param event_json JSON event string (same shape as gaffer_session_feed).
+ * @param event_json     JSON event string (same shape as gaffer_session_feed).
+ * @param error_buf      Buffer for error JSON on failure, or NULL
+ * @param error_buf_size Size of error_buf in bytes
  * @return Partition key string, or NULL. Valid until the next API call.
  */
-const char* gaffer_session_get_partition_key(gaffer_session* session, const char* event_json);
-
-/* --------------------------------------------------------------------------
- * Error handling
- * -------------------------------------------------------------------------- */
-
-/**
- * Get the last error message for a session.
- * @return Error message string, or NULL if no error.
- *         Valid until the next API call.
- */
-const char* gaffer_session_get_error(gaffer_session* session);
+const char* gaffer_session_get_partition_key(
+    gaffer_session* session,
+    const char* event_json,
+    char* error_buf,
+    int error_buf_size
+);
 
 #ifdef __cplusplus
 }

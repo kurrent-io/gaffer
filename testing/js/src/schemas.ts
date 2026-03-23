@@ -113,13 +113,13 @@ function normalizeRecordedEvent(event: ParsedRecordedEvent): NormalizedEvent {
 	return {
 		eventType: event.type,
 		streamId: event.streamId,
-		sequenceNumber: event.revision ?? 0,
-		isJson: event.isJson ?? true,
-		eventId: event.id ?? crypto.randomUUID(),
+		sequenceNumber: event.revision as number,
+		isJson: event.isJson as boolean,
+		eventId: event.id as string,
 		timestamp:
 			event.created instanceof Date
 				? event.created.toISOString()
-				: new Date().toISOString(),
+				: (event.created as string),
 		data: stringifyData(event.data),
 		metadata: stringifyData(event.metadata),
 	};

@@ -1,0 +1,14 @@
+{
+	"name": "@kurrent/gaffer-runtime-linux-x64",
+	"version": "0.0.1",
+	"description": "Gaffer projection runtime native binary for Linux x64",
+	"os": [
+		"linux"
+	],
+	"cpu": [
+		"x64"
+	],
+	"files": [
+		"gaffer.so"
+	]
+}

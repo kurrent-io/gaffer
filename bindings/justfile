@@ -3,14 +3,20 @@ default:
 
 # Install all binding dependencies
 [parallel]
-init: go::init
+init: go::init js::init
+
+# Build platform packages (copies native binaries)
+[parallel]
+build: js-linux-x64::build
 
 # Run all binding tests
 [parallel]
-test: go::test
+test: go::test js::test
 
 # Check all binding formatting and linting
 [parallel]
-check: go::check
+check: go::check js::check
 
 mod go
+mod js
+mod js-linux-x64 'js/native/linux-x64'

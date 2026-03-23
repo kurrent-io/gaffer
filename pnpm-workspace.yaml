@@ -1,0 +1,7 @@
+packages:
+  - 'bindings/js'
+  - 'bindings/js/native/*'
+
+onlyBuiltDependencies:
+  - koffi
+  - esbuild

@@ -4,9 +4,19 @@
 default:
     @just --list
 
-# Install all dependencies and tools
+# Root-level tool setup
+[private]
 [parallel]
-init: runtime::init bindings::init
+_init-root:
+    corepack enable
+
+# Install all module dependencies in parallel
+[private]
+[parallel]
+_init-modules: runtime::init bindings::init
+
+# Install all dependencies and tools
+init: _init-root _init-modules
 
 # Ensure runtime .so is built (sequential: build then publish)
 [private]
@@ -15,7 +25,7 @@ _runtime: runtime::build runtime::publish
 # Build all projects that can build in parallel (after runtime)
 [private]
 [parallel]
-_build: cli::build
+_build: cli::build bindings::build
 
 # Build everything
 build: _runtime _build

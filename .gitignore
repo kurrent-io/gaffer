@@ -15,6 +15,10 @@ Thumbs.db
 # Gaffer local state
 .gaffer/
 
+# Node
+node_modules/
+.pnpm-store/
+
 # Environment
 .env
 .env.*

@@ -1,0 +1,6 @@
+default:
+    @just --list
+
+# Copy the runtime .so into this package (requires runtime publish)
+build:
+    cp ../../../../runtime/Gaffer.Runtime/bin/Release/net9.0/linux-x64/publish/Gaffer.Runtime.so gaffer.so

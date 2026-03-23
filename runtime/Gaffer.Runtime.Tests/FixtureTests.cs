@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Events;
 using Gaffer.Runtime.Projection;
 
@@ -60,8 +61,9 @@ public class FixtureTests {
 		if (fixture.TryGetProperty("options", out var optionsEl))
 			options = ParseOptions(optionsEl);
 
-		if (expect.TryGetProperty("valid", out var validEl) && !validEl.GetBoolean()) {
-			Assert.ThrowsAny<Exception>(() => new ProjectionSession(source, options));
+		if (expect.TryGetProperty("error", out var errorEl) && !fixture.TryGetProperty("events", out _) && !expect.TryGetProperty("getResult", out _)) {
+			var ex = Assert.ThrowsAny<GafferException>(() => new ProjectionSession(source, options));
+			AssertError(errorEl, ex);
 			return;
 		}
 
@@ -78,40 +80,45 @@ public class FixtureTests {
 				stateJson);
 		}
 
-		if (!fixture.TryGetProperty("events", out var eventsEl))
-			return;
-
-		var events = eventsEl.EnumerateArray().ToList();
-		string? lastError = null;
 		var lastEmitted = new List<EmittedEvent>();
 		var lastLogs = new List<string>();
 
 		session.OnEmit = emitted => lastEmitted.Add(emitted);
 		session.OnLog = message => lastLogs.Add(message);
 
-		foreach (var ev in events) {
-			lastEmitted.Clear();
-			lastLogs.Clear();
+		if (fixture.TryGetProperty("events", out var eventsEl)) {
+			GafferException? lastFeedError = null;
+			foreach (var ev in eventsEl.EnumerateArray()) {
+				lastEmitted.Clear();
+				lastLogs.Clear();
 
-			var projectionEvent = new ProjectionEvent {
-				EventType = ev.GetProperty("eventType").GetString()!,
-				StreamId = ev.GetProperty("streamId").GetString()!,
-				SequenceNumber = ev.GetProperty("sequenceNumber").GetInt64(),
-				Data = ev.TryGetProperty("data", out var data) ? data.GetString() : "{}",
-				IsJson = !ev.TryGetProperty("isJson", out var isJson) || isJson.GetBoolean(),
-				Metadata = ev.TryGetProperty("metadata", out var metadata) ? metadata.GetString() : null,
-			};
+				var projectionEvent = new ProjectionEvent {
+					EventType = ev.GetProperty("eventType").GetString()!,
+					StreamId = ev.GetProperty("streamId").GetString()!,
+					SequenceNumber = ev.GetProperty("sequenceNumber").GetInt64(),
+					Data = ev.TryGetProperty("data", out var data) ? data.GetString() : "{}",
+					IsJson = !ev.TryGetProperty("isJson", out var isJson) || isJson.GetBoolean(),
+					Metadata = ev.TryGetProperty("metadata", out var metadata) ? metadata.GetString() : null,
+				};
 
-			try {
-				session.Feed(projectionEvent);
-			} catch (Exception ex) {
-				lastError = ex.Message;
+				try {
+					session.Feed(projectionEvent);
+				} catch (GafferException ex) {
+					lastFeedError = ex;
+				}
+			}
+
+			if (expect.TryGetProperty("error", out var feedErrorEl) && !expect.TryGetProperty("getResult", out _)) {
+				Assert.NotNull(lastFeedError);
+				AssertError(feedErrorEl, lastFeedError);
+				return;
 			}
 		}
 
-		if (expect.TryGetProperty("error", out var errorEl)) {
-			Assert.NotNull(lastError);
-			Assert.Contains(errorEl.GetString()!, lastError);
+		if (expect.TryGetProperty("getResult", out _)) {
+			var resultEx = Assert.ThrowsAny<GafferException>(() => session.GetResult());
+			if (expect.TryGetProperty("error", out var resultErrorEl))
+				AssertError(resultErrorEl, resultEx);
 			return;
 		}
 
@@ -184,6 +191,9 @@ public class FixtureTests {
 			HandlerTimeoutMs = el.TryGetProperty("handlerTimeoutMs", out var handlerTimeout)
 				? handlerTimeout.GetInt32()
 				: 250,
+			CompilationTimeout = el.TryGetProperty("compilationTimeoutMs", out var compTimeout)
+				? TimeSpan.FromMilliseconds(compTimeout.GetInt32())
+				: TimeSpan.FromSeconds(5),
 			ExecutionTimeout = el.TryGetProperty("executionTimeoutMs", out var execTimeout)
 				? TimeSpan.FromMilliseconds(execTimeout.GetInt32())
 				: TimeSpan.FromSeconds(5),
@@ -258,6 +268,13 @@ public class FixtureTests {
 					break;
 			}
 		}
+	}
+
+	private static void AssertError(JsonElement expected, GafferException actual) {
+		if (expected.TryGetProperty("code", out var code))
+			Assert.Equal(code.GetString(), actual.Code);
+		if (expected.TryGetProperty("description", out var desc))
+			Assert.Contains(desc.GetString()!, actual.Description);
 	}
 
 	private static void AssertJsonEqual(JsonElement expected, JsonElement actual) {

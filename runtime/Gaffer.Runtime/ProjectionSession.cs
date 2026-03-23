@@ -1,7 +1,11 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Acornima;
+using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Events;
 using Gaffer.Runtime.Projection;
+using Jint;
+using Jint.Runtime;
 
 namespace Gaffer.Runtime;
 
@@ -39,18 +43,38 @@ public sealed class ProjectionSession : IDisposable {
 	/// Create a new projection session from JavaScript source code.
 	/// Compiles and validates the projection immediately.
 	/// </summary>
-	/// <exception cref="Exception">Thrown if the JS source is invalid or fails to compile.</exception>
+	/// <exception cref="InvalidProjectionException">Thrown if the JS source is invalid or the projection definition is wrong.</exception>
+	/// <exception cref="CompilationTimeoutException">Thrown if compilation exceeds the timeout.</exception>
 	public ProjectionSession(string source, ProjectionSessionOptions? options = null) {
 		var opts = options ?? new ProjectionSessionOptions();
 		_version = opts.Version;
 		_handlerTimeout = TimeSpan.FromMilliseconds(opts.HandlerTimeoutMs);
 
-		_handler = new JintProjectionHandler(
-			source,
-			opts.EnableContentTypeValidation,
-			opts.CompilationTimeout,
-			opts.ExecutionTimeout,
-			message => OnLog?.Invoke(message));
+		try {
+			_handler = new JintProjectionHandler(
+				source,
+				opts.EnableContentTypeValidation,
+				opts.CompilationTimeout,
+				opts.ExecutionTimeout,
+				message => OnLog?.Invoke(message));
+		} catch (ScriptPreparationException ex) when (ex.InnerException is ParseErrorException parseError) {
+			throw new InvalidProjectionException(
+				parseError.Description,
+				parseError.Error.Index,
+				parseError.LineNumber,
+				parseError.Column,
+				ex);
+		} catch (ScriptPreparationException ex) {
+			throw new InvalidProjectionException(ex.InnerException?.Message ?? ex.Message, ex);
+		} catch (TimeConstraintException ex) when (ex.IsCompilation) {
+			throw new CompilationTimeoutException(
+				"Projection script took too long to compile",
+				ex.ElapsedMs, ex.AllowedMs, ex);
+		} catch (ArgumentException ex) {
+			throw new InvalidProjectionException(ex.Message, ex);
+		} catch (Exception ex) when (ex is not GafferException) {
+			throw new InvalidProjectionException(ex.Message, ex);
+		}
 
 		_sources = _handler.GetSourceDefinition();
 		if (!_sources.AllEvents && _sources.Events != null)
@@ -72,16 +96,24 @@ public sealed class ProjectionSession : IDisposable {
 	/// ($metadata on $$stream with $tb=long.MaxValue) and routes to the
 	/// $deleted handler if defined.
 	/// </summary>
-	/// <exception cref="ProjectionException">Thrown if the JS handler throws an error.</exception>
+	/// <exception cref="ProjectionHandlerException">Thrown if the JS handler throws an error.</exception>
+	/// <exception cref="ExecutionTimeoutException">Thrown if the handler exceeds the timeout.</exception>
+	/// <exception cref="MalformedEventException">Thrown if event data is malformed.</exception>
+	/// <exception cref="StateSerializationException">Thrown if state contains unserializable values.</exception>
 	public void Feed(ProjectionEvent @event) {
-		// V1: drop non-JSON events at the session level, matching KurrentDB V1
-		// subscription-level filtering.
 		if (_version == ProjectionVersion.V1 && !@event.IsJson)
 			return;
 
-		if (IsStreamDeletedEvent(@event, out var deletedStreamId)) {
-			FeedStreamDeleted(deletedStreamId);
-			return;
+		try {
+			if (IsStreamDeletedEvent(@event, out var deletedStreamId)) {
+				FeedStreamDeleted(@event, deletedStreamId);
+				return;
+			}
+		} catch (JsonException ex) {
+			throw new MalformedEventException(
+				$"Failed to parse {StreamMetadataEventType} event data as JSON",
+				@event.EventType, @event.StreamId, @event.SequenceNumber,
+				innerException: ex);
 		}
 
 		var partition = ResolvePartition(@event);
@@ -112,10 +144,16 @@ public sealed class ProjectionSession : IDisposable {
 
 			if (processed)
 				ProcessOutput(partition, @event, newState, newSharedState, emittedEvents);
-		} catch (Exception ex) when (ex is not ProjectionException) {
+		} catch (StateSerializationException ex) {
 			_handlerStopwatch.Stop();
-			throw new ProjectionException(
-				$"Error processing {@event.EventType} in partition '{partition}': {ex.Message}", ex);
+			var part = IsPartitioned ? partition : null;
+			throw new StateSerializationException(
+				ex.Description,
+				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
+				ex.InnerException);
+		} catch (Exception ex) when (ex is not GafferException) {
+			_handlerStopwatch.Stop();
+			throw WrapHandlerException(ex, @event, partition);
 		}
 	}
 
@@ -155,6 +193,7 @@ public sealed class ProjectionSession : IDisposable {
 	/// Get the transformed result for a partition (applies transformBy/filterBy).
 	/// Returns null for unknown partitions or filtered results.
 	/// </summary>
+	/// <exception cref="ProjectionTransformException">Thrown if transformBy/filterBy throws.</exception>
 	public string? GetResult(string? partition = null) {
 		var key = partition ?? "";
 		if (!_stateCache.ContainsKey(key))
@@ -162,7 +201,50 @@ public sealed class ProjectionSession : IDisposable {
 		LoadPartitionState(key);
 		if (_sharedStateInitialized)
 			LoadSharedState();
-		return _handler.TransformStateToResult();
+		try {
+			return _handler.TransformStateToResult();
+		} catch (JavaScriptException ex) {
+			int? line = ex.Location.Start.Line > 0 ? ex.Location.Start.Line : null;
+			int? column = line != null ? ex.Location.Start.Column : null;
+			throw new ProjectionTransformException(
+				ex.Message,
+				ex.JavaScriptStackTrace, line, column,
+				ex);
+		} catch (TimeConstraintException ex) {
+			throw new ProjectionTransformException(
+				"Projection transform took too long to execute",
+				innerException: ex);
+		} catch (Exception ex) when (ex is not GafferException) {
+			throw new ProjectionTransformException(ex.Message, innerException: ex);
+		}
+	}
+
+	private bool IsPartitioned => _sources.ByStreams || _sources.ByCustomPartitions;
+
+	private GafferException WrapHandlerException(Exception ex, ProjectionEvent @event, string partition) {
+		var part = IsPartitioned ? partition : null;
+		return ex switch {
+			TimeConstraintException tc => new ExecutionTimeoutException(
+				"Projection script took too long to execute",
+				tc.ElapsedMs, tc.AllowedMs,
+				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
+				tc),
+			MalformedEventDataException med => new MalformedEventException(
+				med.Message,
+				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
+				med.InnerException),
+			JavaScriptException js => new ProjectionHandlerException(
+				js.Message,
+				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
+				js.JavaScriptStackTrace,
+				js.Location.Start.Line > 0 ? js.Location.Start.Line : null,
+				js.Location.Start.Line > 0 ? js.Location.Start.Column : null,
+				js),
+			_ => new ProjectionHandlerException(
+				ex.Message,
+				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
+				innerException: ex),
+		};
 	}
 
 	/// <summary>Get the partition key that would be computed for an event.</summary>
@@ -210,19 +292,29 @@ public sealed class ProjectionSession : IDisposable {
 		return false;
 	}
 
-	private void FeedStreamDeleted(string partition) {
+	private void FeedStreamDeleted(ProjectionEvent @event, string partition) {
 		if (!_sources.HandlesDeletedNotifications)
 			return;
 
 		LoadPartitionState(partition);
 		LoadSharedState();
 
-		_handler.ProcessPartitionDeleted(partition, out var newState);
+		try {
+			_handler.ProcessPartitionDeleted(partition, out var newState);
 
-		_stateCache[partition] = newState;
+			_stateCache[partition] = newState;
 
-		if (newState != null)
-			OnStateChanged?.Invoke(partition, newState);
+			if (newState != null)
+				OnStateChanged?.Invoke(partition, newState);
+		} catch (StateSerializationException ex) {
+			var part = IsPartitioned ? partition : null;
+			throw new StateSerializationException(
+				ex.Description,
+				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
+				ex.InnerException);
+		} catch (Exception ex) when (ex is not GafferException) {
+			throw WrapHandlerException(ex, @event, partition);
+		}
 	}
 
 	/// <summary>

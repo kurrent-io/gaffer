@@ -167,7 +167,7 @@
 		"name": "invalid JS",
 		"source": "this is not valid {{{{",
 		"expect": {
-			"valid": false
+			"error": { "code": "invalid-projection" }
 		}
 	},
 	{

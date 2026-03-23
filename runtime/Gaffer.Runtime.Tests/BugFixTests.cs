@@ -1,3 +1,4 @@
+using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Events;
 
 namespace Gaffer.Runtime.Tests;
@@ -43,7 +44,7 @@ public class BugFixTests {
 	}
 
 	[Fact]
-	public void Js_error_throws_ProjectionException() {
+	public void Js_error_throws_ProjectionHandlerException() {
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return {}; },
@@ -51,14 +52,14 @@ public class BugFixTests {
             })
         """);
 
-		var ex = Assert.Throws<ProjectionException>(() =>
+		var ex = Assert.Throws<ProjectionHandlerException>(() =>
 			session.Feed(new ProjectionEvent { EventType = "Bad", StreamId = "s-1", Data = "{}" }));
 
-		Assert.Contains("something went wrong", ex.Message);
+		Assert.Contains("something went wrong", ex.Description);
 	}
 
 	[Fact]
-	public void Js_type_error_throws_ProjectionException() {
+	public void Js_type_error_throws_ProjectionHandlerException() {
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return {}; },
@@ -66,7 +67,7 @@ public class BugFixTests {
             })
         """);
 
-		Assert.Throws<ProjectionException>(() =>
+		Assert.Throws<ProjectionHandlerException>(() =>
 			session.Feed(new ProjectionEvent { EventType = "Bad", StreamId = "s-1", Data = "{}" }));
 	}
 }

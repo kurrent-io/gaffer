@@ -1,3 +1,4 @@
+using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Events;
 
 namespace Gaffer.Runtime.Tests;
@@ -107,7 +108,7 @@ public class EdgeCaseTests {
 
 	[Fact]
 	public void Compilation_timeout_throws() {
-		Assert.Throws<TimeoutException>(() => new ProjectionSession("""
+		Assert.Throws<CompilationTimeoutException>(() => new ProjectionSession("""
             while(true) {}
         """, new ProjectionSessionOptions { CompilationTimeout = TimeSpan.FromMilliseconds(100) }));
 	}

@@ -366,12 +366,14 @@ internal sealed class JintProjectionHandler : IDisposable {
 		public override void Reset() => _start = Sw.Elapsed;
 
 		public override void Check() {
-			if (Sw.Elapsed - _start >= _timeout) {
+			var elapsed = Sw.Elapsed - _start;
+			if (elapsed >= _timeout) {
 				if (Debugger.IsAttached)
 					return;
-				var action = _executing ? "execute" : "compile";
-				throw new TimeoutException(
-					$"Projection script took too long to {action} (took: {Sw.Elapsed - _start:c}, allowed: {_timeout:c})");
+				throw new Errors.TimeConstraintException(
+					!_executing,
+					(int)elapsed.TotalMilliseconds,
+					(int)_timeout.TotalMilliseconds);
 			}
 		}
 	}
@@ -427,11 +429,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 		private static readonly Dictionary<string, Action<SourceDefinitionBuilder, JsValue>> Setters =
 			new(StringComparer.OrdinalIgnoreCase)
 			{
-				{ "$includeLinks", (o, v) => o.SetIncludeLinks(v.IsBoolean() ? v.AsBoolean() : throw new Exception("Invalid value")) },
-				{ "reorderEvents", (o, v) => o.SetReorderEvents(v.IsBoolean() ? v.AsBoolean() : throw new Exception("Invalid value")) },
-				{ "processingLag", (o, v) => o.SetProcessingLag(v.IsNumber() ? (int)v.AsNumber() : throw new Exception("Invalid value")) },
-				{ "resultStreamName", (o, v) => o.SetResultStreamNameOption(v.IsString() ? v.AsString() : throw new Exception("Invalid value")) },
-				{ "biState", (o, v) => o.SetIsBiState(v.IsBoolean() ? v.AsBoolean() : throw new Exception("Invalid value")) },
+				{ "$includeLinks", (o, v) => o.SetIncludeLinks(v.IsBoolean() ? v.AsBoolean() : throw new ArgumentException("Invalid value for option '$includeLinks': expected a boolean")) },
+				{ "reorderEvents", (o, v) => o.SetReorderEvents(v.IsBoolean() ? v.AsBoolean() : throw new ArgumentException("Invalid value for option 'reorderEvents': expected a boolean")) },
+				{ "processingLag", (o, v) => o.SetProcessingLag(v.IsNumber() ? (int)v.AsNumber() : throw new ArgumentException("Invalid value for option 'processingLag': expected a number")) },
+				{ "resultStreamName", (o, v) => o.SetResultStreamNameOption(v.IsString() ? v.AsString() : throw new ArgumentException("Invalid value for option 'resultStreamName': expected a string")) },
+				{ "biState", (o, v) => o.SetIsBiState(v.IsBoolean() ? v.AsBoolean() : throw new ArgumentException("Invalid value for option 'biState': expected a boolean")) },
 			};
 
 		private readonly List<string> _definitionFunctions;
@@ -471,7 +473,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		private JsValue FromStream(JsValue _, JsValue[] parameters) {
 			var stream = parameters.At(0);
 			if (stream is not JsString)
-				throw new ArgumentException("stream");
+				throw new ArgumentException("fromStream expects a string argument");
 			_definitionBuilder.FromStream(stream.AsString());
 			RestrictProperties("fromStream");
 			return this;
@@ -483,19 +485,19 @@ internal sealed class JintProjectionHandler : IDisposable {
 			if (parameters.Length == 1 && parameters.At(0).IsArray()) {
 				foreach (var cat in parameters.At(0).AsArray()) {
 					if (cat is not JsString s)
-						throw new ArgumentException("categories");
+						throw new ArgumentException("fromCategory expects string arguments");
 					_definitionBuilder.FromStream($"$ce-{s.AsString()}");
 				}
 			} else if (parameters.Length > 1) {
 				foreach (var cat in parameters) {
 					if (cat is not JsString s)
-						throw new ArgumentException("categories");
+						throw new ArgumentException("fromCategory expects string arguments");
 					_definitionBuilder.FromStream($"$ce-{s.AsString()}");
 				}
 			} else {
 				var p0 = parameters.At(0);
 				if (p0 is not JsString s)
-					throw new ArgumentException("category");
+					throw new ArgumentException("fromCategory expects a string argument");
 				_definitionBuilder.FromCategory(s.AsString());
 			}
 			RestrictProperties("fromCategory");
@@ -521,7 +523,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 				RestrictProperties("partitionBy");
 				return this;
 			}
-			throw new ArgumentException("partitionBy");
+			throw new ArgumentException("partitionBy expects a function");
 		}
 
 		private JsValue ForEachStream(JsValue thisValue, JsValue[] parameters) {
@@ -538,11 +540,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 		private JsValue OutputTo(JsValue thisValue, JsValue[] parameters) {
 			if (parameters.Length is not (1 or 2))
-				throw new ArgumentException("invalid number of parameters");
+				throw new ArgumentException("outputTo expects 1 or 2 string arguments");
 			if (!parameters.At(0).IsString())
-				throw new ArgumentException("expected string value", "resultStream");
+				throw new ArgumentException("outputTo expects a string for resultStream");
 			if (parameters.Length == 2 && !parameters.At(1).IsString())
-				throw new ArgumentException("expected string value", "partitionResultStreamPattern");
+				throw new ArgumentException("outputTo expects a string for partitionResultStreamPattern");
 			_definitionBuilder.SetResultStreamNameOption(parameters.At(0).AsString());
 			if (parameters.Length == 2)
 				_definitionBuilder.SetPartitionResultStreamNamePatternOption(parameters.At(1).AsString());
@@ -564,7 +566,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 				RestrictProperties("filterBy");
 				return this;
 			}
-			throw new ArgumentException("expected function");
+			throw new ArgumentException("filterBy expects a function");
 		}
 
 		private JsValue TransformBy(JsValue thisValue, JsValue[] parameters) {
@@ -575,25 +577,25 @@ internal sealed class JintProjectionHandler : IDisposable {
 				RestrictProperties("transformBy");
 				return this;
 			}
-			throw new ArgumentException("expected function");
+			throw new ArgumentException("transformBy expects a function");
 		}
 
 		private JsValue OnEvent(JsValue thisValue, JsValue[] parameters) {
 			if (parameters.Length != 2)
-				throw new ArgumentException("invalid number of parameters");
+				throw new ArgumentException("on_event expects 2 arguments: eventName and handler function");
 			if (!parameters.At(0).IsString())
-				throw new ArgumentException("eventName");
+				throw new ArgumentException("on_event expects a string for eventName");
 			if (parameters.At(1) is not ScriptFunction fi)
-				throw new ArgumentException("eventHandler");
+				throw new ArgumentException("on_event expects a function for handler");
 			AddHandler(parameters.At(0).AsString(), fi);
 			return Undefined;
 		}
 
 		private JsValue OnAny(JsValue thisValue, JsValue[] parameters) {
 			if (parameters.Length != 1)
-				throw new ArgumentException("invalid number of parameters");
+				throw new ArgumentException("on_any expects 1 argument: handler function");
 			if (parameters.At(0) is not ScriptFunction fi)
-				throw new ArgumentException("eventHandler");
+				throw new ArgumentException("on_any expects a function for handler");
 			AddHandler("$any", fi);
 			return Undefined;
 		}
@@ -688,13 +690,13 @@ internal sealed class JintProjectionHandler : IDisposable {
 			if (parameters.Length == 1 && parameters.At(0).IsArray()) {
 				foreach (var stream in parameters.At(0).AsArray()) {
 					if (stream is not JsString s)
-						throw new ArgumentException("streams");
+						throw new ArgumentException("fromStreams expects string arguments");
 					_definitionBuilder.FromStream(s.AsString());
 				}
 			} else {
 				for (var i = 0; i < parameters.Length; i++) {
 					if (parameters[i] is not JsString s)
-						throw new ArgumentException("streams");
+						throw new ArgumentException("fromStreams expects string arguments");
 					_definitionBuilder.FromStream(s.AsString());
 				}
 			}
@@ -708,7 +710,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 					if (Setters.TryGetValue(kvp.Key.AsString(), out var setter))
 						setter(_definitionBuilder, kvp.Value.Value);
 					else
-						throw new Exception($"Unrecognized option: {kvp.Key}");
+						throw new ArgumentException($"Unrecognized option: {kvp.Key}");
 				}
 			}
 			return Undefined;
@@ -765,7 +767,12 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 		private bool EnsureBody(out JsValue objectInstance) {
 			if (IsJson && TryGetValue("bodyRaw", out var raw) && raw is not JsUndefined) {
-				var body = raw.IsNull() ? raw : _parser.Parse(raw.AsString());
+				JsValue body;
+				try {
+					body = raw.IsNull() ? raw : _parser.Parse(raw.AsString());
+				} catch (Exception ex) {
+					throw new Errors.MalformedEventDataException("data", ex);
+				}
 				var pd = new PropertyDescriptor(body, false, true, false);
 				SetOwnProperty("body", pd);
 				SetOwnProperty("data", pd);
@@ -796,7 +803,12 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 		private bool EnsureMetadata(out JsValue value) {
 			if (TryGetValue("metadataRaw", out var raw) && raw is not JsUndefined) {
-				var metadata = raw.IsNull() ? raw : _parser.Parse(raw.AsString());
+				JsValue metadata;
+				try {
+					metadata = raw.IsNull() ? raw : _parser.Parse(raw.AsString());
+				} catch (Exception ex) {
+					throw new Errors.MalformedEventDataException("metadata", ex);
+				}
 				SetOwnProperty("metadata", new PropertyDescriptor(metadata, false, true, false));
 				value = metadata;
 				return true;
@@ -819,7 +831,12 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 		private bool EnsureLinkMetadata(out JsValue value) {
 			if (TryGetValue("linkMetadataRaw", out var raw) && raw is not JsUndefined) {
-				var metadata = raw.IsNull() ? raw : _parser.Parse(raw.AsString());
+				JsValue metadata;
+				try {
+					metadata = raw.IsNull() ? raw : _parser.Parse(raw.AsString());
+				} catch (Exception ex) {
+					throw new Errors.MalformedEventDataException("linkMetadata", ex);
+				}
 				SetOwnProperty("linkMetadata", new PropertyDescriptor(metadata, false, true, false));
 				value = metadata;
 				return true;
@@ -1034,7 +1051,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 					break;
 				case Types.Number:
 					// Matches KurrentDB: throws on NaN/Infinity rather than writing null
-					writer.WriteNumberValue(value.AsNumber());
+					var num = value.AsNumber();
+					if (double.IsNaN(num) || double.IsInfinity(num))
+						throw new Errors.StateSerializationException($"Cannot serialize {num} as JSON value", "", "", 0);
+					writer.WriteNumberValue(num);
 					break;
 				case Types.BigInt:
 					writer.WriteStringValue(value.ToString());
@@ -1043,7 +1063,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 					writer.WriteStringValue(value.AsString());
 					break;
 				default:
-					throw new Exception($"Cannot serialize {value.Type} as primitive");
+					throw new Errors.StateSerializationException($"Cannot serialize {value.Type} as primitive", "", "", 0);
 			}
 		}
 	}

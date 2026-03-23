@@ -1,3 +1,4 @@
+using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Events;
 
 namespace Gaffer.Runtime.Tests;
@@ -114,7 +115,7 @@ public class DeletedStreamTests {
 
 	[Fact]
 	public void Deleted_not_allowed_in_bistate() {
-		Assert.Throws<Exception>(() => new ProjectionSession("""
+		Assert.Throws<InvalidProjectionException>(() => new ProjectionSession("""
             options({ biState: true });
             fromAll().when({
                 $init: function() { return {}; },

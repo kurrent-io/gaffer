@@ -1,4 +1,4 @@
-import { getNativeBindings, ERROR_BUF_SIZE, readErrorBuf } from "./native.js";
+import { getNativeBindings } from "./native.js";
 import { parseErrorJson } from "./errors.js";
 import type { IKoffiRegisteredCallback } from "koffi";
 import type {
@@ -22,16 +22,9 @@ export class ProjectionSession {
 		this.source = source;
 		const native = getNativeBindings();
 		const optionsJson = options ? JSON.stringify(options) : null;
-		const errorBuf = Buffer.alloc(ERROR_BUF_SIZE);
-		this.handle = native.sessionCreate(
-			source,
-			optionsJson,
-			errorBuf,
-			ERROR_BUF_SIZE,
-		);
+		this.handle = native.sessionCreate(source, optionsJson);
 		if (this.handle === 0) {
-			this.checkError(errorBuf);
-			throw new Error("Failed to create projection session");
+			this.throwLastError();
 		}
 	}
 
@@ -83,33 +76,19 @@ export class ProjectionSession {
 	/** Feed a single event to the projection. */
 	feed(event: ProjectionEvent): void {
 		this.ensureNotDisposed();
-		const native = getNativeBindings();
-		const eventJson = JSON.stringify(event);
-		const errorBuf = Buffer.alloc(ERROR_BUF_SIZE);
-		const result = native.sessionFeed(
+		const result = getNativeBindings().sessionFeed(
 			this.handle,
-			eventJson,
-			errorBuf,
-			ERROR_BUF_SIZE,
+			JSON.stringify(event),
 		);
 		if (result !== 0) {
-			this.checkError(errorBuf);
-			throw new Error("Unknown projection error");
+			this.throwLastError();
 		}
 	}
 
 	/** Get current state for a partition, or null if not seen. */
 	getState(partition?: string): string | null {
 		this.ensureNotDisposed();
-		const errorBuf = Buffer.alloc(ERROR_BUF_SIZE);
-		const result = getNativeBindings().sessionGetState(
-			this.handle,
-			partition ?? null,
-			errorBuf,
-			ERROR_BUF_SIZE,
-		);
-		this.checkError(errorBuf);
-		return result;
+		return getNativeBindings().sessionGetState(this.handle, partition ?? null);
 	}
 
 	/** Get current state parsed as JSON. */
@@ -121,14 +100,7 @@ export class ProjectionSession {
 	/** Get shared state for biState projections. */
 	getSharedState(): string | null {
 		this.ensureNotDisposed();
-		const errorBuf = Buffer.alloc(ERROR_BUF_SIZE);
-		const result = getNativeBindings().sessionGetSharedState(
-			this.handle,
-			errorBuf,
-			ERROR_BUF_SIZE,
-		);
-		this.checkError(errorBuf);
-		return result;
+		return getNativeBindings().sessionGetSharedState(this.handle);
 	}
 
 	/** Get shared state parsed as JSON. */
@@ -146,14 +118,13 @@ export class ProjectionSession {
 	/** Get the transformed result for a partition. */
 	getResult(partition?: string): string | null {
 		this.ensureNotDisposed();
-		const errorBuf = Buffer.alloc(ERROR_BUF_SIZE);
 		const result = getNativeBindings().sessionGetResult(
 			this.handle,
 			partition ?? null,
-			errorBuf,
-			ERROR_BUF_SIZE,
 		);
-		this.checkError(errorBuf);
+		// getResult returns null for both "filtered out" and "transform threw",
+		// so we check the error to distinguish
+		this.checkLastError();
 		return result;
 	}
 
@@ -174,15 +145,10 @@ export class ProjectionSession {
 	/** Get the partition key for an event. */
 	getPartitionKey(event: ProjectionEvent): string | null {
 		this.ensureNotDisposed();
-		const errorBuf = Buffer.alloc(ERROR_BUF_SIZE);
-		const result = getNativeBindings().sessionGetPartitionKey(
+		return getNativeBindings().sessionGetPartitionKey(
 			this.handle,
 			JSON.stringify(event),
-			errorBuf,
-			ERROR_BUF_SIZE,
 		);
-		this.checkError(errorBuf);
-		return result;
 	}
 
 	/** Release the session and free native resources. */
@@ -202,8 +168,16 @@ export class ProjectionSession {
 		this.dispose();
 	}
 
-	private checkError(errorBuf: Buffer): void {
-		const json = readErrorBuf(errorBuf);
+	private throwLastError(): never {
+		const json = getNativeBindings().getLastError();
+		if (json) {
+			throw parseErrorJson(json, this.source);
+		}
+		throw new Error("Unknown error");
+	}
+
+	private checkLastError(): void {
+		const json = getNativeBindings().getLastError();
 		if (json) {
 			throw parseErrorJson(json, this.source);
 		}

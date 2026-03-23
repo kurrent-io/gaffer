@@ -16,6 +16,9 @@ internal static unsafe class NativeExports {
 	private static readonly ConcurrentDictionary<nint, SessionHandle> Sessions = new();
 	private static long _nextHandle;
 
+	[ThreadStatic]
+	private static byte* _lastErrorPtr;
+
 	private sealed class SessionHandle {
 		public required ProjectionSession Session { get; init; }
 		public byte* LastReturnedPtr { get; set; }
@@ -50,9 +53,11 @@ internal static unsafe class NativeExports {
 		return Marshal.PtrToStringUTF8((nint)ptr);
 	}
 
-	private static void WriteError(Exception ex, byte* errorBuf, int errorBufSize) {
-		if (errorBuf == null || errorBufSize <= 0)
-			return;
+	private static void SetLastError(Exception ex) {
+		if (_lastErrorPtr != null) {
+			NativeMemory.Free(_lastErrorPtr);
+			_lastErrorPtr = null;
+		}
 
 		string json;
 		if (ex is GafferException ge)
@@ -61,23 +66,24 @@ internal static unsafe class NativeExports {
 			json = SerializeUnexpectedError(ex);
 
 		var bytes = Encoding.UTF8.GetBytes(json);
-		if (bytes.Length >= errorBufSize && ex is GafferException ge2)
-			bytes = Encoding.UTF8.GetBytes(SerializeGafferError(ge2, truncate: true));
-
-		var len = Math.Min(bytes.Length, errorBufSize - 1);
-		bytes.AsSpan(0, len).CopyTo(new Span<byte>(errorBuf, len));
-		errorBuf[len] = 0;
+		_lastErrorPtr = (byte*)NativeMemory.Alloc((nuint)(bytes.Length + 1));
+		bytes.CopyTo(new Span<byte>(_lastErrorPtr, bytes.Length));
+		_lastErrorPtr[bytes.Length] = 0;
 	}
 
-	internal static string SerializeGafferError(GafferException ex, bool truncate = false) {
-		var description = truncate && ex.Description.Length > 200
-			? ex.Description[..197] + "..."
-			: ex.Description;
+	private static void ClearLastError() {
+		if (_lastErrorPtr != null) {
+			NativeMemory.Free(_lastErrorPtr);
+			_lastErrorPtr = null;
+		}
+	}
+
+	internal static string SerializeGafferError(GafferException ex) {
 		using var stream = new System.IO.MemoryStream();
 		using var writer = new Utf8JsonWriter(stream);
 		writer.WriteStartObject();
 		writer.WriteString("code", ex.Code);
-		writer.WriteString("description", description);
+		writer.WriteString("description", ex.Description);
 
 		switch (ex) {
 			case InvalidProjectionException ip:
@@ -94,7 +100,7 @@ internal static unsafe class NativeExports {
 				writer.WriteString("field", ia.Field);
 				break;
 			case ProjectionHandlerException ph:
-				if (ph.JsStack != null && !truncate)
+				if (ph.JsStack != null)
 					writer.WriteString("jsStack", ph.JsStack);
 				if (ph.Line != null)
 					writer.WriteNumber("line", ph.Line.Value);
@@ -130,7 +136,7 @@ internal static unsafe class NativeExports {
 					writer.WriteString("partition", ss.Partition);
 				break;
 			case ProjectionTransformException pt:
-				if (pt.JsStack != null && !truncate)
+				if (pt.JsStack != null)
 					writer.WriteString("jsStack", pt.JsStack);
 				if (pt.Line != null)
 					writer.WriteNumber("line", pt.Line.Value);
@@ -158,11 +164,11 @@ internal static unsafe class NativeExports {
 	// -- Session lifecycle --
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_create")]
-	public static nint Create(byte* source, byte* optionsJson, byte* errorBuf, int errorBufSize) {
+	public static nint Create(byte* source, byte* optionsJson) {
 		try {
 			var sourceStr = FromUtf8(source);
 			if (sourceStr == null) {
-				WriteError(new InvalidArgumentException("source is null", "source"), errorBuf, errorBufSize);
+				SetLastError(new InvalidArgumentException("source is null", "source"));
 				return 0;
 			}
 
@@ -172,9 +178,10 @@ internal static unsafe class NativeExports {
 			var handle = new SessionHandle { Session = session };
 			var id = (nint)Interlocked.Increment(ref _nextHandle);
 			Sessions[id] = handle;
+			ClearLastError();
 			return id;
 		} catch (Exception ex) {
-			WriteError(ex, errorBuf, errorBufSize);
+			SetLastError(ex);
 			return 0;
 		}
 	}
@@ -275,23 +282,29 @@ internal static unsafe class NativeExports {
 
 	// -- Event feeding --
 
+	private static readonly InvalidArgumentException InvalidSessionError =
+		new("Invalid session handle", "session");
+
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_feed")]
-	public static int Feed(nint sessionId, byte* eventJson, byte* errorBuf, int errorBufSize) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+	public static int Feed(nint sessionId, byte* eventJson) {
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			SetLastError(InvalidSessionError);
 			return -1;
+		}
 
 		try {
 			var json = FromUtf8(eventJson);
 			if (json == null) {
-				WriteError(new InvalidArgumentException("event_json is null", "event_json"), errorBuf, errorBufSize);
+				SetLastError(new InvalidArgumentException("event_json is null", "event_json"));
 				return -1;
 			}
 
 			var evt = ParseEvent(json);
 			handle.Session.Feed(evt);
+			ClearLastError();
 			return 0;
 		} catch (Exception ex) {
-			WriteError(ex, errorBuf, errorBufSize);
+			SetLastError(ex);
 			return -1;
 		}
 	}
@@ -299,26 +312,33 @@ internal static unsafe class NativeExports {
 	// -- State --
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_state")]
-	public static byte* GetState(nint sessionId, byte* partition, byte* errorBuf, int errorBufSize) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+	public static byte* GetState(nint sessionId, byte* partition) {
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			SetLastError(InvalidSessionError);
 			return null;
+		}
 		try {
 			var state = handle.Session.GetState(FromUtf8(partition));
+			ClearLastError();
 			return ToUnmanaged(handle, state);
 		} catch (Exception ex) {
-			WriteError(ex, errorBuf, errorBufSize);
+			SetLastError(ex);
 			return null;
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_shared_state")]
-	public static byte* GetSharedState(nint sessionId, byte* errorBuf, int errorBufSize) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+	public static byte* GetSharedState(nint sessionId) {
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			SetLastError(InvalidSessionError);
 			return null;
+		}
 		try {
-			return ToUnmanaged(handle, handle.Session.GetSharedState());
+			var result = ToUnmanaged(handle, handle.Session.GetSharedState());
+			ClearLastError();
+			return result;
 		} catch (Exception ex) {
-			WriteError(ex, errorBuf, errorBufSize);
+			SetLastError(ex);
 			return null;
 		}
 	}
@@ -331,53 +351,70 @@ internal static unsafe class NativeExports {
 			var json = FromUtf8(stateJson);
 			if (json != null)
 				handle.Session.SetState(FromUtf8(partition), json);
-		} catch {
-			// SetState cannot meaningfully fail with our error types
+			ClearLastError();
+		} catch (Exception ex) {
+			SetLastError(ex);
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_result")]
-	public static byte* GetResult(nint sessionId, byte* partition, byte* errorBuf, int errorBufSize) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+	public static byte* GetResult(nint sessionId, byte* partition) {
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			SetLastError(InvalidSessionError);
 			return null;
+		}
 		try {
-			return ToUnmanaged(handle, handle.Session.GetResult(FromUtf8(partition)));
+			var result = ToUnmanaged(handle, handle.Session.GetResult(FromUtf8(partition)));
+			ClearLastError();
+			return result;
 		} catch (Exception ex) {
-			WriteError(ex, errorBuf, errorBufSize);
+			SetLastError(ex);
 			return null;
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_sources")]
 	public static byte* GetSources(nint sessionId) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			SetLastError(InvalidSessionError);
 			return null;
+		}
 		try {
 			var sources = handle.Session.Sources;
 			var json = JsonSerializer.Serialize(sources, GafferJsonContext.Default.QuerySources);
+			ClearLastError();
 			return ToUnmanaged(handle, json);
-		} catch {
+		} catch (Exception ex) {
+			SetLastError(ex);
 			return null;
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_partition_key")]
-	public static byte* GetPartitionKey(nint sessionId, byte* eventJson, byte* errorBuf, int errorBufSize) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+	public static byte* GetPartitionKey(nint sessionId, byte* eventJson) {
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			SetLastError(InvalidSessionError);
 			return null;
+		}
 		try {
 			var json = FromUtf8(eventJson);
 			if (json == null) {
-				WriteError(new InvalidArgumentException("event_json is null", "event_json"), errorBuf, errorBufSize);
+				SetLastError(new InvalidArgumentException("event_json is null", "event_json"));
 				return null;
 			}
 			var evt = ParseEvent(json);
+			ClearLastError();
 			return ToUnmanaged(handle, handle.Session.GetPartitionKey(evt));
 		} catch (Exception ex) {
-			WriteError(ex, errorBuf, errorBufSize);
+			SetLastError(ex);
 			return null;
 		}
 	}
+
+	// -- Error handling --
+
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_get_last_error")]
+	public static byte* GetLastError() => _lastErrorPtr;
 
 	// -- Helpers --
 

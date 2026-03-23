@@ -77,51 +77,21 @@ const stateChangedCbType = koffi.proto(
 	"void gaffer_state_changed_cb(const char*, const char*, void*)",
 );
 
-export const ERROR_BUF_SIZE = 4096;
-
 export interface NativeBindings {
-	sessionCreate(
-		source: string,
-		optionsJson: string | null,
-		errorBuf: Buffer,
-		errorBufSize: number,
-	): number;
+	sessionCreate(source: string, optionsJson: string | null): number;
 	sessionDestroy(handle: number): void;
-	sessionFeed(
-		handle: number,
-		eventJson: string,
-		errorBuf: Buffer,
-		errorBufSize: number,
-	): number;
-	sessionGetState(
-		handle: number,
-		partition: string | null,
-		errorBuf: Buffer,
-		errorBufSize: number,
-	): string | null;
-	sessionGetSharedState(
-		handle: number,
-		errorBuf: Buffer,
-		errorBufSize: number,
-	): string | null;
+	sessionFeed(handle: number, eventJson: string): number;
+	sessionGetState(handle: number, partition: string | null): string | null;
+	sessionGetSharedState(handle: number): string | null;
 	sessionSetState(
 		handle: number,
 		partition: string | null,
 		stateJson: string,
 	): void;
-	sessionGetResult(
-		handle: number,
-		partition: string | null,
-		errorBuf: Buffer,
-		errorBufSize: number,
-	): string | null;
+	sessionGetResult(handle: number, partition: string | null): string | null;
 	sessionGetSources(handle: number): string | null;
-	sessionGetPartitionKey(
-		handle: number,
-		eventJson: string,
-		errorBuf: Buffer,
-		errorBufSize: number,
-	): string | null;
+	sessionGetPartitionKey(handle: number, eventJson: string): string | null;
+	getLastError(): string | null;
 	onEmit(
 		handle: number,
 		cb: (
@@ -158,26 +128,17 @@ export function getNativeBindings(): NativeBindings {
 	const sessionCreate = l.func("gaffer_session_create", "intptr", [
 		"str",
 		"str",
-		"uint8_t*",
-		"int",
 	]);
 	const sessionDestroy = l.func("gaffer_session_destroy", "void", ["intptr"]);
-	const sessionFeed = l.func("gaffer_session_feed", "int", [
-		"intptr",
-		"str",
-		"uint8_t*",
-		"int",
-	]);
+	const sessionFeed = l.func("gaffer_session_feed", "int", ["intptr", "str"]);
 	const sessionGetState = l.func("gaffer_session_get_state", "str", [
 		"intptr",
 		"str",
-		"uint8_t*",
-		"int",
 	]);
 	const sessionGetSharedState = l.func(
 		"gaffer_session_get_shared_state",
 		"str",
-		["intptr", "uint8_t*", "int"],
+		["intptr"],
 	);
 	const sessionSetState = l.func("gaffer_session_set_state", "void", [
 		"intptr",
@@ -187,8 +148,6 @@ export function getNativeBindings(): NativeBindings {
 	const sessionGetResult = l.func("gaffer_session_get_result", "str", [
 		"intptr",
 		"str",
-		"uint8_t*",
-		"int",
 	]);
 	const sessionGetSources = l.func("gaffer_session_get_sources", "str", [
 		"intptr",
@@ -196,8 +155,9 @@ export function getNativeBindings(): NativeBindings {
 	const sessionGetPartitionKey = l.func(
 		"gaffer_session_get_partition_key",
 		"str",
-		["intptr", "str", "uint8_t*", "int"],
+		["intptr", "str"],
 	);
+	const getLastError = l.func("gaffer_get_last_error", "str", []);
 	const onEmit = l.func("gaffer_on_emit", "void", [
 		"intptr",
 		koffi.pointer(emitCbType),
@@ -220,28 +180,23 @@ export function getNativeBindings(): NativeBindings {
 	]);
 
 	bindings = {
-		sessionCreate: (source, optionsJson, errorBuf, errorBufSize) =>
-			sessionCreate(source, optionsJson, errorBuf, errorBufSize) as number,
+		sessionCreate: (source, optionsJson) =>
+			sessionCreate(source, optionsJson) as number,
 		sessionDestroy: (handle) => sessionDestroy(handle),
-		sessionFeed: (handle, eventJson, errorBuf, errorBufSize) =>
-			sessionFeed(handle, eventJson, errorBuf, errorBufSize) as number,
-		sessionGetState: (handle, partition, errorBuf, errorBufSize) =>
-			sessionGetState(handle, partition, errorBuf, errorBufSize) as
-				| string
-				| null,
-		sessionGetSharedState: (handle, errorBuf, errorBufSize) =>
-			sessionGetSharedState(handle, errorBuf, errorBufSize) as string | null,
+		sessionFeed: (handle, eventJson) =>
+			sessionFeed(handle, eventJson) as number,
+		sessionGetState: (handle, partition) =>
+			sessionGetState(handle, partition) as string | null,
+		sessionGetSharedState: (handle) =>
+			sessionGetSharedState(handle) as string | null,
 		sessionSetState: (handle, partition, stateJson) =>
 			sessionSetState(handle, partition, stateJson),
-		sessionGetResult: (handle, partition, errorBuf, errorBufSize) =>
-			sessionGetResult(handle, partition, errorBuf, errorBufSize) as
-				| string
-				| null,
+		sessionGetResult: (handle, partition) =>
+			sessionGetResult(handle, partition) as string | null,
 		sessionGetSources: (handle) => sessionGetSources(handle) as string | null,
-		sessionGetPartitionKey: (handle, eventJson, errorBuf, errorBufSize) =>
-			sessionGetPartitionKey(handle, eventJson, errorBuf, errorBufSize) as
-				| string
-				| null,
+		sessionGetPartitionKey: (handle, eventJson) =>
+			sessionGetPartitionKey(handle, eventJson) as string | null,
+		getLastError: () => getLastError() as string | null,
 		onEmit: (handle, cb) => {
 			const nativeCb = koffi.register(
 				(
@@ -293,10 +248,4 @@ export function getNativeBindings(): NativeBindings {
 	};
 
 	return bindings;
-}
-
-export function readErrorBuf(buf: Buffer): string | null {
-	const end = buf.indexOf(0);
-	if (end <= 0) return null;
-	return buf.toString("utf8", 0, end);
 }

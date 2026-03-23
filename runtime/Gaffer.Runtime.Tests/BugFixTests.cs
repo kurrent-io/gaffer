@@ -71,23 +71,4 @@ public class BugFixTests {
 			session.Feed(new ProjectionEvent { EventType = "Bad", StreamId = "s-1", Data = "{}" }));
 	}
 
-	[Fact]
-	public void SerializeGafferError_truncates_when_requested() {
-		var longDescription = new string('x', 300);
-		var ex = new ProjectionHandlerException(
-			longDescription, "Test", "s-1", 0, "p-1",
-			jsStack: "at foo (<anonymous>:1:1)\nat bar (<anonymous>:2:1)");
-
-		var full = NativeExports.SerializeGafferError(ex);
-		var truncated = NativeExports.SerializeGafferError(ex, truncate: true);
-
-		Assert.Contains("jsStack", full);
-		Assert.DoesNotContain("jsStack", truncated);
-		Assert.Contains("xxx...", truncated);
-		Assert.True(truncated.Length < full.Length);
-
-		using var doc = System.Text.Json.JsonDocument.Parse(truncated);
-		Assert.Equal("handler-error", doc.RootElement.GetProperty("code").GetString());
-		Assert.EndsWith("...", doc.RootElement.GetProperty("description").GetString());
-	}
 }

@@ -231,7 +231,7 @@ func TestOnEmitCallback(t *testing.T) {
 	`)
 
 	var emitted []struct{ streamID, eventType, data string }
-	SessionOnEmit(session, func(streamID, eventType, data, _ string) {
+	SessionOnEmit(session, func(streamID, eventType, data, _ string, _, _ bool) {
 		emitted = append(emitted, struct{ streamID, eventType, data string }{streamID, eventType, data})
 	})
 

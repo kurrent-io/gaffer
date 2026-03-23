@@ -4,7 +4,7 @@ import "C"
 import "unsafe"
 
 //export goEmitCallback
-func goEmitCallback(streamID *C.char, eventType *C.char, data *C.char, metadata *C.char, userData unsafe.Pointer) {
+func goEmitCallback(streamID *C.char, eventType *C.char, data *C.char, metadata *C.char, isJson C.int, isLink C.int, userData unsafe.Pointer) {
 	key := uintptr(userData)
 	callbackMu.RLock()
 	cb := emitCallbacks[key]
@@ -17,7 +17,7 @@ func goEmitCallback(streamID *C.char, eventType *C.char, data *C.char, metadata 
 		if metadata != nil {
 			metaStr = C.GoString(metadata)
 		}
-		cb(C.GoString(streamID), C.GoString(eventType), dataStr, metaStr)
+		cb(C.GoString(streamID), C.GoString(eventType), dataStr, metaStr, isJson != 0, isLink != 0)
 	}
 }
 

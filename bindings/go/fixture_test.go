@@ -115,7 +115,7 @@ func runFixture(t *testing.T, f fixture) {
 	var lastEmitted []struct{ streamID, eventType, data string }
 	var lastLogs []string
 
-	SessionOnEmit(session, func(streamID, eventType, data, _ string) {
+	SessionOnEmit(session, func(streamID, eventType, data, _ string, _, _ bool) {
 		lastEmitted = append(lastEmitted, struct{ streamID, eventType, data string }{streamID, eventType, data})
 	})
 	SessionOnLog(session, func(message string) {

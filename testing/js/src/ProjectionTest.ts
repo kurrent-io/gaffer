@@ -153,7 +153,7 @@ function mapEmittedEvent(event: EmittedEvent): TestEmittedEvent {
 		metadata: event.metadata
 			? (event.metadata as Record<string, unknown>)
 			: null,
-		isLink: event.eventType === "$>" || event.eventType === "$@",
+		isLink: event.isLink,
 	};
 }
 

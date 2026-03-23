@@ -17,6 +17,7 @@ export interface EmittedEvent {
 	eventType: string;
 	data: string | null;
 	isJson: boolean;
+	isLink: boolean;
 	metadata: Record<string, string | null> | null;
 }
 

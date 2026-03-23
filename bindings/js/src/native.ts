@@ -67,7 +67,7 @@ function getLib(): koffi.IKoffiLib {
 
 // Callback types matching gaffer.h
 const emitCbType = koffi.proto(
-	"void gaffer_emit_cb(const char*, const char*, const char*, const char*, void*)",
+	"void gaffer_emit_cb(const char*, const char*, const char*, const char*, int, int, void*)",
 );
 const logCbType = koffi.proto("void gaffer_log_cb(const char*, void*)");
 const slowHandlerCbType = koffi.proto(
@@ -99,6 +99,8 @@ export interface NativeBindings {
 			type: string,
 			data: string | null,
 			metadata: string | null,
+			isJson: boolean,
+			isLink: boolean,
 		) => void,
 	): IKoffiRegisteredCallback;
 	onLog(
@@ -202,9 +204,11 @@ export function getNativeBindings(): NativeBindings {
 					type: string,
 					data: string | null,
 					metadata: string | null,
+					isJson: number,
+					isLink: number,
 					_userData: unknown,
 				) => {
-					cb(stream, type, data, metadata);
+					cb(stream, type, data, metadata, isJson !== 0, isLink !== 0);
 				},
 				koffi.pointer(emitCbType),
 			);

@@ -100,7 +100,7 @@ internal static unsafe class NativeExports {
 	// -- Callbacks --
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_on_emit")]
-	public static void OnEmit(nint sessionId, delegate* unmanaged<byte*, byte*, byte*, byte*, void*, void> cb, void* userData) {
+	public static void OnEmit(nint sessionId, delegate* unmanaged<byte*, byte*, byte*, byte*, int, int, void*, void> cb, void* userData) {
 		if (!Sessions.TryGetValue(sessionId, out var handle))
 			return;
 
@@ -110,7 +110,7 @@ internal static unsafe class NativeExports {
 			var data = AllocUtf8(emitted.Data);
 			var metadata = AllocUtf8(emitted.Metadata != null ? JsonSerializer.Serialize(emitted.Metadata, GafferJsonContext.Default.DictionaryStringString) : null);
 			try {
-				cb(streamId, eventType, data, metadata, userData);
+				cb(streamId, eventType, data, metadata, emitted.IsJson ? 1 : 0, emitted.IsLink ? 1 : 0, userData);
 			} finally {
 				FreeUtf8(streamId);
 				FreeUtf8(eventType);

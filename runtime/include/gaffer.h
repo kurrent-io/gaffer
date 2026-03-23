@@ -67,6 +67,8 @@ typedef void (*gaffer_emit_cb)(
     const char* event_type,
     const char* data,
     const char* metadata_json,
+    int is_json,
+    int is_link,
     void* user_data
 );
 

@@ -4,7 +4,7 @@ package gafferruntime
 #include "gaffer.h"
 
 // Forward declarations for Go callback trampolines
-extern void goEmitCallback(const char* streamId, const char* eventType, const char* data, const char* metadata, void* userData);
+extern void goEmitCallback(const char* streamId, const char* eventType, const char* data, const char* metadata, int isJson, int isLink, void* userData);
 extern void goLogCallback(const char* message, void* userData);
 extern void goSlowHandlerCallback(const char* handlerName, int durationMs, void* userData);
 extern void goStateChangedCallback(const char* partition, const char* stateJson, void* userData);
@@ -18,7 +18,7 @@ import (
 
 // Callback function types.
 type (
-	EmitCallback         func(streamID, eventType, data, metadata string)
+	EmitCallback         func(streamID, eventType, data, metadata string, isJson, isLink bool)
 	LogCallback          func(message string)
 	SlowHandlerCallback  func(handlerName string, durationMs int)
 	StateChangedCallback func(partition string, stateJSON string)

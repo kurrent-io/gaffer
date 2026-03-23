@@ -30,7 +30,7 @@ export class ProjectionSession {
 		this.ensureNotDisposed();
 		const handle = getNativeBindings().onEmit(
 			this.handle,
-			(stream, type, data, metadataJson) => {
+			(stream, type, data, metadataJson, isJson, isLink) => {
 				const metadata = metadataJson
 					? (JSON.parse(metadataJson) as Record<string, string | null>)
 					: null;
@@ -38,7 +38,8 @@ export class ProjectionSession {
 					streamId: stream,
 					eventType: type,
 					data,
-					isJson: type !== "$>" && type !== "$@",
+					isJson,
+					isLink,
 					metadata,
 				});
 			},

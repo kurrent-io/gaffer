@@ -38,6 +38,17 @@ _test: runtime::test bindings::test cli::test testing::test
 # Run all tests
 test: _runtime _test
 
+# Start KurrentDB for integration tests
+db-up:
+    docker compose -f tools/kurrentdb/docker-compose.yml up -d --wait
+
+# Stop KurrentDB
+db-down:
+    docker compose -f tools/kurrentdb/docker-compose.yml down
+
+# Run integration tests (requires KurrentDB)
+test-integration: testing::test-integration
+
 # Check formatting and linting across all projects
 [parallel]
 check: runtime::check bindings::check cli::check testing::check

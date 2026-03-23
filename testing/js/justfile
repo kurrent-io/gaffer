@@ -17,6 +17,10 @@ test:
 check:
     pnpm run check
 
+# Run integration tests (requires KurrentDB)
+test-integration:
+    pnpm run test:integration
+
 # Auto-fix lint and formatting
 fix:
     pnpm run fix

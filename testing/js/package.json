@@ -8,6 +8,7 @@
 	"scripts": {
 		"build": "tsc",
 		"test": "vitest run",
+		"test:integration": "vitest run --config vitest.integration.config.ts",
 		"check": "tsc --noEmit && eslint . && prettier --check .",
 		"fix": "eslint --fix . && prettier --write ."
 	},

@@ -10,6 +10,9 @@ build: js::build
 # Run all test lib tests
 test: js::test
 
+# Run integration tests (requires KurrentDB)
+test-integration: js::test-integration
+
 # Check formatting and linting
 check: js::check
 

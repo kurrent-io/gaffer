@@ -10,7 +10,8 @@
     },
     "ghcr.io/devcontainers/features/node:1": {
       "version": "22"
-    }
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
-  "postCreateCommand": "curl -sSf https://just.systems/install.sh | sudo bash -s -- --to /usr/local/bin && just init"
+  "postCreateCommand": "bash .devcontainer/postCreate.sh"
 }

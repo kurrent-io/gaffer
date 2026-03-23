@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using Acornima;
 using Gaffer.Runtime.Errors;
@@ -21,8 +20,6 @@ public sealed class ProjectionSession : IDisposable {
 	private readonly HashSet<string>? _handledEventTypes;
 	private string? _sharedState;
 	private readonly ProjectionVersion _version;
-	private readonly TimeSpan _handlerTimeout;
-	private readonly Stopwatch _handlerStopwatch = new();
 	private bool _sharedStateInitialized;
 
 	/// <summary>Called when the projection emits an event (emit or linkTo).</summary>
@@ -33,9 +30,6 @@ public sealed class ProjectionSession : IDisposable {
 
 	/// <summary>Called when projection state changes. Args: partition key, state JSON.</summary>
 	public Action<string, string?>? OnStateChanged { get; set; }
-
-	/// <summary>Called when a handler exceeds the timeout. Args: event type, duration ms.</summary>
-	public Action<string, int>? OnSlowHandler { get; set; }
 
 	/// <summary>The projection's source definition (what streams/events it reads).</summary>
 	public QuerySources Sources => _sources;
@@ -50,7 +44,6 @@ public sealed class ProjectionSession : IDisposable {
 		_source = source;
 		var opts = options ?? new ProjectionSessionOptions();
 		_version = opts.Version;
-		_handlerTimeout = TimeSpan.FromMilliseconds(opts.HandlerTimeoutMs);
 
 		try {
 			_handler = new JintProjectionHandler(
@@ -140,7 +133,6 @@ public sealed class ProjectionSession : IDisposable {
 					OnEmit?.Invoke(e);
 		}
 
-		_handlerStopwatch.Restart();
 		try {
 			var processed = _handler.ProcessEvent(
 				partition,
@@ -149,29 +141,22 @@ public sealed class ProjectionSession : IDisposable {
 				out var newState,
 				out var newSharedState,
 				out var emittedEvents);
-			_handlerStopwatch.Stop();
 
 			if (processed)
 				ProcessOutput(partition, @event, newState, newSharedState, emittedEvents);
 		} catch (StateSerializationException ex) {
-			_handlerStopwatch.Stop();
 			var part = IsPartitioned ? partition : null;
 			throw new StateSerializationException(
 				ex.Description,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
 				ex.InnerException);
 		} catch (Exception ex) when (ex is not ProjectionException) {
-			_handlerStopwatch.Stop();
 			throw WrapHandlerException(ex, @event, partition);
 		}
 	}
 
 	private void ProcessOutput(string partition, ProjectionEvent @event,
 		string? newState, string? newSharedState, EmittedEvent[]? emittedEvents) {
-
-		if (_handlerStopwatch.Elapsed > _handlerTimeout)
-			OnSlowHandler?.Invoke(@event.EventType, (int)_handlerStopwatch.ElapsedMilliseconds);
-
 		_stateCache[partition] = newState;
 
 		if (newState != null)
@@ -378,9 +363,6 @@ public sealed class ProjectionSessionOptions {
 	/// <summary>Projection engine version. Default: V2.</summary>
 	public ProjectionVersion Version { get; init; } = ProjectionVersion.V2;
 
-	/// <summary>Handler timeout in milliseconds. Triggers OnSlowHandler callback. Default: 250.</summary>
-	public int HandlerTimeoutMs { get; init; } = 250;
-
 	/// <summary>Maximum time for JS compilation. Default: 5 seconds.</summary>
 	public TimeSpan CompilationTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
@@ -391,8 +373,9 @@ public sealed class ProjectionSessionOptions {
 	public bool Debug { get; init; }
 
 	/// <summary>
-	/// When true, non-JSON events with empty data are still passed to handlers (V1 compat).
-	/// When false (default), they are skipped.
+	/// When true, non-JSON events with empty data are still passed to handlers.
+	/// When false (default), they are skipped. Only meaningful in V2 mode;
+	/// V1 drops non-JSON events at the subscription level before they reach the handler.
 	/// </summary>
 	public bool EnableContentTypeValidation { get; init; }
 }

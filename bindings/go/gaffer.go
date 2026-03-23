@@ -161,11 +161,6 @@ func (s *Session) OnLog(cb LogCallback) {
 	sessionOnLog(s.handle, cb)
 }
 
-// OnSlowHandler registers a callback for slow handler warnings.
-func (s *Session) OnSlowHandler(cb SlowHandlerCallback) {
-	sessionOnSlowHandler(s.handle, cb)
-}
-
 // OnStateChanged registers a callback for state changes.
 func (s *Session) OnStateChanged(cb StateChangedCallback) {
 	sessionOnStateChanged(s.handle, cb)

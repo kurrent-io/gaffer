@@ -180,7 +180,7 @@ func TestFeedError(t *testing.T) {
 }
 
 func TestCreateWithOptions(t *testing.T) {
-	opts := `{"handlerTimeoutMs":100,"compilationTimeoutMs":10000}`
+	opts := `{"compilationTimeoutMs":10000}`
 	session, err := NewSession(`
 		fromAll().when({
 			$init: function() { return {}; },
@@ -303,47 +303,6 @@ func TestOnStateChangedCallback(t *testing.T) {
 	}
 	if !strings.Contains(changes[1], `"count":2`) {
 		t.Fatalf("expected count:2, got %s", changes[1])
-	}
-}
-
-func TestOnSlowHandlerCallback(t *testing.T) {
-	opts := `{"handlerTimeoutMs":1}`
-	session, err := NewSession(`
-		fromAll().when({
-			$init: function() { return {}; },
-			Slow: function(s, e) {
-				var start = Date.now();
-				while (Date.now() - start < 10) {}
-				return s;
-			}
-		})
-	`, &opts)
-	if err != nil {
-		t.Fatalf("NewSession failed: %v", err)
-	}
-	defer session.Destroy()
-
-	var warnings []struct {
-		handler string
-		ms      int
-	}
-	session.OnSlowHandler(func(handler string, ms int) {
-		warnings = append(warnings, struct {
-			handler string
-			ms      int
-		}{handler, ms})
-	})
-
-	mustFeed(t, session, `{"eventType":"Slow","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
-
-	if len(warnings) != 1 {
-		t.Fatalf("expected 1 slow handler warning, got %d", len(warnings))
-	}
-	if warnings[0].handler != "Slow" {
-		t.Fatalf("expected handler 'Slow', got %s", warnings[0].handler)
-	}
-	if warnings[0].ms < 1 {
-		t.Fatalf("expected duration >= 1ms, got %d", warnings[0].ms)
 	}
 }
 

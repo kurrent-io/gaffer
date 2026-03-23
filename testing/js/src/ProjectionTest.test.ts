@@ -188,7 +188,11 @@ describe("ProjectionTest", () => {
 	});
 
 	it("returns shared state for biState projections", () => {
-		const test = new ProjectionTest<{ count: number }, unknown, { total: number }>(`
+		const test = new ProjectionTest<
+			{ count: number },
+			unknown,
+			{ total: number }
+		>(`
 			options({ biState: true });
 			fromAll().when({
 				$init: function() { return { count: 0 }; },

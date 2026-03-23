@@ -146,28 +146,6 @@ public class ProjectionSessionTests {
 	}
 
 	[Fact]
-	public void SlowHandler_fires_callback() {
-		var slowHandlers = new List<(string handler, int ms)>();
-		using var session = new ProjectionSession("""
-            fromAll().when({
-                $init: function() { return {}; },
-                SlowEvent: function(s, e) {
-                    var start = Date.now();
-                    while (Date.now() - start < 50) {}
-                    return s;
-                }
-            })
-        """, new ProjectionSessionOptions { HandlerTimeoutMs = 10 });
-		session.OnSlowHandler = (h, ms) => slowHandlers.Add((h, ms));
-
-		session.Feed(new ProjectionEvent { EventType = "SlowEvent", StreamId = "s-1", Data = "{}" });
-
-		Assert.Single(slowHandlers);
-		Assert.Equal("SlowEvent", slowHandlers[0].handler);
-		Assert.True(slowHandlers[0].ms >= 10);
-	}
-
-	[Fact]
 	public void TransformBy_affects_result() {
 		using var session = new ProjectionSession("""
             fromAll().when({

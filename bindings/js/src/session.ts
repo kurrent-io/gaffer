@@ -57,13 +57,6 @@ export class ProjectionSession {
 		this.registeredCallbacks.push(handle);
 	}
 
-	/** Register a callback for slow handler warnings. */
-	onSlowHandler(cb: (handlerName: string, durationMs: number) => void): void {
-		this.ensureNotDisposed();
-		const handle = getNativeBindings().onSlowHandler(this.handle, cb);
-		this.registeredCallbacks.push(handle);
-	}
-
 	/** Register a callback for state changes. */
 	onStateChanged(
 		cb: (partition: string, stateJson: string | null) => void,

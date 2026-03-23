@@ -14,7 +14,11 @@ import type { EventInput } from "./schemas.js";
  * A projection that can be validated, run against events, or tested interactively.
  * Created via {@link createProjection}.
  */
-export interface Projection<TState = unknown, TResult = unknown, TSharedState = unknown> {
+export interface Projection<
+	TState = unknown,
+	TResult = unknown,
+	TSharedState = unknown,
+> {
 	/**
 	 * Compile the projection and return its source definition.
 	 * @throws {ProjectionError} If the projection source is invalid.
@@ -24,17 +28,23 @@ export interface Projection<TState = unknown, TResult = unknown, TSharedState = 
 	 * Run the projection over a sync iterable of events.
 	 * @throws {ProjectionError} If the projection source is invalid or a handler throws.
 	 */
-	run(events: Iterable<EventInput>): Iterable<StepResult<TState, TResult, TSharedState>>;
+	run(
+		events: Iterable<EventInput>,
+	): Iterable<StepResult<TState, TResult, TSharedState>>;
 	/**
 	 * Run the projection over an async iterable of events.
 	 * @throws {ProjectionError} If the projection source is invalid or a handler throws.
 	 */
-	run(events: AsyncIterable<EventInput>): AsyncIterable<StepResult<TState, TResult, TSharedState>>;
+	run(
+		events: AsyncIterable<EventInput>,
+	): AsyncIterable<StepResult<TState, TResult, TSharedState>>;
 	/**
 	 * Run the projection against a live KurrentDB subscription.
 	 * @throws {ProjectionError} If the projection source is invalid or a handler throws.
 	 */
-	run(client: KurrentDBClient): AsyncIterable<StepResult<TState, TResult, TSharedState>>;
+	run(
+		client: KurrentDBClient,
+	): AsyncIterable<StepResult<TState, TResult, TSharedState>>;
 	/**
 	 * Create an interactive test session for feeding events one at a time.
 	 * @throws {InvalidProjectionError} If the projection source is invalid.
@@ -47,7 +57,11 @@ export interface Projection<TState = unknown, TResult = unknown, TSharedState = 
  * Does not compile until {@link Projection.validate}, {@link Projection.run},
  * or {@link Projection.test} is called.
  */
-export function createProjection<TState = unknown, TResult = unknown, TSharedState = unknown>(
+export function createProjection<
+	TState = unknown,
+	TResult = unknown,
+	TSharedState = unknown,
+>(
 	/** KurrentDB projection JavaScript source code. */
 	source: string,
 	/** Options for the projection session (version, timeouts, etc). */
@@ -68,7 +82,12 @@ export function createProjection<TState = unknown, TResult = unknown, TSharedSta
 			const info = this.validate();
 
 			if (input instanceof KurrentDBClient) {
-				return runWithClient<TState, TResult, TSharedState>(source, options, input, info);
+				return runWithClient<TState, TResult, TSharedState>(
+					source,
+					options,
+					input,
+					info,
+				);
 			}
 
 			if (isAsyncIterable(input)) {
@@ -95,7 +114,10 @@ function* runSync<TState, TResult, TSharedState>(
 	options: ProjectionOptions | undefined,
 	events: Iterable<EventInput>,
 ): Iterable<StepResult<TState, TResult, TSharedState>> {
-	const test = new ProjectionTest<TState, TResult, TSharedState>(source, options);
+	const test = new ProjectionTest<TState, TResult, TSharedState>(
+		source,
+		options,
+	);
 	try {
 		for (const event of events) {
 			yield test.feed(event);
@@ -110,7 +132,10 @@ async function* runAsync<TState, TResult, TSharedState>(
 	options: ProjectionOptions | undefined,
 	events: AsyncIterable<EventInput>,
 ): AsyncIterable<StepResult<TState, TResult, TSharedState>> {
-	const test = new ProjectionTest<TState, TResult, TSharedState>(source, options);
+	const test = new ProjectionTest<TState, TResult, TSharedState>(
+		source,
+		options,
+	);
 	try {
 		for await (const event of events) {
 			yield test.feed(event);
@@ -126,7 +151,10 @@ async function* runWithClient<TState, TResult, TSharedState>(
 	client: KurrentDBClient,
 	info: ProjectionInfo,
 ): AsyncIterable<StepResult<TState, TResult, TSharedState>> {
-	const test = new ProjectionTest<TState, TResult, TSharedState>(source, options);
+	const test = new ProjectionTest<TState, TResult, TSharedState>(
+		source,
+		options,
+	);
 	const subscription = createSubscription(client, info);
 	try {
 		for await (const event of subscription) {

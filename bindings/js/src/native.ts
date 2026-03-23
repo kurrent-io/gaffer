@@ -70,9 +70,6 @@ const emitCbType = koffi.proto(
 	"void gaffer_emit_cb(const char*, const char*, const char*, const char*, int, int, void*)",
 );
 const logCbType = koffi.proto("void gaffer_log_cb(const char*, void*)");
-const slowHandlerCbType = koffi.proto(
-	"void gaffer_slow_handler_cb(const char*, int, void*)",
-);
 const stateChangedCbType = koffi.proto(
 	"void gaffer_state_changed_cb(const char*, const char*, void*)",
 );
@@ -106,10 +103,6 @@ export interface NativeBindings {
 	onLog(
 		handle: number,
 		cb: (message: string) => void,
-	): IKoffiRegisteredCallback;
-	onSlowHandler(
-		handle: number,
-		cb: (handler: string, durationMs: number) => void,
 	): IKoffiRegisteredCallback;
 	onStateChanged(
 		handle: number,
@@ -168,11 +161,6 @@ export function getNativeBindings(): NativeBindings {
 		koffi.pointer(logCbType),
 		"void*",
 	]);
-	const onSlowHandler = l.func("gaffer_on_slow_handler", "void", [
-		"intptr",
-		koffi.pointer(slowHandlerCbType),
-		"void*",
-	]);
 	const onStateChanged = l.func("gaffer_on_state_changed", "void", [
 		"intptr",
 		koffi.pointer(stateChangedCbType),
@@ -220,16 +208,6 @@ export function getNativeBindings(): NativeBindings {
 				cb(message);
 			}, koffi.pointer(logCbType));
 			onLog(handle, nativeCb, null);
-			return nativeCb;
-		},
-		onSlowHandler: (handle, cb) => {
-			const nativeCb = koffi.register(
-				(handler: string, durationMs: number, _userData: unknown) => {
-					cb(handler, durationMs);
-				},
-				koffi.pointer(slowHandlerCbType),
-			);
-			onSlowHandler(handle, nativeCb, null);
 			return nativeCb;
 		},
 		onStateChanged: (handle, cb) => {

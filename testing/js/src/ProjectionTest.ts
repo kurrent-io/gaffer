@@ -20,7 +20,11 @@ export interface TestEmittedEvent {
 }
 
 /** Result of feeding a single event to a projection. */
-export interface StepResult<TState = unknown, TResult = unknown, TSharedState = unknown> {
+export interface StepResult<
+	TState = unknown,
+	TResult = unknown,
+	TSharedState = unknown,
+> {
 	/** Projection state for the affected partition, or null if no state change. */
 	state: TState | null;
 	/** Transformed result (after `transformBy`/`filterBy`), or state if no transform is defined. */
@@ -73,7 +77,11 @@ const registry = new FinalizationRegistry<ProjectionSession>((session) => {
  *
  * Must be disposed when done to free native resources. Supports `using` syntax.
  */
-export class ProjectionTest<TState = unknown, TResult = unknown, TSharedState = unknown> {
+export class ProjectionTest<
+	TState = unknown,
+	TResult = unknown,
+	TSharedState = unknown,
+> {
 	private session: ProjectionSession;
 	private disposed = false;
 	private pendingEmitted: TestEmittedEvent[] = [];
@@ -119,11 +127,15 @@ export class ProjectionTest<TState = unknown, TResult = unknown, TSharedState = 
 
 		this.session.feed(normalized);
 
-		const partition = this.stateChanged ? (this.lastRawPartition || null) : null;
+		const partition = this.stateChanged ? this.lastRawPartition || null : null;
 
 		return {
-			state: this.stateChanged ? (this.session.getStateJson<TState>(this.lastRawPartition) ?? null) : null,
-			result: this.stateChanged ? (this.session.getResultJson<TResult>(this.lastRawPartition) ?? null) : null,
+			state: this.stateChanged
+				? (this.session.getStateJson<TState>(this.lastRawPartition) ?? null)
+				: null,
+			result: this.stateChanged
+				? (this.session.getResultJson<TResult>(this.lastRawPartition) ?? null)
+				: null,
 			sharedState: this.session.getSharedStateJson<TSharedState>() ?? null,
 			partition,
 			event: input,

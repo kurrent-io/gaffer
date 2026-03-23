@@ -46,7 +46,6 @@ typedef struct gaffer_session gaffer_session;
  * @param options_json JSON options string, or NULL for defaults.
  *                     Supported fields:
  *                       - "version": "v1" | "v2" (default "v2")
- *                       - "handlerTimeoutMs": int (default 250)
  *                       - "compilationTimeoutMs": int (default 5000)
  *                       - "executionTimeoutMs": int (default 5000)
  *                       - "enableContentTypeValidation": bool (default false)
@@ -86,13 +85,6 @@ typedef void (*gaffer_log_cb)(
     void* user_data
 );
 
-/** Callback when a handler exceeds the timeout threshold. */
-typedef void (*gaffer_slow_handler_cb)(
-    const char* handler_name,
-    int duration_ms,
-    void* user_data
-);
-
 /** Callback when projection state changes after processing an event. */
 typedef void (*gaffer_state_changed_cb)(
     const char* partition,
@@ -108,9 +100,6 @@ void gaffer_on_emit(gaffer_session* session, gaffer_emit_cb cb, void* user_data)
 
 /** Register a callback for console.log output. */
 void gaffer_on_log(gaffer_session* session, gaffer_log_cb cb, void* user_data);
-
-/** Register a callback for slow handler warnings. */
-void gaffer_on_slow_handler(gaffer_session* session, gaffer_slow_handler_cb cb, void* user_data);
 
 /** Register a callback for state changes. */
 void gaffer_on_state_changed(gaffer_session* session, gaffer_state_changed_cb cb, void* user_data);

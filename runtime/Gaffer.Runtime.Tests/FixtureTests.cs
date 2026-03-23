@@ -188,9 +188,6 @@ public class FixtureTests {
 	private static ProjectionSessionOptions ParseOptions(JsonElement el) {
 		return new ProjectionSessionOptions {
 			Version = ParseVersion(el),
-			HandlerTimeoutMs = el.TryGetProperty("handlerTimeoutMs", out var handlerTimeout)
-				? handlerTimeout.GetInt32()
-				: 250,
 			CompilationTimeout = el.TryGetProperty("compilationTimeoutMs", out var compTimeout)
 				? TimeSpan.FromMilliseconds(compTimeout.GetInt32())
 				: TimeSpan.FromSeconds(5),

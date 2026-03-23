@@ -26,7 +26,6 @@ internal static unsafe class NativeExports {
 		// Prevent GC of delegates while callbacks are registered
 		public GCHandle EmitCbHandle;
 		public GCHandle LogCbHandle;
-		public GCHandle SlowHandlerCbHandle;
 		public GCHandle StateChangedCbHandle;
 	}
 
@@ -201,8 +200,6 @@ internal static unsafe class NativeExports {
 				handle.EmitCbHandle.Free();
 			if (handle.LogCbHandle.IsAllocated)
 				handle.LogCbHandle.Free();
-			if (handle.SlowHandlerCbHandle.IsAllocated)
-				handle.SlowHandlerCbHandle.Free();
 			if (handle.StateChangedCbHandle.IsAllocated)
 				handle.StateChangedCbHandle.Free();
 
@@ -246,21 +243,6 @@ internal static unsafe class NativeExports {
 				cb(msg, userData);
 			} finally {
 				FreeUtf8(msg);
-			}
-		};
-	}
-
-	[UnmanagedCallersOnly(EntryPoint = "gaffer_on_slow_handler")]
-	public static void OnSlowHandler(nint sessionId, delegate* unmanaged<byte*, int, void*, void> cb, void* userData) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
-			return;
-
-		handle.Session.OnSlowHandler = (handlerName, durationMs) => {
-			var name = AllocUtf8(handlerName);
-			try {
-				cb(name, durationMs, userData);
-			} finally {
-				FreeUtf8(name);
 			}
 		};
 	}
@@ -428,7 +410,6 @@ internal static unsafe class NativeExports {
 		var root = doc.RootElement;
 		return new ProjectionSessionOptions {
 			Version = ParseVersion(root),
-			HandlerTimeoutMs = root.TryGetProperty("handlerTimeoutMs", out var ht) ? ht.GetInt32() : 250,
 			CompilationTimeout = TimeSpan.FromMilliseconds(
 				root.TryGetProperty("compilationTimeoutMs", out var ct) ? ct.GetInt32() : 5000),
 			ExecutionTimeout = TimeSpan.FromMilliseconds(

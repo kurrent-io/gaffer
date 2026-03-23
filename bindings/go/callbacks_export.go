@@ -32,17 +32,6 @@ func goLogCallback(message *C.char, userData unsafe.Pointer) {
 	}
 }
 
-//export goSlowHandlerCallback
-func goSlowHandlerCallback(handlerName *C.char, durationMs C.int, userData unsafe.Pointer) {
-	key := uintptr(userData)
-	callbackMu.RLock()
-	cb := slowCallbacks[key]
-	callbackMu.RUnlock()
-	if cb != nil {
-		cb(C.GoString(handlerName), int(durationMs))
-	}
-}
-
 //export goStateChangedCallback
 func goStateChangedCallback(partition *C.char, stateJSON *C.char, userData unsafe.Pointer) {
 	key := uintptr(userData)

@@ -1,0 +1,18 @@
+default:
+    @just --list
+
+# Build the runtime
+build:
+    dotnet build
+
+# Run tests
+test:
+    dotnet test --verbosity quiet
+
+# Format code
+format:
+    dotnet format
+
+# Check formatting without changes
+check:
+    dotnet format --verify-no-changes

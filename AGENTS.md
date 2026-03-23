@@ -9,7 +9,7 @@ Gaffer must match KurrentDB projection behaviour 1:1, bug:bug where possible. No
 ## Structure
 
 ```
-runtime/                   # C# (.NET 9) - projection runtime
+runtime/                   # C# (.NET 10) - projection runtime
   Gaffer.Runtime/          # NativeAOT shared library, Jint-based JS execution
   Gaffer.Runtime.Tests/    # xUnit tests
   include/gaffer.h         # C API header
@@ -21,11 +21,14 @@ cli/                       # Go CLI (Cobra) - init, scaffold, dev
 testing/
   js/                      # @kurrent/projections-testing - test lib wrapping runtime
 demo/                      # Example gaffer project with fixtures
+tools/
+  fixtures/                # Shared JSON test fixtures (sources, state, callbacks, etc.)
+  kurrentdb/               # Docker compose for integration tests
 ```
 
 ## Build
 
-Uses devcontainer (.NET 9, Go, Node 22).
+Uses devcontainer (.NET 10, Go, Node 22).
 
 ```
 just build                 # build all
@@ -33,6 +36,9 @@ just test                  # test all
 just check                 # check formatting
 just runtime publish       # build NativeAOT shared library
 just bindings go test      # run Go FFI tests (requires runtime publish)
+just db-up                 # start KurrentDB for integration tests
+just test-integration      # run integration tests
+just db-down               # stop KurrentDB
 ```
 
 ## Runtime

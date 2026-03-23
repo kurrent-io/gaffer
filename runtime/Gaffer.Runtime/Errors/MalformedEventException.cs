@@ -1,6 +1,6 @@
 namespace Gaffer.Runtime.Errors;
 
-public sealed class MalformedEventException : GafferException {
+public sealed class MalformedEventException : ProjectionException {
 	public override string Code => "malformed-event";
 	public string EventType { get; }
 	public string StreamId { get; }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { ProjectionSession, GafferError } from "../src/index.js";
+import { ProjectionSession, ProjectionError } from "../src/index.js";
 import type { EmittedEvent } from "../src/index.js";
 
 interface FixtureError {
@@ -40,7 +40,7 @@ function runFixtures(filename: string) {
 	}
 }
 
-function assertError(error: GafferError, expected: FixtureError) {
+function assertError(error: ProjectionError, expected: FixtureError) {
 	expect(error.code).toBe(expected.code);
 	if (expected.description) {
 		expect(error.description).toContain(expected.description);
@@ -59,8 +59,8 @@ function runFixture(f: Fixture) {
 			);
 			expect.fail("Expected error but session created successfully");
 		} catch (err) {
-			expect(err).toBeInstanceOf(GafferError);
-			assertError(err as GafferError, f.expect.error);
+			expect(err).toBeInstanceOf(ProjectionError);
+			assertError(err as ProjectionError, f.expect.error);
 		}
 		return;
 	}
@@ -88,7 +88,7 @@ function runFixture(f: Fixture) {
 
 		// Feed events
 		if (f.events?.length) {
-			let lastFeedError: GafferError | null = null;
+			let lastFeedError: ProjectionError | null = null;
 			let lastEmitted: EmittedEvent[] = [];
 			let lastLogs: string[] = [];
 
@@ -107,7 +107,7 @@ function runFixture(f: Fixture) {
 					// eslint-disable-next-line @typescript-eslint/no-explicit-any
 					session.feed(event as any);
 				} catch (err) {
-					if (err instanceof GafferError) {
+					if (err instanceof ProjectionError) {
 						lastFeedError = err;
 					} else {
 						throw err;
@@ -146,8 +146,8 @@ function runFixture(f: Fixture) {
 				session.getResult();
 				expect.fail("Expected error but getResult succeeded");
 			} catch (err) {
-				expect(err).toBeInstanceOf(GafferError);
-				assertError(err as GafferError, f.expect.error);
+				expect(err).toBeInstanceOf(ProjectionError);
+				assertError(err as ProjectionError, f.expect.error);
 			}
 			return;
 		}

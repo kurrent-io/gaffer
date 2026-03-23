@@ -1,4 +1,4 @@
-export class GafferError extends Error {
+export class ProjectionError extends Error {
 	readonly code: string;
 	readonly description: string;
 	override readonly cause: unknown;
@@ -17,7 +17,7 @@ export class GafferError extends Error {
 	}
 }
 
-export class InvalidProjectionError extends GafferError {
+export class InvalidProjectionError extends ProjectionError {
 	readonly location?: { line: number; column: number };
 	readonly source: string;
 
@@ -34,7 +34,7 @@ export class InvalidProjectionError extends GafferError {
 	}
 }
 
-export class CompilationTimeoutError extends GafferError {
+export class CompilationTimeoutError extends ProjectionError {
 	readonly elapsed: number;
 	readonly allowed: number;
 
@@ -51,7 +51,7 @@ export class CompilationTimeoutError extends GafferError {
 	}
 }
 
-export class InvalidArgumentError extends GafferError {
+export class InvalidArgumentError extends ProjectionError {
 	readonly field: string;
 
 	constructor(description: string, field: string, cause?: unknown) {
@@ -67,7 +67,7 @@ export interface EventContext {
 	partition?: string;
 }
 
-export class ProjectionHandlerError extends GafferError {
+export class ProjectionHandlerError extends ProjectionError {
 	readonly jsStack?: string;
 	readonly location?: { line: number; column: number };
 	readonly event: EventContext;
@@ -90,7 +90,7 @@ export class ProjectionHandlerError extends GafferError {
 	}
 }
 
-export class ExecutionTimeoutError extends GafferError {
+export class ExecutionTimeoutError extends ProjectionError {
 	readonly elapsed: number;
 	readonly allowed: number;
 	readonly event: EventContext;
@@ -110,7 +110,7 @@ export class ExecutionTimeoutError extends GafferError {
 	}
 }
 
-export class MalformedEventError extends GafferError {
+export class MalformedEventError extends ProjectionError {
 	readonly event: EventContext;
 
 	constructor(
@@ -124,7 +124,7 @@ export class MalformedEventError extends GafferError {
 	}
 }
 
-export class StateSerializationError extends GafferError {
+export class StateSerializationError extends ProjectionError {
 	readonly event: EventContext;
 
 	constructor(
@@ -138,7 +138,7 @@ export class StateSerializationError extends GafferError {
 	}
 }
 
-export class ProjectionTransformError extends GafferError {
+export class ProjectionTransformError extends ProjectionError {
 	readonly jsStack?: string;
 	readonly location?: { line: number; column: number };
 	readonly source: string;
@@ -174,7 +174,7 @@ interface ErrorJson {
 	partition?: string;
 }
 
-export function parseErrorJson(json: string, source: string): GafferError {
+export function parseErrorJson(json: string, source: string): ProjectionError {
 	const err: ErrorJson = JSON.parse(json);
 
 	switch (err.code) {
@@ -267,6 +267,6 @@ export function parseErrorJson(json: string, source: string): GafferError {
 			);
 
 		default:
-			return new GafferError(err.code, err.description);
+			return new ProjectionError(err.code, err.description);
 	}
 }

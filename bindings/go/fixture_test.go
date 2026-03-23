@@ -239,9 +239,9 @@ func runFixture(t *testing.T, f fixture) {
 
 func assertFixtureError(t *testing.T, err error, expected *fixtureError) {
 	t.Helper()
-	var ge GafferError
+	var ge ProjectionError
 	if !errors.As(err, &ge) {
-		t.Fatalf("expected GafferError, got %T: %v", err, err)
+		t.Fatalf("expected ProjectionError, got %T: %v", err, err)
 	}
 	if ge.ErrorCode() != expected.Code {
 		t.Fatalf("expected code %q, got %q", expected.Code, ge.ErrorCode())

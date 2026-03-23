@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
 	ProjectionSession,
-	GafferError,
+	ProjectionError,
 	InvalidProjectionError,
 	CompilationTimeoutError,
 	ProjectionHandlerError,
@@ -29,7 +29,7 @@ describe("Error types", () => {
 			expect.fail("Expected error");
 		} catch (err) {
 			expect(err).toBeInstanceOf(InvalidProjectionError);
-			expect(err).toBeInstanceOf(GafferError);
+			expect(err).toBeInstanceOf(ProjectionError);
 			const e = err as InvalidProjectionError;
 			expect(e.code).toBe("invalid-projection");
 			expect(e.description).toBeTruthy();
@@ -81,7 +81,7 @@ describe("Error types", () => {
 			expect.fail("Expected error");
 		} catch (err) {
 			expect(err).toBeInstanceOf(CompilationTimeoutError);
-			expect(err).toBeInstanceOf(GafferError);
+			expect(err).toBeInstanceOf(ProjectionError);
 			const e = err as CompilationTimeoutError;
 			expect(e.code).toBe("compilation-timeout");
 			expect(e.description).toContain("compile");
@@ -104,7 +104,7 @@ describe("Error types", () => {
 			expect.fail("Expected error");
 		} catch (err) {
 			expect(err).toBeInstanceOf(ProjectionHandlerError);
-			expect(err).toBeInstanceOf(GafferError);
+			expect(err).toBeInstanceOf(ProjectionError);
 			const e = err as ProjectionHandlerError;
 			expect(e.code).toBe("handler-error");
 			expect(e.description).toBe("boom");
@@ -185,7 +185,7 @@ describe("Error types", () => {
 			expect.fail("Expected error");
 		} catch (err) {
 			expect(err).toBeInstanceOf(ExecutionTimeoutError);
-			expect(err).toBeInstanceOf(GafferError);
+			expect(err).toBeInstanceOf(ProjectionError);
 			const e = err as ExecutionTimeoutError;
 			expect(e.code).toBe("execution-timeout");
 			expect(e.description).toContain("execute");
@@ -219,7 +219,7 @@ describe("Error types", () => {
 			expect.fail("Expected error");
 		} catch (err) {
 			expect(err).toBeInstanceOf(MalformedEventError);
-			expect(err).toBeInstanceOf(GafferError);
+			expect(err).toBeInstanceOf(ProjectionError);
 			const e = err as MalformedEventError;
 			expect(e.code).toBe("malformed-event");
 			expect(e.description).toContain("not valid JSON");
@@ -249,7 +249,7 @@ describe("Error types", () => {
 			expect.fail("Expected error");
 		} catch (err) {
 			expect(err).toBeInstanceOf(StateSerializationError);
-			expect(err).toBeInstanceOf(GafferError);
+			expect(err).toBeInstanceOf(ProjectionError);
 			const e = err as StateSerializationError;
 			expect(e.code).toBe("state-serialization-error");
 			expect(e.description).toContain("NaN");
@@ -284,7 +284,7 @@ describe("Error types", () => {
 			expect.fail("Expected error");
 		} catch (err) {
 			expect(err).toBeInstanceOf(ProjectionTransformError);
-			expect(err).toBeInstanceOf(GafferError);
+			expect(err).toBeInstanceOf(ProjectionError);
 			const e = err as ProjectionTransformError;
 			expect(e.code).toBe("projection-transform-error");
 			expect(e.description).toBe("transform failed");

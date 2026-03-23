@@ -13,8 +13,8 @@ import (
 // ErrSessionDestroyed is returned when calling methods on a destroyed session.
 var ErrSessionDestroyed = errors.New("session has been destroyed")
 
-// GafferError is the interface implemented by all gaffer error types.
-type GafferError interface {
+// ProjectionError is the interface implemented by all gaffer error types.
+type ProjectionError interface {
 	error
 	ErrorCode() string
 	ErrorDescription() string

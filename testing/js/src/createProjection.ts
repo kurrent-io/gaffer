@@ -1,21 +1,17 @@
-import { ProjectionSession } from "@kurrent/gaffer-runtime";
+import { ProjectionSession, ProjectionError } from "@kurrent/gaffer-runtime";
 import {
 	KurrentDBClient,
 	streamNameFilter,
 	eventTypeFilter,
 } from "@kurrent/kurrentdb-client";
 import { mapQuerySources, type ProjectionInfo } from "./ProjectionInfo.js";
-import {
-	ProjectionTest,
-	InvalidProjectionError,
-	type StepResult,
-} from "./ProjectionTest.js";
+import { ProjectionTest, type StepResult } from "./ProjectionTest.js";
 import type { EventInput } from "./schemas.js";
 
 /** Result of validating a projection's JavaScript source. */
 export type ValidationResult =
 	| { valid: true; info: ProjectionInfo }
-	| { valid: false; error: string };
+	| { valid: false; error: ProjectionError | Error };
 
 /**
  * A projection that can be validated, run against events, or tested interactively.
@@ -26,20 +22,17 @@ export interface Projection<TState = unknown> {
 	validate(): ValidationResult;
 	/**
 	 * Run the projection over a sync iterable of events.
-	 * @throws {InvalidProjectionError} If the projection source is invalid.
-	 * @throws {ProjectionError} If a handler throws during event processing.
+	 * @throws {ProjectionError} If the projection source is invalid or a handler throws.
 	 */
 	run(events: Iterable<EventInput>): Iterable<StepResult<TState>>;
 	/**
 	 * Run the projection over an async iterable of events.
-	 * @throws {InvalidProjectionError} If the projection source is invalid.
-	 * @throws {ProjectionError} If a handler throws during event processing.
+	 * @throws {ProjectionError} If the projection source is invalid or a handler throws.
 	 */
 	run(events: AsyncIterable<EventInput>): AsyncIterable<StepResult<TState>>;
 	/**
 	 * Run the projection against a live KurrentDB subscription.
-	 * @throws {InvalidProjectionError} If the projection source is invalid.
-	 * @throws {ProjectionError} If a handler throws during event processing.
+	 * @throws {ProjectionError} If the projection source is invalid or a handler throws.
 	 */
 	run(client: KurrentDBClient): AsyncIterable<StepResult<TState>>;
 	/**
@@ -68,7 +61,7 @@ export function createProjection<TState = unknown>(
 			} catch (err) {
 				return {
 					valid: false,
-					error: err instanceof Error ? err.message : String(err),
+					error: err instanceof Error ? err : new Error(String(err)),
 				};
 			} finally {
 				session?.dispose();
@@ -79,7 +72,7 @@ export function createProjection<TState = unknown>(
 			const validation = this.validate();
 
 			if (!validation.valid) {
-				throw new InvalidProjectionError(validation.error);
+				throw validation.error;
 			}
 
 			if (input instanceof KurrentDBClient) {

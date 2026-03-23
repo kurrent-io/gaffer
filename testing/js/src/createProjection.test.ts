@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProjection } from "./createProjection.js";
-import { InvalidProjectionError } from "./ProjectionTest.js";
+import { InvalidProjectionError } from "@kurrent/gaffer-runtime";
 import { systemEvents } from "./systemEvents.js";
 
 const counterSource = `

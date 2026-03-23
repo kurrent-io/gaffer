@@ -1,6 +1,6 @@
 namespace Gaffer.Runtime.Errors;
 
-public sealed class StateSerializationException : GafferException {
+public sealed class StateSerializationException : ProjectionException {
 	public override string Code => "state-serialization-error";
 	public string EventType { get; }
 	public string StreamId { get; }

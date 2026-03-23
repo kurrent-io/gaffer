@@ -1,6 +1,6 @@
 namespace Gaffer.Runtime.Errors;
 
-public sealed class ProjectionTransformException : GafferException {
+public sealed class ProjectionTransformException : ProjectionException {
 	public override string Code => "projection-transform-error";
 	public string? JsStack { get; }
 	public int? Line { get; }

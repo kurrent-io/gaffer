@@ -1,6 +1,6 @@
 namespace Gaffer.Runtime.Errors;
 
-public sealed class InvalidArgumentException : GafferException {
+public sealed class InvalidArgumentException : ProjectionException {
 	public override string Code => "invalid-argument";
 	public string Field { get; }
 

@@ -81,7 +81,7 @@ public sealed class ProjectionSession : IDisposable {
 				ex.ElapsedMs, ex.AllowedMs, ex);
 		} catch (ArgumentException ex) {
 			throw new InvalidProjectionException(ex.Message, ex) { ProjectionSource = source };
-		} catch (Exception ex) when (ex is not GafferException) {
+		} catch (Exception ex) when (ex is not ProjectionException) {
 			throw new InvalidProjectionException(ex.Message, ex) { ProjectionSource = source };
 		}
 
@@ -160,7 +160,7 @@ public sealed class ProjectionSession : IDisposable {
 				ex.Description,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
 				ex.InnerException);
-		} catch (Exception ex) when (ex is not GafferException) {
+		} catch (Exception ex) when (ex is not ProjectionException) {
 			_handlerStopwatch.Stop();
 			throw WrapHandlerException(ex, @event, partition);
 		}
@@ -227,14 +227,14 @@ public sealed class ProjectionSession : IDisposable {
 			throw new ProjectionTransformException(
 				ex.Description,
 				innerException: ex) { ProjectionSource = _source };
-		} catch (Exception ex) when (ex is not GafferException) {
+		} catch (Exception ex) when (ex is not ProjectionException) {
 			throw new ProjectionTransformException(ex.Message, innerException: ex) { ProjectionSource = _source };
 		}
 	}
 
 	private bool IsPartitioned => _sources.ByStreams || _sources.ByCustomPartitions;
 
-	private GafferException WrapHandlerException(Exception ex, ProjectionEvent @event, string partition) {
+	private ProjectionException WrapHandlerException(Exception ex, ProjectionEvent @event, string partition) {
 		var part = IsPartitioned ? partition : null;
 		return ex switch {
 			TimeConstraintException tc => new ExecutionTimeoutException(
@@ -325,7 +325,7 @@ public sealed class ProjectionSession : IDisposable {
 				ex.Description,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
 				ex.InnerException);
-		} catch (Exception ex) when (ex is not GafferException) {
+		} catch (Exception ex) when (ex is not ProjectionException) {
 			throw WrapHandlerException(ex, @event, partition);
 		}
 	}

@@ -60,8 +60,8 @@ internal static unsafe class NativeExports {
 		}
 
 		string json;
-		if (ex is GafferException ge)
-			json = SerializeGafferError(ge);
+		if (ex is ProjectionException ge)
+			json = SerializeProjectionError(ge);
 		else
 			json = SerializeUnexpectedError(ex);
 
@@ -78,7 +78,7 @@ internal static unsafe class NativeExports {
 		}
 	}
 
-	internal static string SerializeGafferError(GafferException ex) {
+	internal static string SerializeProjectionError(ProjectionException ex) {
 		using var stream = new System.IO.MemoryStream();
 		using var writer = new Utf8JsonWriter(stream);
 		writer.WriteStartObject();

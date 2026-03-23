@@ -1,6 +1,6 @@
 export { ProjectionSession } from "./session.js";
 export {
-	GafferError,
+	ProjectionError,
 	InvalidProjectionError,
 	CompilationTimeoutError,
 	InvalidArgumentError,

@@ -1,6 +1,6 @@
 namespace Gaffer.Runtime.Errors;
 
-public sealed class ProjectionHandlerException : GafferException {
+public sealed class ProjectionHandlerException : ProjectionException {
 	public override string Code => "handler-error";
 	public string? JsStack { get; }
 	public int? Line { get; }

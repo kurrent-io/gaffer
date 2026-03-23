@@ -62,7 +62,7 @@ public class FixtureTests {
 			options = ParseOptions(optionsEl);
 
 		if (expect.TryGetProperty("error", out var errorEl) && !fixture.TryGetProperty("events", out _) && !expect.TryGetProperty("getResult", out _)) {
-			var ex = Assert.ThrowsAny<GafferException>(() => new ProjectionSession(source, options));
+			var ex = Assert.ThrowsAny<ProjectionException>(() => new ProjectionSession(source, options));
 			AssertError(errorEl, ex);
 			return;
 		}
@@ -87,7 +87,7 @@ public class FixtureTests {
 		session.OnLog = message => lastLogs.Add(message);
 
 		if (fixture.TryGetProperty("events", out var eventsEl)) {
-			GafferException? lastFeedError = null;
+			ProjectionException? lastFeedError = null;
 			foreach (var ev in eventsEl.EnumerateArray()) {
 				lastEmitted.Clear();
 				lastLogs.Clear();
@@ -103,7 +103,7 @@ public class FixtureTests {
 
 				try {
 					session.Feed(projectionEvent);
-				} catch (GafferException ex) {
+				} catch (ProjectionException ex) {
 					lastFeedError = ex;
 				}
 			}
@@ -116,7 +116,7 @@ public class FixtureTests {
 		}
 
 		if (expect.TryGetProperty("getResult", out _)) {
-			var resultEx = Assert.ThrowsAny<GafferException>(() => session.GetResult());
+			var resultEx = Assert.ThrowsAny<ProjectionException>(() => session.GetResult());
 			if (expect.TryGetProperty("error", out var resultErrorEl))
 				AssertError(resultErrorEl, resultEx);
 			return;
@@ -270,7 +270,7 @@ public class FixtureTests {
 		}
 	}
 
-	private static void AssertError(JsonElement expected, GafferException actual) {
+	private static void AssertError(JsonElement expected, ProjectionException actual) {
 		if (expected.TryGetProperty("code", out var code))
 			Assert.Equal(code.GetString(), actual.Code);
 		if (expected.TryGetProperty("description", out var desc))

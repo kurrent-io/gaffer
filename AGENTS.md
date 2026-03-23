@@ -49,7 +49,7 @@ that is the caller's responsibility.
 
 Key types: `ProjectionSession`, `ProjectionEvent`, `EmittedEvent`, `QuerySources`.
 
-Errors: `GafferException` base with 8 typed exceptions (InvalidProjection,
+Errors: `ProjectionException` base with 8 typed exceptions (InvalidProjection,
 CompilationTimeout, InvalidArgument, ProjectionHandler, ExecutionTimeout,
 MalformedEvent, StateSerialization, ProjectionTransform). Formatted messages
 built by `ErrorFormatter` with Gleam-style source snippets and event context.

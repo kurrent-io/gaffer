@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ProjectionTest, ProjectionError } from "./ProjectionTest.js";
+import { ProjectionTest } from "./ProjectionTest.js";
+import {
+	ProjectionError,
+	ProjectionHandlerError,
+} from "@kurrent/gaffer-runtime";
 
 const counterSource = `
 	fromAll().when({
@@ -299,7 +303,7 @@ describe("ProjectionTest", () => {
 				isJson: true,
 				data: {},
 			}),
-		).toThrow(ProjectionError);
+		).toThrow(ProjectionHandlerError);
 
 		try {
 			test.feed({
@@ -310,13 +314,12 @@ describe("ProjectionTest", () => {
 				data: {},
 			});
 		} catch (err) {
-			const e = err as ProjectionError;
+			const e = err as ProjectionHandlerError;
+			expect(e).toBeInstanceOf(ProjectionHandlerError);
 			expect(e).toBeInstanceOf(ProjectionError);
-			expect(e.normalized.eventType).toBe("Bad");
-			expect(e.normalized.streamId).toBe("s-1");
-			expect(e.normalized.sequenceNumber).toBe(1);
-			expect(e.normalized.data).toBe("{}");
-			expect(e.cause).toBeInstanceOf(Error);
+			expect(e.event.eventType).toBe("Bad");
+			expect(e.event.streamId).toBe("s-1");
+			expect(e.event.sequenceNumber).toBe(1);
 			expect(e.message).toContain("1@s-1");
 			expect(e.message).toContain("Bad");
 			expect(e.message).toContain("boom");

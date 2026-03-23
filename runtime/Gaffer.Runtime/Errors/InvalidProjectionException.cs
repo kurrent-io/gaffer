@@ -1,6 +1,6 @@
 namespace Gaffer.Runtime.Errors;
 
-public sealed class InvalidProjectionException : GafferException {
+public sealed class InvalidProjectionException : ProjectionException {
 	public override string Code => "invalid-projection";
 	public int? Line { get; }
 	public int? Column { get; }

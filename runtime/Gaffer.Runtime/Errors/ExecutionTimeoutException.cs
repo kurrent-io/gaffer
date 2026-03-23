@@ -1,6 +1,6 @@
 namespace Gaffer.Runtime.Errors;
 
-public sealed class ExecutionTimeoutException : GafferException {
+public sealed class ExecutionTimeoutException : ProjectionException {
 	public override string Code => "execution-timeout";
 	public int ElapsedMs { get; }
 	public int AllowedMs { get; }

@@ -1,10 +1,5 @@
 import { ProjectionSession, type EmittedEvent } from "@kurrent/gaffer-runtime";
-import {
-	parseEventInput,
-	normalizeEvent,
-	type EventInput,
-	type NormalizedEvent,
-} from "./schemas.js";
+import { parseEventInput, normalizeEvent, type EventInput } from "./schemas.js";
 
 /** An event emitted by a projection via `emit()` or `linkTo()`, with parsed data. */
 export interface TestEmittedEvent {
@@ -63,7 +58,7 @@ export class ProjectionTest<TState = unknown> {
 
 	/**
 	 * Feed a single event to the projection. Returns the state and any emitted events/logs.
-	 * @throws {ProjectionError} If the projection handler throws.
+	 * @throws {ProjectionError} If the projection handler throws, with `input` and `normalized` fields attached.
 	 */
 	feed(
 		/** A TestEvent, RecordedEvent, or ResolvedEvent. */
@@ -77,11 +72,7 @@ export class ProjectionTest<TState = unknown> {
 		this.pendingEmitted = [];
 		this.pendingLogs = [];
 
-		try {
-			this.session.feed(normalized);
-		} catch (err) {
-			throw new ProjectionError(normalized, input, err);
-		}
+		this.session.feed(normalized);
 
 		const state = this.session.getStateJson<TState>() ?? null;
 
@@ -155,51 +146,4 @@ function mapEmittedEvent(event: EmittedEvent): TestEmittedEvent {
 			: null,
 		isLink: event.isLink,
 	};
-}
-
-/** Thrown when a projection's JavaScript source fails to compile. */
-export class InvalidProjectionError extends Error {
-	/** The original error from the runtime. */
-	override cause: unknown;
-
-	constructor(cause: unknown) {
-		const message = cause instanceof Error ? cause.message : String(cause);
-		super(`Invalid projection: ${message}`);
-		this.name = "InvalidProjectionError";
-		this.cause = cause;
-	}
-}
-
-/**
- * Thrown when a projection handler throws during event processing.
- * Contains the original event, normalized fields, and the underlying error as `cause`.
- */
-export class ProjectionError extends Error {
-	/** The original error from the runtime. */
-	override cause: unknown;
-	/** The original event input that caused the error. */
-	event: EventInput;
-	/** Normalized event fields (eventType, streamId, data, sequenceNumber, etc). */
-	normalized: NormalizedEvent;
-
-	constructor(normalized: NormalizedEvent, event: EventInput, cause: unknown) {
-		const causeMessage = cause instanceof Error ? cause.message : String(cause);
-		const ref = `${normalized.sequenceNumber}@${normalized.streamId}`;
-
-		const lines = [
-			"Projection error",
-			`  Event: ${ref}`,
-			`  Type:  ${normalized.eventType}`,
-		];
-		if (normalized.data) {
-			lines.push(`  Data:  ${normalized.data}`);
-		}
-		lines.push(`  Error: ${causeMessage}`);
-
-		super(lines.join("\n"));
-		this.name = "ProjectionError";
-		this.cause = cause;
-		this.event = event;
-		this.normalized = normalized;
-	}
 }

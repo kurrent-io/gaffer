@@ -9,6 +9,7 @@ public sealed class ProjectionSession : IDisposable
     private readonly JintProjectionHandler _handler;
     private readonly QuerySources _sources;
     private readonly Dictionary<string, string?> _stateCache = new();
+    private readonly HashSet<string>? _handledEventTypes;
     private string? _sharedState;
     private readonly TimeSpan _handlerTimeout;
     private readonly Stopwatch _handlerStopwatch = new();
@@ -33,6 +34,8 @@ public sealed class ProjectionSession : IDisposable
             message => OnLog?.Invoke(message));
 
         _sources = _handler.GetSourceDefinition();
+        if (!_sources.AllEvents && _sources.Events != null)
+            _handledEventTypes = new HashSet<string>(_sources.Events, StringComparer.Ordinal);
     }
 
     public void Dispose() => _handler.Dispose();
@@ -151,12 +154,8 @@ public sealed class ProjectionSession : IDisposable
         return dashIndex >= 0 ? streamId[..dashIndex] : streamId;
     }
 
-    private bool ShouldProcess(ProjectionEvent @event)
-    {
-        if (_sources.AllEvents) return true;
-        if (_sources.Events == null) return true;
-        return _sources.Events.Contains(@event.EventType);
-    }
+    private bool ShouldProcess(ProjectionEvent @event) =>
+        _handledEventTypes == null || _handledEventTypes.Contains(@event.EventType);
 
     /// <summary>
     /// Loads partition state from cache or initializes fresh.

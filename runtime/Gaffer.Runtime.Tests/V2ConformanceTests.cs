@@ -284,7 +284,7 @@ public class V2ConformanceTests {
 		Assert.Contains("\"createdCount\":1", session.GetState("s-1")!);
 	}
 
-	[Fact(Skip = "Bug #13: gaffer routes null partition to root instead of skipping")]
+	[Fact]
 	public void V2_partitionBy_null_skips_event() {
 		using var session = new ProjectionSession("""
             fromAll().partitionBy(function(e) {

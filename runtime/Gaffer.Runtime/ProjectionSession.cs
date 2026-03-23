@@ -119,6 +119,8 @@ public sealed class ProjectionSession : IDisposable {
 		}
 
 		var partition = ResolvePartition(@event);
+		if (partition == null)
+			return;
 
 		if (!ShouldProcess(@event))
 			return;
@@ -248,9 +250,9 @@ public sealed class ProjectionSession : IDisposable {
 	/// <summary>Get the partition key that would be computed for an event.</summary>
 	public string? GetPartitionKey(ProjectionEvent @event) => ResolvePartition(@event);
 
-	private string ResolvePartition(ProjectionEvent @event) {
+	private string? ResolvePartition(ProjectionEvent @event) {
 		if (_sources.ByCustomPartitions)
-			return _handler.GetStatePartition(@event, ResolveCategory(@event)) ?? "";
+			return _handler.GetStatePartition(@event, ResolveCategory(@event));
 
 		if (_sources.ByStreams)
 			return @event.StreamId;

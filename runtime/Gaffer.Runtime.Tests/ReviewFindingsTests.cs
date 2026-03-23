@@ -85,7 +85,7 @@ public class ReviewFindingsTests {
 	// -- partitionBy returning null/undefined/number --
 
 	[Fact]
-	public void PartitionBy_returning_null_uses_empty_partition() {
+	public void PartitionBy_returning_null_skips_event() {
 		using var session = new ProjectionSession("""
             fromAll().partitionBy(function(e) {
                 return null;
@@ -97,11 +97,11 @@ public class ReviewFindingsTests {
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
-		Assert.Contains("\"count\":1", session.GetState("")!);
+		Assert.Null(session.GetState(""));
 	}
 
 	[Fact]
-	public void PartitionBy_returning_undefined_uses_empty_partition() {
+	public void PartitionBy_returning_undefined_skips_event() {
 		using var session = new ProjectionSession("""
             fromAll().partitionBy(function(e) {
                 return undefined;
@@ -113,7 +113,7 @@ public class ReviewFindingsTests {
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
-		Assert.Contains("\"count\":1", session.GetState("")!);
+		Assert.Null(session.GetState(""));
 	}
 
 	[Fact]

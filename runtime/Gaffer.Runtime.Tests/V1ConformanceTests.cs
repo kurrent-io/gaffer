@@ -257,7 +257,7 @@ public class V1ConformanceTests {
 		Assert.Contains("\"createdCount\":1", session.GetState("s-1")!);
 	}
 
-	[Fact(Skip = "Gaffer routes to empty string partition instead of skipping")]
+	[Fact]
 	public void V1_partitionBy_null_skips_event() {
 		using var session = new ProjectionSession("""
             fromAll().partitionBy(function(e) {
@@ -275,7 +275,7 @@ public class V1ConformanceTests {
 		Assert.Contains("\"count\":1", session.GetState("s-1")!);
 	}
 
-	[Fact(Skip = "Gaffer routes to empty string partition instead of skipping")]
+	[Fact]
 	public void V1_partitionBy_undefined_skips_event() {
 		using var session = new ProjectionSession("""
             fromAll().partitionBy(function(e) {

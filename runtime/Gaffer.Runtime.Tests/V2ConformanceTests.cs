@@ -761,7 +761,7 @@ public class V2ConformanceTests {
 
 	[Fact]
 	public void ParseEvent_json_null_data_becomes_csharp_null() {
-		var json = """{"eventType":"Ping","streamId":"s-1","sequenceNumber":0,"isJson":true,"data":null,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}""";
+		var json = """{"eventType":"Ping","streamId":"s-1","sequenceNumber":0,"isJson":true,"data":null,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}""";
 		var evt = NativeExports.ParseEvent(json);
 		Assert.Null(evt.Data);
 	}

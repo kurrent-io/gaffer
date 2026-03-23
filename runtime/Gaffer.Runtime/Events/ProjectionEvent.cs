@@ -27,5 +27,5 @@ public sealed class ProjectionEvent {
 	public Guid EventId { get; init; } = Guid.NewGuid();
 
 	/// <summary>When the event was created.</summary>
-	public DateTime Timestamp { get; init; } = DateTime.UtcNow;
+	public DateTime Created { get; init; } = DateTime.UtcNow;
 }

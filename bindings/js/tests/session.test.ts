@@ -44,7 +44,7 @@ describe("ProjectionSession", () => {
 			data: "{}",
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 		session.feed({
 			eventType: "ItemAdded",
@@ -53,7 +53,7 @@ describe("ProjectionSession", () => {
 			data: "{}",
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 		session.feed({
 			eventType: "ItemAdded",
@@ -62,7 +62,7 @@ describe("ProjectionSession", () => {
 			data: "{}",
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 
 		expect(session.getStateJson<{ count: number }>()?.count).toBe(3);
@@ -83,7 +83,7 @@ describe("ProjectionSession", () => {
 			data: '{"amount":50}',
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 		session.feed({
 			eventType: "Deposited",
@@ -92,7 +92,7 @@ describe("ProjectionSession", () => {
 			data: '{"amount":30}',
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 
 		expect(session.getStateJson<{ total: number }>()?.total).toBe(80);
@@ -113,7 +113,7 @@ describe("ProjectionSession", () => {
 			data: "{}",
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 		session.feed({
 			eventType: "ItemAdded",
@@ -122,7 +122,7 @@ describe("ProjectionSession", () => {
 			data: "{}",
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 		session.feed({
 			eventType: "ItemAdded",
@@ -131,7 +131,7 @@ describe("ProjectionSession", () => {
 			data: "{}",
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 
 		expect(session.getStateJson<{ items: number }>("cart-1")?.items).toBe(2);
@@ -167,7 +167,7 @@ describe("ProjectionSession", () => {
 			data: "{}",
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 
 		expect(session.getStateJson<{ count: number }>()?.count).toBe(11);
@@ -189,7 +189,7 @@ describe("ProjectionSession", () => {
 				data: "{}",
 				isJson: true,
 				eventId: "00000000-0000-0000-0000-000000000000",
-				timestamp: "2026-01-01T00:00:00Z",
+				created: "2026-01-01T00:00:00Z",
 			}),
 		).toThrow(ProjectionHandlerError);
 	});
@@ -222,7 +222,7 @@ describe("ProjectionSession", () => {
 				data: "{}",
 				isJson: true,
 				eventId: "00000000-0000-0000-0000-000000000000",
-				timestamp: "2026-01-01T00:00:00Z",
+				created: "2026-01-01T00:00:00Z",
 			}),
 		).toThrow(/disposed/);
 	});
@@ -259,7 +259,7 @@ describe("ProjectionSession", () => {
 			data: '{"orderId":"ABC"}',
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 
 		expect(emitted).toHaveLength(1);
@@ -288,7 +288,7 @@ describe("ProjectionSession", () => {
 			data: "{}",
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 
 		expect(logs).toHaveLength(1);
@@ -315,7 +315,7 @@ describe("ProjectionSession", () => {
 			data: "{}",
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 		session.feed({
 			eventType: "Ping",
@@ -324,7 +324,7 @@ describe("ProjectionSession", () => {
 			data: "{}",
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 
 		expect(changes).toHaveLength(2);
@@ -353,7 +353,7 @@ describe("ProjectionSession", () => {
 			data: '{"amount":10}',
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 		session.feed({
 			eventType: "Added",
@@ -362,7 +362,7 @@ describe("ProjectionSession", () => {
 			data: '{"amount":20}',
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 
 		expect(session.getStateJson<{ count: number }>()?.count).toBe(2);
@@ -386,7 +386,7 @@ describe("ProjectionSession", () => {
 			data: "{}",
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 
 		expect(session.getResultJson<{ total: number }>()?.total).toBe(2);
@@ -409,7 +409,7 @@ describe("ProjectionSession", () => {
 			data: '{"region":"eu"}',
 			isJson: true,
 			eventId: "00000000-0000-0000-0000-000000000000",
-			timestamp: "2026-01-01T00:00:00Z",
+			created: "2026-01-01T00:00:00Z",
 		});
 		expect(key).toBe("eu");
 	});

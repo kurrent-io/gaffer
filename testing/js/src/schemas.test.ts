@@ -344,26 +344,26 @@ describe("normalizeEvent", () => {
 		expect(result.eventId.length).toBeGreaterThan(0);
 	});
 
-	it("preserves timestamp when provided on TestEvent", () => {
+	it("preserves created when provided on TestEvent", () => {
 		const result = normalizeEvent({
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
 			isJson: true,
-			timestamp: "2026-01-15T10:00:00Z",
+			created: "2026-01-15T10:00:00Z",
 		});
-		expect(result.timestamp).toBe("2026-01-15T10:00:00Z");
+		expect(result.created).toBe("2026-01-15T10:00:00Z");
 	});
 
-	it("generates timestamp when not provided on TestEvent", () => {
+	it("generates created when not provided on TestEvent", () => {
 		const result = normalizeEvent({
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
 			isJson: true,
 		});
-		expect(result.timestamp).toBeDefined();
-		expect(result.timestamp.length).toBeGreaterThan(0);
+		expect(result.created).toBeDefined();
+		expect(result.created.length).toBeGreaterThan(0);
 	});
 
 	it("rejects invalid input", () => {

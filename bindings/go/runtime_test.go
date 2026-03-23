@@ -68,9 +68,9 @@ func TestFeedAndGetState(t *testing.T) {
 		})
 	`)
 
-	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"cart-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
-	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"cart-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
-	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"cart-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"cart-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"cart-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"cart-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 
 	state := mustGetState(t, session, nil)
 	if state != `{"count":3}` {
@@ -86,8 +86,8 @@ func TestEventDataAccessible(t *testing.T) {
 		})
 	`)
 
-	mustFeed(t, session, `{"eventType":"Deposited","streamId":"acc-1","sequenceNumber":0,"data":"{\"amount\":50}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
-	mustFeed(t, session, `{"eventType":"Deposited","streamId":"acc-1","sequenceNumber":0,"data":"{\"amount\":30}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"Deposited","streamId":"acc-1","sequenceNumber":0,"data":"{\"amount\":50}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"Deposited","streamId":"acc-1","sequenceNumber":0,"data":"{\"amount\":30}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 
 	state := mustGetState(t, session, nil)
 	if state != `{"total":80}` {
@@ -121,9 +121,9 @@ func TestForeachStreamPartitioning(t *testing.T) {
 		})
 	`)
 
-	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"cart-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
-	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"cart-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
-	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"cart-2","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"cart-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"cart-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"cart-2","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 
 	p1 := "cart-1"
 	state1 := mustGetState(t, session, &p1)
@@ -147,7 +147,7 @@ func TestSetAndRestoreState(t *testing.T) {
 	`)
 
 	session.SetState(nil, `{"count":10}`)
-	mustFeed(t, session, `{"eventType":"Ping","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"Ping","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 
 	state := mustGetState(t, session, nil)
 	if state != `{"count":11}` {
@@ -163,7 +163,7 @@ func TestFeedError(t *testing.T) {
 		})
 	`)
 
-	err := session.Feed(`{"eventType":"Bad","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	err := session.Feed(`{"eventType":"Bad","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -238,7 +238,7 @@ func TestOnEmitCallback(t *testing.T) {
 		emitted = append(emitted, struct{ streamID, eventType, data string }{streamID, eventType, data})
 	})
 
-	mustFeed(t, session, `{"eventType":"OrderPlaced","streamId":"order-1","sequenceNumber":0,"data":"{\"orderId\":\"ABC\"}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"OrderPlaced","streamId":"order-1","sequenceNumber":0,"data":"{\"orderId\":\"ABC\"}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 
 	if len(emitted) != 1 {
 		t.Fatalf("expected 1 emitted event, got %d", len(emitted))
@@ -269,7 +269,7 @@ func TestOnLogCallback(t *testing.T) {
 		logs = append(logs, message)
 	})
 
-	mustFeed(t, session, `{"eventType":"TestEvent","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"TestEvent","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 
 	if len(logs) != 1 {
 		t.Fatalf("expected 1 log, got %d", len(logs))
@@ -292,8 +292,8 @@ func TestOnStateChangedCallback(t *testing.T) {
 		changes = append(changes, stateJSON)
 	})
 
-	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
-	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 
 	if len(changes) != 2 {
 		t.Fatalf("expected 2 state changes, got %d", len(changes))
@@ -320,8 +320,8 @@ func TestBiStateSharedState(t *testing.T) {
 		})
 	`)
 
-	mustFeed(t, session, `{"eventType":"Added","streamId":"s-1","sequenceNumber":0,"data":"{\"amount\":10}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
-	mustFeed(t, session, `{"eventType":"Added","streamId":"s-1","sequenceNumber":0,"data":"{\"amount\":20}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"Added","streamId":"s-1","sequenceNumber":0,"data":"{\"amount\":10}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"Added","streamId":"s-1","sequenceNumber":0,"data":"{\"amount\":20}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 
 	state := mustGetState(t, session, nil)
 	if !strings.Contains(state, `"count":2`) {
@@ -348,7 +348,7 @@ func TestGetResultWithTransformBy(t *testing.T) {
 		}).outputState()
 	`)
 
-	mustFeed(t, session, `{"eventType":"Ping","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	mustFeed(t, session, `{"eventType":"Ping","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 
 	result, err := session.GetResult(nil)
 	if err != nil {
@@ -373,7 +373,7 @@ func TestGetPartitionKey(t *testing.T) {
 		})
 	`)
 
-	key := session.GetPartitionKey(`{"eventType":"Event","streamId":"s-1","sequenceNumber":0,"data":"{\"region\":\"eu\"}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	key := session.GetPartitionKey(`{"eventType":"Event","streamId":"s-1","sequenceNumber":0,"data":"{\"region\":\"eu\"}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 	if key == nil {
 		t.Fatal("expected partition key")
 		return

@@ -18,7 +18,7 @@ const event = {
 	data: "{}",
 	isJson: true,
 	eventId: "00000000-0000-0000-0000-000000000000",
-	timestamp: "2026-01-01T00:00:00Z",
+	created: "2026-01-01T00:00:00Z",
 };
 
 describe("Error types", () => {

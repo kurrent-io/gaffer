@@ -444,7 +444,7 @@ internal static unsafe class NativeExports {
 				SequenceNumber = root.GetProperty("sequenceNumber").GetInt64(),
 				IsJson = root.GetProperty("isJson").GetBoolean(),
 				EventId = Guid.Parse(root.GetProperty("eventId").GetString()!),
-				Timestamp = root.GetProperty("timestamp").GetDateTime(),
+				Created = root.GetProperty("created").GetDateTime(),
 			};
 		} catch (JsonException ex) {
 			throw new InvalidArgumentException("Malformed event JSON", "event_json", ex);

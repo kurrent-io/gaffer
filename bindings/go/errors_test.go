@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const testEvent = `{"eventType":"Test","streamId":"s-1","sequenceNumber":42,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`
+const testEvent = `{"eventType":"Test","streamId":"s-1","sequenceNumber":42,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`
 
 func TestError_InvalidProjection_ParseError(t *testing.T) {
 	source := "this is not valid {{{{"
@@ -144,7 +144,7 @@ func TestError_MalformedEvent(t *testing.T) {
 	}
 	defer session.Destroy()
 
-	err = session.Feed(`{"eventType":"Test","streamId":"s-1","sequenceNumber":42,"data":"not json","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}`)
+	err = session.Feed(`{"eventType":"Test","streamId":"s-1","sequenceNumber":42,"data":"not json","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 	if err == nil {
 		t.Fatal("expected error")
 	}

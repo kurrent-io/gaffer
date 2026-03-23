@@ -329,7 +329,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private EventEnvelope CreateEnvelope(string partition, ProjectionEvent @event, string category) {
 		var envelope = new EventEnvelope(_engine, _parser, this);
 		envelope.Partition = partition;
-		envelope.Created = @event.Timestamp;
+		envelope.Created = @event.Created;
 		envelope.BodyRaw = @event.Data;
 		envelope.MetadataRaw = @event.Metadata;
 		envelope.StreamId = @event.StreamId;

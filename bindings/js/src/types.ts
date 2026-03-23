@@ -5,7 +5,7 @@ export interface ProjectionEvent {
 	sequenceNumber: number;
 	isJson: boolean;
 	eventId: string;
-	timestamp: string;
+	created: string;
 	data?: string;
 	metadata?: string;
 	linkMetadata?: string;

@@ -3,9 +3,9 @@
 		"name": "hard delete modifies state",
 		"source": "fromAll().foreachStream().when({ $init: function() { return { a: 0 }; }, type1: function(s, e) { s.a++; return s; }, $deleted: function(s, e) { s.deleted = 1; return s; } }).outputState()",
 		"events": [
-			{ "eventType": "type1", "streamId": "stream-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" },
-			{ "eventType": "type1", "streamId": "stream-1", "sequenceNumber": 1, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" },
-			{ "eventType": "$streamDeleted", "streamId": "stream-1", "sequenceNumber": 2, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" }
+			{ "eventType": "type1", "streamId": "stream-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
+			{ "eventType": "type1", "streamId": "stream-1", "sequenceNumber": 1, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
+			{ "eventType": "$streamDeleted", "streamId": "stream-1", "sequenceNumber": 2, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
 		"expect": {
 			"states": {
@@ -17,7 +17,7 @@
 		"name": "hard delete on uninitialized partition",
 		"source": "fromAll().foreachStream().when({ $init: function() { return {}; }, type1: function(s, e) { s.a = 1; return s; }, $deleted: function(s, e) { s.deleted = 1; return s; } }).outputState()",
 		"events": [
-			{ "eventType": "$streamDeleted", "streamId": "never-seen", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" }
+			{ "eventType": "$streamDeleted", "streamId": "never-seen", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
 		"expect": {
 			"states": {
@@ -29,8 +29,8 @@
 		"name": "delete ignored when no handler",
 		"source": "fromAll().foreachStream().when({ $init: function() { return { a: 0 }; }, type1: function(s, e) { s.a++; return s; } }).outputState()",
 		"events": [
-			{ "eventType": "type1", "streamId": "stream-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" },
-			{ "eventType": "$streamDeleted", "streamId": "stream-1", "sequenceNumber": 1, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" }
+			{ "eventType": "type1", "streamId": "stream-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
+			{ "eventType": "$streamDeleted", "streamId": "stream-1", "sequenceNumber": 1, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
 		"expect": {
 			"states": {
@@ -42,8 +42,8 @@
 		"name": "soft delete via metadata",
 		"source": "fromAll().foreachStream().when({ $init: function() { return { a: 0 }; }, type1: function(s, e) { s.a++; return s; }, $deleted: function(s, e) { s.deleted = 1; return s; } }).outputState()",
 		"events": [
-			{ "eventType": "type1", "streamId": "stream-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" },
-			{ "eventType": "$metadata", "streamId": "$$stream-1", "sequenceNumber": 1, "data": "{\"$tb\":9223372036854775807}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" }
+			{ "eventType": "type1", "streamId": "stream-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
+			{ "eventType": "$metadata", "streamId": "$$stream-1", "sequenceNumber": 1, "data": "{\"$tb\":9223372036854775807}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
 		"expect": {
 			"states": {

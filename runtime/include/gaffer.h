@@ -118,7 +118,7 @@ void gaffer_on_state_changed(gaffer_session* session, gaffer_state_changed_cb cb
  * @param session    Session handle
  * @param event_json JSON event string (UTF-8). Required fields:
  *                     "eventType", "streamId", "sequenceNumber",
- *                     "isJson", "eventId", "timestamp"
+ *                     "isJson", "eventId", "created"
  *                   Optional: "data", "metadata", "linkMetadata"
  * @return 0 on success, -1 on error. Call gaffer_get_last_error() for details.
  */

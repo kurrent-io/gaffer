@@ -20,7 +20,7 @@ export const TestEventSchema = v.object({
 	data: v.optional(jsonData),
 	metadata: v.optional(jsonData),
 	eventId: v.optional(v.string()),
-	timestamp: v.optional(v.string()),
+	created: v.optional(v.string()),
 });
 
 export const RecordedEventSchema = v.object({
@@ -86,7 +86,7 @@ export interface NormalizedEvent {
 	/** Unique event identifier (UUID). */
 	eventId: string;
 	/** When the event was created. */
-	timestamp: string;
+	created: string;
 	/** Event data as a JSON string. */
 	data?: string;
 	/** Event metadata as a JSON string. */
@@ -127,7 +127,7 @@ function normalizeTestEvent(event: ParsedTestEvent): NormalizedEvent {
 		sequenceNumber: event.sequenceNumber,
 		isJson: event.isJson,
 		eventId: event.eventId ?? crypto.randomUUID(),
-		timestamp: event.timestamp ?? new Date().toISOString(),
+		created: event.created ?? new Date().toISOString(),
 		data: stringifyData(event.data),
 		metadata: stringifyData(event.metadata),
 	};
@@ -141,7 +141,7 @@ function normalizeRecordedEvent(event: ParsedRecordedEvent): NormalizedEvent {
 		sequenceNumber: strict.revision,
 		isJson: strict.isJson,
 		eventId: strict.id,
-		timestamp:
+		created:
 			strict.created instanceof Date
 				? strict.created.toISOString()
 				: strict.created,

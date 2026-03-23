@@ -3,7 +3,7 @@
 		"name": "transformBy",
 		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Ping: function(s, e) { s.count++; return s; } }).transformBy(function(s) { return { total: s.count * 2 }; }).outputState()",
 		"events": [
-			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" }
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
 		"expect": {
 			"state": { "count": 1 },
@@ -14,7 +14,7 @@
 		"name": "filterBy includes",
 		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Ping: function(s, e) { s.count++; return s; } }).filterBy(function(s) { return s.count > 0; }).outputState()",
 		"events": [
-			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" }
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
 		"expect": {
 			"result": { "count": 1 }
@@ -24,7 +24,7 @@
 		"name": "filterBy excludes",
 		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Ping: function(s, e) { s.count++; return s; } }).filterBy(function(s) { return s.count > 5; }).outputState()",
 		"events": [
-			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" }
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
 		"expect": {
 			"result": null

@@ -1,4 +1,4 @@
-namespace Gaffer.Core;
+namespace Gaffer.Runtime;
 
 public sealed class ProjectionException : Exception
 {

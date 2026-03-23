@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Gaffer.Core\Gaffer.Core.csproj" />
+    <ProjectReference Include="..\Gaffer.Runtime\Gaffer.Runtime.csproj" />
   </ItemGroup>
 
 </Project>

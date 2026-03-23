@@ -1,9 +1,9 @@
 using System.Diagnostics;
 using System.Text.Json;
-using Gaffer.Core.Events;
-using Gaffer.Core.Projection;
+using Gaffer.Runtime.Events;
+using Gaffer.Runtime.Projection;
 
-namespace Gaffer.Core;
+namespace Gaffer.Runtime;
 
 public sealed class ProjectionSession : IDisposable
 {

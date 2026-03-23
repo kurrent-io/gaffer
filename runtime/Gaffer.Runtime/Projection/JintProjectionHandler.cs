@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using Gaffer.Core.Events;
+using Gaffer.Runtime.Events;
 using Jint;
 using Jint.Native;
 using Jint.Native.Function;
@@ -16,7 +16,7 @@ using Jint.Runtime;
 using Jint.Runtime.Descriptors;
 using Jint.Runtime.Interop;
 
-namespace Gaffer.Core.Projection;
+namespace Gaffer.Runtime.Projection;
 
 internal sealed class JintProjectionHandler : IDisposable
 {

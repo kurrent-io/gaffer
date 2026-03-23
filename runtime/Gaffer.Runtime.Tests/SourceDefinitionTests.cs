@@ -1,4 +1,4 @@
-namespace Gaffer.Core.Tests;
+namespace Gaffer.Runtime.Tests;
 
 public class SourceDefinitionTests
 {

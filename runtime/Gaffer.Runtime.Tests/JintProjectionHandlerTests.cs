@@ -1,7 +1,7 @@
-using Gaffer.Core.Events;
-using Gaffer.Core.Projection;
+using Gaffer.Runtime.Events;
+using Gaffer.Runtime.Projection;
 
-namespace Gaffer.Core.Tests;
+namespace Gaffer.Runtime.Tests;
 
 public class JintProjectionHandlerTests
 {

@@ -1,4 +1,4 @@
-namespace Gaffer.Core.Projection;
+namespace Gaffer.Runtime.Projection;
 
 internal sealed class SourceDefinitionBuilder
 {

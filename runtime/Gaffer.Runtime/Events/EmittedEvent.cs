@@ -1,4 +1,4 @@
-namespace Gaffer.Core.Events;
+namespace Gaffer.Runtime.Events;
 
 public sealed class EmittedEvent
 {

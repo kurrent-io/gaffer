@@ -1,7 +1,7 @@
 using System.Text.Json;
-using Gaffer.Core.Events;
+using Gaffer.Runtime.Events;
 
-namespace Gaffer.Core.Tests;
+namespace Gaffer.Runtime.Tests;
 
 public class UserLoginProjectionTests
 {

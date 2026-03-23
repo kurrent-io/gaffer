@@ -220,6 +220,31 @@ describe("ProjectionSession", () => {
 		expect(changes[1].state).toContain('"count":2');
 	});
 
+	it("onSlowHandler fires for slow handlers", () => {
+		session = new ProjectionSession(
+			`
+			fromAll().when({
+				$init: function() { return {}; },
+				Slow: function(s, e) {
+					var start = Date.now();
+					while (Date.now() - start < 10) {}
+					return s;
+				}
+			})
+		`,
+			{ handlerTimeoutMs: 1 },
+		);
+
+		const warnings: Array<{ handler: string; ms: number }> = [];
+		session.onSlowHandler((handler, ms) => warnings.push({ handler, ms }));
+
+		session.feed({ eventType: "Slow", streamId: "s-1", data: "{}" });
+
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0].handler).toBe("Slow");
+		expect(warnings[0].ms).toBeGreaterThanOrEqual(1);
+	});
+
 	it("biState shared state", () => {
 		session = new ProjectionSession(`
 			options({ biState: true });

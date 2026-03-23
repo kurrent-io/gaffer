@@ -33,7 +33,20 @@ func SessionCreate(source string, optionsJSON *string) *Session {
 
 // SessionDestroy frees all resources associated with a session.
 func SessionDestroy(session *Session) {
+	cleanupCallbacks(session)
 	C.gaffer_session_destroy(session)
+}
+
+// SessionGetPartitionKey returns the partition key that would be computed for an event.
+func SessionGetPartitionKey(session *Session, eventJSON string) *string {
+	cs := C.CString(eventJSON)
+	defer C.free(unsafe.Pointer(cs))
+	result := C.gaffer_session_get_partition_key(session, cs)
+	if result == nil {
+		return nil
+	}
+	s := C.GoString(result)
+	return &s
 }
 
 // SessionFeed sends a single event to the projection. Returns 0 on success,

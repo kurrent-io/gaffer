@@ -17,7 +17,7 @@ internal static unsafe class NativeExports {
 	private sealed class SessionHandle {
 		public required ProjectionSession Session { get; init; }
 		public string? LastError { get; set; }
-		public string? LastReturnedString { get; set; }
+		public byte* LastReturnedPtr { get; set; }
 
 		// Prevent GC of delegates while callbacks are registered
 		public GCHandle EmitCbHandle;
@@ -27,18 +27,21 @@ internal static unsafe class NativeExports {
 	}
 
 	private static byte* ToUnmanaged(SessionHandle handle, string? value) {
-		if (value == null) {
-			handle.LastReturnedString = null;
-			return null;
+		// Free previous return buffer
+		if (handle.LastReturnedPtr != null) {
+			NativeMemory.Free(handle.LastReturnedPtr);
+			handle.LastReturnedPtr = null;
 		}
-		handle.LastReturnedString = value;
-		// Return pointer to pinned managed string bytes.
-		// Valid until next call (LastReturnedString keeps it alive).
-		// Caller must copy.
+
+		if (value == null)
+			return null;
+
+		// Allocate new buffer. Valid until next API call on this session.
 		var bytes = Encoding.UTF8.GetBytes(value);
 		var ptr = (byte*)NativeMemory.Alloc((nuint)(bytes.Length + 1));
 		bytes.CopyTo(new Span<byte>(ptr, bytes.Length));
-		ptr[bytes.Length] = 0; // null terminator
+		ptr[bytes.Length] = 0;
+		handle.LastReturnedPtr = ptr;
 		return ptr;
 	}
 
@@ -76,6 +79,10 @@ internal static unsafe class NativeExports {
 	public static void Destroy(nint sessionId) {
 		if (!Sessions.TryGetValue(sessionId, out var handle))
 			return;
+
+		// Free last returned string buffer
+		if (handle.LastReturnedPtr != null)
+			NativeMemory.Free(handle.LastReturnedPtr);
 
 		if (handle.EmitCbHandle.IsAllocated)
 			handle.EmitCbHandle.Free();

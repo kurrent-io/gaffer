@@ -164,7 +164,9 @@ function createSubscription(client: KurrentDBClient, info: ProjectionInfo) {
 			);
 		case "streams":
 			return client.subscribeToAll({
-				filter: streamNameFilter({ prefixes: info.source.streams }),
+				filter: streamNameFilter({
+					regex: `^(${info.source.streams.map(escapeRegex).join("|")})$`,
+				}),
 			});
 		case "categories":
 			return client.subscribeToAll({
@@ -174,6 +176,8 @@ function createSubscription(client: KurrentDBClient, info: ProjectionInfo) {
 			});
 	}
 }
+
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const isIterable = (value: unknown): value is Iterable<EventInput> =>
 	value !== null && typeof value === "object" && Symbol.iterator in value;

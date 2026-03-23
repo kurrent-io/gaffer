@@ -184,10 +184,7 @@ export class ProjectionError extends Error {
 
 	constructor(normalized: NormalizedEvent, event: EventInput, cause: unknown) {
 		const causeMessage = cause instanceof Error ? cause.message : String(cause);
-		const ref =
-			normalized.sequenceNumber !== undefined
-				? `${normalized.sequenceNumber}@${normalized.streamId}`
-				: normalized.streamId;
+		const ref = `${normalized.sequenceNumber}@${normalized.streamId}`;
 
 		const lines = [
 			"Projection error",

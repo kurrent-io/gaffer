@@ -55,6 +55,16 @@ describe("mapQuerySources", () => {
 		expect(info.source).toEqual({ type: "all" });
 	});
 
+	it("treats empty Categories array as all", () => {
+		const info = mapQuerySources({ ...defaults, Categories: [] });
+		expect(info.source).toEqual({ type: "all" });
+	});
+
+	it("treats empty Streams array as all", () => {
+		const info = mapQuerySources({ ...defaults, Streams: [] });
+		expect(info.source).toEqual({ type: "all" });
+	});
+
 	it("maps foreachStream partitioning", () => {
 		const info = mapQuerySources({ ...defaults, ByStreams: true });
 		expect(info.partitioning).toEqual({ type: "byStream" });

@@ -57,11 +57,18 @@ export const EventInputSchema = v.union([
 	RecordedEventSchema,
 ]);
 
+/** A manually constructed test event. Required fields: eventType, streamId, sequenceNumber, isJson. */
 export type TestEvent = v.InferOutput<typeof TestEventSchema>;
+
+/** An event to feed to a projection. Accepts a TestEvent, KurrentDB RecordedEvent, or ResolvedEvent. */
 export type EventInput = TestEvent | RecordedEvent | ResolvedEvent;
 
 type ParsedEventInput = v.InferOutput<typeof EventInputSchema>;
 
+/**
+ * Parse and validate an event input against the accepted schemas.
+ * @throws {ValiError} If the input doesn't match any accepted event shape.
+ */
 export function parseEventInput(input: EventInput): ParsedEventInput {
 	return v.parse(EventInputSchema, input);
 }
@@ -86,6 +93,12 @@ export interface NormalizedEvent {
 	metadata?: string;
 }
 
+/**
+ * Normalize a parsed event input to the flat format expected by the runtime.
+ * Handles TestEvent, RecordedEvent, and ResolvedEvent shapes.
+ * @throws {Error} If the input doesn't match any recognized event shape.
+ * @throws {ValiError} If a RecordedEvent is missing required fields (revision, isJson, id, created).
+ */
 export function normalizeEvent(input: ParsedEventInput): NormalizedEvent {
 	if (v.is(TestEventSchema, input)) {
 		return normalizeTestEvent(input);

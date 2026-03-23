@@ -305,6 +305,8 @@ describe("ProjectionTest", () => {
 			}),
 		).toThrow(ProjectionHandlerError);
 
+		expect.assertions(9);
+
 		try {
 			test.feed({
 				eventType: "Bad",
@@ -324,6 +326,26 @@ describe("ProjectionTest", () => {
 			expect(e.message).toContain("Bad");
 			expect(e.message).toContain("boom");
 		}
+		test.dispose();
+	});
+
+	it("unhandled event type leaves state unchanged", () => {
+		const test = new ProjectionTest<{ count: number }>(counterSource);
+		test.feed({
+			eventType: "ItemAdded",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			isJson: true,
+			data: {},
+		});
+		const step = test.feed({
+			eventType: "UnknownEvent",
+			streamId: "s-1",
+			sequenceNumber: 1,
+			isJson: true,
+			data: {},
+		});
+		expect(step.state?.count).toBe(1);
 		test.dispose();
 	});
 

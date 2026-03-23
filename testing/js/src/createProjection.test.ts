@@ -15,24 +15,17 @@ const counterSource = `
 
 describe("createProjection", () => {
 	describe("validate", () => {
-		it("returns valid for good projection", () => {
+		it("returns info for good projection", () => {
 			const projection = createProjection(counterSource);
-			const result = projection.validate();
-			expect(result.valid).toBe(true);
-			if (result.valid) {
-				expect(result.info.source.type).toBe("all");
-				expect(result.info.partitioning.type).toBe("none");
-				expect(result.info.events).toContain("ItemAdded");
-			}
+			const info = projection.validate();
+			expect(info.source.type).toBe("all");
+			expect(info.partitioning.type).toBe("none");
+			expect(info.events).toContain("ItemAdded");
 		});
 
-		it("returns invalid for bad JS", () => {
+		it("throws for bad JS", () => {
 			const projection = createProjection("this is not valid {{{{");
-			const result = projection.validate();
-			expect(result.valid).toBe(false);
-			if (!result.valid) {
-				expect(result.error).toBeTruthy();
-			}
+			expect(() => projection.validate()).toThrow(InvalidProjectionError);
 		});
 
 		it("maps foreachStream partitioning", () => {
@@ -42,11 +35,7 @@ describe("createProjection", () => {
 					Ping: function(s, e) { return s; }
 				})
 			`);
-			const result = projection.validate();
-			expect(result.valid).toBe(true);
-			if (result.valid) {
-				expect(result.info.partitioning.type).toBe("byStream");
-			}
+			expect(projection.validate().partitioning.type).toBe("byStream");
 		});
 
 		it("maps category source", () => {
@@ -56,14 +45,10 @@ describe("createProjection", () => {
 					Ping: function(s, e) { return s; }
 				})
 			`);
-			const result = projection.validate();
-			expect(result.valid).toBe(true);
-			if (result.valid) {
-				expect(result.info.source).toEqual({
-					type: "categories",
-					categories: ["orders"],
-				});
-			}
+			expect(projection.validate().source).toEqual({
+				type: "categories",
+				categories: ["orders"],
+			});
 		});
 
 		it("maps biState", () => {
@@ -75,11 +60,7 @@ describe("createProjection", () => {
 					Ping: function(s, e) { return s; }
 				})
 			`);
-			const result = projection.validate();
-			expect(result.valid).toBe(true);
-			if (result.valid) {
-				expect(result.info.biState).toBe(true);
-			}
+			expect(projection.validate().biState).toBe(true);
 		});
 	});
 
@@ -95,12 +76,55 @@ describe("createProjection", () => {
 				...projection.run(42 as unknown as Iterable<never>),
 			]).toThrow("run() expects");
 		});
+
+		it("propagates handler error mid-iteration", () => {
+			const source = `
+				fromAll().when({
+					$init: function() { return { count: 0 }; },
+					Good: function(s, e) { s.count++; return s; },
+					Bad: function(s, e) { throw "mid-stream error"; }
+				})
+			`;
+			const projection = createProjection<{ count: number }>(source);
+			const events = [
+				{
+					eventType: "Good",
+					streamId: "s-1",
+					sequenceNumber: 0,
+					isJson: true,
+					data: {},
+				},
+				{
+					eventType: "Bad",
+					streamId: "s-1",
+					sequenceNumber: 1,
+					isJson: true,
+					data: {},
+				},
+				{
+					eventType: "Good",
+					streamId: "s-1",
+					sequenceNumber: 2,
+					isJson: true,
+					data: {},
+				},
+			];
+
+			const results: Array<{ count: number } | null> = [];
+			expect(() => {
+				for (const { state } of projection.run(events)) {
+					results.push(state);
+				}
+			}).toThrow("mid-stream error");
+			expect(results).toHaveLength(1);
+			expect(results[0]?.count).toBe(1);
+		});
 	});
 
 	describe("options", () => {
 		it("passes compilation timeout to session", () => {
 			const projection = createProjection("while(true) {}", {
-				compilationTimeoutMs: 100,
+				databaseConfig: { compilationTimeoutMs: 100 },
 			});
 			expect(() => [...projection.run([])]).toThrow(CompilationTimeoutError);
 		});
@@ -132,6 +156,14 @@ describe("createProjection", () => {
 			expect(results[0].state).toBeNull();
 			// Second event (JSON) processed normally
 			expect(results[1].state?.count).toBe(1);
+		});
+	});
+
+	describe("run (empty)", () => {
+		it("yields no results for empty iterable", () => {
+			const projection = createProjection<{ count: number }>(counterSource);
+			const results = [...projection.run([])];
+			expect(results).toHaveLength(0);
 		});
 	});
 
@@ -228,6 +260,42 @@ describe("createProjection", () => {
 			}
 			expect(steps).toHaveLength(2);
 			expect(steps[1].state).toEqual({ count: 2 });
+		});
+
+		it("propagates handler error mid-async-stream", async () => {
+			const source = `
+				fromAll().when({
+					$init: function() { return { count: 0 }; },
+					Good: function(s, e) { s.count++; return s; },
+					Bad: function(s, e) { throw "async error"; }
+				})
+			`;
+			const projection = createProjection<{ count: number }>(source);
+
+			async function* events() {
+				yield {
+					eventType: "Good",
+					streamId: "s-1",
+					sequenceNumber: 0,
+					isJson: true,
+					data: {},
+				};
+				yield {
+					eventType: "Bad",
+					streamId: "s-1",
+					sequenceNumber: 1,
+					isJson: true,
+					data: {},
+				};
+			}
+
+			const results: Array<{ count: number } | null> = [];
+			await expect(async () => {
+				for await (const { state } of projection.run(events())) {
+					results.push(state);
+				}
+			}).rejects.toThrow("async error");
+			expect(results).toHaveLength(1);
 		});
 	});
 

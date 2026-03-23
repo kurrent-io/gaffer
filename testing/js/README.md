@@ -50,24 +50,22 @@ Create a projection from JavaScript source. Does not compile until `validate`, `
 
 Options:
 
-- `version` - `"v1"` or `"v2"` (default `"v2"`). V1 drops non-JSON events.
-- `compilationTimeoutMs` - max compilation time in ms (default 5000)
-- `executionTimeoutMs` - max handler execution time per event in ms (default 5000)
-- `handlerTimeoutMs` - threshold for slow handler warnings in ms (default 250)
-- `enableContentTypeValidation` - validate event content types, V2 only (default false)
+- `version` - `"v1"` or `"v2"` (default `"v2"`)
+- `config` - per-projection settings
+  - `enableContentTypeValidation` - validate event content types, V2 only (default false)
+  - `executionTimeoutMs` - max handler execution time per event in ms (default 5000)
+- `databaseConfig` - database-wide settings
+  - `compilationTimeoutMs` - max compilation time in ms (default 5000)
+  - `executionTimeoutMs` - default max handler execution time in ms (default 5000)
 
 ### `projection.validate()`
 
-Compile the projection and return its source definition or an error.
+Compile the projection and return its source definition. Throws if the source is invalid.
 
 ```typescript
-const result = projection.validate();
-if (result.valid) {
-	console.log(result.info.source); // { type: "all" }
-	console.log(result.info.events); // ["ItemAdded"] or "all"
-} else {
-	console.error(result.error.message);
-}
+const info = projection.validate();
+console.log(info.source); // { type: "all" }
+console.log(info.events); // ["ItemAdded"] or "all"
 ```
 
 ### `projection.run(events)`

@@ -309,6 +309,19 @@ describe("normalizeEvent", () => {
 		expect(result.data).toBe('{"amount":99}');
 	});
 
+	it("handles event with both eventType and type fields", () => {
+		const ambiguous = {
+			eventType: "TestVersion",
+			type: "ClientVersion",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			isJson: true,
+			data: "{}",
+		};
+		const result = normalizeEvent(ambiguous);
+		expect(result.eventType).toBe("TestVersion");
+	});
+
 	it("preserves eventId when provided on TestEvent", () => {
 		const result = normalizeEvent({
 			eventType: "Ping",

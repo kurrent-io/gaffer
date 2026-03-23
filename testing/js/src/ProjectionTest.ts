@@ -1,4 +1,8 @@
-import { ProjectionSession, type EmittedEvent } from "@kurrent/gaffer-runtime";
+import {
+	ProjectionSession,
+	type EmittedEvent,
+	type SessionOptions,
+} from "@kurrent/gaffer-runtime";
 import { parseEventInput, normalizeEvent, type EventInput } from "./schemas.js";
 
 /** An event emitted by a projection via `emit()` or `linkTo()`, with parsed data. */
@@ -10,7 +14,7 @@ export interface TestEmittedEvent {
 	/** Parsed from JSON string. Falls back to raw string if parsing fails. */
 	data: unknown;
 	/** Parsed metadata object, or null if no metadata was provided. */
-	metadata: Record<string, unknown> | null;
+	metadata: Record<string, string | null> | null;
 	/** True for `linkTo()` events (`$>` or `$@` event types). */
 	isLink: boolean;
 }
@@ -27,18 +31,30 @@ export interface StepResult<TState = unknown> {
 	logs: string[];
 }
 
-/** Options for configuring a projection session. */
-export interface ProjectionOptions {
-	/** Projection engine version. "v1" drops non-JSON events. Default: "v2". */
-	version?: "v1" | "v2";
-	/** Maximum time for JS compilation in ms. Default: 5000. */
-	compilationTimeoutMs?: number;
+/** Per-projection configuration. */
+export interface ProjectionConfig {
+	/** When true, validates event content types. V2 only. */
+	enableContentTypeValidation?: boolean;
 	/** Maximum time for JS handler execution per event in ms. Default: 5000. */
 	executionTimeoutMs?: number;
-	/** Threshold in ms for onSlowHandler warnings. Default: 250. */
-	handlerTimeoutMs?: number;
-	/** When true, validates event content types. V2 only. Default: false. */
-	enableContentTypeValidation?: boolean;
+}
+
+/** Database-wide configuration. */
+export interface DatabaseConfig {
+	/** Maximum time for JS compilation in ms. Default: 5000. */
+	compilationTimeoutMs?: number;
+	/** Maximum time for JS handler execution per event in ms (default, overridden by projection config). Default: 5000. */
+	executionTimeoutMs?: number;
+}
+
+/** Options for configuring a projection session. */
+export interface ProjectionOptions {
+	/** Projection engine version. Default: "v2". */
+	version?: "v1" | "v2";
+	/** Per-projection settings. */
+	config?: ProjectionConfig;
+	/** Database-wide settings. */
+	databaseConfig?: DatabaseConfig;
 }
 
 const registry = new FinalizationRegistry<ProjectionSession>((session) => {
@@ -58,7 +74,7 @@ export class ProjectionTest<TState = unknown> {
 	private pendingLogs: string[] = [];
 
 	constructor(source: string, options?: ProjectionOptions) {
-		this.session = new ProjectionSession(source, options);
+		this.session = new ProjectionSession(source, toSessionOptions(options));
 		registry.register(this, this.session, this);
 
 		this.session.onEmit((event: EmittedEvent) => {
@@ -141,6 +157,20 @@ export class ProjectionTest<TState = unknown> {
 	}
 }
 
+export function toSessionOptions(
+	options?: ProjectionOptions,
+): SessionOptions | undefined {
+	if (!options) return undefined;
+	return {
+		version: options.version,
+		enableContentTypeValidation: options.config?.enableContentTypeValidation,
+		executionTimeoutMs:
+			options.config?.executionTimeoutMs ??
+			options.databaseConfig?.executionTimeoutMs,
+		compilationTimeoutMs: options.databaseConfig?.compilationTimeoutMs,
+	};
+}
+
 function mapEmittedEvent(event: EmittedEvent): TestEmittedEvent {
 	let data: unknown = null;
 	if (event.data) {
@@ -155,9 +185,7 @@ function mapEmittedEvent(event: EmittedEvent): TestEmittedEvent {
 		streamId: event.streamId,
 		eventType: event.eventType,
 		data,
-		metadata: event.metadata
-			? (event.metadata as Record<string, unknown>)
-			: null,
+		metadata: event.metadata ?? null,
 		isLink: event.isLink,
 	};
 }

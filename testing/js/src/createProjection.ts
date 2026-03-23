@@ -1,29 +1,25 @@
-import { ProjectionSession, ProjectionError } from "@kurrent/gaffer-runtime";
-import {
-	KurrentDBClient,
-	streamNameFilter,
-	eventTypeFilter,
-} from "@kurrent/kurrentdb-client";
+import { ProjectionSession } from "@kurrent/gaffer-runtime";
+import { KurrentDBClient } from "@kurrent/kurrentdb-client";
+import { buildSubscriptionFilter } from "./subscriptionFilter.js";
 import { mapQuerySources, type ProjectionInfo } from "./ProjectionInfo.js";
 import {
 	ProjectionTest,
+	toSessionOptions,
 	type ProjectionOptions,
 	type StepResult,
 } from "./ProjectionTest.js";
 import type { EventInput } from "./schemas.js";
-
-/** Result of validating a projection's JavaScript source. */
-export type ValidationResult =
-	| { valid: true; info: ProjectionInfo }
-	| { valid: false; error: ProjectionError | Error };
 
 /**
  * A projection that can be validated, run against events, or tested interactively.
  * Created via {@link createProjection}.
  */
 export interface Projection<TState = unknown> {
-	/** Compile the projection and return its source definition, or an error. */
-	validate(): ValidationResult;
+	/**
+	 * Compile the projection and return its source definition.
+	 * @throws {ProjectionError} If the projection source is invalid.
+	 */
+	validate(): ProjectionInfo;
 	/**
 	 * Run the projection over a sync iterable of events.
 	 * @throws {ProjectionError} If the projection source is invalid or a handler throws.
@@ -58,31 +54,21 @@ export function createProjection<TState = unknown>(
 	options?: ProjectionOptions,
 ): Projection<TState> {
 	return {
-		validate(): ValidationResult {
+		validate(): ProjectionInfo {
 			let session: ProjectionSession | null = null;
 			try {
-				session = new ProjectionSession(source, options);
-				const raw = session.getSources();
-				return { valid: true, info: mapQuerySources(raw) };
-			} catch (err) {
-				return {
-					valid: false,
-					error: err instanceof Error ? err : new Error(String(err)),
-				};
+				session = new ProjectionSession(source, toSessionOptions(options));
+				return mapQuerySources(session.getSources());
 			} finally {
 				session?.dispose();
 			}
 		},
 
 		run(input: unknown) {
-			const validation = this.validate();
-
-			if (!validation.valid) {
-				throw validation.error;
-			}
+			const info = this.validate();
 
 			if (input instanceof KurrentDBClient) {
-				return runWithClient<TState>(source, options, input, validation.info);
+				return runWithClient<TState>(source, options, input, info);
 			}
 
 			if (isAsyncIterable(input)) {
@@ -153,33 +139,9 @@ async function* runWithClient<TState>(
 }
 
 function createSubscription(client: KurrentDBClient, info: ProjectionInfo) {
-	// The runtime handles event type filtering internally (matching real KurrentDB),
-	// but for fromAll() we also filter at the subscription level to avoid transferring
-	// irrelevant events over the wire. For streams/categories, the KurrentDB API only
-	// supports a single filter so stream name takes priority.
-	switch (info.source.type) {
-		case "all":
-			return client.subscribeToAll(
-				info.events !== "all"
-					? { filter: eventTypeFilter({ prefixes: info.events }) }
-					: undefined,
-			);
-		case "streams":
-			return client.subscribeToAll({
-				filter: streamNameFilter({
-					regex: `^(${info.source.streams.map(escapeRegex).join("|")})$`,
-				}),
-			});
-		case "categories":
-			return client.subscribeToAll({
-				filter: streamNameFilter({
-					prefixes: info.source.categories.map((c) => c + "-"),
-				}),
-			});
-	}
+	const filter = buildSubscriptionFilter(info);
+	return client.subscribeToAll({ filter });
 }
-
-const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const isIterable = (value: unknown): value is Iterable<EventInput> =>
 	value !== null && typeof value === "object" && Symbol.iterator in value;

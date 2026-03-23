@@ -756,4 +756,27 @@ public class V2ConformanceTests {
 
 		Assert.Equal("us-east", key);
 	}
+
+	// -- C API edge cases --
+
+	[Fact]
+	public void ParseEvent_json_null_data_becomes_csharp_null() {
+		var json = """{"eventType":"Ping","streamId":"s-1","sequenceNumber":0,"isJson":true,"data":null,"eventId":"00000000-0000-0000-0000-000000000000","timestamp":"2026-01-01T00:00:00Z"}""";
+		var evt = NativeExports.ParseEvent(json);
+		Assert.Null(evt.Data);
+	}
+
+	// -- SetState edge cases --
+
+	[Fact]
+	public void SetState_empty_string_throws() {
+		using var session = new ProjectionSession("""
+            fromAll().when({
+                $init: function() { return { count: 0 }; },
+                Ping: function(s, e) { s.count++; return s; }
+            })
+        """);
+
+		Assert.Throws<Errors.InvalidArgumentException>(() => session.SetState(null, ""));
+	}
 }

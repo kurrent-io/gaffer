@@ -431,16 +431,16 @@ internal static unsafe class NativeExports {
 		};
 	}
 
-	private static ProjectionEvent ParseEvent(string json) {
+	internal static ProjectionEvent ParseEvent(string json) {
 		try {
 			using var doc = JsonDocument.Parse(json);
 			var root = doc.RootElement;
 			return new ProjectionEvent {
 				EventType = root.GetProperty("eventType").GetString()!,
 				StreamId = root.GetProperty("streamId").GetString()!,
-				Data = root.TryGetProperty("data", out var data) ? data.ToString() : null,
-				Metadata = root.TryGetProperty("metadata", out var meta) ? meta.ToString() : null,
-				LinkMetadata = root.TryGetProperty("linkMetadata", out var lm) ? lm.ToString() : null,
+				Data = root.TryGetProperty("data", out var data) && data.ValueKind != JsonValueKind.Null ? data.ToString() : null,
+				Metadata = root.TryGetProperty("metadata", out var meta) && meta.ValueKind != JsonValueKind.Null ? meta.ToString() : null,
+				LinkMetadata = root.TryGetProperty("linkMetadata", out var lm) && lm.ValueKind != JsonValueKind.Null ? lm.ToString() : null,
 				SequenceNumber = root.GetProperty("sequenceNumber").GetInt64(),
 				IsJson = root.GetProperty("isJson").GetBoolean(),
 				EventId = Guid.Parse(root.GetProperty("eventId").GetString()!),

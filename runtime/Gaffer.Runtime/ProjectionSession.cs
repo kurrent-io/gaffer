@@ -184,7 +184,10 @@ public sealed class ProjectionSession : IDisposable {
 	public string? GetSharedState() => _sharedState;
 
 	/// <summary>Restore state for a partition (e.g. from a cache).</summary>
+	/// <exception cref="InvalidArgumentException">Thrown if stateJson is empty.</exception>
 	public void SetState(string? partition, string stateJson) {
+		if (stateJson.Length == 0)
+			throw new InvalidArgumentException("State JSON must not be empty", "stateJson");
 		_stateCache[partition ?? ""] = stateJson;
 	}
 

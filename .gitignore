@@ -20,6 +20,10 @@ node_modules/
 .pnpm-store/
 dist/
 
+# Claude
+CLAUDE.local.md
+**/.claude/*.local.*
+
 # Environment
 .env
 .env.*

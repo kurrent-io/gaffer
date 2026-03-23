@@ -153,7 +153,7 @@ public class V1ConformanceTests {
 	}
 
 	[Fact]
-	public void V1_metadata_with_null_data_is_normal_event() {
+	public void V1_metadata_with_null_data_not_treated_as_delete() {
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return { count: 0 }; },

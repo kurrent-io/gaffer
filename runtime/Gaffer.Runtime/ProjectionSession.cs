@@ -184,10 +184,10 @@ public sealed class ProjectionSession : IDisposable {
 	public string? GetSharedState() => _sharedState;
 
 	/// <summary>Restore state for a partition (e.g. from a cache).</summary>
-	/// <exception cref="InvalidArgumentException">Thrown if stateJson is empty.</exception>
+	/// <exception cref="InvalidArgumentException">Thrown if stateJson is null or empty.</exception>
 	public void SetState(string? partition, string stateJson) {
-		if (stateJson.Length == 0)
-			throw new InvalidArgumentException("State JSON must not be empty", "stateJson");
+		if (string.IsNullOrEmpty(stateJson))
+			throw new InvalidArgumentException("State JSON must not be null or empty", "stateJson");
 		_stateCache[partition ?? ""] = stateJson;
 	}
 
@@ -328,8 +328,7 @@ public sealed class ProjectionSession : IDisposable {
 	/// Returns true if the partition is new (not previously seen).
 	/// </summary>
 	private bool LoadPartitionState(string partition) {
-		if (_stateCache.ContainsKey(partition)) {
-			var cached = _stateCache[partition];
+		if (_stateCache.TryGetValue(partition, out var cached)) {
 			if (cached != null) {
 				_handler.Load(cached);
 			} else if (_version == ProjectionVersion.V1) {

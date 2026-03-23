@@ -241,7 +241,8 @@ public sealed class ProjectionSession : IDisposable {
 	/// InitializeShared called once, LoadShared for subsequent events.
 	/// </summary>
 	private void LoadSharedState() {
-		if (!_sources.IsBiState) return;
+		if (!_sources.IsBiState)
+			return;
 
 		if (!_sharedStateInitialized) {
 			_handler.InitializeShared();

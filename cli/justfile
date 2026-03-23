@@ -1,0 +1,22 @@
+default:
+    @just --list
+
+# Build the CLI binary
+build:
+    CGO_ENABLED=1 go build -o gaffer .
+
+# Run the CLI
+run *args:
+    CGO_ENABLED=1 go run . {{args}}
+
+# Format code
+fmt:
+    golangci-lint fmt
+
+# Run linter
+check:
+    golangci-lint run
+
+# Verify formatting (CI)
+fmt-check:
+    golangci-lint fmt --diff

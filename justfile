@@ -8,13 +8,14 @@ default:
 init: runtime::init bindings::init
 
 # Build all projects
-build: runtime::build runtime::publish
+build: runtime::build runtime::publish cli::build
 
 # Run all tests (publishes runtime first for FFI tests)
 test: runtime::test runtime::publish bindings::go::test
 
 # Check formatting and linting across all projects
-check: runtime::check bindings::go::check
+check: runtime::check bindings::go::check cli::check
 
 mod runtime
 mod bindings
+mod cli

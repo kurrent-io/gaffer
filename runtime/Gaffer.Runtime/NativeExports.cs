@@ -43,7 +43,8 @@ internal static unsafe class NativeExports {
 	}
 
 	private static string? FromUtf8(byte* ptr) {
-		if (ptr == null) return null;
+		if (ptr == null)
+			return null;
 		return Marshal.PtrToStringUTF8((nint)ptr);
 	}
 
@@ -53,7 +54,8 @@ internal static unsafe class NativeExports {
 	public static nint Create(byte* source, byte* optionsJson) {
 		try {
 			var sourceStr = FromUtf8(source);
-			if (sourceStr == null) return 0;
+			if (sourceStr == null)
+				return 0;
 
 			var opts = ParseOptions(FromUtf8(optionsJson));
 			var session = new ProjectionSession(sourceStr, opts);
@@ -72,12 +74,17 @@ internal static unsafe class NativeExports {
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_destroy")]
 	public static void Destroy(nint sessionId) {
-		if (!Sessions.TryGetValue(sessionId, out var handle)) return;
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
 
-		if (handle.EmitCbHandle.IsAllocated) handle.EmitCbHandle.Free();
-		if (handle.LogCbHandle.IsAllocated) handle.LogCbHandle.Free();
-		if (handle.SlowHandlerCbHandle.IsAllocated) handle.SlowHandlerCbHandle.Free();
-		if (handle.StateChangedCbHandle.IsAllocated) handle.StateChangedCbHandle.Free();
+		if (handle.EmitCbHandle.IsAllocated)
+			handle.EmitCbHandle.Free();
+		if (handle.LogCbHandle.IsAllocated)
+			handle.LogCbHandle.Free();
+		if (handle.SlowHandlerCbHandle.IsAllocated)
+			handle.SlowHandlerCbHandle.Free();
+		if (handle.StateChangedCbHandle.IsAllocated)
+			handle.StateChangedCbHandle.Free();
 
 		handle.Session.Dispose();
 		Sessions.Remove(sessionId);
@@ -87,7 +94,8 @@ internal static unsafe class NativeExports {
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_on_emit")]
 	public static void OnEmit(nint sessionId, delegate* unmanaged<byte*, byte*, byte*, byte*, void*, void> cb, void* userData) {
-		if (!Sessions.TryGetValue(sessionId, out var handle)) return;
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
 
 		handle.Session.OnEmit = emitted => {
 			var streamId = AllocUtf8(emitted.StreamId);
@@ -107,7 +115,8 @@ internal static unsafe class NativeExports {
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_on_log")]
 	public static void OnLog(nint sessionId, delegate* unmanaged<byte*, void*, void> cb, void* userData) {
-		if (!Sessions.TryGetValue(sessionId, out var handle)) return;
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
 
 		handle.Session.OnLog = message => {
 			var msg = AllocUtf8(message);
@@ -121,7 +130,8 @@ internal static unsafe class NativeExports {
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_on_slow_handler")]
 	public static void OnSlowHandler(nint sessionId, delegate* unmanaged<byte*, int, void*, void> cb, void* userData) {
-		if (!Sessions.TryGetValue(sessionId, out var handle)) return;
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
 
 		handle.Session.OnSlowHandler = (handlerName, durationMs) => {
 			var name = AllocUtf8(handlerName);
@@ -135,7 +145,8 @@ internal static unsafe class NativeExports {
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_on_state_changed")]
 	public static void OnStateChanged(nint sessionId, delegate* unmanaged<byte*, byte*, void*, void> cb, void* userData) {
-		if (!Sessions.TryGetValue(sessionId, out var handle)) return;
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
 
 		handle.Session.OnStateChanged = (partition, stateJson) => {
 			var part = AllocUtf8(partition);
@@ -153,7 +164,8 @@ internal static unsafe class NativeExports {
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_feed")]
 	public static int Feed(nint sessionId, byte* eventJson) {
-		if (!Sessions.TryGetValue(sessionId, out var handle)) return -1;
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return -1;
 
 		try {
 			var json = FromUtf8(eventJson);
@@ -176,20 +188,23 @@ internal static unsafe class NativeExports {
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_state")]
 	public static byte* GetState(nint sessionId, byte* partition) {
-		if (!Sessions.TryGetValue(sessionId, out var handle)) return null;
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return null;
 		var state = handle.Session.GetState(FromUtf8(partition));
 		return ToUnmanaged(handle, state);
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_shared_state")]
 	public static byte* GetSharedState(nint sessionId) {
-		if (!Sessions.TryGetValue(sessionId, out var handle)) return null;
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return null;
 		return ToUnmanaged(handle, handle.Session.GetSharedState());
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_set_state")]
 	public static void SetState(nint sessionId, byte* partition, byte* stateJson) {
-		if (!Sessions.TryGetValue(sessionId, out var handle)) return;
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
 		var json = FromUtf8(stateJson);
 		if (json != null)
 			handle.Session.SetState(FromUtf8(partition), json);
@@ -197,13 +212,15 @@ internal static unsafe class NativeExports {
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_result")]
 	public static byte* GetResult(nint sessionId, byte* partition) {
-		if (!Sessions.TryGetValue(sessionId, out var handle)) return null;
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return null;
 		return ToUnmanaged(handle, handle.Session.GetResult(FromUtf8(partition)));
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_sources")]
 	public static byte* GetSources(nint sessionId) {
-		if (!Sessions.TryGetValue(sessionId, out var handle)) return null;
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return null;
 		var sources = handle.Session.Sources;
 		var json = JsonSerializer.Serialize(sources, GafferJsonContext.Default.QuerySources);
 		return ToUnmanaged(handle, json);
@@ -211,10 +228,12 @@ internal static unsafe class NativeExports {
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_partition_key")]
 	public static byte* GetPartitionKey(nint sessionId, byte* eventJson) {
-		if (!Sessions.TryGetValue(sessionId, out var handle)) return null;
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return null;
 		try {
 			var json = FromUtf8(eventJson);
-			if (json == null) return null;
+			if (json == null)
+				return null;
 			var evt = ParseEvent(json);
 			return ToUnmanaged(handle, handle.Session.GetPartitionKey(evt));
 		} catch {
@@ -226,14 +245,16 @@ internal static unsafe class NativeExports {
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_error")]
 	public static byte* GetError(nint sessionId) {
-		if (!Sessions.TryGetValue(sessionId, out var handle)) return null;
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return null;
 		return ToUnmanaged(handle, handle.LastError);
 	}
 
 	// -- Helpers --
 
 	private static ProjectionSessionOptions ParseOptions(string? json) {
-		if (string.IsNullOrEmpty(json)) return new ProjectionSessionOptions();
+		if (string.IsNullOrEmpty(json))
+			return new ProjectionSessionOptions();
 
 		using var doc = JsonDocument.Parse(json);
 		var root = doc.RootElement;
@@ -265,7 +286,8 @@ internal static unsafe class NativeExports {
 	}
 
 	private static byte* AllocUtf8(string? value) {
-		if (value == null) return null;
+		if (value == null)
+			return null;
 		var bytes = Encoding.UTF8.GetBytes(value);
 		var ptr = (byte*)NativeMemory.Alloc((nuint)(bytes.Length + 1));
 		bytes.CopyTo(new Span<byte>(ptr, bytes.Length));
@@ -274,6 +296,7 @@ internal static unsafe class NativeExports {
 	}
 
 	private static void FreeUtf8(byte* ptr) {
-		if (ptr != null) NativeMemory.Free(ptr);
+		if (ptr != null)
+			NativeMemory.Free(ptr);
 	}
 }

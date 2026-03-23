@@ -6,6 +6,7 @@ public sealed class ProjectionEvent
     public required string StreamId { get; init; }
     public string? Data { get; init; }
     public string? Metadata { get; init; }
+    public string? LinkMetadata { get; init; }
     public long SequenceNumber { get; init; }
     public bool IsJson { get; init; } = true;
     public Guid EventId { get; init; } = Guid.NewGuid();

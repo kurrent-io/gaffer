@@ -372,6 +372,7 @@ internal sealed class JintProjectionHandler : IDisposable
         envelope.EventId = @event.EventId.ToString("D");
         envelope.EventType = @event.EventType;
         envelope.IsJson = @event.IsJson;
+        envelope.LinkMetadataRaw = @event.LinkMetadata;
         envelope.Category = category;
         envelope.SequenceNumber = @event.SequenceNumber;
         return envelope;
@@ -735,6 +736,8 @@ internal sealed class JintProjectionHandler : IDisposable
                         if (!(result.IsBoolean() && result.AsBoolean()) || result == Null || result == Undefined)
                             return Null;
                         break;
+                    default:
+                        throw new InvalidOperationException($"Unknown transform type: {type}");
                 }
                 if (state == Null || state == Undefined) return Null;
             }
@@ -896,6 +899,33 @@ internal sealed class JintProjectionHandler : IDisposable
             set => FastSetProperty("metadataRaw", new PropertyDescriptor(value, false, true, false));
         }
 
+        private JsValue LinkMetadata
+        {
+            get
+            {
+                if (TryGetValue("linkMetadata", out var value) && value is ObjectInstance) return value;
+                return EnsureLinkMetadata(out value) ? value : Undefined;
+            }
+        }
+
+        private bool EnsureLinkMetadata(out JsValue value)
+        {
+            if (TryGetValue("linkMetadataRaw", out var raw) && raw is not JsUndefined)
+            {
+                var metadata = raw.IsNull() ? raw : _parser.Parse(raw.AsString());
+                SetOwnProperty("linkMetadata", new PropertyDescriptor(metadata, false, true, false));
+                value = metadata;
+                return true;
+            }
+            value = Undefined;
+            return false;
+        }
+
+        public string? LinkMetadataRaw
+        {
+            set => SetOwnProperty("linkMetadataRaw", new PropertyDescriptor(value, false, true, false));
+        }
+
         public string Partition
         {
             set => SetOwnProperty("partition", new PropertyDescriptor(value, false, true, false));
@@ -926,6 +956,7 @@ internal sealed class JintProjectionHandler : IDisposable
         {
             if (property == "body" || property == "data") return Body;
             if (property == "metadata") return Metadata;
+            if (property == "linkMetadata") return LinkMetadata;
             return base.Get(property, receiver);
         }
 
@@ -936,6 +967,7 @@ internal sealed class JintProjectionHandler : IDisposable
         {
             if (!HasOwnProperty("body")) EnsureBody(out _);
             if (!HasOwnProperty("metadata")) EnsureMetadata(out _);
+            if (!HasOwnProperty("linkMetadata")) EnsureLinkMetadata(out _);
             return base.GetOwnProperties();
         }
     }

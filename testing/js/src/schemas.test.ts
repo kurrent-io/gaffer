@@ -4,6 +4,7 @@ import type { RecordedEvent, ResolvedEvent } from "@kurrent/kurrentdb-client";
 import {
 	EventInputSchema,
 	normalizeEvent,
+	parseEventInput,
 	RecordedEventSchema,
 	ResolvedEventSchema,
 	TestEventSchema,
@@ -281,5 +282,53 @@ describe("normalizeEvent", () => {
 		expect(result.eventType).toBe("OrderPlaced");
 		expect(result.streamId).toBe("order-1");
 		expect(result.data).toBe('{"amount":99}');
+	});
+
+	it("preserves eventId when provided on TestEvent", () => {
+		const result = normalizeEvent({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			isJson: true,
+			eventId: "custom-id-123",
+		});
+		expect(result.eventId).toBe("custom-id-123");
+	});
+
+	it("generates eventId when not provided on TestEvent", () => {
+		const result = normalizeEvent({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			isJson: true,
+		});
+		expect(result.eventId).toBeDefined();
+		expect(result.eventId.length).toBeGreaterThan(0);
+	});
+
+	it("preserves timestamp when provided on TestEvent", () => {
+		const result = normalizeEvent({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			isJson: true,
+			timestamp: "2026-01-15T10:00:00Z",
+		});
+		expect(result.timestamp).toBe("2026-01-15T10:00:00Z");
+	});
+
+	it("generates timestamp when not provided on TestEvent", () => {
+		const result = normalizeEvent({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			isJson: true,
+		});
+		expect(result.timestamp).toBeDefined();
+		expect(result.timestamp.length).toBeGreaterThan(0);
+	});
+
+	it("rejects invalid input", () => {
+		expect(() => parseEventInput({ foo: "bar" } as never)).toThrow();
 	});
 });

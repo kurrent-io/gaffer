@@ -7,6 +7,7 @@ describe("systemEvents", () => {
 		expect(event.eventType).toBe("$streamDeleted");
 		expect(event.streamId).toBe("cart-123");
 		expect(event.sequenceNumber).toBe(0);
+		expect(event.isJson).toBe(true);
 		expect(event.data).toEqual({ streamId: "cart-123" });
 	});
 });

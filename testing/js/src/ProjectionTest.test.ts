@@ -346,4 +346,55 @@ describe("ProjectionTest", () => {
 		test.dispose();
 		test.dispose();
 	});
+
+	it("detects link events via isLink", () => {
+		const test = new ProjectionTest(`
+			fromAll().when({
+				$init: function() { return {}; },
+				OrderPlaced: function(s, e) {
+					linkTo("all-orders", e);
+					return s;
+				}
+			})
+		`);
+
+		const step = test.feed({
+			eventType: "OrderPlaced",
+			streamId: "order-1",
+			sequenceNumber: 5,
+			isJson: true,
+			data: {},
+		});
+
+		expect(step.emitted).toHaveLength(1);
+		expect(step.emitted[0].isLink).toBe(true);
+		expect(step.emitted[0].eventType).toBe("$>");
+		expect(step.emitted[0].data).toBe("5@order-1");
+		test.dispose();
+	});
+
+	it("handles non-JSON emitted data gracefully", () => {
+		const test = new ProjectionTest(`
+			fromAll().when({
+				$init: function() { return {}; },
+				OrderPlaced: function(s, e) {
+					linkTo("all-orders", e);
+					return s;
+				}
+			})
+		`);
+
+		const step = test.feed({
+			eventType: "OrderPlaced",
+			streamId: "order-1",
+			sequenceNumber: 3,
+			isJson: true,
+			data: {},
+		});
+
+		// linkTo data is "3@order-1" which is not valid JSON
+		// mapEmittedEvent should fall back to raw string
+		expect(step.emitted[0].data).toBe("3@order-1");
+		test.dispose();
+	});
 });

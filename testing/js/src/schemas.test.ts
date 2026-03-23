@@ -29,6 +29,7 @@ describe("TestEventSchema", () => {
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 		});
 		expect(result.success).toBe(true);
 	});
@@ -38,6 +39,7 @@ describe("TestEventSchema", () => {
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: { foo: 1 },
 		});
 		expect(result.success).toBe(true);
@@ -48,6 +50,7 @@ describe("TestEventSchema", () => {
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: '{"foo":1}',
 		});
 		expect(result.success).toBe(true);
@@ -60,6 +63,7 @@ describe("TestEventSchema", () => {
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: obj,
 		});
 		expect(result.success).toBe(false);
@@ -70,6 +74,7 @@ describe("TestEventSchema", () => {
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: { n: 1n },
 		});
 		expect(result.success).toBe(false);
@@ -82,6 +87,7 @@ describe("EventInputSchema", () => {
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 		});
 		expect(result.success).toBe(true);
 	});
@@ -157,6 +163,7 @@ describe("normalizeEvent", () => {
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: { count: 1 },
 		});
 		expect(result.eventType).toBe("Ping");
@@ -196,6 +203,7 @@ describe("normalizeEvent", () => {
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: '{"raw":true}',
 		});
 		expect(result.data).toBe('{"raw":true}');
@@ -206,6 +214,7 @@ describe("normalizeEvent", () => {
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: null,
 		});
 		expect(result.data).toBeUndefined();
@@ -216,6 +225,7 @@ describe("normalizeEvent", () => {
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 			metadata: { correlationId: "abc" },
 		});
 		expect(result.metadata).toBe('{"correlationId":"abc"}');

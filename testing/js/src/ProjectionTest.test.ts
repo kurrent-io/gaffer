@@ -15,6 +15,7 @@ describe("ProjectionTest", () => {
 			eventType: "ItemAdded",
 			streamId: "cart-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: {},
 		});
 		expect(step.state).toEqual({ count: 1 });
@@ -22,6 +23,7 @@ describe("ProjectionTest", () => {
 			eventType: "ItemAdded",
 			streamId: "cart-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: {},
 		});
 		test.dispose();
@@ -33,18 +35,21 @@ describe("ProjectionTest", () => {
 			eventType: "ItemAdded",
 			streamId: "cart-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: {},
 		});
 		test.feed({
 			eventType: "ItemAdded",
 			streamId: "cart-1",
 			sequenceNumber: 1,
+			isJson: true,
 			data: {},
 		});
 		const step = test.feed({
 			eventType: "ItemAdded",
 			streamId: "cart-1",
 			sequenceNumber: 2,
+			isJson: true,
 			data: {},
 		});
 		expect(step.state).toEqual({ count: 3 });
@@ -63,18 +68,21 @@ describe("ProjectionTest", () => {
 			eventType: "ItemAdded",
 			streamId: "cart-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: {},
 		});
 		test.feed({
 			eventType: "ItemAdded",
 			streamId: "cart-1",
 			sequenceNumber: 1,
+			isJson: true,
 			data: {},
 		});
 		test.feed({
 			eventType: "ItemAdded",
 			streamId: "cart-2",
 			sequenceNumber: 0,
+			isJson: true,
 			data: {},
 		});
 
@@ -98,6 +106,7 @@ describe("ProjectionTest", () => {
 			eventType: "OrderPlaced",
 			streamId: "order-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: { orderId: "ABC" },
 		});
 
@@ -123,6 +132,7 @@ describe("ProjectionTest", () => {
 			eventType: "TestEvent",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: {},
 		});
 
@@ -146,6 +156,7 @@ describe("ProjectionTest", () => {
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: {},
 		});
 		expect(step1.logs).toHaveLength(1);
@@ -155,6 +166,7 @@ describe("ProjectionTest", () => {
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 1,
+			isJson: true,
 			data: {},
 		});
 		expect(step2.logs).toHaveLength(1);
@@ -180,12 +192,14 @@ describe("ProjectionTest", () => {
 			eventType: "Added",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: { amount: 10 },
 		});
 		test.feed({
 			eventType: "Added",
 			streamId: "s-1",
 			sequenceNumber: 1,
+			isJson: true,
 			data: { amount: 20 },
 		});
 
@@ -208,6 +222,7 @@ describe("ProjectionTest", () => {
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: {},
 		});
 		expect(test.getResult()).toEqual({ total: 2 });
@@ -226,6 +241,7 @@ describe("ProjectionTest", () => {
 			eventType: "Deposited",
 			streamId: "acc-1",
 			sequenceNumber: 0,
+			isJson: true,
 			data: { amount: 50 },
 		});
 
@@ -280,6 +296,7 @@ describe("ProjectionTest", () => {
 				eventType: "Bad",
 				streamId: "s-1",
 				sequenceNumber: 0,
+				isJson: true,
 				data: {},
 			}),
 		).toThrow(ProjectionError);
@@ -289,6 +306,7 @@ describe("ProjectionTest", () => {
 				eventType: "Bad",
 				streamId: "s-1",
 				sequenceNumber: 1,
+				isJson: true,
 				data: {},
 			});
 		} catch (err) {
@@ -314,6 +332,7 @@ describe("ProjectionTest", () => {
 				eventType: "ItemAdded",
 				streamId: "s-1",
 				sequenceNumber: 0,
+				isJson: true,
 				data: {},
 			}),
 		).toThrow("disposed");

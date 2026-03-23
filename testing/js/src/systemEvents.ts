@@ -8,6 +8,7 @@ export const systemEvents = {
 			eventType: "$streamDeleted",
 			streamId,
 			sequenceNumber,
+			isJson: true,
 			data: { streamId },
 		};
 	},

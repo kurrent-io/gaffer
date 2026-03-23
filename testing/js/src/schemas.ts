@@ -16,8 +16,11 @@ export const TestEventSchema = v.object({
 	eventType: v.string(),
 	streamId: v.string(),
 	sequenceNumber: v.number(),
+	isJson: v.boolean(),
 	data: v.optional(jsonData),
 	metadata: v.optional(jsonData),
+	eventId: v.optional(v.string()),
+	timestamp: v.optional(v.string()),
 });
 
 export const RecordedEventSchema = v.object({
@@ -30,6 +33,7 @@ export const RecordedEventSchema = v.object({
 	),
 	id: v.optional(v.string()),
 	isJson: v.optional(v.boolean()),
+	created: v.optional(v.any()),
 });
 
 export const ResolvedEventSchema = v.object({
@@ -57,14 +61,18 @@ export interface NormalizedEvent {
 	eventType: string;
 	/** Stream the event belongs to. */
 	streamId: string;
+	/** Position of this event in its stream. */
+	sequenceNumber: number;
+	/** Whether the event data is JSON-encoded. */
+	isJson: boolean;
+	/** Unique event identifier (UUID). */
+	eventId: string;
+	/** When the event was created. */
+	timestamp: string;
 	/** Event data as a JSON string. */
 	data?: string;
 	/** Event metadata as a JSON string. */
 	metadata?: string;
-	/** Position of this event in its stream. */
-	sequenceNumber?: number;
-	/** Whether the event data is JSON-encoded. */
-	isJson?: boolean;
 }
 
 export function normalizeEvent(input: ParsedEventInput): NormalizedEvent {
@@ -92,9 +100,12 @@ function normalizeTestEvent(event: ParsedTestEvent): NormalizedEvent {
 	return {
 		eventType: event.eventType,
 		streamId: event.streamId,
+		sequenceNumber: event.sequenceNumber,
+		isJson: event.isJson,
+		eventId: event.eventId ?? crypto.randomUUID(),
+		timestamp: event.timestamp ?? new Date().toISOString(),
 		data: stringifyData(event.data),
 		metadata: stringifyData(event.metadata),
-		sequenceNumber: event.sequenceNumber,
 	};
 }
 
@@ -102,10 +113,15 @@ function normalizeRecordedEvent(event: ParsedRecordedEvent): NormalizedEvent {
 	return {
 		eventType: event.type,
 		streamId: event.streamId,
+		sequenceNumber: event.revision ?? 0,
+		isJson: event.isJson ?? true,
+		eventId: event.id ?? crypto.randomUUID(),
+		timestamp:
+			event.created instanceof Date
+				? event.created.toISOString()
+				: new Date().toISOString(),
 		data: stringifyData(event.data),
 		metadata: stringifyData(event.metadata),
-		sequenceNumber: event.revision,
-		isJson: event.isJson,
 	};
 }
 

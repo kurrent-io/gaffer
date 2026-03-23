@@ -40,18 +40,29 @@ function runFixture(f: Fixture) {
 
 	// Check validity
 	if (f.expect.valid === false) {
-		expect(() => new ProjectionSession(f.source, optionsJson ? JSON.parse(optionsJson) : undefined)).toThrow();
+		expect(
+			() =>
+				new ProjectionSession(
+					f.source,
+					optionsJson ? JSON.parse(optionsJson) : undefined,
+				),
+		).toThrow();
 		return;
 	}
 
-	const session = new ProjectionSession(f.source, optionsJson ? JSON.parse(optionsJson) : undefined);
+	const session = new ProjectionSession(
+		f.source,
+		optionsJson ? JSON.parse(optionsJson) : undefined,
+	);
 
 	try {
 		// Check sources
 		if (f.expect.sources) {
 			const sources = session.getSources();
 			for (const [key, expected] of Object.entries(f.expect.sources)) {
-				expect((sources as unknown as Record<string, unknown>)[key]).toEqual(expected);
+				expect((sources as unknown as Record<string, unknown>)[key]).toEqual(
+					expected,
+				);
 			}
 		}
 
@@ -80,7 +91,7 @@ function runFixture(f: Fixture) {
 
 			try {
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			session.feed(event as any);
+				session.feed(event as any);
 			} catch (err) {
 				lastError = err instanceof Error ? err.message : String(err);
 			}

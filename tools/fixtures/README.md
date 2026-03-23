@@ -13,7 +13,7 @@ Each fixture file is a JSON array of test cases:
   "source": "fromAll().when({ ... })",
   "options": { "handlerTimeoutMs": 100 },
   "events": [
-    { "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+    { "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" }
   ],
   "expect": {
     "valid": true,

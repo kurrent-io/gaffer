@@ -46,6 +46,10 @@ Key types: `ProjectionSession`, `ProjectionEvent`, `EmittedEvent`, `QuerySources
 The C API (gaffer.h) exposes the same functionality for FFI consumers. Go bindings
 wrap the C API via cgo.
 
+## NativeAOT rules
+
+Do not use LINQ extension methods on arrays in runtime code (AsEnumerable, Select, Where, etc.). LINQ interface dispatch on arrays crashes when the .so is loaded by non-.NET FFI hosts (koffi/Node). Use indexed `for` loops instead.
+
 ## Conventions
 
 - C#: .editorconfig matching KurrentDB (tabs, K&R braces, file-scoped namespaces)

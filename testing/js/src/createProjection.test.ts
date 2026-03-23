@@ -102,18 +102,21 @@ describe("createProjection", () => {
 					eventType: "ItemAdded",
 					streamId: "cart-1",
 					sequenceNumber: 0,
+					isJson: true,
 					data: {},
 				},
 				{
 					eventType: "ItemAdded",
 					streamId: "cart-1",
 					sequenceNumber: 1,
+					isJson: true,
 					data: {},
 				},
 				{
 					eventType: "ItemAdded",
 					streamId: "cart-1",
 					sequenceNumber: 2,
+					isJson: true,
 					data: {},
 				},
 			];
@@ -132,18 +135,21 @@ describe("createProjection", () => {
 					eventType: "ItemAdded",
 					streamId: "cart-1",
 					sequenceNumber: 0,
+					isJson: true,
 					data: {},
 				},
 				{
 					eventType: "ItemAdded",
 					streamId: "cart-1",
 					sequenceNumber: 1,
+					isJson: true,
 					data: {},
 				},
 				{
 					eventType: "ItemAdded",
 					streamId: "cart-1",
 					sequenceNumber: 2,
+					isJson: true,
 					data: {},
 				},
 			];
@@ -163,12 +169,14 @@ describe("createProjection", () => {
 					eventType: "ItemAdded",
 					streamId: "cart-1",
 					sequenceNumber: 0,
+					isJson: true,
 					data: {},
 				};
 				yield {
 					eventType: "ItemAdded",
 					streamId: "cart-1",
 					sequenceNumber: 1,
+					isJson: true,
 					data: {},
 				};
 			}
@@ -190,6 +198,7 @@ describe("createProjection", () => {
 				eventType: "ItemAdded",
 				streamId: "cart-1",
 				sequenceNumber: 0,
+				isJson: true,
 				data: {},
 			});
 			expect(test.getState()).toEqual({ count: 1 });
@@ -212,6 +221,7 @@ describe("createProjection", () => {
 				eventType: "ItemAdded",
 				streamId: "cart-123",
 				sequenceNumber: 0,
+				isJson: true,
 				data: {},
 			});
 			test.feed(systemEvents.streamDeleted("cart-123", 1));

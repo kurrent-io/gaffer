@@ -3,7 +3,7 @@
 		"name": "handler throws string",
 		"source": "fromAll().when({ $init: function() { return {}; }, Bad: function(s, e) { throw \"boom\"; } })",
 		"events": [
-			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" }
 		],
 		"expect": {
 			"error": "boom"
@@ -13,7 +13,7 @@
 		"name": "handler throws Error object",
 		"source": "fromAll().when({ $init: function() { return {}; }, Bad: function(s, e) { throw new Error(\"something went wrong\"); } })",
 		"events": [
-			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" }
 		],
 		"expect": {
 			"error": "something went wrong"
@@ -23,7 +23,7 @@
 		"name": "handler throws TypeError",
 		"source": "fromAll().when({ $init: function() { return {}; }, Bad: function(s, e) { return e.data.foo.bar; } })",
 		"events": [
-			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" }
 		],
 		"expect": {
 			"error": "Cannot read property"
@@ -40,8 +40,8 @@
 		"name": "first event succeeds then second fails",
 		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Good: function(s, e) { s.count++; return s; }, Bad: function(s, e) { throw \"fail\"; } })",
 		"events": [
-			{ "eventType": "Good", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" },
-			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 1, "data": "{}" }
+			{ "eventType": "Good", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" },
+			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 1, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" }
 		],
 		"expect": {
 			"error": "fail"
@@ -52,7 +52,7 @@
 		"source": "fromAll().when({ $init: function() { return {}; }, Hang: function(s, e) { while(true) {} return s; } })",
 		"options": { "executionTimeoutMs": 100 },
 		"events": [
-			{ "eventType": "Hang", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+			{ "eventType": "Hang", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" }
 		],
 		"expect": {
 			"error": "too long to execute"

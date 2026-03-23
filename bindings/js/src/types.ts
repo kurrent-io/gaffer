@@ -2,13 +2,13 @@
 export interface ProjectionEvent {
 	eventType: string;
 	streamId: string;
+	sequenceNumber: number;
+	isJson: boolean;
+	eventId: string;
+	timestamp: string;
 	data?: string;
 	metadata?: string;
 	linkMetadata?: string;
-	sequenceNumber?: number;
-	isJson?: boolean;
-	eventId?: string;
-	timestamp?: string;
 }
 
 /** An event emitted by a projection via emit() or linkTo(). */

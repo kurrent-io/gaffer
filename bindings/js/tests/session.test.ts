@@ -33,9 +33,33 @@ describe("ProjectionSession", () => {
 			})
 		`);
 
-		session.feed({ eventType: "ItemAdded", streamId: "cart-1", data: "{}" });
-		session.feed({ eventType: "ItemAdded", streamId: "cart-1", data: "{}" });
-		session.feed({ eventType: "ItemAdded", streamId: "cart-1", data: "{}" });
+		session.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
+		});
+		session.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
+		});
+		session.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
+		});
 
 		expect(session.getStateJson<{ count: number }>()?.count).toBe(3);
 	});
@@ -51,12 +75,20 @@ describe("ProjectionSession", () => {
 		session.feed({
 			eventType: "Deposited",
 			streamId: "acc-1",
+			sequenceNumber: 0,
 			data: '{"amount":50}',
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
 		});
 		session.feed({
 			eventType: "Deposited",
 			streamId: "acc-1",
+			sequenceNumber: 0,
 			data: '{"amount":30}',
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
 		});
 
 		expect(session.getStateJson<{ total: number }>()?.total).toBe(80);
@@ -70,9 +102,33 @@ describe("ProjectionSession", () => {
 			})
 		`);
 
-		session.feed({ eventType: "ItemAdded", streamId: "cart-1", data: "{}" });
-		session.feed({ eventType: "ItemAdded", streamId: "cart-1", data: "{}" });
-		session.feed({ eventType: "ItemAdded", streamId: "cart-2", data: "{}" });
+		session.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
+		});
+		session.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
+		});
+		session.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-2",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
+		});
 
 		expect(session.getStateJson<{ items: number }>("cart-1")?.items).toBe(2);
 		expect(session.getStateJson<{ items: number }>("cart-2")?.items).toBe(1);
@@ -100,7 +156,15 @@ describe("ProjectionSession", () => {
 		`);
 
 		session.setState(null, '{"count":10}');
-		session.feed({ eventType: "Ping", streamId: "s-1", data: "{}" });
+		session.feed({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
+		});
 
 		expect(session.getStateJson<{ count: number }>()?.count).toBe(11);
 	});
@@ -114,7 +178,15 @@ describe("ProjectionSession", () => {
 		`);
 
 		expect(() =>
-			session!.feed({ eventType: "Bad", streamId: "s-1", data: "{}" }),
+			session!.feed({
+				eventType: "Bad",
+				streamId: "s-1",
+				sequenceNumber: 0,
+				data: "{}",
+				isJson: true,
+				eventId: "00000000-0000-0000-0000-000000000000",
+				timestamp: "2026-01-01T00:00:00Z",
+			}),
 		).toThrow(/boom/);
 	});
 
@@ -139,7 +211,15 @@ describe("ProjectionSession", () => {
 		s.dispose();
 
 		expect(() =>
-			s.feed({ eventType: "Ping", streamId: "s-1", data: "{}" }),
+			s.feed({
+				eventType: "Ping",
+				streamId: "s-1",
+				sequenceNumber: 0,
+				data: "{}",
+				isJson: true,
+				eventId: "00000000-0000-0000-0000-000000000000",
+				timestamp: "2026-01-01T00:00:00Z",
+			}),
 		).toThrow(/disposed/);
 	});
 
@@ -171,7 +251,11 @@ describe("ProjectionSession", () => {
 		session.feed({
 			eventType: "OrderPlaced",
 			streamId: "order-1",
+			sequenceNumber: 0,
 			data: '{"orderId":"ABC"}',
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
 		});
 
 		expect(emitted).toHaveLength(1);
@@ -193,7 +277,15 @@ describe("ProjectionSession", () => {
 		const logs: string[] = [];
 		session.onLog((msg) => logs.push(msg));
 
-		session.feed({ eventType: "TestEvent", streamId: "s-1", data: "{}" });
+		session.feed({
+			eventType: "TestEvent",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
+		});
 
 		expect(logs).toHaveLength(1);
 		expect(logs[0]).toBe("hello from projection");
@@ -212,8 +304,24 @@ describe("ProjectionSession", () => {
 			changes.push({ partition, state }),
 		);
 
-		session.feed({ eventType: "Ping", streamId: "s-1", data: "{}" });
-		session.feed({ eventType: "Ping", streamId: "s-1", data: "{}" });
+		session.feed({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
+		});
+		session.feed({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
+		});
 
 		expect(changes).toHaveLength(2);
 		expect(changes[0].state).toContain('"count":1');
@@ -238,7 +346,15 @@ describe("ProjectionSession", () => {
 		const warnings: Array<{ handler: string; ms: number }> = [];
 		session.onSlowHandler((handler, ms) => warnings.push({ handler, ms }));
 
-		session.feed({ eventType: "Slow", streamId: "s-1", data: "{}" });
+		session.feed({
+			eventType: "Slow",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
+		});
 
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0].handler).toBe("Slow");
@@ -262,12 +378,20 @@ describe("ProjectionSession", () => {
 		session.feed({
 			eventType: "Added",
 			streamId: "s-1",
+			sequenceNumber: 0,
 			data: '{"amount":10}',
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
 		});
 		session.feed({
 			eventType: "Added",
 			streamId: "s-1",
+			sequenceNumber: 0,
 			data: '{"amount":20}',
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
 		});
 
 		expect(session.getStateJson<{ count: number }>()?.count).toBe(2);
@@ -284,7 +408,15 @@ describe("ProjectionSession", () => {
 			}).outputState()
 		`);
 
-		session.feed({ eventType: "Ping", streamId: "s-1", data: "{}" });
+		session.feed({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
+		});
 
 		expect(session.getResultJson<{ total: number }>()?.total).toBe(2);
 	});
@@ -302,7 +434,11 @@ describe("ProjectionSession", () => {
 		const key = session.getPartitionKey({
 			eventType: "Event",
 			streamId: "s-1",
+			sequenceNumber: 0,
 			data: '{"region":"eu"}',
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			timestamp: "2026-01-01T00:00:00Z",
 		});
 		expect(key).toBe("eu");
 	});

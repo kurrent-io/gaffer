@@ -1,0 +1,120 @@
+[
+	{
+		"name": "emit event",
+		"source": "fromAll().when({ $init: function() { return {}; }, OrderPlaced: function(s, e) { emit(\"notifications\", \"OrderNotification\", { orderId: e.data.orderId }); return s; } })",
+		"events": [
+			{ "eventType": "OrderPlaced", "streamId": "order-1", "sequenceNumber": 0, "data": "{\"orderId\":\"ABC\"}" }
+		],
+		"expect": {
+			"emitted": [
+				{ "streamId": "notifications", "eventType": "OrderNotification", "data": "{\"orderId\":\"ABC\"}" }
+			]
+		}
+	},
+	{
+		"name": "emit with metadata",
+		"source": "fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { emit(\"out\", \"Pong\", {}, { source: \"test\" }); return s; } })",
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"emitted": [
+				{ "streamId": "out", "eventType": "Pong", "data": "{}" }
+			]
+		}
+	},
+	{
+		"name": "linkTo event",
+		"source": "fromAll().when({ $init: function() { return {}; }, OrderPlaced: function(s, e) { linkTo(\"all-orders\", e); return s; } })",
+		"events": [
+			{ "eventType": "OrderPlaced", "streamId": "order-1", "sequenceNumber": 5, "data": "{}" }
+		],
+		"expect": {
+			"emitted": [
+				{ "streamId": "all-orders", "eventType": "$>", "data": "5@order-1" }
+			]
+		}
+	},
+	{
+		"name": "linkTo with metadata",
+		"source": "fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { linkTo(\"linked\", e, { reason: \"test\" }); return s; } })",
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 3, "data": "{}" }
+		],
+		"expect": {
+			"emitted": [
+				{ "streamId": "linked", "eventType": "$>", "data": "3@s-1" }
+			]
+		}
+	},
+	{
+		"name": "log output",
+		"source": "fromAll().when({ TestEvent: function(s, e) { log(\"hello from projection\"); return s; } })",
+		"events": [
+			{ "eventType": "TestEvent", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"logs": ["hello from projection"]
+		}
+	},
+	{
+		"name": "multiple log calls",
+		"source": "fromAll().when({ Ping: function(s, e) { log(\"first\"); log(\"second\"); log(\"third\"); return s; } })",
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"logs": ["first", "second", "third"]
+		}
+	},
+	{
+		"name": "multiple emits per event",
+		"source": "fromAll().when({ $init: function() { return {}; }, Batch: function(s, e) { emit(\"out\", \"A\", {}); emit(\"out\", \"B\", {}); return s; } })",
+		"events": [
+			{ "eventType": "Batch", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"emitted": [
+				{ "streamId": "out", "eventType": "A", "data": "{}" },
+				{ "streamId": "out", "eventType": "B", "data": "{}" }
+			]
+		}
+	},
+	{
+		"name": "emit and log in same handler",
+		"source": "fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { log(\"processing\"); emit(\"out\", \"Pong\", {}); return s; } })",
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"emitted": [
+				{ "streamId": "out", "eventType": "Pong", "data": "{}" }
+			],
+			"logs": ["processing"]
+		}
+	},
+	{
+		"name": "emit from partitioned projection",
+		"source": "fromAll().foreachStream().when({ $init: function() { return {}; }, OrderPlaced: function(s, e) { emit(\"all-orders\", \"OrderReceived\", { stream: e.streamId }); return s; } })",
+		"events": [
+			{ "eventType": "OrderPlaced", "streamId": "order-1", "sequenceNumber": 0, "data": "{}" },
+			{ "eventType": "OrderPlaced", "streamId": "order-2", "sequenceNumber": 1, "data": "{}" }
+		],
+		"expect": {
+			"emitted": [
+				{ "streamId": "all-orders", "eventType": "OrderReceived", "data": "{\"stream\":\"order-2\"}" }
+			]
+		}
+	},
+	{
+		"name": "no emits when handler does not emit",
+		"source": "fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"emitted": [],
+			"logs": []
+		}
+	}
+]

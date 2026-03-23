@@ -1,0 +1,191 @@
+[
+	{
+		"name": "fromAll",
+		"source": "fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"AllStreams": true,
+				"AllEvents": false,
+				"Streams": null,
+				"Categories": null,
+				"Events": ["Ping"],
+				"ByStreams": false,
+				"ByCustomPartitions": false
+			}
+		}
+	},
+	{
+		"name": "fromStream",
+		"source": "fromStream(\"orders\").when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"AllStreams": false,
+				"Streams": ["orders"]
+			}
+		}
+	},
+	{
+		"name": "fromStreams with array",
+		"source": "fromStreams([\"a\", \"b\"]).when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"AllStreams": false,
+				"Streams": ["a", "b"]
+			}
+		}
+	},
+	{
+		"name": "fromStreams with varargs",
+		"source": "fromStreams(\"a\", \"b\").when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"AllStreams": false,
+				"Streams": ["a", "b"]
+			}
+		}
+	},
+	{
+		"name": "fromCategory",
+		"source": "fromCategory(\"orders\").when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"AllStreams": false,
+				"Categories": ["orders"]
+			}
+		}
+	},
+	{
+		"name": "fromCategories with array",
+		"source": "fromCategories([\"orders\", \"invoices\"]).when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"Streams": ["$ce-orders", "$ce-invoices"]
+			}
+		}
+	},
+	{
+		"name": "fromCategories with varargs",
+		"source": "fromCategories(\"orders\", \"invoices\").when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"Streams": ["$ce-orders", "$ce-invoices"]
+			}
+		}
+	},
+	{
+		"name": "foreachStream from all",
+		"source": "fromAll().foreachStream().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"AllStreams": true,
+				"ByStreams": true
+			}
+		}
+	},
+	{
+		"name": "foreachStream from category",
+		"source": "fromCategory(\"cart\").foreachStream().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"ByStreams": true,
+				"Categories": ["cart"]
+			}
+		}
+	},
+	{
+		"name": "partitionBy",
+		"source": "fromAll().partitionBy(function(e) { return e.data.region; }).when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"ByCustomPartitions": true
+			}
+		}
+	},
+	{
+		"name": "multiple event types in when",
+		"source": "fromAll().when({ $init: function() { return {}; }, OrderPlaced: function(s, e) { return s; }, OrderShipped: function(s, e) { return s; }, OrderCancelled: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"Events": ["OrderPlaced", "OrderShipped", "OrderCancelled"]
+			}
+		}
+	},
+	{
+		"name": "$any handler reports AllEvents",
+		"source": "fromAll().when({ $init: function() { return {}; }, $any: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"AllEvents": true,
+				"Events": null
+			}
+		}
+	},
+	{
+		"name": "includeLinks option",
+		"source": "options({ $includeLinks: true }); fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"IncludeLinks": true
+			}
+		}
+	},
+	{
+		"name": "reorderEvents option",
+		"source": "options({ reorderEvents: true, processingLag: 500 }); fromStreams([\"a\", \"b\"]).when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"ReorderEvents": true,
+				"ProcessingLag": 500
+			}
+		}
+	},
+	{
+		"name": "biState option",
+		"source": "options({ biState: true }); fromAll().when({ $init: function() { return {}; }, $initShared: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"IsBiState": true
+			}
+		}
+	},
+	{
+		"name": "invalid JS",
+		"source": "this is not valid {{{{",
+		"expect": {
+			"valid": false
+		}
+	},
+	{
+		"name": "missing when clause is valid",
+		"source": "fromAll()",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"AllStreams": true,
+				"DefinesFold": false
+			}
+		}
+	},
+	{
+		"name": "empty source is valid",
+		"source": "",
+		"expect": {
+			"valid": true
+		}
+	}
+]

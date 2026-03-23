@@ -1,0 +1,55 @@
+[
+	{
+		"name": "transformBy",
+		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Ping: function(s, e) { s.count++; return s; } }).transformBy(function(s) { return { total: s.count * 2 }; }).outputState()",
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"state": { "count": 1 },
+			"result": { "total": 2 }
+		}
+	},
+	{
+		"name": "filterBy includes",
+		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Ping: function(s, e) { s.count++; return s; } }).filterBy(function(s) { return s.count > 0; }).outputState()",
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"result": { "count": 1 }
+		}
+	},
+	{
+		"name": "filterBy excludes",
+		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Ping: function(s, e) { s.count++; return s; } }).filterBy(function(s) { return s.count > 5; }).outputState()",
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"result": null
+		}
+	},
+	{
+		"name": "outputState sets result stream",
+		"source": "fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } }).outputState()",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"ProducesResults": true,
+				"DefinesStateTransform": false
+			}
+		}
+	},
+	{
+		"name": "transformBy sets state transform flag",
+		"source": "fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } }).transformBy(function(s) { return s; }).outputState()",
+		"expect": {
+			"valid": true,
+			"sources": {
+				"DefinesStateTransform": true,
+				"ProducesResults": true
+			}
+		}
+	}
+]

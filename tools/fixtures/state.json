@@ -1,0 +1,268 @@
+[
+	{
+		"name": "init and accumulate",
+		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, ItemAdded: function(s, e) { s.count++; return s; } })",
+		"events": [
+			{ "eventType": "ItemAdded", "streamId": "cart-1", "sequenceNumber": 0, "data": "{}" },
+			{ "eventType": "ItemAdded", "streamId": "cart-1", "sequenceNumber": 1, "data": "{}" },
+			{ "eventType": "ItemAdded", "streamId": "cart-1", "sequenceNumber": 2, "data": "{}" }
+		],
+		"expect": {
+			"state": { "count": 3 }
+		}
+	},
+	{
+		"name": "access event data",
+		"source": "fromAll().when({ $init: function() { return { total: 0 }; }, Deposited: function(s, e) { s.total += e.data.amount; return s; } })",
+		"events": [
+			{ "eventType": "Deposited", "streamId": "acc-1", "sequenceNumber": 0, "data": "{\"amount\":50}" },
+			{ "eventType": "Deposited", "streamId": "acc-1", "sequenceNumber": 1, "data": "{\"amount\":30}" }
+		],
+		"expect": {
+			"state": { "total": 80 }
+		}
+	},
+	{
+		"name": "access nested event data",
+		"source": "fromAll().when({ $init: function() { return { name: '' }; }, UserUpdated: function(s, e) { s.name = e.data.user.name; return s; } })",
+		"events": [
+			{ "eventType": "UserUpdated", "streamId": "user-1", "sequenceNumber": 0, "data": "{\"user\":{\"name\":\"Alice\",\"age\":30}}" }
+		],
+		"expect": {
+			"state": { "name": "Alice" }
+		}
+	},
+	{
+		"name": "unhandled events ignored",
+		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Wanted: function(s, e) { s.count++; return s; } })",
+		"events": [
+			{ "eventType": "Wanted", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" },
+			{ "eventType": "Ignored", "streamId": "s-1", "sequenceNumber": 1, "data": "{}" },
+			{ "eventType": "Wanted", "streamId": "s-1", "sequenceNumber": 2, "data": "{}" }
+		],
+		"expect": {
+			"state": { "count": 2 }
+		}
+	},
+	{
+		"name": "$any catches all events",
+		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, $any: function(s, e) { s.count++; return s; } })",
+		"events": [
+			{ "eventType": "Foo", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" },
+			{ "eventType": "Bar", "streamId": "s-1", "sequenceNumber": 1, "data": "{}" },
+			{ "eventType": "Baz", "streamId": "s-1", "sequenceNumber": 2, "data": "{}" }
+		],
+		"expect": {
+			"state": { "count": 3 }
+		}
+	},
+	{
+		"name": "named handler takes priority over $any",
+		"source": "fromAll().when({ $init: function() { return { specific: 0, other: 0 }; }, Specific: function(s, e) { s.specific++; return s; }, $any: function(s, e) { s.other++; return s; } })",
+		"events": [
+			{ "eventType": "Specific", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" },
+			{ "eventType": "Other", "streamId": "s-1", "sequenceNumber": 1, "data": "{}" }
+		],
+		"expect": {
+			"state": { "specific": 1, "other": 1 }
+		}
+	},
+	{
+		"name": "foreachStream partitioning",
+		"source": "fromCategory(\"cart\").foreachStream().when({ $init: function() { return { items: 0 }; }, ItemAdded: function(s, e) { s.items++; return s; } })",
+		"events": [
+			{ "eventType": "ItemAdded", "streamId": "cart-1", "sequenceNumber": 0, "data": "{}" },
+			{ "eventType": "ItemAdded", "streamId": "cart-1", "sequenceNumber": 1, "data": "{}" },
+			{ "eventType": "ItemAdded", "streamId": "cart-2", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"states": {
+				"cart-1": { "items": 2 },
+				"cart-2": { "items": 1 }
+			}
+		}
+	},
+	{
+		"name": "partitionBy custom key",
+		"source": "fromAll().partitionBy(function(e) { return e.data.region; }).when({ $init: function() { return { count: 0 }; }, Event: function(s, e) { s.count++; return s; } })",
+		"events": [
+			{ "eventType": "Event", "streamId": "s-1", "sequenceNumber": 0, "data": "{\"region\":\"eu\"}" },
+			{ "eventType": "Event", "streamId": "s-2", "sequenceNumber": 1, "data": "{\"region\":\"us\"}" },
+			{ "eventType": "Event", "streamId": "s-3", "sequenceNumber": 2, "data": "{\"region\":\"eu\"}" }
+		],
+		"expect": {
+			"states": {
+				"eu": { "count": 2 },
+				"us": { "count": 1 }
+			}
+		}
+	},
+	{
+		"name": "set and restore state",
+		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Ping: function(s, e) { s.count++; return s; } })",
+		"setState": { "partition": null, "state": "{\"count\":10}" },
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"state": { "count": 11 }
+		}
+	},
+	{
+		"name": "set and restore partitioned state",
+		"source": "fromAll().foreachStream().when({ $init: function() { return { count: 0 }; }, Ping: function(s, e) { s.count++; return s; } })",
+		"setState": { "partition": "s-1", "state": "{\"count\":5}" },
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"states": {
+				"s-1": { "count": 6 }
+			}
+		}
+	},
+	{
+		"name": "biState with shared state",
+		"source": "options({ biState: true }); fromAll().when({ $init: function() { return { count: 0 }; }, $initShared: function() { return { total: 0 }; }, Added: function(s, e) { s[0].count++; s[1].total += e.data.amount; return s; } })",
+		"events": [
+			{ "eventType": "Added", "streamId": "s-1", "sequenceNumber": 0, "data": "{\"amount\":10}" },
+			{ "eventType": "Added", "streamId": "s-1", "sequenceNumber": 1, "data": "{\"amount\":20}" }
+		],
+		"expect": {
+			"state": { "count": 2 },
+			"sharedState": { "total": 30 }
+		}
+	},
+	{
+		"name": "state with nested objects",
+		"source": "fromAll().when({ $init: function() { return { users: {}, count: 0 }; }, UserCreated: function(s, e) { s.users[e.data.id] = { name: e.data.name }; s.count++; return s; } })",
+		"events": [
+			{ "eventType": "UserCreated", "streamId": "s-1", "sequenceNumber": 0, "data": "{\"id\":\"u1\",\"name\":\"Alice\"}" },
+			{ "eventType": "UserCreated", "streamId": "s-1", "sequenceNumber": 1, "data": "{\"id\":\"u2\",\"name\":\"Bob\"}" }
+		],
+		"expect": {
+			"state": {
+				"users": { "u1": { "name": "Alice" }, "u2": { "name": "Bob" } },
+				"count": 2
+			}
+		}
+	},
+	{
+		"name": "state with arrays",
+		"source": "fromAll().when({ $init: function() { return { items: [] }; }, Added: function(s, e) { s.items.push(e.data.item); return s; } })",
+		"events": [
+			{ "eventType": "Added", "streamId": "s-1", "sequenceNumber": 0, "data": "{\"item\":\"apple\"}" },
+			{ "eventType": "Added", "streamId": "s-1", "sequenceNumber": 1, "data": "{\"item\":\"banana\"}" }
+		],
+		"expect": {
+			"state": { "items": ["apple", "banana"] }
+		}
+	},
+	{
+		"name": "unknown partition returns null",
+		"source": "fromAll().foreachStream().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"states": {
+				"s-1": {},
+				"nonexistent": null
+			}
+		}
+	},
+	{
+		"name": "event metadata accessible",
+		"source": "fromAll().when({ $init: function() { return { correlation: '' }; }, Ping: function(s, e) { s.correlation = e.metadata.correlationId; return s; } })",
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "metadata": "{\"correlationId\":\"abc-123\"}" }
+		],
+		"expect": {
+			"state": { "correlation": "abc-123" }
+		}
+	},
+	{
+		"name": "event streamId accessible",
+		"source": "fromAll().when({ $init: function() { return { stream: '' }; }, Ping: function(s, e) { s.stream = e.streamId; return s; } })",
+		"events": [
+			{ "eventType": "Ping", "streamId": "order-42", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"state": { "stream": "order-42" }
+		}
+	},
+	{
+		"name": "event sequenceNumber accessible",
+		"source": "fromAll().when({ $init: function() { return { seq: -1 }; }, Ping: function(s, e) { s.seq = e.sequenceNumber; return s; } })",
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 42, "data": "{}" }
+		],
+		"expect": {
+			"state": { "seq": 42 }
+		}
+	},
+	{
+		"name": "event eventType accessible",
+		"source": "fromAll().when({ $init: function() { return { type: '' }; }, $any: function(s, e) { s.type = e.eventType; return s; } })",
+		"events": [
+			{ "eventType": "SpecificType", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"state": { "type": "SpecificType" }
+		}
+	},
+	{
+		"name": "event isJson accessible",
+		"source": "fromAll().when({ $init: function() { return { json: false }; }, Ping: function(s, e) { s.json = e.isJson; return s; } })",
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true }
+		],
+		"expect": {
+			"state": { "json": true }
+		}
+	},
+	{
+		"name": "unicode in event data",
+		"source": "fromAll().when({ $init: function() { return { name: '' }; }, Named: function(s, e) { s.name = e.data.name; return s; } })",
+		"events": [
+			{ "eventType": "Named", "streamId": "s-1", "sequenceNumber": 0, "data": "{\"name\":\"日本語テスト\"}" }
+		],
+		"expect": {
+			"state": { "name": "日本語テスト" }
+		}
+	},
+	{
+		"name": "special characters in stream names",
+		"source": "fromAll().foreachStream().when({ $init: function() { return { seen: true }; }, Ping: function(s, e) { return s; } })",
+		"events": [
+			{ "eventType": "Ping", "streamId": "stream-with-dashes_and_underscores.and.dots", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"states": {
+				"stream-with-dashes_and_underscores.and.dots": { "seen": true }
+			}
+		}
+	},
+	{
+		"name": "empty data object",
+		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Ping: function(s, e) { s.count++; return s; } })",
+		"events": [
+			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}" }
+		],
+		"expect": {
+			"state": { "count": 1 }
+		}
+	},
+	{
+		"name": "events from multiple streams to same projection",
+		"source": "fromAll().when({ $init: function() { return { streams: {} }; }, Ping: function(s, e) { s.streams[e.streamId] = (s.streams[e.streamId] || 0) + 1; return s; } })",
+		"events": [
+			{ "eventType": "Ping", "streamId": "a", "sequenceNumber": 0, "data": "{}" },
+			{ "eventType": "Ping", "streamId": "b", "sequenceNumber": 1, "data": "{}" },
+			{ "eventType": "Ping", "streamId": "a", "sequenceNumber": 2, "data": "{}" }
+		],
+		"expect": {
+			"state": { "streams": { "a": 2, "b": 1 } }
+		}
+	}
+]

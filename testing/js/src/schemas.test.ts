@@ -1,0 +1,275 @@
+import { describe, expect, it } from "vitest";
+import * as v from "valibot";
+import type { RecordedEvent, ResolvedEvent } from "@kurrent/kurrentdb-client";
+import {
+	EventInputSchema,
+	normalizeEvent,
+	RecordedEventSchema,
+	ResolvedEventSchema,
+	TestEventSchema,
+} from "./schemas.js";
+
+type Assert<T extends true> = T;
+type Extends<A, B> = A extends B ? true : false;
+
+// Compile-time: KurrentDB client types must be accepted by our schemas
+it("schemas accept KurrentDB client types", () => {
+	const recorded: Assert<
+		Extends<RecordedEvent, v.InferInput<typeof RecordedEventSchema>>
+	> = true;
+	const resolved: Assert<
+		Extends<Required<ResolvedEvent>, v.InferInput<typeof ResolvedEventSchema>>
+	> = true;
+	expect(recorded && resolved).toBe(true);
+});
+
+describe("TestEventSchema", () => {
+	it("accepts minimal event", () => {
+		const result = v.safeParse(TestEventSchema, {
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+		});
+		expect(result.success).toBe(true);
+	});
+
+	it("accepts event with object data", () => {
+		const result = v.safeParse(TestEventSchema, {
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: { foo: 1 },
+		});
+		expect(result.success).toBe(true);
+	});
+
+	it("accepts event with string data", () => {
+		const result = v.safeParse(TestEventSchema, {
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: '{"foo":1}',
+		});
+		expect(result.success).toBe(true);
+	});
+
+	it("rejects circular data", () => {
+		const obj: Record<string, unknown> = {};
+		obj.self = obj;
+		const result = v.safeParse(TestEventSchema, {
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: obj,
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects BigInt data", () => {
+		const result = v.safeParse(TestEventSchema, {
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: { n: 1n },
+		});
+		expect(result.success).toBe(false);
+	});
+});
+
+describe("EventInputSchema", () => {
+	it("accepts TestEvent shape", () => {
+		const result = v.safeParse(EventInputSchema, {
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+		});
+		expect(result.success).toBe(true);
+	});
+
+	it("accepts RecordedEvent shape", () => {
+		const result = v.safeParse(EventInputSchema, {
+			type: "Ping",
+			streamId: "s-1",
+			data: "{}",
+		});
+		expect(result.success).toBe(true);
+	});
+
+	it("accepts ResolvedEvent shape", () => {
+		const result = v.safeParse(EventInputSchema, {
+			event: { type: "Ping", streamId: "s-1", data: "{}" },
+		});
+		expect(result.success).toBe(true);
+	});
+
+	it("accepts full KurrentDB RecordedEvent", () => {
+		const event: RecordedEvent = {
+			streamId: "order-1",
+			id: "550e8400-e29b-41d4-a716-446655440000",
+			isJson: true,
+			revision: 5n,
+			type: "OrderPlaced",
+			created: new Date("2026-01-15T10:30:00Z"),
+			data: { amount: 99 },
+			metadata: { $correlationId: "abc-123" },
+		};
+		const result = v.safeParse(EventInputSchema, event);
+		expect(result.success).toBe(true);
+	});
+
+	it("accepts full KurrentDB ResolvedEvent", () => {
+		const resolved: ResolvedEvent = {
+			event: {
+				streamId: "order-1",
+				id: "550e8400-e29b-41d4-a716-446655440000",
+				isJson: true,
+				revision: 5n,
+				type: "OrderPlaced",
+				created: new Date("2026-01-15T10:30:00Z"),
+				data: { amount: 99 },
+				metadata: { $correlationId: "abc-123" },
+			},
+			commitPosition: 1024n,
+		};
+		const result = v.safeParse(EventInputSchema, resolved);
+		expect(result.success).toBe(true);
+	});
+
+	it("accepts KurrentDB RecordedEvent with binary data", () => {
+		const event: RecordedEvent = {
+			streamId: "s-1",
+			id: "550e8400-e29b-41d4-a716-446655440000",
+			isJson: false,
+			revision: 0n,
+			type: "BinaryEvent",
+			created: new Date(),
+			data: new Uint8Array([123, 125]),
+			metadata: undefined,
+		};
+		const result = v.safeParse(EventInputSchema, event);
+		expect(result.success).toBe(true);
+	});
+});
+
+describe("normalizeEvent", () => {
+	it("normalizes TestEvent", () => {
+		const result = normalizeEvent({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: { count: 1 },
+		});
+		expect(result.eventType).toBe("Ping");
+		expect(result.streamId).toBe("s-1");
+		expect(result.data).toBe('{"count":1}');
+	});
+
+	it("normalizes RecordedEvent", () => {
+		const result = normalizeEvent({
+			type: "Ping",
+			streamId: "s-1",
+			data: '{"count":1}',
+		});
+		expect(result.eventType).toBe("Ping");
+		expect(result.data).toBe('{"count":1}');
+	});
+
+	it("normalizes ResolvedEvent", () => {
+		const result = normalizeEvent({
+			event: { type: "Ping", streamId: "s-1", data: '{"count":1}' },
+		});
+		expect(result.eventType).toBe("Ping");
+		expect(result.streamId).toBe("s-1");
+	});
+
+	it("handles Uint8Array data", () => {
+		const result = normalizeEvent({
+			type: "Ping",
+			streamId: "s-1",
+			data: new TextEncoder().encode('{"count":1}'),
+		});
+		expect(result.data).toBe('{"count":1}');
+	});
+
+	it("passes string data through", () => {
+		const result = normalizeEvent({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: '{"raw":true}',
+		});
+		expect(result.data).toBe('{"raw":true}');
+	});
+
+	it("returns undefined for null data", () => {
+		const result = normalizeEvent({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: null,
+		});
+		expect(result.data).toBeUndefined();
+	});
+
+	it("stringifies metadata objects", () => {
+		const result = normalizeEvent({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			metadata: { correlationId: "abc" },
+		});
+		expect(result.metadata).toBe('{"correlationId":"abc"}');
+	});
+
+	it("maps revision to sequenceNumber", () => {
+		const result = normalizeEvent({
+			type: "Ping",
+			streamId: "s-1",
+			data: "{}",
+			revision: 42,
+		});
+		expect(result.sequenceNumber).toBe(42);
+	});
+
+	it("normalizes full KurrentDB RecordedEvent", () => {
+		const event: RecordedEvent = {
+			streamId: "order-1",
+			id: "550e8400-e29b-41d4-a716-446655440000",
+			isJson: true,
+			revision: 5n,
+			type: "OrderPlaced",
+			created: new Date(),
+			data: { amount: 99 },
+			metadata: { $correlationId: "abc" },
+		};
+		const parsed = v.parse(EventInputSchema, event);
+		const result = normalizeEvent(parsed);
+		expect(result.eventType).toBe("OrderPlaced");
+		expect(result.streamId).toBe("order-1");
+		expect(result.data).toBe('{"amount":99}');
+		expect(result.metadata).toBe('{"$correlationId":"abc"}');
+		expect(result.isJson).toBe(true);
+		expect(result.sequenceNumber).toBe(5);
+	});
+
+	it("normalizes full KurrentDB ResolvedEvent", () => {
+		const resolved: ResolvedEvent = {
+			event: {
+				streamId: "order-1",
+				id: "550e8400-e29b-41d4-a716-446655440000",
+				isJson: true,
+				revision: 5n,
+				type: "OrderPlaced",
+				created: new Date(),
+				data: { amount: 99 },
+				metadata: { $correlationId: "abc" },
+			},
+			commitPosition: 1024n,
+		};
+		const parsed = v.parse(EventInputSchema, resolved);
+		const result = normalizeEvent(parsed);
+		expect(result.eventType).toBe("OrderPlaced");
+		expect(result.streamId).toBe("order-1");
+		expect(result.data).toBe('{"amount":99}');
+	});
+});

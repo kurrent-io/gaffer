@@ -1,0 +1,34 @@
+{
+	"name": "@kurrent/projections-testing",
+	"version": "0.0.1",
+	"description": "Test library for KurrentDB projections",
+	"type": "module",
+	"main": "dist/src/index.js",
+	"types": "dist/src/index.d.ts",
+	"scripts": {
+		"build": "tsc",
+		"test": "vitest run",
+		"check": "tsc --noEmit && eslint . && prettier --check .",
+		"fix": "eslint --fix . && prettier --write ."
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"dependencies": {
+		"@kurrent/gaffer-runtime": "workspace:*",
+		"valibot": "^1"
+	},
+	"peerDependencies": {
+		"@kurrent/kurrentdb-client": "^1"
+	},
+	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"@kurrent/kurrentdb-client": "^1.1.0",
+		"@types/node": "^25.5.0",
+		"eslint": "^10.0.3",
+		"prettier": "^3.8.1",
+		"typescript": "^5",
+		"typescript-eslint": "^8.57.1",
+		"vitest": "^3"
+	}
+}

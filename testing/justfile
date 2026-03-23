@@ -1,0 +1,16 @@
+default:
+    @just --list
+
+# Install dependencies
+init: js::init
+
+# Build TypeScript
+build: js::build
+
+# Run all test lib tests
+test: js::test
+
+# Check formatting and linting
+check: js::check
+
+mod js

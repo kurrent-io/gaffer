@@ -13,7 +13,7 @@ _init-root:
 # Install all module dependencies in parallel
 [private]
 [parallel]
-_init-modules: runtime::init bindings::init
+_init-modules: runtime::init bindings::init testing::init
 
 # Install all dependencies and tools
 init: _init-root _init-modules
@@ -25,7 +25,7 @@ _runtime: runtime::build runtime::publish
 # Build all projects that can build in parallel (after runtime)
 [private]
 [parallel]
-_build: cli::build bindings::build
+_build: cli::build bindings::build testing::build
 
 # Build everything
 build: _runtime _build
@@ -33,15 +33,16 @@ build: _runtime _build
 # Run all test suites in parallel (after runtime is published)
 [private]
 [parallel]
-_test: runtime::test bindings::test cli::test
+_test: runtime::test bindings::test cli::test testing::test
 
 # Run all tests
 test: _runtime _test
 
 # Check formatting and linting across all projects
 [parallel]
-check: runtime::check bindings::check cli::check
+check: runtime::check bindings::check cli::check testing::check
 
 mod runtime
 mod bindings
 mod cli
+mod testing

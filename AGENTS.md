@@ -2,15 +2,25 @@
 
 Projection toolkit for KurrentDB. Develop, test, debug, and deploy projections.
 
+## Accuracy
+
+Gaffer must match KurrentDB projection behaviour 1:1, bug:bug where possible. No defaulting values, no swallowing errors, no convenience that hides reality. If a test passes locally with gaffer, it should pass in production.
+
 ## Structure
 
 ```
 runtime/                   # C# (.NET 9) - projection runtime
   Gaffer.Runtime/          # NativeAOT shared library, Jint-based JS execution
-  Gaffer.Runtime.Tests/    # xUnit tests (99 tests)
+  Gaffer.Runtime.Tests/    # xUnit tests
   include/gaffer.h         # C API header
 bindings/
   go/                      # Go bindings (gafferruntime package), FFI tests
+  js/                      # JS/TS bindings (@kurrent/gaffer-runtime), koffi FFI
+    native/linux-x64/      # Platform-specific native package
+cli/                       # Go CLI (Cobra) - init, scaffold, dev
+testing/
+  js/                      # @kurrent/projections-testing - test lib wrapping runtime
+demo/                      # Example gaffer project with fixtures
 ```
 
 ## Build

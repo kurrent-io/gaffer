@@ -1,0 +1,22 @@
+default:
+    @just --list
+
+# Install dependencies
+init:
+    pnpm install
+
+# Build TypeScript
+build:
+    pnpm run build
+
+# Run tests
+test:
+    pnpm run test
+
+# Type check, lint, and format check
+check:
+    pnpm run check
+
+# Auto-fix lint and formatting
+fix:
+    pnpm run fix

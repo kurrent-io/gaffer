@@ -1,0 +1,330 @@
+import { describe, expect, it } from "vitest";
+import { ProjectionTest, ProjectionError } from "./ProjectionTest.js";
+
+const counterSource = `
+	fromAll().when({
+		$init: function() { return { count: 0 }; },
+		ItemAdded: function(s, e) { s.count++; return s; }
+	})
+`;
+
+describe("ProjectionTest", () => {
+	it("feeds events and returns state", () => {
+		const test = new ProjectionTest<{ count: number }>(counterSource);
+		const step = test.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-1",
+			sequenceNumber: 0,
+			data: {},
+		});
+		expect(step.state).toEqual({ count: 1 });
+		expect(step.event).toEqual({
+			eventType: "ItemAdded",
+			streamId: "cart-1",
+			sequenceNumber: 0,
+			data: {},
+		});
+		test.dispose();
+	});
+
+	it("accumulates state across feeds", () => {
+		const test = new ProjectionTest<{ count: number }>(counterSource);
+		test.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-1",
+			sequenceNumber: 0,
+			data: {},
+		});
+		test.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-1",
+			sequenceNumber: 1,
+			data: {},
+		});
+		const step = test.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-1",
+			sequenceNumber: 2,
+			data: {},
+		});
+		expect(step.state).toEqual({ count: 3 });
+		test.dispose();
+	});
+
+	it("returns state by partition", () => {
+		const test = new ProjectionTest<{ items: number }>(`
+			fromCategory("cart").foreachStream().when({
+				$init: function() { return { items: 0 }; },
+				ItemAdded: function(s, e) { s.items++; return s; }
+			})
+		`);
+
+		test.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-1",
+			sequenceNumber: 0,
+			data: {},
+		});
+		test.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-1",
+			sequenceNumber: 1,
+			data: {},
+		});
+		test.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-2",
+			sequenceNumber: 0,
+			data: {},
+		});
+
+		expect(test.getState("cart-1")).toEqual({ items: 2 });
+		expect(test.getState("cart-2")).toEqual({ items: 1 });
+		test.dispose();
+	});
+
+	it("collects emitted events", () => {
+		const test = new ProjectionTest(`
+			fromAll().when({
+				$init: function() { return {}; },
+				OrderPlaced: function(s, e) {
+					emit("notifications", "OrderNotification", { orderId: e.data.orderId });
+					return s;
+				}
+			})
+		`);
+
+		const step = test.feed({
+			eventType: "OrderPlaced",
+			streamId: "order-1",
+			sequenceNumber: 0,
+			data: { orderId: "ABC" },
+		});
+
+		expect(step.emitted).toHaveLength(1);
+		expect(step.emitted[0].streamId).toBe("notifications");
+		expect(step.emitted[0].eventType).toBe("OrderNotification");
+		expect(step.emitted[0].data).toEqual({ orderId: "ABC" });
+		expect(step.emitted[0].isLink).toBe(false);
+		test.dispose();
+	});
+
+	it("collects logs", () => {
+		const test = new ProjectionTest(`
+			fromAll().when({
+				TestEvent: function(s, e) {
+					log("hello from projection");
+					return s;
+				}
+			})
+		`);
+
+		const step = test.feed({
+			eventType: "TestEvent",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: {},
+		});
+
+		expect(step.logs).toEqual(["hello from projection"]);
+		test.dispose();
+	});
+
+	it("resets emitted and logs per step", () => {
+		const test = new ProjectionTest(`
+			fromAll().when({
+				$init: function() { return {}; },
+				Ping: function(s, e) {
+					log("ping");
+					emit("out", "Pong", {});
+					return s;
+				}
+			})
+		`);
+
+		const step1 = test.feed({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: {},
+		});
+		expect(step1.logs).toHaveLength(1);
+		expect(step1.emitted).toHaveLength(1);
+
+		const step2 = test.feed({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 1,
+			data: {},
+		});
+		expect(step2.logs).toHaveLength(1);
+		expect(step2.emitted).toHaveLength(1);
+		test.dispose();
+	});
+
+	it("returns shared state for biState projections", () => {
+		const test = new ProjectionTest(`
+			options({ biState: true });
+			fromAll().when({
+				$init: function() { return { count: 0 }; },
+				$initShared: function() { return { total: 0 }; },
+				Added: function(s, e) {
+					s[0].count++;
+					s[1].total += e.data.amount;
+					return s;
+				}
+			})
+		`);
+
+		test.feed({
+			eventType: "Added",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: { amount: 10 },
+		});
+		test.feed({
+			eventType: "Added",
+			streamId: "s-1",
+			sequenceNumber: 1,
+			data: { amount: 20 },
+		});
+
+		expect(test.getState()).toEqual({ count: 2 });
+		expect(test.getSharedState()).toEqual({ total: 30 });
+		test.dispose();
+	});
+
+	it("returns result with transformBy", () => {
+		const test = new ProjectionTest<{ total: number }>(`
+			fromAll().when({
+				$init: function() { return { count: 0 }; },
+				Ping: function(s, e) { s.count++; return s; }
+			}).transformBy(function(s) {
+				return { total: s.count * 2 };
+			}).outputState()
+		`);
+
+		test.feed({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: {},
+		});
+		expect(test.getResult()).toEqual({ total: 2 });
+		test.dispose();
+	});
+
+	it("accepts object data and auto-stringifies", () => {
+		const test = new ProjectionTest<{ total: number }>(`
+			fromAll().when({
+				$init: function() { return { total: 0 }; },
+				Deposited: function(s, e) { s.total += e.data.amount; return s; }
+			})
+		`);
+
+		test.feed({
+			eventType: "Deposited",
+			streamId: "acc-1",
+			sequenceNumber: 0,
+			data: { amount: 50 },
+		});
+
+		expect(test.getState()).toEqual({ total: 50 });
+		test.dispose();
+	});
+
+	it("accepts RecordedEvent shape", () => {
+		const test = new ProjectionTest<{ count: number }>(counterSource);
+		test.feed({
+			type: "ItemAdded",
+			streamId: "cart-1",
+			data: {},
+			metadata: undefined,
+			id: "00000000-0000-0000-0000-000000000000",
+			isJson: true,
+			revision: 0n,
+			created: new Date(),
+		});
+		expect(test.getState()).toEqual({ count: 1 });
+		test.dispose();
+	});
+
+	it("accepts ResolvedEvent shape", () => {
+		const test = new ProjectionTest<{ count: number }>(counterSource);
+		test.feed({
+			event: {
+				type: "ItemAdded",
+				streamId: "cart-1",
+				data: {},
+				metadata: undefined,
+				id: "00000000-0000-0000-0000-000000000000",
+				isJson: true,
+				revision: 0n,
+				created: new Date(),
+			},
+		});
+		expect(test.getState()).toEqual({ count: 1 });
+		test.dispose();
+	});
+
+	it("wraps errors with event context", () => {
+		const test = new ProjectionTest(`
+			fromAll().when({
+				$init: function() { return {}; },
+				Bad: function(s, e) { throw "boom"; }
+			})
+		`);
+
+		expect(() =>
+			test.feed({
+				eventType: "Bad",
+				streamId: "s-1",
+				sequenceNumber: 0,
+				data: {},
+			}),
+		).toThrow(ProjectionError);
+
+		try {
+			test.feed({
+				eventType: "Bad",
+				streamId: "s-1",
+				sequenceNumber: 1,
+				data: {},
+			});
+		} catch (err) {
+			const e = err as ProjectionError;
+			expect(e).toBeInstanceOf(ProjectionError);
+			expect(e.normalized.eventType).toBe("Bad");
+			expect(e.normalized.streamId).toBe("s-1");
+			expect(e.normalized.sequenceNumber).toBe(1);
+			expect(e.normalized.data).toBe("{}");
+			expect(e.cause).toBeInstanceOf(Error);
+			expect(e.message).toContain("1@s-1");
+			expect(e.message).toContain("Bad");
+			expect(e.message).toContain("boom");
+		}
+		test.dispose();
+	});
+
+	it("throws after dispose", () => {
+		const test = new ProjectionTest(counterSource);
+		test.dispose();
+		expect(() =>
+			test.feed({
+				eventType: "ItemAdded",
+				streamId: "s-1",
+				sequenceNumber: 0,
+				data: {},
+			}),
+		).toThrow("disposed");
+		expect(() => test.getState()).toThrow("disposed");
+		expect(() => test.getSharedState()).toThrow("disposed");
+		expect(() => test.getResult()).toThrow("disposed");
+	});
+
+	it("double dispose is safe", () => {
+		const test = new ProjectionTest(counterSource);
+		test.dispose();
+		test.dispose();
+	});
+});

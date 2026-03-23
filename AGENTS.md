@@ -49,8 +49,15 @@ that is the caller's responsibility.
 
 Key types: `ProjectionSession`, `ProjectionEvent`, `EmittedEvent`, `QuerySources`.
 
-The C API (gaffer.h) exposes the same functionality for FFI consumers. Go bindings
-wrap the C API via cgo.
+Errors: `GafferException` base with 8 typed exceptions (InvalidProjection,
+CompilationTimeout, InvalidArgument, ProjectionHandler, ExecutionTimeout,
+MalformedEvent, StateSerialization, ProjectionTransform). Formatted messages
+built by `ErrorFormatter` with Gleam-style source snippets and event context.
+
+The C API (gaffer.h) exposes the same functionality for FFI consumers.
+`gaffer_get_last_error()` returns structured error JSON on failure.
+Go bindings wrap the C API via cgo with a `Session` struct.
+JS bindings use koffi FFI with typed error classes.
 
 ## NativeAOT rules
 

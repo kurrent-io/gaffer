@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -11,8 +12,8 @@ namespace Gaffer.Runtime;
 /// native code (Go via cgo, Node via N-API, etc.) when built with NativeAOT.
 /// </summary>
 internal static unsafe class NativeExports {
-	private static readonly Dictionary<nint, SessionHandle> Sessions = new();
-	private static nint _nextHandle = 1;
+	private static readonly ConcurrentDictionary<nint, SessionHandle> Sessions = new();
+	private static long _nextHandle;
 
 	private sealed class SessionHandle {
 		public required ProjectionSession Session { get; init; }
@@ -64,7 +65,7 @@ internal static unsafe class NativeExports {
 			var session = new ProjectionSession(sourceStr, opts);
 
 			var handle = new SessionHandle { Session = session };
-			var id = _nextHandle++;
+			var id = (nint)Interlocked.Increment(ref _nextHandle);
 			Sessions[id] = handle;
 			return id;
 		} catch {
@@ -74,7 +75,7 @@ internal static unsafe class NativeExports {
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_destroy")]
 	public static void Destroy(nint sessionId) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+		if (!Sessions.TryRemove(sessionId, out var handle))
 			return;
 
 		try {
@@ -92,8 +93,8 @@ internal static unsafe class NativeExports {
 				handle.StateChangedCbHandle.Free();
 
 			handle.Session.Dispose();
-		} finally {
-			Sessions.Remove(sessionId);
+		} catch {
+			// Best effort cleanup
 		}
 	}
 

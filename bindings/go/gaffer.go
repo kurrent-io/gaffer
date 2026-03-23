@@ -7,7 +7,7 @@ package gafferruntime
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../runtime/include
-#cgo LDFLAGS: ${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net9.0/linux-x64/publish/Gaffer.Runtime.so -Wl,-rpath,${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net9.0/linux-x64/publish
+#cgo LDFLAGS: ${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-x64/publish/Gaffer.Runtime.so -Wl,-rpath,${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-x64/publish
 #include "gaffer.h"
 #include <stdlib.h>
 */

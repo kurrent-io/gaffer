@@ -42,7 +42,7 @@ function findLibPath(): string {
 			"Gaffer.Runtime",
 			"bin",
 			"Release",
-			"net9.0",
+			"net10.0",
 			"linux-x64",
 			"publish",
 			"Gaffer.Runtime.so",

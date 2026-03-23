@@ -779,4 +779,80 @@ public class V2ConformanceTests {
 
 		Assert.Throws<Errors.InvalidArgumentException>(() => session.SetState(null, ""));
 	}
+
+	// -- Null state preserved (V2-specific) --
+
+	[Fact]
+	public void V2_unpartitioned_null_state_preserved() {
+		using var session = new ProjectionSession("""
+            fromAll().when({
+                $init: function() { return { count: 0 }; },
+                Ping: function(s, e) { s.count++; return s; },
+                Clear: function(s, e) { return null; },
+                Probe: function(s, e) { return { saw: JSON.stringify(s) }; }
+            })
+        """);
+
+		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
+		session.Feed(new ProjectionEvent { EventType = "Clear", StreamId = "s-1", Data = "{}" });
+
+		Assert.Null(session.GetState());
+
+		session.Feed(new ProjectionEvent { EventType = "Probe", StreamId = "s-1", Data = "{}" });
+
+		Assert.Contains("\"saw\":\"null\"", session.GetState()!);
+	}
+
+	[Fact]
+	public void V2_set_state_then_handler_returns_null_preserved() {
+		using var session = new ProjectionSession("""
+            fromAll().when({
+                $init: function() { return { count: 0 }; },
+                Clear: function(s, e) { return null; },
+                Probe: function(s, e) { return { saw: JSON.stringify(s) }; }
+            })
+        """);
+
+		session.SetState(null, """{"count":5}""");
+		session.Feed(new ProjectionEvent { EventType = "Clear", StreamId = "s-1", Data = "{}" });
+
+		Assert.Null(session.GetState());
+
+		session.Feed(new ProjectionEvent { EventType = "Probe", StreamId = "s-1", Data = "{}" });
+
+		Assert.Contains("\"saw\":\"null\"", session.GetState()!);
+	}
+
+	// -- Partition edge cases --
+
+	[Fact]
+	public void V2_deleted_on_unseen_partition_gets_init_state() {
+		using var session = new ProjectionSession("""
+            fromAll().foreachStream().when({
+                $init: function() { return { deleted: false }; },
+                Ping: function(s, e) { return s; },
+                $deleted: function(s, e) { s.deleted = true; return s; }
+            })
+        """);
+
+		session.Feed(new ProjectionEvent {
+			EventType = "$streamDeleted",
+			StreamId = "order-1",
+			Data = "{}",
+		});
+
+		Assert.Contains("\"deleted\":true", session.GetState("order-1")!);
+	}
+
+	[Fact]
+	public void V2_get_result_unknown_partition_returns_null() {
+		using var session = new ProjectionSession("""
+            fromAll().foreachStream().when({
+                $init: function() { return { count: 0 }; },
+                Ping: function(s, e) { s.count++; return s; }
+            })
+        """);
+
+		Assert.Null(session.GetResult("nonexistent"));
+	}
 }

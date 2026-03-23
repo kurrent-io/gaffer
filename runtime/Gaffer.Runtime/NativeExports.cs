@@ -67,10 +67,7 @@ internal static unsafe class NativeExports {
 			var id = _nextHandle++;
 			Sessions[id] = handle;
 			return id;
-		} catch (Exception ex) {
-			// Can't return error through handle that doesn't exist yet.
-			// Return 0 (null handle).
-			_ = ex;
+		} catch {
 			return 0;
 		}
 	}
@@ -80,21 +77,24 @@ internal static unsafe class NativeExports {
 		if (!Sessions.TryGetValue(sessionId, out var handle))
 			return;
 
-		// Free last returned string buffer
-		if (handle.LastReturnedPtr != null)
-			NativeMemory.Free(handle.LastReturnedPtr);
+		try {
+			// Free last returned string buffer
+			if (handle.LastReturnedPtr != null)
+				NativeMemory.Free(handle.LastReturnedPtr);
 
-		if (handle.EmitCbHandle.IsAllocated)
-			handle.EmitCbHandle.Free();
-		if (handle.LogCbHandle.IsAllocated)
-			handle.LogCbHandle.Free();
-		if (handle.SlowHandlerCbHandle.IsAllocated)
-			handle.SlowHandlerCbHandle.Free();
-		if (handle.StateChangedCbHandle.IsAllocated)
-			handle.StateChangedCbHandle.Free();
+			if (handle.EmitCbHandle.IsAllocated)
+				handle.EmitCbHandle.Free();
+			if (handle.LogCbHandle.IsAllocated)
+				handle.LogCbHandle.Free();
+			if (handle.SlowHandlerCbHandle.IsAllocated)
+				handle.SlowHandlerCbHandle.Free();
+			if (handle.StateChangedCbHandle.IsAllocated)
+				handle.StateChangedCbHandle.Free();
 
-		handle.Session.Dispose();
-		Sessions.Remove(sessionId);
+			handle.Session.Dispose();
+		} finally {
+			Sessions.Remove(sessionId);
+		}
 	}
 
 	// -- Callbacks --
@@ -197,40 +197,64 @@ internal static unsafe class NativeExports {
 	public static byte* GetState(nint sessionId, byte* partition) {
 		if (!Sessions.TryGetValue(sessionId, out var handle))
 			return null;
-		var state = handle.Session.GetState(FromUtf8(partition));
-		return ToUnmanaged(handle, state);
+		try {
+			var state = handle.Session.GetState(FromUtf8(partition));
+			return ToUnmanaged(handle, state);
+		} catch (Exception ex) {
+			handle.LastError = ex.Message;
+			return null;
+		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_shared_state")]
 	public static byte* GetSharedState(nint sessionId) {
 		if (!Sessions.TryGetValue(sessionId, out var handle))
 			return null;
-		return ToUnmanaged(handle, handle.Session.GetSharedState());
+		try {
+			return ToUnmanaged(handle, handle.Session.GetSharedState());
+		} catch (Exception ex) {
+			handle.LastError = ex.Message;
+			return null;
+		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_set_state")]
 	public static void SetState(nint sessionId, byte* partition, byte* stateJson) {
 		if (!Sessions.TryGetValue(sessionId, out var handle))
 			return;
-		var json = FromUtf8(stateJson);
-		if (json != null)
-			handle.Session.SetState(FromUtf8(partition), json);
+		try {
+			var json = FromUtf8(stateJson);
+			if (json != null)
+				handle.Session.SetState(FromUtf8(partition), json);
+		} catch (Exception ex) {
+			handle.LastError = ex.Message;
+		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_result")]
 	public static byte* GetResult(nint sessionId, byte* partition) {
 		if (!Sessions.TryGetValue(sessionId, out var handle))
 			return null;
-		return ToUnmanaged(handle, handle.Session.GetResult(FromUtf8(partition)));
+		try {
+			return ToUnmanaged(handle, handle.Session.GetResult(FromUtf8(partition)));
+		} catch (Exception ex) {
+			handle.LastError = ex.Message;
+			return null;
+		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_sources")]
 	public static byte* GetSources(nint sessionId) {
 		if (!Sessions.TryGetValue(sessionId, out var handle))
 			return null;
-		var sources = handle.Session.Sources;
-		var json = JsonSerializer.Serialize(sources, GafferJsonContext.Default.QuerySources);
-		return ToUnmanaged(handle, json);
+		try {
+			var sources = handle.Session.Sources;
+			var json = JsonSerializer.Serialize(sources, GafferJsonContext.Default.QuerySources);
+			return ToUnmanaged(handle, json);
+		} catch (Exception ex) {
+			handle.LastError = ex.Message;
+			return null;
+		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_partition_key")]
@@ -243,7 +267,8 @@ internal static unsafe class NativeExports {
 				return null;
 			var evt = ParseEvent(json);
 			return ToUnmanaged(handle, handle.Session.GetPartitionKey(evt));
-		} catch {
+		} catch (Exception ex) {
+			handle.LastError = ex.Message;
 			return null;
 		}
 	}

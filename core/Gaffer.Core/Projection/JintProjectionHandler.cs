@@ -1136,11 +1136,8 @@ internal sealed class JintProjectionHandler : IDisposable
                 case Types.Boolean:
                     writer.WriteBooleanValue(ReferenceEquals(value, JsBoolean.False) ? false : true); break;
                 case Types.Number:
-                    var num = value.AsNumber();
-                    if (double.IsNaN(num) || double.IsInfinity(num))
-                        writer.WriteNullValue();
-                    else
-                        writer.WriteNumberValue(num);
+                    // Matches KurrentDB: throws on NaN/Infinity rather than writing null
+                    writer.WriteNumberValue(value.AsNumber());
                     break;
                 case Types.BigInt:
                     writer.WriteStringValue(value.ToString()); break;

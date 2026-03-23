@@ -106,20 +106,14 @@ public sealed class ProjectionSession : IDisposable
             @event.Data != null)
         {
             // Soft delete: $metadata on $$streamId with $tb set to long.MaxValue (EventNumber.DeletedStream)
-            try
+            // Matches KurrentDB: throws on malformed metadata rather than ignoring
+            using var doc = JsonDocument.Parse(@event.Data);
+            if (doc.RootElement.TryGetProperty("$tb", out var tb) &&
+                tb.ValueKind == JsonValueKind.Number &&
+                tb.GetInt64() == long.MaxValue)
             {
-                using var doc = JsonDocument.Parse(@event.Data);
-                if (doc.RootElement.TryGetProperty("$tb", out var tb) &&
-                    tb.ValueKind == JsonValueKind.Number &&
-                    tb.GetInt64() == long.MaxValue)
-                {
-                    deletedStreamId = @event.StreamId[MetastreamPrefix.Length..];
-                    return true;
-                }
-            }
-            catch
-            {
-                // malformed metadata, not a delete
+                deletedStreamId = @event.StreamId[MetastreamPrefix.Length..];
+                return true;
             }
         }
 

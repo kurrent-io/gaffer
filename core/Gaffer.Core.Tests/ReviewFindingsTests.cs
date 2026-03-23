@@ -306,7 +306,7 @@ public class ReviewFindingsTests
     // -- Malformed soft-delete metadata --
 
     [Fact]
-    public void Malformed_metadata_does_not_trigger_delete()
+    public void Malformed_metadata_throws()
     {
         using var session = new ProjectionSession("""
             fromAll().foreachStream().when({
@@ -316,16 +316,12 @@ public class ReviewFindingsTests
             }).outputState()
         """);
 
-        session.Feed(new ProjectionEvent { EventType = "type1", StreamId = "stream-1", Data = "{}" });
-        session.Feed(new ProjectionEvent
-        {
-            EventType = "$metadata",
-            StreamId = "$$stream-1",
-            Data = "not json at all",
-        });
-
-        var state = session.GetState("stream-1");
-        Assert.NotNull(state);
-        Assert.DoesNotContain("deleted", state);
+        Assert.ThrowsAny<Exception>(() =>
+            session.Feed(new ProjectionEvent
+            {
+                EventType = "$metadata",
+                StreamId = "$$stream-1",
+                Data = "not json at all",
+            }));
     }
 }

@@ -75,7 +75,7 @@ function createSubscription(
   version: Version,
 ) {
   const filter = buildFilter(info, version);
-  return client.subscribeToAll({ filter, fromPosition: START });
+  return client.subscribeToAll({ filter, fromPosition: START, resolveLinks: true });
 }
 ```
 

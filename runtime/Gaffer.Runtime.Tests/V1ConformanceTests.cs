@@ -790,4 +790,24 @@ public class V1ConformanceTests {
 
 		Assert.Null(session.GetState());
 	}
+
+	[Fact]
+	public void V1_raw_link_events_passed_when_includeLinks_true() {
+		using var session = new ProjectionSession("""
+            options({ $includeLinks: true });
+            fromAll().when({
+                $init: function() { return { count: 0 }; },
+                $any: function(s, e) { s.count++; return s; }
+            })
+        """, V1);
+
+		session.Feed(new ProjectionEvent {
+			EventType = "$>",
+			StreamId = "$ce-order",
+			Data = "0@order-1",
+			IsJson = false,
+		});
+
+		Assert.Null(session.GetState());
+	}
 }

@@ -915,4 +915,24 @@ public class V2ConformanceTests {
 
 		Assert.Null(session.GetState());
 	}
+
+	[Fact]
+	public void V2_raw_link_events_passed_when_includeLinks_true() {
+		using var session = new ProjectionSession("""
+            options({ $includeLinks: true });
+            fromAll().when({
+                $init: function() { return { count: 0 }; },
+                $any: function(s, e) { s.count++; return s; }
+            })
+        """);
+
+		session.Feed(new ProjectionEvent {
+			EventType = "$>",
+			StreamId = "$ce-order",
+			Data = "0@order-1",
+			IsJson = false,
+		});
+
+		Assert.Contains("\"count\":1", session.GetState()!);
+	}
 }

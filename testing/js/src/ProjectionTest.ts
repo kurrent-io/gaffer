@@ -27,6 +27,20 @@ export interface StepResult<TState = unknown> {
 	logs: string[];
 }
 
+/** Options for configuring a projection session. */
+export interface ProjectionOptions {
+	/** Projection engine version. "v1" drops non-JSON events. Default: "v2". */
+	version?: "v1" | "v2";
+	/** Maximum time for JS compilation in ms. Default: 5000. */
+	compilationTimeoutMs?: number;
+	/** Maximum time for JS handler execution per event in ms. Default: 5000. */
+	executionTimeoutMs?: number;
+	/** Threshold in ms for onSlowHandler warnings. Default: 250. */
+	handlerTimeoutMs?: number;
+	/** When true, validates event content types. V2 only. Default: false. */
+	enableContentTypeValidation?: boolean;
+}
+
 const registry = new FinalizationRegistry<ProjectionSession>((session) => {
 	session.dispose();
 });
@@ -43,8 +57,8 @@ export class ProjectionTest<TState = unknown> {
 	private pendingEmitted: TestEmittedEvent[] = [];
 	private pendingLogs: string[] = [];
 
-	constructor(source: string) {
-		this.session = new ProjectionSession(source);
+	constructor(source: string, options?: ProjectionOptions) {
+		this.session = new ProjectionSession(source, options);
 		registry.register(this, this.session, this);
 
 		this.session.onEmit((event: EmittedEvent) => {

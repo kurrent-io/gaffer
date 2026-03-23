@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createProjection } from "./createProjection.js";
-import { InvalidProjectionError } from "@kurrent/gaffer-runtime";
+import {
+	InvalidProjectionError,
+	CompilationTimeoutError,
+} from "@kurrent/gaffer-runtime";
 import { systemEvents } from "./systemEvents.js";
 
 const counterSource = `
@@ -91,6 +94,44 @@ describe("createProjection", () => {
 			expect(() => [
 				...projection.run(42 as unknown as Iterable<never>),
 			]).toThrow("run() expects");
+		});
+	});
+
+	describe("options", () => {
+		it("passes compilation timeout to session", () => {
+			const projection = createProjection("while(true) {}", {
+				compilationTimeoutMs: 100,
+			});
+			expect(() => [...projection.run([])]).toThrow(CompilationTimeoutError);
+		});
+
+		it("v1 drops non-JSON events", () => {
+			const projection = createProjection<{ count: number }>(counterSource, {
+				version: "v1",
+			});
+			const results = [
+				...projection.run([
+					{
+						eventType: "ItemAdded",
+						streamId: "s-1",
+						sequenceNumber: 0,
+						isJson: false,
+						data: "not json",
+					},
+					{
+						eventType: "ItemAdded",
+						streamId: "s-1",
+						sequenceNumber: 1,
+						isJson: true,
+						data: { item: "a" },
+					},
+				]),
+			];
+			expect(results).toHaveLength(2);
+			// First event (non-JSON) dropped by V1 - no state change
+			expect(results[0].state).toBeNull();
+			// Second event (JSON) processed normally
+			expect(results[1].state?.count).toBe(1);
 		});
 	});
 

@@ -5,7 +5,11 @@ import {
 	eventTypeFilter,
 } from "@kurrent/kurrentdb-client";
 import { mapQuerySources, type ProjectionInfo } from "./ProjectionInfo.js";
-import { ProjectionTest, type StepResult } from "./ProjectionTest.js";
+import {
+	ProjectionTest,
+	type ProjectionOptions,
+	type StepResult,
+} from "./ProjectionTest.js";
 import type { EventInput } from "./schemas.js";
 
 /** Result of validating a projection's JavaScript source. */
@@ -50,12 +54,14 @@ export interface Projection<TState = unknown> {
 export function createProjection<TState = unknown>(
 	/** KurrentDB projection JavaScript source code. */
 	source: string,
+	/** Options for the projection session (version, timeouts, etc). */
+	options?: ProjectionOptions,
 ): Projection<TState> {
 	return {
 		validate(): ValidationResult {
 			let session: ProjectionSession | null = null;
 			try {
-				session = new ProjectionSession(source);
+				session = new ProjectionSession(source, options);
 				const raw = session.getSources();
 				return { valid: true, info: mapQuerySources(raw) };
 			} catch (err) {
@@ -76,15 +82,15 @@ export function createProjection<TState = unknown>(
 			}
 
 			if (input instanceof KurrentDBClient) {
-				return runWithClient<TState>(source, input, validation.info);
+				return runWithClient<TState>(source, options, input, validation.info);
 			}
 
 			if (isAsyncIterable(input)) {
-				return runAsync<TState>(source, input);
+				return runAsync<TState>(source, options, input);
 			}
 
 			if (isIterable(input)) {
-				return runSync<TState>(source, input);
+				return runSync<TState>(source, options, input);
 			}
 
 			throw new Error(
@@ -93,16 +99,17 @@ export function createProjection<TState = unknown>(
 		},
 
 		test(): ProjectionTest<TState> {
-			return new ProjectionTest<TState>(source);
+			return new ProjectionTest<TState>(source, options);
 		},
 	} as Projection<TState>;
 }
 
 function* runSync<TState>(
 	source: string,
+	options: ProjectionOptions | undefined,
 	events: Iterable<EventInput>,
 ): Iterable<StepResult<TState>> {
-	const test = new ProjectionTest<TState>(source);
+	const test = new ProjectionTest<TState>(source, options);
 	try {
 		for (const event of events) {
 			yield test.feed(event);
@@ -114,9 +121,10 @@ function* runSync<TState>(
 
 async function* runAsync<TState>(
 	source: string,
+	options: ProjectionOptions | undefined,
 	events: AsyncIterable<EventInput>,
 ): AsyncIterable<StepResult<TState>> {
-	const test = new ProjectionTest<TState>(source);
+	const test = new ProjectionTest<TState>(source, options);
 	try {
 		for await (const event of events) {
 			yield test.feed(event);
@@ -128,10 +136,11 @@ async function* runAsync<TState>(
 
 async function* runWithClient<TState>(
 	source: string,
+	options: ProjectionOptions | undefined,
 	client: KurrentDBClient,
 	info: ProjectionInfo,
 ): AsyncIterable<StepResult<TState>> {
-	const test = new ProjectionTest<TState>(source);
+	const test = new ProjectionTest<TState>(source, options);
 	const subscription = createSubscription(client, info);
 	try {
 		for await (const event of subscription) {

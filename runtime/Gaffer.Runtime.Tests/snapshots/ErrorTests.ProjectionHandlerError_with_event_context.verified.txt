@@ -1,0 +1,15 @@
+﻿Error processing event
+
+error: boom
+    ┌─ 3:31
+    │
+  1 │ fromAll().when({
+  2 │ 	$init: function() { return {}; },
+  3 │ 	Test: function(s, e) { throw new Error("boom"); }
+    │ 	                             ^ boom
+    │
+  at Test (<anonymous>:3:31)
+  at <anonymous>:3:8
+
+Event: 42@s-1
+Type:  Test

@@ -1,0 +1,8 @@
+﻿Failed to compile projection
+
+error: Unexpected identifier 'is' (<anonymous>:1:6)
+    ┌─ 1:6
+    │
+  1 │ this is not valid {{{{
+    │      ^ Unexpected identifier 'is' (<anonymous>:1:6)
+    │

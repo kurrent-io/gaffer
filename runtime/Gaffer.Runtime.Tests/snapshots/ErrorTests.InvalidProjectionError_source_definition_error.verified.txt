@@ -1,0 +1,3 @@
+﻿Invalid projection definition
+
+error: fromStream expects a string argument

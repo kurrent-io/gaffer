@@ -1,0 +1,16 @@
+﻿Error processing event
+
+error: fail
+    ┌─ 3:31
+    │
+  1 │ fromAll().foreachStream().when({
+  2 │ 	$init: function() { return {}; },
+  3 │ 	Test: function(s, e) { throw "fail"; }
+    │ 	                             ^ fail
+    │
+  at Test (<anonymous>:3:31)
+  at <anonymous>:3:8
+
+Event: 42@s-1
+Type:  Test
+Partition: s-1

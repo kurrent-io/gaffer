@@ -84,6 +84,8 @@ internal static unsafe class NativeExports {
 		writer.WriteStartObject();
 		writer.WriteString("code", ex.Code);
 		writer.WriteString("description", ex.Description);
+		if (ex.Message != ex.Description)
+			writer.WriteString("message", ex.Message);
 
 		switch (ex) {
 			case InvalidProjectionException ip:

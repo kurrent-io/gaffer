@@ -1,0 +1,12 @@
+﻿Transform error
+
+error: transform failed
+    ┌─ 5:8
+    │
+  3 │ 	Test: function(s, e) { return s; }
+  4 │ }).transformBy(function(s) {
+  5 │ 	throw new Error("transform failed");
+    │ 	      ^ transform failed
+    │
+  at <anonymous>:5:8
+  at <anonymous>:6:16

@@ -5,6 +5,11 @@ public sealed class ProjectionTransformException : GafferException {
 	public string? JsStack { get; }
 	public int? Line { get; }
 	public int? Column { get; }
+	public string? ProjectionSource { get; init; }
+
+	public override string Message => ProjectionSource != null
+		? ErrorFormatter.FormatTransformError(Description, ProjectionSource, JsStack, Line, Column)
+		: base.Message;
 
 	public ProjectionTransformException(
 		string description,

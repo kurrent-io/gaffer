@@ -1,0 +1,1 @@
+﻿Event data is not valid JSON

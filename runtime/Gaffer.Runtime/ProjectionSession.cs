@@ -15,6 +15,7 @@ namespace Gaffer.Runtime;
 /// </summary>
 public sealed class ProjectionSession : IDisposable {
 	private readonly JintProjectionHandler _handler;
+	private readonly string _source;
 	private readonly QuerySources _sources;
 	private readonly Dictionary<string, string?> _stateCache = new();
 	private readonly HashSet<string>? _handledEventTypes;
@@ -46,6 +47,7 @@ public sealed class ProjectionSession : IDisposable {
 	/// <exception cref="InvalidProjectionException">Thrown if the JS source is invalid or the projection definition is wrong.</exception>
 	/// <exception cref="CompilationTimeoutException">Thrown if compilation exceeds the timeout.</exception>
 	public ProjectionSession(string source, ProjectionSessionOptions? options = null) {
+		_source = source;
 		var opts = options ?? new ProjectionSessionOptions();
 		_version = opts.Version;
 		_handlerTimeout = TimeSpan.FromMilliseconds(opts.HandlerTimeoutMs);
@@ -62,25 +64,25 @@ public sealed class ProjectionSession : IDisposable {
 				parseError.Description,
 				parseError.LineNumber,
 				parseError.Column,
-				ex);
+				ex) { ProjectionSource = source };
 		} catch (ScriptPreparationException ex) {
-			throw new InvalidProjectionException(ex.InnerException?.Message ?? ex.Message, ex);
+			throw new InvalidProjectionException(ex.InnerException?.Message ?? ex.Message, ex) { ProjectionSource = source };
 		} catch (JavaScriptException ex) when (ex.Location.Start.Line > 0) {
 			throw new InvalidProjectionException(
 				ex.Message,
 				ex.Location.Start.Line,
 				ex.Location.Start.Column,
-				ex);
+				ex) { ProjectionSource = source };
 		} catch (JavaScriptException ex) {
-			throw new InvalidProjectionException(ex.Message, ex);
+			throw new InvalidProjectionException(ex.Message, ex) { ProjectionSource = source };
 		} catch (TimeConstraintException ex) when (ex.IsCompilation) {
 			throw new CompilationTimeoutException(
 				"Projection script took too long to compile",
 				ex.ElapsedMs, ex.AllowedMs, ex);
 		} catch (ArgumentException ex) {
-			throw new InvalidProjectionException(ex.Message, ex);
+			throw new InvalidProjectionException(ex.Message, ex) { ProjectionSource = source };
 		} catch (Exception ex) when (ex is not GafferException) {
-			throw new InvalidProjectionException(ex.Message, ex);
+			throw new InvalidProjectionException(ex.Message, ex) { ProjectionSource = source };
 		}
 
 		_sources = _handler.GetSourceDefinition();
@@ -216,17 +218,17 @@ public sealed class ProjectionSession : IDisposable {
 			throw new ProjectionTransformException(
 				ex.Message,
 				ex.JavaScriptStackTrace, line, column,
-				ex);
+				ex) { ProjectionSource = _source };
 		} catch (TimeConstraintException ex) {
 			throw new ProjectionTransformException(
 				"Projection transform took too long to execute",
-				innerException: ex);
+				innerException: ex) { ProjectionSource = _source };
 		} catch (StateSerializationException ex) {
 			throw new ProjectionTransformException(
 				ex.Description,
-				innerException: ex);
+				innerException: ex) { ProjectionSource = _source };
 		} catch (Exception ex) when (ex is not GafferException) {
-			throw new ProjectionTransformException(ex.Message, innerException: ex);
+			throw new ProjectionTransformException(ex.Message, innerException: ex) { ProjectionSource = _source };
 		}
 	}
 
@@ -250,11 +252,11 @@ public sealed class ProjectionSession : IDisposable {
 				js.JavaScriptStackTrace,
 				js.Location.Start.Line > 0 ? js.Location.Start.Line : null,
 				js.Location.Start.Line > 0 ? js.Location.Start.Column : null,
-				js),
+				js) { ProjectionSource = _source },
 			_ => new ProjectionHandlerException(
 				ex.Message,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
-				innerException: ex),
+				innerException: ex) { ProjectionSource = _source },
 		};
 	}
 

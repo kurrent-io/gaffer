@@ -79,6 +79,9 @@ public sealed class ProjectionSession : IDisposable {
 		}
 
 		_sources = _handler.GetSourceDefinition();
+		if (_sources.HandlesDeletedNotifications && !_sources.ByStreams)
+			throw new InvalidProjectionException(
+				"Deleted stream notifications are only supported with foreachStream()") { ProjectionSource = source };
 		if (!_sources.AllEvents && _sources.Events != null)
 			_handledEventTypes = new HashSet<string>(_sources.Events, StringComparer.Ordinal);
 	}
@@ -103,9 +106,6 @@ public sealed class ProjectionSession : IDisposable {
 	/// <exception cref="MalformedEventException">Thrown if event data is malformed.</exception>
 	/// <exception cref="StateSerializationException">Thrown if state contains unserializable values.</exception>
 	public void Feed(ProjectionEvent @event) {
-		if (_version == ProjectionVersion.V1 && !@event.IsJson)
-			return;
-
 		try {
 			if (IsStreamDeletedEvent(@event, out var deletedStreamId)) {
 				FeedStreamDeleted(@event, deletedStreamId);
@@ -117,6 +117,9 @@ public sealed class ProjectionSession : IDisposable {
 				@event.EventType, @event.StreamId, @event.SequenceNumber,
 				innerException: ex);
 		}
+
+		if (_version == ProjectionVersion.V1 && !@event.IsJson)
+			return;
 
 		var partition = ResolvePartition(@event);
 		if (partition == null)
@@ -324,10 +327,13 @@ public sealed class ProjectionSession : IDisposable {
 	private bool LoadPartitionState(string partition) {
 		if (_stateCache.ContainsKey(partition)) {
 			var cached = _stateCache[partition];
-			if (cached != null)
+			if (cached != null) {
 				_handler.Load(cached);
-			else
+			} else if (_version == ProjectionVersion.V1) {
+				_handler.Initialize();
+			} else {
 				_handler.Load(null);
+			}
 			return false;
 		}
 

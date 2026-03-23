@@ -80,7 +80,7 @@ public class V1ConformanceTests {
 
 	// --- System events ---
 
-	[Fact(Skip = "V1 non-JSON gate runs before IsStreamDeletedEvent check")]
+	[Fact]
 	public void V1_hard_delete_processed_even_when_non_json() {
 		using var session = new ProjectionSession("""
             fromAll().foreachStream().when({
@@ -193,7 +193,7 @@ public class V1ConformanceTests {
 
 	// --- Null state ---
 
-	[Fact(Skip = "Gaffer preserves null instead of resetting via $init on revisit")]
+	[Fact]
 	public void V1_null_state_resets_to_init_on_revisit() {
 		using var session = new ProjectionSession("""
             fromAll().foreachStream().when({
@@ -355,7 +355,7 @@ public class V1ConformanceTests {
 
 	// --- $deleted constraints ---
 
-	[Fact(Skip = "Gaffer doesn't validate $deleted requires foreachStream")]
+	[Fact]
 	public void V1_deleted_handler_requires_foreach_stream() {
 		Assert.Throws<InvalidProjectionException>(() => new ProjectionSession("""
             fromAll().partitionBy(function(e) { return e.streamId; }).when({

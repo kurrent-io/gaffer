@@ -855,4 +855,64 @@ public class V2ConformanceTests {
 
 		Assert.Null(session.GetResult("nonexistent"));
 	}
+
+	// -- Link event filtering --
+
+	[Fact]
+	public void V2_resolved_link_events_filtered_by_default() {
+		using var session = new ProjectionSession("""
+            fromAll().when({
+                $init: function() { return { count: 0 }; },
+                $any: function(s, e) { s.count++; return s; }
+            })
+        """);
+
+		session.Feed(new ProjectionEvent {
+			EventType = "OrderPlaced",
+			StreamId = "order-1",
+			Data = "{}",
+			LinkMetadata = """{"$o":"order-1"}""",
+		});
+
+		Assert.Null(session.GetState());
+	}
+
+	[Fact]
+	public void V2_resolved_link_events_passed_when_includeLinks_true() {
+		using var session = new ProjectionSession("""
+            options({ $includeLinks: true });
+            fromAll().when({
+                $init: function() { return { count: 0 }; },
+                $any: function(s, e) { s.count++; return s; }
+            })
+        """);
+
+		session.Feed(new ProjectionEvent {
+			EventType = "OrderPlaced",
+			StreamId = "order-1",
+			Data = "{}",
+			LinkMetadata = """{"$o":"order-1"}""",
+		});
+
+		Assert.Contains("\"count\":1", session.GetState()!);
+	}
+
+	[Fact]
+	public void V2_raw_link_events_filtered_by_default() {
+		using var session = new ProjectionSession("""
+            fromAll().when({
+                $init: function() { return { count: 0 }; },
+                $any: function(s, e) { s.count++; return s; }
+            })
+        """);
+
+		session.Feed(new ProjectionEvent {
+			EventType = "$>",
+			StreamId = "$ce-order",
+			Data = "0@order-1",
+			IsJson = false,
+		});
+
+		Assert.Null(session.GetState());
+	}
 }

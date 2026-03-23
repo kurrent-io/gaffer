@@ -118,6 +118,10 @@ public sealed class ProjectionSession : IDisposable {
 				innerException: ex);
 		}
 
+		if (!_sources.IncludeLinks &&
+			(@event.EventType == "$>" || @event.LinkMetadata != null))
+			return;
+
 		if (_version == ProjectionVersion.V1 && !@event.IsJson)
 			return;
 

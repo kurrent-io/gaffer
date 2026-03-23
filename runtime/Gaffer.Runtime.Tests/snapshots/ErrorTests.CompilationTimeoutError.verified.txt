@@ -1,1 +1,1 @@
-﻿Projection script took too long to compile
+﻿Projection script took too long to compile (100ms limit)

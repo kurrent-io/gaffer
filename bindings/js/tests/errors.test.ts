@@ -88,7 +88,7 @@ describe("Error types", () => {
 			expect(e.elapsed).toBeGreaterThan(0);
 			expect(e.allowed).toBe(100);
 			expect(e.message).toMatchInlineSnapshot(
-				`"Projection script took too long to compile"`,
+				`"Projection script took too long to compile (100ms limit)"`,
 			);
 		}
 	});
@@ -195,7 +195,7 @@ describe("Error types", () => {
 			expect(e.event.streamId).toBe("s-1");
 			expect(e.event.sequenceNumber).toBe(42);
 			expect(e.message).toMatchInlineSnapshot(
-				`"Projection script took too long to execute"`,
+				`"Projection script took too long to execute (100ms limit)"`,
 			);
 		} finally {
 			session.dispose();

@@ -77,7 +77,7 @@ public sealed class ProjectionSession : IDisposable {
 			throw new InvalidProjectionException(ex.Message, ex) { ProjectionSource = source };
 		} catch (TimeConstraintException ex) when (ex.IsCompilation) {
 			throw new CompilationTimeoutException(
-				"Projection script took too long to compile",
+				$"Projection script took too long to compile ({ex.AllowedMs}ms limit)",
 				ex.ElapsedMs, ex.AllowedMs, ex);
 		} catch (ArgumentException ex) {
 			throw new InvalidProjectionException(ex.Message, ex) { ProjectionSource = source };
@@ -221,7 +221,7 @@ public sealed class ProjectionSession : IDisposable {
 				ex) { ProjectionSource = _source };
 		} catch (TimeConstraintException ex) {
 			throw new ProjectionTransformException(
-				"Projection transform took too long to execute",
+				$"Projection transform took too long to execute ({ex.AllowedMs}ms limit)",
 				innerException: ex) { ProjectionSource = _source };
 		} catch (StateSerializationException ex) {
 			throw new ProjectionTransformException(
@@ -238,7 +238,7 @@ public sealed class ProjectionSession : IDisposable {
 		var part = IsPartitioned ? partition : null;
 		return ex switch {
 			TimeConstraintException tc => new ExecutionTimeoutException(
-				"Projection script took too long to execute",
+				$"Projection script took too long to execute ({tc.AllowedMs}ms limit)",
 				tc.ElapsedMs, tc.AllowedMs,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
 				tc),

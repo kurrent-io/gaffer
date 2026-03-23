@@ -96,8 +96,7 @@ describe("run(client)", () => {
 		expect(steps[1].state).toEqual({ count: 2 });
 	});
 
-	// fromStreams segfaults the NativeAOT runtime (tracked in testing/todo.md)
-	it.skip("fromStreams - processes events from specific streams", async () => {
+	it("fromStreams - processes events from specific streams", async () => {
 		const streamA = `specific-a-${suffix}`;
 		const streamB = `specific-b-${suffix}`;
 

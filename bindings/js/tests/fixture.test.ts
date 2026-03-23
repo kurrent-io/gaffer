@@ -28,18 +28,10 @@ function loadFixtures(filename: string): Fixture[] {
 	return JSON.parse(readFileSync(path, "utf8"));
 }
 
-// fromStreams varargs crashes the NativeAOT runtime via koffi (segfault).
-// Works in Go bindings and C# tests. See testing/todo.md.
-const SKIP = new Set(["fromStreams with varargs"]);
-
 function runFixtures(filename: string) {
 	const fixtures = loadFixtures(filename);
 	for (const f of fixtures) {
-		if (SKIP.has(f.name)) {
-			it.todo(f.name);
-		} else {
-			it(f.name, () => runFixture(f));
-		}
+		it(f.name, () => runFixture(f));
 	}
 }
 

@@ -685,18 +685,18 @@ internal sealed class JintProjectionHandler : IDisposable {
 		}
 
 		private JsValue FromStreams(JsValue _, JsValue[] parameters) {
-			IEnumerator<JsValue>? streams = null;
-			try {
-				streams = parameters.At(0).IsArray()
-					? parameters.At(0).AsArray().GetEnumerator()
-					: parameters.AsEnumerable().GetEnumerator();
-				while (streams.MoveNext()) {
-					if (!streams.Current.IsString())
+			if (parameters.Length == 1 && parameters.At(0).IsArray()) {
+				foreach (var stream in parameters.At(0).AsArray()) {
+					if (stream is not JsString s)
 						throw new ArgumentException("streams");
-					_definitionBuilder.FromStream(streams.Current.AsString());
+					_definitionBuilder.FromStream(s.AsString());
 				}
-			} finally {
-				streams?.Dispose();
+			} else {
+				for (var i = 0; i < parameters.Length; i++) {
+					if (parameters[i] is not JsString s)
+						throw new ArgumentException("streams");
+					_definitionBuilder.FromStream(s.AsString());
+				}
 			}
 			RestrictProperties("fromStreams");
 			return this;

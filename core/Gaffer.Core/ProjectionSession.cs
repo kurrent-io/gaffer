@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Gaffer.Core.Events;
 using Gaffer.Core.Projection;
 
@@ -40,8 +41,18 @@ public sealed class ProjectionSession : IDisposable
 
     public void Dispose() => _handler.Dispose();
 
+    public const string StreamDeletedEventType = "$streamDeleted";
+    public const string StreamMetadataEventType = "$metadata";
+    private const string MetastreamPrefix = "$$";
+
     public void Feed(ProjectionEvent @event)
     {
+        if (IsStreamDeletedEvent(@event, out var deletedStreamId))
+        {
+            FeedStreamDeleted(deletedStreamId);
+            return;
+        }
+
         var partition = ResolvePartition(@event);
 
         if (!ShouldProcess(@event))
@@ -80,6 +91,56 @@ public sealed class ProjectionSession : IDisposable
         }
     }
 
+    private static bool IsStreamDeletedEvent(ProjectionEvent @event, out string deletedStreamId)
+    {
+        if (@event.EventType == StreamDeletedEventType)
+        {
+            deletedStreamId = @event.StreamId;
+            return true;
+        }
+
+        if (@event.EventType == StreamMetadataEventType &&
+            @event.StreamId.StartsWith(MetastreamPrefix) &&
+            @event.Data != null)
+        {
+            // Soft delete: $metadata on $$streamId with $tb set to long.MaxValue (EventNumber.DeletedStream)
+            try
+            {
+                using var doc = JsonDocument.Parse(@event.Data);
+                if (doc.RootElement.TryGetProperty("$tb", out var tb) &&
+                    tb.ValueKind == JsonValueKind.Number &&
+                    tb.GetInt64() == long.MaxValue)
+                {
+                    deletedStreamId = @event.StreamId[MetastreamPrefix.Length..];
+                    return true;
+                }
+            }
+            catch
+            {
+                // malformed metadata, not a delete
+            }
+        }
+
+        deletedStreamId = "";
+        return false;
+    }
+
+    private void FeedStreamDeleted(string partition)
+    {
+        if (!_sources.HandlesDeletedNotifications)
+            return;
+
+        LoadPartitionState(partition);
+        LoadSharedState();
+
+        _handler.ProcessPartitionDeleted(partition, out var newState);
+
+        _stateCache[partition] = newState;
+
+        if (newState != null)
+            OnStateChanged?.Invoke(partition, newState);
+    }
+
     private void ProcessOutput(string partition, ProjectionEvent @event,
         string? newState, string? newSharedState, EmittedEvent[]? emittedEvents)
     {
@@ -99,19 +160,6 @@ public sealed class ProjectionSession : IDisposable
         if (emittedEvents != null)
             foreach (var emitted in emittedEvents)
                 OnEmit?.Invoke(emitted);
-    }
-
-    public void DeletePartition(string partition)
-    {
-        LoadPartitionState(partition);
-        LoadSharedState();
-
-        _handler.ProcessPartitionDeleted(partition, out var newState);
-
-        _stateCache[partition] = newState;
-
-        if (newState != null)
-            OnStateChanged?.Invoke(partition, newState);
     }
 
     public string? GetState(string? partition = null) =>

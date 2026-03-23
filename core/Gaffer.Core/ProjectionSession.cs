@@ -30,6 +30,7 @@ public sealed class ProjectionSession : IDisposable
 
         _handler = new JintProjectionHandler(
             source,
+            opts.EnableContentTypeValidation,
             opts.CompilationTimeout,
             opts.ExecutionTimeout,
             message => OnLog?.Invoke(message));
@@ -72,7 +73,7 @@ public sealed class ProjectionSession : IDisposable
         _handlerStopwatch.Restart();
         try
         {
-            _handler.ProcessEvent(
+            var processed = _handler.ProcessEvent(
                 partition,
                 ResolveCategory(@event),
                 @event,
@@ -81,7 +82,8 @@ public sealed class ProjectionSession : IDisposable
                 out var emittedEvents);
             _handlerStopwatch.Stop();
 
-            ProcessOutput(partition, @event, newState, newSharedState, emittedEvents);
+            if (processed)
+                ProcessOutput(partition, @event, newState, newSharedState, emittedEvents);
         }
         catch (Exception ex) when (ex is not ProjectionException)
         {
@@ -178,7 +180,8 @@ public sealed class ProjectionSession : IDisposable
         if (!_stateCache.ContainsKey(key))
             return null;
         LoadPartitionState(key);
-        LoadSharedState();
+        if (_sharedStateInitialized)
+            LoadSharedState();
         return _handler.TransformStateToResult();
     }
 
@@ -254,4 +257,5 @@ public sealed class ProjectionSessionOptions
     public TimeSpan CompilationTimeout { get; init; } = TimeSpan.FromSeconds(5);
     public TimeSpan ExecutionTimeout { get; init; } = TimeSpan.FromSeconds(5);
     public bool Debug { get; init; }
+    public bool EnableContentTypeValidation { get; init; }
 }

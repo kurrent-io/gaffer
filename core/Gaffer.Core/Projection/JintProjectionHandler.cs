@@ -28,17 +28,20 @@ internal sealed class JintProjectionHandler : IDisposable
     private readonly JsonParser _parser;
     private readonly Serializer _serializer;
     private readonly Action<string>? _onLog;
+    private readonly bool _enableContentTypeValidation;
 
     private JsValue _state;
     private JsValue _sharedState;
 
     public JintProjectionHandler(
         string source,
+        bool enableContentTypeValidation,
         TimeSpan compilationTimeout,
         TimeSpan executionTimeout,
         Action<string>? onLog = null)
     {
         _onLog = onLog;
+        _enableContentTypeValidation = enableContentTypeValidation;
         _definitionBuilder = new SourceDefinitionBuilder();
         _definitionBuilder.NoWhen();
         _definitionBuilder.AllEvents();
@@ -139,7 +142,7 @@ internal sealed class JintProjectionHandler : IDisposable
     {
         _engine.Constraints.Reset();
         if ((@event.IsJson && string.IsNullOrWhiteSpace(@event.Data)) ||
-            (!@event.IsJson && string.IsNullOrEmpty(@event.Data)))
+            (!_enableContentTypeValidation && !@event.IsJson && string.IsNullOrEmpty(@event.Data)))
         {
             PrepareOutput(out newState, out newSharedState, out emittedEvents);
             return true;

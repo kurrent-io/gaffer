@@ -16,3 +16,7 @@ format:
 # Check formatting without changes
 check:
     dotnet format --verify-no-changes
+
+# Publish NativeAOT shared library
+publish:
+    dotnet publish Gaffer.Runtime -c Release

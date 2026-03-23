@@ -116,7 +116,9 @@ V2 subscribes with `resolveLinks: true`, so links are always resolved to their t
 
 ### reorderEvents / processingLag
 
-V1 only. Only valid for `fromStreams` with more than one stream. `processingLag` must be at least 50ms. When `info.settings.reorderEvents` is true, buffer events and release in commit position order after `info.settings.processingLag` ms. The runtime does not buffer - the consumer must implement it. V2 does not support event reordering.
+V1 only. Only valid for `fromStreams` with more than one stream. `processingLag` must be at least 50ms. V2 does not support it.
+
+This option exists because V1 merges separate per-stream reads, which can deliver events out of global order. Since this spec always uses `subscribeToAll` with a filter, events arrive in commit position order naturally. `reorderEvents` and `processingLag` are effectively noops for the `$all` approach - consumers can safely ignore them.
 
 ### data must be null, not "null"
 

@@ -116,7 +116,7 @@ V2 subscribes with `resolveLinks: true`, so links are always resolved to their t
 
 ### reorderEvents / processingLag
 
-Only applies to `fromStreams`. When `info.settings.reorderEvents` is true, buffer events and release in commit position order after `info.settings.processingLag` ms. The runtime does not buffer - the consumer must implement it.
+V1 only. Only valid for `fromStreams` with more than one stream. `processingLag` must be at least 50ms. When `info.settings.reorderEvents` is true, buffer events and release in commit position order after `info.settings.processingLag` ms. The runtime does not buffer - the consumer must implement it. V2 does not support event reordering.
 
 ### data must be null, not "null"
 

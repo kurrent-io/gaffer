@@ -188,7 +188,7 @@ internal sealed class JintProjectionHandler : IDisposable
         {
             var arr = _state.AsArray();
             newState = arr.TryGetValue(0, out var state)
-                ? (_state.IsString() ? _state.AsString() : ConvertToStringHandlingNulls(state))
+                ? (state.IsString() ? state.AsString() : ConvertToStringHandlingNulls(state))
                 : "";
             newSharedState = arr.TryGetValue(1, out var sharedState)
                 ? ConvertToStringHandlingNulls(sharedState)

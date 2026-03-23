@@ -56,14 +56,30 @@ public sealed class ProjectionSession : IDisposable
         }
 
         _handlerStopwatch.Restart();
-        _handler.ProcessEvent(
-            partition,
-            ResolveCategory(@event),
-            @event,
-            out var newState,
-            out var newSharedState,
-            out var emittedEvents);
-        _handlerStopwatch.Stop();
+        try
+        {
+            _handler.ProcessEvent(
+                partition,
+                ResolveCategory(@event),
+                @event,
+                out var newState,
+                out var newSharedState,
+                out var emittedEvents);
+            _handlerStopwatch.Stop();
+
+            ProcessOutput(partition, @event, newState, newSharedState, emittedEvents);
+        }
+        catch (Exception ex) when (ex is not ProjectionException)
+        {
+            _handlerStopwatch.Stop();
+            throw new ProjectionException(
+                $"Error processing {@event.EventType} in partition '{partition}': {ex.Message}", ex);
+        }
+    }
+
+    private void ProcessOutput(string partition, ProjectionEvent @event,
+        string? newState, string? newSharedState, EmittedEvent[]? emittedEvents)
+    {
 
         if (_handlerStopwatch.Elapsed > _handlerTimeout)
             OnSlowHandler?.Invoke(@event.EventType, (int)_handlerStopwatch.ElapsedMilliseconds);
@@ -108,6 +124,8 @@ public sealed class ProjectionSession : IDisposable
     public string? GetResult(string? partition = null)
     {
         var key = partition ?? "";
+        if (!_stateCache.ContainsKey(key))
+            return null;
         LoadPartitionState(key);
         LoadSharedState();
         return _handler.TransformStateToResult();

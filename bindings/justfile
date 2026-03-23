@@ -2,6 +2,15 @@ default:
     @just --list
 
 # Install all binding dependencies
+[parallel]
 init: go::init
+
+# Run all binding tests
+[parallel]
+test: go::test
+
+# Check all binding formatting and linting
+[parallel]
+check: go::check
 
 mod go

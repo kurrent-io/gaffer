@@ -195,7 +195,13 @@ describe("Error types", () => {
 			expect(e.event.streamId).toBe("s-1");
 			expect(e.event.sequenceNumber).toBe(42);
 			expect(e.message).toMatchInlineSnapshot(
-				`"Projection script took too long to execute (100ms limit)"`,
+				`
+				"Projection script took too long to execute (100ms limit)
+
+				Event: 42@s-1
+				Type:  Test
+				"
+			`,
 			);
 		} finally {
 			session.dispose();
@@ -220,7 +226,13 @@ describe("Error types", () => {
 			expect(e.event.eventType).toBe("Test");
 			expect(e.event.streamId).toBe("s-1");
 			expect(e.event.sequenceNumber).toBe(42);
-			expect(e.message).toMatchInlineSnapshot(`"Event data is not valid JSON"`);
+			expect(e.message).toMatchInlineSnapshot(`
+				"Event data is not valid JSON
+
+				Event: 42@s-1
+				Type:  Test
+				"
+			`);
 		} finally {
 			session.dispose();
 		}
@@ -245,7 +257,13 @@ describe("Error types", () => {
 			expect(e.event.streamId).toBe("s-1");
 			expect(e.event.sequenceNumber).toBe(42);
 			expect(e.message).toMatchInlineSnapshot(
-				`"Cannot serialize NaN as JSON value"`,
+				`
+				"Failed to serialize projection state: NaN is not a valid JSON value
+
+				Event: 42@s-1
+				Type:  Test
+				"
+			`,
 			);
 		} finally {
 			session.dispose();

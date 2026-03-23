@@ -9,6 +9,9 @@ public sealed class ExecutionTimeoutException : GafferException {
 	public long SequenceNumber { get; }
 	public string? Partition { get; }
 
+	public override string Message =>
+		ErrorFormatter.FormatWithEventContext(Description, EventType, StreamId, SequenceNumber, Partition);
+
 	public ExecutionTimeoutException(
 		string description, int elapsedMs, int allowedMs,
 		string eventType, string streamId, long sequenceNumber, string? partition = null,

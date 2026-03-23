@@ -43,8 +43,9 @@ export class CompilationTimeoutError extends GafferError {
 		elapsed: number,
 		allowed: number,
 		cause?: unknown,
+		message?: string,
 	) {
-		super("compilation-timeout", description, cause);
+		super("compilation-timeout", description, cause, message);
 		this.elapsed = elapsed;
 		this.allowed = allowed;
 	}
@@ -100,8 +101,9 @@ export class ExecutionTimeoutError extends GafferError {
 		allowed: number,
 		event: EventContext,
 		cause?: unknown,
+		message?: string,
 	) {
-		super("execution-timeout", description, cause);
+		super("execution-timeout", description, cause, message);
 		this.elapsed = elapsed;
 		this.allowed = allowed;
 		this.event = event;
@@ -111,8 +113,13 @@ export class ExecutionTimeoutError extends GafferError {
 export class MalformedEventError extends GafferError {
 	readonly event: EventContext;
 
-	constructor(description: string, event: EventContext, cause?: unknown) {
-		super("malformed-event", description, cause);
+	constructor(
+		description: string,
+		event: EventContext,
+		cause?: unknown,
+		message?: string,
+	) {
+		super("malformed-event", description, cause, message);
 		this.event = event;
 	}
 }
@@ -120,8 +127,13 @@ export class MalformedEventError extends GafferError {
 export class StateSerializationError extends GafferError {
 	readonly event: EventContext;
 
-	constructor(description: string, event: EventContext, cause?: unknown) {
-		super("state-serialization-error", description, cause);
+	constructor(
+		description: string,
+		event: EventContext,
+		cause?: unknown,
+		message?: string,
+	) {
+		super("state-serialization-error", description, cause, message);
 		this.event = event;
 	}
 }
@@ -180,6 +192,8 @@ export function parseErrorJson(json: string, source: string): GafferError {
 				err.description,
 				err.elapsed!,
 				err.allowed!,
+				undefined,
+				err.message,
 			);
 
 		case "invalid-argument":
@@ -212,23 +226,35 @@ export function parseErrorJson(json: string, source: string): GafferError {
 					sequenceNumber: err.sequenceNumber!,
 					partition: err.partition,
 				},
+				undefined,
+				err.message,
 			);
 
 		case "malformed-event":
-			return new MalformedEventError(err.description, {
-				eventType: err.eventType!,
-				streamId: err.streamId!,
-				sequenceNumber: err.sequenceNumber!,
-				partition: err.partition,
-			});
+			return new MalformedEventError(
+				err.description,
+				{
+					eventType: err.eventType!,
+					streamId: err.streamId!,
+					sequenceNumber: err.sequenceNumber!,
+					partition: err.partition,
+				},
+				undefined,
+				err.message,
+			);
 
 		case "state-serialization-error":
-			return new StateSerializationError(err.description, {
-				eventType: err.eventType!,
-				streamId: err.streamId!,
-				sequenceNumber: err.sequenceNumber!,
-				partition: err.partition,
-			});
+			return new StateSerializationError(
+				err.description,
+				{
+					eventType: err.eventType!,
+					streamId: err.streamId!,
+					sequenceNumber: err.sequenceNumber!,
+					partition: err.partition,
+				},
+				undefined,
+				err.message,
+			);
 
 		case "projection-transform-error":
 			return new ProjectionTransformError(

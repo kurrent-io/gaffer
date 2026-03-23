@@ -102,6 +102,16 @@ internal static class ErrorFormatter {
 		return result;
 	}
 
+	public static string FormatWithEventContext(
+		string description, string eventType, string streamId, long sequenceNumber, string? partition) {
+		return $"{description}\n\n" + FormatEventContext(eventType, streamId, sequenceNumber, partition);
+	}
+
+	public static string FormatStateSerializationError(
+		string description, string eventType, string streamId, long sequenceNumber, string? partition) {
+		return FormatWithEventContext($"Failed to serialize projection state: {description}", eventType, streamId, sequenceNumber, partition);
+	}
+
 	private static string FormatEventContext(string eventType, string streamId, long sequenceNumber, string? partition) {
 		var result = $"Event: {sequenceNumber}@{streamId}\n";
 		result += $"Type:  {eventType}\n";

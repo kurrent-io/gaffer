@@ -1,1 +1,4 @@
-﻿Cannot serialize NaN as JSON value
+﻿Failed to serialize projection state: NaN is not a valid JSON value
+
+Event: 42@s-1
+Type:  Test

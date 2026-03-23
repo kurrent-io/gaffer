@@ -1053,7 +1053,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 					// Matches KurrentDB: throws on NaN/Infinity rather than writing null
 					var num = value.AsNumber();
 					if (double.IsNaN(num) || double.IsInfinity(num))
-						throw new Errors.StateSerializationException($"Cannot serialize {num} as JSON value", "", "", 0);
+						throw new Errors.StateSerializationException($"{num} is not a valid JSON value", "", "", 0);
 					writer.WriteNumberValue(num);
 					break;
 				case Types.BigInt:
@@ -1063,7 +1063,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 					writer.WriteStringValue(value.AsString());
 					break;
 				default:
-					throw new Errors.StateSerializationException($"Cannot serialize {value.Type} as primitive", "", "", 0);
+					throw new Errors.StateSerializationException($"{value.Type} is not serializable as JSON", "", "", 0);
 			}
 		}
 	}

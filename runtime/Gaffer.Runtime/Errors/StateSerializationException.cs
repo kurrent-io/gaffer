@@ -7,6 +7,11 @@ public sealed class StateSerializationException : GafferException {
 	public long SequenceNumber { get; }
 	public string? Partition { get; }
 
+	public override string Message =>
+		EventType.Length > 0
+			? ErrorFormatter.FormatStateSerializationError(Description, EventType, StreamId, SequenceNumber, Partition)
+			: base.Message;
+
 	public StateSerializationException(
 		string description, string eventType, string streamId,
 		long sequenceNumber, string? partition = null,

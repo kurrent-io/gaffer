@@ -7,6 +7,11 @@ public sealed class MalformedEventException : GafferException {
 	public long SequenceNumber { get; }
 	public string? Partition { get; }
 
+	public override string Message =>
+		EventType.Length > 0
+			? ErrorFormatter.FormatWithEventContext(Description, EventType, StreamId, SequenceNumber, Partition)
+			: base.Message;
+
 	public MalformedEventException(
 		string description, string eventType, string streamId,
 		long sequenceNumber, string? partition = null,

@@ -1,1 +1,4 @@
 ﻿Event data is not valid JSON
+
+Event: 42@s-1
+Type:  Test

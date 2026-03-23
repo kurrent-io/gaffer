@@ -11,3 +11,4 @@ test: runtime::test
 check: runtime::check
 
 mod runtime
+mod bindings

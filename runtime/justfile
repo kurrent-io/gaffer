@@ -19,4 +19,4 @@ check:
 
 # Publish NativeAOT shared library
 publish:
-    dotnet publish Gaffer.Runtime -c Release
+    dotnet publish Gaffer.Runtime -c Release -r linux-x64

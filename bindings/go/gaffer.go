@@ -19,7 +19,7 @@ type Session = C.gaffer_session
 
 // SessionCreate compiles a projection from JavaScript source and returns a session.
 // Returns nil if the source is invalid. Pass optionsJSON for non-default settings
-// (handlerTimeoutMs, compilationTimeoutMs, executionTimeoutMs, debug, enableContentTypeValidation).
+// (version, handlerTimeoutMs, compilationTimeoutMs, executionTimeoutMs, debug, enableContentTypeValidation).
 func SessionCreate(source string, optionsJSON *string) *Session {
 	cs := C.CString(source)
 	defer C.free(unsafe.Pointer(cs))

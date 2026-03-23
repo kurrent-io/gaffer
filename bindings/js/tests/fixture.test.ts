@@ -163,3 +163,4 @@ describe("Fixtures: callbacks", () => runFixtures("callbacks.json"));
 describe("Fixtures: errors", () => runFixtures("errors.json"));
 describe("Fixtures: transforms", () => runFixtures("transforms.json"));
 describe("Fixtures: deletion", () => runFixtures("deletion.json"));
+describe("Fixtures: versioning", () => runFixtures("versioning.json"));

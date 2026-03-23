@@ -38,6 +38,7 @@ typedef struct gaffer_session gaffer_session;
  * @param source       Projection JavaScript source code (UTF-8)
  * @param options_json JSON options string, or NULL for defaults.
  *                     Supported fields:
+ *                       - "version": "v1" | "v2" (default "v2")
  *                       - "handlerTimeoutMs": int (default 250)
  *                       - "compilationTimeoutMs": int (default 5000)
  *                       - "executionTimeoutMs": int (default 5000)

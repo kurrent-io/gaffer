@@ -291,6 +291,7 @@ internal static unsafe class NativeExports {
 		using var doc = JsonDocument.Parse(json);
 		var root = doc.RootElement;
 		return new ProjectionSessionOptions {
+			Version = ParseVersion(root),
 			HandlerTimeoutMs = root.TryGetProperty("handlerTimeoutMs", out var ht) ? ht.GetInt32() : 250,
 			CompilationTimeout = TimeSpan.FromMilliseconds(
 				root.TryGetProperty("compilationTimeoutMs", out var ct) ? ct.GetInt32() : 5000),
@@ -298,6 +299,16 @@ internal static unsafe class NativeExports {
 				root.TryGetProperty("executionTimeoutMs", out var et) ? et.GetInt32() : 5000),
 			EnableContentTypeValidation = root.TryGetProperty("enableContentTypeValidation", out var cv) && cv.GetBoolean(),
 			Debug = root.TryGetProperty("debug", out var d) && d.GetBoolean(),
+		};
+	}
+
+	private static ProjectionVersion ParseVersion(JsonElement root) {
+		if (!root.TryGetProperty("version", out var v))
+			return ProjectionVersion.V2;
+		return v.GetString() switch {
+			"v1" => ProjectionVersion.V1,
+			"v2" => ProjectionVersion.V2,
+			_ => throw new ArgumentException($"Unknown projection version: \"{v.GetString()}\". Expected \"v1\" or \"v2\"."),
 		};
 	}
 

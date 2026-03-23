@@ -15,6 +15,7 @@ public sealed class ProjectionSession : IDisposable {
 	private readonly Dictionary<string, string?> _stateCache = new();
 	private readonly HashSet<string>? _handledEventTypes;
 	private string? _sharedState;
+	private readonly ProjectionVersion _version;
 	private readonly TimeSpan _handlerTimeout;
 	private readonly Stopwatch _handlerStopwatch = new();
 	private bool _sharedStateInitialized;
@@ -41,6 +42,7 @@ public sealed class ProjectionSession : IDisposable {
 	/// <exception cref="Exception">Thrown if the JS source is invalid or fails to compile.</exception>
 	public ProjectionSession(string source, ProjectionSessionOptions? options = null) {
 		var opts = options ?? new ProjectionSessionOptions();
+		_version = opts.Version;
 		_handlerTimeout = TimeSpan.FromMilliseconds(opts.HandlerTimeoutMs);
 
 		_handler = new JintProjectionHandler(
@@ -72,6 +74,11 @@ public sealed class ProjectionSession : IDisposable {
 	/// </summary>
 	/// <exception cref="ProjectionException">Thrown if the JS handler throws an error.</exception>
 	public void Feed(ProjectionEvent @event) {
+		// V1: drop non-JSON events at the session level, matching KurrentDB V1
+		// subscription-level filtering.
+		if (_version == ProjectionVersion.V1 && !@event.IsJson)
+			return;
+
 		if (IsStreamDeletedEvent(@event, out var deletedStreamId)) {
 			FeedStreamDeleted(deletedStreamId);
 			return;
@@ -253,8 +260,19 @@ public sealed class ProjectionSession : IDisposable {
 	}
 }
 
+/// <summary>KurrentDB projection engine version.</summary>
+public enum ProjectionVersion {
+	/// <summary>V2 engine (default). Passes all events to the handler.</summary>
+	V2 = 0,
+	/// <summary>V1 engine. Drops non-JSON events before they reach the handler.</summary>
+	V1 = 1,
+}
+
 /// <summary>Configuration options for a projection session.</summary>
 public sealed class ProjectionSessionOptions {
+	/// <summary>Projection engine version. Default: V2.</summary>
+	public ProjectionVersion Version { get; init; } = ProjectionVersion.V2;
+
 	/// <summary>Handler timeout in milliseconds. Triggers OnSlowHandler callback. Default: 250.</summary>
 	public int HandlerTimeoutMs { get; init; } = 250;
 

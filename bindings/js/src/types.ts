@@ -44,6 +44,8 @@ export interface QuerySources {
 
 /** Options for creating a projection session. */
 export interface SessionOptions {
+	/** Projection engine version. "v1" drops non-JSON events. Default: "v2". */
+	version?: "v1" | "v2";
 	handlerTimeoutMs?: number;
 	compilationTimeoutMs?: number;
 	executionTimeoutMs?: number;

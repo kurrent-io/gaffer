@@ -22,6 +22,7 @@ public class FixtureTests {
 	public static IEnumerable<object[]> Errors => LoadFixtures("errors.json");
 	public static IEnumerable<object[]> Transforms => LoadFixtures("transforms.json");
 	public static IEnumerable<object[]> Deletion => LoadFixtures("deletion.json");
+	public static IEnumerable<object[]> Versioning => LoadFixtures("versioning.json");
 
 	[Theory]
 	[MemberData(nameof(Sources))]
@@ -46,6 +47,10 @@ public class FixtureTests {
 	[Theory]
 	[MemberData(nameof(Deletion))]
 	public void Deletion_fixture(string _, JsonElement fixture) => RunFixture(fixture);
+
+	[Theory]
+	[MemberData(nameof(Versioning))]
+	public void Versioning_fixture(string _, JsonElement fixture) => RunFixture(fixture);
 
 	private static void RunFixture(JsonElement fixture) {
 		var source = fixture.GetProperty("source").GetString()!;
@@ -163,8 +168,19 @@ public class FixtureTests {
 		}
 	}
 
+	private static ProjectionVersion ParseVersion(JsonElement el) {
+		if (!el.TryGetProperty("version", out var v))
+			return ProjectionVersion.V2;
+		return v.GetString() switch {
+			"v1" => ProjectionVersion.V1,
+			"v2" => ProjectionVersion.V2,
+			_ => throw new ArgumentException($"Unknown version: \"{v.GetString()}\""),
+		};
+	}
+
 	private static ProjectionSessionOptions ParseOptions(JsonElement el) {
 		return new ProjectionSessionOptions {
+			Version = ParseVersion(el),
 			HandlerTimeoutMs = el.TryGetProperty("handlerTimeoutMs", out var handlerTimeout)
 				? handlerTimeout.GetInt32()
 				: 250,

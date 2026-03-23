@@ -1,0 +1,62 @@
+[
+	{
+		"name": "v2 default - processes non-JSON events",
+		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, $any: function(s, e) { s.count++; return s; } })",
+		"events": [
+			{ "eventType": "JsonEvent", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" },
+			{ "eventType": "BinaryEvent", "streamId": "s-1", "sequenceNumber": 1, "data": "binary-content", "isJson": false, "eventId": "00000000-0000-0000-0000-000000000001", "timestamp": "2026-01-01T00:00:01Z" }
+		],
+		"expect": {
+			"state": { "count": 2 }
+		}
+	},
+	{
+		"name": "v2 explicit - processes non-JSON events",
+		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, $any: function(s, e) { s.count++; return s; } })",
+		"options": { "version": "v2" },
+		"events": [
+			{ "eventType": "JsonEvent", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" },
+			{ "eventType": "BinaryEvent", "streamId": "s-1", "sequenceNumber": 1, "data": "binary-content", "isJson": false, "eventId": "00000000-0000-0000-0000-000000000001", "timestamp": "2026-01-01T00:00:01Z" }
+		],
+		"expect": {
+			"state": { "count": 2 }
+		}
+	},
+	{
+		"name": "v1 - drops non-JSON events",
+		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, $any: function(s, e) { s.count++; return s; } })",
+		"options": { "version": "v1" },
+		"events": [
+			{ "eventType": "JsonEvent", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" },
+			{ "eventType": "BinaryEvent", "streamId": "s-1", "sequenceNumber": 1, "data": "binary-content", "isJson": false, "eventId": "00000000-0000-0000-0000-000000000001", "timestamp": "2026-01-01T00:00:01Z" }
+		],
+		"expect": {
+			"state": { "count": 1 }
+		}
+	},
+	{
+		"name": "v1 - JSON events still processed normally",
+		"source": "fromAll().when({ $init: function() { return { total: 0 }; }, Deposited: function(s, e) { s.total += e.data.amount; return s; } })",
+		"options": { "version": "v1" },
+		"events": [
+			{ "eventType": "Deposited", "streamId": "acc-1", "sequenceNumber": 0, "data": "{\"amount\":50}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" },
+			{ "eventType": "Deposited", "streamId": "acc-1", "sequenceNumber": 1, "data": "{\"amount\":30}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000001", "timestamp": "2026-01-01T00:00:01Z" }
+		],
+		"expect": {
+			"state": { "total": 80 }
+		}
+	},
+	{
+		"name": "v1 - all non-JSON events dropped in sequence",
+		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, $any: function(s, e) { s.count++; return s; } })",
+		"options": { "version": "v1" },
+		"events": [
+			{ "eventType": "Binary1", "streamId": "s-1", "sequenceNumber": 0, "data": "binary-content", "isJson": false, "eventId": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00Z" },
+			{ "eventType": "Binary2", "streamId": "s-1", "sequenceNumber": 1, "data": "binary-content", "isJson": false, "eventId": "00000000-0000-0000-0000-000000000001", "timestamp": "2026-01-01T00:00:01Z" },
+			{ "eventType": "Json1", "streamId": "s-1", "sequenceNumber": 2, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000002", "timestamp": "2026-01-01T00:00:02Z" }
+		],
+		"expect": {
+			"state": { "count": 1 }
+		}
+	}
+]

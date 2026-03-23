@@ -23,6 +23,9 @@ describe("ProjectionTest", () => {
 			data: {},
 		});
 		expect(step.state).toEqual({ count: 1 });
+		expect(step.result).toEqual({ count: 1 });
+		expect(step.sharedState).toBeNull();
+		expect(step.partition).toBeNull();
 		expect(step.event).toEqual({
 			eventType: "ItemAdded",
 			streamId: "cart-1",
@@ -68,13 +71,16 @@ describe("ProjectionTest", () => {
 			})
 		`);
 
-		test.feed({
+		const step1 = test.feed({
 			eventType: "ItemAdded",
 			streamId: "cart-1",
 			sequenceNumber: 0,
 			isJson: true,
 			data: {},
 		});
+		expect(step1.partition).toBe("cart-1");
+		expect(step1.state).toEqual({ items: 1 });
+
 		test.feed({
 			eventType: "ItemAdded",
 			streamId: "cart-1",
@@ -82,13 +88,16 @@ describe("ProjectionTest", () => {
 			isJson: true,
 			data: {},
 		});
-		test.feed({
+
+		const step3 = test.feed({
 			eventType: "ItemAdded",
 			streamId: "cart-2",
 			sequenceNumber: 0,
 			isJson: true,
 			data: {},
 		});
+		expect(step3.partition).toBe("cart-2");
+		expect(step3.state).toEqual({ items: 1 });
 
 		expect(test.getState("cart-1")).toEqual({ items: 2 });
 		expect(test.getState("cart-2")).toEqual({ items: 1 });
@@ -179,7 +188,7 @@ describe("ProjectionTest", () => {
 	});
 
 	it("returns shared state for biState projections", () => {
-		const test = new ProjectionTest(`
+		const test = new ProjectionTest<{ count: number }, unknown, { total: number }>(`
 			options({ biState: true });
 			fromAll().when({
 				$init: function() { return { count: 0 }; },
@@ -199,7 +208,7 @@ describe("ProjectionTest", () => {
 			isJson: true,
 			data: { amount: 10 },
 		});
-		test.feed({
+		const step = test.feed({
 			eventType: "Added",
 			streamId: "s-1",
 			sequenceNumber: 1,
@@ -207,13 +216,14 @@ describe("ProjectionTest", () => {
 			data: { amount: 20 },
 		});
 
-		expect(test.getState()).toEqual({ count: 2 });
-		expect(test.getSharedState()).toEqual({ total: 30 });
+		expect(step.state).toEqual({ count: 2 });
+		expect(step.sharedState).toEqual({ total: 30 });
+		expect(step.partition).toBeNull();
 		test.dispose();
 	});
 
 	it("returns result with transformBy", () => {
-		const test = new ProjectionTest<{ total: number }>(`
+		const test = new ProjectionTest<{ count: number }, { total: number }>(`
 			fromAll().when({
 				$init: function() { return { count: 0 }; },
 				Ping: function(s, e) { s.count++; return s; }
@@ -222,14 +232,14 @@ describe("ProjectionTest", () => {
 			}).outputState()
 		`);
 
-		test.feed({
+		const step = test.feed({
 			eventType: "Ping",
 			streamId: "s-1",
 			sequenceNumber: 0,
 			isJson: true,
 			data: {},
 		});
-		expect(test.getResult()).toEqual({ total: 2 });
+		expect(step.result).toEqual({ total: 2 });
 		test.dispose();
 	});
 
@@ -329,7 +339,7 @@ describe("ProjectionTest", () => {
 		test.dispose();
 	});
 
-	it("unhandled event type leaves state unchanged", () => {
+	it("unhandled event returns null state and partition", () => {
 		const test = new ProjectionTest<{ count: number }>(counterSource);
 		test.feed({
 			eventType: "ItemAdded",
@@ -345,7 +355,51 @@ describe("ProjectionTest", () => {
 			isJson: true,
 			data: {},
 		});
-		expect(step.state?.count).toBe(1);
+		expect(step.state).toBeNull();
+		expect(step.partition).toBeNull();
+		test.dispose();
+	});
+
+	it("unhandled event in partitioned projection returns null state and partition", () => {
+		const test = new ProjectionTest<{ items: number }>(`
+			fromCategory("cart").foreachStream().when({
+				$init: function() { return { items: 0 }; },
+				ItemAdded: function(s, e) { s.items++; return s; }
+			})
+		`);
+
+		test.feed({
+			eventType: "ItemAdded",
+			streamId: "cart-1",
+			sequenceNumber: 0,
+			isJson: true,
+			data: {},
+		});
+		const step = test.feed({
+			eventType: "UnknownEvent",
+			streamId: "cart-1",
+			sequenceNumber: 1,
+			isJson: true,
+			data: {},
+		});
+		expect(step.state).toBeNull();
+		expect(step.partition).toBeNull();
+
+		expect(test.getState("cart-1")).toEqual({ items: 1 });
+		test.dispose();
+	});
+
+	it("handled event in unpartitioned projection returns state with null partition", () => {
+		const test = new ProjectionTest<{ count: number }>(counterSource);
+		const step = test.feed({
+			eventType: "ItemAdded",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			isJson: true,
+			data: {},
+		});
+		expect(step.state).toEqual({ count: 1 });
+		expect(step.partition).toBeNull();
 		test.dispose();
 	});
 

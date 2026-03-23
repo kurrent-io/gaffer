@@ -15,6 +15,8 @@ export {
 
 export type { Projection } from "./createProjection.js";
 export type {
+	DatabaseConfig,
+	ProjectionConfig,
 	ProjectionOptions,
 	StepResult,
 	TestEmittedEvent,

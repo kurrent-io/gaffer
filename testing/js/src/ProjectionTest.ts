@@ -20,9 +20,15 @@ export interface TestEmittedEvent {
 }
 
 /** Result of feeding a single event to a projection. */
-export interface StepResult<TState = unknown> {
-	/** Projection state after processing this event. */
+export interface StepResult<TState = unknown, TResult = unknown, TSharedState = unknown> {
+	/** Projection state for the affected partition, or null if no state change. */
 	state: TState | null;
+	/** Transformed result (after `transformBy`/`filterBy`), or state if no transform is defined. */
+	result: TResult | null;
+	/** Shared state for biState projections, or null if not biState. */
+	sharedState: TSharedState | null;
+	/** Partition key that was updated, or null if unpartitioned or no state change. */
+	partition: string | null;
 	/** The input event that was fed. */
 	event: EventInput;
 	/** Events emitted during processing of this event. */
@@ -67,11 +73,13 @@ const registry = new FinalizationRegistry<ProjectionSession>((session) => {
  *
  * Must be disposed when done to free native resources. Supports `using` syntax.
  */
-export class ProjectionTest<TState = unknown> {
+export class ProjectionTest<TState = unknown, TResult = unknown, TSharedState = unknown> {
 	private session: ProjectionSession;
 	private disposed = false;
 	private pendingEmitted: TestEmittedEvent[] = [];
 	private pendingLogs: string[] = [];
+	private stateChanged = false;
+	private lastRawPartition = "";
 
 	constructor(source: string, options?: ProjectionOptions) {
 		this.session = new ProjectionSession(source, toSessionOptions(options));
@@ -84,6 +92,11 @@ export class ProjectionTest<TState = unknown> {
 		this.session.onLog((message: string) => {
 			this.pendingLogs.push(message);
 		});
+
+		this.session.onStateChanged((partition: string) => {
+			this.stateChanged = true;
+			this.lastRawPartition = partition;
+		});
 	}
 
 	/**
@@ -93,7 +106,7 @@ export class ProjectionTest<TState = unknown> {
 	feed(
 		/** A TestEvent, RecordedEvent, or ResolvedEvent. */
 		input: EventInput,
-	): StepResult<TState> {
+	): StepResult<TState, TResult, TSharedState> {
 		this.ensureNotDisposed();
 
 		const parsed = parseEventInput(input);
@@ -101,13 +114,18 @@ export class ProjectionTest<TState = unknown> {
 
 		this.pendingEmitted = [];
 		this.pendingLogs = [];
+		this.stateChanged = false;
+		this.lastRawPartition = "";
 
 		this.session.feed(normalized);
 
-		const state = this.session.getStateJson<TState>() ?? null;
+		const partition = this.stateChanged ? (this.lastRawPartition || null) : null;
 
 		return {
-			state,
+			state: this.stateChanged ? (this.session.getStateJson<TState>(this.lastRawPartition) ?? null) : null,
+			result: this.stateChanged ? (this.session.getResultJson<TResult>(this.lastRawPartition) ?? null) : null,
+			sharedState: this.session.getSharedStateJson<TSharedState>() ?? null,
+			partition,
 			event: input,
 			emitted: this.pendingEmitted,
 			logs: this.pendingLogs,
@@ -124,18 +142,18 @@ export class ProjectionTest<TState = unknown> {
 	}
 
 	/** Get shared state for biState projections. */
-	getSharedState(): unknown | null {
+	getSharedState(): TSharedState | null {
 		this.ensureNotDisposed();
-		return this.session.getSharedStateJson() ?? null;
+		return this.session.getSharedStateJson<TSharedState>() ?? null;
 	}
 
-	/** Get the transformed result (after `transformBy`/`filterBy`) for a partition. */
+	/** Get the transformed result (after `transformBy`/`filterBy`) for a partition, or state if no transform is defined. */
 	getResult(
 		/** Partition key. */
 		partition?: string,
-	): TState | null {
+	): TResult | null {
 		this.ensureNotDisposed();
-		return this.session.getResultJson<TState>(partition) ?? null;
+		return this.session.getResultJson<TResult>(partition) ?? null;
 	}
 
 	/** Release native resources. Safe to call multiple times. */

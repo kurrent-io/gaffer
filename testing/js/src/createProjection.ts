@@ -14,7 +14,7 @@ import type { EventInput } from "./schemas.js";
  * A projection that can be validated, run against events, or tested interactively.
  * Created via {@link createProjection}.
  */
-export interface Projection<TState = unknown> {
+export interface Projection<TState = unknown, TResult = unknown, TSharedState = unknown> {
 	/**
 	 * Compile the projection and return its source definition.
 	 * @throws {ProjectionError} If the projection source is invalid.
@@ -24,22 +24,22 @@ export interface Projection<TState = unknown> {
 	 * Run the projection over a sync iterable of events.
 	 * @throws {ProjectionError} If the projection source is invalid or a handler throws.
 	 */
-	run(events: Iterable<EventInput>): Iterable<StepResult<TState>>;
+	run(events: Iterable<EventInput>): Iterable<StepResult<TState, TResult, TSharedState>>;
 	/**
 	 * Run the projection over an async iterable of events.
 	 * @throws {ProjectionError} If the projection source is invalid or a handler throws.
 	 */
-	run(events: AsyncIterable<EventInput>): AsyncIterable<StepResult<TState>>;
+	run(events: AsyncIterable<EventInput>): AsyncIterable<StepResult<TState, TResult, TSharedState>>;
 	/**
 	 * Run the projection against a live KurrentDB subscription.
 	 * @throws {ProjectionError} If the projection source is invalid or a handler throws.
 	 */
-	run(client: KurrentDBClient): AsyncIterable<StepResult<TState>>;
+	run(client: KurrentDBClient): AsyncIterable<StepResult<TState, TResult, TSharedState>>;
 	/**
 	 * Create an interactive test session for feeding events one at a time.
 	 * @throws {InvalidProjectionError} If the projection source is invalid.
 	 */
-	test(): ProjectionTest<TState>;
+	test(): ProjectionTest<TState, TResult, TSharedState>;
 }
 
 /**
@@ -47,12 +47,12 @@ export interface Projection<TState = unknown> {
  * Does not compile until {@link Projection.validate}, {@link Projection.run},
  * or {@link Projection.test} is called.
  */
-export function createProjection<TState = unknown>(
+export function createProjection<TState = unknown, TResult = unknown, TSharedState = unknown>(
 	/** KurrentDB projection JavaScript source code. */
 	source: string,
 	/** Options for the projection session (version, timeouts, etc). */
 	options?: ProjectionOptions,
-): Projection<TState> {
+): Projection<TState, TResult, TSharedState> {
 	return {
 		validate(): ProjectionInfo {
 			let session: ProjectionSession | null = null;
@@ -68,15 +68,15 @@ export function createProjection<TState = unknown>(
 			const info = this.validate();
 
 			if (input instanceof KurrentDBClient) {
-				return runWithClient<TState>(source, options, input, info);
+				return runWithClient<TState, TResult, TSharedState>(source, options, input, info);
 			}
 
 			if (isAsyncIterable(input)) {
-				return runAsync<TState>(source, options, input);
+				return runAsync<TState, TResult, TSharedState>(source, options, input);
 			}
 
 			if (isIterable(input)) {
-				return runSync<TState>(source, options, input);
+				return runSync<TState, TResult, TSharedState>(source, options, input);
 			}
 
 			throw new Error(
@@ -84,18 +84,18 @@ export function createProjection<TState = unknown>(
 			);
 		},
 
-		test(): ProjectionTest<TState> {
-			return new ProjectionTest<TState>(source, options);
+		test(): ProjectionTest<TState, TResult, TSharedState> {
+			return new ProjectionTest<TState, TResult, TSharedState>(source, options);
 		},
-	} as Projection<TState>;
+	} as Projection<TState, TResult, TSharedState>;
 }
 
-function* runSync<TState>(
+function* runSync<TState, TResult, TSharedState>(
 	source: string,
 	options: ProjectionOptions | undefined,
 	events: Iterable<EventInput>,
-): Iterable<StepResult<TState>> {
-	const test = new ProjectionTest<TState>(source, options);
+): Iterable<StepResult<TState, TResult, TSharedState>> {
+	const test = new ProjectionTest<TState, TResult, TSharedState>(source, options);
 	try {
 		for (const event of events) {
 			yield test.feed(event);
@@ -105,12 +105,12 @@ function* runSync<TState>(
 	}
 }
 
-async function* runAsync<TState>(
+async function* runAsync<TState, TResult, TSharedState>(
 	source: string,
 	options: ProjectionOptions | undefined,
 	events: AsyncIterable<EventInput>,
-): AsyncIterable<StepResult<TState>> {
-	const test = new ProjectionTest<TState>(source, options);
+): AsyncIterable<StepResult<TState, TResult, TSharedState>> {
+	const test = new ProjectionTest<TState, TResult, TSharedState>(source, options);
 	try {
 		for await (const event of events) {
 			yield test.feed(event);
@@ -120,13 +120,13 @@ async function* runAsync<TState>(
 	}
 }
 
-async function* runWithClient<TState>(
+async function* runWithClient<TState, TResult, TSharedState>(
 	source: string,
 	options: ProjectionOptions | undefined,
 	client: KurrentDBClient,
 	info: ProjectionInfo,
-): AsyncIterable<StepResult<TState>> {
-	const test = new ProjectionTest<TState>(source, options);
+): AsyncIterable<StepResult<TState, TResult, TSharedState>> {
+	const test = new ProjectionTest<TState, TResult, TSharedState>(source, options);
 	const subscription = createSubscription(client, info);
 	try {
 		for await (const event of subscription) {

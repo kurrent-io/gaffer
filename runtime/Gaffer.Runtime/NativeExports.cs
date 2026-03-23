@@ -285,10 +285,10 @@ internal static unsafe class NativeExports {
 			Data = root.TryGetProperty("data", out var data) ? data.ToString() : null,
 			Metadata = root.TryGetProperty("metadata", out var meta) ? meta.ToString() : null,
 			LinkMetadata = root.TryGetProperty("linkMetadata", out var lm) ? lm.ToString() : null,
-			SequenceNumber = root.TryGetProperty("sequenceNumber", out var sn) ? sn.GetInt64() : 0,
-			IsJson = !root.TryGetProperty("isJson", out var ij) || ij.GetBoolean(),
-			EventId = root.TryGetProperty("eventId", out var eid) ? Guid.Parse(eid.GetString()!) : Guid.NewGuid(),
-			Timestamp = root.TryGetProperty("timestamp", out var ts) ? ts.GetDateTime() : DateTime.UtcNow,
+			SequenceNumber = root.GetProperty("sequenceNumber").GetInt64(),
+			IsJson = root.GetProperty("isJson").GetBoolean(),
+			EventId = Guid.Parse(root.GetProperty("eventId").GetString()!),
+			Timestamp = root.GetProperty("timestamp").GetDateTime(),
 		};
 	}
 

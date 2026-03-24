@@ -1,3 +1,11 @@
 [[projection]]
   name = "order-count"
   entry = "projections/order-count.js"
+
+[[projection]]
+  name = "order-notifications"
+  entry = "projections/order-notifications.js"
+
+[[projection]]
+  name = "broken"
+  entry = "projections/broken.js"

@@ -1,0 +1,27 @@
+default:
+    @just --list
+
+cli := "../cli/gaffer"
+
+# Run a projection with fixture events
+[no-exit-message]
+run projection events="fixtures/orders.json":
+    -{{cli}} dev {{projection}} --events {{events}}
+
+# Run a projection with JSON output
+run-json projection events="fixtures/orders.json":
+    {{cli}} dev {{projection}} --events {{events}} --json
+
+# Run order-count (basic)
+order-count:
+    just run order-count
+
+# Run order-notifications (logs, emit, link, skip, error)
+[no-exit-message]
+order-notifications:
+    -just run order-notifications fixtures/orders-full.json
+
+# Run broken projection (syntax error)
+[no-exit-message]
+broken:
+    -just run broken fixtures/orders-full.json

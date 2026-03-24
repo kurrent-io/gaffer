@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
@@ -20,23 +21,29 @@ var devCmd = &cobra.Command{
 	RunE:  runDev,
 }
 
-var devEvents string
+var (
+	devEvents string
+	devJSON   bool
+)
 
 func init() {
 	devCmd.Flags().StringVar(&devEvents, "events", "", "Path to JSON events file")
+	devCmd.Flags().BoolVar(&devJSON, "json", false, "Output as NDJSON")
 }
 
 type projectionInfo struct {
-	AllStreams         bool     `json:"AllStreams"`
-	ByStreams          bool     `json:"ByStreams"`
-	ByCustomPartitions bool     `json:"ByCustomPartitions"`
-	IsBiState          bool     `json:"IsBiState"`
-	Categories         []string `json:"Categories"`
-	Streams            []string `json:"Streams"`
-	Events             []string `json:"Events"`
+	AllStreams            bool     `json:"AllStreams"`
+	ByStreams             bool     `json:"ByStreams"`
+	ByCustomPartitions    bool     `json:"ByCustomPartitions"`
+	IsBiState             bool     `json:"IsBiState"`
+	DefinesStateTransform bool     `json:"DefinesStateTransform"`
+	Categories            []string `json:"Categories"`
+	Streams               []string `json:"Streams"`
+	Events                []string `json:"Events"`
 }
 
 func runDev(cmd *cobra.Command, args []string) error {
+	cmd.SilenceUsage = true
 	name := args[0]
 
 	root := project.FindRoot()
@@ -61,12 +68,32 @@ func runDev(cmd *cobra.Command, args []string) error {
 
 	session, err := gafferruntime.NewSession(string(source), nil)
 	if err != nil {
+		if projErr, ok := err.(gafferruntime.ProjectionError); ok {
+			r := lipgloss.NewRenderer(os.Stderr)
+			errStyle := r.NewStyle().Foreground(lipgloss.Color("9"))
+			_, _ = fmt.Fprintf(os.Stderr, "\n%s\n%s\n", errStyle.Render(projErr.ErrorCode()), projErr.Error())
+			cmd.SilenceErrors = true
+			return err
+		}
 		return fmt.Errorf("failed to create projection session: %w", err)
 	}
 	defer session.Destroy()
 
 	info := getProjectionInfo(session)
-	printProjectionInfo(name, info)
+
+	version := proj.Engine
+	if version == "" {
+		version = "v2"
+	}
+
+	var writer outputWriter
+	if devJSON {
+		writer = newJSONWriter(os.Stdout)
+	} else {
+		writer = newTextWriter(os.Stdout)
+	}
+
+	writer.WriteInfo(name, info, version)
 
 	if devEvents == "" {
 		return fmt.Errorf("--events flag is required (KurrentDB connection not yet supported)")
@@ -77,40 +104,55 @@ func runDev(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("\nProcessing %d events\n\n", len(events))
+	stats, partitions, faulted := processEvents(session, events, writer)
 
+	summary := buildSummary(session, info, partitions)
+	writer.WriteSummary(stats, summary)
+
+	if faulted {
+		cmd.SilenceErrors = true
+		return fmt.Errorf("projection faulted")
+	}
+
+	return nil
+}
+
+func processEvents(session *gafferruntime.Session, events []string, writer outputWriter) (eventStats, map[string]bool, bool) {
+	var stats eventStats
 	partitions := make(map[string]bool)
-	for i, evt := range events {
+
+	for _, evt := range events {
+		event := parseEventInfo(evt)
+		writer.WriteEvent(event)
+
 		result, feedErr := session.Feed(evt)
 		if feedErr != nil {
-			return fmt.Errorf("event %d: %w", i+1, feedErr)
+			code, desc := classifyError(feedErr)
+			writer.WriteError(event.id(), code, desc)
+			stats.errors++
+			return stats, partitions, true
 		}
 
-		var parsed map[string]any
-		if err := json.Unmarshal([]byte(evt), &parsed); err != nil {
-			fmt.Printf("  [%d] <unparseable event>\n", i+1)
-			continue
-		}
-
-		eventType, _ := parsed["eventType"].(string)
-		streamID, _ := parsed["streamId"].(string)
+		writer.WriteResult(event.id(), result)
 
 		if result.Status == "skipped" {
-			fmt.Printf("  [%d] %s @ %s (skipped: %s)\n", i+1, eventType, streamID, result.SkipReason)
+			stats.skipped++
 		} else {
-			fmt.Printf("  [%d] %s @ %s\n", i+1, eventType, streamID)
-			printStepEmitted(result)
-			printStepLogs(result)
+			stats.handled++
 			if result.Partition != "" {
 				partitions[result.Partition] = true
 			}
 		}
 	}
 
-	fmt.Println()
-	printState(session, info, partitions)
+	return stats, partitions, false
+}
 
-	return nil
+func classifyError(err error) (code, description string) {
+	if projErr, ok := err.(gafferruntime.ProjectionError); ok {
+		return projErr.ErrorCode(), projErr.ErrorDescription()
+	}
+	return "unexpected-error", err.Error()
 }
 
 func getProjectionInfo(session *gafferruntime.Session) projectionInfo {
@@ -127,71 +169,47 @@ func getProjectionInfo(session *gafferruntime.Session) projectionInfo {
 	return info
 }
 
-func printProjectionInfo(name string, info projectionInfo) {
-	fmt.Printf("Projection: %s\n", name)
-
-	if info.AllStreams {
-		fmt.Print("  Source: all streams\n")
-	} else if len(info.Categories) > 0 {
-		fmt.Printf("  Source: category %v\n", info.Categories)
-	} else if len(info.Streams) > 0 {
-		fmt.Printf("  Source: streams %v\n", info.Streams)
-	}
-
-	if info.ByStreams {
-		fmt.Print("  Partitioned: per stream\n")
-	} else if info.ByCustomPartitions {
-		fmt.Print("  Partitioned: custom key\n")
-	}
-
-	if info.IsBiState {
-		fmt.Print("  BiState: yes\n")
-	}
-
-	if len(info.Events) > 0 {
-		fmt.Printf("  Events: %v\n", info.Events)
-	}
-}
-
-func printStepEmitted(result *gafferruntime.FeedResult) {
-	for _, e := range result.Emitted {
-		if e.IsLink {
-			fmt.Printf("       -> linkTo %s\n", e.StreamID)
-		} else {
-			fmt.Printf("       -> emit %s/%s\n", e.StreamID, e.EventType)
-		}
-	}
-}
-
-func printStepLogs(result *gafferruntime.FeedResult) {
-	for _, msg := range result.Logs {
-		fmt.Printf("       log: %s\n", msg)
-	}
-}
-
-func printState(session *gafferruntime.Session, info projectionInfo, partitions map[string]bool) {
+func buildSummary(session *gafferruntime.Session, info projectionInfo, partitions map[string]bool) summaryState {
 	isPartitioned := info.ByStreams || info.ByCustomPartitions
 
-	if !isPartitioned {
-		state := session.GetState(nil)
-		if state != nil {
-			fmt.Printf("State: %s\n", *state)
+	summary := summaryState{
+		partitioned:   isPartitioned,
+		hasTransforms: info.DefinesStateTransform,
+		hasBiState:    info.IsBiState,
+	}
+
+	if isPartitioned {
+		summary.partitions = make(map[string]partitionData)
+		for partition := range partitions {
+			data := partitionData{}
+			if state := session.GetState(&partition); state != nil {
+				data.state = json.RawMessage(*state)
+			}
+			if info.DefinesStateTransform {
+				if result, err := session.GetResult(&partition); err == nil && result != nil {
+					data.result = json.RawMessage(*result)
+				}
+			}
+			summary.partitions[partition] = data
 		}
 	} else {
-		for partition := range partitions {
-			state := session.GetState(&partition)
-			if state != nil {
-				fmt.Printf("State [%s]: %s\n", partition, *state)
+		if state := session.GetState(nil); state != nil {
+			summary.state = json.RawMessage(*state)
+		}
+		if info.DefinesStateTransform {
+			if result, err := session.GetResult(nil); err == nil && result != nil {
+				summary.result = json.RawMessage(*result)
 			}
 		}
 	}
 
 	if info.IsBiState {
-		shared := session.GetSharedState()
-		if shared != nil {
-			fmt.Printf("Shared state: %s\n", *shared)
+		if shared := session.GetSharedState(); shared != nil {
+			summary.sharedState = json.RawMessage(*shared)
 		}
 	}
+
+	return summary
 }
 
 const zeroUUID = "00000000-0000-0000-0000-000000000000"

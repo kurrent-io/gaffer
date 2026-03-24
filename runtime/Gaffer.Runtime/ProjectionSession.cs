@@ -53,9 +53,13 @@ public sealed class ProjectionSession : IDisposable {
 				opts.EnableContentTypeValidation,
 				opts.CompilationTimeout,
 				opts.ExecutionTimeout,
-				message => {
+				onLog: message => {
 					_pendingLogs.Add(message);
 					OnLog?.Invoke(message);
+				},
+				onEmit: emitted => {
+					_pendingEmitted.Add(emitted);
+					OnEmit?.Invoke(emitted);
 				});
 		} catch (ScriptPreparationException ex) when (ex.InnerException is ParseErrorException parseError) {
 			throw new InvalidProjectionException(
@@ -141,14 +145,8 @@ public sealed class ProjectionSession : IDisposable {
 		var isNewPartition = LoadPartitionState(partition);
 		LoadSharedState();
 
-		if (isNewPartition) {
-			_handler.ProcessPartitionCreated(partition, @event, out var createdEmitted);
-			if (createdEmitted != null)
-				foreach (var e in createdEmitted) {
-					_pendingEmitted.Add(e);
-					OnEmit?.Invoke(e);
-				}
-		}
+		if (isNewPartition)
+			_handler.ProcessPartitionCreated(partition, @event);
 
 		try {
 			var processed = _handler.ProcessEvent(
@@ -156,11 +154,10 @@ public sealed class ProjectionSession : IDisposable {
 				ResolveCategory(@event),
 				@event,
 				out var newState,
-				out var newSharedState,
-				out var emittedEvents);
+				out var newSharedState);
 
 			if (processed)
-				ProcessOutput(partition, @event, newState, newSharedState, emittedEvents);
+				ProcessOutput(partition, newState, newSharedState);
 
 			return BuildResult(partition);
 		} catch (StateSerializationException ex) {
@@ -174,8 +171,7 @@ public sealed class ProjectionSession : IDisposable {
 		}
 	}
 
-	private void ProcessOutput(string partition, ProjectionEvent @event,
-		string? newState, string? newSharedState, EmittedEvent[]? emittedEvents) {
+	private void ProcessOutput(string partition, string? newState, string? newSharedState) {
 		_stateCache[partition] = newState;
 
 		if (newState != null)
@@ -183,12 +179,6 @@ public sealed class ProjectionSession : IDisposable {
 
 		if (_sources.IsBiState && newSharedState != null)
 			_sharedState = newSharedState;
-
-		if (emittedEvents != null)
-			foreach (var emitted in emittedEvents) {
-				_pendingEmitted.Add(emitted);
-				OnEmit?.Invoke(emitted);
-			}
 	}
 
 	private FeedResult BuildResult(string partition) {

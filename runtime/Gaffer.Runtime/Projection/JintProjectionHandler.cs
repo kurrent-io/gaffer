@@ -22,11 +22,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private static readonly Stopwatch Sw = Stopwatch.StartNew();
 	private readonly Engine _engine;
 	private readonly SourceDefinitionBuilder _definitionBuilder;
-	private readonly List<EmittedEvent> _emitted;
 	private readonly ProjectionRuntime _runtime;
 	private readonly JsonParser _parser;
 	private readonly Serializer _serializer;
 	private readonly Action<string>? _onLog;
+	private readonly Action<EmittedEvent>? _onEmit;
 	private readonly bool _enableContentTypeValidation;
 
 	private JsValue _state;
@@ -37,8 +37,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 		bool enableContentTypeValidation,
 		TimeSpan compilationTimeout,
 		TimeSpan executionTimeout,
-		Action<string>? onLog = null) {
+		Action<string>? onLog = null,
+		Action<EmittedEvent>? onEmit = null) {
 		_onLog = onLog;
+		_onEmit = onEmit;
 		_enableContentTypeValidation = enableContentTypeValidation;
 		_definitionBuilder = new SourceDefinitionBuilder();
 		_definitionBuilder.NoWhen();
@@ -60,7 +62,6 @@ internal sealed class JintProjectionHandler : IDisposable {
 		_engine.Global.FastAddProperty("linkTo", new ClrFunction(_engine, "linkTo", LinkTo, 3), true, false, true);
 		_engine.Global.FastAddProperty("linkStreamTo", new ClrFunction(_engine, "linkStreamTo", LinkStreamTo, 3), true, false, true);
 		_engine.Global.FastAddProperty("copyTo", new ClrFunction(_engine, "copyTo", CopyTo, 3), true, false, true);
-		_emitted = new List<EmittedEvent>();
 	}
 
 	public void Dispose() => _engine.Dispose();
@@ -122,29 +123,24 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 	public bool ProcessEvent(
 		string partition, string category, ProjectionEvent @event,
-		out string? newState, out string? newSharedState, out EmittedEvent[]? emittedEvents) {
+		out string? newState, out string? newSharedState) {
 		_engine.Constraints.Reset();
 		if ((@event.IsJson && string.IsNullOrWhiteSpace(@event.Data)) ||
 			(!_enableContentTypeValidation && !@event.IsJson && string.IsNullOrEmpty(@event.Data))) {
-			PrepareOutput(out newState, out newSharedState, out emittedEvents);
+			PrepareOutput(out newState, out newSharedState);
 			return true;
 		}
 
 		var envelope = CreateEnvelope(partition, @event, category);
 		_state = _runtime.Handle(_state, envelope);
-		PrepareOutput(out newState, out newSharedState, out emittedEvents);
+		PrepareOutput(out newState, out newSharedState);
 		return true;
 	}
 
-	public bool ProcessPartitionCreated(
-		string partition, ProjectionEvent @event,
-		out EmittedEvent[]? emittedEvents) {
+	public void ProcessPartitionCreated(string partition, ProjectionEvent @event) {
 		_engine.Constraints.Reset();
 		var envelope = CreateEnvelope(partition, @event, "");
 		_runtime.HandleCreated(_state, envelope);
-		emittedEvents = _emitted.Count > 0 ? _emitted.ToArray() : null;
-		_emitted.Clear();
-		return true;
 	}
 
 	public bool ProcessPartitionDeleted(string partition, out string? newState) {
@@ -162,9 +158,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		return Serialize(result);
 	}
 
-	private void PrepareOutput(out string? newState, out string? newSharedState, out EmittedEvent[]? emittedEvents) {
-		emittedEvents = _emitted.Count > 0 ? _emitted.ToArray() : null;
-		_emitted.Clear();
+	private void PrepareOutput(out string? newState, out string? newSharedState) {
 		if (_definitionBuilder.IsBiState && _state.IsArray()) {
 			var arr = _state.AsArray();
 			newState = arr.TryGetValue(0, out var state)
@@ -203,17 +197,18 @@ internal sealed class JintProjectionHandler : IDisposable {
 			foreach (var kvp in parameters.At(3).AsObject().GetOwnProperties()) {
 				if (kvp.Value.Value.Type is Types.Empty or Types.Undefined)
 					continue;
-				metadata.Add(kvp.Key.AsString(), Serialize(kvp.Value.Value));
+				metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, false));
 			}
 		}
 
-		_emitted.Add(new EmittedEvent {
+		var emitted = new EmittedEvent {
 			StreamId = stream,
 			EventType = eventType,
 			Data = data,
 			IsJson = true,
 			Metadata = metadata,
-		});
+		};
+		_onEmit?.Invoke(emitted);
 		return JsValue.Undefined;
 	}
 
@@ -236,16 +231,17 @@ internal sealed class JintProjectionHandler : IDisposable {
 		if (parameters.Length == 3) {
 			metadata = new Dictionary<string, string?>();
 			foreach (var kvp in EnsureNonNullObjectValue(parameters.At(2), "metaData").GetOwnProperties())
-				metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, true));
+				metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, false));
 		}
 
-		_emitted.Add(new EmittedEvent {
+		var emitted = new EmittedEvent {
 			StreamId = stream,
 			EventType = "$>",
 			Data = $"{number}@{source}",
 			IsJson = false,
 			Metadata = metadata,
-		});
+		};
+		_onEmit?.Invoke(emitted);
 		return JsValue.Undefined;
 	}
 
@@ -257,16 +253,17 @@ internal sealed class JintProjectionHandler : IDisposable {
 		if (parameters.Length == 3) {
 			metadata = new Dictionary<string, string?>();
 			foreach (var kvp in parameters.At(2).AsObject().GetOwnProperties())
-				metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, true));
+				metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, false));
 		}
 
-		_emitted.Add(new EmittedEvent {
+		var emitted = new EmittedEvent {
 			StreamId = stream,
 			EventType = "$@",
 			Data = linkedStreamId,
 			IsJson = false,
 			Metadata = metadata,
-		});
+		};
+		_onEmit?.Invoke(emitted);
 		return JsValue.Undefined;
 	}
 

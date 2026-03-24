@@ -4,8 +4,8 @@ using Gaffer.Runtime.Projection;
 namespace Gaffer.Runtime.Tests;
 
 public class JintProjectionHandlerTests {
-	private static JintProjectionHandler CreateHandler(string source) =>
-		new(source, enableContentTypeValidation: false, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+	private static JintProjectionHandler CreateHandler(string source, Action<EmittedEvent>? onEmit = null) =>
+		new(source, enableContentTypeValidation: false, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), onEmit: onEmit);
 
 	[Fact]
 	public void Simple_count_projection() {
@@ -21,7 +21,7 @@ public class JintProjectionHandlerTests {
 			EventType = "ItemAdded",
 			StreamId = "cart-1",
 			Data = "{}",
-		}, out var state, out _, out _);
+		}, out var state, out _);
 
 		Assert.NotNull(state);
 		Assert.Contains("\"count\":1", state);
@@ -43,7 +43,7 @@ public class JintProjectionHandlerTests {
 				StreamId = "cart-1",
 				Data = "{}",
 				SequenceNumber = i,
-			}, out _, out _, out _);
+			}, out _, out _);
 		}
 
 		handler.ProcessEvent("", "", new ProjectionEvent {
@@ -51,7 +51,7 @@ public class JintProjectionHandlerTests {
 			StreamId = "cart-1",
 			Data = "{}",
 			SequenceNumber = 5,
-		}, out var state, out _, out _);
+		}, out var state, out _);
 
 		Assert.Contains("\"count\":6", state);
 	}
@@ -73,31 +73,31 @@ public class JintProjectionHandlerTests {
 			EventType = "Deposited",
 			StreamId = "account-1",
 			Data = """{"amount": 100}""",
-		}, out var state, out _, out _);
+		}, out var state, out _);
 
 		Assert.Contains("\"total\":100", state);
 	}
 
 	[Fact]
 	public void Emit_produces_emitted_events() {
+		var emitted = new List<EmittedEvent>();
 		using var handler = CreateHandler("""
-            fromAll().when({
-                $init: function() { return {}; },
-                OrderPlaced: function(state, event) {
-                    emit("notifications", "OrderNotification", { orderId: event.data.orderId });
-                    return state;
-                }
-            })
-        """);
+			fromAll().when({
+				$init: function() { return {}; },
+				OrderPlaced: function(state, event) {
+					emit("notifications", "OrderNotification", { orderId: event.data.orderId });
+					return state;
+				}
+			})
+		""", e => emitted.Add(e));
 
 		handler.Initialize();
 		handler.ProcessEvent("", "", new ProjectionEvent {
 			EventType = "OrderPlaced",
 			StreamId = "order-1",
 			Data = """{"orderId": "ABC123"}""",
-		}, out _, out _, out var emitted);
+		}, out _, out _);
 
-		Assert.NotNull(emitted);
 		Assert.Single(emitted);
 		Assert.Equal("notifications", emitted[0].StreamId);
 		Assert.Equal("OrderNotification", emitted[0].EventType);
@@ -106,6 +106,7 @@ public class JintProjectionHandlerTests {
 
 	[Fact]
 	public void LinkTo_produces_link_events() {
+		var emitted = new List<EmittedEvent>();
 		using var handler = CreateHandler("""
             fromAll().when({
                 OrderPlaced: function(state, event) {
@@ -113,7 +114,7 @@ public class JintProjectionHandlerTests {
                     return state;
                 }
             })
-        """);
+        """, e => emitted.Add(e));
 
 		handler.Initialize();
 		handler.ProcessEvent("", "", new ProjectionEvent {
@@ -121,9 +122,8 @@ public class JintProjectionHandlerTests {
 			StreamId = "order-1",
 			Data = """{"customerId": "C1"}""",
 			SequenceNumber = 42,
-		}, out _, out _, out var emitted);
+		}, out _, out _);
 
-		Assert.NotNull(emitted);
 		Assert.Single(emitted);
 		Assert.Equal("orders-by-customer", emitted[0].StreamId);
 		Assert.True(emitted[0].IsLink);
@@ -147,7 +147,7 @@ public class JintProjectionHandlerTests {
 			EventType = "TestEvent",
 			StreamId = "test-1",
 			Data = "{}",
-		}, out _, out _, out _);
+		}, out _, out _);
 
 		Assert.Single(logs);
 		Assert.Equal("hello from projection", logs[0]);
@@ -167,13 +167,13 @@ public class JintProjectionHandlerTests {
 			EventType = "Foo",
 			StreamId = "s-1",
 			Data = "{}",
-		}, out _, out _, out _);
+		}, out _, out _);
 
 		handler.ProcessEvent("", "", new ProjectionEvent {
 			EventType = "Bar",
 			StreamId = "s-1",
 			Data = "{}",
-		}, out var state, out _, out _);
+		}, out var state, out _);
 
 		Assert.Contains("\"count\":2", state);
 	}
@@ -222,7 +222,7 @@ public class JintProjectionHandlerTests {
 			EventType = "ItemAdded",
 			StreamId = "cart-1",
 			Data = "{}",
-		}, out _, out _, out _);
+		}, out _, out _);
 
 		var result = handler.TransformStateToResult();
 		Assert.NotNull(result);

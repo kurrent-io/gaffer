@@ -491,6 +491,28 @@ describe("ProjectionSession", () => {
 		expect(result.logs![0]).toBe("hello from projection");
 	});
 
+	it("feed returns partition for foreachStream", () => {
+		session = new ProjectionSession(`
+			fromAll().foreachStream().when({
+				$init: function() { return { count: 0 }; },
+				Ping: function(s, e) { s.count++; return s; }
+			})
+		`);
+
+		const result = session.feed({
+			eventType: "Ping",
+			streamId: "order-42",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			created: "2026-01-01T00:00:00Z",
+		});
+
+		expect(result.status).toBe("processed");
+		expect(result.partition).toBe("order-42");
+	});
+
 	it("getPartitionKey", () => {
 		session = new ProjectionSession(`
 			fromAll().partitionBy(function(e) {

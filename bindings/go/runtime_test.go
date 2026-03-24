@@ -458,3 +458,21 @@ func TestFeedResultEmittedEvents(t *testing.T) {
 		t.Fatalf("expected data containing 'ABC', got %v", result.Emitted[0].Data)
 	}
 }
+
+func TestFeedResultPartition(t *testing.T) {
+	session := mustCreateSession(t, `
+		fromAll().foreachStream().when({
+			$init: function() { return { count: 0 }; },
+			Ping: function(s, e) { s.count++; return s; }
+		})
+	`)
+
+	result := mustFeed(t, session, `{"eventType":"Ping","streamId":"order-42","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+
+	if result.Status != "processed" {
+		t.Fatalf("expected status 'processed', got %q", result.Status)
+	}
+	if result.Partition != "order-42" {
+		t.Fatalf("expected partition 'order-42', got %q", result.Partition)
+	}
+}

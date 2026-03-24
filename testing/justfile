@@ -13,6 +13,9 @@ test: js::test
 # Run integration tests (requires KurrentDB)
 test-integration: js::test-integration
 
+# Format code
+format: js::format
+
 # Check formatting and linting
 check: js::check
 

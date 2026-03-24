@@ -14,13 +14,9 @@ run *args:
     CGO_ENABLED=1 go run . {{args}}
 
 # Format code
-fmt:
+format:
     golangci-lint fmt
 
 # Run linter
 check:
     golangci-lint run
-
-# Verify formatting (CI)
-fmt-check:
-    golangci-lint fmt --diff

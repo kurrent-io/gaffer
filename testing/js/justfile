@@ -21,6 +21,6 @@ check:
 test-integration:
     pnpm run test:integration
 
-# Auto-fix lint and formatting
-fix:
+# Format code
+format:
     pnpm run fix

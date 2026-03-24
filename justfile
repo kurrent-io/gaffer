@@ -49,6 +49,10 @@ db-down:
 # Run integration tests (requires KurrentDB)
 test-integration: testing::test-integration
 
+# Format all code
+[parallel]
+format: runtime::format bindings::format cli::format testing::format
+
 # Check formatting and linting across all projects
 [parallel]
 check: runtime::check bindings::check cli::check testing::check

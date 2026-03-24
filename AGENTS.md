@@ -33,7 +33,8 @@ Uses devcontainer (.NET 10, Go, Node 22).
 ```
 just build                 # build all
 just test                  # test all
-just check                 # check formatting
+just check                 # check formatting and linting
+just format                # auto-fix formatting across all projects
 just runtime publish       # build NativeAOT shared library
 just bindings go test      # run Go FFI tests (requires runtime publish)
 just db-up                 # start KurrentDB for integration tests

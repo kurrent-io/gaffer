@@ -13,6 +13,10 @@ build: js-linux-x64::build
 [parallel]
 test: go::test js::test
 
+# Format all bindings
+[parallel]
+format: go::format js::format
+
 # Check all binding formatting and linting
 [parallel]
 check: go::check js::check

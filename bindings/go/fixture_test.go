@@ -124,7 +124,7 @@ func runFixture(t *testing.T, f fixture) {
 		for _, evRaw := range f.Events {
 			lastEmitted = nil
 			lastLogs = nil
-			if feedErr := session.Feed(string(evRaw)); feedErr != nil {
+			if _, feedErr := session.Feed(string(evRaw)); feedErr != nil {
 				lastFeedErr = feedErr
 			}
 		}

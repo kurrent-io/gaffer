@@ -42,6 +42,18 @@ export interface QuerySources {
 	ProcessingLag: number | null;
 }
 
+/** Result of feeding a single event to a projection session. */
+export interface FeedResult {
+	status: "processed" | "skipped";
+	reason?: string;
+	partition?: string;
+	state?: unknown;
+	result?: unknown;
+	sharedState?: unknown;
+	emitted?: EmittedEvent[];
+	logs?: string[];
+}
+
 /** Options for creating a projection session. */
 export interface SessionOptions {
 	/** Projection engine version. "v1" drops non-JSON events. Default: "v2". */

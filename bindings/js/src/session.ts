@@ -3,6 +3,7 @@ import { parseErrorJson } from "./errors.js";
 import type { IKoffiRegisteredCallback } from "koffi";
 import type {
 	EmittedEvent,
+	FeedResult,
 	ProjectionEvent,
 	QuerySources,
 	SessionOptions,
@@ -66,16 +67,17 @@ export class ProjectionSession {
 		this.registeredCallbacks.push(handle);
 	}
 
-	/** Feed a single event to the projection. */
-	feed(event: ProjectionEvent): void {
+	/** Feed a single event to the projection and return the step result. */
+	feed(event: ProjectionEvent): FeedResult {
 		this.ensureNotDisposed();
-		const result = getNativeBindings().sessionFeed(
+		const json = getNativeBindings().sessionFeed(
 			this.handle,
 			JSON.stringify(event),
 		);
-		if (result !== 0) {
+		if (json == null) {
 			this.throwLastError();
 		}
+		return parseFeedResult(json);
 	}
 
 	/** Get current state for a partition, or null if not seen. */
@@ -181,4 +183,22 @@ export class ProjectionSession {
 			throw new Error("Session has been disposed");
 		}
 	}
+}
+
+function parseFeedResult(json: string): FeedResult {
+	const raw = JSON.parse(json) as Record<string, unknown>;
+	const result: FeedResult = {
+		status: raw.status as FeedResult["status"],
+	};
+
+	if (raw.reason != null) result.reason = raw.reason as string;
+	if (raw.partition != null) result.partition = raw.partition as string;
+	if (raw.state != null) result.state = raw.state;
+	if (raw.result != null) result.result = raw.result;
+	if (raw.sharedState != null) result.sharedState = raw.sharedState;
+	if (raw.emitted != null)
+		result.emitted = raw.emitted as FeedResult["emitted"];
+	if (raw.logs != null) result.logs = raw.logs as string[];
+
+	return result;
 }

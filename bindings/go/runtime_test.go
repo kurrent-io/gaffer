@@ -1,6 +1,7 @@
 package gafferruntime
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -16,11 +17,13 @@ func mustCreateSession(t *testing.T, source string) *Session {
 	return session
 }
 
-func mustFeed(t *testing.T, session *Session, eventJSON string) {
+func mustFeed(t *testing.T, session *Session, eventJSON string) *FeedResult {
 	t.Helper()
-	if err := session.Feed(eventJSON); err != nil {
+	result, err := session.Feed(eventJSON)
+	if err != nil {
 		t.Fatalf("Feed failed: %v", err)
 	}
+	return result
 }
 
 func mustGetState(t *testing.T, session *Session, partition *string) string {
@@ -163,7 +166,7 @@ func TestFeedError(t *testing.T) {
 		})
 	`)
 
-	err := session.Feed(`{"eventType":"Bad","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	_, err := session.Feed(`{"eventType":"Bad","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -380,5 +383,78 @@ func TestGetPartitionKey(t *testing.T) {
 	}
 	if *key != "eu" {
 		t.Fatalf("expected 'eu', got %s", *key)
+	}
+}
+
+func TestFeedResultProcessed(t *testing.T) {
+	session := mustCreateSession(t, `
+		fromAll().when({
+			$init: function() { return { count: 0 }; },
+			ItemAdded: function(s, e) { s.count++; return s; }
+		})
+	`)
+
+	result := mustFeed(t, session, `{"eventType":"ItemAdded","streamId":"cart-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+
+	if result.Status != "processed" {
+		t.Fatalf("expected status 'processed', got %q", result.Status)
+	}
+	if len(result.State) == 0 || string(result.State) == "null" {
+		t.Fatal("expected non-null state")
+	}
+	var state map[string]interface{}
+	if err := json.Unmarshal(result.State, &state); err != nil {
+		t.Fatalf("failed to parse state: %v", err)
+	}
+	if state["count"] != float64(1) {
+		t.Fatalf("expected count 1, got %v", state["count"])
+	}
+}
+
+func TestFeedResultSkipped(t *testing.T) {
+	session := mustCreateSession(t, `
+		fromAll().when({
+			$init: function() { return {}; },
+			Handled: function(s, e) { return s; }
+		})
+	`)
+
+	result := mustFeed(t, session, `{"eventType":"Unhandled","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+
+	if result.Status != "skipped" {
+		t.Fatalf("expected status 'skipped', got %q", result.Status)
+	}
+	if result.SkipReason == "" {
+		t.Fatal("expected non-empty skip reason")
+	}
+}
+
+func TestFeedResultEmittedEvents(t *testing.T) {
+	session := mustCreateSession(t, `
+		fromAll().when({
+			$init: function() { return {}; },
+			OrderPlaced: function(s, e) {
+				emit("notifications", "OrderNotification", { orderId: e.data.orderId });
+				return s;
+			}
+		})
+	`)
+
+	result := mustFeed(t, session, `{"eventType":"OrderPlaced","streamId":"order-1","sequenceNumber":0,"data":"{\"orderId\":\"ABC\"}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+
+	if result.Status != "processed" {
+		t.Fatalf("expected status 'processed', got %q", result.Status)
+	}
+	if len(result.Emitted) != 1 {
+		t.Fatalf("expected 1 emitted event, got %d", len(result.Emitted))
+	}
+	if result.Emitted[0].StreamID != "notifications" {
+		t.Fatalf("expected stream 'notifications', got %q", result.Emitted[0].StreamID)
+	}
+	if result.Emitted[0].EventType != "OrderNotification" {
+		t.Fatalf("expected type 'OrderNotification', got %q", result.Emitted[0].EventType)
+	}
+	if result.Emitted[0].Data == nil || !strings.Contains(*result.Emitted[0].Data, "ABC") {
+		t.Fatalf("expected data containing 'ABC', got %v", result.Emitted[0].Data)
 	}
 }

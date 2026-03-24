@@ -14,6 +14,7 @@ export type { EventContext } from "./errors.js";
 export type {
 	ProjectionEvent,
 	EmittedEvent,
+	FeedResult,
 	QuerySources,
 	SessionOptions,
 } from "./types.js";

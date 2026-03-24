@@ -392,6 +392,105 @@ describe("ProjectionSession", () => {
 		expect(session.getResultJson<{ total: number }>()?.total).toBe(2);
 	});
 
+	it("feed returns processed result with state", () => {
+		session = new ProjectionSession(`
+			fromAll().when({
+				$init: function() { return { count: 0 }; },
+				Ping: function(s, e) { s.count++; return s; }
+			})
+		`);
+
+		const result = session.feed({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			created: "2026-01-01T00:00:00Z",
+		});
+
+		expect(result.status).toBe("processed");
+		expect(result.state).toBeDefined();
+		expect((result.state as { count: number }).count).toBe(1);
+	});
+
+	it("feed returns skipped for unhandled event", () => {
+		session = new ProjectionSession(`
+			fromAll().when({
+				$init: function() { return {}; },
+				Ping: function(s, e) { return s; }
+			})
+		`);
+
+		const result = session.feed({
+			eventType: "UnhandledEvent",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			created: "2026-01-01T00:00:00Z",
+		});
+
+		expect(result.status).toBe("skipped");
+		expect(result.reason).toBe("unhandled");
+	});
+
+	it("feed returns emitted events in result", () => {
+		session = new ProjectionSession(`
+			fromAll().when({
+				$init: function() { return {}; },
+				OrderPlaced: function(s, e) {
+					emit("notifications", "OrderNotification", { orderId: e.data.orderId });
+					return s;
+				}
+			})
+		`);
+
+		const result = session.feed({
+			eventType: "OrderPlaced",
+			streamId: "order-1",
+			sequenceNumber: 0,
+			data: '{"orderId":"ABC"}',
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			created: "2026-01-01T00:00:00Z",
+		});
+
+		expect(result.status).toBe("processed");
+		expect(result.emitted).toBeDefined();
+		expect(result.emitted).toHaveLength(1);
+		expect(result.emitted![0].streamId).toBe("notifications");
+		expect(result.emitted![0].eventType).toBe("OrderNotification");
+	});
+
+	it("feed returns logs in result", () => {
+		session = new ProjectionSession(`
+			fromAll().when({
+				TestEvent: function(s, e) {
+					log("hello from projection");
+					return s;
+				}
+			})
+		`);
+
+		const result = session.feed({
+			eventType: "TestEvent",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			data: "{}",
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			created: "2026-01-01T00:00:00Z",
+		});
+
+		expect(result.status).toBe("processed");
+		expect(result.logs).toBeDefined();
+		expect(result.logs).toHaveLength(1);
+		expect(result.logs![0]).toBe("hello from projection");
+	});
+
 	it("getPartitionKey", () => {
 		session = new ProjectionSession(`
 			fromAll().partitionBy(function(e) {

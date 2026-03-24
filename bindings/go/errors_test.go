@@ -67,7 +67,7 @@ func TestError_ProjectionHandler(t *testing.T) {
 	}
 	defer session.Destroy()
 
-	err = session.Feed(testEvent)
+	_, err = session.Feed(testEvent)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -96,7 +96,7 @@ func TestError_ProjectionHandler_WithPartition(t *testing.T) {
 	}
 	defer session.Destroy()
 
-	err = session.Feed(testEvent)
+	_, err = session.Feed(testEvent)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -117,7 +117,7 @@ func TestError_ExecutionTimeout(t *testing.T) {
 	}
 	defer session.Destroy()
 
-	err = session.Feed(testEvent)
+	_, err = session.Feed(testEvent)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -144,7 +144,7 @@ func TestError_MalformedEvent(t *testing.T) {
 	}
 	defer session.Destroy()
 
-	err = session.Feed(`{"eventType":"Test","streamId":"s-1","sequenceNumber":42,"data":"not json","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	_, err = session.Feed(`{"eventType":"Test","streamId":"s-1","sequenceNumber":42,"data":"not json","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -169,7 +169,7 @@ func TestError_StateSerialization_NaN(t *testing.T) {
 	}
 	defer session.Destroy()
 
-	err = session.Feed(testEvent)
+	_, err = session.Feed(testEvent)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -194,11 +194,7 @@ func TestError_ProjectionTransform(t *testing.T) {
 	}
 	defer session.Destroy()
 
-	if feedErr := session.Feed(testEvent); feedErr != nil {
-		t.Fatal(feedErr)
-	}
-
-	_, err = session.GetResult(nil)
+	_, err = session.Feed(testEvent)
 	if err == nil {
 		t.Fatal("expected error")
 	}

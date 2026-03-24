@@ -77,7 +77,7 @@ const stateChangedCbType = koffi.proto(
 export interface NativeBindings {
 	sessionCreate(source: string, optionsJson: string | null): number;
 	sessionDestroy(handle: number): void;
-	sessionFeed(handle: number, eventJson: string): number;
+	sessionFeed(handle: number, eventJson: string): string | null;
 	sessionGetState(handle: number, partition: string | null): string | null;
 	sessionGetSharedState(handle: number): string | null;
 	sessionSetState(
@@ -123,7 +123,7 @@ export function getNativeBindings(): NativeBindings {
 		"str",
 	]);
 	const sessionDestroy = l.func("gaffer_session_destroy", "void", ["intptr"]);
-	const sessionFeed = l.func("gaffer_session_feed", "int", ["intptr", "str"]);
+	const sessionFeed = l.func("gaffer_session_feed", "str", ["intptr", "str"]);
 	const sessionGetState = l.func("gaffer_session_get_state", "str", [
 		"intptr",
 		"str",
@@ -172,7 +172,7 @@ export function getNativeBindings(): NativeBindings {
 			sessionCreate(source, optionsJson) as number,
 		sessionDestroy: (handle) => sessionDestroy(handle),
 		sessionFeed: (handle, eventJson) =>
-			sessionFeed(handle, eventJson) as number,
+			sessionFeed(handle, eventJson) as string | null,
 		sessionGetState: (handle, partition) =>
 			sessionGetState(handle, partition) as string | null,
 		sessionGetSharedState: (handle) =>

@@ -12,7 +12,12 @@ package gafferruntime
 #include <stdlib.h>
 */
 import "C"
-import "unsafe"
+
+import (
+	"encoding/json"
+	"fmt"
+	"unsafe"
+)
 
 // Session wraps a projection runtime session.
 // Not thread-safe - do not use from multiple goroutines concurrently.
@@ -53,16 +58,20 @@ func (s *Session) ensureAlive() {
 	}
 }
 
-// Feed sends a single event to the projection.
-func (s *Session) Feed(eventJSON string) error {
+// Feed sends a single event to the projection and returns the step result.
+func (s *Session) Feed(eventJSON string) (*FeedResult, error) {
 	s.ensureAlive()
 	cs := C.CString(eventJSON)
 	defer C.free(unsafe.Pointer(cs))
-	result := int(C.gaffer_session_feed(s.handle, cs))
-	if result != 0 {
-		return getLastError(s.source)
+	result := C.gaffer_session_feed(s.handle, cs)
+	if result == nil {
+		return nil, getLastError(s.source)
 	}
-	return nil
+	var fr FeedResult
+	if err := json.Unmarshal([]byte(C.GoString(result)), &fr); err != nil {
+		return nil, fmt.Errorf("failed to parse feed result: %w", err)
+	}
+	return &fr, nil
 }
 
 // GetState returns the current state for a partition, or nil if the

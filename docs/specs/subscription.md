@@ -69,10 +69,10 @@ const escapeRegex = (s: string) =>
 /**
  * Build a subscription from projection info.
  *
- * V1 uses resolveLinks: false (matching KurrentDB's TransactionFileEventReader).
+ * V1 uses resolveLinkTos: false (matching KurrentDB's TransactionFileEventReader).
  * Raw $> link events are visible to the handler when $includeLinks: true.
  *
- * V2 uses resolveLinks: true (matching KurrentDB's V2 read strategies).
+ * V2 uses resolveLinkTos: true (matching KurrentDB's V2 read strategies).
  * Links are always resolved to their target events.
  */
 function createSubscription(
@@ -81,8 +81,8 @@ function createSubscription(
   version: Version,
 ) {
   const filter = buildFilter(info, version);
-  const resolveLinks = version === "v2";
-  return client.subscribeToAll({ filter, fromPosition: START, resolveLinks });
+  const resolveLinkTos = version === "v2";
+  return client.subscribeToAll({ filter, fromPosition: START, resolveLinkTos });
 }
 ```
 
@@ -110,9 +110,9 @@ The runtime detects and routes `$streamDeleted` and soft-delete `$metadata` even
 
 The runtime handles `$includeLinks` filtering internally. When `$includeLinks` is false (default), the runtime drops raw link events (`$>` event type) and resolved-from-link events (events with `linkMetadata` set) in `Feed()`.
 
-V1 subscribes with `resolveLinks: false`, so raw `$>` events appear in the stream. When `$includeLinks: true`, these reach the handler as events with `eventType: "$>"` and `bodyRaw: "0@source-stream"`. When `$includeLinks: false`, the runtime drops them.
+V1 subscribes with `resolveLinkTos: false`, so raw `$>` events appear in the stream. When `$includeLinks: true`, these reach the handler as events with `eventType: "$>"` and `bodyRaw: "0@source-stream"`. When `$includeLinks: false`, the runtime drops them.
 
-V2 subscribes with `resolveLinks: true`, so links are always resolved to their target events before reaching the consumer. The `$includeLinks` option controls whether resolved-from-link events (identified by `linkMetadata` being present) are passed through or dropped.
+V2 subscribes with `resolveLinkTos: true`, so links are always resolved to their target events before reaching the consumer. The `$includeLinks` option controls whether resolved-from-link events (identified by `linkMetadata` being present) are passed through or dropped.
 
 ### reorderEvents / processingLag
 

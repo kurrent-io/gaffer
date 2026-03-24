@@ -1,6 +1,9 @@
 import { ProjectionSession } from "@kurrent/gaffer-runtime";
 import { KurrentDBClient } from "@kurrent/kurrentdb-client";
-import { buildSubscriptionFilter } from "./subscriptionFilter.js";
+import {
+	buildSubscriptionFilter,
+	getResolveLinks,
+} from "./subscriptionFilter.js";
 import { mapQuerySources, type ProjectionInfo } from "./ProjectionInfo.js";
 import {
 	ProjectionTest,
@@ -155,7 +158,7 @@ async function* runWithClient<TState, TResult, TSharedState>(
 		source,
 		options,
 	);
-	const subscription = createSubscription(client, info);
+	const subscription = createSubscription(client, info, options?.version);
 	try {
 		for await (const event of subscription) {
 			yield test.feed(event);
@@ -166,9 +169,14 @@ async function* runWithClient<TState, TResult, TSharedState>(
 	}
 }
 
-function createSubscription(client: KurrentDBClient, info: ProjectionInfo) {
+function createSubscription(
+	client: KurrentDBClient,
+	info: ProjectionInfo,
+	version: "v1" | "v2" = "v2",
+) {
 	const filter = buildSubscriptionFilter(info);
-	return client.subscribeToAll({ filter });
+	const resolveLinkTos = getResolveLinks(version);
+	return client.subscribeToAll({ filter, resolveLinkTos });
 }
 
 const isIterable = (value: unknown): value is Iterable<EventInput> =>

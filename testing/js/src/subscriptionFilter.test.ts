@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildSubscriptionFilter, escapeRegex } from "./subscriptionFilter.js";
+import {
+	buildSubscriptionFilter,
+	escapeRegex,
+	getResolveLinks,
+} from "./subscriptionFilter.js";
 import type { ProjectionInfo } from "./ProjectionInfo.js";
 
 function makeInfo(overrides: Partial<ProjectionInfo> = {}): ProjectionInfo {
@@ -77,6 +81,70 @@ describe("buildSubscriptionFilter", () => {
 			filterOn: "streamName",
 			prefixes: ["order-", "cart-"],
 		});
+	});
+
+	it("adds $streamDeleted and $metadata prefixes when handlesDeletedNotifications", () => {
+		const filter = buildSubscriptionFilter(
+			makeInfo({
+				events: ["OrderPlaced"],
+				settings: {
+					includeLinks: false,
+					reorderEvents: false,
+					processingLag: null,
+					resultStreamName: null,
+					partitionResultStreamNamePattern: null,
+					handlesDeletedNotifications: true,
+				},
+			}),
+		);
+		expect(filter).toMatchObject({
+			filterOn: "eventType",
+			prefixes: ["OrderPlaced", "$streamDeleted", "$metadata"],
+		});
+	});
+
+	it("converts $ce- streams to category prefix filters", () => {
+		const filter = buildSubscriptionFilter(
+			makeInfo({
+				source: {
+					type: "streams",
+					streams: ["$ce-order", "$ce-cart"],
+				},
+			}),
+		);
+		expect(filter).toMatchObject({
+			filterOn: "streamName",
+			prefixes: ["order-", "cart-"],
+		});
+	});
+
+	it("treats mixed $ce- and regular streams as exact match", () => {
+		const filter = buildSubscriptionFilter(
+			makeInfo({
+				source: {
+					type: "streams",
+					streams: ["$ce-order", "my-stream"],
+				},
+			}),
+		);
+		expect(filter).toMatchObject({
+			filterOn: "streamName",
+			regex: expect.stringContaining("\\$ce-order"),
+		});
+	});
+});
+
+describe("getResolveLinks", () => {
+	it("returns false for v1", () => {
+		expect(getResolveLinks("v1")).toBe(false);
+	});
+
+	it("returns true for v2", () => {
+		expect(getResolveLinks("v2")).toBe(true);
+	});
+
+	it("defaults to true (v2)", () => {
+		expect(getResolveLinks()).toBe(true);
 	});
 });
 

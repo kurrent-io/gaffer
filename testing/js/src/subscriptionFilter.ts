@@ -8,28 +8,51 @@ import type { ProjectionInfo } from "./ProjectionInfo.js";
 /**
  * Build a subscription filter from a projection's source definition.
  *
- * For fromAll() with specific events, filters by event type prefix.
- * For fromStreams(), filters by exact stream name regex.
- * For fromCategory(), filters by category prefix (category + "-").
- * Returns undefined for fromAll() with all events (no filter needed).
+ * Matches the subscription spec at docs/specs/subscription.md.
  */
 export function buildSubscriptionFilter(
 	info: ProjectionInfo,
 ): Filter | undefined {
 	switch (info.source.type) {
 		case "all":
-			return info.events !== "all"
-				? eventTypeFilter({ prefixes: info.events })
-				: undefined;
-		case "streams":
+			return buildEventTypeFilter(info);
+		case "streams": {
+			// fromCategory multi-arg puts $ce- streams in the streams array
+			if (info.source.streams.every((s) => s.startsWith("$ce-"))) {
+				const categories = info.source.streams.map((s) =>
+					s.slice("$ce-".length),
+				);
+				return streamNameFilter({
+					prefixes: categories.map((c) => `${c}-`),
+				});
+			}
 			return streamNameFilter({
 				regex: `^(${info.source.streams.map(escapeRegex).join("|")})$`,
 			});
+		}
 		case "categories":
 			return streamNameFilter({
-				prefixes: info.source.categories.map((c) => c + "-"),
+				prefixes: info.source.categories.map((c) => `${c}-`),
 			});
 	}
+}
+
+function buildEventTypeFilter(info: ProjectionInfo): Filter | undefined {
+	if (info.events === "all") return undefined;
+
+	const prefixes = [...info.events];
+	if (info.settings.handlesDeletedNotifications) {
+		prefixes.push("$streamDeleted", "$metadata");
+	}
+	return eventTypeFilter({ prefixes });
+}
+
+/**
+ * Get the resolveLinks setting for a subscription based on version.
+ * V1 uses false (raw $> events visible), V2 uses true (links always resolved).
+ */
+export function getResolveLinks(version: "v1" | "v2" = "v2"): boolean {
+	return version === "v2";
 }
 
 /** Escape special regex characters in a string. */

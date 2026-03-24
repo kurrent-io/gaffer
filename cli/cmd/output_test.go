@@ -417,27 +417,39 @@ func TestTextWriter_WriteSummary_BiState(t *testing.T) {
 	assertContains(t, out, "p-1")
 }
 
-func TestTextWriter_WriteResult_WithEmitted(t *testing.T) {
+func TestTextWriter_SideEffects(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf)
+
+	ms := &mockSession{}
+	tw.RegisterCallbacks(ms)
+
+	ms.emitCb("notifications", "OrderReceived", `{"item":"Widget"}`, "", true, false)
+	ms.logCb("hello from handler")
+	ms.emitCb("shipped-orders", "", "", "", false, true)
 
 	result := &gafferruntime.FeedResult{
 		Status: "processed",
 		State:  json.RawMessage(`{"count":1}`),
-		Emitted: []gafferruntime.EmittedEvent{
-			{StreamID: "notifications", EventType: "OrderNotification", IsLink: false},
-			{StreamID: "audit", IsLink: true},
-		},
-		Logs: []string{"hello from handler"},
 	}
 	tw.WriteResult("1@order-1", result)
 
 	out := buf.String()
-	assertContains(t, out, "emit: notifications/OrderNotification")
-	assertContains(t, out, "link: audit")
-	assertContains(t, out, "log: hello from handler")
+	assertContains(t, out, "emitted")
+	assertContains(t, out, "stream: notifications")
+	assertContains(t, out, "[log] hello from handler")
+	assertContains(t, out, "linked")
+	assertContains(t, out, "stream: shipped-orders")
 	assertContains(t, out, "processed")
 }
+
+type mockSession struct {
+	emitCb gafferruntime.EmitCallback
+	logCb  gafferruntime.LogCallback
+}
+
+func (m *mockSession) OnEmit(cb gafferruntime.EmitCallback) { m.emitCb = cb }
+func (m *mockSession) OnLog(cb gafferruntime.LogCallback)   { m.logCb = cb }
 
 func TestTextWriter_WriteError(t *testing.T) {
 	var buf bytes.Buffer

@@ -170,6 +170,9 @@ func mapEmitted(emitted []gafferruntime.EmittedEvent) []map[string]any {
 				m["data"] = *e.Data
 			}
 		}
+		if len(e.Metadata) > 0 {
+			m["metadata"] = e.Metadata
+		}
 		result[i] = m
 	}
 	if len(result) == 0 {

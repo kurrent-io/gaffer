@@ -1,0 +1,9 @@
+- [ ] Fire OnEmit callback during JS execution, not after handler completes
+  - Currently: emit() adds to _emitted list in JintProjectionHandler.cs (~line 210), callbacks fire post-execution in ProjectionSession.ProcessOutput() (~line 187-191)
+  - Should: fire OnEmit inline in the Emit method (same pattern as OnLog which fires immediately at line 282)
+  - Keep collecting in _emitted list for FeedResult, just also fire the callback immediately
+  - This enables correct execution-order rendering of interleaved log/emit in CLI output
+- [ ] Fix metadata serialization in emit/linkTo callbacks using \u0022 instead of \"
+  - Metadata values like `{ source: "order-notifications" }` serialize with `\u0022` unicode escapes instead of regular escaped quotes
+  - Visible in CLI output as `{"source":"\u0022order-notifications\u0022"}`
+  - Likely in NativeExports.cs emit callback serialization path

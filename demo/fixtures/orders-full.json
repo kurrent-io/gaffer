@@ -1,5 +1,5 @@
 [
-  { "eventType": "OrderPlaced", "streamId": "order-1", "data": {"cents": 2999, "item": "Widget"} },
+  { "eventType": "OrderPlaced", "streamId": "order-1", "data": {"cents": 2999, "item": "Widget"}, "metadata": {"correlationId": "c-100", "userId": "user-42"} },
   { "eventType": "OrderPlaced", "streamId": "order-2", "data": {"cents": 4999, "item": "Gadget"} },
   { "eventType": "OrderShipped", "streamId": "order-1", "data": {"trackingId": "TRK-001"} },
   { "eventType": "InventoryChecked", "streamId": "order-1", "data": {"available": true} },

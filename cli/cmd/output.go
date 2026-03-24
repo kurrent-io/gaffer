@@ -61,6 +61,15 @@ type outputWriter interface {
 	WriteSummary(stats eventStats, state summaryState)
 }
 
+const indentSize = 3
+
+type field struct{ label, value string }
+
+type sessionCallbacks interface {
+	OnEmit(cb gafferruntime.EmitCallback)
+	OnLog(cb gafferruntime.LogCallback)
+}
+
 // --- Text output ---
 
 type textWriter struct {
@@ -74,6 +83,7 @@ type textWriter struct {
 type textStyles struct {
 	label     lipgloss.Style
 	pipe      lipgloss.Style
+	emitted   lipgloss.Style
 	processed lipgloss.Style
 	skipped   lipgloss.Style
 	errStatus lipgloss.Style
@@ -93,6 +103,7 @@ func newTextWriter(w io.Writer) *textWriter {
 		styles: textStyles{
 			label:     r.NewStyle().Foreground(lipgloss.Color("6")),
 			pipe:      r.NewStyle().Faint(true).Foreground(lipgloss.Color("6")),
+			emitted:   r.NewStyle(),
 			processed: r.NewStyle().Faint(true).Foreground(lipgloss.Color("2")),
 			skipped:   r.NewStyle().Foreground(lipgloss.Color("3")),
 			errStatus: r.NewStyle().Foreground(lipgloss.Color("9")),
@@ -100,10 +111,26 @@ func newTextWriter(w io.Writer) *textWriter {
 			heading:   r.NewStyle().Bold(true),
 		},
 	}
-	tw.prefixed = prefixed{tw: tw, pfx: "   "}
-	tw.line = prefixed{tw: tw, pfx: tw.styles.pipe.Render("│") + "  "}
+	tw.prefixed = prefixed{tw: tw, pfx: tw.ind()}
+	tw.line = prefixed{tw: tw, pfx: tw.ind("│")}
 	tw.corner = prefixed{tw: tw, pfx: tw.styles.pipe.Render("╰") + " "}
 	return tw
+}
+
+func (tw *textWriter) RegisterCallbacks(session sessionCallbacks) {
+	session.OnEmit(func(streamID, eventType, data, metadata string, isJSON, isLink bool) {
+		tw.writeEmittedCb(streamID, eventType, data, metadata, isJSON, isLink)
+	})
+	session.OnLog(func(message string) {
+		tw.write("%s %s\n", tw.lineSub(tw.styles.skipped.Render("[log]")), message)
+	})
+}
+
+func (tw *textWriter) ind(lead ...string) string {
+	if len(lead) == 0 {
+		return strings.Repeat(" ", indentSize)
+	}
+	return tw.styles.pipe.Render(lead[0]) + strings.Repeat(" ", indentSize-1)
 }
 
 func (tw *textWriter) write(format string, args ...any) {
@@ -124,6 +151,55 @@ func (p prefixed) detail(label, value string) {
 
 func (p prefixed) status(text string) {
 	p.tw.write("%s%s\n", p.pfx, text)
+}
+
+func (tw *textWriter) lineSub(label string) string {
+	return tw.styles.pipe.Render("├") + " " + label
+}
+
+func (tw *textWriter) writeNestedFields(fields []field) {
+	mid := prefixed{tw: tw, pfx: tw.ind("│") + tw.ind("│")}
+	end := prefixed{tw: tw, pfx: tw.ind("│") + tw.ind("╵")}
+	for i, f := range fields {
+		if i == len(fields)-1 {
+			end.detail(f.label, f.value)
+		} else {
+			mid.detail(f.label, f.value)
+		}
+	}
+}
+
+func (tw *textWriter) writeEmittedCb(streamID, eventType, data, metadata string, isJSON, isLink bool) {
+	em := tw.styles.emitted
+	hasData := data != ""
+	hasMeta := metadata != ""
+
+	if isLink {
+		tw.write("%s\n", tw.lineSub(em.Render("linked")))
+		fields := []field{
+			{"stream", streamID},
+		}
+		if hasData {
+			fields = append(fields, field{"data", displayJSON(json.RawMessage(data))})
+		}
+		if hasMeta {
+			fields = append(fields, field{"metadata", displayJSON(json.RawMessage(metadata))})
+		}
+		tw.writeNestedFields(fields)
+	} else {
+		tw.write("%s\n", tw.lineSub(em.Render("emitted")))
+		fields := []field{
+			{"stream", streamID},
+			{"type", eventType},
+		}
+		if hasData {
+			fields = append(fields, field{"data", displayJSON(json.RawMessage(data))})
+		}
+		if hasMeta {
+			fields = append(fields, field{"metadata", displayJSON(json.RawMessage(metadata))})
+		}
+		tw.writeNestedFields(fields)
+	}
 }
 
 func (tw *textWriter) WriteInfo(name string, info projectionInfo, version string) {
@@ -167,18 +243,6 @@ func (tw *textWriter) WriteEvent(event eventInfo) {
 }
 
 func (tw *textWriter) WriteResult(eventID string, result *gafferruntime.FeedResult) {
-	for _, e := range result.Emitted {
-		if e.IsLink {
-			tw.line.detail("link", e.StreamID)
-		} else {
-			tw.line.detail("emit", e.StreamID+"/"+e.EventType)
-		}
-	}
-
-	for _, msg := range result.Logs {
-		tw.line.detail("log", msg)
-	}
-
 	s := tw.styles
 	if result.Status == "processed" {
 		tw.corner.status(s.processed.Render("processed"))
@@ -198,7 +262,7 @@ func (tw *textWriter) WriteResult(eventID string, result *gafferruntime.FeedResu
 
 func (tw *textWriter) WriteError(eventID string, code, description string) {
 	tw.corner.status(tw.styles.errStatus.Render(code))
-	tw.write("   %s\n", tw.styles.errDetail.Render(description))
+	tw.write("%s%s\n", tw.ind(), tw.styles.errDetail.Render(description))
 	tw.blank()
 }
 

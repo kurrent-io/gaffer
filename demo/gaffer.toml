@@ -1,6 +1,12 @@
+connection = "kurrentdb+discover://d3r0d13tv1llhr4flj40.mesdb.eventstore.cloud:2113"
+
 [[projection]]
   name = "order-count"
   entry = "projections/order-count.js"
+
+[[projection]]
+  name = "event-counter"
+  entry = "projections/event-counter.js"
 
 [[projection]]
   name = "order-notifications"

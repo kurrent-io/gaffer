@@ -16,71 +16,74 @@ func TestLoad_NoEnvFile(t *testing.T) {
 
 func TestLoad_BaseEnvFile(t *testing.T) {
 	dir := t.TempDir()
-	envContent := "GAFFER_CONNECTION=esdb://localhost:2113\nTEST_VAR=hello\n"
+	envContent := "KURRENTDB_USERNAME=admin\nKURRENTDB_PASSWORD=changeit\n"
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Clean up env vars after test
 	t.Cleanup(func() {
-		_ = os.Unsetenv("GAFFER_CONNECTION")
-		_ = os.Unsetenv("TEST_VAR")
+		_ = os.Unsetenv("KURRENTDB_USERNAME")
+		_ = os.Unsetenv("KURRENTDB_PASSWORD")
 	})
 
 	if err := Load(dir, ""); err != nil {
 		t.Fatal(err)
 	}
 
-	if Connection() != "esdb://localhost:2113" {
-		t.Fatalf("expected connection string, got %q", Connection())
+	user, pass := Credentials()
+	if user != "admin" {
+		t.Fatalf("expected username admin, got %q", user)
 	}
-
-	if os.Getenv("TEST_VAR") != "hello" {
-		t.Fatalf("expected TEST_VAR=hello, got %q", os.Getenv("TEST_VAR"))
+	if pass != "changeit" {
+		t.Fatalf("expected password changeit, got %q", pass)
 	}
 }
 
 func TestLoad_OverrideEnvFile(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("GAFFER_CONNECTION=esdb://localhost:2113\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("KURRENTDB_USERNAME=admin\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, ".env.prod"), []byte("GAFFER_CONNECTION=esdb://prod:2113\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".env.prod"), []byte("KURRENTDB_USERNAME=produser\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() { _ = os.Unsetenv("GAFFER_CONNECTION") })
+	t.Cleanup(func() { _ = os.Unsetenv("KURRENTDB_USERNAME") })
 
 	if err := Load(dir, "prod"); err != nil {
 		t.Fatal(err)
 	}
 
-	if Connection() != "esdb://prod:2113" {
-		t.Fatalf("expected prod connection, got %q", Connection())
+	user, _ := Credentials()
+	if user != "produser" {
+		t.Fatalf("expected produser, got %q", user)
 	}
 }
 
 func TestLoad_OverrideFileMissing(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("GAFFER_CONNECTION=esdb://localhost:2113\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("KURRENTDB_USERNAME=admin\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() { _ = os.Unsetenv("GAFFER_CONNECTION") })
+	t.Cleanup(func() { _ = os.Unsetenv("KURRENTDB_USERNAME") })
 
-	// Loading with a nonexistent override should still load base
 	if err := Load(dir, "staging"); err != nil {
 		t.Fatal(err)
 	}
 
-	if Connection() != "esdb://localhost:2113" {
-		t.Fatalf("expected base connection, got %q", Connection())
+	user, _ := Credentials()
+	if user != "admin" {
+		t.Fatalf("expected admin, got %q", user)
 	}
 }
 
-func TestConnection_Empty(t *testing.T) {
-	_ = os.Unsetenv("GAFFER_CONNECTION")
-	if Connection() != "" {
-		t.Fatalf("expected empty, got %q", Connection())
+func TestCredentials_Empty(t *testing.T) {
+	_ = os.Unsetenv("KURRENTDB_USERNAME")
+	_ = os.Unsetenv("KURRENTDB_PASSWORD")
+
+	user, pass := Credentials()
+	if user != "" || pass != "" {
+		t.Fatalf("expected empty credentials, got %q/%q", user, pass)
 	}
 }

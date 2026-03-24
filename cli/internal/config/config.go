@@ -11,6 +11,7 @@ import (
 
 // Config represents a gaffer.toml file.
 type Config struct {
+	Connection string       `toml:"connection,omitempty"`
 	Projection []Projection `toml:"projection"`
 }
 

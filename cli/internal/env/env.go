@@ -29,7 +29,7 @@ func Load(projectDir string, envName string) error {
 	return nil
 }
 
-// Connection returns the GAFFER_CONNECTION env var, or empty string.
-func Connection() string {
-	return os.Getenv("GAFFER_CONNECTION")
+// Credentials returns KurrentDB username and password from env vars.
+func Credentials() (username, password string) {
+	return os.Getenv("KURRENTDB_USERNAME"), os.Getenv("KURRENTDB_PASSWORD")
 }

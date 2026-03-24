@@ -19,6 +19,9 @@ export type {
 	ProjectionConfig,
 	ProjectionOptions,
 	StepResult,
+	ProcessedStepResult,
+	SkippedStepResult,
+	SkipReason,
 	TestEmittedEvent,
 } from "./ProjectionTest.js";
 export type { ProjectionTest } from "./ProjectionTest.js";

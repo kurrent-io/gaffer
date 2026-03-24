@@ -33,14 +33,16 @@ describe("run(client)", () => {
 			})
 		`);
 
-		const steps = [];
+		let count = 0;
 		for await (const step of projection.run(client)) {
-			steps.push(step);
-			if (steps.length >= 3) break;
+			if (step.status === "skipped") continue;
+			count++;
+			if (count >= 3) {
+				expect(step.state).toEqual({ count: 3 });
+				break;
+			}
 		}
-
-		expect(steps).toHaveLength(3);
-		expect(steps[2].state).toEqual({ count: 3 });
+		expect(count).toBe(3);
 	});
 
 	it("fromCategory - processes events from matching streams", async () => {
@@ -61,14 +63,16 @@ describe("run(client)", () => {
 			})
 		`);
 
-		const steps = [];
+		let count = 0;
 		for await (const step of projection.run(client)) {
-			steps.push(step);
-			if (steps.length >= 2) break;
+			if (step.status === "skipped") continue;
+			count++;
+			if (count >= 2) {
+				expect(step.state!.total).toBe(30);
+				break;
+			}
 		}
-
-		expect(steps).toHaveLength(2);
-		expect(steps[1].state!.total).toBe(30);
+		expect(count).toBe(2);
 	});
 
 	it("fromStream - processes events from a single stream", async () => {
@@ -86,14 +90,16 @@ describe("run(client)", () => {
 			})
 		`);
 
-		const steps = [];
+		let count = 0;
 		for await (const step of projection.run(client)) {
-			steps.push(step);
-			if (steps.length >= 2) break;
+			if (step.status === "skipped") continue;
+			count++;
+			if (count >= 2) {
+				expect(step.state).toEqual({ count: 2 });
+				break;
+			}
 		}
-
-		expect(steps).toHaveLength(2);
-		expect(steps[1].state).toEqual({ count: 2 });
+		expect(count).toBe(2);
 	});
 
 	it("fromStreams - processes events from specific streams", async () => {
@@ -117,14 +123,16 @@ describe("run(client)", () => {
 
 		const projection = createProjection<{ count: number }>(source);
 
-		const steps = [];
+		let count = 0;
 		for await (const step of projection.run(client)) {
-			steps.push(step);
-			if (steps.length >= 2) break;
+			if (step.status === "skipped") continue;
+			count++;
+			if (count >= 2) {
+				expect(step.state).toEqual({ count: 2 });
+				break;
+			}
 		}
-
-		expect(steps).toHaveLength(2);
-		expect(steps[1].state).toEqual({ count: 2 });
+		expect(count).toBe(2);
 	});
 
 	it("foreachStream - partitions state by stream", async () => {
@@ -146,13 +154,13 @@ describe("run(client)", () => {
 			})
 		`);
 
-		const steps = [];
+		let count = 0;
 		for await (const step of projection.run(client)) {
-			steps.push(step);
-			if (steps.length >= 3) break;
+			if (step.status === "skipped") continue;
+			count++;
+			if (count >= 3) break;
 		}
-
-		expect(steps).toHaveLength(3);
+		expect(count).toBe(3);
 	});
 
 	it("collects emitted events in step results", async () => {
@@ -174,6 +182,7 @@ describe("run(client)", () => {
 		`);
 
 		for await (const step of projection.run(client)) {
+			if (step.status === "skipped") continue;
 			if (step.emitted.length > 0) {
 				expect(step.emitted[0].streamId).toBe("notifications");
 				expect(step.emitted[0].eventType).toBe("OrderNotification");
@@ -201,6 +210,7 @@ describe("run(client)", () => {
 		`);
 
 		for await (const step of projection.run(client)) {
+			if (step.status === "skipped") continue;
 			if (step.logs.length > 0) {
 				expect(step.logs).toContain("hello from integration");
 				break;
@@ -224,12 +234,15 @@ describe("run(client)", () => {
 			})
 		`);
 
-		const steps = [];
+		let count = 0;
 		for await (const step of projection.run(client)) {
-			steps.push(step);
-			if (steps.length >= 2) break;
+			if (step.status === "skipped") continue;
+			count++;
+			if (count >= 2) {
+				expect(step.state).toEqual({ total: 80 });
+				break;
+			}
 		}
-
-		expect(steps[1].state).toEqual({ total: 80 });
+		expect(count).toBe(2);
 	});
 });

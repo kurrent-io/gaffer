@@ -1,6 +1,7 @@
 import {
 	ProjectionSession,
 	type EmittedEvent,
+	type FeedResult,
 	type SessionOptions,
 } from "@kurrent/gaffer-runtime";
 import { parseEventInput, normalizeEvent, type EventInput } from "./schemas.js";
@@ -19,26 +20,59 @@ export interface TestEmittedEvent {
 	isLink: boolean;
 }
 
-/** Result of feeding a single event to a projection. */
-export interface StepResult<
+/** Result of feeding a single event to a projection. Discriminate on `status`. */
+export type StepResult<
 	TState = unknown,
-	TResult = unknown,
-	TSharedState = unknown,
+	TResult = TState,
+	TSharedState = undefined,
+> = ProcessedStepResult<TState, TResult, TSharedState> | SkippedStepResult;
+
+/** Result when the event was processed by the handler. */
+export interface ProcessedStepResult<
+	TState = unknown,
+	TResult = TState,
+	TSharedState = undefined,
 > {
-	/** Projection state for the affected partition, or null if no state change. */
-	state: TState | null;
+	status: "processed";
+	/** Projection state for the affected partition. */
+	state: TState;
 	/** Transformed result (after `transformBy`/`filterBy`), or state if no transform is defined. */
-	result: TResult | null;
-	/** Shared state for biState projections, or null if not biState. */
-	sharedState: TSharedState | null;
-	/** Partition key that was updated, or null if unpartitioned or no state change. */
-	partition: string | null;
+	result: TResult;
+	/** Shared state for biState projections. */
+	sharedState: TSharedState;
+	/** Partition key that was updated. Absent for unpartitioned projections. */
+	partition?: string;
 	/** The input event that was fed. */
 	event: EventInput;
-	/** Events emitted during processing of this event. */
+	/** Events emitted during processing (emit/linkTo). */
 	emitted: TestEmittedEvent[];
-	/** Log messages from `log()` calls during processing of this event. */
+	/** Log messages from `log()` calls. */
 	logs: string[];
+}
+
+/**
+ * Why an event was skipped by the runtime.
+ *
+ * - `"non-json"` - V1 mode dropped the event because `isJson` is false.
+ * - `"link"` - Event is a link (`$>` type or has `linkMetadata`) and `$includeLinks` is false.
+ * - `"no-partition"` - The `partitionBy` function returned null, undefined, or a non-string/non-number value.
+ * - `"unhandled"` - The event type is not in the projection's handler list and no `$any` handler is registered.
+ * - `"no-delete-handler"` - A stream deletion event was received but no `$deleted` handler is registered.
+ */
+export type SkipReason =
+	| "non-json"
+	| "link"
+	| "no-partition"
+	| "unhandled"
+	| "no-delete-handler";
+
+/** Result when the event was filtered out before reaching the handler. */
+export interface SkippedStepResult {
+	status: "skipped";
+	/** Why the event was skipped. */
+	reason: SkipReason;
+	/** The input event that was fed. */
+	event: EventInput;
 }
 
 /** Per-projection configuration. */
@@ -79,36 +113,19 @@ const registry = new FinalizationRegistry<ProjectionSession>((session) => {
  */
 export class ProjectionTest<
 	TState = unknown,
-	TResult = unknown,
-	TSharedState = unknown,
+	TResult = TState,
+	TSharedState = undefined,
 > {
 	private session: ProjectionSession;
 	private disposed = false;
-	private pendingEmitted: TestEmittedEvent[] = [];
-	private pendingLogs: string[] = [];
-	private stateChanged = false;
-	private lastRawPartition = "";
 
 	constructor(source: string, options?: ProjectionOptions) {
 		this.session = new ProjectionSession(source, toSessionOptions(options));
 		registry.register(this, this.session, this);
-
-		this.session.onEmit((event: EmittedEvent) => {
-			this.pendingEmitted.push(mapEmittedEvent(event));
-		});
-
-		this.session.onLog((message: string) => {
-			this.pendingLogs.push(message);
-		});
-
-		this.session.onStateChanged((partition: string) => {
-			this.stateChanged = true;
-			this.lastRawPartition = partition;
-		});
 	}
 
 	/**
-	 * Feed a single event to the projection. Returns the state and any emitted events/logs.
+	 * Feed a single event to the projection. Returns the step result.
 	 * @throws {ProjectionError} If the projection handler throws, with `input` and `normalized` fields attached.
 	 */
 	feed(
@@ -119,29 +136,9 @@ export class ProjectionTest<
 
 		const parsed = parseEventInput(input);
 		const normalized = normalizeEvent(parsed);
+		const feedResult = this.session.feed(normalized);
 
-		this.pendingEmitted = [];
-		this.pendingLogs = [];
-		this.stateChanged = false;
-		this.lastRawPartition = "";
-
-		this.session.feed(normalized);
-
-		const partition = this.stateChanged ? this.lastRawPartition || null : null;
-
-		return {
-			state: this.stateChanged
-				? (this.session.getStateJson<TState>(this.lastRawPartition) ?? null)
-				: null,
-			result: this.stateChanged
-				? (this.session.getResultJson<TResult>(this.lastRawPartition) ?? null)
-				: null,
-			sharedState: this.session.getSharedStateJson<TSharedState>() ?? null,
-			partition,
-			event: input,
-			emitted: this.pendingEmitted,
-			logs: this.pendingLogs,
-		};
+		return mapStepResult<TState, TResult, TSharedState>(feedResult, input);
 	}
 
 	/** Get current state for a partition. Pass no argument for unpartitioned projections. */
@@ -199,6 +196,32 @@ export function toSessionOptions(
 			options.databaseConfig?.executionTimeoutMs,
 		compilationTimeoutMs: options.databaseConfig?.compilationTimeoutMs,
 	};
+}
+
+function mapStepResult<TState, TResult, TSharedState>(
+	feed: FeedResult,
+	input: EventInput,
+): StepResult<TState, TResult, TSharedState> {
+	if (feed.status === "skipped") {
+		return {
+			status: "skipped",
+			reason: feed.reason as SkipReason,
+			event: input,
+		};
+	}
+
+	return {
+		status: "processed",
+		state: feed.state as TState,
+		result: feed.result as TResult,
+		...(feed.sharedState !== undefined && {
+			sharedState: feed.sharedState as TSharedState,
+		}),
+		...(feed.partition !== undefined && { partition: feed.partition }),
+		event: input,
+		emitted: (feed.emitted ?? []).map(mapEmittedEvent),
+		logs: feed.logs ?? [],
+	} as ProcessedStepResult<TState, TResult, TSharedState>;
 }
 
 function mapEmittedEvent(event: EmittedEvent): TestEmittedEvent {

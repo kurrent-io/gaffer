@@ -112,8 +112,9 @@ describe("createProjection", () => {
 
 			const results: Array<{ count: number } | null> = [];
 			expect(() => {
-				for (const { state } of projection.run(events)) {
-					results.push(state);
+				for (const step of projection.run(events)) {
+					if (step.status === "skipped") continue;
+					results.push(step.state);
 				}
 			}).toThrow("mid-stream error");
 			expect(results).toHaveLength(1);
@@ -152,10 +153,11 @@ describe("createProjection", () => {
 				]),
 			];
 			expect(results).toHaveLength(2);
-			// First event (non-JSON) dropped by V1 - no state change
-			expect(results[0].state).toBeNull();
-			// Second event (JSON) processed normally
-			expect(results[1].state?.count).toBe(1);
+			expect(results[0].status).toBe("skipped");
+			expect(results[1].status).toBe("processed");
+			if (results[1].status === "processed") {
+				expect(results[1].state?.count).toBe(1);
+			}
 		});
 	});
 
@@ -194,11 +196,15 @@ describe("createProjection", () => {
 				},
 			];
 
-			const steps = [...projection.run(events)];
-			expect(steps).toHaveLength(3);
-			expect(steps[0].state).toEqual({ count: 1 });
-			expect(steps[1].state).toEqual({ count: 2 });
-			expect(steps[2].state).toEqual({ count: 3 });
+			const states: Array<{ count: number }> = [];
+			for (const step of projection.run(events)) {
+				if (step.status === "skipped") continue;
+				states.push(step.state);
+			}
+			expect(states).toHaveLength(3);
+			expect(states[0]).toEqual({ count: 1 });
+			expect(states[1]).toEqual({ count: 2 });
+			expect(states[2]).toEqual({ count: 3 });
 		});
 
 		it("cleans up on early break", () => {
@@ -228,6 +234,7 @@ describe("createProjection", () => {
 			];
 
 			for (const step of projection.run(events)) {
+				if (step.status === "skipped") continue;
 				if (step.state!.count >= 1) break;
 			}
 		});
@@ -254,12 +261,13 @@ describe("createProjection", () => {
 				};
 			}
 
-			const steps = [];
+			const states: Array<{ count: number }> = [];
 			for await (const step of projection.run(events())) {
-				steps.push(step);
+				if (step.status === "skipped") continue;
+				states.push(step.state);
 			}
-			expect(steps).toHaveLength(2);
-			expect(steps[1].state).toEqual({ count: 2 });
+			expect(states).toHaveLength(2);
+			expect(states[1]).toEqual({ count: 2 });
 		});
 
 		it("propagates handler error mid-async-stream", async () => {
@@ -291,8 +299,9 @@ describe("createProjection", () => {
 
 			const results: Array<{ count: number } | null> = [];
 			await expect(async () => {
-				for await (const { state } of projection.run(events())) {
-					results.push(state);
+				for await (const step of projection.run(events())) {
+					if (step.status === "skipped") continue;
+					results.push(step.state);
 				}
 			}).rejects.toThrow("async error");
 			expect(results).toHaveLength(1);

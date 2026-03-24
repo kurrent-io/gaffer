@@ -22,10 +22,12 @@ describe("ProjectionTest", () => {
 			isJson: true,
 			data: {},
 		});
+		expect(step.status).toBe("processed");
+		if (step.status !== "processed") return;
 		expect(step.state).toEqual({ count: 1 });
 		expect(step.result).toEqual({ count: 1 });
-		expect(step.sharedState).toBeNull();
-		expect(step.partition).toBeNull();
+		expect(step.sharedState).toBeUndefined();
+		expect(step.partition).toBeUndefined();
 		expect(step.event).toEqual({
 			eventType: "ItemAdded",
 			streamId: "cart-1",
@@ -59,6 +61,8 @@ describe("ProjectionTest", () => {
 			isJson: true,
 			data: {},
 		});
+		expect(step.status).toBe("processed");
+		if (step.status !== "processed") return;
 		expect(step.state).toEqual({ count: 3 });
 		test.dispose();
 	});
@@ -78,6 +82,8 @@ describe("ProjectionTest", () => {
 			isJson: true,
 			data: {},
 		});
+		expect(step1.status).toBe("processed");
+		if (step1.status !== "processed") return;
 		expect(step1.partition).toBe("cart-1");
 		expect(step1.state).toEqual({ items: 1 });
 
@@ -96,6 +102,8 @@ describe("ProjectionTest", () => {
 			isJson: true,
 			data: {},
 		});
+		expect(step3.status).toBe("processed");
+		if (step3.status !== "processed") return;
 		expect(step3.partition).toBe("cart-2");
 		expect(step3.state).toEqual({ items: 1 });
 
@@ -123,6 +131,8 @@ describe("ProjectionTest", () => {
 			data: { orderId: "ABC" },
 		});
 
+		expect(step.status).toBe("processed");
+		if (step.status !== "processed") return;
 		expect(step.emitted).toHaveLength(1);
 		expect(step.emitted[0].streamId).toBe("notifications");
 		expect(step.emitted[0].eventType).toBe("OrderNotification");
@@ -149,6 +159,8 @@ describe("ProjectionTest", () => {
 			data: {},
 		});
 
+		expect(step.status).toBe("processed");
+		if (step.status !== "processed") return;
 		expect(step.logs).toEqual(["hello from projection"]);
 		test.dispose();
 	});
@@ -172,6 +184,8 @@ describe("ProjectionTest", () => {
 			isJson: true,
 			data: {},
 		});
+		expect(step1.status).toBe("processed");
+		if (step1.status !== "processed") return;
 		expect(step1.logs).toHaveLength(1);
 		expect(step1.emitted).toHaveLength(1);
 
@@ -182,6 +196,8 @@ describe("ProjectionTest", () => {
 			isJson: true,
 			data: {},
 		});
+		expect(step2.status).toBe("processed");
+		if (step2.status !== "processed") return;
 		expect(step2.logs).toHaveLength(1);
 		expect(step2.emitted).toHaveLength(1);
 		test.dispose();
@@ -220,9 +236,11 @@ describe("ProjectionTest", () => {
 			data: { amount: 20 },
 		});
 
+		expect(step.status).toBe("processed");
+		if (step.status !== "processed") return;
 		expect(step.state).toEqual({ count: 2 });
 		expect(step.sharedState).toEqual({ total: 30 });
-		expect(step.partition).toBeNull();
+		expect(step.partition).toBeUndefined();
 		test.dispose();
 	});
 
@@ -243,6 +261,8 @@ describe("ProjectionTest", () => {
 			isJson: true,
 			data: {},
 		});
+		expect(step.status).toBe("processed");
+		if (step.status !== "processed") return;
 		expect(step.result).toEqual({ total: 2 });
 		test.dispose();
 	});
@@ -343,7 +363,7 @@ describe("ProjectionTest", () => {
 		test.dispose();
 	});
 
-	it("unhandled event returns null state and partition", () => {
+	it("unhandled event returns skipped result", () => {
 		const test = new ProjectionTest<{ count: number }>(counterSource);
 		test.feed({
 			eventType: "ItemAdded",
@@ -359,12 +379,13 @@ describe("ProjectionTest", () => {
 			isJson: true,
 			data: {},
 		});
-		expect(step.state).toBeNull();
-		expect(step.partition).toBeNull();
+		expect(step.status).toBe("skipped");
+		if (step.status !== "skipped") return;
+		expect(step.reason).toBe("unhandled");
 		test.dispose();
 	});
 
-	it("unhandled event in partitioned projection returns null state and partition", () => {
+	it("unhandled event in partitioned projection returns skipped", () => {
 		const test = new ProjectionTest<{ items: number }>(`
 			fromCategory("cart").foreachStream().when({
 				$init: function() { return { items: 0 }; },
@@ -386,14 +407,16 @@ describe("ProjectionTest", () => {
 			isJson: true,
 			data: {},
 		});
-		expect(step.state).toBeNull();
-		expect(step.partition).toBeNull();
+		expect(step.status).toBe("skipped");
+		if (step.status === "skipped") {
+			expect(step.reason).toBe("unhandled");
+		}
 
 		expect(test.getState("cart-1")).toEqual({ items: 1 });
 		test.dispose();
 	});
 
-	it("handled event in unpartitioned projection returns state with null partition", () => {
+	it("handled event in unpartitioned projection has no partition", () => {
 		const test = new ProjectionTest<{ count: number }>(counterSource);
 		const step = test.feed({
 			eventType: "ItemAdded",
@@ -402,8 +425,10 @@ describe("ProjectionTest", () => {
 			isJson: true,
 			data: {},
 		});
+		expect(step.status).toBe("processed");
+		if (step.status !== "processed") return;
 		expect(step.state).toEqual({ count: 1 });
-		expect(step.partition).toBeNull();
+		expect(step.partition).toBeUndefined();
 		test.dispose();
 	});
 
@@ -449,6 +474,8 @@ describe("ProjectionTest", () => {
 			data: {},
 		});
 
+		expect(step.status).toBe("processed");
+		if (step.status !== "processed") return;
 		expect(step.emitted).toHaveLength(1);
 		expect(step.emitted[0].isLink).toBe(true);
 		expect(step.emitted[0].eventType).toBe("$>");
@@ -475,8 +502,8 @@ describe("ProjectionTest", () => {
 			data: {},
 		});
 
-		// linkTo data is "3@order-1" which is not valid JSON
-		// mapEmittedEvent should fall back to raw string
+		expect(step.status).toBe("processed");
+		if (step.status !== "processed") return;
 		expect(step.emitted[0].data).toBe("3@order-1");
 		test.dispose();
 	});

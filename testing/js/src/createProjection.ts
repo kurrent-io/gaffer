@@ -16,8 +16,8 @@ import type { EventInput } from "./schemas.js";
  */
 export interface Projection<
 	TState = unknown,
-	TResult = unknown,
-	TSharedState = unknown,
+	TResult = TState,
+	TSharedState = undefined,
 > {
 	/**
 	 * Compile the projection and return its source definition.
@@ -59,8 +59,8 @@ export interface Projection<
  */
 export function createProjection<
 	TState = unknown,
-	TResult = unknown,
-	TSharedState = unknown,
+	TResult = TState,
+	TSharedState = undefined,
 >(
 	/** KurrentDB projection JavaScript source code. */
 	source: string,

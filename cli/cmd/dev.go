@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
@@ -19,14 +20,10 @@ var devCmd = &cobra.Command{
 	RunE:  runDev,
 }
 
-var (
-	devEvents string
-	devDebug  bool
-)
+var devEvents string
 
 func init() {
 	devCmd.Flags().StringVar(&devEvents, "events", "", "Path to JSON events file")
-	devCmd.Flags().BoolVar(&devDebug, "debug", false, "Enable debug mode")
 }
 
 type projectionInfo struct {
@@ -62,11 +59,11 @@ func runDev(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("reading projection source: %w", err)
 	}
 
-	session := gafferruntime.SessionCreate(string(source), nil)
-	if session == nil {
-		return fmt.Errorf("failed to create projection session (check JS syntax)")
+	session, err := gafferruntime.NewSession(string(source), nil)
+	if err != nil {
+		return fmt.Errorf("failed to create projection session: %w", err)
 	}
-	defer gafferruntime.SessionDestroy(session)
+	defer session.Destroy()
 
 	info := getProjectionInfo(session)
 	printProjectionInfo(name, info)
@@ -84,22 +81,28 @@ func runDev(cmd *cobra.Command, args []string) error {
 
 	partitions := make(map[string]bool)
 	for i, evt := range events {
-		result := gafferruntime.SessionFeed(session, evt)
-		if result != 0 {
-			errMsg := gafferruntime.SessionGetError(session)
-			if errMsg != nil {
-				return fmt.Errorf("event %d: %s", i+1, *errMsg)
-			}
-			return fmt.Errorf("event %d: unknown error", i+1)
+		result, feedErr := session.Feed(evt)
+		if feedErr != nil {
+			return fmt.Errorf("event %d: %w", i+1, feedErr)
 		}
 
 		var parsed map[string]any
-		if err := json.Unmarshal([]byte(evt), &parsed); err == nil {
-			eventType, _ := parsed["eventType"].(string)
-			streamID, _ := parsed["streamId"].(string)
+		if err := json.Unmarshal([]byte(evt), &parsed); err != nil {
+			fmt.Printf("  [%d] <unparseable event>\n", i+1)
+			continue
+		}
+
+		eventType, _ := parsed["eventType"].(string)
+		streamID, _ := parsed["streamId"].(string)
+
+		if result.Status == "skipped" {
+			fmt.Printf("  [%d] %s @ %s (skipped: %s)\n", i+1, eventType, streamID, result.SkipReason)
+		} else {
 			fmt.Printf("  [%d] %s @ %s\n", i+1, eventType, streamID)
-			if streamID != "" {
-				partitions[streamID] = true
+			printStepEmitted(result)
+			printStepLogs(result)
+			if result.Partition != "" {
+				partitions[result.Partition] = true
 			}
 		}
 	}
@@ -111,7 +114,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 }
 
 func getProjectionInfo(session *gafferruntime.Session) projectionInfo {
-	sourcesJSON := gafferruntime.SessionGetSources(session)
+	sourcesJSON := session.GetSources()
 	if sourcesJSON == nil {
 		return projectionInfo{}
 	}
@@ -150,30 +153,48 @@ func printProjectionInfo(name string, info projectionInfo) {
 	}
 }
 
+func printStepEmitted(result *gafferruntime.FeedResult) {
+	for _, e := range result.Emitted {
+		if e.IsLink {
+			fmt.Printf("       -> linkTo %s\n", e.StreamID)
+		} else {
+			fmt.Printf("       -> emit %s/%s\n", e.StreamID, e.EventType)
+		}
+	}
+}
+
+func printStepLogs(result *gafferruntime.FeedResult) {
+	for _, msg := range result.Logs {
+		fmt.Printf("       log: %s\n", msg)
+	}
+}
+
 func printState(session *gafferruntime.Session, info projectionInfo, partitions map[string]bool) {
 	isPartitioned := info.ByStreams || info.ByCustomPartitions
 
 	if !isPartitioned {
-		state := gafferruntime.SessionGetState(session, nil)
+		state := session.GetState(nil)
 		if state != nil {
 			fmt.Printf("State: %s\n", *state)
 		}
 	} else {
 		for partition := range partitions {
-			pState := gafferruntime.SessionGetState(session, &partition)
-			if pState != nil {
-				fmt.Printf("State [%s]: %s\n", partition, *pState)
+			state := session.GetState(&partition)
+			if state != nil {
+				fmt.Printf("State [%s]: %s\n", partition, *state)
 			}
 		}
 	}
 
 	if info.IsBiState {
-		shared := gafferruntime.SessionGetSharedState(session)
+		shared := session.GetSharedState()
 		if shared != nil {
 			fmt.Printf("Shared state: %s\n", *shared)
 		}
 	}
 }
+
+const zeroUUID = "00000000-0000-0000-0000-000000000000"
 
 func loadEvents(path string) ([]string, error) {
 	data, err := os.ReadFile(path)
@@ -186,9 +207,32 @@ func loadEvents(path string) ([]string, error) {
 		return nil, fmt.Errorf("parsing events file (expected JSON array): %w", err)
 	}
 
+	now := time.Now().UTC().Format(time.RFC3339)
 	result := make([]string, len(events))
 	for i, evt := range events {
-		result[i] = string(evt)
+		var obj map[string]any
+		if err := json.Unmarshal(evt, &obj); err != nil {
+			return nil, fmt.Errorf("event %d: %w", i+1, err)
+		}
+
+		if _, ok := obj["sequenceNumber"]; !ok {
+			obj["sequenceNumber"] = i
+		}
+		if _, ok := obj["isJson"]; !ok {
+			obj["isJson"] = true
+		}
+		if _, ok := obj["eventId"]; !ok {
+			obj["eventId"] = zeroUUID
+		}
+		if _, ok := obj["created"]; !ok {
+			obj["created"] = now
+		}
+
+		normalized, err := json.Marshal(obj)
+		if err != nil {
+			return nil, fmt.Errorf("event %d: %w", i+1, err)
+		}
+		result[i] = string(normalized)
 	}
 
 	return result, nil

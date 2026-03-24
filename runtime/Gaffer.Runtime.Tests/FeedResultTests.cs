@@ -85,7 +85,7 @@ public class FeedResultTests {
 	}
 
 	[Fact]
-	public void Unpartitioned_result_has_empty_string_partition() {
+	public void Unpartitioned_result_has_null_partition() {
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return {}; },
@@ -95,7 +95,7 @@ public class FeedResultTests {
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
-		Assert.Equal("", result.Partition);
+		Assert.Null(result.Partition);
 	}
 
 	[Fact]

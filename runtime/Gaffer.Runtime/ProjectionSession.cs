@@ -195,7 +195,7 @@ public sealed class ProjectionSession : IDisposable {
 		var state = _stateCache.TryGetValue(partition, out var s) ? s : null;
 		return new FeedResult {
 			Status = FeedStatus.Processed,
-			Partition = partition,
+			Partition = partition.Length > 0 ? partition : null,
 			State = state,
 			Result = TransformResult(),
 			SharedState = _sources.IsBiState ? _sharedState : null,

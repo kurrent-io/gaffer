@@ -177,7 +177,8 @@ internal static unsafe class NativeExports {
 		}
 
 		writer.WriteString("status", "processed");
-		writer.WriteString("partition", result.Partition);
+		if (result.Partition is { Length: > 0 })
+			writer.WriteString("partition", result.Partition);
 
 		if (result.State != null) {
 			writer.WritePropertyName("state");

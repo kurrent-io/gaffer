@@ -5,7 +5,7 @@ public sealed class FeedResult {
 	/// <summary>Whether the event was processed or skipped.</summary>
 	public required FeedStatus Status { get; init; }
 
-	/// <summary>Partition key for the affected state. Null for skipped events.</summary>
+	/// <summary>Partition key for the affected state. Null for skipped events and unpartitioned projections.</summary>
 	public string? Partition { get; init; }
 
 	/// <summary>Projection state for the affected partition after processing.</summary>

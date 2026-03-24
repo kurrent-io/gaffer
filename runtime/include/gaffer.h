@@ -121,13 +121,12 @@ void gaffer_on_state_changed(gaffer_session* session, gaffer_state_changed_cb cb
  *                     "isJson", "eventId", "created"
  *                   Optional: "data", "metadata", "linkMetadata"
  * @return JSON string with step result. Valid until next API call on this session.
- *         NULL only for invalid session handle (check gaffer_get_last_error).
+ *         NULL on error - call gaffer_get_last_error() for details.
  *
  *         Result shapes:
- *           {"status":"skipped"}
+ *           {"status":"skipped","reason":"link|non-json|no-partition|unhandled|no-delete-handler"}
  *           {"status":"processed","partition":"...","state":...,"result":...,
  *            "sharedState":...,"emitted":[...],"logs":[...]}
- *           {"status":"error","error":{"code":"...","description":"...",...}}
  */
 const char* gaffer_session_feed(gaffer_session* session, const char* event_json);
 

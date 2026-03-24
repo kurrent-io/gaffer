@@ -126,17 +126,17 @@ public sealed class ProjectionSession : IDisposable {
 
 		if (!_sources.IncludeLinks &&
 			(@event.EventType == "$>" || @event.LinkMetadata != null))
-			return FeedResult.Skipped;
+			return FeedResult.Skip("link");
 
 		if (_version == ProjectionVersion.V1 && !@event.IsJson)
-			return FeedResult.Skipped;
+			return FeedResult.Skip("non-json");
 
 		var partition = ResolvePartition(@event);
 		if (partition == null)
-			return FeedResult.Skipped;
+			return FeedResult.Skip("no-partition");
 
 		if (!ShouldProcess(@event))
-			return FeedResult.Skipped;
+			return FeedResult.Skip("unhandled");
 
 		var isNewPartition = LoadPartitionState(partition);
 		LoadSharedState();
@@ -333,7 +333,7 @@ public sealed class ProjectionSession : IDisposable {
 
 	private FeedResult FeedStreamDeleted(ProjectionEvent @event, string partition) {
 		if (!_sources.HandlesDeletedNotifications)
-			return FeedResult.Skipped;
+			return FeedResult.Skip("no-delete-handler");
 
 		LoadPartitionState(partition);
 		LoadSharedState();

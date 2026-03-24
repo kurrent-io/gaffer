@@ -169,6 +169,8 @@ internal static unsafe class NativeExports {
 
 		if (result.Status == FeedStatus.Skipped) {
 			writer.WriteString("status", "skipped");
+			if (result.SkipReason != null)
+				writer.WriteString("reason", result.SkipReason);
 			writer.WriteEndObject();
 			writer.Flush();
 			return Encoding.UTF8.GetString(stream.ToArray());
@@ -360,17 +362,15 @@ internal static unsafe class NativeExports {
 
 		try {
 			var json = FromUtf8(eventJson);
-			if (json == null)
-				return ToUnmanaged(handle, SerializeFeedError(
-					new InvalidArgumentException("event_json is null", "event_json")));
+			if (json == null) {
+				SetLastError(new InvalidArgumentException("event_json is null", "event_json"));
+				return null;
+			}
 
 			var evt = ParseEvent(json);
 			var result = handle.Session.Feed(evt);
 			ClearLastError();
 			return ToUnmanaged(handle, SerializeFeedResult(result));
-		} catch (ProjectionException ex) {
-			ClearLastError();
-			return ToUnmanaged(handle, SerializeFeedError(ex));
 		} catch (Exception ex) {
 			SetLastError(ex);
 			return null;

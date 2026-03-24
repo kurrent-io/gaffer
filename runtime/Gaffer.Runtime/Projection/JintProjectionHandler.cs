@@ -31,6 +31,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 	private JsValue _state;
 	private JsValue _sharedState;
+	private bool _faulted;
 
 	public JintProjectionHandler(
 		string source,
@@ -65,6 +66,29 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	public void Dispose() => _engine.Dispose();
+
+	private void EnsureNotFaulted() {
+		if (_faulted)
+			throw new InvalidOperationException("Session is faulted due to a callback error and cannot process further events");
+	}
+
+	private void SafeInvokeEmit(EmittedEvent emitted) {
+		try {
+			_onEmit?.Invoke(emitted);
+		} catch (Exception) {
+			_faulted = true;
+			throw;
+		}
+	}
+
+	private void SafeInvokeLog(string message) {
+		try {
+			_onLog?.Invoke(message);
+		} catch (Exception) {
+			_faulted = true;
+			throw;
+		}
+	}
 
 	public QuerySources GetSourceDefinition() {
 		_engine.Constraints.Reset();
@@ -124,6 +148,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	public bool ProcessEvent(
 		string partition, string category, ProjectionEvent @event,
 		out string? newState, out string? newSharedState) {
+		EnsureNotFaulted();
 		_engine.Constraints.Reset();
 		if ((@event.IsJson && string.IsNullOrWhiteSpace(@event.Data)) ||
 			(!_enableContentTypeValidation && !@event.IsJson && string.IsNullOrEmpty(@event.Data))) {
@@ -138,12 +163,14 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	public void ProcessPartitionCreated(string partition, ProjectionEvent @event) {
+		EnsureNotFaulted();
 		_engine.Constraints.Reset();
 		var envelope = CreateEnvelope(partition, @event, "");
 		_runtime.HandleCreated(_state, envelope);
 	}
 
 	public bool ProcessPartitionDeleted(string partition, out string? newState) {
+		EnsureNotFaulted();
 		_engine.Constraints.Reset();
 		_runtime.HandleDeleted(_state, partition, false);
 		newState = ConvertToStringHandlingNulls(_state);
@@ -208,7 +235,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 			IsJson = true,
 			Metadata = metadata,
 		};
-		_onEmit?.Invoke(emitted);
+		SafeInvokeEmit(emitted);
 		return JsValue.Undefined;
 	}
 
@@ -241,7 +268,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 			IsJson = false,
 			Metadata = metadata,
 		};
-		_onEmit?.Invoke(emitted);
+		SafeInvokeEmit(emitted);
 		return JsValue.Undefined;
 	}
 
@@ -263,7 +290,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 			IsJson = false,
 			Metadata = metadata,
 		};
-		_onEmit?.Invoke(emitted);
+		SafeInvokeEmit(emitted);
 		return JsValue.Undefined;
 	}
 
@@ -276,9 +303,9 @@ internal sealed class JintProjectionHandler : IDisposable {
 		if (parameters.Length == 1) {
 			var p0 = parameters.At(0);
 			if (p0 != null && p0.IsPrimitive())
-				_onLog(p0.ToString());
+				SafeInvokeLog(p0.ToString());
 			else if (p0 is ObjectInstance oi)
-				_onLog(Serialize(oi));
+				SafeInvokeLog(Serialize(oi));
 			return JsValue.Undefined;
 		}
 
@@ -292,7 +319,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 			else if (p is ObjectInstance oi)
 				sb.Append(Serialize(oi));
 		}
-		_onLog(sb.ToString());
+		SafeInvokeLog(sb.ToString());
 		return JsValue.Undefined;
 	}
 

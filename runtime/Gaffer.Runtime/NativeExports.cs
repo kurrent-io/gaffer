@@ -162,6 +162,88 @@ internal static unsafe class NativeExports {
 		return Encoding.UTF8.GetString(stream.ToArray());
 	}
 
+	private static string SerializeFeedResult(FeedResult result) {
+		using var stream = new System.IO.MemoryStream();
+		using var writer = new Utf8JsonWriter(stream);
+		writer.WriteStartObject();
+
+		if (result.Status == FeedStatus.Skipped) {
+			writer.WriteString("status", "skipped");
+			writer.WriteEndObject();
+			writer.Flush();
+			return Encoding.UTF8.GetString(stream.ToArray());
+		}
+
+		writer.WriteString("status", "processed");
+		writer.WriteString("partition", result.Partition);
+
+		if (result.State != null) {
+			writer.WritePropertyName("state");
+			writer.WriteRawValue(result.State);
+		} else {
+			writer.WriteNull("state");
+		}
+
+		if (result.Result != null) {
+			writer.WritePropertyName("result");
+			writer.WriteRawValue(result.Result);
+		} else {
+			writer.WriteNull("result");
+		}
+
+		if (result.SharedState != null) {
+			writer.WritePropertyName("sharedState");
+			writer.WriteRawValue(result.SharedState);
+		} else {
+			writer.WriteNull("sharedState");
+		}
+
+		writer.WriteStartArray("emitted");
+		for (int i = 0; i < result.Emitted.Length; i++) {
+			var e = result.Emitted[i];
+			writer.WriteStartObject();
+			writer.WriteString("streamId", e.StreamId);
+			writer.WriteString("eventType", e.EventType);
+			if (e.Data != null)
+				writer.WriteString("data", e.Data);
+			else
+				writer.WriteNull("data");
+			writer.WriteBoolean("isJson", e.IsJson);
+			writer.WriteBoolean("isLink", e.IsLink);
+			if (e.Metadata != null) {
+				writer.WriteStartObject("metadata");
+				foreach (var kvp in e.Metadata)
+					writer.WriteString(kvp.Key, kvp.Value);
+				writer.WriteEndObject();
+			} else {
+				writer.WriteNull("metadata");
+			}
+			writer.WriteEndObject();
+		}
+		writer.WriteEndArray();
+
+		writer.WriteStartArray("logs");
+		for (int i = 0; i < result.Logs.Length; i++)
+			writer.WriteStringValue(result.Logs[i]);
+		writer.WriteEndArray();
+
+		writer.WriteEndObject();
+		writer.Flush();
+		return Encoding.UTF8.GetString(stream.ToArray());
+	}
+
+	private static string SerializeFeedError(ProjectionException ex) {
+		using var stream = new System.IO.MemoryStream();
+		using var writer = new Utf8JsonWriter(stream);
+		writer.WriteStartObject();
+		writer.WriteString("status", "error");
+		writer.WritePropertyName("error");
+		writer.WriteRawValue(SerializeProjectionError(ex));
+		writer.WriteEndObject();
+		writer.Flush();
+		return Encoding.UTF8.GetString(stream.ToArray());
+	}
+
 	// -- Session lifecycle --
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_create")]
@@ -270,26 +352,28 @@ internal static unsafe class NativeExports {
 		new("Invalid session handle", "session");
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_feed")]
-	public static int Feed(nint sessionId, byte* eventJson) {
+	public static byte* Feed(nint sessionId, byte* eventJson) {
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {
 			SetLastError(InvalidSessionError);
-			return -1;
+			return null;
 		}
 
 		try {
 			var json = FromUtf8(eventJson);
-			if (json == null) {
-				SetLastError(new InvalidArgumentException("event_json is null", "event_json"));
-				return -1;
-			}
+			if (json == null)
+				return ToUnmanaged(handle, SerializeFeedError(
+					new InvalidArgumentException("event_json is null", "event_json")));
 
 			var evt = ParseEvent(json);
-			handle.Session.Feed(evt);
+			var result = handle.Session.Feed(evt);
 			ClearLastError();
-			return 0;
+			return ToUnmanaged(handle, SerializeFeedResult(result));
+		} catch (ProjectionException ex) {
+			ClearLastError();
+			return ToUnmanaged(handle, SerializeFeedError(ex));
 		} catch (Exception ex) {
 			SetLastError(ex);
-			return -1;
+			return null;
 		}
 	}
 

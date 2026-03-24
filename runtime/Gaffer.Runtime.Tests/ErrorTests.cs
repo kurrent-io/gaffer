@@ -145,9 +145,8 @@ public class ErrorTests {
 	public Task ProjectionTransformError() {
 		var source = "fromAll().when({\n\t$init: function() { return {}; },\n\tTest: function(s, e) { return s; }\n}).transformBy(function(s) {\n\tthrow new Error(\"transform failed\");\n}).outputState()";
 		using var session = new ProjectionSession(source);
-		session.Feed(TestEvent);
 
-		var ex = Assert.Throws<ProjectionTransformException>(() => session.GetResult());
+		var ex = Assert.Throws<ProjectionTransformException>(() => session.Feed(TestEvent));
 
 		Assert.Equal("projection-transform-error", ex.Code);
 		Assert.Equal("transform failed", ex.Description);

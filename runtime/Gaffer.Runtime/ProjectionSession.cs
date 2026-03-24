@@ -21,6 +21,8 @@ public sealed class ProjectionSession : IDisposable {
 	private string? _sharedState;
 	private readonly ProjectionVersion _version;
 	private bool _sharedStateInitialized;
+	private List<EmittedEvent> _pendingEmitted = new();
+	private List<string> _pendingLogs = new();
 
 	/// <summary>Called when the projection emits an event (emit or linkTo).</summary>
 	public Action<EmittedEvent>? OnEmit { get; set; }
@@ -51,7 +53,10 @@ public sealed class ProjectionSession : IDisposable {
 				opts.EnableContentTypeValidation,
 				opts.CompilationTimeout,
 				opts.ExecutionTimeout,
-				message => OnLog?.Invoke(message));
+				message => {
+					_pendingLogs.Add(message);
+					OnLog?.Invoke(message);
+				});
 		} catch (ScriptPreparationException ex) when (ex.InnerException is ParseErrorException parseError) {
 			throw new InvalidProjectionException(
 				parseError.Description,
@@ -105,12 +110,13 @@ public sealed class ProjectionSession : IDisposable {
 	/// <exception cref="ExecutionTimeoutException">Thrown if the handler exceeds the timeout.</exception>
 	/// <exception cref="MalformedEventException">Thrown if event data is malformed.</exception>
 	/// <exception cref="StateSerializationException">Thrown if state contains unserializable values.</exception>
-	public void Feed(ProjectionEvent @event) {
+	public FeedResult Feed(ProjectionEvent @event) {
+		_pendingEmitted.Clear();
+		_pendingLogs.Clear();
+
 		try {
-			if (IsStreamDeletedEvent(@event, out var deletedStreamId)) {
-				FeedStreamDeleted(@event, deletedStreamId);
-				return;
-			}
+			if (IsStreamDeletedEvent(@event, out var deletedStreamId))
+				return FeedStreamDeleted(@event, deletedStreamId);
 		} catch (JsonException ex) {
 			throw new MalformedEventException(
 				$"Failed to parse {StreamMetadataEventType} event data as JSON",
@@ -120,17 +126,17 @@ public sealed class ProjectionSession : IDisposable {
 
 		if (!_sources.IncludeLinks &&
 			(@event.EventType == "$>" || @event.LinkMetadata != null))
-			return;
+			return FeedResult.Skipped;
 
 		if (_version == ProjectionVersion.V1 && !@event.IsJson)
-			return;
+			return FeedResult.Skipped;
 
 		var partition = ResolvePartition(@event);
 		if (partition == null)
-			return;
+			return FeedResult.Skipped;
 
 		if (!ShouldProcess(@event))
-			return;
+			return FeedResult.Skipped;
 
 		var isNewPartition = LoadPartitionState(partition);
 		LoadSharedState();
@@ -138,8 +144,10 @@ public sealed class ProjectionSession : IDisposable {
 		if (isNewPartition) {
 			_handler.ProcessPartitionCreated(partition, @event, out var createdEmitted);
 			if (createdEmitted != null)
-				foreach (var e in createdEmitted)
+				foreach (var e in createdEmitted) {
+					_pendingEmitted.Add(e);
 					OnEmit?.Invoke(e);
+				}
 		}
 
 		try {
@@ -153,6 +161,8 @@ public sealed class ProjectionSession : IDisposable {
 
 			if (processed)
 				ProcessOutput(partition, @event, newState, newSharedState, emittedEvents);
+
+			return BuildResult(partition);
 		} catch (StateSerializationException ex) {
 			var part = IsPartitioned ? partition : null;
 			throw new StateSerializationException(
@@ -175,8 +185,23 @@ public sealed class ProjectionSession : IDisposable {
 			_sharedState = newSharedState;
 
 		if (emittedEvents != null)
-			foreach (var emitted in emittedEvents)
+			foreach (var emitted in emittedEvents) {
+				_pendingEmitted.Add(emitted);
 				OnEmit?.Invoke(emitted);
+			}
+	}
+
+	private FeedResult BuildResult(string partition) {
+		var state = _stateCache.TryGetValue(partition, out var s) ? s : null;
+		return new FeedResult {
+			Status = FeedStatus.Processed,
+			Partition = partition,
+			State = state,
+			Result = TransformResult(),
+			SharedState = _sources.IsBiState ? _sharedState : null,
+			Emitted = _pendingEmitted.ToArray(),
+			Logs = _pendingLogs.ToArray(),
+		};
 	}
 
 	/// <summary>Get current state for a partition, or null if the partition has not been seen.</summary>
@@ -207,6 +232,10 @@ public sealed class ProjectionSession : IDisposable {
 		LoadPartitionState(key);
 		if (_sharedStateInitialized)
 			LoadSharedState();
+		return TransformResult();
+	}
+
+	private string? TransformResult() {
 		try {
 			return _handler.TransformStateToResult();
 		} catch (JavaScriptException ex) {
@@ -302,9 +331,9 @@ public sealed class ProjectionSession : IDisposable {
 		return false;
 	}
 
-	private void FeedStreamDeleted(ProjectionEvent @event, string partition) {
+	private FeedResult FeedStreamDeleted(ProjectionEvent @event, string partition) {
 		if (!_sources.HandlesDeletedNotifications)
-			return;
+			return FeedResult.Skipped;
 
 		LoadPartitionState(partition);
 		LoadSharedState();
@@ -316,6 +345,8 @@ public sealed class ProjectionSession : IDisposable {
 
 			if (newState != null)
 				OnStateChanged?.Invoke(partition, newState);
+
+			return BuildResult(partition);
 		} catch (StateSerializationException ex) {
 			var part = IsPartitioned ? partition : null;
 			throw new StateSerializationException(

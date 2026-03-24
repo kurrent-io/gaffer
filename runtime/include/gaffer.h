@@ -109,7 +109,7 @@ void gaffer_on_state_changed(gaffer_session* session, gaffer_state_changed_cb cb
  * -------------------------------------------------------------------------- */
 
 /**
- * Feed a single event to the projection.
+ * Feed a single event to the projection. Returns the step result as JSON.
  *
  * Blocks until the event is fully processed. Handles $streamDeleted and
  * soft delete ($metadata on $$stream with $tb=long.MaxValue) internally,
@@ -120,9 +120,16 @@ void gaffer_on_state_changed(gaffer_session* session, gaffer_state_changed_cb cb
  *                     "eventType", "streamId", "sequenceNumber",
  *                     "isJson", "eventId", "created"
  *                   Optional: "data", "metadata", "linkMetadata"
- * @return 0 on success, -1 on error. Call gaffer_get_last_error() for details.
+ * @return JSON string with step result. Valid until next API call on this session.
+ *         NULL only for invalid session handle (check gaffer_get_last_error).
+ *
+ *         Result shapes:
+ *           {"status":"skipped"}
+ *           {"status":"processed","partition":"...","state":...,"result":...,
+ *            "sharedState":...,"emitted":[...],"logs":[...]}
+ *           {"status":"error","error":{"code":"...","description":"...",...}}
  */
-int gaffer_session_feed(gaffer_session* session, const char* event_json);
+const char* gaffer_session_feed(gaffer_session* session, const char* event_json);
 
 /* --------------------------------------------------------------------------
  * State

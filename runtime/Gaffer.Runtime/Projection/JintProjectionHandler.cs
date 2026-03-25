@@ -27,7 +27,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private readonly Serializer _serializer;
 	private readonly Action<string>? _onLog;
 	private readonly Action<EmittedEvent>? _onEmit;
-	private readonly bool _enableContentTypeValidation;
+	// KurrentDB enables content type validation for all projections on subsystem version >= 4.
+	// Editing a projection auto-bumps the subsystem version, so all active projections get this
+	// behavior. We match that by always enabling it rather than exposing a toggle.
+	private readonly bool _enableContentTypeValidation = true;
 
 	private JsValue _state;
 	private JsValue _sharedState;
@@ -35,14 +38,12 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 	public JintProjectionHandler(
 		string source,
-		bool enableContentTypeValidation,
 		TimeSpan compilationTimeout,
 		TimeSpan executionTimeout,
 		Action<string>? onLog = null,
 		Action<EmittedEvent>? onEmit = null) {
 		_onLog = onLog;
 		_onEmit = onEmit;
-		_enableContentTypeValidation = enableContentTypeValidation;
 		_definitionBuilder = new SourceDefinitionBuilder();
 		_definitionBuilder.NoWhen();
 		_definitionBuilder.AllEvents();

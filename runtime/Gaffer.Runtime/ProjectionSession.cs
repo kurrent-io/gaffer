@@ -50,7 +50,6 @@ public sealed class ProjectionSession : IDisposable {
 		try {
 			_handler = new JintProjectionHandler(
 				source,
-				opts.EnableContentTypeValidation,
 				opts.CompilationTimeout,
 				opts.ExecutionTimeout,
 				onLog: message => {
@@ -406,11 +405,4 @@ public sealed class ProjectionSessionOptions {
 
 	/// <summary>Enable Jint debug hooks for breakpoints and stepping. Has performance overhead.</summary>
 	public bool Debug { get; init; }
-
-	/// <summary>
-	/// When true, non-JSON events with empty data are still passed to handlers.
-	/// When false (default), they are skipped. Only meaningful in V2 mode;
-	/// V1 drops non-JSON events at the subscription level before they reach the handler.
-	/// </summary>
-	public bool EnableContentTypeValidation { get; init; }
 }

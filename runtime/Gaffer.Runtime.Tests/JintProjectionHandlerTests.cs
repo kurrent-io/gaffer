@@ -5,7 +5,7 @@ namespace Gaffer.Runtime.Tests;
 
 public class JintProjectionHandlerTests {
 	private static JintProjectionHandler CreateHandler(string source, Action<EmittedEvent>? onEmit = null) =>
-		new(source, enableContentTypeValidation: false, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), onEmit: onEmit);
+		new(source, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), onEmit: onEmit);
 
 	[Fact]
 	public void Simple_count_projection() {
@@ -140,7 +140,7 @@ public class JintProjectionHandlerTests {
                     return state;
                 }
             })
-        """, enableContentTypeValidation: false, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), msg => logs.Add(msg));
+        """, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), onLog: msg => logs.Add(msg));
 
 		handler.Initialize();
 		handler.ProcessEvent("", "", new ProjectionEvent {

@@ -52,7 +52,6 @@ Options:
 
 - `version` - `"v1"` or `"v2"` (default `"v2"`)
 - `config` - per-projection settings
-  - `enableContentTypeValidation` - validate event content types, V2 only (default false)
   - `executionTimeoutMs` - max handler execution time per event in ms (default 5000)
 - `databaseConfig` - database-wide settings
   - `compilationTimeoutMs` - max compilation time in ms (default 5000)

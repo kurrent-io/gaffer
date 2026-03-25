@@ -77,8 +77,6 @@ export interface SkippedStepResult {
 
 /** Per-projection configuration. */
 export interface ProjectionConfig {
-	/** When true, validates event content types. V2 only. */
-	enableContentTypeValidation?: boolean;
 	/** Maximum time for JS handler execution per event in ms. Default: 5000. */
 	executionTimeoutMs?: number;
 }
@@ -190,7 +188,6 @@ export function toSessionOptions(
 	if (!options) return undefined;
 	return {
 		version: options.version,
-		enableContentTypeValidation: options.config?.enableContentTypeValidation,
 		executionTimeoutMs:
 			options.config?.executionTimeoutMs ??
 			options.databaseConfig?.executionTimeoutMs,

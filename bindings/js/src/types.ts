@@ -60,6 +60,5 @@ export interface SessionOptions {
 	version?: "v1" | "v2";
 	compilationTimeoutMs?: number;
 	executionTimeoutMs?: number;
-	enableContentTypeValidation?: boolean;
 	debug?: boolean;
 }

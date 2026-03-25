@@ -21,27 +21,13 @@ public class V2ConformanceTests {
 	}
 
 	[Fact]
-	public void V2_skips_non_json_event_with_empty_data_by_default() {
+	public void V2_passes_non_json_event_with_empty_data() {
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
         """);
-
-		session.Feed(new ProjectionEvent { EventType = "Bin", StreamId = "s-1", Data = null, IsJson = false });
-
-		Assert.Contains("\"count\":0", session.GetState()!);
-	}
-
-	[Fact]
-	public void V2_passes_non_json_event_with_empty_data_when_validation_enabled() {
-		using var session = new ProjectionSession("""
-            fromAll().when({
-                $init: function() { return { count: 0 }; },
-                $any: function(s, e) { s.count++; return s; }
-            })
-        """, new ProjectionSessionOptions { EnableContentTypeValidation = true });
 
 		session.Feed(new ProjectionEvent { EventType = "Bin", StreamId = "s-1", Data = null, IsJson = false });
 

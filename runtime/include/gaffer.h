@@ -48,7 +48,6 @@ typedef struct gaffer_session gaffer_session;
  *                       - "version": "v1" | "v2" (default "v2")
  *                       - "compilationTimeoutMs": int (default 5000)
  *                       - "executionTimeoutMs": int (default 5000)
- *                       - "enableContentTypeValidation": bool (default false)
  *                       - "debug": bool (default false)
  * @return Session handle, or NULL on error
  */

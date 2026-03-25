@@ -258,27 +258,13 @@ public class ReviewFindingsTests {
 	// -- Content type validation --
 
 	[Fact]
-	public void Non_json_empty_data_skipped_without_validation() {
+	public void Non_json_empty_data_processed() {
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
         """);
-
-		session.Feed(new ProjectionEvent { EventType = "Bin", StreamId = "s-1", Data = "", IsJson = false });
-
-		Assert.Contains("\"count\":0", session.GetState()!);
-	}
-
-	[Fact]
-	public void Non_json_empty_data_processed_with_validation() {
-		using var session = new ProjectionSession("""
-            fromAll().when({
-                $init: function() { return { count: 0 }; },
-                $any: function(s, e) { s.count++; return s; }
-            })
-        """, new ProjectionSessionOptions { EnableContentTypeValidation = true });
 
 		session.Feed(new ProjectionEvent { EventType = "Bin", StreamId = "s-1", Data = "", IsJson = false });
 

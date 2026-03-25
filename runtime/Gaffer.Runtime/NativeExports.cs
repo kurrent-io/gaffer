@@ -499,7 +499,6 @@ internal static unsafe class NativeExports {
 				root.TryGetProperty("compilationTimeoutMs", out var ct) ? ct.GetInt32() : 5000),
 			ExecutionTimeout = TimeSpan.FromMilliseconds(
 				root.TryGetProperty("executionTimeoutMs", out var et) ? et.GetInt32() : 5000),
-			EnableContentTypeValidation = root.TryGetProperty("enableContentTypeValidation", out var cv) && cv.GetBoolean(),
 			Debug = root.TryGetProperty("debug", out var d) && d.GetBoolean(),
 		};
 	}

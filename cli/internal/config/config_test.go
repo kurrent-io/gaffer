@@ -168,6 +168,38 @@ func TestIsEnabled(t *testing.T) {
 	}
 }
 
+func TestLoadGlobalTimeouts(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+compilation_timeout = 1000
+execution_timeout = 500
+
+[[projection]]
+name = "test"
+entry = "test.js"
+execution_timeout = 2000
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.CompilationTimeout == nil || *cfg.CompilationTimeout != 1000 {
+		t.Fatal("expected compilation_timeout 1000")
+	}
+	if cfg.ExecutionTimeout == nil || *cfg.ExecutionTimeout != 500 {
+		t.Fatal("expected execution_timeout 500")
+	}
+	if cfg.Projection[0].ExecutionTimeout == nil || *cfg.Projection[0].ExecutionTimeout != 2000 {
+		t.Fatal("expected projection execution_timeout 2000")
+	}
+}
+
 func TestSaveAndReload(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")

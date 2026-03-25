@@ -11,16 +11,19 @@ import (
 
 // Config represents a gaffer.toml file.
 type Config struct {
-	Connection string       `toml:"connection,omitempty"`
-	Projection []Projection `toml:"projection"`
+	Connection         string       `toml:"connection,omitempty"`
+	CompilationTimeout *int         `toml:"compilation_timeout,omitempty"`
+	ExecutionTimeout   *int         `toml:"execution_timeout,omitempty"`
+	Projection         []Projection `toml:"projection"`
 }
 
 // Projection is a single projection entry in the config.
 type Projection struct {
-	Name    string `toml:"name"`
-	Entry   string `toml:"entry"`
-	Engine  string `toml:"engine,omitempty"`
-	Enabled *bool  `toml:"enabled,omitempty"`
+	Name             string `toml:"name"`
+	Entry            string `toml:"entry"`
+	Engine           string `toml:"engine,omitempty"`
+	Enabled          *bool  `toml:"enabled,omitempty"`
+	ExecutionTimeout *int   `toml:"execution_timeout,omitempty"`
 }
 
 // IsEnabled returns true if the projection is enabled (default true).

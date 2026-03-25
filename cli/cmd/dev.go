@@ -75,7 +75,8 @@ func runDev(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("reading projection source: %w", err)
 	}
 
-	session, err := gafferruntime.NewSession(string(source), nil)
+	sessionOpts := buildSessionOptions(cfg, proj)
+	session, err := gafferruntime.NewSession(string(source), sessionOpts)
 	if err != nil {
 		if projErr, ok := err.(gafferruntime.ProjectionError); ok {
 			r := lipgloss.NewRenderer(os.Stderr)
@@ -302,6 +303,35 @@ func getProjectionInfo(session *gafferruntime.Session) projectionInfo {
 	}
 
 	return info
+}
+
+func buildSessionOptions(cfg *config.Config, proj *config.Projection) *string {
+	opts := map[string]any{}
+
+	if proj.Engine != "" {
+		opts["version"] = proj.Engine
+	}
+
+	if proj.ExecutionTimeout != nil && *proj.ExecutionTimeout > 0 {
+		opts["executionTimeoutMs"] = *proj.ExecutionTimeout
+	} else if cfg.ExecutionTimeout != nil && *cfg.ExecutionTimeout > 0 {
+		opts["executionTimeoutMs"] = *cfg.ExecutionTimeout
+	}
+
+	if cfg.CompilationTimeout != nil && *cfg.CompilationTimeout > 0 {
+		opts["compilationTimeoutMs"] = *cfg.CompilationTimeout
+	}
+
+	if len(opts) == 0 {
+		return nil
+	}
+
+	data, err := json.Marshal(opts)
+	if err != nil {
+		return nil
+	}
+	s := string(data)
+	return &s
 }
 
 func buildSummary(session *gafferruntime.Session, info projectionInfo, partitions map[string]bool) summaryState {

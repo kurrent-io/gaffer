@@ -102,8 +102,11 @@ public sealed class ProjectionSession : IDisposable {
 
 	public void Dispose() => _handler.Dispose();
 
-	/// <summary>Set a breakpoint at the given 1-based line and column.</summary>
-	public void SetBreakpoint(int line, int column = 1) => _handler.SetBreakpoint(line, column);
+	/// <summary>
+	/// Set a breakpoint, snapping to the nearest breakable position on or after the given position.
+	/// Returns the actual (line, column) where it was set (1-based), or null if no breakable position found.
+	/// </summary>
+	public (int Line, int Column)? SetBreakpoint(int line, int column = 1) => _handler.SetBreakpoint(line, column);
 
 	/// <summary>Remove all breakpoints.</summary>
 	public void ClearBreakpoints() => _handler.ClearBreakpoints();

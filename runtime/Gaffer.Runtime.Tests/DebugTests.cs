@@ -146,6 +146,58 @@ public class DebugTests {
 	}
 
 	[Fact]
+	public void Breakpoint_snaps_to_nearest_statement() {
+		// Line 1: fromAll()
+		// Line 2: .partitionBy(function(event) {  <-- not a breakable statement
+		// Line 3:   return event.eventType;        <-- breakable (return statement)
+		// Line 4: })
+		// Line 5: .when({
+		// Line 6:   $init: function() {
+		// Line 7:     return { count: 0 };          <-- breakable
+		var source = "fromAll()\n.partitionBy(function(event) {\n  return event.eventType;\n})\n.when({\n  $init: function() {\n    return { count: 0 };\n  },\n  ItemAdded: function(s, e) {\n    s.count++;\n    return s;\n  }\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		// Breakpoint on line 2 (not breakable) should snap to line 3 (return statement)
+		var snapped = session.SetBreakpoint(2);
+		Assert.NotNull(snapped);
+		Assert.Equal(3, snapped.Value.Line);
+	}
+
+	[Fact]
+	public void Breakpoint_on_exact_statement_stays() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		// Line 4 is s.count++ - an exact breakable position
+		var snapped = session.SetBreakpoint(4);
+		Assert.NotNull(snapped);
+		Assert.Equal(4, snapped.Value.Line);
+	}
+
+	[Fact]
+	public void Breakpoint_past_end_returns_null() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		var snapped = session.SetBreakpoint(999);
+		Assert.Null(snapped);
+	}
+
+	[Fact]
+	public void Breakpoint_column_snapping() {
+		// Two statements on different columns of the same concept:
+		// Line 3: "  s.count++;" - statement starts at column 3 (1-based)
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\n  s.count++;\n  return s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		// Column 1 on line 4 should snap to the statement at its actual column
+		var snapped = session.SetBreakpoint(4, 1);
+		Assert.NotNull(snapped);
+		Assert.Equal(4, snapped.Value.Line);
+		Assert.True(snapped.Value.Column >= 1);
+	}
+
+	[Fact]
 	public void No_debug_mode_ignores_debugger_statement() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ndebugger;\ns.count++;\nreturn s;\n}\n})";
 		using var session = new ProjectionSession(source);

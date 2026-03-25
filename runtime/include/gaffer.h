@@ -199,10 +199,11 @@ const char* gaffer_session_get_partition_key(gaffer_session* session, const char
  * -------------------------------------------------------------------------- */
 
 /**
- * Set a breakpoint at the given line and column (1-based).
- * Can be called before or during execution.
+ * Set a breakpoint, snapping to the nearest breakable position on or after the given line.
+ * Returns JSON {"line": int, "column": int} with the actual position (1-based),
+ * or NULL if no breakable position was found.
  */
-void gaffer_debug_set_breakpoint(gaffer_session* session, int line, int column);
+const char* gaffer_debug_set_breakpoint(gaffer_session* session, int line, int column);
 
 /** Remove all breakpoints. */
 void gaffer_debug_clear_breakpoints(gaffer_session* session);

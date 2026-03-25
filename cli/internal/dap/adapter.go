@@ -89,13 +89,21 @@ func (a *DebugAdapter) handleSetBreakpoints(s *Server, req *godap.SetBreakpoints
 		if col == 0 {
 			col = 1
 		}
-		a.session.SetBreakpoint(bp.Line, col)
-		breakpoints[i] = godap.Breakpoint{
-			Id:       i + 1,
-			Verified: true,
-			Line:     bp.Line,
-			Column:   col,
-			Source:   a.source(),
+		snapped, _ := a.session.SetBreakpoint(bp.Line, col)
+		if snapped != nil {
+			breakpoints[i] = godap.Breakpoint{
+				Id:       i + 1,
+				Verified: true,
+				Line:     snapped.Line,
+				Column:   snapped.Column,
+				Source:   a.source(),
+			}
+		} else {
+			breakpoints[i] = godap.Breakpoint{
+				Id:       i + 1,
+				Verified: false,
+				Message:  "No breakable position found",
+			}
 		}
 	}
 

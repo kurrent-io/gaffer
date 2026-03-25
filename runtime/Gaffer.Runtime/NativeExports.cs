@@ -489,14 +489,21 @@ internal static unsafe class NativeExports {
 	// -- Debug controls --
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_set_breakpoint")]
-	public static void DebugSetBreakpoint(nint sessionId, int line, int column) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
-			return;
+	public static byte* DebugSetBreakpoint(nint sessionId, int line, int column) {
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			SetLastError(InvalidSessionError);
+			return null;
+		}
 		try {
-			handle.Session.SetBreakpoint(line, column);
+			var snapped = handle.Session.SetBreakpoint(line);
 			ClearLastError();
+			if (snapped == null)
+				return null;
+			var json = $"{{\"line\":{snapped.Value.Line},\"column\":{snapped.Value.Column}}}";
+			return ToUnmanaged(handle, json);
 		} catch (Exception ex) {
 			SetLastError(ex);
+			return null;
 		}
 	}
 

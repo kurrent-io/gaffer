@@ -37,6 +37,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private readonly TimeConstraint _timeConstraint;
 	private readonly BlockingCollection<DebugCommand> _debugCommands = new();
 	private readonly Dictionary<int, DebugScope> _variableStore = new();
+	private List<BreakablePosition>? _breakablePositions;
 	private int _nextVariableRef = 1;
 	private DebugInformation? _currentDebugInfo;
 	private volatile bool _paused;
@@ -78,6 +79,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		if (debug) {
 			_engine.Debugger.Break += OnDebugBreak;
 			_engine.Debugger.Step += OnDebugStep;
+			_engine.Debugger.BeforeEvaluate += OnBeforeEvaluate;
 		}
 
 		_timeConstraint.Compiling();
@@ -409,6 +411,13 @@ internal sealed class JintProjectionHandler : IDisposable {
 		return EnterDebugCommandLoop("step", info);
 	}
 
+	private void OnBeforeEvaluate(object sender, Acornima.Ast.Program ast) {
+		var collector = new BreakablePositionCollector();
+		collector.Visit(ast);
+		_breakablePositions = collector.Positions;
+		_breakablePositions.Sort((a, b) => a.Line != b.Line ? a.Line.CompareTo(b.Line) : a.Column.CompareTo(b.Column));
+	}
+
 	private StepMode EnterDebugCommandLoop(string reason, DebugInformation info) {
 		_paused = true;
 		_currentDebugInfo = info;
@@ -543,14 +552,37 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 	public bool IsPaused => _paused;
 
-	public void SetBreakpoint(int line, int column) {
-		// Convert from 1-based (external) to 0-based columns (Jint)
+	/// <summary>
+	/// Sets a breakpoint, snapping to the nearest breakable position on or after the given position.
+	/// Returns the actual (line, column) where the breakpoint was set (1-based),
+	/// or null if no breakable position was found.
+	/// </summary>
+	public (int Line, int Column)? SetBreakpoint(int line, int column = 1) {
+		var snapped = SnapToBreakablePosition(line, column - 1); // 1-based -> 0-based column
+		if (snapped == null)
+			return null;
 		_engine.Debugger.BreakPoints.Set(
-			new BreakPoint("projection.js", line, column - 1));
+			new BreakPoint(snapped.Value.Line, snapped.Value.Column));
+		return (snapped.Value.Line, snapped.Value.Column + 1); // 0-based -> 1-based for caller
 	}
 
 	public void ClearBreakpoints() {
 		_engine.Debugger.BreakPoints.Clear();
+	}
+
+	/// <summary>
+	/// Finds the nearest breakable position on or after the requested (line, column).
+	/// Column is 0-based (Acornima convention). Positions are sorted by line then column.
+	/// </summary>
+	private (int Line, int Column)? SnapToBreakablePosition(int line, int column) {
+		if (_breakablePositions == null || _breakablePositions.Count == 0)
+			return null;
+
+		foreach (var pos in _breakablePositions) {
+			if (pos.Line > line || (pos.Line == line && pos.Column >= column))
+				return (pos.Line, pos.Column);
+		}
+		return null;
 	}
 
 	public void Continue() {
@@ -601,6 +633,41 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	private sealed class ContinueCommand : DebugCommand;
+
+	private readonly record struct BreakablePosition(int Line, int Column);
+
+	private sealed class BreakablePositionCollector : Acornima.AstVisitor {
+		public readonly List<BreakablePosition> Positions = new();
+
+		public override object? Visit(Acornima.Ast.Node node) {
+			if (node is Acornima.Ast.Statement and not Acornima.Ast.BlockStatement)
+				Positions.Add(new BreakablePosition(node.Location.Start.Line, node.Location.Start.Column));
+			return base.Visit(node);
+		}
+
+		protected override object? VisitForStatement(Acornima.Ast.ForStatement node) {
+			if (node.Test != null)
+				Positions.Add(new BreakablePosition(node.Test.Location.Start.Line, node.Test.Location.Start.Column));
+			if (node.Update != null)
+				Positions.Add(new BreakablePosition(node.Update.Location.Start.Line, node.Update.Location.Start.Column));
+			return base.VisitForStatement(node);
+		}
+
+		protected override object? VisitForInStatement(Acornima.Ast.ForInStatement node) {
+			Positions.Add(new BreakablePosition(node.Left.Location.Start.Line, node.Left.Location.Start.Column));
+			return base.VisitForInStatement(node);
+		}
+
+		protected override object? VisitForOfStatement(Acornima.Ast.ForOfStatement node) {
+			Positions.Add(new BreakablePosition(node.Left.Location.Start.Line, node.Left.Location.Start.Column));
+			return base.VisitForOfStatement(node);
+		}
+
+		protected override object? VisitFunctionBody(Acornima.Ast.FunctionBody node) {
+			Positions.Add(new BreakablePosition(node.Location.End.Line, node.Location.End.Column));
+			return base.VisitFunctionBody(node);
+		}
+	}
 
 	private sealed class GetCallStackCommand : DebugCommand {
 		public DebugCallFrame[]? Result { get; set; }

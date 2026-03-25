@@ -180,10 +180,26 @@ func (s *Session) OnBreak(cb BreakCallback) {
 	sessionOnBreak(s.handle, cb)
 }
 
-// SetBreakpoint sets a breakpoint at the given 1-based line and column.
-func (s *Session) SetBreakpoint(line, column int) {
+// SnappedBreakpoint is the actual position where a breakpoint was set after snapping.
+type SnappedBreakpoint struct {
+	Line   int `json:"line"`
+	Column int `json:"column"`
+}
+
+// SetBreakpoint sets a breakpoint, snapping to the nearest breakable position.
+// Column is accepted for future column-level breakpoints but currently only line is used for snapping.
+// Returns the actual position (1-based) or nil if no breakable position was found.
+func (s *Session) SetBreakpoint(line, column int) (*SnappedBreakpoint, error) {
 	s.ensureAlive()
-	C.gaffer_debug_set_breakpoint(s.handle, C.int(line), C.int(column))
+	result := C.gaffer_debug_set_breakpoint(s.handle, C.int(line), C.int(column))
+	if result == nil {
+		return nil, nil
+	}
+	var snapped SnappedBreakpoint
+	if err := json.Unmarshal([]byte(C.GoString(result)), &snapped); err != nil {
+		return nil, fmt.Errorf("failed to parse snapped breakpoint: %w", err)
+	}
+	return &snapped, nil
 }
 
 // ClearBreakpoints removes all breakpoints.

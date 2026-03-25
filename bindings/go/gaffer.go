@@ -174,3 +174,68 @@ func (s *Session) OnLog(cb LogCallback) {
 func (s *Session) OnStateChanged(cb StateChangedCallback) {
 	sessionOnStateChanged(s.handle, cb)
 }
+
+// OnBreak registers a callback for debug pause notifications.
+func (s *Session) OnBreak(cb BreakCallback) {
+	sessionOnBreak(s.handle, cb)
+}
+
+// SetBreakpoint sets a breakpoint at the given 1-based line and column.
+func (s *Session) SetBreakpoint(line, column int) {
+	s.ensureAlive()
+	C.gaffer_debug_set_breakpoint(s.handle, C.int(line), C.int(column))
+}
+
+// ClearBreakpoints removes all breakpoints.
+func (s *Session) ClearBreakpoints() {
+	s.ensureAlive()
+	C.gaffer_debug_clear_breakpoints(s.handle)
+}
+
+// Continue resumes execution after a debug pause.
+func (s *Session) Continue() {
+	s.ensureAlive()
+	C.gaffer_debug_continue(s.handle)
+}
+
+// GetCallStack returns the call stack while paused.
+func (s *Session) GetCallStack() ([]DebugCallFrame, error) {
+	s.ensureAlive()
+	result := C.gaffer_debug_get_call_stack(s.handle)
+	if result == nil {
+		return nil, getLastError(s.source)
+	}
+	var frames []DebugCallFrame
+	if err := json.Unmarshal([]byte(C.GoString(result)), &frames); err != nil {
+		return nil, fmt.Errorf("failed to parse call stack: %w", err)
+	}
+	return frames, nil
+}
+
+// GetScopes returns the scopes for a call frame while paused.
+func (s *Session) GetScopes(frameIndex int) ([]DebugScopeInfo, error) {
+	s.ensureAlive()
+	result := C.gaffer_debug_get_scopes(s.handle, C.int(frameIndex))
+	if result == nil {
+		return nil, getLastError(s.source)
+	}
+	var scopes []DebugScopeInfo
+	if err := json.Unmarshal([]byte(C.GoString(result)), &scopes); err != nil {
+		return nil, fmt.Errorf("failed to parse scopes: %w", err)
+	}
+	return scopes, nil
+}
+
+// GetVariables returns the variables for a scope or object reference while paused.
+func (s *Session) GetVariables(variablesReference int) ([]DebugVariable, error) {
+	s.ensureAlive()
+	result := C.gaffer_debug_get_variables(s.handle, C.int(variablesReference))
+	if result == nil {
+		return nil, getLastError(s.source)
+	}
+	var vars []DebugVariable
+	if err := json.Unmarshal([]byte(C.GoString(result)), &vars); err != nil {
+		return nil, fmt.Errorf("failed to parse variables: %w", err)
+	}
+	return vars, nil
+}

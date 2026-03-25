@@ -7,6 +7,7 @@ package gafferruntime
 extern void goEmitCallback(const char* streamId, const char* eventType, const char* data, const char* metadata, int isJson, int isLink, void* userData);
 extern void goLogCallback(const char* message, void* userData);
 extern void goStateChangedCallback(const char* partition, const char* stateJson, void* userData);
+extern void goBreakCallback(const char* reason, const char* source, int line, int column, void* userData);
 */
 import "C"
 
@@ -20,6 +21,7 @@ type (
 	EmitCallback         func(streamID, eventType, data, metadata string, isJson, isLink bool)
 	LogCallback          func(message string)
 	StateChangedCallback func(partition string, stateJSON string)
+	BreakCallback        func(info BreakInfo)
 )
 
 // Global callback registry keyed by session pointer.
@@ -28,6 +30,7 @@ var (
 	emitCallbacks    = make(map[uintptr]EmitCallback)
 	logCallbacks     = make(map[uintptr]LogCallback)
 	changedCallbacks = make(map[uintptr]StateChangedCallback)
+	breakCallbacks   = make(map[uintptr]BreakCallback)
 )
 
 func sessionKey(session *C.gaffer_session) uintptr {
@@ -58,11 +61,20 @@ func sessionOnStateChanged(session *C.gaffer_session, cb StateChangedCallback) {
 	C.gaffer_on_state_changed(session, (*[0]byte)(C.goStateChangedCallback), unsafe.Pointer(session))
 }
 
+func sessionOnBreak(session *C.gaffer_session, cb BreakCallback) {
+	key := sessionKey(session)
+	callbackMu.Lock()
+	breakCallbacks[key] = cb
+	callbackMu.Unlock()
+	C.gaffer_on_break(session, (*[0]byte)(C.goBreakCallback), unsafe.Pointer(session))
+}
+
 func cleanupCallbacks(session *C.gaffer_session) {
 	key := sessionKey(session)
 	callbackMu.Lock()
 	delete(emitCallbacks, key)
 	delete(logCallbacks, key)
 	delete(changedCallbacks, key)
+	delete(breakCallbacks, key)
 	callbackMu.Unlock()
 }

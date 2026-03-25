@@ -1,5 +1,8 @@
 package gafferruntime
 
+/*
+#include "gaffer.h"
+*/
 import "C"
 import "unsafe"
 
@@ -44,5 +47,21 @@ func goStateChangedCallback(partition *C.char, stateJSON *C.char, userData unsaf
 			stateStr = C.GoString(stateJSON)
 		}
 		cb(C.GoString(partition), stateStr)
+	}
+}
+
+//export goBreakCallback
+func goBreakCallback(reason *C.char, source *C.char, line C.int, column C.int, userData unsafe.Pointer) {
+	key := uintptr(userData)
+	callbackMu.RLock()
+	cb := breakCallbacks[key]
+	callbackMu.RUnlock()
+	if cb != nil {
+		cb(BreakInfo{
+			Reason: C.GoString(reason),
+			Source: C.GoString(source),
+			Line:   int(line),
+			Column: int(column),
+		})
 	}
 }

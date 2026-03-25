@@ -82,7 +82,7 @@ func TestDebug_GetCallStack(t *testing.T) {
 
 	feedDone := make(chan struct{})
 	go func() {
-		session.Feed(debugTestEvent)
+		_, _ = session.Feed(debugTestEvent)
 		close(feedDone)
 	}()
 
@@ -124,7 +124,7 @@ func TestDebug_GetScopesAndVariables(t *testing.T) {
 
 	feedDone := make(chan struct{})
 	go func() {
-		session.Feed(debugTestEvent)
+		_, _ = session.Feed(debugTestEvent)
 		close(feedDone)
 	}()
 

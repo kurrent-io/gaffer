@@ -13,6 +13,7 @@ import (
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	dapserver "github.com/kurrent-io/gaffer/cli/internal/dap"
 	"github.com/kurrent-io/gaffer/cli/internal/env"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
@@ -30,12 +31,16 @@ var (
 	devEvents     string
 	devJSON       bool
 	devConnection string
+	devDebug      bool
+	devDebugPort  int
 )
 
 func init() {
 	devCmd.Flags().StringVar(&devEvents, "events", "", "Path to JSON events file")
 	devCmd.Flags().BoolVar(&devJSON, "json", false, "Output as NDJSON")
 	devCmd.Flags().StringVar(&devConnection, "connection", "", "KurrentDB connection string (overrides config)")
+	devCmd.Flags().BoolVar(&devDebug, "debug", false, "Start DAP debug server")
+	devCmd.Flags().IntVar(&devDebugPort, "debug-port", 4711, "DAP debug server port")
 }
 
 type projectionInfo struct {
@@ -75,7 +80,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("reading projection source: %w", err)
 	}
 
-	sessionOpts := buildSessionOptions(cfg, proj)
+	sessionOpts := buildSessionOptions(cfg, proj, devDebug)
 	session, err := gafferruntime.NewSession(string(source), sessionOpts)
 	if err != nil {
 		if projErr, ok := err.(gafferruntime.ProjectionError); ok {
@@ -106,6 +111,11 @@ func runDev(cmd *cobra.Command, args []string) error {
 	}
 
 	writer.WriteInfo(name, info, version)
+
+	if devDebug {
+		sourcePath, _ := filepath.Abs(filepath.Join(root, proj.Entry))
+		return runDebugMode(cmd, session, info, version, cfg, root, writer, sourcePath)
+	}
 
 	if devEvents != "" {
 		return runFixtureMode(cmd, session, info, writer)
@@ -253,6 +263,183 @@ func runLiveMode(cmd *cobra.Command, session *gafferruntime.Session, info projec
 	return nil
 }
 
+func runDebugMode(cmd *cobra.Command, session *gafferruntime.Session, info projectionInfo, version string, cfg *config.Config, root string, writer outputWriter, sourcePath string) error {
+	adapter := dapserver.NewDebugAdapter(session, sourcePath)
+	handler := adapter.Handler()
+
+	addr := fmt.Sprintf("127.0.0.1:%d", devDebugPort)
+	srv, err := dapserver.NewServer(addr, handler)
+	if err != nil {
+		return fmt.Errorf("starting debug server: %w", err)
+	}
+	defer func() { _ = srv.Close() }()
+	adapter.SetServer(srv)
+
+	_, _ = fmt.Fprintf(os.Stderr, "Debug server listening on %s\nWaiting for editor to attach...\n", srv.Addr())
+
+	go func() { _ = srv.Serve() }()
+
+	select {
+	case <-adapter.Ready():
+	case <-cmd.Context().Done():
+		return nil
+	}
+
+	if devEvents != "" {
+		events, err := loadEvents(devEvents)
+		if err != nil {
+			return err
+		}
+
+		var stats eventStats
+		partitions := make(map[string]bool)
+		var faulted bool
+
+		for _, evt := range events {
+			event := parseEventInfo(evt)
+			writer.WriteEvent(event)
+
+			result, feedErr := adapter.FeedEvent(evt)
+			if feedErr != nil {
+				code, desc := classifyError(feedErr)
+				writer.WriteError(event.id(), code, desc)
+				stats.errors++
+				faulted = true
+				break
+			}
+
+			writer.WriteResult(event.id(), result)
+			if result.Status == "skipped" {
+				stats.skipped++
+			} else {
+				stats.handled++
+				if result.Partition != "" {
+					partitions[result.Partition] = true
+				}
+			}
+		}
+
+		adapter.SendTerminated()
+		summary := buildSummary(session, info, partitions)
+		writer.WriteSummary(stats, summary)
+
+		if faulted {
+			cmd.SilenceErrors = true
+			return fmt.Errorf("projection faulted")
+		}
+		return nil
+	}
+
+	connStr := resolveConnection(cfg, root)
+	if connStr == "" {
+		return fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
+	}
+
+	if err := env.Load(root, ""); err != nil {
+		return fmt.Errorf("loading .env: %w", err)
+	}
+
+	dbConfig, err := kurrentdb.ParseConnectionString(connStr)
+	if err != nil {
+		return fmt.Errorf("invalid connection string: %w", err)
+	}
+
+	username, password := env.Credentials()
+	if username != "" {
+		dbConfig.Username = username
+		dbConfig.Password = password
+	}
+	dbConfig.Logger = kurrentdb.NoopLogging()
+
+	client, err := kurrentdb.NewClient(dbConfig)
+	if err != nil {
+		return fmt.Errorf("connecting to KurrentDB: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	filter := subscription.BuildFilter(subscription.SourceInfo{
+		AllStreams:                  info.AllStreams,
+		Categories:                  info.Categories,
+		Streams:                     info.Streams,
+		Events:                      info.Events,
+		HandlesDeletedNotifications: info.HandlesDeletedNotifications,
+	}, version)
+
+	subOpts := kurrentdb.SubscribeToAllOptions{
+		From:           kurrentdb.Start{},
+		ResolveLinkTos: subscription.ResolveLinkTos(version),
+	}
+	if filter != nil {
+		subOpts.Filter = filter
+	}
+
+	sub, err := client.SubscribeToAll(ctx, subOpts)
+	if err != nil {
+		return fmt.Errorf("subscribing: %w", err)
+	}
+	defer func() { _ = sub.Close() }()
+
+	var stats eventStats
+	partitions := make(map[string]bool)
+	var faulted bool
+
+	for {
+		subEvent := sub.Recv()
+
+		if subEvent.SubscriptionDropped != nil {
+			if ctx.Err() != nil {
+				_, _ = fmt.Fprint(os.Stderr, "Interrupted\n\n")
+				break
+			}
+			return fmt.Errorf("subscription dropped: %w", subEvent.SubscriptionDropped.Error)
+		}
+
+		if subEvent.EventAppeared == nil {
+			continue
+		}
+
+		eventJSON, err := subscription.MapEvent(subEvent.EventAppeared)
+		if err != nil || eventJSON == "" {
+			continue
+		}
+
+		event := parseEventInfo(eventJSON)
+		writer.WriteEvent(event)
+
+		result, feedErr := adapter.FeedEvent(eventJSON)
+		if feedErr != nil {
+			code, desc := classifyError(feedErr)
+			writer.WriteError(event.id(), code, desc)
+			stats.errors++
+			faulted = true
+			break
+		}
+
+		writer.WriteResult(event.id(), result)
+		if result.Status == "skipped" {
+			stats.skipped++
+		} else {
+			stats.handled++
+			if result.Partition != "" {
+				partitions[result.Partition] = true
+			}
+		}
+	}
+
+	adapter.SendTerminated()
+	summary := buildSummary(session, info, partitions)
+	writer.WriteSummary(stats, summary)
+
+	if faulted {
+		cmd.SilenceErrors = true
+		return fmt.Errorf("projection faulted")
+	}
+	return nil
+}
+
 func processEvents(session *gafferruntime.Session, events []string, writer outputWriter) (eventStats, map[string]bool, bool) {
 	var stats eventStats
 	partitions := make(map[string]bool)
@@ -305,8 +492,12 @@ func getProjectionInfo(session *gafferruntime.Session) projectionInfo {
 	return info
 }
 
-func buildSessionOptions(cfg *config.Config, proj *config.Projection) *string {
+func buildSessionOptions(cfg *config.Config, proj *config.Projection, debug bool) *string {
 	opts := map[string]any{}
+
+	if debug {
+		opts["debug"] = true
+	}
 
 	if proj.Engine != "" {
 		opts["version"] = proj.Engine

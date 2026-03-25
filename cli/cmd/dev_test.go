@@ -84,7 +84,7 @@ func TestBuildSessionOptions_EngineOnly(t *testing.T) {
 	cfg := &config.Config{}
 	proj := &config.Projection{Engine: "v1"}
 
-	opts := buildSessionOptions(cfg, proj)
+	opts := buildSessionOptions(cfg, proj, false)
 	if opts == nil {
 		t.Fatal("expected options")
 	}
@@ -105,7 +105,7 @@ func TestBuildSessionOptions_ProjectionTimeoutOverridesGlobal(t *testing.T) {
 	cfg := &config.Config{ExecutionTimeout: &globalTimeout}
 	proj := &config.Projection{ExecutionTimeout: &projTimeout}
 
-	opts := buildSessionOptions(cfg, proj)
+	opts := buildSessionOptions(cfg, proj, false)
 	if opts == nil {
 		t.Fatal("expected options")
 	}
@@ -124,7 +124,7 @@ func TestBuildSessionOptions_NoOptions(t *testing.T) {
 	cfg := &config.Config{}
 	proj := &config.Projection{}
 
-	opts := buildSessionOptions(cfg, proj)
+	opts := buildSessionOptions(cfg, proj, false)
 	if opts != nil {
 		t.Error("expected nil when no options set")
 	}
@@ -139,7 +139,7 @@ func TestBuildSessionOptions_GlobalFallback(t *testing.T) {
 	}
 	proj := &config.Projection{}
 
-	opts := buildSessionOptions(cfg, proj)
+	opts := buildSessionOptions(cfg, proj, false)
 	if opts == nil {
 		t.Fatal("expected options")
 	}

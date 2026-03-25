@@ -16,6 +16,9 @@ type DebugAdapter struct {
 
 	mu     sync.Mutex
 	paused bool
+
+	readyOnce sync.Once
+	readyCh   chan struct{}
 }
 
 // NewDebugAdapter creates an adapter that wires a DAP server to a session.
@@ -25,6 +28,7 @@ func NewDebugAdapter(session *gafferruntime.Session, sourcePath string) *DebugAd
 	return &DebugAdapter{
 		session:    session,
 		sourcePath: sourcePath,
+		readyCh:    make(chan struct{}),
 	}
 }
 
@@ -193,6 +197,13 @@ func (a *DebugAdapter) handleConfigurationDone(s *Server, req *godap.Configurati
 	resp := &godap.ConfigurationDoneResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
 	s.Send(resp)
+	a.readyOnce.Do(func() { close(a.readyCh) })
+}
+
+// Ready returns a channel that is closed when the editor has completed
+// the DAP configuration sequence (configurationDone received).
+func (a *DebugAdapter) Ready() <-chan struct{} {
+	return a.readyCh
 }
 
 func (a *DebugAdapter) handleDisconnect(s *Server, req *godap.DisconnectRequest) {

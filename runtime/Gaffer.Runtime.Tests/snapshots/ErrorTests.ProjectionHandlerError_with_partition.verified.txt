@@ -8,8 +8,8 @@ Handler threw: fail
   3 │ 	Test: function(s, e) { throw "fail"; }
     │ 	                             ^ fail
     │
-  at Test (<anonymous>:3:31)
-  at <anonymous>:3:8
+  at Test (projection.js:3:31)
+  at projection.js:3:8
 
 Event: 42@s-1
 Type:  Test

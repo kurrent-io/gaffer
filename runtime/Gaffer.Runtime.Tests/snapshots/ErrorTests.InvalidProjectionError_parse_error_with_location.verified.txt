@@ -1,8 +1,8 @@
 ﻿Failed to compile projection
 
-error: Unexpected identifier 'is' (<anonymous>:1:6)
+error: Unexpected identifier 'is' (projection.js:1:6)
     ┌─ 1:6
     │
   1 │ this is not valid {{{{
-    │      ^ Unexpected identifier 'is' (<anonymous>:1:6)
+    │      ^ Unexpected identifier 'is' (projection.js:1:6)
     │

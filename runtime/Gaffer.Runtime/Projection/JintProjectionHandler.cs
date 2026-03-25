@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -13,6 +14,7 @@ using Jint.Native.Function;
 using Jint.Native.Json;
 using Jint.Native.Object;
 using Jint.Runtime;
+using Jint.Runtime.Debugger;
 using Jint.Runtime.Descriptors;
 using Jint.Runtime.Interop;
 
@@ -31,32 +33,51 @@ internal sealed class JintProjectionHandler : IDisposable {
 	// Editing a projection auto-bumps the subsystem version, so all active projections get this
 	// behavior. We match that by always enabling it rather than exposing a toggle.
 	private readonly bool _enableContentTypeValidation = true;
+	private readonly bool _debug;
+	private readonly BlockingCollection<DebugCommand> _debugCommands = new();
+	private volatile bool _paused;
 
 	private JsValue _state;
 	private JsValue _sharedState;
 	private bool _faulted;
+
+	/// <summary>Fired when execution pauses at a breakpoint or debugger statement. Informational only.</summary>
+	public Action<BreakInfo>? OnBreak { get; set; }
 
 	public JintProjectionHandler(
 		string source,
 		TimeSpan compilationTimeout,
 		TimeSpan executionTimeout,
 		Action<string>? onLog = null,
-		Action<EmittedEvent>? onEmit = null) {
+		Action<EmittedEvent>? onEmit = null,
+		bool debug = false) {
 		_onLog = onLog;
 		_onEmit = onEmit;
+		_debug = debug;
 		_definitionBuilder = new SourceDefinitionBuilder();
 		_definitionBuilder.NoWhen();
 		_definitionBuilder.AllEvents();
 		var timeConstraint = new TimeConstraint(compilationTimeout, executionTimeout);
-		_engine = new Engine(opts => opts.Constraint(timeConstraint).DisableStringCompilation());
+		_engine = new Engine(opts => {
+			opts.Constraint(timeConstraint).DisableStringCompilation();
+			if (debug) {
+				opts.Debugger.Enabled = true;
+				opts.Debugger.StatementHandling = DebuggerStatementHandling.Script;
+			}
+		});
 		_state = JsValue.Undefined;
 		_sharedState = JsValue.Undefined;
 		_runtime = new ProjectionRuntime(_engine, _definitionBuilder);
 		_serializer = new Serializer();
 		_engine.Global.FastAddProperty("log", new ClrFunction(_engine, "log", Log), false, false, false);
 
+		if (debug) {
+			_engine.Debugger.Break += OnDebugBreak;
+			_engine.Debugger.Step += OnDebugStep;
+		}
+
 		timeConstraint.Compiling();
-		_engine.Execute(source);
+		_engine.Execute(source, "projection.js");
 		timeConstraint.Executing();
 		_parser = _runtime.SwitchToExecutionMode();
 
@@ -66,7 +87,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 		_engine.Global.FastAddProperty("copyTo", new ClrFunction(_engine, "copyTo", CopyTo, 3), true, false, true);
 	}
 
-	public void Dispose() => _engine.Dispose();
+	public void Dispose() {
+		_debugCommands.CompleteAdding();
+		_engine.Dispose();
+	}
 
 	private void EnsureNotFaulted() {
 		if (_faulted)
@@ -369,6 +393,75 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 	internal string Serialize(JsValue value) =>
 		Encoding.UTF8.GetString(_serializer.Serialize(value).Span);
+
+	// -- Debug support --
+
+	private StepMode OnDebugBreak(object sender, DebugInformation info) {
+		var reason = info.PauseType == PauseType.DebuggerStatement ? "debugger_statement" : "breakpoint";
+		return EnterDebugCommandLoop(reason, info);
+	}
+
+	private StepMode OnDebugStep(object sender, DebugInformation info) {
+		return EnterDebugCommandLoop("step", info);
+	}
+
+	private StepMode EnterDebugCommandLoop(string reason, DebugInformation info) {
+		_paused = true;
+		try {
+			var location = info.Location;
+			OnBreak?.Invoke(new BreakInfo {
+				Reason = reason,
+				Line = location.Start.Line,
+				Column = location.Start.Column + 1, // Jint 0-based -> 1-based
+			});
+
+			foreach (var cmd in _debugCommands.GetConsumingEnumerable()) {
+				switch (cmd) {
+					case ContinueCommand cc:
+						_paused = false;
+						cc.Done.Set();
+						return StepMode.None;
+					default:
+						cmd.Done.Set();
+						break;
+				}
+			}
+		} catch {
+			_paused = false;
+			throw;
+		}
+
+		// Collection was completed (session disposing while paused) - abort execution
+		_paused = false;
+		throw new OperationCanceledException("Debug session disposed while paused");
+	}
+
+	public bool IsPaused => _paused;
+
+	public void SetBreakpoint(int line, int column) {
+		// Convert from 1-based (external) to 0-based columns (Jint)
+		_engine.Debugger.BreakPoints.Set(
+			new BreakPoint("projection.js", line, column - 1));
+	}
+
+	public void ClearBreakpoints() {
+		_engine.Debugger.BreakPoints.Clear();
+	}
+
+	public void Continue() {
+		if (!_paused)
+			throw new InvalidOperationException("Cannot continue when not paused");
+		using var cmd = new ContinueCommand();
+		_debugCommands.Add(cmd);
+		cmd.Done.Wait();
+	}
+
+	private abstract class DebugCommand : IDisposable {
+		public ManualResetEventSlim Done { get; } = new(false);
+		public void Dispose() => Done.Dispose();
+	}
+
+	private sealed class ContinueCommand : DebugCommand;
 
 	// -- Nested types below --
 

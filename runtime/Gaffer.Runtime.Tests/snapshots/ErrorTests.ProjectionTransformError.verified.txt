@@ -8,5 +8,5 @@ error: transform failed
   5 │ 	throw new Error("transform failed");
     │ 	      ^ transform failed
     │
-  at <anonymous>:5:8
-  at <anonymous>:6:16
+  at projection.js:5:8
+  at projection.js:6:16

@@ -33,6 +33,9 @@ public sealed class ProjectionSession : IDisposable {
 	/// <summary>Called when projection state changes. Args: partition key, state JSON.</summary>
 	public Action<string, string?>? OnStateChanged { get; set; }
 
+	/// <summary>Called when execution pauses at a breakpoint or debugger statement. Informational only.</summary>
+	public Action<BreakInfo>? OnBreak { get; set; }
+
 	/// <summary>The projection's source definition (what streams/events it reads).</summary>
 	public QuerySources Sources => _sources;
 
@@ -59,7 +62,10 @@ public sealed class ProjectionSession : IDisposable {
 				onEmit: emitted => {
 					_pendingEmitted.Add(emitted);
 					OnEmit?.Invoke(emitted);
-				});
+				},
+				debug: opts.Debug);
+
+			_handler.OnBreak = info => OnBreak?.Invoke(info);
 		} catch (ScriptPreparationException ex) when (ex.InnerException is ParseErrorException parseError) {
 			throw new InvalidProjectionException(
 				parseError.Description,
@@ -95,6 +101,18 @@ public sealed class ProjectionSession : IDisposable {
 	}
 
 	public void Dispose() => _handler.Dispose();
+
+	/// <summary>Set a breakpoint at the given 1-based line and column.</summary>
+	public void SetBreakpoint(int line, int column = 1) => _handler.SetBreakpoint(line, column);
+
+	/// <summary>Remove all breakpoints.</summary>
+	public void ClearBreakpoints() => _handler.ClearBreakpoints();
+
+	/// <summary>Resume execution after a debug pause.</summary>
+	public void Continue() => _handler.Continue();
+
+	/// <summary>Whether the session is currently paused at a breakpoint.</summary>
+	public bool IsPaused => _handler.IsPaused;
 
 	/// <summary>Event type for hard-deleted streams.</summary>
 	public const string StreamDeletedEventType = "$streamDeleted";

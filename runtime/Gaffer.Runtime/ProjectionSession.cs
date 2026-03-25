@@ -114,6 +114,15 @@ public sealed class ProjectionSession : IDisposable {
 	/// <summary>Whether the session is currently paused at a breakpoint.</summary>
 	public bool IsPaused => _handler.IsPaused;
 
+	/// <summary>Get the call stack. Only valid while paused.</summary>
+	public DebugCallFrame[] GetCallStack() => _handler.GetCallStack();
+
+	/// <summary>Get scopes for a call frame. Only valid while paused.</summary>
+	public DebugScopeInfo[] GetScopes(int frameIndex) => _handler.GetScopes(frameIndex);
+
+	/// <summary>Get variables for a scope or object reference. Only valid while paused.</summary>
+	public DebugVariable[] GetVariables(int variablesReference) => _handler.GetVariables(variablesReference);
+
 	/// <summary>Event type for hard-deleted streams.</summary>
 	public const string StreamDeletedEventType = "$streamDeleted";
 

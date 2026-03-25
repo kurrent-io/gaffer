@@ -153,4 +153,163 @@ public class DebugTests {
 		session.Feed(MakeEvent());
 		Assert.Contains("\"count\":1", session.GetState()!);
 	}
+
+	[Fact]
+	public void Get_call_stack_during_pause() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function handler(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		session.SetBreakpoint(4);
+		DebugCallFrame[]? frames = null;
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => session.IsPaused, TimeSpan.FromSeconds(5));
+
+		frames = session.GetCallStack();
+		Assert.NotNull(frames);
+		Assert.True(frames.Length >= 1);
+		Assert.Equal("handler", frames[0].Name);
+		Assert.Equal(4, frames[0].Line);
+		Assert.True(frames[0].Column >= 1);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+	}
+
+	[Fact]
+	public void Get_scopes_during_pause() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		session.SetBreakpoint(4);
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => session.IsPaused, TimeSpan.FromSeconds(5));
+
+		var scopes = session.GetScopes(0);
+		Assert.NotNull(scopes);
+		Assert.True(scopes.Length >= 1);
+		Assert.True(scopes[0].VariablesReference > 0);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+	}
+
+	[Fact]
+	public void Get_variables_during_pause() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		session.SetBreakpoint(4);
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => session.IsPaused, TimeSpan.FromSeconds(5));
+
+		var scopes = session.GetScopes(0);
+		var localScope = scopes[0];
+		var variables = session.GetVariables(localScope.VariablesReference);
+
+		Assert.NotNull(variables);
+		Assert.True(variables.Length >= 1);
+		var sParam = Assert.Single(variables, v => v.Name == "s");
+		Assert.Equal("object", sParam.Type);
+		var eParam = Assert.Single(variables, v => v.Name == "e");
+		Assert.Equal("object", eParam.Type);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+	}
+
+	[Fact]
+	public void Inspect_when_not_paused_throws() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) { s.count++; return s; }\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		Assert.Throws<InvalidOperationException>(() => session.GetCallStack());
+		Assert.Throws<InvalidOperationException>(() => session.GetScopes(0));
+		Assert.Throws<InvalidOperationException>(() => session.GetVariables(1));
+		Assert.Throws<InvalidOperationException>(() => session.Continue());
+	}
+
+	[Fact]
+	public void Invalid_variable_reference_throws_during_pause() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		session.SetBreakpoint(4);
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => session.IsPaused, TimeSpan.FromSeconds(5));
+
+		Assert.Throws<InvalidOperationException>(() => session.GetVariables(999));
+		Assert.Throws<ArgumentOutOfRangeException>(() => session.GetScopes(999));
+
+		// Session should still be paused and functional after errors
+		Assert.True(session.IsPaused);
+		var frames = session.GetCallStack();
+		Assert.NotNull(frames);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+	}
+
+	[Fact]
+	public void Timeout_does_not_fire_during_pause() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions {
+			Debug = true,
+			ExecutionTimeout = TimeSpan.FromMilliseconds(500),
+		});
+
+		session.SetBreakpoint(4);
+
+		var feedDone = new ManualResetEventSlim(false);
+		FeedResult? result = null;
+		Exception? feedEx = null;
+
+		var feedThread = new Thread(() => {
+			try {
+				result = session.Feed(MakeEvent());
+			} catch (Exception ex) {
+				feedEx = ex;
+			}
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => session.IsPaused, TimeSpan.FromSeconds(5));
+
+		// Wait longer than the execution timeout while paused
+		Thread.Sleep(1000);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+
+		Assert.Null(feedEx);
+		Assert.NotNull(result);
+	}
 }

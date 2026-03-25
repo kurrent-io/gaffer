@@ -34,7 +34,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 	// behavior. We match that by always enabling it rather than exposing a toggle.
 	private readonly bool _enableContentTypeValidation = true;
 	private readonly bool _debug;
+	private readonly TimeConstraint _timeConstraint;
 	private readonly BlockingCollection<DebugCommand> _debugCommands = new();
+	private readonly Dictionary<int, DebugScope> _variableStore = new();
+	private int _nextVariableRef = 1;
+	private DebugInformation? _currentDebugInfo;
 	private volatile bool _paused;
 
 	private JsValue _state;
@@ -57,9 +61,9 @@ internal sealed class JintProjectionHandler : IDisposable {
 		_definitionBuilder = new SourceDefinitionBuilder();
 		_definitionBuilder.NoWhen();
 		_definitionBuilder.AllEvents();
-		var timeConstraint = new TimeConstraint(compilationTimeout, executionTimeout);
+		_timeConstraint = new TimeConstraint(compilationTimeout, executionTimeout);
 		_engine = new Engine(opts => {
-			opts.Constraint(timeConstraint).DisableStringCompilation();
+			opts.Constraint(_timeConstraint).DisableStringCompilation();
 			if (debug) {
 				opts.Debugger.Enabled = true;
 				opts.Debugger.StatementHandling = DebuggerStatementHandling.Script;
@@ -76,9 +80,9 @@ internal sealed class JintProjectionHandler : IDisposable {
 			_engine.Debugger.Step += OnDebugStep;
 		}
 
-		timeConstraint.Compiling();
+		_timeConstraint.Compiling();
 		_engine.Execute(source, "projection.js");
-		timeConstraint.Executing();
+		_timeConstraint.Executing();
 		_parser = _runtime.SwitchToExecutionMode();
 
 		_engine.Global.FastAddProperty("emit", new ClrFunction(_engine, "emit", Emit, 4), true, false, true);
@@ -407,6 +411,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 	private StepMode EnterDebugCommandLoop(string reason, DebugInformation info) {
 		_paused = true;
+		_currentDebugInfo = info;
+		_variableStore.Clear();
+		_nextVariableRef = 1;
+		_timeConstraint.PauseTimeout();
 		try {
 			var location = info.Location;
 			OnBreak?.Invoke(new BreakInfo {
@@ -418,23 +426,120 @@ internal sealed class JintProjectionHandler : IDisposable {
 			foreach (var cmd in _debugCommands.GetConsumingEnumerable()) {
 				switch (cmd) {
 					case ContinueCommand cc:
-						_paused = false;
+						ClearDebugState();
 						cc.Done.Set();
 						return StepMode.None;
+					case GetCallStackCommand gc:
+						try { gc.Result = ReadCallStack(info); } catch (Exception ex) { gc.Error = ex; }
+						gc.Done.Set();
+						break;
+					case GetScopesCommand sc:
+						try { sc.Result = ReadScopes(info, sc.FrameIndex); } catch (Exception ex) { sc.Error = ex; }
+						sc.Done.Set();
+						break;
+					case GetVariablesCommand vc:
+						try { vc.Result = ReadVariables(vc.VariablesReference); } catch (Exception ex) { vc.Error = ex; }
+						vc.Done.Set();
+						break;
 					default:
 						cmd.Done.Set();
 						break;
 				}
 			}
 		} catch {
-			_paused = false;
+			ClearDebugState();
 			throw;
 		}
 
-		// Collection was completed (session disposing while paused) - abort execution
-		_paused = false;
+		ClearDebugState();
 		throw new OperationCanceledException("Debug session disposed while paused");
 	}
+
+	private void ClearDebugState() {
+		_paused = false;
+		_currentDebugInfo = null;
+		_variableStore.Clear();
+		_nextVariableRef = 1;
+		_timeConstraint.ResumeTimeout();
+	}
+
+	private DebugCallFrame[] ReadCallStack(DebugInformation info) {
+		var stack = info.CallStack;
+		var frames = new DebugCallFrame[stack.Count];
+		for (var i = 0; i < stack.Count; i++) {
+			var frame = stack[i];
+			var loc = frame.Location;
+			frames[i] = new DebugCallFrame {
+				Id = i,
+				Name = frame.FunctionName ?? "(anonymous)",
+				Line = loc.Start.Line,
+				Column = loc.Start.Column + 1,
+			};
+		}
+		return frames;
+	}
+
+	private DebugScopeInfo[] ReadScopes(DebugInformation info, int frameIndex) {
+		var stack = info.CallStack;
+		if (frameIndex < 0 || frameIndex >= stack.Count)
+			throw new ArgumentOutOfRangeException(nameof(frameIndex));
+		var frame = stack[frameIndex];
+		var chain = frame.ScopeChain;
+		var scopes = new DebugScopeInfo[chain.Count];
+		for (var i = 0; i < chain.Count; i++) {
+			var scope = chain[i];
+			var refId = _nextVariableRef++;
+			_variableStore[refId] = scope;
+			scopes[i] = new DebugScopeInfo {
+				Name = scope.ScopeType.ToString(),
+				VariablesReference = refId,
+				Expensive = scope.ScopeType == DebugScopeType.Global,
+			};
+		}
+		return scopes;
+	}
+
+	private DebugVariable[] ReadVariables(int variablesReference) {
+		if (!_variableStore.TryGetValue(variablesReference, out var scope))
+			throw new InvalidOperationException($"Invalid variable reference: {variablesReference}");
+		var names = scope.BindingNames;
+		var variables = new DebugVariable[names.Count];
+		for (var i = 0; i < names.Count; i++) {
+			var name = names[i];
+			var value = scope.GetBindingValue(name);
+			variables[i] = new DebugVariable {
+				Name = name,
+				Value = FormatValue(value),
+				Type = GetValueType(value),
+				VariablesReference = 0, // flat in MVP.0
+			};
+		}
+		return variables;
+	}
+
+	private static string FormatValue(JsValue? value) => value switch {
+		null => "undefined",
+		JsString s => $"\"{s.AsString()}\"",
+		JsNumber n => n.AsNumber().ToString(CultureInfo.InvariantCulture),
+		JsBoolean b => b.AsBoolean() ? "true" : "false",
+		JsNull => "null",
+		JsUndefined => "undefined",
+		JsArray a => $"Array({a.Length})",
+		ObjectInstance => "[object Object]",
+		_ => value.ToString(),
+	};
+
+	private static string GetValueType(JsValue? value) => value switch {
+		null => "undefined",
+		JsString => "string",
+		JsNumber => "number",
+		JsBoolean => "boolean",
+		JsNull => "object",
+		JsUndefined => "undefined",
+		JsArray => "object",
+		ObjectInstance => "object",
+		_ => value.Type.ToString().ToLowerInvariant(),
+	};
 
 	public bool IsPaused => _paused;
 
@@ -456,12 +561,60 @@ internal sealed class JintProjectionHandler : IDisposable {
 		cmd.Done.Wait();
 	}
 
+	public DebugCallFrame[] GetCallStack() {
+		if (!_paused)
+			throw new InvalidOperationException("Cannot inspect when not paused");
+		using var cmd = new GetCallStackCommand();
+		_debugCommands.Add(cmd);
+		cmd.Done.Wait();
+		if (cmd.Error != null)
+			throw cmd.Error;
+		return cmd.Result!;
+	}
+
+	public DebugScopeInfo[] GetScopes(int frameIndex) {
+		if (!_paused)
+			throw new InvalidOperationException("Cannot inspect when not paused");
+		using var cmd = new GetScopesCommand { FrameIndex = frameIndex };
+		_debugCommands.Add(cmd);
+		cmd.Done.Wait();
+		if (cmd.Error != null)
+			throw cmd.Error;
+		return cmd.Result!;
+	}
+
+	public DebugVariable[] GetVariables(int variablesReference) {
+		if (!_paused)
+			throw new InvalidOperationException("Cannot inspect when not paused");
+		using var cmd = new GetVariablesCommand { VariablesReference = variablesReference };
+		_debugCommands.Add(cmd);
+		cmd.Done.Wait();
+		if (cmd.Error != null)
+			throw cmd.Error;
+		return cmd.Result!;
+	}
+
 	private abstract class DebugCommand : IDisposable {
 		public ManualResetEventSlim Done { get; } = new(false);
+		public Exception? Error { get; set; }
 		public void Dispose() => Done.Dispose();
 	}
 
 	private sealed class ContinueCommand : DebugCommand;
+
+	private sealed class GetCallStackCommand : DebugCommand {
+		public DebugCallFrame[]? Result { get; set; }
+	}
+
+	private sealed class GetScopesCommand : DebugCommand {
+		public required int FrameIndex { get; init; }
+		public DebugScopeInfo[]? Result { get; set; }
+	}
+
+	private sealed class GetVariablesCommand : DebugCommand {
+		public required int VariablesReference { get; init; }
+		public DebugVariable[]? Result { get; set; }
+	}
 
 	// -- Nested types below --
 
@@ -470,6 +623,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		private readonly TimeSpan _executionTimeout;
 		private TimeSpan _start;
 		private TimeSpan _timeout;
+		private TimeSpan _elapsedAtPause;
 		private bool _executing;
 
 		public TimeConstraint(TimeSpan compilationTimeout, TimeSpan executionTimeout) {
@@ -480,6 +634,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 		public void Compiling() { _timeout = _compilationTimeout; _executing = false; }
 		public void Executing() { _timeout = _executionTimeout; _executing = true; }
+
+		public void PauseTimeout() => _elapsedAtPause = Sw.Elapsed - _start;
+
+		public void ResumeTimeout() => _start = Sw.Elapsed - _elapsedAtPause;
 
 		public override void Reset() => _start = Sw.Elapsed;
 

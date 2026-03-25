@@ -15,6 +15,9 @@ Thumbs.db
 # Gaffer local state
 .gaffer/
 
+# Go
+go.work.sum
+
 # Node
 node_modules/
 .pnpm-store/

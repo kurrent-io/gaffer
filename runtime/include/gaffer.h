@@ -103,6 +103,18 @@ void gaffer_on_log(gaffer_session* session, gaffer_log_cb cb, void* user_data);
 /** Register a callback for state changes. */
 void gaffer_on_state_changed(gaffer_session* session, gaffer_state_changed_cb cb, void* user_data);
 
+/** Callback when execution pauses at a breakpoint or debugger statement. */
+typedef void (*gaffer_break_cb)(
+    const char* reason,
+    const char* source,
+    int line,
+    int column,
+    void* user_data
+);
+
+/** Register a callback for debug pause notifications. */
+void gaffer_on_break(gaffer_session* session, gaffer_break_cb cb, void* user_data);
+
 /* --------------------------------------------------------------------------
  * Event feeding
  * -------------------------------------------------------------------------- */
@@ -177,6 +189,48 @@ const char* gaffer_session_get_sources(gaffer_session* session);
  * @return Partition key string, or NULL. Valid until the next API call.
  */
 const char* gaffer_session_get_partition_key(gaffer_session* session, const char* event_json);
+
+/* --------------------------------------------------------------------------
+ * Debug controls
+ *
+ * All debug functions post commands to the engine thread internally.
+ * Inspection and stepping are only valid while the session is paused.
+ * Line and column values are 1-based.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Set a breakpoint at the given line and column (1-based).
+ * Can be called before or during execution.
+ */
+void gaffer_debug_set_breakpoint(gaffer_session* session, int line, int column);
+
+/** Remove all breakpoints. */
+void gaffer_debug_clear_breakpoints(gaffer_session* session);
+
+/** Resume execution after a debug pause. Only valid while paused. */
+void gaffer_debug_continue(gaffer_session* session);
+
+/**
+ * Get the current call stack as a JSON array.
+ * Each frame: {"id": int, "name": string, "line": int, "column": int}
+ * Only valid while paused. Returns NULL on error.
+ */
+const char* gaffer_debug_get_call_stack(gaffer_session* session);
+
+/**
+ * Get scopes for a call frame as a JSON array.
+ * Each scope: {"name": string, "variablesReference": int, "expensive": bool}
+ * Only valid while paused. Returns NULL on error.
+ */
+const char* gaffer_debug_get_scopes(gaffer_session* session, int frame_index);
+
+/**
+ * Get variables for a scope or object reference as a JSON array.
+ * Each variable: {"name": string, "value": string, "type": string, "variablesReference": int}
+ * variablesReference is 0 for leaf values, non-zero for expandable objects.
+ * Only valid while paused. Returns NULL on error.
+ */
+const char* gaffer_debug_get_variables(gaffer_session* session, int variables_reference);
 
 /* --------------------------------------------------------------------------
  * Error handling

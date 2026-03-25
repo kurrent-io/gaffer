@@ -23,10 +23,6 @@ internal static unsafe class NativeExports {
 		public required ProjectionSession Session { get; init; }
 		public byte* LastReturnedPtr { get; set; }
 
-		// Prevent GC of delegates while callbacks are registered
-		public GCHandle EmitCbHandle;
-		public GCHandle LogCbHandle;
-		public GCHandle StateChangedCbHandle;
 	}
 
 	private static byte* ToUnmanaged(SessionHandle handle, string? value) {
@@ -281,13 +277,6 @@ internal static unsafe class NativeExports {
 			if (handle.LastReturnedPtr != null)
 				NativeMemory.Free(handle.LastReturnedPtr);
 
-			if (handle.EmitCbHandle.IsAllocated)
-				handle.EmitCbHandle.Free();
-			if (handle.LogCbHandle.IsAllocated)
-				handle.LogCbHandle.Free();
-			if (handle.StateChangedCbHandle.IsAllocated)
-				handle.StateChangedCbHandle.Free();
-
 			handle.Session.Dispose();
 		} catch {
 			// Best effort cleanup
@@ -345,6 +334,23 @@ internal static unsafe class NativeExports {
 			} finally {
 				FreeUtf8(part);
 				FreeUtf8(state);
+			}
+		};
+	}
+
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_on_break")]
+	public static void OnBreak(nint sessionId, delegate* unmanaged<byte*, byte*, int, int, void*, void> cb, void* userData) {
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
+
+		handle.Session.OnBreak = info => {
+			var reason = AllocUtf8(info.Reason);
+			var source = AllocUtf8("projection.js");
+			try {
+				cb(reason, source, info.Line, info.Column, userData);
+			} finally {
+				FreeUtf8(reason);
+				FreeUtf8(source);
 			}
 		};
 	}
@@ -478,6 +484,145 @@ internal static unsafe class NativeExports {
 			SetLastError(ex);
 			return null;
 		}
+	}
+
+	// -- Debug controls --
+
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_set_breakpoint")]
+	public static void DebugSetBreakpoint(nint sessionId, int line, int column) {
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
+		try {
+			handle.Session.SetBreakpoint(line, column);
+			ClearLastError();
+		} catch (Exception ex) {
+			SetLastError(ex);
+		}
+	}
+
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_clear_breakpoints")]
+	public static void DebugClearBreakpoints(nint sessionId) {
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
+		try {
+			handle.Session.ClearBreakpoints();
+			ClearLastError();
+		} catch (Exception ex) {
+			SetLastError(ex);
+		}
+	}
+
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_continue")]
+	public static void DebugContinue(nint sessionId) {
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
+		try {
+			handle.Session.Continue();
+			ClearLastError();
+		} catch (Exception ex) {
+			SetLastError(ex);
+		}
+	}
+
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_get_call_stack")]
+	public static byte* DebugGetCallStack(nint sessionId) {
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			SetLastError(InvalidSessionError);
+			return null;
+		}
+		try {
+			var frames = handle.Session.GetCallStack();
+			ClearLastError();
+			return ToUnmanaged(handle, SerializeCallStack(frames));
+		} catch (Exception ex) {
+			SetLastError(ex);
+			return null;
+		}
+	}
+
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_get_scopes")]
+	public static byte* DebugGetScopes(nint sessionId, int frameIndex) {
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			SetLastError(InvalidSessionError);
+			return null;
+		}
+		try {
+			var scopes = handle.Session.GetScopes(frameIndex);
+			ClearLastError();
+			return ToUnmanaged(handle, SerializeScopes(scopes));
+		} catch (Exception ex) {
+			SetLastError(ex);
+			return null;
+		}
+	}
+
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_get_variables")]
+	public static byte* DebugGetVariables(nint sessionId, int variablesReference) {
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			SetLastError(InvalidSessionError);
+			return null;
+		}
+		try {
+			var variables = handle.Session.GetVariables(variablesReference);
+			ClearLastError();
+			return ToUnmanaged(handle, SerializeVariables(variables));
+		} catch (Exception ex) {
+			SetLastError(ex);
+			return null;
+		}
+	}
+
+	private static string SerializeCallStack(Events.DebugCallFrame[] frames) {
+		using var stream = new System.IO.MemoryStream();
+		using var writer = new Utf8JsonWriter(stream);
+		writer.WriteStartArray();
+		for (int i = 0; i < frames.Length; i++) {
+			var f = frames[i];
+			writer.WriteStartObject();
+			writer.WriteNumber("id", f.Id);
+			writer.WriteString("name", f.Name);
+			writer.WriteNumber("line", f.Line);
+			writer.WriteNumber("column", f.Column);
+			writer.WriteEndObject();
+		}
+		writer.WriteEndArray();
+		writer.Flush();
+		return Encoding.UTF8.GetString(stream.ToArray());
+	}
+
+	private static string SerializeScopes(Events.DebugScopeInfo[] scopes) {
+		using var stream = new System.IO.MemoryStream();
+		using var writer = new Utf8JsonWriter(stream);
+		writer.WriteStartArray();
+		for (int i = 0; i < scopes.Length; i++) {
+			var s = scopes[i];
+			writer.WriteStartObject();
+			writer.WriteString("name", s.Name);
+			writer.WriteNumber("variablesReference", s.VariablesReference);
+			writer.WriteBoolean("expensive", s.Expensive);
+			writer.WriteEndObject();
+		}
+		writer.WriteEndArray();
+		writer.Flush();
+		return Encoding.UTF8.GetString(stream.ToArray());
+	}
+
+	private static string SerializeVariables(Events.DebugVariable[] variables) {
+		using var stream = new System.IO.MemoryStream();
+		using var writer = new Utf8JsonWriter(stream);
+		writer.WriteStartArray();
+		for (int i = 0; i < variables.Length; i++) {
+			var v = variables[i];
+			writer.WriteStartObject();
+			writer.WriteString("name", v.Name);
+			writer.WriteString("value", v.Value);
+			writer.WriteString("type", v.Type);
+			writer.WriteNumber("variablesReference", v.VariablesReference);
+			writer.WriteEndObject();
+		}
+		writer.WriteEndArray();
+		writer.Flush();
+		return Encoding.UTF8.GetString(stream.ToArray());
 	}
 
 	// -- Error handling --

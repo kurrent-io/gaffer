@@ -100,7 +100,13 @@ public sealed class ProjectionSession : IDisposable {
 			_handledEventTypes = new HashSet<string>(_sources.Events, StringComparer.Ordinal);
 	}
 
-	public void Dispose() => _handler.Dispose();
+	public void Dispose() {
+		if (_handler.IsPaused) {
+			_handler.ClearBreakpoints();
+			try { _handler.Continue(); } catch { /* best effort */ }
+		}
+		_handler.Dispose();
+	}
 
 	/// <summary>
 	/// Set a breakpoint, snapping to the nearest breakable position on or after the given position.
@@ -201,6 +207,8 @@ public sealed class ProjectionSession : IDisposable {
 				ProcessOutput(partition, newState, newSharedState);
 
 			return BuildResult(partition);
+		} catch (OperationCanceledException) {
+			throw;
 		} catch (StateSerializationException ex) {
 			var part = IsPartitioned ? partition : null;
 			throw new StateSerializationException(

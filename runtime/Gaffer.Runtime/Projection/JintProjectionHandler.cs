@@ -593,6 +593,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	private DebugVariable RunEvaluate(string expression) {
+		var wasEvaluating = _evaluating;
 		_evaluating = true;
 		try {
 			var result = _engine.Debugger.Evaluate(expression);
@@ -600,7 +601,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		} catch (Jint.Runtime.Debugger.DebugEvaluationException ex) when (ex.InnerException != null) {
 			throw ex.InnerException;
 		} finally {
-			_evaluating = false;
+			_evaluating = wasEvaluating;
 		}
 	}
 

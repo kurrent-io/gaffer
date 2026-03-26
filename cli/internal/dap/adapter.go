@@ -1,6 +1,7 @@
 package dap
 
 import (
+	"path"
 	"sync"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -81,6 +82,31 @@ func (a *DebugAdapter) Handler() Handler {
 }
 
 func (a *DebugAdapter) handleSetBreakpoints(s *Server, req *godap.SetBreakpointsRequest) {
+	reqFile := path.Base(req.Arguments.Source.Path)
+	projFile := path.Base(a.sourcePath)
+
+	// Only accept breakpoints for the projection being debugged
+	if reqFile != projFile {
+		breakpoints := make([]godap.Breakpoint, len(req.Arguments.Breakpoints))
+		for i, bp := range req.Arguments.Breakpoints {
+			breakpoints[i] = godap.Breakpoint{
+				Id:       i + 1,
+				Verified: false,
+				Line:     bp.Line,
+				Message:  "Not the active projection",
+			}
+		}
+		resp := &godap.SetBreakpointsResponse{}
+		resp.Response = NewResponse(req.Seq, req.Command)
+		resp.Body.Breakpoints = breakpoints
+		s.Send(resp)
+		return
+	}
+
+	// Capture the editor's source path for stack frames (handles container path mismatch)
+	if req.Arguments.Source.Path != "" {
+		a.sourcePath = req.Arguments.Source.Path
+	}
 	a.session.ClearBreakpoints()
 
 	breakpoints := make([]godap.Breakpoint, len(req.Arguments.Breakpoints))
@@ -239,8 +265,9 @@ func (a *DebugAdapter) SendTerminated() {
 }
 
 func (a *DebugAdapter) source() *godap.Source {
+	name := path.Base(a.sourcePath)
 	return &godap.Source{
-		Name: "projection.js",
+		Name: name,
 		Path: a.sourcePath,
 	}
 }

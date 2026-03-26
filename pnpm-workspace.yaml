@@ -2,6 +2,7 @@ packages:
   - 'bindings/js'
   - 'bindings/js/native/*'
   - 'testing/js'
+  - 'editors/vscode'
 
 onlyBuiltDependencies:
   - koffi

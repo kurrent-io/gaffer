@@ -279,9 +279,21 @@ func runDebugMode(cmd *cobra.Command, session *gafferruntime.Session, info proje
 
 	go func() { _ = srv.Serve() }()
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	// On interrupt, clear breakpoints and continue so Feed unblocks and runs to completion.
+	// Continue panics if not paused, so recover handles that case.
+	go func() {
+		<-ctx.Done()
+		session.ClearBreakpoints()
+		defer func() { recover() }() //nolint:errcheck
+		session.Continue()
+	}()
+
 	select {
 	case <-adapter.Ready():
-	case <-cmd.Context().Done():
+	case <-ctx.Done():
 		return nil
 	}
 
@@ -296,11 +308,19 @@ func runDebugMode(cmd *cobra.Command, session *gafferruntime.Session, info proje
 		var faulted bool
 
 		for _, evt := range events {
+			if ctx.Err() != nil {
+				_, _ = fmt.Fprint(os.Stderr, "Interrupted\n\n")
+				break
+			}
 			event := parseEventInfo(evt)
 			writer.WriteEvent(event)
 
 			result, feedErr := adapter.FeedEvent(evt)
 			if feedErr != nil {
+				if ctx.Err() != nil {
+					_, _ = fmt.Fprint(os.Stderr, "Interrupted\n\n")
+					break
+				}
 				code, desc := classifyError(feedErr)
 				writer.WriteError(event.id(), code, desc)
 				stats.errors++
@@ -356,9 +376,6 @@ func runDebugMode(cmd *cobra.Command, session *gafferruntime.Session, info proje
 		return fmt.Errorf("connecting to KurrentDB: %w", err)
 	}
 	defer func() { _ = client.Close() }()
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
 
 	filter := subscription.BuildFilter(subscription.SourceInfo{
 		AllStreams:                  info.AllStreams,

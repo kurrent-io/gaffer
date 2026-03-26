@@ -1,0 +1,8 @@
+package:
+    pnpm exec vsce package
+
+install: package
+    codium --install-extension gaffer-debug-*.vsix
+
+clean:
+    rm -f *.vsix

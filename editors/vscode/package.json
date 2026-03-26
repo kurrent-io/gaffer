@@ -1,0 +1,47 @@
+{
+  "name": "gaffer-debug",
+  "displayName": "Gaffer Debug",
+  "description": "Debug adapter for KurrentDB projections via Gaffer",
+  "version": "0.0.1",
+  "publisher": "kurrent-io",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Debuggers"],
+  "activationEvents": ["onDebugResolve:gaffer"],
+  "main": "./extension.js",
+  "devDependencies": {
+    "@vscode/vsce": "^3.3.2"
+  },
+  "contributes": {
+    "debuggers": [
+      {
+        "type": "gaffer",
+        "label": "Gaffer",
+        "languages": ["javascript"],
+        "configurationAttributes": {
+          "attach": {
+            "properties": {
+              "port": {
+                "type": "number",
+                "description": "DAP server port",
+                "default": 4711
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "gaffer",
+            "request": "attach",
+            "name": "Gaffer Debug",
+            "port": 4711
+          }
+        ]
+      }
+    ],
+    "breakpoints": [
+      { "language": "javascript" }
+    ]
+  }
+}

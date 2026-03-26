@@ -120,7 +120,11 @@ func (a *DebugAdapter) handleSetBreakpoints(s *Server, req *godap.SetBreakpoints
 		if col == 0 {
 			col = 1
 		}
-		snapped, _ := a.session.SetBreakpoint(bp.Line, col)
+		var opts *gafferruntime.BreakpointOptions
+		if bp.Condition != "" {
+			opts = &gafferruntime.BreakpointOptions{Condition: bp.Condition}
+		}
+		snapped, _ := a.session.SetBreakpoint(bp.Line, col, opts)
 		if snapped != nil {
 			breakpoints[i] = godap.Breakpoint{
 				Id:       i + 1,

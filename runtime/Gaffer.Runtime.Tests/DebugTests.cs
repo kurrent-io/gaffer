@@ -295,6 +295,55 @@ public class DebugTests {
 	}
 
 	[Fact]
+	public void Conditional_breakpoint_pauses_when_true() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		var breaks = new List<BreakInfo>();
+		session.OnBreak = info => breaks.Add(info);
+		session.SetBreakpoint(4, 1, "s.count >= 2");
+
+		// First two feeds - condition false (count is 0 then 1)
+		session.Feed(MakeEvent());
+		session.Feed(MakeEvent());
+		Assert.Empty(breaks);
+		Assert.Contains("\"count\":2", session.GetState()!);
+
+		// Third feed - condition true (count is 2 before increment)
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => breaks.Count >= 1, TimeSpan.FromSeconds(5));
+		Assert.Single(breaks);
+		Assert.Equal("breakpoint", breaks[0].Reason);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+		Assert.Contains("\"count\":3", session.GetState()!);
+	}
+
+	[Fact]
+	public void Conditional_breakpoint_never_pauses_when_false() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		var breaks = new List<BreakInfo>();
+		session.OnBreak = info => breaks.Add(info);
+		session.SetBreakpoint(4, 1, "false");
+
+		session.Feed(MakeEvent());
+		session.Feed(MakeEvent());
+		session.Feed(MakeEvent());
+
+		Assert.Empty(breaks);
+		Assert.Contains("\"count\":3", session.GetState()!);
+	}
+
+	[Fact]
 	public void Pause_stops_before_next_event() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
 		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });

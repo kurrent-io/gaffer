@@ -27,7 +27,7 @@ func TestDebug_BreakpointPausesAndContinues(t *testing.T) {
 		breakInfo = info
 		breakOnce.Do(func() { close(breakHit) })
 	})
-	session.SetBreakpoint(4, 1) //nolint:errcheck
+	session.SetBreakpoint(4, 1, nil) //nolint:errcheck
 
 	feedDone := make(chan error, 1)
 	go func() {
@@ -78,7 +78,7 @@ func TestDebug_GetCallStack(t *testing.T) {
 	session.OnBreak(func(info BreakInfo) {
 		breakHit <- struct{}{}
 	})
-	session.SetBreakpoint(4, 1) //nolint:errcheck
+	session.SetBreakpoint(4, 1, nil) //nolint:errcheck
 
 	feedDone := make(chan struct{})
 	go func() {
@@ -120,7 +120,7 @@ func TestDebug_GetScopesAndVariables(t *testing.T) {
 	session.OnBreak(func(info BreakInfo) {
 		breakHit <- struct{}{}
 	})
-	session.SetBreakpoint(4, 1) //nolint:errcheck
+	session.SetBreakpoint(4, 1, nil) //nolint:errcheck
 
 	feedDone := make(chan struct{})
 	go func() {
@@ -179,7 +179,7 @@ func TestDebug_ClearBreakpoints(t *testing.T) {
 	}
 	defer session.Destroy()
 
-	session.SetBreakpoint(4, 1) //nolint:errcheck
+	session.SetBreakpoint(4, 1, nil) //nolint:errcheck
 	session.ClearBreakpoints()
 
 	result, err := session.Feed(debugTestEvent)

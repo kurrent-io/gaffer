@@ -189,9 +189,19 @@ type SnappedBreakpoint struct {
 // SetBreakpoint sets a breakpoint, snapping to the nearest breakable position.
 // Column is accepted for future column-level breakpoints but currently only line is used for snapping.
 // Returns the actual position (1-based) or nil if no breakable position was found.
-func (s *Session) SetBreakpoint(line, column int) (*SnappedBreakpoint, error) {
+// BreakpointOptions configures a breakpoint.
+type BreakpointOptions struct {
+	Condition string // JS expression; only pauses if truthy. Empty for unconditional.
+}
+
+func (s *Session) SetBreakpoint(line, column int, opts *BreakpointOptions) (*SnappedBreakpoint, error) {
 	s.ensureAlive()
-	result := C.gaffer_debug_set_breakpoint(s.handle, C.int(line), C.int(column))
+	var cond *C.char
+	if opts != nil && opts.Condition != "" {
+		cond = C.CString(opts.Condition)
+		defer C.free(unsafe.Pointer(cond))
+	}
+	result := C.gaffer_debug_set_breakpoint(s.handle, C.int(line), C.int(column), cond)
 	if result == nil {
 		return nil, nil
 	}

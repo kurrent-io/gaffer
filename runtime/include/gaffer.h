@@ -200,10 +200,11 @@ const char* gaffer_session_get_partition_key(gaffer_session* session, const char
 
 /**
  * Set a breakpoint, snapping to the nearest breakable position on or after the given line.
+ * @param condition  JS expression evaluated at the breakpoint; only pauses if truthy. NULL for unconditional.
  * Returns JSON {"line": int, "column": int} with the actual position (1-based),
  * or NULL if no breakable position was found.
  */
-const char* gaffer_debug_set_breakpoint(gaffer_session* session, int line, int column);
+const char* gaffer_debug_set_breakpoint(gaffer_session* session, int line, int column, const char* condition);
 
 /** Remove all breakpoints. */
 void gaffer_debug_clear_breakpoints(gaffer_session* session);

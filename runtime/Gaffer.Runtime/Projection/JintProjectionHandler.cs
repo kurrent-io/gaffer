@@ -745,12 +745,12 @@ internal sealed class JintProjectionHandler : IDisposable {
 	/// Returns the actual (line, column) where the breakpoint was set (1-based),
 	/// or null if no breakable position was found.
 	/// </summary>
-	public (int Line, int Column)? SetBreakpoint(int line, int column = 1) {
+	public (int Line, int Column)? SetBreakpoint(int line, int column = 1, string? condition = null) {
 		var snapped = SnapToBreakablePosition(line, column - 1); // 1-based -> 0-based column
 		if (snapped == null)
 			return null;
 		_engine.Debugger.BreakPoints.Set(
-			new BreakPoint(snapped.Value.Line, snapped.Value.Column));
+			new BreakPoint(snapped.Value.Line, snapped.Value.Column, condition));
 		return (snapped.Value.Line, snapped.Value.Column + 1); // 0-based -> 1-based for caller
 	}
 

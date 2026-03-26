@@ -410,6 +410,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 		if (_evaluating)
 			return StepMode.None;
 
+		if (info.BreakPoint is PauseBreakPoint) {
+			RemovePauseBreakPoints();
+			return EnterDebugCommandLoop("pause", info);
+		}
+
 		if (info.BreakPoint is GafferBreakPoint gbp) {
 			gbp.HitCount++;
 
@@ -724,34 +729,18 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	/// <summary>
-	/// Checks if a pause was requested and blocks until continued.
-	/// Call at the start of Feed, before processing the event.
-	/// No execution context is available during an inter-event pause.
+	/// If a pause was requested, adds temporary breakpoints at all breakable
+	/// positions. The first one hit will pause with full execution context
+	/// and remove all temporary breakpoints.
 	/// </summary>
 	public void HandlePauseIfRequested() {
 		if (!_pauseRequested)
 			return;
 		_pauseRequested = false;
-		_paused = true;
-		OnBreak?.Invoke(new BreakInfo { Reason = "pause", Line = 0, Column = 0 });
-
-		foreach (var cmd in _debugCommands.GetConsumingEnumerable()) {
-			switch (cmd) {
-				case ContinueCommand cc:
-					_paused = false;
-					cc.Done.Set();
-					return;
-				case StepCommand sc:
-					_paused = false;
-					sc.Done.Set();
-					return;
-				default:
-					cmd.Error = new InvalidOperationException("No execution context during inter-event pause");
-					cmd.Done.Set();
-					break;
-			}
+		if (_breakablePositions is { Count: > 0 }) {
+			foreach (var pos in _breakablePositions)
+				_engine.Debugger.BreakPoints.Set(new PauseBreakPoint(pos.Line, pos.Column));
 		}
-		_paused = false;
 	}
 
 	/// <summary>
@@ -780,6 +769,16 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 	public void ClearBreakpoints() {
 		_engine.Debugger.BreakPoints.Clear();
+	}
+
+	private void RemovePauseBreakPoints() {
+		var toRemove = new List<BreakLocation>();
+		foreach (var bp in _engine.Debugger.BreakPoints) {
+			if (bp is PauseBreakPoint)
+				toRemove.Add(bp.Location);
+		}
+		foreach (var loc in toRemove)
+			_engine.Debugger.BreakPoints.RemoveAt(loc);
 	}
 
 	/// <summary>
@@ -888,6 +887,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private sealed class EvaluateCommand : DebugCommand {
 		public required string Expression { get; init; }
 		public DebugVariable? Result { get; set; }
+	}
+
+	private sealed class PauseBreakPoint : BreakPoint {
+		public PauseBreakPoint(int line, int column) : base(line, column) { }
 	}
 
 	private sealed class GafferBreakPoint : BreakPoint {

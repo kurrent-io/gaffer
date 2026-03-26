@@ -419,7 +419,7 @@ public class DebugTests {
 	}
 
 	[Fact]
-	public void Pause_stops_before_next_event() {
+	public void Pause_stops_at_first_statement_of_next_event() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
 		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
 
@@ -443,8 +443,13 @@ public class DebugTests {
 		SpinWait.SpinUntil(() => breakInfo != null, TimeSpan.FromSeconds(5));
 		Assert.NotNull(breakInfo);
 		Assert.Equal("pause", breakInfo.Reason);
+		Assert.True(breakInfo.Line > 0, "Should have a real line number with execution context");
 		Assert.True(session.IsPaused);
 		Assert.False(feedDone.IsSet);
+
+		// Should have call stack (we're inside the handler)
+		var frames = session.GetCallStack();
+		Assert.True(frames.Length >= 1);
 
 		// Continue - feed should complete
 		session.Continue();

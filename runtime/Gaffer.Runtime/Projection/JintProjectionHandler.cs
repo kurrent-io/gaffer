@@ -41,6 +41,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private int _nextVariableRef = 1;
 	private DebugInformation? _currentDebugInfo;
 	private volatile bool _paused;
+	private bool _evaluating;
 
 	private JsValue _state;
 	private JsValue _sharedState;
@@ -63,6 +64,8 @@ internal sealed class JintProjectionHandler : IDisposable {
 		_definitionBuilder.NoWhen();
 		_definitionBuilder.AllEvents();
 		_timeConstraint = new TimeConstraint(compilationTimeout, executionTimeout);
+		if (debug)
+			_timeConstraint.Disabled = true;
 		_engine = new Engine(opts => {
 			opts.Constraint(_timeConstraint).DisableStringCompilation();
 			if (debug) {
@@ -403,11 +406,15 @@ internal sealed class JintProjectionHandler : IDisposable {
 	// -- Debug support --
 
 	private StepMode OnDebugBreak(object sender, DebugInformation info) {
+		if (_evaluating)
+			return StepMode.None;
 		var reason = info.PauseType == PauseType.DebuggerStatement ? "debugger_statement" : "breakpoint";
 		return EnterDebugCommandLoop(reason, info);
 	}
 
 	private StepMode OnDebugStep(object sender, DebugInformation info) {
+		if (_evaluating)
+			return StepMode.None;
 		return EnterDebugCommandLoop("step", info);
 	}
 
@@ -423,7 +430,6 @@ internal sealed class JintProjectionHandler : IDisposable {
 		_currentDebugInfo = info;
 		_variableStore.Clear();
 		_nextVariableRef = 1;
-		_timeConstraint.PauseTimeout();
 		try {
 			var location = info.Location;
 			OnBreak?.Invoke(new BreakInfo {
@@ -454,6 +460,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 						try { vc.Result = ReadVariables(vc.VariablesReference); } catch (Exception ex) { vc.Error = ex; }
 						vc.Done.Set();
 						break;
+					case EvaluateCommand ec:
+						try { ec.Result = RunEvaluate(ec.Expression); } catch (Exception ex) { ec.Error = ex; }
+						ec.Done.Set();
+						break;
 					default:
 						cmd.Done.Set();
 						break;
@@ -473,7 +483,6 @@ internal sealed class JintProjectionHandler : IDisposable {
 		_currentDebugInfo = null;
 		_variableStore.Clear();
 		_nextVariableRef = 1;
-		_timeConstraint.ResumeTimeout();
 	}
 
 	private DebugCallFrame[] ReadCallStack(DebugInformation info) {
@@ -575,6 +584,18 @@ internal sealed class JintProjectionHandler : IDisposable {
 			Type = GetValueType(value),
 			VariablesReference = refId,
 		};
+	}
+
+	private DebugVariable RunEvaluate(string expression) {
+		_evaluating = true;
+		try {
+			var result = _engine.Debugger.Evaluate(expression);
+			return MakeVariable("result", result);
+		} catch (Jint.Runtime.Debugger.DebugEvaluationException ex) when (ex.InnerException != null) {
+			throw ex.InnerException;
+		} finally {
+			_evaluating = false;
+		}
 	}
 
 	private static string FormatValue(JsValue? value) => value switch {
@@ -701,6 +722,17 @@ internal sealed class JintProjectionHandler : IDisposable {
 		return cmd.Result!;
 	}
 
+	public DebugVariable Evaluate(string expression) {
+		if (!_paused)
+			throw new InvalidOperationException("Cannot evaluate when not paused");
+		using var cmd = new EvaluateCommand { Expression = expression };
+		_debugCommands.Add(cmd);
+		cmd.Done.Wait();
+		if (cmd.Error != null)
+			throw cmd.Error;
+		return cmd.Result!;
+	}
+
 	private abstract class DebugCommand : IDisposable {
 		public ManualResetEventSlim Done { get; } = new(false);
 		public Exception? Error { get; set; }
@@ -711,6 +743,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 	private sealed class StepCommand : DebugCommand {
 		public required StepMode Mode { get; init; }
+	}
+
+	private sealed class EvaluateCommand : DebugCommand {
+		public required string Expression { get; init; }
+		public DebugVariable? Result { get; set; }
 	}
 
 	private readonly record struct BreakablePosition(int Line, int Column);
@@ -769,8 +806,8 @@ internal sealed class JintProjectionHandler : IDisposable {
 		private readonly TimeSpan _executionTimeout;
 		private TimeSpan _start;
 		private TimeSpan _timeout;
-		private TimeSpan _elapsedAtPause;
 		private bool _executing;
+		public bool Disabled { get; set; }
 
 		public TimeConstraint(TimeSpan compilationTimeout, TimeSpan executionTimeout) {
 			_compilationTimeout = compilationTimeout;
@@ -781,13 +818,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 		public void Compiling() { _timeout = _compilationTimeout; _executing = false; }
 		public void Executing() { _timeout = _executionTimeout; _executing = true; }
 
-		public void PauseTimeout() => _elapsedAtPause = Sw.Elapsed - _start;
-
-		public void ResumeTimeout() => _start = Sw.Elapsed - _elapsedAtPause;
-
 		public override void Reset() => _start = Sw.Elapsed;
 
 		public override void Check() {
+			if (Disabled)
+				return;
 			var elapsed = Sw.Elapsed - _start;
 			if (elapsed >= _timeout) {
 				if (Debugger.IsAttached)

@@ -220,6 +220,22 @@ func (s *Session) StepOut() {
 	C.gaffer_debug_step_out(s.handle)
 }
 
+// Evaluate evaluates an expression in the current debug context. Only valid while paused.
+func (s *Session) Evaluate(expression string) (*DebugVariable, error) {
+	s.ensureAlive()
+	cs := C.CString(expression)
+	defer C.free(unsafe.Pointer(cs))
+	result := C.gaffer_debug_evaluate(s.handle, cs)
+	if result == nil {
+		return nil, getLastError(s.source)
+	}
+	var v DebugVariable
+	if err := json.Unmarshal([]byte(C.GoString(result)), &v); err != nil {
+		return nil, fmt.Errorf("failed to parse evaluate result: %w", err)
+	}
+	return &v, nil
+}
+
 // ClearBreakpoints removes all breakpoints.
 func (s *Session) ClearBreakpoints() {
 	s.ensureAlive()

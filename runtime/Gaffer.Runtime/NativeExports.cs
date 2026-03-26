@@ -153,6 +153,10 @@ internal static unsafe class NativeExports {
 		writer.WriteStartObject();
 		writer.WriteString("code", "unexpected");
 		writer.WriteString("description", ex.Message);
+		if (ex is Jint.Runtime.JavaScriptException jsEx) {
+			if (jsEx.JavaScriptStackTrace != null)
+				writer.WriteString("jsStack", jsEx.JavaScriptStackTrace);
+		}
 		writer.WriteEndObject();
 		writer.Flush();
 		return Encoding.UTF8.GetString(stream.ToArray());
@@ -664,6 +668,40 @@ internal static unsafe class NativeExports {
 			writer.WriteEndObject();
 		}
 		writer.WriteEndArray();
+		writer.Flush();
+		return Encoding.UTF8.GetString(stream.ToArray());
+	}
+
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_evaluate")]
+	public static byte* DebugEvaluate(nint sessionId, byte* expression) {
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			SetLastError(InvalidSessionError);
+			return null;
+		}
+		try {
+			var expr = FromUtf8(expression);
+			if (expr == null) {
+				SetLastError(new InvalidArgumentException("expression is null", "expression"));
+				return null;
+			}
+			var result = handle.Session.Evaluate(expr);
+			ClearLastError();
+			return ToUnmanaged(handle, SerializeVariable(result));
+		} catch (Exception ex) {
+			SetLastError(ex);
+			return null;
+		}
+	}
+
+	private static string SerializeVariable(Events.DebugVariable v) {
+		using var stream = new System.IO.MemoryStream();
+		using var writer = new Utf8JsonWriter(stream);
+		writer.WriteStartObject();
+		writer.WriteString("name", v.Name);
+		writer.WriteString("value", v.Value);
+		writer.WriteString("type", v.Type);
+		writer.WriteNumber("variablesReference", v.VariablesReference);
+		writer.WriteEndObject();
 		writer.Flush();
 		return Encoding.UTF8.GetString(stream.ToArray());
 	}

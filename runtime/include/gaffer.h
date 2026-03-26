@@ -242,6 +242,13 @@ const char* gaffer_debug_get_scopes(gaffer_session* session, int frame_index);
  */
 const char* gaffer_debug_get_variables(gaffer_session* session, int variables_reference);
 
+/**
+ * Evaluate an expression in the current debug context.
+ * Returns JSON {"name": string, "value": string, "type": string, "variablesReference": int}
+ * Only valid while paused. Returns NULL on error.
+ */
+const char* gaffer_debug_evaluate(gaffer_session* session, const char* expression);
+
 /* --------------------------------------------------------------------------
  * Error handling
  * -------------------------------------------------------------------------- */

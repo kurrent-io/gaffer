@@ -79,6 +79,7 @@ func (a *DebugAdapter) Handler() Handler {
 		OnStackTrace:        a.handleStackTrace,
 		OnScopes:            a.handleScopes,
 		OnVariables:         a.handleVariables,
+		OnEvaluate:          a.handleEvaluate,
 		OnConfigurationDone: a.handleConfigurationDone,
 		OnDisconnect:        a.handleDisconnect,
 	}
@@ -257,6 +258,21 @@ func (a *DebugAdapter) handleVariables(s *Server, req *godap.VariablesRequest) {
 	resp := &godap.VariablesResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
 	resp.Body.Variables = dapVars
+	s.Send(resp)
+}
+
+func (a *DebugAdapter) handleEvaluate(s *Server, req *godap.EvaluateRequest) {
+	result, err := a.session.Evaluate(req.Arguments.Expression)
+	if err != nil {
+		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
+		return
+	}
+
+	resp := &godap.EvaluateResponse{}
+	resp.Response = NewResponse(req.Seq, req.Command)
+	resp.Body.Result = result.Value
+	resp.Body.Type = result.Type
+	resp.Body.VariablesReference = result.VariablesReference
 	s.Send(resp)
 }
 

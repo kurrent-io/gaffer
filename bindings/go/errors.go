@@ -125,12 +125,20 @@ func (e *ProjectionTransformError) ErrorDescription() string { return e.Desc }
 
 // UnexpectedError represents an unknown or internal error from the runtime.
 type UnexpectedError struct {
-	Code string
-	Desc string
-	Msg  string
+	Code          string
+	Desc          string
+	InnerError    string
+	ExceptionType string
+	StackTrace    string
+	Msg           string
 }
 
-func (e *UnexpectedError) Error() string            { return e.Msg }
+func (e *UnexpectedError) Error() string {
+	if e.InnerError != "" {
+		return e.Msg + ": " + e.InnerError
+	}
+	return e.Msg
+}
 func (e *UnexpectedError) ErrorCode() string        { return e.Code }
 func (e *UnexpectedError) ErrorDescription() string { return e.Desc }
 
@@ -138,6 +146,9 @@ type errorJSON struct {
 	Code           string `json:"code"`
 	Description    string `json:"description"`
 	Message        string `json:"message,omitempty"`
+	InnerError     string `json:"innerError,omitempty"`
+	ExceptionType  string `json:"exceptionType,omitempty"`
+	StackTrace     string `json:"stackTrace,omitempty"`
 	Line           *int   `json:"line,omitempty"`
 	Column         *int   `json:"column,omitempty"`
 	Elapsed        *int   `json:"elapsed,omitempty"`
@@ -231,7 +242,7 @@ func parseErrorJSON(jsonStr string, source string) error {
 		return &ProjectionTransformError{Desc: e.Description, JsStack: e.JsStack, Location: loc, Source: source, Msg: msg}
 
 	default:
-		return &UnexpectedError{Code: e.Code, Desc: e.Description, Msg: msg}
+		return &UnexpectedError{Code: e.Code, Desc: e.Description, InnerError: e.InnerError, ExceptionType: e.ExceptionType, StackTrace: e.StackTrace, Msg: msg}
 	}
 }
 

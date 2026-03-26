@@ -502,6 +502,72 @@ public class DebugTests {
 	}
 
 	[Fact]
+	public void Evaluate_expression_returns_result() {
+		var source = "fromAll().when({\n$init: function() { return { count: 5 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		session.SetBreakpoint(4);
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => session.IsPaused, TimeSpan.FromSeconds(5));
+
+		// Evaluate a simple expression
+		var result = session.Evaluate("1 + 2");
+		Assert.Equal("3", result.Value);
+		Assert.Equal("number", result.Type);
+		Assert.Equal(0, result.VariablesReference);
+
+		// Evaluate accessing local variable
+		var stateResult = session.Evaluate("s.count");
+		Assert.Equal("5", stateResult.Value);
+
+		// Evaluate returning an object (should be expandable)
+		var objResult = session.Evaluate("s");
+		Assert.Equal("object", objResult.Type);
+		Assert.True(objResult.VariablesReference > 0);
+
+		// Expand the evaluated object
+		var props = session.GetVariables(objResult.VariablesReference);
+		var countProp = Assert.Single(props, p => p.Name == "count");
+		Assert.Equal("5", countProp.Value);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+	}
+
+	[Fact]
+	public void Evaluate_invalid_expression_throws() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		session.SetBreakpoint(4);
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => session.IsPaused, TimeSpan.FromSeconds(5));
+
+		Assert.ThrowsAny<Exception>(() => session.Evaluate("this is not valid {{{{"));
+
+		// Session should still be functional after eval error
+		var result = session.Evaluate("1 + 1");
+		Assert.Equal("2", result.Value);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+	}
+
+	[Fact]
 	public void Inspect_when_not_paused_throws() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) { s.count++; return s; }\n})";
 		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });

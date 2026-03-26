@@ -135,6 +135,9 @@ public sealed class ProjectionSession : IDisposable {
 	/// <summary>Get variables for a scope or object reference. Only valid while paused.</summary>
 	public DebugVariable[] GetVariables(int variablesReference) => _handler.GetVariables(variablesReference);
 
+	/// <summary>Evaluate an expression in the current debug context. Only valid while paused.</summary>
+	public DebugVariable Evaluate(string expression) => _handler.Evaluate(expression);
+
 	/// <summary>Event type for hard-deleted streams.</summary>
 	public const string StreamDeletedEventType = "$streamDeleted";
 

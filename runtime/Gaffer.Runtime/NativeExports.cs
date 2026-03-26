@@ -531,6 +531,42 @@ internal static unsafe class NativeExports {
 		}
 	}
 
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_step_into")]
+	public static void DebugStepInto(nint sessionId) {
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
+		try {
+			handle.Session.StepInto();
+			ClearLastError();
+		} catch (Exception ex) {
+			SetLastError(ex);
+		}
+	}
+
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_step_over")]
+	public static void DebugStepOver(nint sessionId) {
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
+		try {
+			handle.Session.StepOver();
+			ClearLastError();
+		} catch (Exception ex) {
+			SetLastError(ex);
+		}
+	}
+
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_step_out")]
+	public static void DebugStepOut(nint sessionId) {
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
+		try {
+			handle.Session.StepOut();
+			ClearLastError();
+		} catch (Exception ex) {
+			SetLastError(ex);
+		}
+	}
+
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_get_call_stack")]
 	public static byte* DebugGetCallStack(nint sessionId) {
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {

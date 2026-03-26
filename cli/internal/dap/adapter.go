@@ -73,6 +73,9 @@ func (a *DebugAdapter) Handler() Handler {
 	return Handler{
 		OnSetBreakpoints:    a.handleSetBreakpoints,
 		OnContinue:          a.handleContinue,
+		OnNext:              a.handleNext,
+		OnStepIn:            a.handleStepIn,
+		OnStepOut:           a.handleStepOut,
 		OnStackTrace:        a.handleStackTrace,
 		OnScopes:            a.handleScopes,
 		OnVariables:         a.handleVariables,
@@ -155,6 +158,36 @@ func (a *DebugAdapter) handleContinue(s *Server, req *godap.ContinueRequest) {
 	a.mu.Unlock()
 
 	go a.session.Continue()
+}
+
+func (a *DebugAdapter) sendStepResponse(s *Server, resp godap.Message, stepFn func()) {
+	s.Send(resp)
+	s.SendEvent(&godap.ContinuedEvent{
+		Event: NewEvent("continued"),
+		Body:  godap.ContinuedEventBody{ThreadId: 1, AllThreadsContinued: true},
+	})
+	a.mu.Lock()
+	a.paused = false
+	a.mu.Unlock()
+	go stepFn()
+}
+
+func (a *DebugAdapter) handleNext(s *Server, req *godap.NextRequest) {
+	resp := &godap.NextResponse{}
+	resp.Response = NewResponse(req.Seq, req.Command)
+	a.sendStepResponse(s, resp, a.session.StepOver)
+}
+
+func (a *DebugAdapter) handleStepIn(s *Server, req *godap.StepInRequest) {
+	resp := &godap.StepInResponse{}
+	resp.Response = NewResponse(req.Seq, req.Command)
+	a.sendStepResponse(s, resp, a.session.StepInto)
+}
+
+func (a *DebugAdapter) handleStepOut(s *Server, req *godap.StepOutRequest) {
+	resp := &godap.StepOutResponse{}
+	resp.Response = NewResponse(req.Seq, req.Command)
+	a.sendStepResponse(s, resp, a.session.StepOut)
 }
 
 func (a *DebugAdapter) handleStackTrace(s *Server, req *godap.StackTraceRequest) {

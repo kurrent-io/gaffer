@@ -35,6 +35,9 @@ type Handler struct {
 	OnSetBreakpoints          func(s *Server, req *godap.SetBreakpointsRequest)
 	OnSetExceptionBreakpoints func(s *Server, req *godap.SetExceptionBreakpointsRequest)
 	OnContinue                func(s *Server, req *godap.ContinueRequest)
+	OnNext                    func(s *Server, req *godap.NextRequest)
+	OnStepIn                  func(s *Server, req *godap.StepInRequest)
+	OnStepOut                 func(s *Server, req *godap.StepOutRequest)
 	OnThreads                 func(s *Server, req *godap.ThreadsRequest)
 	OnStackTrace              func(s *Server, req *godap.StackTraceRequest)
 	OnScopes                  func(s *Server, req *godap.ScopesRequest)
@@ -205,6 +208,24 @@ func (s *Server) dispatch(msg godap.Message) {
 	case *godap.ContinueRequest:
 		if s.handler.OnContinue != nil {
 			s.handler.OnContinue(s, req)
+		} else {
+			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
+		}
+	case *godap.NextRequest:
+		if s.handler.OnNext != nil {
+			s.handler.OnNext(s, req)
+		} else {
+			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
+		}
+	case *godap.StepInRequest:
+		if s.handler.OnStepIn != nil {
+			s.handler.OnStepIn(s, req)
+		} else {
+			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
+		}
+	case *godap.StepOutRequest:
+		if s.handler.OnStepOut != nil {
+			s.handler.OnStepOut(s, req)
 		} else {
 			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
 		}

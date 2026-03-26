@@ -438,6 +438,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 						ClearDebugState();
 						cc.Done.Set();
 						return StepMode.None;
+					case StepCommand sc:
+						ClearDebugState();
+						sc.Done.Set();
+						return sc.Mode;
 					case GetCallStackCommand gc:
 						try { gc.Result = ReadCallStack(info); } catch (Exception ex) { gc.Error = ex; }
 						gc.Done.Set();
@@ -593,6 +597,30 @@ internal sealed class JintProjectionHandler : IDisposable {
 		cmd.Done.Wait();
 	}
 
+	public void StepInto() {
+		if (!_paused)
+			throw new InvalidOperationException("Cannot step when not paused");
+		using var cmd = new StepCommand { Mode = StepMode.Into };
+		_debugCommands.Add(cmd);
+		cmd.Done.Wait();
+	}
+
+	public void StepOver() {
+		if (!_paused)
+			throw new InvalidOperationException("Cannot step when not paused");
+		using var cmd = new StepCommand { Mode = StepMode.Over };
+		_debugCommands.Add(cmd);
+		cmd.Done.Wait();
+	}
+
+	public void StepOut() {
+		if (!_paused)
+			throw new InvalidOperationException("Cannot step when not paused");
+		using var cmd = new StepCommand { Mode = StepMode.Out };
+		_debugCommands.Add(cmd);
+		cmd.Done.Wait();
+	}
+
 	public DebugCallFrame[] GetCallStack() {
 		if (!_paused)
 			throw new InvalidOperationException("Cannot inspect when not paused");
@@ -633,6 +661,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	private sealed class ContinueCommand : DebugCommand;
+
+	private sealed class StepCommand : DebugCommand {
+		public required StepMode Mode { get; init; }
+	}
 
 	private readonly record struct BreakablePosition(int Line, int Column);
 

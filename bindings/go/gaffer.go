@@ -202,6 +202,24 @@ func (s *Session) SetBreakpoint(line, column int) (*SnappedBreakpoint, error) {
 	return &snapped, nil
 }
 
+// StepInto steps into the next function call. Only valid while paused.
+func (s *Session) StepInto() {
+	s.ensureAlive()
+	C.gaffer_debug_step_into(s.handle)
+}
+
+// StepOver steps over the next statement. Only valid while paused.
+func (s *Session) StepOver() {
+	s.ensureAlive()
+	C.gaffer_debug_step_over(s.handle)
+}
+
+// StepOut steps out of the current function. Only valid while paused.
+func (s *Session) StepOut() {
+	s.ensureAlive()
+	C.gaffer_debug_step_out(s.handle)
+}
+
 // ClearBreakpoints removes all breakpoints.
 func (s *Session) ClearBreakpoints() {
 	s.ensureAlive()

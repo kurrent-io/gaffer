@@ -198,6 +198,103 @@ public class DebugTests {
 	}
 
 	[Fact]
+	public void Step_over_advances_to_next_statement() {
+		// Line 1: fromAll().when({
+		// Line 2: $init: function() { return { count: 0 }; },
+		// Line 3: ItemAdded: function(s, e) {
+		// Line 4: s.count++;
+		// Line 5: return s;
+		// Line 6: }
+		// Line 7: })
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		var breaks = new List<BreakInfo>();
+		session.OnBreak = info => breaks.Add(info);
+		session.SetBreakpoint(4); // s.count++;
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => breaks.Count >= 1, TimeSpan.FromSeconds(5));
+		Assert.Equal(4, breaks[0].Line);
+
+		// Step over should advance to line 5 (return s;)
+		session.StepOver();
+		SpinWait.SpinUntil(() => breaks.Count >= 2, TimeSpan.FromSeconds(5));
+		Assert.Equal("step", breaks[1].Reason);
+		Assert.Equal(5, breaks[1].Line);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+	}
+
+	[Fact]
+	public void Step_into_enters_function() {
+		// Source with a helper function called from the handler
+		var source = "function helper(x) {\nreturn x + 1;\n}\nfromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count = helper(s.count);\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		var breaks = new List<BreakInfo>();
+		session.OnBreak = info => breaks.Add(info);
+		session.SetBreakpoint(7); // s.count = helper(s.count);
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => breaks.Count >= 1, TimeSpan.FromSeconds(5));
+		Assert.Equal(7, breaks[0].Line);
+
+		// Step into should enter helper function (line 2: return x + 1;)
+		session.StepInto();
+		SpinWait.SpinUntil(() => breaks.Count >= 2, TimeSpan.FromSeconds(5));
+		Assert.Equal("step", breaks[1].Reason);
+		Assert.Equal(2, breaks[1].Line);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+		Assert.Contains("\"count\":1", session.GetState()!);
+	}
+
+	[Fact]
+	public void Step_out_exits_function() {
+		var source = "function helper(x) {\nreturn x + 1;\n}\nfromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count = helper(s.count);\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		var breaks = new List<BreakInfo>();
+		session.OnBreak = info => breaks.Add(info);
+		session.SetBreakpoint(2); // return x + 1; (inside helper)
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => breaks.Count >= 1, TimeSpan.FromSeconds(5));
+		Assert.Equal(2, breaks[0].Line);
+
+		// Step out should return to the caller
+		session.StepOut();
+		SpinWait.SpinUntil(() => breaks.Count >= 2, TimeSpan.FromSeconds(5));
+		Assert.Equal("step", breaks[1].Reason);
+		// Should be back in the handler, past the helper call
+		Assert.True(breaks[1].Line >= 7);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+	}
+
+	[Fact]
 	public void No_debug_mode_ignores_debugger_statement() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ndebugger;\ns.count++;\nreturn s;\n}\n})";
 		using var session = new ProjectionSession(source);

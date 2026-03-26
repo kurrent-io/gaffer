@@ -211,6 +211,15 @@ void gaffer_debug_clear_breakpoints(gaffer_session* session);
 /** Resume execution after a debug pause. Only valid while paused. */
 void gaffer_debug_continue(gaffer_session* session);
 
+/** Step into the next function call. Only valid while paused. */
+void gaffer_debug_step_into(gaffer_session* session);
+
+/** Step over the next statement. Only valid while paused. */
+void gaffer_debug_step_over(gaffer_session* session);
+
+/** Step out of the current function. Only valid while paused. */
+void gaffer_debug_step_out(gaffer_session* session);
+
 /**
  * Get the current call stack as a JSON array.
  * Each frame: {"id": int, "name": string, "line": int, "column": int}

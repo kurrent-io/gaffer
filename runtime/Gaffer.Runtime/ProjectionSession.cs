@@ -114,6 +114,15 @@ public sealed class ProjectionSession : IDisposable {
 	/// <summary>Resume execution after a debug pause.</summary>
 	public void Continue() => _handler.Continue();
 
+	/// <summary>Step into the next function call. Only valid while paused.</summary>
+	public void StepInto() => _handler.StepInto();
+
+	/// <summary>Step over the next statement. Only valid while paused.</summary>
+	public void StepOver() => _handler.StepOver();
+
+	/// <summary>Step out of the current function. Only valid while paused.</summary>
+	public void StepOut() => _handler.StepOut();
+
 	/// <summary>Whether the session is currently paused at a breakpoint.</summary>
 	public bool IsPaused => _handler.IsPaused;
 

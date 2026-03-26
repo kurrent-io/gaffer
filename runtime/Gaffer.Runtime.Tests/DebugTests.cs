@@ -450,7 +450,7 @@ public class DebugTests {
 
 		var itemsProp = Assert.Single(sProps, p => p.Name == "items");
 		Assert.True(itemsProp.VariablesReference > 0, "Array should be expandable");
-		Assert.Contains("Array(3)", itemsProp.Value);
+		Assert.Contains("[10, 20, 30]", itemsProp.Value);
 
 		// Expand the array
 		var elements = session.GetVariables(itemsProp.VariablesReference);

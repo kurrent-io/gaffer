@@ -525,12 +525,18 @@ internal sealed class JintProjectionHandler : IDisposable {
 		if (!_variableStore.TryGetValue(variablesReference, out var stored))
 			throw new InvalidOperationException($"Invalid variable reference: {variablesReference}");
 
-		return stored switch {
-			DebugScope scope => ReadScopeVariables(scope),
-			JsArray array => ReadArrayElements(array),
-			ObjectInstance obj => ReadObjectProperties(obj),
-			_ => throw new InvalidOperationException($"Unexpected variable store type: {stored.GetType()}")
-		};
+		var wasEvaluating = _evaluating;
+		_evaluating = true;
+		try {
+			return stored switch {
+				DebugScope scope => ReadScopeVariables(scope),
+				JsArray array => ReadArrayElements(array),
+				ObjectInstance obj => ReadObjectProperties(obj),
+				_ => throw new InvalidOperationException($"Unexpected variable store type: {stored.GetType()}")
+			};
+		} finally {
+			_evaluating = wasEvaluating;
+		}
 	}
 
 	private DebugVariable[] ReadScopeVariables(DebugScope scope) {
@@ -598,15 +604,87 @@ internal sealed class JintProjectionHandler : IDisposable {
 		}
 	}
 
-	private static string FormatValue(JsValue? value) => value switch {
+	private string FormatValue(JsValue? value) => value switch {
 		null => "undefined",
 		JsString s => $"\"{s.AsString()}\"",
 		JsNumber n => n.AsNumber().ToString(CultureInfo.InvariantCulture),
 		JsBoolean b => b.AsBoolean() ? "true" : "false",
 		JsNull => "null",
 		JsUndefined => "undefined",
-		JsArray a => $"Array({a.Length})",
-		ObjectInstance => "[object Object]",
+		JsArray a => FormatArrayPreview(a),
+		ObjectInstance o => FormatObjectPreview(o),
+		_ => value.ToString(),
+	};
+
+	private string FormatObjectPreview(ObjectInstance obj) {
+		var wasEvaluating = _evaluating;
+		_evaluating = true;
+		try {
+			var sb = new StringBuilder("{");
+			var first = true;
+			foreach (var kvp in obj.GetOwnProperties()) {
+				var propValue = kvp.Value.Value;
+				if (propValue.IsUndefined())
+					continue;
+				if (!first)
+					sb.Append(", ");
+				first = false;
+				sb.Append(kvp.Key.AsString());
+				sb.Append(": ");
+				sb.Append(FormatPreviewValue(propValue));
+				if (sb.Length > 80) {
+					sb.Length = 80;
+					sb.Append("...");
+					break;
+				}
+			}
+			sb.Append('}');
+			return sb.ToString();
+		} catch {
+			return "{...}";
+		} finally {
+			_evaluating = wasEvaluating;
+		}
+	}
+
+	private string FormatArrayPreview(JsArray array) {
+		var wasEvaluating = _evaluating;
+		_evaluating = true;
+		try {
+			var length = (int)array.Length;
+			if (length == 0)
+				return "[]";
+			var sb = new StringBuilder($"({length}) [");
+			for (var i = 0; i < length && i < 5; i++) {
+				if (i > 0)
+					sb.Append(", ");
+				sb.Append(FormatPreviewValue(array[(uint)i]));
+				if (sb.Length > 80) {
+					sb.Length = 80;
+					sb.Append("...");
+					break;
+				}
+			}
+			if (length > 5)
+				sb.Append(", ...");
+			sb.Append(']');
+			return sb.ToString();
+		} catch {
+			return $"Array({array.Length})";
+		} finally {
+			_evaluating = wasEvaluating;
+		}
+	}
+
+	private static string FormatPreviewValue(JsValue value) => value switch {
+		JsString s => s.AsString().Length > 30 ? $"\"{s.AsString()[..30]}...\"" : $"\"{s.AsString()}\"",
+		JsNumber n => n.AsNumber().ToString(CultureInfo.InvariantCulture),
+		JsBoolean b => b.AsBoolean() ? "true" : "false",
+		JsNull => "null",
+		JsUndefined => "undefined",
+		JsArray a => $"({a.Length}) [...]",
+		_ when value.IsNull() => "null",
+		ObjectInstance => "{...}",
 		_ => value.ToString(),
 	};
 

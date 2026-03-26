@@ -493,13 +493,13 @@ internal static unsafe class NativeExports {
 	// -- Debug controls --
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_set_breakpoint")]
-	public static byte* DebugSetBreakpoint(nint sessionId, int line, int column, byte* condition) {
+	public static byte* DebugSetBreakpoint(nint sessionId, int line, int column, byte* condition, byte* hitCondition, byte* logMessage) {
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {
 			SetLastError(InvalidSessionError);
 			return null;
 		}
 		try {
-			var snapped = handle.Session.SetBreakpoint(line, column, FromUtf8(condition));
+			var snapped = handle.Session.SetBreakpoint(line, column, FromUtf8(condition), FromUtf8(hitCondition), FromUtf8(logMessage));
 			ClearLastError();
 			if (snapped == null)
 				return null;

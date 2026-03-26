@@ -344,6 +344,81 @@ public class DebugTests {
 	}
 
 	[Fact]
+	public void Hit_count_breakpoint() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		var breaks = new List<BreakInfo>();
+		session.OnBreak = info => breaks.Add(info);
+		session.SetBreakpoint(4, 1, hitCondition: "= 3");
+
+		// First two hits don't pause
+		session.Feed(MakeEvent());
+		session.Feed(MakeEvent());
+		Assert.Empty(breaks);
+
+		// Third hit pauses
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => breaks.Count >= 1, TimeSpan.FromSeconds(5));
+		Assert.Single(breaks);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+	}
+
+	[Fact]
+	public void Hit_count_modulo() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		var breaks = new List<BreakInfo>();
+		session.OnBreak = info => breaks.Add(info);
+		session.SetBreakpoint(4, 1, hitCondition: "% 2");
+
+		// Hit 1: no pause. Hit 2: pause. Hit 3: no pause. Hit 4: pause.
+		session.Feed(MakeEvent());
+		Assert.Empty(breaks);
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+		SpinWait.SpinUntil(() => breaks.Count >= 1, TimeSpan.FromSeconds(5));
+		Assert.Single(breaks);
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+	}
+
+	[Fact]
+	public void Logpoint_logs_instead_of_pausing() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		var logs = new List<string>();
+		session.OnLog = msg => logs.Add(msg);
+		var breaks = new List<BreakInfo>();
+		session.OnBreak = info => breaks.Add(info);
+
+		session.SetBreakpoint(4, 1, logMessage: "count is {s.count}");
+
+		session.Feed(MakeEvent());
+		session.Feed(MakeEvent());
+
+		Assert.Empty(breaks);
+		Assert.Equal(2, logs.Count);
+		Assert.Equal("count is 0", logs[0]);
+		Assert.Equal("count is 1", logs[1]);
+	}
+
+	[Fact]
 	public void Pause_stops_before_next_event() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
 		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });

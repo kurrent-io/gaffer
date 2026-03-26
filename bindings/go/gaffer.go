@@ -191,17 +191,29 @@ type SnappedBreakpoint struct {
 // Returns the actual position (1-based) or nil if no breakable position was found.
 // BreakpointOptions configures a breakpoint.
 type BreakpointOptions struct {
-	Condition string // JS expression; only pauses if truthy. Empty for unconditional.
+	Condition    string // JS expression; only pauses if truthy. Empty for unconditional.
+	HitCondition string // Hit count condition like ">= 5", "% 3". Empty to ignore.
+	LogMessage   string // Log template with {expr}. When set, logs instead of pausing.
 }
 
 func (s *Session) SetBreakpoint(line, column int, opts *BreakpointOptions) (*SnappedBreakpoint, error) {
 	s.ensureAlive()
-	var cond *C.char
-	if opts != nil && opts.Condition != "" {
-		cond = C.CString(opts.Condition)
-		defer C.free(unsafe.Pointer(cond))
+	var cond, hitCond, logMsg *C.char
+	if opts != nil {
+		if opts.Condition != "" {
+			cond = C.CString(opts.Condition)
+			defer C.free(unsafe.Pointer(cond))
+		}
+		if opts.HitCondition != "" {
+			hitCond = C.CString(opts.HitCondition)
+			defer C.free(unsafe.Pointer(hitCond))
+		}
+		if opts.LogMessage != "" {
+			logMsg = C.CString(opts.LogMessage)
+			defer C.free(unsafe.Pointer(logMsg))
+		}
 	}
-	result := C.gaffer_debug_set_breakpoint(s.handle, C.int(line), C.int(column), cond)
+	result := C.gaffer_debug_set_breakpoint(s.handle, C.int(line), C.int(column), cond, hitCond, logMsg)
 	if result == nil {
 		return nil, nil
 	}

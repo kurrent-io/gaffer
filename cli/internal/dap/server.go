@@ -286,6 +286,8 @@ func (s *Server) handleInitialize(req *godap.InitializeRequest) {
 	resp.Response = NewResponse(req.Seq, req.Command)
 	resp.Body.SupportsConfigurationDoneRequest = true
 	resp.Body.SupportsConditionalBreakpoints = true
+	resp.Body.SupportsHitConditionalBreakpoints = true
+	resp.Body.SupportsLogPoints = true
 	s.Send(resp)
 
 	s.Send(&godap.InitializedEvent{Event: NewEvent("initialized")})

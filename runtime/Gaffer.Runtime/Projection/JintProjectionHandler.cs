@@ -409,6 +409,20 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private StepMode OnDebugBreak(object sender, DebugInformation info) {
 		if (_evaluating)
 			return StepMode.None;
+
+		if (info.BreakPoint is GafferBreakPoint gbp) {
+			gbp.HitCount++;
+
+			if (gbp.HitConditionFunc != null && !gbp.HitConditionFunc(gbp.HitCount))
+				return StepMode.None;
+
+			if (gbp.LogMessage != null) {
+				var message = EvaluateLogMessage(gbp.LogMessage);
+				_onLog?.Invoke(message);
+				return StepMode.None;
+			}
+		}
+
 		var reason = info.PauseType == PauseType.DebuggerStatement ? "debugger_statement" : "breakpoint";
 		return EnterDebugCommandLoop(reason, info);
 	}
@@ -745,12 +759,22 @@ internal sealed class JintProjectionHandler : IDisposable {
 	/// Returns the actual (line, column) where the breakpoint was set (1-based),
 	/// or null if no breakable position was found.
 	/// </summary>
-	public (int Line, int Column)? SetBreakpoint(int line, int column = 1, string? condition = null) {
+	public (int Line, int Column)? SetBreakpoint(int line, int column = 1, string? condition = null, string? hitCondition = null, string? logMessage = null) {
 		var snapped = SnapToBreakablePosition(line, column - 1); // 1-based -> 0-based column
 		if (snapped == null)
 			return null;
-		_engine.Debugger.BreakPoints.Set(
-			new BreakPoint(snapped.Value.Line, snapped.Value.Column, condition));
+
+		if (hitCondition != null || logMessage != null) {
+			var bp = new GafferBreakPoint(snapped.Value.Line, snapped.Value.Column, condition) {
+				LogMessage = logMessage,
+			};
+			if (hitCondition != null)
+				bp.HitConditionFunc = GafferBreakPoint.ParseHitCondition(hitCondition);
+			_engine.Debugger.BreakPoints.Set(bp);
+		} else {
+			_engine.Debugger.BreakPoints.Set(
+				new BreakPoint(snapped.Value.Line, snapped.Value.Column, condition));
+		}
 		return (snapped.Value.Line, snapped.Value.Column + 1); // 0-based -> 1-based for caller
 	}
 
@@ -864,6 +888,71 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private sealed class EvaluateCommand : DebugCommand {
 		public required string Expression { get; init; }
 		public DebugVariable? Result { get; set; }
+	}
+
+	private sealed class GafferBreakPoint : BreakPoint {
+		public GafferBreakPoint(int line, int column, string? condition = null)
+			: base(line, column, condition) { }
+
+		public int HitCount { get; set; }
+		public Func<int, bool>? HitConditionFunc { get; set; }
+		public string? LogMessage { get; set; }
+
+		public static Func<int, bool>? ParseHitCondition(string hitCondition) {
+			var trimmed = hitCondition.Trim();
+			if (string.IsNullOrEmpty(trimmed))
+				return null;
+
+			// Parse patterns like ">= 5", "% 3", "= 10", "5" (shorthand for "= 5")
+			if (int.TryParse(trimmed, out var exact))
+				return count => count == exact;
+
+			foreach (var (prefix, factory) in HitConditionParsers) {
+				if (trimmed.StartsWith(prefix) && int.TryParse(trimmed[prefix.Length..].Trim(), out var value))
+					return factory(value);
+			}
+			return null;
+		}
+
+		private static readonly (string Prefix, Func<int, Func<int, bool>> Factory)[] HitConditionParsers = [
+			(">=", v => c => c >= v),
+			("<=", v => c => c <= v),
+			(">", v => c => c > v),
+			("<", v => c => c < v),
+			("==", v => c => c == v),
+			("=", v => c => c == v),
+			("%", v => v > 0 ? c => c % v == 0 : _ => false),
+		];
+	}
+
+	private string EvaluateLogMessage(string template) {
+		var sb = new StringBuilder();
+		var i = 0;
+		while (i < template.Length) {
+			if (template[i] == '{') {
+				var end = template.IndexOf('}', i + 1);
+				if (end > i) {
+					var expr = template[(i + 1)..end];
+					try {
+						var wasEvaluating = _evaluating;
+						_evaluating = true;
+						try {
+							var result = _engine.Debugger.Evaluate(expr);
+							sb.Append(result.IsString() ? result.AsString() : FormatValue(result));
+						} finally {
+							_evaluating = wasEvaluating;
+						}
+					} catch {
+						sb.Append($"{{{expr}}}");
+					}
+					i = end + 1;
+					continue;
+				}
+			}
+			sb.Append(template[i]);
+			i++;
+		}
+		return sb.ToString();
 	}
 
 	private readonly record struct BreakablePosition(int Line, int Column);

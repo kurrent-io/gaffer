@@ -388,6 +388,120 @@ public class DebugTests {
 	}
 
 	[Fact]
+	public void Expand_object_properties() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0, name: \"test\" }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		session.SetBreakpoint(4);
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => session.IsPaused, TimeSpan.FromSeconds(5));
+
+		var scopes = session.GetScopes(0);
+		var variables = session.GetVariables(scopes[0].VariablesReference);
+
+		// Find 's' which should be expandable (it's an object with count and name)
+		var sVar = Assert.Single(variables, v => v.Name == "s");
+		Assert.Equal("object", sVar.Type);
+		Assert.True(sVar.VariablesReference > 0, "Object should be expandable");
+
+		// Expand 's' to see its properties
+		var props = session.GetVariables(sVar.VariablesReference);
+		var countProp = Assert.Single(props, p => p.Name == "count");
+		Assert.Equal("0", countProp.Value);
+		Assert.Equal("number", countProp.Type);
+		Assert.Equal(0, countProp.VariablesReference); // primitive, not expandable
+
+		var nameProp = Assert.Single(props, p => p.Name == "name");
+		Assert.Equal("\"test\"", nameProp.Value);
+		Assert.Equal("string", nameProp.Type);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+	}
+
+	[Fact]
+	public void Expand_array_elements() {
+		var source = "fromAll().when({\n$init: function() { return { items: [10, 20, 30] }; },\nItemAdded: function(s, e) {\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		session.SetBreakpoint(4);
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => session.IsPaused, TimeSpan.FromSeconds(5));
+
+		var scopes = session.GetScopes(0);
+		var variables = session.GetVariables(scopes[0].VariablesReference);
+
+		var sVar = Assert.Single(variables, v => v.Name == "s");
+		var sProps = session.GetVariables(sVar.VariablesReference);
+
+		var itemsProp = Assert.Single(sProps, p => p.Name == "items");
+		Assert.True(itemsProp.VariablesReference > 0, "Array should be expandable");
+		Assert.Contains("Array(3)", itemsProp.Value);
+
+		// Expand the array
+		var elements = session.GetVariables(itemsProp.VariablesReference);
+		Assert.Equal("10", Assert.Single(elements, e => e.Name == "0").Value);
+		Assert.Equal("20", Assert.Single(elements, e => e.Name == "1").Value);
+		Assert.Equal("30", Assert.Single(elements, e => e.Name == "2").Value);
+		Assert.Equal("3", Assert.Single(elements, e => e.Name == "length").Value);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+	}
+
+	[Fact]
+	public void Nested_object_expansion() {
+		var source = "fromAll().when({\n$init: function() { return { nested: { a: 1, b: { c: 2 } } }; },\nItemAdded: function(s, e) {\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		session.SetBreakpoint(4);
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => session.IsPaused, TimeSpan.FromSeconds(5));
+
+		var scopes = session.GetScopes(0);
+		var variables = session.GetVariables(scopes[0].VariablesReference);
+
+		var sVar = Assert.Single(variables, v => v.Name == "s");
+		var sProps = session.GetVariables(sVar.VariablesReference);
+
+		var nestedProp = Assert.Single(sProps, p => p.Name == "nested");
+		Assert.True(nestedProp.VariablesReference > 0);
+
+		var nestedProps = session.GetVariables(nestedProp.VariablesReference);
+		Assert.Equal("1", Assert.Single(nestedProps, p => p.Name == "a").Value);
+
+		var bProp = Assert.Single(nestedProps, p => p.Name == "b");
+		Assert.True(bProp.VariablesReference > 0);
+
+		var bProps = session.GetVariables(bProp.VariablesReference);
+		Assert.Equal("2", Assert.Single(bProps, p => p.Name == "c").Value);
+
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+	}
+
+	[Fact]
 	public void Inspect_when_not_paused_throws() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) { s.count++; return s; }\n})";
 		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });

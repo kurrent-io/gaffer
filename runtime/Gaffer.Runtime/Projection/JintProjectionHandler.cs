@@ -36,7 +36,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private readonly bool _debug;
 	private readonly TimeConstraint _timeConstraint;
 	private readonly BlockingCollection<DebugCommand> _debugCommands = new();
-	private readonly Dictionary<int, DebugScope> _variableStore = new();
+	private readonly Dictionary<int, object> _variableStore = new();
 	private List<BreakablePosition>? _breakablePositions;
 	private int _nextVariableRef = 1;
 	private DebugInformation? _currentDebugInfo;
@@ -513,21 +513,68 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	private DebugVariable[] ReadVariables(int variablesReference) {
-		if (!_variableStore.TryGetValue(variablesReference, out var scope))
+		if (!_variableStore.TryGetValue(variablesReference, out var stored))
 			throw new InvalidOperationException($"Invalid variable reference: {variablesReference}");
+
+		return stored switch {
+			DebugScope scope => ReadScopeVariables(scope),
+			JsArray array => ReadArrayElements(array),
+			ObjectInstance obj => ReadObjectProperties(obj),
+			_ => throw new InvalidOperationException($"Unexpected variable store type: {stored.GetType()}")
+		};
+	}
+
+	private DebugVariable[] ReadScopeVariables(DebugScope scope) {
 		var names = scope.BindingNames;
 		var variables = new DebugVariable[names.Count];
 		for (var i = 0; i < names.Count; i++) {
 			var name = names[i];
 			var value = scope.GetBindingValue(name);
-			variables[i] = new DebugVariable {
-				Name = name,
-				Value = FormatValue(value),
-				Type = GetValueType(value),
-				VariablesReference = 0, // flat in MVP.0
-			};
+			variables[i] = MakeVariable(name, value);
 		}
 		return variables;
+	}
+
+	private DebugVariable[] ReadObjectProperties(ObjectInstance obj) {
+		var props = new List<DebugVariable>();
+		foreach (var kvp in obj.GetOwnProperties()) {
+			var name = kvp.Key.AsString();
+			var value = kvp.Value.Value;
+			if (value.IsUndefined())
+				continue;
+			props.Add(MakeVariable(name, value));
+		}
+		return props.ToArray();
+	}
+
+	private DebugVariable[] ReadArrayElements(JsArray array) {
+		var length = (int)array.Length;
+		var variables = new List<DebugVariable>(length + 1);
+		for (var i = 0; i < length; i++) {
+			var value = array[(uint)i];
+			variables.Add(MakeVariable(i.ToString(), value));
+		}
+		variables.Add(new DebugVariable {
+			Name = "length",
+			Value = length.ToString(),
+			Type = "number",
+			VariablesReference = 0,
+		});
+		return variables.ToArray();
+	}
+
+	private DebugVariable MakeVariable(string name, JsValue? value) {
+		var refId = 0;
+		if (value is ObjectInstance && !value.IsNull() && value is not Function) {
+			refId = _nextVariableRef++;
+			_variableStore[refId] = value!;
+		}
+		return new DebugVariable {
+			Name = name,
+			Value = FormatValue(value),
+			Type = GetValueType(value),
+			VariablesReference = refId,
+		};
 	}
 
 	private static string FormatValue(JsValue? value) => value switch {

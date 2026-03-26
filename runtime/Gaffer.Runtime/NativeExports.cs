@@ -535,6 +535,13 @@ internal static unsafe class NativeExports {
 		}
 	}
 
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_pause")]
+	public static void DebugPause(nint sessionId) {
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
+		handle.Session.Pause();
+	}
+
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_step_into")]
 	public static void DebugStepInto(nint sessionId) {
 		if (!Sessions.TryGetValue(sessionId, out var handle))

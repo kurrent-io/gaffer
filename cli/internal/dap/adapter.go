@@ -73,6 +73,7 @@ func (a *DebugAdapter) Handler() Handler {
 	return Handler{
 		OnSetBreakpoints:    a.handleSetBreakpoints,
 		OnContinue:          a.handleContinue,
+		OnPause:             a.handlePause,
 		OnNext:              a.handleNext,
 		OnStepIn:            a.handleStepIn,
 		OnStepOut:           a.handleStepOut,
@@ -159,6 +160,13 @@ func (a *DebugAdapter) handleContinue(s *Server, req *godap.ContinueRequest) {
 	a.mu.Unlock()
 
 	go a.session.Continue()
+}
+
+func (a *DebugAdapter) handlePause(s *Server, req *godap.PauseRequest) {
+	a.session.Pause()
+	resp := &godap.PauseResponse{}
+	resp.Response = NewResponse(req.Seq, req.Command)
+	s.Send(resp)
 }
 
 func (a *DebugAdapter) sendStepResponse(s *Server, resp godap.Message, stepFn func()) {

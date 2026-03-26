@@ -132,6 +132,9 @@ public sealed class ProjectionSession : IDisposable {
 	/// <summary>Whether the session is currently paused at a breakpoint.</summary>
 	public bool IsPaused => _handler.IsPaused;
 
+	/// <summary>Request a pause before the next event is processed.</summary>
+	public void Pause() => _handler.Pause();
+
 	/// <summary>Get the call stack. Only valid while paused.</summary>
 	public DebugCallFrame[] GetCallStack() => _handler.GetCallStack();
 
@@ -162,6 +165,7 @@ public sealed class ProjectionSession : IDisposable {
 	/// <exception cref="MalformedEventException">Thrown if event data is malformed.</exception>
 	/// <exception cref="StateSerializationException">Thrown if state contains unserializable values.</exception>
 	public FeedResult Feed(ProjectionEvent @event) {
+		_handler.HandlePauseIfRequested();
 		_pendingEmitted.Clear();
 		_pendingLogs.Clear();
 

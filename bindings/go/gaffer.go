@@ -202,6 +202,12 @@ func (s *Session) SetBreakpoint(line, column int) (*SnappedBreakpoint, error) {
 	return &snapped, nil
 }
 
+// Pause requests a pause before the next event is processed.
+func (s *Session) Pause() {
+	s.ensureAlive()
+	C.gaffer_debug_pause(s.handle)
+}
+
 // StepInto steps into the next function call. Only valid while paused.
 func (s *Session) StepInto() {
 	s.ensureAlive()

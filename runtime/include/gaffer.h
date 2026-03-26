@@ -211,6 +211,9 @@ void gaffer_debug_clear_breakpoints(gaffer_session* session);
 /** Resume execution after a debug pause. Only valid while paused. */
 void gaffer_debug_continue(gaffer_session* session);
 
+/** Request a pause before the next event is processed. */
+void gaffer_debug_pause(gaffer_session* session);
+
 /** Step into the next function call. Only valid while paused. */
 void gaffer_debug_step_into(gaffer_session* session);
 

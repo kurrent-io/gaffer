@@ -41,6 +41,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private int _nextVariableRef = 1;
 	private DebugInformation? _currentDebugInfo;
 	private volatile bool _paused;
+	private volatile bool _pauseRequested;
 	private bool _evaluating;
 
 	private JsValue _state;
@@ -418,6 +419,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		return EnterDebugCommandLoop("step", info);
 	}
 
+
 	private void OnBeforeEvaluate(object sender, Acornima.Ast.Program ast) {
 		var collector = new BreakablePositionCollector();
 		collector.Visit(ast);
@@ -702,6 +704,41 @@ internal sealed class JintProjectionHandler : IDisposable {
 	};
 
 	public bool IsPaused => _paused;
+
+	public void Pause() {
+		_pauseRequested = true;
+	}
+
+	/// <summary>
+	/// Checks if a pause was requested and blocks until continued.
+	/// Call at the start of Feed, before processing the event.
+	/// No execution context is available during an inter-event pause.
+	/// </summary>
+	public void HandlePauseIfRequested() {
+		if (!_pauseRequested)
+			return;
+		_pauseRequested = false;
+		_paused = true;
+		OnBreak?.Invoke(new BreakInfo { Reason = "pause", Line = 0, Column = 0 });
+
+		foreach (var cmd in _debugCommands.GetConsumingEnumerable()) {
+			switch (cmd) {
+				case ContinueCommand cc:
+					_paused = false;
+					cc.Done.Set();
+					return;
+				case StepCommand sc:
+					_paused = false;
+					sc.Done.Set();
+					return;
+				default:
+					cmd.Error = new InvalidOperationException("No execution context during inter-event pause");
+					cmd.Done.Set();
+					break;
+			}
+		}
+		_paused = false;
+	}
 
 	/// <summary>
 	/// Sets a breakpoint, snapping to the nearest breakable position on or after the given position.

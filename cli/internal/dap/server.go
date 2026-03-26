@@ -35,6 +35,7 @@ type Handler struct {
 	OnSetBreakpoints          func(s *Server, req *godap.SetBreakpointsRequest)
 	OnSetExceptionBreakpoints func(s *Server, req *godap.SetExceptionBreakpointsRequest)
 	OnContinue                func(s *Server, req *godap.ContinueRequest)
+	OnPause                   func(s *Server, req *godap.PauseRequest)
 	OnNext                    func(s *Server, req *godap.NextRequest)
 	OnStepIn                  func(s *Server, req *godap.StepInRequest)
 	OnStepOut                 func(s *Server, req *godap.StepOutRequest)
@@ -208,6 +209,12 @@ func (s *Server) dispatch(msg godap.Message) {
 	case *godap.ContinueRequest:
 		if s.handler.OnContinue != nil {
 			s.handler.OnContinue(s, req)
+		} else {
+			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
+		}
+	case *godap.PauseRequest:
+		if s.handler.OnPause != nil {
+			s.handler.OnPause(s, req)
 		} else {
 			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
 		}

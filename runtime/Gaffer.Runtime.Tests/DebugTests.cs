@@ -295,6 +295,40 @@ public class DebugTests {
 	}
 
 	[Fact]
+	public void Pause_stops_before_next_event() {
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+
+		// Feed first event normally
+		session.Feed(MakeEvent());
+		Assert.Contains("\"count\":1", session.GetState()!);
+
+		// Request pause before next event
+		session.Pause();
+
+		BreakInfo? breakInfo = null;
+		session.OnBreak = info => breakInfo = info;
+
+		var feedDone = new ManualResetEventSlim(false);
+		var feedThread = new Thread(() => {
+			session.Feed(MakeEvent());
+			feedDone.Set();
+		});
+		feedThread.Start();
+
+		SpinWait.SpinUntil(() => breakInfo != null, TimeSpan.FromSeconds(5));
+		Assert.NotNull(breakInfo);
+		Assert.Equal("pause", breakInfo.Reason);
+		Assert.True(session.IsPaused);
+		Assert.False(feedDone.IsSet);
+
+		// Continue - feed should complete
+		session.Continue();
+		Assert.True(feedDone.Wait(TimeSpan.FromSeconds(5)));
+		Assert.Contains("\"count\":2", session.GetState()!);
+	}
+
+	[Fact]
 	public void No_debug_mode_ignores_debugger_statement() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ndebugger;\ns.count++;\nreturn s;\n}\n})";
 		using var session = new ProjectionSession(source);

@@ -69,6 +69,27 @@
         { "command": "gaffer.debugProjection", "when": "false" }
       ]
     },
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "gaffer",
+          "title": "Gaffer",
+          "icon": "$(activate-breakpoints)"
+        }
+      ]
+    },
+    "views": {
+      "gaffer": [
+        {
+          "id": "gaffer.events",
+          "name": "Events"
+        },
+        {
+          "id": "gaffer.state",
+          "name": "State"
+        }
+      ]
+    },
     "breakpoints": [
       { "language": "javascript" }
     ]

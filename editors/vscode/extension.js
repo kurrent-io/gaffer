@@ -74,6 +74,7 @@ function activate(context) {
         return;
       }
 
+      const tomlDir = vscode.Uri.joinPath(tomlUri, "..").fsPath;
       const started = await vscode.debug.startDebugging(
         vscode.workspace.getWorkspaceFolder(tomlUri),
         {
@@ -81,6 +82,7 @@ function activate(context) {
           request: "attach",
           name: `Gaffer: ${name}`,
           port: debugPort,
+          localRoot: tomlDir,
         }
       );
 

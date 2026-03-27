@@ -1,7 +1,9 @@
 package dap
 
 import (
+	"encoding/json"
 	"path"
+	"strings"
 	"sync"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -14,6 +16,8 @@ type DebugAdapter struct {
 	session    *gafferruntime.Session
 	server     *Server
 	sourcePath string
+	remoteRoot string
+	localRoot  string
 
 	mu     sync.Mutex
 	paused bool
@@ -24,11 +28,13 @@ type DebugAdapter struct {
 
 // NewDebugAdapter creates an adapter that wires a DAP server to a session.
 // sourcePath is the filesystem path to the projection JS file (for Source objects).
+// remoteRoot is the project root (where gaffer.toml lives) on the server side.
 // Call SetServer before starting the server.
-func NewDebugAdapter(session *gafferruntime.Session, sourcePath string) *DebugAdapter {
+func NewDebugAdapter(session *gafferruntime.Session, sourcePath, remoteRoot string) *DebugAdapter {
 	return &DebugAdapter{
 		session:    session,
 		sourcePath: sourcePath,
+		remoteRoot: remoteRoot,
 		readyCh:    make(chan struct{}),
 	}
 }
@@ -71,6 +77,7 @@ func (a *DebugAdapter) SetServer(server *Server) {
 // Handler returns the DAP handler callbacks for the server.
 func (a *DebugAdapter) Handler() Handler {
 	return Handler{
+		OnAttach:            a.handleAttach,
 		OnSetBreakpoints:    a.handleSetBreakpoints,
 		OnContinue:          a.handleContinue,
 		OnPause:             a.handlePause,
@@ -87,11 +94,9 @@ func (a *DebugAdapter) Handler() Handler {
 }
 
 func (a *DebugAdapter) handleSetBreakpoints(s *Server, req *godap.SetBreakpointsRequest) {
-	reqFile := path.Base(req.Arguments.Source.Path)
-	projFile := path.Base(a.sourcePath)
+	remotePath := a.toRemote(req.Arguments.Source.Path)
 
-	// Only accept breakpoints for the projection being debugged
-	if reqFile != projFile {
+	if remotePath != a.sourcePath {
 		breakpoints := make([]godap.Breakpoint, len(req.Arguments.Breakpoints))
 		for i, bp := range req.Arguments.Breakpoints {
 			breakpoints[i] = godap.Breakpoint{
@@ -108,10 +113,6 @@ func (a *DebugAdapter) handleSetBreakpoints(s *Server, req *godap.SetBreakpoints
 		return
 	}
 
-	// Capture the editor's source path for stack frames (handles container path mismatch)
-	if req.Arguments.Source.Path != "" {
-		a.sourcePath = req.Arguments.Source.Path
-	}
 	a.session.ClearBreakpoints()
 
 	breakpoints := make([]godap.Breakpoint, len(req.Arguments.Breakpoints))
@@ -329,10 +330,50 @@ func (a *DebugAdapter) SendTerminated() {
 	})
 }
 
-func (a *DebugAdapter) source() *godap.Source {
-	name := path.Base(a.sourcePath)
-	return &godap.Source{
-		Name: name,
-		Path: a.sourcePath,
+func (a *DebugAdapter) handleAttach(s *Server, req *godap.AttachRequest) {
+	var args map[string]any
+	if err := json.Unmarshal(req.Arguments, &args); err == nil {
+		if lr, ok := args["localRoot"].(string); ok && lr != "" {
+			a.localRoot = lr
+		}
 	}
+
+	resp := &godap.AttachResponse{}
+	resp.Response = NewResponse(req.Seq, req.Command)
+	s.Send(resp)
+}
+
+func (a *DebugAdapter) source() *godap.Source {
+	p := a.toLocal(a.sourcePath)
+	return &godap.Source{
+		Name: path.Base(p),
+		Path: p,
+	}
+}
+
+func (a *DebugAdapter) toLocal(remotePath string) string {
+	if a.localRoot == "" || a.remoteRoot == "" || a.localRoot == a.remoteRoot {
+		return remotePath
+	}
+	return swapPrefix(remotePath, a.remoteRoot, a.localRoot)
+}
+
+func (a *DebugAdapter) toRemote(localPath string) string {
+	if a.localRoot == "" || a.remoteRoot == "" || a.localRoot == a.remoteRoot {
+		return localPath
+	}
+	return swapPrefix(localPath, a.localRoot, a.remoteRoot)
+}
+
+func swapPrefix(p, from, to string) string {
+	from = strings.TrimRight(from, "/")
+	to = strings.TrimRight(to, "/")
+	if p == from {
+		return to
+	}
+	prefix := from + "/"
+	if strings.HasPrefix(p, prefix) {
+		return to + "/" + p[len(prefix):]
+	}
+	return p
 }

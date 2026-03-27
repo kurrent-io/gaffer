@@ -21,7 +21,7 @@ func TestIntegration_FullDebugFlow(t *testing.T) {
 	}
 	defer session.Destroy()
 
-	adapter := NewDebugAdapter(session, "/tmp/test/projection.js")
+	adapter := NewDebugAdapter(session, "/tmp/test/projection.js", "/tmp/test")
 	handler := adapter.Handler()
 	srv, err := NewServer("127.0.0.1:0", handler)
 	if err != nil {

@@ -235,7 +235,8 @@ func runLiveMode(cmd *cobra.Command, session *gafferruntime.Session, info projec
 }
 
 func runDebugMode(cmd *cobra.Command, session *gafferruntime.Session, info projectionInfo, version string, cfg *config.Config, root string, writer outputWriter, sourcePath string) error {
-	adapter := dapserver.NewDebugAdapter(session, sourcePath)
+	absRoot, _ := filepath.Abs(root)
+	adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot)
 	handler := adapter.Handler()
 
 	addr := fmt.Sprintf("127.0.0.1:%d", devDebugPort)

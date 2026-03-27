@@ -24,7 +24,7 @@ func mustSetupDebugSession(t *testing.T) (*DebugAdapter, net.Conn, *bufio.Reader
 	}
 	t.Cleanup(func() { session.Destroy() })
 
-	adapter := NewDebugAdapter(session, "/tmp/test/projection.js")
+	adapter := NewDebugAdapter(session, "/tmp/test/projection.js", "/tmp/test")
 	handler := adapter.Handler()
 	srv, err := NewServer("127.0.0.1:0", handler)
 	if err != nil {
@@ -193,6 +193,100 @@ func TestAdapter_SetBreakpointsAndPause(t *testing.T) {
 	case <-feedDone:
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for feed to complete")
+	}
+}
+
+func TestAdapter_PathMapping_MismatchedRoots(t *testing.T) {
+	a := &DebugAdapter{
+		sourcePath: "/workspaces/gaffer/demo/projections/counter.js",
+		remoteRoot: "/workspaces/gaffer/demo",
+		localRoot:  "/home/user/dev/gaffer/demo",
+	}
+
+	local := a.toLocal("/workspaces/gaffer/demo/projections/counter.js")
+	if local != "/home/user/dev/gaffer/demo/projections/counter.js" {
+		t.Errorf("toLocal: got %s", local)
+	}
+
+	remote := a.toRemote("/home/user/dev/gaffer/demo/projections/counter.js")
+	if remote != "/workspaces/gaffer/demo/projections/counter.js" {
+		t.Errorf("toRemote: got %s", remote)
+	}
+}
+
+func TestAdapter_PathMapping_MatchingRoots(t *testing.T) {
+	a := &DebugAdapter{
+		sourcePath: "/home/user/proj/projection.js",
+		remoteRoot: "/home/user/proj",
+		localRoot:  "/home/user/proj",
+	}
+
+	local := a.toLocal("/home/user/proj/projection.js")
+	if local != "/home/user/proj/projection.js" {
+		t.Errorf("toLocal should be no-op, got %s", local)
+	}
+
+	remote := a.toRemote("/home/user/proj/projection.js")
+	if remote != "/home/user/proj/projection.js" {
+		t.Errorf("toRemote should be no-op, got %s", remote)
+	}
+}
+
+func TestAdapter_PathMapping_NoLocalRoot(t *testing.T) {
+	a := &DebugAdapter{
+		sourcePath: "/workspaces/gaffer/projection.js",
+		remoteRoot: "/workspaces/gaffer",
+	}
+
+	local := a.toLocal("/workspaces/gaffer/projection.js")
+	if local != "/workspaces/gaffer/projection.js" {
+		t.Errorf("toLocal should be no-op without localRoot, got %s", local)
+	}
+}
+
+func TestAdapter_PathMapping_BreakpointMatching(t *testing.T) {
+	a := &DebugAdapter{
+		sourcePath: "/workspaces/gaffer/demo/projections/counter.js",
+		remoteRoot: "/workspaces/gaffer/demo",
+		localRoot:  "/home/user/dev/gaffer/demo",
+	}
+
+	editorPath := "/home/user/dev/gaffer/demo/projections/counter.js"
+	remotePath := a.toRemote(editorPath)
+	if remotePath != a.sourcePath {
+		t.Errorf("editor path should map to sourcePath: got %s, want %s", remotePath, a.sourcePath)
+	}
+
+	wrongFile := "/home/user/dev/gaffer/demo/projections/other.js"
+	remotePath = a.toRemote(wrongFile)
+	if remotePath == a.sourcePath {
+		t.Error("wrong file should not map to sourcePath")
+	}
+}
+
+func TestAdapter_PathMapping_TrailingSlash(t *testing.T) {
+	a := &DebugAdapter{
+		sourcePath: "/workspaces/gaffer/projection.js",
+		remoteRoot: "/workspaces/gaffer/",
+		localRoot:  "/home/user/gaffer/",
+	}
+
+	local := a.toLocal("/workspaces/gaffer/projection.js")
+	if local != "/home/user/gaffer/projection.js" {
+		t.Errorf("toLocal with trailing slashes: got %s", local)
+	}
+}
+
+func TestAdapter_PathMapping_PartialPrefixNoMatch(t *testing.T) {
+	a := &DebugAdapter{
+		sourcePath: "/workspaces/gaffer/projection.js",
+		remoteRoot: "/workspaces/gaffer",
+		localRoot:  "/home/user/gaffer",
+	}
+
+	result := a.toLocal("/workspaces/gaffer2/other.js")
+	if result != "/workspaces/gaffer2/other.js" {
+		t.Errorf("partial prefix should not match: got %s", result)
 	}
 }
 

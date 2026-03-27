@@ -15,6 +15,8 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(scaffoldCmd)
 	rootCmd.AddCommand(devCmd)
+	rootCmd.AddCommand(manifestCmd)
+	rootCmd.AddCommand(infoCmd)
 }
 
 // Execute runs the root command.

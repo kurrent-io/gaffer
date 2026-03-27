@@ -23,9 +23,9 @@ func (jw *jsonWriter) writeLine(v any) {
 
 func (jw *jsonWriter) WriteInfo(name string, info projectionInfo, version string) {
 	proj := map[string]any{
-		"name":    name,
-		"source":  infoSource(info),
-		"version": version,
+		"name":   name,
+		"source": infoSource(info),
+		"engine": version,
 	}
 	if len(info.Categories) > 0 {
 		proj["categories"] = info.Categories

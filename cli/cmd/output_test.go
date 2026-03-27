@@ -99,10 +99,44 @@ func TestTextWriter_WriteInfo(t *testing.T) {
 
 	out := buf.String()
 	assertContains(t, out, "my-projection")
-	assertContains(t, out, "Source: all streams")
+	assertContains(t, out, "Source: $all")
 	assertContains(t, out, "Partitioning: per stream")
 	assertContains(t, out, "Events: OrderPlaced, OrderShipped")
-	assertContains(t, out, "Version: v2")
+	assertContains(t, out, "Engine: v2")
+}
+
+func TestTextWriter_WriteInfo_BiStateAndProducesResults(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf)
+
+	info := projectionInfo{
+		AllStreams:      true,
+		IsBiState:       true,
+		ProducesResults: true,
+	}
+	tw.WriteInfo("bi-state-proj", info, "v2")
+
+	out := buf.String()
+	assertContains(t, out, "BiState: yes")
+	assertContains(t, out, "Produces results: yes")
+}
+
+func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf)
+
+	info := projectionInfo{
+		AllStreams: true,
+	}
+	tw.WriteInfo("simple-proj", info, "v2")
+
+	out := buf.String()
+	if strings.Contains(out, "BiState") {
+		t.Error("should not show BiState when false")
+	}
+	if strings.Contains(out, "Produces results") {
+		t.Error("should not show Produces results when false")
+	}
 }
 
 func TestTextWriter_WriteEvent(t *testing.T) {
@@ -313,7 +347,7 @@ func TestJSONWriter_WriteInfo(t *testing.T) {
 
 	assertEqual(t, "name", "my-projection", proj["name"])
 	assertEqual(t, "source", "category", proj["source"])
-	assertEqual(t, "version", "v2", proj["version"])
+	assertEqual(t, "engine", "v2", proj["engine"])
 	assertEqual(t, "partitioning", "per-stream", proj["partitioning"])
 
 	if _, ok := proj["categories"]; !ok {

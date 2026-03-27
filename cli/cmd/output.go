@@ -206,7 +206,7 @@ func (tw *textWriter) WriteInfo(name string, info projectionInfo, version string
 	tw.heading(name)
 
 	if info.AllStreams {
-		tw.detail("Source", "all streams")
+		tw.detail("Source", "$all")
 	} else if len(info.Categories) > 0 {
 		tw.detail("Source", "category "+strings.Join(info.Categories, ", "))
 	} else if len(info.Streams) > 0 {
@@ -223,8 +223,15 @@ func (tw *textWriter) WriteInfo(name string, info projectionInfo, version string
 		tw.detail("Events", strings.Join(info.Events, ", "))
 	}
 
+	if info.IsBiState {
+		tw.detail("BiState", "yes")
+	}
+	if info.ProducesResults {
+		tw.detail("Produces results", "yes")
+	}
+
 	if version != "" {
-		tw.detail("Version", version)
+		tw.detail("Engine", version)
 	}
 
 	tw.blank()

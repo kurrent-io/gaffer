@@ -9,13 +9,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	dapserver "github.com/kurrent-io/gaffer/cli/internal/dap"
 	"github.com/kurrent-io/gaffer/cli/internal/env"
-	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
 	"github.com/spf13/cobra"
 )
@@ -49,6 +47,7 @@ type projectionInfo struct {
 	ByCustomPartitions          bool     `json:"ByCustomPartitions"`
 	IsBiState                   bool     `json:"IsBiState"`
 	DefinesStateTransform       bool     `json:"DefinesStateTransform"`
+	ProducesResults             bool     `json:"ProducesResults"`
 	HandlesDeletedNotifications bool     `json:"HandlesDeletedNotifications"`
 	IncludeLinks                bool     `json:"IncludeLinks"`
 	Categories                  []string `json:"Categories"`
@@ -58,48 +57,20 @@ type projectionInfo struct {
 
 func runDev(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
-	name := args[0]
 
-	root := project.FindRoot()
-	if root == "" {
-		return fmt.Errorf("not in a gaffer project (no gaffer.toml found)")
-	}
-
-	cfg, err := config.Load(filepath.Join(root, "gaffer.toml"))
+	ctx, err := loadProjection(args[0])
 	if err != nil {
 		return err
 	}
 
-	proj := cfg.FindProjection(name)
-	if proj == nil {
-		return fmt.Errorf("projection %q not found in gaffer.toml", name)
-	}
-
-	source, err := os.ReadFile(filepath.Join(root, proj.Entry))
+	session, err := gafferruntime.NewSession(ctx.Source, buildSessionOptions(ctx.Config, ctx.Proj, devDebug))
 	if err != nil {
-		return fmt.Errorf("reading projection source: %w", err)
-	}
-
-	sessionOpts := buildSessionOptions(cfg, proj, devDebug)
-	session, err := gafferruntime.NewSession(string(source), sessionOpts)
-	if err != nil {
-		if projErr, ok := err.(gafferruntime.ProjectionError); ok {
-			r := lipgloss.NewRenderer(os.Stderr)
-			errStyle := r.NewStyle().Foreground(lipgloss.Color("9"))
-			_, _ = fmt.Fprintf(os.Stderr, "\n%s\n%s\n", errStyle.Render(projErr.ErrorCode()), projErr.Error())
-			cmd.SilenceErrors = true
-			return err
-		}
-		return fmt.Errorf("failed to create projection session: %w", err)
+		return handleSessionError(cmd, err)
 	}
 	defer session.Destroy()
 
 	info := getProjectionInfo(session)
-
-	version := proj.Engine
-	if version == "" {
-		version = "v2"
-	}
+	version := ctx.Engine
 
 	var writer outputWriter
 	if devJSON {
@@ -110,23 +81,23 @@ func runDev(cmd *cobra.Command, args []string) error {
 		writer = tw
 	}
 
-	writer.WriteInfo(name, info, version)
+	writer.WriteInfo(ctx.Proj.Name, info, version)
 
 	if devDebug {
-		sourcePath, _ := filepath.Abs(filepath.Join(root, proj.Entry))
-		return runDebugMode(cmd, session, info, version, cfg, root, writer, sourcePath)
+		sourcePath, _ := filepath.Abs(filepath.Join(ctx.Root, ctx.Proj.Entry))
+		return runDebugMode(cmd, session, info, version, ctx.Config, ctx.Root, writer, sourcePath)
 	}
 
 	if devEvents != "" {
 		return runFixtureMode(cmd, session, info, writer)
 	}
 
-	connStr := resolveConnection(cfg, root)
+	connStr := resolveConnection(ctx.Config, ctx.Root)
 	if connStr == "" {
 		return fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
 	}
 
-	return runLiveMode(cmd, session, info, version, connStr, root, writer)
+	return runLiveMode(cmd, session, info, version, connStr, ctx.Root, writer)
 }
 
 func resolveConnection(cfg *config.Config, root string) string {

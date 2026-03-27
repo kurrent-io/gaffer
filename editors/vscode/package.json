@@ -1,19 +1,42 @@
 {
-  "name": "gaffer-debug",
-  "displayName": "Gaffer Debug",
-  "description": "Debug adapter for KurrentDB projections via Gaffer",
+  "name": "gaffer",
+  "displayName": "Gaffer",
+  "description": "KurrentDB projection toolkit",
   "version": "0.0.1",
   "publisher": "kurrent-io",
   "engines": {
     "vscode": "^1.80.0"
   },
-  "categories": ["Debuggers"],
-  "activationEvents": ["onDebugResolve:gaffer"],
+  "categories": ["Debuggers", "Other"],
+  "activationEvents": [
+    "onDebugResolve:gaffer",
+    "workspaceContains:**/gaffer.toml"
+  ],
   "main": "./extension.js",
   "devDependencies": {
     "@vscode/vsce": "^3.3.2"
   },
   "contributes": {
+    "configuration": {
+      "title": "Gaffer",
+      "properties": {
+        "gaffer.command": {
+          "type": "string",
+          "default": "gaffer",
+          "description": "Command to run gaffer. Use {command} as a placeholder for container/remote setups (e.g. \"devpod ssh gaffer --command \\\"{command}\\\"\")"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "gaffer.runProjection",
+        "title": "Gaffer: Run Projection"
+      },
+      {
+        "command": "gaffer.debugProjection",
+        "title": "Gaffer: Debug Projection"
+      }
+    ],
     "debuggers": [
       {
         "type": "gaffer",
@@ -40,6 +63,12 @@
         ]
       }
     ],
+    "menus": {
+      "commandPalette": [
+        { "command": "gaffer.runProjection", "when": "false" },
+        { "command": "gaffer.debugProjection", "when": "false" }
+      ]
+    },
     "breakpoints": [
       { "language": "javascript" }
     ]

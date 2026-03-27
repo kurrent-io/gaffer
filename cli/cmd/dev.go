@@ -247,14 +247,17 @@ func runDebugMode(cmd *cobra.Command, session *gafferruntime.Session, info proje
 	adapter.SetServer(srv)
 
 	_, _ = fmt.Fprintf(os.Stderr, "Debug server listening on %s\nWaiting for editor to attach...\n", srv.Addr())
-
-	go func() { _ = srv.Serve() }()
+	writer.WriteDebugListening(srv.Addr().String(), devDebugPort)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	// On interrupt, clear breakpoints and continue so Feed unblocks and runs to completion.
-	// Continue panics if not paused, so recover handles that case.
+	go func() {
+		_ = srv.Serve()
+		stop()
+	}()
+
+	// On interrupt or editor disconnect, clear breakpoints and continue so Feed unblocks.
 	go func() {
 		<-ctx.Done()
 		session.ClearBreakpoints()

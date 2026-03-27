@@ -48,6 +48,14 @@ func (jw *jsonWriter) WriteInfo(name string, info projectionInfo, version string
 	})
 }
 
+func (jw *jsonWriter) WriteDebugListening(addr string, port int) {
+	jw.writeLine(map[string]any{
+		"type": "debug",
+		"addr": addr,
+		"port": port,
+	})
+}
+
 func (jw *jsonWriter) WriteEvent(event eventInfo) {
 	line := map[string]any{
 		"type":           "event",

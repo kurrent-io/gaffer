@@ -55,6 +55,7 @@ type partitionData struct {
 
 type outputWriter interface {
 	WriteInfo(name string, info projectionInfo, version string)
+	WriteDebugListening(addr string, port int)
 	WriteEvent(event eventInfo)
 	WriteResult(eventID string, result *gafferruntime.FeedResult)
 	WriteError(eventID string, code string, description string)
@@ -236,6 +237,8 @@ func (tw *textWriter) WriteInfo(name string, info projectionInfo, version string
 
 	tw.blank()
 }
+
+func (tw *textWriter) WriteDebugListening(addr string, port int) {}
 
 func (tw *textWriter) WriteEvent(event eventInfo) {
 	tw.heading(event.id())

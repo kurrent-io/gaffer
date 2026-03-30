@@ -1,5 +1,5 @@
 import type { KurrentEvent } from "./events.ts";
-import type { Handlers } from "./handlers.ts";
+import type { BiStateHandlers, Handlers } from "./handlers.ts";
 import type { State } from "./state.ts";
 
 export interface WhenFn<S extends State = State> {
@@ -22,6 +22,8 @@ export interface WhenFn<S extends State = State> {
    *   })
    * })
    */
+  /** BiState overload - when $initShared is present, handlers receive [state, shared] tuples. */
+  <TShared extends State>(handlers: BiStateHandlers<S, TShared>): WhenChain<S>;
   (handlers: Handlers<S>): WhenChain<S>;
 }
 

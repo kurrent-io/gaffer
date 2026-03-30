@@ -30,7 +30,7 @@ import type {
   EventMetadata,
   KurrentEvent,
 } from "./events.ts";
-import type { Handlers } from "./handlers.ts";
+import type { BiStateHandlers, Handlers } from "./handlers.ts";
 import type { ProjectionOptions } from "./options.ts";
 import type {
   CopyToFn,
@@ -65,6 +65,7 @@ declare global {
       FromAllChain,
       FromCategoryChain,
       FromStreamChain,
+      BiStateHandlers,
       Handlers,
       KurrentEvent,
       OutputStateChain,

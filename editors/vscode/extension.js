@@ -81,6 +81,10 @@ function activate(context) {
         case "gaffer/stepResult":
           stepProvider.setResult(e.body.result, e.body.position);
           break;
+        case "gaffer/stepError":
+          stepProvider.setError(e.body.code, e.body.description);
+          vscode.window.showErrorMessage(`Gaffer: ${e.body.code} - ${e.body.description}`);
+          break;
         case "gaffer/state":
           stateProvider.updateFromState(e.body);
           break;

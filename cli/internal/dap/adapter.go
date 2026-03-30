@@ -364,6 +364,18 @@ func (a *DebugAdapter) FeedEvent(eventJSON string) (*gafferruntime.FeedResult, e
 
 	result, err := a.session.Feed(eventJSON)
 	if err != nil {
+		if a.server != nil {
+			code := "unexpected-error"
+			description := err.Error()
+			if projErr, ok := err.(gafferruntime.ProjectionError); ok {
+				code = projErr.ErrorCode()
+				description = projErr.ErrorDescription()
+			}
+			a.server.Send(NewCustomEvent("gaffer/stepError", map[string]any{
+				"code":        code,
+				"description": description,
+			}))
+		}
 		return nil, err
 	}
 

@@ -55,6 +55,14 @@ class StepProvider {
     this._onDidChange.fire();
   }
 
+  setError(code, description) {
+    const item = new vscode.TreeItem(code, vscode.TreeItemCollapsibleState.None);
+    item.iconPath = new vscode.ThemeIcon("error", new vscode.ThemeColor("testing.iconFailed"));
+    item.description = description;
+    this._items.push(item);
+    this._onDidChange.fire();
+  }
+
   getTreeItem(element) {
     return element;
   }

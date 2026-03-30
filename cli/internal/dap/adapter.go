@@ -45,7 +45,7 @@ func NewDebugAdapter(session *gafferruntime.Session, sourcePath, remoteRoot stri
 }
 
 // SetServer connects the adapter to a DAP server for sending events.
-// Also wires up session callbacks (OnBreak, OnLog).
+// Also wires up session callbacks (OnBreak, OnLog, OnEmit).
 func (a *DebugAdapter) SetServer(server *Server) {
 	a.server = server
 
@@ -76,6 +76,29 @@ func (a *DebugAdapter) SetServer(server *Server) {
 				Output:   message + "\n",
 			},
 		})
+		a.server.Send(NewCustomEvent("gaffer/stepLog", map[string]any{
+			"message": message,
+		}))
+	})
+
+	a.session.OnEmit(func(streamID, eventType, data, metadata string, isJSON, isLink bool) {
+		body := map[string]any{
+			"streamId":  streamID,
+			"eventType": eventType,
+			"isLink":    isLink,
+			"isJson":    isJSON,
+		}
+		if data != "" {
+			if isJSON {
+				body["data"] = json.RawMessage(data)
+			} else {
+				body["data"] = data
+			}
+		}
+		if metadata != "" {
+			body["metadata"] = metadata
+		}
+		a.server.Send(NewCustomEvent("gaffer/stepEmit", body))
 	})
 }
 
@@ -320,9 +343,15 @@ func (a *DebugAdapter) handleDisconnect(s *Server, req *godap.DisconnectRequest)
 	s.Send(resp)
 }
 
-// FeedEvent feeds a single event, records it in history, sends custom DAP
-// events, and returns the result.
+// FeedEvent feeds a single event, records it in history, sends incremental
+// DAP events (stepStart -> callbacks -> stepResult), and returns the result.
 func (a *DebugAdapter) FeedEvent(eventJSON string) (*gafferruntime.FeedResult, error) {
+	if a.server != nil {
+		a.server.Send(NewCustomEvent("gaffer/stepStart", map[string]any{
+			"event": json.RawMessage(eventJSON),
+		}))
+	}
+
 	result, err := a.session.Feed(eventJSON)
 	if err != nil {
 		return nil, err
@@ -348,9 +377,8 @@ func (a *DebugAdapter) FeedEvent(eventJSON string) (*gafferruntime.FeedResult, e
 	}
 
 	if a.server != nil {
-		a.server.Send(NewCustomEvent("gaffer/step", map[string]any{
+		a.server.Send(NewCustomEvent("gaffer/stepResult", map[string]any{
 			"position": position,
-			"event":    json.RawMessage(eventJSON),
 			"result":   json.RawMessage(resultJSON),
 		}))
 

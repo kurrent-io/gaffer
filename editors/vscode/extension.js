@@ -4,9 +4,8 @@ const { GafferSession } = require("./lib/session");
 const { ProjectIndex } = require("./lib/project");
 const { TomlCodeLensProvider } = require("./lib/codelens-toml");
 const { JsCodeLensProvider } = require("./lib/codelens-js");
-const { EventStreamProvider } = require("./lib/panels/events");
+const { StepProvider } = require("./lib/panels/step");
 const { StateProvider } = require("./lib/panels/state");
-const { EmittedProvider } = require("./lib/panels/emitted");
 
 function activate(context) {
   const output = vscode.window.createOutputChannel("Gaffer");
@@ -30,15 +29,13 @@ function activate(context) {
   const tomlCodeLens = new TomlCodeLensProvider(cli, debugState);
   const jsCodeLens = new JsCodeLensProvider(cli, projectIndex, debugState);
 
-  const eventsProvider = new EventStreamProvider();
+  const stepProvider = new StepProvider();
   const stateProvider = new StateProvider();
-  const emittedProvider = new EmittedProvider();
   let activeSession = null;
 
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider("gaffer.events", eventsProvider),
-    vscode.window.registerTreeDataProvider("gaffer.state", stateProvider),
-    vscode.window.registerTreeDataProvider("gaffer.emitted", emittedProvider)
+    vscode.window.registerTreeDataProvider("gaffer.step", stepProvider),
+    vscode.window.registerTreeDataProvider("gaffer.state", stateProvider)
   );
 
   context.subscriptions.push(
@@ -70,13 +67,22 @@ function activate(context) {
     vscode.debug.onDidReceiveDebugSessionCustomEvent((e) => {
       if (e.session.type !== "gaffer") return;
 
-      if (e.event === "gaffer/step") {
-        const { event, result } = e.body;
-        const id = `${event.sequenceNumber}@${event.streamId}`;
-        eventsProvider.addEvent({ ...event, id });
-        eventsProvider.addResult({ ...result, eventId: id });
-        stateProvider.update(result);
-        emittedProvider.addFromResult({ ...result, eventId: id });
+      switch (e.event) {
+        case "gaffer/stepStart":
+          stepProvider.startStep(e.body.event);
+          break;
+        case "gaffer/stepLog":
+          stepProvider.addLog(e.body.message);
+          break;
+        case "gaffer/stepEmit":
+          stepProvider.addEmit(e.body);
+          break;
+        case "gaffer/stepResult":
+          stepProvider.setResult(e.body.result, e.body.position);
+          break;
+        case "gaffer/state":
+          stateProvider.updateFromState(e.body);
+          break;
       }
     })
   );
@@ -104,9 +110,8 @@ function activate(context) {
         activeSession = null;
       }
 
-      eventsProvider.clear();
+      stepProvider.clear();
       stateProvider.clear();
-      emittedProvider.clear();
 
       setDebugState(name, "starting");
       log(`Starting: ${name}`);
@@ -114,7 +119,7 @@ function activate(context) {
       activeSession = session;
 
       session.start();
-      vscode.commands.executeCommand("gaffer.events.focus");
+      vscode.commands.executeCommand("gaffer.step.focus");
 
       let debugPort;
       try {

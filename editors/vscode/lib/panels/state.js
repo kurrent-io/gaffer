@@ -3,7 +3,7 @@ const { jsonToTreeItems } = require("./json-tree");
 
 class StateProvider {
   constructor() {
-    this._partitions = new Map();
+    this._state = null;
     this._onDidChange = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._onDidChange.event;
     this._refreshTimer = null;
@@ -18,17 +18,13 @@ class StateProvider {
   }
 
   clear() {
-    this._partitions.clear();
+    this._state = null;
     if (this._refreshTimer) { clearTimeout(this._refreshTimer); this._refreshTimer = null; }
     this._onDidChange.fire();
   }
 
-  update(resultMsg) {
-    if (resultMsg.status !== "processed") return;
-    if (resultMsg.state == null) return;
-
-    const partition = resultMsg.partition || "(root)";
-    this._partitions.set(partition, resultMsg.state);
+  updateFromState(stateMsg) {
+    this._state = stateMsg;
     this._scheduleRefresh();
   }
 
@@ -37,26 +33,50 @@ class StateProvider {
   }
 
   getChildren(element) {
-    if (element) {
-      return element.children || [];
-    }
-
-    if (this._partitions.size === 0) {
+    if (element) return element.children || [];
+    if (!this._state) {
       const empty = new vscode.TreeItem("No state yet", vscode.TreeItemCollapsibleState.None);
       empty.iconPath = new vscode.ThemeIcon("info");
       return [empty];
     }
 
-    if (this._partitions.size === 1 && this._partitions.has("(root)")) {
-      return jsonToTreeItems(this._partitions.get("(root)"));
+    const items = [];
+    const s = this._state;
+
+    if (s.state) {
+      const stateItem = new vscode.TreeItem("state", vscode.TreeItemCollapsibleState.Expanded);
+      stateItem.iconPath = new vscode.ThemeIcon("symbol-variable");
+      stateItem.children = jsonToTreeItems(s.state);
+      items.push(stateItem);
     }
 
-    return [...this._partitions.entries()].map(([name, state]) => {
-      const item = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.Collapsed);
-      item.children = jsonToTreeItems(state);
-      item.iconPath = new vscode.ThemeIcon("symbol-namespace");
-      return item;
-    });
+    if (s.result) {
+      const resultItem = new vscode.TreeItem("result", vscode.TreeItemCollapsibleState.Expanded);
+      resultItem.iconPath = new vscode.ThemeIcon("symbol-variable");
+      resultItem.children = jsonToTreeItems(s.result);
+      items.push(resultItem);
+    }
+
+    if (s.sharedState) {
+      const sharedItem = new vscode.TreeItem("shared state", vscode.TreeItemCollapsibleState.Expanded);
+      sharedItem.iconPath = new vscode.ThemeIcon("symbol-variable");
+      sharedItem.children = jsonToTreeItems(s.sharedState);
+      items.push(sharedItem);
+    }
+
+    if (s.partitions?.length > 0) {
+      for (const name of s.partitions) {
+        const partItem = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.Collapsed);
+        partItem.iconPath = new vscode.ThemeIcon("symbol-namespace");
+        partItem.contextValue = "partition";
+        partItem.children = [
+          new vscode.TreeItem("Loading...", vscode.TreeItemCollapsibleState.None),
+        ];
+        items.push(partItem);
+      }
+    }
+
+    return items;
   }
 }
 

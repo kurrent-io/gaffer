@@ -46,13 +46,25 @@ func sendRequest(t *testing.T, conn net.Conn, msg godap.Message) {
 	}
 }
 
+var testCodec = func() *godap.Codec {
+	c := godap.NewCodec()
+	RegisterCustomRequests(c)
+	return c
+}()
+
 func readMessage(t *testing.T, conn net.Conn, reader *bufio.Reader) godap.Message {
 	t.Helper()
-	msg, err := godap.ReadProtocolMessage(reader)
-	if err != nil {
-		t.Fatalf("failed to read message: %v", err)
+	for {
+		data, err := godap.ReadBaseMessage(reader)
+		if err != nil {
+			t.Fatalf("failed to read message: %v", err)
+		}
+		msg, err := testCodec.DecodeMessage(data)
+		if err != nil {
+			continue
+		}
+		return msg
 	}
-	return msg
 }
 
 func TestInitializeHandshake(t *testing.T) {

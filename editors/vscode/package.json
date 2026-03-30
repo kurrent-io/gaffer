@@ -81,16 +81,12 @@
     "views": {
       "gaffer": [
         {
-          "id": "gaffer.events",
-          "name": "Events"
+          "id": "gaffer.step",
+          "name": "Step"
         },
         {
           "id": "gaffer.state",
           "name": "State"
-        },
-        {
-          "id": "gaffer.emitted",
-          "name": "Emitted"
         }
       ]
     },

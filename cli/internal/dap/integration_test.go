@@ -50,12 +50,18 @@ func TestIntegration_FullDebugFlow(t *testing.T) {
 
 	recv := func() godap.Message {
 		t.Helper()
-		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-		msg, err := godap.ReadProtocolMessage(reader)
-		if err != nil {
-			t.Fatalf("recv failed: %v", err)
+		for {
+			_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+			data, err := godap.ReadBaseMessage(reader)
+			if err != nil {
+				t.Fatalf("recv failed: %v", err)
+			}
+			msg, decErr := testCodec.DecodeMessage(data)
+			if decErr != nil {
+				continue
+			}
+			return msg
 		}
-		return msg
 	}
 
 	nextSeq := func() int {

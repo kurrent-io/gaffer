@@ -1,9 +1,12 @@
 import type { KurrentEvent } from "./events.ts";
 import type { State } from "./state.ts";
 
-// --- Regular (non-biState) handlers ---
+// The index signature is a union: the typed handler signature (for contextual
+// typing of custom event handlers) plus a loose fallback (so $deleted's
+// 4-param signature doesn't conflict). TypeScript contextually types handler
+// params from the first union member, giving proper IntelliSense.
 
-interface BuiltInHandlers<S extends State = State> {
+export type Handlers<S extends State = State> = {
   /** Initializes the projection state. */
   $init?: () => S;
 
@@ -26,21 +29,22 @@ interface BuiltInHandlers<S extends State = State> {
     partition: string,
     isSoftDelete: boolean
   ) => void;
-}
 
-type EventHandlers<S extends State = State> = {
-  [K in string as K extends keyof BuiltInHandlers | "$initShared" ? never : K]?:
-    (state: S, event: KurrentEvent) => S | null | void;
+  /** Event type specific handlers. */
+  [eventType: string]:
+    | ((state: S, event: KurrentEvent) => S | null | void)
+    | ((...args: any[]) => any)
+    | undefined;
 };
-
-export type Handlers<S extends State = State> = BuiltInHandlers<S> &
-  EventHandlers<S>;
 
 // --- BiState handlers ---
 // When $initShared is present, state is passed as a [state, shared] tuple.
 // Handlers receive the tuple and must return a tuple. $deleted is not allowed.
 
-interface BuiltInBiStateHandlers<S extends State, TShared extends State> {
+export type BiStateHandlers<
+  S extends State = State,
+  TShared extends State = State,
+> = {
   /** Initializes the individual partition state. */
   $init?: () => S;
 
@@ -58,14 +62,10 @@ interface BuiltInBiStateHandlers<S extends State, TShared extends State> {
    * Return value is ignored.
    */
   $created?: (state: [S, TShared], event: KurrentEvent) => void;
-}
 
-type BiStateEventHandlers<S extends State, TShared extends State> = {
-  [K in string as K extends keyof BuiltInBiStateHandlers<S, TShared> ? never : K]?:
-    (state: [S, TShared], event: KurrentEvent) => [S, TShared] | null | void;
+  /** Event type specific handlers. */
+  [eventType: string]:
+    | ((state: [S, TShared], event: KurrentEvent) => [S, TShared] | null | void)
+    | ((...args: any[]) => any)
+    | undefined;
 };
-
-export type BiStateHandlers<
-  S extends State = State,
-  TShared extends State = State,
-> = BuiltInBiStateHandlers<S, TShared> & BiStateEventHandlers<S, TShared>;

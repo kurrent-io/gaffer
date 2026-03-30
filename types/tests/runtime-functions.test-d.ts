@@ -62,3 +62,12 @@ options({});
 
 // @ts-expect-error resultStreamName must be string, not number
 options({ resultStreamName: 42 });
+
+// @ts-expect-error $includeLinks must be boolean
+options({ $includeLinks: "yes" });
+
+// @ts-expect-error processingLag must be number
+options({ processingLag: "500" });
+
+// @ts-expect-error unknown option key
+options({ unknownOption: true });

@@ -39,10 +39,14 @@ fromCategory<CountState>("order").foreachStream().when({
   OrderPlaced: (state, _event) => ({ count: state.count + 1 }),
 });
 
-// Valid: $deleted event param is null
-fromCategory("order").foreachStream().when({
-  $deleted: (_state, event, _partition, _isSoftDelete) => {
-    const _check: null = event;
+// Valid: $deleted param types
+fromCategory<CountState>("order").foreachStream().when({
+  $init: () => ({ count: 0 }),
+  $deleted: (state, event, partition, isSoftDelete) => {
+    const _s: CountState = state;
+    const _e: null = event;
+    const _p: string = partition;
+    const _d: boolean = isSoftDelete;
   },
 });
 
@@ -88,4 +92,29 @@ fromAll<CountState>().foreachStream().when({
   $init: () => ({ count: 0 }),
   $initShared: () => ({ total: 0 }),
   $created: ([_state, _shared], _event) => {},
+});
+
+// Valid: without $initShared, falls to regular overload (not biState)
+fromAll<CountState>().when({
+  $init: () => ({ count: 0 }),
+  OrderPlaced: (state, _event) => ({ count: state.count + 1 }),
+});
+
+// --- Known type holes ---
+// The index signature ((...args: any[]) => any) is needed so $deleted's 4-param
+// signature doesn't conflict with the 2-param contextual typing. The tradeoff is
+// that named event handlers can have wrong signatures and the types won't catch it.
+
+// KNOWN HOLE: handler with wrong return type silently accepted via index signature
+fromAll<CountState>().when({
+  $init: () => ({ count: 0 }),
+  OrderPlaced: () => "not a valid state" as any,
+});
+
+// KNOWN HOLE: biState $deleted accepted (runtime throws)
+// The BiStateHandlers type omits $deleted, but the index signature accepts it.
+fromAll<CountState>().foreachStream().when({
+  $init: () => ({ count: 0 }),
+  $initShared: () => ({ total: 0 }),
+  $deleted: (_s: any, _e: any, _p: any, _d: any) => {},
 });

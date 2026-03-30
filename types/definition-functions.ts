@@ -133,7 +133,7 @@ export interface OnEventFn {
    */
   <S extends State = State>(
     eventName: string,
-    eventHandler: (state: S, event: KurrentEvent) => S
+    eventHandler: (state: S, event: KurrentEvent) => S | null | void
   ): void;
 }
 
@@ -149,6 +149,6 @@ export interface OnAnyFn {
    * }));
    */
   <S extends State = State>(
-    eventHandler: (state: S, event: KurrentEvent) => S
+    eventHandler: (state: S, event: KurrentEvent) => S | null | void
   ): void;
 }

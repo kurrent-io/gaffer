@@ -17,6 +17,7 @@ import (
 type Server struct {
 	listener net.Listener
 	handler  Handler
+	codec    *godap.Codec
 
 	sendCh chan godap.Message
 	seq    atomic.Int64
@@ -44,6 +45,8 @@ type Handler struct {
 	OnScopes                  func(s *Server, req *godap.ScopesRequest)
 	OnVariables               func(s *Server, req *godap.VariablesRequest)
 	OnEvaluate                func(s *Server, req *godap.EvaluateRequest)
+	OnGafferGoto              func(s *Server, req *GafferGotoRequest)
+	OnGafferTimeline          func(s *Server, req *GafferTimelineRequest)
 }
 
 // NewServer creates a DAP server listening on the given address.
@@ -52,9 +55,13 @@ func NewServer(addr string, handler Handler) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dap: listen on %s: %w", addr, err)
 	}
+	codec := godap.NewCodec()
+	RegisterCustomRequests(codec)
+
 	return &Server{
 		listener: listener,
 		handler:  handler,
+		codec:    codec,
 	}, nil
 }
 
@@ -133,12 +140,17 @@ func NewEvent(event string) godap.Event {
 
 func (s *Server) readLoop(reader *bufio.Reader) error {
 	for {
-		msg, err := godap.ReadProtocolMessage(reader)
+		data, err := godap.ReadBaseMessage(reader)
 		if err != nil {
 			if err == io.EOF {
 				return nil
 			}
 			return fmt.Errorf("dap: read: %w", err)
+		}
+		msg, err := s.codec.DecodeMessage(data)
+		if err != nil {
+			log.Printf("dap: decode error: %v", err)
+			continue
 		}
 		s.dispatch(msg)
 	}
@@ -263,6 +275,18 @@ func (s *Server) dispatch(msg godap.Message) {
 	case *godap.EvaluateRequest:
 		if s.handler.OnEvaluate != nil {
 			s.handler.OnEvaluate(s, req)
+		} else {
+			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
+		}
+	case *GafferGotoRequest:
+		if s.handler.OnGafferGoto != nil {
+			s.handler.OnGafferGoto(s, req)
+		} else {
+			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
+		}
+	case *GafferTimelineRequest:
+		if s.handler.OnGafferTimeline != nil {
+			s.handler.OnGafferTimeline(s, req)
 		} else {
 			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
 		}

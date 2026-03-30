@@ -14,6 +14,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	dapserver "github.com/kurrent-io/gaffer/cli/internal/dap"
 	"github.com/kurrent-io/gaffer/cli/internal/env"
+	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
 	"github.com/spf13/cobra"
 )
@@ -235,8 +236,14 @@ func runLiveMode(cmd *cobra.Command, session *gafferruntime.Session, info projec
 }
 
 func runDebugMode(cmd *cobra.Command, session *gafferruntime.Session, info projectionInfo, version string, cfg *config.Config, root string, writer outputWriter, sourcePath string) error {
+	store, err := history.New()
+	if err != nil {
+		return fmt.Errorf("creating history store: %w", err)
+	}
+	defer func() { _ = store.Close() }()
+
 	absRoot, _ := filepath.Abs(root)
-	adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot)
+	adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot, store)
 	handler := adapter.Handler()
 
 	addr := fmt.Sprintf("127.0.0.1:%d", devDebugPort)

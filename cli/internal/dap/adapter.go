@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/history"
 
 	godap "github.com/google/go-dap"
 )
@@ -15,6 +16,7 @@ import (
 type DebugAdapter struct {
 	session    *gafferruntime.Session
 	server     *Server
+	history    *history.Store
 	sourcePath string
 	remoteRoot string
 	localRoot  string
@@ -30,11 +32,12 @@ type DebugAdapter struct {
 // sourcePath is the filesystem path to the projection JS file (for Source objects).
 // remoteRoot is the project root (where gaffer.toml lives) on the server side.
 // Call SetServer before starting the server.
-func NewDebugAdapter(session *gafferruntime.Session, sourcePath, remoteRoot string) *DebugAdapter {
+func NewDebugAdapter(session *gafferruntime.Session, sourcePath, remoteRoot string, store *history.Store) *DebugAdapter {
 	return &DebugAdapter{
 		session:    session,
 		sourcePath: sourcePath,
 		remoteRoot: remoteRoot,
+		history:    store,
 		readyCh:    make(chan struct{}),
 	}
 }
@@ -90,6 +93,8 @@ func (a *DebugAdapter) Handler() Handler {
 		OnEvaluate:          a.handleEvaluate,
 		OnConfigurationDone: a.handleConfigurationDone,
 		OnDisconnect:        a.handleDisconnect,
+		OnGafferGoto:        a.handleGafferGoto,
+		OnGafferTimeline:    a.handleGafferTimeline,
 	}
 }
 
@@ -312,10 +317,28 @@ func (a *DebugAdapter) handleDisconnect(s *Server, req *godap.DisconnectRequest)
 	s.Send(resp)
 }
 
-// FeedEvent feeds a single event and returns the result.
-// Blocks until the event is processed (including debug pauses).
+// FeedEvent feeds a single event, records it in history, sends custom DAP
+// events, and returns the result.
 func (a *DebugAdapter) FeedEvent(eventJSON string) (*gafferruntime.FeedResult, error) {
-	return a.session.Feed(eventJSON)
+	result, err := a.session.Feed(eventJSON)
+	if err != nil {
+		return nil, err
+	}
+
+	resultJSON, _ := json.Marshal(result)
+
+	if a.history != nil {
+		_, _ = a.history.Insert(eventJSON, string(resultJSON))
+	}
+
+	if a.server != nil {
+		a.server.Send(NewCustomEvent("gaffer/step", map[string]any{
+			"event":  json.RawMessage(eventJSON),
+			"result": json.RawMessage(resultJSON),
+		}))
+	}
+
+	return result, nil
 }
 
 // SendTerminated sends terminated and exited events to the editor.
@@ -328,6 +351,50 @@ func (a *DebugAdapter) SendTerminated() {
 		Event: NewEvent("exited"),
 		Body:  godap.ExitedEventBody{ExitCode: 0},
 	})
+}
+
+func (a *DebugAdapter) handleGafferGoto(s *Server, req *GafferGotoRequest) {
+	if a.history == nil {
+		s.Send(NewErrorResponse(req.Seq, req.Command, "no history available"))
+		return
+	}
+
+	step, err := a.history.Get(req.Arguments.Position)
+	if err != nil || step == nil {
+		s.Send(NewErrorResponse(req.Seq, req.Command, "position not found"))
+		return
+	}
+
+	body, _ := json.Marshal(map[string]any{
+		"position": step.Position,
+		"event":    json.RawMessage(step.EventJSON),
+		"result":   json.RawMessage(step.ResultJSON),
+	})
+
+	resp := &GafferGotoResponse{}
+	resp.Response = NewResponse(req.Seq, req.Command)
+	resp.Body = body
+	s.Send(resp)
+}
+
+func (a *DebugAdapter) handleGafferTimeline(s *Server, req *GafferTimelineRequest) {
+	if a.history == nil {
+		s.Send(NewErrorResponse(req.Seq, req.Command, "no history available"))
+		return
+	}
+
+	entries, err := a.history.Timeline(req.Arguments.From, req.Arguments.To)
+	if err != nil {
+		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
+		return
+	}
+
+	body, _ := json.Marshal(entries)
+
+	resp := &GafferTimelineResponse{}
+	resp.Response = NewResponse(req.Seq, req.Command)
+	resp.Body = body
+	s.Send(resp)
 }
 
 func (a *DebugAdapter) handleAttach(s *Server, req *godap.AttachRequest) {

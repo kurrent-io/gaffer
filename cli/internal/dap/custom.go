@@ -57,6 +57,24 @@ type GafferTimelineResponse struct {
 	Body json.RawMessage `json:"body"`
 }
 
+// GafferPartitionStateRequest fetches state for a single partition.
+type GafferPartitionStateRequest struct {
+	godap.Request
+	Arguments GafferPartitionStateArguments `json:"arguments"`
+}
+
+type GafferPartitionStateArguments struct {
+	Partition string `json:"partition"`
+}
+
+func (r *GafferPartitionStateRequest) GetRequest() *godap.Request { return &r.Request }
+
+// GafferPartitionStateResponse is the response to a gaffer/partitionState request.
+type GafferPartitionStateResponse struct {
+	godap.Response
+	Body json.RawMessage `json:"body"`
+}
+
 // RegisterCustomRequests registers gaffer custom DAP request types on a codec.
 func RegisterCustomRequests(codec *godap.Codec) {
 	_ = codec.RegisterRequest("gaffer/goto",
@@ -66,5 +84,9 @@ func RegisterCustomRequests(codec *godap.Codec) {
 	_ = codec.RegisterRequest("gaffer/timeline",
 		func() godap.Message { return &GafferTimelineRequest{} },
 		func() godap.Message { return &GafferTimelineResponse{} },
+	)
+	_ = codec.RegisterRequest("gaffer/partitionState",
+		func() godap.Message { return &GafferPartitionStateRequest{} },
+		func() godap.Message { return &GafferPartitionStateResponse{} },
 	)
 }

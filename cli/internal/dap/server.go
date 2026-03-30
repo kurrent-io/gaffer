@@ -47,6 +47,7 @@ type Handler struct {
 	OnEvaluate                func(s *Server, req *godap.EvaluateRequest)
 	OnGafferGoto              func(s *Server, req *GafferGotoRequest)
 	OnGafferTimeline          func(s *Server, req *GafferTimelineRequest)
+	OnGafferPartitionState    func(s *Server, req *GafferPartitionStateRequest)
 }
 
 // NewServer creates a DAP server listening on the given address.
@@ -287,6 +288,12 @@ func (s *Server) dispatch(msg godap.Message) {
 	case *GafferTimelineRequest:
 		if s.handler.OnGafferTimeline != nil {
 			s.handler.OnGafferTimeline(s, req)
+		} else {
+			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
+		}
+	case *GafferPartitionStateRequest:
+		if s.handler.OnGafferPartitionState != nil {
+			s.handler.OnGafferPartitionState(s, req)
 		} else {
 			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
 		}

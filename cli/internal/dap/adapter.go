@@ -21,8 +21,10 @@ type DebugAdapter struct {
 	remoteRoot string
 	localRoot  string
 
-	mu     sync.Mutex
-	paused bool
+	mu         sync.Mutex
+	paused     bool
+	partitions []string
+	partSet    map[string]bool
 
 	readyOnce sync.Once
 	readyCh   chan struct{}
@@ -80,21 +82,22 @@ func (a *DebugAdapter) SetServer(server *Server) {
 // Handler returns the DAP handler callbacks for the server.
 func (a *DebugAdapter) Handler() Handler {
 	return Handler{
-		OnAttach:            a.handleAttach,
-		OnSetBreakpoints:    a.handleSetBreakpoints,
-		OnContinue:          a.handleContinue,
-		OnPause:             a.handlePause,
-		OnNext:              a.handleNext,
-		OnStepIn:            a.handleStepIn,
-		OnStepOut:           a.handleStepOut,
-		OnStackTrace:        a.handleStackTrace,
-		OnScopes:            a.handleScopes,
-		OnVariables:         a.handleVariables,
-		OnEvaluate:          a.handleEvaluate,
-		OnConfigurationDone: a.handleConfigurationDone,
-		OnDisconnect:        a.handleDisconnect,
-		OnGafferGoto:        a.handleGafferGoto,
-		OnGafferTimeline:    a.handleGafferTimeline,
+		OnAttach:               a.handleAttach,
+		OnSetBreakpoints:       a.handleSetBreakpoints,
+		OnContinue:             a.handleContinue,
+		OnPause:                a.handlePause,
+		OnNext:                 a.handleNext,
+		OnStepIn:               a.handleStepIn,
+		OnStepOut:              a.handleStepOut,
+		OnStackTrace:           a.handleStackTrace,
+		OnScopes:               a.handleScopes,
+		OnVariables:            a.handleVariables,
+		OnEvaluate:             a.handleEvaluate,
+		OnConfigurationDone:    a.handleConfigurationDone,
+		OnDisconnect:           a.handleDisconnect,
+		OnGafferGoto:           a.handleGafferGoto,
+		OnGafferTimeline:       a.handleGafferTimeline,
+		OnGafferPartitionState: a.handleGafferPartitionState,
 	}
 }
 
@@ -327,18 +330,66 @@ func (a *DebugAdapter) FeedEvent(eventJSON string) (*gafferruntime.FeedResult, e
 
 	resultJSON, _ := json.Marshal(result)
 
+	var position int64
 	if a.history != nil {
-		_, _ = a.history.Insert(eventJSON, string(resultJSON))
+		position, _ = a.history.Insert(eventJSON, string(resultJSON))
+	}
+
+	if result.Status == "processed" && result.Partition != "" {
+		a.mu.Lock()
+		if a.partSet == nil {
+			a.partSet = make(map[string]bool)
+		}
+		if !a.partSet[result.Partition] {
+			a.partSet[result.Partition] = true
+			a.partitions = append(a.partitions, result.Partition)
+		}
+		a.mu.Unlock()
 	}
 
 	if a.server != nil {
 		a.server.Send(NewCustomEvent("gaffer/step", map[string]any{
-			"event":  json.RawMessage(eventJSON),
-			"result": json.RawMessage(resultJSON),
+			"position": position,
+			"event":    json.RawMessage(eventJSON),
+			"result":   json.RawMessage(resultJSON),
 		}))
+
+		if result.Status == "processed" {
+			a.sendStateEvent()
+		}
 	}
 
 	return result, nil
+}
+
+func (a *DebugAdapter) sendStateEvent() {
+	body := map[string]any{}
+
+	a.mu.Lock()
+	hasPartitions := len(a.partitions) > 0
+	var partitionsCopy []string
+	if hasPartitions {
+		partitionsCopy = make([]string, len(a.partitions))
+		copy(partitionsCopy, a.partitions)
+	}
+	a.mu.Unlock()
+
+	if hasPartitions {
+		body["partitions"] = partitionsCopy
+	} else {
+		if state := a.session.GetState(nil); state != nil {
+			body["state"] = json.RawMessage(*state)
+		}
+		if result, err := a.session.GetResult(nil); err == nil && result != nil {
+			body["result"] = json.RawMessage(*result)
+		}
+	}
+
+	if shared := a.session.GetSharedState(); shared != nil {
+		body["sharedState"] = json.RawMessage(*shared)
+	}
+
+	a.server.Send(NewCustomEvent("gaffer/state", body))
 }
 
 // SendTerminated sends terminated and exited events to the editor.
@@ -394,6 +445,26 @@ func (a *DebugAdapter) handleGafferTimeline(s *Server, req *GafferTimelineReques
 	resp := &GafferTimelineResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
 	resp.Body = body
+	s.Send(resp)
+}
+
+func (a *DebugAdapter) handleGafferPartitionState(s *Server, req *GafferPartitionStateRequest) {
+	partition := req.Arguments.Partition
+	body := map[string]any{
+		"partition": partition,
+	}
+
+	if state := a.session.GetState(&partition); state != nil {
+		body["state"] = json.RawMessage(*state)
+	}
+	if result, err := a.session.GetResult(&partition); err == nil && result != nil {
+		body["result"] = json.RawMessage(*result)
+	}
+
+	respBody, _ := json.Marshal(body)
+	resp := &GafferPartitionStateResponse{}
+	resp.Response = NewResponse(req.Seq, req.Command)
+	resp.Body = respBody
 	s.Send(resp)
 }
 

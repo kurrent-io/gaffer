@@ -1,5 +1,5 @@
 import type { KurrentEvent } from "./events.ts";
-import type { BiStateHandlers, Handlers } from "./handlers.ts";
+import type { BiStateHandlerFor, BiStateHandlers, HandlerFor, Handlers } from "./handlers.ts";
 import type { State } from "./state.ts";
 
 export interface WhenFn<S extends State = State> {
@@ -23,8 +23,12 @@ export interface WhenFn<S extends State = State> {
    * })
    */
   /** BiState overload - when $initShared is present, handlers receive [state, shared] tuples. */
-  <TShared extends State>(handlers: BiStateHandlers<S, TShared>): WhenChain<S>;
-  (handlers: Handlers<S>): WhenChain<S>;
+  <
+    TShared extends State,
+    H extends BiStateHandlers<S, TShared> & { [K in keyof H]: BiStateHandlerFor<S, TShared, K & string> },
+  >(handlers: H): WhenChain<S>;
+  /** Regular overload - each key is validated against its expected handler type. */
+  <H extends Handlers<S> & { [K in keyof H]: HandlerFor<S, K & string> }>(handlers: H): WhenChain<S>;
 }
 
 export interface ForeachStreamFn<S extends State = State> {

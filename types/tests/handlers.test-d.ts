@@ -100,19 +100,16 @@ fromAll<CountState>().when({
   OrderPlaced: (state, _event) => ({ count: state.count + 1 }),
 });
 
-// --- Known type holes ---
-// The index signature ((...args: any[]) => any) is needed so $deleted's 4-param
-// signature doesn't conflict with the 2-param contextual typing. The tradeoff is
-// that named event handlers can have wrong signatures and the types won't catch it.
+// --- Validation via generic constraint ---
 
-// KNOWN HOLE: handler with wrong return type silently accepted via index signature
+// @ts-expect-error biState handler can't return plain object (must return tuple)
 fromAll<CountState>().when({
   $init: () => ({ count: 0 }),
-  OrderPlaced: () => "not a valid state" as any,
+  $initShared: () => ({ total: 0 }),
+  OrderPlaced: (state: any, _event: any) => ({ count: state.count + 1 }),
 });
 
-// KNOWN HOLE: biState $deleted accepted (runtime throws)
-// The BiStateHandlers type omits $deleted, but the index signature accepts it.
+// @ts-expect-error biState + $deleted is not allowed (resolves to never)
 fromAll<CountState>().foreachStream().when({
   $init: () => ({ count: 0 }),
   $initShared: () => ({ total: 0 }),

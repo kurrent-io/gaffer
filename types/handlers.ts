@@ -1,69 +1,52 @@
 import type { KurrentEvent } from "./events.ts";
 import type { State } from "./state.ts";
 
-// The index signature is a union: the typed handler signature (for contextual
-// typing of custom event handlers) plus a loose fallback (so $deleted's
-// 4-param signature doesn't conflict). TypeScript contextually types handler
-// params from the first union member, giving proper IntelliSense.
+// Maps each handler key to its expected type. Built-in $ handlers get their
+// specific signatures; everything else gets the standard event handler type.
+// This avoids index signatures entirely, so $deleted's 4-param signature
+// doesn't conflict with the 2-param event handler type.
 
+/** Resolves the expected handler type for a given key. */
+export type HandlerFor<S extends State, K extends string> =
+  K extends "$init" ? () => S :
+  K extends "$initShared" ? never :
+  K extends "$any" ? (state: S, event: KurrentEvent) => S | null | void :
+  K extends "$created" ? (state: S, event: KurrentEvent) => void :
+  K extends "$deleted" ? (state: S, event: null, partition: string, isSoftDelete: boolean) => void :
+  (state: S, event: KurrentEvent) => S | null | void;
+
+/** Resolves the expected biState handler type for a given key. */
+export type BiStateHandlerFor<S extends State, TShared extends State, K extends string> =
+  K extends "$init" ? () => S :
+  K extends "$initShared" ? () => TShared :
+  K extends "$any" ? (state: [S, TShared], event: KurrentEvent) => [S, TShared] | null | void :
+  K extends "$created" ? (state: [S, TShared], event: KurrentEvent) => void :
+  K extends "$deleted" ? never :
+  (state: [S, TShared], event: KurrentEvent) => [S, TShared] | null | void;
+
+/**
+ * Convenience type for referencing handlers outside of `when()`.
+ * The real validation happens via the self-referential generic on WhenFn.
+ */
 export type Handlers<S extends State = State> = {
-  /** Initializes the projection state. */
   $init?: () => S;
-
-  /** Handler for events with any event type. */
   $any?: (state: S, event: KurrentEvent) => S | null | void;
-
-  /**
-   * Handler called when a partition is created. Can only be used with foreachStream.
-   * Return value is ignored - only side effects (emit, linkTo) are preserved.
-   */
   $created?: (state: S, event: KurrentEvent) => void;
-
-  /**
-   * Handler called for each deleted stream. Can only be used with foreachStream.
-   * Return value is ignored - only in-place state mutations are preserved.
-   */
-  $deleted?: (
-    state: S,
-    event: null,
-    partition: string,
-    isSoftDelete: boolean
-  ) => void;
-
-  /** Event type specific handlers. */
+  $deleted?: (state: S, event: null, partition: string, isSoftDelete: boolean) => void;
   [eventType: string]:
     | ((state: S, event: KurrentEvent) => S | null | void)
     | ((...args: any[]) => any)
     | undefined;
 };
 
-// --- BiState handlers ---
-// When $initShared is present, state is passed as a [state, shared] tuple.
-// Handlers receive the tuple and must return a tuple. $deleted is not allowed.
-
 export type BiStateHandlers<
   S extends State = State,
   TShared extends State = State,
 > = {
-  /** Initializes the individual partition state. */
   $init?: () => S;
-
-  /** Initializes the shared state. Presence of this handler enables biState mode. */
   $initShared: () => TShared;
-
-  /** Handler for events with any event type. */
-  $any?: (
-    state: [S, TShared],
-    event: KurrentEvent
-  ) => [S, TShared] | null | void;
-
-  /**
-   * Handler called when a partition is created. Can only be used with foreachStream.
-   * Return value is ignored.
-   */
+  $any?: (state: [S, TShared], event: KurrentEvent) => [S, TShared] | null | void;
   $created?: (state: [S, TShared], event: KurrentEvent) => void;
-
-  /** Event type specific handlers. */
   [eventType: string]:
     | ((state: [S, TShared], event: KurrentEvent) => [S, TShared] | null | void)
     | ((...args: any[]) => any)

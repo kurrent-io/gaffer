@@ -6,6 +6,7 @@ const { TomlCodeLensProvider } = require("./lib/codelens-toml");
 const { JsCodeLensProvider } = require("./lib/codelens-js");
 const { StepProvider } = require("./lib/panels/step");
 const { StateProvider } = require("./lib/panels/state");
+const { StatusViewProvider } = require("./lib/panels/status");
 
 function activate(context) {
   const output = vscode.window.createOutputChannel("Gaffer");
@@ -31,11 +32,20 @@ function activate(context) {
 
   const stepProvider = new StepProvider();
   const stateProvider = new StateProvider();
+  const statusProvider = new StatusViewProvider();
   let activeSession = null;
+
+  function setSessionActive(active) {
+    vscode.commands.executeCommand("setContext", "gaffer.sessionActive", active);
+  }
+  function setInspecting(inspecting) {
+    vscode.commands.executeCommand("setContext", "gaffer.inspecting", inspecting);
+  }
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider("gaffer.step", stepProvider),
-    vscode.window.registerTreeDataProvider("gaffer.state", stateProvider)
+    vscode.window.registerTreeDataProvider("gaffer.state", stateProvider),
+    vscode.window.registerWebviewViewProvider("gaffer.status", statusProvider)
   );
 
   context.subscriptions.push(
@@ -88,6 +98,9 @@ function activate(context) {
         case "gaffer/state":
           stateProvider.updateFromState(e.body);
           break;
+        case "gaffer/mode":
+          setInspecting(e.body.mode === "inspect");
+          break;
       }
     })
   );
@@ -98,6 +111,8 @@ function activate(context) {
     activeSession.dispose();
     activeSession = null;
     setDebugState(null, "idle");
+    setSessionActive(false);
+    setInspecting(false);
   }
 
   context.subscriptions.push(
@@ -128,12 +143,24 @@ function activate(context) {
           log(`CLI exited with code ${msg.code}`);
           vscode.window.showErrorMessage(`Gaffer: projection faulted (exit code ${msg.code})`);
           setDebugState(null, "idle");
+          setSessionActive(false);
+          setInspecting(false);
           activeSession = null;
         }
       });
 
+      session
+        .on("result", (msg) => {
+          if (msg.status === "processed") statusProvider.addProcessed();
+          else if (msg.status === "skipped") statusProvider.addSkipped();
+        })
+        .on("error", () => statusProvider.addError());
+
       session.start();
-      vscode.commands.executeCommand("gaffer.step.focus");
+      statusProvider.setName(name);
+      setSessionActive(true);
+      setInspecting(false);
+      vscode.commands.executeCommand("gaffer.status.focus");
 
       let debugPort;
       try {
@@ -178,6 +205,8 @@ function activate(context) {
           session.dispose();
           if (activeSession === session) activeSession = null;
           setDebugState(null, "idle");
+          setSessionActive(false);
+          setInspecting(false);
           disposable.dispose();
         }
       });

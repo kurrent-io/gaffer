@@ -81,12 +81,20 @@
     "views": {
       "gaffer": [
         {
+          "id": "gaffer.status",
+          "name": "Status",
+          "type": "webview",
+          "when": "gaffer.sessionActive && !gaffer.inspecting"
+        },
+        {
           "id": "gaffer.step",
-          "name": "Step"
+          "name": "Step",
+          "when": "gaffer.inspecting"
         },
         {
           "id": "gaffer.state",
-          "name": "State"
+          "name": "State",
+          "when": "gaffer.inspecting"
         }
       ]
     },

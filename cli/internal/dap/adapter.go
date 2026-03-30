@@ -32,6 +32,8 @@ type DebugAdapter struct {
 
 	mu         sync.Mutex
 	paused     bool
+	inspect    bool
+	stepBuffer []*CustomEvent
 	partitions []string
 	partSet    map[string]bool
 
@@ -62,6 +64,7 @@ func (a *DebugAdapter) SetServer(server *Server) {
 	a.session.OnBreak(func(info gafferruntime.BreakInfo) {
 		a.mu.Lock()
 		a.paused = true
+		a.inspect = true
 		a.mu.Unlock()
 
 		reason := info.Reason
@@ -76,6 +79,10 @@ func (a *DebugAdapter) SetServer(server *Server) {
 				AllThreadsStopped: true,
 			},
 		})
+		a.server.Send(NewCustomEvent("gaffer/mode", map[string]any{
+			"mode": "inspect",
+		}))
+		a.flushStepBuffer()
 	})
 
 	a.session.OnLog(func(message string) {
@@ -86,9 +93,13 @@ func (a *DebugAdapter) SetServer(server *Server) {
 				Output:   message + "\n",
 			},
 		})
-		a.server.Send(NewCustomEvent("gaffer/stepLog", map[string]any{
+		a.mu.Lock()
+		inspect := a.inspect
+		a.mu.Unlock()
+		evt := NewCustomEvent("gaffer/stepLog", map[string]any{
 			"message": message,
-		}))
+		})
+		a.bufferOrSend(evt, inspect)
 	})
 
 	a.session.OnEmit(func(streamID, eventType, data, metadata string, isJSON, isLink bool) {
@@ -108,7 +119,10 @@ func (a *DebugAdapter) SetServer(server *Server) {
 		if metadata != "" {
 			body["metadata"] = metadata
 		}
-		a.server.Send(NewCustomEvent("gaffer/stepEmit", body))
+		a.mu.Lock()
+		inspect := a.inspect
+		a.mu.Unlock()
+		a.bufferOrSend(NewCustomEvent("gaffer/stepEmit", body), inspect)
 	})
 }
 
@@ -207,7 +221,12 @@ func (a *DebugAdapter) handleContinue(s *Server, req *godap.ContinueRequest) {
 
 	a.mu.Lock()
 	a.paused = false
+	a.inspect = false
 	a.mu.Unlock()
+
+	a.server.Send(NewCustomEvent("gaffer/mode", map[string]any{
+		"mode": "live",
+	}))
 
 	go a.session.Continue()
 }
@@ -353,14 +372,18 @@ func (a *DebugAdapter) handleDisconnect(s *Server, req *godap.DisconnectRequest)
 	s.Send(resp)
 }
 
-// FeedEvent feeds a single event, records it in history, sends incremental
-// DAP events (stepStart -> callbacks -> stepResult), and returns the result.
+// FeedEvent feeds a single event, records it in history, and sends DAP
+// events only when in inspect mode (paused at breakpoint / stepping).
 func (a *DebugAdapter) FeedEvent(eventJSON string) (*gafferruntime.FeedResult, error) {
-	if a.server != nil {
-		a.server.Send(NewCustomEvent("gaffer/stepStart", map[string]any{
-			"event": json.RawMessage(eventJSON),
-		}))
-	}
+	a.mu.Lock()
+	a.stepBuffer = nil
+	inspect := a.inspect
+	a.mu.Unlock()
+
+	startEvt := NewCustomEvent("gaffer/stepStart", map[string]any{
+		"event": json.RawMessage(eventJSON),
+	})
+	a.bufferOrSend(startEvt, inspect)
 
 	result, err := a.session.Feed(eventJSON)
 	if err != nil {
@@ -398,21 +421,49 @@ func (a *DebugAdapter) FeedEvent(eventJSON string) (*gafferruntime.FeedResult, e
 		a.mu.Unlock()
 	}
 
-	if a.server != nil {
-		a.server.Send(NewCustomEvent("gaffer/stepResult", map[string]any{
-			"position": position,
-			"result":   json.RawMessage(resultJSON),
-		}))
+	a.mu.Lock()
+	inspect = a.inspect
+	a.mu.Unlock()
 
-		if result.Status == "processed" {
-			a.sendStateEvent()
-		}
+	resultEvt := NewCustomEvent("gaffer/stepResult", map[string]any{
+		"position": position,
+		"result":   json.RawMessage(resultJSON),
+	})
+	a.bufferOrSend(resultEvt, inspect)
+
+	if result.Status == "processed" && inspect && a.server != nil {
+		a.server.Send(a.buildStateEvent())
 	}
 
 	return result, nil
 }
 
-func (a *DebugAdapter) sendStateEvent() {
+func (a *DebugAdapter) bufferOrSend(evt *CustomEvent, inspect bool) {
+	if inspect && a.server != nil {
+		a.server.Send(evt)
+	} else {
+		a.mu.Lock()
+		a.stepBuffer = append(a.stepBuffer, evt)
+		a.mu.Unlock()
+	}
+}
+
+func (a *DebugAdapter) flushStepBuffer() {
+	a.mu.Lock()
+	buf := a.stepBuffer
+	a.stepBuffer = nil
+	a.mu.Unlock()
+
+	if a.server == nil {
+		return
+	}
+	for _, evt := range buf {
+		a.server.Send(evt)
+	}
+	a.server.Send(a.buildStateEvent())
+}
+
+func (a *DebugAdapter) buildStateEvent() *CustomEvent {
 	body := map[string]any{}
 
 	a.mu.Lock()
@@ -441,7 +492,7 @@ func (a *DebugAdapter) sendStateEvent() {
 		body["sharedState"] = json.RawMessage(*shared)
 	}
 
-	a.server.Send(NewCustomEvent("gaffer/state", body))
+	return NewCustomEvent("gaffer/state", body)
 }
 
 // SendTerminated sends terminated and exited events to the editor.

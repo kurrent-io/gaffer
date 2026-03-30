@@ -65,6 +65,22 @@ function activate(context) {
     )
   );
 
+  // Handle custom DAP events from the CLI
+  context.subscriptions.push(
+    vscode.debug.onDidReceiveDebugSessionCustomEvent((e) => {
+      if (e.session.type !== "gaffer") return;
+
+      if (e.event === "gaffer/step") {
+        const { event, result } = e.body;
+        const id = `${event.sequenceNumber}@${event.streamId}`;
+        eventsProvider.addEvent({ ...event, id });
+        eventsProvider.addResult({ ...result, eventId: id });
+        stateProvider.update(result);
+        emittedProvider.addFromResult({ ...result, eventId: id });
+      }
+    })
+  );
+
   function stopSession() {
     if (!activeSession) return;
     vscode.debug.stopDebugging();
@@ -96,15 +112,6 @@ function activate(context) {
       log(`Starting: ${name}`);
       const session = new GafferSession(name, command, log);
       activeSession = session;
-
-      session
-        .on("event", (msg) => eventsProvider.addEvent(msg))
-        .on("result", (msg) => {
-          eventsProvider.addResult(msg);
-          stateProvider.update(msg);
-          emittedProvider.addFromResult(msg);
-        })
-        .on("error", (msg) => eventsProvider.addError(msg));
 
       session.start();
       vscode.commands.executeCommand("gaffer.events.focus");

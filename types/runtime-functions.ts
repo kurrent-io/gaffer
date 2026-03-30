@@ -9,32 +9,13 @@ import { State } from "./state.ts";
 
 export interface LogFn {
   /**
-   * Appends an event to a stream. Can only be used within the handler of {@link when}.
-   *
-   * @param streamId - Specifies the stream to which events will be emitted.
-   * @param eventType - Type of the emitted event.
-   * @param eventBody - A JavaScript object representing the JSON body of the emitted event.
-   * @param metadata - A JavaScript object representing the JSON metadata of the emitted event.
-   * @param expectedVersion - Optional expected version for optimistic concurrency.
-   * @throws {Error} If the stream version doesn't match expectedVersion.
-   * @throws {Error} If called outside a projection handler.
-   * @returns {void}
+   * Logs a message to the projection log. Behaves like console.log.
+   * Can only be used within the handler of {@link when}.
    *
    * @example
-   * log(
-   *   'purchase-123',
-   *   'PurchaseCompleted',
-   *   { orderId: '123', total: 99.99 },
-   *   { userId: 'user-456' }
-   * );
+   * log('Processing event', event.eventType, event.streamId);
    */
-  (
-    streamId: string,
-    eventType: string,
-    eventBody: EventBody,
-    metadata: EventMetadata,
-    expectedVersion?: number
-  ): void;
+  (...args: unknown[]): void;
 }
 
 export interface EmitFn {
@@ -75,23 +56,17 @@ export interface EmitFn {
    * );
    *
    * @example
-   * try {
-   *   emit(
-   *     'order-123',
-   *     'PurchaseCompleted',
-   *     { orderId: '123', total: 99.99 },
-   *     { userId: 'user-456' }
-   *   );
-   * } catch (error) {
-   *   // Handle invalid stream ID, event type, or JSON serialization errors
-   *   log(`Failed to emit PurchaseCompleted: ${error.message}`);
-   * }
+   * emit(
+   *   'user-456',
+   *   'ProfileUpdated',
+   *   { name: 'John Doe', email: 'john@example.com' }
+   * );
    */
   (
     streamId: string,
     eventType: string,
     eventBody: EventBody,
-    metadata: EventMetadata
+    metadata?: EventMetadata
   ): void;
 }
 

@@ -66,6 +66,7 @@ function activate(context) {
   context.subscriptions.push(
     vscode.debug.onDidReceiveDebugSessionCustomEvent((e) => {
       if (e.session.type !== "gaffer") return;
+      stateProvider.setDebugSession(e.session);
 
       switch (e.event) {
         case "gaffer/stepStart":
@@ -117,6 +118,15 @@ function activate(context) {
       log(`Starting: ${name}`);
       const session = new GafferSession(name, command, log);
       activeSession = session;
+
+      session.on("exit", (msg) => {
+        if (msg.code !== 0 && activeSession === session) {
+          log(`CLI exited with code ${msg.code}`);
+          vscode.window.showErrorMessage(`Gaffer: projection faulted (exit code ${msg.code})`);
+          setDebugState(null, "idle");
+          activeSession = null;
+        }
+      });
 
       session.start();
       vscode.commands.executeCommand("gaffer.step.focus");

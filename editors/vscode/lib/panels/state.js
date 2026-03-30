@@ -4,6 +4,7 @@ const { jsonToTreeItems } = require("./json-tree");
 class StateProvider {
   constructor() {
     this._state = null;
+    this._debugSession = null;
     this._onDidChange = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._onDidChange.event;
     this._refreshTimer = null;
@@ -19,8 +20,13 @@ class StateProvider {
 
   clear() {
     this._state = null;
+    this._debugSession = null;
     if (this._refreshTimer) { clearTimeout(this._refreshTimer); this._refreshTimer = null; }
     this._onDidChange.fire();
+  }
+
+  setDebugSession(session) {
+    this._debugSession = session;
   }
 
   updateFromState(stateMsg) {
@@ -33,7 +39,15 @@ class StateProvider {
   }
 
   getChildren(element) {
-    if (element) return element.children || [];
+    if (element) {
+      if (element.contextValue === "partition") {
+        if (!this._debugSession) {
+          return [new vscode.TreeItem("No active session", vscode.TreeItemCollapsibleState.None)];
+        }
+        return this._fetchPartitionState(element.label);
+      }
+      return element.children || [];
+    }
     if (!this._state) {
       const empty = new vscode.TreeItem("No state yet", vscode.TreeItemCollapsibleState.None);
       empty.iconPath = new vscode.ThemeIcon("info");
@@ -69,14 +83,38 @@ class StateProvider {
         const partItem = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.Collapsed);
         partItem.iconPath = new vscode.ThemeIcon("symbol-namespace");
         partItem.contextValue = "partition";
-        partItem.children = [
-          new vscode.TreeItem("Loading...", vscode.TreeItemCollapsibleState.None),
-        ];
         items.push(partItem);
       }
     }
 
     return items;
+  }
+
+  async _fetchPartitionState(partition) {
+    try {
+      const resp = await this._debugSession.customRequest("gaffer/partitionState", { partition });
+      const body = resp;
+      const items = [];
+
+      if (body.state) {
+        const stateItem = new vscode.TreeItem("state", vscode.TreeItemCollapsibleState.Expanded);
+        stateItem.children = jsonToTreeItems(body.state);
+        items.push(stateItem);
+      }
+      if (body.result) {
+        const resultItem = new vscode.TreeItem("result", vscode.TreeItemCollapsibleState.Expanded);
+        resultItem.children = jsonToTreeItems(body.result);
+        items.push(resultItem);
+      }
+
+      if (items.length === 0) {
+        items.push(new vscode.TreeItem("(empty)", vscode.TreeItemCollapsibleState.None));
+      }
+
+      return items;
+    } catch {
+      return [new vscode.TreeItem("Failed to load", vscode.TreeItemCollapsibleState.None)];
+    }
   }
 }
 

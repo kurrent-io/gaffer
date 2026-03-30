@@ -1,25 +1,38 @@
 fromAll()
-  .partitionBy(function(event) {
+  .partitionBy(function (event) {
     return event.eventType;
   })
   .when({
-    $init: function() {
+    $init() {
       return { count: 0 };
     },
-    $UserCreated: function(state, event) {
+    $UserCreated(state, event) {
+      log("created!");
+      state.count++;
+      log("bumped!");
+      emit(
+        "notifications",
+        "OrderReceived",
+        {
+          orderId: event.streamId,
+          cents: state.count,
+        },
+        { source: "event-counter" },
+      );
+      log("emitted!");
+      log("okay!");
+      return state;
+    },
+    $ProjectionCreated(state, event) {
       state.count++;
       return state;
     },
-    $ProjectionCreated: function(state, event) {
+    $ProjectionUpdated(state, event) {
       state.count++;
       return state;
     },
-    $ProjectionUpdated: function(state, event) {
+    ServerInfo(state, event) {
       state.count++;
       return state;
     },
-    ServerInfo: function(state, event) {
-      state.count++;
-      return state;
-    }
-  })
+  });

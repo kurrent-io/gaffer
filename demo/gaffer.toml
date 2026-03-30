@@ -15,3 +15,7 @@ connection = "kurrentdb+discover://d3r0d13tv1llhr4flj40.mesdb.eventstore.cloud:2
 [[projection]]
   name = "broken"
   entry = "projections/broken.js"
+
+[[projection]]
+  name = "bistate-counter"
+  entry = "projections/bistate-counter.js"

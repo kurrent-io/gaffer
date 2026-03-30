@@ -19,6 +19,7 @@ class StateProvider {
 
   clear() {
     this._partitions.clear();
+    if (this._refreshTimer) { clearTimeout(this._refreshTimer); this._refreshTimer = null; }
     this._onDidChange.fire();
   }
 

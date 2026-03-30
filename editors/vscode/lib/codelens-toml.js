@@ -1,8 +1,9 @@
 const vscode = require("vscode");
 
 class TomlCodeLensProvider {
-  constructor(cli) {
+  constructor(cli, debugState) {
     this._cli = cli;
+    this._debugState = debugState;
     this._onDidChange = new vscode.EventEmitter();
     this.onDidChangeCodeLenses = this._onDidChange.event;
   }
@@ -25,31 +26,34 @@ class TomlCodeLensProvider {
       if (!name) continue;
 
       const range = new vscode.Range(i, 0, i, lines[i].length);
-      const args = { name, cwd, tomlUri };
-
-      if (this._cli.hasCommand("dev")) {
-        lenses.push(
-          new vscode.CodeLens(range, {
-            title: "\u25b6 Run",
-            command: "gaffer.runProjection",
-            arguments: [args],
-          })
-        );
-
-        if (this._cli.hasFlag("dev", "debug")) {
-          lenses.push(
-            new vscode.CodeLens(range, {
-              title: "\ud83d\udd0d Debug",
-              command: "gaffer.debugProjection",
-              arguments: [args],
-            })
-          );
-        }
-      }
+      const lens = buildLens(this._cli, this._debugState, name, range, cwd, tomlUri);
+      if (lens) lenses.push(lens);
     }
 
     return lenses;
   }
+}
+
+function buildLens(cli, debugState, name, range, cwd, tomlUri) {
+  if (debugState.name === name) {
+    const labels = {
+      starting: "$(sync~spin) Starting",
+      debugging: "$(debug-stop) Debugging",
+    };
+    const label = labels[debugState.status] || debugState.status;
+    if (debugState.status === "debugging") {
+      return new vscode.CodeLens(range, { title: label, command: "gaffer.stopDebug" });
+    }
+    return new vscode.CodeLens(range, { title: label });
+  }
+
+  if (!cli.hasCommand("dev") || !cli.hasFlag("dev", "debug")) return null;
+
+  return new vscode.CodeLens(range, {
+    title: "$(debug-start) Debug",
+    command: "gaffer.debugProjection",
+    arguments: [{ name, cwd, tomlUri }],
+  });
 }
 
 function extractName(lines, startLine) {
@@ -63,4 +67,4 @@ function extractName(lines, startLine) {
   return null;
 }
 
-module.exports = { TomlCodeLensProvider };
+module.exports = { TomlCodeLensProvider, buildLens };

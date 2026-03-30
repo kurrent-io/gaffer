@@ -35,7 +35,6 @@ class GafferSession {
     });
 
     this._proc.start();
-    this._output.show(true);
     return this;
   }
 

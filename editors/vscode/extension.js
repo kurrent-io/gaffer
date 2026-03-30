@@ -6,6 +6,7 @@ const { TomlCodeLensProvider } = require("./lib/codelens-toml");
 const { JsCodeLensProvider } = require("./lib/codelens-js");
 const { EventStreamProvider } = require("./lib/panels/events");
 const { StateProvider } = require("./lib/panels/state");
+const { EmittedProvider } = require("./lib/panels/emitted");
 
 function activate(context) {
   const output = vscode.window.createOutputChannel("Gaffer");
@@ -13,16 +14,31 @@ function activate(context) {
 
   const cli = new GafferCli(log);
   const projectIndex = new ProjectIndex();
-  const tomlCodeLens = new TomlCodeLensProvider(cli);
-  const jsCodeLens = new JsCodeLensProvider(cli, projectIndex);
+
+  const debugState = {
+    name: null,
+    status: "idle",
+  };
+
+  function setDebugState(name, status) {
+    debugState.name = name;
+    debugState.status = status;
+    tomlCodeLens.refresh();
+    jsCodeLens.refresh();
+  }
+
+  const tomlCodeLens = new TomlCodeLensProvider(cli, debugState);
+  const jsCodeLens = new JsCodeLensProvider(cli, projectIndex, debugState);
 
   const eventsProvider = new EventStreamProvider();
   const stateProvider = new StateProvider();
+  const emittedProvider = new EmittedProvider();
   let activeSession = null;
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider("gaffer.events", eventsProvider),
-    vscode.window.registerTreeDataProvider("gaffer.state", stateProvider)
+    vscode.window.registerTreeDataProvider("gaffer.state", stateProvider),
+    vscode.window.registerTreeDataProvider("gaffer.emitted", emittedProvider)
   );
 
   context.subscriptions.push(
@@ -49,35 +65,16 @@ function activate(context) {
     )
   );
 
-  function startSession(name, command) {
-    if (activeSession) {
-      activeSession.dispose();
-    }
-
-    eventsProvider.clear();
-    stateProvider.clear();
-
-    const session = new GafferSession(name, command, log);
-    activeSession = session;
-
-    session
-      .on("event", (msg) => eventsProvider.addEvent(msg))
-      .on("result", (msg) => {
-        eventsProvider.addResult(msg);
-        stateProvider.update(msg);
-      })
-      .on("error", (msg) => eventsProvider.addError(msg));
-
-    session.start();
-    return session;
+  function stopSession() {
+    if (!activeSession) return;
+    vscode.debug.stopDebugging();
+    activeSession.dispose();
+    activeSession = null;
+    setDebugState(null, "idle");
   }
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("gaffer.runProjection", (args) => {
-      const { name } = args;
-      const command = cli.buildCommand(`dev ${name} --json`);
-      startSession(name, command);
-    })
+    vscode.commands.registerCommand("gaffer.stopDebug", stopSession)
   );
 
   context.subscriptions.push(
@@ -86,8 +83,31 @@ function activate(context) {
       const port = 4711;
       const command = cli.buildCommand(`dev ${name} --json --debug --debug-port ${port}`);
 
-      log(`Starting debug: ${name}`);
-      const session = startSession(name, command);
+      if (activeSession) {
+        activeSession.dispose();
+        activeSession = null;
+      }
+
+      eventsProvider.clear();
+      stateProvider.clear();
+      emittedProvider.clear();
+
+      setDebugState(name, "starting");
+      log(`Starting: ${name}`);
+      const session = new GafferSession(name, command, log);
+      activeSession = session;
+
+      session
+        .on("event", (msg) => eventsProvider.addEvent(msg))
+        .on("result", (msg) => {
+          eventsProvider.addResult(msg);
+          stateProvider.update(msg);
+          emittedProvider.addFromResult(msg);
+        })
+        .on("error", (msg) => eventsProvider.addError(msg));
+
+      session.start();
+      vscode.commands.executeCommand("gaffer.events.focus");
 
       let debugPort;
       try {
@@ -95,10 +115,11 @@ function activate(context) {
         debugPort = msg.port;
         log(`Debug server listening on port ${debugPort}`);
       } catch (err) {
-        log(`Failed to start debug: ${err.message}`);
+        log(`Failed to start: ${err.message}`);
         vscode.window.showErrorMessage(`Gaffer: ${err.message}`);
         session.dispose();
         activeSession = null;
+        setDebugState(null, "idle");
         return;
       }
 
@@ -111,6 +132,7 @@ function activate(context) {
           name: `Gaffer: ${name}`,
           port: debugPort,
           localRoot: tomlDir,
+          internalConsoleOptions: "neverOpen",
         }
       );
 
@@ -118,14 +140,18 @@ function activate(context) {
         log("Debug session failed to start");
         session.dispose();
         activeSession = null;
+        setDebugState(null, "idle");
         return;
       }
 
+      setDebugState(name, "debugging");
+
       const disposable = vscode.debug.onDidTerminateDebugSession((dbgSession) => {
         if (dbgSession.name === `Gaffer: ${name}`) {
-          log("Debug session ended, stopping CLI");
+          log("Debug session ended");
           session.dispose();
           if (activeSession === session) activeSession = null;
+          setDebugState(null, "idle");
           disposable.dispose();
         }
       });

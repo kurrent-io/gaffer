@@ -1,12 +1,14 @@
 const vscode = require("vscode");
 const path = require("path");
+const { buildLens } = require("./codelens-toml");
 
 const fromPattern = /^(fromAll|fromStream|fromCategory|fromStreams)\s*\(/;
 
 class JsCodeLensProvider {
-  constructor(cli, projectIndex) {
+  constructor(cli, projectIndex, debugState) {
     this._cli = cli;
     this._projectIndex = projectIndex;
+    this._debugState = debugState;
     this._onDidChange = new vscode.EventEmitter();
     this.onDidChangeCodeLenses = this._onDidChange.event;
   }
@@ -32,30 +34,8 @@ class JsCodeLensProvider {
     const { name, tomlDir } = resolved;
     const range = new vscode.Range(fromLine, 0, fromLine, lines[fromLine].length);
     const tomlUri = vscode.Uri.file(path.join(tomlDir, "gaffer.toml"));
-    const args = { name, cwd: tomlDir, tomlUri };
-    const lenses = [];
-
-    if (this._cli.hasCommand("dev")) {
-      lenses.push(
-        new vscode.CodeLens(range, {
-          title: "\u25b6 Run",
-          command: "gaffer.runProjection",
-          arguments: [args],
-        })
-      );
-
-      if (this._cli.hasFlag("dev", "debug")) {
-        lenses.push(
-          new vscode.CodeLens(range, {
-            title: "\ud83d\udd0d Debug",
-            command: "gaffer.debugProjection",
-            arguments: [args],
-          })
-        );
-      }
-    }
-
-    return lenses;
+    const lens = buildLens(this._cli, this._debugState, name, range, tomlDir, tomlUri);
+    return lens ? [lens] : [];
   }
 }
 

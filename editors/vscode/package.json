@@ -29,12 +29,12 @@
     },
     "commands": [
       {
-        "command": "gaffer.runProjection",
-        "title": "Gaffer: Run Projection"
-      },
-      {
         "command": "gaffer.debugProjection",
         "title": "Gaffer: Debug Projection"
+      },
+      {
+        "command": "gaffer.stopDebug",
+        "title": "Gaffer: Stop Projection"
       }
     ],
     "debuggers": [
@@ -65,8 +65,8 @@
     ],
     "menus": {
       "commandPalette": [
-        { "command": "gaffer.runProjection", "when": "false" },
-        { "command": "gaffer.debugProjection", "when": "false" }
+        { "command": "gaffer.debugProjection", "when": "false" },
+        { "command": "gaffer.stopDebug", "when": "false" }
       ]
     },
     "viewsContainers": {
@@ -87,6 +87,10 @@
         {
           "id": "gaffer.state",
           "name": "State"
+        },
+        {
+          "id": "gaffer.emitted",
+          "name": "Emitted"
         }
       ]
     },

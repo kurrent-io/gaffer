@@ -19,6 +19,7 @@ class EventStreamProvider {
 
   clear() {
     this._events = [];
+    if (this._refreshTimer) { clearTimeout(this._refreshTimer); this._refreshTimer = null; }
     this._onDidChange.fire();
   }
 

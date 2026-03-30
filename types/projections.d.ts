@@ -3,6 +3,7 @@ import type {
   FilterByFn,
   ForeachStreamFn,
   FromAllChain,
+  FromCategoryChain,
   FromStreamChain,
   OutputStateChain,
   OutputStateFn,
@@ -13,92 +14,48 @@ import type {
   TransformByFn,
   WhenChain,
   WhenFn,
-} from "./types/chains.ts";
+} from "./chains.ts";
 import type {
   FromAllFn,
   FromCategoriesFn,
   FromCategoryFn,
   FromStreamFn,
   FromStreamsFn,
+  OnAnyFn,
+  OnEventFn,
   OptionsFn,
-} from "./types/definition-functions.ts";
+} from "./definition-functions.ts";
 import type {
   EventBody,
   EventMetadata,
   KurrentEvent,
-  LinkMetadata,
-  StreamLinkMetadata,
-} from "./types/events.ts";
-import type { Handlers } from "./types/handlers.ts";
-import type { ProjectionOptions } from "./types/options.ts";
-import {
+} from "./events.ts";
+import type { Handlers } from "./handlers.ts";
+import type { ProjectionOptions } from "./options.ts";
+import type {
   CopyToFn,
   EmitFn,
   LinkStreamToFn,
   LinkToFn,
   LogFn,
-} from "./types/runtime-functions.ts";
+} from "./runtime-functions.ts";
 
 declare global {
-  /**
-   * see {@link OptionsFn}
-   */
   const options: OptionsFn;
-
-  /**
-   * see {@link FromStreamFn}
-   */
   const fromStream: FromStreamFn;
-
-  /**
-   * see {@link FromStreamFn}
-   */
   const fromCategory: FromCategoryFn;
-
-  /**
-   * see {@link FromCategoriesFn}
-   */
   const fromCategories: FromCategoriesFn;
-
-  /**
-   * see {@link FromAllFn}
-   */
   const fromAll: FromAllFn;
-
-  /**
-   * see {@link FromStreamsFn}
-   */
   const fromStreams: FromStreamsFn;
-
-  /**
-   * see {@link LogFn}
-   */
+  const on_event: OnEventFn;
+  const on_any: OnAnyFn;
   const log: LogFn;
-
-  /**
-   * see {@link EmitFn}
-   */
   const emit: EmitFn;
-
-  /**
-   * see {@link LinkToFn}
-   */
   const linkTo: LinkToFn;
-
-  /**
-   * see {@link LinkStreamToFn}
-   */
   const linkStreamTo: LinkStreamToFn;
-
-  /**
-   * see {@link CopyToFn}
-   */
   const copyTo: CopyToFn;
 
   namespace Projection {
-    /**
-     * Types and functions for working with projections in Kurrent.
-     */
     export type {
       ChainWithPartitionBy,
       EventBody,
@@ -106,17 +63,16 @@ declare global {
       FilterByFn,
       ForeachStreamFn,
       FromAllChain,
+      FromCategoryChain,
       FromStreamChain,
       Handlers,
       KurrentEvent,
-      LinkMetadata,
       OutputStateChain,
       OutputStateFn,
       OutputToFn,
       PartitionByChain,
       PartitionByFn,
       ProjectionOptions,
-      StreamLinkMetadata,
       TransformationChain,
       TransformByFn,
       WhenChain,

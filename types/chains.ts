@@ -1,4 +1,4 @@
-import { KurrentEvent } from "./events.ts";
+import type { KurrentEvent } from "./events.ts";
 import type { Handlers } from "./handlers.ts";
 import type { State } from "./state.ts";
 
@@ -68,7 +68,7 @@ export interface PartitionByFn<S extends State = State> {
    */
   (
     partitionKeyFn: (
-      event: KurrentEvent<S>
+      event: KurrentEvent
     ) => string | number | null | undefined
   ): PartitionByChain<S>;
 }

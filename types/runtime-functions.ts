@@ -1,11 +1,4 @@
-import type {
-  EventBody,
-  EventMetadata,
-  KurrentEvent,
-  LinkMetadata,
-  StreamLinkMetadata,
-} from "./events.ts";
-import { State } from "./state.ts";
+import type { EventBody, EventMetadata, KurrentEvent } from "./events.ts";
 
 export interface LogFn {
   /**
@@ -25,34 +18,14 @@ export interface EmitFn {
    * @param streamId - Specifies the stream to which events will be emitted.
    * @param eventType - Type of the emitted event.
    * @param eventBody - A JavaScript object representing the JSON body of the emitted event.
-   * @param metadata - A JavaScript object representing the JSON metadata of the emitted event.
-   * @throws {Error} If called outside a projection handler.
-   * @throws {Error} If eventBody cannot be serialized to JSON.
-   * @throws {Error} If streamId is empty or invalid.
-   * @throws {Error} If eventType is empty or invalid.
+   * @param metadata - Optional metadata for the emitted event.
    *
    * @example
-   * // Emit a purchase completed event
    * emit(
    *   'order-123',
    *   'PurchaseCompleted',
    *   { orderId: '123', total: 99.99 },
    *   { userId: 'user-456' }
-   * );
-   *
-   * @example
-   * // Emit a user profile updated event
-   * emit(
-   *   'user-456',
-   *   'ProfileUpdated',
-   *   {
-   *     name: 'John Doe',
-   *     email: 'john@example.com'
-   *   },
-   *   {
-   *     updatedBy: 'admin',
-   *     timestamp: '2025-06-17T04:00:00Z'
-   *   }
    * );
    *
    * @example
@@ -76,55 +49,18 @@ export interface LinkToFn {
    *
    * @param streamId - Specifies the stream to which the LinkTo event will be emitted.
    * @param event - Event which will be linked.
-   * @param metadata - A JavaScript object representing the JSON metadata of the LinkTo event.
-   * @throws {Error} If called outside a projection handler.
-   * @throws {Error} If streamId is empty or invalid.
-   * @throws {Error} If event is null or undefined.
-   * @throws {Error} If metadata lacks required linkType.
+   * @param metadata - Optional metadata for the LinkTo event.
    *
    * @example
-   * // Link to a purchase event in an order summary stream
-   * linkTo(
-   *   'order-summary-123',
-   *   purchaseEvent, // KurrentEvent<PurchaseState>
-   *   { linkType: 'purchase-reference' }
-   * );
+   * linkTo('order-summary-123', event);
    *
    * @example
-   * // Link to a user activity event in a user timeline
-   * interface UserState {
-   *   userId: string;
-   *   action: string;
-   *   timestamp: string;
-   * }
-   *
-   * linkTo(
-   *   'user-456-timeline',
-   *   userActivityEvent, // KurrentEvent<UserState>
-   *   {
-   *     linkType: 'activity-reference',
-   *     createdAt: '2025-06-17T04:00:00Z'
-   *   }
-   * );
-   *
-   * @example
-   * try {
-   *   linkTo(
-   *     'order-summary-123',
-   *     purchaseEvent,
-   *     {
-   *       linkType: 'purchase-reference',
-   *       createdAt: new Date().toISOString()
-   *     }
-   *   );
-   * } catch (error) {
-   *   log(`Failed to create link: ${error.message}`);
-   * }
+   * linkTo('user-timeline', event, { source: 'activity-projection' });
    */
-  <S extends State = State>(
+  (
     streamId: string,
-    event: KurrentEvent<S>,
-    metadata: LinkMetadata
+    event: KurrentEvent,
+    metadata?: EventMetadata
   ): void;
 }
 
@@ -135,59 +71,25 @@ export interface LinkStreamToFn {
    * @param streamId - Specifies the stream to which the StreamReference event will be emitted.
    * @param linkedStreamId - Specifies the stream to be linked.
    * @param metadata - Optional metadata for the stream link.
-   * @throws {Error} If called outside a projection handler.
-   * @throws {Error} If either streamId or linkedStreamId is empty/invalid.
-   * @throws {Error} If trying to create a circular reference.
    *
    * @example
-   * // Link streams with metadata
-   * linkStreamTo(
-   *   'user-456-profile',
-   *   'user-456-orders',
-   *   {
-   *     reason: 'Associated user orders',
-   *     linkedAt: new Date().toISOString()
-   *   }
-   * );
+   * linkStreamTo('user-456-profile', 'user-456-orders');
    */
   (
     streamId: string,
     linkedStreamId: string,
-    metadata?: StreamLinkMetadata
+    metadata?: EventMetadata
   ): void;
 }
 
 export interface CopyToFn {
   /**
-   * Creates a copy of events from one stream to another.
+   * Copies events to a stream. Currently a stub in the runtime.
+   * Can only be used within the handler of {@link when}.
    *
-   * @param streamId - Specifies the destination stream where events will be copied to.
-   * @param sourceStreamId - Specifies the source stream to copy events from.
-   * @throws {Error} If called outside a projection handler.
-   * @throws {Error} If source stream doesn't exist.
-   * @throws {Error} If destination stream is invalid.
-   * @throws {Error} If trying to copy to the same stream.
-   *
-   * @example
-   * // Copy events from a temporary cart to an order stream
-   * copyTo(
-   *   'order-123',
-   *   'temp-cart-456'
-   * );
-   *
-   * @example
-   * // Create a backup copy of a user's profile stream
-   * copyTo(
-   *   'user-456-profile-backup',
-   *   'user-456-profile'
-   * );
-   *
-   * @example
-   * // Copy events to an audit stream
-   * copyTo(
-   *   'audit-stream-2025',
-   *   'sensitive-operations-stream'
-   * );
+   * @param streamId - Destination stream.
+   * @param eventType - Type of the copied event.
+   * @param eventBody - Body of the copied event.
    */
-  (streamId: string, sourceStreamId: string): void;
+  (streamId: string, eventType: string, eventBody: EventBody): void;
 }

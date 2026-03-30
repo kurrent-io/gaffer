@@ -93,7 +93,7 @@ export interface TransformByFn<S extends State = State> {
    *   lastOrderDate: state.orders[state.orders.length - 1]?.date
    * }))
    */
-  (transformFn: (s: S) => S): TransformationChain<S>;
+  <R extends State = S>(transformFn: (s: S) => R): TransformationChain<R>;
 }
 
 export interface FilterByFn<S extends State = State> {

@@ -44,10 +44,10 @@ export interface FromStreamFn {
 
 export interface FromCategoryFn {
   /**
-   * Selects events from a category stream (`$ce-{category}`). The category stream is
-   * created by the $by_category system projection.
+   * Selects events from a category. In v1 this reads from the `$ce-{category}` stream
+   * created by the $by_category system projection. In v2 this filters $all by stream prefix.
    *
-   * @param category - The category to select events from
+   * Accepts a single category, an array, or variadic arguments (same as fromCategories).
    *
    * @example
    * fromCategory('order')
@@ -60,6 +60,8 @@ export interface FromCategoryFn {
    *   });
    */
   <S extends State = State>(category: string): FromCategoryChain<S>;
+  <S extends State = State>(categories: string[]): FromCategoryChain<S>;
+  <S extends State = State>(...categories: string[]): FromCategoryChain<S>;
 }
 
 export interface FromCategoriesFn {
@@ -113,6 +115,7 @@ export interface FromStreamsFn {
    *   });
    */
   <S extends State = State>(streamIds: string[]): FromStreamChain<S>;
+  <S extends State = State>(...streamIds: string[]): FromStreamChain<S>;
 }
 
 export interface OnEventFn {

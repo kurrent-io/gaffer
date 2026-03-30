@@ -20,28 +20,28 @@ export interface KurrentEvent {
    * Event data. Synonymous with event.body. Only populated when the event data is JSON.
    * @deprecated Use body instead.
    */
-  data?: EventBody;
+  data?: EventBody | null;
 
   /** Event data. Synonymous with event.data. Only populated when the event data is JSON. */
-  body?: EventBody;
+  body?: EventBody | null;
 
-  /** JSON string of event data. */
-  bodyRaw: string;
+  /** JSON string of event data. Null when event data is zero-length. */
+  bodyRaw: string | null;
 
-  /** Event metadata as a JS object. */
-  metadata?: EventMetadata;
+  /** Event metadata as a JS object. Null when metadata is empty or zero-length. */
+  metadata?: EventMetadata | null;
 
-  /** JSON string of event metadata. */
-  metadataRaw: string;
+  /** JSON string of event metadata. Null when metadata is zero-length. */
+  metadataRaw: string | null;
 
   /**
    * When processing LinkTo events, this field stores the parsed metadata
    * of the linkTo event while event.metadata stores the linked event's metadata.
    */
-  linkMetadata?: EventMetadata;
+  linkMetadata?: EventMetadata | null;
 
   /** LinkTo event's metadata as a JSON string. */
-  linkMetadataRaw?: string;
+  linkMetadataRaw?: string | null;
 
   /** True when the event has a JSON body. If isJson is false, body may be undefined. */
   isJson: boolean;

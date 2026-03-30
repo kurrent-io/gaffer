@@ -12,11 +12,20 @@ import (
 	godap "github.com/google/go-dap"
 )
 
+// ProjectionShape describes the projection's features for the adapter.
+type ProjectionShape struct {
+	IsPartitioned   bool
+	IsBiState       bool
+	HasTransforms   bool
+	ProducesResults bool
+}
+
 // DebugAdapter bridges a DAP server to a gaffer runtime session.
 type DebugAdapter struct {
 	session    *gafferruntime.Session
 	server     *Server
 	history    *history.Store
+	shape      ProjectionShape
 	sourcePath string
 	remoteRoot string
 	localRoot  string
@@ -34,12 +43,13 @@ type DebugAdapter struct {
 // sourcePath is the filesystem path to the projection JS file (for Source objects).
 // remoteRoot is the project root (where gaffer.toml lives) on the server side.
 // Call SetServer before starting the server.
-func NewDebugAdapter(session *gafferruntime.Session, sourcePath, remoteRoot string, store *history.Store) *DebugAdapter {
+func NewDebugAdapter(session *gafferruntime.Session, sourcePath, remoteRoot string, store *history.Store, shape ProjectionShape) *DebugAdapter {
 	return &DebugAdapter{
 		session:    session,
 		sourcePath: sourcePath,
 		remoteRoot: remoteRoot,
 		history:    store,
+		shape:      shape,
 		readyCh:    make(chan struct{}),
 	}
 }
@@ -408,8 +418,10 @@ func (a *DebugAdapter) sendStateEvent() {
 		if state := a.session.GetState(nil); state != nil {
 			body["state"] = json.RawMessage(*state)
 		}
-		if result, err := a.session.GetResult(nil); err == nil && result != nil {
-			body["result"] = json.RawMessage(*result)
+		if a.shape.ProducesResults {
+			if result, err := a.session.GetResult(nil); err == nil && result != nil {
+				body["result"] = json.RawMessage(*result)
+			}
 		}
 	}
 
@@ -485,8 +497,10 @@ func (a *DebugAdapter) handleGafferPartitionState(s *Server, req *GafferPartitio
 	if state := a.session.GetState(&partition); state != nil {
 		body["state"] = json.RawMessage(*state)
 	}
-	if result, err := a.session.GetResult(&partition); err == nil && result != nil {
-		body["result"] = json.RawMessage(*result)
+	if a.shape.ProducesResults {
+		if result, err := a.session.GetResult(&partition); err == nil && result != nil {
+			body["result"] = json.RawMessage(*result)
+		}
 	}
 
 	respBody, _ := json.Marshal(body)

@@ -243,7 +243,13 @@ func runDebugMode(cmd *cobra.Command, session *gafferruntime.Session, info proje
 	defer func() { _ = store.Close() }()
 
 	absRoot, _ := filepath.Abs(root)
-	adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot, store)
+	shape := dapserver.ProjectionShape{
+		IsPartitioned:   info.ByStreams || info.ByCustomPartitions,
+		IsBiState:       info.IsBiState,
+		HasTransforms:   info.DefinesStateTransform,
+		ProducesResults: info.ProducesResults,
+	}
+	adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot, store, shape)
 	handler := adapter.Handler()
 
 	addr := fmt.Sprintf("127.0.0.1:%d", devDebugPort)

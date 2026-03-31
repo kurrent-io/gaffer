@@ -31,6 +31,8 @@ type activeSession struct {
 	name       string
 	stats      sessionStats
 	partitions map[string]bool
+	cancel     context.CancelFunc
+	lastError  error
 }
 
 type sessionStats struct {
@@ -86,6 +88,9 @@ func (s *Server) Run(ctx context.Context) error {
 
 func (s *Server) closeSession() {
 	if s.session != nil {
+		if s.session.cancel != nil {
+			s.session.cancel()
+		}
 		s.session.runtime.Destroy()
 		_ = s.session.history.Close()
 		s.session = nil

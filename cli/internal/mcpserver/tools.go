@@ -33,7 +33,7 @@ var validateTool = &mcp.Tool{
 
 var runTool = &mcp.Tool{
 	Name:        "run",
-	Description: "Run a projection against events from a fixture file. Creates a new session (replacing any existing one) and populates history for inspection. Returns a summary with event counts and final state.",
+	Description: "Run a projection against events. Creates a new session (replacing any existing one) and populates history for inspection. With events file: runs synchronously and returns summary. Without events file: starts a live KurrentDB subscription in the background - poll status to track progress.",
 }
 
 var statusTool = &mcp.Tool{
@@ -74,7 +74,7 @@ type validateInput struct {
 
 type runInput struct {
 	Name   string `json:"name" jsonschema:"Projection name from gaffer.toml"`
-	Events string `json:"events" jsonschema:"Path to a JSON fixture file (relative to project root or absolute)"`
+	Events string `json:"events,omitempty" jsonschema:"Path to a JSON fixture file (relative to project root or absolute). Omit for live KurrentDB subscription."`
 }
 
 type statusInput struct{}
@@ -158,10 +158,26 @@ func (s *Server) handleRun(_ context.Context, _ *mcp.CallToolRequest, input runI
 	}
 
 	if input.Events == "" {
-		return toolError("events path is required"), nil, nil
+		return s.startLiveMode(sess)
 	}
 
-	eventsPath := input.Events
+	return s.runFixtureMode(sess, input.Events)
+}
+
+func (s *Server) startLiveMode(sess *activeSession) (*mcp.CallToolResult, any, error) {
+	if err := s.startLiveSubscription(sess); err != nil {
+		return toolError("%v", err), nil, nil
+	}
+
+	return toolResult(map[string]any{
+		"projection": sess.name,
+		"status":     "running",
+		"mode":       "live",
+		"message":    "Live subscription started. Poll status to track progress. History is queryable as events are processed.",
+	}), nil, nil
+}
+
+func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.CallToolResult, any, error) {
 	if !filepath.IsAbs(eventsPath) {
 		eventsPath = filepath.Join(s.root, eventsPath)
 	}
@@ -178,10 +194,7 @@ func (s *Server) handleRun(_ context.Context, _ *mcp.CallToolRequest, input runI
 			sess.stats.Errors++
 			sess.stats.Status = "error"
 			faultErr = feedErr
-
-			if _, insertErr := sess.history.Insert(evt, `{"status":"error"}`); insertErr != nil {
-				break
-			}
+			_, _ = sess.history.Insert(evt, `{"status":"error"}`)
 
 			break
 		}
@@ -214,16 +227,7 @@ func (s *Server) handleRun(_ context.Context, _ *mcp.CallToolRequest, input runI
 	summary["totalEvents"] = len(events)
 
 	if faultErr != nil {
-		if projErr, ok := faultErr.(gafferruntime.ProjectionError); ok {
-			summary["lastError"] = map[string]any{
-				"code":        projErr.ErrorCode(),
-				"description": projErr.ErrorDescription(),
-			}
-		} else {
-			summary["lastError"] = map[string]any{
-				"description": faultErr.Error(),
-			}
-		}
+		summary["lastError"] = classifyError(faultErr)
 	}
 
 	return toolResult(summary), nil, nil
@@ -239,14 +243,20 @@ func (s *Server) handleStatus(_ context.Context, _ *mcp.CallToolRequest, _ statu
 
 	count, _ := s.session.history.Count()
 
-	return toolResult(map[string]any{
+	result := map[string]any{
 		"projection": s.session.name,
 		"status":     s.session.stats.Status,
 		"processed":  s.session.stats.Processed,
 		"skipped":    s.session.stats.Skipped,
 		"errors":     s.session.stats.Errors,
 		"position":   count,
-	}), nil, nil
+	}
+
+	if s.session.lastError != nil {
+		result["lastError"] = classifyError(s.session.lastError)
+	}
+
+	return toolResult(result), nil, nil
 }
 
 func (s *Server) handleStop(_ context.Context, _ *mcp.CallToolRequest, _ stopInput) (*mcp.CallToolResult, any, error) {

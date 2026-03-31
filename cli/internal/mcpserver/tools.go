@@ -238,14 +238,17 @@ func (s *Server) handleStatus(_ context.Context, _ *mcp.CallToolRequest, _ statu
 	}
 
 	count, _ := s.session.history.Count()
+	minPos, maxPos, _ := s.session.history.Range()
 
 	result := map[string]any{
-		"projection": s.session.name,
-		"status":     s.session.stats.Status,
-		"processed":  s.session.stats.Processed,
-		"skipped":    s.session.stats.Skipped,
-		"errors":     s.session.stats.Errors,
-		"position":   count,
+		"projection":  s.session.name,
+		"status":      s.session.stats.Status,
+		"processed":   s.session.stats.Processed,
+		"skipped":     s.session.stats.Skipped,
+		"errors":      s.session.stats.Errors,
+		"position":    count,
+		"minPosition": minPos,
+		"maxPosition": maxPos,
 	}
 
 	if s.session.lastError != nil {
@@ -369,12 +372,15 @@ func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest
 // --- Helpers ---
 
 func (s *Server) resolveRange(from, to int64) (int64, int64) {
+	minPos, maxPos, _ := s.session.history.Range()
 	if from <= 0 {
-		from = 1
+		from = minPos
 	}
 	if to <= 0 {
-		count, _ := s.session.history.Count()
-		to = count
+		to = maxPos
+	}
+	if from < minPos {
+		from = minPos
 	}
 	if to < from {
 		to = from

@@ -138,6 +138,11 @@ func (s *Store) Count() (int64, error) {
 	return count, err
 }
 
+func (s *Store) Range() (min, max int64, err error) {
+	err = s.db.QueryRow(`SELECT COALESCE(MIN(position), 0), COALESCE(MAX(position), 0) FROM steps`).Scan(&min, &max)
+	return
+}
+
 func (s *Store) Close() error {
 	return s.db.Close()
 }

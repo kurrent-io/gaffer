@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "gaffer": {
+      "command": "gaffer",
+      "args": ["mcp"]
+    }
+  }
+}

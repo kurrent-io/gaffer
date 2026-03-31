@@ -97,21 +97,16 @@ func (s *Server) handleDebug(_ context.Context, _ *mcp.CallToolRequest, input de
 	case breakInfo := <-breakCh:
 		debugContext := s.collectDebugContext(sess, breakInfo)
 
-		sess.runtime.Continue()
-		outcome := <-feedDone
+		// Leave the session paused for evaluate/continue calls
+		sess.paused = true
+		sess.feedDone = feedDone
+		sess.pausedEvent = targetEvent
+		sess.stats.Status = "paused"
 
-		if outcome.err != nil {
-			debugContext["feedError"] = classifyError(outcome.err)
-			_, _ = sess.history.Insert(targetEvent, `{"status":"error"}`)
-		} else {
-			resultJSON, _ := json.Marshal(outcome.result)
-			_, _ = sess.history.Insert(targetEvent, string(resultJSON))
-			s.recordResult(sess, outcome.result)
-		}
-
-		sess.stats.Status = "completed"
 		debugContext["position"] = input.BreakAt
 		debugContext["totalEvents"] = len(events)
+		debugContext["paused"] = true
+		debugContext["hint"] = "Session is paused. Use 'evaluate' to inspect expressions, then 'debug_continue' to resume."
 		return toolResult(debugContext), nil, nil
 
 	case outcome := <-feedDone:
@@ -119,6 +114,7 @@ func (s *Server) handleDebug(_ context.Context, _ *mcp.CallToolRequest, input de
 		result := map[string]any{
 			"position":    input.BreakAt,
 			"totalEvents": len(events),
+			"paused":      false,
 		}
 
 		if outcome.err != nil {
@@ -138,6 +134,88 @@ func (s *Server) handleDebug(_ context.Context, _ *mcp.CallToolRequest, input de
 
 		return toolResult(result), nil, nil
 	}
+}
+
+var evaluateTool = &mcp.Tool{
+	Name:        "evaluate",
+	Description: "Evaluate a JavaScript expression in the current debug context. Only works while paused at a breakpoint (after calling debug). Returns the expression result with type information.",
+}
+
+type evaluateInput struct {
+	Expression string `json:"expression" jsonschema:"JavaScript expression to evaluate in the current scope"`
+}
+
+func (s *Server) handleEvaluate(_ context.Context, _ *mcp.CallToolRequest, input evaluateInput) (*mcp.CallToolResult, any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.session == nil {
+		return toolError("no active session - call debug first"), nil, nil
+	}
+	if !s.session.paused {
+		return toolError("session is not paused - call debug with break_at first"), nil, nil
+	}
+	if input.Expression == "" {
+		return toolError("expression is required"), nil, nil
+	}
+
+	variable, err := s.session.runtime.Evaluate(input.Expression)
+	if err != nil {
+		return toolError("evaluate failed: %v", err), nil, nil
+	}
+
+	return toolResult(map[string]any{
+		"expression": input.Expression,
+		"value":      variable.Value,
+		"type":       variable.Type,
+	}), nil, nil
+}
+
+var debugContinueTool = &mcp.Tool{
+	Name:        "debug_continue",
+	Description: "Resume execution after a debug pause. Completes the current event's processing and records the result in history. The session remains active for inspection.",
+}
+
+type debugContinueInput struct{}
+
+func (s *Server) handleDebugContinue(_ context.Context, _ *mcp.CallToolRequest, _ debugContinueInput) (*mcp.CallToolResult, any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.session == nil {
+		return toolError("no active session"), nil, nil
+	}
+	if !s.session.paused {
+		return toolError("session is not paused"), nil, nil
+	}
+
+	sess := s.session
+	sess.runtime.Continue()
+	outcome := <-sess.feedDone
+
+	sess.paused = false
+	sess.feedDone = nil
+	sess.pausedEvent = ""
+
+	if outcome.err != nil {
+		sess.stats.Errors++
+		sess.stats.Status = "error"
+		sess.lastError = outcome.err
+		return toolResult(map[string]any{
+			"resumed":   true,
+			"feedError": classifyError(outcome.err),
+		}), nil, nil
+	}
+
+	resultJSON, _ := json.Marshal(outcome.result)
+	_, _ = sess.history.Insert(sess.pausedEvent, string(resultJSON))
+	s.recordResult(sess, outcome.result)
+	sess.stats.Status = "completed"
+
+	return toolResult(map[string]any{
+		"resumed": true,
+		"status":  outcome.result.Status,
+	}), nil, nil
 }
 
 type feedOutcome struct {

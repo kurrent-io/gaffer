@@ -33,6 +33,11 @@ type activeSession struct {
 	partitions map[string]bool
 	cancel     context.CancelFunc
 	lastError  error
+
+	// Debug state - set when paused at a breakpoint
+	paused      bool
+	feedDone    chan feedOutcome
+	pausedEvent string
 }
 
 type sessionStats struct {
@@ -90,6 +95,14 @@ func (s *Server) closeSession() {
 	if s.session != nil {
 		if s.session.cancel != nil {
 			s.session.cancel()
+		}
+		if s.session.paused {
+			s.session.runtime.ClearBreakpoints()
+			s.session.runtime.Continue()
+			if s.session.feedDone != nil {
+				<-s.session.feedDone
+			}
+			s.session.paused = false
 		}
 		s.session.runtime.Destroy()
 		_ = s.session.history.Close()

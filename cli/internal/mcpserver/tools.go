@@ -91,13 +91,15 @@ type getStepInput struct {
 }
 
 type getHistoryInput struct {
-	From int64 `json:"from" jsonschema:"Start position (inclusive). Defaults to 1 if 0."`
-	To   int64 `json:"to" jsonschema:"End position (inclusive). Defaults to last position if 0."`
+	From      int64  `json:"from" jsonschema:"Start position (inclusive). Defaults to 1 if 0."`
+	To        int64  `json:"to" jsonschema:"End position (inclusive). Defaults to last position if 0."`
+	Partition string `json:"partition,omitempty" jsonschema:"Filter to a specific partition key"`
 }
 
 type getTimelineInput struct {
-	From int64 `json:"from" jsonschema:"Start position (inclusive). Defaults to 1 if 0."`
-	To   int64 `json:"to" jsonschema:"End position (inclusive). Defaults to last position if 0."`
+	From      int64  `json:"from" jsonschema:"Start position (inclusive). Defaults to 1 if 0."`
+	To        int64  `json:"to" jsonschema:"End position (inclusive). Defaults to last position if 0."`
+	Partition string `json:"partition,omitempty" jsonschema:"Filter to a specific partition key"`
 }
 
 type listProjectionsInput struct{}
@@ -317,7 +319,7 @@ func (s *Server) handleGetHistory(_ context.Context, _ *mcp.CallToolRequest, inp
 		afterState = extractState(afterStep.ResultJSON)
 	}
 
-	timeline, err := s.session.history.Timeline(from, to)
+	timeline, err := s.session.history.TimelineFiltered(from, to, input.Partition)
 	if err != nil {
 		return toolError("querying timeline: %v", err), nil, nil
 	}
@@ -339,7 +341,7 @@ func (s *Server) handleGetTimeline(_ context.Context, _ *mcp.CallToolRequest, in
 
 	from, to := s.resolveRange(input.From, input.To)
 
-	entries, err := s.session.history.Timeline(from, to)
+	entries, err := s.session.history.TimelineFiltered(from, to, input.Partition)
 	if err != nil {
 		return toolError("querying timeline: %v", err), nil, nil
 	}

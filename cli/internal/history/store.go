@@ -111,11 +111,26 @@ func (s *Store) Latest() (*Step, error) {
 }
 
 func (s *Store) Timeline(from, to int64) ([]TimelineEntry, error) {
-	rows, err := s.db.Query(`
-		SELECT position, event_type, stream_id, status, partition, has_emit, has_log
-		FROM steps WHERE position >= ? AND position <= ?
-		ORDER BY position
-	`, from, to)
+	return s.TimelineFiltered(from, to, "")
+}
+
+func (s *Store) TimelineFiltered(from, to int64, partition string) ([]TimelineEntry, error) {
+	var query string
+	var args []any
+
+	if partition != "" {
+		query = `SELECT position, event_type, stream_id, status, partition, has_emit, has_log
+			FROM steps WHERE position >= ? AND position <= ? AND partition = ?
+			ORDER BY position`
+		args = []any{from, to, partition}
+	} else {
+		query = `SELECT position, event_type, stream_id, status, partition, has_emit, has_log
+			FROM steps WHERE position >= ? AND position <= ?
+			ORDER BY position`
+		args = []any{from, to}
+	}
+
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("history: timeline: %w", err)
 	}

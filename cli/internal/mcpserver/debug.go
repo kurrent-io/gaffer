@@ -17,10 +17,11 @@ var debugTool = &mcp.Tool{
 }
 
 type debugInput struct {
-	Name    string `json:"name" jsonschema:"Projection name from gaffer.toml"`
-	Events  string `json:"events" jsonschema:"Path to a JSON fixture file (relative to project root or absolute)"`
-	BreakAt int64  `json:"break_at" jsonschema:"Event position (1-based) to pause at"`
-	Line    int    `json:"line,omitempty" jsonschema:"Source line to set a breakpoint on (instead of pausing at entry). 1-based."`
+	Name      string `json:"name" jsonschema:"Projection name from gaffer.toml"`
+	Events    string `json:"events" jsonschema:"Path to a JSON fixture file (relative to project root or absolute)"`
+	BreakAt   int64  `json:"break_at" jsonschema:"Event position (1-based) to pause at"`
+	Line      int    `json:"line,omitempty" jsonschema:"Source line to set a breakpoint on (instead of pausing at entry). 1-based."`
+	Condition string `json:"condition,omitempty" jsonschema:"JS expression that must be truthy for the breakpoint to fire (e.g. 'state.count > 5'). Requires line to be set."`
 }
 
 func (s *Server) handleDebug(_ context.Context, _ *mcp.CallToolRequest, input debugInput) (*mcp.CallToolResult, any, error) {
@@ -77,9 +78,17 @@ func (s *Server) handleDebug(_ context.Context, _ *mcp.CallToolRequest, input de
 		s.recordResult(sess, result)
 	}
 
+	if input.Condition != "" && input.Line == 0 {
+		return toolError("condition requires line to be set"), nil, nil
+	}
+
 	// Set breakpoint: either a source line or pause at entry
 	if input.Line > 0 {
-		snapped, err := sess.runtime.SetBreakpoint(input.Line, 0, nil)
+		var opts *gafferruntime.BreakpointOptions
+		if input.Condition != "" {
+			opts = &gafferruntime.BreakpointOptions{Condition: input.Condition}
+		}
+		snapped, err := sess.runtime.SetBreakpoint(input.Line, 0, opts)
 		if err != nil {
 			return toolError("setting breakpoint: %v", err), nil, nil
 		}

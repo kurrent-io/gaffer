@@ -63,6 +63,11 @@ func (s *Server) handleWriteProjectionPrompt(_ context.Context, req *mcp.GetProm
 	sb.WriteString("\n\n---\n\n")
 	sb.Write(examples)
 
+	if s.hasV1Projections() {
+		sb.WriteString("\n\n---\n\n")
+		sb.Write(mustReadEmbed("resources/v1-v2-differences.md"))
+	}
+
 	return &mcp.GetPromptResult{
 		Description: fmt.Sprintf("Write a projection: %s", requirements),
 		Messages: []*mcp.PromptMessage{
@@ -112,12 +117,26 @@ func (s *Server) handleFixProjectionPrompt(_ context.Context, req *mcp.GetPrompt
 	sb.WriteString("\n\n---\n\n")
 	sb.Write(gotchas)
 
+	if proj.Engine == "v1" {
+		sb.WriteString("\n\n---\n\n")
+		sb.Write(mustReadEmbed("resources/v1-v2-differences.md"))
+	}
+
 	return &mcp.GetPromptResult{
 		Description: fmt.Sprintf("Fix projection: %s", name),
 		Messages: []*mcp.PromptMessage{
 			{Role: "user", Content: &mcp.TextContent{Text: sb.String()}},
 		},
 	}, nil
+}
+
+func (s *Server) hasV1Projections() bool {
+	for _, proj := range s.cfg.Projection {
+		if proj.Engine == "v1" {
+			return true
+		}
+	}
+	return false
 }
 
 func mustReadEmbed(path string) []byte {

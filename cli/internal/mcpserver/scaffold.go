@@ -117,15 +117,18 @@ func generateSource(source, partition string, emit bool) (string, error) {
 
 	sb.WriteString("  .when({\n")
 	sb.WriteString("    $init: function() {\n")
-	sb.WriteString("      return {};\n")
+	sb.WriteString("      return { count: 0 };\n")
 	sb.WriteString("    },\n")
-	sb.WriteString("    // Add your event handlers here\n")
-	sb.WriteString("    // EventType: function(state, event) {\n")
+	sb.WriteString("    $any: function(state, event) {\n")
+	sb.WriteString("      state.count += 1;\n")
 	if emit {
-		sb.WriteString("    //   emit('stream-name', 'EmittedType', { data: event.data });\n")
+		sb.WriteString("      emit('derived-events', event.eventType + 'Processed', {\n")
+		sb.WriteString("        streamId: event.streamId,\n")
+		sb.WriteString("        count: state.count\n")
+		sb.WriteString("      });\n")
 	}
-	sb.WriteString("    //   return state;\n")
-	sb.WriteString("    // }\n")
+	sb.WriteString("      return state;\n")
+	sb.WriteString("    }\n")
 	sb.WriteString("  })\n")
 
 	return sb.String(), nil

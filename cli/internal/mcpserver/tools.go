@@ -21,6 +21,7 @@ func (s *Server) registerTools() {
 	mcp.AddTool(s.mcp, getStepTool, s.handleGetStep)
 	mcp.AddTool(s.mcp, getHistoryTool, s.handleGetHistory)
 	mcp.AddTool(s.mcp, getTimelineTool, s.handleGetTimeline)
+	mcp.AddTool(s.mcp, getStateTool, s.handleGetState)
 	mcp.AddTool(s.mcp, listProjectionsTool, s.handleListProjections)
 	mcp.AddTool(s.mcp, scaffoldTool, s.handleScaffold)
 	mcp.AddTool(s.mcp, debugTool, s.handleDebug)
@@ -67,6 +68,15 @@ var getHistoryTool = &mcp.Tool{
 var getTimelineTool = &mcp.Tool{
 	Name:        "get_timeline",
 	Description: "Get a compact overview of a range of steps. Returns position, event type, stream ID, status, and flags for each step. Use this to scan for interesting positions, then drill in with get_step.",
+}
+
+var getStateTool = &mcp.Tool{
+	Name:        "get_state",
+	Description: "Get the current projection state from the active session. Returns state per partition (or global state if unpartitioned), shared state if biState, and result if transforms are defined.",
+}
+
+type getStateInput struct {
+	Partition string `json:"partition,omitempty" jsonschema:"Get state for a specific partition. Omit for all partitions or global state."`
 }
 
 var listProjectionsTool = &mcp.Tool{
@@ -352,6 +362,32 @@ func (s *Server) handleGetTimeline(_ context.Context, _ *mcp.CallToolRequest, in
 	return toolResult(map[string]any{
 		"entries": entries,
 	}), nil, nil
+}
+
+func (s *Server) handleGetState(_ context.Context, _ *mcp.CallToolRequest, input getStateInput) (*mcp.CallToolResult, any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.session == nil {
+		return toolError("no active session - call run first"), nil, nil
+	}
+
+	sess := s.session
+
+	if input.Partition != "" {
+		result := map[string]any{"partition": input.Partition}
+		if state := sess.runtime.GetState(&input.Partition); state != nil {
+			result["state"] = json.RawMessage(*state)
+		}
+		if sess.info.DefinesStateTransform {
+			if r, err := sess.runtime.GetResult(&input.Partition); err == nil && r != nil {
+				result["result"] = json.RawMessage(*r)
+			}
+		}
+		return toolResult(result), nil, nil
+	}
+
+	return toolResult(s.buildStateSummary(sess)), nil, nil
 }
 
 func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest, _ listProjectionsInput) (*mcp.CallToolResult, any, error) {

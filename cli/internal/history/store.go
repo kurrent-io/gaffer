@@ -28,10 +28,13 @@ type Step struct {
 }
 
 type TimelineEntry struct {
-	Position int64  `json:"position"`
-	Status   string `json:"status"`
-	HasEmit  bool   `json:"hasEmit"`
-	HasLog   bool   `json:"hasLog"`
+	Position  int64  `json:"position"`
+	EventType string `json:"eventType,omitempty"`
+	StreamID  string `json:"streamId,omitempty"`
+	Status    string `json:"status"`
+	Partition string `json:"partition,omitempty"`
+	HasEmit   bool   `json:"hasEmit"`
+	HasLog    bool   `json:"hasLog"`
 }
 
 func New() (*Store, error) {
@@ -109,7 +112,7 @@ func (s *Store) Latest() (*Step, error) {
 
 func (s *Store) Timeline(from, to int64) ([]TimelineEntry, error) {
 	rows, err := s.db.Query(`
-		SELECT position, status, has_emit, has_log
+		SELECT position, event_type, stream_id, status, partition, has_emit, has_log
 		FROM steps WHERE position >= ? AND position <= ?
 		ORDER BY position
 	`, from, to)
@@ -118,10 +121,10 @@ func (s *Store) Timeline(from, to int64) ([]TimelineEntry, error) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	var entries []TimelineEntry
+	entries := []TimelineEntry{}
 	for rows.Next() {
 		var e TimelineEntry
-		if err := rows.Scan(&e.Position, &e.Status, &e.HasEmit, &e.HasLog); err != nil {
+		if err := rows.Scan(&e.Position, &e.EventType, &e.StreamID, &e.Status, &e.Partition, &e.HasEmit, &e.HasLog); err != nil {
 			return nil, fmt.Errorf("history: scan timeline: %w", err)
 		}
 		entries = append(entries, e)

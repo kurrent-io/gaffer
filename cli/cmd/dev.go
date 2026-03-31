@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"time"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -15,6 +14,7 @@ import (
 	dapserver "github.com/kurrent-io/gaffer/cli/internal/dap"
 	"github.com/kurrent-io/gaffer/cli/internal/env"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
+	"github.com/kurrent-io/gaffer/cli/internal/projection"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
 	"github.com/spf13/cobra"
 )
@@ -42,19 +42,7 @@ func init() {
 	devCmd.Flags().IntVar(&devDebugPort, "debug-port", 4711, "DAP debug server port")
 }
 
-type projectionInfo struct {
-	AllStreams                  bool     `json:"AllStreams"`
-	ByStreams                   bool     `json:"ByStreams"`
-	ByCustomPartitions          bool     `json:"ByCustomPartitions"`
-	IsBiState                   bool     `json:"IsBiState"`
-	DefinesStateTransform       bool     `json:"DefinesStateTransform"`
-	ProducesResults             bool     `json:"ProducesResults"`
-	HandlesDeletedNotifications bool     `json:"HandlesDeletedNotifications"`
-	IncludeLinks                bool     `json:"IncludeLinks"`
-	Categories                  []string `json:"Categories"`
-	Streams                     []string `json:"Streams"`
-	Events                      []string `json:"Events"`
-}
+type projectionInfo = projection.Info
 
 func runDev(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
@@ -484,50 +472,11 @@ func classifyError(err error) (code, description string) {
 }
 
 func getProjectionInfo(session *gafferruntime.Session) projectionInfo {
-	sourcesJSON := session.GetSources()
-	if sourcesJSON == nil {
-		return projectionInfo{}
-	}
-
-	var info projectionInfo
-	if err := json.Unmarshal([]byte(*sourcesJSON), &info); err != nil {
-		return projectionInfo{}
-	}
-
-	return info
+	return projection.GetInfo(session)
 }
 
 func buildSessionOptions(cfg *config.Config, proj *config.Projection, debug bool) *string {
-	opts := map[string]any{}
-
-	if debug {
-		opts["debug"] = true
-	}
-
-	if proj.Engine != "" {
-		opts["version"] = proj.Engine
-	}
-
-	if proj.ExecutionTimeout != nil && *proj.ExecutionTimeout > 0 {
-		opts["executionTimeoutMs"] = *proj.ExecutionTimeout
-	} else if cfg.ExecutionTimeout != nil && *cfg.ExecutionTimeout > 0 {
-		opts["executionTimeoutMs"] = *cfg.ExecutionTimeout
-	}
-
-	if cfg.CompilationTimeout != nil && *cfg.CompilationTimeout > 0 {
-		opts["compilationTimeoutMs"] = *cfg.CompilationTimeout
-	}
-
-	if len(opts) == 0 {
-		return nil
-	}
-
-	data, err := json.Marshal(opts)
-	if err != nil {
-		return nil
-	}
-	s := string(data)
-	return &s
+	return projection.BuildSessionOptions(cfg, proj, debug)
 }
 
 func buildSummary(session *gafferruntime.Session, info projectionInfo, partitions map[string]bool) summaryState {
@@ -573,46 +522,6 @@ func buildSummary(session *gafferruntime.Session, info projectionInfo, partition
 	return summary
 }
 
-const zeroUUID = "00000000-0000-0000-0000-000000000000"
-
 func loadEvents(path string) ([]string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("reading events file: %w", err)
-	}
-
-	var events []json.RawMessage
-	if err := json.Unmarshal(data, &events); err != nil {
-		return nil, fmt.Errorf("parsing events file (expected JSON array): %w", err)
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	result := make([]string, len(events))
-	for i, evt := range events {
-		var obj map[string]any
-		if err := json.Unmarshal(evt, &obj); err != nil {
-			return nil, fmt.Errorf("event %d: %w", i+1, err)
-		}
-
-		if _, ok := obj["sequenceNumber"]; !ok {
-			obj["sequenceNumber"] = i
-		}
-		if _, ok := obj["isJson"]; !ok {
-			obj["isJson"] = true
-		}
-		if _, ok := obj["eventId"]; !ok {
-			obj["eventId"] = zeroUUID
-		}
-		if _, ok := obj["created"]; !ok {
-			obj["created"] = now
-		}
-
-		normalized, err := json.Marshal(obj)
-		if err != nil {
-			return nil, fmt.Errorf("event %d: %w", i+1, err)
-		}
-		result[i] = string(normalized)
-	}
-
-	return result, nil
+	return projection.LoadEvents(path)
 }

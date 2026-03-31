@@ -70,6 +70,7 @@ func New(root string, cfg *config.Config) *Server {
 
 	s.registerTools()
 	s.registerResources()
+	s.registerPrompts()
 
 	return s
 }

@@ -24,6 +24,7 @@ func (s *Server) registerTools() {
 	mcp.AddTool(s.mcp, listProjectionsTool, s.handleListProjections)
 	mcp.AddTool(s.mcp, scaffoldTool, s.handleScaffold)
 	mcp.AddTool(s.mcp, debugTool, s.handleDebug)
+	mcp.AddTool(s.mcp, listEventsTool, s.handleListEvents)
 }
 
 // --- Tool definitions ---

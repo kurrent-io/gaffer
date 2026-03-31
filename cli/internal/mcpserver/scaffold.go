@@ -31,6 +31,10 @@ func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolError("name is required"), nil, nil
 	}
 
+	if strings.Contains(input.Name, "/") || strings.Contains(input.Name, "\\") || strings.Contains(input.Name, "..") {
+		return toolError("invalid projection name: %q", input.Name), nil, nil
+	}
+
 	if s.cfg.FindProjection(input.Name) != nil {
 		return toolError("projection %q already exists in gaffer.toml", input.Name), nil, nil
 	}

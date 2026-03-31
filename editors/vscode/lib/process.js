@@ -2,20 +2,22 @@ const { spawn } = require("child_process");
 const readline = require("readline");
 
 class GafferProcess {
-  constructor(command, log) {
-    this._log = log || (() => {});
+  constructor(command, options = {}) {
+    this._log = options.log || (() => {});
     this._proc = null;
     this._onLine = () => {};
     this._onExit = () => {};
     this._command = command;
+    this._cwd = options.cwd;
   }
 
   start() {
     const shell = process.env.SHELL || "/bin/sh";
-    this._log(`Spawning: ${shell} -i -c ${JSON.stringify(this._command)}`);
+    this._log(`Spawning: ${shell} -i -c ${JSON.stringify(this._command)}${this._cwd ? ` (cwd: ${this._cwd})` : ""}`);
 
     this._proc = spawn(shell, ["-i", "-c", this._command], {
       stdio: ["ignore", "pipe", "pipe"],
+      cwd: this._cwd,
     });
 
     const rl = readline.createInterface({ input: this._proc.stdout });

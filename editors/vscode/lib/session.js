@@ -2,10 +2,11 @@ const vscode = require("vscode");
 const { GafferProcess } = require("./process");
 
 class GafferSession {
-  constructor(name, command, log) {
+  constructor(name, command, options = {}) {
     this._name = name;
     this._command = command;
-    this._log = log;
+    this._log = options.log || (() => {});
+    this._cwd = options.cwd;
     this._proc = null;
     this._listeners = new Map();
     this._output = vscode.window.createOutputChannel(`Gaffer: ${name}`, "log");
@@ -23,7 +24,7 @@ class GafferSession {
   }
 
   start() {
-    this._proc = new GafferProcess(this._command, this._log);
+    this._proc = new GafferProcess(this._command, { log: this._log, cwd: this._cwd });
 
     this._proc.onLine((msg) => {
       this._dispatch(msg);

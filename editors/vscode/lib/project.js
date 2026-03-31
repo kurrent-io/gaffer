@@ -30,6 +30,13 @@ class ProjectIndex {
   get entryPaths() {
     return [...this._entries.keys()];
   }
+
+  get projectRoot() {
+    for (const entry of this._entries.values()) {
+      return entry.tomlDir;
+    }
+    return undefined;
+  }
 }
 
 function parseProjections(tomlPath) {

@@ -122,6 +122,7 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand("gaffer.debugProjection", async (args) => {
       const { name, tomlUri } = args;
+      const tomlDir = vscode.Uri.joinPath(tomlUri, "..").fsPath;
       const port = 4711;
       const command = cli.buildCommand(`dev ${name} --json --debug --debug-port ${port}`);
 
@@ -135,7 +136,7 @@ function activate(context) {
 
       setDebugState(name, "starting");
       log(`Starting: ${name}`);
-      const session = new GafferSession(name, command, log);
+      const session = new GafferSession(name, command, { log, cwd: tomlDir });
       activeSession = session;
 
       session.on("exit", (msg) => {
@@ -176,7 +177,6 @@ function activate(context) {
         return;
       }
 
-      const tomlDir = vscode.Uri.joinPath(tomlUri, "..").fsPath;
       const started = await vscode.debug.startDebugging(
         vscode.workspace.getWorkspaceFolder(tomlUri),
         {
@@ -223,7 +223,7 @@ function activate(context) {
   tomlWatcher.onDidChange(() => { log("gaffer.toml changed"); refreshAll(); });
   tomlWatcher.onDidCreate(() => {
     log("gaffer.toml created");
-    cli.fetchManifest().then(() => refreshAll()).catch(() => {});
+    cli.fetchManifest(projectIndex.projectRoot).then(() => refreshAll()).catch(() => {});
   });
   tomlWatcher.onDidDelete(() => { log("gaffer.toml deleted"); refreshAll(); });
   context.subscriptions.push(tomlWatcher);
@@ -231,12 +231,12 @@ function activate(context) {
   vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration("gaffer.command")) {
       log("gaffer.command setting changed, refetching manifest");
-      cli.fetchManifest().then(() => refreshAll()).catch(() => {});
+      cli.fetchManifest(projectIndex.projectRoot).then(() => refreshAll()).catch(() => {});
     }
   }, null, context.subscriptions);
 
   projectIndex.refresh().then(() => {
-    cli.fetchManifest().then(() => refreshAll()).catch(() => {
+    cli.fetchManifest(projectIndex.projectRoot).then(() => refreshAll()).catch(() => {
       vscode.window.showWarningMessage(
         "Gaffer CLI not found. Install gaffer or configure \"gaffer.command\" in settings.",
         "Open Settings"

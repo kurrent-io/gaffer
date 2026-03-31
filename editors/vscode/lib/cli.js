@@ -27,10 +27,10 @@ class GafferCli {
     return `${template} ${args}`;
   }
 
-  async fetchManifest() {
+  async fetchManifest(cwd) {
     const command = this.buildCommand("manifest");
     try {
-      const output = await execAsync(command);
+      const output = await execAsync(command, { cwd });
       this._manifest = JSON.parse(output);
       this._log(`Manifest loaded (v${this._manifest.version})`);
       return this._manifest;

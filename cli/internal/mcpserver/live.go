@@ -103,14 +103,17 @@ func (s *Server) runSubscriptionLoop(ctx context.Context, sess *activeSession, s
 			return
 		}
 		debug := sess.breakCh != nil
+		eventCount := sess.stats.Processed + sess.stats.Skipped + sess.stats.Errors + 1
 		if debug {
 			sess.pausedEvent = eventJSON
+			if sess.breakAtPosition > 0 && eventCount == sess.breakAtPosition {
+				sess.runtime.Pause()
+			}
 		}
 		s.mu.Unlock()
 
 		// Feed without holding the mutex - allows inspection tools to run
-		// while paused at a breakpoint. Safe because the runtime is
-		// single-threaded and suspended during a debug pause.
+		// while paused at a breakpoint.
 		result, feedErr := sess.runtime.Feed(eventJSON)
 
 		s.mu.Lock()

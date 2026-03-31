@@ -24,7 +24,6 @@ func (s *Server) registerTools() {
 	mcp.AddTool(s.mcp, getStateTool, s.handleGetState)
 	mcp.AddTool(s.mcp, listProjectionsTool, s.handleListProjections)
 	mcp.AddTool(s.mcp, scaffoldTool, s.handleScaffold)
-	mcp.AddTool(s.mcp, debugTool, s.handleDebug)
 	mcp.AddTool(s.mcp, evaluateTool, s.handleEvaluate)
 	mcp.AddTool(s.mcp, debugContinueTool, s.handleDebugContinue)
 	mcp.AddTool(s.mcp, stepOverTool, s.handleStepOver)
@@ -42,7 +41,7 @@ var validateTool = &mcp.Tool{
 
 var runTool = &mcp.Tool{
 	Name:        "run",
-	Description: "Run a projection against events. Creates a new session (replacing any existing one) and populates history for inspection. With events file: runs synchronously and returns summary. Without events file: starts a live KurrentDB subscription in the background - poll status to track progress. Set breakpoints to enable debug mode - execution pauses when a breakpoint is hit.",
+	Description: "Run a projection against events. Creates a new session (replacing any existing one). With events file and no debug options: runs synchronously and returns summary. Without events file: starts a live KurrentDB subscription in the background. Set breakpoints (source lines) or break_at (event position) to enable debug mode - runs in background, poll status for breakpoint_hit, then use evaluate/debug_step_over/debug_continue.",
 }
 
 var statusTool = &mcp.Tool{
@@ -99,6 +98,7 @@ type runInput struct {
 	Name        string            `json:"name" jsonschema:"Projection name from gaffer.toml"`
 	Events      string            `json:"events,omitempty" jsonschema:"Path to a JSON fixture file (relative to project root or absolute). Omit for live KurrentDB subscription."`
 	Breakpoints []breakpointInput `json:"breakpoints,omitempty" jsonschema:"Source line breakpoints to set before feeding events. Enables debug mode."`
+	BreakAt     int64             `json:"break_at,omitempty" jsonschema:"Pause at a specific event position (1-based). Enables debug mode."`
 }
 
 type statusInput struct{}
@@ -171,7 +171,7 @@ func (s *Server) handleRun(_ context.Context, _ *mcp.CallToolRequest, input runI
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	debug := len(input.Breakpoints) > 0
+	debug := len(input.Breakpoints) > 0 || input.BreakAt > 0
 
 	sess, err := s.createSession(input.Name, debug)
 	if err != nil {
@@ -190,11 +190,11 @@ func (s *Server) handleRun(_ context.Context, _ *mcp.CallToolRequest, input runI
 	}
 
 	if input.Events == "" {
-		return s.startLiveMode(sess)
+		return s.startLiveMode(sess, input.BreakAt)
 	}
 
 	if debug {
-		return s.runFixtureDebugMode(sess, input.Events)
+		return s.runFixtureDebugMode(sess, input.Events, input.BreakAt)
 	}
 
 	return s.runFixtureMode(sess, input.Events)
@@ -229,7 +229,10 @@ func (s *Server) setupBreakpoints(sess *activeSession, breakpoints []breakpointI
 	return nil
 }
 
-func (s *Server) startLiveMode(sess *activeSession) (*mcp.CallToolResult, any, error) {
+func (s *Server) startLiveMode(sess *activeSession, breakAt int64) (*mcp.CallToolResult, any, error) {
+	if breakAt > 0 {
+		sess.breakAtPosition = breakAt
+	}
 	if err := s.startLiveSubscription(sess); err != nil {
 		return toolError("%v", err), nil, nil
 	}
@@ -247,7 +250,7 @@ func (s *Server) startLiveMode(sess *activeSession) (*mcp.CallToolResult, any, e
 	return toolResult(result), nil, nil
 }
 
-func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string) (*mcp.CallToolResult, any, error) {
+func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string, breakAt int64) (*mcp.CallToolResult, any, error) {
 	if !filepath.IsAbs(eventsPath) {
 		eventsPath = filepath.Join(s.root, eventsPath)
 	}
@@ -257,12 +260,22 @@ func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string) (*m
 		return toolError("%v", err), nil, nil
 	}
 
+	if breakAt > int64(len(events)) {
+		return toolError("break_at %d exceeds total events (%d)", breakAt, len(events)), nil, nil
+	}
+
 	done := make(chan struct{})
 	sess.done = done
 
 	go func() {
 		defer close(done)
-		for _, evt := range events {
+		for i, evt := range events {
+			position := int64(i + 1)
+			if breakAt > 0 && position == breakAt {
+				sess.pausedEvent = evt
+				sess.runtime.Pause()
+			}
+
 			result, feedErr := sess.runtime.Feed(evt)
 
 			s.mu.Lock()

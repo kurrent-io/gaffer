@@ -37,14 +37,13 @@ type activeSession struct {
 	cancel     context.CancelFunc
 	lastError  error
 
-	// Debug state - set when paused at a breakpoint.
-	// paused is atomic because the OnBreak callback writes it from the cgo
-	// thread while status reads it under the mutex.
-	paused      atomic.Bool
-	feedDone    chan feedOutcome
-	pausedEvent string
-	breakCh     chan gafferruntime.BreakInfo
-	done        chan struct{}
+	// Debug state
+	paused          atomic.Bool
+	feedDone        chan feedOutcome
+	pausedEvent     string
+	breakCh         chan gafferruntime.BreakInfo
+	done            chan struct{}
+	breakAtPosition int64 // pause at this event position (1-based), 0 = disabled
 }
 
 type sessionStats struct {

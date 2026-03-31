@@ -102,7 +102,22 @@ func (s *Server) runSubscriptionLoop(ctx context.Context, sess *activeSession, s
 			s.mu.Unlock()
 			return
 		}
+		debug := sess.breakCh != nil
+		if debug {
+			sess.pausedEvent = eventJSON
+		}
+		s.mu.Unlock()
+
+		// Feed without holding the mutex - allows inspection tools to run
+		// while paused at a breakpoint. Safe because the runtime is
+		// single-threaded and suspended during a debug pause.
 		result, feedErr := sess.runtime.Feed(eventJSON)
+
+		s.mu.Lock()
+		if ctx.Err() != nil {
+			s.mu.Unlock()
+			return
+		}
 		if feedErr != nil {
 			sess.stats.Errors++
 			sess.stats.Status = "error"
@@ -122,6 +137,9 @@ func (s *Server) runSubscriptionLoop(ctx context.Context, sess *activeSession, s
 			if result.Partition != "" {
 				sess.partitions[result.Partition] = true
 			}
+		}
+		if debug {
+			sess.pausedEvent = ""
 		}
 		s.mu.Unlock()
 	}

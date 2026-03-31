@@ -42,7 +42,7 @@ var validateTool = &mcp.Tool{
 
 var runTool = &mcp.Tool{
 	Name:        "run",
-	Description: "Run a projection against events. Creates a new session (replacing any existing one) and populates history for inspection. With events file: runs synchronously and returns summary. Without events file: starts a live KurrentDB subscription in the background - poll status to track progress.",
+	Description: "Run a projection against events. Creates a new session (replacing any existing one) and populates history for inspection. With events file: runs synchronously and returns summary. Without events file: starts a live KurrentDB subscription in the background - poll status to track progress. Set breakpoints to enable debug mode - execution pauses when a breakpoint is hit.",
 }
 
 var statusTool = &mcp.Tool{
@@ -90,9 +90,15 @@ type validateInput struct {
 	Name string `json:"name" jsonschema:"Projection name from gaffer.toml"`
 }
 
+type breakpointInput struct {
+	Line      int    `json:"line" jsonschema:"Source line number (1-based)"`
+	Condition string `json:"condition,omitempty" jsonschema:"JS expression that must be truthy for the breakpoint to fire"`
+}
+
 type runInput struct {
-	Name   string `json:"name" jsonschema:"Projection name from gaffer.toml"`
-	Events string `json:"events,omitempty" jsonschema:"Path to a JSON fixture file (relative to project root or absolute). Omit for live KurrentDB subscription."`
+	Name        string            `json:"name" jsonschema:"Projection name from gaffer.toml"`
+	Events      string            `json:"events,omitempty" jsonschema:"Path to a JSON fixture file (relative to project root or absolute). Omit for live KurrentDB subscription."`
+	Breakpoints []breakpointInput `json:"breakpoints,omitempty" jsonschema:"Source line breakpoints to set before feeding events. Enables debug mode."`
 }
 
 type statusInput struct{}
@@ -165,7 +171,9 @@ func (s *Server) handleRun(_ context.Context, _ *mcp.CallToolRequest, input runI
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	sess, err := s.createSession(input.Name, false)
+	debug := len(input.Breakpoints) > 0
+
+	sess, err := s.createSession(input.Name, debug)
 	if err != nil {
 		if _, ok := err.(gafferruntime.ProjectionError); ok {
 			return toolResult(map[string]any{
@@ -175,11 +183,50 @@ func (s *Server) handleRun(_ context.Context, _ *mcp.CallToolRequest, input runI
 		return toolError("%v", err), nil, nil
 	}
 
+	if debug {
+		if err := s.setupBreakpoints(sess, input.Breakpoints); err != nil {
+			return toolError("%v", err), nil, nil
+		}
+	}
+
 	if input.Events == "" {
 		return s.startLiveMode(sess)
 	}
 
+	if debug {
+		return s.runFixtureDebugMode(sess, input.Events)
+	}
+
 	return s.runFixtureMode(sess, input.Events)
+}
+
+func (s *Server) setupBreakpoints(sess *activeSession, breakpoints []breakpointInput) error {
+	for _, bp := range breakpoints {
+		var opts *gafferruntime.BreakpointOptions
+		if bp.Condition != "" {
+			opts = &gafferruntime.BreakpointOptions{Condition: bp.Condition}
+		}
+		snapped, err := sess.runtime.SetBreakpoint(bp.Line, 0, opts)
+		if err != nil {
+			return fmt.Errorf("setting breakpoint at line %d: %w", bp.Line, err)
+		}
+		if snapped == nil {
+			return fmt.Errorf("no breakable position at or after line %d", bp.Line)
+		}
+	}
+
+	breakCh := make(chan gafferruntime.BreakInfo, 1)
+	sess.breakCh = breakCh
+
+	sess.runtime.OnBreak(func(info gafferruntime.BreakInfo) {
+		sess.paused.Store(true)
+		select {
+		case breakCh <- info:
+		default:
+		}
+	})
+
+	return nil
 }
 
 func (s *Server) startLiveMode(sess *activeSession) (*mcp.CallToolResult, any, error) {
@@ -187,11 +234,67 @@ func (s *Server) startLiveMode(sess *activeSession) (*mcp.CallToolResult, any, e
 		return toolError("%v", err), nil, nil
 	}
 
-	return toolResult(map[string]any{
+	result := map[string]any{
 		"projection": sess.name,
 		"status":     "running",
 		"mode":       "live",
 		"message":    "Live subscription started. Poll status to track progress. History is queryable as events are processed.",
+	}
+	if sess.breakCh != nil {
+		result["debug"] = true
+		result["message"] = "Live subscription started with breakpoints. Poll status for breakpoint_hit, then use evaluate/debug_continue."
+	}
+	return toolResult(result), nil, nil
+}
+
+func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string) (*mcp.CallToolResult, any, error) {
+	if !filepath.IsAbs(eventsPath) {
+		eventsPath = filepath.Join(s.root, eventsPath)
+	}
+
+	events, err := projection.LoadEvents(eventsPath)
+	if err != nil {
+		return toolError("%v", err), nil, nil
+	}
+
+	done := make(chan struct{})
+	sess.done = done
+
+	go func() {
+		defer close(done)
+		for _, evt := range events {
+			result, feedErr := sess.runtime.Feed(evt)
+
+			s.mu.Lock()
+			if feedErr != nil {
+				sess.stats.Errors++
+				sess.stats.Status = "error"
+				sess.lastError = feedErr
+				_, _ = sess.history.Insert(evt, `{"status":"error"}`)
+				s.mu.Unlock()
+				return
+			}
+
+			resultJSON, _ := json.Marshal(result)
+			_, _ = sess.history.Insert(evt, string(resultJSON))
+			s.recordResult(sess, result)
+			s.mu.Unlock()
+		}
+
+		s.mu.Lock()
+		if sess.stats.Status != "error" {
+			sess.stats.Status = "completed"
+		}
+		s.mu.Unlock()
+	}()
+
+	return toolResult(map[string]any{
+		"projection":  sess.name,
+		"status":      "running",
+		"mode":        "fixture_debug",
+		"debug":       true,
+		"totalEvents": len(events),
+		"message":     "Running with breakpoints. Poll status for breakpoint_hit, then use evaluate/debug_continue.",
 	}), nil, nil
 }
 
@@ -257,7 +360,7 @@ func (s *Server) handleStatus(_ context.Context, _ *mcp.CallToolRequest, _ statu
 
 	result := map[string]any{
 		"projection":  s.session.name,
-		"status":      s.session.stats.Status,
+		"status":      s.sessionStatus(),
 		"processed":   s.session.stats.Processed,
 		"skipped":     s.session.stats.Skipped,
 		"errors":      s.session.stats.Errors,
@@ -411,6 +514,13 @@ func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest
 }
 
 // --- Helpers ---
+
+func (s *Server) sessionStatus() string {
+	if s.session.paused.Load() {
+		return "breakpoint_hit"
+	}
+	return s.session.stats.Status
+}
 
 func (s *Server) resolveRange(from, to int64) (int64, int64) {
 	minPos, maxPos, _ := s.session.history.Range()

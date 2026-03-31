@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -36,11 +37,14 @@ type activeSession struct {
 	cancel     context.CancelFunc
 	lastError  error
 
-	// Debug state - set when paused at a breakpoint
-	paused      bool
+	// Debug state - set when paused at a breakpoint.
+	// paused is atomic because the OnBreak callback writes it from the cgo
+	// thread while status reads it under the mutex.
+	paused      atomic.Bool
 	feedDone    chan feedOutcome
 	pausedEvent string
 	breakCh     chan gafferruntime.BreakInfo
+	done        chan struct{}
 }
 
 type sessionStats struct {
@@ -129,13 +133,19 @@ func (s *Server) closeSession() {
 		if s.session.cancel != nil {
 			s.session.cancel()
 		}
-		if s.session.paused {
+		if s.session.paused.Load() {
 			s.session.runtime.ClearBreakpoints()
 			s.session.runtime.Continue()
-			if s.session.feedDone != nil {
-				<-s.session.feedDone
-			}
-			s.session.paused = false
+			s.session.paused.Store(false)
+		}
+		if s.session.done != nil {
+			done := s.session.done
+			s.mu.Unlock()
+			<-done
+			s.mu.Lock()
+		}
+		if s.session.feedDone != nil {
+			<-s.session.feedDone
 		}
 		s.session.runtime.Destroy()
 		_ = s.session.history.Close()

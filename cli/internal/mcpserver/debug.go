@@ -60,12 +60,22 @@ func (s *Server) handleDebug(_ context.Context, _ *mcp.CallToolRequest, input de
 		return toolError("break_at %d exceeds total events (%d)", input.BreakAt, len(events)), nil, nil
 	}
 
-	// Set up break signaling - channel reused across steps
-	breakCh := make(chan gafferruntime.BreakInfo, 1)
-	sess.breakCh = breakCh
-	sess.runtime.OnBreak(func(info gafferruntime.BreakInfo) {
-		breakCh <- info
-	})
+	if input.Condition != "" && input.Line == 0 {
+		return toolError("condition requires line to be set"), nil, nil
+	}
+
+	// Set up breakpoints via shared setup if line specified, otherwise use Pause
+	if input.Line > 0 {
+		if err := s.setupBreakpoints(sess, []breakpointInput{
+			{Line: input.Line, Condition: input.Condition},
+		}); err != nil {
+			return toolError("%v", err), nil, nil
+		}
+	} else {
+		if err := s.setupBreakpoints(sess, nil); err != nil {
+			return toolError("%v", err), nil, nil
+		}
+	}
 
 	// Feed events up to the target without debugging
 	for i := int64(0); i < input.BreakAt-1; i++ {
@@ -78,24 +88,8 @@ func (s *Server) handleDebug(_ context.Context, _ *mcp.CallToolRequest, input de
 		s.recordResult(sess, result)
 	}
 
-	if input.Condition != "" && input.Line == 0 {
-		return toolError("condition requires line to be set"), nil, nil
-	}
-
-	// Set breakpoint: either a source line or pause at entry
-	if input.Line > 0 {
-		var opts *gafferruntime.BreakpointOptions
-		if input.Condition != "" {
-			opts = &gafferruntime.BreakpointOptions{Condition: input.Condition}
-		}
-		snapped, err := sess.runtime.SetBreakpoint(input.Line, 0, opts)
-		if err != nil {
-			return toolError("setting breakpoint: %v", err), nil, nil
-		}
-		if snapped == nil {
-			return toolError("no breakable position at or after line %d", input.Line), nil, nil
-		}
-	} else {
+	// Pause at entry if no line breakpoint
+	if input.Line == 0 {
 		sess.runtime.Pause()
 	}
 
@@ -109,11 +103,11 @@ func (s *Server) handleDebug(_ context.Context, _ *mcp.CallToolRequest, input de
 
 	// Wait for break or feed completion (event may be skipped/errored without pausing)
 	select {
-	case breakInfo := <-breakCh:
+	case breakInfo := <-sess.breakCh:
 		debugContext := s.collectDebugContext(sess, breakInfo)
 
 		// Leave the session paused for evaluate/continue calls
-		sess.paused = true
+		sess.paused.Store(true)
 		sess.feedDone = feedDone
 		sess.pausedEvent = targetEvent
 		sess.stats.Status = "paused"
@@ -167,7 +161,7 @@ func (s *Server) handleEvaluate(_ context.Context, _ *mcp.CallToolRequest, input
 	if s.session == nil {
 		return toolError("no active session - call debug first"), nil, nil
 	}
-	if !s.session.paused {
+	if !s.session.paused.Load() {
 		return toolError("session is not paused - call debug with break_at first"), nil, nil
 	}
 	if input.Expression == "" {
@@ -200,26 +194,37 @@ func (s *Server) handleDebugContinue(_ context.Context, _ *mcp.CallToolRequest, 
 	if s.session == nil {
 		return toolError("no active session"), nil, nil
 	}
-	if !s.session.paused {
+	if !s.session.paused.Load() {
 		return toolError("session is not paused"), nil, nil
 	}
 
 	sess := s.session
-	eventJSON := sess.pausedEvent
 
+	// Live debug mode - resume and return immediately.
+	// The subscription goroutine resumes feeding. Agent polls status for next break.
+	if sess.feedDone == nil {
+		sess.paused.Store(false)
+		sess.stats.Status = "running"
+		sess.runtime.Continue()
+		return toolResult(map[string]any{
+			"resumed": true,
+			"mode":    "live",
+			"hint":    "Subscription resumed. Poll status for the next breakpoint_hit.",
+		}), nil, nil
+	}
+
+	// Fixture debug mode - wait for next breakpoint or feed completion
+	eventJSON := sess.pausedEvent
 	sess.runtime.Continue()
 
-	// Wait for next breakpoint or feed completion
 	select {
 	case breakInfo := <-sess.breakCh:
-		// Hit another breakpoint - stay paused
 		debugContext := s.collectDebugContext(sess, breakInfo)
 		debugContext["paused"] = true
 		return toolResult(debugContext), nil, nil
 
 	case outcome := <-sess.feedDone:
-		// Handler finished
-		sess.paused = false
+		sess.paused.Store(false)
 		sess.feedDone = nil
 		sess.pausedEvent = ""
 		sess.breakCh = nil
@@ -348,27 +353,39 @@ func (s *Server) doStep(stepFn func(*activeSession)) (*mcp.CallToolResult, any, 
 	if s.session == nil {
 		return toolError("no active session"), nil, nil
 	}
-	if !s.session.paused {
+	if !s.session.paused.Load() {
 		return toolError("session is not paused"), nil, nil
 	}
 
 	sess := s.session
 
-	// Issue the step command - runtime advances and re-pauses
+	// Issue the step command - the C runtime advances and re-pauses.
 	stepFn(sess)
 
-	// Wait for break (step completed) or feed completion (handler finished)
+	// For live/fixture-debug-run mode (no feedDone), return immediately.
+	// The background goroutine handles its own state. Agent polls status.
+	if sess.feedDone == nil {
+		sess.paused.Store(false)
+		sess.stats.Status = "running"
+		return toolResult(map[string]any{
+			"stepped": true,
+			"hint":    "Step issued. Poll status for the next breakpoint_hit or completion.",
+		}), nil, nil
+	}
+
+	// For debug-tool mode (has feedDone), wait for break or completion.
 	select {
 	case breakInfo := <-sess.breakCh:
+		sess.paused.Store(true)
+		sess.stats.Status = "breakpoint_hit"
 		debugContext := s.collectDebugContext(sess, breakInfo)
 		debugContext["paused"] = true
 		return toolResult(debugContext), nil, nil
 
 	case outcome := <-sess.feedDone:
-		// Step caused the handler to finish - event processing complete
 		eventJSON := sess.pausedEvent
 
-		sess.paused = false
+		sess.paused.Store(false)
 		sess.feedDone = nil
 		sess.pausedEvent = ""
 		sess.breakCh = nil

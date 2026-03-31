@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/env"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/projection"
@@ -97,6 +99,30 @@ func (s *Server) Run(ctx context.Context) error {
 	return err
 }
 
+func (s *Server) connectToKurrentDB() (*kurrentdb.Client, error) {
+	if s.cfg.Connection == "" {
+		return nil, fmt.Errorf("no connection configured in gaffer.toml")
+	}
+
+	if err := env.Load(s.root, ""); err != nil {
+		return nil, fmt.Errorf("loading .env: %w", err)
+	}
+
+	dbConfig, err := kurrentdb.ParseConnectionString(s.cfg.Connection)
+	if err != nil {
+		return nil, fmt.Errorf("invalid connection string: %w", err)
+	}
+
+	username, password := env.Credentials()
+	if username != "" {
+		dbConfig.Username = username
+		dbConfig.Password = password
+	}
+	dbConfig.Logger = kurrentdb.NoopLogging()
+
+	return kurrentdb.NewClient(dbConfig)
+}
+
 func (s *Server) closeSession() {
 	if s.session != nil {
 		if s.session.cancel != nil {
@@ -116,7 +142,7 @@ func (s *Server) closeSession() {
 	}
 }
 
-func (s *Server) createSession(name string) (*activeSession, error) {
+func (s *Server) createSession(name string, debug bool) (*activeSession, error) {
 	s.closeSession()
 
 	proj := s.cfg.FindProjection(name)
@@ -129,7 +155,7 @@ func (s *Server) createSession(name string) (*activeSession, error) {
 		return nil, fmt.Errorf("reading projection source: %w", err)
 	}
 
-	opts := projection.BuildSessionOptions(s.cfg, proj, false)
+	opts := projection.BuildSessionOptions(s.cfg, proj, debug)
 	runtime, err := gafferruntime.NewSession(string(source), opts)
 	if err != nil {
 		return nil, err
@@ -143,13 +169,18 @@ func (s *Server) createSession(name string) (*activeSession, error) {
 
 	info := projection.GetInfo(runtime)
 
+	status := "ready"
+	if debug {
+		status = "debugging"
+	}
+
 	s.session = &activeSession{
 		runtime:    runtime,
 		history:    store,
 		info:       info,
 		name:       name,
 		partitions: make(map[string]bool),
-		stats:      sessionStats{Status: "ready"},
+		stats:      sessionStats{Status: status},
 	}
 
 	return s.session, nil

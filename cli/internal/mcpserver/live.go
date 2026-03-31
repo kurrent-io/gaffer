@@ -7,35 +7,13 @@ import (
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
-	"github.com/kurrent-io/gaffer/cli/internal/env"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
 )
 
 func (s *Server) startLiveSubscription(sess *activeSession) error {
-	connStr := s.cfg.Connection
-	if connStr == "" {
-		return fmt.Errorf("no connection configured in gaffer.toml")
-	}
-
-	if err := env.Load(s.root, ""); err != nil {
-		return fmt.Errorf("loading .env: %w", err)
-	}
-
-	dbConfig, err := kurrentdb.ParseConnectionString(connStr)
+	client, err := s.connectToKurrentDB()
 	if err != nil {
-		return fmt.Errorf("invalid connection string: %w", err)
-	}
-
-	username, password := env.Credentials()
-	if username != "" {
-		dbConfig.Username = username
-		dbConfig.Password = password
-	}
-	dbConfig.Logger = kurrentdb.NoopLogging()
-
-	client, err := kurrentdb.NewClient(dbConfig)
-	if err != nil {
-		return fmt.Errorf("connecting to KurrentDB: %w", err)
+		return err
 	}
 
 	engine := "v2"

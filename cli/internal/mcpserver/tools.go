@@ -33,7 +33,7 @@ func (s *Server) registerTools() {
 
 var validateTool = &mcp.Tool{
 	Name:        "validate",
-	Description: "Compile and check a projection without running it. Returns whether the source is valid and projection metadata (source type, events, partitioning).",
+	Description: "Compile and check a projection without running it. Returns whether the source is valid and projection metadata (source type, events, partitioning). Does not create or affect any session.",
 }
 
 var runTool = &mcp.Tool{
@@ -58,7 +58,7 @@ var getStepTool = &mcp.Tool{
 
 var getHistoryTool = &mcp.Tool{
 	Name:        "get_history",
-	Description: "Get state and steps between two positions in the active session's history. Returns the full state before and after the range, plus all steps in between.",
+	Description: "Get state snapshots and a compact step summary between two positions. Returns the projection state before the range, the state after the range, and timeline entries for each step in between. Use get_step for full event/result detail at a specific position.",
 }
 
 var getTimelineTool = &mcp.Tool{
@@ -121,11 +121,10 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 	opts := projection.BuildSessionOptions(s.cfg, proj, false)
 	session, err := gafferruntime.NewSession(string(source), opts)
 	if err != nil {
-		if projErr, ok := err.(gafferruntime.ProjectionError); ok {
+		if _, ok := err.(gafferruntime.ProjectionError); ok {
 			return toolResult(map[string]any{
-				"valid": false,
-				"error": projErr.Error(),
-				"code":  projErr.ErrorCode(),
+				"valid":     false,
+				"lastError": classifyError(err),
 			}), nil, nil
 		}
 		return toolError("creating session: %v", err), nil, nil
@@ -151,12 +150,11 @@ func (s *Server) handleRun(_ context.Context, _ *mcp.CallToolRequest, input runI
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	sess, err := s.createSession(input.Name)
+	sess, err := s.createSession(input.Name, false)
 	if err != nil {
-		if projErr, ok := err.(gafferruntime.ProjectionError); ok {
+		if _, ok := err.(gafferruntime.ProjectionError); ok {
 			return toolResult(map[string]any{
-				"error": projErr.Error(),
-				"code":  projErr.ErrorCode(),
+				"lastError": classifyError(err),
 			}), nil, nil
 		}
 		return toolError("%v", err), nil, nil
@@ -210,14 +208,7 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 			return toolError("recording history: %v", insertErr), nil, nil
 		}
 
-		if result.Status == "skipped" {
-			sess.stats.Skipped++
-		} else {
-			sess.stats.Processed++
-			if result.Partition != "" {
-				sess.partitions[result.Partition] = true
-			}
-		}
+		s.recordResult(sess, result)
 	}
 
 	if faultErr == nil {
@@ -358,11 +349,15 @@ func (s *Server) handleGetTimeline(_ context.Context, _ *mcp.CallToolRequest, in
 func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest, _ listProjectionsInput) (*mcp.CallToolResult, any, error) {
 	projections := []map[string]any{}
 	for _, proj := range s.cfg.Projection {
-		projections = append(projections, map[string]any{
+		entry := map[string]any{
 			"name":   proj.Name,
 			"entry":  proj.Entry,
 			"engine": engineOrDefault(proj.Engine),
-		})
+		}
+		if proj.Enabled != nil && !*proj.Enabled {
+			entry["enabled"] = false
+		}
+		projections = append(projections, entry)
 	}
 
 	return toolResult(map[string]any{

@@ -8,13 +8,12 @@ import (
 	"strings"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
-	"github.com/kurrent-io/gaffer/cli/internal/env"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 var listEventsTool = &mcp.Tool{
 	Name:        "list_events",
-	Description: "Discover event types in the database by sampling events. Returns event types with counts and example data. Requires a KurrentDB connection in gaffer.toml.",
+	Description: "Discover event types by reading events from the start of a stream or $all. Returns event types with counts and one example body per type. Reads up to 500 events by default (max 10000). System events ($-prefixed) are excluded. Requires a KurrentDB connection in gaffer.toml.",
 }
 
 type listEventsInput struct {
@@ -24,30 +23,9 @@ type listEventsInput struct {
 }
 
 func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, input listEventsInput) (*mcp.CallToolResult, any, error) {
-	connStr := s.cfg.Connection
-	if connStr == "" {
-		return toolError("no connection configured in gaffer.toml"), nil, nil
-	}
-
-	if err := env.Load(s.root, ""); err != nil {
-		return toolError("loading .env: %v", err), nil, nil
-	}
-
-	dbConfig, err := kurrentdb.ParseConnectionString(connStr)
+	client, err := s.connectToKurrentDB()
 	if err != nil {
-		return toolError("invalid connection string: %v", err), nil, nil
-	}
-
-	username, password := env.Credentials()
-	if username != "" {
-		dbConfig.Username = username
-		dbConfig.Password = password
-	}
-	dbConfig.Logger = kurrentdb.NoopLogging()
-
-	client, err := kurrentdb.NewClient(dbConfig)
-	if err != nil {
-		return toolError("connecting to KurrentDB: %v", err), nil, nil
+		return toolError("%v", err), nil, nil
 	}
 	defer func() { _ = client.Close() }()
 

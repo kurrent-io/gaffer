@@ -69,15 +69,20 @@ func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolError("writing file: %v", err), nil, nil
 	}
 
-	s.cfg.Projection = append(s.cfg.Projection, config.Projection{
+	newProj := config.Projection{
 		Name:  input.Name,
 		Entry: relPath,
-	})
+	}
+
+	updated := *s.cfg
+	updated.Projection = append(updated.Projection, newProj)
 
 	configPath := filepath.Join(s.root, "gaffer.toml")
-	if err := config.Save(configPath, s.cfg); err != nil {
+	if err := config.Save(configPath, &updated); err != nil {
 		return toolError("updating gaffer.toml: %v", err), nil, nil
 	}
+
+	s.cfg.Projection = updated.Projection
 
 	return toolResult(map[string]any{
 		"created": relPath,

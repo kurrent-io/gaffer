@@ -8,14 +8,13 @@ import (
 	"sync"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
-	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/kurrent-io/gaffer/cli/internal/projection"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 var debugTool = &mcp.Tool{
 	Name:        "debug",
-	Description: "Run a projection with debug enabled, pausing at a specific event position. Returns the full debug context at that point: state, call stack, scopes, and variables. Also populates session history up to that position for inspection with other tools.",
+	Description: "Run a projection with debug enabled, pausing at a specific event position. Creates a new session (replacing any existing one). Returns call stack, local variables, and state at the breakpoint. Session stays paused for evaluate calls, then call debug_continue to resume.",
 }
 
 type debugInput struct {
@@ -36,12 +35,11 @@ func (s *Server) handleDebug(_ context.Context, _ *mcp.CallToolRequest, input de
 	}
 
 	// Create a debug-enabled session
-	sess, err := s.createDebugSession(input.Name)
+	sess, err := s.createSession(input.Name, true)
 	if err != nil {
-		if projErr, ok := err.(gafferruntime.ProjectionError); ok {
+		if _, ok := err.(gafferruntime.ProjectionError); ok {
 			return toolResult(map[string]any{
-				"error": projErr.Error(),
-				"code":  projErr.ErrorCode(),
+				"lastError": classifyError(err),
 			}), nil, nil
 		}
 		return toolError("%v", err), nil, nil
@@ -190,6 +188,8 @@ func (s *Server) handleDebugContinue(_ context.Context, _ *mcp.CallToolRequest, 
 	}
 
 	sess := s.session
+	eventJSON := sess.pausedEvent
+
 	sess.runtime.Continue()
 	outcome := <-sess.feedDone
 
@@ -201,6 +201,7 @@ func (s *Server) handleDebugContinue(_ context.Context, _ *mcp.CallToolRequest, 
 		sess.stats.Errors++
 		sess.stats.Status = "error"
 		sess.lastError = outcome.err
+		_, _ = sess.history.Insert(eventJSON, `{"status":"error"}`)
 		return toolResult(map[string]any{
 			"resumed":   true,
 			"feedError": classifyError(outcome.err),
@@ -208,7 +209,7 @@ func (s *Server) handleDebugContinue(_ context.Context, _ *mcp.CallToolRequest, 
 	}
 
 	resultJSON, _ := json.Marshal(outcome.result)
-	_, _ = sess.history.Insert(sess.pausedEvent, string(resultJSON))
+	_, _ = sess.history.Insert(eventJSON, string(resultJSON))
 	s.recordResult(sess, outcome.result)
 	sess.stats.Status = "completed"
 
@@ -279,43 +280,4 @@ func (s *Server) collectDebugContext(sess *activeSession, info gafferruntime.Bre
 	}
 
 	return result
-}
-
-func (s *Server) createDebugSession(name string) (*activeSession, error) {
-	s.closeSession()
-
-	proj := s.cfg.FindProjection(name)
-	if proj == nil {
-		return nil, fmt.Errorf("projection %q not found in gaffer.toml", name)
-	}
-
-	source, err := readProjectionSource(s.root, proj.Entry)
-	if err != nil {
-		return nil, err
-	}
-
-	opts := projection.BuildSessionOptions(s.cfg, proj, true)
-	runtime, err := gafferruntime.NewSession(string(source), opts)
-	if err != nil {
-		return nil, err
-	}
-
-	store, err := history.New()
-	if err != nil {
-		runtime.Destroy()
-		return nil, err
-	}
-
-	info := projection.GetInfo(runtime)
-
-	s.session = &activeSession{
-		runtime:    runtime,
-		history:    store,
-		info:       info,
-		name:       name,
-		partitions: make(map[string]bool),
-		stats:      sessionStats{Status: "debugging"},
-	}
-
-	return s.session, nil
 }

@@ -22,6 +22,7 @@ func (s *Server) registerTools() {
 	mcp.AddTool(s.mcp, getHistoryTool, s.handleGetHistory)
 	mcp.AddTool(s.mcp, getTimelineTool, s.handleGetTimeline)
 	mcp.AddTool(s.mcp, listProjectionsTool, s.handleListProjections)
+	mcp.AddTool(s.mcp, debugTool, s.handleDebug)
 }
 
 // --- Tool definitions ---

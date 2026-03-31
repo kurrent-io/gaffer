@@ -48,6 +48,14 @@ const testBrokenProjection = `fromAll().when({
 func setupTestProject(t *testing.T) *Server {
 	t.Helper()
 	dir := t.TempDir()
+	var s *Server
+	t.Cleanup(func() {
+		if s != nil {
+			s.mu.Lock()
+			s.closeSession()
+			s.mu.Unlock()
+		}
+	})
 
 	projDir := filepath.Join(dir, "projections")
 	if err := os.MkdirAll(projDir, 0o755); err != nil {
@@ -81,7 +89,8 @@ func setupTestProject(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 
-	return New(dir, cfg)
+	s = New(dir, cfg)
+	return s
 }
 
 func callTool[In any](t *testing.T, s *Server, tool *mcp.Tool, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error), input In) map[string]any {
@@ -405,17 +414,17 @@ func TestRun_Breakpoints(t *testing.T) {
 		t.Fatal("expected debug=true")
 	}
 
-	// Continue past all breakpoints until completed
-	for i := 0; i < 20; i++ {
-		waitForStatus(t, s, "breakpoint_hit", 5*time.Second)
-		callTool(t, s, debugContinueTool, s.handleDebugContinue, debugContinueInput{})
-
-		// Check if we're done
-		time.Sleep(50 * time.Millisecond)
+	// Continue past breakpoints until completed
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
 		status := callTool(t, s, statusTool, s.handleStatus, statusInput{})
 		if status["status"] == "completed" {
 			return
 		}
+		if status["status"] == "breakpoint_hit" {
+			callTool(t, s, debugContinueTool, s.handleDebugContinue, debugContinueInput{})
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	t.Fatal("never reached completed status")
@@ -432,4 +441,182 @@ func TestEvaluate_NotPaused(t *testing.T) {
 	s := setupTestProject(t)
 	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
 	callToolExpectError(t, s.handleEvaluate, evaluateInput{Expression: "1+1"})
+}
+
+// --- Step tools ---
+
+func TestStepOver(t *testing.T) {
+	s := setupTestProject(t)
+
+	callTool(t, s, runTool, s.handleRun, runInput{
+		Name:    "order-count",
+		Events:  "fixtures/orders.json",
+		BreakAt: 3,
+	})
+
+	waitForStatus(t, s, "breakpoint_hit", 5*time.Second)
+
+	// Step over should advance to the next line
+	result, _, err := s.handleStepOver(context.Background(), nil, debugStepInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var data map[string]any
+	if err := json.Unmarshal([]byte(result.Content[0].(*mcp.TextContent).Text), &data); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should either be paused at the next line or completed (stepped past last statement)
+	if data["paused"] == true {
+		bp := data["breakpoint"].(map[string]any)
+		if bp["reason"] != "step" {
+			t.Errorf("expected reason=step, got %v", bp["reason"])
+		}
+	}
+}
+
+// --- get_state unknown partition ---
+
+func TestGetState_UnknownPartition(t *testing.T) {
+	s := setupTestProject(t)
+	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
+
+	result := callTool(t, s, getStateTool, s.handleGetState, getStateInput{Partition: "nonexistent"})
+	if result["partition"] != "nonexistent" {
+		t.Errorf("expected partition=nonexistent, got %v", result["partition"])
+	}
+	if _, hasState := result["state"]; hasState {
+		t.Error("expected no state key for unknown partition")
+	}
+}
+
+// --- closeSession while paused ---
+
+func TestStop_WhilePaused(t *testing.T) {
+	s := setupTestProject(t)
+
+	callTool(t, s, runTool, s.handleRun, runInput{
+		Name:    "order-count",
+		Events:  "fixtures/orders.json",
+		BreakAt: 2,
+	})
+
+	waitForStatus(t, s, "breakpoint_hit", 5*time.Second)
+
+	// Stop should cleanly tear down the paused session
+	callTool(t, s, stopTool, s.handleStop, stopInput{})
+
+	// Session should be gone
+	callToolExpectError(t, s.handleStatus, statusInput{})
+}
+
+// --- Resources ---
+
+func TestResourceConfig(t *testing.T) {
+	s := setupTestProject(t)
+	result, err := s.handleConfigResource(context.Background(), &mcp.ReadResourceRequest{
+		Params: &mcp.ReadResourceParams{URI: "gaffer://project/config"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Contents) != 1 {
+		t.Fatal("expected 1 resource content")
+	}
+	if result.Contents[0].Text == "" {
+		t.Error("expected non-empty config content")
+	}
+}
+
+func TestResourceDocs(t *testing.T) {
+	handler := staticResource("resources/projection-api.md")
+	result, err := handler(context.Background(), &mcp.ReadResourceRequest{
+		Params: &mcp.ReadResourceParams{URI: "gaffer://docs/projection-api"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Contents) != 1 {
+		t.Fatal("expected 1 resource content")
+	}
+	if len(result.Contents[0].Text) < 100 {
+		t.Error("expected substantial doc content")
+	}
+}
+
+// --- Prompts ---
+
+func TestWriteProjectionPrompt(t *testing.T) {
+	s := setupTestProject(t)
+	result, err := s.handleWriteProjectionPrompt(context.Background(), &mcp.GetPromptRequest{
+		Params: &mcp.GetPromptParams{
+			Arguments: map[string]string{
+				"requirements": "count all OrderPlaced events",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Messages) != 1 {
+		t.Fatal("expected 1 message")
+	}
+	text := result.Messages[0].Content.(*mcp.TextContent).Text
+	if len(text) < 500 {
+		t.Error("expected substantial prompt content")
+	}
+}
+
+func TestFixProjectionPrompt(t *testing.T) {
+	s := setupTestProject(t)
+	result, err := s.handleFixProjectionPrompt(context.Background(), &mcp.GetPromptRequest{
+		Params: &mcp.GetPromptParams{
+			Arguments: map[string]string{
+				"name":    "order-count",
+				"problem": "state resets on every event",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := result.Messages[0].Content.(*mcp.TextContent).Text
+	if len(text) < 500 {
+		t.Error("expected substantial prompt content")
+	}
+}
+
+func TestFixProjectionPrompt_NotFound(t *testing.T) {
+	s := setupTestProject(t)
+	_, err := s.handleFixProjectionPrompt(context.Background(), &mcp.GetPromptRequest{
+		Params: &mcp.GetPromptParams{
+			Arguments: map[string]string{
+				"name": "nonexistent",
+			},
+		},
+	})
+	if err == nil {
+		t.Error("expected error for unknown projection")
+	}
+}
+
+// --- Session replacement isolation ---
+
+func TestRun_ReplacesSession_FreshHistory(t *testing.T) {
+	s := setupTestProject(t)
+
+	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
+
+	status1 := callTool(t, s, statusTool, s.handleStatus, statusInput{})
+	if status1["processed"].(float64) != 5 {
+		t.Fatalf("first run: expected 5 processed, got %v", status1["processed"])
+	}
+
+	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
+
+	status2 := callTool(t, s, statusTool, s.handleStatus, statusInput{})
+	if status2["processed"].(float64) != 5 {
+		t.Errorf("second run: expected 5 processed (fresh), got %v", status2["processed"])
+	}
 }

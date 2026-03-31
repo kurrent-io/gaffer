@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"sync"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/projection"
@@ -14,13 +13,14 @@ import (
 
 var debugTool = &mcp.Tool{
 	Name:        "debug",
-	Description: "Run a projection with debug enabled, pausing at a specific event position. Creates a new session (replacing any existing one). Returns call stack, local variables, and state at the breakpoint. Session stays paused for evaluate calls, then call debug_continue to resume.",
+	Description: "Run a projection with debug enabled, pausing at a specific event. Creates a new session (replacing any existing one). Set break_at to choose which event to debug. Optionally set line to break at a specific source line instead of pausing at handler entry. Session stays paused for evaluate/step/continue calls.",
 }
 
 type debugInput struct {
 	Name    string `json:"name" jsonschema:"Projection name from gaffer.toml"`
 	Events  string `json:"events" jsonschema:"Path to a JSON fixture file (relative to project root or absolute)"`
 	BreakAt int64  `json:"break_at" jsonschema:"Event position (1-based) to pause at"`
+	Line    int    `json:"line,omitempty" jsonschema:"Source line to set a breakpoint on (instead of pausing at entry). 1-based."`
 }
 
 func (s *Server) handleDebug(_ context.Context, _ *mcp.CallToolRequest, input debugInput) (*mcp.CallToolResult, any, error) {
@@ -59,13 +59,11 @@ func (s *Server) handleDebug(_ context.Context, _ *mcp.CallToolRequest, input de
 		return toolError("break_at %d exceeds total events (%d)", input.BreakAt, len(events)), nil, nil
 	}
 
-	// Set up break signaling
-	var breakOnce sync.Once
+	// Set up break signaling - channel reused across steps
 	breakCh := make(chan gafferruntime.BreakInfo, 1)
+	sess.breakCh = breakCh
 	sess.runtime.OnBreak(func(info gafferruntime.BreakInfo) {
-		breakOnce.Do(func() {
-			breakCh <- info
-		})
+		breakCh <- info
 	})
 
 	// Feed events up to the target without debugging
@@ -79,8 +77,18 @@ func (s *Server) handleDebug(_ context.Context, _ *mcp.CallToolRequest, input de
 		s.recordResult(sess, result)
 	}
 
-	// Pause before the target event
-	sess.runtime.Pause()
+	// Set breakpoint: either a source line or pause at entry
+	if input.Line > 0 {
+		snapped, err := sess.runtime.SetBreakpoint(input.Line, 0, nil)
+		if err != nil {
+			return toolError("setting breakpoint: %v", err), nil, nil
+		}
+		if snapped == nil {
+			return toolError("no breakable position at or after line %d", input.Line), nil, nil
+		}
+	} else {
+		sess.runtime.Pause()
+	}
 
 	// Feed the target event in a goroutine (it will block at the breakpoint)
 	targetEvent := events[input.BreakAt-1]
@@ -191,32 +199,45 @@ func (s *Server) handleDebugContinue(_ context.Context, _ *mcp.CallToolRequest, 
 	eventJSON := sess.pausedEvent
 
 	sess.runtime.Continue()
-	outcome := <-sess.feedDone
 
-	sess.paused = false
-	sess.feedDone = nil
-	sess.pausedEvent = ""
+	// Wait for next breakpoint or feed completion
+	select {
+	case breakInfo := <-sess.breakCh:
+		// Hit another breakpoint - stay paused
+		debugContext := s.collectDebugContext(sess, breakInfo)
+		debugContext["paused"] = true
+		return toolResult(debugContext), nil, nil
 
-	if outcome.err != nil {
-		sess.stats.Errors++
-		sess.stats.Status = "error"
-		sess.lastError = outcome.err
-		_, _ = sess.history.Insert(eventJSON, `{"status":"error"}`)
+	case outcome := <-sess.feedDone:
+		// Handler finished
+		sess.paused = false
+		sess.feedDone = nil
+		sess.pausedEvent = ""
+		sess.breakCh = nil
+
+		if outcome.err != nil {
+			sess.stats.Errors++
+			sess.stats.Status = "error"
+			sess.lastError = outcome.err
+			_, _ = sess.history.Insert(eventJSON, `{"status":"error"}`)
+			return toolResult(map[string]any{
+				"paused":    false,
+				"completed": true,
+				"feedError": classifyError(outcome.err),
+			}), nil, nil
+		}
+
+		resultJSON, _ := json.Marshal(outcome.result)
+		_, _ = sess.history.Insert(eventJSON, string(resultJSON))
+		s.recordResult(sess, outcome.result)
+		sess.stats.Status = "completed"
+
 		return toolResult(map[string]any{
-			"resumed":   true,
-			"feedError": classifyError(outcome.err),
+			"paused":    false,
+			"completed": true,
+			"status":    outcome.result.Status,
 		}), nil, nil
 	}
-
-	resultJSON, _ := json.Marshal(outcome.result)
-	_, _ = sess.history.Insert(eventJSON, string(resultJSON))
-	s.recordResult(sess, outcome.result)
-	sess.stats.Status = "completed"
-
-	return toolResult(map[string]any{
-		"resumed": true,
-		"status":  outcome.result.Status,
-	}), nil, nil
 }
 
 type feedOutcome struct {
@@ -280,4 +301,90 @@ func (s *Server) collectDebugContext(sess *activeSession, info gafferruntime.Bre
 	}
 
 	return result
+}
+
+var stepOverTool = &mcp.Tool{
+	Name:        "debug_step_over",
+	Description: "Step over the current statement while paused. Advances to the next statement in the same scope and returns the updated debug context.",
+}
+
+var stepIntoTool = &mcp.Tool{
+	Name:        "debug_step_into",
+	Description: "Step into the next function call while paused. If the current statement contains a function call, enters it. Returns the updated debug context.",
+}
+
+var stepOutTool = &mcp.Tool{
+	Name:        "debug_step_out",
+	Description: "Step out of the current function while paused. Continues until the current function returns and pauses in the caller. Returns the updated debug context.",
+}
+
+type debugStepInput struct{}
+
+func (s *Server) handleStepOver(_ context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
+	return s.doStep(func(sess *activeSession) { sess.runtime.StepOver() })
+}
+
+func (s *Server) handleStepInto(_ context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
+	return s.doStep(func(sess *activeSession) { sess.runtime.StepInto() })
+}
+
+func (s *Server) handleStepOut(_ context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
+	return s.doStep(func(sess *activeSession) { sess.runtime.StepOut() })
+}
+
+func (s *Server) doStep(stepFn func(*activeSession)) (*mcp.CallToolResult, any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.session == nil {
+		return toolError("no active session"), nil, nil
+	}
+	if !s.session.paused {
+		return toolError("session is not paused"), nil, nil
+	}
+
+	sess := s.session
+
+	// Issue the step command - runtime advances and re-pauses
+	stepFn(sess)
+
+	// Wait for break (step completed) or feed completion (handler finished)
+	select {
+	case breakInfo := <-sess.breakCh:
+		debugContext := s.collectDebugContext(sess, breakInfo)
+		debugContext["paused"] = true
+		return toolResult(debugContext), nil, nil
+
+	case outcome := <-sess.feedDone:
+		// Step caused the handler to finish - event processing complete
+		eventJSON := sess.pausedEvent
+
+		sess.paused = false
+		sess.feedDone = nil
+		sess.pausedEvent = ""
+		sess.breakCh = nil
+
+		if outcome.err != nil {
+			sess.stats.Errors++
+			sess.stats.Status = "error"
+			sess.lastError = outcome.err
+			_, _ = sess.history.Insert(eventJSON, `{"status":"error"}`)
+			return toolResult(map[string]any{
+				"paused":    false,
+				"completed": true,
+				"feedError": classifyError(outcome.err),
+			}), nil, nil
+		}
+
+		resultJSON, _ := json.Marshal(outcome.result)
+		_, _ = sess.history.Insert(eventJSON, string(resultJSON))
+		s.recordResult(sess, outcome.result)
+		sess.stats.Status = "completed"
+
+		return toolResult(map[string]any{
+			"paused":    false,
+			"completed": true,
+			"status":    outcome.result.Status,
+		}), nil, nil
+	}
 }

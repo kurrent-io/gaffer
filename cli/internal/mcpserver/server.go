@@ -40,6 +40,7 @@ type activeSession struct {
 	paused      bool
 	feedDone    chan feedOutcome
 	pausedEvent string
+	breakCh     chan gafferruntime.BreakInfo
 }
 
 type sessionStats struct {

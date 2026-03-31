@@ -26,6 +26,9 @@ func (s *Server) registerTools() {
 	mcp.AddTool(s.mcp, debugTool, s.handleDebug)
 	mcp.AddTool(s.mcp, evaluateTool, s.handleEvaluate)
 	mcp.AddTool(s.mcp, debugContinueTool, s.handleDebugContinue)
+	mcp.AddTool(s.mcp, stepOverTool, s.handleStepOver)
+	mcp.AddTool(s.mcp, stepIntoTool, s.handleStepInto)
+	mcp.AddTool(s.mcp, stepOutTool, s.handleStepOut)
 	mcp.AddTool(s.mcp, listEventsTool, s.handleListEvents)
 }
 

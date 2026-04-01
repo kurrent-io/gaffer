@@ -433,6 +433,26 @@ func runDebugMode(cmd *cobra.Command, session *gafferruntime.Session, info proje
 	return nil
 }
 
+type eventSource interface {
+	Run(ctx context.Context, process func(string) bool) error
+}
+
+type fixtureSource struct {
+	events []string
+}
+
+func (f *fixtureSource) Run(ctx context.Context, process func(string) bool) error {
+	for _, evt := range f.events {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if process(evt) {
+			break
+		}
+	}
+	return nil
+}
+
 type feedFn func(string) (*gafferruntime.FeedResult, error)
 
 type runner struct {
@@ -478,11 +498,8 @@ func (r *runner) processOne(eventJSON string) (stop bool) {
 
 func processEvents(session *gafferruntime.Session, events []string, writer outputWriter) (eventStats, map[string]bool, bool) {
 	r := newRunner(session.Feed, writer)
-	for _, evt := range events {
-		if r.processOne(evt) {
-			break
-		}
-	}
+	source := &fixtureSource{events: events}
+	_ = source.Run(context.Background(), r.processOne)
 	return r.stats, r.partitions, r.faulted
 }
 

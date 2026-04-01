@@ -42,6 +42,13 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 	sess.cancel = cancel
 	sess.stats.Status = "running"
 
+	if sess.caughtUpCh == nil {
+		sess.caughtUpCh = make(chan struct{}, 1)
+	}
+	if sess.errorCh == nil {
+		sess.errorCh = make(chan error, 1)
+	}
+
 	sub, err := client.SubscribeToAll(ctx, subOpts)
 	if err != nil {
 		cancel()
@@ -85,6 +92,12 @@ func (s *Server) runSubscriptionLoop(ctx context.Context, sess *activeSession, s
 				sess.stats.Status = "caught_up"
 			}
 			s.mu.Unlock()
+			if sess.caughtUpCh != nil {
+				select {
+				case sess.caughtUpCh <- struct{}{}:
+				default:
+				}
+			}
 			continue
 		}
 
@@ -127,6 +140,12 @@ func (s *Server) runSubscriptionLoop(ctx context.Context, sess *activeSession, s
 			sess.lastError = feedErr
 			_, _ = sess.history.Insert(eventJSON, `{"status":"error"}`)
 			s.mu.Unlock()
+			if sess.errorCh != nil {
+				select {
+				case sess.errorCh <- feedErr:
+				default:
+				}
+			}
 			return
 		}
 

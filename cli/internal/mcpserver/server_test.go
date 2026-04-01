@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -120,21 +119,6 @@ func callToolExpectError[In any](t *testing.T, handler func(context.Context, *mc
 		t.Fatal("expected tool error, got success")
 	}
 	return result.Content[0].(*mcp.TextContent).Text
-}
-
-func waitForStatus(t *testing.T, s *Server, target string, timeout time.Duration) map[string]any {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		result := callTool(t, s, statusTool, s.handleStatus, statusInput{})
-		if result["status"] == target {
-			return result
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	result := callTool(t, s, statusTool, s.handleStatus, statusInput{})
-	t.Fatalf("timed out waiting for status=%s, got %v", target, result["status"])
-	return nil
 }
 
 // --- List projections ---
@@ -374,57 +358,52 @@ func TestScaffold_PathTraversal(t *testing.T) {
 func TestRun_BreakAt(t *testing.T) {
 	s := setupTestProject(t)
 
+	// run with break_at now blocks until breakpoint is hit
 	result := callTool(t, s, runTool, s.handleRun, runInput{
 		Name:    "order-count",
 		Events:  "fixtures/orders.json",
 		BreakAt: 3,
 	})
 
-	if result["status"] != "running" {
-		t.Fatalf("expected status=running, got %v", result["status"])
+	if result["paused"] != true {
+		t.Fatalf("expected paused=true, got %v", result["paused"])
 	}
-
-	waitForStatus(t, s, "breakpoint_hit", 5*time.Second)
 
 	evalResult := callTool(t, s, evaluateTool, s.handleEvaluate, evaluateInput{Expression: "event.eventType"})
 	if evalResult["value"] != "\"OrderShipped\"" {
 		t.Errorf("expected OrderShipped, got %v", evalResult["value"])
 	}
 
-	callTool(t, s, debugContinueTool, s.handleDebugContinue, debugContinueInput{})
-
-	waitForStatus(t, s, "completed", 5*time.Second)
-
-	status := callTool(t, s, statusTool, s.handleStatus, statusInput{})
-	if status["processed"].(float64) != 5 {
-		t.Errorf("expected 5 processed, got %v", status["processed"])
+	// debug_continue now blocks until next break or completion
+	contResult := callTool(t, s, debugContinueTool, s.handleDebugContinue, debugContinueInput{})
+	if contResult["completed"] != true {
+		t.Errorf("expected completed=true, got %v", contResult["completed"])
 	}
 }
 
 func TestRun_Breakpoints(t *testing.T) {
 	s := setupTestProject(t)
 
+	// run with breakpoints blocks until first breakpoint
 	result := callTool(t, s, runTool, s.handleRun, runInput{
 		Name:        "order-count",
 		Events:      "fixtures/orders.json",
 		Breakpoints: []breakpointInput{{Line: 9}},
 	})
 
-	if result["debug"] != true {
-		t.Fatal("expected debug=true")
+	if result["paused"] != true {
+		t.Fatalf("expected paused=true, got %v", result["paused"])
 	}
 
-	// Continue past breakpoints until completed
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		status := callTool(t, s, statusTool, s.handleStatus, statusInput{})
-		if status["status"] == "completed" {
+	// Continue past all breakpoints until completed
+	for i := 0; i < 20; i++ {
+		contResult := callTool(t, s, debugContinueTool, s.handleDebugContinue, debugContinueInput{})
+		if contResult["completed"] == true {
 			return
 		}
-		if status["status"] == "breakpoint_hit" {
-			callTool(t, s, debugContinueTool, s.handleDebugContinue, debugContinueInput{})
+		if contResult["paused"] != true {
+			t.Fatalf("expected paused or completed, got %v", contResult)
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
 
 	t.Fatal("never reached completed status")
@@ -448,28 +427,21 @@ func TestEvaluate_NotPaused(t *testing.T) {
 func TestStepOver(t *testing.T) {
 	s := setupTestProject(t)
 
-	callTool(t, s, runTool, s.handleRun, runInput{
+	runResult := callTool(t, s, runTool, s.handleRun, runInput{
 		Name:    "order-count",
 		Events:  "fixtures/orders.json",
 		BreakAt: 3,
 	})
 
-	waitForStatus(t, s, "breakpoint_hit", 5*time.Second)
-
-	// Step over should advance to the next line
-	result, _, err := s.handleStepOver(context.Background(), nil, debugStepInput{})
-	if err != nil {
-		t.Fatal(err)
+	if runResult["paused"] != true {
+		t.Fatalf("expected paused=true from run, got %v", runResult["paused"])
 	}
 
-	var data map[string]any
-	if err := json.Unmarshal([]byte(result.Content[0].(*mcp.TextContent).Text), &data); err != nil {
-		t.Fatal(err)
-	}
+	// Step over should advance to the next line and return debug context
+	stepResult := callTool(t, s, stepOverTool, s.handleStepOver, debugStepInput{})
 
-	// Should either be paused at the next line or completed (stepped past last statement)
-	if data["paused"] == true {
-		bp := data["breakpoint"].(map[string]any)
+	if stepResult["paused"] == true {
+		bp := stepResult["breakpoint"].(map[string]any)
 		if bp["reason"] != "step" {
 			t.Errorf("expected reason=step, got %v", bp["reason"])
 		}
@@ -496,13 +468,15 @@ func TestGetState_UnknownPartition(t *testing.T) {
 func TestStop_WhilePaused(t *testing.T) {
 	s := setupTestProject(t)
 
-	callTool(t, s, runTool, s.handleRun, runInput{
+	result := callTool(t, s, runTool, s.handleRun, runInput{
 		Name:    "order-count",
 		Events:  "fixtures/orders.json",
 		BreakAt: 2,
 	})
 
-	waitForStatus(t, s, "breakpoint_hit", 5*time.Second)
+	if result["paused"] != true {
+		t.Fatalf("expected paused=true, got %v", result["paused"])
+	}
 
 	// Stop should cleanly tear down the paused session
 	callTool(t, s, stopTool, s.handleStop, stopInput{})

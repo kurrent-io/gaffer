@@ -39,11 +39,12 @@ type activeSession struct {
 
 	// Debug state
 	paused          atomic.Bool
-	feedDone        chan feedOutcome
 	pausedEvent     string
 	breakCh         chan gafferruntime.BreakInfo
-	done            chan struct{}
-	breakAtPosition int64 // pause at this event position (1-based), 0 = disabled
+	done            chan struct{} // closed when background feed goroutine exits
+	caughtUpCh      chan struct{} // signaled when live subscription catches up
+	errorCh         chan error    // signaled on feed error in background
+	breakAtPosition int64         // pause at this event position (1-based), 0 = disabled
 }
 
 type sessionStats struct {
@@ -142,9 +143,6 @@ func (s *Server) closeSession() {
 			s.mu.Unlock()
 			<-done
 			s.mu.Lock()
-		}
-		if s.session.feedDone != nil {
-			<-s.session.feedDone
 		}
 		s.session.runtime.Destroy()
 		_ = s.session.history.Close()

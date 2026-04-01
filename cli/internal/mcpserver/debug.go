@@ -2,11 +2,102 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
+	"time"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+const defaultDebugTimeout = 30 * time.Second
+
+type waitResult struct {
+	breakInfo *gafferruntime.BreakInfo
+	caughtUp  bool
+	completed bool
+	err       error
+}
+
+// waitForBreak blocks until a breakpoint is hit, the session completes,
+// catches up (live), errors, or the context is cancelled. The caller must
+// NOT hold s.mu - this blocks and other goroutines need the lock.
+func (s *Server) waitForBreak(ctx context.Context, sess *activeSession, timeout time.Duration) waitResult {
+	if timeout == 0 {
+		timeout = defaultDebugTimeout
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	for {
+		select {
+		case info := <-sess.breakCh:
+			return waitResult{breakInfo: &info}
+
+		case <-sess.done:
+			// Background goroutine finished (fixture completed or errored)
+			if sess.lastError != nil {
+				return waitResult{err: sess.lastError}
+			}
+			return waitResult{completed: true}
+
+		case <-sess.caughtUpCh:
+			return waitResult{caughtUp: true}
+
+		case err := <-sess.errorCh:
+			return waitResult{err: err}
+
+		case <-timer.C:
+			return waitResult{err: context.DeadlineExceeded}
+
+		case <-ctx.Done():
+			return waitResult{err: ctx.Err()}
+		}
+	}
+}
+
+// handleWaitResult converts a waitResult into an MCP tool response.
+// If a breakpoint was hit, returns the debug context. Otherwise returns
+// status information. Must be called with s.mu held.
+func (s *Server) handleWaitResult(sess *activeSession, wr waitResult) (*mcp.CallToolResult, any, error) {
+	if wr.breakInfo != nil {
+		sess.paused.Store(true)
+		debugContext := s.collectDebugContext(sess, *wr.breakInfo)
+		debugContext["paused"] = true
+		return toolResult(debugContext), nil, nil
+	}
+
+	if wr.caughtUp {
+		return toolResult(map[string]any{
+			"caughtUp":  true,
+			"message":   "Subscription caught up to the head of the stream without hitting a breakpoint.",
+			"processed": sess.stats.Processed,
+			"skipped":   sess.stats.Skipped,
+		}), nil, nil
+	}
+
+	if wr.completed {
+		summary := s.buildStateSummary(sess)
+		summary["completed"] = true
+		summary["processed"] = sess.stats.Processed
+		summary["skipped"] = sess.stats.Skipped
+		summary["errors"] = sess.stats.Errors
+		return toolResult(summary), nil, nil
+	}
+
+	if wr.err == context.DeadlineExceeded {
+		return toolError("timed out waiting for breakpoint"), nil, nil
+	}
+	if wr.err == context.Canceled {
+		return toolError("cancelled"), nil, nil
+	}
+	if wr.err != nil {
+		return toolResult(map[string]any{
+			"error":     true,
+			"lastError": classifyError(wr.err),
+		}), nil, nil
+	}
+
+	return toolError("unexpected state"), nil, nil
+}
 
 var evaluateTool = &mcp.Tool{
 	Name:        "evaluate",
@@ -50,76 +141,28 @@ var debugContinueTool = &mcp.Tool{
 
 type debugContinueInput struct{}
 
-func (s *Server) handleDebugContinue(_ context.Context, _ *mcp.CallToolRequest, _ debugContinueInput) (*mcp.CallToolResult, any, error) {
+func (s *Server) handleDebugContinue(ctx context.Context, _ *mcp.CallToolRequest, _ debugContinueInput) (*mcp.CallToolResult, any, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if s.session == nil {
+		s.mu.Unlock()
 		return toolError("no active session"), nil, nil
 	}
 	if !s.session.paused.Load() {
+		s.mu.Unlock()
 		return toolError("session is not paused"), nil, nil
 	}
 
 	sess := s.session
-
-	// Live debug mode - resume and return immediately.
-	// The subscription goroutine resumes feeding. Agent polls status for next break.
-	if sess.feedDone == nil {
-		sess.paused.Store(false)
-		sess.stats.Status = "running"
-		sess.runtime.Continue()
-		return toolResult(map[string]any{
-			"resumed": true,
-			"mode":    "live",
-			"hint":    "Subscription resumed. Poll status for the next breakpoint_hit.",
-		}), nil, nil
-	}
-
-	// Fixture debug mode - wait for next breakpoint or feed completion
-	eventJSON := sess.pausedEvent
+	sess.paused.Store(false)
 	sess.runtime.Continue()
+	s.mu.Unlock()
 
-	select {
-	case breakInfo := <-sess.breakCh:
-		debugContext := s.collectDebugContext(sess, breakInfo)
-		debugContext["paused"] = true
-		return toolResult(debugContext), nil, nil
+	wr := s.waitForBreak(ctx, sess, defaultDebugTimeout)
 
-	case outcome := <-sess.feedDone:
-		sess.paused.Store(false)
-		sess.feedDone = nil
-		sess.pausedEvent = ""
-		sess.breakCh = nil
-
-		if outcome.err != nil {
-			sess.stats.Errors++
-			sess.stats.Status = "error"
-			sess.lastError = outcome.err
-			_, _ = sess.history.Insert(eventJSON, `{"status":"error"}`)
-			return toolResult(map[string]any{
-				"paused":    false,
-				"completed": true,
-				"feedError": classifyError(outcome.err),
-			}), nil, nil
-		}
-
-		resultJSON, _ := json.Marshal(outcome.result)
-		_, _ = sess.history.Insert(eventJSON, string(resultJSON))
-		s.recordResult(sess, outcome.result)
-		sess.stats.Status = "completed"
-
-		return toolResult(map[string]any{
-			"paused":    false,
-			"completed": true,
-			"status":    outcome.result.Status,
-		}), nil, nil
-	}
-}
-
-type feedOutcome struct {
-	result *gafferruntime.FeedResult
-	err    error
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.handleWaitResult(sess, wr)
 }
 
 func (s *Server) recordResult(sess *activeSession, result *gafferruntime.FeedResult) {
@@ -197,83 +240,38 @@ var stepOutTool = &mcp.Tool{
 
 type debugStepInput struct{}
 
-func (s *Server) handleStepOver(_ context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
-	return s.doStep(func(sess *activeSession) { sess.runtime.StepOver() })
+func (s *Server) handleStepOver(ctx context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
+	return s.doStep(ctx, func(sess *activeSession) { sess.runtime.StepOver() })
 }
 
-func (s *Server) handleStepInto(_ context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
-	return s.doStep(func(sess *activeSession) { sess.runtime.StepInto() })
+func (s *Server) handleStepInto(ctx context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
+	return s.doStep(ctx, func(sess *activeSession) { sess.runtime.StepInto() })
 }
 
-func (s *Server) handleStepOut(_ context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
-	return s.doStep(func(sess *activeSession) { sess.runtime.StepOut() })
+func (s *Server) handleStepOut(ctx context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
+	return s.doStep(ctx, func(sess *activeSession) { sess.runtime.StepOut() })
 }
 
-func (s *Server) doStep(stepFn func(*activeSession)) (*mcp.CallToolResult, any, error) {
+func (s *Server) doStep(ctx context.Context, stepFn func(*activeSession)) (*mcp.CallToolResult, any, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if s.session == nil {
+		s.mu.Unlock()
 		return toolError("no active session"), nil, nil
 	}
 	if !s.session.paused.Load() {
+		s.mu.Unlock()
 		return toolError("session is not paused"), nil, nil
 	}
 
 	sess := s.session
-
-	// Issue the step command - the C runtime advances and re-pauses.
+	sess.paused.Store(false)
 	stepFn(sess)
+	s.mu.Unlock()
 
-	// For live/fixture-debug-run mode (no feedDone), return immediately.
-	// The background goroutine handles its own state. Agent polls status.
-	if sess.feedDone == nil {
-		sess.paused.Store(false)
-		sess.stats.Status = "running"
-		return toolResult(map[string]any{
-			"stepped": true,
-			"hint":    "Step issued. Poll status for the next breakpoint_hit or completion.",
-		}), nil, nil
-	}
+	wr := s.waitForBreak(ctx, sess, defaultDebugTimeout)
 
-	// For debug-tool mode (has feedDone), wait for break or completion.
-	select {
-	case breakInfo := <-sess.breakCh:
-		sess.paused.Store(true)
-		sess.stats.Status = "breakpoint_hit"
-		debugContext := s.collectDebugContext(sess, breakInfo)
-		debugContext["paused"] = true
-		return toolResult(debugContext), nil, nil
-
-	case outcome := <-sess.feedDone:
-		eventJSON := sess.pausedEvent
-
-		sess.paused.Store(false)
-		sess.feedDone = nil
-		sess.pausedEvent = ""
-		sess.breakCh = nil
-
-		if outcome.err != nil {
-			sess.stats.Errors++
-			sess.stats.Status = "error"
-			sess.lastError = outcome.err
-			_, _ = sess.history.Insert(eventJSON, `{"status":"error"}`)
-			return toolResult(map[string]any{
-				"paused":    false,
-				"completed": true,
-				"feedError": classifyError(outcome.err),
-			}), nil, nil
-		}
-
-		resultJSON, _ := json.Marshal(outcome.result)
-		_, _ = sess.history.Insert(eventJSON, string(resultJSON))
-		s.recordResult(sess, outcome.result)
-		sess.stats.Status = "completed"
-
-		return toolResult(map[string]any{
-			"paused":    false,
-			"completed": true,
-			"status":    outcome.result.Status,
-		}), nil, nil
-	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.handleWaitResult(sess, wr)
 }

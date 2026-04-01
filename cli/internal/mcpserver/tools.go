@@ -41,7 +41,7 @@ var validateTool = &mcp.Tool{
 
 var runTool = &mcp.Tool{
 	Name:        "run",
-	Description: "Run a projection against events. Creates a new session (replacing any existing one). With events file and no debug options: runs synchronously and returns summary. Without events file: starts a live KurrentDB subscription in the background. Set breakpoints (source lines) or break_at (event position) to enable debug mode - runs in background, poll status for breakpoint_hit, then use evaluate/debug_step_over/debug_continue.",
+	Description: "Run a projection against events. Creates a new session (replacing any existing one). Always blocks until completion. Fixture mode: returns summary when all events are consumed. Live mode: blocks until caught_up, error, or timeout. Set breakpoints (source lines) or break_at (event position) to pause at specific points - returns debug context with call stack, variables, and state.",
 }
 
 var statusTool = &mcp.Tool{
@@ -167,14 +167,14 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 	}), nil, nil
 }
 
-func (s *Server) handleRun(_ context.Context, _ *mcp.CallToolRequest, input runInput) (*mcp.CallToolResult, any, error) {
+func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input runInput) (*mcp.CallToolResult, any, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	debug := len(input.Breakpoints) > 0 || input.BreakAt > 0
 
 	sess, err := s.createSession(input.Name, debug)
 	if err != nil {
+		s.mu.Unlock()
 		if _, ok := err.(gafferruntime.ProjectionError); ok {
 			return toolResult(map[string]any{
 				"lastError": classifyError(err),
@@ -185,18 +185,36 @@ func (s *Server) handleRun(_ context.Context, _ *mcp.CallToolRequest, input runI
 
 	if debug {
 		if err := s.setupBreakpoints(sess, input.Breakpoints); err != nil {
+			s.mu.Unlock()
 			return toolError("%v", err), nil, nil
 		}
 	}
 
 	if input.Events == "" {
-		return s.startLiveMode(sess, input.BreakAt)
+		if err := s.startLiveMode(sess, input.BreakAt); err != nil {
+			s.mu.Unlock()
+			return toolError("%v", err), nil, nil
+		}
+		s.mu.Unlock()
+		wr := s.waitForBreak(ctx, sess, defaultDebugTimeout)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.handleWaitResult(sess, wr)
 	}
 
 	if debug {
-		return s.runFixtureDebugMode(sess, input.Events, input.BreakAt)
+		if err := s.runFixtureDebugMode(sess, input.Events, input.BreakAt); err != nil {
+			s.mu.Unlock()
+			return toolError("%v", err), nil, nil
+		}
+		s.mu.Unlock()
+		wr := s.waitForBreak(ctx, sess, defaultDebugTimeout)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.handleWaitResult(sess, wr)
 	}
 
+	defer s.mu.Unlock()
 	return s.runFixtureMode(sess, input.Events)
 }
 
@@ -217,6 +235,8 @@ func (s *Server) setupBreakpoints(sess *activeSession, breakpoints []breakpointI
 
 	breakCh := make(chan gafferruntime.BreakInfo, 1)
 	sess.breakCh = breakCh
+	sess.caughtUpCh = make(chan struct{}, 1)
+	sess.errorCh = make(chan error, 1)
 
 	sess.runtime.OnBreak(func(info gafferruntime.BreakInfo) {
 		// When break_at is used, Pause() fires at handler entry where
@@ -237,39 +257,25 @@ func (s *Server) setupBreakpoints(sess *activeSession, breakpoints []breakpointI
 	return nil
 }
 
-func (s *Server) startLiveMode(sess *activeSession, breakAt int64) (*mcp.CallToolResult, any, error) {
+func (s *Server) startLiveMode(sess *activeSession, breakAt int64) error {
 	if breakAt > 0 {
 		sess.breakAtPosition = breakAt
 	}
-	if err := s.startLiveSubscription(sess); err != nil {
-		return toolError("%v", err), nil, nil
-	}
-
-	result := map[string]any{
-		"projection": sess.name,
-		"status":     "running",
-		"mode":       "live",
-		"message":    "Live subscription started. Poll status to track progress. History is queryable as events are processed.",
-	}
-	if sess.breakCh != nil {
-		result["debug"] = true
-		result["message"] = "Live subscription started with breakpoints. Poll status for breakpoint_hit, then use evaluate/debug_continue."
-	}
-	return toolResult(result), nil, nil
+	return s.startLiveSubscription(sess)
 }
 
-func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string, breakAt int64) (*mcp.CallToolResult, any, error) {
+func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string, breakAt int64) error {
 	if !filepath.IsAbs(eventsPath) {
 		eventsPath = filepath.Join(s.root, eventsPath)
 	}
 
 	events, err := projection.LoadEvents(eventsPath)
 	if err != nil {
-		return toolError("%v", err), nil, nil
+		return err
 	}
 
 	if breakAt > int64(len(events)) {
-		return toolError("break_at %d exceeds total events (%d)", breakAt, len(events)), nil, nil
+		return fmt.Errorf("break_at %d exceeds total events (%d)", breakAt, len(events))
 	}
 
 	done := make(chan struct{})
@@ -309,14 +315,7 @@ func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string, bre
 		s.mu.Unlock()
 	}()
 
-	return toolResult(map[string]any{
-		"projection":  sess.name,
-		"status":      "running",
-		"mode":        "fixture_debug",
-		"debug":       true,
-		"totalEvents": len(events),
-		"message":     "Running with breakpoints. Poll status for breakpoint_hit, then use evaluate/debug_continue.",
-	}), nil, nil
+	return nil
 }
 
 func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.CallToolResult, any, error) {

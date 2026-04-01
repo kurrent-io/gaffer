@@ -219,6 +219,14 @@ func (s *Server) setupBreakpoints(sess *activeSession, breakpoints []breakpointI
 	sess.breakCh = breakCh
 
 	sess.runtime.OnBreak(func(info gafferruntime.BreakInfo) {
+		// When break_at is used, Pause() fires at handler entry where
+		// params aren't in scope yet. Auto-step into the handler body
+		// so the agent gets state/event available for evaluate.
+		if info.Reason == "pause" && sess.breakAtPosition > 0 {
+			go sess.runtime.StepInto()
+			return
+		}
+
 		sess.paused.Store(true)
 		select {
 		case breakCh <- info:

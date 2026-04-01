@@ -301,6 +301,9 @@ func (r *runner) processOne(eventJSON string) (stop bool) {
 		r.faulted = true
 		return true
 	}
+	if result == nil {
+		return false
+	}
 
 	r.writer.WriteResult(event.id(), result)
 	if result.Status == "skipped" {

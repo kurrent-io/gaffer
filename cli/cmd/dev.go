@@ -116,106 +116,20 @@ func runFixtureMode(cmd *cobra.Command, session *gafferruntime.Session, info pro
 }
 
 func runLiveMode(cmd *cobra.Command, session *gafferruntime.Session, info projectionInfo, version, connStr, root string, writer outputWriter) error {
-	if err := env.Load(root, ""); err != nil {
-		return fmt.Errorf("loading .env: %w", err)
-	}
-
-	dbConfig, err := kurrentdb.ParseConnectionString(connStr)
-	if err != nil {
-		return fmt.Errorf("invalid connection string: %w", err)
-	}
-
-	username, password := env.Credentials()
-	if username != "" {
-		dbConfig.Username = username
-		dbConfig.Password = password
-	}
-
-	dbConfig.Logger = kurrentdb.NoopLogging()
-
-	client, err := kurrentdb.NewClient(dbConfig)
-	if err != nil {
-		return fmt.Errorf("connecting to KurrentDB: %w", err)
-	}
-	defer func() { _ = client.Close() }()
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	filter := subscription.BuildFilter(subscription.SourceInfo{
-		AllStreams:                  info.AllStreams,
-		Categories:                  info.Categories,
-		Streams:                     info.Streams,
-		Events:                      info.Events,
-		HandlesDeletedNotifications: info.HandlesDeletedNotifications,
-	}, version)
+	r := newRunner(session.Feed, writer)
+	source := &liveSource{connStr: connStr, root: root, info: info, version: version}
 
-	opts := kurrentdb.SubscribeToAllOptions{
-		From:           kurrentdb.Start{},
-		ResolveLinkTos: subscription.ResolveLinkTos(version),
-	}
-	if filter != nil {
-		opts.Filter = filter
+	if err := source.Run(ctx, r.processOne); err != nil {
+		return err
 	}
 
-	sub, err := client.SubscribeToAll(ctx, opts)
-	if err != nil {
-		return fmt.Errorf("subscribing: %w", err)
-	}
-	defer func() { _ = sub.Close() }()
+	summary := buildSummary(session, info, r.partitions)
+	writer.WriteSummary(r.stats, summary)
 
-	var stats eventStats
-	partitions := make(map[string]bool)
-	var faulted bool
-
-	for {
-		subEvent := sub.Recv()
-
-		if subEvent.SubscriptionDropped != nil {
-			if ctx.Err() != nil {
-				_, _ = fmt.Fprint(os.Stderr, "Interrupted\n\n")
-				break
-			}
-			return fmt.Errorf("subscription dropped: %w", subEvent.SubscriptionDropped.Error)
-		}
-
-		if subEvent.EventAppeared == nil {
-			continue
-		}
-
-		eventJSON, err := subscription.MapEvent(subEvent.EventAppeared)
-		if err != nil || eventJSON == "" {
-			continue
-		}
-
-		event := parseEventInfo(eventJSON)
-		writer.WriteEvent(event)
-
-		result, feedErr := session.Feed(eventJSON)
-		if feedErr != nil {
-			code, desc := classifyError(feedErr)
-			writer.WriteError(event.id(), code, desc)
-			stats.errors++
-			faulted = true
-			break
-		}
-
-		writer.WriteResult(event.id(), result)
-
-		if result.Status == "skipped" {
-			stats.skipped++
-		} else {
-			stats.handled++
-			if result.Partition != "" {
-				partitions[result.Partition] = true
-			}
-		}
-	}
-
-	summary := buildSummary(session, info, partitions)
-	writer.WriteSummary(stats, summary)
-
-	if faulted {
+	if r.faulted {
 		cmd.SilenceErrors = true
 		return fmt.Errorf("projection faulted")
 	}
@@ -451,6 +365,84 @@ func (f *fixtureSource) Run(ctx context.Context, process func(string) bool) erro
 		}
 	}
 	return nil
+}
+
+type liveSource struct {
+	connStr string
+	root    string
+	info    projectionInfo
+	version string
+}
+
+func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
+	if err := env.Load(l.root, ""); err != nil {
+		return fmt.Errorf("loading .env: %w", err)
+	}
+
+	dbConfig, err := kurrentdb.ParseConnectionString(l.connStr)
+	if err != nil {
+		return fmt.Errorf("invalid connection string: %w", err)
+	}
+
+	username, password := env.Credentials()
+	if username != "" {
+		dbConfig.Username = username
+		dbConfig.Password = password
+	}
+	dbConfig.Logger = kurrentdb.NoopLogging()
+
+	client, err := kurrentdb.NewClient(dbConfig)
+	if err != nil {
+		return fmt.Errorf("connecting to KurrentDB: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	filter := subscription.BuildFilter(subscription.SourceInfo{
+		AllStreams:                  l.info.AllStreams,
+		Categories:                  l.info.Categories,
+		Streams:                     l.info.Streams,
+		Events:                      l.info.Events,
+		HandlesDeletedNotifications: l.info.HandlesDeletedNotifications,
+	}, l.version)
+
+	opts := kurrentdb.SubscribeToAllOptions{
+		From:           kurrentdb.Start{},
+		ResolveLinkTos: subscription.ResolveLinkTos(l.version),
+	}
+	if filter != nil {
+		opts.Filter = filter
+	}
+
+	sub, err := client.SubscribeToAll(ctx, opts)
+	if err != nil {
+		return fmt.Errorf("subscribing: %w", err)
+	}
+	defer func() { _ = sub.Close() }()
+
+	for {
+		subEvent := sub.Recv()
+
+		if subEvent.SubscriptionDropped != nil {
+			if ctx.Err() != nil {
+				_, _ = fmt.Fprint(os.Stderr, "Interrupted\n\n")
+				return nil
+			}
+			return fmt.Errorf("subscription dropped: %w", subEvent.SubscriptionDropped.Error)
+		}
+
+		if subEvent.EventAppeared == nil {
+			continue
+		}
+
+		eventJSON, err := subscription.MapEvent(subEvent.EventAppeared)
+		if err != nil || eventJSON == "" {
+			continue
+		}
+
+		if process(eventJSON) {
+			return nil
+		}
+	}
 }
 
 type feedFn func(string) (*gafferruntime.FeedResult, error)

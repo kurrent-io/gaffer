@@ -198,19 +198,21 @@ func TestListEvents(t *testing.T) {
 	stream := fmt.Sprintf("inttest-%s-1", suffix)
 	writeTestEvents(t, client, stream, 3)
 
-	// Poll until events are readable (propagation delay)
+	// Poll until events are readable via the projection's source
 	var result *mcp.CallToolResult
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		var err error
-		result, _, err = s.handleListEvents(context.Background(), nil, listEventsInput{Limit: 1000})
+		result, _, err = s.handleListEvents(context.Background(), nil, listEventsInput{Name: "counter"})
 		if err != nil {
 			t.Fatal(err)
 		}
-		var check map[string]any
-		_ = json.Unmarshal([]byte(result.Content[0].(*mcp.TextContent).Text), &check)
-		if check["totalSampled"].(float64) >= 3 {
-			break
+		if !result.IsError {
+			var check map[string]any
+			_ = json.Unmarshal([]byte(result.Content[0].(*mcp.TextContent).Text), &check)
+			if check["totalSampled"].(float64) >= 3 {
+				break
+			}
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -218,6 +220,10 @@ func TestListEvents(t *testing.T) {
 	var data map[string]any
 	if err := json.Unmarshal([]byte(result.Content[0].(*mcp.TextContent).Text), &data); err != nil {
 		t.Fatal(err)
+	}
+
+	if data["projection"] != "counter" {
+		t.Errorf("expected projection=counter, got %v", data["projection"])
 	}
 
 	types := data["eventTypes"].([]any)

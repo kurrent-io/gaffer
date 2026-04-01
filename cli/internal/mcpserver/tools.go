@@ -16,7 +16,6 @@ import (
 func (s *Server) registerTools() {
 	mcp.AddTool(s.mcp, validateTool, s.handleValidate)
 	mcp.AddTool(s.mcp, runTool, s.handleRun)
-	mcp.AddTool(s.mcp, statusTool, s.handleStatus)
 	mcp.AddTool(s.mcp, stopTool, s.handleStop)
 	mcp.AddTool(s.mcp, getStepTool, s.handleGetStep)
 	mcp.AddTool(s.mcp, getHistoryTool, s.handleGetHistory)
@@ -42,11 +41,6 @@ var validateTool = &mcp.Tool{
 var runTool = &mcp.Tool{
 	Name:        "run",
 	Description: "Run a projection against events. Creates a new session (replacing any existing one). Always blocks until completion. Fixture mode: returns summary when all events are consumed. Live mode: blocks until caught_up, error, or timeout. Set breakpoints (source lines) or break_at (event position) to pause at specific points - returns debug context with call stack, variables, and state.",
-}
-
-var statusTool = &mcp.Tool{
-	Name:        "status",
-	Description: "Get the status of the active session, including event counts and current position.",
 }
 
 var stopTool = &mcp.Tool{
@@ -100,8 +94,6 @@ type runInput struct {
 	Breakpoints []breakpointInput `json:"breakpoints,omitempty" jsonschema:"Source line breakpoints to set before feeding events. Enables debug mode."`
 	BreakAt     int64             `json:"break_at,omitempty" jsonschema:"Pause at a specific event position (1-based). Enables debug mode."`
 }
-
-type statusInput struct{}
 
 type stopInput struct{}
 
@@ -354,10 +346,10 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 	}
 
 	summary := s.buildStateSummary(sess)
+	summary["completed"] = faultErr == nil
 	summary["processed"] = sess.stats.Processed
 	summary["skipped"] = sess.stats.Skipped
 	summary["errors"] = sess.stats.Errors
-	summary["status"] = sess.stats.Status
 	summary["totalEvents"] = len(events)
 
 	if faultErr != nil {
@@ -365,35 +357,6 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 	}
 
 	return toolResult(summary), nil, nil
-}
-
-func (s *Server) handleStatus(_ context.Context, _ *mcp.CallToolRequest, _ statusInput) (*mcp.CallToolResult, any, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.session == nil {
-		return toolError("no active session - call run first"), nil, nil
-	}
-
-	count, _ := s.session.history.Count()
-	minPos, maxPos, _ := s.session.history.Range()
-
-	result := map[string]any{
-		"projection":  s.session.name,
-		"status":      s.sessionStatus(),
-		"processed":   s.session.stats.Processed,
-		"skipped":     s.session.stats.Skipped,
-		"errors":      s.session.stats.Errors,
-		"position":    count,
-		"minPosition": minPos,
-		"maxPosition": maxPos,
-	}
-
-	if s.session.lastError != nil {
-		result["lastError"] = classifyError(s.session.lastError)
-	}
-
-	return toolResult(result), nil, nil
 }
 
 func (s *Server) handleStop(_ context.Context, _ *mcp.CallToolRequest, _ stopInput) (*mcp.CallToolResult, any, error) {
@@ -534,13 +497,6 @@ func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest
 }
 
 // --- Helpers ---
-
-func (s *Server) sessionStatus() string {
-	if s.session.paused.Load() {
-		return "breakpoint_hit"
-	}
-	return s.session.stats.Status
-}
 
 func (s *Server) resolveRange(from, to int64) (int64, int64) {
 	minPos, maxPos, _ := s.session.history.Range()

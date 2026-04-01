@@ -164,8 +164,8 @@ func TestRun_Fixture(t *testing.T) {
 		Events: "fixtures/orders.json",
 	})
 
-	if result["status"] != "completed" {
-		t.Errorf("expected status=completed, got %v", result["status"])
+	if result["completed"] != true {
+		t.Errorf("expected completed=true, got %v", result["completed"])
 	}
 	if result["processed"].(float64) != 5 {
 		t.Errorf("expected processed=5, got %v", result["processed"])
@@ -184,9 +184,6 @@ func TestRun_FixtureError(t *testing.T) {
 		Events: "fixtures/orders.json",
 	})
 
-	if result["status"] != "error" {
-		t.Errorf("expected status=error, got %v", result["status"])
-	}
 	if result["lastError"] == nil {
 		t.Error("expected lastError")
 	}
@@ -208,12 +205,14 @@ func TestRun_MissingEvents(t *testing.T) {
 func TestRun_ReplacesSession(t *testing.T) {
 	s := setupTestProject(t)
 
-	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
-	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
+	r1 := callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
+	if r1["completed"] != true {
+		t.Fatal("expected first run to complete")
+	}
 
-	result := callTool(t, s, statusTool, s.handleStatus, statusInput{})
-	if result["status"] != "completed" {
-		t.Errorf("expected completed after second run, got %v", result["status"])
+	r2 := callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
+	if r2["completed"] != true {
+		t.Fatal("expected second run to complete")
 	}
 }
 
@@ -222,10 +221,8 @@ func TestStop(t *testing.T) {
 	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
 	callTool(t, s, stopTool, s.handleStop, stopInput{})
 
-	msg := callToolExpectError(t, s.handleStatus, statusInput{})
-	if msg == "" {
-		t.Fatal("expected error after stop")
-	}
+	// After stop, inspection tools should error
+	callToolExpectError(t, s.handleGetStep, getStepInput{Position: 1})
 }
 
 // --- Inspection tools ---
@@ -305,19 +302,6 @@ func TestGetState(t *testing.T) {
 	result = callTool(t, s, getStateTool, s.handleGetState, getStateInput{Partition: "order-1"})
 	if result["partition"] != "order-1" {
 		t.Errorf("expected partition=order-1, got %v", result["partition"])
-	}
-}
-
-func TestStatus(t *testing.T) {
-	s := setupTestProject(t)
-	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
-
-	result := callTool(t, s, statusTool, s.handleStatus, statusInput{})
-	if result["processed"].(float64) != 5 {
-		t.Errorf("expected processed=5, got %v", result["processed"])
-	}
-	if result["minPosition"].(float64) != 1 {
-		t.Errorf("expected minPosition=1, got %v", result["minPosition"])
 	}
 }
 
@@ -482,7 +466,7 @@ func TestStop_WhilePaused(t *testing.T) {
 	callTool(t, s, stopTool, s.handleStop, stopInput{})
 
 	// Session should be gone
-	callToolExpectError(t, s.handleStatus, statusInput{})
+	callToolExpectError(t, s.handleGetStep, getStepInput{Position: 1})
 }
 
 // --- Resources ---
@@ -580,17 +564,13 @@ func TestFixProjectionPrompt_NotFound(t *testing.T) {
 func TestRun_ReplacesSession_FreshHistory(t *testing.T) {
 	s := setupTestProject(t)
 
-	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
-
-	status1 := callTool(t, s, statusTool, s.handleStatus, statusInput{})
-	if status1["processed"].(float64) != 5 {
-		t.Fatalf("first run: expected 5 processed, got %v", status1["processed"])
+	r1 := callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
+	if r1["processed"].(float64) != 5 {
+		t.Fatalf("first run: expected 5 processed, got %v", r1["processed"])
 	}
 
-	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
-
-	status2 := callTool(t, s, statusTool, s.handleStatus, statusInput{})
-	if status2["processed"].(float64) != 5 {
-		t.Errorf("second run: expected 5 processed (fresh), got %v", status2["processed"])
+	r2 := callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
+	if r2["processed"].(float64) != 5 {
+		t.Errorf("second run: expected 5 processed (fresh), got %v", r2["processed"])
 	}
 }

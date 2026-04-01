@@ -2,18 +2,20 @@ package cmd
 
 import (
 	"testing"
+
+	"github.com/kurrent-io/gaffer/cli/internal/projection"
 )
 
 func TestInfoSource(t *testing.T) {
 	tests := []struct {
 		name     string
-		info     projectionInfo
+		info     projection.Info
 		expected string
 	}{
-		{"all streams", projectionInfo{AllStreams: true}, "all"},
-		{"category", projectionInfo{Categories: []string{"order"}}, "category"},
-		{"streams", projectionInfo{Streams: []string{"order-1"}}, "streams"},
-		{"unknown", projectionInfo{}, "unknown"},
+		{"all streams", projection.Info{AllStreams: true}, "all"},
+		{"category", projection.Info{Categories: []string{"order"}}, "category"},
+		{"streams", projection.Info{Streams: []string{"order-1"}}, "streams"},
+		{"unknown", projection.Info{}, "unknown"},
 	}
 
 	for _, tt := range tests {

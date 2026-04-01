@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/projection"
 )
 
 func TestLoadEvents_ValidArray(t *testing.T) {
@@ -20,7 +21,7 @@ func TestLoadEvents_ValidArray(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	events, err := loadEvents(path)
+	events, err := projection.LoadEvents(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +38,7 @@ func TestLoadEvents_EmptyArray(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	events, err := loadEvents(path)
+	events, err := projection.LoadEvents(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,7 @@ func TestLoadEvents_NotAnArray(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := loadEvents(path)
+	_, err := projection.LoadEvents(path)
 	if err == nil {
 		t.Fatal("expected error for non-array JSON")
 	}
@@ -67,14 +68,14 @@ func TestLoadEvents_InvalidJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := loadEvents(path)
+	_, err := projection.LoadEvents(path)
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
 }
 
 func TestLoadEvents_FileNotFound(t *testing.T) {
-	_, err := loadEvents("/nonexistent/events.json")
+	_, err := projection.LoadEvents("/nonexistent/events.json")
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
@@ -84,7 +85,7 @@ func TestBuildSessionOptions_EngineOnly(t *testing.T) {
 	cfg := &config.Config{}
 	proj := &config.Projection{Engine: "v1"}
 
-	opts := buildSessionOptions(cfg, proj, false)
+	opts := projection.BuildSessionOptions(cfg, proj, false)
 	if opts == nil {
 		t.Fatal("expected options")
 	}
@@ -105,7 +106,7 @@ func TestBuildSessionOptions_ProjectionTimeoutOverridesGlobal(t *testing.T) {
 	cfg := &config.Config{ExecutionTimeout: &globalTimeout}
 	proj := &config.Projection{ExecutionTimeout: &projTimeout}
 
-	opts := buildSessionOptions(cfg, proj, false)
+	opts := projection.BuildSessionOptions(cfg, proj, false)
 	if opts == nil {
 		t.Fatal("expected options")
 	}
@@ -124,7 +125,7 @@ func TestBuildSessionOptions_NoOptions(t *testing.T) {
 	cfg := &config.Config{}
 	proj := &config.Projection{}
 
-	opts := buildSessionOptions(cfg, proj, false)
+	opts := projection.BuildSessionOptions(cfg, proj, false)
 	if opts != nil {
 		t.Error("expected nil when no options set")
 	}
@@ -139,7 +140,7 @@ func TestBuildSessionOptions_GlobalFallback(t *testing.T) {
 	}
 	proj := &config.Projection{}
 
-	opts := buildSessionOptions(cfg, proj, false)
+	opts := projection.BuildSessionOptions(cfg, proj, false)
 	if opts == nil {
 		t.Fatal("expected options")
 	}

@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/projection"
 )
 
 func newTestSession(t *testing.T, source string) *gafferruntime.Session {
@@ -49,7 +51,7 @@ type recordedSummary struct {
 	state summaryState
 }
 
-func (w *recordingWriter) WriteInfo(string, projectionInfo, string)          {}
+func (w *recordingWriter) WriteInfo(string, projection.Info, string)          {}
 func (w *recordingWriter) WriteDebugListening(string, int)                   {}
 func (w *recordingWriter) WriteEvent(event eventInfo)                        { w.events = append(w.events, event) }
 func (w *recordingWriter) WriteResult(eventID string, r *gafferruntime.FeedResult) {
@@ -62,14 +64,14 @@ func (w *recordingWriter) WriteSummary(stats eventStats, state summaryState) {
 	w.summary = &recordedSummary{stats, state}
 }
 
-// --- processEvents ---
+// --- runner + fixtureSource ---
 
 func TestProcessEvents_HandledEvents(t *testing.T) {
-	source := `fromAll().when({
+	js := `fromAll().when({
 		$init: function() { return { count: 0 }; },
 		ItemAdded: function(s, e) { s.count++; return s; }
 	})`
-	session := newTestSession(t, source)
+	session := newTestSession(t, js)
 	writer := &recordingWriter{}
 
 	events := []string{
@@ -77,7 +79,10 @@ func TestProcessEvents_HandledEvents(t *testing.T) {
 		testEvent("ItemAdded", "s-1", 1),
 	}
 
-	stats, partitions, faulted := processEvents(session, events, writer)
+	r := newRunner(session.Feed, writer)
+	source := &fixtureSource{events: events}
+	_ = source.Run(context.Background(), r.processOne)
+	stats, partitions, faulted := r.stats, r.partitions, r.faulted
 
 	if faulted {
 		t.Fatal("expected no fault")
@@ -103,11 +108,11 @@ func TestProcessEvents_HandledEvents(t *testing.T) {
 }
 
 func TestProcessEvents_SkippedEvents(t *testing.T) {
-	source := `fromAll().when({
+	js := `fromAll().when({
 		$init: function() { return { count: 0 }; },
 		ItemAdded: function(s, e) { s.count++; return s; }
 	})`
-	session := newTestSession(t, source)
+	session := newTestSession(t, js)
 	writer := &recordingWriter{}
 
 	events := []string{
@@ -115,7 +120,10 @@ func TestProcessEvents_SkippedEvents(t *testing.T) {
 		testEvent("Unknown", "s-1", 1),
 	}
 
-	stats, _, faulted := processEvents(session, events, writer)
+	r := newRunner(session.Feed, writer)
+	source := &fixtureSource{events: events}
+	_ = source.Run(context.Background(), r.processOne)
+	stats, faulted := r.stats, r.faulted
 
 	if faulted {
 		t.Fatal("expected no fault")
@@ -135,11 +143,11 @@ func TestProcessEvents_SkippedEvents(t *testing.T) {
 }
 
 func TestProcessEvents_Partitioned(t *testing.T) {
-	source := `fromAll().foreachStream().when({
+	js := `fromAll().foreachStream().when({
 		$init: function() { return { count: 0 }; },
 		ItemAdded: function(s, e) { s.count++; return s; }
 	})`
-	session := newTestSession(t, source)
+	session := newTestSession(t, js)
 	writer := &recordingWriter{}
 
 	events := []string{
@@ -148,7 +156,10 @@ func TestProcessEvents_Partitioned(t *testing.T) {
 		testEvent("ItemAdded", "s-1", 2),
 	}
 
-	stats, partitions, faulted := processEvents(session, events, writer)
+	r := newRunner(session.Feed, writer)
+	source := &fixtureSource{events: events}
+	_ = source.Run(context.Background(), r.processOne)
+	stats, partitions, faulted := r.stats, r.partitions, r.faulted
 
 	if faulted {
 		t.Fatal("expected no fault")
@@ -165,11 +176,11 @@ func TestProcessEvents_Partitioned(t *testing.T) {
 }
 
 func TestProcessEvents_Faulted(t *testing.T) {
-	source := `fromAll().when({
+	js := `fromAll().when({
 		$init: function() { return { count: 0 }; },
 		BadEvent: function(s, e) { throw new Error("boom"); }
 	})`
-	session := newTestSession(t, source)
+	session := newTestSession(t, js)
 	writer := &recordingWriter{}
 
 	events := []string{
@@ -177,7 +188,10 @@ func TestProcessEvents_Faulted(t *testing.T) {
 		testEvent("BadEvent", "s-1", 1),
 	}
 
-	stats, _, faulted := processEvents(session, events, writer)
+	r := newRunner(session.Feed, writer)
+	source := &fixtureSource{events: events}
+	_ = source.Run(context.Background(), r.processOne)
+	stats, faulted := r.stats, r.faulted
 
 	if !faulted {
 		t.Fatal("expected fault")
@@ -203,12 +217,12 @@ func TestProcessEvents_Faulted(t *testing.T) {
 }
 
 func TestProcessEvents_FaultedMidStream(t *testing.T) {
-	source := `fromAll().when({
+	js := `fromAll().when({
 		$init: function() { return { count: 0 }; },
 		ItemAdded: function(s, e) { s.count++; return s; },
 		BadEvent: function(s, e) { throw new Error("boom"); }
 	})`
-	session := newTestSession(t, source)
+	session := newTestSession(t, js)
 	writer := &recordingWriter{}
 
 	events := []string{
@@ -218,7 +232,10 @@ func TestProcessEvents_FaultedMidStream(t *testing.T) {
 		testEvent("ItemAdded", "s-1", 3),
 	}
 
-	stats, _, faulted := processEvents(session, events, writer)
+	r := newRunner(session.Feed, writer)
+	source := &fixtureSource{events: events}
+	_ = source.Run(context.Background(), r.processOne)
+	stats, faulted := r.stats, r.faulted
 
 	if !faulted {
 		t.Fatal("expected fault")
@@ -238,14 +255,17 @@ func TestProcessEvents_FaultedMidStream(t *testing.T) {
 }
 
 func TestProcessEvents_Empty(t *testing.T) {
-	source := `fromAll().when({
+	js := `fromAll().when({
 		$init: function() { return { count: 0 }; },
 		ItemAdded: function(s, e) { s.count++; return s; }
 	})`
-	session := newTestSession(t, source)
+	session := newTestSession(t, js)
 	writer := &recordingWriter{}
 
-	stats, partitions, faulted := processEvents(session, []string{}, writer)
+	r := newRunner(session.Feed, writer)
+	source := &fixtureSource{events: []string{}}
+	_ = source.Run(context.Background(), r.processOne)
+	stats, partitions, faulted := r.stats, r.partitions, r.faulted
 
 	if faulted {
 		t.Error("expected no fault")
@@ -261,12 +281,12 @@ func TestProcessEvents_Empty(t *testing.T) {
 // --- buildSummary ---
 
 func TestBuildSummary_Unpartitioned(t *testing.T) {
-	source := `fromAll().when({
+	js := `fromAll().when({
 		$init: function() { return { count: 0 }; },
 		ItemAdded: function(s, e) { s.count++; return s; }
 	})`
-	session := newTestSession(t, source)
-	info := getProjectionInfo(session)
+	session := newTestSession(t, js)
+	info := projection.GetInfo(session)
 
 	if _, err := session.Feed(testEvent("ItemAdded", "s-1", 0)); err != nil {
 		t.Fatal(err)
@@ -291,12 +311,12 @@ func TestBuildSummary_Unpartitioned(t *testing.T) {
 }
 
 func TestBuildSummary_Partitioned(t *testing.T) {
-	source := `fromAll().foreachStream().when({
+	js := `fromAll().foreachStream().when({
 		$init: function() { return { count: 0 }; },
 		ItemAdded: function(s, e) { s.count++; return s; }
 	})`
-	session := newTestSession(t, source)
-	info := getProjectionInfo(session)
+	session := newTestSession(t, js)
+	info := projection.GetInfo(session)
 
 	for i, stream := range []string{"s-1", "s-2", "s-1"} {
 		if _, err := session.Feed(testEvent("ItemAdded", stream, i)); err != nil {
@@ -336,12 +356,12 @@ func TestBuildSummary_Partitioned(t *testing.T) {
 }
 
 func TestBuildSummary_WithTransforms(t *testing.T) {
-	source := `fromAll().when({
+	js := `fromAll().when({
 		$init: function() { return { count: 0 }; },
 		ItemAdded: function(s, e) { s.count++; return s; }
 	}).transformBy(function(s) { return { doubled: s.count * 2 }; })`
-	session := newTestSession(t, source)
-	info := getProjectionInfo(session)
+	session := newTestSession(t, js)
+	info := projection.GetInfo(session)
 
 	if _, err := session.Feed(testEvent("ItemAdded", "s-1", 0)); err != nil {
 		t.Fatal(err)
@@ -377,12 +397,12 @@ func TestBuildSummary_WithTransforms(t *testing.T) {
 }
 
 func TestBuildSummary_PartitionedWithTransforms(t *testing.T) {
-	source := `fromAll().foreachStream().when({
+	js := `fromAll().foreachStream().when({
 		$init: function() { return { count: 0 }; },
 		ItemAdded: function(s, e) { s.count++; return s; }
 	}).transformBy(function(s) { return { doubled: s.count * 2 }; })`
-	session := newTestSession(t, source)
-	info := getProjectionInfo(session)
+	session := newTestSession(t, js)
+	info := projection.GetInfo(session)
 
 	if _, err := session.Feed(testEvent("ItemAdded", "s-1", 0)); err != nil {
 		t.Fatal(err)
@@ -419,7 +439,7 @@ func TestBuildSummary_PartitionedWithTransforms(t *testing.T) {
 }
 
 func TestBuildSummary_BiState(t *testing.T) {
-	source := `fromAll().foreachStream().when({
+	js := `fromAll().foreachStream().when({
 		$init: function() { return { count: 0 }; },
 		$initShared: function() { return { total: 0 }; },
 		ItemAdded: function(s, e) {
@@ -431,8 +451,8 @@ func TestBuildSummary_BiState(t *testing.T) {
 			if (e.streamId === 'totals') { s.total++; return s; }
 		}
 	})`
-	session := newTestSession(t, source)
-	info := getProjectionInfo(session)
+	session := newTestSession(t, js)
+	info := projection.GetInfo(session)
 
 	if !info.IsBiState {
 		t.Skip("runtime did not report IsBiState - projection source may need adjustment")
@@ -456,10 +476,10 @@ func TestBuildSummary_BiState(t *testing.T) {
 // --- classifyError ---
 
 func TestClassifyError_ProjectionError(t *testing.T) {
-	source := `fromAll().when({
+	js := `fromAll().when({
 		BadEvent: function(s, e) { throw new Error("boom"); }
 	})`
-	session := newTestSession(t, source)
+	session := newTestSession(t, js)
 
 	_, err := session.Feed(testEvent("BadEvent", "s-1", 0))
 	if err == nil {

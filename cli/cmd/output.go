@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/projection"
 )
 
 type eventInfo struct {
@@ -54,7 +55,7 @@ type partitionData struct {
 }
 
 type outputWriter interface {
-	WriteInfo(name string, info projectionInfo, version string)
+	WriteInfo(name string, info projection.Info, version string)
 	WriteDebugListening(addr string, port int)
 	WriteEvent(event eventInfo)
 	WriteResult(eventID string, result *gafferruntime.FeedResult)
@@ -203,7 +204,7 @@ func (tw *textWriter) writeEmittedCb(streamID, eventType, data, metadata string,
 	}
 }
 
-func (tw *textWriter) WriteInfo(name string, info projectionInfo, version string) {
+func (tw *textWriter) WriteInfo(name string, info projection.Info, version string) {
 	tw.heading(name)
 
 	if info.AllStreams {

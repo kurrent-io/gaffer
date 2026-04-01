@@ -5,6 +5,7 @@ import (
 	"os"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/projection"
 	"github.com/spf13/cobra"
 )
 
@@ -29,13 +30,13 @@ func runInfo(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	session, err := gafferruntime.NewSession(ctx.Source, buildSessionOptions(ctx.Config, ctx.Proj, false))
+	session, err := gafferruntime.NewSession(ctx.Source, projection.BuildSessionOptions(ctx.Config, ctx.Proj, false))
 	if err != nil {
 		return handleSessionError(cmd, err)
 	}
 	defer session.Destroy()
 
-	info := getProjectionInfo(session)
+	info := projection.GetInfo(session)
 
 	if infoJSON {
 		return writeInfoJSON(ctx, info)
@@ -46,7 +47,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func writeInfoJSON(ctx *projectionContext, info projectionInfo) error {
+func writeInfoJSON(ctx *projectionContext, info projection.Info) error {
 	out := map[string]any{
 		"name":            ctx.Proj.Name,
 		"entry":           ctx.Proj.Entry,

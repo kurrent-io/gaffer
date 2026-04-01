@@ -42,8 +42,6 @@ func init() {
 	devCmd.Flags().IntVar(&devDebugPort, "debug-port", 4711, "DAP debug server port")
 }
 
-type projectionInfo = projection.Info
-
 func runDev(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 
@@ -52,13 +50,13 @@ func runDev(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	session, err := gafferruntime.NewSession(projCtx.Source, buildSessionOptions(projCtx.Config, projCtx.Proj, devDebug))
+	session, err := gafferruntime.NewSession(projCtx.Source, projection.BuildSessionOptions(projCtx.Config, projCtx.Proj, devDebug))
 	if err != nil {
 		return handleSessionError(cmd, err)
 	}
 	defer session.Destroy()
 
-	info := getProjectionInfo(session)
+	info := projection.GetInfo(session)
 	version := projCtx.Engine
 
 	var writer outputWriter
@@ -132,7 +130,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 
 	var source eventSource
 	if devEvents != "" {
-		events, err := loadEvents(devEvents)
+		events, err := projection.LoadEvents(devEvents)
 		if err != nil {
 			return err
 		}
@@ -199,7 +197,7 @@ func (f *fixtureSource) Run(ctx context.Context, process func(string) bool) erro
 type liveSource struct {
 	connStr string
 	root    string
-	info    projectionInfo
+	info    projection.Info
 	version string
 }
 
@@ -316,13 +314,6 @@ func (r *runner) processOne(eventJSON string) (stop bool) {
 	return false
 }
 
-func processEvents(session *gafferruntime.Session, events []string, writer outputWriter) (eventStats, map[string]bool, bool) {
-	r := newRunner(session.Feed, writer)
-	source := &fixtureSource{events: events}
-	_ = source.Run(context.Background(), r.processOne)
-	return r.stats, r.partitions, r.faulted
-}
-
 func classifyError(err error) (code, description string) {
 	if projErr, ok := err.(gafferruntime.ProjectionError); ok {
 		return projErr.ErrorCode(), projErr.ErrorDescription()
@@ -330,15 +321,7 @@ func classifyError(err error) (code, description string) {
 	return "unexpected-error", err.Error()
 }
 
-func getProjectionInfo(session *gafferruntime.Session) projectionInfo {
-	return projection.GetInfo(session)
-}
-
-func buildSessionOptions(cfg *config.Config, proj *config.Projection, debug bool) *string {
-	return projection.BuildSessionOptions(cfg, proj, debug)
-}
-
-func buildSummary(session *gafferruntime.Session, info projectionInfo, partitions map[string]bool) summaryState {
+func buildSummary(session *gafferruntime.Session, info projection.Info, partitions map[string]bool) summaryState {
 	isPartitioned := info.ByStreams || info.ByCustomPartitions
 
 	summary := summaryState{
@@ -379,8 +362,4 @@ func buildSummary(session *gafferruntime.Session, info projectionInfo, partition
 	}
 
 	return summary
-}
-
-func loadEvents(path string) ([]string, error) {
-	return projection.LoadEvents(path)
 }

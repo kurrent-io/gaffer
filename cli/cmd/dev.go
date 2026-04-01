@@ -47,19 +47,19 @@ type projectionInfo = projection.Info
 func runDev(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 
-	ctx, err := loadProjection(args[0])
+	projCtx, err := loadProjection(args[0])
 	if err != nil {
 		return err
 	}
 
-	session, err := gafferruntime.NewSession(ctx.Source, buildSessionOptions(ctx.Config, ctx.Proj, devDebug))
+	session, err := gafferruntime.NewSession(projCtx.Source, buildSessionOptions(projCtx.Config, projCtx.Proj, devDebug))
 	if err != nil {
 		return handleSessionError(cmd, err)
 	}
 	defer session.Destroy()
 
 	info := getProjectionInfo(session)
-	version := ctx.Engine
+	version := projCtx.Engine
 
 	var writer outputWriter
 	if devJSON {
@@ -70,60 +70,92 @@ func runDev(cmd *cobra.Command, args []string) error {
 		writer = tw
 	}
 
-	writer.WriteInfo(ctx.Proj.Name, info, version)
+	writer.WriteInfo(projCtx.Proj.Name, info, version)
 
-	if devDebug {
-		sourcePath, _ := filepath.Abs(filepath.Join(ctx.Root, ctx.Proj.Entry))
-		return runDebugMode(cmd, session, info, version, ctx.Config, ctx.Root, writer, sourcePath)
-	}
-
-	if devEvents != "" {
-		return runFixtureMode(cmd, session, info, writer)
-	}
-
-	connStr := resolveConnection(ctx.Config, ctx.Root)
-	if connStr == "" {
-		return fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
-	}
-
-	return runLiveMode(cmd, session, info, version, connStr, ctx.Root, writer)
-}
-
-func resolveConnection(cfg *config.Config, root string) string {
-	if devConnection != "" {
-		return devConnection
-	}
-	return cfg.Connection
-}
-
-func runFixtureMode(cmd *cobra.Command, session *gafferruntime.Session, info projectionInfo, writer outputWriter) error {
-	events, err := loadEvents(devEvents)
-	if err != nil {
-		return err
-	}
-
-	stats, partitions, faulted := processEvents(session, events, writer)
-
-	summary := buildSummary(session, info, partitions)
-	writer.WriteSummary(stats, summary)
-
-	if faulted {
-		cmd.SilenceErrors = true
-		return fmt.Errorf("projection faulted")
-	}
-
-	return nil
-}
-
-func runLiveMode(cmd *cobra.Command, session *gafferruntime.Session, info projectionInfo, version, connStr, root string, writer outputWriter) error {
+	feed := feedFn(session.Feed)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	var afterRun func()
 
-	r := newRunner(session.Feed, writer)
-	source := &liveSource{connStr: connStr, root: root, info: info, version: version}
+	if devDebug {
+		store, err := history.New()
+		if err != nil {
+			return fmt.Errorf("creating history store: %w", err)
+		}
+		defer func() { _ = store.Close() }()
 
-	if err := source.Run(ctx, r.processOne); err != nil {
-		return err
+		sourcePath, _ := filepath.Abs(filepath.Join(projCtx.Root, projCtx.Proj.Entry))
+		absRoot, _ := filepath.Abs(projCtx.Root)
+		shape := dapserver.ProjectionShape{
+			IsPartitioned:   info.ByStreams || info.ByCustomPartitions,
+			IsBiState:       info.IsBiState,
+			HasTransforms:   info.DefinesStateTransform,
+			ProducesResults: info.ProducesResults,
+		}
+		adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot, store, shape)
+		handler := adapter.Handler()
+
+		addr := fmt.Sprintf("127.0.0.1:%d", devDebugPort)
+		srv, err := dapserver.NewServer(addr, handler)
+		if err != nil {
+			return fmt.Errorf("starting debug server: %w", err)
+		}
+		defer func() { _ = srv.Close() }()
+		adapter.SetServer(srv)
+
+		_, _ = fmt.Fprintf(os.Stderr, "Debug server listening on %s\nWaiting for editor to attach...\n", srv.Addr())
+		writer.WriteDebugListening(srv.Addr().String(), devDebugPort)
+
+		go func() {
+			_ = srv.Serve()
+			stop()
+		}()
+
+		go func() {
+			<-ctx.Done()
+			session.ClearBreakpoints()
+			defer func() { recover() }() //nolint:errcheck
+			session.Continue()
+		}()
+
+		select {
+		case <-adapter.Ready():
+		case <-ctx.Done():
+			return nil
+		}
+
+		feed = adapter.FeedEvent
+		afterRun = func() { adapter.SendTerminated() }
+	}
+
+	r := newRunner(feed, writer)
+
+	var source eventSource
+	if devEvents != "" {
+		events, err := loadEvents(devEvents)
+		if err != nil {
+			return err
+		}
+		source = &fixtureSource{events: events}
+	} else {
+		connStr := resolveConnection(projCtx.Config, projCtx.Root)
+		if connStr == "" {
+			return fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
+		}
+		source = &liveSource{connStr: connStr, root: projCtx.Root, info: info, version: version}
+	}
+
+	srcErr := source.Run(ctx, r.processOne)
+
+	if afterRun != nil {
+		afterRun()
+	}
+
+	if ctx.Err() != nil {
+		_, _ = fmt.Fprint(os.Stderr, "Interrupted\n\n")
+		r.faulted = false
+	} else if srcErr != nil {
+		return srcErr
 	}
 
 	summary := buildSummary(session, info, r.partitions)
@@ -137,214 +169,11 @@ func runLiveMode(cmd *cobra.Command, session *gafferruntime.Session, info projec
 	return nil
 }
 
-func runDebugMode(cmd *cobra.Command, session *gafferruntime.Session, info projectionInfo, version string, cfg *config.Config, root string, writer outputWriter, sourcePath string) error {
-	store, err := history.New()
-	if err != nil {
-		return fmt.Errorf("creating history store: %w", err)
+func resolveConnection(cfg *config.Config, root string) string {
+	if devConnection != "" {
+		return devConnection
 	}
-	defer func() { _ = store.Close() }()
-
-	absRoot, _ := filepath.Abs(root)
-	shape := dapserver.ProjectionShape{
-		IsPartitioned:   info.ByStreams || info.ByCustomPartitions,
-		IsBiState:       info.IsBiState,
-		HasTransforms:   info.DefinesStateTransform,
-		ProducesResults: info.ProducesResults,
-	}
-	adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot, store, shape)
-	handler := adapter.Handler()
-
-	addr := fmt.Sprintf("127.0.0.1:%d", devDebugPort)
-	srv, err := dapserver.NewServer(addr, handler)
-	if err != nil {
-		return fmt.Errorf("starting debug server: %w", err)
-	}
-	defer func() { _ = srv.Close() }()
-	adapter.SetServer(srv)
-
-	_, _ = fmt.Fprintf(os.Stderr, "Debug server listening on %s\nWaiting for editor to attach...\n", srv.Addr())
-	writer.WriteDebugListening(srv.Addr().String(), devDebugPort)
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-
-	go func() {
-		_ = srv.Serve()
-		stop()
-	}()
-
-	// On interrupt or editor disconnect, clear breakpoints and continue so Feed unblocks.
-	go func() {
-		<-ctx.Done()
-		session.ClearBreakpoints()
-		defer func() { recover() }() //nolint:errcheck
-		session.Continue()
-	}()
-
-	select {
-	case <-adapter.Ready():
-	case <-ctx.Done():
-		return nil
-	}
-
-	if devEvents != "" {
-		events, err := loadEvents(devEvents)
-		if err != nil {
-			return err
-		}
-
-		var stats eventStats
-		partitions := make(map[string]bool)
-		var faulted bool
-
-		for _, evt := range events {
-			if ctx.Err() != nil {
-				_, _ = fmt.Fprint(os.Stderr, "Interrupted\n\n")
-				break
-			}
-			event := parseEventInfo(evt)
-			writer.WriteEvent(event)
-
-			result, feedErr := adapter.FeedEvent(evt)
-			if feedErr != nil {
-				if ctx.Err() != nil {
-					_, _ = fmt.Fprint(os.Stderr, "Interrupted\n\n")
-					break
-				}
-				code, desc := classifyError(feedErr)
-				writer.WriteError(event.id(), code, desc)
-				stats.errors++
-				faulted = true
-				break
-			}
-
-			writer.WriteResult(event.id(), result)
-			if result.Status == "skipped" {
-				stats.skipped++
-			} else {
-				stats.handled++
-				if result.Partition != "" {
-					partitions[result.Partition] = true
-				}
-			}
-		}
-
-		adapter.SendTerminated()
-		summary := buildSummary(session, info, partitions)
-		writer.WriteSummary(stats, summary)
-
-		if faulted {
-			cmd.SilenceErrors = true
-			return fmt.Errorf("projection faulted")
-		}
-		return nil
-	}
-
-	connStr := resolveConnection(cfg, root)
-	if connStr == "" {
-		return fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
-	}
-
-	if err := env.Load(root, ""); err != nil {
-		return fmt.Errorf("loading .env: %w", err)
-	}
-
-	dbConfig, err := kurrentdb.ParseConnectionString(connStr)
-	if err != nil {
-		return fmt.Errorf("invalid connection string: %w", err)
-	}
-
-	username, password := env.Credentials()
-	if username != "" {
-		dbConfig.Username = username
-		dbConfig.Password = password
-	}
-	dbConfig.Logger = kurrentdb.NoopLogging()
-
-	client, err := kurrentdb.NewClient(dbConfig)
-	if err != nil {
-		return fmt.Errorf("connecting to KurrentDB: %w", err)
-	}
-	defer func() { _ = client.Close() }()
-
-	filter := subscription.BuildFilter(subscription.SourceInfo{
-		AllStreams:                  info.AllStreams,
-		Categories:                  info.Categories,
-		Streams:                     info.Streams,
-		Events:                      info.Events,
-		HandlesDeletedNotifications: info.HandlesDeletedNotifications,
-	}, version)
-
-	subOpts := kurrentdb.SubscribeToAllOptions{
-		From:           kurrentdb.Start{},
-		ResolveLinkTos: subscription.ResolveLinkTos(version),
-	}
-	if filter != nil {
-		subOpts.Filter = filter
-	}
-
-	sub, err := client.SubscribeToAll(ctx, subOpts)
-	if err != nil {
-		return fmt.Errorf("subscribing: %w", err)
-	}
-	defer func() { _ = sub.Close() }()
-
-	var stats eventStats
-	partitions := make(map[string]bool)
-	var faulted bool
-
-	for {
-		subEvent := sub.Recv()
-
-		if subEvent.SubscriptionDropped != nil {
-			if ctx.Err() != nil {
-				_, _ = fmt.Fprint(os.Stderr, "Interrupted\n\n")
-				break
-			}
-			return fmt.Errorf("subscription dropped: %w", subEvent.SubscriptionDropped.Error)
-		}
-
-		if subEvent.EventAppeared == nil {
-			continue
-		}
-
-		eventJSON, err := subscription.MapEvent(subEvent.EventAppeared)
-		if err != nil || eventJSON == "" {
-			continue
-		}
-
-		event := parseEventInfo(eventJSON)
-		writer.WriteEvent(event)
-
-		result, feedErr := adapter.FeedEvent(eventJSON)
-		if feedErr != nil {
-			code, desc := classifyError(feedErr)
-			writer.WriteError(event.id(), code, desc)
-			stats.errors++
-			faulted = true
-			break
-		}
-
-		writer.WriteResult(event.id(), result)
-		if result.Status == "skipped" {
-			stats.skipped++
-		} else {
-			stats.handled++
-			if result.Partition != "" {
-				partitions[result.Partition] = true
-			}
-		}
-	}
-
-	adapter.SendTerminated()
-	summary := buildSummary(session, info, partitions)
-	writer.WriteSummary(stats, summary)
-
-	if faulted {
-		cmd.SilenceErrors = true
-		return fmt.Errorf("projection faulted")
-	}
-	return nil
+	return cfg.Connection
 }
 
 type eventSource interface {
@@ -424,7 +253,6 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 
 		if subEvent.SubscriptionDropped != nil {
 			if ctx.Err() != nil {
-				_, _ = fmt.Fprint(os.Stderr, "Interrupted\n\n")
 				return nil
 			}
 			return fmt.Errorf("subscription dropped: %w", subEvent.SubscriptionDropped.Error)

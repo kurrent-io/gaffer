@@ -433,35 +433,57 @@ func runDebugMode(cmd *cobra.Command, session *gafferruntime.Session, info proje
 	return nil
 }
 
-func processEvents(session *gafferruntime.Session, events []string, writer outputWriter) (eventStats, map[string]bool, bool) {
-	var stats eventStats
-	partitions := make(map[string]bool)
+type feedFn func(string) (*gafferruntime.FeedResult, error)
 
-	for _, evt := range events {
-		event := parseEventInfo(evt)
-		writer.WriteEvent(event)
+type runner struct {
+	feed       feedFn
+	writer     outputWriter
+	stats      eventStats
+	partitions map[string]bool
+	faulted    bool
+}
 
-		result, feedErr := session.Feed(evt)
-		if feedErr != nil {
-			code, desc := classifyError(feedErr)
-			writer.WriteError(event.id(), code, desc)
-			stats.errors++
-			return stats, partitions, true
-		}
+func newRunner(feed feedFn, writer outputWriter) *runner {
+	return &runner{
+		feed:       feed,
+		writer:     writer,
+		partitions: make(map[string]bool),
+	}
+}
 
-		writer.WriteResult(event.id(), result)
+func (r *runner) processOne(eventJSON string) (stop bool) {
+	event := parseEventInfo(eventJSON)
+	r.writer.WriteEvent(event)
 
-		if result.Status == "skipped" {
-			stats.skipped++
-		} else {
-			stats.handled++
-			if result.Partition != "" {
-				partitions[result.Partition] = true
-			}
-		}
+	result, err := r.feed(eventJSON)
+	if err != nil {
+		code, desc := classifyError(err)
+		r.writer.WriteError(event.id(), code, desc)
+		r.stats.errors++
+		r.faulted = true
+		return true
 	}
 
-	return stats, partitions, false
+	r.writer.WriteResult(event.id(), result)
+	if result.Status == "skipped" {
+		r.stats.skipped++
+	} else {
+		r.stats.handled++
+		if result.Partition != "" {
+			r.partitions[result.Partition] = true
+		}
+	}
+	return false
+}
+
+func processEvents(session *gafferruntime.Session, events []string, writer outputWriter) (eventStats, map[string]bool, bool) {
+	r := newRunner(session.Feed, writer)
+	for _, evt := range events {
+		if r.processOne(evt) {
+			break
+		}
+	}
+	return r.stats, r.partitions, r.faulted
 }
 
 func classifyError(err error) (code, description string) {

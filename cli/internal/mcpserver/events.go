@@ -91,13 +91,7 @@ type eventTypeSummary struct {
 }
 
 func (s *Server) sampleProjectionEvents(ctx context.Context, client *kurrentdb.Client, info projection.Info, engine string, limit uint64) ([]eventTypeSummary, error) {
-	filter := subscription.BuildFilter(subscription.SourceInfo{
-		AllStreams:                  info.AllStreams,
-		Categories:                  info.Categories,
-		Streams:                     info.Streams,
-		Events:                      info.Events,
-		HandlesDeletedNotifications: info.HandlesDeletedNotifications,
-	}, engine)
+	filter := subscription.BuildFilter(info, engine)
 
 	// For stream-specific sources, read from those streams directly
 	if len(info.Streams) > 0 && !info.AllStreams {

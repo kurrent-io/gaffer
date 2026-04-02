@@ -5,17 +5,10 @@ import (
 	"strings"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
+	"github.com/kurrent-io/gaffer/cli/internal/projection"
 )
 
-type SourceInfo struct {
-	AllStreams                  bool
-	Categories                  []string
-	Streams                     []string
-	Events                      []string
-	HandlesDeletedNotifications bool
-}
-
-func BuildFilter(info SourceInfo, version string) *kurrentdb.SubscriptionFilter {
+func BuildFilter(info projection.Info, version string) *kurrentdb.SubscriptionFilter {
 	sourceFilter := buildSourceFilter(info)
 
 	if info.AllStreams && len(info.Events) > 0 {
@@ -33,7 +26,7 @@ func BuildFilter(info SourceInfo, version string) *kurrentdb.SubscriptionFilter 
 	return sourceFilter
 }
 
-func buildSourceFilter(info SourceInfo) *kurrentdb.SubscriptionFilter {
+func buildSourceFilter(info projection.Info) *kurrentdb.SubscriptionFilter {
 	if info.AllStreams {
 		return nil
 	}

@@ -22,13 +22,7 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 		engine = proj.Engine
 	}
 
-	filter := subscription.BuildFilter(subscription.SourceInfo{
-		AllStreams:                  sess.info.AllStreams,
-		Categories:                  sess.info.Categories,
-		Streams:                     sess.info.Streams,
-		Events:                      sess.info.Events,
-		HandlesDeletedNotifications: sess.info.HandlesDeletedNotifications,
-	}, engine)
+	filter := subscription.BuildFilter(sess.info, engine)
 
 	subOpts := kurrentdb.SubscribeToAllOptions{
 		From:           kurrentdb.Start{},

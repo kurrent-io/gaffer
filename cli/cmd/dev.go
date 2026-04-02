@@ -224,13 +224,7 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 	}
 	defer func() { _ = client.Close() }()
 
-	filter := subscription.BuildFilter(subscription.SourceInfo{
-		AllStreams:                  l.info.AllStreams,
-		Categories:                  l.info.Categories,
-		Streams:                     l.info.Streams,
-		Events:                      l.info.Events,
-		HandlesDeletedNotifications: l.info.HandlesDeletedNotifications,
-	}, l.version)
+	filter := subscription.BuildFilter(l.info, l.version)
 
 	opts := kurrentdb.SubscribeToAllOptions{
 		From:           kurrentdb.Start{},

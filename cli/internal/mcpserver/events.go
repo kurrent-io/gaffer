@@ -36,14 +36,12 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 		return toolError("%v", err), nil, nil
 	}
 
-	opts := engine.BuildSessionOptions(s.cfg, proj, false)
-	session, err := gafferruntime.NewSession(string(source), opts)
+	lp := engine.NewLoadedProjection(s.root, s.cfg, proj, string(source))
+	session, info, err := engine.NewSession(lp, false)
 	if err != nil {
 		return toolError("compiling projection: %v", err), nil, nil
 	}
 	defer session.Destroy()
-
-	info := session.GetSources()
 
 	client, err := s.connectToKurrentDB()
 	if err != nil {

@@ -145,8 +145,8 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 		return nil, fmt.Errorf("reading projection source: %w", err)
 	}
 
-	opts := engine.BuildSessionOptions(s.cfg, proj, debug)
-	runtime, err := gafferruntime.NewSession(string(source), opts)
+	lp := engine.NewLoadedProjection(s.root, s.cfg, proj, string(source))
+	runtime, info, err := engine.NewSession(lp, debug)
 	if err != nil {
 		return nil, err
 	}
@@ -156,8 +156,6 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 		runtime.Destroy()
 		return nil, fmt.Errorf("creating history store: %w", err)
 	}
-
-	info := runtime.GetSources()
 
 	status := "ready"
 	if debug {

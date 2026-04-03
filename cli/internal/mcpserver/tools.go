@@ -131,8 +131,8 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolError("%v", err), nil, nil
 	}
 
-	opts := engine.BuildSessionOptions(s.cfg, proj, false)
-	session, err := gafferruntime.NewSession(string(source), opts)
+	lp := engine.NewLoadedProjection(s.root, s.cfg, proj, string(source))
+	session, info, err := engine.NewSession(lp, false)
 	if err != nil {
 		if _, ok := err.(gafferruntime.ProjectionError); ok {
 			return toolResult(map[string]any{
@@ -143,8 +143,6 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolError("creating session: %v", err), nil, nil
 	}
 	defer session.Destroy()
-
-	info := session.GetSources()
 
 	return toolResult(map[string]any{
 		"valid":           true,

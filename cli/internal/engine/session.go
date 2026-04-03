@@ -20,6 +20,16 @@ type LoadedProjection struct {
 	Engine string
 }
 
+func NewLoadedProjection(root string, cfg *config.Config, proj *config.Projection, source string) *LoadedProjection {
+	return &LoadedProjection{
+		Root:   root,
+		Config: cfg,
+		Proj:   proj,
+		Source: source,
+		Engine: proj.EffectiveEngine(),
+	}
+}
+
 func LoadProjection(name string) (*LoadedProjection, error) {
 	root := project.FindRoot()
 	if root == "" {

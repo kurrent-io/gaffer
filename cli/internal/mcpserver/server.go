@@ -90,7 +90,7 @@ func New(root string, cfg *config.Config) *Server {
 func NewFromProjectRoot() (*Server, error) {
 	root := project.FindRoot()
 	if root == "" {
-		return nil, fmt.Errorf("not in a gaffer project (no gaffer.toml found)")
+		return nil, project.ErrNotInProject
 	}
 
 	cfg, err := config.Load(filepath.Join(root, "gaffer.toml"))

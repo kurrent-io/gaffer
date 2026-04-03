@@ -1,9 +1,12 @@
 package project
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 )
+
+var ErrNotInProject = errors.New("not in a gaffer project (no gaffer.toml found)")
 
 const configFileName = "gaffer.toml"
 

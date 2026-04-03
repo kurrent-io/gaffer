@@ -34,7 +34,7 @@ func runScaffold(cmd *cobra.Command, args []string) error {
 
 	root := project.FindRoot()
 	if root == "" {
-		return fmt.Errorf("not in a gaffer project (no gaffer.toml found)")
+		return project.ErrNotInProject
 	}
 
 	cfg, err := config.Load(filepath.Join(root, "gaffer.toml"))

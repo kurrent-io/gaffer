@@ -33,7 +33,7 @@ func NewProjection(root string, cfg *config.Config, def *config.Projection, sour
 func LoadProjection(name string) (*Projection, error) {
 	root := project.FindRoot()
 	if root == "" {
-		return nil, fmt.Errorf("not in a gaffer project (no gaffer.toml found)")
+		return nil, project.ErrNotInProject
 	}
 
 	cfg, err := config.Load(filepath.Join(root, "gaffer.toml"))

@@ -1,0 +1,10 @@
+fromStream('it\'s-a-stream')
+  .when({
+    $init: function() {
+      return {};
+    },
+    // Add your event handlers here
+    // EventType: function(state, event) {
+    //   return state;
+    // }
+  })

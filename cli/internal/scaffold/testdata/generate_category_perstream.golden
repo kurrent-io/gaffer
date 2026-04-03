@@ -1,0 +1,11 @@
+fromCategory('orders')
+  .foreachStream()
+  .when({
+    $init: function() {
+      return {};
+    },
+    // Add your event handlers here
+    // EventType: function(state, event) {
+    //   return state;
+    // }
+  })

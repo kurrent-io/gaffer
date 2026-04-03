@@ -11,7 +11,7 @@ import (
 func (s *Server) startLiveSubscription(sess *activeSession) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	sess.cancel = cancel
-	sess.stats.Status = "running"
+	sess.runner.SetStatus("running")
 
 	if sess.caughtUpCh == nil {
 		sess.caughtUpCh = make(chan struct{}, 1)
@@ -44,11 +44,9 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 		Info:    sess.info,
 		Version: version,
 		OnCaughtUp: func() {
-			s.mu.Lock()
-			if sess.stats.Status == "running" {
-				sess.stats.Status = "caught_up"
+			if sess.runner.Status() == "running" {
+				sess.runner.SetStatus("caught_up")
 			}
-			s.mu.Unlock()
 			select {
 			case sess.caughtUpCh <- struct{}{}:
 			default:
@@ -61,9 +59,9 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 
 		s.mu.Lock()
 		if ctx.Err() != nil {
-			sess.stats.Status = "stopped"
+			sess.runner.SetStatus("stopped")
 		} else if sess.runner.Faulted() || srcErr != nil {
-			sess.stats.Status = "error"
+			sess.runner.SetStatus("error")
 			if srcErr != nil {
 				sess.lastError = srcErr
 			}

@@ -26,62 +26,35 @@ type Server struct {
 }
 
 type activeSession struct {
-	runtime    *gafferruntime.Session
-	history    *history.Store
-	info       gafferruntime.QuerySources
-	name       string
-	runner     *engine.Runner
-	stats      sessionStats
-	partitions map[string]bool
-	cancel     context.CancelFunc
-	lastError  error
+	runtime   *gafferruntime.Session
+	history   *history.Store
+	info      gafferruntime.QuerySources
+	name      string
+	runner *engine.Runner
+	cancel context.CancelFunc
+	lastError error // subscription-level errors (not feed errors - those are on runner)
 
-	// Debug state (pausedEvent/breakAtPosition used by live debug path until migrated)
-	pausedEvent     string
-	breakCh         chan gafferruntime.BreakInfo
-	done            chan struct{} // closed when background feed goroutine exits
-	caughtUpCh      chan struct{} // signaled when live subscription catches up
-	errorCh         chan error    // signaled on feed error in background
-	breakAtPosition int64         // pause at this event position (1-based), 0 = disabled
-}
-
-type sessionStats struct {
-	Processed int64  `json:"processed"`
-	Skipped   int64  `json:"skipped"`
-	Errors    int64  `json:"errors"`
-	Status    string `json:"status"`
+	// MCP coordination channels
+	breakCh    chan gafferruntime.BreakInfo
+	done       chan struct{} // closed when background feed goroutine exits
+	caughtUpCh chan struct{} // signaled when live subscription catches up
+	errorCh    chan error    // signaled on feed error in background
 }
 
 func (sess *activeSession) handled() int64 {
-	if sess.runner != nil {
-		return int64(sess.runner.Stats().Handled)
-	}
-	return sess.stats.Processed
+	return int64(sess.runner.Stats().Handled)
 }
 
 func (sess *activeSession) skipped() int64 {
-	if sess.runner != nil {
-		return int64(sess.runner.Stats().Skipped)
-	}
-	return sess.stats.Skipped
+	return int64(sess.runner.Stats().Skipped)
 }
 
 func (sess *activeSession) errors() int64 {
-	if sess.runner != nil {
-		return int64(sess.runner.Stats().Errors)
-	}
-	return sess.stats.Errors
+	return int64(sess.runner.Stats().Errors)
 }
 
 func (sess *activeSession) eventCount() int64 {
 	return sess.handled() + sess.skipped() + sess.errors()
-}
-
-func (sess *activeSession) activePartitions() map[string]bool {
-	if sess.runner != nil {
-		return sess.runner.Partitions()
-	}
-	return sess.partitions
 }
 
 func New(root string, cfg *config.Config) *Server {
@@ -184,18 +157,11 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 		return nil, fmt.Errorf("creating history store: %w", err)
 	}
 
-	status := "ready"
-	if debug {
-		status = "debugging"
-	}
-
 	sess := &activeSession{
-		runtime:    runtime,
-		history:    store,
-		info:       info,
-		name:       name,
-		partitions: make(map[string]bool),
-		stats:      sessionStats{Status: status},
+		runtime: runtime,
+		history: store,
+		info:    info,
+		name:    name,
 	}
 
 	cfg := engine.RunnerConfig{
@@ -221,6 +187,12 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 		}
 	}
 	sess.runner = engine.NewRunner(cfg)
+
+	if debug {
+		sess.runner.SetStatus("debugging")
+	} else {
+		sess.runner.SetStatus("ready")
+	}
 
 	s.session = sess
 	return sess, nil

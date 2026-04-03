@@ -289,12 +289,12 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 	_ = source.Run(context.Background(), sess.runner.ProcessOne)
 
 	if !sess.runner.Faulted() {
-		sess.stats.Status = "completed"
+		sess.runner.SetStatus("completed")
 	} else {
-		sess.stats.Status = "error"
+		sess.runner.SetStatus("error")
 	}
 
-	summary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.activePartitions()))
+	summary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.runner.Partitions()))
 	summary["completed"] = !sess.runner.Faulted()
 	summary["processed"] = sess.handled()
 	summary["skipped"] = sess.skipped()
@@ -422,7 +422,7 @@ func (s *Server) handleGetState(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolResult(result), nil, nil
 	}
 
-	return toolResult(stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.activePartitions()))), nil, nil
+	return toolResult(stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.runner.Partitions()))), nil, nil
 }
 
 func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest, _ listProjectionsInput) (*mcp.CallToolResult, any, error) {

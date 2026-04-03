@@ -4,11 +4,11 @@ import (
 	"fmt"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
-	"github.com/kurrent-io/gaffer/cli/internal/env"
+	"github.com/kurrent-io/gaffer/cli/internal/dotenv"
 )
 
 func Connect(connStr, projectRoot string) (*kurrentdb.Client, error) {
-	if err := env.Load(projectRoot, ""); err != nil {
+	if err := dotenv.Load(projectRoot, ""); err != nil {
 		return nil, fmt.Errorf("loading .env: %w", err)
 	}
 
@@ -17,7 +17,7 @@ func Connect(connStr, projectRoot string) (*kurrentdb.Client, error) {
 		return nil, fmt.Errorf("invalid connection string: %w", err)
 	}
 
-	username, password := env.Credentials()
+	username, password := dotenv.Credentials()
 	if username != "" {
 		dbConfig.Username = username
 		dbConfig.Password = password

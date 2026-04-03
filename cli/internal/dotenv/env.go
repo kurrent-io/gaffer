@@ -1,4 +1,4 @@
-package env
+package dotenv
 
 import (
 	"os"

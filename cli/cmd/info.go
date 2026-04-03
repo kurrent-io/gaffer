@@ -25,31 +25,31 @@ func init() {
 func runInfo(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 
-	ctx, err := engine.LoadProjection(args[0])
+	proj, err := engine.LoadProjection(args[0])
 	if err != nil {
 		return err
 	}
 
-	session, info, err := engine.NewSession(ctx, false)
+	session, info, err := engine.CreateSession(proj, false)
 	if err != nil {
 		return handleSessionError(cmd, err)
 	}
 	defer session.Destroy()
 
 	if infoJSON {
-		return writeInfoJSON(ctx, info)
+		return writeInfoJSON(proj, info)
 	}
 
 	tw := newTextWriter(os.Stdout)
-	tw.WriteInfo(ctx.Proj.Name, info, ctx.Engine)
+	tw.WriteInfo(proj.Def.Name, info, proj.Engine)
 	return nil
 }
 
-func writeInfoJSON(ctx *engine.LoadedProjection, info gafferruntime.QuerySources) error {
+func writeInfoJSON(proj *engine.Projection, info gafferruntime.QuerySources) error {
 	out := map[string]any{
-		"name":            ctx.Proj.Name,
-		"entry":           ctx.Proj.Entry,
-		"engine":          ctx.Engine,
+		"name":            proj.Def.Name,
+		"entry":           proj.Def.Entry,
+		"engine":          proj.Engine,
 		"source":          infoSource(info),
 		"biState":         info.IsBiState,
 		"producesResults": info.ProducesResults,

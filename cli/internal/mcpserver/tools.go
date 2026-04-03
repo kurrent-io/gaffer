@@ -131,8 +131,8 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolError("%v", err), nil, nil
 	}
 
-	lp := engine.NewLoadedProjection(s.root, s.cfg, proj, string(source))
-	session, info, err := engine.NewSession(lp, false)
+	lp := engine.NewProjection(s.root, s.cfg, proj, string(source))
+	session, info, err := engine.CreateSession(lp, false)
 	if err != nil {
 		if _, ok := err.(gafferruntime.ProjectionError); ok {
 			return toolResult(map[string]any{

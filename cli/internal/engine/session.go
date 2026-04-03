@@ -12,25 +12,25 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 )
 
-type LoadedProjection struct {
+type Projection struct {
 	Root   string
 	Config *config.Config
-	Proj   *config.Projection
+	Def    *config.Projection
 	Source string
 	Engine string
 }
 
-func NewLoadedProjection(root string, cfg *config.Config, proj *config.Projection, source string) *LoadedProjection {
-	return &LoadedProjection{
+func NewProjection(root string, cfg *config.Config, def *config.Projection, source string) *Projection {
+	return &Projection{
 		Root:   root,
 		Config: cfg,
-		Proj:   proj,
+		Def:    def,
 		Source: source,
-		Engine: proj.EffectiveEngine(),
+		Engine: def.EffectiveEngine(),
 	}
 }
 
-func LoadProjection(name string) (*LoadedProjection, error) {
+func LoadProjection(name string) (*Projection, error) {
 	root := project.FindRoot()
 	if root == "" {
 		return nil, fmt.Errorf("not in a gaffer project (no gaffer.toml found)")
@@ -51,18 +51,18 @@ func LoadProjection(name string) (*LoadedProjection, error) {
 		return nil, fmt.Errorf("reading projection source: %w", err)
 	}
 
-	return &LoadedProjection{
+	return &Projection{
 		Root:   root,
 		Config: cfg,
-		Proj:   proj,
+		Def:    proj,
 		Source: string(source),
 		Engine: proj.EffectiveEngine(),
 	}, nil
 }
 
-func NewSession(lp *LoadedProjection, debug bool) (*gafferruntime.Session, gafferruntime.QuerySources, error) {
-	opts := BuildSessionOptions(lp.Config, lp.Proj, debug)
-	session, err := gafferruntime.NewSession(lp.Source, opts)
+func CreateSession(proj *Projection, debug bool) (*gafferruntime.Session, gafferruntime.QuerySources, error) {
+	opts := buildSessionOptions(proj.Config, proj.Def, debug)
+	session, err := gafferruntime.NewSession(proj.Source, opts)
 	if err != nil {
 		return nil, gafferruntime.QuerySources{}, err
 	}
@@ -70,7 +70,7 @@ func NewSession(lp *LoadedProjection, debug bool) (*gafferruntime.Session, gaffe
 	return session, info, nil
 }
 
-func BuildSessionOptions(cfg *config.Config, proj *config.Projection, debug bool) *string {
+func buildSessionOptions(cfg *config.Config, proj *config.Projection, debug bool) *string {
 	opts := map[string]any{}
 
 	if debug {

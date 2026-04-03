@@ -41,18 +41,18 @@ func init() {
 func runDev(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 
-	projCtx, err := engine.LoadProjection(args[0])
+	proj, err := engine.LoadProjection(args[0])
 	if err != nil {
 		return err
 	}
 
-	session, info, err := engine.NewSession(projCtx, devDebug)
+	session, info, err := engine.CreateSession(proj, devDebug)
 	if err != nil {
 		return handleSessionError(cmd, err)
 	}
 	defer session.Destroy()
 
-	version := projCtx.Engine
+	version := proj.Engine
 
 	var writer outputWriter
 	if devJSON {
@@ -63,7 +63,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 		writer = tw
 	}
 
-	writer.WriteInfo(projCtx.Proj.Name, info, version)
+	writer.WriteInfo(proj.Def.Name, info, version)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -76,8 +76,8 @@ func runDev(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("creating history store: %w", err)
 		}
 
-		sourcePath, _ := filepath.Abs(filepath.Join(projCtx.Root, projCtx.Proj.Entry))
-		absRoot, _ := filepath.Abs(projCtx.Root)
+		sourcePath, _ := filepath.Abs(filepath.Join(proj.Root, proj.Def.Entry))
+		absRoot, _ := filepath.Abs(proj.Root)
 
 		adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot)
 
@@ -141,13 +141,13 @@ func runDev(cmd *cobra.Command, args []string) error {
 		}
 		source = engine.NewFixtureSource(events)
 	} else {
-		connStr := resolveConnection(projCtx.Config, projCtx.Root)
+		connStr := resolveConnection(proj.Config)
 		if connStr == "" {
 			return fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
 		}
 		source = engine.NewLiveSource(engine.LiveSourceConfig{
 			ConnStr: connStr,
-			Root:    projCtx.Root,
+			Root:    proj.Root,
 			Info:    info,
 			Version: version,
 		})
@@ -177,7 +177,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func resolveConnection(cfg *config.Config, root string) string {
+func resolveConnection(cfg *config.Config) string {
 	if devConnection != "" {
 		return devConnection
 	}

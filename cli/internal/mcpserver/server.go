@@ -143,8 +143,8 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 		return nil, fmt.Errorf("reading projection source: %w", err)
 	}
 
-	lp := engine.NewLoadedProjection(s.root, s.cfg, proj, string(source))
-	runtime, info, err := engine.NewSession(lp, debug)
+	lp := engine.NewProjection(s.root, s.cfg, proj, string(source))
+	runtime, info, err := engine.CreateSession(lp, debug)
 	if err != nil {
 		return nil, err
 	}

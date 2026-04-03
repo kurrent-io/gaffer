@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
 type eventInfo struct {
@@ -38,28 +39,13 @@ func (s eventStats) total() int {
 	return s.handled + s.skipped + s.errors
 }
 
-type summaryState struct {
-	partitioned   bool
-	partitions    map[string]partitionData
-	state         json.RawMessage
-	result        json.RawMessage
-	sharedState   json.RawMessage
-	hasTransforms bool
-	hasBiState    bool
-}
-
-type partitionData struct {
-	state  json.RawMessage
-	result json.RawMessage
-}
-
 type outputWriter interface {
 	WriteInfo(name string, info gafferruntime.QuerySources, version string)
 	WriteDebugListening(addr string, port int)
 	WriteEvent(event eventInfo)
 	WriteResult(eventID string, result *gafferruntime.FeedResult)
 	WriteError(eventID string, code string, description string)
-	WriteSummary(stats eventStats, state summaryState)
+	WriteSummary(stats eventStats, state engine.StateSummary)
 }
 
 const indentSize = 3
@@ -286,30 +272,30 @@ func (tw *textWriter) statsLine(stats eventStats) {
 	tw.write("%s)\n", line)
 }
 
-func (tw *textWriter) WriteSummary(stats eventStats, state summaryState) {
+func (tw *textWriter) WriteSummary(stats eventStats, state engine.StateSummary) {
 	tw.statsLine(stats)
 	tw.blank()
 
-	if state.hasBiState && hasContent(state.sharedState) {
-		tw.detail("Shared state", string(state.sharedState))
+	if state.HasBiState && hasContent(state.SharedState) {
+		tw.detail("Shared state", string(state.SharedState))
 	}
 
-	if state.partitioned {
-		for partition, data := range state.partitions {
+	if state.Partitioned {
+		for partition, data := range state.Partitions {
 			tw.heading(partition)
-			if hasContent(data.state) {
-				tw.detail("state", string(data.state))
+			if hasContent(data.State) {
+				tw.detail("state", string(data.State))
 			}
-			if state.hasTransforms && hasContent(data.result) {
-				tw.detail("result", string(data.result))
+			if state.HasTransforms && hasContent(data.Result) {
+				tw.detail("result", string(data.Result))
 			}
 		}
 	} else {
-		if hasContent(state.state) {
-			tw.detail("State", string(state.state))
+		if hasContent(state.State) {
+			tw.detail("State", string(state.State))
 		}
-		if state.hasTransforms && hasContent(state.result) {
-			tw.detail("Result", string(state.result))
+		if state.HasTransforms && hasContent(state.Result) {
+			tw.detail("Result", string(state.Result))
 		}
 	}
 }

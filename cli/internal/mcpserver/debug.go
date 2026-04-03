@@ -5,6 +5,7 @@ import (
 	"time"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -75,7 +76,7 @@ func (s *Server) handleWaitResult(sess *activeSession, wr waitResult) (*mcp.Call
 	}
 
 	if wr.completed {
-		summary := s.buildStateSummary(sess)
+		summary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.partitions))
 		summary["completed"] = true
 		summary["processed"] = sess.stats.Processed
 		summary["skipped"] = sess.stats.Skipped
@@ -215,7 +216,7 @@ func (s *Server) collectDebugContext(sess *activeSession, info gafferruntime.Bre
 	}
 
 	// Current state
-	stateSummary := s.buildStateSummary(sess)
+	stateSummary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.partitions))
 	for k, v := range stateSummary {
 		result[k] = v
 	}

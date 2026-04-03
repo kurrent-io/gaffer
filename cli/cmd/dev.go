@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -157,7 +156,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 		return srcErr
 	}
 
-	summary := buildSummary(session, info, r.partitions)
+	summary := engine.CollectState(session, info, r.partitions)
 	writer.WriteSummary(r.stats, summary)
 
 	if r.faulted {
@@ -310,48 +309,4 @@ func (r *runner) processOne(eventJSON string) (stop bool) {
 		}
 	}
 	return false
-}
-
-
-func buildSummary(session *gafferruntime.Session, info gafferruntime.QuerySources, partitions map[string]bool) summaryState {
-	isPartitioned := info.ByStreams || info.ByCustomPartitions
-
-	summary := summaryState{
-		partitioned:   isPartitioned,
-		hasTransforms: info.DefinesStateTransform,
-		hasBiState:    info.IsBiState,
-	}
-
-	if isPartitioned {
-		summary.partitions = make(map[string]partitionData)
-		for partition := range partitions {
-			data := partitionData{}
-			if state := session.GetState(&partition); state != nil {
-				data.state = json.RawMessage(*state)
-			}
-			if info.DefinesStateTransform {
-				if result, err := session.GetResult(&partition); err == nil && result != nil {
-					data.result = json.RawMessage(*result)
-				}
-			}
-			summary.partitions[partition] = data
-		}
-	} else {
-		if state := session.GetState(nil); state != nil {
-			summary.state = json.RawMessage(*state)
-		}
-		if info.DefinesStateTransform {
-			if result, err := session.GetResult(nil); err == nil && result != nil {
-				summary.result = json.RawMessage(*result)
-			}
-		}
-	}
-
-	if info.IsBiState {
-		if shared := session.GetSharedState(); shared != nil {
-			summary.sharedState = json.RawMessage(*shared)
-		}
-	}
-
-	return summary
 }

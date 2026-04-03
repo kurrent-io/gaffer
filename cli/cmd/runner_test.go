@@ -48,7 +48,7 @@ type recordedError struct {
 
 type recordedSummary struct {
 	stats eventStats
-	state summaryState
+	state engine.StateSummary
 }
 
 func (w *recordingWriter) WriteInfo(string, gafferruntime.QuerySources, string) {}
@@ -60,7 +60,7 @@ func (w *recordingWriter) WriteResult(eventID string, r *gafferruntime.FeedResul
 func (w *recordingWriter) WriteError(eventID, code, desc string) {
 	w.errors = append(w.errors, recordedError{eventID, code, desc})
 }
-func (w *recordingWriter) WriteSummary(stats eventStats, state summaryState) {
+func (w *recordingWriter) WriteSummary(stats eventStats, state engine.StateSummary) {
 	w.summary = &recordedSummary{stats, state}
 }
 
@@ -278,7 +278,7 @@ func TestProcessEvents_Empty(t *testing.T) {
 	}
 }
 
-// --- buildSummary ---
+// --- CollectState ---
 
 func TestBuildSummary_Unpartitioned(t *testing.T) {
 	js := `fromAll().when({
@@ -292,17 +292,17 @@ func TestBuildSummary_Unpartitioned(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	summary := buildSummary(session, info, nil)
+	summary := engine.CollectState(session, info, nil)
 
-	if summary.partitioned {
+	if summary.Partitioned {
 		t.Error("expected unpartitioned")
 	}
-	if !hasContent(summary.state) {
+	if !hasContent(summary.State) {
 		t.Fatal("expected state")
 	}
 
 	var state map[string]any
-	if err := json.Unmarshal(summary.state, &state); err != nil {
+	if err := json.Unmarshal(summary.State, &state); err != nil {
 		t.Fatal(err)
 	}
 	if state["count"] != float64(1) {
@@ -325,27 +325,27 @@ func TestBuildSummary_Partitioned(t *testing.T) {
 	}
 
 	partitions := map[string]bool{"s-1": true, "s-2": true}
-	summary := buildSummary(session, info, partitions)
+	summary := engine.CollectState(session, info, partitions)
 
-	if !summary.partitioned {
+	if !summary.Partitioned {
 		t.Error("expected partitioned")
 	}
-	if len(summary.partitions) != 2 {
-		t.Fatalf("partitions: got %d, want 2", len(summary.partitions))
+	if len(summary.Partitions) != 2 {
+		t.Fatalf("partitions: got %d, want 2", len(summary.Partitions))
 	}
 
 	for key, wantCount := range map[string]float64{"s-1": 2, "s-2": 1} {
-		data, ok := summary.partitions[key]
+		data, ok := summary.Partitions[key]
 		if !ok {
 			t.Errorf("missing partition %s", key)
 			continue
 		}
-		if !hasContent(data.state) {
+		if !hasContent(data.State) {
 			t.Errorf("partition %s: expected state", key)
 			continue
 		}
 		var state map[string]any
-		if err := json.Unmarshal(data.state, &state); err != nil {
+		if err := json.Unmarshal(data.State, &state); err != nil {
 			t.Errorf("partition %s: %v", key, err)
 			continue
 		}
@@ -367,28 +367,28 @@ func TestBuildSummary_WithTransforms(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	summary := buildSummary(session, info, nil)
+	summary := engine.CollectState(session, info, nil)
 
-	if !summary.hasTransforms {
+	if !summary.HasTransforms {
 		t.Fatal("expected hasTransforms")
 	}
 
-	if !hasContent(summary.state) {
+	if !hasContent(summary.State) {
 		t.Fatal("expected state alongside result")
 	}
 	var state map[string]any
-	if err := json.Unmarshal(summary.state, &state); err != nil {
+	if err := json.Unmarshal(summary.State, &state); err != nil {
 		t.Fatal(err)
 	}
 	if state["count"] != float64(1) {
 		t.Errorf("state.count: got %v, want 1", state["count"])
 	}
 
-	if !hasContent(summary.result) {
+	if !hasContent(summary.Result) {
 		t.Fatal("expected result from transform")
 	}
 	var result map[string]any
-	if err := json.Unmarshal(summary.result, &result); err != nil {
+	if err := json.Unmarshal(summary.Result, &result); err != nil {
 		t.Fatal(err)
 	}
 	if result["doubled"] != float64(2) {
@@ -409,28 +409,28 @@ func TestBuildSummary_PartitionedWithTransforms(t *testing.T) {
 	}
 
 	partitions := map[string]bool{"s-1": true}
-	summary := buildSummary(session, info, partitions)
+	summary := engine.CollectState(session, info, partitions)
 
-	if !summary.partitioned {
+	if !summary.Partitioned {
 		t.Error("expected partitioned")
 	}
-	if !summary.hasTransforms {
+	if !summary.HasTransforms {
 		t.Error("expected hasTransforms")
 	}
 
-	data, ok := summary.partitions["s-1"]
+	data, ok := summary.Partitions["s-1"]
 	if !ok {
 		t.Fatal("missing partition s-1")
 	}
-	if !hasContent(data.state) {
+	if !hasContent(data.State) {
 		t.Error("expected state for partition")
 	}
-	if !hasContent(data.result) {
+	if !hasContent(data.Result) {
 		t.Error("expected result for partition")
 	}
 
 	var result map[string]any
-	if err := json.Unmarshal(data.result, &result); err != nil {
+	if err := json.Unmarshal(data.Result, &result); err != nil {
 		t.Fatal(err)
 	}
 	if result["doubled"] != float64(2) {
@@ -463,12 +463,12 @@ func TestBuildSummary_BiState(t *testing.T) {
 	}
 
 	partitions := map[string]bool{"s-1": true}
-	summary := buildSummary(session, info, partitions)
+	summary := engine.CollectState(session, info, partitions)
 
-	if !summary.hasBiState {
+	if !summary.HasBiState {
 		t.Error("expected hasBiState")
 	}
-	if !hasContent(summary.sharedState) {
+	if !hasContent(summary.SharedState) {
 		t.Error("expected sharedState")
 	}
 }

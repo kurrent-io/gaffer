@@ -5,6 +5,7 @@ import (
 	"io"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
 type jsonWriter struct {
@@ -112,7 +113,7 @@ func (jw *jsonWriter) WriteError(eventID string, code, description string) {
 	})
 }
 
-func (jw *jsonWriter) WriteSummary(stats eventStats, state summaryState) {
+func (jw *jsonWriter) WriteSummary(stats eventStats, state engine.StateSummary) {
 	line := map[string]any{
 		"type":      "summary",
 		"processed": stats.total(),
@@ -121,30 +122,30 @@ func (jw *jsonWriter) WriteSummary(stats eventStats, state summaryState) {
 		"errors":    stats.errors,
 	}
 
-	if state.partitioned {
+	if state.Partitioned {
 		partitions := make(map[string]any)
-		for name, data := range state.partitions {
+		for name, data := range state.Partitions {
 			p := map[string]any{}
-			if hasContent(data.state) {
-				p["state"] = json.RawMessage(data.state)
+			if hasContent(data.State) {
+				p["state"] = json.RawMessage(data.State)
 			}
-			if state.hasTransforms && hasContent(data.result) {
-				p["result"] = json.RawMessage(data.result)
+			if state.HasTransforms && hasContent(data.Result) {
+				p["result"] = json.RawMessage(data.Result)
 			}
 			partitions[name] = p
 		}
 		line["partitions"] = partitions
 	} else {
-		if hasContent(state.state) {
-			line["state"] = json.RawMessage(state.state)
+		if hasContent(state.State) {
+			line["state"] = json.RawMessage(state.State)
 		}
-		if state.hasTransforms && hasContent(state.result) {
-			line["result"] = json.RawMessage(state.result)
+		if state.HasTransforms && hasContent(state.Result) {
+			line["result"] = json.RawMessage(state.Result)
 		}
 	}
 
-	if state.hasBiState && hasContent(state.sharedState) {
-		line["sharedState"] = json.RawMessage(state.sharedState)
+	if state.HasBiState && hasContent(state.SharedState) {
+		line["sharedState"] = json.RawMessage(state.SharedState)
 	}
 
 	jw.writeLine(line)

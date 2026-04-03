@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/kurrent-io/gaffer/cli/internal/projection"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -345,7 +346,7 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 		sess.stats.Status = "completed"
 	}
 
-	summary := s.buildStateSummary(sess)
+	summary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.partitions))
 	summary["completed"] = faultErr == nil
 	summary["processed"] = sess.stats.Processed
 	summary["skipped"] = sess.stats.Skipped
@@ -473,7 +474,7 @@ func (s *Server) handleGetState(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolResult(result), nil, nil
 	}
 
-	return toolResult(s.buildStateSummary(sess)), nil, nil
+	return toolResult(stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.partitions))), nil, nil
 }
 
 func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest, _ listProjectionsInput) (*mcp.CallToolResult, any, error) {
@@ -515,44 +516,36 @@ func (s *Server) resolveRange(from, to int64) (int64, int64) {
 	return from, to
 }
 
-func (s *Server) buildStateSummary(sess *activeSession) map[string]any {
-	summary := map[string]any{}
+func stateSummaryToMap(s engine.StateSummary) map[string]any {
+	result := map[string]any{}
 
-	isPartitioned := sess.info.ByStreams || sess.info.ByCustomPartitions
-
-	if isPartitioned {
+	if s.Partitioned {
 		partitions := map[string]any{}
-		for partition := range sess.partitions {
+		for name, ps := range s.Partitions {
 			pd := map[string]any{}
-			if state := sess.runtime.GetState(&partition); state != nil {
-				pd["state"] = json.RawMessage(*state)
+			if len(ps.State) > 0 {
+				pd["state"] = json.RawMessage(ps.State)
 			}
-			if sess.info.DefinesStateTransform {
-				if result, err := sess.runtime.GetResult(&partition); err == nil && result != nil {
-					pd["result"] = json.RawMessage(*result)
-				}
+			if s.HasTransforms && len(ps.Result) > 0 {
+				pd["result"] = json.RawMessage(ps.Result)
 			}
-			partitions[partition] = pd
+			partitions[name] = pd
 		}
-		summary["partitions"] = partitions
+		result["partitions"] = partitions
 	} else {
-		if state := sess.runtime.GetState(nil); state != nil {
-			summary["state"] = json.RawMessage(*state)
+		if len(s.State) > 0 {
+			result["state"] = json.RawMessage(s.State)
 		}
-		if sess.info.DefinesStateTransform {
-			if result, err := sess.runtime.GetResult(nil); err == nil && result != nil {
-				summary["result"] = json.RawMessage(*result)
-			}
+		if s.HasTransforms && len(s.Result) > 0 {
+			result["result"] = json.RawMessage(s.Result)
 		}
 	}
 
-	if sess.info.IsBiState {
-		if shared := sess.runtime.GetSharedState(); shared != nil {
-			summary["sharedState"] = json.RawMessage(*shared)
-		}
+	if s.HasBiState && len(s.SharedState) > 0 {
+		result["sharedState"] = json.RawMessage(s.SharedState)
 	}
 
-	return summary
+	return result
 }
 
 func readProjectionSource(root, entry string) ([]byte, error) {

@@ -29,23 +29,13 @@ func parseEventInfo(eventJSON string) eventInfo {
 	return info
 }
 
-type eventStats struct {
-	handled int
-	skipped int
-	errors  int
-}
-
-func (s eventStats) total() int {
-	return s.handled + s.skipped + s.errors
-}
-
 type outputWriter interface {
 	WriteInfo(name string, info gafferruntime.QuerySources, version string)
 	WriteDebugListening(addr string, port int)
 	WriteEvent(event eventInfo)
 	WriteResult(eventID string, result *gafferruntime.FeedResult)
 	WriteError(eventID string, code string, description string)
-	WriteSummary(stats eventStats, state engine.StateSummary)
+	WriteSummary(stats engine.EventStats, state engine.StateSummary)
 }
 
 const indentSize = 3
@@ -262,17 +252,17 @@ func (tw *textWriter) WriteError(eventID string, code, description string) {
 	tw.blank()
 }
 
-func (tw *textWriter) statsLine(stats eventStats) {
+func (tw *textWriter) statsLine(stats engine.EventStats) {
 	gold := tw.styles.skipped.Bold(true).Render
 	line := fmt.Sprintf("%s events processed (%s handled, %s skipped",
-		gold(formatNumber(stats.total())), gold(formatNumber(stats.handled)), gold(formatNumber(stats.skipped)))
-	if stats.errors > 0 {
-		line += fmt.Sprintf(", %s errors", gold(formatNumber(stats.errors)))
+		gold(formatNumber(stats.Total())), gold(formatNumber(stats.Handled)), gold(formatNumber(stats.Skipped)))
+	if stats.Errors > 0 {
+		line += fmt.Sprintf(", %s errors", gold(formatNumber(stats.Errors)))
 	}
 	tw.write("%s)\n", line)
 }
 
-func (tw *textWriter) WriteSummary(stats eventStats, state engine.StateSummary) {
+func (tw *textWriter) WriteSummary(stats engine.EventStats, state engine.StateSummary) {
 	tw.statsLine(stats)
 	tw.blank()
 

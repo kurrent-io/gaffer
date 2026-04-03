@@ -47,7 +47,7 @@ type recordedError struct {
 }
 
 type recordedSummary struct {
-	stats eventStats
+	stats engine.EventStats
 	state engine.StateSummary
 }
 
@@ -60,7 +60,7 @@ func (w *recordingWriter) WriteResult(eventID string, r *gafferruntime.FeedResul
 func (w *recordingWriter) WriteError(eventID, code, desc string) {
 	w.errors = append(w.errors, recordedError{eventID, code, desc})
 }
-func (w *recordingWriter) WriteSummary(stats eventStats, state engine.StateSummary) {
+func (w *recordingWriter) WriteSummary(stats engine.EventStats, state engine.StateSummary) {
 	w.summary = &recordedSummary{stats, state}
 }
 
@@ -79,22 +79,22 @@ func TestProcessEvents_HandledEvents(t *testing.T) {
 		testEvent("ItemAdded", "s-1", 1),
 	}
 
-	r := newRunner(session.Feed, writer)
-	source := &fixtureSource{events: events}
-	_ = source.Run(context.Background(), r.processOne)
-	stats, partitions, faulted := r.stats, r.partitions, r.faulted
+	r := engine.NewRunner(engine.RunnerConfig{Feed: session.Feed, Writer: &eventWriterAdapter{writer: writer}, History: nil})
+	source := engine.NewFixtureSource(events)
+	_ = source.Run(context.Background(), r.ProcessOne)
+	stats, partitions, faulted := r.Stats, r.Partitions, r.Faulted
 
 	if faulted {
 		t.Fatal("expected no fault")
 	}
-	if stats.handled != 2 {
-		t.Errorf("handled: got %d, want 2", stats.handled)
+	if stats.Handled != 2 {
+		t.Errorf("handled: got %d, want 2", stats.Handled)
 	}
-	if stats.skipped != 0 {
-		t.Errorf("skipped: got %d, want 0", stats.skipped)
+	if stats.Skipped != 0 {
+		t.Errorf("skipped: got %d, want 0", stats.Skipped)
 	}
-	if stats.errors != 0 {
-		t.Errorf("errors: got %d, want 0", stats.errors)
+	if stats.Errors != 0 {
+		t.Errorf("errors: got %d, want 0", stats.Errors)
 	}
 	if len(partitions) != 0 {
 		t.Errorf("partitions: got %d, want 0 (unpartitioned)", len(partitions))
@@ -120,19 +120,19 @@ func TestProcessEvents_SkippedEvents(t *testing.T) {
 		testEvent("Unknown", "s-1", 1),
 	}
 
-	r := newRunner(session.Feed, writer)
-	source := &fixtureSource{events: events}
-	_ = source.Run(context.Background(), r.processOne)
-	stats, faulted := r.stats, r.faulted
+	r := engine.NewRunner(engine.RunnerConfig{Feed: session.Feed, Writer: &eventWriterAdapter{writer: writer}, History: nil})
+	source := engine.NewFixtureSource(events)
+	_ = source.Run(context.Background(), r.ProcessOne)
+	stats, faulted := r.Stats, r.Faulted
 
 	if faulted {
 		t.Fatal("expected no fault")
 	}
-	if stats.handled != 1 {
-		t.Errorf("handled: got %d, want 1", stats.handled)
+	if stats.Handled != 1 {
+		t.Errorf("handled: got %d, want 1", stats.Handled)
 	}
-	if stats.skipped != 1 {
-		t.Errorf("skipped: got %d, want 1", stats.skipped)
+	if stats.Skipped != 1 {
+		t.Errorf("skipped: got %d, want 1", stats.Skipped)
 	}
 	if len(writer.events) != 2 {
 		t.Errorf("writer.events: got %d, want 2", len(writer.events))
@@ -156,16 +156,16 @@ func TestProcessEvents_Partitioned(t *testing.T) {
 		testEvent("ItemAdded", "s-1", 2),
 	}
 
-	r := newRunner(session.Feed, writer)
-	source := &fixtureSource{events: events}
-	_ = source.Run(context.Background(), r.processOne)
-	stats, partitions, faulted := r.stats, r.partitions, r.faulted
+	r := engine.NewRunner(engine.RunnerConfig{Feed: session.Feed, Writer: &eventWriterAdapter{writer: writer}, History: nil})
+	source := engine.NewFixtureSource(events)
+	_ = source.Run(context.Background(), r.ProcessOne)
+	stats, partitions, faulted := r.Stats, r.Partitions, r.Faulted
 
 	if faulted {
 		t.Fatal("expected no fault")
 	}
-	if stats.handled != 3 {
-		t.Errorf("handled: got %d, want 3", stats.handled)
+	if stats.Handled != 3 {
+		t.Errorf("handled: got %d, want 3", stats.Handled)
 	}
 	if len(partitions) != 2 {
 		t.Errorf("partitions: got %d, want 2", len(partitions))
@@ -188,19 +188,19 @@ func TestProcessEvents_Faulted(t *testing.T) {
 		testEvent("BadEvent", "s-1", 1),
 	}
 
-	r := newRunner(session.Feed, writer)
-	source := &fixtureSource{events: events}
-	_ = source.Run(context.Background(), r.processOne)
-	stats, faulted := r.stats, r.faulted
+	r := engine.NewRunner(engine.RunnerConfig{Feed: session.Feed, Writer: &eventWriterAdapter{writer: writer}, History: nil})
+	source := engine.NewFixtureSource(events)
+	_ = source.Run(context.Background(), r.ProcessOne)
+	stats, faulted := r.Stats, r.Faulted
 
 	if !faulted {
 		t.Fatal("expected fault")
 	}
-	if stats.errors != 1 {
-		t.Errorf("errors: got %d, want 1", stats.errors)
+	if stats.Errors != 1 {
+		t.Errorf("errors: got %d, want 1", stats.Errors)
 	}
-	if stats.handled != 0 {
-		t.Errorf("handled: got %d, want 0 (should stop on first error)", stats.handled)
+	if stats.Handled != 0 {
+		t.Errorf("handled: got %d, want 0 (should stop on first error)", stats.Handled)
 	}
 	if len(writer.events) != 1 {
 		t.Errorf("writer.events: got %d, want 1 (should stop after first event)", len(writer.events))
@@ -232,19 +232,19 @@ func TestProcessEvents_FaultedMidStream(t *testing.T) {
 		testEvent("ItemAdded", "s-1", 3),
 	}
 
-	r := newRunner(session.Feed, writer)
-	source := &fixtureSource{events: events}
-	_ = source.Run(context.Background(), r.processOne)
-	stats, faulted := r.stats, r.faulted
+	r := engine.NewRunner(engine.RunnerConfig{Feed: session.Feed, Writer: &eventWriterAdapter{writer: writer}, History: nil})
+	source := engine.NewFixtureSource(events)
+	_ = source.Run(context.Background(), r.ProcessOne)
+	stats, faulted := r.Stats, r.Faulted
 
 	if !faulted {
 		t.Fatal("expected fault")
 	}
-	if stats.handled != 2 {
-		t.Errorf("handled: got %d, want 2 (events before fault)", stats.handled)
+	if stats.Handled != 2 {
+		t.Errorf("handled: got %d, want 2 (events before fault)", stats.Handled)
 	}
-	if stats.errors != 1 {
-		t.Errorf("errors: got %d, want 1", stats.errors)
+	if stats.Errors != 1 {
+		t.Errorf("errors: got %d, want 1", stats.Errors)
 	}
 	if len(writer.events) != 3 {
 		t.Errorf("writer.events: got %d, want 3 (should stop after faulting event)", len(writer.events))
@@ -262,15 +262,15 @@ func TestProcessEvents_Empty(t *testing.T) {
 	session := newTestSession(t, js)
 	writer := &recordingWriter{}
 
-	r := newRunner(session.Feed, writer)
-	source := &fixtureSource{events: []string{}}
-	_ = source.Run(context.Background(), r.processOne)
-	stats, partitions, faulted := r.stats, r.partitions, r.faulted
+	r := engine.NewRunner(engine.RunnerConfig{Feed: session.Feed, Writer: &eventWriterAdapter{writer: writer}, History: nil})
+	source := engine.NewFixtureSource([]string{})
+	_ = source.Run(context.Background(), r.ProcessOne)
+	stats, partitions, faulted := r.Stats, r.Partitions, r.Faulted
 
 	if faulted {
 		t.Error("expected no fault")
 	}
-	if stats.handled != 0 || stats.skipped != 0 || stats.errors != 0 {
+	if stats.Handled != 0 || stats.Skipped != 0 || stats.Errors != 0 {
 		t.Errorf("expected zero stats, got %+v", stats)
 	}
 	if len(partitions) != 0 {

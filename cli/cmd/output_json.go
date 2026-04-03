@@ -113,13 +113,13 @@ func (jw *jsonWriter) WriteError(eventID string, code, description string) {
 	})
 }
 
-func (jw *jsonWriter) WriteSummary(stats eventStats, state engine.StateSummary) {
+func (jw *jsonWriter) WriteSummary(stats engine.EventStats, state engine.StateSummary) {
 	line := map[string]any{
 		"type":      "summary",
-		"processed": stats.total(),
-		"handled":   stats.handled,
-		"skipped":   stats.skipped,
-		"errors":    stats.errors,
+		"processed": stats.Total(),
+		"handled":   stats.Handled,
+		"skipped":   stats.Skipped,
+		"errors":    stats.Errors,
 	}
 
 	if state.Partitioned {

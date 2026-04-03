@@ -67,7 +67,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 
 	writer.WriteInfo(projCtx.Proj.Name, info, version)
 
-	feed := feedFn(session.Feed)
+	feed := engine.FeedFn(session.Feed)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	var afterRun func()
@@ -119,19 +119,23 @@ func runDev(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 
-		feed = adapter.FeedEvent
+		feed = engine.FeedFn(adapter.FeedEvent)
 		afterRun = func() { adapter.SendTerminated() }
 	}
 
-	r := newRunner(feed, writer)
+	r := engine.NewRunner(engine.RunnerConfig{
+		Feed:    feed,
+		Writer:  &eventWriterAdapter{writer: writer},
+		History: nil,
+	})
 
-	var source eventSource
+	var source engine.EventSource
 	if devEvents != "" {
 		events, err := engine.LoadEvents(devEvents)
 		if err != nil {
 			return err
 		}
-		source = &fixtureSource{events: events}
+		source = engine.NewFixtureSource(events)
 	} else {
 		connStr := resolveConnection(projCtx.Config, projCtx.Root)
 		if connStr == "" {
@@ -140,7 +144,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 		source = &liveSource{connStr: connStr, root: projCtx.Root, info: info, version: version}
 	}
 
-	srcErr := source.Run(ctx, r.processOne)
+	srcErr := source.Run(ctx, r.ProcessOne)
 
 	if afterRun != nil {
 		afterRun()
@@ -148,15 +152,15 @@ func runDev(cmd *cobra.Command, args []string) error {
 
 	if ctx.Err() != nil {
 		_, _ = fmt.Fprint(os.Stderr, "Interrupted\n\n")
-		r.faulted = false
+		r.Faulted = false
 	} else if srcErr != nil {
 		return srcErr
 	}
 
-	summary := engine.CollectState(session, info, r.partitions)
-	writer.WriteSummary(r.stats, summary)
+	summary := engine.CollectState(session, info, r.Partitions)
+	writer.WriteSummary(r.Stats, summary)
 
-	if r.faulted {
+	if r.Faulted {
 		cmd.SilenceErrors = true
 		return fmt.Errorf("projection faulted")
 	}
@@ -171,24 +175,20 @@ func resolveConnection(cfg *config.Config, root string) string {
 	return cfg.Connection
 }
 
-type eventSource interface {
-	Run(ctx context.Context, process func(string) bool) error
+type eventWriterAdapter struct {
+	writer outputWriter
 }
 
-type fixtureSource struct {
-	events []string
+func (a *eventWriterAdapter) OnEvent(eventJSON string) {
+	a.writer.WriteEvent(parseEventInfo(eventJSON))
 }
 
-func (f *fixtureSource) Run(ctx context.Context, process func(string) bool) error {
-	for _, evt := range f.events {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if process(evt) {
-			break
-		}
-	}
-	return nil
+func (a *eventWriterAdapter) OnResult(eventID string, result *gafferruntime.FeedResult) {
+	a.writer.WriteResult(eventID, result)
+}
+
+func (a *eventWriterAdapter) OnError(eventID, code, description string) {
+	a.writer.WriteError(eventID, code, description)
 }
 
 type liveSource struct {
@@ -246,48 +246,3 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 	}
 }
 
-type feedFn func(string) (*gafferruntime.FeedResult, error)
-
-type runner struct {
-	feed       feedFn
-	writer     outputWriter
-	stats      eventStats
-	partitions map[string]bool
-	faulted    bool
-}
-
-func newRunner(feed feedFn, writer outputWriter) *runner {
-	return &runner{
-		feed:       feed,
-		writer:     writer,
-		partitions: make(map[string]bool),
-	}
-}
-
-func (r *runner) processOne(eventJSON string) (stop bool) {
-	event := parseEventInfo(eventJSON)
-	r.writer.WriteEvent(event)
-
-	result, err := r.feed(eventJSON)
-	if err != nil {
-		feedErr := engine.ClassifyError(err)
-		r.writer.WriteError(event.id(), feedErr.Code, feedErr.Description)
-		r.stats.errors++
-		r.faulted = true
-		return true
-	}
-	if result == nil {
-		return false
-	}
-
-	r.writer.WriteResult(event.id(), result)
-	if result.Status == "skipped" {
-		r.stats.skipped++
-	} else {
-		r.stats.handled++
-		if result.Partition != "" {
-			r.partitions[result.Partition] = true
-		}
-	}
-	return false
-}

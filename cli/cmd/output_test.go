@@ -81,9 +81,9 @@ func TestHasContent(t *testing.T) {
 }
 
 func TestEventStats_Total(t *testing.T) {
-	stats := eventStats{handled: 10, skipped: 3, errors: 1}
-	if stats.total() != 14 {
-		t.Errorf("total() = %d, want 14", stats.total())
+	stats := engine.EventStats{Handled: 10, Skipped: 3, Errors: 1}
+	if stats.Total() != 14 {
+		t.Errorf("total() = %d, want 14", stats.Total())
 	}
 }
 
@@ -195,7 +195,7 @@ func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf)
 
-	stats := eventStats{handled: 42, skipped: 0}
+	stats := engine.EventStats{Handled: 42, Skipped: 0}
 	state := engine.StateSummary{
 		State: json.RawMessage(`{"count":42}`),
 	}
@@ -210,7 +210,7 @@ func TestTextWriter_WriteSummary_Partitioned(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf)
 
-	stats := eventStats{handled: 3, skipped: 1}
+	stats := engine.EventStats{Handled: 3, Skipped: 1}
 	state := engine.StateSummary{
 		Partitioned: true,
 		Partitions: map[string]engine.PartitionState{
@@ -302,7 +302,7 @@ func TestJSONWriter_WriteSummary_Unpartitioned(t *testing.T) {
 	var buf bytes.Buffer
 	jw := newJSONWriter(&buf)
 
-	stats := eventStats{handled: 10, skipped: 2}
+	stats := engine.EventStats{Handled: 10, Skipped: 2}
 	state := engine.StateSummary{
 		State: json.RawMessage(`{"count":10}`),
 	}
@@ -377,7 +377,7 @@ func TestJSONWriter_WriteSummary_Partitioned(t *testing.T) {
 	var buf bytes.Buffer
 	jw := newJSONWriter(&buf)
 
-	stats := eventStats{handled: 5, skipped: 1}
+	stats := engine.EventStats{Handled: 5, Skipped: 1}
 	state := engine.StateSummary{
 		Partitioned: true,
 		HasTransforms: true,
@@ -419,7 +419,7 @@ func TestTextWriter_WriteSummary_WithTransforms(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf)
 
-	stats := eventStats{handled: 10}
+	stats := engine.EventStats{Handled: 10}
 	state := engine.StateSummary{
 		State:         json.RawMessage(`{"count":10}`),
 		Result:        json.RawMessage(`{"total":20}`),
@@ -436,7 +436,7 @@ func TestTextWriter_WriteSummary_BiState(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf)
 
-	stats := eventStats{handled: 5}
+	stats := engine.EventStats{Handled: 5}
 	state := engine.StateSummary{
 		Partitioned: true,
 		HasBiState: true,
@@ -501,7 +501,7 @@ func TestTextWriter_WriteSummary_WithErrors(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf)
 
-	stats := eventStats{handled: 5, skipped: 1, errors: 2}
+	stats := engine.EventStats{Handled: 5, Skipped: 1, Errors: 2}
 	state := engine.StateSummary{}
 	tw.WriteSummary(stats, state)
 

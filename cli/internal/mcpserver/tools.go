@@ -279,12 +279,6 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 		return toolError("%v", err), nil, nil
 	}
 
-	ew := &errorCapture{}
-	sess.runner = engine.NewRunner(engine.RunnerConfig{
-		Feed:    engine.FeedFn(sess.runtime.Feed),
-		Writer:  ew,
-		History: sess.history,
-	})
 	source := engine.NewFixtureSource(events)
 	_ = source.Run(context.Background(), sess.runner.ProcessOne)
 
@@ -301,8 +295,10 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 	summary["errors"] = sess.errors()
 	summary["totalEvents"] = len(events)
 
-	if sess.runner.Faulted() && ew.lastError != nil {
-		summary["lastError"] = ew.lastError
+	if sess.runner.Faulted() {
+		if lastErr := sess.runner.LastError(); lastErr != nil {
+			summary["lastError"] = classifyError(lastErr)
+		}
 	}
 
 	return toolResult(summary), nil, nil
@@ -561,23 +557,6 @@ func describeSource(info gafferruntime.QuerySources) map[string]any {
 		return map[string]any{"type": "streams", "streams": info.Streams}
 	}
 	return map[string]any{"type": "unknown"}
-}
-
-type errorCapture struct {
-	lastError map[string]any
-}
-
-func (e *errorCapture) OnEvent(string)                             {}
-func (e *errorCapture) OnResult(string, *gafferruntime.FeedResult) {}
-func (e *errorCapture) OnError(_, code, description string) {
-	result := map[string]any{
-		"code":        code,
-		"description": description,
-	}
-	if hint := errorHint(code); hint != "" {
-		result["hint"] = hint
-	}
-	e.lastError = result
 }
 
 func describePartitioning(info gafferruntime.QuerySources) string {

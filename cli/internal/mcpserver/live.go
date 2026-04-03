@@ -32,12 +32,6 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 		version = proj.EffectiveEngine()
 	}
 
-	sess.runner = engine.NewRunner(engine.RunnerConfig{
-		Feed:    engine.FeedFn(sess.runtime.Feed),
-		Writer:  nil,
-		History: sess.history,
-	})
-
 	source := engine.NewLiveSource(engine.LiveSourceConfig{
 		ConnStr: s.cfg.Connection,
 		Root:    s.root,

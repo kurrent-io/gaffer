@@ -30,7 +30,7 @@ type Server struct {
 type activeSession struct {
 	runtime    *gafferruntime.Session
 	history    *history.Store
-	info       projection.Info
+	info       gafferruntime.QuerySources
 	name       string
 	stats      sessionStats
 	partitions map[string]bool
@@ -175,7 +175,7 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 		return nil, fmt.Errorf("creating history store: %w", err)
 	}
 
-	info := projection.GetInfo(runtime)
+	info := runtime.GetSources()
 
 	status := "ready"
 	if debug {

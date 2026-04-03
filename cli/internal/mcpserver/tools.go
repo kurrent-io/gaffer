@@ -144,7 +144,7 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 	}
 	defer session.Destroy()
 
-	info := projection.GetInfo(session)
+	info := session.GetSources()
 
 	return toolResult(map[string]any{
 		"valid":           true,
@@ -609,7 +609,7 @@ func toolError(format string, args ...any) *mcp.CallToolResult {
 	}
 }
 
-func describeSource(info projection.Info) map[string]any {
+func describeSource(info gafferruntime.QuerySources) map[string]any {
 	if info.AllStreams {
 		return map[string]any{"type": "all"}
 	}
@@ -622,7 +622,7 @@ func describeSource(info projection.Info) map[string]any {
 	return map[string]any{"type": "unknown"}
 }
 
-func describePartitioning(info projection.Info) string {
+func describePartitioning(info gafferruntime.QuerySources) string {
 	if info.ByStreams {
 		return "byStream"
 	}

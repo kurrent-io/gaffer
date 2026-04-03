@@ -36,7 +36,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	}
 	defer session.Destroy()
 
-	info := projection.GetInfo(session)
+	info := session.GetSources()
 
 	if infoJSON {
 		return writeInfoJSON(ctx, info)
@@ -47,7 +47,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func writeInfoJSON(ctx *projectionContext, info projection.Info) error {
+func writeInfoJSON(ctx *projectionContext, info gafferruntime.QuerySources) error {
 	out := map[string]any{
 		"name":            ctx.Proj.Name,
 		"entry":           ctx.Proj.Entry,

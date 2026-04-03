@@ -107,12 +107,8 @@ func TestGetSources(t *testing.T) {
 	`)
 
 	sources := session.GetSources()
-	if sources == nil {
-		t.Fatal("GetSources returned nil")
-		return
-	}
-	if !strings.Contains(*sources, `"ByStreams":true`) {
-		t.Fatalf("expected ByStreams:true in sources, got %s", *sources)
+	if !sources.ByStreams {
+		t.Fatal("expected ByStreams to be true")
 	}
 }
 

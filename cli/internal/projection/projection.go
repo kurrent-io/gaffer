@@ -6,33 +6,8 @@ import (
 	"os"
 	"time"
 
-	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 )
-
-type Info struct {
-	AllStreams                  bool     `json:"AllStreams"`
-	ByStreams                   bool     `json:"ByStreams"`
-	ByCustomPartitions          bool     `json:"ByCustomPartitions"`
-	IsBiState                   bool     `json:"IsBiState"`
-	DefinesStateTransform       bool     `json:"DefinesStateTransform"`
-	ProducesResults             bool     `json:"ProducesResults"`
-	HandlesDeletedNotifications bool     `json:"HandlesDeletedNotifications"`
-	IncludeLinks                bool     `json:"IncludeLinks"`
-	Categories                  []string `json:"Categories"`
-	Streams                     []string `json:"Streams"`
-	Events                      []string `json:"Events"`
-}
-
-func GetInfo(session *gafferruntime.Session) Info {
-	sourcesJSON := session.GetSources()
-	if sourcesJSON == nil {
-		return Info{}
-	}
-	var info Info
-	_ = json.Unmarshal([]byte(*sourcesJSON), &info)
-	return info
-}
 
 func BuildSessionOptions(cfg *config.Config, proj *config.Projection, debug bool) *string {
 	opts := map[string]any{}

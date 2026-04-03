@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
-	"github.com/kurrent-io/gaffer/cli/internal/projection"
 )
 
 func TestFormatNumber(t *testing.T) {
@@ -91,7 +90,7 @@ func TestTextWriter_WriteInfo(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf)
 
-	info := projection.Info{
+	info := gafferruntime.QuerySources{
 		AllStreams: true,
 		ByStreams:  true,
 		Events:     []string{"OrderPlaced", "OrderShipped"},
@@ -110,7 +109,7 @@ func TestTextWriter_WriteInfo_BiStateAndProducesResults(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf)
 
-	info := projection.Info{
+	info := gafferruntime.QuerySources{
 		AllStreams:      true,
 		IsBiState:       true,
 		ProducesResults: true,
@@ -126,7 +125,7 @@ func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf)
 
-	info := projection.Info{
+	info := gafferruntime.QuerySources{
 		AllStreams: true,
 	}
 	tw.WriteInfo("simple-proj", info, "v2")
@@ -327,7 +326,7 @@ func TestJSONWriter_WriteInfo(t *testing.T) {
 	var buf bytes.Buffer
 	jw := newJSONWriter(&buf)
 
-	info := projection.Info{
+	info := gafferruntime.QuerySources{
 		Categories: []string{"order"},
 		ByStreams:  true,
 		Events:     []string{"OrderPlaced"},

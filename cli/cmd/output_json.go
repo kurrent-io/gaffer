@@ -5,7 +5,6 @@ import (
 	"io"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
-	"github.com/kurrent-io/gaffer/cli/internal/projection"
 )
 
 type jsonWriter struct {
@@ -22,7 +21,7 @@ func (jw *jsonWriter) writeLine(v any) {
 	_ = jw.enc.Encode(v)
 }
 
-func (jw *jsonWriter) WriteInfo(name string, info projection.Info, version string) {
+func (jw *jsonWriter) WriteInfo(name string, info gafferruntime.QuerySources, version string) {
 	proj := map[string]any{
 		"name":   name,
 		"source": infoSource(info),
@@ -151,7 +150,7 @@ func (jw *jsonWriter) WriteSummary(stats eventStats, state summaryState) {
 	jw.writeLine(line)
 }
 
-func infoSource(info projection.Info) string {
+func infoSource(info gafferruntime.QuerySources) string {
 	if info.AllStreams {
 		return "all"
 	}

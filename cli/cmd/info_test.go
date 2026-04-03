@@ -3,19 +3,19 @@ package cmd
 import (
 	"testing"
 
-	"github.com/kurrent-io/gaffer/cli/internal/projection"
+	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 )
 
 func TestInfoSource(t *testing.T) {
 	tests := []struct {
 		name     string
-		info     projection.Info
+		info     gafferruntime.QuerySources
 		expected string
 	}{
-		{"all streams", projection.Info{AllStreams: true}, "all"},
-		{"category", projection.Info{Categories: []string{"order"}}, "category"},
-		{"streams", projection.Info{Streams: []string{"order-1"}}, "streams"},
-		{"unknown", projection.Info{}, "unknown"},
+		{"all streams", gafferruntime.QuerySources{AllStreams: true}, "all"},
+		{"category", gafferruntime.QuerySources{Categories: []string{"order"}}, "category"},
+		{"streams", gafferruntime.QuerySources{Streams: []string{"order-1"}}, "streams"},
+		{"unknown", gafferruntime.QuerySources{}, "unknown"},
 	}
 
 	for _, tt := range tests {

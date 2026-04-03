@@ -56,7 +56,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 	}
 	defer session.Destroy()
 
-	info := projection.GetInfo(session)
+	info := session.GetSources()
 	version := projCtx.Engine
 
 	var writer outputWriter
@@ -197,7 +197,7 @@ func (f *fixtureSource) Run(ctx context.Context, process func(string) bool) erro
 type liveSource struct {
 	connStr string
 	root    string
-	info    projection.Info
+	info    gafferruntime.QuerySources
 	version string
 }
 
@@ -318,7 +318,7 @@ func classifyError(err error) (code, description string) {
 	return "unexpected-error", err.Error()
 }
 
-func buildSummary(session *gafferruntime.Session, info projection.Info, partitions map[string]bool) summaryState {
+func buildSummary(session *gafferruntime.Session, info gafferruntime.QuerySources, partitions map[string]bool) summaryState {
 	isPartitioned := info.ByStreams || info.ByCustomPartitions
 
 	summary := summaryState{

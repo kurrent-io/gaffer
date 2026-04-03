@@ -136,15 +136,17 @@ func (s *Session) GetResult(partition *string) (*string, error) {
 	return &str, nil
 }
 
-// GetSources returns the projection's source definition as JSON.
-func (s *Session) GetSources() *string {
+// GetSources returns the projection's source configuration and features.
+func (s *Session) GetSources() QuerySources {
 	s.ensureAlive()
 	result := C.gaffer_session_get_sources(s.handle)
 	if result == nil {
-		return nil
+		return QuerySources{}
 	}
 	str := C.GoString(result)
-	return &str
+	var info QuerySources
+	_ = json.Unmarshal([]byte(str), &info)
+	return info
 }
 
 // GetPartitionKey returns the partition key that would be computed for an event.

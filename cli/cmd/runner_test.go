@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
-	"github.com/kurrent-io/gaffer/cli/internal/projection"
 )
 
 func newTestSession(t *testing.T, source string) *gafferruntime.Session {
@@ -51,7 +50,7 @@ type recordedSummary struct {
 	state summaryState
 }
 
-func (w *recordingWriter) WriteInfo(string, projection.Info, string)          {}
+func (w *recordingWriter) WriteInfo(string, gafferruntime.QuerySources, string) {}
 func (w *recordingWriter) WriteDebugListening(string, int)                   {}
 func (w *recordingWriter) WriteEvent(event eventInfo)                        { w.events = append(w.events, event) }
 func (w *recordingWriter) WriteResult(eventID string, r *gafferruntime.FeedResult) {
@@ -286,7 +285,7 @@ func TestBuildSummary_Unpartitioned(t *testing.T) {
 		ItemAdded: function(s, e) { s.count++; return s; }
 	})`
 	session := newTestSession(t, js)
-	info := projection.GetInfo(session)
+	info := session.GetSources()
 
 	if _, err := session.Feed(testEvent("ItemAdded", "s-1", 0)); err != nil {
 		t.Fatal(err)
@@ -316,7 +315,7 @@ func TestBuildSummary_Partitioned(t *testing.T) {
 		ItemAdded: function(s, e) { s.count++; return s; }
 	})`
 	session := newTestSession(t, js)
-	info := projection.GetInfo(session)
+	info := session.GetSources()
 
 	for i, stream := range []string{"s-1", "s-2", "s-1"} {
 		if _, err := session.Feed(testEvent("ItemAdded", stream, i)); err != nil {
@@ -361,7 +360,7 @@ func TestBuildSummary_WithTransforms(t *testing.T) {
 		ItemAdded: function(s, e) { s.count++; return s; }
 	}).transformBy(function(s) { return { doubled: s.count * 2 }; })`
 	session := newTestSession(t, js)
-	info := projection.GetInfo(session)
+	info := session.GetSources()
 
 	if _, err := session.Feed(testEvent("ItemAdded", "s-1", 0)); err != nil {
 		t.Fatal(err)
@@ -402,7 +401,7 @@ func TestBuildSummary_PartitionedWithTransforms(t *testing.T) {
 		ItemAdded: function(s, e) { s.count++; return s; }
 	}).transformBy(function(s) { return { doubled: s.count * 2 }; })`
 	session := newTestSession(t, js)
-	info := projection.GetInfo(session)
+	info := session.GetSources()
 
 	if _, err := session.Feed(testEvent("ItemAdded", "s-1", 0)); err != nil {
 		t.Fatal(err)
@@ -452,7 +451,7 @@ func TestBuildSummary_BiState(t *testing.T) {
 		}
 	})`
 	session := newTestSession(t, js)
-	info := projection.GetInfo(session)
+	info := session.GetSources()
 
 	if !info.IsBiState {
 		t.Skip("runtime did not report IsBiState - projection source may need adjustment")

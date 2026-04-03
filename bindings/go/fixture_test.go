@@ -96,11 +96,12 @@ func runFixture(t *testing.T, f fixture) {
 
 	// Check sources
 	if f.Expect.Sources != nil {
-		sourcesJSON := session.GetSources()
-		if sourcesJSON == nil {
-			t.Fatal("GetSources returned nil")
+		sources := session.GetSources()
+		sourcesJSON, err := json.Marshal(sources)
+		if err != nil {
+			t.Fatalf("failed to marshal sources: %v", err)
 		}
-		assertSourcesMatch(t, *sourcesJSON, f.Expect.Sources)
+		assertSourcesMatch(t, string(sourcesJSON), f.Expect.Sources)
 	}
 
 	// Set state

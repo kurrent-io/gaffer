@@ -43,7 +43,7 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 	}
 	defer session.Destroy()
 
-	info := projection.GetInfo(session)
+	info := session.GetSources()
 
 	client, err := s.connectToKurrentDB()
 	if err != nil {
@@ -90,7 +90,7 @@ type eventTypeSummary struct {
 	Example   any    `json:"example"`
 }
 
-func (s *Server) sampleProjectionEvents(ctx context.Context, client *kurrentdb.Client, info projection.Info, engine string, limit uint64) ([]eventTypeSummary, error) {
+func (s *Server) sampleProjectionEvents(ctx context.Context, client *kurrentdb.Client, info gafferruntime.QuerySources, engine string, limit uint64) ([]eventTypeSummary, error) {
 	filter := subscription.BuildFilter(info, engine)
 
 	// For stream-specific sources, read from those streams directly

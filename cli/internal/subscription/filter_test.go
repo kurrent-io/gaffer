@@ -4,18 +4,18 @@ import (
 	"testing"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
-	"github.com/kurrent-io/gaffer/cli/internal/projection"
+	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 )
 
 func TestBuildFilter_FromAll_NoEvents(t *testing.T) {
-	filter := BuildFilter(projection.Info{AllStreams: true}, "v2")
+	filter := BuildFilter(gafferruntime.QuerySources{AllStreams: true}, "v2")
 	if filter != nil {
 		t.Error("expected nil filter for fromAll with no event filter")
 	}
 }
 
 func TestBuildFilter_FromAll_WithEvents(t *testing.T) {
-	filter := BuildFilter(projection.Info{
+	filter := BuildFilter(gafferruntime.QuerySources{
 		AllStreams: true,
 		Events:     []string{"OrderPlaced", "OrderShipped"},
 	}, "v2")
@@ -32,7 +32,7 @@ func TestBuildFilter_FromAll_WithEvents(t *testing.T) {
 }
 
 func TestBuildFilter_FromAll_WithEvents_DeleteHandler(t *testing.T) {
-	filter := BuildFilter(projection.Info{
+	filter := BuildFilter(gafferruntime.QuerySources{
 		AllStreams:                  true,
 		Events:                      []string{"OrderPlaced"},
 		HandlesDeletedNotifications: true,
@@ -47,7 +47,7 @@ func TestBuildFilter_FromAll_WithEvents_DeleteHandler(t *testing.T) {
 }
 
 func TestBuildFilter_FromCategory(t *testing.T) {
-	filter := BuildFilter(projection.Info{
+	filter := BuildFilter(gafferruntime.QuerySources{
 		Categories: []string{"order"},
 	}, "v2")
 
@@ -63,7 +63,7 @@ func TestBuildFilter_FromCategory(t *testing.T) {
 }
 
 func TestBuildFilter_FromStreams(t *testing.T) {
-	filter := BuildFilter(projection.Info{
+	filter := BuildFilter(gafferruntime.QuerySources{
 		Streams: []string{"order-1", "cart-1"},
 	}, "v2")
 
@@ -79,7 +79,7 @@ func TestBuildFilter_FromStreams(t *testing.T) {
 }
 
 func TestBuildFilter_FromCategoryMultiArg(t *testing.T) {
-	filter := BuildFilter(projection.Info{
+	filter := BuildFilter(gafferruntime.QuerySources{
 		Streams: []string{"$ce-order", "$ce-cart"},
 	}, "v2")
 

@@ -63,3 +63,35 @@ func CollectState(session *gafferruntime.Session, info gafferruntime.QuerySource
 
 	return summary
 }
+
+func (s StateSummary) ToMap() map[string]any {
+	result := map[string]any{}
+
+	if s.Partitioned {
+		partitions := map[string]any{}
+		for name, ps := range s.Partitions {
+			pd := map[string]any{}
+			if len(ps.State) > 0 {
+				pd["state"] = json.RawMessage(ps.State)
+			}
+			if s.HasTransforms && len(ps.Result) > 0 {
+				pd["result"] = json.RawMessage(ps.Result)
+			}
+			partitions[name] = pd
+		}
+		result["partitions"] = partitions
+	} else {
+		if len(s.State) > 0 {
+			result["state"] = json.RawMessage(s.State)
+		}
+		if s.HasTransforms && len(s.Result) > 0 {
+			result["result"] = json.RawMessage(s.Result)
+		}
+	}
+
+	if s.HasBiState && len(s.SharedState) > 0 {
+		result["sharedState"] = json.RawMessage(s.SharedState)
+	}
+
+	return result
+}

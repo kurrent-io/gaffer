@@ -288,7 +288,7 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 		sess.runner.SetStatus("error")
 	}
 
-	summary := stateSummaryToMap(sess.runner.CollectState())
+	summary := sess.runner.CollectState().ToMap()
 	summary["completed"] = !sess.runner.Faulted()
 	summary["processed"] = sess.handled()
 	summary["skipped"] = sess.skipped()
@@ -417,7 +417,7 @@ func (s *Server) handleGetState(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolResult(result), nil, nil
 	}
 
-	return toolResult(stateSummaryToMap(sess.runner.CollectState())), nil, nil
+	return toolResult(sess.runner.CollectState().ToMap()), nil, nil
 }
 
 func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest, _ listProjectionsInput) (*mcp.CallToolResult, any, error) {
@@ -457,38 +457,6 @@ func (s *Server) resolveRange(from, to int64) (int64, int64) {
 		to = from
 	}
 	return from, to
-}
-
-func stateSummaryToMap(s engine.StateSummary) map[string]any {
-	result := map[string]any{}
-
-	if s.Partitioned {
-		partitions := map[string]any{}
-		for name, ps := range s.Partitions {
-			pd := map[string]any{}
-			if len(ps.State) > 0 {
-				pd["state"] = json.RawMessage(ps.State)
-			}
-			if s.HasTransforms && len(ps.Result) > 0 {
-				pd["result"] = json.RawMessage(ps.Result)
-			}
-			partitions[name] = pd
-		}
-		result["partitions"] = partitions
-	} else {
-		if len(s.State) > 0 {
-			result["state"] = json.RawMessage(s.State)
-		}
-		if s.HasTransforms && len(s.Result) > 0 {
-			result["result"] = json.RawMessage(s.Result)
-		}
-	}
-
-	if s.HasBiState && len(s.SharedState) > 0 {
-		result["sharedState"] = json.RawMessage(s.SharedState)
-	}
-
-	return result
 }
 
 func readProjectionSource(root, entry string) ([]byte, error) {

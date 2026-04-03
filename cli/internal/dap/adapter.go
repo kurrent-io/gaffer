@@ -439,7 +439,7 @@ func (a *DebugAdapter) flushStepBuffer() {
 
 func (a *DebugAdapter) buildStateEvent() *CustomEvent {
 	summary := a.runner.CollectState()
-	body := map[string]any{}
+	body := summary.ToMap()
 
 	if summary.Partitioned {
 		partitions := []string{}
@@ -447,17 +447,6 @@ func (a *DebugAdapter) buildStateEvent() *CustomEvent {
 			partitions = append(partitions, name)
 		}
 		body["partitions"] = partitions
-	} else {
-		if len(summary.State) > 0 {
-			body["state"] = json.RawMessage(summary.State)
-		}
-		if summary.HasTransforms && len(summary.Result) > 0 {
-			body["result"] = json.RawMessage(summary.Result)
-		}
-	}
-
-	if summary.HasBiState && len(summary.SharedState) > 0 {
-		body["sharedState"] = json.RawMessage(summary.SharedState)
 	}
 
 	return NewCustomEvent("gaffer/state", body)

@@ -122,30 +122,8 @@ func (jw *jsonWriter) WriteSummary(stats engine.EventStats, state engine.StateSu
 		"errors":    stats.Errors,
 	}
 
-	if state.Partitioned {
-		partitions := make(map[string]any)
-		for name, data := range state.Partitions {
-			p := map[string]any{}
-			if hasContent(data.State) {
-				p["state"] = json.RawMessage(data.State)
-			}
-			if state.HasTransforms && hasContent(data.Result) {
-				p["result"] = json.RawMessage(data.Result)
-			}
-			partitions[name] = p
-		}
-		line["partitions"] = partitions
-	} else {
-		if hasContent(state.State) {
-			line["state"] = json.RawMessage(state.State)
-		}
-		if state.HasTransforms && hasContent(state.Result) {
-			line["result"] = json.RawMessage(state.Result)
-		}
-	}
-
-	if state.HasBiState && hasContent(state.SharedState) {
-		line["sharedState"] = json.RawMessage(state.SharedState)
+	for k, v := range state.ToMap() {
+		line[k] = v
 	}
 
 	jw.writeLine(line)

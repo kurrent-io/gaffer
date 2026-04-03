@@ -123,6 +123,8 @@ func runDev(cmd *cobra.Command, args []string) error {
 
 	r := engine.NewRunner(engine.RunnerConfig{
 		Feed:    feed,
+		Session: session,
+		Info:    info,
 		Writer:  &eventWriterAdapter{writer: writer},
 		History: nil,
 	})
@@ -160,7 +162,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 		return srcErr
 	}
 
-	summary := engine.CollectState(session, info, r.Partitions())
+	summary := r.CollectState()
 	writer.WriteSummary(r.Stats(), summary)
 
 	if r.Faulted() {

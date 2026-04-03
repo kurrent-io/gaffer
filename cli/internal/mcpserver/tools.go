@@ -288,7 +288,7 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 		sess.runner.SetStatus("error")
 	}
 
-	summary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.runner.Partitions()))
+	summary := stateSummaryToMap(sess.runner.CollectState())
 	summary["completed"] = !sess.runner.Faulted()
 	summary["processed"] = sess.handled()
 	summary["skipped"] = sess.skipped()
@@ -407,18 +407,17 @@ func (s *Server) handleGetState(_ context.Context, _ *mcp.CallToolRequest, input
 
 	if input.Partition != "" {
 		result := map[string]any{"partition": input.Partition}
-		if state := sess.runtime.GetState(&input.Partition); state != nil {
+		state, r := sess.runner.GetPartitionState(input.Partition)
+		if state != nil {
 			result["state"] = json.RawMessage(*state)
 		}
-		if sess.info.DefinesStateTransform {
-			if r, err := sess.runtime.GetResult(&input.Partition); err == nil && r != nil {
-				result["result"] = json.RawMessage(*r)
-			}
+		if r != nil {
+			result["result"] = json.RawMessage(*r)
 		}
 		return toolResult(result), nil, nil
 	}
 
-	return toolResult(stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.runner.Partitions()))), nil, nil
+	return toolResult(stateSummaryToMap(sess.runner.CollectState())), nil, nil
 }
 
 func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest, _ listProjectionsInput) (*mcp.CallToolResult, any, error) {

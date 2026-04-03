@@ -166,6 +166,8 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 
 	cfg := engine.RunnerConfig{
 		Feed:    engine.FeedFn(runtime.Feed),
+		Session: runtime,
+		Info:    info,
 		Writer:  nil,
 		History: store,
 	}

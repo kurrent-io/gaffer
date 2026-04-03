@@ -24,6 +24,8 @@ type EventWriter interface {
 
 type RunnerConfig struct {
 	Feed    FeedFn
+	Session *gafferruntime.Session
+	Info    gafferruntime.QuerySources
 	Writer  EventWriter
 	History *history.Store
 	Debug   *DebugConfig
@@ -44,6 +46,8 @@ type Breakpoint struct {
 type Runner struct {
 	mu      sync.Mutex
 	feed    FeedFn
+	session *gafferruntime.Session
+	info    gafferruntime.QuerySources
 	writer  EventWriter
 	history *history.Store
 	debug   *DebugConfig
@@ -72,6 +76,8 @@ func (s EventStats) Total() int {
 func NewRunner(cfg RunnerConfig) *Runner {
 	r := &Runner{
 		feed:       cfg.Feed,
+		session:    cfg.Session,
+		info:       cfg.Info,
 		writer:     cfg.Writer,
 		history:    cfg.History,
 		debug:      cfg.Debug,
@@ -337,10 +343,23 @@ func (r *Runner) GetVariables(variablesReference int) ([]gafferruntime.DebugVari
 func (r *Runner) CollectState() StateSummary {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.debug == nil {
+	if r.session == nil {
 		return StateSummary{}
 	}
-	return CollectState(r.debug.Session, r.debug.Info, r.partitions)
+	return CollectState(r.session, r.info, r.partitions)
+}
+
+func (r *Runner) GetPartitionState(partition string) (state *string, result *string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.session == nil {
+		return nil, nil
+	}
+	state = r.session.GetState(&partition)
+	if r.info.DefinesStateTransform {
+		result, _ = r.session.GetResult(&partition)
+	}
+	return state, result
 }
 
 func eventID(eventJSON string) string {

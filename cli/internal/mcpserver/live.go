@@ -2,7 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
@@ -19,12 +18,6 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 		sess.errorCh = make(chan error, 1)
 	}
 
-	debug := sess.breakCh != nil
-
-	if debug {
-		return s.startDebugLiveSubscription(ctx, sess)
-	}
-
 	source := engine.NewLiveSource(engine.LiveSourceConfig{
 		ConnStr: s.cfg.Connection,
 		Root:    s.root,
@@ -34,43 +27,6 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 			if sess.runner.Status() == "running" {
 				sess.runner.SetStatus("caught_up")
 			}
-			select {
-			case sess.caughtUpCh <- struct{}{}:
-			default:
-			}
-		},
-	})
-
-	go func() {
-		srcErr := source.Run(ctx, sess.runner.ProcessOne)
-
-		s.mu.Lock()
-		if ctx.Err() != nil {
-			sess.runner.SetStatus("stopped")
-		} else if sess.runner.Faulted() || srcErr != nil {
-			sess.runner.SetStatus("error")
-		}
-		s.mu.Unlock()
-
-		if sess.runner.Faulted() && sess.errorCh != nil {
-			select {
-			case sess.errorCh <- fmt.Errorf("projection faulted"):
-			default:
-			}
-		}
-	}()
-
-	return nil
-}
-
-func (s *Server) startDebugLiveSubscription(ctx context.Context, sess *activeSession) error {
-	source := engine.NewLiveSource(engine.LiveSourceConfig{
-		ConnStr: s.cfg.Connection,
-		Root:    s.root,
-		Info:    sess.runner.Info(),
-		Version: sess.runner.Engine(),
-		OnCaughtUp: func() {
-			sess.runner.SetStatus("caught_up")
 			select {
 			case sess.caughtUpCh <- struct{}{}:
 			default:

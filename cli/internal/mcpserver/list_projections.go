@@ -1,0 +1,34 @@
+package mcpserver
+
+import (
+	"context"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+var listProjectionsTool = &mcp.Tool{
+	Name:        "list_projections",
+	Description: "List all projections defined in the project's gaffer.toml.",
+}
+
+type listProjectionsInput struct{}
+
+func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest, _ listProjectionsInput) (*mcp.CallToolResult, any, error) {
+	projections := []map[string]any{}
+	for _, proj := range s.cfg.Projection {
+		entry := map[string]any{
+			"name":   proj.Name,
+			"entry":  proj.Entry,
+			"engine": proj.EffectiveEngine(),
+		}
+		if proj.Enabled != nil && !*proj.Enabled {
+			entry["enabled"] = false
+		}
+		projections = append(projections, entry)
+	}
+
+	return toolResult(map[string]any{
+		"projections": projections,
+		"root":        s.root,
+	}), nil, nil
+}

@@ -79,7 +79,21 @@ func New(root string, cfg *config.Config) *Server {
 		},
 	)
 
-	s.registerTools()
+	mcp.AddTool(s.mcp, validateTool, s.handleValidate)
+	mcp.AddTool(s.mcp, runTool, s.handleRun)
+	mcp.AddTool(s.mcp, stopTool, s.handleStop)
+	mcp.AddTool(s.mcp, getStepTool, s.handleGetStep)
+	mcp.AddTool(s.mcp, getHistoryTool, s.handleGetHistory)
+	mcp.AddTool(s.mcp, getTimelineTool, s.handleGetTimeline)
+	mcp.AddTool(s.mcp, getStateTool, s.handleGetState)
+	mcp.AddTool(s.mcp, listProjectionsTool, s.handleListProjections)
+	mcp.AddTool(s.mcp, scaffoldTool, s.handleScaffold)
+	mcp.AddTool(s.mcp, evaluateTool, s.handleEvaluate)
+	mcp.AddTool(s.mcp, debugContinueTool, s.handleDebugContinue)
+	mcp.AddTool(s.mcp, stepOverTool, s.handleStepOver)
+	mcp.AddTool(s.mcp, stepIntoTool, s.handleStepInto)
+	mcp.AddTool(s.mcp, stepOutTool, s.handleStepOut)
+	mcp.AddTool(s.mcp, listEventsTool, s.handleListEvents)
 	s.registerResources()
 	s.registerPrompts()
 

@@ -209,47 +209,29 @@ func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input ru
 }
 
 func (s *Server) setupBreakpoints(sess *activeSession, breakpoints []breakpointInput) error {
-	for _, bp := range breakpoints {
-		var opts *gafferruntime.BreakpointOptions
-		if bp.Condition != "" {
-			opts = &gafferruntime.BreakpointOptions{Condition: bp.Condition}
-		}
-		snapped, err := sess.runtime.SetBreakpoint(bp.Line, 0, opts)
-		if err != nil {
-			return fmt.Errorf("setting breakpoint at line %d: %w", bp.Line, err)
-		}
-		if snapped == nil {
-			return fmt.Errorf("no breakable position at or after line %d", bp.Line)
+	bps := make([]engine.Breakpoint, len(breakpoints))
+	for i, bp := range breakpoints {
+		bps[i] = engine.Breakpoint{
+			Line:      bp.Line,
+			Condition: bp.Condition,
 		}
 	}
-
-	breakCh := make(chan gafferruntime.BreakInfo, 1)
-	sess.breakCh = breakCh
-	sess.caughtUpCh = make(chan struct{}, 1)
-	sess.errorCh = make(chan error, 1)
-
-	sess.runtime.OnBreak(func(info gafferruntime.BreakInfo) {
-		// When break_at is used, Pause() fires at handler entry where
-		// params aren't in scope yet. Auto-step into the handler body
-		// so the agent gets state/event available for evaluate.
-		if info.Reason == "pause" && sess.breakAtPosition > 0 {
-			go sess.runtime.StepInto()
-			return
+	snapped, err := sess.runner.SetBreakpoints(bps)
+	if err != nil {
+		return err
+	}
+	for i, s := range snapped {
+		if s == nil {
+			return fmt.Errorf("no breakable position at or after line %d", breakpoints[i].Line)
 		}
-
-		sess.paused.Store(true)
-		select {
-		case breakCh <- info:
-		default:
-		}
-	})
-
+	}
 	return nil
 }
 
 func (s *Server) startLiveMode(sess *activeSession, breakAt int64) error {
 	if breakAt > 0 {
-		sess.breakAtPosition = breakAt
+		sess.runner.SetBreakAtPosition(breakAt)
+		sess.breakAtPosition = breakAt // live debug path reads this directly until migrated
 	}
 	return s.startLiveSubscription(sess)
 }
@@ -268,41 +250,21 @@ func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string, bre
 		return fmt.Errorf("break_at %d exceeds total events (%d)", breakAt, len(events))
 	}
 
+	sess.runner.SetBreakAtPosition(breakAt)
+
 	done := make(chan struct{})
 	sess.done = done
 
 	go func() {
 		defer close(done)
-		for i, evt := range events {
-			position := int64(i + 1)
-			if breakAt > 0 && position == breakAt {
-				sess.pausedEvent = evt
-				sess.runtime.Pause()
-			}
+		source := engine.NewFixtureSource(events)
+		_ = source.Run(context.Background(), sess.runner.ProcessOne)
 
-			result, feedErr := sess.runtime.Feed(evt)
-
-			s.mu.Lock()
-			if feedErr != nil {
-				sess.stats.Errors++
-				sess.stats.Status = "error"
-				sess.lastError = feedErr
-				_, _ = sess.history.Insert(evt, `{"status":"error"}`)
-				s.mu.Unlock()
-				return
-			}
-
-			resultJSON, _ := json.Marshal(result)
-			_, _ = sess.history.Insert(evt, string(resultJSON))
-			s.recordResult(sess, result)
-			s.mu.Unlock()
+		if !sess.runner.Faulted() {
+			sess.runner.SetStatus("completed")
+		} else {
+			sess.runner.SetStatus("error")
 		}
-
-		s.mu.Lock()
-		if sess.stats.Status != "error" {
-			sess.stats.Status = "completed"
-		}
-		s.mu.Unlock()
 	}()
 
 	return nil

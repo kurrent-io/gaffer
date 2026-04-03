@@ -60,7 +60,6 @@ func (s *Server) waitForBreak(ctx context.Context, sess *activeSession, timeout 
 // status information. Must be called with s.mu held.
 func (s *Server) handleWaitResult(sess *activeSession, wr waitResult) (*mcp.CallToolResult, any, error) {
 	if wr.breakInfo != nil {
-		sess.paused.Store(true)
 		debugContext := s.collectDebugContext(sess, *wr.breakInfo)
 		debugContext["paused"] = true
 		return toolResult(debugContext), nil, nil
@@ -116,7 +115,7 @@ func (s *Server) handleEvaluate(_ context.Context, _ *mcp.CallToolRequest, input
 	if s.session == nil {
 		return toolError("no active session - call run first"), nil, nil
 	}
-	if !s.session.paused.Load() {
+	if !s.session.runner.Paused() {
 		return toolError("session is not paused - call run with break_at or breakpoints first"), nil, nil
 	}
 	if input.Expression == "" {
@@ -149,14 +148,13 @@ func (s *Server) handleDebugContinue(ctx context.Context, _ *mcp.CallToolRequest
 		s.mu.Unlock()
 		return toolError("no active session"), nil, nil
 	}
-	if !s.session.paused.Load() {
+	if !s.session.runner.Paused() {
 		s.mu.Unlock()
 		return toolError("session is not paused"), nil, nil
 	}
 
 	sess := s.session
-	sess.paused.Store(false)
-	sess.runtime.Continue()
+	sess.runner.Continue()
 	s.mu.Unlock()
 
 	wr := s.waitForBreak(ctx, sess, defaultDebugTimeout)
@@ -164,17 +162,6 @@ func (s *Server) handleDebugContinue(ctx context.Context, _ *mcp.CallToolRequest
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.handleWaitResult(sess, wr)
-}
-
-func (s *Server) recordResult(sess *activeSession, result *gafferruntime.FeedResult) {
-	if result.Status == "skipped" {
-		sess.stats.Skipped++
-	} else {
-		sess.stats.Processed++
-		if result.Partition != "" {
-			sess.partitions[result.Partition] = true
-		}
-	}
 }
 
 func (s *Server) collectDebugContext(sess *activeSession, info gafferruntime.BreakInfo) map[string]any {
@@ -242,32 +229,31 @@ var stepOutTool = &mcp.Tool{
 type debugStepInput struct{}
 
 func (s *Server) handleStepOver(ctx context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
-	return s.doStep(ctx, func(sess *activeSession) { sess.runtime.StepOver() })
+	return s.doStep(ctx, func(r *engine.Runner) { r.StepOver() })
 }
 
 func (s *Server) handleStepInto(ctx context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
-	return s.doStep(ctx, func(sess *activeSession) { sess.runtime.StepInto() })
+	return s.doStep(ctx, func(r *engine.Runner) { r.StepInto() })
 }
 
 func (s *Server) handleStepOut(ctx context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
-	return s.doStep(ctx, func(sess *activeSession) { sess.runtime.StepOut() })
+	return s.doStep(ctx, func(r *engine.Runner) { r.StepOut() })
 }
 
-func (s *Server) doStep(ctx context.Context, stepFn func(*activeSession)) (*mcp.CallToolResult, any, error) {
+func (s *Server) doStep(ctx context.Context, stepFn func(*engine.Runner)) (*mcp.CallToolResult, any, error) {
 	s.mu.Lock()
 
 	if s.session == nil {
 		s.mu.Unlock()
 		return toolError("no active session"), nil, nil
 	}
-	if !s.session.paused.Load() {
+	if !s.session.runner.Paused() {
 		s.mu.Unlock()
 		return toolError("session is not paused"), nil, nil
 	}
 
 	sess := s.session
-	sess.paused.Store(false)
-	stepFn(sess)
+	stepFn(sess.runner)
 	s.mu.Unlock()
 
 	wr := s.waitForBreak(ctx, sess, defaultDebugTimeout)

@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -31,14 +30,13 @@ type activeSession struct {
 	history    *history.Store
 	info       gafferruntime.QuerySources
 	name       string
-	runner     *engine.Runner // non-debug paths; nil for debug
+	runner     *engine.Runner
 	stats      sessionStats
 	partitions map[string]bool
 	cancel     context.CancelFunc
 	lastError  error
 
-	// Debug state
-	paused          atomic.Bool
+	// Debug state (pausedEvent/breakAtPosition used by live debug path until migrated)
 	pausedEvent     string
 	breakCh         chan gafferruntime.BreakInfo
 	done            chan struct{} // closed when background feed goroutine exits
@@ -148,11 +146,7 @@ func (s *Server) closeSession() {
 		if s.session.cancel != nil {
 			s.session.cancel()
 		}
-		if s.session.paused.Load() {
-			s.session.runtime.ClearBreakpoints()
-			s.session.runtime.Continue()
-			s.session.paused.Store(false)
-		}
+		s.session.runner.Destroy()
 		if s.session.done != nil {
 			done := s.session.done
 			s.mu.Unlock()
@@ -195,7 +189,7 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 		status = "debugging"
 	}
 
-	s.session = &activeSession{
+	sess := &activeSession{
 		runtime:    runtime,
 		history:    store,
 		info:       info,
@@ -204,5 +198,30 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 		stats:      sessionStats{Status: status},
 	}
 
-	return s.session, nil
+	cfg := engine.RunnerConfig{
+		Feed:    engine.FeedFn(runtime.Feed),
+		Writer:  nil,
+		History: store,
+	}
+	if debug {
+		breakCh := make(chan gafferruntime.BreakInfo, 1)
+		sess.breakCh = breakCh
+		sess.caughtUpCh = make(chan struct{}, 1)
+		sess.errorCh = make(chan error, 1)
+
+		cfg.Debug = &engine.DebugConfig{
+			Session: runtime,
+			Info:    info,
+			OnBreak: func(bi gafferruntime.BreakInfo) {
+				select {
+				case breakCh <- bi:
+				default:
+				}
+			},
+		}
+	}
+	sess.runner = engine.NewRunner(cfg)
+
+	s.session = sess
+	return sess, nil
 }

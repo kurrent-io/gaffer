@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -25,6 +26,19 @@ type RunnerConfig struct {
 	Feed    FeedFn
 	Writer  EventWriter
 	History *history.Store
+	Debug   *DebugConfig
+}
+
+type DebugConfig struct {
+	Session *gafferruntime.Session
+	Info    gafferruntime.QuerySources
+	OnBreak func(gafferruntime.BreakInfo) // must not call Runner methods
+}
+
+type Breakpoint struct {
+	Line      int
+	Column    int
+	Condition string
 }
 
 type Runner struct {
@@ -32,12 +46,17 @@ type Runner struct {
 	feed    FeedFn
 	writer  EventWriter
 	history *history.Store
+	debug   *DebugConfig
 
-	stats      EventStats
-	partitions map[string]bool
-	faulted    bool
-	lastError  error
-	position   int64
+	stats           EventStats
+	partitions      map[string]bool
+	faulted         bool
+	lastError       error
+	position        int64
+	status          string
+	paused          bool
+	pausedEvent     string
+	breakAtPosition int64
 }
 
 type EventStats struct {
@@ -51,17 +70,40 @@ func (s EventStats) Total() int {
 }
 
 func NewRunner(cfg RunnerConfig) *Runner {
-	return &Runner{
+	r := &Runner{
 		feed:       cfg.Feed,
 		writer:     cfg.Writer,
 		history:    cfg.History,
+		debug:      cfg.Debug,
 		partitions: make(map[string]bool),
 	}
+	if r.debug != nil && r.debug.OnBreak != nil {
+		r.debug.Session.OnBreak(func(info gafferruntime.BreakInfo) {
+			r.mu.Lock()
+			breakAt := r.breakAtPosition
+			r.mu.Unlock()
+			if info.Reason == "pause" && breakAt > 0 {
+				go r.debug.Session.StepInto()
+				return
+			}
+			r.mu.Lock()
+			r.paused = true
+			r.mu.Unlock()
+			r.debug.OnBreak(info)
+		})
+	}
+	return r
 }
 
 func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 	r.mu.Lock()
 	r.position++
+	if r.debug != nil {
+		r.pausedEvent = eventJSON
+		if r.breakAtPosition > 0 && r.position == r.breakAtPosition {
+			r.debug.Session.Pause()
+		}
+	}
 	if r.writer != nil {
 		r.writer.OnEvent(eventJSON)
 	}
@@ -71,6 +113,10 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if r.debug != nil {
+		r.pausedEvent = ""
+	}
 
 	if err != nil {
 		fe := ClassifyError(err)
@@ -149,6 +195,113 @@ func (r *Runner) SetFaulted(v bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.faulted = v
+}
+
+func (r *Runner) Paused() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.paused
+}
+
+func (r *Runner) PausedEvent() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.pausedEvent
+}
+
+func (r *Runner) Status() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.status
+}
+
+func (r *Runner) SetStatus(s string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.status = s
+}
+
+func (r *Runner) SetBreakAtPosition(pos int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.breakAtPosition = pos
+}
+
+// SetBreakpoints clears existing breakpoints and sets new ones.
+func (r *Runner) SetBreakpoints(breakpoints []Breakpoint) ([]*gafferruntime.SnappedBreakpoint, error) {
+	if r.debug == nil {
+		return nil, fmt.Errorf("debug not enabled")
+	}
+	r.debug.Session.ClearBreakpoints()
+	snapped := make([]*gafferruntime.SnappedBreakpoint, len(breakpoints))
+	for i, bp := range breakpoints {
+		var opts *gafferruntime.BreakpointOptions
+		if bp.Condition != "" {
+			opts = &gafferruntime.BreakpointOptions{Condition: bp.Condition}
+		}
+		s, err := r.debug.Session.SetBreakpoint(bp.Line, bp.Column, opts)
+		if err != nil {
+			return nil, fmt.Errorf("setting breakpoint at line %d: %w", bp.Line, err)
+		}
+		snapped[i] = s
+	}
+	return snapped, nil
+}
+
+func (r *Runner) ClearBreakpoints() {
+	if r.debug != nil {
+		r.debug.Session.ClearBreakpoints()
+	}
+}
+
+func (r *Runner) Continue() {
+	if r.debug == nil {
+		return
+	}
+	r.mu.Lock()
+	r.paused = false
+	r.mu.Unlock()
+	r.debug.Session.Continue()
+}
+
+func (r *Runner) StepOver() {
+	if r.debug == nil {
+		return
+	}
+	r.mu.Lock()
+	r.paused = false
+	r.mu.Unlock()
+	r.debug.Session.StepOver()
+}
+
+func (r *Runner) StepInto() {
+	if r.debug == nil {
+		return
+	}
+	r.mu.Lock()
+	r.paused = false
+	r.mu.Unlock()
+	r.debug.Session.StepInto()
+}
+
+func (r *Runner) StepOut() {
+	if r.debug == nil {
+		return
+	}
+	r.mu.Lock()
+	r.paused = false
+	r.mu.Unlock()
+	r.debug.Session.StepOut()
+}
+
+func (r *Runner) Destroy() {
+	if r.debug == nil {
+		return
+	}
+	r.debug.Session.ClearBreakpoints()
+	if r.Paused() {
+		r.debug.Session.Continue()
+	}
 }
 
 func eventID(eventJSON string) string {

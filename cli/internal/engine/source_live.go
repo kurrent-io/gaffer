@@ -9,29 +9,34 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
 )
 
-type liveSource struct {
-	connStr string
-	root    string
-	info    gafferruntime.QuerySources
-	version string
+type LiveSourceConfig struct {
+	ConnStr    string
+	Root       string
+	Info       gafferruntime.QuerySources
+	Version    string
+	OnCaughtUp func() // called when subscription reaches head of stream, nil = ignore, must not block
 }
 
-func NewLiveSource(connStr, root string, info gafferruntime.QuerySources, version string) EventSource {
-	return &liveSource{connStr: connStr, root: root, info: info, version: version}
+type liveSource struct {
+	cfg LiveSourceConfig
+}
+
+func NewLiveSource(cfg LiveSourceConfig) EventSource {
+	return &liveSource{cfg: cfg}
 }
 
 func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
-	client, err := Connect(l.connStr, l.root)
+	client, err := Connect(l.cfg.ConnStr, l.cfg.Root)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = client.Close() }()
 
-	filter := subscription.BuildFilter(l.info, l.version)
+	filter := subscription.BuildFilter(l.cfg.Info, l.cfg.Version)
 
 	opts := kurrentdb.SubscribeToAllOptions{
 		From:           kurrentdb.Start{},
-		ResolveLinkTos: subscription.ResolveLinkTos(l.version),
+		ResolveLinkTos: subscription.ResolveLinkTos(l.cfg.Version),
 	}
 	if filter != nil {
 		opts.Filter = filter
@@ -51,6 +56,13 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 				return nil
 			}
 			return fmt.Errorf("subscription dropped: %w", subEvent.SubscriptionDropped.Error)
+		}
+
+		if subEvent.CaughtUp != nil {
+			if l.cfg.OnCaughtUp != nil {
+				l.cfg.OnCaughtUp()
+			}
+			continue
 		}
 
 		if subEvent.EventAppeared == nil {

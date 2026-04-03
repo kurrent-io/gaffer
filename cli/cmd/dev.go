@@ -139,7 +139,12 @@ func runDev(cmd *cobra.Command, args []string) error {
 		if connStr == "" {
 			return fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
 		}
-		source = engine.NewLiveSource(connStr, projCtx.Root, info, version)
+		source = engine.NewLiveSource(engine.LiveSourceConfig{
+			ConnStr: connStr,
+			Root:    projCtx.Root,
+			Info:    info,
+			Version: version,
+		})
 	}
 
 	srcErr := source.Run(ctx, r.ProcessOne)

@@ -48,10 +48,10 @@ func TestRunner_ProcessOne_Handled(t *testing.T) {
 	if stop {
 		t.Error("expected stop=false")
 	}
-	if r.Stats.Handled != 1 {
-		t.Errorf("handled: got %d, want 1", r.Stats.Handled)
+	if r.Stats().Handled != 1 {
+		t.Errorf("handled: got %d, want 1", r.Stats().Handled)
 	}
-	if !r.Partitions["p-1"] {
+	if !r.Partitions()["p-1"] {
 		t.Error("expected partition p-1 tracked")
 	}
 	if len(w.events) != 1 {
@@ -74,8 +74,8 @@ func TestRunner_ProcessOne_Skipped(t *testing.T) {
 	if stop {
 		t.Error("expected stop=false")
 	}
-	if r.Stats.Skipped != 1 {
-		t.Errorf("skipped: got %d, want 1", r.Stats.Skipped)
+	if r.Stats().Skipped != 1 {
+		t.Errorf("skipped: got %d, want 1", r.Stats().Skipped)
 	}
 }
 
@@ -92,11 +92,11 @@ func TestRunner_ProcessOne_Error(t *testing.T) {
 	if !stop {
 		t.Error("expected stop=true")
 	}
-	if !r.Faulted {
+	if !r.Faulted() {
 		t.Error("expected faulted")
 	}
-	if r.Stats.Errors != 1 {
-		t.Errorf("errors: got %d, want 1", r.Stats.Errors)
+	if r.Stats().Errors != 1 {
+		t.Errorf("errors: got %d, want 1", r.Stats().Errors)
 	}
 	if len(w.errors) != 1 {
 		t.Errorf("writer errors: got %d, want 1", len(w.errors))
@@ -118,15 +118,16 @@ func TestRunner_ProcessOne_NilWriter(t *testing.T) {
 	if stop {
 		t.Error("expected stop=false")
 	}
-	if r.Stats.Handled != 1 {
-		t.Errorf("handled: got %d, want 1", r.Stats.Handled)
+	if r.Stats().Handled != 1 {
+		t.Errorf("handled: got %d, want 1", r.Stats().Handled)
 	}
 }
 
 func TestRunner_ProcessOne_NilResult(t *testing.T) {
+	w := &recordingWriter{}
 	r := NewRunner(RunnerConfig{
 		Feed:    func(string) (*gafferruntime.FeedResult, error) { return nil, nil },
-		Writer:  nil,
+		Writer:  w,
 		History: nil,
 	})
 
@@ -135,8 +136,11 @@ func TestRunner_ProcessOne_NilResult(t *testing.T) {
 	if stop {
 		t.Error("expected stop=false")
 	}
-	if r.Stats.Handled != 0 {
-		t.Error("expected no stats change for nil result")
+	if r.Stats().Skipped != 1 {
+		t.Errorf("skipped: got %d, want 1 (nil results recorded as skipped)", r.Stats().Skipped)
+	}
+	if len(w.results) != 1 {
+		t.Errorf("writer results: got %d, want 1 (nil result notified as skipped)", len(w.results))
 	}
 }
 

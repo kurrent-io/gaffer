@@ -327,20 +327,20 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 	source := engine.NewFixtureSource(events)
 	_ = source.Run(context.Background(), sess.runner.ProcessOne)
 
-	if !sess.runner.Faulted {
+	if !sess.runner.Faulted() {
 		sess.stats.Status = "completed"
 	} else {
 		sess.stats.Status = "error"
 	}
 
 	summary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.activePartitions()))
-	summary["completed"] = !sess.runner.Faulted
+	summary["completed"] = !sess.runner.Faulted()
 	summary["processed"] = sess.handled()
 	summary["skipped"] = sess.skipped()
 	summary["errors"] = sess.errors()
 	summary["totalEvents"] = len(events)
 
-	if sess.runner.Faulted && ew.lastError != nil {
+	if sess.runner.Faulted() && ew.lastError != nil {
 		summary["lastError"] = ew.lastError
 	}
 

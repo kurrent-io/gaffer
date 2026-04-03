@@ -56,21 +56,21 @@ type sessionStats struct {
 
 func (sess *activeSession) handled() int64 {
 	if sess.runner != nil {
-		return int64(sess.runner.Stats.Handled)
+		return int64(sess.runner.Stats().Handled)
 	}
 	return sess.stats.Processed
 }
 
 func (sess *activeSession) skipped() int64 {
 	if sess.runner != nil {
-		return int64(sess.runner.Stats.Skipped)
+		return int64(sess.runner.Stats().Skipped)
 	}
 	return sess.stats.Skipped
 }
 
 func (sess *activeSession) errors() int64 {
 	if sess.runner != nil {
-		return int64(sess.runner.Stats.Errors)
+		return int64(sess.runner.Stats().Errors)
 	}
 	return sess.stats.Errors
 }
@@ -81,7 +81,7 @@ func (sess *activeSession) eventCount() int64 {
 
 func (sess *activeSession) activePartitions() map[string]bool {
 	if sess.runner != nil {
-		return sess.runner.Partitions
+		return sess.runner.Partitions()
 	}
 	return sess.partitions
 }

@@ -82,7 +82,7 @@ func TestProcessEvents_HandledEvents(t *testing.T) {
 	r := engine.NewRunner(engine.RunnerConfig{Feed: session.Feed, Writer: &eventWriterAdapter{writer: writer}, History: nil})
 	source := engine.NewFixtureSource(events)
 	_ = source.Run(context.Background(), r.ProcessOne)
-	stats, partitions, faulted := r.Stats, r.Partitions, r.Faulted
+	stats, partitions, faulted := r.Stats(), r.Partitions(), r.Faulted()
 
 	if faulted {
 		t.Fatal("expected no fault")
@@ -123,7 +123,7 @@ func TestProcessEvents_SkippedEvents(t *testing.T) {
 	r := engine.NewRunner(engine.RunnerConfig{Feed: session.Feed, Writer: &eventWriterAdapter{writer: writer}, History: nil})
 	source := engine.NewFixtureSource(events)
 	_ = source.Run(context.Background(), r.ProcessOne)
-	stats, faulted := r.Stats, r.Faulted
+	stats, faulted := r.Stats(), r.Faulted()
 
 	if faulted {
 		t.Fatal("expected no fault")
@@ -159,7 +159,7 @@ func TestProcessEvents_Partitioned(t *testing.T) {
 	r := engine.NewRunner(engine.RunnerConfig{Feed: session.Feed, Writer: &eventWriterAdapter{writer: writer}, History: nil})
 	source := engine.NewFixtureSource(events)
 	_ = source.Run(context.Background(), r.ProcessOne)
-	stats, partitions, faulted := r.Stats, r.Partitions, r.Faulted
+	stats, partitions, faulted := r.Stats(), r.Partitions(), r.Faulted()
 
 	if faulted {
 		t.Fatal("expected no fault")
@@ -191,7 +191,7 @@ func TestProcessEvents_Faulted(t *testing.T) {
 	r := engine.NewRunner(engine.RunnerConfig{Feed: session.Feed, Writer: &eventWriterAdapter{writer: writer}, History: nil})
 	source := engine.NewFixtureSource(events)
 	_ = source.Run(context.Background(), r.ProcessOne)
-	stats, faulted := r.Stats, r.Faulted
+	stats, faulted := r.Stats(), r.Faulted()
 
 	if !faulted {
 		t.Fatal("expected fault")
@@ -235,7 +235,7 @@ func TestProcessEvents_FaultedMidStream(t *testing.T) {
 	r := engine.NewRunner(engine.RunnerConfig{Feed: session.Feed, Writer: &eventWriterAdapter{writer: writer}, History: nil})
 	source := engine.NewFixtureSource(events)
 	_ = source.Run(context.Background(), r.ProcessOne)
-	stats, faulted := r.Stats, r.Faulted
+	stats, faulted := r.Stats(), r.Faulted()
 
 	if !faulted {
 		t.Fatal("expected fault")
@@ -265,7 +265,7 @@ func TestProcessEvents_Empty(t *testing.T) {
 	r := engine.NewRunner(engine.RunnerConfig{Feed: session.Feed, Writer: &eventWriterAdapter{writer: writer}, History: nil})
 	source := engine.NewFixtureSource([]string{})
 	_ = source.Run(context.Background(), r.ProcessOne)
-	stats, partitions, faulted := r.Stats, r.Partitions, r.Faulted
+	stats, partitions, faulted := r.Stats(), r.Partitions(), r.Faulted()
 
 	if faulted {
 		t.Error("expected no fault")

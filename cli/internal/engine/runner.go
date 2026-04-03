@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"sync"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
@@ -27,12 +28,16 @@ type RunnerConfig struct {
 }
 
 type Runner struct {
-	feed       FeedFn
-	writer     EventWriter
-	history    *history.Store
-	Stats      EventStats
-	Partitions map[string]bool
-	Faulted    bool
+	mu      sync.Mutex
+	feed    FeedFn
+	writer  EventWriter
+	history *history.Store
+
+	stats      EventStats
+	partitions map[string]bool
+	faulted    bool
+	lastError  error
+	position   int64
 }
 
 type EventStats struct {
@@ -50,16 +55,23 @@ func NewRunner(cfg RunnerConfig) *Runner {
 		feed:       cfg.Feed,
 		writer:     cfg.Writer,
 		history:    cfg.History,
-		Partitions: make(map[string]bool),
+		partitions: make(map[string]bool),
 	}
 }
 
 func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
+	r.mu.Lock()
+	r.position++
 	if r.writer != nil {
 		r.writer.OnEvent(eventJSON)
 	}
+	r.mu.Unlock()
 
 	result, err := r.feed(eventJSON)
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if err != nil {
 		fe := ClassifyError(err)
 		if r.writer != nil {
@@ -68,12 +80,14 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 		if r.history != nil {
 			_, _ = r.history.Insert(eventJSON, `{"status":"error"}`)
 		}
-		r.Stats.Errors++
-		r.Faulted = true
+		r.stats.Errors++
+		r.faulted = true
+		r.lastError = err
 		return true
 	}
+
 	if result == nil {
-		return false
+		result = &gafferruntime.FeedResult{Status: "skipped", SkipReason: "no-handler"}
 	}
 
 	if r.history != nil {
@@ -85,14 +99,56 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 		r.writer.OnResult(eventID(eventJSON), result)
 	}
 	if result.Status == "skipped" {
-		r.Stats.Skipped++
+		r.stats.Skipped++
 	} else {
-		r.Stats.Handled++
+		r.stats.Handled++
 		if result.Partition != "" {
-			r.Partitions[result.Partition] = true
+			r.partitions[result.Partition] = true
 		}
 	}
 	return false
+}
+
+// Read accessors - safe for concurrent use
+
+func (r *Runner) Stats() EventStats {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.stats
+}
+
+func (r *Runner) Partitions() map[string]bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cp := make(map[string]bool, len(r.partitions))
+	for k, v := range r.partitions {
+		cp[k] = v
+	}
+	return cp
+}
+
+func (r *Runner) Faulted() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.faulted
+}
+
+func (r *Runner) LastError() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastError
+}
+
+func (r *Runner) Position() int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.position
+}
+
+func (r *Runner) SetFaulted(v bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.faulted = v
 }
 
 func eventID(eventJSON string) string {

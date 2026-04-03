@@ -155,15 +155,15 @@ func runDev(cmd *cobra.Command, args []string) error {
 
 	if ctx.Err() != nil {
 		_, _ = fmt.Fprint(os.Stderr, "Interrupted\n\n")
-		r.Faulted = false
+		r.SetFaulted(false)
 	} else if srcErr != nil {
 		return srcErr
 	}
 
-	summary := engine.CollectState(session, info, r.Partitions)
-	writer.WriteSummary(r.Stats, summary)
+	summary := engine.CollectState(session, info, r.Partitions())
+	writer.WriteSummary(r.Stats(), summary)
 
-	if r.Faulted {
+	if r.Faulted() {
 		cmd.SilenceErrors = true
 		return fmt.Errorf("projection faulted")
 	}

@@ -65,7 +65,7 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 		s.mu.Lock()
 		if ctx.Err() != nil {
 			sess.stats.Status = "stopped"
-		} else if sess.runner.Faulted || srcErr != nil {
+		} else if sess.runner.Faulted() || srcErr != nil {
 			sess.stats.Status = "error"
 			if srcErr != nil {
 				sess.lastError = srcErr
@@ -73,7 +73,7 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 		}
 		s.mu.Unlock()
 
-		if sess.runner.Faulted && sess.errorCh != nil {
+		if sess.runner.Faulted() && sess.errorCh != nil {
 			select {
 			case sess.errorCh <- fmt.Errorf("projection faulted"):
 			default:

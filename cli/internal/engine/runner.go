@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -31,18 +30,6 @@ type RunnerConfig struct {
 	Writer  EventWriter
 	History *history.Store
 	Debug   *DebugConfig
-}
-
-type DebugConfig struct {
-	Session *gafferruntime.Session
-	Info    gafferruntime.QuerySources
-	OnBreak func(gafferruntime.BreakInfo) // must not call Runner methods
-}
-
-type Breakpoint struct {
-	Line      int
-	Column    int
-	Condition string
 }
 
 type Runner struct {
@@ -167,7 +154,7 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 	return false
 }
 
-// Read accessors - safe for concurrent use
+// Read accessors
 
 func (r *Runner) Stats() EventStats {
 	r.mu.Lock()
@@ -237,187 +224,12 @@ func (r *Runner) SetBreakAtPosition(pos int64) {
 	r.breakAtPosition = pos
 }
 
-// SetBreakpoints clears existing breakpoints and sets new ones.
-func (r *Runner) SetBreakpoints(breakpoints []Breakpoint) ([]*gafferruntime.SnappedBreakpoint, error) {
-	if r.debug == nil {
-		return nil, fmt.Errorf("debug not enabled")
-	}
-	r.debug.Session.ClearBreakpoints()
-	snapped := make([]*gafferruntime.SnappedBreakpoint, len(breakpoints))
-	for i, bp := range breakpoints {
-		var opts *gafferruntime.BreakpointOptions
-		if bp.Condition != "" {
-			opts = &gafferruntime.BreakpointOptions{Condition: bp.Condition}
-		}
-		s, err := r.debug.Session.SetBreakpoint(bp.Line, bp.Column, opts)
-		if err != nil {
-			return nil, fmt.Errorf("setting breakpoint at line %d: %w", bp.Line, err)
-		}
-		snapped[i] = s
-	}
-	return snapped, nil
-}
-
-func (r *Runner) ClearBreakpoints() {
-	if r.debug != nil {
-		r.debug.Session.ClearBreakpoints()
-	}
-}
-
-func (r *Runner) Continue() {
-	if r.debug == nil {
-		return
-	}
-	r.mu.Lock()
-	r.paused = false
-	r.mu.Unlock()
-	r.debug.Session.Continue()
-}
-
-func (r *Runner) StepOver() {
-	if r.debug == nil {
-		return
-	}
-	r.mu.Lock()
-	r.paused = false
-	r.mu.Unlock()
-	r.debug.Session.StepOver()
-}
-
-func (r *Runner) StepInto() {
-	if r.debug == nil {
-		return
-	}
-	r.mu.Lock()
-	r.paused = false
-	r.mu.Unlock()
-	r.debug.Session.StepInto()
-}
-
-func (r *Runner) StepOut() {
-	if r.debug == nil {
-		return
-	}
-	r.mu.Lock()
-	r.paused = false
-	r.mu.Unlock()
-	r.debug.Session.StepOut()
-}
-
-func (r *Runner) Destroy() {
-	if r.debug != nil {
-		r.debug.Session.ClearBreakpoints()
-		if r.Paused() {
-			r.debug.Session.Continue()
-		}
-	}
-	if r.session != nil {
-		r.session.Destroy()
-	}
-	if r.history != nil {
-		_ = r.history.Close()
-	}
-}
-
 func (r *Runner) Info() gafferruntime.QuerySources {
 	return r.info
 }
 
 func (r *Runner) Engine() string {
 	return r.engine
-}
-
-// History accessors
-
-func (r *Runner) GetStep(position int64) (*history.Step, error) {
-	if r.history == nil {
-		return nil, fmt.Errorf("no history store")
-	}
-	return r.history.Get(position)
-}
-
-func (r *Runner) Timeline(from, to int64) ([]history.TimelineEntry, error) {
-	if r.history == nil {
-		return nil, fmt.Errorf("no history store")
-	}
-	return r.history.Timeline(from, to)
-}
-
-func (r *Runner) TimelineFiltered(from, to int64, partition string) ([]history.TimelineEntry, error) {
-	if r.history == nil {
-		return nil, fmt.Errorf("no history store")
-	}
-	return r.history.TimelineFiltered(from, to, partition)
-}
-
-func (r *Runner) HistoryRange() (min, max int64, err error) {
-	if r.history == nil {
-		return 0, 0, fmt.Errorf("no history store")
-	}
-	return r.history.Range()
-}
-
-func (r *Runner) HistoryCount() (int64, error) {
-	if r.history == nil {
-		return 0, fmt.Errorf("no history store")
-	}
-	return r.history.Count()
-}
-
-// Inspection methods - safe to call while paused at a breakpoint
-
-func (r *Runner) Evaluate(expression string) (*gafferruntime.DebugVariable, error) {
-	if r.debug == nil {
-		return nil, fmt.Errorf("debug not enabled")
-	}
-	return r.debug.Session.Evaluate(expression)
-}
-
-func (r *Runner) GetCallStack() ([]gafferruntime.DebugCallFrame, error) {
-	if r.debug == nil {
-		return nil, fmt.Errorf("debug not enabled")
-	}
-	return r.debug.Session.GetCallStack()
-}
-
-func (r *Runner) GetScopes(frameID int) ([]gafferruntime.DebugScopeInfo, error) {
-	if r.debug == nil {
-		return nil, fmt.Errorf("debug not enabled")
-	}
-	return r.debug.Session.GetScopes(frameID)
-}
-
-func (r *Runner) GetVariables(variablesReference int) ([]gafferruntime.DebugVariable, error) {
-	if r.debug == nil {
-		return nil, fmt.Errorf("debug not enabled")
-	}
-	return r.debug.Session.GetVariables(variablesReference)
-}
-
-func (r *Runner) CollectState() StateSummary {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.collectStateLocked()
-}
-
-func (r *Runner) collectStateLocked() StateSummary {
-	if r.session == nil {
-		return StateSummary{}
-	}
-	return CollectState(r.session, r.info, r.partitions)
-}
-
-func (r *Runner) GetPartitionState(partition string) (state *string, result *string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.session == nil {
-		return nil, nil
-	}
-	state = r.session.GetState(&partition)
-	if r.info.DefinesStateTransform {
-		result, _ = r.session.GetResult(&partition)
-	}
-	return state, result
 }
 
 func eventID(eventJSON string) string {

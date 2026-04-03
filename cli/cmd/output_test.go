@@ -37,7 +37,7 @@ func TestParseEventInfo(t *testing.T) {
 	assertEqual(t, "sequenceNumber", int64(5), info.SequenceNumber)
 	assertEqual(t, "streamId", "order-1", info.StreamID)
 	assertEqual(t, "eventType", "OrderPlaced", info.EventType)
-	assertEqual(t, "id", "5@order-1", info.id())
+	assertEqual(t, "id", "5@order-1", info.ID())
 
 	if !hasContent(info.Data) {
 		t.Error("expected data to have content")
@@ -51,7 +51,7 @@ func TestParseEventInfo_Minimal(t *testing.T) {
 	info := parseEventInfo(`{"eventType":"Test","streamId":"s-1"}`)
 
 	assertEqual(t, "sequenceNumber", int64(0), info.SequenceNumber)
-	assertEqual(t, "id", "0@s-1", info.id())
+	assertEqual(t, "id", "0@s-1", info.ID())
 
 	if hasContent(info.Data) {
 		t.Error("expected no data")

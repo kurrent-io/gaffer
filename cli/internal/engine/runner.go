@@ -421,36 +421,5 @@ func (r *Runner) GetPartitionState(partition string) (state *string, result *str
 }
 
 func eventID(eventJSON string) string {
-	var e struct {
-		SequenceNumber int64  `json:"sequenceNumber"`
-		StreamID       string `json:"streamId"`
-	}
-	_ = json.Unmarshal([]byte(eventJSON), &e)
-	return formatEventID(e.SequenceNumber, e.StreamID)
-}
-
-func formatEventID(seq int64, streamID string) string {
-	buf := make([]byte, 0, 20+len(streamID))
-	buf = appendInt(buf, seq)
-	buf = append(buf, '@')
-	buf = append(buf, streamID...)
-	return string(buf)
-}
-
-func appendInt(buf []byte, n int64) []byte {
-	if n < 0 {
-		buf = append(buf, '-')
-		n = -n
-	}
-	if n == 0 {
-		return append(buf, '0')
-	}
-	var digits [20]byte
-	i := len(digits)
-	for n > 0 {
-		i--
-		digits[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return append(buf, digits[i:]...)
+	return ParseEvent(eventJSON).ID()
 }

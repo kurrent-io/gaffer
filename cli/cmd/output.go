@@ -11,22 +11,10 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
-type eventInfo struct {
-	SequenceNumber int64           `json:"sequenceNumber"`
-	StreamID       string          `json:"streamId"`
-	EventType      string          `json:"eventType"`
-	Data           json.RawMessage `json:"data"`
-	Metadata       json.RawMessage `json:"metadata"`
-}
-
-func (e eventInfo) id() string {
-	return fmt.Sprintf("%d@%s", e.SequenceNumber, e.StreamID)
-}
+type eventInfo = engine.EventEnvelope
 
 func parseEventInfo(eventJSON string) eventInfo {
-	var info eventInfo
-	_ = json.Unmarshal([]byte(eventJSON), &info)
-	return info
+	return engine.ParseEvent(eventJSON)
 }
 
 type outputWriter interface {
@@ -217,7 +205,7 @@ func (tw *textWriter) WriteInfo(name string, info gafferruntime.QuerySources, ve
 func (tw *textWriter) WriteDebugListening(addr string, port int) {}
 
 func (tw *textWriter) WriteEvent(event eventInfo) {
-	tw.heading(event.id())
+	tw.heading(event.ID())
 	tw.line.detail("type", event.EventType)
 
 	if hasContent(event.Data) {

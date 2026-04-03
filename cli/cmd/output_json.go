@@ -60,7 +60,7 @@ func (jw *jsonWriter) WriteDebugListening(addr string, port int) {
 func (jw *jsonWriter) WriteEvent(event eventInfo) {
 	line := map[string]any{
 		"type":           "event",
-		"id":             event.id(),
+		"id":             event.ID(),
 		"sequenceNumber": event.SequenceNumber,
 		"streamId":       event.StreamID,
 		"eventType":      event.EventType,

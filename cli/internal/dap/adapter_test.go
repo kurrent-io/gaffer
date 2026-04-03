@@ -24,7 +24,7 @@ func mustSetupDebugSession(t *testing.T) (*DebugAdapter, net.Conn, *bufio.Reader
 	}
 	t.Cleanup(func() { session.Destroy() })
 
-	adapter := NewDebugAdapter(session, "/tmp/test/projection.js", "/tmp/test", nil, ProjectionShape{})
+	adapter := NewDebugAdapter(session, "/tmp/test/projection.js", "/tmp/test", nil, gafferruntime.QuerySources{})
 	handler := adapter.Handler()
 	srv, err := NewServer("127.0.0.1:0", handler)
 	if err != nil {

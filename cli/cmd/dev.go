@@ -79,13 +79,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 
 		sourcePath, _ := filepath.Abs(filepath.Join(projCtx.Root, projCtx.Proj.Entry))
 		absRoot, _ := filepath.Abs(projCtx.Root)
-		shape := dapserver.ProjectionShape{
-			IsPartitioned:   info.ByStreams || info.ByCustomPartitions,
-			IsBiState:       info.IsBiState,
-			HasTransforms:   info.DefinesStateTransform,
-			ProducesResults: info.ProducesResults,
-		}
-		adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot, store, shape)
+		adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot, store, info)
 		handler := adapter.Handler()
 
 		addr := fmt.Sprintf("127.0.0.1:%d", devDebugPort)

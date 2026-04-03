@@ -31,12 +31,12 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 		return toolError("projection %q not found in gaffer.toml", input.Name), nil, nil
 	}
 
-	source, err := readProjectionSource(s.root, proj.Entry)
+	source, err := engine.ReadSource(s.root, proj.Entry)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}
 
-	lp := engine.NewProjection(s.root, s.cfg, proj, string(source))
+	lp := engine.NewProjection(s.root, s.cfg, proj, source)
 	session, info, err := engine.CreateSession(lp, false)
 	if err != nil {
 		return toolError("compiling projection: %v", err), nil, nil

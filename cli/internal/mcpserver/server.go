@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
 
@@ -145,12 +144,12 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 		return nil, fmt.Errorf("projection %q not found in gaffer.toml", name)
 	}
 
-	source, err := os.ReadFile(filepath.Join(s.root, proj.Entry))
+	source, err := engine.ReadSource(s.root, proj.Entry)
 	if err != nil {
-		return nil, fmt.Errorf("reading projection source: %w", err)
+		return nil, err
 	}
 
-	lp := engine.NewProjection(s.root, s.cfg, proj, string(source))
+	lp := engine.NewProjection(s.root, s.cfg, proj, source)
 	runtime, info, err := engine.CreateSession(lp, debug)
 	if err != nil {
 		return nil, err

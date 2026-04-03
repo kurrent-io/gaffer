@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -126,12 +125,12 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolError("projection %q not found in gaffer.toml", input.Name), nil, nil
 	}
 
-	source, err := readProjectionSource(s.root, proj.Entry)
+	source, err := engine.ReadSource(s.root, proj.Entry)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}
 
-	lp := engine.NewProjection(s.root, s.cfg, proj, string(source))
+	lp := engine.NewProjection(s.root, s.cfg, proj, source)
 	session, info, err := engine.CreateSession(lp, false)
 	if err != nil {
 		if _, ok := err.(gafferruntime.ProjectionError); ok {
@@ -461,13 +460,6 @@ func (s *Server) resolveRange(from, to int64) (int64, int64) {
 	return from, to
 }
 
-func readProjectionSource(root, entry string) ([]byte, error) {
-	data, err := os.ReadFile(filepath.Join(root, entry))
-	if err != nil {
-		return nil, fmt.Errorf("reading projection source: %w", err)
-	}
-	return data, nil
-}
 
 func formatStep(step *history.Step) map[string]any {
 	var event any

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -85,9 +86,9 @@ func (s *Server) handleFixProjectionPrompt(_ context.Context, req *mcp.GetPrompt
 		return nil, fmt.Errorf("projection %q not found in gaffer.toml", name)
 	}
 
-	source, err := os.ReadFile(filepath.Join(s.root, proj.Entry))
+	source, err := engine.ReadSource(s.root, proj.Entry)
 	if err != nil {
-		return nil, fmt.Errorf("reading projection source: %w", err)
+		return nil, err
 	}
 
 	apiRef := mustReadEmbed("resources/projection-api.md")
@@ -111,7 +112,7 @@ func (s *Server) handleFixProjectionPrompt(_ context.Context, req *mcp.GetPrompt
 	sb.WriteString("6. Fix the source and re-run to verify\n\n")
 
 	fmt.Fprintf(&sb, "## Source (`%s`)\n\n```javascript\n", proj.Entry)
-	sb.Write(source)
+	sb.WriteString(source)
 	sb.WriteString("```\n\n---\n\n")
 	sb.Write(apiRef)
 	sb.WriteString("\n\n---\n\n")

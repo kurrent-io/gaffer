@@ -46,18 +46,26 @@ func LoadProjection(name string) (*Projection, error) {
 		return nil, fmt.Errorf("projection %q not found in gaffer.toml", name)
 	}
 
-	source, err := os.ReadFile(filepath.Join(root, proj.Entry))
+	source, err := ReadSource(root, proj.Entry)
 	if err != nil {
-		return nil, fmt.Errorf("reading projection source: %w", err)
+		return nil, err
 	}
 
 	return &Projection{
 		Root:   root,
 		Config: cfg,
 		Def:    proj,
-		Source: string(source),
+		Source: source,
 		Engine: proj.EffectiveEngine(),
 	}, nil
+}
+
+func ReadSource(root, entry string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(root, entry))
+	if err != nil {
+		return "", fmt.Errorf("reading projection source: %w", err)
+	}
+	return string(data), nil
 }
 
 func CreateSession(proj *Projection, debug bool) (*gafferruntime.Session, gafferruntime.QuerySources, error) {

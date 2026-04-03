@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
 func newTestSession(t *testing.T, source string) *gafferruntime.Session {
@@ -472,9 +473,9 @@ func TestBuildSummary_BiState(t *testing.T) {
 	}
 }
 
-// --- classifyError ---
+// --- classifyError (integration - verifies real runtime errors classify correctly) ---
 
-func TestClassifyError_ProjectionError(t *testing.T) {
+func TestClassifyError_RuntimeError(t *testing.T) {
 	js := `fromAll().when({
 		BadEvent: function(s, e) { throw new Error("boom"); }
 	})`
@@ -485,25 +486,14 @@ func TestClassifyError_ProjectionError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 
-	code, desc := classifyError(err)
-	if code == "" {
+	fe := engine.ClassifyError(err)
+	if fe.Code == "" {
 		t.Error("expected non-empty code")
 	}
-	if desc == "" {
+	if fe.Description == "" {
 		t.Error("expected non-empty description")
 	}
-	if code == "unexpected-error" {
-		t.Errorf("expected a projection error code, got %q", code)
-	}
-}
-
-func TestClassifyError_GenericError(t *testing.T) {
-	code, desc := classifyError(fmt.Errorf("something went wrong"))
-
-	if code != "unexpected-error" {
-		t.Errorf("code: got %q, want %q", code, "unexpected-error")
-	}
-	if desc != "something went wrong" {
-		t.Errorf("description: got %q, want %q", desc, "something went wrong")
+	if fe.Code == "unexpected-error" {
+		t.Errorf("expected a projection error code, got %q", fe.Code)
 	}
 }

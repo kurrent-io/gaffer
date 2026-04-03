@@ -12,6 +12,7 @@ import (
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	dapserver "github.com/kurrent-io/gaffer/cli/internal/dap"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/env"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/kurrent-io/gaffer/cli/internal/projection"
@@ -289,8 +290,8 @@ func (r *runner) processOne(eventJSON string) (stop bool) {
 
 	result, err := r.feed(eventJSON)
 	if err != nil {
-		code, desc := classifyError(err)
-		r.writer.WriteError(event.id(), code, desc)
+		feedErr := engine.ClassifyError(err)
+		r.writer.WriteError(event.id(), feedErr.Code, feedErr.Description)
 		r.stats.errors++
 		r.faulted = true
 		return true
@@ -311,12 +312,6 @@ func (r *runner) processOne(eventJSON string) (stop bool) {
 	return false
 }
 
-func classifyError(err error) (code, description string) {
-	if projErr, ok := err.(gafferruntime.ProjectionError); ok {
-		return projErr.ErrorCode(), projErr.ErrorDescription()
-	}
-	return "unexpected-error", err.Error()
-}
 
 func buildSummary(session *gafferruntime.Session, info gafferruntime.QuerySources, partitions map[string]bool) summaryState {
 	isPartitioned := info.ByStreams || info.ByCustomPartitions

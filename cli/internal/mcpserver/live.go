@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
-	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
 )
 
@@ -163,19 +163,15 @@ func (s *Server) runSubscriptionLoop(ctx context.Context, sess *activeSession, s
 }
 
 func classifyError(err error) map[string]any {
-	if projErr, ok := err.(gafferruntime.ProjectionError); ok {
-		result := map[string]any{
-			"code":        projErr.ErrorCode(),
-			"description": projErr.ErrorDescription(),
-		}
-		if hint := errorHint(projErr.ErrorCode()); hint != "" {
-			result["hint"] = hint
-		}
-		return result
+	fe := engine.ClassifyError(err)
+	result := map[string]any{
+		"code":        fe.Code,
+		"description": fe.Description,
 	}
-	return map[string]any{
-		"description": err.Error(),
+	if hint := errorHint(fe.Code); hint != "" {
+		result["hint"] = hint
 	}
+	return result
 }
 
 func errorHint(code string) string {

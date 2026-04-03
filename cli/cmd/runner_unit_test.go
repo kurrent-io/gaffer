@@ -274,19 +274,6 @@ func TestFixtureSource_Run_StopTakesPriorityOverCancel(t *testing.T) {
 	}
 }
 
-// --- classifyError ---
-
-func TestClassifyError_GenericError_Unit(t *testing.T) {
-	code, desc := classifyError(fmt.Errorf("something went wrong"))
-
-	if code != "unexpected-error" {
-		t.Errorf("code: got %q, want %q", code, "unexpected-error")
-	}
-	if desc != "something went wrong" {
-		t.Errorf("description: got %q, want %q", desc, "something went wrong")
-	}
-}
-
 // --- edge cases ---
 
 func TestRunner_ProcessOne_NilResult(t *testing.T) {

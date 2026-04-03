@@ -320,11 +320,12 @@ func (s *Server) handleGetStep(_ context.Context, _ *mcp.CallToolRequest, input 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.session == nil {
-		return toolError("no active session - call run first"), nil, nil
+	sess, errResult := s.requireSession()
+	if errResult != nil {
+		return errResult, nil, nil
 	}
 
-	step, err := s.session.runner.GetStep(input.Position)
+	step, err := sess.runner.GetStep(input.Position)
 	if err != nil {
 		return toolError("querying history: %v", err), nil, nil
 	}
@@ -339,21 +340,22 @@ func (s *Server) handleGetHistory(_ context.Context, _ *mcp.CallToolRequest, inp
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.session == nil {
-		return toolError("no active session - call run first"), nil, nil
+	sess, errResult := s.requireSession()
+	if errResult != nil {
+		return errResult, nil, nil
 	}
 
 	from, to := s.resolveRange(input.From, input.To)
 
 	var beforeState json.RawMessage
 	if from > 1 {
-		beforeStep, err := s.session.runner.GetStep(from - 1)
+		beforeStep, err := sess.runner.GetStep(from - 1)
 		if err == nil && beforeStep != nil {
 			beforeState = extractState(beforeStep.ResultJSON)
 		}
 	}
 
-	afterStep, err := s.session.runner.GetStep(to)
+	afterStep, err := sess.runner.GetStep(to)
 	if err != nil {
 		return toolError("querying history: %v", err), nil, nil
 	}
@@ -363,7 +365,7 @@ func (s *Server) handleGetHistory(_ context.Context, _ *mcp.CallToolRequest, inp
 		afterState = extractState(afterStep.ResultJSON)
 	}
 
-	timeline, err := s.session.runner.TimelineFiltered(from, to, input.Partition)
+	timeline, err := sess.runner.TimelineFiltered(from, to, input.Partition)
 	if err != nil {
 		return toolError("querying timeline: %v", err), nil, nil
 	}
@@ -379,13 +381,14 @@ func (s *Server) handleGetTimeline(_ context.Context, _ *mcp.CallToolRequest, in
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.session == nil {
-		return toolError("no active session - call run first"), nil, nil
+	sess, errResult := s.requireSession()
+	if errResult != nil {
+		return errResult, nil, nil
 	}
 
 	from, to := s.resolveRange(input.From, input.To)
 
-	entries, err := s.session.runner.TimelineFiltered(from, to, input.Partition)
+	entries, err := sess.runner.TimelineFiltered(from, to, input.Partition)
 	if err != nil {
 		return toolError("querying timeline: %v", err), nil, nil
 	}
@@ -399,11 +402,10 @@ func (s *Server) handleGetState(_ context.Context, _ *mcp.CallToolRequest, input
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.session == nil {
-		return toolError("no active session - call run first"), nil, nil
+	sess, errResult := s.requireSession()
+	if errResult != nil {
+		return errResult, nil, nil
 	}
-
-	sess := s.session
 
 	if input.Partition != "" {
 		result := map[string]any{"partition": input.Partition}

@@ -111,17 +111,18 @@ func (s *Server) handleEvaluate(_ context.Context, _ *mcp.CallToolRequest, input
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.session == nil {
-		return toolError("no active session - call run first"), nil, nil
+	sess, errResult := s.requireSession()
+	if errResult != nil {
+		return errResult, nil, nil
 	}
-	if !s.session.runner.Paused() {
+	if !sess.runner.Paused() {
 		return toolError("session is not paused - call run with break_at or breakpoints first"), nil, nil
 	}
 	if input.Expression == "" {
 		return toolError("expression is required"), nil, nil
 	}
 
-	variable, err := s.session.runner.Evaluate(input.Expression)
+	variable, err := sess.runner.Evaluate(input.Expression)
 	if err != nil {
 		return toolError("evaluate failed: %v", err), nil, nil
 	}

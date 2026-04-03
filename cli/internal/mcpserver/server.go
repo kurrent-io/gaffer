@@ -52,6 +52,13 @@ func (sess *activeSession) eventCount() int64 {
 	return sess.handled() + sess.skipped() + sess.errors()
 }
 
+func (s *Server) requireSession() (*activeSession, *mcp.CallToolResult) {
+	if s.session == nil {
+		return nil, toolError("no active session - call run first")
+	}
+	return s.session, nil
+}
+
 func New(root string, cfg *config.Config) *Server {
 	s := &Server{
 		root: root,

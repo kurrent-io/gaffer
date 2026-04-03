@@ -31,6 +31,7 @@ type activeSession struct {
 	history    *history.Store
 	info       gafferruntime.QuerySources
 	name       string
+	runner     *engine.Runner // non-debug paths; nil for debug
 	stats      sessionStats
 	partitions map[string]bool
 	cancel     context.CancelFunc
@@ -51,6 +52,38 @@ type sessionStats struct {
 	Skipped   int64  `json:"skipped"`
 	Errors    int64  `json:"errors"`
 	Status    string `json:"status"`
+}
+
+func (sess *activeSession) handled() int64 {
+	if sess.runner != nil {
+		return int64(sess.runner.Stats.Handled)
+	}
+	return sess.stats.Processed
+}
+
+func (sess *activeSession) skipped() int64 {
+	if sess.runner != nil {
+		return int64(sess.runner.Stats.Skipped)
+	}
+	return sess.stats.Skipped
+}
+
+func (sess *activeSession) errors() int64 {
+	if sess.runner != nil {
+		return int64(sess.runner.Stats.Errors)
+	}
+	return sess.stats.Errors
+}
+
+func (sess *activeSession) eventCount() int64 {
+	return sess.handled() + sess.skipped() + sess.errors()
+}
+
+func (sess *activeSession) activePartitions() map[string]bool {
+	if sess.runner != nil {
+		return sess.runner.Partitions
+	}
+	return sess.partitions
 }
 
 func New(root string, cfg *config.Config) *Server {

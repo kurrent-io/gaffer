@@ -319,28 +319,28 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 	}
 
 	ew := &errorCapture{}
-	r := engine.NewRunner(engine.RunnerConfig{
+	sess.runner = engine.NewRunner(engine.RunnerConfig{
 		Feed:    engine.FeedFn(sess.runtime.Feed),
 		Writer:  ew,
 		History: sess.history,
 	})
 	source := engine.NewFixtureSource(events)
-	_ = source.Run(context.Background(), r.ProcessOne)
+	_ = source.Run(context.Background(), sess.runner.ProcessOne)
 
-	if !r.Faulted {
+	if !sess.runner.Faulted {
 		sess.stats.Status = "completed"
 	} else {
 		sess.stats.Status = "error"
 	}
 
-	summary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, r.Partitions))
-	summary["completed"] = !r.Faulted
-	summary["processed"] = r.Stats.Handled
-	summary["skipped"] = r.Stats.Skipped
-	summary["errors"] = r.Stats.Errors
+	summary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.activePartitions()))
+	summary["completed"] = !sess.runner.Faulted
+	summary["processed"] = sess.handled()
+	summary["skipped"] = sess.skipped()
+	summary["errors"] = sess.errors()
 	summary["totalEvents"] = len(events)
 
-	if r.Faulted && ew.lastError != nil {
+	if sess.runner.Faulted && ew.lastError != nil {
 		summary["lastError"] = ew.lastError
 	}
 
@@ -461,7 +461,7 @@ func (s *Server) handleGetState(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolResult(result), nil, nil
 	}
 
-	return toolResult(stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.partitions))), nil, nil
+	return toolResult(stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.activePartitions()))), nil, nil
 }
 
 func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest, _ listProjectionsInput) (*mcp.CallToolResult, any, error) {

@@ -70,17 +70,17 @@ func (s *Server) handleWaitResult(sess *activeSession, wr waitResult) (*mcp.Call
 		return toolResult(map[string]any{
 			"caughtUp":  true,
 			"message":   "Subscription caught up to the head of the stream without hitting a breakpoint.",
-			"processed": sess.stats.Processed,
-			"skipped":   sess.stats.Skipped,
+			"processed": sess.handled(),
+			"skipped":   sess.skipped(),
 		}), nil, nil
 	}
 
 	if wr.completed {
-		summary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.partitions))
+		summary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.activePartitions()))
 		summary["completed"] = true
-		summary["processed"] = sess.stats.Processed
-		summary["skipped"] = sess.stats.Skipped
-		summary["errors"] = sess.stats.Errors
+		summary["processed"] = sess.handled()
+		summary["skipped"] = sess.skipped()
+		summary["errors"] = sess.errors()
 		return toolResult(summary), nil, nil
 	}
 
@@ -216,7 +216,7 @@ func (s *Server) collectDebugContext(sess *activeSession, info gafferruntime.Bre
 	}
 
 	// Current state
-	stateSummary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.partitions))
+	stateSummary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.activePartitions()))
 	for k, v := range stateSummary {
 		result[k] = v
 	}

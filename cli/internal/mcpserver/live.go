@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
-	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
@@ -37,12 +35,9 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 		version = proj.EffectiveEngine()
 	}
 
-	r := engine.NewRunner(engine.RunnerConfig{
-		Feed: engine.FeedFn(sess.runtime.Feed),
-		Writer: &liveStatsWriter{
-			mu:   &s.mu,
-			sess: sess,
-		},
+	sess.runner = engine.NewRunner(engine.RunnerConfig{
+		Feed:    engine.FeedFn(sess.runtime.Feed),
+		Writer:  nil,
 		History: sess.history,
 	})
 
@@ -65,12 +60,12 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 	})
 
 	go func() {
-		srcErr := source.Run(ctx, r.ProcessOne)
+		srcErr := source.Run(ctx, sess.runner.ProcessOne)
 
 		s.mu.Lock()
 		if ctx.Err() != nil {
 			sess.stats.Status = "stopped"
-		} else if r.Faulted || srcErr != nil {
+		} else if sess.runner.Faulted || srcErr != nil {
 			sess.stats.Status = "error"
 			if srcErr != nil {
 				sess.lastError = srcErr
@@ -78,7 +73,7 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 		}
 		s.mu.Unlock()
 
-		if r.Faulted && sess.errorCh != nil {
+		if sess.runner.Faulted && sess.errorCh != nil {
 			select {
 			case sess.errorCh <- fmt.Errorf("projection faulted"):
 			default:
@@ -226,32 +221,6 @@ func (s *Server) runSubscriptionLoop(ctx context.Context, sess *activeSession, s
 		}
 		s.mu.Unlock()
 	}
-}
-
-type liveStatsWriter struct {
-	mu   *sync.Mutex
-	sess *activeSession
-}
-
-func (w *liveStatsWriter) OnEvent(string) {}
-
-func (w *liveStatsWriter) OnResult(_ string, result *gafferruntime.FeedResult) {
-	w.mu.Lock()
-	if result.Status == "skipped" {
-		w.sess.stats.Skipped++
-	} else {
-		w.sess.stats.Processed++
-		if result.Partition != "" {
-			w.sess.partitions[result.Partition] = true
-		}
-	}
-	w.mu.Unlock()
-}
-
-func (w *liveStatsWriter) OnError(string, string, string) {
-	w.mu.Lock()
-	w.sess.stats.Errors++
-	w.mu.Unlock()
 }
 
 func classifyError(err error) map[string]any {

@@ -10,7 +10,6 @@ import (
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
-	"github.com/kurrent-io/gaffer/cli/internal/projection"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -132,7 +131,7 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolError("%v", err), nil, nil
 	}
 
-	opts := projection.BuildSessionOptions(s.cfg, proj, false)
+	opts := engine.BuildSessionOptions(s.cfg, proj, false)
 	session, err := gafferruntime.NewSession(string(source), opts)
 	if err != nil {
 		if _, ok := err.(gafferruntime.ProjectionError); ok {
@@ -262,7 +261,7 @@ func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string, bre
 		eventsPath = filepath.Join(s.root, eventsPath)
 	}
 
-	events, err := projection.LoadEvents(eventsPath)
+	events, err := engine.LoadEvents(eventsPath)
 	if err != nil {
 		return err
 	}
@@ -316,7 +315,7 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 		eventsPath = filepath.Join(s.root, eventsPath)
 	}
 
-	events, err := projection.LoadEvents(eventsPath)
+	events, err := engine.LoadEvents(eventsPath)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}

@@ -5,7 +5,7 @@ import (
 	"os"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
-	"github.com/kurrent-io/gaffer/cli/internal/projection"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/spf13/cobra"
 )
 
@@ -25,18 +25,16 @@ func init() {
 func runInfo(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 
-	ctx, err := loadProjection(args[0])
+	ctx, err := engine.LoadProjection(args[0])
 	if err != nil {
 		return err
 	}
 
-	session, err := gafferruntime.NewSession(ctx.Source, projection.BuildSessionOptions(ctx.Config, ctx.Proj, false))
+	session, info, err := engine.NewSession(ctx, false)
 	if err != nil {
 		return handleSessionError(cmd, err)
 	}
 	defer session.Destroy()
-
-	info := session.GetSources()
 
 	if infoJSON {
 		return writeInfoJSON(ctx, info)
@@ -47,7 +45,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func writeInfoJSON(ctx *projectionContext, info gafferruntime.QuerySources) error {
+func writeInfoJSON(ctx *engine.LoadedProjection, info gafferruntime.QuerySources) error {
 	out := map[string]any{
 		"name":            ctx.Proj.Name,
 		"entry":           ctx.Proj.Entry,

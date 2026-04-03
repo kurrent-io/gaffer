@@ -14,7 +14,6 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
-	"github.com/kurrent-io/gaffer/cli/internal/projection"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -146,7 +145,7 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 		return nil, fmt.Errorf("reading projection source: %w", err)
 	}
 
-	opts := projection.BuildSessionOptions(s.cfg, proj, debug)
+	opts := engine.BuildSessionOptions(s.cfg, proj, debug)
 	runtime, err := gafferruntime.NewSession(string(source), opts)
 	if err != nil {
 		return nil, err

@@ -1,13 +1,64 @@
-package projection
+package engine
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
+	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/project"
 )
+
+type LoadedProjection struct {
+	Root   string
+	Config *config.Config
+	Proj   *config.Projection
+	Source string
+	Engine string
+}
+
+func LoadProjection(name string) (*LoadedProjection, error) {
+	root := project.FindRoot()
+	if root == "" {
+		return nil, fmt.Errorf("not in a gaffer project (no gaffer.toml found)")
+	}
+
+	cfg, err := config.Load(filepath.Join(root, "gaffer.toml"))
+	if err != nil {
+		return nil, err
+	}
+
+	proj := cfg.FindProjection(name)
+	if proj == nil {
+		return nil, fmt.Errorf("projection %q not found in gaffer.toml", name)
+	}
+
+	source, err := os.ReadFile(filepath.Join(root, proj.Entry))
+	if err != nil {
+		return nil, fmt.Errorf("reading projection source: %w", err)
+	}
+
+	return &LoadedProjection{
+		Root:   root,
+		Config: cfg,
+		Proj:   proj,
+		Source: string(source),
+		Engine: proj.EffectiveEngine(),
+	}, nil
+}
+
+func NewSession(lp *LoadedProjection, debug bool) (*gafferruntime.Session, gafferruntime.QuerySources, error) {
+	opts := BuildSessionOptions(lp.Config, lp.Proj, debug)
+	session, err := gafferruntime.NewSession(lp.Source, opts)
+	if err != nil {
+		return nil, gafferruntime.QuerySources{}, err
+	}
+	info := session.GetSources()
+	return session, info, nil
+}
 
 func BuildSessionOptions(cfg *config.Config, proj *config.Projection, debug bool) *string {
 	opts := map[string]any{}
@@ -42,7 +93,7 @@ func BuildSessionOptions(cfg *config.Config, proj *config.Projection, debug bool
 	return &str
 }
 
-const ZeroUUID = "00000000-0000-0000-0000-000000000000"
+const zeroUUID = "00000000-0000-0000-0000-000000000000"
 
 func LoadEvents(path string) ([]string, error) {
 	data, err := os.ReadFile(path)
@@ -70,7 +121,7 @@ func LoadEvents(path string) ([]string, error) {
 			obj["isJson"] = true
 		}
 		if _, ok := obj["eventId"]; !ok {
-			obj["eventId"] = ZeroUUID
+			obj["eventId"] = zeroUUID
 		}
 		if _, ok := obj["created"]; !ok {
 			obj["created"] = now

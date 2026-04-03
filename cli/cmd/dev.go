@@ -13,7 +13,6 @@ import (
 	dapserver "github.com/kurrent-io/gaffer/cli/internal/dap"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
-	"github.com/kurrent-io/gaffer/cli/internal/projection"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
 	"github.com/spf13/cobra"
 )
@@ -44,18 +43,17 @@ func init() {
 func runDev(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 
-	projCtx, err := loadProjection(args[0])
+	projCtx, err := engine.LoadProjection(args[0])
 	if err != nil {
 		return err
 	}
 
-	session, err := gafferruntime.NewSession(projCtx.Source, projection.BuildSessionOptions(projCtx.Config, projCtx.Proj, devDebug))
+	session, info, err := engine.NewSession(projCtx, devDebug)
 	if err != nil {
 		return handleSessionError(cmd, err)
 	}
 	defer session.Destroy()
 
-	info := session.GetSources()
 	version := projCtx.Engine
 
 	var writer outputWriter
@@ -129,7 +127,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 
 	var source eventSource
 	if devEvents != "" {
-		events, err := projection.LoadEvents(devEvents)
+		events, err := engine.LoadEvents(devEvents)
 		if err != nil {
 			return err
 		}

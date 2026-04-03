@@ -10,7 +10,7 @@ import (
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
-	"github.com/kurrent-io/gaffer/cli/internal/projection"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -36,7 +36,7 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 		return toolError("%v", err), nil, nil
 	}
 
-	opts := projection.BuildSessionOptions(s.cfg, proj, false)
+	opts := engine.BuildSessionOptions(s.cfg, proj, false)
 	session, err := gafferruntime.NewSession(string(source), opts)
 	if err != nil {
 		return toolError("compiling projection: %v", err), nil, nil

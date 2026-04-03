@@ -4,35 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
+	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
 )
 
 func (s *Server) startLiveSubscription(sess *activeSession) error {
-	client, err := s.connectToKurrentDB()
-	if err != nil {
-		return err
-	}
-
-	proj := s.cfg.FindProjection(sess.name)
-	engine := config.DefaultEngine
-	if proj != nil {
-		engine = proj.EffectiveEngine()
-	}
-
-	filter := subscription.BuildFilter(sess.info, engine)
-
-	subOpts := kurrentdb.SubscribeToAllOptions{
-		From:           kurrentdb.Start{},
-		ResolveLinkTos: subscription.ResolveLinkTos(engine),
-	}
-	if filter != nil {
-		subOpts.Filter = filter
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	sess.cancel = cancel
 	sess.stats.Status = "running"
@@ -44,9 +25,94 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 		sess.errorCh = make(chan error, 1)
 	}
 
+	debug := sess.breakCh != nil
+
+	if debug {
+		return s.startDebugLiveSubscription(ctx, sess)
+	}
+
+	proj := s.cfg.FindProjection(sess.name)
+	version := config.DefaultEngine
+	if proj != nil {
+		version = proj.EffectiveEngine()
+	}
+
+	r := engine.NewRunner(engine.RunnerConfig{
+		Feed: engine.FeedFn(sess.runtime.Feed),
+		Writer: &liveStatsWriter{
+			mu:   &s.mu,
+			sess: sess,
+		},
+		History: sess.history,
+	})
+
+	source := engine.NewLiveSource(engine.LiveSourceConfig{
+		ConnStr: s.cfg.Connection,
+		Root:    s.root,
+		Info:    sess.info,
+		Version: version,
+		OnCaughtUp: func() {
+			s.mu.Lock()
+			if sess.stats.Status == "running" {
+				sess.stats.Status = "caught_up"
+			}
+			s.mu.Unlock()
+			select {
+			case sess.caughtUpCh <- struct{}{}:
+			default:
+			}
+		},
+	})
+
+	go func() {
+		srcErr := source.Run(ctx, r.ProcessOne)
+
+		s.mu.Lock()
+		if ctx.Err() != nil {
+			sess.stats.Status = "stopped"
+		} else if r.Faulted || srcErr != nil {
+			sess.stats.Status = "error"
+			if srcErr != nil {
+				sess.lastError = srcErr
+			}
+		}
+		s.mu.Unlock()
+
+		if r.Faulted && sess.errorCh != nil {
+			select {
+			case sess.errorCh <- fmt.Errorf("projection faulted"):
+			default:
+			}
+		}
+	}()
+
+	return nil
+}
+
+func (s *Server) startDebugLiveSubscription(ctx context.Context, sess *activeSession) error {
+	client, err := s.connectToKurrentDB()
+	if err != nil {
+		return err
+	}
+
+	proj := s.cfg.FindProjection(sess.name)
+	version := config.DefaultEngine
+	if proj != nil {
+		version = proj.EffectiveEngine()
+	}
+
+	filter := subscription.BuildFilter(sess.info, version)
+
+	subOpts := kurrentdb.SubscribeToAllOptions{
+		From:           kurrentdb.Start{},
+		ResolveLinkTos: subscription.ResolveLinkTos(version),
+	}
+	if filter != nil {
+		subOpts.Filter = filter
+	}
+
 	sub, err := client.SubscribeToAll(ctx, subOpts)
 	if err != nil {
-		cancel()
 		_ = client.Close()
 		return fmt.Errorf("subscribing: %w", err)
 	}
@@ -160,6 +226,32 @@ func (s *Server) runSubscriptionLoop(ctx context.Context, sess *activeSession, s
 		}
 		s.mu.Unlock()
 	}
+}
+
+type liveStatsWriter struct {
+	mu   *sync.Mutex
+	sess *activeSession
+}
+
+func (w *liveStatsWriter) OnEvent(string) {}
+
+func (w *liveStatsWriter) OnResult(_ string, result *gafferruntime.FeedResult) {
+	w.mu.Lock()
+	if result.Status == "skipped" {
+		w.sess.stats.Skipped++
+	} else {
+		w.sess.stats.Processed++
+		if result.Partition != "" {
+			w.sess.partitions[result.Partition] = true
+		}
+	}
+	w.mu.Unlock()
+}
+
+func (w *liveStatsWriter) OnError(string, string, string) {
+	w.mu.Lock()
+	w.sess.stats.Errors++
+	w.mu.Unlock()
 }
 
 func classifyError(err error) map[string]any {

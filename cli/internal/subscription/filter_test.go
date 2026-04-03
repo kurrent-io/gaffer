@@ -8,14 +8,14 @@ import (
 )
 
 func TestBuildFilter_FromAll_NoEvents(t *testing.T) {
-	filter := BuildFilter(gafferruntime.QuerySources{AllStreams: true}, "v2")
+	filter := buildFilter(gafferruntime.QuerySources{AllStreams: true}, "v2")
 	if filter != nil {
 		t.Error("expected nil filter for fromAll with no event filter")
 	}
 }
 
 func TestBuildFilter_FromAll_WithEvents(t *testing.T) {
-	filter := BuildFilter(gafferruntime.QuerySources{
+	filter := buildFilter(gafferruntime.QuerySources{
 		AllStreams: true,
 		Events:     []string{"OrderPlaced", "OrderShipped"},
 	}, "v2")
@@ -32,7 +32,7 @@ func TestBuildFilter_FromAll_WithEvents(t *testing.T) {
 }
 
 func TestBuildFilter_FromAll_WithEvents_DeleteHandler(t *testing.T) {
-	filter := BuildFilter(gafferruntime.QuerySources{
+	filter := buildFilter(gafferruntime.QuerySources{
 		AllStreams:                  true,
 		Events:                      []string{"OrderPlaced"},
 		HandlesDeletedNotifications: true,
@@ -47,7 +47,7 @@ func TestBuildFilter_FromAll_WithEvents_DeleteHandler(t *testing.T) {
 }
 
 func TestBuildFilter_FromCategory(t *testing.T) {
-	filter := BuildFilter(gafferruntime.QuerySources{
+	filter := buildFilter(gafferruntime.QuerySources{
 		Categories: []string{"order"},
 	}, "v2")
 
@@ -63,7 +63,7 @@ func TestBuildFilter_FromCategory(t *testing.T) {
 }
 
 func TestBuildFilter_FromStreams(t *testing.T) {
-	filter := BuildFilter(gafferruntime.QuerySources{
+	filter := buildFilter(gafferruntime.QuerySources{
 		Streams: []string{"order-1", "cart-1"},
 	}, "v2")
 
@@ -79,7 +79,7 @@ func TestBuildFilter_FromStreams(t *testing.T) {
 }
 
 func TestBuildFilter_FromCategoryMultiArg(t *testing.T) {
-	filter := BuildFilter(gafferruntime.QuerySources{
+	filter := buildFilter(gafferruntime.QuerySources{
 		Streams: []string{"$ce-order", "$ce-cart"},
 	}, "v2")
 
@@ -97,11 +97,11 @@ func TestBuildFilter_FromCategoryMultiArg(t *testing.T) {
 	}
 }
 
-func TestResolveLinkTos(t *testing.T) {
-	if ResolveLinkTos("v1") {
+func TestLinkResolution(t *testing.T) {
+	if resolveLinkTos("v1") {
 		t.Error("v1 should not resolve links")
 	}
-	if !ResolveLinkTos("v2") {
+	if !resolveLinkTos("v2") {
 		t.Error("v2 should resolve links")
 	}
 }

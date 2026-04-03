@@ -29,6 +29,9 @@ func connectionString() string {
 	return "kurrentdb://localhost:2113?tls=false"
 }
 
+// setupLiveTestProject creates a test project with a counter projection
+// using fromCategory. Category must not contain "-" since $by_category
+// splits on the first "-".
 func setupLiveTestProject(t *testing.T, suffix string) (*Server, *kurrentdb.Client) {
 	t.Helper()
 
@@ -51,7 +54,7 @@ func setupLiveTestProject(t *testing.T, suffix string) (*Server, *kurrentdb.Clie
 		t.Fatal(err)
 	}
 
-	projSource := fmt.Sprintf(`fromCategory('inttest-%s')
+	projSource := fmt.Sprintf(`fromCategory('inttest%s')
   .foreachStream()
   .when({
     $init: function() { return { count: 0 }; },
@@ -105,27 +108,16 @@ func TestLive_RunAndInspect(t *testing.T) {
 	suffix := testSuffix()
 	s, client := setupLiveTestProject(t, suffix)
 
-	stream := fmt.Sprintf("inttest-%s-1", suffix)
+	stream := fmt.Sprintf("inttest%s-1", suffix)
 	writeTestEvents(t, client, stream, 3)
 
+	// run blocks until caught_up
 	result := callTool(t, s, runTool, s.handleRun, runInput{Name: "counter"})
-	if result["mode"] != "live" {
-		t.Fatalf("expected mode=live, got %v", result["mode"])
+	if result["caughtUp"] != true {
+		t.Fatalf("expected caughtUp=true, got %v", result)
 	}
-
-	// Wait for events to be processed
-	var status map[string]any
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		status = callTool(t, s, statusTool, s.handleStatus, statusInput{})
-		if status["processed"].(float64) >= 3 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	if status["processed"].(float64) < 3 {
-		t.Fatalf("expected at least 3 processed, got %v", status["processed"])
+	if result["processed"].(float64) < 3 {
+		t.Fatalf("expected at least 3 processed, got %v", result["processed"])
 	}
 
 	// Inspect history
@@ -152,55 +144,51 @@ func TestLive_WithBreakpoint(t *testing.T) {
 	suffix := testSuffix()
 	s, client := setupLiveTestProject(t, suffix)
 
-	stream := fmt.Sprintf("inttest-%s-1", suffix)
+	stream := fmt.Sprintf("inttest%s-1", suffix)
 	writeTestEvents(t, client, stream, 5)
 
+	// run blocks until first breakpoint hit
 	result := callTool(t, s, runTool, s.handleRun, runInput{
 		Name:        "counter",
 		Breakpoints: []breakpointInput{{Line: 4}},
 	})
 
-	if result["debug"] != true {
-		t.Fatalf("expected debug=true, got %v", result["debug"])
+	if result["paused"] != true {
+		t.Fatalf("expected paused=true, got %v", result)
 	}
 
-	waitForStatus(t, s, "breakpoint_hit", 15*time.Second)
-
-	// Evaluate while paused - use 1+1 since state may not be in scope at $init
+	// Evaluate while paused
 	evalResult := callTool(t, s, evaluateTool, s.handleEvaluate, evaluateInput{Expression: "1+1"})
 	if evalResult["value"] != "2" {
 		t.Errorf("expected value=2, got %v", evalResult["value"])
 	}
 
-	// Continue past breakpoints until we've processed enough events
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		status := callTool(t, s, statusTool, s.handleStatus, statusInput{})
-		if status["processed"].(float64) >= 3 {
-			break
+	// Continue past breakpoints - each debug_continue blocks until next break or completion
+	for i := 0; i < 20; i++ {
+		contResult := callTool(t, s, debugContinueTool, s.handleDebugContinue, debugContinueInput{})
+		if contResult["caughtUp"] == true {
+			if contResult["processed"].(float64) < 3 {
+				t.Fatalf("expected at least 3 processed, got %v", contResult["processed"])
+			}
+			return
 		}
-		if status["status"] == "breakpoint_hit" {
-			callTool(t, s, debugContinueTool, s.handleDebugContinue, debugContinueInput{})
+		if contResult["paused"] != true {
+			t.Fatalf("expected paused or caughtUp, got %v", contResult)
 		}
-		time.Sleep(100 * time.Millisecond)
 	}
 
-	status := callTool(t, s, statusTool, s.handleStatus, statusInput{})
-	if status["processed"].(float64) < 3 {
-		t.Fatalf("expected at least 3 processed, got %v", status["processed"])
-	}
+	t.Fatal("never reached caught_up status")
 }
 
 func TestListEvents(t *testing.T) {
 	suffix := testSuffix()
 	s, client := setupLiveTestProject(t, suffix)
 
-	stream := fmt.Sprintf("inttest-%s-1", suffix)
+	stream := fmt.Sprintf("inttest%s-1", suffix)
 	writeTestEvents(t, client, stream, 3)
 
-	// Poll until events are readable via the projection's source
 	var result *mcp.CallToolResult
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		var err error
 		result, _, err = s.handleListEvents(context.Background(), nil, listEventsInput{Name: "counter"})

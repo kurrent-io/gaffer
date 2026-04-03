@@ -1,6 +1,7 @@
 package subscription
 
 import (
+	"context"
 	"regexp"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 )
 
-func BuildFilter(info gafferruntime.QuerySources, version string) *kurrentdb.SubscriptionFilter {
+func buildFilter(info gafferruntime.QuerySources, version string) *kurrentdb.SubscriptionFilter {
 	sourceFilter := buildSourceFilter(info)
 
 	if info.AllStreams && len(info.Events) > 0 {
@@ -76,6 +77,19 @@ func allCategoryStreams(streams []string) bool {
 	return true
 }
 
-func ResolveLinkTos(version string) bool {
+func resolveLinkTos(version string) bool {
 	return version == "v2"
+}
+
+// Subscribe subscribes to $all with the correct filter and link resolution
+// for the given projection source and version, per the subscription spec.
+func Subscribe(ctx context.Context, client *kurrentdb.Client, info gafferruntime.QuerySources, version string) (*kurrentdb.Subscription, error) {
+	opts := kurrentdb.SubscribeToAllOptions{
+		From:           kurrentdb.Start{},
+		ResolveLinkTos: resolveLinkTos(version),
+	}
+	if filter := buildFilter(info, version); filter != nil {
+		opts.Filter = filter
+	}
+	return client.SubscribeToAll(ctx, opts)
 }

@@ -9,6 +9,10 @@ build:
 test:
     go test ./...
 
+# Run integration tests (requires KurrentDB)
+test-integration:
+    go test -tags integration ./...
+
 # Run the CLI
 run *args:
     CGO_ENABLED=1 go run . {{args}}

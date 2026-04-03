@@ -47,7 +47,7 @@ db-down:
     docker compose -f tools/kurrentdb/docker-compose.yml down
 
 # Run integration tests (requires KurrentDB)
-test-integration: testing::test-integration
+test-integration: cli::test-integration testing::test-integration
 
 # Format all code
 [parallel]

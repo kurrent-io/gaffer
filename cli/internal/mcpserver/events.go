@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"regexp"
 	"strings"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
@@ -57,7 +55,7 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 		limit = 2000
 	}
 
-	events, err := s.sampleProjectionEvents(ctx, client, info, proj.EffectiveEngine(), uint64(limit))
+	events, err := s.sampleProjectionEvents(ctx, client, info, proj.EffectiveEngine(), limit)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}
@@ -83,136 +81,47 @@ type eventTypeSummary struct {
 	Example   any    `json:"example"`
 }
 
-func (s *Server) sampleProjectionEvents(ctx context.Context, client *kurrentdb.Client, info gafferruntime.QuerySources, engine string, limit uint64) ([]eventTypeSummary, error) {
-	filter := subscription.BuildFilter(info, engine)
-
-	// For stream-specific sources, read from those streams directly
-	if len(info.Streams) > 0 && !info.AllStreams {
-		return s.sampleFromStreams(ctx, client, info.Streams, limit)
-	}
-
-	// For category sources, read from $ce-{category} streams
-	if len(info.Categories) > 0 && !info.AllStreams {
-		return s.sampleFromCategories(ctx, client, info.Categories, limit)
-	}
-
-	// For fromAll, use $all with the subscription filter
-	return s.sampleFromAll(ctx, client, filter, limit)
-}
-
-func (s *Server) sampleFromStreams(ctx context.Context, client *kurrentdb.Client, streams []string, limit uint64) ([]eventTypeSummary, error) {
-	perStream := limit / uint64(len(streams))
-	if perStream < 10 {
-		perStream = 10
-	}
-
-	all := []eventTypeSummary{}
-	for _, stream := range streams {
-		reader, err := client.ReadStream(ctx, stream, kurrentdb.ReadStreamOptions{
-			Direction: kurrentdb.Forwards,
-			From:      kurrentdb.Start{},
-		}, perStream)
-		if err != nil {
-			all = mergeEventTypes(all, []eventTypeSummary{{
-				EventType: fmt.Sprintf("[stream %q not found or not readable]", stream),
-				Count:     0,
-			}})
-			continue
-		}
-
-		types, _ := collectEventTypes(reader)
-		reader.Close()
-		all = mergeEventTypes(all, types)
-	}
-	return all, nil
-}
-
-func (s *Server) sampleFromCategories(ctx context.Context, client *kurrentdb.Client, categories []string, limit uint64) ([]eventTypeSummary, error) {
-	perCategory := limit / uint64(len(categories))
-	if perCategory < 10 {
-		perCategory = 10
-	}
-
-	all := []eventTypeSummary{}
-	for _, cat := range categories {
-		reader, err := client.ReadStream(ctx, "$ce-"+cat, kurrentdb.ReadStreamOptions{
-			Direction: kurrentdb.Forwards,
-			From:      kurrentdb.Start{},
-		}, perCategory)
-		if err != nil {
-			all = mergeEventTypes(all, []eventTypeSummary{{
-				EventType: fmt.Sprintf("[category %q not found - ensure $by_category system projection is enabled]", cat),
-				Count:     0,
-			}})
-			continue
-		}
-
-		types, _ := collectEventTypes(reader)
-		reader.Close()
-		all = mergeEventTypes(all, types)
-	}
-	return all, nil
-}
-
-func (s *Server) sampleFromAll(ctx context.Context, client *kurrentdb.Client, filter *kurrentdb.SubscriptionFilter, limit uint64) ([]eventTypeSummary, error) {
-	opts := kurrentdb.ReadAllOptions{
-		Direction: kurrentdb.Forwards,
-		From:      kurrentdb.Start{},
-	}
-
-	reader, err := client.ReadAll(ctx, opts, limit)
+func (s *Server) sampleProjectionEvents(ctx context.Context, client *kurrentdb.Client, info gafferruntime.QuerySources, version string, limit int) ([]eventTypeSummary, error) {
+	sub, err := subscription.Subscribe(ctx, client, info, version)
 	if err != nil {
-		return nil, fmt.Errorf("reading $all: %w", err)
+		return nil, fmt.Errorf("subscribing: %w", err)
 	}
-	defer reader.Close()
+	defer func() { _ = sub.Close() }()
 
-	// ReadAll doesn't accept a filter, so we filter client-side
-	return collectEventTypesWithFilter(reader, filter)
-}
-
-func collectEventTypes(reader *kurrentdb.ReadStream) ([]eventTypeSummary, error) {
-	return collectEventTypesWithFilter(reader, nil)
-}
-
-func collectEventTypesWithFilter(reader *kurrentdb.ReadStream, filter *kurrentdb.SubscriptionFilter) ([]eventTypeSummary, error) {
 	types := map[string]*eventTypeSummary{}
 	order := []string{}
+	count := 0
 
-	for {
-		resolved, err := reader.Recv()
-		if err == io.EOF {
+	for count < limit {
+		subEvent := sub.Recv()
+
+		if subEvent.SubscriptionDropped != nil {
+			return nil, fmt.Errorf("subscription dropped: %w", subEvent.SubscriptionDropped.Error)
+		}
+		if subEvent.CaughtUp != nil {
 			break
 		}
-		if err != nil {
-			return nil, fmt.Errorf("reading events: %w", err)
-		}
-
-		event := resolved.Event
-		if event == nil {
+		if subEvent.EventAppeared == nil {
 			continue
 		}
 
-		if strings.HasPrefix(event.EventType, "$") {
+		event := subEvent.EventAppeared.Event
+		if event == nil || strings.HasPrefix(event.EventType, "$") {
 			continue
 		}
 
-		if filter != nil && !matchesFilter(event, filter) {
-			continue
-		}
-
+		count++
 		existing, ok := types[event.EventType]
 		if !ok {
 			var example any
 			if event.ContentType == "application/json" && len(event.Data) > 0 {
 				_ = json.Unmarshal(event.Data, &example)
 			}
-
-			summary := &eventTypeSummary{
+			types[event.EventType] = &eventTypeSummary{
 				EventType: event.EventType,
 				Count:     1,
 				Example:   example,
 			}
-			types[event.EventType] = summary
 			order = append(order, event.EventType)
 		} else {
 			existing.Count++
@@ -224,47 +133,6 @@ func collectEventTypesWithFilter(reader *kurrentdb.ReadStream, filter *kurrentdb
 		result[i] = *types[name]
 	}
 	return result, nil
-}
-
-func matchesFilter(event *kurrentdb.RecordedEvent, filter *kurrentdb.SubscriptionFilter) bool {
-	var value string
-	if filter.Type == kurrentdb.EventFilterType {
-		value = event.EventType
-	} else {
-		value = event.StreamID
-	}
-
-	if len(filter.Prefixes) > 0 {
-		for _, prefix := range filter.Prefixes {
-			if strings.HasPrefix(value, prefix) {
-				return true
-			}
-		}
-		return false
-	}
-
-	if filter.Regex != "" {
-		matched, err := regexp.MatchString(filter.Regex, value)
-		return err == nil && matched
-	}
-
-	return true
-}
-
-func mergeEventTypes(a, b []eventTypeSummary) []eventTypeSummary {
-	index := map[string]int{}
-	for i, et := range a {
-		index[et.EventType] = i
-	}
-	for _, et := range b {
-		if idx, ok := index[et.EventType]; ok {
-			a[idx].Count += et.Count
-		} else {
-			index[et.EventType] = len(a)
-			a = append(a, et)
-		}
-	}
-	return a
 }
 
 func countTotal(events []eventTypeSummary) int {

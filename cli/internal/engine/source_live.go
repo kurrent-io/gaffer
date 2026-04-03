@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
 )
@@ -32,17 +31,7 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 	}
 	defer func() { _ = client.Close() }()
 
-	filter := subscription.BuildFilter(l.cfg.Info, l.cfg.Version)
-
-	opts := kurrentdb.SubscribeToAllOptions{
-		From:           kurrentdb.Start{},
-		ResolveLinkTos: subscription.ResolveLinkTos(l.cfg.Version),
-	}
-	if filter != nil {
-		opts.Filter = filter
-	}
-
-	sub, err := client.SubscribeToAll(ctx, opts)
+	sub, err := subscription.Subscribe(ctx, client, l.cfg.Info, l.cfg.Version)
 	if err != nil {
 		return fmt.Errorf("subscribing: %w", err)
 	}

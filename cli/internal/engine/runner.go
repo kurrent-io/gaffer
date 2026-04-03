@@ -304,6 +304,45 @@ func (r *Runner) Destroy() {
 	}
 }
 
+// Inspection methods - safe to call while paused at a breakpoint
+
+func (r *Runner) Evaluate(expression string) (*gafferruntime.DebugVariable, error) {
+	if r.debug == nil {
+		return nil, fmt.Errorf("debug not enabled")
+	}
+	return r.debug.Session.Evaluate(expression)
+}
+
+func (r *Runner) GetCallStack() ([]gafferruntime.DebugCallFrame, error) {
+	if r.debug == nil {
+		return nil, fmt.Errorf("debug not enabled")
+	}
+	return r.debug.Session.GetCallStack()
+}
+
+func (r *Runner) GetScopes(frameID int) ([]gafferruntime.DebugScopeInfo, error) {
+	if r.debug == nil {
+		return nil, fmt.Errorf("debug not enabled")
+	}
+	return r.debug.Session.GetScopes(frameID)
+}
+
+func (r *Runner) GetVariables(variablesReference int) ([]gafferruntime.DebugVariable, error) {
+	if r.debug == nil {
+		return nil, fmt.Errorf("debug not enabled")
+	}
+	return r.debug.Session.GetVariables(variablesReference)
+}
+
+func (r *Runner) CollectState() StateSummary {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.debug == nil {
+		return StateSummary{}
+	}
+	return CollectState(r.debug.Session, r.debug.Info, r.partitions)
+}
+
 func eventID(eventJSON string) string {
 	var e struct {
 		SequenceNumber int64  `json:"sequenceNumber"`

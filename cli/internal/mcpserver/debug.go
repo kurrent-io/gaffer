@@ -75,7 +75,7 @@ func (s *Server) handleWaitResult(sess *activeSession, wr waitResult) (*mcp.Call
 	}
 
 	if wr.completed {
-		summary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.activePartitions()))
+		summary := stateSummaryToMap(sess.runner.CollectState())
 		summary["completed"] = true
 		summary["processed"] = sess.handled()
 		summary["skipped"] = sess.skipped()
@@ -122,7 +122,7 @@ func (s *Server) handleEvaluate(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolError("expression is required"), nil, nil
 	}
 
-	variable, err := s.session.runtime.Evaluate(input.Expression)
+	variable, err := s.session.runner.Evaluate(input.Expression)
 	if err != nil {
 		return toolError("evaluate failed: %v", err), nil, nil
 	}
@@ -174,22 +174,20 @@ func (s *Server) collectDebugContext(sess *activeSession, info gafferruntime.Bre
 		},
 	}
 
-	// Call stack
-	frames, err := sess.runtime.GetCallStack()
+	frames, err := sess.runner.GetCallStack()
 	if err == nil {
 		result["callStack"] = frames
 	}
 
-	// Scopes and variables for the top frame only, excluding Global (too noisy)
 	if len(frames) > 0 {
-		scopes, err := sess.runtime.GetScopes(frames[0].ID)
+		scopes, err := sess.runner.GetScopes(frames[0].ID)
 		if err == nil {
 			scopeData := []map[string]any{}
 			for _, scope := range scopes {
 				if scope.Name == "Global" {
 					continue
 				}
-				vars, err := sess.runtime.GetVariables(scope.VariablesReference)
+				vars, err := sess.runner.GetVariables(scope.VariablesReference)
 				if err != nil {
 					continue
 				}
@@ -202,8 +200,7 @@ func (s *Server) collectDebugContext(sess *activeSession, info gafferruntime.Bre
 		}
 	}
 
-	// Current state
-	stateSummary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.activePartitions()))
+	stateSummary := stateSummaryToMap(sess.runner.CollectState())
 	for k, v := range stateSummary {
 		result[k] = v
 	}

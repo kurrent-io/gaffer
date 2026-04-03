@@ -2,13 +2,10 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
-	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
-	"github.com/kurrent-io/gaffer/cli/internal/subscription"
 )
 
 func (s *Server) startLiveSubscription(sess *activeSession) error {
@@ -85,142 +82,44 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 }
 
 func (s *Server) startDebugLiveSubscription(ctx context.Context, sess *activeSession) error {
-	client, err := s.connectToKurrentDB()
-	if err != nil {
-		return err
-	}
-
 	proj := s.cfg.FindProjection(sess.name)
 	version := config.DefaultEngine
 	if proj != nil {
 		version = proj.EffectiveEngine()
 	}
 
-	filter := subscription.BuildFilter(sess.info, version)
+	source := engine.NewLiveSource(engine.LiveSourceConfig{
+		ConnStr: s.cfg.Connection,
+		Root:    s.root,
+		Info:    sess.info,
+		Version: version,
+		OnCaughtUp: func() {
+			sess.runner.SetStatus("caught_up")
+			select {
+			case sess.caughtUpCh <- struct{}{}:
+			default:
+			}
+		},
+	})
 
-	subOpts := kurrentdb.SubscribeToAllOptions{
-		From:           kurrentdb.Start{},
-		ResolveLinkTos: subscription.ResolveLinkTos(version),
-	}
-	if filter != nil {
-		subOpts.Filter = filter
-	}
+	go func() {
+		srcErr := source.Run(ctx, sess.runner.ProcessOne)
 
-	sub, err := client.SubscribeToAll(ctx, subOpts)
-	if err != nil {
-		_ = client.Close()
-		return fmt.Errorf("subscribing: %w", err)
-	}
+		if ctx.Err() != nil {
+			sess.runner.SetStatus("stopped")
+		} else if sess.runner.Faulted() || srcErr != nil {
+			sess.runner.SetStatus("error")
+		}
 
-	go s.runSubscriptionLoop(ctx, sess, sub, client)
-
-	return nil
-}
-
-func (s *Server) runSubscriptionLoop(ctx context.Context, sess *activeSession, sub *kurrentdb.Subscription, client *kurrentdb.Client) {
-	defer func() {
-		_ = sub.Close()
-		_ = client.Close()
+		if sess.runner.Faulted() && sess.errorCh != nil {
+			select {
+			case sess.errorCh <- sess.runner.LastError():
+			default:
+			}
+		}
 	}()
 
-	for {
-		subEvent := sub.Recv()
-
-		if subEvent.SubscriptionDropped != nil {
-			s.mu.Lock()
-			if ctx.Err() != nil {
-				sess.stats.Status = "stopped"
-			} else {
-				sess.stats.Status = "error"
-				sess.lastError = subEvent.SubscriptionDropped.Error
-			}
-			s.mu.Unlock()
-			return
-		}
-
-		if subEvent.CaughtUp != nil {
-			s.mu.Lock()
-			if ctx.Err() != nil {
-				s.mu.Unlock()
-				return
-			}
-			if sess.stats.Status == "running" {
-				sess.stats.Status = "caught_up"
-			}
-			s.mu.Unlock()
-			if sess.caughtUpCh != nil {
-				select {
-				case sess.caughtUpCh <- struct{}{}:
-				default:
-				}
-			}
-			continue
-		}
-
-		if subEvent.EventAppeared == nil {
-			continue
-		}
-
-		eventJSON, err := subscription.MapEvent(subEvent.EventAppeared)
-		if err != nil || eventJSON == "" {
-			continue
-		}
-
-		s.mu.Lock()
-		if ctx.Err() != nil {
-			s.mu.Unlock()
-			return
-		}
-		debug := sess.breakCh != nil
-		eventCount := sess.stats.Processed + sess.stats.Skipped + sess.stats.Errors + 1
-		if debug {
-			sess.pausedEvent = eventJSON
-			if sess.breakAtPosition > 0 && eventCount == sess.breakAtPosition {
-				sess.runtime.Pause()
-			}
-		}
-		s.mu.Unlock()
-
-		// Feed without holding the mutex - allows inspection tools to run
-		// while paused at a breakpoint.
-		result, feedErr := sess.runtime.Feed(eventJSON)
-
-		s.mu.Lock()
-		if ctx.Err() != nil {
-			s.mu.Unlock()
-			return
-		}
-		if feedErr != nil {
-			sess.stats.Errors++
-			sess.stats.Status = "error"
-			sess.lastError = feedErr
-			_, _ = sess.history.Insert(eventJSON, `{"status":"error"}`)
-			s.mu.Unlock()
-			if sess.errorCh != nil {
-				select {
-				case sess.errorCh <- feedErr:
-				default:
-				}
-			}
-			return
-		}
-
-		resultJSON, _ := json.Marshal(result)
-		_, _ = sess.history.Insert(eventJSON, string(resultJSON))
-
-		if result.Status == "skipped" {
-			sess.stats.Skipped++
-		} else {
-			sess.stats.Processed++
-			if result.Partition != "" {
-				sess.partitions[result.Partition] = true
-			}
-		}
-		if debug {
-			sess.pausedEvent = ""
-		}
-		s.mu.Unlock()
-	}
+	return nil
 }
 
 func classifyError(err error) map[string]any {

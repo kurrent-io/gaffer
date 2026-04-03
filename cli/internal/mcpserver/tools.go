@@ -231,7 +231,6 @@ func (s *Server) setupBreakpoints(sess *activeSession, breakpoints []breakpointI
 func (s *Server) startLiveMode(sess *activeSession, breakAt int64) error {
 	if breakAt > 0 {
 		sess.runner.SetBreakAtPosition(breakAt)
-		sess.breakAtPosition = breakAt // live debug path reads this directly until migrated
 	}
 	return s.startLiveSubscription(sess)
 }

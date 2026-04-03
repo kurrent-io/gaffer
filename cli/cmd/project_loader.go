@@ -41,17 +41,12 @@ func loadProjection(name string) (*projectionContext, error) {
 		return nil, fmt.Errorf("reading projection source: %w", err)
 	}
 
-	engine := proj.Engine
-	if engine == "" {
-		engine = "v2"
-	}
-
 	return &projectionContext{
 		Root:   root,
 		Config: cfg,
 		Proj:   proj,
 		Source: string(source),
-		Engine: engine,
+		Engine: proj.EffectiveEngine(),
 	}, nil
 }
 

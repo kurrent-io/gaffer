@@ -150,7 +150,7 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 		"valid":           true,
 		"name":            input.Name,
 		"entry":           proj.Entry,
-		"engine":          engineOrDefault(proj.Engine),
+		"engine":          proj.EffectiveEngine(),
 		"source":          describeSource(info),
 		"events":          info.Events,
 		"partitioning":    describePartitioning(info),
@@ -482,7 +482,7 @@ func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest
 		entry := map[string]any{
 			"name":   proj.Name,
 			"entry":  proj.Entry,
-			"engine": engineOrDefault(proj.Engine),
+			"engine": proj.EffectiveEngine(),
 		}
 		if proj.Enabled != nil && !*proj.Enabled {
 			entry["enabled"] = false
@@ -630,11 +630,4 @@ func describePartitioning(info gafferruntime.QuerySources) string {
 		return "byCustomKey"
 	}
 	return "none"
-}
-
-func engineOrDefault(engine string) string {
-	if engine == "" {
-		return "v2"
-	}
-	return engine
 }

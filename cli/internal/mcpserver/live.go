@@ -7,6 +7,7 @@ import (
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
 )
 
@@ -16,10 +17,10 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 		return err
 	}
 
-	engine := "v2"
 	proj := s.cfg.FindProjection(sess.name)
-	if proj != nil && proj.Engine != "" {
-		engine = proj.Engine
+	engine := config.DefaultEngine
+	if proj != nil {
+		engine = proj.EffectiveEngine()
 	}
 
 	filter := subscription.BuildFilter(sess.info, engine)

@@ -26,6 +26,16 @@ type Projection struct {
 	ExecutionTimeout *int   `toml:"execution_timeout,omitempty"`
 }
 
+const DefaultEngine = "v2"
+
+// EffectiveEngine returns the configured engine, defaulting to "v2".
+func (p Projection) EffectiveEngine() string {
+	if p.Engine == "" {
+		return DefaultEngine
+	}
+	return p.Engine
+}
+
 // IsEnabled returns true if the projection is enabled (default true).
 func (p Projection) IsEnabled() bool {
 	if p.Enabled == nil {

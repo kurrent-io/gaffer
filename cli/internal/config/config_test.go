@@ -168,6 +168,18 @@ func TestIsEnabled(t *testing.T) {
 	}
 }
 
+func TestEffectiveEngine(t *testing.T) {
+	p := Projection{Name: "a", Entry: "a.js"}
+	if p.EffectiveEngine() != "v2" {
+		t.Fatalf("expected v2 default, got %s", p.EffectiveEngine())
+	}
+
+	p.Engine = "v1"
+	if p.EffectiveEngine() != "v1" {
+		t.Fatalf("expected v1, got %s", p.EffectiveEngine())
+	}
+}
+
 func TestLoadGlobalTimeouts(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")

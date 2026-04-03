@@ -59,12 +59,7 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 		limit = 2000
 	}
 
-	engine := "v2"
-	if proj.Engine != "" {
-		engine = proj.Engine
-	}
-
-	events, err := s.sampleProjectionEvents(ctx, client, info, engine, uint64(limit))
+	events, err := s.sampleProjectionEvents(ctx, client, info, proj.EffectiveEngine(), uint64(limit))
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}

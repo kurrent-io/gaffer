@@ -26,6 +26,7 @@ type RunnerConfig struct {
 	Feed    FeedFn
 	Session *gafferruntime.Session
 	Info    gafferruntime.QuerySources
+	Engine  string
 	Writer  EventWriter
 	History *history.Store
 	Debug   *DebugConfig
@@ -48,6 +49,7 @@ type Runner struct {
 	feed    FeedFn
 	session *gafferruntime.Session
 	info    gafferruntime.QuerySources
+	engine  string
 	writer  EventWriter
 	history *history.Store
 	debug   *DebugConfig
@@ -78,6 +80,7 @@ func NewRunner(cfg RunnerConfig) *Runner {
 		feed:       cfg.Feed,
 		session:    cfg.Session,
 		info:       cfg.Info,
+		engine:     cfg.Engine,
 		writer:     cfg.Writer,
 		history:    cfg.History,
 		debug:      cfg.Debug,
@@ -301,13 +304,63 @@ func (r *Runner) StepOut() {
 }
 
 func (r *Runner) Destroy() {
-	if r.debug == nil {
-		return
+	if r.debug != nil {
+		r.debug.Session.ClearBreakpoints()
+		if r.Paused() {
+			r.debug.Session.Continue()
+		}
 	}
-	r.debug.Session.ClearBreakpoints()
-	if r.Paused() {
-		r.debug.Session.Continue()
+	if r.session != nil {
+		r.session.Destroy()
 	}
+	if r.history != nil {
+		_ = r.history.Close()
+	}
+}
+
+func (r *Runner) Info() gafferruntime.QuerySources {
+	return r.info
+}
+
+func (r *Runner) Engine() string {
+	return r.engine
+}
+
+// History accessors
+
+func (r *Runner) GetStep(position int64) (*history.Step, error) {
+	if r.history == nil {
+		return nil, fmt.Errorf("no history store")
+	}
+	return r.history.Get(position)
+}
+
+func (r *Runner) Timeline(from, to int64) ([]history.TimelineEntry, error) {
+	if r.history == nil {
+		return nil, fmt.Errorf("no history store")
+	}
+	return r.history.Timeline(from, to)
+}
+
+func (r *Runner) TimelineFiltered(from, to int64, partition string) ([]history.TimelineEntry, error) {
+	if r.history == nil {
+		return nil, fmt.Errorf("no history store")
+	}
+	return r.history.TimelineFiltered(from, to, partition)
+}
+
+func (r *Runner) HistoryRange() (min, max int64, err error) {
+	if r.history == nil {
+		return 0, 0, fmt.Errorf("no history store")
+	}
+	return r.history.Range()
+}
+
+func (r *Runner) HistoryCount() (int64, error) {
+	if r.history == nil {
+		return 0, fmt.Errorf("no history store")
+	}
+	return r.history.Count()
 }
 
 // Inspection methods - safe to call while paused at a breakpoint

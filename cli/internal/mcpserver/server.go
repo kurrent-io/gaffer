@@ -26,13 +26,8 @@ type Server struct {
 }
 
 type activeSession struct {
-	runtime   *gafferruntime.Session
-	history   *history.Store
-	info      gafferruntime.QuerySources
-	name      string
 	runner *engine.Runner
 	cancel context.CancelFunc
-	lastError error // subscription-level errors (not feed errors - those are on runner)
 
 	// MCP coordination channels
 	breakCh    chan gafferruntime.BreakInfo
@@ -119,15 +114,18 @@ func (s *Server) closeSession() {
 		if s.session.cancel != nil {
 			s.session.cancel()
 		}
-		s.session.runner.Destroy()
+		// Unblock any Feed paused at a breakpoint before waiting for goroutine
+		s.session.runner.ClearBreakpoints()
+		if s.session.runner.Paused() {
+			s.session.runner.Continue()
+		}
 		if s.session.done != nil {
 			done := s.session.done
 			s.mu.Unlock()
 			<-done
 			s.mu.Lock()
 		}
-		s.session.runtime.Destroy()
-		_ = s.session.history.Close()
+		s.session.runner.Destroy()
 		s.session = nil
 	}
 }
@@ -157,17 +155,13 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 		return nil, fmt.Errorf("creating history store: %w", err)
 	}
 
-	sess := &activeSession{
-		runtime: runtime,
-		history: store,
-		info:    info,
-		name:    name,
-	}
+	sess := &activeSession{}
 
 	cfg := engine.RunnerConfig{
 		Feed:    engine.FeedFn(runtime.Feed),
 		Session: runtime,
 		Info:    info,
+		Engine:  lp.Engine,
 		Writer:  nil,
 		History: store,
 	}

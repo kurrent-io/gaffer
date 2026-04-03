@@ -324,7 +324,7 @@ func (s *Server) handleGetStep(_ context.Context, _ *mcp.CallToolRequest, input 
 		return toolError("no active session - call run first"), nil, nil
 	}
 
-	step, err := s.session.history.Get(input.Position)
+	step, err := s.session.runner.GetStep(input.Position)
 	if err != nil {
 		return toolError("querying history: %v", err), nil, nil
 	}
@@ -347,13 +347,13 @@ func (s *Server) handleGetHistory(_ context.Context, _ *mcp.CallToolRequest, inp
 
 	var beforeState json.RawMessage
 	if from > 1 {
-		beforeStep, err := s.session.history.Get(from - 1)
+		beforeStep, err := s.session.runner.GetStep(from - 1)
 		if err == nil && beforeStep != nil {
 			beforeState = extractState(beforeStep.ResultJSON)
 		}
 	}
 
-	afterStep, err := s.session.history.Get(to)
+	afterStep, err := s.session.runner.GetStep(to)
 	if err != nil {
 		return toolError("querying history: %v", err), nil, nil
 	}
@@ -363,7 +363,7 @@ func (s *Server) handleGetHistory(_ context.Context, _ *mcp.CallToolRequest, inp
 		afterState = extractState(afterStep.ResultJSON)
 	}
 
-	timeline, err := s.session.history.TimelineFiltered(from, to, input.Partition)
+	timeline, err := s.session.runner.TimelineFiltered(from, to, input.Partition)
 	if err != nil {
 		return toolError("querying timeline: %v", err), nil, nil
 	}
@@ -385,7 +385,7 @@ func (s *Server) handleGetTimeline(_ context.Context, _ *mcp.CallToolRequest, in
 
 	from, to := s.resolveRange(input.From, input.To)
 
-	entries, err := s.session.history.TimelineFiltered(from, to, input.Partition)
+	entries, err := s.session.runner.TimelineFiltered(from, to, input.Partition)
 	if err != nil {
 		return toolError("querying timeline: %v", err), nil, nil
 	}
@@ -443,7 +443,7 @@ func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest
 // --- Helpers ---
 
 func (s *Server) resolveRange(from, to int64) (int64, int64) {
-	minPos, maxPos, _ := s.session.history.Range()
+	minPos, maxPos, _ := s.session.runner.HistoryRange()
 	if from <= 0 {
 		from = minPos
 	}

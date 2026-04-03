@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
@@ -26,17 +25,11 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 		return s.startDebugLiveSubscription(ctx, sess)
 	}
 
-	proj := s.cfg.FindProjection(sess.name)
-	version := config.DefaultEngine
-	if proj != nil {
-		version = proj.EffectiveEngine()
-	}
-
 	source := engine.NewLiveSource(engine.LiveSourceConfig{
 		ConnStr: s.cfg.Connection,
 		Root:    s.root,
-		Info:    sess.info,
-		Version: version,
+		Info:    sess.runner.Info(),
+		Version: sess.runner.Engine(),
 		OnCaughtUp: func() {
 			if sess.runner.Status() == "running" {
 				sess.runner.SetStatus("caught_up")
@@ -56,9 +49,6 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 			sess.runner.SetStatus("stopped")
 		} else if sess.runner.Faulted() || srcErr != nil {
 			sess.runner.SetStatus("error")
-			if srcErr != nil {
-				sess.lastError = srcErr
-			}
 		}
 		s.mu.Unlock()
 
@@ -74,17 +64,11 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 }
 
 func (s *Server) startDebugLiveSubscription(ctx context.Context, sess *activeSession) error {
-	proj := s.cfg.FindProjection(sess.name)
-	version := config.DefaultEngine
-	if proj != nil {
-		version = proj.EffectiveEngine()
-	}
-
 	source := engine.NewLiveSource(engine.LiveSourceConfig{
 		ConnStr: s.cfg.Connection,
 		Root:    s.root,
-		Info:    sess.info,
-		Version: version,
+		Info:    sess.runner.Info(),
+		Version: sess.runner.Engine(),
 		OnCaughtUp: func() {
 			sess.runner.SetStatus("caught_up")
 			select {

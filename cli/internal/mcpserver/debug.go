@@ -34,9 +34,8 @@ func (s *Server) waitForBreak(ctx context.Context, sess *activeSession, timeout 
 			return waitResult{breakInfo: &info}
 
 		case <-sess.done:
-			// Background goroutine finished (fixture completed or errored)
-			if sess.lastError != nil {
-				return waitResult{err: sess.lastError}
+			if sess.runner.Faulted() {
+				return waitResult{err: sess.runner.LastError()}
 			}
 			return waitResult{completed: true}
 

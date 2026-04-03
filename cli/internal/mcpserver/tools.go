@@ -318,40 +318,30 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 		return toolError("%v", err), nil, nil
 	}
 
-	var faultErr error
-	for _, evt := range events {
-		result, feedErr := sess.runtime.Feed(evt)
-		if feedErr != nil {
-			sess.stats.Errors++
-			sess.stats.Status = "error"
-			faultErr = feedErr
-			_, _ = sess.history.Insert(evt, `{"status":"error"}`)
+	ew := &errorCapture{}
+	r := engine.NewRunner(engine.RunnerConfig{
+		Feed:    engine.FeedFn(sess.runtime.Feed),
+		Writer:  ew,
+		History: sess.history,
+	})
+	source := engine.NewFixtureSource(events)
+	_ = source.Run(context.Background(), r.ProcessOne)
 
-			break
-		}
-
-		resultJSON, _ := json.Marshal(result)
-
-		if _, insertErr := sess.history.Insert(evt, string(resultJSON)); insertErr != nil {
-			return toolError("recording history: %v", insertErr), nil, nil
-		}
-
-		s.recordResult(sess, result)
-	}
-
-	if faultErr == nil {
+	if !r.Faulted {
 		sess.stats.Status = "completed"
+	} else {
+		sess.stats.Status = "error"
 	}
 
-	summary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, sess.partitions))
-	summary["completed"] = faultErr == nil
-	summary["processed"] = sess.stats.Processed
-	summary["skipped"] = sess.stats.Skipped
-	summary["errors"] = sess.stats.Errors
+	summary := stateSummaryToMap(engine.CollectState(sess.runtime, sess.info, r.Partitions))
+	summary["completed"] = !r.Faulted
+	summary["processed"] = r.Stats.Handled
+	summary["skipped"] = r.Stats.Skipped
+	summary["errors"] = r.Stats.Errors
 	summary["totalEvents"] = len(events)
 
-	if faultErr != nil {
-		summary["lastError"] = classifyError(faultErr)
+	if r.Faulted && ew.lastError != nil {
+		summary["lastError"] = ew.lastError
 	}
 
 	return toolResult(summary), nil, nil
@@ -610,6 +600,23 @@ func describeSource(info gafferruntime.QuerySources) map[string]any {
 		return map[string]any{"type": "streams", "streams": info.Streams}
 	}
 	return map[string]any{"type": "unknown"}
+}
+
+type errorCapture struct {
+	lastError map[string]any
+}
+
+func (e *errorCapture) OnEvent(string)                             {}
+func (e *errorCapture) OnResult(string, *gafferruntime.FeedResult) {}
+func (e *errorCapture) OnError(_, code, description string) {
+	result := map[string]any{
+		"code":        code,
+		"description": description,
+	}
+	if hint := errorHint(code); hint != "" {
+		result["hint"] = hint
+	}
+	e.lastError = result
 }
 
 func describePartitioning(info gafferruntime.QuerySources) string {

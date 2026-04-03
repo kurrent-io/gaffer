@@ -379,9 +379,9 @@ func TestJSONWriter_WriteSummary_Partitioned(t *testing.T) {
 
 	stats := engine.EventStats{Handled: 5, Skipped: 1}
 	state := engine.StateSummary{
-		Partitioned: true,
+		Partitioned:   true,
 		HasTransforms: true,
-		HasBiState: true,
+		HasBiState:    true,
 		Partitions: map[string]engine.PartitionState{
 			"order-1": {
 				State:  json.RawMessage(`{"count":2}`),
@@ -439,7 +439,7 @@ func TestTextWriter_WriteSummary_BiState(t *testing.T) {
 	stats := engine.EventStats{Handled: 5}
 	state := engine.StateSummary{
 		Partitioned: true,
-		HasBiState: true,
+		HasBiState:  true,
 		Partitions: map[string]engine.PartitionState{
 			"p-1": {State: json.RawMessage(`{"x":1}`)},
 		},

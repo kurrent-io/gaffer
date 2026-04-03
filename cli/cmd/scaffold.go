@@ -50,5 +50,3 @@ func runScaffold(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Created %s\n", result.RelPath)
 	return nil
 }
-
-

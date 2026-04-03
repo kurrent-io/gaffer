@@ -47,10 +47,6 @@ func (sess *activeSession) errors() int64 {
 	return int64(sess.runner.Stats().Errors)
 }
 
-func (sess *activeSession) eventCount() int64 {
-	return sess.handled() + sess.skipped() + sess.errors()
-}
-
 func (s *Server) requireSession() (*activeSession, *mcp.CallToolResult) {
 	if s.session == nil {
 		return nil, toolError("no active session - call run first")

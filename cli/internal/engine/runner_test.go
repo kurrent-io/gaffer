@@ -218,7 +218,6 @@ func TestFixtureSource_Run(t *testing.T) {
 		processed = append(processed, evt)
 		return false
 	})
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -235,7 +234,6 @@ func TestFixtureSource_Run_StopsOnTrue(t *testing.T) {
 		processed = append(processed, evt)
 		return evt == "b"
 	})
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

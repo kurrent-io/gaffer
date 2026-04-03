@@ -52,14 +52,16 @@ type recordedSummary struct {
 }
 
 func (w *recordingWriter) WriteInfo(string, gafferruntime.QuerySources, string) {}
-func (w *recordingWriter) WriteDebugListening(string, int)                   {}
-func (w *recordingWriter) WriteEvent(event eventInfo)                        { w.events = append(w.events, event) }
+func (w *recordingWriter) WriteDebugListening(string, int)                      {}
+func (w *recordingWriter) WriteEvent(event eventInfo)                           { w.events = append(w.events, event) }
 func (w *recordingWriter) WriteResult(eventID string, r *gafferruntime.FeedResult) {
 	w.results = append(w.results, recordedResult{eventID, r})
 }
+
 func (w *recordingWriter) WriteError(eventID, code, desc string) {
 	w.errors = append(w.errors, recordedError{eventID, code, desc})
 }
+
 func (w *recordingWriter) WriteSummary(stats engine.EventStats, state engine.StateSummary) {
 	w.summary = &recordedSummary{stats, state}
 }

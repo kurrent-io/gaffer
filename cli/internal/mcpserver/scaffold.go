@@ -52,4 +52,3 @@ func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input
 		"name":    result.Name,
 	}), nil, nil
 }
-

@@ -55,10 +55,10 @@ func (r *Runner) doStep(fn func()) {
 	fn()
 }
 
-func (r *Runner) Continue()  { r.doStep(func() { r.debug.Session.Continue() }) }
-func (r *Runner) StepOver()  { r.doStep(func() { r.debug.Session.StepOver() }) }
-func (r *Runner) StepInto()  { r.doStep(func() { r.debug.Session.StepInto() }) }
-func (r *Runner) StepOut()   { r.doStep(func() { r.debug.Session.StepOut() }) }
+func (r *Runner) Continue() { r.doStep(func() { r.debug.Session.Continue() }) }
+func (r *Runner) StepOver() { r.doStep(func() { r.debug.Session.StepOver() }) }
+func (r *Runner) StepInto() { r.doStep(func() { r.debug.Session.StepInto() }) }
+func (r *Runner) StepOut()  { r.doStep(func() { r.debug.Session.StepOut() }) }
 
 func (r *Runner) Destroy() {
 	if r.debug != nil {

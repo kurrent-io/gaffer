@@ -3,7 +3,7 @@ package gafferruntime
 // QuerySources describes a projection's source configuration and features.
 // Parsed from the runtime's internal source definition.
 type QuerySources struct {
-	AllStreams                        bool     `json:"AllStreams"`
+	AllStreams                       bool     `json:"AllStreams"`
 	AllEvents                        bool     `json:"AllEvents"`
 	Categories                       []string `json:"Categories"`
 	Streams                          []string `json:"Streams"`

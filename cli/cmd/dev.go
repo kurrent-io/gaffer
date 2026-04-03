@@ -65,23 +65,37 @@ func runDev(cmd *cobra.Command, args []string) error {
 
 	writer.WriteInfo(projCtx.Proj.Name, info, version)
 
-	feed := engine.FeedFn(session.Feed)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	var afterRun func()
+	var r *engine.Runner
 
 	if devDebug {
 		store, err := history.New()
 		if err != nil {
 			return fmt.Errorf("creating history store: %w", err)
 		}
-		defer func() { _ = store.Close() }()
 
 		sourcePath, _ := filepath.Abs(filepath.Join(projCtx.Root, projCtx.Proj.Entry))
 		absRoot, _ := filepath.Abs(projCtx.Root)
-		adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot, store, info)
-		handler := adapter.Handler()
 
+		adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot)
+
+		r = engine.NewRunner(engine.RunnerConfig{
+			Feed:    engine.FeedFn(session.Feed),
+			Session: session,
+			Info:    info,
+			Writer:  adapter.EventWriter(),
+			History: store,
+			Debug: &engine.DebugConfig{
+				Session: session,
+				Info:    info,
+				OnBreak: adapter.HandleBreak,
+			},
+		})
+		adapter.SetRunner(r)
+
+		handler := adapter.Handler()
 		addr := fmt.Sprintf("127.0.0.1:%d", devDebugPort)
 		srv, err := dapserver.NewServer(addr, handler)
 		if err != nil {
@@ -100,9 +114,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 
 		go func() {
 			<-ctx.Done()
-			session.ClearBreakpoints()
-			defer func() { recover() }() //nolint:errcheck
-			session.Continue()
+			r.Destroy()
 		}()
 
 		select {
@@ -111,17 +123,15 @@ func runDev(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 
-		feed = engine.FeedFn(adapter.FeedEvent)
 		afterRun = func() { adapter.SendTerminated() }
+	} else {
+		r = engine.NewRunner(engine.RunnerConfig{
+			Feed:    engine.FeedFn(session.Feed),
+			Session: session,
+			Info:    info,
+			Writer:  &eventWriterAdapter{writer: writer},
+		})
 	}
-
-	r := engine.NewRunner(engine.RunnerConfig{
-		Feed:    feed,
-		Session: session,
-		Info:    info,
-		Writer:  &eventWriterAdapter{writer: writer},
-		History: nil,
-	})
 
 	var source engine.EventSource
 	if devEvents != "" {

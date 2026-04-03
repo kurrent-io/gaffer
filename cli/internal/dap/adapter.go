@@ -7,75 +7,79 @@ import (
 	"sync"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
-	"github.com/kurrent-io/gaffer/cli/internal/history"
+
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 
 	godap "github.com/google/go-dap"
 )
 
-// DebugAdapter bridges a DAP server to a gaffer runtime session.
+// DebugAdapter bridges a DAP server to an engine Runner.
 type DebugAdapter struct {
+	runner     *engine.Runner
 	session    *gafferruntime.Session
 	server     *Server
-	history    *history.Store
-	info       gafferruntime.QuerySources
 	sourcePath string
 	remoteRoot string
 	localRoot  string
 
 	mu         sync.Mutex
-	paused     bool
 	inspect    bool
 	stepBuffer []*CustomEvent
-	partitions []string
-	partSet    map[string]bool
 
 	readyOnce sync.Once
 	readyCh   chan struct{}
 }
 
-// NewDebugAdapter creates an adapter that wires a DAP server to a session.
+// NewDebugAdapter creates an adapter that bridges a DAP server to an engine Runner.
 // sourcePath is the filesystem path to the projection JS file (for Source objects).
 // remoteRoot is the project root (where gaffer.toml lives) on the server side.
-// Call SetServer before starting the server.
-func NewDebugAdapter(session *gafferruntime.Session, sourcePath, remoteRoot string, store *history.Store, info gafferruntime.QuerySources) *DebugAdapter {
+// session is needed for OnLog/OnEmit callbacks (output events to the editor).
+func NewDebugAdapter(session *gafferruntime.Session, sourcePath, remoteRoot string) *DebugAdapter {
 	return &DebugAdapter{
 		session:    session,
 		sourcePath: sourcePath,
 		remoteRoot: remoteRoot,
-		history:    store,
-		info:       info,
 		readyCh:    make(chan struct{}),
 	}
 }
 
+// SetRunner connects the adapter to the engine runner.
+func (a *DebugAdapter) SetRunner(r *engine.Runner) {
+	a.runner = r
+}
+
+// HandleBreak is called by the runner's OnBreak callback.
+func (a *DebugAdapter) HandleBreak(info gafferruntime.BreakInfo) {
+	if a.server == nil {
+		return
+	}
+
+	a.mu.Lock()
+	a.inspect = true
+	a.mu.Unlock()
+
+	reason := info.Reason
+	if reason == "debugger_statement" {
+		reason = "pause"
+	}
+	a.server.SendEvent(&godap.StoppedEvent{
+		Event: NewEvent("stopped"),
+		Body: godap.StoppedEventBody{
+			Reason:            reason,
+			ThreadId:          1,
+			AllThreadsStopped: true,
+		},
+	})
+	a.server.Send(NewCustomEvent("gaffer/mode", map[string]any{
+		"mode": "inspect",
+	}))
+	a.flushStepBuffer()
+}
+
 // SetServer connects the adapter to a DAP server for sending events.
-// Also wires up session callbacks (OnBreak, OnLog, OnEmit).
+// Wires up session callbacks (OnLog, OnEmit) for output events.
 func (a *DebugAdapter) SetServer(server *Server) {
 	a.server = server
-
-	a.session.OnBreak(func(info gafferruntime.BreakInfo) {
-		a.mu.Lock()
-		a.paused = true
-		a.inspect = true
-		a.mu.Unlock()
-
-		reason := info.Reason
-		if reason == "debugger_statement" {
-			reason = "pause"
-		}
-		a.server.SendEvent(&godap.StoppedEvent{
-			Event: NewEvent("stopped"),
-			Body: godap.StoppedEventBody{
-				Reason:            reason,
-				ThreadId:          1,
-				AllThreadsStopped: true,
-			},
-		})
-		a.server.Send(NewCustomEvent("gaffer/mode", map[string]any{
-			"mode": "inspect",
-		}))
-		a.flushStepBuffer()
-	})
 
 	a.session.OnLog(func(message string) {
 		a.server.SendEvent(&godap.OutputEvent{
@@ -116,6 +120,55 @@ func (a *DebugAdapter) SetServer(server *Server) {
 		a.mu.Unlock()
 		a.bufferOrSend(NewCustomEvent("gaffer/stepEmit", body), inspect)
 	})
+}
+
+// EventWriter returns an engine.EventWriter that sends DAP custom events
+// for each event processed by the runner.
+func (a *DebugAdapter) EventWriter() engine.EventWriter {
+	return &dapEventWriter{adapter: a}
+}
+
+type dapEventWriter struct {
+	adapter *DebugAdapter
+}
+
+func (w *dapEventWriter) OnEvent(eventJSON string) {
+	w.adapter.mu.Lock()
+	w.adapter.stepBuffer = nil
+	inspect := w.adapter.inspect
+	w.adapter.mu.Unlock()
+
+	evt := NewCustomEvent("gaffer/stepStart", map[string]any{
+		"event": json.RawMessage(eventJSON),
+	})
+	w.adapter.bufferOrSend(evt, inspect)
+}
+
+func (w *dapEventWriter) OnResult(eventID string, result *gafferruntime.FeedResult) {
+	resultJSON, _ := json.Marshal(result)
+
+	w.adapter.mu.Lock()
+	inspect := w.adapter.inspect
+	w.adapter.mu.Unlock()
+
+	resultEvt := NewCustomEvent("gaffer/stepResult", map[string]any{
+		"position": w.adapter.runner.Position(),
+		"result":   json.RawMessage(resultJSON),
+	})
+	w.adapter.bufferOrSend(resultEvt, inspect)
+
+	if result.Status == "processed" && inspect && w.adapter.server != nil {
+		w.adapter.server.Send(w.adapter.buildStateEvent())
+	}
+}
+
+func (w *dapEventWriter) OnError(eventID, code, description string) {
+	if w.adapter.server != nil {
+		w.adapter.server.Send(NewCustomEvent("gaffer/stepError", map[string]any{
+			"code":        code,
+			"description": description,
+		}))
+	}
 }
 
 // Handler returns the DAP handler callbacks for the server.
@@ -160,29 +213,28 @@ func (a *DebugAdapter) handleSetBreakpoints(s *Server, req *godap.SetBreakpoints
 		return
 	}
 
-	a.session.ClearBreakpoints()
-
-	breakpoints := make([]godap.Breakpoint, len(req.Arguments.Breakpoints))
+	bps := make([]engine.Breakpoint, len(req.Arguments.Breakpoints))
 	for i, bp := range req.Arguments.Breakpoints {
 		col := bp.Column
 		if col == 0 {
 			col = 1
 		}
-		var opts *gafferruntime.BreakpointOptions
-		if bp.Condition != "" || bp.HitCondition != "" || bp.LogMessage != "" {
-			opts = &gafferruntime.BreakpointOptions{
-				Condition:    bp.Condition,
-				HitCondition: bp.HitCondition,
-				LogMessage:   bp.LogMessage,
-			}
+		bps[i] = engine.Breakpoint{
+			Line:      bp.Line,
+			Column:    col,
+			Condition: bp.Condition,
 		}
-		snapped, _ := a.session.SetBreakpoint(bp.Line, col, opts)
-		if snapped != nil {
+	}
+	snapped, _ := a.runner.SetBreakpoints(bps)
+
+	breakpoints := make([]godap.Breakpoint, len(req.Arguments.Breakpoints))
+	for i := range req.Arguments.Breakpoints {
+		if i < len(snapped) && snapped[i] != nil {
 			breakpoints[i] = godap.Breakpoint{
 				Id:       i + 1,
 				Verified: true,
-				Line:     snapped.Line,
-				Column:   snapped.Column,
+				Line:     snapped[i].Line,
+				Column:   snapped[i].Column,
 				Source:   a.source(),
 			}
 		} else {
@@ -212,7 +264,6 @@ func (a *DebugAdapter) handleContinue(s *Server, req *godap.ContinueRequest) {
 	})
 
 	a.mu.Lock()
-	a.paused = false
 	a.inspect = false
 	a.mu.Unlock()
 
@@ -220,7 +271,7 @@ func (a *DebugAdapter) handleContinue(s *Server, req *godap.ContinueRequest) {
 		"mode": "live",
 	}))
 
-	go a.session.Continue()
+	go a.runner.Continue()
 }
 
 func (a *DebugAdapter) handlePause(s *Server, req *godap.PauseRequest) {
@@ -236,32 +287,29 @@ func (a *DebugAdapter) sendStepResponse(s *Server, resp godap.Message, stepFn fu
 		Event: NewEvent("continued"),
 		Body:  godap.ContinuedEventBody{ThreadId: 1, AllThreadsContinued: true},
 	})
-	a.mu.Lock()
-	a.paused = false
-	a.mu.Unlock()
 	go stepFn()
 }
 
 func (a *DebugAdapter) handleNext(s *Server, req *godap.NextRequest) {
 	resp := &godap.NextResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
-	a.sendStepResponse(s, resp, a.session.StepOver)
+	a.sendStepResponse(s, resp, a.runner.StepOver)
 }
 
 func (a *DebugAdapter) handleStepIn(s *Server, req *godap.StepInRequest) {
 	resp := &godap.StepInResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
-	a.sendStepResponse(s, resp, a.session.StepInto)
+	a.sendStepResponse(s, resp, a.runner.StepInto)
 }
 
 func (a *DebugAdapter) handleStepOut(s *Server, req *godap.StepOutRequest) {
 	resp := &godap.StepOutResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
-	a.sendStepResponse(s, resp, a.session.StepOut)
+	a.sendStepResponse(s, resp, a.runner.StepOut)
 }
 
 func (a *DebugAdapter) handleStackTrace(s *Server, req *godap.StackTraceRequest) {
-	frames, err := a.session.GetCallStack()
+	frames, err := a.runner.GetCallStack()
 	if err != nil {
 		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
 		return
@@ -286,7 +334,7 @@ func (a *DebugAdapter) handleStackTrace(s *Server, req *godap.StackTraceRequest)
 }
 
 func (a *DebugAdapter) handleScopes(s *Server, req *godap.ScopesRequest) {
-	scopes, err := a.session.GetScopes(req.Arguments.FrameId)
+	scopes, err := a.runner.GetScopes(req.Arguments.FrameId)
 	if err != nil {
 		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
 		return
@@ -308,7 +356,7 @@ func (a *DebugAdapter) handleScopes(s *Server, req *godap.ScopesRequest) {
 }
 
 func (a *DebugAdapter) handleVariables(s *Server, req *godap.VariablesRequest) {
-	vars, err := a.session.GetVariables(req.Arguments.VariablesReference)
+	vars, err := a.runner.GetVariables(req.Arguments.VariablesReference)
 	if err != nil {
 		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
 		return
@@ -331,7 +379,7 @@ func (a *DebugAdapter) handleVariables(s *Server, req *godap.VariablesRequest) {
 }
 
 func (a *DebugAdapter) handleEvaluate(s *Server, req *godap.EvaluateRequest) {
-	result, err := a.session.Evaluate(req.Arguments.Expression)
+	result, err := a.runner.Evaluate(req.Arguments.Expression)
 	if err != nil {
 		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
 		return
@@ -364,72 +412,6 @@ func (a *DebugAdapter) handleDisconnect(s *Server, req *godap.DisconnectRequest)
 	s.Send(resp)
 }
 
-// FeedEvent feeds a single event, records it in history, and sends DAP
-// events only when in inspect mode (paused at breakpoint / stepping).
-func (a *DebugAdapter) FeedEvent(eventJSON string) (*gafferruntime.FeedResult, error) {
-	a.mu.Lock()
-	a.stepBuffer = nil
-	inspect := a.inspect
-	a.mu.Unlock()
-
-	startEvt := NewCustomEvent("gaffer/stepStart", map[string]any{
-		"event": json.RawMessage(eventJSON),
-	})
-	a.bufferOrSend(startEvt, inspect)
-
-	result, err := a.session.Feed(eventJSON)
-	if err != nil {
-		if a.server != nil {
-			code := "unexpected-error"
-			description := err.Error()
-			if projErr, ok := err.(gafferruntime.ProjectionError); ok {
-				code = projErr.ErrorCode()
-				description = projErr.ErrorDescription()
-			}
-			a.server.Send(NewCustomEvent("gaffer/stepError", map[string]any{
-				"code":        code,
-				"description": description,
-			}))
-		}
-		return nil, err
-	}
-
-	resultJSON, _ := json.Marshal(result)
-
-	var position int64
-	if a.history != nil {
-		position, _ = a.history.Insert(eventJSON, string(resultJSON))
-	}
-
-	if result.Status == "processed" && result.Partition != "" {
-		a.mu.Lock()
-		if a.partSet == nil {
-			a.partSet = make(map[string]bool)
-		}
-		if !a.partSet[result.Partition] {
-			a.partSet[result.Partition] = true
-			a.partitions = append(a.partitions, result.Partition)
-		}
-		a.mu.Unlock()
-	}
-
-	a.mu.Lock()
-	inspect = a.inspect
-	a.mu.Unlock()
-
-	resultEvt := NewCustomEvent("gaffer/stepResult", map[string]any{
-		"position": position,
-		"result":   json.RawMessage(resultJSON),
-	})
-	a.bufferOrSend(resultEvt, inspect)
-
-	if result.Status == "processed" && inspect && a.server != nil {
-		a.server.Send(a.buildStateEvent())
-	}
-
-	return result, nil
-}
-
 func (a *DebugAdapter) bufferOrSend(evt *CustomEvent, inspect bool) {
 	if inspect && a.server != nil {
 		a.server.Send(evt)
@@ -456,32 +438,26 @@ func (a *DebugAdapter) flushStepBuffer() {
 }
 
 func (a *DebugAdapter) buildStateEvent() *CustomEvent {
+	summary := a.runner.CollectState()
 	body := map[string]any{}
 
-	a.mu.Lock()
-	hasPartitions := len(a.partitions) > 0
-	var partitionsCopy []string
-	if hasPartitions {
-		partitionsCopy = make([]string, len(a.partitions))
-		copy(partitionsCopy, a.partitions)
-	}
-	a.mu.Unlock()
-
-	if hasPartitions {
-		body["partitions"] = partitionsCopy
+	if summary.Partitioned {
+		partitions := []string{}
+		for name := range summary.Partitions {
+			partitions = append(partitions, name)
+		}
+		body["partitions"] = partitions
 	} else {
-		if state := a.session.GetState(nil); state != nil {
-			body["state"] = json.RawMessage(*state)
+		if len(summary.State) > 0 {
+			body["state"] = json.RawMessage(summary.State)
 		}
-		if a.info.ProducesResults {
-			if result, err := a.session.GetResult(nil); err == nil && result != nil {
-				body["result"] = json.RawMessage(*result)
-			}
+		if summary.HasTransforms && len(summary.Result) > 0 {
+			body["result"] = json.RawMessage(summary.Result)
 		}
 	}
 
-	if shared := a.session.GetSharedState(); shared != nil {
-		body["sharedState"] = json.RawMessage(*shared)
+	if summary.HasBiState && len(summary.SharedState) > 0 {
+		body["sharedState"] = json.RawMessage(summary.SharedState)
 	}
 
 	return NewCustomEvent("gaffer/state", body)
@@ -500,12 +476,7 @@ func (a *DebugAdapter) SendTerminated() {
 }
 
 func (a *DebugAdapter) handleGafferGoto(s *Server, req *GafferGotoRequest) {
-	if a.history == nil {
-		s.Send(NewErrorResponse(req.Seq, req.Command, "no history available"))
-		return
-	}
-
-	step, err := a.history.Get(req.Arguments.Position)
+	step, err := a.runner.GetStep(req.Arguments.Position)
 	if err != nil || step == nil {
 		s.Send(NewErrorResponse(req.Seq, req.Command, "position not found"))
 		return
@@ -524,12 +495,7 @@ func (a *DebugAdapter) handleGafferGoto(s *Server, req *GafferGotoRequest) {
 }
 
 func (a *DebugAdapter) handleGafferTimeline(s *Server, req *GafferTimelineRequest) {
-	if a.history == nil {
-		s.Send(NewErrorResponse(req.Seq, req.Command, "no history available"))
-		return
-	}
-
-	entries, err := a.history.Timeline(req.Arguments.From, req.Arguments.To)
+	entries, err := a.runner.Timeline(req.Arguments.From, req.Arguments.To)
 	if err != nil {
 		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
 		return
@@ -549,13 +515,12 @@ func (a *DebugAdapter) handleGafferPartitionState(s *Server, req *GafferPartitio
 		"partition": partition,
 	}
 
-	if state := a.session.GetState(&partition); state != nil {
+	state, result := a.runner.GetPartitionState(partition)
+	if state != nil {
 		body["state"] = json.RawMessage(*state)
 	}
-	if a.info.ProducesResults {
-		if result, err := a.session.GetResult(&partition); err == nil && result != nil {
-			body["result"] = json.RawMessage(*result)
-		}
+	if result != nil {
+		body["result"] = json.RawMessage(*result)
 	}
 
 	respBody, _ := json.Marshal(body)

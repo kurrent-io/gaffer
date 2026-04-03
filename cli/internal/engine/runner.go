@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
@@ -58,7 +59,7 @@ type Runner struct {
 	partitions      map[string]bool
 	faulted         bool
 	lastError       error
-	position        int64
+	position        atomic.Int64
 	status          string
 	paused          bool
 	pausedEvent     string
@@ -106,38 +107,38 @@ func NewRunner(cfg RunnerConfig) *Runner {
 
 func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 	r.mu.Lock()
-	r.position++
+	pos := r.position.Add(1)
 	if r.debug != nil {
 		r.pausedEvent = eventJSON
-		if r.breakAtPosition > 0 && r.position == r.breakAtPosition {
+		if r.breakAtPosition > 0 && pos == r.breakAtPosition {
 			r.debug.Session.Pause()
 		}
 	}
+	r.mu.Unlock()
+
 	if r.writer != nil {
 		r.writer.OnEvent(eventJSON)
 	}
-	r.mu.Unlock()
 
 	result, err := r.feed(eventJSON)
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	if r.debug != nil {
 		r.pausedEvent = ""
 	}
 
 	if err != nil {
 		fe := ClassifyError(err)
-		if r.writer != nil {
-			r.writer.OnError(eventID(eventJSON), fe.Code, fe.Description)
-		}
 		if r.history != nil {
 			_, _ = r.history.Insert(eventJSON, `{"status":"error"}`)
 		}
 		r.stats.Errors++
 		r.faulted = true
 		r.lastError = err
+		r.mu.Unlock()
+		if r.writer != nil {
+			r.writer.OnError(eventID(eventJSON), fe.Code, fe.Description)
+		}
 		return true
 	}
 
@@ -150,9 +151,6 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 		_, _ = r.history.Insert(eventJSON, string(resultJSON))
 	}
 
-	if r.writer != nil {
-		r.writer.OnResult(eventID(eventJSON), result)
-	}
 	if result.Status == "skipped" {
 		r.stats.Skipped++
 	} else {
@@ -160,6 +158,11 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 		if result.Partition != "" {
 			r.partitions[result.Partition] = true
 		}
+	}
+	r.mu.Unlock()
+
+	if r.writer != nil {
+		r.writer.OnResult(eventID(eventJSON), result)
 	}
 	return false
 }
@@ -195,9 +198,7 @@ func (r *Runner) LastError() error {
 }
 
 func (r *Runner) Position() int64 {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.position
+	return r.position.Load()
 }
 
 func (r *Runner) SetFaulted(v bool) {
@@ -396,6 +397,10 @@ func (r *Runner) GetVariables(variablesReference int) ([]gafferruntime.DebugVari
 func (r *Runner) CollectState() StateSummary {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.collectStateLocked()
+}
+
+func (r *Runner) collectStateLocked() StateSummary {
 	if r.session == nil {
 		return StateSummary{}
 	}

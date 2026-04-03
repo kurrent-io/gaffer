@@ -8,6 +8,7 @@ import (
 
 	godap "github.com/google/go-dap"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
 // Full end-to-end test: DAP client connects, sets breakpoints,
@@ -21,7 +22,20 @@ func TestIntegration_FullDebugFlow(t *testing.T) {
 	}
 	defer session.Destroy()
 
-	adapter := NewDebugAdapter(session, "/tmp/test/projection.js", "/tmp/test", nil, gafferruntime.QuerySources{})
+	adapter := NewDebugAdapter(session, "/tmp/test/projection.js", "/tmp/test")
+	runner := engine.NewRunner(engine.RunnerConfig{
+		Feed:    engine.FeedFn(session.Feed),
+		Session: session,
+		Info:    session.GetSources(),
+		Writer:  adapter.EventWriter(),
+		Debug: &engine.DebugConfig{
+			Session: session,
+			Info:    session.GetSources(),
+			OnBreak: adapter.HandleBreak,
+		},
+	})
+	adapter.SetRunner(runner)
+
 	handler := adapter.Handler()
 	srv, err := NewServer("127.0.0.1:0", handler)
 	if err != nil {
@@ -132,7 +146,7 @@ func TestIntegration_FullDebugFlow(t *testing.T) {
 	eventJSON := `{"eventType":"ItemAdded","streamId":"stream-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`
 	feedDone := make(chan struct{})
 	go func() {
-		_, _ = adapter.FeedEvent(eventJSON)
+		runner.ProcessOne(eventJSON)
 		close(feedDone)
 	}()
 

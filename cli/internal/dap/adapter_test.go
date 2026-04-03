@@ -8,13 +8,14 @@ import (
 
 	godap "github.com/google/go-dap"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
 const testDebugOpts = `{"debug":true}`
 
 const testFeedEvent = `{"eventType":"ItemAdded","streamId":"stream-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`
 
-func mustSetupDebugSession(t *testing.T) (*DebugAdapter, net.Conn, *bufio.Reader) {
+func mustSetupDebugSession(t *testing.T) (*DebugAdapter, *engine.Runner, net.Conn, *bufio.Reader) {
 	t.Helper()
 	opts := testDebugOpts
 	source := "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function handler(s, e) {\ns.count++;\nreturn s;\n}\n})"
@@ -24,7 +25,20 @@ func mustSetupDebugSession(t *testing.T) (*DebugAdapter, net.Conn, *bufio.Reader
 	}
 	t.Cleanup(func() { session.Destroy() })
 
-	adapter := NewDebugAdapter(session, "/tmp/test/projection.js", "/tmp/test", nil, gafferruntime.QuerySources{})
+	adapter := NewDebugAdapter(session, "/tmp/test/projection.js", "/tmp/test")
+	runner := engine.NewRunner(engine.RunnerConfig{
+		Feed:    engine.FeedFn(session.Feed),
+		Session: session,
+		Info:    session.GetSources(),
+		Writer:  adapter.EventWriter(),
+		Debug: &engine.DebugConfig{
+			Session: session,
+			Info:    session.GetSources(),
+			OnBreak: adapter.HandleBreak,
+		},
+	})
+	adapter.SetRunner(runner)
+
 	handler := adapter.Handler()
 	srv, err := NewServer("127.0.0.1:0", handler)
 	if err != nil {
@@ -67,11 +81,11 @@ func mustSetupDebugSession(t *testing.T) (*DebugAdapter, net.Conn, *bufio.Reader
 	readMessage(t, conn, reader) // InitializeResponse
 	readMessage(t, conn, reader) // InitializedEvent
 
-	return adapter, conn, reader
+	return adapter, runner, conn, reader
 }
 
 func TestAdapter_SetBreakpointsAndPause(t *testing.T) {
-	adapter, conn, reader := mustSetupDebugSession(t)
+	_, runner, conn, reader := mustSetupDebugSession(t)
 
 	// Set breakpoint on line 4
 	sendRequest(t, conn, &godap.SetBreakpointsRequest{
@@ -109,7 +123,7 @@ func TestAdapter_SetBreakpointsAndPause(t *testing.T) {
 	// Feed an event in the background
 	feedDone := make(chan struct{})
 	go func() {
-		_, _ = adapter.FeedEvent(testFeedEvent)
+		runner.ProcessOne(testFeedEvent)
 		close(feedDone)
 	}()
 
@@ -291,7 +305,7 @@ func TestAdapter_PathMapping_PartialPrefixNoMatch(t *testing.T) {
 }
 
 func TestAdapter_SendTerminated(t *testing.T) {
-	adapter, conn, reader := mustSetupDebugSession(t)
+	adapter, _, conn, reader := mustSetupDebugSession(t)
 
 	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
 		Request: godap.Request{

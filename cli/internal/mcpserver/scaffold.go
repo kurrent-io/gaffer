@@ -2,11 +2,8 @@ package mcpserver
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -35,10 +32,6 @@ func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolError("invalid projection name: %q", input.Name), nil, nil
 	}
 
-	if s.cfg.FindProjection(input.Name) != nil {
-		return toolError("projection %q already exists in gaffer.toml", input.Name), nil, nil
-	}
-
 	source := input.Source
 	if source == "" {
 		source = "all"
@@ -49,44 +42,14 @@ func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input
 		partition = "none"
 	}
 
-	relPath := filepath.Join("projections", input.Name+".js")
-	absPath := filepath.Join(s.root, relPath)
-
-	if _, err := os.Stat(absPath); err == nil {
-		return toolError("file already exists: %s", relPath), nil, nil
-	}
-
-	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
-		return toolError("creating directory: %v", err), nil, nil
-	}
-
-	content, err := engine.GenerateSource(source, partition, input.Emit)
+	result, err := engine.Scaffold(s.root, s.cfg, input.Name, source, partition, input.Emit)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}
 
-	if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
-		return toolError("writing file: %v", err), nil, nil
-	}
-
-	newProj := config.Projection{
-		Name:  input.Name,
-		Entry: relPath,
-	}
-
-	updated := *s.cfg
-	updated.Projection = append(updated.Projection, newProj)
-
-	configPath := filepath.Join(s.root, "gaffer.toml")
-	if err := config.Save(configPath, &updated); err != nil {
-		return toolError("updating gaffer.toml: %v", err), nil, nil
-	}
-
-	s.cfg.Projection = updated.Projection
-
 	return toolResult(map[string]any{
-		"created": relPath,
-		"name":    input.Name,
+		"created": result.RelPath,
+		"name":    result.Name,
 	}), nil, nil
 }
 

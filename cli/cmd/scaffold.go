@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
@@ -40,48 +39,17 @@ func runScaffold(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("not in a gaffer project (no gaffer.toml found)")
 	}
 
-	configPath := filepath.Join(root, "gaffer.toml")
-
-	cfg, err := config.Load(configPath)
+	cfg, err := config.Load(filepath.Join(root, "gaffer.toml"))
 	if err != nil {
 		return err
 	}
 
-	if cfg.FindProjection(name) != nil {
-		return fmt.Errorf("projection %q already exists", name)
-	}
-
-	ext := langExtension(scaffoldLang)
-	relPath := filepath.Join("projections", name+ext)
-	absPath := filepath.Join(root, relPath)
-
-	if _, err := os.Stat(absPath); err == nil {
-		return fmt.Errorf("file already exists: %s", relPath)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
-		return err
-	}
-
-	source, err := engine.GenerateSource(scaffoldSource, scaffoldPartition, scaffoldEmit)
+	result, err := engine.Scaffold(root, cfg, name, scaffoldSource, scaffoldPartition, scaffoldEmit)
 	if err != nil {
 		return err
 	}
 
-	if err := os.WriteFile(absPath, []byte(source), 0o644); err != nil {
-		return err
-	}
-
-	cfg.Projection = append(cfg.Projection, config.Projection{
-		Name:  name,
-		Entry: relPath,
-	})
-
-	if err := config.Save(configPath, cfg); err != nil {
-		return err
-	}
-
-	fmt.Printf("Created %s\n", relPath)
+	fmt.Printf("Created %s\n", result.RelPath)
 	return nil
 }
 

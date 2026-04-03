@@ -2,8 +2,55 @@ package engine
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/kurrent-io/gaffer/cli/internal/config"
 )
+
+type ScaffoldResult struct {
+	RelPath string
+	Name    string
+}
+
+func Scaffold(root string, cfg *config.Config, name, source, partition string, emit bool) (*ScaffoldResult, error) {
+	if cfg.FindProjection(name) != nil {
+		return nil, fmt.Errorf("projection %q already exists in gaffer.toml", name)
+	}
+
+	relPath := filepath.Join("projections", name+".js")
+	absPath := filepath.Join(root, relPath)
+
+	if _, err := os.Stat(absPath); err == nil {
+		return nil, fmt.Errorf("file already exists: %s", relPath)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+		return nil, fmt.Errorf("creating directory: %w", err)
+	}
+
+	content, err := GenerateSource(source, partition, emit)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
+		return nil, fmt.Errorf("writing file: %w", err)
+	}
+
+	cfg.Projection = append(cfg.Projection, config.Projection{
+		Name:  name,
+		Entry: relPath,
+	})
+
+	configPath := filepath.Join(root, "gaffer.toml")
+	if err := config.Save(configPath, cfg); err != nil {
+		return nil, fmt.Errorf("updating gaffer.toml: %w", err)
+	}
+
+	return &ScaffoldResult{RelPath: relPath, Name: name}, nil
+}
 
 func GenerateSource(source, partition string, emit bool) (string, error) {
 	var sb strings.Builder

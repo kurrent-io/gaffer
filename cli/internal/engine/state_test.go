@@ -122,3 +122,78 @@ func TestCollectState_WithTransforms(t *testing.T) {
 		t.Errorf("result.doubled: got %v, want 2", result["doubled"])
 	}
 }
+
+func TestCollectState_PartitionedWithTransforms(t *testing.T) {
+	session := newTestSession(t, `fromAll().foreachStream().when({
+		$init: function() { return { count: 0 }; },
+		ItemAdded: function(s, e) { s.count++; return s; }
+	}).transformBy(function(s) { return { doubled: s.count * 2 }; })`)
+	info := session.GetSources()
+
+	if _, err := session.Feed(testEvent("ItemAdded", "s-1", 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	partitions := map[string]bool{"s-1": true}
+	summary := CollectState(session, info, partitions)
+
+	if !summary.Partitioned {
+		t.Error("expected partitioned")
+	}
+	if !summary.HasTransforms {
+		t.Error("expected hasTransforms")
+	}
+
+	data, ok := summary.Partitions["s-1"]
+	if !ok {
+		t.Fatal("missing partition s-1")
+	}
+	if len(data.State) == 0 {
+		t.Error("expected state for partition")
+	}
+	if len(data.Result) == 0 {
+		t.Error("expected result for partition")
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(data.Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result["doubled"] != float64(2) {
+		t.Errorf("result.doubled: got %v, want 2", result["doubled"])
+	}
+}
+
+func TestCollectState_BiState(t *testing.T) {
+	session := newTestSession(t, `fromAll().foreachStream().when({
+		$init: function() { return { count: 0 }; },
+		$initShared: function() { return { total: 0 }; },
+		ItemAdded: function(s, e) {
+			s.count++;
+			linkTo('totals', e);
+			return s;
+		},
+		$any: function(s, e) {
+			if (e.streamId === 'totals') { s.total++; return s; }
+		}
+	})`)
+	info := session.GetSources()
+
+	if !info.IsBiState {
+		t.Skip("runtime did not report IsBiState")
+	}
+
+	if _, err := session.Feed(testEvent("ItemAdded", "s-1", 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	partitions := map[string]bool{"s-1": true}
+	summary := CollectState(session, info, partitions)
+
+	if !summary.HasBiState {
+		t.Error("expected hasBiState")
+	}
+	if len(summary.SharedState) == 0 {
+		t.Error("expected sharedState")
+	}
+}

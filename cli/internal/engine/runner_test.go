@@ -203,6 +203,129 @@ func TestRunner_ProcessOne_RecordsErrorInHistory(t *testing.T) {
 	}
 }
 
+// --- Integration tests: real runtime session + runner + fixture source ---
+
+func TestRunner_Integration_Handled(t *testing.T) {
+	session := newTestSession(t, `fromAll().when({
+		$init: function() { return { count: 0 }; },
+		ItemAdded: function(s, e) { s.count++; return s; }
+	})`)
+
+	r := NewRunner(RunnerConfig{Feed: session.Feed})
+	source := NewFixtureSource([]string{
+		testEvent("ItemAdded", "s-1", 0),
+		testEvent("ItemAdded", "s-1", 1),
+	})
+	_ = source.Run(context.Background(), r.ProcessOne)
+
+	if r.Faulted() {
+		t.Fatal("expected no fault")
+	}
+	if r.Stats().Handled != 2 {
+		t.Errorf("handled: got %d, want 2", r.Stats().Handled)
+	}
+}
+
+func TestRunner_Integration_Skipped(t *testing.T) {
+	session := newTestSession(t, `fromAll().when({
+		$init: function() { return { count: 0 }; },
+		ItemAdded: function(s, e) { s.count++; return s; }
+	})`)
+
+	r := NewRunner(RunnerConfig{Feed: session.Feed})
+	source := NewFixtureSource([]string{
+		testEvent("ItemAdded", "s-1", 0),
+		testEvent("Unknown", "s-1", 1),
+	})
+	_ = source.Run(context.Background(), r.ProcessOne)
+
+	if r.Stats().Handled != 1 {
+		t.Errorf("handled: got %d, want 1", r.Stats().Handled)
+	}
+	if r.Stats().Skipped != 1 {
+		t.Errorf("skipped: got %d, want 1", r.Stats().Skipped)
+	}
+}
+
+func TestRunner_Integration_Partitioned(t *testing.T) {
+	session := newTestSession(t, `fromAll().foreachStream().when({
+		$init: function() { return { count: 0 }; },
+		ItemAdded: function(s, e) { s.count++; return s; }
+	})`)
+
+	r := NewRunner(RunnerConfig{Feed: session.Feed})
+	source := NewFixtureSource([]string{
+		testEvent("ItemAdded", "s-1", 0),
+		testEvent("ItemAdded", "s-2", 1),
+		testEvent("ItemAdded", "s-1", 2),
+	})
+	_ = source.Run(context.Background(), r.ProcessOne)
+
+	if r.Stats().Handled != 3 {
+		t.Errorf("handled: got %d, want 3", r.Stats().Handled)
+	}
+	if len(r.Partitions()) != 2 {
+		t.Errorf("partitions: got %d, want 2", len(r.Partitions()))
+	}
+}
+
+func TestRunner_Integration_Faulted(t *testing.T) {
+	session := newTestSession(t, `fromAll().when({
+		BadEvent: function(s, e) { throw new Error("boom"); }
+	})`)
+
+	r := NewRunner(RunnerConfig{Feed: session.Feed})
+	source := NewFixtureSource([]string{
+		testEvent("BadEvent", "s-1", 0),
+		testEvent("BadEvent", "s-1", 1),
+	})
+	_ = source.Run(context.Background(), r.ProcessOne)
+
+	if !r.Faulted() {
+		t.Fatal("expected fault")
+	}
+	if r.Stats().Errors != 1 {
+		t.Errorf("errors: got %d, want 1", r.Stats().Errors)
+	}
+	if r.Stats().Handled != 0 {
+		t.Errorf("handled: got %d, want 0", r.Stats().Handled)
+	}
+}
+
+func TestRunner_Integration_FaultedMidStream(t *testing.T) {
+	session := newTestSession(t, `fromAll().when({
+		$init: function() { return { count: 0 }; },
+		ItemAdded: function(s, e) { s.count++; return s; },
+		BadEvent: function(s, e) { throw new Error("boom"); }
+	})`)
+
+	r := NewRunner(RunnerConfig{Feed: session.Feed})
+	source := NewFixtureSource([]string{
+		testEvent("ItemAdded", "s-1", 0),
+		testEvent("ItemAdded", "s-1", 1),
+		testEvent("BadEvent", "s-1", 2),
+		testEvent("ItemAdded", "s-1", 3),
+	})
+	_ = source.Run(context.Background(), r.ProcessOne)
+
+	if !r.Faulted() {
+		t.Fatal("expected fault")
+	}
+	if r.Stats().Handled != 2 {
+		t.Errorf("handled: got %d, want 2", r.Stats().Handled)
+	}
+	if r.Stats().Errors != 1 {
+		t.Errorf("errors: got %d, want 1", r.Stats().Errors)
+	}
+}
+
+func TestEventStats_Total(t *testing.T) {
+	stats := EventStats{Handled: 10, Skipped: 3, Errors: 1}
+	if stats.Total() != 14 {
+		t.Errorf("total() = %d, want 14", stats.Total())
+	}
+}
+
 func TestEventID(t *testing.T) {
 	id := eventID(`{"sequenceNumber":42,"streamId":"order-1"}`)
 	if id != "42@order-1" {

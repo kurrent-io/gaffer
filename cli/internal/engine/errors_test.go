@@ -3,6 +3,8 @@ package engine
 import (
 	"fmt"
 	"testing"
+
+	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 )
 
 type mockProjectionError struct {
@@ -35,5 +37,31 @@ func TestClassifyError_GenericError(t *testing.T) {
 	}
 	if fe.Description != "something broke" {
 		t.Errorf("description: got %q, want %q", fe.Description, "something broke")
+	}
+}
+
+func TestClassifyError_RuntimeError(t *testing.T) {
+	session, err := gafferruntime.NewSession(`fromAll().when({
+		BadEvent: function(s, e) { throw new Error("boom"); }
+	})`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Destroy()
+
+	_, feedErr := session.Feed(testEvent("BadEvent", "s-1", 0))
+	if feedErr == nil {
+		t.Fatal("expected error")
+	}
+
+	fe := ClassifyError(feedErr)
+	if fe.Code == "" {
+		t.Error("expected non-empty code")
+	}
+	if fe.Description == "" {
+		t.Error("expected non-empty description")
+	}
+	if fe.Code == "unexpected-error" {
+		t.Errorf("expected a projection error code, got %q", fe.Code)
 	}
 }

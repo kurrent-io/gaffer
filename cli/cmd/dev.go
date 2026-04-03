@@ -12,7 +12,6 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	dapserver "github.com/kurrent-io/gaffer/cli/internal/dap"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
-	"github.com/kurrent-io/gaffer/cli/internal/env"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/kurrent-io/gaffer/cli/internal/projection"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
@@ -202,25 +201,9 @@ type liveSource struct {
 }
 
 func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
-	if err := env.Load(l.root, ""); err != nil {
-		return fmt.Errorf("loading .env: %w", err)
-	}
-
-	dbConfig, err := kurrentdb.ParseConnectionString(l.connStr)
+	client, err := engine.Connect(l.connStr, l.root)
 	if err != nil {
-		return fmt.Errorf("invalid connection string: %w", err)
-	}
-
-	username, password := env.Credentials()
-	if username != "" {
-		dbConfig.Username = username
-		dbConfig.Password = password
-	}
-	dbConfig.Logger = kurrentdb.NoopLogging()
-
-	client, err := kurrentdb.NewClient(dbConfig)
-	if err != nil {
-		return fmt.Errorf("connecting to KurrentDB: %w", err)
+		return err
 	}
 	defer func() { _ = client.Close() }()
 

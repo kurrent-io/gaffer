@@ -1,11 +1,11 @@
-package cmd
+package engine
 
 import (
 	"strings"
 	"testing"
 )
 
-func TestEscapeJSString(t *testing.T) {
+func TestEscapeJS(t *testing.T) {
 	tests := []struct {
 		input    string
 		expected string
@@ -17,20 +17,21 @@ func TestEscapeJSString(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := escapeJSString(tt.input)
+		got := escapeJS(tt.input)
 		if got != tt.expected {
-			t.Errorf("escapeJSString(%q) = %q, want %q", tt.input, got, tt.expected)
+			t.Errorf("escapeJS(%q) = %q, want %q", tt.input, got, tt.expected)
 		}
 	}
 }
 
-func TestGenerateProjectionSource(t *testing.T) {
+func TestGenerateSource(t *testing.T) {
 	tests := []struct {
 		name      string
 		source    string
 		partition string
 		emit      bool
 		contains  []string
+		excludes  []string
 		errMsg    string
 	}{
 		{
@@ -59,33 +60,35 @@ func TestGenerateProjectionSource(t *testing.T) {
 			contains:  []string{"emit("},
 		},
 		{
-			name:      "invalid partition",
+			name:      "without emit",
 			source:    "all",
-			partition: "custom",
-			errMsg:    "unsupported partition mode",
+			partition: "none",
+			emit:      false,
+			excludes:  []string{"emit("},
 		},
 		{
-			name:      "escapes single quotes in source",
+			name:      "escapes single quotes",
 			source:    "stream:it's-a-stream",
 			partition: "none",
 			contains:  []string{`fromStream('it\'s-a-stream')`},
 		},
 		{
-			name:      "without emit has no emit call",
+			name:      "invalid partition",
 			source:    "all",
-			partition: "none",
-			emit:      false,
-			contains:  []string{"$init"},
+			partition: "custom",
+			errMsg:    "unsupported partition",
 		},
-	}
-
-	notContains := map[string][]string{
-		"without emit has no emit call": {"emit("},
+		{
+			name:      "invalid source",
+			source:    "topic:foo",
+			partition: "none",
+			errMsg:    "unsupported source",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := generateProjectionSource(tt.source, tt.partition, tt.emit)
+			result, err := GenerateSource(tt.source, tt.partition, tt.emit)
 			if tt.errMsg != "" {
 				if err == nil {
 					t.Fatal("expected error")
@@ -106,7 +109,7 @@ func TestGenerateProjectionSource(t *testing.T) {
 				}
 			}
 
-			for _, s := range notContains[tt.name] {
+			for _, s := range tt.excludes {
 				if strings.Contains(result, s) {
 					t.Errorf("expected output NOT to contain %q, got:\n%s", s, result)
 				}

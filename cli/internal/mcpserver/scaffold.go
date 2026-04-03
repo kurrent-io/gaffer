@@ -2,12 +2,12 @@ package mcpserver
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -60,7 +60,7 @@ func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolError("creating directory: %v", err), nil, nil
 	}
 
-	content, err := generateSource(source, partition, input.Emit)
+	content, err := engine.GenerateSource(source, partition, input.Emit)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}
@@ -90,52 +90,3 @@ func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input
 	}), nil, nil
 }
 
-func generateSource(source, partition string, emit bool) (string, error) {
-	var sb strings.Builder
-
-	switch {
-	case strings.HasPrefix(source, "stream:"):
-		name := escapeJS(strings.TrimPrefix(source, "stream:"))
-		fmt.Fprintf(&sb, "fromStream('%s')\n", name)
-	case strings.HasPrefix(source, "category:"):
-		name := escapeJS(strings.TrimPrefix(source, "category:"))
-		fmt.Fprintf(&sb, "fromCategory('%s')\n", name)
-	case source == "all":
-		sb.WriteString("fromAll()\n")
-	default:
-		return "", fmt.Errorf("unsupported source: %q (use 'all', 'stream:name', or 'category:name')", source)
-	}
-
-	switch partition {
-	case "per-stream":
-		sb.WriteString("  .foreachStream()\n")
-	case "none":
-		// no partitioning
-	default:
-		return "", fmt.Errorf("unsupported partition: %q (use 'none' or 'per-stream')", partition)
-	}
-
-	sb.WriteString("  .when({\n")
-	sb.WriteString("    $init: function() {\n")
-	sb.WriteString("      return { count: 0 };\n")
-	sb.WriteString("    },\n")
-	sb.WriteString("    $any: function(state, event) {\n")
-	sb.WriteString("      state.count += 1;\n")
-	if emit {
-		sb.WriteString("      emit('derived-events', event.eventType + 'Processed', {\n")
-		sb.WriteString("        streamId: event.streamId,\n")
-		sb.WriteString("        count: state.count\n")
-		sb.WriteString("      });\n")
-	}
-	sb.WriteString("      return state;\n")
-	sb.WriteString("    }\n")
-	sb.WriteString("  })\n")
-
-	return sb.String(), nil
-}
-
-func escapeJS(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `'`, `\'`)
-	return s
-}

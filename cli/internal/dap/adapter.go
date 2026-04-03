@@ -442,11 +442,11 @@ func (a *DebugAdapter) buildStateEvent() *CustomEvent {
 	body := summary.ToMap()
 
 	if summary.Partitioned {
-		partitions := []string{}
+		names := make([]string, 0, len(summary.Partitions))
 		for name := range summary.Partitions {
-			partitions = append(partitions, name)
+			names = append(names, name)
 		}
-		body["partitions"] = partitions
+		body["partitions"] = names
 	}
 
 	return NewCustomEvent("gaffer/state", body)

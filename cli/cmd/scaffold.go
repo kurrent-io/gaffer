@@ -18,14 +18,12 @@ var scaffoldCmd = &cobra.Command{
 }
 
 var (
-	scaffoldLang      string
 	scaffoldSource    string
 	scaffoldPartition string
 	scaffoldEmit      bool
 )
 
 func init() {
-	scaffoldCmd.Flags().StringVar(&scaffoldLang, "lang", "js", "Language (js)")
 	scaffoldCmd.Flags().StringVar(&scaffoldSource, "source", "all", "Event source (all, stream:name, category:name)")
 	scaffoldCmd.Flags().StringVar(&scaffoldPartition, "partition", "none", "Partitioning (none, per-stream)")
 	scaffoldCmd.Flags().BoolVar(&scaffoldEmit, "emit", false, "Enable emit/linkTo")
@@ -53,12 +51,4 @@ func runScaffold(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func langExtension(lang string) string {
-	switch lang {
-	case "ts":
-		return ".ts"
-	default:
-		return ".js"
-	}
-}
 

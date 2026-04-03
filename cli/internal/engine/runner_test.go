@@ -319,6 +319,56 @@ func TestRunner_Integration_FaultedMidStream(t *testing.T) {
 	}
 }
 
+// --- nil-guard tests: debug and history methods on a minimal runner ---
+
+func TestRunner_DebugNilGuards(t *testing.T) {
+	r := NewRunner(RunnerConfig{Feed: func(string) (*gafferruntime.FeedResult, error) { return nil, nil }})
+
+	if _, err := r.SetBreakpoints(nil); err == nil {
+		t.Error("SetBreakpoints: expected error")
+	}
+	if _, err := r.Evaluate("1+1"); err == nil {
+		t.Error("Evaluate: expected error")
+	}
+	if _, err := r.GetCallStack(); err == nil {
+		t.Error("GetCallStack: expected error")
+	}
+	if _, err := r.GetScopes(0); err == nil {
+		t.Error("GetScopes: expected error")
+	}
+	if _, err := r.GetVariables(0); err == nil {
+		t.Error("GetVariables: expected error")
+	}
+
+	// These should not panic
+	r.ClearBreakpoints()
+	r.Continue()
+	r.StepOver()
+	r.StepInto()
+	r.StepOut()
+	r.Destroy()
+}
+
+func TestRunner_HistoryNilGuards(t *testing.T) {
+	r := NewRunner(RunnerConfig{Feed: func(string) (*gafferruntime.FeedResult, error) { return nil, nil }})
+
+	if _, err := r.GetStep(1); err == nil {
+		t.Error("GetStep: expected error")
+	}
+	if _, err := r.Timeline(1, 5); err == nil {
+		t.Error("Timeline: expected error")
+	}
+	if _, err := r.TimelineFiltered(1, 5, "p"); err == nil {
+		t.Error("TimelineFiltered: expected error")
+	}
+	if _, _, err := r.HistoryRange(); err == nil {
+		t.Error("HistoryRange: expected error")
+	}
+	if _, err := r.HistoryCount(); err == nil {
+		t.Error("HistoryCount: expected error")
+	}
+}
+
 func TestEventStats_Total(t *testing.T) {
 	stats := EventStats{Handled: 10, Skipped: 3, Errors: 1}
 	if stats.Total() != 14 {

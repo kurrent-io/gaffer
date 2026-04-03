@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/kurrent-io/gaffer/cli/internal/engine"
+	"github.com/kurrent-io/gaffer/cli/internal/scaffold"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -42,7 +42,7 @@ func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input
 		partition = "none"
 	}
 
-	result, err := engine.Scaffold(s.root, s.cfg, input.Name, source, partition, input.Emit)
+	result, err := scaffold.Scaffold(s.root, s.cfg, input.Name, source, partition, input.Emit)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}

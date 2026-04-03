@@ -1,4 +1,4 @@
-package engine
+package scaffold
 
 import (
 	"fmt"
@@ -9,12 +9,12 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 )
 
-type ScaffoldResult struct {
+type Result struct {
 	RelPath string
 	Name    string
 }
 
-func Scaffold(root string, cfg *config.Config, name, source, partition string, emit bool) (*ScaffoldResult, error) {
+func Scaffold(root string, cfg *config.Config, name, source, partition string, emit bool) (*Result, error) {
 	if cfg.FindProjection(name) != nil {
 		return nil, fmt.Errorf("projection %q already exists in gaffer.toml", name)
 	}
@@ -49,7 +49,7 @@ func Scaffold(root string, cfg *config.Config, name, source, partition string, e
 		return nil, fmt.Errorf("updating gaffer.toml: %w", err)
 	}
 
-	return &ScaffoldResult{RelPath: relPath, Name: name}, nil
+	return &Result{RelPath: relPath, Name: name}, nil
 }
 
 func GenerateSource(source, partition string, emit bool) (string, error) {

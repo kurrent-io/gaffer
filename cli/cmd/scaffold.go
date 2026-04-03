@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
-	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
+	"github.com/kurrent-io/gaffer/cli/internal/scaffold"
 	"github.com/spf13/cobra"
 )
 
@@ -42,7 +42,7 @@ func runScaffold(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	result, err := engine.Scaffold(root, cfg, name, scaffoldSource, scaffoldPartition, scaffoldEmit)
+	result, err := scaffold.Scaffold(root, cfg, name, scaffoldSource, scaffoldPartition, scaffoldEmit)
 	if err != nil {
 		return err
 	}

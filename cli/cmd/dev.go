@@ -7,13 +7,11 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	dapserver "github.com/kurrent-io/gaffer/cli/internal/dap"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
-	"github.com/kurrent-io/gaffer/cli/internal/subscription"
 	"github.com/spf13/cobra"
 )
 
@@ -141,7 +139,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 		if connStr == "" {
 			return fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
 		}
-		source = &liveSource{connStr: connStr, root: projCtx.Root, info: info, version: version}
+		source = engine.NewLiveSource(connStr, projCtx.Root, info, version)
 	}
 
 	srcErr := source.Run(ctx, r.ProcessOne)
@@ -190,59 +188,3 @@ func (a *eventWriterAdapter) OnResult(eventID string, result *gafferruntime.Feed
 func (a *eventWriterAdapter) OnError(eventID, code, description string) {
 	a.writer.WriteError(eventID, code, description)
 }
-
-type liveSource struct {
-	connStr string
-	root    string
-	info    gafferruntime.QuerySources
-	version string
-}
-
-func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
-	client, err := engine.Connect(l.connStr, l.root)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = client.Close() }()
-
-	filter := subscription.BuildFilter(l.info, l.version)
-
-	opts := kurrentdb.SubscribeToAllOptions{
-		From:           kurrentdb.Start{},
-		ResolveLinkTos: subscription.ResolveLinkTos(l.version),
-	}
-	if filter != nil {
-		opts.Filter = filter
-	}
-
-	sub, err := client.SubscribeToAll(ctx, opts)
-	if err != nil {
-		return fmt.Errorf("subscribing: %w", err)
-	}
-	defer func() { _ = sub.Close() }()
-
-	for {
-		subEvent := sub.Recv()
-
-		if subEvent.SubscriptionDropped != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			return fmt.Errorf("subscription dropped: %w", subEvent.SubscriptionDropped.Error)
-		}
-
-		if subEvent.EventAppeared == nil {
-			continue
-		}
-
-		eventJSON, err := subscription.MapEvent(subEvent.EventAppeared)
-		if err != nil || eventJSON == "" {
-			continue
-		}
-
-		if process(eventJSON) {
-			return nil
-		}
-	}
-}
-

@@ -17,7 +17,12 @@ func FindRoot() string {
 	if err != nil {
 		return ""
 	}
+	return FindRootFrom(dir)
+}
 
+// FindRootFrom walks up from the given directory looking for gaffer.toml.
+// Returns the directory containing it, or empty string if not found.
+func FindRootFrom(dir string) string {
 	for {
 		if _, err := os.Stat(filepath.Join(dir, configFileName)); err == nil {
 			return dir

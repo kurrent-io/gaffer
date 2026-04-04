@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -581,47 +580,6 @@ func TestExtractState_InvalidJSON(t *testing.T) {
 	state := extractState(`not json`)
 	if state != nil {
 		t.Errorf("expected nil, got %s", state)
-	}
-}
-
-func TestDescribeSource(t *testing.T) {
-	tests := []struct {
-		name string
-		info gafferruntime.QuerySources
-		want string
-	}{
-		{"all", gafferruntime.QuerySources{AllStreams: true}, "all"},
-		{"categories", gafferruntime.QuerySources{Categories: []string{"order"}}, "categories"},
-		{"streams", gafferruntime.QuerySources{Streams: []string{"order-1"}}, "streams"},
-		{"unknown", gafferruntime.QuerySources{}, "unknown"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := describeSource(tt.info)
-			if result["type"] != tt.want {
-				t.Errorf("type: got %v, want %s", result["type"], tt.want)
-			}
-		})
-	}
-}
-
-func TestDescribePartitioning(t *testing.T) {
-	tests := []struct {
-		name string
-		info gafferruntime.QuerySources
-		want string
-	}{
-		{"byStream", gafferruntime.QuerySources{ByStreams: true}, "byStream"},
-		{"byCustomKey", gafferruntime.QuerySources{ByCustomPartitions: true}, "byCustomKey"},
-		{"none", gafferruntime.QuerySources{}, "none"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := describePartitioning(tt.info)
-			if got != tt.want {
-				t.Errorf("got %q, want %q", got, tt.want)
-			}
-		})
 	}
 }
 

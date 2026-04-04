@@ -23,24 +23,23 @@ func (jw *jsonWriter) writeLine(v any) {
 }
 
 func (jw *jsonWriter) WriteInfo(name string, info gafferruntime.QuerySources, version string) {
+	src := engine.DescribeSource(info)
 	proj := map[string]any{
 		"name":   name,
-		"source": infoSource(info),
+		"source": src["type"],
 		"engine": version,
 	}
-	if len(info.Categories) > 0 {
-		proj["categories"] = info.Categories
+	if cats, ok := src["categories"]; ok {
+		proj["categories"] = cats
 	}
-	if len(info.Streams) > 0 {
-		proj["streams"] = info.Streams
+	if streams, ok := src["streams"]; ok {
+		proj["streams"] = streams
 	}
 	if len(info.Events) > 0 {
 		proj["events"] = info.Events
 	}
-	if info.ByStreams {
-		proj["partitioning"] = "per-stream"
-	} else if info.ByCustomPartitions {
-		proj["partitioning"] = "custom"
+	if p := engine.DescribePartitioning(info); p != "none" {
+		proj["partitioning"] = p
 	}
 
 	jw.writeLine(map[string]any{
@@ -127,19 +126,6 @@ func (jw *jsonWriter) WriteSummary(stats engine.EventStats, state engine.StateSu
 	}
 
 	jw.writeLine(line)
-}
-
-func infoSource(info gafferruntime.QuerySources) string {
-	if info.AllStreams {
-		return "all"
-	}
-	if len(info.Categories) > 0 {
-		return "category"
-	}
-	if len(info.Streams) > 0 {
-		return "streams"
-	}
-	return "unknown"
 }
 
 func mapEmitted(emitted []gafferruntime.EmittedEvent) []map[string]any {

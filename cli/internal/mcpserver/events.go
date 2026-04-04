@@ -66,7 +66,7 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 		"totalSampled": countTotal(events),
 	}
 
-	src := describeSource(info)
+	src := engine.DescribeSource(info)
 	result["source"] = src
 	if len(info.Events) > 0 {
 		result["handledEvents"] = info.Events

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -70,27 +69,4 @@ func toolError(format string, args ...any) *mcp.CallToolResult {
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf(format, args...)}},
 		IsError: true,
 	}
-}
-
-func describeSource(info gafferruntime.QuerySources) map[string]any {
-	if info.AllStreams {
-		return map[string]any{"type": "all"}
-	}
-	if len(info.Categories) > 0 {
-		return map[string]any{"type": "categories", "categories": info.Categories}
-	}
-	if len(info.Streams) > 0 {
-		return map[string]any{"type": "streams", "streams": info.Streams}
-	}
-	return map[string]any{"type": "unknown"}
-}
-
-func describePartitioning(info gafferruntime.QuerySources) string {
-	if info.ByStreams {
-		return "byStream"
-	}
-	if info.ByCustomPartitions {
-		return "byCustomKey"
-	}
-	return "none"
 }

@@ -314,9 +314,9 @@ func TestJSONWriter_WriteInfo(t *testing.T) {
 	}
 
 	testutil.AssertEqual(t, "name", "my-projection", proj["name"])
-	testutil.AssertEqual(t, "source", "category", proj["source"])
+	testutil.AssertEqual(t, "source", "categories", proj["source"])
 	testutil.AssertEqual(t, "engine", "v2", proj["engine"])
-	testutil.AssertEqual(t, "partitioning", "per-stream", proj["partitioning"])
+	testutil.AssertEqual(t, "partitioning", "byStream", proj["partitioning"])
 
 	if _, ok := proj["categories"]; !ok {
 		t.Error("expected categories in JSON info")

@@ -64,6 +64,32 @@ func CollectState(session *gafferruntime.Session, info gafferruntime.QuerySource
 	return summary
 }
 
+// DescribeSource classifies the projection's source into a map with
+// the type and, for categories/streams, the actual values.
+func DescribeSource(info gafferruntime.QuerySources) map[string]any {
+	if info.AllStreams {
+		return map[string]any{"type": "all"}
+	}
+	if len(info.Categories) > 0 {
+		return map[string]any{"type": "categories", "categories": info.Categories}
+	}
+	if len(info.Streams) > 0 {
+		return map[string]any{"type": "streams", "streams": info.Streams}
+	}
+	return map[string]any{"type": "unknown"}
+}
+
+// DescribePartitioning returns the projection's partitioning strategy.
+func DescribePartitioning(info gafferruntime.QuerySources) string {
+	if info.ByStreams {
+		return "byStream"
+	}
+	if info.ByCustomPartitions {
+		return "byCustomKey"
+	}
+	return "none"
+}
+
 func (s StateSummary) ToMap() map[string]any {
 	result := map[string]any{}
 

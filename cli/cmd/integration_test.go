@@ -117,8 +117,8 @@ func TestInfo_JSON(t *testing.T) {
 	if info["name"] != "orders" {
 		t.Errorf("name: got %v, want orders", info["name"])
 	}
-	if info["source"] != "category" {
-		t.Errorf("source: got %v, want category", info["source"])
+	if info["source"] != "categories" {
+		t.Errorf("source: got %v, want categories", info["source"])
 	}
 }
 

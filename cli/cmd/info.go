@@ -46,27 +46,26 @@ func runInfo(cmd *cobra.Command, args []string) error {
 }
 
 func writeInfoJSON(proj *engine.Projection, info gafferruntime.QuerySources) error {
+	src := engine.DescribeSource(info)
 	out := map[string]any{
 		"name":            proj.Def.Name,
 		"entry":           proj.Def.Entry,
 		"engine":          proj.Engine,
-		"source":          infoSource(info),
+		"source":          src["type"],
 		"biState":         info.IsBiState,
 		"producesResults": info.ProducesResults,
 	}
-	if len(info.Categories) > 0 {
-		out["categories"] = info.Categories
+	if cats, ok := src["categories"]; ok {
+		out["categories"] = cats
 	}
-	if len(info.Streams) > 0 {
-		out["streams"] = info.Streams
+	if streams, ok := src["streams"]; ok {
+		out["streams"] = streams
 	}
 	if len(info.Events) > 0 {
 		out["events"] = info.Events
 	}
-	if info.ByStreams {
-		out["partitioning"] = "per-stream"
-	} else if info.ByCustomPartitions {
-		out["partitioning"] = "custom"
+	if p := engine.DescribePartitioning(info); p != "none" {
+		out["partitioning"] = p
 	}
 
 	enc := json.NewEncoder(os.Stdout)

@@ -49,9 +49,9 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 		"name":            input.Name,
 		"entry":           proj.Entry,
 		"engine":          proj.EffectiveEngine(),
-		"source":          describeSource(info),
+		"source":          engine.DescribeSource(info),
 		"events":          info.Events,
-		"partitioning":    describePartitioning(info),
+		"partitioning":    engine.DescribePartitioning(info),
 		"biState":         info.IsBiState,
 		"producesResults": info.ProducesResults,
 	}), nil, nil

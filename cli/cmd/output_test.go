@@ -8,6 +8,7 @@ import (
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 func TestFormatNumber(t *testing.T) {
@@ -65,11 +66,11 @@ func TestTextWriter_WriteInfo(t *testing.T) {
 	tw.WriteInfo("my-projection", info, "v2")
 
 	out := buf.String()
-	assertContains(t, out, "my-projection")
-	assertContains(t, out, "Source: $all")
-	assertContains(t, out, "Partitioning: per stream")
-	assertContains(t, out, "Events: OrderPlaced, OrderShipped")
-	assertContains(t, out, "Engine: v2")
+	testutil.AssertContains(t, out, "my-projection")
+	testutil.AssertContains(t, out, "Source: $all")
+	testutil.AssertContains(t, out, "Partitioning: per stream")
+	testutil.AssertContains(t, out, "Events: OrderPlaced, OrderShipped")
+	testutil.AssertContains(t, out, "Engine: v2")
 }
 
 func TestTextWriter_WriteInfo_BiStateAndProducesResults(t *testing.T) {
@@ -84,8 +85,8 @@ func TestTextWriter_WriteInfo_BiStateAndProducesResults(t *testing.T) {
 	tw.WriteInfo("bi-state-proj", info, "v2")
 
 	out := buf.String()
-	assertContains(t, out, "BiState: yes")
-	assertContains(t, out, "Produces results: yes")
+	testutil.AssertContains(t, out, "BiState: yes")
+	testutil.AssertContains(t, out, "Produces results: yes")
 }
 
 func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
@@ -120,10 +121,10 @@ func TestTextWriter_WriteEvent(t *testing.T) {
 	tw.WriteEvent(event)
 
 	out := buf.String()
-	assertContains(t, out, "1@order-1")
-	assertContains(t, out, "type: OrderPlaced")
-	assertContains(t, out, "data: {\"amount\":50}")
-	assertContains(t, out, "metadata: {\"corr\":\"abc\"}")
+	testutil.AssertContains(t, out, "1@order-1")
+	testutil.AssertContains(t, out, "type: OrderPlaced")
+	testutil.AssertContains(t, out, "data: {\"amount\":50}")
+	testutil.AssertContains(t, out, "metadata: {\"corr\":\"abc\"}")
 }
 
 func TestTextWriter_WriteResult_Processed(t *testing.T) {
@@ -138,8 +139,8 @@ func TestTextWriter_WriteResult_Processed(t *testing.T) {
 	tw.WriteResult("1@order-1", result)
 
 	out := buf.String()
-	assertContains(t, out, "partition: order-1\n")
-	assertContains(t, out, `state: {"count":1}`)
+	testutil.AssertContains(t, out, "partition: order-1\n")
+	testutil.AssertContains(t, out, `state: {"count":1}`)
 }
 
 func TestTextWriter_WriteResult_Skipped(t *testing.T) {
@@ -153,8 +154,8 @@ func TestTextWriter_WriteResult_Skipped(t *testing.T) {
 	tw.WriteResult("1@order-1", result)
 
 	out := buf.String()
-	assertContains(t, out, "skipped\n")
-	assertContains(t, out, "reason: unhandled")
+	testutil.AssertContains(t, out, "skipped\n")
+	testutil.AssertContains(t, out, "reason: unhandled")
 }
 
 func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {
@@ -168,8 +169,8 @@ func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {
 	tw.WriteSummary(stats, state)
 
 	out := buf.String()
-	assertContains(t, out, "42 events processed (42 handled, 0 skipped)")
-	assertContains(t, out, `State: {"count":42}`)
+	testutil.AssertContains(t, out, "42 events processed (42 handled, 0 skipped)")
+	testutil.AssertContains(t, out, `State: {"count":42}`)
 }
 
 func TestTextWriter_WriteSummary_Partitioned(t *testing.T) {
@@ -186,9 +187,9 @@ func TestTextWriter_WriteSummary_Partitioned(t *testing.T) {
 	tw.WriteSummary(stats, state)
 
 	out := buf.String()
-	assertContains(t, out, "4 events processed (3 handled, 1 skipped)")
-	assertContains(t, out, "order-1")
-	assertContains(t, out, `state: {"count":2}`)
+	testutil.AssertContains(t, out, "4 events processed (3 handled, 1 skipped)")
+	testutil.AssertContains(t, out, "order-1")
+	testutil.AssertContains(t, out, `state: {"count":2}`)
 }
 
 func TestJSONWriter_WriteEvent(t *testing.T) {
@@ -208,9 +209,9 @@ func TestJSONWriter_WriteEvent(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 
-	assertEqual(t, "type", "event", line["type"])
-	assertEqual(t, "id", "1@order-1", line["id"])
-	assertEqual(t, "eventType", "OrderPlaced", line["eventType"])
+	testutil.AssertEqual(t, "type", "event", line["type"])
+	testutil.AssertEqual(t, "id", "1@order-1", line["id"])
+	testutil.AssertEqual(t, "eventType", "OrderPlaced", line["eventType"])
 }
 
 func TestJSONWriter_WriteResult_Processed(t *testing.T) {
@@ -229,9 +230,9 @@ func TestJSONWriter_WriteResult_Processed(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 
-	assertEqual(t, "type", "result", line["type"])
-	assertEqual(t, "status", "processed", line["status"])
-	assertEqual(t, "partition", "order-1", line["partition"])
+	testutil.AssertEqual(t, "type", "result", line["type"])
+	testutil.AssertEqual(t, "status", "processed", line["status"])
+	testutil.AssertEqual(t, "partition", "order-1", line["partition"])
 
 	if _, ok := line["emitted"]; !ok {
 		t.Error("expected emitted field")
@@ -256,8 +257,8 @@ func TestJSONWriter_WriteResult_Skipped(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 
-	assertEqual(t, "status", "skipped", line["status"])
-	assertEqual(t, "reason", "unhandled", line["reason"])
+	testutil.AssertEqual(t, "status", "skipped", line["status"])
+	testutil.AssertEqual(t, "reason", "unhandled", line["reason"])
 
 	if _, ok := line["emitted"]; ok {
 		t.Error("skipped result should not have emitted field")
@@ -279,10 +280,10 @@ func TestJSONWriter_WriteSummary_Unpartitioned(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 
-	assertEqual(t, "type", "summary", line["type"])
-	assertEqualFloat(t, "processed", 12, line["processed"])
-	assertEqualFloat(t, "handled", 10, line["handled"])
-	assertEqualFloat(t, "skipped", 2, line["skipped"])
+	testutil.AssertEqual(t, "type", "summary", line["type"])
+	testutil.AssertEqualFloat(t, "processed", 12, line["processed"])
+	testutil.AssertEqualFloat(t, "handled", 10, line["handled"])
+	testutil.AssertEqualFloat(t, "skipped", 2, line["skipped"])
 
 	if _, ok := line["partitions"]; ok {
 		t.Error("unpartitioned summary should not have partitions")
@@ -305,17 +306,17 @@ func TestJSONWriter_WriteInfo(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 
-	assertEqual(t, "type", "info", line["type"])
+	testutil.AssertEqual(t, "type", "info", line["type"])
 
 	proj, ok := line["projection"].(map[string]any)
 	if !ok {
 		t.Fatal("expected projection object")
 	}
 
-	assertEqual(t, "name", "my-projection", proj["name"])
-	assertEqual(t, "source", "category", proj["source"])
-	assertEqual(t, "engine", "v2", proj["engine"])
-	assertEqual(t, "partitioning", "per-stream", proj["partitioning"])
+	testutil.AssertEqual(t, "name", "my-projection", proj["name"])
+	testutil.AssertEqual(t, "source", "category", proj["source"])
+	testutil.AssertEqual(t, "engine", "v2", proj["engine"])
+	testutil.AssertEqual(t, "partitioning", "per-stream", proj["partitioning"])
 
 	if _, ok := proj["categories"]; !ok {
 		t.Error("expected categories in JSON info")
@@ -333,10 +334,10 @@ func TestJSONWriter_WriteError(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 
-	assertEqual(t, "type", "error", line["type"])
-	assertEqual(t, "eventId", "5@order-1", line["eventId"])
-	assertEqual(t, "code", "handler-error", line["code"])
-	assertEqual(t, "description", "boom", line["description"])
+	testutil.AssertEqual(t, "type", "error", line["type"])
+	testutil.AssertEqual(t, "eventId", "5@order-1", line["eventId"])
+	testutil.AssertEqual(t, "code", "handler-error", line["code"])
+	testutil.AssertEqual(t, "description", "boom", line["description"])
 }
 
 func TestJSONWriter_WriteSummary_Partitioned(t *testing.T) {
@@ -363,7 +364,7 @@ func TestJSONWriter_WriteSummary_Partitioned(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 
-	assertEqualFloat(t, "processed", 6, line["processed"])
+	testutil.AssertEqualFloat(t, "processed", 6, line["processed"])
 
 	partitions, ok := line["partitions"].(map[string]any)
 	if !ok {
@@ -394,8 +395,8 @@ func TestTextWriter_WriteSummary_WithTransforms(t *testing.T) {
 	tw.WriteSummary(stats, state)
 
 	out := buf.String()
-	assertContains(t, out, `State: {"count":10}`)
-	assertContains(t, out, `Result: {"total":20}`)
+	testutil.AssertContains(t, out, `State: {"count":10}`)
+	testutil.AssertContains(t, out, `Result: {"total":20}`)
 }
 
 func TestTextWriter_WriteSummary_BiState(t *testing.T) {
@@ -414,8 +415,8 @@ func TestTextWriter_WriteSummary_BiState(t *testing.T) {
 	tw.WriteSummary(stats, state)
 
 	out := buf.String()
-	assertContains(t, out, `Shared state: {"global":true}`)
-	assertContains(t, out, "p-1")
+	testutil.AssertContains(t, out, `Shared state: {"global":true}`)
+	testutil.AssertContains(t, out, "p-1")
 }
 
 func TestTextWriter_SideEffects(t *testing.T) {
@@ -436,12 +437,12 @@ func TestTextWriter_SideEffects(t *testing.T) {
 	tw.WriteResult("1@order-1", result)
 
 	out := buf.String()
-	assertContains(t, out, "emitted")
-	assertContains(t, out, "stream: notifications")
-	assertContains(t, out, "[log] hello from handler")
-	assertContains(t, out, "linked")
-	assertContains(t, out, "stream: shipped-orders")
-	assertContains(t, out, "processed")
+	testutil.AssertContains(t, out, "emitted")
+	testutil.AssertContains(t, out, "stream: notifications")
+	testutil.AssertContains(t, out, "[log] hello from handler")
+	testutil.AssertContains(t, out, "linked")
+	testutil.AssertContains(t, out, "stream: shipped-orders")
+	testutil.AssertContains(t, out, "processed")
 }
 
 type mockSession struct {
@@ -459,8 +460,8 @@ func TestTextWriter_WriteError(t *testing.T) {
 	tw.WriteError("1@order-1", "handler-error", "boom")
 
 	out := buf.String()
-	assertContains(t, out, "handler-error")
-	assertContains(t, out, "boom")
+	testutil.AssertContains(t, out, "handler-error")
+	testutil.AssertContains(t, out, "boom")
 }
 
 func TestTextWriter_WriteSummary_WithErrors(t *testing.T) {
@@ -472,20 +473,20 @@ func TestTextWriter_WriteSummary_WithErrors(t *testing.T) {
 	tw.WriteSummary(stats, state)
 
 	out := buf.String()
-	assertContains(t, out, "8 events processed")
-	assertContains(t, out, "2 errors")
+	testutil.AssertContains(t, out, "8 events processed")
+	testutil.AssertContains(t, out, "2 errors")
 }
 
 func TestDisplayJSON_String(t *testing.T) {
 	raw := json.RawMessage(`"{\"cents\": 2999}"`)
 	got := displayJSON(raw)
-	assertEqual(t, "displayJSON string", `{"cents": 2999}`, got)
+	testutil.AssertEqual(t, "displayJSON string", `{"cents": 2999}`, got)
 }
 
 func TestDisplayJSON_Object(t *testing.T) {
 	raw := json.RawMessage(`{"cents":2999}`)
 	got := displayJSON(raw)
-	assertEqual(t, "displayJSON object", `{"cents":2999}`, got)
+	testutil.AssertEqual(t, "displayJSON object", `{"cents":2999}`, got)
 }
 
 func TestJSONWriter_WriteResult_SkippedWithLogs(t *testing.T) {
@@ -504,7 +505,7 @@ func TestJSONWriter_WriteResult_SkippedWithLogs(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 
-	assertEqual(t, "status", "skipped", line["status"])
+	testutil.AssertEqual(t, "status", "skipped", line["status"])
 	if _, ok := line["logs"]; !ok {
 		t.Error("expected logs on skipped result with logs")
 	}
@@ -538,32 +539,6 @@ func TestJSONWriter_WriteResult_WithEmitted(t *testing.T) {
 	if !ok {
 		t.Fatal("expected emitted event object")
 	}
-	assertEqual(t, "streamId", "out", evt["streamId"])
-	assertEqual(t, "eventType", "Created", evt["eventType"])
-}
-
-func assertEqual[T comparable](t *testing.T, name string, want, got T) {
-	t.Helper()
-	if got != want {
-		t.Errorf("%s: got %v, want %v", name, got, want)
-	}
-}
-
-func assertEqualFloat(t *testing.T, name string, want float64, got any) {
-	t.Helper()
-	f, ok := got.(float64)
-	if !ok {
-		t.Errorf("%s: expected float64, got %T", name, got)
-		return
-	}
-	if f != want {
-		t.Errorf("%s: got %v, want %v", name, f, want)
-	}
-}
-
-func assertContains(t *testing.T, haystack, needle string) {
-	t.Helper()
-	if !strings.Contains(haystack, needle) {
-		t.Errorf("expected output to contain %q, got:\n%s", needle, haystack)
-	}
+	testutil.AssertEqual(t, "streamId", "out", evt["streamId"])
+	testutil.AssertEqual(t, "eventType", "Created", evt["eventType"])
 }

@@ -7,6 +7,7 @@ import (
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 type recordingWriter struct {
@@ -43,7 +44,7 @@ func TestRunner_ProcessOne_Handled(t *testing.T) {
 		History: nil,
 	})
 
-	stop := r.ProcessOne(testEvent("ItemAdded", "s-1", 0))
+	stop := r.ProcessOne(testutil.Event("ItemAdded", "s-1", 0))
 
 	if stop {
 		t.Error("expected stop=false")
@@ -69,7 +70,7 @@ func TestRunner_ProcessOne_Skipped(t *testing.T) {
 		History: nil,
 	})
 
-	stop := r.ProcessOne(testEvent("Unknown", "s-1", 0))
+	stop := r.ProcessOne(testutil.Event("Unknown", "s-1", 0))
 
 	if stop {
 		t.Error("expected stop=false")
@@ -87,7 +88,7 @@ func TestRunner_ProcessOne_Error(t *testing.T) {
 		History: nil,
 	})
 
-	stop := r.ProcessOne(testEvent("Bad", "s-1", 0))
+	stop := r.ProcessOne(testutil.Event("Bad", "s-1", 0))
 
 	if !stop {
 		t.Error("expected stop=true")
@@ -113,7 +114,7 @@ func TestRunner_ProcessOne_NilWriter(t *testing.T) {
 		History: nil,
 	})
 
-	stop := r.ProcessOne(testEvent("A", "s-1", 0))
+	stop := r.ProcessOne(testutil.Event("A", "s-1", 0))
 
 	if stop {
 		t.Error("expected stop=false")
@@ -131,7 +132,7 @@ func TestRunner_ProcessOne_NilResult(t *testing.T) {
 		History: nil,
 	})
 
-	stop := r.ProcessOne(testEvent("A", "s-1", 0))
+	stop := r.ProcessOne(testutil.Event("A", "s-1", 0))
 
 	if stop {
 		t.Error("expected stop=false")
@@ -157,7 +158,7 @@ func TestRunner_ProcessOne_RecordsHistory(t *testing.T) {
 		History: store,
 	})
 
-	r.ProcessOne(testEvent("ItemAdded", "s-1", 0))
+	r.ProcessOne(testutil.Event("ItemAdded", "s-1", 0))
 
 	count, err := store.Count()
 	if err != nil {
@@ -181,7 +182,7 @@ func TestRunner_ProcessOne_RecordsErrorInHistory(t *testing.T) {
 		History: store,
 	})
 
-	r.ProcessOne(testEvent("Bad", "s-1", 0))
+	r.ProcessOne(testutil.Event("Bad", "s-1", 0))
 
 	count, err := store.Count()
 	if err != nil {
@@ -213,8 +214,8 @@ func TestRunner_Integration_Handled(t *testing.T) {
 
 	r := NewRunner(RunnerConfig{Feed: session.Feed})
 	source := NewFixtureSource([]string{
-		testEvent("ItemAdded", "s-1", 0),
-		testEvent("ItemAdded", "s-1", 1),
+		testutil.Event("ItemAdded", "s-1", 0),
+		testutil.Event("ItemAdded", "s-1", 1),
 	})
 	_ = source.Run(context.Background(), r.ProcessOne)
 
@@ -234,8 +235,8 @@ func TestRunner_Integration_Skipped(t *testing.T) {
 
 	r := NewRunner(RunnerConfig{Feed: session.Feed})
 	source := NewFixtureSource([]string{
-		testEvent("ItemAdded", "s-1", 0),
-		testEvent("Unknown", "s-1", 1),
+		testutil.Event("ItemAdded", "s-1", 0),
+		testutil.Event("Unknown", "s-1", 1),
 	})
 	_ = source.Run(context.Background(), r.ProcessOne)
 
@@ -255,9 +256,9 @@ func TestRunner_Integration_Partitioned(t *testing.T) {
 
 	r := NewRunner(RunnerConfig{Feed: session.Feed})
 	source := NewFixtureSource([]string{
-		testEvent("ItemAdded", "s-1", 0),
-		testEvent("ItemAdded", "s-2", 1),
-		testEvent("ItemAdded", "s-1", 2),
+		testutil.Event("ItemAdded", "s-1", 0),
+		testutil.Event("ItemAdded", "s-2", 1),
+		testutil.Event("ItemAdded", "s-1", 2),
 	})
 	_ = source.Run(context.Background(), r.ProcessOne)
 
@@ -276,8 +277,8 @@ func TestRunner_Integration_Faulted(t *testing.T) {
 
 	r := NewRunner(RunnerConfig{Feed: session.Feed})
 	source := NewFixtureSource([]string{
-		testEvent("BadEvent", "s-1", 0),
-		testEvent("BadEvent", "s-1", 1),
+		testutil.Event("BadEvent", "s-1", 0),
+		testutil.Event("BadEvent", "s-1", 1),
 	})
 	_ = source.Run(context.Background(), r.ProcessOne)
 
@@ -301,10 +302,10 @@ func TestRunner_Integration_FaultedMidStream(t *testing.T) {
 
 	r := NewRunner(RunnerConfig{Feed: session.Feed})
 	source := NewFixtureSource([]string{
-		testEvent("ItemAdded", "s-1", 0),
-		testEvent("ItemAdded", "s-1", 1),
-		testEvent("BadEvent", "s-1", 2),
-		testEvent("ItemAdded", "s-1", 3),
+		testutil.Event("ItemAdded", "s-1", 0),
+		testutil.Event("ItemAdded", "s-1", 1),
+		testutil.Event("BadEvent", "s-1", 2),
+		testutil.Event("ItemAdded", "s-1", 3),
 	})
 	_ = source.Run(context.Background(), r.ProcessOne)
 

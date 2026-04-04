@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 const integrationProjection = `fromCategory('order')
@@ -30,54 +31,11 @@ const integrationFixture = `[
 
 func setupIntegrationProject(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-
-	projDir := filepath.Join(dir, "projections")
-	if err := os.MkdirAll(projDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(projDir, "orders.js"), []byte(integrationProjection), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	fixtureDir := filepath.Join(dir, "fixtures")
-	if err := os.MkdirAll(fixtureDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(fixtureDir, "orders.json"), []byte(integrationFixture), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	cfg := &config.Config{
-		Projection: []config.Projection{
-			{Name: "orders", Entry: "projections/orders.js"},
-		},
-	}
-	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
-		t.Fatal(err)
-	}
-
-	return dir
-}
-
-func captureStdout(t *testing.T, fn func()) string {
-	t.Helper()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	orig := os.Stdout
-	os.Stdout = w
-	defer func() { os.Stdout = orig }()
-
-	fn()
-
-	_ = w.Close()
-
-	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(r)
-	return buf.String()
+	p := testutil.NewProject(t).
+		AddProjection("orders", integrationProjection).
+		AddFixture("orders", integrationFixture).
+		Save()
+	return p.Dir
 }
 
 func TestDev_FixtureJSON(t *testing.T) {
@@ -101,13 +59,13 @@ func TestDev_FixtureJSON(t *testing.T) {
 	rootCmd.SetArgs([]string{"dev", "orders", "--events", "fixtures/orders.json", "--json"})
 	rootCmd.SetErr(&bytes.Buffer{})
 
-	output := captureStdout(t, func() {
+	output := testutil.CaptureStdout(t, func() {
 		if err := rootCmd.Execute(); err != nil {
 			t.Fatalf("command failed: %v", err)
 		}
 	})
 
-	lines := splitNDJSON(output)
+	lines := testutil.SplitNDJSON(output)
 	if len(lines) == 0 {
 		t.Fatalf("no output, raw: %q", output)
 	}
@@ -146,7 +104,7 @@ func TestInfo_JSON(t *testing.T) {
 	rootCmd.SetArgs([]string{"info", "orders", "--json"})
 	rootCmd.SetErr(&bytes.Buffer{})
 
-	output := captureStdout(t, func() {
+	output := testutil.CaptureStdout(t, func() {
 		if err := rootCmd.Execute(); err != nil {
 			t.Fatalf("command failed: %v", err)
 		}
@@ -182,7 +140,7 @@ func TestEndToEnd_InitScaffoldDev(t *testing.T) {
 	// 1. init
 	initYes = false
 	rootCmd.SetArgs([]string{"init", "--yes"})
-	captureStdout(t, func() {
+	testutil.CaptureStdout(t, func() {
 		if err := rootCmd.Execute(); err != nil {
 			t.Fatalf("init failed: %v", err)
 		}
@@ -200,7 +158,7 @@ func TestEndToEnd_InitScaffoldDev(t *testing.T) {
 	scaffoldPartition = "none"
 	scaffoldEmit = false
 	rootCmd.SetArgs([]string{"scaffold", "counter"})
-	captureStdout(t, func() {
+	testutil.CaptureStdout(t, func() {
 		if err := rootCmd.Execute(); err != nil {
 			t.Fatalf("scaffold failed: %v", err)
 		}
@@ -238,13 +196,13 @@ func TestEndToEnd_InitScaffoldDev(t *testing.T) {
 	devDebugPort = 4711
 	rootCmd.SetArgs([]string{"dev", "counter", "--events", "fixtures/events.json", "--json"})
 
-	output := captureStdout(t, func() {
+	output := testutil.CaptureStdout(t, func() {
 		if err := rootCmd.Execute(); err != nil {
 			t.Fatalf("dev failed: %v", err)
 		}
 	})
 
-	lines := splitNDJSON(output)
+	lines := testutil.SplitNDJSON(output)
 	if len(lines) == 0 {
 		t.Fatalf("no output from dev")
 	}
@@ -257,17 +215,4 @@ func TestEndToEnd_InitScaffoldDev(t *testing.T) {
 	if total != 1 {
 		t.Errorf("expected 1 event processed, got handled=%v skipped=%v", summary["handled"], summary["skipped"])
 	}
-}
-
-func splitNDJSON(s string) []map[string]any {
-	var results []map[string]any
-	dec := json.NewDecoder(bytes.NewReader([]byte(s)))
-	for dec.More() {
-		var obj map[string]any
-		if err := dec.Decode(&obj); err != nil {
-			break
-		}
-		results = append(results, obj)
-	}
-	return results
 }

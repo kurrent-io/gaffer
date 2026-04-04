@@ -1,55 +1,19 @@
 package scaffold
 
 import (
-	"flag"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
-var update = flag.Bool("update", false, "update golden files")
-
-func assertGolden(t *testing.T, name, actual string) {
-	t.Helper()
-	path := filepath.Join("testdata", name+".golden")
-
-	if *update {
-		if err := os.WriteFile(path, []byte(actual), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
-
-	expected, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("missing golden file %s (run with -update to create)", path)
-	}
-	if actual != string(expected) {
-		t.Errorf("output does not match %s\n\ngot:\n%s\nwant:\n%s", path, actual, expected)
-	}
-}
-
-func setupProject(t *testing.T) (string, *config.Config) {
-	t.Helper()
-	dir := t.TempDir()
-	cfg := &config.Config{
-		Projection: []config.Projection{
-			{Name: "existing", Entry: "projections/existing.js"},
-		},
-	}
-	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
-		t.Fatal(err)
-	}
-	return dir, cfg
-}
-
 func TestScaffold(t *testing.T) {
-	dir, cfg := setupProject(t)
+	p := testutil.NewProject(t).AddProjection("existing", "// placeholder").Save()
 
-	result, err := Scaffold(dir, cfg, "counter", "category:order", "per-stream", true)
+	result, err := Scaffold(p.Dir, p.Cfg, "counter", "category:order", "per-stream", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,13 +25,13 @@ func TestScaffold(t *testing.T) {
 		t.Errorf("relPath: got %q, want %q", result.RelPath, "projections/counter.js")
 	}
 
-	content, err := os.ReadFile(filepath.Join(dir, "projections/counter.js"))
+	content, err := os.ReadFile(filepath.Join(p.Dir, "projections/counter.js"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertGolden(t, "scaffold_category_perstream_emit", string(content))
+	testutil.AssertGolden(t, "scaffold_category_perstream_emit", string(content))
 
-	reloaded, err := config.Load(filepath.Join(dir, "gaffer.toml"))
+	reloaded, err := config.Load(filepath.Join(p.Dir, "gaffer.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,9 +44,9 @@ func TestScaffold(t *testing.T) {
 }
 
 func TestScaffold_DuplicateName(t *testing.T) {
-	dir, cfg := setupProject(t)
+	p := testutil.NewProject(t).AddProjection("existing", "// placeholder").Save()
 
-	_, err := Scaffold(dir, cfg, "existing", "all", "none", false)
+	_, err := Scaffold(p.Dir, p.Cfg, "existing", "all", "none", false)
 	if err == nil {
 		t.Fatal("expected error for duplicate name")
 	}
@@ -92,9 +56,9 @@ func TestScaffold_DuplicateName(t *testing.T) {
 }
 
 func TestScaffold_FileAlreadyExists(t *testing.T) {
-	dir, cfg := setupProject(t)
+	p := testutil.NewProject(t).AddProjection("existing", "// placeholder").Save()
 
-	projDir := filepath.Join(dir, "projections")
+	projDir := filepath.Join(p.Dir, "projections")
 	if err := os.MkdirAll(projDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +66,7 @@ func TestScaffold_FileAlreadyExists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := Scaffold(dir, cfg, "taken", "all", "none", false)
+	_, err := Scaffold(p.Dir, p.Cfg, "taken", "all", "none", false)
 	if err == nil {
 		t.Fatal("expected error for existing file")
 	}
@@ -201,7 +165,7 @@ func TestGenerateSource(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			assertGolden(t, tt.golden, result)
+			testutil.AssertGolden(t, tt.golden, result)
 		})
 	}
 }

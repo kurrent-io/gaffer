@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -15,16 +14,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
-	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 func TestDev_LiveSubscription(t *testing.T) {
-	suffix := strings.ReplaceAll(uuid.New().String(), "-", "")[:12]
-
-	connStr := "kurrentdb://localhost:2113?tls=false"
-	if s := os.Getenv("KURRENTDB_URL"); s != "" {
-		connStr = s
-	}
+	suffix := testutil.TestSuffix()
+	connStr := testutil.ConnectionString()
 
 	dbConfig, err := kurrentdb.ParseConnectionString(connStr)
 	if err != nil {
@@ -53,12 +48,6 @@ func TestDev_LiveSubscription(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dir := t.TempDir()
-	projDir := filepath.Join(dir, "projections")
-	if err := os.MkdirAll(projDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
 	projSource := fmt.Sprintf(`fromCategory('livetest%s')
   .foreachStream()
   .when({
@@ -66,19 +55,12 @@ func TestDev_LiveSubscription(t *testing.T) {
     Ping: function(s, e) { s.count++; return s; }
   })
 `, suffix)
-	if err := os.WriteFile(filepath.Join(projDir, "counter.js"), []byte(projSource), 0o644); err != nil {
-		t.Fatal(err)
-	}
 
-	cfg := &config.Config{
-		Connection: connStr,
-		Projection: []config.Projection{
-			{Name: "counter", Entry: "projections/counter.js"},
-		},
-	}
-	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
-		t.Fatal(err)
-	}
+	p := testutil.NewProject(t).
+		WithConnection(connStr).
+		AddProjection("counter", projSource).
+		Save()
+	dir := p.Dir
 
 	orig, err := os.Getwd()
 	if err != nil {
@@ -133,7 +115,7 @@ func TestDev_LiveSubscription(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	lines := splitNDJSON(output)
+	lines := testutil.SplitNDJSON(output)
 
 	// Should have processed some events before we interrupted
 	var eventCount int

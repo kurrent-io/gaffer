@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 func TestMapEvent_JSON(t *testing.T) {
@@ -30,10 +31,10 @@ func TestMapEvent_JSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assertEqual(t, "eventType", "OrderPlaced", obj["eventType"])
-	assertEqual(t, "streamId", "order-1", obj["streamId"])
-	assertEqualFloat(t, "sequenceNumber", 5, obj["sequenceNumber"])
-	assertEqual(t, "isJson", true, obj["isJson"])
+	testutil.AssertEqual(t, "eventType", "OrderPlaced", obj["eventType"])
+	testutil.AssertEqual(t, "streamId", "order-1", obj["streamId"])
+	testutil.AssertEqualFloat(t, "sequenceNumber", 5, obj["sequenceNumber"])
+	testutil.AssertEqual(t, "isJson", true, obj["isJson"])
 
 	if _, ok := obj["linkMetadata"]; ok {
 		t.Error("expected no linkMetadata for non-link event")
@@ -61,8 +62,8 @@ func TestMapEvent_NonJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assertEqual(t, "isJson", false, obj["isJson"])
-	assertEqual(t, "data", "raw binary data", obj["data"])
+	testutil.AssertEqual(t, "isJson", false, obj["isJson"])
+	testutil.AssertEqual(t, "data", "raw binary data", obj["data"])
 }
 
 func TestMapEvent_NoData(t *testing.T) {
@@ -148,7 +149,7 @@ func TestMapEvent_WithLink(t *testing.T) {
 	if !ok {
 		t.Fatal("expected linkMetadata object")
 	}
-	assertEqual(t, "linkMetadata.streamId", "$ce-order", linkMeta["streamId"])
+	testutil.AssertEqual(t, "linkMetadata.streamId", "$ce-order", linkMeta["streamId"])
 }
 
 func TestMapEvent_NilEvent(t *testing.T) {
@@ -160,24 +161,5 @@ func TestMapEvent_NilEvent(t *testing.T) {
 	}
 	if result != "" {
 		t.Errorf("expected empty string for nil event, got %q", result)
-	}
-}
-
-func assertEqual[T comparable](t *testing.T, name string, want, got T) {
-	t.Helper()
-	if got != want {
-		t.Errorf("%s: got %v, want %v", name, got, want)
-	}
-}
-
-func assertEqualFloat(t *testing.T, name string, want float64, got any) {
-	t.Helper()
-	f, ok := got.(float64)
-	if !ok {
-		t.Errorf("%s: expected float64, got %T", name, got)
-		return
-	}
-	if f != want {
-		t.Errorf("%s: got %v, want %v", name, f, want)
 	}
 }

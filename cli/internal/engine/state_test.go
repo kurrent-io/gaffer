@@ -2,10 +2,10 @@ package engine
 
 import (
 	"encoding/json"
-	"fmt"
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 func newTestSession(t *testing.T, source string) *gafferruntime.Session {
@@ -18,13 +18,6 @@ func newTestSession(t *testing.T, source string) *gafferruntime.Session {
 	return session
 }
 
-func testEvent(eventType, streamID string, seq int) string {
-	return fmt.Sprintf(
-		`{"eventType":%q,"streamId":%q,"sequenceNumber":%d,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-%012d","created":"2026-01-01T00:00:00Z"}`,
-		eventType, streamID, seq, seq,
-	)
-}
-
 func TestCollectState_Unpartitioned(t *testing.T) {
 	session := newTestSession(t, `fromAll().when({
 		$init: function() { return { count: 0 }; },
@@ -32,7 +25,7 @@ func TestCollectState_Unpartitioned(t *testing.T) {
 	})`)
 	info := session.GetSources()
 
-	if _, err := session.Feed(testEvent("ItemAdded", "s-1", 0)); err != nil {
+	if _, err := session.Feed(testutil.Event("ItemAdded", "s-1", 0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -62,7 +55,7 @@ func TestCollectState_Partitioned(t *testing.T) {
 	info := session.GetSources()
 
 	for i, stream := range []string{"s-1", "s-2", "s-1"} {
-		if _, err := session.Feed(testEvent("ItemAdded", stream, i)); err != nil {
+		if _, err := session.Feed(testutil.Event("ItemAdded", stream, i)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -101,7 +94,7 @@ func TestCollectState_WithTransforms(t *testing.T) {
 	}).transformBy(function(s) { return { doubled: s.count * 2 }; })`)
 	info := session.GetSources()
 
-	if _, err := session.Feed(testEvent("ItemAdded", "s-1", 0)); err != nil {
+	if _, err := session.Feed(testutil.Event("ItemAdded", "s-1", 0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -130,7 +123,7 @@ func TestCollectState_PartitionedWithTransforms(t *testing.T) {
 	}).transformBy(function(s) { return { doubled: s.count * 2 }; })`)
 	info := session.GetSources()
 
-	if _, err := session.Feed(testEvent("ItemAdded", "s-1", 0)); err != nil {
+	if _, err := session.Feed(testutil.Event("ItemAdded", "s-1", 0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -183,7 +176,7 @@ func TestCollectState_BiState(t *testing.T) {
 		t.Skip("runtime did not report IsBiState")
 	}
 
-	if _, err := session.Feed(testEvent("ItemAdded", "s-1", 0)); err != nil {
+	if _, err := session.Feed(testutil.Event("ItemAdded", "s-1", 0)); err != nil {
 		t.Fatal(err)
 	}
 

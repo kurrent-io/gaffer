@@ -6,36 +6,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
-	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func testSuffix() string {
-	return strings.ReplaceAll(uuid.New().String(), "-", "")[:12]
-}
-
-func connectionString() string {
-	if s := os.Getenv("KURRENTDB_URL"); s != "" {
-		return s
-	}
-	return "kurrentdb://localhost:2113?tls=false"
-}
-
-// setupLiveTestProject creates a test project with a counter projection
-// using fromCategory. Category must not contain "-" since $by_category
-// splits on the first "-".
 func setupLiveTestProject(t *testing.T, suffix string) (*Server, *kurrentdb.Client) {
 	t.Helper()
 
-	connStr := connectionString()
+	connStr := testutil.ConnectionString()
 	dbConfig, err := kurrentdb.ParseConnectionString(connStr)
 	if err != nil {
 		t.Fatal(err)
@@ -48,12 +31,6 @@ func setupLiveTestProject(t *testing.T, suffix string) (*Server, *kurrentdb.Clie
 	}
 	t.Cleanup(func() { _ = client.Close() })
 
-	dir := t.TempDir()
-	projDir := filepath.Join(dir, "projections")
-	if err := os.MkdirAll(projDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
 	projSource := fmt.Sprintf(`fromCategory('inttest%s')
   .foreachStream()
   .when({
@@ -62,23 +39,12 @@ func setupLiveTestProject(t *testing.T, suffix string) (*Server, *kurrentdb.Clie
   })
 `, suffix)
 
-	if err := os.WriteFile(filepath.Join(projDir, "counter.js"), []byte(projSource), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	p := testutil.NewProject(t).
+		WithConnection(connStr).
+		AddProjection("counter", projSource).
+		Save()
 
-	cfg := &config.Config{
-		Connection: connStr,
-		Projection: []config.Projection{
-			{Name: "counter", Entry: "projections/counter.js"},
-		},
-	}
-
-	configPath := filepath.Join(dir, "gaffer.toml")
-	if err := config.Save(configPath, cfg); err != nil {
-		t.Fatal(err)
-	}
-
-	s := New(dir, cfg)
+	s := New(p.Dir, p.Cfg)
 	t.Cleanup(func() {
 		s.mu.Lock()
 		s.closeSession()
@@ -105,7 +71,7 @@ func writeTestEvents(t *testing.T, client *kurrentdb.Client, stream string, coun
 }
 
 func TestLive_RunAndInspect(t *testing.T) {
-	suffix := testSuffix()
+	suffix := testutil.TestSuffix()
 	s, client := setupLiveTestProject(t, suffix)
 
 	stream := fmt.Sprintf("inttest%s-1", suffix)
@@ -141,7 +107,7 @@ func TestLive_RunAndInspect(t *testing.T) {
 }
 
 func TestLive_WithBreakpoint(t *testing.T) {
-	suffix := testSuffix()
+	suffix := testutil.TestSuffix()
 	s, client := setupLiveTestProject(t, suffix)
 
 	stream := fmt.Sprintf("inttest%s-1", suffix)
@@ -181,7 +147,7 @@ func TestLive_WithBreakpoint(t *testing.T) {
 }
 
 func TestListEvents(t *testing.T) {
-	suffix := testSuffix()
+	suffix := testutil.TestSuffix()
 	s, client := setupLiveTestProject(t, suffix)
 
 	stream := fmt.Sprintf("inttest%s-1", suffix)

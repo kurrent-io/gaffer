@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 type mockProjectionError struct {
@@ -49,7 +50,7 @@ func TestClassifyError_RuntimeError(t *testing.T) {
 	}
 	defer session.Destroy()
 
-	_, feedErr := session.Feed(testEvent("BadEvent", "s-1", 0))
+	_, feedErr := session.Feed(testutil.Event("BadEvent", "s-1", 0))
 	if feedErr == nil {
 		t.Fatal("expected error")
 	}

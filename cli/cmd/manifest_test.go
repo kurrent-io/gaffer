@@ -8,7 +8,7 @@ import (
 func TestBuildCommandManifest_IncludesExpectedCommands(t *testing.T) {
 	commands := buildCommandManifest()
 
-	expected := []string{"init", "scaffold", "dev", "info"}
+	expected := []string{"init", "scaffold", "dev", "info", "mcp"}
 	for _, name := range expected {
 		if _, ok := commands[name]; !ok {
 			t.Errorf("expected command %q in manifest", name)

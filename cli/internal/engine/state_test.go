@@ -191,6 +191,136 @@ func TestCollectState_BiState(t *testing.T) {
 	}
 }
 
+func TestToMap_Unpartitioned(t *testing.T) {
+	summary := StateSummary{
+		State: json.RawMessage(`{"count":5}`),
+	}
+
+	m := summary.ToMap()
+
+	state, ok := m["state"]
+	if !ok {
+		t.Fatal("expected state key")
+	}
+	if string(state.(json.RawMessage)) != `{"count":5}` {
+		t.Errorf("state: got %s", state)
+	}
+	if _, ok := m["partitions"]; ok {
+		t.Error("unexpected partitions key")
+	}
+}
+
+func TestToMap_Partitioned(t *testing.T) {
+	summary := StateSummary{
+		Partitioned: true,
+		Partitions: map[string]PartitionState{
+			"s-1": {State: json.RawMessage(`{"count":2}`)},
+			"s-2": {State: json.RawMessage(`{"count":1}`)},
+		},
+	}
+
+	m := summary.ToMap()
+
+	partitions, ok := m["partitions"].(map[string]any)
+	if !ok {
+		t.Fatal("expected partitions map")
+	}
+	if len(partitions) != 2 {
+		t.Fatalf("partitions: got %d, want 2", len(partitions))
+	}
+	for _, key := range []string{"s-1", "s-2"} {
+		pd, ok := partitions[key].(map[string]any)
+		if !ok {
+			t.Errorf("missing partition %s", key)
+			continue
+		}
+		if _, ok := pd["state"]; !ok {
+			t.Errorf("partition %s: missing state", key)
+		}
+	}
+	if _, ok := m["state"]; ok {
+		t.Error("unexpected top-level state key")
+	}
+}
+
+func TestToMap_WithTransforms(t *testing.T) {
+	summary := StateSummary{
+		State:         json.RawMessage(`{"count":3}`),
+		Result:        json.RawMessage(`{"doubled":6}`),
+		HasTransforms: true,
+	}
+
+	m := summary.ToMap()
+
+	if _, ok := m["state"]; !ok {
+		t.Error("expected state key")
+	}
+	result, ok := m["result"]
+	if !ok {
+		t.Fatal("expected result key")
+	}
+	if string(result.(json.RawMessage)) != `{"doubled":6}` {
+		t.Errorf("result: got %s", result)
+	}
+}
+
+func TestToMap_TransformsFlagWithoutResult(t *testing.T) {
+	summary := StateSummary{
+		State:         json.RawMessage(`{"count":3}`),
+		HasTransforms: true,
+	}
+
+	m := summary.ToMap()
+
+	if _, ok := m["result"]; ok {
+		t.Error("result should be absent when Result is empty")
+	}
+}
+
+func TestToMap_BiStateWithSharedState(t *testing.T) {
+	summary := StateSummary{
+		Partitioned: true,
+		Partitions: map[string]PartitionState{
+			"s-1": {State: json.RawMessage(`{"count":1}`)},
+		},
+		SharedState: json.RawMessage(`{"total":10}`),
+		HasBiState:  true,
+	}
+
+	m := summary.ToMap()
+
+	shared, ok := m["sharedState"]
+	if !ok {
+		t.Fatal("expected sharedState key")
+	}
+	if string(shared.(json.RawMessage)) != `{"total":10}` {
+		t.Errorf("sharedState: got %s", shared)
+	}
+}
+
+func TestToMap_BiStateFlagWithoutSharedState(t *testing.T) {
+	summary := StateSummary{
+		State:      json.RawMessage(`{"count":1}`),
+		HasBiState: true,
+	}
+
+	m := summary.ToMap()
+
+	if _, ok := m["sharedState"]; ok {
+		t.Error("sharedState should be absent when SharedState is empty")
+	}
+}
+
+func TestToMap_Empty(t *testing.T) {
+	summary := StateSummary{}
+
+	m := summary.ToMap()
+
+	if len(m) != 0 {
+		t.Errorf("expected empty map, got %v", m)
+	}
+}
+
 func TestDescribeSource(t *testing.T) {
 	tests := []struct {
 		name string

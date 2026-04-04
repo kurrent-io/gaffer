@@ -187,6 +187,82 @@ func TestEviction(t *testing.T) {
 	}
 }
 
+func TestLatestEmpty(t *testing.T) {
+	s := mustNew(t)
+
+	step, err := s.Latest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if step != nil {
+		t.Errorf("expected nil, got step at position %d", step.Position)
+	}
+}
+
+func TestRange(t *testing.T) {
+	s := mustNew(t)
+
+	min, max, err := s.Range()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if min != 0 || max != 0 {
+		t.Errorf("empty Range = (%d, %d), want (0, 0)", min, max)
+	}
+
+	_, _ = s.Insert(testEvent, testResult)
+	_, _ = s.Insert(testEvent, testResultWithEmit)
+	_, _ = s.Insert(testEvent, testResultSkipped)
+
+	min, max, err = s.Range()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if min != 1 {
+		t.Errorf("min = %d, want 1", min)
+	}
+	if max != 3 {
+		t.Errorf("max = %d, want 3", max)
+	}
+}
+
+func TestTimelineFiltered(t *testing.T) {
+	s := mustNew(t)
+
+	eventA := `{"eventType":"OrderPlaced","streamId":"order-1"}`
+	resultA := `{"status":"processed","partition":"partition-a","state":{},"emitted":[],"logs":[]}`
+	eventB := `{"eventType":"UserCreated","streamId":"user-1"}`
+	resultB := `{"status":"processed","partition":"partition-b","state":{},"emitted":[],"logs":[]}`
+
+	_, _ = s.Insert(eventA, resultA)
+	_, _ = s.Insert(eventB, resultB)
+	_, _ = s.Insert(eventA, resultA)
+
+	entries, err := s.TimelineFiltered(1, 3, "partition-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	for i, e := range entries {
+		if e.Partition != "partition-a" {
+			t.Errorf("[%d] Partition = %q, want partition-a", i, e.Partition)
+		}
+	}
+
+	entries, err = s.TimelineFiltered(1, 3, "partition-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Partition != "partition-b" {
+		t.Errorf("Partition = %q, want partition-b", entries[0].Partition)
+	}
+}
+
 func TestCount(t *testing.T) {
 	s := mustNew(t)
 

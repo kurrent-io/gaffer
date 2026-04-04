@@ -74,8 +74,12 @@ func TestDev_FixtureJSON(t *testing.T) {
 	if summary["type"] != "summary" {
 		t.Fatalf("expected last line to be summary, got: %v", summary)
 	}
-	if summary["handled"].(float64) != 3 {
-		t.Errorf("handled: got %v, want 3", summary["handled"])
+	handled, ok := summary["handled"].(float64)
+	if !ok {
+		t.Fatalf("expected handled to be float64, got %T", summary["handled"])
+	}
+	if handled != 3 {
+		t.Errorf("handled: got %v, want 3", handled)
 	}
 
 	partitions, ok := summary["partitions"].(map[string]any)
@@ -211,8 +215,15 @@ func TestEndToEnd_InitScaffoldDev(t *testing.T) {
 	if summary["type"] != "summary" {
 		t.Fatalf("expected summary, got: %v", summary)
 	}
-	total := summary["handled"].(float64) + summary["skipped"].(float64)
-	if total != 1 {
-		t.Errorf("expected 1 event processed, got handled=%v skipped=%v", summary["handled"], summary["skipped"])
+	handled2, ok := summary["handled"].(float64)
+	if !ok {
+		t.Fatalf("expected handled to be float64, got %T", summary["handled"])
+	}
+	skipped, ok := summary["skipped"].(float64)
+	if !ok {
+		t.Fatalf("expected skipped to be float64, got %T", summary["skipped"])
+	}
+	if total := handled2 + skipped; total != 1 {
+		t.Errorf("expected 1 event processed, got handled=%v skipped=%v", handled2, skipped)
 	}
 }

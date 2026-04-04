@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
@@ -499,8 +500,11 @@ func TestResourceDocs(t *testing.T) {
 	if len(result.Contents) != 1 {
 		t.Fatal("expected 1 resource content")
 	}
-	if len(result.Contents[0].Text) < 100 {
-		t.Error("expected substantial doc content")
+	text := result.Contents[0].Text
+	for _, want := range []string{"Projection API Reference", "fromAll()", "fromStream(", "when"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("expected projection-api doc to contain %q", want)
+		}
 	}
 }
 
@@ -522,8 +526,16 @@ func TestWriteProjectionPrompt(t *testing.T) {
 		t.Fatal("expected 1 message")
 	}
 	text := result.Messages[0].Content.(*mcp.TextContent).Text
-	if len(text) < 500 {
-		t.Error("expected substantial prompt content")
+	for _, want := range []string{
+		"count all OrderPlaced events",
+		"## Requirements",
+		"## Workflow",
+		"Projection API Reference",
+		"fromAll()",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("expected write-projection prompt to contain %q", want)
+		}
 	}
 }
 
@@ -541,8 +553,16 @@ func TestFixProjectionPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := result.Messages[0].Content.(*mcp.TextContent).Text
-	if len(text) < 500 {
-		t.Error("expected substantial prompt content")
+	for _, want := range []string{
+		"Fix the projection `order-count`",
+		"## Problem",
+		"state resets on every event",
+		"fromCategory('order')",
+		"Projection API Reference",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("expected fix-projection prompt to contain %q", want)
+		}
 	}
 }
 

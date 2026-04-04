@@ -212,6 +212,26 @@ execution_timeout = 2000
 	}
 }
 
+func TestLoadMissingFile(t *testing.T) {
+	_, err := Load("nonexistent/path/gaffer.toml")
+	if err == nil {
+		t.Fatal("expected error for missing file")
+	}
+}
+
+func TestLoadMalformedTOML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	if err := os.WriteFile(path, []byte("not valid [[ toml = !!!"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for malformed TOML")
+	}
+}
+
 func TestSaveAndReload(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")

@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -556,6 +558,114 @@ func TestFixProjectionPrompt_NotFound(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for unknown projection")
+	}
+}
+
+// --- Pure helpers ---
+
+func TestExtractState(t *testing.T) {
+	state := extractState(`{"state":{"count":5},"partition":"p-1"}`)
+	if string(state) != `{"count":5}` {
+		t.Errorf("got %s, want {\"count\":5}", state)
+	}
+}
+
+func TestExtractState_NoState(t *testing.T) {
+	state := extractState(`{"partition":"p-1"}`)
+	if state != nil {
+		t.Errorf("expected nil, got %s", state)
+	}
+}
+
+func TestExtractState_InvalidJSON(t *testing.T) {
+	state := extractState(`not json`)
+	if state != nil {
+		t.Errorf("expected nil, got %s", state)
+	}
+}
+
+func TestDescribeSource(t *testing.T) {
+	tests := []struct {
+		name string
+		info gafferruntime.QuerySources
+		want string
+	}{
+		{"all", gafferruntime.QuerySources{AllStreams: true}, "all"},
+		{"categories", gafferruntime.QuerySources{Categories: []string{"order"}}, "categories"},
+		{"streams", gafferruntime.QuerySources{Streams: []string{"order-1"}}, "streams"},
+		{"unknown", gafferruntime.QuerySources{}, "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := describeSource(tt.info)
+			if result["type"] != tt.want {
+				t.Errorf("type: got %v, want %s", result["type"], tt.want)
+			}
+		})
+	}
+}
+
+func TestDescribePartitioning(t *testing.T) {
+	tests := []struct {
+		name string
+		info gafferruntime.QuerySources
+		want string
+	}{
+		{"byStream", gafferruntime.QuerySources{ByStreams: true}, "byStream"},
+		{"byCustomKey", gafferruntime.QuerySources{ByCustomPartitions: true}, "byCustomKey"},
+		{"none", gafferruntime.QuerySources{}, "none"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := describePartitioning(tt.info)
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestErrorHint(t *testing.T) {
+	if h := errorHint("execution-timeout"); h == "" {
+		t.Error("expected hint for execution-timeout")
+	}
+	if h := errorHint("handler-error"); h == "" {
+		t.Error("expected hint for handler-error")
+	}
+	if h := errorHint("state-serialization-error"); h == "" {
+		t.Error("expected hint for state-serialization-error")
+	}
+	if h := errorHint("unknown-code"); h != "" {
+		t.Errorf("expected no hint for unknown code, got %q", h)
+	}
+}
+
+func TestFormatStep(t *testing.T) {
+	step := &history.Step{
+		Position:   3,
+		EventType:  "OrderPlaced",
+		StreamID:   "order-1",
+		Status:     "processed",
+		Partition:  "order-1",
+		EventJSON:  `{"eventType":"OrderPlaced"}`,
+		ResultJSON: `{"status":"processed"}`,
+	}
+
+	result := formatStep(step)
+	if result["position"] != int64(3) {
+		t.Errorf("position: got %v", result["position"])
+	}
+	if result["eventType"] != "OrderPlaced" {
+		t.Errorf("eventType: got %v", result["eventType"])
+	}
+	if result["streamId"] != "order-1" {
+		t.Errorf("streamId: got %v", result["streamId"])
+	}
+	if result["event"] == nil {
+		t.Error("expected parsed event")
+	}
+	if result["result"] == nil {
+		t.Error("expected parsed result")
 	}
 }
 

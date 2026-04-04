@@ -6,6 +6,21 @@ import (
 	"testing"
 )
 
+// clearEnv unsets the KurrentDB credential vars and registers cleanup
+// to restore their original values after the test.
+func clearEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{"KURRENTDB_USERNAME", "KURRENTDB_PASSWORD"} {
+		orig, set := os.LookupEnv(key)
+		_ = os.Unsetenv(key)
+		if set {
+			t.Cleanup(func() { _ = os.Setenv(key, orig) })
+		} else {
+			t.Cleanup(func() { _ = os.Unsetenv(key) })
+		}
+	}
+}
+
 func TestLoad_NoEnvFile(t *testing.T) {
 	dir := t.TempDir()
 	err := Load(dir, "")
@@ -15,16 +30,11 @@ func TestLoad_NoEnvFile(t *testing.T) {
 }
 
 func TestLoad_BaseEnvFile(t *testing.T) {
+	clearEnv(t)
 	dir := t.TempDir()
-	envContent := "KURRENTDB_USERNAME=admin\nKURRENTDB_PASSWORD=changeit\n"
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("KURRENTDB_USERNAME=admin\nKURRENTDB_PASSWORD=changeit\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-
-	t.Cleanup(func() {
-		_ = os.Unsetenv("KURRENTDB_USERNAME")
-		_ = os.Unsetenv("KURRENTDB_PASSWORD")
-	})
 
 	if err := Load(dir, ""); err != nil {
 		t.Fatal(err)
@@ -40,6 +50,7 @@ func TestLoad_BaseEnvFile(t *testing.T) {
 }
 
 func TestLoad_OverrideEnvFile(t *testing.T) {
+	clearEnv(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("KURRENTDB_USERNAME=admin\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -47,8 +58,6 @@ func TestLoad_OverrideEnvFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".env.prod"), []byte("KURRENTDB_USERNAME=produser\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-
-	t.Cleanup(func() { _ = os.Unsetenv("KURRENTDB_USERNAME") })
 
 	if err := Load(dir, "prod"); err != nil {
 		t.Fatal(err)
@@ -61,12 +70,11 @@ func TestLoad_OverrideEnvFile(t *testing.T) {
 }
 
 func TestLoad_OverrideFileMissing(t *testing.T) {
+	clearEnv(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("KURRENTDB_USERNAME=admin\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-
-	t.Cleanup(func() { _ = os.Unsetenv("KURRENTDB_USERNAME") })
 
 	if err := Load(dir, "staging"); err != nil {
 		t.Fatal(err)
@@ -79,8 +87,7 @@ func TestLoad_OverrideFileMissing(t *testing.T) {
 }
 
 func TestCredentials_Empty(t *testing.T) {
-	_ = os.Unsetenv("KURRENTDB_USERNAME")
-	_ = os.Unsetenv("KURRENTDB_PASSWORD")
+	clearEnv(t)
 
 	user, pass := Credentials()
 	if user != "" || pass != "" {

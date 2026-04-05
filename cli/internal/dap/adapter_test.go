@@ -2,6 +2,7 @@ package dap
 
 import (
 	"bufio"
+	"encoding/json"
 	"net"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	godap "github.com/google/go-dap"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
+	"github.com/kurrent-io/gaffer/cli/internal/history"
 )
 
 const testDebugOpts = `{"debug":true}`
@@ -304,6 +306,80 @@ func TestAdapter_PathMapping_PartialPrefixNoMatch(t *testing.T) {
 	}
 }
 
+func mustSetupDebugSessionWithHistory(t *testing.T) (*DebugAdapter, *engine.Runner, net.Conn, *bufio.Reader) {
+	t.Helper()
+	opts := testDebugOpts
+	source := "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function handler(s, e) {\ns.count++;\nreturn s;\n}\n})"
+	session, err := gafferruntime.NewSession(source, &opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { session.Destroy() })
+
+	store, err := history.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := NewDebugAdapter(session, "/tmp/test/projection.js", "/tmp/test")
+	runner := engine.NewRunner(engine.RunnerConfig{
+		Feed:    engine.FeedFn(session.Feed),
+		Session: session,
+		Info:    session.GetSources(),
+		Writer:  adapter.EventWriter(),
+		History: store,
+		Debug: &engine.DebugConfig{
+			Session: session,
+			Info:    session.GetSources(),
+			OnBreak: adapter.HandleBreak,
+		},
+	})
+	adapter.SetRunner(runner)
+
+	handler := adapter.Handler()
+	srv, err := NewServer("127.0.0.1:0", handler)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	adapter.SetServer(srv)
+
+	connCh := make(chan net.Conn, 1)
+	go func() {
+		conn, err := net.Dial("tcp", srv.Addr().String())
+		if err != nil {
+			return
+		}
+		connCh <- conn
+	}()
+	go func() { _ = srv.Serve() }()
+
+	var conn net.Conn
+	select {
+	case conn = <-connCh:
+		t.Cleanup(func() { _ = conn.Close() })
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out connecting")
+	}
+
+	reader := bufio.NewReader(conn)
+
+	sendRequest(t, conn, &godap.InitializeRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 1, Type: "request"},
+			Command:         "initialize",
+		},
+		Arguments: godap.InitializeRequestArguments{
+			LinesStartAt1:   true,
+			ColumnsStartAt1: true,
+		},
+	})
+	readMessage(t, conn, reader) // InitializeResponse
+	readMessage(t, conn, reader) // InitializedEvent
+
+	return adapter, runner, conn, reader
+}
+
 func TestAdapter_SendTerminated(t *testing.T) {
 	adapter, _, conn, reader := mustSetupDebugSession(t)
 
@@ -327,5 +403,290 @@ func TestAdapter_SendTerminated(t *testing.T) {
 	_, ok = msg.(*godap.ExitedEvent)
 	if !ok {
 		t.Fatalf("expected ExitedEvent, got %T", msg)
+	}
+}
+
+// feedAndContinue sets a breakpoint, feeds an event, waits for the stopped event,
+// then continues execution. Returns the next available seq number.
+func feedAndContinue(t *testing.T, runner *engine.Runner, conn net.Conn, reader *bufio.Reader, startSeq int) int {
+	t.Helper()
+	seq := startSeq
+
+	sendRequest(t, conn, &godap.SetBreakpointsRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: seq, Type: "request"},
+			Command:         "setBreakpoints",
+		},
+		Arguments: godap.SetBreakpointsArguments{
+			Source:      godap.Source{Path: "/tmp/test/projection.js"},
+			Breakpoints: []godap.SourceBreakpoint{{Line: 4}},
+		},
+	})
+	seq++
+	readMessage(t, conn, reader) // SetBreakpointsResponse
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: seq, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	seq++
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	feedDone := make(chan struct{})
+	go func() {
+		runner.ProcessOne(testFeedEvent)
+		close(feedDone)
+	}()
+
+	msg := readMessage(t, conn, reader)
+	if _, ok := msg.(*godap.StoppedEvent); !ok {
+		t.Fatalf("expected StoppedEvent, got %T", msg)
+	}
+
+	sendRequest(t, conn, &godap.ContinueRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: seq, Type: "request"},
+			Command:         "continue",
+		},
+		Arguments: godap.ContinueArguments{ThreadId: 1},
+	})
+	seq++
+	readMessage(t, conn, reader) // ContinueResponse
+	readMessage(t, conn, reader) // ContinuedEvent
+
+	select {
+	case <-feedDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for feed to complete")
+	}
+
+	return seq
+}
+
+func TestAdapter_GafferGoto(t *testing.T) {
+	_, runner, conn, reader := mustSetupDebugSessionWithHistory(t)
+
+	seq := feedAndContinue(t, runner, conn, reader, 2)
+
+	sendRequest(t, conn, &GafferGotoRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: seq, Type: "request"},
+			Command:         "gaffer/goto",
+		},
+		Arguments: GafferGotoArguments{Position: 1},
+	})
+
+	msg := readMessage(t, conn, reader)
+	resp, ok := msg.(*GafferGotoResponse)
+	if !ok {
+		t.Fatalf("expected GafferGotoResponse, got %T", msg)
+	}
+	if !resp.Success {
+		t.Fatal("expected success response")
+	}
+
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(resp.Body, &body); err != nil {
+		t.Fatalf("failed to unmarshal body: %v", err)
+	}
+	if _, ok := body["position"]; !ok {
+		t.Fatal("expected position in response body")
+	}
+	if _, ok := body["event"]; !ok {
+		t.Fatal("expected event in response body")
+	}
+	if _, ok := body["result"]; !ok {
+		t.Fatal("expected result in response body")
+	}
+}
+
+func TestAdapter_GafferGoto_InvalidPosition(t *testing.T) {
+	_, runner, conn, reader := mustSetupDebugSessionWithHistory(t)
+
+	seq := feedAndContinue(t, runner, conn, reader, 2)
+
+	sendRequest(t, conn, &GafferGotoRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: seq, Type: "request"},
+			Command:         "gaffer/goto",
+		},
+		Arguments: GafferGotoArguments{Position: 999},
+	})
+
+	msg := readMessage(t, conn, reader)
+	resp, ok := msg.(*godap.ErrorResponse)
+	if !ok {
+		t.Fatalf("expected ErrorResponse, got %T", msg)
+	}
+	if resp.Success {
+		t.Fatal("expected error response")
+	}
+	if resp.Message != "position not found" {
+		t.Fatalf("expected 'position not found', got %q", resp.Message)
+	}
+}
+
+func TestAdapter_GafferGoto_NoHistory(t *testing.T) {
+	_, _, conn, reader := mustSetupDebugSession(t)
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	sendRequest(t, conn, &GafferGotoRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 3, Type: "request"},
+			Command:         "gaffer/goto",
+		},
+		Arguments: GafferGotoArguments{Position: 1},
+	})
+
+	msg := readMessage(t, conn, reader)
+	resp, ok := msg.(*godap.ErrorResponse)
+	if !ok {
+		t.Fatalf("expected ErrorResponse, got %T", msg)
+	}
+	if resp.Success {
+		t.Fatal("expected error response")
+	}
+}
+
+func TestAdapter_GafferTimeline(t *testing.T) {
+	_, runner, conn, reader := mustSetupDebugSessionWithHistory(t)
+
+	seq := feedAndContinue(t, runner, conn, reader, 2)
+
+	sendRequest(t, conn, &GafferTimelineRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: seq, Type: "request"},
+			Command:         "gaffer/timeline",
+		},
+		Arguments: GafferTimelineArguments{From: 0, To: 10},
+	})
+
+	msg := readMessage(t, conn, reader)
+	resp, ok := msg.(*GafferTimelineResponse)
+	if !ok {
+		t.Fatalf("expected GafferTimelineResponse, got %T", msg)
+	}
+	if !resp.Success {
+		t.Fatal("expected success response")
+	}
+
+	var entries []json.RawMessage
+	if err := json.Unmarshal(resp.Body, &entries); err != nil {
+		t.Fatalf("failed to unmarshal timeline body: %v", err)
+	}
+	if len(entries) < 1 {
+		t.Fatal("expected at least 1 timeline entry")
+	}
+}
+
+func TestAdapter_GafferTimeline_NoHistory(t *testing.T) {
+	_, _, conn, reader := mustSetupDebugSession(t)
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	sendRequest(t, conn, &GafferTimelineRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 3, Type: "request"},
+			Command:         "gaffer/timeline",
+		},
+		Arguments: GafferTimelineArguments{From: 0, To: 10},
+	})
+
+	msg := readMessage(t, conn, reader)
+	resp, ok := msg.(*godap.ErrorResponse)
+	if !ok {
+		t.Fatalf("expected ErrorResponse, got %T", msg)
+	}
+	if resp.Success {
+		t.Fatal("expected error response")
+	}
+}
+
+func TestAdapter_GafferPartitionState(t *testing.T) {
+	_, runner, conn, reader := mustSetupDebugSessionWithHistory(t)
+
+	seq := feedAndContinue(t, runner, conn, reader, 2)
+
+	sendRequest(t, conn, &GafferPartitionStateRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: seq, Type: "request"},
+			Command:         "gaffer/partitionState",
+		},
+		Arguments: GafferPartitionStateArguments{Partition: ""},
+	})
+
+	msg := readMessage(t, conn, reader)
+	resp, ok := msg.(*GafferPartitionStateResponse)
+	if !ok {
+		t.Fatalf("expected GafferPartitionStateResponse, got %T", msg)
+	}
+	if !resp.Success {
+		t.Fatal("expected success response")
+	}
+
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(resp.Body, &body); err != nil {
+		t.Fatalf("failed to unmarshal body: %v", err)
+	}
+	if _, ok := body["partition"]; !ok {
+		t.Fatal("expected partition in response body")
+	}
+	if _, ok := body["state"]; !ok {
+		t.Fatal("expected state in response body")
+	}
+}
+
+func TestAdapter_GafferPartitionState_UnknownPartition(t *testing.T) {
+	_, _, conn, reader := mustSetupDebugSession(t)
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	sendRequest(t, conn, &GafferPartitionStateRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 3, Type: "request"},
+			Command:         "gaffer/partitionState",
+		},
+		Arguments: GafferPartitionStateArguments{Partition: "nonexistent"},
+	})
+
+	msg := readMessage(t, conn, reader)
+	resp, ok := msg.(*GafferPartitionStateResponse)
+	if !ok {
+		t.Fatalf("expected GafferPartitionStateResponse, got %T", msg)
+	}
+	if !resp.Success {
+		t.Fatal("expected success response even for unknown partition")
+	}
+
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(resp.Body, &body); err != nil {
+		t.Fatalf("failed to unmarshal body: %v", err)
+	}
+	if _, ok := body["partition"]; !ok {
+		t.Fatal("expected partition in response body")
+	}
+	if _, ok := body["state"]; ok {
+		t.Fatal("expected no state for unknown partition")
 	}
 }

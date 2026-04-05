@@ -222,6 +222,43 @@ func TestDisconnect(t *testing.T) {
 	}
 }
 
+func TestUnknownRequestReturnsError(t *testing.T) {
+	_, conn := mustStartServer(t, Handler{})
+	reader := bufio.NewReader(conn)
+
+	sendRequest(t, conn, &godap.InitializeRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 1, Type: "request"},
+			Command:         "initialize",
+		},
+		Arguments: godap.InitializeRequestArguments{
+			LinesStartAt1:   true,
+			ColumnsStartAt1: true,
+		},
+	})
+	readMessage(t, conn, reader) // InitializeResponse
+	readMessage(t, conn, reader) // InitializedEvent
+
+	sendRequest(t, conn, &godap.RestartRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "restart",
+		},
+	})
+
+	msg := readMessage(t, conn, reader)
+	resp, ok := msg.(*godap.ErrorResponse)
+	if !ok {
+		t.Fatalf("expected ErrorResponse, got %T", msg)
+	}
+	if resp.Success {
+		t.Fatal("expected failure response")
+	}
+	if resp.Message != "not supported" {
+		t.Fatalf("expected message 'not supported', got %q", resp.Message)
+	}
+}
+
 func TestSequenceNumbersAutoAssigned(t *testing.T) {
 	_, conn := mustStartServer(t, Handler{})
 	reader := bufio.NewReader(conn)

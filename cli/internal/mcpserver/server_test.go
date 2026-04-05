@@ -434,6 +434,56 @@ func TestStepOver(t *testing.T) {
 	}
 }
 
+func TestStepInto(t *testing.T) {
+	s := setupTestProject(t)
+
+	runResult := callTool(t, s, runTool, s.handleRun, runInput{
+		Name:    "order-count",
+		Events:  "fixtures/orders.json",
+		BreakAt: 3,
+	})
+
+	if runResult["paused"] != true {
+		t.Fatalf("expected paused=true from run, got %v", runResult["paused"])
+	}
+
+	stepResult := callTool(t, s, stepIntoTool, s.handleStepInto, debugStepInput{})
+
+	if stepResult["paused"] == true {
+		bp := stepResult["breakpoint"].(map[string]any)
+		if bp["reason"] != "step" {
+			t.Errorf("expected reason=step, got %v", bp["reason"])
+		}
+	} else if stepResult["completed"] != true {
+		t.Fatalf("expected paused=true or completed=true, got %v", stepResult)
+	}
+}
+
+func TestStepOut(t *testing.T) {
+	s := setupTestProject(t)
+
+	runResult := callTool(t, s, runTool, s.handleRun, runInput{
+		Name:    "order-count",
+		Events:  "fixtures/orders.json",
+		BreakAt: 3,
+	})
+
+	if runResult["paused"] != true {
+		t.Fatalf("expected paused=true from run, got %v", runResult["paused"])
+	}
+
+	stepResult := callTool(t, s, stepOutTool, s.handleStepOut, debugStepInput{})
+
+	if stepResult["paused"] == true {
+		bp := stepResult["breakpoint"].(map[string]any)
+		if bp["reason"] != "step" {
+			t.Errorf("expected reason=step, got %v", bp["reason"])
+		}
+	} else if stepResult["completed"] != true {
+		t.Fatalf("expected paused=true or completed=true, got %v", stepResult)
+	}
+}
+
 // --- get_state unknown partition ---
 
 func TestGetState_UnknownPartition(t *testing.T) {
@@ -660,5 +710,39 @@ func TestRun_ReplacesSession_FreshHistory(t *testing.T) {
 	r2 := callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
 	if r2["processed"].(float64) != 5 {
 		t.Errorf("second run: expected 5 processed (fresh), got %v", r2["processed"])
+	}
+}
+
+// --- resolveRange ---
+
+func TestResolveRange(t *testing.T) {
+	s := setupTestProject(t)
+	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
+
+	// fixture has 5 events, so history range is 1..5
+	tests := []struct {
+		name     string
+		from, to int64
+		wantFrom int64
+		wantTo   int64
+	}{
+		{"zeros default to full range", 0, 0, 1, 5},
+		{"negative from clamps to min", -5, 3, 1, 3},
+		{"negative to clamps to max", 1, -1, 1, 5},
+		{"both negative", -1, -1, 1, 5},
+		{"from greater than to clamps to equal", 4, 2, 4, 4},
+		{"normal range", 2, 4, 2, 4},
+		{"from below min clamps up", 0, 3, 1, 3},
+		{"single step", 3, 3, 3, 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotFrom, gotTo := s.resolveRange(tt.from, tt.to)
+			if gotFrom != tt.wantFrom || gotTo != tt.wantTo {
+				t.Errorf("resolveRange(%d, %d) = (%d, %d), want (%d, %d)",
+					tt.from, tt.to, gotFrom, gotTo, tt.wantFrom, tt.wantTo)
+			}
+		})
 	}
 }

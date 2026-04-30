@@ -1,19 +1,17 @@
 import * as vscode from "vscode";
 import { GafferCli } from "./discovery/cli.js";
 import { ProjectIndex } from "./discovery/project-index.js";
-import { GafferSession } from "./ipc/session.js";
 import { TomlCodeLensProvider } from "./lensing/toml-provider.js";
 import { JsCodeLensProvider } from "./lensing/js-provider.js";
 import { StepProvider } from "./panels/step.js";
 import { StateProvider } from "./panels/state.js";
 import { StatusViewProvider } from "./panels/status.js";
 import { dispatchDapEvent } from "./debugging/dap-dispatch.js";
+import {
+	SessionController,
+	type DebugProjectionArgs,
+} from "./debugging/session-controller.js";
 import type { DebugState } from "./types.js";
-
-interface DebugProjectionArgs {
-	name: string;
-	tomlUri: vscode.Uri;
-}
 
 const DEBUG_PORT = 4711;
 
@@ -35,32 +33,21 @@ export function activate(context: vscode.ExtensionContext): void {
 	const tomlCodeLens = new TomlCodeLensProvider(cli, debugState);
 	const jsCodeLens = new JsCodeLensProvider(cli, projectIndex, debugState);
 
-	let activeSession: GafferSession | null = null;
-
-	const setDebugState = (
-		name: string | null,
-		status: DebugState["status"],
-	): void => {
-		debugState.name = name;
-		debugState.status = status;
+	const refreshLenses = (): void => {
 		tomlCodeLens.refresh();
 		jsCodeLens.refresh();
 	};
 
-	const setSessionActive = async (active: boolean): Promise<void> => {
-		await vscode.commands.executeCommand(
-			"setContext",
-			"gaffer.sessionActive",
-			active,
-		);
-	};
-	const setInspecting = async (inspecting: boolean): Promise<void> => {
-		await vscode.commands.executeCommand(
-			"setContext",
-			"gaffer.inspecting",
-			inspecting,
-		);
-	};
+	const controller = new SessionController({
+		cli,
+		stepProvider,
+		stateProvider,
+		statusProvider,
+		debugState,
+		refreshLenses,
+		log,
+	});
+	controller.register(context);
 
 	context.subscriptions.push(
 		vscode.window.registerTreeDataProvider("gaffer.step", stepProvider),
@@ -94,160 +81,24 @@ export function activate(context: vscode.ExtensionContext): void {
 			dispatchDapEvent(e, {
 				stepProvider,
 				stateProvider,
-				setInspecting,
+				setInspecting: (inspecting) => controller.setInspecting(inspecting),
 				log,
 			}),
 		),
 	);
 
-	const stopSession = async (): Promise<void> => {
-		if (!activeSession) return;
-		await vscode.debug.stopDebugging();
-		activeSession.dispose();
-		activeSession = null;
-		setDebugState(null, "idle");
-		await setSessionActive(false);
-		await setInspecting(false);
-	};
-
 	context.subscriptions.push(
-		vscode.commands.registerCommand("gaffer.stopDebug", stopSession),
-	);
-
-	context.subscriptions.push(
+		vscode.commands.registerCommand("gaffer.stopDebug", () =>
+			controller.stop(),
+		),
 		vscode.commands.registerCommand(
 			"gaffer.debugProjection",
-			async (args: DebugProjectionArgs) => {
-				if (!vscode.workspace.isTrusted) {
-					void vscode.window
-						.showWarningMessage(
-							"Trust this workspace to enable Gaffer debugging.",
-							"Manage Trust",
-						)
-						.then((choice) => {
-							if (choice === "Manage Trust") {
-								void vscode.commands.executeCommand("workbench.trust.manage");
-							}
-						});
-					return;
-				}
-
-				if (debugState.status !== "idle") {
-					log(
-						`Ignoring debug request: ${debugState.name ?? "session"} is ${debugState.status}`,
-					);
-					return;
-				}
-
-				const { name, tomlUri } = args;
-				const tomlDir = vscode.Uri.joinPath(tomlUri, "..").fsPath;
-				const port = DEBUG_PORT;
-				const argv = cli.buildArgv([
-					"dev",
-					name,
-					"--json",
-					"--debug",
-					"--debug-port",
-					String(port),
-				]);
-
-				stepProvider.clear();
-				stateProvider.clear();
-
-				setDebugState(name, "starting");
-				log(`Starting: ${name}`);
-				const session = new GafferSession(name, argv, { log, cwd: tomlDir });
-				activeSession = session;
-
-				session.on("exit", async (msg) => {
-					if (activeSession !== session) return;
-					// During "starting", waitForDebug's catch surfaces the error.
-					// Once "debugging", the debug-terminate handler tears down. Only
-					// surface here for non-zero exits while idle/transitional.
-					if (msg.code !== 0 && debugState.status === "debugging") {
-						log(`CLI exited with code ${msg.code}`);
-						await vscode.window.showErrorMessage(
-							`Gaffer: projection faulted (exit code ${msg.code})`,
-						);
-						setDebugState(null, "idle");
-						await setSessionActive(false);
-						await setInspecting(false);
-						activeSession = null;
-					}
-				});
-
-				session
-					.on("result", (msg) => {
-						if (msg.status === "processed") statusProvider.addProcessed();
-						else if (msg.status === "skipped") statusProvider.addSkipped();
-					})
-					.on("error", () => statusProvider.addError());
-
-				statusProvider.reset(name);
-				session.start();
-				await setSessionActive(true);
-				await setInspecting(false);
-				await vscode.commands.executeCommand("gaffer.status.focus");
-
-				let debugPort: number;
-				try {
-					const msg = await session.waitForDebug();
-					debugPort = msg.port;
-					log(`Debug server listening on port ${debugPort}`);
-				} catch (err) {
-					const errMsg = err instanceof Error ? err.message : String(err);
-					log(`Failed to start: ${errMsg}`);
-					await vscode.window.showErrorMessage(`Gaffer: ${errMsg}`);
-					session.dispose();
-					if (activeSession === session) activeSession = null;
-					setDebugState(null, "idle");
-					await setSessionActive(false);
-					await setInspecting(false);
-					return;
-				}
-
-				const started = await vscode.debug.startDebugging(
-					vscode.workspace.getWorkspaceFolder(tomlUri),
-					{
-						type: "gaffer",
-						request: "attach",
-						name: `Gaffer: ${name}`,
-						port: debugPort,
-						localRoot: tomlDir,
-						internalConsoleOptions: "neverOpen",
-					},
-				);
-
-				if (!started) {
-					log("Debug session failed to start");
-					session.dispose();
-					activeSession = null;
-					setDebugState(null, "idle");
-					return;
-				}
-
-				setDebugState(name, "debugging");
-
-				const disposable = vscode.debug.onDidTerminateDebugSession(
-					async (dbgSession) => {
-						if (dbgSession.name === `Gaffer: ${name}`) {
-							log("Debug session ended");
-							session.dispose();
-							if (activeSession === session) activeSession = null;
-							setDebugState(null, "idle");
-							await setSessionActive(false);
-							await setInspecting(false);
-							disposable.dispose();
-						}
-					},
-				);
-				context.subscriptions.push(disposable);
-			},
+			(args: DebugProjectionArgs) => controller.start(args),
 		),
 	);
 
 	const refreshAll = (): void => {
-		tomlCodeLens.refresh();
+		refreshLenses();
 		void projectIndex.refresh().then(() => jsCodeLens.refresh());
 	};
 

@@ -144,10 +144,10 @@ describe("ProjectionTest", () => {
 		expect(step.status).toBe("processed");
 		if (step.status !== "processed") return;
 		expect(step.emitted).toHaveLength(1);
-		expect(step.emitted[0].streamId).toBe("notifications");
-		expect(step.emitted[0].eventType).toBe("OrderNotification");
-		expect(step.emitted[0].data).toEqual({ orderId: "ABC" });
-		expect(step.emitted[0].isLink).toBe(false);
+		expect(step.emitted[0]?.streamId).toBe("notifications");
+		expect(step.emitted[0]?.eventType).toBe("OrderNotification");
+		expect(step.emitted[0]?.data).toEqual({ orderId: "ABC" });
+		expect(step.emitted[0]?.isLink).toBe(false);
 		test.dispose();
 	});
 
@@ -519,9 +519,9 @@ describe("ProjectionTest", () => {
 		expect(step.status).toBe("processed");
 		if (step.status !== "processed") return;
 		expect(step.emitted).toHaveLength(1);
-		expect(step.emitted[0].isLink).toBe(true);
-		expect(step.emitted[0].eventType).toBe("$>");
-		expect(step.emitted[0].data).toBe("5@order-1");
+		expect(step.emitted[0]?.isLink).toBe(true);
+		expect(step.emitted[0]?.eventType).toBe("$>");
+		expect(step.emitted[0]?.data).toBe("5@order-1");
 		test.dispose();
 	});
 
@@ -549,7 +549,7 @@ describe("ProjectionTest", () => {
 
 		expect(step.status).toBe("processed");
 		if (step.status !== "processed") return;
-		expect(step.emitted[0].data).toBe("3@order-1");
+		expect(step.emitted[0]?.data).toBe("3@order-1");
 		test.dispose();
 	});
 });

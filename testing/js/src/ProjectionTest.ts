@@ -114,12 +114,12 @@ export class ProjectionTest<
 	TResult = TState,
 	TSharedState = undefined,
 > {
-	private session: ProjectionSession;
-	private disposed = false;
+	#session: ProjectionSession;
+	#disposed = false;
 
 	constructor(source: string, options: ProjectionOptions) {
-		this.session = new ProjectionSession(source, toSessionOptions(options));
-		registry.register(this, this.session, this);
+		this.#session = new ProjectionSession(source, toSessionOptions(options));
+		registry.register(this, this.#session, this);
 	}
 
 	/**
@@ -130,11 +130,11 @@ export class ProjectionTest<
 		/** A TestEvent, RecordedEvent, or ResolvedEvent. */
 		input: EventInput,
 	): StepResult<TState, TResult, TSharedState> {
-		this.ensureNotDisposed();
+		this.#ensureNotDisposed();
 
 		const parsed = parseEventInput(input);
 		const normalized = normalizeEvent(parsed);
-		const feedResult = this.session.feed(normalized);
+		const feedResult = this.#session.feed(normalized);
 
 		return mapStepResult<TState, TResult, TSharedState>(feedResult, input);
 	}
@@ -144,14 +144,14 @@ export class ProjectionTest<
 		/** Partition key. */
 		partition?: string,
 	): TState | null {
-		this.ensureNotDisposed();
-		return this.session.getStateJson<TState>(partition) ?? null;
+		this.#ensureNotDisposed();
+		return this.#session.getStateJson<TState>(partition) ?? null;
 	}
 
 	/** Get shared state for biState projections. */
 	getSharedState(): TSharedState | null {
-		this.ensureNotDisposed();
-		return this.session.getSharedStateJson<TSharedState>() ?? null;
+		this.#ensureNotDisposed();
+		return this.#session.getSharedStateJson<TSharedState>() ?? null;
 	}
 
 	/** Get the transformed result (after `transformBy`/`filterBy`) for a partition, or state if no transform is defined. */
@@ -159,37 +159,42 @@ export class ProjectionTest<
 		/** Partition key. */
 		partition?: string,
 	): TResult | null {
-		this.ensureNotDisposed();
-		return this.session.getResultJson<TResult>(partition) ?? null;
+		this.#ensureNotDisposed();
+		return this.#session.getResultJson<TResult>(partition) ?? null;
 	}
 
 	/** Release native resources. Safe to call multiple times. */
 	dispose(): void {
-		if (this.disposed) return;
-		this.disposed = true;
+		if (this.#disposed) return;
+		this.#disposed = true;
 		registry.unregister(this);
-		this.session.dispose();
+		this.#session.dispose();
 	}
 
 	[Symbol.dispose](): void {
 		this.dispose();
 	}
 
-	private ensureNotDisposed(): void {
-		if (this.disposed) {
+	#ensureNotDisposed(): void {
+		if (this.#disposed) {
 			throw new Error("ProjectionTest has been disposed");
 		}
 	}
 }
 
 export function toSessionOptions(options: ProjectionOptions): SessionOptions {
-	return {
-		engineVersion: options.engineVersion,
-		executionTimeoutMs:
-			options.config?.executionTimeoutMs ??
-			options.databaseConfig?.executionTimeoutMs,
-		compilationTimeoutMs: options.databaseConfig?.compilationTimeoutMs,
-	};
+	const out: SessionOptions = { engineVersion: options.engineVersion };
+	const executionTimeoutMs =
+		options.config?.executionTimeoutMs ??
+		options.databaseConfig?.executionTimeoutMs;
+	if (executionTimeoutMs !== undefined) {
+		out.executionTimeoutMs = executionTimeoutMs;
+	}
+	const compilationTimeoutMs = options.databaseConfig?.compilationTimeoutMs;
+	if (compilationTimeoutMs !== undefined) {
+		out.compilationTimeoutMs = compilationTimeoutMs;
+	}
+	return out;
 }
 
 function mapStepResult<TState, TResult, TSharedState>(

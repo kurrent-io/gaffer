@@ -1,5 +1,8 @@
 import { ProjectionSession } from "@kurrent/gaffer-runtime";
-import { KurrentDBClient } from "@kurrent/kurrentdb-client";
+import {
+	KurrentDBClient,
+	type SubscribeToAllOptions,
+} from "@kurrent/kurrentdb-client";
 import {
 	buildSubscriptionFilter,
 	getResolveLinks,
@@ -176,7 +179,9 @@ function createSubscription(
 ) {
 	const filter = buildSubscriptionFilter(info);
 	const resolveLinkTos = getResolveLinks(engineVersion);
-	return client.subscribeToAll({ filter, resolveLinkTos });
+	const opts: SubscribeToAllOptions = { resolveLinkTos };
+	if (filter !== undefined) opts.filter = filter;
+	return client.subscribeToAll(opts);
 }
 
 const isIterable = (value: unknown): value is Iterable<EventInput> =>

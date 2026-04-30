@@ -74,7 +74,7 @@ describe("run(client)", () => {
 			if (step.status === "skipped") continue;
 			count++;
 			if (count >= 2) {
-				expect(step.state!.total).toBe(30);
+				expect(step.state?.total).toBe(30);
 				break;
 			}
 		}
@@ -201,9 +201,9 @@ describe("run(client)", () => {
 		for await (const step of projection.run(client)) {
 			if (step.status === "skipped") continue;
 			if (step.emitted.length > 0) {
-				expect(step.emitted[0].streamId).toBe("notifications");
-				expect(step.emitted[0].eventType).toBe("OrderNotification");
-				expect(step.emitted[0].data).toEqual({ orderId: "ABC" });
+				expect(step.emitted[0]?.streamId).toBe("notifications");
+				expect(step.emitted[0]?.eventType).toBe("OrderNotification");
+				expect(step.emitted[0]?.data).toEqual({ orderId: "ABC" });
 				break;
 			}
 		}

@@ -121,21 +121,24 @@ type ParsedTestEvent = v.InferOutput<typeof TestEventSchema>;
 type ParsedRecordedEvent = v.InferOutput<typeof RecordedEventSchema>;
 
 function normalizeTestEvent(event: ParsedTestEvent): NormalizedEvent {
-	return {
+	const out: NormalizedEvent = {
 		eventType: event.eventType,
 		streamId: event.streamId,
 		sequenceNumber: event.sequenceNumber,
 		isJson: event.isJson,
 		eventId: event.eventId ?? crypto.randomUUID(),
 		created: event.created ?? new Date().toISOString(),
-		data: stringifyData(event.data),
-		metadata: stringifyData(event.metadata),
 	};
+	const data = stringifyData(event.data);
+	if (data !== undefined) out.data = data;
+	const metadata = stringifyData(event.metadata);
+	if (metadata !== undefined) out.metadata = metadata;
+	return out;
 }
 
 function normalizeRecordedEvent(event: ParsedRecordedEvent): NormalizedEvent {
 	const strict = v.parse(StrictRecordedEventSchema, event);
-	return {
+	const out: NormalizedEvent = {
 		eventType: strict.type,
 		streamId: strict.streamId,
 		sequenceNumber: strict.revision,
@@ -145,9 +148,12 @@ function normalizeRecordedEvent(event: ParsedRecordedEvent): NormalizedEvent {
 			strict.created instanceof Date
 				? strict.created.toISOString()
 				: strict.created,
-		data: stringifyData(strict.data),
-		metadata: stringifyData(strict.metadata),
 	};
+	const data = stringifyData(strict.data);
+	if (data !== undefined) out.data = data;
+	const metadata = stringifyData(strict.metadata);
+	if (metadata !== undefined) out.metadata = metadata;
+	return out;
 }
 
 function stringifyData(value: unknown): string | undefined {

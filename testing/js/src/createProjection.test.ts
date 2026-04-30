@@ -169,10 +169,11 @@ describe("createProjection", () => {
 				]),
 			];
 			expect(results).toHaveLength(2);
-			expect(results[0].status).toBe("skipped");
-			expect(results[1].status).toBe("processed");
-			if (results[1].status === "processed") {
-				expect(results[1].state?.count).toBe(1);
+			expect(results[0]?.status).toBe("skipped");
+			const second = results[1];
+			expect(second?.status).toBe("processed");
+			if (second?.status === "processed") {
+				expect(second.state?.count).toBe(1);
 			}
 		});
 	});
@@ -257,7 +258,7 @@ describe("createProjection", () => {
 
 			for (const step of projection.run(events)) {
 				if (step.status === "skipped") continue;
-				if (step.state!.count >= 1) break;
+				if (step.state.count >= 1) break;
 			}
 		});
 	});

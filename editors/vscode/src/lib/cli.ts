@@ -56,11 +56,7 @@ function execAsync(
 	options: { cwd?: string } = {},
 ): Promise<string> {
 	return new Promise((resolve, reject) => {
-		const shell = process.env["SHELL"];
-		const shellCmd = shell
-			? `${shell} -i -c ${JSON.stringify(command)}`
-			: command;
-		exec(shellCmd, { ...options, timeout: 10_000 }, (err, stdout, stderr) => {
+		exec(command, { ...options, timeout: 10_000, shell: process.env["SHELL"] }, (err, stdout, stderr) => {
 			if (err) {
 				const stderrSuffix = stderr ? ` (stderr: ${stderr.trim()})` : "";
 				reject(new Error(`${err.message}${stderrSuffix}`));

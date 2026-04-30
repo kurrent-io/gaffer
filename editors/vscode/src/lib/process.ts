@@ -30,17 +30,21 @@ export class GafferProcess {
 	start(): this {
 		const shell = process.env["SHELL"] ?? "/bin/sh";
 		this._log(
-			`Spawning: ${shell} -i -c ${JSON.stringify(this._command)}` +
+			`Spawning: ${shell} -c ${JSON.stringify(this._command)}` +
 				(this._cwd ? ` (cwd: ${this._cwd})` : ""),
 		);
 
-		const proc = spawn(shell, ["-i", "-c", this._command], {
+		const proc = spawn(shell, ["-c", this._command], {
 			stdio: ["ignore", "pipe", "pipe"],
 			cwd: this._cwd,
 		});
 		this._proc = proc;
 
-		const rl = readline.createInterface({ input: proc.stdout! });
+		if (!proc.stdout || !proc.stderr) {
+			throw new Error("spawn returned a process without piped stdout/stderr");
+		}
+
+		const rl = readline.createInterface({ input: proc.stdout });
 		rl.on("line", (line) => {
 			try {
 				const msg = JSON.parse(line) as CliMessage;
@@ -50,7 +54,7 @@ export class GafferProcess {
 			}
 		});
 
-		proc.stderr!.on("data", (data: Buffer) => {
+		proc.stderr.on("data", (data: Buffer) => {
 			const text = stripAnsi(data.toString()).trim();
 			if (text) this._log(`[stderr] ${text}`);
 		});
@@ -81,13 +85,14 @@ export class GafferProcess {
 			const prevLine = this._onLine;
 			const prevExit = this._onExit;
 
+			let timer: NodeJS.Timeout;
 			const restore = () => {
 				this._onLine = prevLine;
 				this._onExit = prevExit;
 				clearTimeout(timer);
 			};
 
-			const timer = setTimeout(() => {
+			timer = setTimeout(() => {
 				restore();
 				reject(new Error(`Timeout waiting for "${type}" message`));
 			}, timeoutMs);

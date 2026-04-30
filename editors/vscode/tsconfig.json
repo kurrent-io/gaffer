@@ -11,6 +11,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "verbatimModuleSyntax": true,
     "outDir": "dist",
     "noEmit": true,
     "types": ["node"]

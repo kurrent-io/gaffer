@@ -25,7 +25,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		this._render();
 	}
 
-	setName(name: string): void {
+	reset(name: string): void {
 		this._name = name;
 		this._processed = 0;
 		this._skipped = 0;

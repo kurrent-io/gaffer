@@ -68,7 +68,8 @@ export function activate(context: vscode.ExtensionContext): void {
 	context.subscriptions.push(
 		vscode.debug.registerDebugAdapterDescriptorFactory("gaffer", {
 			createDebugAdapterDescriptor(session) {
-				const port = (session.configuration["port"] as number | undefined) ?? DEBUG_PORT;
+				const configured = session.configuration.port;
+				const port = typeof configured === "number" ? configured : DEBUG_PORT;
 				return new vscode.DebugAdapterServer(port);
 			},
 		}),
@@ -180,8 +181,8 @@ export function activate(context: vscode.ExtensionContext): void {
 					})
 					.on("error", () => statusProvider.addError());
 
+				statusProvider.reset(name);
 				session.start();
-				statusProvider.setName(name);
 				setSessionActive(true);
 				setInspecting(false);
 				vscode.commands.executeCommand("gaffer.status.focus");
@@ -261,8 +262,8 @@ export function activate(context: vscode.ExtensionContext): void {
 	});
 	context.subscriptions.push(tomlWatcher);
 
-	vscode.workspace.onDidChangeConfiguration(
-		(e) => {
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration((e) => {
 			if (e.affectsConfiguration("gaffer.command")) {
 				log("gaffer.command setting changed, refetching manifest");
 				void cli
@@ -270,9 +271,7 @@ export function activate(context: vscode.ExtensionContext): void {
 					.then(refreshAll)
 					.catch(() => {});
 			}
-		},
-		null,
-		context.subscriptions,
+		}),
 	);
 
 	void projectIndex.refresh().then(() => {

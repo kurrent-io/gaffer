@@ -167,5 +167,69 @@
 				"count": 1
 			}
 		}
+	},
+	{
+		"name": "v1 - null state from handler reinitializes via $init on revisit",
+		"source": "fromAll().when({ $init() { return { count: 100 }; }, Clear(s, e) { return null; }, Check(s, e) { if (s === null) return { sawNull: true }; return { count: s.count + 1 }; } })",
+		"options": {
+			"engineVersion": 1
+		},
+		"events": [
+			{
+				"eventType": "Clear",
+				"streamId": "s-1",
+				"sequenceNumber": 0,
+				"data": "{}",
+				"isJson": true,
+				"eventId": "00000000-0000-0000-0000-000000000000",
+				"created": "2026-01-01T00:00:00Z"
+			},
+			{
+				"eventType": "Check",
+				"streamId": "s-1",
+				"sequenceNumber": 1,
+				"data": "{}",
+				"isJson": true,
+				"eventId": "00000000-0000-0000-0000-000000000001",
+				"created": "2026-01-01T00:00:01Z"
+			}
+		],
+		"expect": {
+			"state": {
+				"count": 101
+			}
+		}
+	},
+	{
+		"name": "v2 - null state from handler passed through to next handler",
+		"source": "fromAll().when({ $init() { return { count: 100 }; }, Clear(s, e) { return null; }, Check(s, e) { if (s === null) return { sawNull: true }; return { count: s.count + 1 }; } })",
+		"options": {
+			"engineVersion": 2
+		},
+		"events": [
+			{
+				"eventType": "Clear",
+				"streamId": "s-1",
+				"sequenceNumber": 0,
+				"data": "{}",
+				"isJson": true,
+				"eventId": "00000000-0000-0000-0000-000000000000",
+				"created": "2026-01-01T00:00:00Z"
+			},
+			{
+				"eventType": "Check",
+				"streamId": "s-1",
+				"sequenceNumber": 1,
+				"data": "{}",
+				"isJson": true,
+				"eventId": "00000000-0000-0000-0000-000000000001",
+				"created": "2026-01-01T00:00:01Z"
+			}
+		],
+		"expect": {
+			"state": {
+				"sawNull": true
+			}
+		}
 	}
 ]

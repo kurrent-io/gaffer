@@ -48,11 +48,11 @@ function buildEventTypeFilter(info: ProjectionInfo): Filter | undefined {
 }
 
 /**
- * Get the resolveLinks setting for a subscription based on version.
+ * Get the resolveLinks setting for a subscription based on engine version.
  * V1 uses false (raw $> events visible), V2 uses true (links always resolved).
  */
-export function getResolveLinks(version: "v1" | "v2" = "v2"): boolean {
-	return version === "v2";
+export function getResolveLinks(engineVersion: 1 | 2): boolean {
+	return engineVersion === 2;
 }
 
 /** Escape special regex characters in a string. */

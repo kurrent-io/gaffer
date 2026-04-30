@@ -91,8 +91,8 @@ export interface DatabaseConfig {
 
 /** Options for configuring a projection session. */
 export interface ProjectionOptions {
-	/** Projection engine version. Default: "v2". */
-	version?: "v1" | "v2";
+	/** Projection engine version. Required. */
+	engineVersion: 1 | 2;
 	/** Per-projection settings. */
 	config?: ProjectionConfig;
 	/** Database-wide settings. */
@@ -117,7 +117,7 @@ export class ProjectionTest<
 	private session: ProjectionSession;
 	private disposed = false;
 
-	constructor(source: string, options?: ProjectionOptions) {
+	constructor(source: string, options: ProjectionOptions) {
 		this.session = new ProjectionSession(source, toSessionOptions(options));
 		registry.register(this, this.session, this);
 	}
@@ -182,12 +182,9 @@ export class ProjectionTest<
 	}
 }
 
-export function toSessionOptions(
-	options?: ProjectionOptions,
-): SessionOptions | undefined {
-	if (!options) return undefined;
+export function toSessionOptions(options: ProjectionOptions): SessionOptions {
 	return {
-		version: options.version,
+		engineVersion: options.engineVersion,
 		executionTimeoutMs:
 			options.config?.executionTimeoutMs ??
 			options.databaseConfig?.executionTimeoutMs,

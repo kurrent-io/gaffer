@@ -9,10 +9,12 @@ interface FixtureError {
 	description?: string;
 }
 
+import type { SessionOptions } from "../src/types.js";
+
 interface Fixture {
 	name: string;
 	source: string;
-	options?: Record<string, unknown>;
+	options?: SessionOptions;
 	setState?: { partition: string | null; state: string };
 	events?: Record<string, unknown>[];
 	expect: {
@@ -48,15 +50,16 @@ function assertError(error: ProjectionError, expected: FixtureError) {
 }
 
 function runFixture(f: Fixture) {
-	const optionsJson = f.options ? JSON.stringify(f.options) : undefined;
+	if (!f.options) {
+		throw new Error(
+			`Fixture "${f.name}" missing required options (engineVersion)`,
+		);
+	}
 
 	// Creation error (no events, no getResult)
 	if (f.expect.error && !f.events?.length && !f.expect.getResult) {
 		try {
-			new ProjectionSession(
-				f.source,
-				optionsJson ? JSON.parse(optionsJson) : undefined,
-			);
+			new ProjectionSession(f.source, f.options);
 			expect.fail("Expected error but session created successfully");
 		} catch (err) {
 			expect(err).toBeInstanceOf(ProjectionError);
@@ -65,10 +68,7 @@ function runFixture(f: Fixture) {
 		return;
 	}
 
-	const session = new ProjectionSession(
-		f.source,
-		optionsJson ? JSON.parse(optionsJson) : undefined,
-	);
+	const session = new ProjectionSession(f.source, f.options);
 
 	try {
 		// Check sources

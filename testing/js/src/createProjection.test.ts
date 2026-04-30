@@ -16,7 +16,7 @@ const counterSource = `
 describe("createProjection", () => {
 	describe("validate", () => {
 		it("returns info for good projection", () => {
-			const projection = createProjection(counterSource);
+			const projection = createProjection(counterSource, { engineVersion: 2 });
 			const info = projection.validate();
 			expect(info.source.type).toBe("all");
 			expect(info.partitioning.type).toBe("none");
@@ -24,27 +24,35 @@ describe("createProjection", () => {
 		});
 
 		it("throws for bad JS", () => {
-			const projection = createProjection("this is not valid {{{{");
+			const projection = createProjection("this is not valid {{{{", {
+				engineVersion: 2,
+			});
 			expect(() => projection.validate()).toThrow(InvalidProjectionError);
 		});
 
 		it("maps foreachStream partitioning", () => {
-			const projection = createProjection(`
+			const projection = createProjection(
+				`
 				fromAll().foreachStream().when({
 					$init() { return {}; },
 					Ping(s, e) { return s; }
 				})
-			`);
+			`,
+				{ engineVersion: 2 },
+			);
 			expect(projection.validate().partitioning.type).toBe("byStream");
 		});
 
 		it("maps category source", () => {
-			const projection = createProjection(`
+			const projection = createProjection(
+				`
 				fromCategory("orders").when({
 					$init() { return {}; },
 					Ping(s, e) { return s; }
 				})
-			`);
+			`,
+				{ engineVersion: 2 },
+			);
 			expect(projection.validate().source).toEqual({
 				type: "categories",
 				categories: ["orders"],
@@ -52,26 +60,31 @@ describe("createProjection", () => {
 		});
 
 		it("maps biState", () => {
-			const projection = createProjection(`
+			const projection = createProjection(
+				`
 				options({ biState: true });
 				fromAll().when({
 					$init() { return {}; },
 					$initShared() { return {}; },
 					Ping(s, e) { return s; }
 				})
-			`);
+			`,
+				{ engineVersion: 2 },
+			);
 			expect(projection.validate().biState).toBe(true);
 		});
 	});
 
 	describe("run (invalid)", () => {
 		it("throws on invalid projection", () => {
-			const projection = createProjection("this is not valid {{{{");
+			const projection = createProjection("this is not valid {{{{", {
+				engineVersion: 2,
+			});
 			expect(() => [...projection.run([])]).toThrow(InvalidProjectionError);
 		});
 
 		it("throws on invalid input type", () => {
-			const projection = createProjection(counterSource);
+			const projection = createProjection(counterSource, { engineVersion: 2 });
 			expect(() => [
 				...projection.run(42 as unknown as Iterable<never>),
 			]).toThrow("run() expects");
@@ -85,7 +98,9 @@ describe("createProjection", () => {
 					Bad(s, e) { throw "mid-stream error"; }
 				})
 			`;
-			const projection = createProjection<{ count: number }>(source);
+			const projection = createProjection<{ count: number }>(source, {
+				engineVersion: 2,
+			});
 			const events = [
 				{
 					eventType: "Good",
@@ -125,6 +140,7 @@ describe("createProjection", () => {
 	describe("options", () => {
 		it("passes compilation timeout to session", () => {
 			const projection = createProjection("while(true) {}", {
+				engineVersion: 2,
 				databaseConfig: { compilationTimeoutMs: 100 },
 			});
 			expect(() => [...projection.run([])]).toThrow(CompilationTimeoutError);
@@ -132,7 +148,7 @@ describe("createProjection", () => {
 
 		it("v1 drops non-JSON events", () => {
 			const projection = createProjection<{ count: number }>(counterSource, {
-				version: "v1",
+				engineVersion: 1,
 			});
 			const results = [
 				...projection.run([
@@ -163,7 +179,9 @@ describe("createProjection", () => {
 
 	describe("run (empty)", () => {
 		it("yields no results for empty iterable", () => {
-			const projection = createProjection<{ count: number }>(counterSource);
+			const projection = createProjection<{ count: number }>(counterSource, {
+				engineVersion: 2,
+			});
 			const results = [...projection.run([])];
 			expect(results).toHaveLength(0);
 		});
@@ -171,7 +189,9 @@ describe("createProjection", () => {
 
 	describe("run (sync)", () => {
 		it("iterates over events and yields state", () => {
-			const projection = createProjection<{ count: number }>(counterSource);
+			const projection = createProjection<{ count: number }>(counterSource, {
+				engineVersion: 2,
+			});
 			const events = [
 				{
 					eventType: "ItemAdded",
@@ -208,7 +228,9 @@ describe("createProjection", () => {
 		});
 
 		it("cleans up on early break", () => {
-			const projection = createProjection<{ count: number }>(counterSource);
+			const projection = createProjection<{ count: number }>(counterSource, {
+				engineVersion: 2,
+			});
 			const events = [
 				{
 					eventType: "ItemAdded",
@@ -242,7 +264,9 @@ describe("createProjection", () => {
 
 	describe("run (async)", () => {
 		it("iterates over async events", async () => {
-			const projection = createProjection<{ count: number }>(counterSource);
+			const projection = createProjection<{ count: number }>(counterSource, {
+				engineVersion: 2,
+			});
 
 			async function* events() {
 				yield {
@@ -278,7 +302,9 @@ describe("createProjection", () => {
 					Bad(s, e) { throw "async error"; }
 				})
 			`;
-			const projection = createProjection<{ count: number }>(source);
+			const projection = createProjection<{ count: number }>(source, {
+				engineVersion: 2,
+			});
 
 			async function* events() {
 				yield {
@@ -310,7 +336,9 @@ describe("createProjection", () => {
 
 	describe("test", () => {
 		it("creates a manual test session", () => {
-			const projection = createProjection<{ count: number }>(counterSource);
+			const projection = createProjection<{ count: number }>(counterSource, {
+				engineVersion: 2,
+			});
 			const test = projection.test();
 			test.feed({
 				eventType: "ItemAdded",
@@ -326,13 +354,16 @@ describe("createProjection", () => {
 
 	describe("systemEvents", () => {
 		it("stream deletion feeds correctly", () => {
-			const projection = createProjection<{ a: number; deleted?: boolean }>(`
+			const projection = createProjection<{ a: number; deleted?: boolean }>(
+				`
 				fromAll().foreachStream().when({
 					$init() { return { a: 0 }; },
 					ItemAdded(s, e) { s.a++; return s; },
 					$deleted(s, e) { s.deleted = true; return s; }
 				}).outputState()
-			`);
+			`,
+				{ engineVersion: 2 },
+			);
 
 			const test = projection.test();
 			test.feed({

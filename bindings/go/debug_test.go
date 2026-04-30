@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const debugOpts = `{"debug":true}`
+const debugOpts = `{"engineVersion":2,"debug":true}`
 
 const debugTestEvent = `{"eventType":"ItemAdded","streamId":"stream-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`
 

@@ -79,6 +79,7 @@ func setupTestProject(t *testing.T) *Server {
 	}
 
 	cfg := &config.Config{
+		EngineVersion: 2,
 		Projection: []config.Projection{
 			{Name: "order-count", Entry: "projections/order-count.js"},
 			{Name: "broken", Entry: "projections/broken.js"},

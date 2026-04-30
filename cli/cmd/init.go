@@ -40,7 +40,7 @@ func runInit(yes bool) error {
 		return fmt.Errorf("gaffer.toml already exists in %s", dir)
 	}
 
-	cfg := &config.Config{}
+	cfg := &config.Config{EngineVersion: 2}
 	if err := config.Save(configPath, cfg); err != nil {
 		return err
 	}

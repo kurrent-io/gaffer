@@ -4,7 +4,7 @@ using Gaffer.Runtime.Events;
 namespace Gaffer.Runtime.Tests;
 
 public class V1ConformanceTests {
-	private static readonly ProjectionSessionOptions V1 = new() { Version = ProjectionVersion.V1 };
+	private static readonly ProjectionSessionOptions V1 = new() { EngineVersion = ProjectionVersion.V1 };
 
 	// --- Event filtering ---
 

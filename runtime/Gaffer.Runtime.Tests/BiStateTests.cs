@@ -56,7 +56,7 @@ public class BiStateTests {
 
 	[Fact]
 	public void BiState_source_definition() {
-		using var session = new ProjectionSession(AccountBalancerSource);
+		using var session = new ProjectionSession(AccountBalancerSource, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		Assert.True(session.Sources.IsBiState);
 		Assert.True(session.Sources.ByCustomPartitions);
 	}
@@ -75,7 +75,7 @@ public class BiStateTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnStateChanged = (p, s) => stateChanges.Add((p, s));
 
 		session.Feed(new ProjectionEvent { EventType = "Added", StreamId = "s-1", Data = """{"amount":10}""" });
@@ -94,7 +94,7 @@ public class BiStateTests {
 
 	[Fact]
 	public void Account_balancer_full_spec() {
-		using var session = new ProjectionSession(AccountBalancerSource);
+		using var session = new ProjectionSession(AccountBalancerSource, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		// Transaction 1: transfer from alice
 		session.Feed(new ProjectionEvent {

@@ -8,7 +8,7 @@ public class SourceDefinitionTests {
                 $init: function() { return {}; },
                 TestEvent: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.False(session.Sources.AllStreams);
 		Assert.NotNull(session.Sources.Streams);
@@ -23,7 +23,7 @@ public class SourceDefinitionTests {
                 $init: function() { return {}; },
                 TestEvent: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.NotNull(session.Sources.Categories);
 		Assert.Contains("orders", session.Sources.Categories);
@@ -36,7 +36,7 @@ public class SourceDefinitionTests {
                 $init: function() { return {}; },
                 TestEvent: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.True(session.Sources.AllStreams);
 		Assert.True(session.Sources.ByStreams);
@@ -49,7 +49,7 @@ public class SourceDefinitionTests {
                 $init: function() { return {}; },
                 TestEvent: function(s, e) { return s; }
             }).outputTo("my-results")
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.Equal("my-results", session.Sources.ResultStreamName);
 	}
@@ -61,7 +61,7 @@ public class SourceDefinitionTests {
                 $init: function() { return {}; },
                 TestEvent: function(s, e) { return s; }
             }).outputTo("my-results", "partition-{0}")
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.Equal("my-results", session.Sources.ResultStreamName);
 		Assert.Equal("partition-{0}", session.Sources.PartitionResultStreamNamePattern);
@@ -75,7 +75,7 @@ public class SourceDefinitionTests {
                 $init: function() { return {}; },
                 TestEvent: function(s, e) { return s; }
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.Equal("custom-stream", session.Sources.ResultStreamName);
 	}
@@ -88,7 +88,7 @@ public class SourceDefinitionTests {
                 $init: function() { return {}; },
                 TestEvent: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.True(session.Sources.IncludeLinks);
 	}
@@ -101,7 +101,7 @@ public class SourceDefinitionTests {
                 $init: function() { return {}; },
                 TestEvent: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.True(session.Sources.ReorderEvents);
 		Assert.Equal(500, session.Sources.ProcessingLag);
@@ -114,7 +114,7 @@ public class SourceDefinitionTests {
                 $init: function() { return {}; },
                 TestEvent: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.True(session.Sources.ByCustomPartitions);
 	}
@@ -126,7 +126,7 @@ public class SourceDefinitionTests {
                 $init: function() { return {}; },
                 TestEvent: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.True(session.Sources.DefinesFold);
 	}
@@ -138,7 +138,7 @@ public class SourceDefinitionTests {
                 $init: function() { return {}; },
                 TestEvent: function(s, e) { return s; }
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.True(session.Sources.ProducesResults);
 	}
@@ -150,7 +150,7 @@ public class SourceDefinitionTests {
                 $init: function() { return { x: 1 }; },
                 TestEvent: function(s, e) { return s; }
             }).filterBy(function(s) { return s.x > 0; }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.True(session.Sources.DefinesStateTransform);
 		Assert.True(session.Sources.ProducesResults);
@@ -164,7 +164,7 @@ public class SourceDefinitionTests {
                 OrderPlaced: function(s, e) { return s; },
                 OrderShipped: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.False(session.Sources.AllEvents);
 		Assert.NotNull(session.Sources.Events);
@@ -179,7 +179,7 @@ public class SourceDefinitionTests {
                 $init: function() { return {}; },
                 $any: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.True(session.Sources.AllEvents);
 	}

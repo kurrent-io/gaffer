@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -10,6 +11,8 @@ func TestLoadValidConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
+engine_version = 2
+
 [[projection]]
 name = "cart-count"
 entry = "projections/cart-count.js"
@@ -17,7 +20,7 @@ entry = "projections/cart-count.js"
 [[projection]]
 name = "user-stats"
 entry = "projections/user-stats.js"
-engine = "v1"
+engine_version = 1
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -36,8 +39,8 @@ engine = "v1"
 		t.Fatalf("expected name cart-count, got %s", cfg.Projection[0].Name)
 	}
 
-	if cfg.Projection[1].Engine != "v1" {
-		t.Fatalf("expected engine v1, got %s", cfg.Projection[1].Engine)
+	if cfg.Projection[1].EngineVersion != 1 {
+		t.Fatalf("expected engine_version 1, got %d", cfg.Projection[1].EngineVersion)
 	}
 }
 
@@ -89,6 +92,27 @@ name = "test"
 	_, err := Load(path)
 	if err == nil {
 		t.Fatal("expected error for missing entry")
+	}
+}
+
+func TestLoadMissingEngineVersion(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+[[projection]]
+name = "test"
+entry = "test.js"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for missing engine_version")
+	}
+	if !strings.Contains(err.Error(), "engine_version") {
+		t.Errorf("expected engine_version in error, got %q", err.Error())
 	}
 }
 
@@ -168,15 +192,22 @@ func TestIsEnabled(t *testing.T) {
 	}
 }
 
-func TestEffectiveEngine(t *testing.T) {
+func TestEffectiveEngineVersion(t *testing.T) {
+	cfg := &Config{EngineVersion: 2}
 	p := Projection{Name: "a", Entry: "a.js"}
-	if p.EffectiveEngine() != "v2" {
-		t.Fatalf("expected v2 default, got %s", p.EffectiveEngine())
+	if got := cfg.EffectiveEngineVersion(&p); got != 2 {
+		t.Fatalf("expected top-level 2, got %d", got)
 	}
 
-	p.Engine = "v1"
-	if p.EffectiveEngine() != "v1" {
-		t.Fatalf("expected v1, got %s", p.EffectiveEngine())
+	p.EngineVersion = 1
+	if got := cfg.EffectiveEngineVersion(&p); got != 1 {
+		t.Fatalf("expected per-projection override 1, got %d", got)
+	}
+
+	emptyCfg := &Config{}
+	emptyP := Projection{Name: "b", Entry: "b.js"}
+	if got := emptyCfg.EffectiveEngineVersion(&emptyP); got != 0 {
+		t.Fatalf("expected 0 when neither set, got %d", got)
 	}
 }
 
@@ -184,6 +215,7 @@ func TestLoadGlobalTimeouts(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
+engine_version = 2
 compilation_timeout = 1000
 execution_timeout = 500
 
@@ -238,7 +270,7 @@ func TestSaveAndReload(t *testing.T) {
 
 	cfg := &Config{
 		Projection: []Projection{
-			{Name: "test", Entry: "test.js", Engine: "v1"},
+			{Name: "test", Entry: "test.js", EngineVersion: 1},
 		},
 	}
 
@@ -259,7 +291,7 @@ func TestSaveAndReload(t *testing.T) {
 		t.Fatalf("expected name test, got %s", loaded.Projection[0].Name)
 	}
 
-	if loaded.Projection[0].Engine != "v1" {
-		t.Fatalf("expected engine v1, got %s", loaded.Projection[0].Engine)
+	if loaded.Projection[0].EngineVersion != 1 {
+		t.Fatalf("expected engine_version 1, got %d", loaded.Projection[0].EngineVersion)
 	}
 }

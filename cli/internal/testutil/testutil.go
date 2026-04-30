@@ -93,11 +93,18 @@ type Project struct {
 	t   *testing.T
 }
 
+// NewProject returns a test project with engine_version=2 by default.
+// Call WithEngineVersion to override.
 func NewProject(t *testing.T) *Project {
 	t.Helper()
 	dir := t.TempDir()
-	cfg := &config.Config{}
+	cfg := &config.Config{EngineVersion: 2}
 	return &Project{Dir: dir, Cfg: cfg, t: t}
+}
+
+func (p *Project) WithEngineVersion(v int) *Project {
+	p.Cfg.EngineVersion = v
+	return p
 }
 
 func (p *Project) WithConnection(connStr string) *Project {

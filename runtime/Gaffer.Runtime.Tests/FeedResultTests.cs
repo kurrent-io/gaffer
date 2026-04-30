@@ -12,7 +12,7 @@ public class FeedResultTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -26,7 +26,7 @@ public class FeedResultTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Unhandled", StreamId = "s-1", Data = "{}" });
 
@@ -41,7 +41,7 @@ public class FeedResultTests {
                 $init: function() { return {}; },
                 $any: function(s, e) { return s; }
             })
-        """, new ProjectionSessionOptions { Version = ProjectionVersion.V1 });
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V1 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Bin", StreamId = "s-1", Data = "x", IsJson = false });
 
@@ -60,7 +60,7 @@ public class FeedResultTests {
                 $init: function() { return {}; },
                 $any: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "$>", StreamId = "$ce-order", Data = "0@order-1", IsJson = false });
 
@@ -77,7 +77,7 @@ public class FeedResultTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -91,7 +91,7 @@ public class FeedResultTests {
                 $init: function() { return {}; },
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -105,7 +105,7 @@ public class FeedResultTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "order-1", Data = "{}" });
 
@@ -122,7 +122,7 @@ public class FeedResultTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -138,7 +138,7 @@ public class FeedResultTests {
             }).transformBy(function(s) {
                 return { doubled: s.count * 2 };
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -155,7 +155,7 @@ public class FeedResultTests {
             }).filterBy(function(s) {
                 return s.count >= 3;
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -178,7 +178,7 @@ public class FeedResultTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Add", StreamId = "s-1", Data = """{"amount":10}""" });
 
@@ -193,7 +193,7 @@ public class FeedResultTests {
                 $init: function() { return {}; },
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -212,7 +212,7 @@ public class FeedResultTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Order", StreamId = "s-1", Data = "{}" });
 
@@ -231,7 +231,7 @@ public class FeedResultTests {
                 },
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -245,7 +245,7 @@ public class FeedResultTests {
                 $init: function() { return {}; },
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -265,7 +265,7 @@ public class FeedResultTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -281,7 +281,7 @@ public class FeedResultTests {
                 $init: function() { return {}; },
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -298,7 +298,7 @@ public class FeedResultTests {
                 Ping: function(s, e) { return s; },
                 $deleted: function(s, e) { s.deleted = true; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "order-1", Data = "{}" });
 		var result = session.Feed(new ProjectionEvent { EventType = "$streamDeleted", StreamId = "order-1", Data = "{}" });
@@ -315,7 +315,7 @@ public class FeedResultTests {
                 $init: function() { return {}; },
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "$streamDeleted", StreamId = "order-1", Data = "{}" });
 
@@ -341,7 +341,7 @@ public class FeedResultTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitCb.Add(e);
 		session.OnLog = m => logCb.Add(m);
 		session.OnStateChanged = (_, s) => stateCb.Add(s);
@@ -367,7 +367,7 @@ public class FeedResultTests {
                 Emit: function(s, e) { emit("target", "Fwd", {}); return s; },
                 NoEmit: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var r1 = session.Feed(new ProjectionEvent { EventType = "Emit", StreamId = "s-1", Data = "{}" });
 		var r2 = session.Feed(new ProjectionEvent { EventType = "NoEmit", StreamId = "s-1", Data = "{}" });
@@ -384,7 +384,7 @@ public class FeedResultTests {
                 WithLog: function(s, e) { log("hello"); return s; },
                 NoLog: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var r1 = session.Feed(new ProjectionEvent { EventType = "WithLog", StreamId = "s-1", Data = "{}" });
 		var r2 = session.Feed(new ProjectionEvent { EventType = "NoLog", StreamId = "s-1", Data = "{}" });
@@ -402,7 +402,7 @@ public class FeedResultTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -418,7 +418,7 @@ public class FeedResultTests {
             }).transformBy(function(s) {
                 return { doubled: s.count * 2 };
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -434,7 +434,7 @@ public class FeedResultTests {
                 $initShared: function() { return { total: 0 }; },
                 Add: function(s, e) { s[0].count++; s[1].total += e.data.amount; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Add", StreamId = "s-1", Data = """{"amount":5}""" });
 
@@ -450,7 +450,7 @@ public class FeedResultTests {
                 $init: function() { return { count: 0 }; },
                 Clear: function(s, e) { return null; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Clear", StreamId = "s-1", Data = "{}" });
 
@@ -470,7 +470,7 @@ public class FeedResultTests {
                 $init: function() { return {}; },
                 $any: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -489,7 +489,7 @@ public class FeedResultTests {
                 $init: function() { return {}; },
                 $any: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent {
 			EventType = "OrderPlaced",
@@ -515,7 +515,7 @@ public class FeedResultTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Order", StreamId = "s-1", Data = "{}" });
 
@@ -531,7 +531,7 @@ public class FeedResultTests {
                 $init: function() { return {}; },
                 Order: function(s, e) { linkTo("target", e); return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Order", StreamId = "s-1", Data = "{}", SequenceNumber = 5 });
 
@@ -549,7 +549,7 @@ public class FeedResultTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
@@ -568,7 +568,7 @@ public class FeedResultTests {
                 $init: function() { return { count: 0 }; },
                 Order: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Order", StreamId = "s-1", Data = """{"region":"eu"}""" });
 
@@ -586,7 +586,7 @@ public class FeedResultTests {
                 Ping: function(s, e) { return s; },
                 $deleted: function(s, e) { s.deleted = true; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "order-1", Data = "{}" });
 		var result = session.Feed(new ProjectionEvent {

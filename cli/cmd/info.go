@@ -41,7 +41,7 @@ func runInfo(cmd *cobra.Command, name string, asJSON bool) error {
 	}
 
 	tw := newTextWriter(os.Stdout)
-	tw.WriteInfo(proj.Def.Name, info, proj.Engine)
+	tw.WriteInfo(proj.Def.Name, info, proj.EngineVersion)
 	return nil
 }
 
@@ -50,7 +50,7 @@ func writeInfoJSON(proj *engine.Projection, info gafferruntime.QuerySources) err
 	out := map[string]any{
 		"name":            proj.Def.Name,
 		"entry":           proj.Def.Entry,
-		"engine":          proj.Engine,
+		"engineVersion":   proj.EngineVersion,
 		"source":          src["type"],
 		"biState":         info.IsBiState,
 		"producesResults": info.ProducesResults,

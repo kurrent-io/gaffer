@@ -17,7 +17,7 @@ public class BugFixTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "SetName", StreamId = "s-1", Data = """{"name":"alice"}""" });
 
@@ -35,7 +35,7 @@ public class BugFixTests {
             }).transformBy(function(s) {
                 return { total: s.count };
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "known", Data = "{}" });
 
@@ -50,7 +50,7 @@ public class BugFixTests {
                 $init: function() { return {}; },
                 Bad: function(s, e) { throw "something went wrong"; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var ex = Assert.Throws<ProjectionHandlerException>(() =>
 			session.Feed(new ProjectionEvent { EventType = "Bad", StreamId = "s-1", Data = "{}" }));
@@ -65,7 +65,7 @@ public class BugFixTests {
                 $init: function() { return {}; },
                 Bad: function(s, e) { s.foo.bar.baz = 1; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.Throws<ProjectionHandlerException>(() =>
 			session.Feed(new ProjectionEvent { EventType = "Bad", StreamId = "s-1", Data = "{}" }));

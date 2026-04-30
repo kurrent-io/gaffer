@@ -17,9 +17,9 @@ func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest
 	projections := []map[string]any{}
 	for _, proj := range s.cfg.Projection {
 		entry := map[string]any{
-			"name":   proj.Name,
-			"entry":  proj.Entry,
-			"engine": proj.EffectiveEngine(),
+			"name":          proj.Name,
+			"entry":         proj.Entry,
+			"engineVersion": s.cfg.EffectiveEngineVersion(&proj),
 		}
 		if proj.Enabled != nil && !*proj.Enabled {
 			entry["enabled"] = false

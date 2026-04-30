@@ -13,7 +13,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Bin", StreamId = "s-1", Data = "binary", IsJson = false });
 
@@ -27,7 +27,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Bin", StreamId = "s-1", Data = null, IsJson = false });
 
@@ -41,7 +41,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = null });
 
@@ -55,7 +55,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "" });
 
@@ -69,7 +69,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "  " });
 
@@ -83,7 +83,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Bin", StreamId = "s-1", Data = "  ", IsJson = false });
 
@@ -99,7 +99,7 @@ public class V2ConformanceTests {
                 $init: function() { return { raw: "" }; },
                 $any: function(s, e) { s.raw = e.bodyRaw; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Bin", StreamId = "s-1", Data = "hello", IsJson = false });
 
@@ -113,7 +113,7 @@ public class V2ConformanceTests {
                 $init: function() { return { undef: false }; },
                 $any: function(s, e) { s.undef = (typeof e.body === 'undefined'); return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Bin", StreamId = "s-1", Data = "hello", IsJson = false });
 
@@ -130,7 +130,7 @@ public class V2ConformanceTests {
                 Order: function(s, e) { return s; },
                 $deleted: function(s, e) { s.deleted = true; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Order", StreamId = "order-1", Data = "{}" });
 		session.Feed(new ProjectionEvent {
@@ -150,7 +150,7 @@ public class V2ConformanceTests {
                 Order: function(s, e) { return s; },
                 $deleted: function(s, e) { s.deleted = true; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Order", StreamId = "order-1", Data = "{}" });
 		session.Feed(new ProjectionEvent {
@@ -169,7 +169,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent {
 			EventType = "$metadata",
@@ -188,7 +188,7 @@ public class V2ConformanceTests {
                 Order: function(s, e) { return s; },
                 $deleted: function(s, e) { s.deleted = true; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Order", StreamId = "stream-1", Data = "{}" });
 
@@ -211,7 +211,7 @@ public class V2ConformanceTests {
                 Clear: function(s, e) { return null; },
                 Probe: function(s, e) { return { saw: JSON.stringify(s) }; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Tag", StreamId = "s-1", Data = "{}" });
 		Assert.Contains("\"from\":\"tag\"", session.GetState("s-1")!);
@@ -230,7 +230,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 Increment: function(s, e) { s.count++; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Increment", StreamId = "s-1", Data = "{}" });
 
@@ -247,7 +247,7 @@ public class V2ConformanceTests {
                 $created: function(s, e) { s.created = true; },
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -262,7 +262,7 @@ public class V2ConformanceTests {
                 $created: function(s, e) { s.createdCount++; },
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
@@ -280,7 +280,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Skip", StreamId = "s-1", Data = "{}" });
 
@@ -299,7 +299,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -315,7 +315,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 A: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "B", StreamId = "s-1", Data = "{}" });
 
@@ -330,7 +330,7 @@ public class V2ConformanceTests {
                 A: function(s, e) { s.aCount++; return s; },
                 $any: function(s, e) { s.anyCount++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "B", StreamId = "s-1", Data = "{}" });
 
@@ -350,7 +350,7 @@ public class V2ConformanceTests {
                 $initShared: function() { return {}; },
                 $deleted: function(s, e) { return s; }
             })
-        """));
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 }));
 	}
 
 	// -- biState / shared state --
@@ -364,7 +364,7 @@ public class V2ConformanceTests {
                 $initShared: function() { return { total: 0 }; },
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -386,7 +386,7 @@ public class V2ConformanceTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Added", StreamId = "s-1", Data = """{"amount":10}""" });
 
@@ -407,7 +407,7 @@ public class V2ConformanceTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Added", StreamId = "s-1", Data = """{"amount":5}""" });
 		session.Feed(new ProjectionEvent { EventType = "Added", StreamId = "s-2", Data = """{"amount":7}""" });
@@ -429,7 +429,7 @@ public class V2ConformanceTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Reset", StreamId = "s-1", Data = "{}" });
 
@@ -447,7 +447,7 @@ public class V2ConformanceTests {
             }).transformBy(function(s) {
                 return { total: s.count * 2 };
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
@@ -469,7 +469,7 @@ public class V2ConformanceTests {
             }).filterBy(function(s) {
                 return s.count >= 3;
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
@@ -494,7 +494,7 @@ public class V2ConformanceTests {
             }).filterBy(function(s) {
                 return s.active;
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -510,7 +510,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -524,7 +524,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             }).$defines_state_transform()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.True(session.Sources.DefinesStateTransform);
 
@@ -548,7 +548,7 @@ public class V2ConformanceTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(new ProjectionEvent { EventType = "Order", StreamId = "s-1", Data = "{}" });
@@ -571,7 +571,7 @@ public class V2ConformanceTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(new ProjectionEvent { EventType = "Order", StreamId = "s-1", Data = "{}" });
@@ -592,7 +592,7 @@ public class V2ConformanceTests {
                 },
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
@@ -614,7 +614,7 @@ public class V2ConformanceTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(new ProjectionEvent { EventType = "Order", StreamId = "s-1", Data = "{}" });
@@ -637,7 +637,7 @@ public class V2ConformanceTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(new ProjectionEvent { EventType = "Bin", StreamId = "s-1", Data = "raw data", IsJson = false });
@@ -652,7 +652,7 @@ public class V2ConformanceTests {
                 $init: function() { return { raw: "" }; },
                 $any: function(s, e) { s.raw = e.bodyRaw; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Bin", StreamId = "s-1", Data = "raw binary data", IsJson = false });
 
@@ -668,7 +668,7 @@ public class V2ConformanceTests {
                 $init: function() { return {}; },
                 Placed: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.NotNull(session.Sources.Categories);
 		Assert.Contains("order", session.Sources.Categories);
@@ -682,7 +682,7 @@ public class V2ConformanceTests {
                 $init: function() { return {}; },
                 Ping: function(s, e) { log("hello"); return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnLog = msg => logs.Add(msg);
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
@@ -699,7 +699,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnStateChanged = (p, s) => changes.Add((p, s));
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
@@ -715,7 +715,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.SetState(null, """{"count":10}""");
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
@@ -732,7 +732,7 @@ public class V2ConformanceTests {
                 $init: function() { return {}; },
                 Order: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		var key = session.GetPartitionKey(new ProjectionEvent {
 			EventType = "Order",
@@ -761,7 +761,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.Throws<Errors.InvalidArgumentException>(() => session.SetState(null, ""));
 	}
@@ -777,7 +777,7 @@ public class V2ConformanceTests {
                 Clear: function(s, e) { return null; },
                 Probe: function(s, e) { return { saw: JSON.stringify(s) }; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 		session.Feed(new ProjectionEvent { EventType = "Clear", StreamId = "s-1", Data = "{}" });
@@ -797,7 +797,7 @@ public class V2ConformanceTests {
                 Clear: function(s, e) { return null; },
                 Probe: function(s, e) { return { saw: JSON.stringify(s) }; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.SetState(null, """{"count":5}""");
 		session.Feed(new ProjectionEvent { EventType = "Clear", StreamId = "s-1", Data = "{}" });
@@ -819,7 +819,7 @@ public class V2ConformanceTests {
                 Ping: function(s, e) { return s; },
                 $deleted: function(s, e) { s.deleted = true; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent {
 			EventType = "$streamDeleted",
@@ -837,7 +837,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.Null(session.GetResult("nonexistent"));
 	}
@@ -851,7 +851,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent {
 			EventType = "OrderPlaced",
@@ -871,7 +871,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent {
 			EventType = "OrderPlaced",
@@ -890,7 +890,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent {
 			EventType = "$>",
@@ -910,7 +910,7 @@ public class V2ConformanceTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent {
 			EventType = "$>",

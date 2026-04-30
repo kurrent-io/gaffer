@@ -9,7 +9,7 @@ const testEvent = `{"eventType":"Test","streamId":"s-1","sequenceNumber":42,"dat
 
 func TestError_InvalidProjection_ParseError(t *testing.T) {
 	source := "this is not valid {{{{"
-	_, err := NewSession(source, nil)
+	_, err := NewSession(source, &v2Opts)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -28,7 +28,7 @@ func TestError_InvalidProjection_ParseError(t *testing.T) {
 }
 
 func TestError_InvalidProjection_SourceDefinition(t *testing.T) {
-	_, err := NewSession("fromStream(123)", nil)
+	_, err := NewSession("fromStream(123)", &v2Opts)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -43,7 +43,7 @@ func TestError_InvalidProjection_SourceDefinition(t *testing.T) {
 }
 
 func TestError_CompilationTimeout(t *testing.T) {
-	opts := `{"compilationTimeoutMs":100}`
+	opts := `{"engineVersion":2,"compilationTimeoutMs":100}`
 	_, err := NewSession("while(true) {}", &opts)
 	if err == nil {
 		t.Fatal("expected error")
@@ -61,7 +61,7 @@ func TestError_CompilationTimeout(t *testing.T) {
 
 func TestError_ProjectionHandler(t *testing.T) {
 	source := "fromAll().when({\n\t$init() { return {}; },\n\tTest(s, e) { throw new Error(\"boom\"); }\n})"
-	session, err := NewSession(source, nil)
+	session, err := NewSession(source, &v2Opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestError_ProjectionHandler(t *testing.T) {
 
 func TestError_ProjectionHandler_WithPartition(t *testing.T) {
 	source := "fromAll().foreachStream().when({\n\t$init() { return {}; },\n\tTest(s, e) { throw \"fail\"; }\n})"
-	session, err := NewSession(source, nil)
+	session, err := NewSession(source, &v2Opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestError_ProjectionHandler_WithPartition(t *testing.T) {
 }
 
 func TestError_ExecutionTimeout(t *testing.T) {
-	opts := `{"executionTimeoutMs":100}`
+	opts := `{"engineVersion":2,"executionTimeoutMs":100}`
 	source := "fromAll().when({\n\t$init() { return {}; },\n\tTest(s, e) { while(true) {} }\n})"
 	session, err := NewSession(source, &opts)
 	if err != nil {
@@ -138,7 +138,7 @@ func TestError_ExecutionTimeout(t *testing.T) {
 
 func TestError_MalformedEvent(t *testing.T) {
 	source := "fromAll().when({\n\t$init() { return {}; },\n\tTest(s, e) { return e.data; }\n})"
-	session, err := NewSession(source, nil)
+	session, err := NewSession(source, &v2Opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestError_MalformedEvent(t *testing.T) {
 
 func TestError_StateSerialization_NaN(t *testing.T) {
 	source := "fromAll().when({\n\t$init() { return {}; },\n\tTest(s, e) { s.value = NaN; return s; }\n})"
-	session, err := NewSession(source, nil)
+	session, err := NewSession(source, &v2Opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestError_StateSerialization_NaN(t *testing.T) {
 
 func TestError_ProjectionTransform(t *testing.T) {
 	source := "fromAll().when({\n\t$init() { return {}; },\n\tTest(s, e) { return s; }\n}).transformBy(function(s) {\n\tthrow new Error(\"transform failed\");\n}).outputState()"
-	session, err := NewSession(source, nil)
+	session, err := NewSession(source, &v2Opts)
 	if err != nil {
 		t.Fatal(err)
 	}

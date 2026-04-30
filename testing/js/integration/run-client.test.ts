@@ -26,12 +26,15 @@ describe("run(client)", () => {
 			jsonEvent({ type: "Ping", data: {} }),
 		]);
 
-		const projection = createProjection<{ count: number }>(`
+		const projection = createProjection<{ count: number }>(
+			`
 			fromAll().when({
 				$init() { return { count: 0 }; },
 				Ping(s, e) { s.count++; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		let count = 0;
 		for await (const step of projection.run(client)) {
@@ -56,12 +59,15 @@ describe("run(client)", () => {
 			jsonEvent({ type: "OrderPlaced", data: { amount: 20 } }),
 		]);
 
-		const projection = createProjection<{ total: number }>(`
+		const projection = createProjection<{ total: number }>(
+			`
 			fromCategory("orders").when({
 				$init() { return { total: 0 }; },
 				OrderPlaced(s, e) { s.total += e.data.amount; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		let count = 0;
 		for await (const step of projection.run(client)) {
@@ -83,12 +89,15 @@ describe("run(client)", () => {
 			jsonEvent({ type: "Tick", data: {} }),
 		]);
 
-		const projection = createProjection<{ count: number }>(`
+		const projection = createProjection<{ count: number }>(
+			`
 			fromStream("${stream}").when({
 				$init() { return { count: 0 }; },
 				Tick(s, e) { s.count++; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		let count = 0;
 		for await (const step of projection.run(client)) {
@@ -121,7 +130,9 @@ describe("run(client)", () => {
 			"})",
 		].join("\n");
 
-		const projection = createProjection<{ count: number }>(source);
+		const projection = createProjection<{ count: number }>(source, {
+			engineVersion: 2,
+		});
 
 		let count = 0;
 		for await (const step of projection.run(client)) {
@@ -147,12 +158,15 @@ describe("run(client)", () => {
 			jsonEvent({ type: "ItemAdded", data: {} }),
 		]);
 
-		const projection = createProjection<{ items: number }>(`
+		const projection = createProjection<{ items: number }>(
+			`
 			fromCategory("carts").foreachStream().when({
 				$init() { return { items: 0 }; },
 				ItemAdded(s, e) { s.items++; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		let count = 0;
 		for await (const step of projection.run(client)) {
@@ -171,7 +185,8 @@ describe("run(client)", () => {
 			jsonEvent({ type: eventType, data: { orderId: "ABC" } }),
 		]);
 
-		const projection = createProjection(`
+		const projection = createProjection(
+			`
 			fromAll().when({
 				$init() { return {}; },
 				${eventType}(s, e) {
@@ -179,7 +194,9 @@ describe("run(client)", () => {
 					return s;
 				}
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		for await (const step of projection.run(client)) {
 			if (step.status === "skipped") continue;
@@ -200,14 +217,17 @@ describe("run(client)", () => {
 			jsonEvent({ type: eventType, data: {} }),
 		]);
 
-		const projection = createProjection(`
+		const projection = createProjection(
+			`
 			fromAll().when({
 				${eventType}(s, e) {
 					log("hello from integration");
 					return s;
 				}
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		for await (const step of projection.run(client)) {
 			if (step.status === "skipped") continue;
@@ -227,12 +247,15 @@ describe("run(client)", () => {
 			jsonEvent({ type: eventType, data: { amount: 30 } }),
 		]);
 
-		const projection = createProjection<{ total: number }>(`
+		const projection = createProjection<{ total: number }>(
+			`
 			fromAll().when({
 				$init() { return { total: 0 }; },
 				${eventType}(s, e) { s.total += e.data.amount; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		let count = 0;
 		for await (const step of projection.run(client)) {

@@ -722,12 +722,14 @@ internal static unsafe class NativeExports {
 
 	private static ProjectionSessionOptions ParseOptions(string? json) {
 		if (string.IsNullOrEmpty(json))
-			return new ProjectionSessionOptions();
+			throw new InvalidArgumentException(
+				"options are required. engineVersion must be set to 1 or 2.",
+				"options");
 
 		using var doc = JsonDocument.Parse(json);
 		var root = doc.RootElement;
 		return new ProjectionSessionOptions {
-			Version = ParseVersion(root),
+			EngineVersion = ParseEngineVersion(root),
 			CompilationTimeout = TimeSpan.FromMilliseconds(
 				root.TryGetProperty("compilationTimeoutMs", out var ct) ? ct.GetInt32() : 5000),
 			ExecutionTimeout = TimeSpan.FromMilliseconds(
@@ -736,15 +738,17 @@ internal static unsafe class NativeExports {
 		};
 	}
 
-	private static ProjectionVersion ParseVersion(JsonElement root) {
-		if (!root.TryGetProperty("version", out var v))
-			return ProjectionVersion.V2;
-		return v.GetString() switch {
-			"v1" => ProjectionVersion.V1,
-			"v2" => ProjectionVersion.V2,
-			_ => throw new InvalidArgumentException(
-				$"Unknown projection version: \"{v.GetString()}\". Expected \"v1\" or \"v2\".",
-				"version"),
+	private static ProjectionVersion ParseEngineVersion(JsonElement root) {
+		if (!root.TryGetProperty("engineVersion", out var v))
+			throw new InvalidArgumentException(
+				"engineVersion is required. Expected 1 or 2.",
+				"engineVersion");
+		return v.GetInt32() switch {
+			1 => ProjectionVersion.V1,
+			2 => ProjectionVersion.V2,
+			var n => throw new InvalidArgumentException(
+				$"Unknown engineVersion: {n}. Expected 1 or 2.",
+				"engineVersion"),
 		};
 	}
 

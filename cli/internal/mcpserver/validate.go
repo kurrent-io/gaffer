@@ -48,7 +48,7 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 		"valid":           true,
 		"name":            input.Name,
 		"entry":           proj.Entry,
-		"engine":          proj.EffectiveEngine(),
+		"engineVersion":   s.cfg.EffectiveEngineVersion(proj),
 		"source":          engine.DescribeSource(info),
 		"events":          info.Events,
 		"partitioning":    engine.DescribePartitioning(info),

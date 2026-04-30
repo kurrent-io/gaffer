@@ -56,8 +56,8 @@ export interface FeedResult {
 
 /** Options for creating a projection session. */
 export interface SessionOptions {
-	/** Projection engine version. "v1" drops non-JSON events. Default: "v2". */
-	version?: "v1" | "v2";
+	/** Projection engine version. 1 drops non-JSON events. Required. */
+	engineVersion: 1 | 2;
 	compilationTimeoutMs?: number;
 	executionTimeoutMs?: number;
 	debug?: boolean;

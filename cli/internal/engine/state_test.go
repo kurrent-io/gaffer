@@ -10,7 +10,8 @@ import (
 
 func newTestSession(t *testing.T, source string) *gafferruntime.Session {
 	t.Helper()
-	session, err := gafferruntime.NewSession(source, nil)
+	opts := `{"engineVersion":2}`
+	session, err := gafferruntime.NewSession(source, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}

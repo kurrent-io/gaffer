@@ -15,7 +15,7 @@ public class ReviewFindingsTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(new ProjectionEvent {
@@ -43,7 +43,7 @@ public class ReviewFindingsTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(new ProjectionEvent {
@@ -71,7 +71,7 @@ public class ReviewFindingsTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(new ProjectionEvent { EventType = "TestEvent", StreamId = "s-1", Data = "{}" });
@@ -93,7 +93,7 @@ public class ReviewFindingsTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -109,7 +109,7 @@ public class ReviewFindingsTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -125,7 +125,7 @@ public class ReviewFindingsTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = """{"region":42}""" });
 
@@ -141,7 +141,7 @@ public class ReviewFindingsTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "mystream", Data = "{}" });
 
@@ -155,7 +155,7 @@ public class ReviewFindingsTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "order-item-123", Data = "{}" });
 
@@ -178,7 +178,7 @@ public class ReviewFindingsTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Add", StreamId = "a", Data = """{"amount":10}""" });
 		session.Feed(new ProjectionEvent { EventType = "Add", StreamId = "b", Data = """{"amount":20}""" });
@@ -201,7 +201,7 @@ public class ReviewFindingsTests {
             }).transformBy(function(s) {
                 return { total: s.count * 2 };
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.SetState(null, """{"count":5}""");
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
@@ -222,7 +222,7 @@ public class ReviewFindingsTests {
                 Ping: function(s, e) { s.count++; return s; },
                 Reset: function(s, e) { return null; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnStateChanged = (_, s) => changes.Add(s);
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
@@ -239,7 +239,7 @@ public class ReviewFindingsTests {
 		using var session = new ProjectionSession("""
             fromAll();
             on_event("Ping", function(s, e) { return s; });
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.False(session.Sources.DefinesFold);
 	}
@@ -250,7 +250,7 @@ public class ReviewFindingsTests {
             fromAll().when({
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.True(session.Sources.DefinesFold);
 	}
@@ -264,7 +264,7 @@ public class ReviewFindingsTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Bin", StreamId = "s-1", Data = "", IsJson = false });
 
@@ -281,7 +281,7 @@ public class ReviewFindingsTests {
                 type1: function(s, e) { s.a++; return s; },
                 $deleted: function(s, e) { s.deleted = 1; return s; }
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.ThrowsAny<Exception>(() =>
 			session.Feed(new ProjectionEvent {

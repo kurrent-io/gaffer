@@ -81,9 +81,9 @@ func TestLoadEvents_FileNotFound(t *testing.T) {
 	}
 }
 
-func TestBuildSessionOptions_EngineOnly(t *testing.T) {
-	cfg := &config.Config{}
-	proj := &config.Projection{Engine: "v1"}
+func TestBuildSessionOptions_EngineVersionFromProjection(t *testing.T) {
+	cfg := &config.Config{EngineVersion: 2}
+	proj := &config.Projection{EngineVersion: 1}
 
 	opts := buildSessionOptions(cfg, proj, false)
 	if opts == nil {
@@ -95,8 +95,8 @@ func TestBuildSessionOptions_EngineOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if m["version"] != "v1" {
-		t.Errorf("expected version v1, got %v", m["version"])
+	if m["engineVersion"] != float64(1) {
+		t.Errorf("expected engineVersion 1, got %v", m["engineVersion"])
 	}
 }
 
@@ -121,13 +121,22 @@ func TestBuildSessionOptions_ProjectionTimeoutOverridesGlobal(t *testing.T) {
 	}
 }
 
-func TestBuildSessionOptions_NoOptions(t *testing.T) {
-	cfg := &config.Config{}
+func TestBuildSessionOptions_AlwaysIncludesEngineVersion(t *testing.T) {
+	cfg := &config.Config{EngineVersion: 2}
 	proj := &config.Projection{}
 
 	opts := buildSessionOptions(cfg, proj, false)
-	if opts != nil {
-		t.Error("expected nil when no options set")
+	if opts == nil {
+		t.Fatal("expected non-nil options - engineVersion is required")
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal([]byte(*opts), &m); err != nil {
+		t.Fatal(err)
+	}
+
+	if m["engineVersion"] != float64(2) {
+		t.Errorf("expected engineVersion 2, got %v", m["engineVersion"])
 	}
 }
 
@@ -184,8 +193,8 @@ func TestReadSource_MissingFile(t *testing.T) {
 }
 
 func TestNewProjection_SetsFields(t *testing.T) {
-	cfg := &config.Config{Connection: "esdb://localhost:2113"}
-	def := &config.Projection{Name: "counts", Entry: "counts.js", Engine: "v1"}
+	cfg := &config.Config{Connection: "esdb://localhost:2113", EngineVersion: 2}
+	def := &config.Projection{Name: "counts", Entry: "counts.js", EngineVersion: 1}
 
 	p := NewProjection("/project", cfg, def, "fromAll().when({})")
 
@@ -201,24 +210,24 @@ func TestNewProjection_SetsFields(t *testing.T) {
 	if p.Source != "fromAll().when({})" {
 		t.Errorf("expected source %q, got %q", "fromAll().when({})", p.Source)
 	}
-	if p.Engine != "v1" {
-		t.Errorf("expected engine %q, got %q", "v1", p.Engine)
+	if p.EngineVersion != 1 {
+		t.Errorf("expected engineVersion 1 (per-projection override), got %d", p.EngineVersion)
 	}
 }
 
-func TestNewProjection_DefaultEngine(t *testing.T) {
-	cfg := &config.Config{}
+func TestNewProjection_TopLevelEngineVersion(t *testing.T) {
+	cfg := &config.Config{EngineVersion: 2}
 	def := &config.Projection{Name: "test", Entry: "test.js"}
 
 	p := NewProjection("/project", cfg, def, "source")
 
-	if p.Engine != config.DefaultEngine {
-		t.Errorf("expected default engine %q, got %q", config.DefaultEngine, p.Engine)
+	if p.EngineVersion != 2 {
+		t.Errorf("expected top-level engineVersion 2, got %d", p.EngineVersion)
 	}
 }
 
 func TestCreateSession_ValidSource(t *testing.T) {
-	cfg := &config.Config{}
+	cfg := &config.Config{EngineVersion: 2}
 	def := &config.Projection{Name: "test", Entry: "test.js"}
 	proj := NewProjection("/tmp", cfg, def, `fromAll().when({$init() { return {}; }})`)
 
@@ -247,7 +256,9 @@ func TestCreateSession_InvalidSource(t *testing.T) {
 func TestLoadProjection_ValidProject(t *testing.T) {
 	dir := t.TempDir()
 
-	toml := `[[projection]]
+	toml := `engine_version = 2
+
+[[projection]]
 name = "counts"
 entry = "counts.js"
 `
@@ -281,8 +292,8 @@ entry = "counts.js"
 	if p.Def.Name != "counts" {
 		t.Errorf("expected projection name %q, got %q", "counts", p.Def.Name)
 	}
-	if p.Engine != config.DefaultEngine {
-		t.Errorf("expected engine %q, got %q", config.DefaultEngine, p.Engine)
+	if p.EngineVersion != 2 {
+		t.Errorf("expected engineVersion 2, got %d", p.EngineVersion)
 	}
 }
 

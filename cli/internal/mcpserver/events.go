@@ -55,7 +55,7 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 		limit = 2000
 	}
 
-	events, err := s.sampleProjectionEvents(ctx, client, info, proj.EffectiveEngine(), limit)
+	events, err := s.sampleProjectionEvents(ctx, client, info, s.cfg.EffectiveEngineVersion(proj), limit)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}
@@ -81,8 +81,8 @@ type eventTypeSummary struct {
 	Example   any    `json:"example"`
 }
 
-func (s *Server) sampleProjectionEvents(ctx context.Context, client *kurrentdb.Client, info gafferruntime.QuerySources, version string, limit int) ([]eventTypeSummary, error) {
-	sub, err := subscription.Subscribe(ctx, client, info, version)
+func (s *Server) sampleProjectionEvents(ctx context.Context, client *kurrentdb.Client, info gafferruntime.QuerySources, engineVersion int, limit int) ([]eventTypeSummary, error) {
+	sub, err := subscription.Subscribe(ctx, client, info, engineVersion)
 	if err != nil {
 		return nil, fmt.Errorf("subscribing: %w", err)
 	}

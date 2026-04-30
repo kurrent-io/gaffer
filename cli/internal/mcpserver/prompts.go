@@ -118,7 +118,7 @@ func (s *Server) handleFixProjectionPrompt(_ context.Context, req *mcp.GetPrompt
 	sb.WriteString("\n\n---\n\n")
 	sb.Write(gotchas)
 
-	if proj.Engine == "v1" {
+	if s.cfg.EffectiveEngineVersion(proj) == 1 {
 		sb.WriteString("\n\n---\n\n")
 		sb.Write(mustReadEmbed("resources/v1-v2-differences.md"))
 	}
@@ -133,7 +133,7 @@ func (s *Server) handleFixProjectionPrompt(_ context.Context, req *mcp.GetPrompt
 
 func (s *Server) hasV1Projections() bool {
 	for _, proj := range s.cfg.Projection {
-		if proj.Engine == "v1" {
+		if s.cfg.EffectiveEngineVersion(&proj) == 1 {
 			return true
 		}
 	}

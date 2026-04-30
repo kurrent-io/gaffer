@@ -18,7 +18,7 @@ public class DeletedStreamTests {
                 type1: function(s, e) { s.a++; return s; },
                 $deleted: function(s, e) { s.deleted = 1; return s; }
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "type1", StreamId = "stream-1", Data = "{}" });
 		session.Feed(new ProjectionEvent { EventType = "type1", StreamId = "stream-1", Data = "{}" });
@@ -40,7 +40,7 @@ public class DeletedStreamTests {
                 type1: function(s, e) { s.a = 1; return s; },
                 $deleted: function(s, e) { s.deleted = 1; return s; }
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(DeleteEvent("never-seen"));
 
@@ -56,7 +56,7 @@ public class DeletedStreamTests {
                 $init: function() { return { a: 0 }; },
                 type1: function(s, e) { s.a++; return s; }
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "type1", StreamId = "stream-1", Data = "{}" });
 		session.Feed(DeleteEvent("stream-1"));
@@ -73,7 +73,7 @@ public class DeletedStreamTests {
                 type1: function(s, e) { s.a++; return s; },
                 $deleted: function(s, e) { s.deleted = 1; return s; }
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "type1", StreamId = "stream-1", Data = "{}" });
 
@@ -97,7 +97,7 @@ public class DeletedStreamTests {
                 type1: function(s, e) { s.a++; return s; },
                 $deleted: function(s, e) { s.deleted = 1; return s; }
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "type1", StreamId = "stream-1", Data = "{}" });
 
@@ -122,7 +122,7 @@ public class DeletedStreamTests {
                 $initShared: function() { return {}; },
                 $deleted: function(s, e) { return s; }
             })
-        """));
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 }));
 	}
 
 	[Fact]
@@ -132,7 +132,7 @@ public class DeletedStreamTests {
                 $init: function() { return {}; },
                 $deleted: function(s, e) { s.deleted = 1; return s; }
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.True(session.Sources.HandlesDeletedNotifications);
 	}
@@ -144,7 +144,7 @@ public class DeletedStreamTests {
                 $init: function() { return {}; },
                 type1: function(s, e) { return s; }
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.False(session.Sources.HandlesDeletedNotifications);
 	}

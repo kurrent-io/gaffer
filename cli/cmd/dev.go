@@ -57,7 +57,7 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 	}
 	defer session.Destroy()
 
-	version := proj.Engine
+	engineVersion := proj.EngineVersion
 
 	var writer outputWriter
 	if opts.JSON {
@@ -68,7 +68,7 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 		writer = tw
 	}
 
-	writer.WriteInfo(proj.Def.Name, info, version)
+	writer.WriteInfo(proj.Def.Name, info, engineVersion)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -152,10 +152,10 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 			return fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
 		}
 		liveCfg := engine.LiveSourceConfig{
-			ConnStr: connStr,
-			Root:    proj.Root,
-			Info:    info,
-			Version: version,
+			ConnStr:       connStr,
+			Root:          proj.Root,
+			Info:          info,
+			EngineVersion: engineVersion,
 		}
 		if opts.UntilCaughtUp {
 			liveCfg.OnCaughtUp = func() {

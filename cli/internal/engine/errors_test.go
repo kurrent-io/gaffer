@@ -42,9 +42,10 @@ func TestClassifyError_GenericError(t *testing.T) {
 }
 
 func TestClassifyError_RuntimeError(t *testing.T) {
+	opts := `{"engineVersion":2}`
 	session, err := gafferruntime.NewSession(`fromAll().when({
 		BadEvent(s, e) { throw new Error("boom"); }
-	})`, nil)
+	})`, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}

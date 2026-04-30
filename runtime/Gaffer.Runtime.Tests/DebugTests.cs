@@ -9,7 +9,7 @@ public class DebugTests {
 	[Fact]
 	public void Debug_mode_does_not_affect_normal_execution() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) { s.count++; return s; }\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		session.Feed(MakeEvent());
 		session.Feed(MakeEvent());
@@ -20,7 +20,7 @@ public class DebugTests {
 	[Fact]
 	public void Breakpoint_pauses_execution() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		BreakInfo? breakInfo = null;
 		session.OnBreak = info => breakInfo = info;
@@ -53,7 +53,7 @@ public class DebugTests {
 	[Fact]
 	public void Debugger_statement_pauses_execution() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ndebugger;\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		BreakInfo? breakInfo = null;
 		session.OnBreak = info => breakInfo = info;
@@ -77,7 +77,7 @@ public class DebugTests {
 	[Fact]
 	public void Clear_breakpoints_removes_all() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		session.SetBreakpoint(4);
 		session.ClearBreakpoints();
@@ -89,7 +89,7 @@ public class DebugTests {
 	[Fact]
 	public void Column_values_are_one_based() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		BreakInfo? breakInfo = null;
 		session.OnBreak = info => breakInfo = info;
@@ -113,7 +113,7 @@ public class DebugTests {
 	[Fact]
 	public void Multiple_breakpoints_pause_multiple_times() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		var breaks = new List<BreakInfo>();
 		session.OnBreak = info => breaks.Add(info);
@@ -155,7 +155,7 @@ public class DebugTests {
 		// Line 6:   $init: function() {
 		// Line 7:     return { count: 0 };          <-- breakable
 		var source = "fromAll()\n.partitionBy(function(event) {\n  return event.eventType;\n})\n.when({\n  $init: function() {\n    return { count: 0 };\n  },\n  ItemAdded: function(s, e) {\n    s.count++;\n    return s;\n  }\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		// Breakpoint on line 2 (not breakable) should snap to line 3 (return statement)
 		var snapped = session.SetBreakpoint(2);
@@ -166,7 +166,7 @@ public class DebugTests {
 	[Fact]
 	public void Breakpoint_on_exact_statement_stays() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		// Line 4 is s.count++ - an exact breakable position
 		var snapped = session.SetBreakpoint(4);
@@ -177,7 +177,7 @@ public class DebugTests {
 	[Fact]
 	public void Breakpoint_past_end_returns_null() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		var snapped = session.SetBreakpoint(999);
 		Assert.Null(snapped);
@@ -188,7 +188,7 @@ public class DebugTests {
 		// Two statements on different columns of the same concept:
 		// Line 3: "  s.count++;" - statement starts at column 3 (1-based)
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\n  s.count++;\n  return s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		// Column 1 on line 4 should snap to the statement at its actual column
 		var snapped = session.SetBreakpoint(4, 1);
@@ -207,7 +207,7 @@ public class DebugTests {
 		// Line 6: }
 		// Line 7: })
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		var breaks = new List<BreakInfo>();
 		session.OnBreak = info => breaks.Add(info);
@@ -237,7 +237,7 @@ public class DebugTests {
 	public void Step_into_enters_function() {
 		// Source with a helper function called from the handler
 		var source = "function helper(x) {\nreturn x + 1;\n}\nfromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count = helper(s.count);\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		var breaks = new List<BreakInfo>();
 		session.OnBreak = info => breaks.Add(info);
@@ -267,7 +267,7 @@ public class DebugTests {
 	[Fact]
 	public void Step_out_exits_function() {
 		var source = "function helper(x) {\nreturn x + 1;\n}\nfromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count = helper(s.count);\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		var breaks = new List<BreakInfo>();
 		session.OnBreak = info => breaks.Add(info);
@@ -297,7 +297,7 @@ public class DebugTests {
 	[Fact]
 	public void Conditional_breakpoint_pauses_when_true() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		var breaks = new List<BreakInfo>();
 		session.OnBreak = info => breaks.Add(info);
@@ -329,7 +329,7 @@ public class DebugTests {
 	[Fact]
 	public void Conditional_breakpoint_never_pauses_when_false() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		var breaks = new List<BreakInfo>();
 		session.OnBreak = info => breaks.Add(info);
@@ -346,7 +346,7 @@ public class DebugTests {
 	[Fact]
 	public void Hit_count_breakpoint() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		var breaks = new List<BreakInfo>();
 		session.OnBreak = info => breaks.Add(info);
@@ -375,7 +375,7 @@ public class DebugTests {
 	[Fact]
 	public void Hit_count_modulo() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		var breaks = new List<BreakInfo>();
 		session.OnBreak = info => breaks.Add(info);
@@ -400,7 +400,7 @@ public class DebugTests {
 	[Fact]
 	public void Logpoint_logs_instead_of_pausing() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		var logs = new List<string>();
 		session.OnLog = msg => logs.Add(msg);
@@ -421,7 +421,7 @@ public class DebugTests {
 	[Fact]
 	public void Pause_stops_at_first_statement_of_next_event() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		// Feed first event normally
 		session.Feed(MakeEvent());
@@ -460,7 +460,7 @@ public class DebugTests {
 	[Fact]
 	public void No_debug_mode_ignores_debugger_statement() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ndebugger;\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source);
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(MakeEvent());
 		Assert.Contains("\"count\":1", session.GetState()!);
@@ -469,7 +469,7 @@ public class DebugTests {
 	[Fact]
 	public void Get_call_stack_during_pause() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function handler(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		session.SetBreakpoint(4);
 		DebugCallFrame[]? frames = null;
@@ -497,7 +497,7 @@ public class DebugTests {
 	[Fact]
 	public void Get_scopes_during_pause() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		session.SetBreakpoint(4);
 
@@ -522,7 +522,7 @@ public class DebugTests {
 	[Fact]
 	public void Get_variables_during_pause() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		session.SetBreakpoint(4);
 
@@ -553,7 +553,7 @@ public class DebugTests {
 	[Fact]
 	public void Expand_object_properties() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0, name: \"test\" }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		session.SetBreakpoint(4);
 
@@ -592,7 +592,7 @@ public class DebugTests {
 	[Fact]
 	public void Expand_array_elements() {
 		var source = "fromAll().when({\n$init: function() { return { items: [10, 20, 30] }; },\nItemAdded: function(s, e) {\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		session.SetBreakpoint(4);
 
@@ -629,7 +629,7 @@ public class DebugTests {
 	[Fact]
 	public void Nested_object_expansion() {
 		var source = "fromAll().when({\n$init: function() { return { nested: { a: 1, b: { c: 2 } } }; },\nItemAdded: function(s, e) {\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		session.SetBreakpoint(4);
 
@@ -667,7 +667,7 @@ public class DebugTests {
 	[Fact]
 	public void Evaluate_expression_returns_result() {
 		var source = "fromAll().when({\n$init: function() { return { count: 5 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		session.SetBreakpoint(4);
 
@@ -707,7 +707,7 @@ public class DebugTests {
 	[Fact]
 	public void Evaluate_invalid_expression_throws() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		session.SetBreakpoint(4);
 
@@ -733,7 +733,7 @@ public class DebugTests {
 	[Fact]
 	public void Inspect_when_not_paused_throws() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) { s.count++; return s; }\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		Assert.Throws<InvalidOperationException>(() => session.GetCallStack());
 		Assert.Throws<InvalidOperationException>(() => session.GetScopes(0));
@@ -744,7 +744,7 @@ public class DebugTests {
 	[Fact]
 	public void Invalid_variable_reference_throws_during_pause() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { Debug = true });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
 
 		session.SetBreakpoint(4);
 
@@ -773,6 +773,7 @@ public class DebugTests {
 	public void Timeout_does_not_fire_during_pause() {
 		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
 		using var session = new ProjectionSession(source, new ProjectionSessionOptions {
+			EngineVersion = ProjectionVersion.V2,
 			Debug = true,
 			ExecutionTimeout = TimeSpan.FromMilliseconds(500),
 		});

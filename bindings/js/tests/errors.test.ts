@@ -25,7 +25,7 @@ describe("Error types", () => {
 	it("InvalidProjectionError - parse error with location", () => {
 		const source = "this is not valid {{{{";
 		try {
-			new ProjectionSession(source);
+			new ProjectionSession(source, { engineVersion: 2 });
 			expect.fail("Expected error");
 		} catch (err) {
 			expect(err).toBeInstanceOf(InvalidProjectionError);
@@ -53,7 +53,7 @@ describe("Error types", () => {
 
 	it("InvalidProjectionError - source definition error without location", () => {
 		try {
-			new ProjectionSession("fromStream(123)");
+			new ProjectionSession("fromStream(123)", { engineVersion: 2 });
 			expect.fail("Expected error");
 		} catch (err) {
 			expect(err).toBeInstanceOf(InvalidProjectionError);
@@ -76,6 +76,7 @@ describe("Error types", () => {
 	it("CompilationTimeoutError", () => {
 		try {
 			new ProjectionSession("while(true) {}", {
+				engineVersion: 2,
 				compilationTimeoutMs: 100,
 			});
 			expect.fail("Expected error");
@@ -98,7 +99,7 @@ describe("Error types", () => {
 	$init() { return {}; },
 	Test(s, e) { throw new Error("boom"); }
 })`;
-		const session = new ProjectionSession(source);
+		const session = new ProjectionSession(source, { engineVersion: 2 });
 		try {
 			session.feed(event);
 			expect.fail("Expected error");
@@ -141,7 +142,7 @@ describe("Error types", () => {
 	$init() { return {}; },
 	Test(s, e) { throw "fail"; }
 })`;
-		const session = new ProjectionSession(source);
+		const session = new ProjectionSession(source, { engineVersion: 2 });
 		try {
 			session.feed(event);
 			expect.fail("Expected error");
@@ -178,6 +179,7 @@ describe("Error types", () => {
 			Test(s, e) { while(true) {} }
 		})`;
 		const session = new ProjectionSession(source, {
+			engineVersion: 2,
 			executionTimeoutMs: 100,
 		});
 		try {
@@ -213,7 +215,7 @@ describe("Error types", () => {
 			$init() { return {}; },
 			Test(s, e) { return e.data; }
 		})`;
-		const session = new ProjectionSession(source);
+		const session = new ProjectionSession(source, { engineVersion: 2 });
 		try {
 			session.feed({ ...event, data: "not json" });
 			expect.fail("Expected error");
@@ -243,7 +245,7 @@ describe("Error types", () => {
 			$init() { return {}; },
 			Test(s, e) { s.value = NaN; return s; }
 		})`;
-		const session = new ProjectionSession(source);
+		const session = new ProjectionSession(source, { engineVersion: 2 });
 		try {
 			session.feed(event);
 			expect.fail("Expected error");
@@ -277,7 +279,7 @@ describe("Error types", () => {
 		}).transformBy(function(s) {
 			throw new Error("transform failed");
 		}).outputState()`;
-		const session = new ProjectionSession(source);
+		const session = new ProjectionSession(source, { engineVersion: 2 });
 		try {
 			session.feed(event);
 			session.getResult();

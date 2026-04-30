@@ -9,11 +9,11 @@ import (
 )
 
 type LiveSourceConfig struct {
-	ConnStr    string
-	Root       string
-	Info       gafferruntime.QuerySources
-	Version    string
-	OnCaughtUp func() // called when subscription reaches head of stream, nil = ignore, must not block
+	ConnStr       string
+	Root          string
+	Info          gafferruntime.QuerySources
+	EngineVersion int
+	OnCaughtUp    func() // called when subscription reaches head of stream, nil = ignore, must not block
 }
 
 type liveSource struct {
@@ -31,7 +31,7 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 	}
 	defer func() { _ = client.Close() }()
 
-	sub, err := subscription.Subscribe(ctx, client, l.cfg.Info, l.cfg.Version)
+	sub, err := subscription.Subscribe(ctx, client, l.cfg.Info, l.cfg.EngineVersion)
 	if err != nil {
 		return fmt.Errorf("subscribing: %w", err)
 	}

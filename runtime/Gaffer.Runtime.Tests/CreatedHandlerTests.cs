@@ -14,7 +14,7 @@ public class CreatedHandlerTests {
                 },
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "stream-1", Data = "{}" });
@@ -36,7 +36,7 @@ public class CreatedHandlerTests {
                 },
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = _ => createdCount++;
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "stream-1", Data = "{}" });
@@ -58,7 +58,7 @@ public class CreatedHandlerTests {
                 },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 

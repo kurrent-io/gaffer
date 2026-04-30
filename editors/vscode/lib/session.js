@@ -77,7 +77,7 @@ class GafferSession {
         if (msg.projection.source) this._writeOutput(`  Source: ${msg.projection.source}`);
         if (msg.projection.partitioning) this._writeOutput(`  Partitioning: ${msg.projection.partitioning}`);
         if (msg.projection.events) this._writeOutput(`  Events: ${msg.projection.events.join(", ")}`);
-        if (msg.projection.engine) this._writeOutput(`  Engine: ${msg.projection.engine}`);
+        if (msg.projection.engineVersion) this._writeOutput(`  Engine: v${msg.projection.engineVersion}`);
         this._writeOutput("");
         break;
       case "event":

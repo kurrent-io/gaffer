@@ -67,8 +67,8 @@ export function createProjection<
 >(
 	/** KurrentDB projection JavaScript source code. */
 	source: string,
-	/** Options for the projection session (version, timeouts, etc). */
-	options?: ProjectionOptions,
+	/** Options for the projection session (engineVersion, timeouts, etc). */
+	options: ProjectionOptions,
 ): Projection<TState, TResult, TSharedState> {
 	return {
 		validate(): ProjectionInfo {
@@ -114,7 +114,7 @@ export function createProjection<
 
 function* runSync<TState, TResult, TSharedState>(
 	source: string,
-	options: ProjectionOptions | undefined,
+	options: ProjectionOptions,
 	events: Iterable<EventInput>,
 ): Iterable<StepResult<TState, TResult, TSharedState>> {
 	const test = new ProjectionTest<TState, TResult, TSharedState>(
@@ -132,7 +132,7 @@ function* runSync<TState, TResult, TSharedState>(
 
 async function* runAsync<TState, TResult, TSharedState>(
 	source: string,
-	options: ProjectionOptions | undefined,
+	options: ProjectionOptions,
 	events: AsyncIterable<EventInput>,
 ): AsyncIterable<StepResult<TState, TResult, TSharedState>> {
 	const test = new ProjectionTest<TState, TResult, TSharedState>(
@@ -150,7 +150,7 @@ async function* runAsync<TState, TResult, TSharedState>(
 
 async function* runWithClient<TState, TResult, TSharedState>(
 	source: string,
-	options: ProjectionOptions | undefined,
+	options: ProjectionOptions,
 	client: KurrentDBClient,
 	info: ProjectionInfo,
 ): AsyncIterable<StepResult<TState, TResult, TSharedState>> {
@@ -158,7 +158,7 @@ async function* runWithClient<TState, TResult, TSharedState>(
 		source,
 		options,
 	);
-	const subscription = createSubscription(client, info, options?.version);
+	const subscription = createSubscription(client, info, options.engineVersion);
 	try {
 		for await (const event of subscription) {
 			yield test.feed(event);
@@ -172,10 +172,10 @@ async function* runWithClient<TState, TResult, TSharedState>(
 function createSubscription(
 	client: KurrentDBClient,
 	info: ProjectionInfo,
-	version: "v1" | "v2" = "v2",
+	engineVersion: 1 | 2,
 ) {
 	const filter = buildSubscriptionFilter(info);
-	const resolveLinkTos = getResolveLinks(version);
+	const resolveLinkTos = getResolveLinks(engineVersion);
 	return client.subscribeToAll({ filter, resolveLinkTos });
 }
 

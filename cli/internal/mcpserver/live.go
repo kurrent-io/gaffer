@@ -19,10 +19,10 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 	}
 
 	source := engine.NewLiveSource(engine.LiveSourceConfig{
-		ConnStr: s.cfg.Connection,
-		Root:    s.root,
-		Info:    sess.runner.Info(),
-		Version: sess.runner.Engine(),
+		ConnStr:       s.cfg.Connection,
+		Root:          s.root,
+		Info:          sess.runner.Info(),
+		EngineVersion: sess.runner.EngineVersion(),
 		OnCaughtUp: func() {
 			if sess.runner.Status() == "running" {
 				sess.runner.SetStatus("caught_up")

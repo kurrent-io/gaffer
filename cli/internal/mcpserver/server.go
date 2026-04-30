@@ -174,12 +174,12 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 	sess := &activeSession{}
 
 	cfg := engine.RunnerConfig{
-		Feed:    engine.FeedFn(runtime.Feed),
-		Session: runtime,
-		Info:    info,
-		Engine:  lp.Engine,
-		Writer:  nil,
-		History: store,
+		Feed:          engine.FeedFn(runtime.Feed),
+		Session:       runtime,
+		Info:          info,
+		EngineVersion: lp.EngineVersion,
+		Writer:        nil,
+		History:       store,
 	}
 	if debug {
 		breakCh := make(chan gafferruntime.BreakInfo, 1)

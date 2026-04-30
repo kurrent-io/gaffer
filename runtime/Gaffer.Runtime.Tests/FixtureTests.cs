@@ -57,9 +57,9 @@ public class FixtureTests {
 		var source = fixture.GetProperty("source").GetString()!;
 		var expect = fixture.GetProperty("expect");
 
-		ProjectionSessionOptions? options = null;
-		if (fixture.TryGetProperty("options", out var optionsEl))
-			options = ParseOptions(optionsEl);
+		if (!fixture.TryGetProperty("options", out var optionsEl))
+			throw new ArgumentException($"Fixture {fixture.GetProperty("name")} is missing required \"options\" with engineVersion.");
+		var options = ParseOptions(optionsEl);
 
 		if (expect.TryGetProperty("error", out var errorEl) && !fixture.TryGetProperty("events", out _) && !expect.TryGetProperty("getResult", out _)) {
 			var ex = Assert.ThrowsAny<ProjectionException>(() => new ProjectionSession(source, options));
@@ -175,19 +175,19 @@ public class FixtureTests {
 		}
 	}
 
-	private static ProjectionVersion ParseVersion(JsonElement el) {
-		if (!el.TryGetProperty("version", out var v))
-			return ProjectionVersion.V2;
-		return v.GetString() switch {
-			"v1" => ProjectionVersion.V1,
-			"v2" => ProjectionVersion.V2,
-			_ => throw new ArgumentException($"Unknown version: \"{v.GetString()}\""),
+	private static ProjectionVersion ParseEngineVersion(JsonElement el) {
+		if (!el.TryGetProperty("engineVersion", out var v))
+			throw new ArgumentException("Fixture options must include engineVersion (1 or 2)");
+		return v.GetInt32() switch {
+			1 => ProjectionVersion.V1,
+			2 => ProjectionVersion.V2,
+			var n => throw new ArgumentException($"Unknown engineVersion: {n}"),
 		};
 	}
 
 	private static ProjectionSessionOptions ParseOptions(JsonElement el) {
 		return new ProjectionSessionOptions {
-			Version = ParseVersion(el),
+			EngineVersion = ParseEngineVersion(el),
 			CompilationTimeout = el.TryGetProperty("compilationTimeoutMs", out var compTimeout)
 				? TimeSpan.FromMilliseconds(compTimeout.GetInt32())
 				: TimeSpan.FromSeconds(5),

@@ -13,20 +13,20 @@ import (
 )
 
 type Projection struct {
-	Root   string
-	Config *config.Config
-	Def    *config.Projection
-	Source string
-	Engine string
+	Root          string
+	Config        *config.Config
+	Def           *config.Projection
+	Source        string
+	EngineVersion int
 }
 
 func NewProjection(root string, cfg *config.Config, def *config.Projection, source string) *Projection {
 	return &Projection{
-		Root:   root,
-		Config: cfg,
-		Def:    def,
-		Source: source,
-		Engine: def.EffectiveEngine(),
+		Root:          root,
+		Config:        cfg,
+		Def:           def,
+		Source:        source,
+		EngineVersion: cfg.EffectiveEngineVersion(def),
 	}
 }
 
@@ -52,11 +52,11 @@ func LoadProjection(name string) (*Projection, error) {
 	}
 
 	return &Projection{
-		Root:   root,
-		Config: cfg,
-		Def:    proj,
-		Source: source,
-		Engine: proj.EffectiveEngine(),
+		Root:          root,
+		Config:        cfg,
+		Def:           proj,
+		Source:        source,
+		EngineVersion: cfg.EffectiveEngineVersion(proj),
 	}, nil
 }
 
@@ -79,14 +79,12 @@ func CreateSession(proj *Projection, debug bool) (*gafferruntime.Session, gaffer
 }
 
 func buildSessionOptions(cfg *config.Config, proj *config.Projection, debug bool) *string {
-	opts := map[string]any{}
+	opts := map[string]any{
+		"engineVersion": cfg.EffectiveEngineVersion(proj),
+	}
 
 	if debug {
 		opts["debug"] = true
-	}
-
-	if proj.Engine != "" {
-		opts["version"] = proj.Engine
 	}
 
 	if proj.ExecutionTimeout != nil && *proj.ExecutionTimeout > 0 {
@@ -97,10 +95,6 @@ func buildSessionOptions(cfg *config.Config, proj *config.Projection, debug bool
 
 	if cfg.CompilationTimeout != nil && *cfg.CompilationTimeout > 0 {
 		opts["compilationTimeoutMs"] = *cfg.CompilationTimeout
-	}
-
-	if len(opts) == 0 {
-		return nil
 	}
 
 	data, err := json.Marshal(opts)

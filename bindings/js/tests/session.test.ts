@@ -15,27 +15,34 @@ describe("ProjectionSession", () => {
 	});
 
 	it("creates and destroys a session", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().when({
 				$init() { return {}; },
 				Ping(s, e) { return s; }
 			})
-		`);
-	});
-
-	it("throws on invalid JS", () => {
-		expect(() => new ProjectionSession("this is not valid {{{{")).toThrow(
-			InvalidProjectionError,
+		`,
+			{ engineVersion: 2 },
 		);
 	});
 
+	it("throws on invalid JS", () => {
+		expect(
+			() =>
+				new ProjectionSession("this is not valid {{{{", { engineVersion: 2 }),
+		).toThrow(InvalidProjectionError);
+	});
+
 	it("feeds events and gets state", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().when({
 				$init() { return { count: 0 }; },
 				ItemAdded(s, e) { s.count++; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		session.feed({
 			eventType: "ItemAdded",
@@ -69,12 +76,15 @@ describe("ProjectionSession", () => {
 	});
 
 	it("accesses event data", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().when({
 				$init() { return { total: 0 }; },
 				Deposited(s, e) { s.total += e.data.amount; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		session.feed({
 			eventType: "Deposited",
@@ -99,12 +109,15 @@ describe("ProjectionSession", () => {
 	});
 
 	it("partitions by stream", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromCategory("cart").foreachStream().when({
 				$init() { return { items: 0 }; },
 				ItemAdded(s, e) { s.items++; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		session.feed({
 			eventType: "ItemAdded",
@@ -139,12 +152,15 @@ describe("ProjectionSession", () => {
 	});
 
 	it("gets source definition", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().foreachStream().when({
 				$init() { return {}; },
 				Ping(s, e) { return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const sources = session.getSources();
 		expect(sources.AllStreams).toBe(true);
@@ -152,12 +168,15 @@ describe("ProjectionSession", () => {
 	});
 
 	it("sets and restores state", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().when({
 				$init() { return { count: 0 }; },
 				Ping(s, e) { s.count++; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		session.setState(null, '{"count":10}');
 		session.feed({
@@ -174,12 +193,15 @@ describe("ProjectionSession", () => {
 	});
 
 	it("throws on handler error", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().when({
 				$init() { return {}; },
 				Bad(s, e) { throw "boom"; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		expect(() =>
 			session!.feed({
@@ -195,23 +217,29 @@ describe("ProjectionSession", () => {
 	});
 
 	it("returns null for unknown partition", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().foreachStream().when({
 				$init() { return {}; },
 				Ping(s, e) { return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		expect(session.getState("nonexistent")).toBeNull();
 	});
 
 	it("throws after dispose", () => {
-		const s = new ProjectionSession(`
+		const s = new ProjectionSession(
+			`
 			fromAll().when({
 				$init() { return {}; },
 				Ping(s, e) { return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 		s.dispose();
 
 		expect(() =>
@@ -228,18 +256,22 @@ describe("ProjectionSession", () => {
 	});
 
 	it("double dispose is safe", () => {
-		const s = new ProjectionSession(`
+		const s = new ProjectionSession(
+			`
 			fromAll().when({
 				$init() { return {}; },
 				Ping(s, e) { return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 		s.dispose();
 		s.dispose(); // should not throw
 	});
 
 	it("onEmit receives emitted events", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().when({
 				$init() { return {}; },
 				OrderPlaced(s, e) {
@@ -247,7 +279,9 @@ describe("ProjectionSession", () => {
 					return s;
 				}
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const emitted: EmittedEvent[] = [];
 		session.onEmit((e) => emitted.push(e));
@@ -269,14 +303,17 @@ describe("ProjectionSession", () => {
 	});
 
 	it("onLog captures console.log", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().when({
 				TestEvent(s, e) {
 					log("hello from projection");
 					return s;
 				}
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const logs: string[] = [];
 		session.onLog((msg) => logs.push(msg));
@@ -296,12 +333,15 @@ describe("ProjectionSession", () => {
 	});
 
 	it("onStateChanged fires on state update", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().when({
 				$init() { return { count: 0 }; },
 				Ping(s, e) { s.count++; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const changes: Array<{ partition: string; state: string | null }> = [];
 		session.onStateChanged((partition, state) =>
@@ -333,7 +373,8 @@ describe("ProjectionSession", () => {
 	});
 
 	it("biState shared state", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			options({ biState: true });
 			fromAll().when({
 				$init() { return { count: 0 }; },
@@ -344,7 +385,9 @@ describe("ProjectionSession", () => {
 					return s;
 				}
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		session.feed({
 			eventType: "Added",
@@ -370,14 +413,17 @@ describe("ProjectionSession", () => {
 	});
 
 	it("getResult with transformBy", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().when({
 				$init() { return { count: 0 }; },
 				Ping(s, e) { s.count++; return s; }
 			}).transformBy(function(s) {
 				return { total: s.count * 2 };
 			}).outputState()
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		session.feed({
 			eventType: "Ping",
@@ -393,12 +439,15 @@ describe("ProjectionSession", () => {
 	});
 
 	it("feed returns processed result with state", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().when({
 				$init() { return { count: 0 }; },
 				Ping(s, e) { s.count++; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const result = session.feed({
 			eventType: "Ping",
@@ -416,12 +465,15 @@ describe("ProjectionSession", () => {
 	});
 
 	it("feed returns skipped for unhandled event", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().when({
 				$init() { return {}; },
 				Ping(s, e) { return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const result = session.feed({
 			eventType: "UnhandledEvent",
@@ -438,7 +490,8 @@ describe("ProjectionSession", () => {
 	});
 
 	it("feed returns emitted events in result", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().when({
 				$init() { return {}; },
 				OrderPlaced(s, e) {
@@ -446,7 +499,9 @@ describe("ProjectionSession", () => {
 					return s;
 				}
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const result = session.feed({
 			eventType: "OrderPlaced",
@@ -466,14 +521,17 @@ describe("ProjectionSession", () => {
 	});
 
 	it("feed returns logs in result", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().when({
 				TestEvent(s, e) {
 					log("hello from projection");
 					return s;
 				}
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const result = session.feed({
 			eventType: "TestEvent",
@@ -492,12 +550,15 @@ describe("ProjectionSession", () => {
 	});
 
 	it("feed returns partition for foreachStream", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().foreachStream().when({
 				$init() { return { count: 0 }; },
 				Ping(s, e) { s.count++; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const result = session.feed({
 			eventType: "Ping",
@@ -514,14 +575,17 @@ describe("ProjectionSession", () => {
 	});
 
 	it("getPartitionKey", () => {
-		session = new ProjectionSession(`
+		session = new ProjectionSession(
+			`
 			fromAll().partitionBy(function(e) {
 				return e.data.region;
 			}).when({
 				$init() { return {}; },
 				Event(s, e) { return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const key = session.getPartitionKey({
 			eventType: "Event",

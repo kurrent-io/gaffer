@@ -11,7 +11,7 @@ public class EdgeCaseTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = null });
 
@@ -27,7 +27,7 @@ public class EdgeCaseTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "" });
 
@@ -42,7 +42,7 @@ public class EdgeCaseTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "   " });
 
@@ -57,7 +57,7 @@ public class EdgeCaseTests {
                 $init: function() { return { count: 0 }; },
                 $any: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent {
 			EventType = "BinaryEvent",
@@ -77,7 +77,7 @@ public class EdgeCaseTests {
                 Increment: function(s, e) { s.count++; },
                 Noop: function(s, e) { }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Increment", StreamId = "s-1", Data = "{}" });
 		session.Feed(new ProjectionEvent { EventType = "Noop", StreamId = "s-1", Data = "{}" });
@@ -94,7 +94,7 @@ public class EdgeCaseTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "a", Data = "{}" });
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "b", Data = "{}" });
@@ -110,7 +110,7 @@ public class EdgeCaseTests {
 	public void Compilation_timeout_throws() {
 		Assert.Throws<CompilationTimeoutException>(() => new ProjectionSession("""
             while(true) {}
-        """, new ProjectionSessionOptions { CompilationTimeout = TimeSpan.FromMilliseconds(100) }));
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, CompilationTimeout = TimeSpan.FromMilliseconds(100) }));
 	}
 
 	[Fact]
@@ -123,7 +123,7 @@ public class EdgeCaseTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent {
 			EventType = "TestEvent",
@@ -148,7 +148,7 @@ public class EdgeCaseTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent {
 			EventType = "TestEvent",
@@ -171,13 +171,13 @@ public class EdgeCaseTests {
                 $init: function() { return {}; },
                 Ping: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.Null(session.GetState("nonexistent"));
 	}
 
 	[Fact]
 	public void Invalid_js_throws() {
-		Assert.ThrowsAny<Exception>(() => new ProjectionSession("this is not valid javascript {{{{"));
+		Assert.ThrowsAny<Exception>(() => new ProjectionSession("this is not valid javascript {{{{", new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 }));
 	}
 }

@@ -19,10 +19,10 @@ export class ProjectionSession {
 	private registeredCallbacks: IKoffiRegisteredCallback[] = [];
 	private readonly source: string;
 
-	constructor(source: string, options?: SessionOptions) {
+	constructor(source: string, options: SessionOptions) {
 		this.source = source;
 		const native = getNativeBindings();
-		const optionsJson = options ? JSON.stringify(options) : null;
+		const optionsJson = JSON.stringify(options);
 		this.handle = native.sessionCreate(source, optionsJson);
 		if (this.handle === 0) {
 			this.throwLastError();

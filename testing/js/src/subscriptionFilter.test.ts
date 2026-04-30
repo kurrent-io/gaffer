@@ -136,15 +136,11 @@ describe("buildSubscriptionFilter", () => {
 
 describe("getResolveLinks", () => {
 	it("returns false for v1", () => {
-		expect(getResolveLinks("v1")).toBe(false);
+		expect(getResolveLinks(1)).toBe(false);
 	});
 
 	it("returns true for v2", () => {
-		expect(getResolveLinks("v2")).toBe(true);
-	});
-
-	it("defaults to true (v2)", () => {
-		expect(getResolveLinks()).toBe(true);
+		expect(getResolveLinks(2)).toBe(true);
 	});
 });
 

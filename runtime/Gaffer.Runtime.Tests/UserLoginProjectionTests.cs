@@ -45,7 +45,7 @@ public class UserLoginProjectionTests {
 	[Fact]
 	public void Happy_user_only_successful_logins() {
 		var emitted = new List<EmittedEvent>();
-		using var session = new ProjectionSession(Source);
+		using var session = new ProjectionSession(Source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(Evt("user-alice", "UserRegistered", new { username = "alice" }));
@@ -62,7 +62,7 @@ public class UserLoginProjectionTests {
 
 	[Fact]
 	public void Failed_attempts_then_recovery() {
-		using var session = new ProjectionSession(Source);
+		using var session = new ProjectionSession(Source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(Evt("user-bob", "UserRegistered", new { username = "bob" }));
 		session.Feed(Evt("user-bob", "UserLoginFailed", new { reason = "wrong_password" }));
@@ -78,7 +78,7 @@ public class UserLoginProjectionTests {
 	[Fact]
 	public void Lockout_after_threshold() {
 		var emitted = new List<EmittedEvent>();
-		using var session = new ProjectionSession(Source);
+		using var session = new ProjectionSession(Source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(Evt("user-charlie", "UserRegistered", new { username = "charlie" }));
@@ -97,7 +97,7 @@ public class UserLoginProjectionTests {
 	[Fact]
 	public void Lockout_emits_only_once() {
 		var emitted = new List<EmittedEvent>();
-		using var session = new ProjectionSession(Source);
+		using var session = new ProjectionSession(Source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(Evt("user-dave", "UserRegistered"));
@@ -110,7 +110,7 @@ public class UserLoginProjectionTests {
 	[Fact]
 	public void Mixed_pattern_fail_succeed_then_lockout() {
 		var emitted = new List<EmittedEvent>();
-		using var session = new ProjectionSession(Source);
+		using var session = new ProjectionSession(Source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(Evt("user-eve", "UserRegistered"));
@@ -129,7 +129,7 @@ public class UserLoginProjectionTests {
 
 	[Fact]
 	public void Multiple_users_independent_state() {
-		using var session = new ProjectionSession(Source);
+		using var session = new ProjectionSession(Source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(Evt("user-alice", "UserRegistered"));
 		session.Feed(Evt("user-bob", "UserRegistered"));
@@ -150,7 +150,7 @@ public class UserLoginProjectionTests {
 	[Fact]
 	public void Many_users_deterministic_scenarios() {
 		var emitted = new List<EmittedEvent>();
-		using var session = new ProjectionSession(Source);
+		using var session = new ProjectionSession(Source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		var scenarios = GenerateScenarios(20);

@@ -45,10 +45,11 @@ public sealed class ProjectionSession : IDisposable {
 	/// </summary>
 	/// <exception cref="InvalidProjectionException">Thrown if the JS source is invalid or the projection definition is wrong.</exception>
 	/// <exception cref="CompilationTimeoutException">Thrown if compilation exceeds the timeout.</exception>
-	public ProjectionSession(string source, ProjectionSessionOptions? options = null) {
+	public ProjectionSession(string source, ProjectionSessionOptions options) {
+		ArgumentNullException.ThrowIfNull(options);
 		_source = source;
-		var opts = options ?? new ProjectionSessionOptions();
-		_version = opts.Version;
+		var opts = options;
+		_version = opts.EngineVersion;
 
 		try {
 			_handler = new JintProjectionHandler(
@@ -441,16 +442,16 @@ public sealed class ProjectionSession : IDisposable {
 
 /// <summary>KurrentDB projection engine version.</summary>
 public enum ProjectionVersion {
-	/// <summary>V2 engine (default). Passes all events to the handler.</summary>
-	V2 = 0,
 	/// <summary>V1 engine. Drops non-JSON events before they reach the handler.</summary>
 	V1 = 1,
+	/// <summary>V2 engine. Passes all events to the handler.</summary>
+	V2 = 2,
 }
 
-/// <summary>Configuration options for a projection session.</summary>
+/// <summary>Configuration options for a projection session. EngineVersion is required.</summary>
 public sealed class ProjectionSessionOptions {
-	/// <summary>Projection engine version. Default: V2.</summary>
-	public ProjectionVersion Version { get; init; } = ProjectionVersion.V2;
+	/// <summary>Projection engine version. Required.</summary>
+	public required ProjectionVersion EngineVersion { get; init; }
 
 	/// <summary>Maximum time for JS compilation. Default: 5 seconds.</summary>
 	public TimeSpan CompilationTimeout { get; init; } = TimeSpan.FromSeconds(5);

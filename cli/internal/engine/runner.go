@@ -23,24 +23,24 @@ type EventWriter interface {
 }
 
 type RunnerConfig struct {
-	Feed    FeedFn
-	Session *gafferruntime.Session
-	Info    gafferruntime.QuerySources
-	Engine  string
-	Writer  EventWriter
-	History *history.Store
-	Debug   *DebugConfig
+	Feed          FeedFn
+	Session       *gafferruntime.Session
+	Info          gafferruntime.QuerySources
+	EngineVersion int
+	Writer        EventWriter
+	History       *history.Store
+	Debug         *DebugConfig
 }
 
 type Runner struct {
-	mu      sync.Mutex
-	feed    FeedFn
-	session *gafferruntime.Session
-	info    gafferruntime.QuerySources
-	engine  string
-	writer  EventWriter
-	history *history.Store
-	debug   *DebugConfig
+	mu            sync.Mutex
+	feed          FeedFn
+	session       *gafferruntime.Session
+	info          gafferruntime.QuerySources
+	engineVersion int
+	writer        EventWriter
+	history       *history.Store
+	debug         *DebugConfig
 
 	stats           EventStats
 	partitions      map[string]bool
@@ -65,14 +65,14 @@ func (s EventStats) Total() int {
 
 func NewRunner(cfg RunnerConfig) *Runner {
 	r := &Runner{
-		feed:       cfg.Feed,
-		session:    cfg.Session,
-		info:       cfg.Info,
-		engine:     cfg.Engine,
-		writer:     cfg.Writer,
-		history:    cfg.History,
-		debug:      cfg.Debug,
-		partitions: make(map[string]bool),
+		feed:          cfg.Feed,
+		session:       cfg.Session,
+		info:          cfg.Info,
+		engineVersion: cfg.EngineVersion,
+		writer:        cfg.Writer,
+		history:       cfg.History,
+		debug:         cfg.Debug,
+		partitions:    make(map[string]bool),
 	}
 	if r.debug != nil && r.debug.OnBreak != nil {
 		r.debug.Session.OnBreak(func(info gafferruntime.BreakInfo) {
@@ -228,8 +228,8 @@ func (r *Runner) Info() gafferruntime.QuerySources {
 	return r.info
 }
 
-func (r *Runner) Engine() string {
-	return r.engine
+func (r *Runner) EngineVersion() int {
+	return r.engineVersion
 }
 
 func eventID(eventJSON string) string {

@@ -12,6 +12,7 @@ import (
 // Config represents a gaffer.toml file.
 type Config struct {
 	Connection         string       `toml:"connection,omitempty"`
+	EngineVersion      int          `toml:"engine_version,omitempty"`
 	CompilationTimeout *int         `toml:"compilation_timeout,omitempty"`
 	ExecutionTimeout   *int         `toml:"execution_timeout,omitempty"`
 	Projection         []Projection `toml:"projection"`
@@ -21,19 +22,18 @@ type Config struct {
 type Projection struct {
 	Name             string `toml:"name"`
 	Entry            string `toml:"entry"`
-	Engine           string `toml:"engine,omitempty"`
+	EngineVersion    int    `toml:"engine_version,omitempty"`
 	Enabled          *bool  `toml:"enabled,omitempty"`
 	ExecutionTimeout *int   `toml:"execution_timeout,omitempty"`
 }
 
-const DefaultEngine = "v2"
-
-// EffectiveEngine returns the configured engine, defaulting to "v2".
-func (p Projection) EffectiveEngine() string {
-	if p.Engine == "" {
-		return DefaultEngine
+// EffectiveEngineVersion returns the projection's engine_version, falling
+// back to the top-level engine_version. Returns 0 if neither is set.
+func (c *Config) EffectiveEngineVersion(p *Projection) int {
+	if p.EngineVersion != 0 {
+		return p.EngineVersion
 	}
-	return p.Engine
+	return c.EngineVersion
 }
 
 // IsEnabled returns true if the projection is enabled (default true).
@@ -86,6 +86,9 @@ func (c *Config) FindProjection(name string) *Projection {
 }
 
 func (c *Config) validate() error {
+	if c.EngineVersion != 0 && c.EngineVersion != 1 && c.EngineVersion != 2 {
+		return fmt.Errorf("engine_version must be 1 or 2, got %d", c.EngineVersion)
+	}
 	seen := make(map[string]bool)
 	for _, p := range c.Projection {
 		if p.Name == "" {
@@ -93,6 +96,12 @@ func (c *Config) validate() error {
 		}
 		if p.Entry == "" {
 			return fmt.Errorf("projection %q missing required field: entry", p.Name)
+		}
+		if p.EngineVersion != 0 && p.EngineVersion != 1 && p.EngineVersion != 2 {
+			return fmt.Errorf("projection %q engine_version must be 1 or 2, got %d", p.Name, p.EngineVersion)
+		}
+		if c.EffectiveEngineVersion(&p) == 0 {
+			return fmt.Errorf("projection %q has no engine_version set (also missing top-level engine_version)", p.Name)
 		}
 		cleaned := filepath.Clean(p.Entry)
 		if strings.HasPrefix(cleaned, "..") {

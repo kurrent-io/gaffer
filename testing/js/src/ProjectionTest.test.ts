@@ -14,7 +14,9 @@ const counterSource = `
 
 describe("ProjectionTest", () => {
 	it("feeds events and returns state", () => {
-		const test = new ProjectionTest<{ count: number }>(counterSource);
+		const test = new ProjectionTest<{ count: number }>(counterSource, {
+			engineVersion: 2,
+		});
 		const step = test.feed({
 			eventType: "ItemAdded",
 			streamId: "cart-1",
@@ -39,7 +41,9 @@ describe("ProjectionTest", () => {
 	});
 
 	it("accumulates state across feeds", () => {
-		const test = new ProjectionTest<{ count: number }>(counterSource);
+		const test = new ProjectionTest<{ count: number }>(counterSource, {
+			engineVersion: 2,
+		});
 		test.feed({
 			eventType: "ItemAdded",
 			streamId: "cart-1",
@@ -68,12 +72,15 @@ describe("ProjectionTest", () => {
 	});
 
 	it("returns state by partition", () => {
-		const test = new ProjectionTest<{ items: number }>(`
+		const test = new ProjectionTest<{ items: number }>(
+			`
 			fromCategory("cart").foreachStream().when({
 				$init() { return { items: 0 }; },
 				ItemAdded(s, e) { s.items++; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const step1 = test.feed({
 			eventType: "ItemAdded",
@@ -113,7 +120,8 @@ describe("ProjectionTest", () => {
 	});
 
 	it("collects emitted events", () => {
-		const test = new ProjectionTest(`
+		const test = new ProjectionTest(
+			`
 			fromAll().when({
 				$init() { return {}; },
 				OrderPlaced(s, e) {
@@ -121,7 +129,9 @@ describe("ProjectionTest", () => {
 					return s;
 				}
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const step = test.feed({
 			eventType: "OrderPlaced",
@@ -142,14 +152,17 @@ describe("ProjectionTest", () => {
 	});
 
 	it("collects logs", () => {
-		const test = new ProjectionTest(`
+		const test = new ProjectionTest(
+			`
 			fromAll().when({
 				TestEvent(s, e) {
 					log("hello from projection");
 					return s;
 				}
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const step = test.feed({
 			eventType: "TestEvent",
@@ -166,7 +179,8 @@ describe("ProjectionTest", () => {
 	});
 
 	it("resets emitted and logs per step", () => {
-		const test = new ProjectionTest(`
+		const test = new ProjectionTest(
+			`
 			fromAll().when({
 				$init() { return {}; },
 				Ping(s, e) {
@@ -175,7 +189,9 @@ describe("ProjectionTest", () => {
 					return s;
 				}
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const step1 = test.feed({
 			eventType: "Ping",
@@ -208,7 +224,8 @@ describe("ProjectionTest", () => {
 			{ count: number },
 			unknown,
 			{ total: number }
-		>(`
+		>(
+			`
 			options({ biState: true });
 			fromAll().when({
 				$init() { return { count: 0 }; },
@@ -219,7 +236,9 @@ describe("ProjectionTest", () => {
 					return s;
 				}
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		test.feed({
 			eventType: "Added",
@@ -245,14 +264,17 @@ describe("ProjectionTest", () => {
 	});
 
 	it("returns result with transformBy", () => {
-		const test = new ProjectionTest<{ count: number }, { total: number }>(`
+		const test = new ProjectionTest<{ count: number }, { total: number }>(
+			`
 			fromAll().when({
 				$init() { return { count: 0 }; },
 				Ping(s, e) { s.count++; return s; }
 			}).transformBy(function(s) {
 				return { total: s.count * 2 };
 			}).outputState()
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const step = test.feed({
 			eventType: "Ping",
@@ -268,12 +290,15 @@ describe("ProjectionTest", () => {
 	});
 
 	it("accepts object data and auto-stringifies", () => {
-		const test = new ProjectionTest<{ total: number }>(`
+		const test = new ProjectionTest<{ total: number }>(
+			`
 			fromAll().when({
 				$init() { return { total: 0 }; },
 				Deposited(s, e) { s.total += e.data.amount; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		test.feed({
 			eventType: "Deposited",
@@ -288,7 +313,9 @@ describe("ProjectionTest", () => {
 	});
 
 	it("accepts RecordedEvent shape", () => {
-		const test = new ProjectionTest<{ count: number }>(counterSource);
+		const test = new ProjectionTest<{ count: number }>(counterSource, {
+			engineVersion: 2,
+		});
 		test.feed({
 			type: "ItemAdded",
 			streamId: "cart-1",
@@ -304,7 +331,9 @@ describe("ProjectionTest", () => {
 	});
 
 	it("accepts ResolvedEvent shape", () => {
-		const test = new ProjectionTest<{ count: number }>(counterSource);
+		const test = new ProjectionTest<{ count: number }>(counterSource, {
+			engineVersion: 2,
+		});
 		test.feed({
 			event: {
 				type: "ItemAdded",
@@ -322,12 +351,15 @@ describe("ProjectionTest", () => {
 	});
 
 	it("wraps errors with event context", () => {
-		const test = new ProjectionTest(`
+		const test = new ProjectionTest(
+			`
 			fromAll().when({
 				$init() { return {}; },
 				Bad(s, e) { throw "boom"; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		expect(() =>
 			test.feed({
@@ -364,7 +396,9 @@ describe("ProjectionTest", () => {
 	});
 
 	it("unhandled event returns skipped result", () => {
-		const test = new ProjectionTest<{ count: number }>(counterSource);
+		const test = new ProjectionTest<{ count: number }>(counterSource, {
+			engineVersion: 2,
+		});
 		test.feed({
 			eventType: "ItemAdded",
 			streamId: "s-1",
@@ -386,12 +420,15 @@ describe("ProjectionTest", () => {
 	});
 
 	it("unhandled event in partitioned projection returns skipped", () => {
-		const test = new ProjectionTest<{ items: number }>(`
+		const test = new ProjectionTest<{ items: number }>(
+			`
 			fromCategory("cart").foreachStream().when({
 				$init() { return { items: 0 }; },
 				ItemAdded(s, e) { s.items++; return s; }
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		test.feed({
 			eventType: "ItemAdded",
@@ -417,7 +454,9 @@ describe("ProjectionTest", () => {
 	});
 
 	it("handled event in unpartitioned projection has no partition", () => {
-		const test = new ProjectionTest<{ count: number }>(counterSource);
+		const test = new ProjectionTest<{ count: number }>(counterSource, {
+			engineVersion: 2,
+		});
 		const step = test.feed({
 			eventType: "ItemAdded",
 			streamId: "s-1",
@@ -433,7 +472,7 @@ describe("ProjectionTest", () => {
 	});
 
 	it("throws after dispose", () => {
-		const test = new ProjectionTest(counterSource);
+		const test = new ProjectionTest(counterSource, { engineVersion: 2 });
 		test.dispose();
 		expect(() =>
 			test.feed({
@@ -450,13 +489,14 @@ describe("ProjectionTest", () => {
 	});
 
 	it("double dispose is safe", () => {
-		const test = new ProjectionTest(counterSource);
+		const test = new ProjectionTest(counterSource, { engineVersion: 2 });
 		test.dispose();
 		test.dispose();
 	});
 
 	it("detects link events via isLink", () => {
-		const test = new ProjectionTest(`
+		const test = new ProjectionTest(
+			`
 			fromAll().when({
 				$init() { return {}; },
 				OrderPlaced(s, e) {
@@ -464,7 +504,9 @@ describe("ProjectionTest", () => {
 					return s;
 				}
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const step = test.feed({
 			eventType: "OrderPlaced",
@@ -484,7 +526,8 @@ describe("ProjectionTest", () => {
 	});
 
 	it("handles non-JSON emitted data gracefully", () => {
-		const test = new ProjectionTest(`
+		const test = new ProjectionTest(
+			`
 			fromAll().when({
 				$init() { return {}; },
 				OrderPlaced(s, e) {
@@ -492,7 +535,9 @@ describe("ProjectionTest", () => {
 					return s;
 				}
 			})
-		`);
+		`,
+			{ engineVersion: 2 },
+		);
 
 		const step = test.feed({
 			eventType: "OrderPlaced",

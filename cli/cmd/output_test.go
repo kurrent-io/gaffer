@@ -63,7 +63,7 @@ func TestTextWriter_WriteInfo(t *testing.T) {
 		ByStreams:  true,
 		Events:     []string{"OrderPlaced", "OrderShipped"},
 	}
-	tw.WriteInfo("my-projection", info, "v2")
+	tw.WriteInfo("my-projection", info, 2)
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "my-projection")
@@ -82,7 +82,7 @@ func TestTextWriter_WriteInfo_BiStateAndProducesResults(t *testing.T) {
 		IsBiState:       true,
 		ProducesResults: true,
 	}
-	tw.WriteInfo("bi-state-proj", info, "v2")
+	tw.WriteInfo("bi-state-proj", info, 2)
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "BiState: yes")
@@ -96,7 +96,7 @@ func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
 	info := gafferruntime.QuerySources{
 		AllStreams: true,
 	}
-	tw.WriteInfo("simple-proj", info, "v2")
+	tw.WriteInfo("simple-proj", info, 2)
 
 	out := buf.String()
 	if strings.Contains(out, "BiState") {
@@ -299,7 +299,7 @@ func TestJSONWriter_WriteInfo(t *testing.T) {
 		ByStreams:  true,
 		Events:     []string{"OrderPlaced"},
 	}
-	jw.WriteInfo("my-projection", info, "v2")
+	jw.WriteInfo("my-projection", info, 2)
 
 	var line map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
@@ -315,7 +315,7 @@ func TestJSONWriter_WriteInfo(t *testing.T) {
 
 	testutil.AssertEqual(t, "name", "my-projection", proj["name"])
 	testutil.AssertEqual(t, "source", "categories", proj["source"])
-	testutil.AssertEqual(t, "engine", "v2", proj["engine"])
+	testutil.AssertEqualFloat(t, "engineVersion", 2, proj["engineVersion"])
 	testutil.AssertEqual(t, "partitioning", "byStream", proj["partitioning"])
 
 	if _, ok := proj["categories"]; !ok {

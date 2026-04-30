@@ -10,7 +10,7 @@ public class ProjectionSessionTests {
                 $init: function() { return { count: 0 }; },
                 ItemAdded: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "ItemAdded", StreamId = "cart-1", Data = "{}" });
 		session.Feed(new ProjectionEvent { EventType = "ItemAdded", StreamId = "cart-1", Data = "{}" });
@@ -28,7 +28,7 @@ public class ProjectionSessionTests {
                 $init: function() { return { total: 0 }; },
                 Deposited: function(s, e) { s.total += e.data.amount; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Deposited", StreamId = "acc-1", Data = """{"amount":50}""" });
 		session.Feed(new ProjectionEvent { EventType = "Deposited", StreamId = "acc-1", Data = """{"amount":30}""" });
@@ -43,7 +43,7 @@ public class ProjectionSessionTests {
                 $init: function() { return { count: 0 }; },
                 ItemAdded: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "ItemAdded", StreamId = "cart-1", Data = "{}" });
 		session.Feed(new ProjectionEvent { EventType = "SomethingElse", StreamId = "cart-1", Data = "{}" });
@@ -61,7 +61,7 @@ public class ProjectionSessionTests {
                     return s;
                 }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		session.Feed(new ProjectionEvent {
@@ -83,7 +83,7 @@ public class ProjectionSessionTests {
             fromAll().when({
                 TestEvent: function(s, e) { log("hello"); return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnLog = msg => logs.Add(msg);
 
 		session.Feed(new ProjectionEvent { EventType = "TestEvent", StreamId = "s-1", Data = "{}" });
@@ -100,7 +100,7 @@ public class ProjectionSessionTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnStateChanged = (p, s) => changes.Add((p, s));
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
@@ -118,7 +118,7 @@ public class ProjectionSessionTests {
                 $init: function() { return { items: 0 }; },
                 ItemAdded: function(s, e) { s.items++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "ItemAdded", StreamId = "cart-1", Data = "{}" });
 		session.Feed(new ProjectionEvent { EventType = "ItemAdded", StreamId = "cart-1", Data = "{}" });
@@ -135,7 +135,7 @@ public class ProjectionSessionTests {
                 $init: function() { return { orders: 0 }; },
                 OrderPlaced: function(s, e) { s.orders++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "OrderPlaced", StreamId = "order-1", Data = """{"userId":"u1"}""" });
 		session.Feed(new ProjectionEvent { EventType = "OrderPlaced", StreamId = "order-2", Data = """{"userId":"u2"}""" });
@@ -154,7 +154,7 @@ public class ProjectionSessionTests {
             }).transformBy(function(s) {
                 return { total: s.count };
             }).outputState()
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -170,7 +170,7 @@ public class ProjectionSessionTests {
                 $init: function() { return { count: 0 }; },
                 Ping: function(s, e) { s.count++; return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		session.SetState(null, """{"count":10}""");
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
@@ -185,7 +185,7 @@ public class ProjectionSessionTests {
                 $init: function() { return {}; },
                 OrderPlaced: function(s, e) { return s; }
             })
-        """);
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.True(session.Sources.ByStreams);
 		Assert.NotNull(session.Sources.Categories);

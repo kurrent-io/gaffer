@@ -9,7 +9,7 @@ import (
 
 func mustCreateSession(t *testing.T, source string) *Session {
 	t.Helper()
-	session, err := NewSession(source, nil)
+	session, err := NewSession(source, &v2Opts)
 	if err != nil {
 		t.Fatalf("NewSession failed: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestSessionCreateAndDestroy(t *testing.T) {
 			$init() { return {}; },
 			Ping(s, e) { return s; }
 		})
-	`, nil)
+	`, &v2Opts)
 	if err != nil {
 		t.Fatalf("NewSession failed: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestSessionCreateAndDestroy(t *testing.T) {
 }
 
 func TestCreateWithInvalidJS(t *testing.T) {
-	_, err := NewSession("this is not valid {{{{", nil)
+	_, err := NewSession("this is not valid {{{{", &v2Opts)
 	if err == nil {
 		t.Fatal("expected error for invalid JS")
 	}
@@ -179,7 +179,7 @@ func TestFeedError(t *testing.T) {
 }
 
 func TestCreateWithOptions(t *testing.T) {
-	opts := `{"compilationTimeoutMs":10000}`
+	opts := `{"engineVersion":2,"compilationTimeoutMs":10000}`
 	session, err := NewSession(`
 		fromAll().when({
 			$init() { return {}; },
@@ -213,7 +213,7 @@ func TestDoubleDestroyIsSafe(t *testing.T) {
 			$init() { return {}; },
 			Ping(s, e) { return s; }
 		})
-	`, nil)
+	`, &v2Opts)
 	if err != nil {
 		t.Fatalf("NewSession failed: %v", err)
 	}

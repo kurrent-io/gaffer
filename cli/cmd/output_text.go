@@ -145,7 +145,7 @@ func (tw *textWriter) writeEmittedCb(streamID, eventType, data, metadata string,
 	}
 }
 
-func (tw *textWriter) WriteInfo(name string, info gafferruntime.QuerySources, version string) {
+func (tw *textWriter) WriteInfo(name string, info gafferruntime.QuerySources, engineVersion int) {
 	tw.heading(name)
 
 	if info.AllStreams {
@@ -173,8 +173,8 @@ func (tw *textWriter) WriteInfo(name string, info gafferruntime.QuerySources, ve
 		tw.detail("Produces results", "yes")
 	}
 
-	if version != "" {
-		tw.detail("Engine", version)
+	if engineVersion != 0 {
+		tw.detail("Engine", fmt.Sprintf("v%d", engineVersion))
 	}
 
 	tw.blank()

@@ -30,7 +30,7 @@ public class EndToEndTests {
 	[Fact]
 	public void Category_partitioned_state_with_emit() {
 		var emitted = new List<EmittedEvent>();
-		using var session = new ProjectionSession(OrderProjection);
+		using var session = new ProjectionSession(OrderProjection, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		// Order stream 1: OrderPlaced, OrderShipped, OrderPlaced
@@ -76,7 +76,7 @@ public class EndToEndTests {
 
 	[Fact]
 	public void Non_matching_category_events_ignored() {
-		using var session = new ProjectionSession(OrderProjection);
+		using var session = new ProjectionSession(OrderProjection, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		// These are "invoice-" category, not "order-"
 		session.Feed(new ProjectionEvent { EventType = "InvoiceCreated", StreamId = "invoice-1", Data = """{"total":999}""" });
@@ -90,7 +90,7 @@ public class EndToEndTests {
 	[Fact]
 	public void Interleaved_events_across_streams() {
 		var emitted = new List<EmittedEvent>();
-		using var session = new ProjectionSession(OrderProjection);
+		using var session = new ProjectionSession(OrderProjection, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 		session.OnEmit = e => emitted.Add(e);
 
 		// Interleave events across multiple streams

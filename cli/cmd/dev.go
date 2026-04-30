@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,11 +17,12 @@ import (
 )
 
 type devOpts struct {
-	Events     string
-	JSON       bool
-	Connection string
-	Debug      bool
-	DebugPort  int
+	Events        string
+	JSON          bool
+	Connection    string
+	Debug         bool
+	DebugPort     int
+	UntilCaughtUp bool
 }
 
 func newDevCmd() *cobra.Command {
@@ -39,6 +41,7 @@ func newDevCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Connection, "connection", "", "KurrentDB connection string (overrides config)")
 	cmd.Flags().BoolVar(&opts.Debug, "debug", false, "Start DAP debug server")
 	cmd.Flags().IntVar(&opts.DebugPort, "debug-port", 4711, "DAP debug server port")
+	cmd.Flags().BoolVar(&opts.UntilCaughtUp, "until-caught-up", false, "Exit when subscription catches up (live mode only)")
 	return cmd
 }
 
@@ -136,6 +139,7 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 	}
 
 	var source engine.EventSource
+	var caughtUp bool
 	if opts.Events != "" {
 		events, err := engine.LoadEvents(opts.Events)
 		if err != nil {
@@ -147,12 +151,19 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 		if connStr == "" {
 			return fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
 		}
-		source = engine.NewLiveSource(engine.LiveSourceConfig{
+		liveCfg := engine.LiveSourceConfig{
 			ConnStr: connStr,
 			Root:    proj.Root,
 			Info:    info,
 			Version: version,
-		})
+		}
+		if opts.UntilCaughtUp {
+			liveCfg.OnCaughtUp = func() {
+				caughtUp = true
+				stop()
+			}
+		}
+		source = engine.NewLiveSource(liveCfg)
 	}
 
 	srcErr := source.Run(ctx, r.ProcessOne)
@@ -161,11 +172,8 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 		afterRun()
 	}
 
-	if ctx.Err() != nil {
-		_, _ = fmt.Fprint(os.Stderr, "Interrupted\n\n")
-		r.SetFaulted(false)
-	} else if srcErr != nil {
-		return srcErr
+	if err := finalizeRun(ctx, caughtUp, srcErr, r, os.Stderr); err != nil {
+		return err
 	}
 
 	summary := r.CollectState()
@@ -176,6 +184,18 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 	}
 
 	return nil
+}
+
+// finalizeRun handles post-loop disposition. If the context was cancelled
+// without catching up (user interrupt), prints a notice and clears the
+// faulted state. Otherwise propagates any source error.
+func finalizeRun(ctx context.Context, caughtUp bool, srcErr error, r *engine.Runner, stderr io.Writer) error {
+	if ctx.Err() != nil && !caughtUp {
+		_, _ = fmt.Fprint(stderr, "Interrupted\n\n")
+		r.SetFaulted(false)
+		return nil
+	}
+	return srcErr
 }
 
 func resolveConnection(override string, cfg *config.Config) string {

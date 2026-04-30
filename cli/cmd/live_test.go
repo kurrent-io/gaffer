@@ -6,11 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
-	"strings"
-	"syscall"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
@@ -60,60 +56,20 @@ func TestDev_LiveSubscription(t *testing.T) {
 		WithConnection(connStr).
 		AddProjection("counter", projSource).
 		Save()
-	dir := p.Dir
-
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.Chdir(orig) }()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
+	chdirTo(t, p.Dir)
 
 	root := NewRootCmd()
-	root.SetArgs([]string{"dev", "counter", "--json"})
+	root.SetArgs([]string{"dev", "counter", "--json", "--until-caught-up"})
 	root.SetErr(&bytes.Buffer{})
 
-	// The live subscription runs until interrupted.
-	// Run in a goroutine, send SIGINT after a delay.
-	r, w, pipeErr := os.Pipe()
-	if pipeErr != nil {
-		t.Fatal(pipeErr)
-	}
-	origStdout := os.Stdout
-	os.Stdout = w
-	defer func() { os.Stdout = origStdout }()
-
-	done := make(chan error, 1)
-	go func() {
-		done <- ExecuteRoot(context.Background(), root)
-	}()
-
-	// Give the subscription time to catch up and process events
-	time.Sleep(3 * time.Second)
-	_ = syscall.Kill(syscall.Getpid(), syscall.SIGINT)
-
-	select {
-	case err = <-done:
-	case <-time.After(10 * time.Second):
-		t.Fatal("command did not exit after SIGINT")
-	}
-
-	_ = w.Close()
-
-	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(r)
-	output := buf.String()
-
-	// The command should exit cleanly on interrupt (no error, or context cancelled)
-	if err != nil && !strings.Contains(err.Error(), "context canceled") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	output := testutil.CaptureStdout(t, func() {
+		if err := ExecuteRoot(context.Background(), root); err != nil {
+			t.Fatalf("dev failed: %v", err)
+		}
+	})
 
 	lines := testutil.SplitNDJSON(output)
 
-	// Should have processed some events before we interrupted
 	var eventCount int
 	for _, line := range lines {
 		if line["type"] == "event" {
@@ -124,11 +80,11 @@ func TestDev_LiveSubscription(t *testing.T) {
 		t.Errorf("event lines: got %d, want at least 3", eventCount)
 	}
 
-	// Last line should be summary (written after interrupt)
-	if len(lines) > 0 {
-		last := lines[len(lines)-1]
-		if last["type"] != "summary" {
-			t.Errorf("expected summary as last line, got type=%v", last["type"])
-		}
+	if len(lines) == 0 {
+		t.Fatal("no output")
+	}
+	last := lines[len(lines)-1]
+	if last["type"] != "summary" {
+		t.Errorf("expected summary as last line, got type=%v", last["type"])
 	}
 }

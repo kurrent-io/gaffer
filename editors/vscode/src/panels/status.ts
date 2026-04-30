@@ -1,4 +1,25 @@
+// Webview that shows running counters during a debug session: events
+// processed, skipped, errors, plus a "Pause to inspect" button.
+//
+// HTML lives in status.html (loaded as a raw string at build time).
+// Rendered once on resolveWebviewView; subsequent updates are posted
+// through `webview.postMessage` and the inline script patches the DOM.
+// Avoids the focus-drop / state-reset that came from reassigning
+// `webview.html` on every counter tick.
+//
+// CSP locked down to the loaded HTML's nonce and the webview's
+// cspSource for styles. `localResourceRoots: []` since the template is
+// fully self-contained.
+
 import * as vscode from "vscode";
+import statusTemplate from "./status.html?raw";
+
+interface UpdateMessage {
+	type: "update";
+	title: string;
+	stats: string[];
+	showPauseButton: boolean;
+}
 
 export class StatusViewProvider implements vscode.WebviewViewProvider {
 	#view: vscode.WebviewView | null = null;
@@ -10,11 +31,19 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 
 	resolveWebviewView(webviewView: vscode.WebviewView): void {
 		this.#view = webviewView;
-		webviewView.webview.options = { enableScripts: true };
+		webviewView.webview.options = {
+			enableScripts: true,
+			localResourceRoots: [],
+		};
+
+		const nonce = generateNonce();
+		webviewView.webview.html = statusTemplate
+			.replaceAll("{{NONCE}}", nonce)
+			.replaceAll("{{CSP_SOURCE}}", webviewView.webview.cspSource);
 
 		webviewView.webview.onDidReceiveMessage((msg: { command?: string }) => {
 			if (msg.command === "pause") {
-				vscode.commands.executeCommand("workbench.action.debug.pause");
+				void vscode.commands.executeCommand("workbench.action.debug.pause");
 			}
 		});
 
@@ -22,7 +51,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 			this.#view = null;
 		});
 
-		this.#render();
+		this.#postUpdate();
 	}
 
 	reset(name: string): void {
@@ -30,93 +59,58 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		this.#processed = 0;
 		this.#skipped = 0;
 		this.#errors = 0;
-		this.#render();
+		this.#postUpdate();
 	}
 
 	addProcessed(): void {
 		this.#processed++;
-		this.#scheduleRender();
+		this.#scheduleUpdate();
 	}
 
 	addSkipped(): void {
 		this.#skipped++;
-		this.#scheduleRender();
+		this.#scheduleUpdate();
 	}
 
 	addError(): void {
 		this.#errors++;
-		this.#scheduleRender();
+		this.#scheduleUpdate();
 	}
 
-	#scheduleRender(): void {
+	#scheduleUpdate(): void {
 		if (this.#renderTimer) return;
 		this.#renderTimer = setTimeout(() => {
 			this.#renderTimer = null;
-			this.#render();
+			this.#postUpdate();
 		}, 200);
 	}
 
-	#render(): void {
+	#postUpdate(): void {
 		if (!this.#view) return;
-
-		const name = this.#name || "projection";
 		const stats: string[] = [];
-		if (this.#processed > 0)
+		if (this.#processed > 0) {
 			stats.push(`${this.#processed.toLocaleString()} events processed`);
-		if (this.#skipped > 0)
+		}
+		if (this.#skipped > 0) {
 			stats.push(`${this.#skipped.toLocaleString()} events skipped`);
-		if (this.#errors > 0) stats.push(`${this.#errors.toLocaleString()} errors`);
-		const statsHtml = stats.length
-			? stats.map((s) => `<div class="stat">${s}</div>`).join("")
-			: `<div class="stat">Waiting for events...</div>`;
+		}
+		if (this.#errors > 0) {
+			stats.push(`${this.#errors.toLocaleString()} errors`);
+		}
+		if (stats.length === 0) {
+			stats.push("Waiting for events...");
+		}
 
-		this.#view.webview.html = `<!DOCTYPE html>
-<html>
-<head>
-<style>
-  body {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    margin: 0;
-    font-family: var(--vscode-font-family);
-    color: var(--vscode-foreground);
-    gap: 6px;
-  }
-  .title {
-    font-size: 13px;
-    opacity: 0.9;
-  }
-  .stat {
-    font-size: 12px;
-    opacity: 0.6;
-  }
-  button {
-    margin-top: 8px;
-    padding: 4px 16px;
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border: none;
-    border-radius: 2px;
-    cursor: pointer;
-    font-size: 12px;
-  }
-  button:hover {
-    background: var(--vscode-button-hoverBackground);
-  }
-</style>
-</head>
-<body>
-  <div class="title">Running ${name}...</div>
-  ${statsHtml}
-  <button onclick="pause()">Pause to inspect</button>
-  <script>
-    const vscode = acquireVsCodeApi();
-    function pause() { vscode.postMessage({ command: 'pause' }); }
-  </script>
-</body>
-</html>`;
+		const update: UpdateMessage = {
+			type: "update",
+			title: `Running ${this.#name || "projection"}...`,
+			stats,
+			showPauseButton: true,
+		};
+		void this.#view.webview.postMessage(update);
 	}
+}
+
+function generateNonce(): string {
+	return crypto.randomUUID().replaceAll("-", "");
 }

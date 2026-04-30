@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			http-equiv="Content-Security-Policy"
+			content="default-src 'none'; style-src {{CSP_SOURCE}} 'unsafe-inline'; script-src 'nonce-{{NONCE}}';"
+		/>
+		<style>
+			body {
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				height: 100vh;
+				margin: 0;
+				font-family: var(--vscode-font-family);
+				color: var(--vscode-foreground);
+				gap: 6px;
+			}
+			.title {
+				font-size: 13px;
+			}
+			.stat {
+				font-size: 12px;
+				color: var(--vscode-descriptionForeground);
+			}
+			button {
+				margin-top: 8px;
+				padding: 4px 16px;
+				background: var(--vscode-button-background);
+				color: var(--vscode-button-foreground);
+				border: none;
+				border-radius: 2px;
+				cursor: pointer;
+				font-size: 12px;
+			}
+			button:hover {
+				background: var(--vscode-button-hoverBackground);
+			}
+			button.hidden {
+				display: none;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="title" id="title"></div>
+		<div id="stats"></div>
+		<button id="pause">Pause to inspect</button>
+		<script nonce="{{NONCE}}">
+			const vscode = acquireVsCodeApi();
+			const titleEl = document.getElementById("title");
+			const statsEl = document.getElementById("stats");
+			const pauseBtn = document.getElementById("pause");
+
+			pauseBtn.addEventListener("click", () => {
+				vscode.postMessage({ command: "pause" });
+			});
+
+			window.addEventListener("message", (event) => {
+				const msg = event.data;
+				if (!msg || msg.type !== "update") return;
+				titleEl.textContent = msg.title;
+				statsEl.replaceChildren();
+				for (const stat of msg.stats) {
+					const div = document.createElement("div");
+					div.className = "stat";
+					div.textContent = stat;
+					statsEl.appendChild(div);
+				}
+				pauseBtn.classList.toggle("hidden", !msg.showPauseButton);
+			});
+		</script>
+	</body>
+</html>

@@ -1,6 +1,5 @@
-/// <reference types="vitest" />
 import { builtinModules } from "node:module";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
 	build: {
@@ -8,7 +7,6 @@ export default defineConfig({
 		outDir: "dist",
 		emptyOutDir: true,
 		sourcemap: true,
-		minify: false,
 		lib: {
 			entry: { extension: "src/extension.ts" },
 			formats: ["cjs"],

@@ -13,6 +13,12 @@
     "workspaceContains:**/gaffer.toml"
   ],
   "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Gaffer spawns the gaffer CLI as a child process to debug projections. Workspace settings cannot override `gaffer.command`; debugging is disabled until the workspace is trusted."
+    }
+  },
   "scripts": {
     "build": "vite build",
     "watch": "vite build --watch",
@@ -33,9 +39,11 @@
       "title": "Gaffer",
       "properties": {
         "gaffer.command": {
-          "type": "string",
-          "default": "gaffer",
-          "description": "Command to run gaffer. Use {command} as a placeholder for container/remote setups (e.g. \"devpod ssh gaffer --command \\\"{command}\\\"\")"
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["./bin/gaffer"],
+          "scope": "application",
+          "description": "Argv used to invoke gaffer. Examples: [\"gaffer\"] (PATH), [\"./bin/gaffer\"] (local build), [\"/usr/local/bin/gaffer\"] (explicit path), [\"sudo\", \"gaffer\"] (with privileges). Subcommand args are appended. Only User-scope value is honored - workspace and folder settings are ignored as a defense against hostile workspaces."
         }
       }
     },

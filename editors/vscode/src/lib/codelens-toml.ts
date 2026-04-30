@@ -57,6 +57,13 @@ export function buildLens(
 		return new vscode.CodeLens(range, { title: label } as vscode.Command);
 	}
 
+	if (!vscode.workspace.isTrusted) {
+		return new vscode.CodeLens(range, {
+			title: "$(workspace-untrusted) Trust workspace to debug",
+			command: "workbench.trust.manage",
+		});
+	}
+
 	if (!cli.hasCommand("dev") || !cli.hasFlag("dev", "debug")) return null;
 
 	return new vscode.CodeLens(range, {

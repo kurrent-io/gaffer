@@ -14,29 +14,30 @@ const ansiRegex = /\x1b\[[0-9;]*m/g;
 const stripAnsi = (s: string) => s.replace(ansiRegex, "");
 
 export class GafferProcess {
-	private readonly _command: string;
+	private readonly _argv: string[];
 	private readonly _cwd: string | undefined;
 	private readonly _log: (msg: string) => void;
 	private _proc: ChildProcess | null = null;
 	private _onLine: LineHandler = () => {};
 	private _onExit: ExitHandler = () => {};
 
-	constructor(command: string, options: ProcessOptions = {}) {
-		this._command = command;
+	constructor(argv: string[], options: ProcessOptions = {}) {
+		if (argv.length === 0) throw new Error("argv must not be empty");
+		this._argv = argv;
 		this._cwd = options.cwd;
 		this._log = options.log ?? (() => {});
 	}
 
 	start(): this {
-		const shell = process.env["SHELL"] ?? "/bin/sh";
 		this._log(
-			`Spawning: ${shell} -c ${JSON.stringify(this._command)}` +
+			`Spawning: ${this._argv.map((a) => JSON.stringify(a)).join(" ")}` +
 				(this._cwd ? ` (cwd: ${this._cwd})` : ""),
 		);
 
-		const proc = spawn(shell, ["-c", this._command], {
+		const proc = spawn(this._argv[0]!, this._argv.slice(1), {
 			stdio: ["ignore", "pipe", "pipe"],
 			cwd: this._cwd,
+			shell: false,
 		});
 		this._proc = proc;
 

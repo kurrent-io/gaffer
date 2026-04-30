@@ -137,6 +137,20 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand(
 			"gaffer.debugProjection",
 			async (args: DebugProjectionArgs) => {
+				if (!vscode.workspace.isTrusted) {
+					void vscode.window
+						.showWarningMessage(
+							"Trust this workspace to enable Gaffer debugging.",
+							"Manage Trust",
+						)
+						.then((choice) => {
+							if (choice === "Manage Trust") {
+								void vscode.commands.executeCommand("workbench.trust.manage");
+							}
+						});
+					return;
+				}
+
 				if (debugState.status !== "idle") {
 					log(`Ignoring debug request: ${debugState.name ?? "session"} is ${debugState.status}`);
 					return;
@@ -145,16 +159,21 @@ export function activate(context: vscode.ExtensionContext): void {
 				const { name, tomlUri } = args;
 				const tomlDir = vscode.Uri.joinPath(tomlUri, "..").fsPath;
 				const port = DEBUG_PORT;
-				const command = cli.buildCommand(
-					`dev ${name} --json --debug --debug-port ${port}`,
-				);
+				const argv = cli.buildArgv([
+					"dev",
+					name,
+					"--json",
+					"--debug",
+					"--debug-port",
+					String(port),
+				]);
 
 				stepProvider.clear();
 				stateProvider.clear();
 
 				setDebugState(name, "starting");
 				log(`Starting: ${name}`);
-				const session = new GafferSession(name, command, { log, cwd: tomlDir });
+				const session = new GafferSession(name, argv, { log, cwd: tomlDir });
 				activeSession = session;
 
 				session.on("exit", (msg) => {
@@ -247,6 +266,31 @@ export function activate(context: vscode.ExtensionContext): void {
 		void projectIndex.refresh().then(() => jsCodeLens.refresh());
 	};
 
+	const tryFetchManifest = async (): Promise<void> => {
+		if (!vscode.workspace.isTrusted) {
+			log("workspace untrusted, skipping manifest fetch");
+			return;
+		}
+		try {
+			await cli.fetchManifest(projectIndex.projectRoot);
+			refreshAll();
+		} catch {
+			void vscode.window
+				.showWarningMessage(
+					'Gaffer CLI not found. Install gaffer or configure "gaffer.command" in settings.',
+					"Open Settings",
+				)
+				.then((choice) => {
+					if (choice === "Open Settings") {
+						void vscode.commands.executeCommand(
+							"workbench.action.openSettings",
+							"gaffer.command",
+						);
+					}
+				});
+		}
+	};
+
 	const tomlWatcher = vscode.workspace.createFileSystemWatcher("**/gaffer.toml");
 	tomlWatcher.onDidChange(() => {
 		log("gaffer.toml changed");
@@ -254,7 +298,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	});
 	tomlWatcher.onDidCreate(() => {
 		log("gaffer.toml created");
-		void cli.fetchManifest(projectIndex.projectRoot).then(refreshAll).catch(() => {});
+		void tryFetchManifest();
 	});
 	tomlWatcher.onDidDelete(() => {
 		log("gaffer.toml deleted");
@@ -266,34 +310,19 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.workspace.onDidChangeConfiguration((e) => {
 			if (e.affectsConfiguration("gaffer.command")) {
 				log("gaffer.command setting changed, refetching manifest");
-				void cli
-					.fetchManifest(projectIndex.projectRoot)
-					.then(refreshAll)
-					.catch(() => {});
+				void tryFetchManifest();
 			}
 		}),
 	);
 
-	void projectIndex.refresh().then(() => {
-		cli
-			.fetchManifest(projectIndex.projectRoot)
-			.then(refreshAll)
-			.catch(() => {
-				void vscode.window
-					.showWarningMessage(
-						'Gaffer CLI not found. Install gaffer or configure "gaffer.command" in settings.',
-						"Open Settings",
-					)
-					.then((choice) => {
-						if (choice === "Open Settings") {
-							vscode.commands.executeCommand(
-								"workbench.action.openSettings",
-								"gaffer.command",
-							);
-						}
-					});
-			});
-	});
+	context.subscriptions.push(
+		vscode.workspace.onDidGrantWorkspaceTrust(() => {
+			log("workspace trusted, fetching manifest");
+			void tryFetchManifest();
+		}),
+	);
+
+	void projectIndex.refresh().then(tryFetchManifest);
 }
 
 export function deactivate(): void {}

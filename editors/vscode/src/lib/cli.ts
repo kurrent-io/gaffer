@@ -1,8 +1,10 @@
 import * as vscode from "vscode";
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import type { Manifest } from "../types.js";
 
 type Logger = (msg: string) => void;
+
+const DEFAULT_COMMAND: readonly string[] = ["./bin/gaffer"];
 
 export class GafferCli {
 	private readonly _log: Logger;
@@ -24,20 +26,29 @@ export class GafferCli {
 		return this._manifest?.commands?.[command]?.flags?.includes(flag) ?? false;
 	}
 
-	buildCommand(args: string): string {
-		const template = vscode.workspace
+	/**
+	 * Build the argv to invoke gaffer with the given subcommand args.
+	 *
+	 * Reads `gaffer.command` only from User scope - workspace and folder scope
+	 * are ignored as a defense against hostile workspaces overriding the
+	 * binary path. Falls back to `["./bin/gaffer"]`.
+	 */
+	buildArgv(args: string[]): string[] {
+		const inspected = vscode.workspace
 			.getConfiguration("gaffer")
-			.get<string>("command", "gaffer");
-		if (template.includes("{command}")) {
-			return template.replace("{command}", args);
-		}
-		return `${template} ${args}`;
+			.inspect<string[]>("command");
+		const userValue = inspected?.globalValue;
+		const prefix =
+			Array.isArray(userValue) && userValue.length > 0
+				? userValue
+				: [...DEFAULT_COMMAND];
+		return [...prefix, ...args];
 	}
 
 	async fetchManifest(cwd: string | undefined): Promise<Manifest> {
-		const command = this.buildCommand("manifest");
+		const argv = this.buildArgv(["manifest"]);
 		try {
-			const output = await execAsync(command, { cwd });
+			const output = await execFileAsync(argv, { cwd });
 			const manifest = JSON.parse(output) as Manifest;
 			this._manifest = manifest;
 			this._log(`Manifest loaded (v${manifest.version})`);
@@ -51,18 +62,28 @@ export class GafferCli {
 	}
 }
 
-function execAsync(
-	command: string,
+function execFileAsync(
+	argv: string[],
 	options: { cwd?: string } = {},
 ): Promise<string> {
 	return new Promise((resolve, reject) => {
-		exec(command, { ...options, timeout: 10_000, shell: process.env["SHELL"] }, (err, stdout, stderr) => {
-			if (err) {
-				const stderrSuffix = stderr ? ` (stderr: ${stderr.trim()})` : "";
-				reject(new Error(`${err.message}${stderrSuffix}`));
-			} else {
-				resolve(stdout);
-			}
-		});
+		const [head, ...rest] = argv;
+		if (!head) {
+			reject(new Error("argv must not be empty"));
+			return;
+		}
+		execFile(
+			head,
+			rest,
+			{ ...options, timeout: 10_000, shell: false },
+			(err, stdout, stderr) => {
+				if (err) {
+					const stderrSuffix = stderr ? ` (stderr: ${stderr.trim()})` : "";
+					reject(new Error(`${err.message}${stderrSuffix}`));
+				} else {
+					resolve(stdout);
+				}
+			},
+		);
 	});
 }

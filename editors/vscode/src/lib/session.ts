@@ -15,16 +15,16 @@ type AnyListener = (msg: CliMessage) => void;
 
 export class GafferSession {
 	private readonly _name: string;
-	private readonly _command: string;
+	private readonly _argv: string[];
 	private readonly _log: (msg: string) => void;
 	private readonly _cwd: string | undefined;
 	private readonly _listeners = new Map<CliMessageType | "*", AnyListener[]>();
 	private readonly _output: vscode.OutputChannel;
 	private _proc: GafferProcess | null = null;
 
-	constructor(name: string, command: string, options: SessionOptions = {}) {
+	constructor(name: string, argv: string[], options: SessionOptions = {}) {
 		this._name = name;
-		this._command = command;
+		this._argv = argv;
 		this._log = options.log ?? (() => {});
 		this._cwd = options.cwd;
 		this._output = vscode.window.createOutputChannel(`Gaffer: ${name}`, "log");
@@ -51,7 +51,7 @@ export class GafferSession {
 	}
 
 	start(): this {
-		const proc = new GafferProcess(this._command, { log: this._log, cwd: this._cwd });
+		const proc = new GafferProcess(this._argv, { log: this._log, cwd: this._cwd });
 		this._proc = proc;
 
 		proc.onLine((msg) => this._dispatch(msg));

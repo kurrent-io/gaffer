@@ -60,18 +60,29 @@ export type CliMessage =
 export type CliMessageType = CliMessage["type"];
 
 // DAP custom events emitted by the gaffer CLI's DAP server.
-export interface StepStartBody { event: InputEvent }
-export interface StepLogBody { message: string }
+export interface StepStartBody {
+	event: InputEvent;
+}
+export interface StepLogBody {
+	message: string;
+}
 export type StepEmitBody = EmittedEvent;
-export interface StepResultBody { result: StepResult }
-export interface StepErrorBody { code: string; description: string }
+export interface StepResultBody {
+	result: StepResult;
+}
+export interface StepErrorBody {
+	code: string;
+	description: string;
+}
 export interface StateBody {
 	state?: unknown;
 	result?: unknown;
 	sharedState?: unknown;
 	partitions?: string[];
 }
-export interface ModeBody { mode: "inspect" | "running" | string }
+export interface ModeBody {
+	mode: "inspect" | "running" | string;
+}
 
 // DAP custom request response for gaffer/partitionState.
 export interface PartitionStateResponse {

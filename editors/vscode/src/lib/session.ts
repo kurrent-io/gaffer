@@ -3,8 +3,8 @@ import { GafferProcess } from "./process.js";
 import type { CliMessage } from "../types.js";
 
 export interface SessionOptions {
-	log?: (msg: string) => void;
-	cwd?: string;
+	log?: ((msg: string) => void) | undefined;
+	cwd?: string | undefined;
 }
 
 type CliMessageType = CliMessage["type"];
@@ -51,7 +51,10 @@ export class GafferSession {
 	}
 
 	start(): this {
-		const proc = new GafferProcess(this._argv, { log: this._log, cwd: this._cwd });
+		const proc = new GafferProcess(this._argv, {
+			log: this._log,
+			cwd: this._cwd,
+		});
 		this._proc = proc;
 
 		proc.onLine((msg) => this._dispatch(msg));
@@ -95,14 +98,18 @@ export class GafferSession {
 				const p = msg.projection;
 				this._writeOutput(p.name);
 				if (p.source) this._writeOutput(`  Source: ${p.source}`);
-				if (p.partitioning) this._writeOutput(`  Partitioning: ${p.partitioning}`);
+				if (p.partitioning)
+					this._writeOutput(`  Partitioning: ${p.partitioning}`);
 				if (p.events) this._writeOutput(`  Events: ${p.events.join(", ")}`);
-				if (p.engineVersion != null) this._writeOutput(`  Engine: v${p.engineVersion}`);
+				if (p.engineVersion != null)
+					this._writeOutput(`  Engine: v${p.engineVersion}`);
 				this._writeOutput("");
 				break;
 			}
 			case "event":
-				this._writeOutput(`${msg.sequenceNumber}@${msg.streamId} ${msg.eventType}`);
+				this._writeOutput(
+					`${msg.sequenceNumber}@${msg.streamId} ${msg.eventType}`,
+				);
 				break;
 			case "result":
 				if (msg.status === "processed") {

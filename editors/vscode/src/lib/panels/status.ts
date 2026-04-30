@@ -61,8 +61,10 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 
 		const name = this._name || "projection";
 		const stats: string[] = [];
-		if (this._processed > 0) stats.push(`${this._processed.toLocaleString()} events processed`);
-		if (this._skipped > 0) stats.push(`${this._skipped.toLocaleString()} events skipped`);
+		if (this._processed > 0)
+			stats.push(`${this._processed.toLocaleString()} events processed`);
+		if (this._skipped > 0)
+			stats.push(`${this._skipped.toLocaleString()} events skipped`);
 		if (this._errors > 0) stats.push(`${this._errors.toLocaleString()} errors`);
 		const statsHtml = stats.length
 			? stats.map((s) => `<div class="stat">${s}</div>`).join("")

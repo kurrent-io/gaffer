@@ -45,7 +45,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	let activeSession: GafferSession | null = null;
 
-	const setDebugState = (name: string | null, status: DebugState["status"]): void => {
+	const setDebugState = (
+		name: string | null,
+		status: DebugState["status"],
+	): void => {
 		debugState.name = name;
 		debugState.status = status;
 		tomlCodeLens.refresh();
@@ -53,10 +56,18 @@ export function activate(context: vscode.ExtensionContext): void {
 	};
 
 	const setSessionActive = (active: boolean): void => {
-		vscode.commands.executeCommand("setContext", "gaffer.sessionActive", active);
+		vscode.commands.executeCommand(
+			"setContext",
+			"gaffer.sessionActive",
+			active,
+		);
 	};
 	const setInspecting = (inspecting: boolean): void => {
-		vscode.commands.executeCommand("setContext", "gaffer.inspecting", inspecting);
+		vscode.commands.executeCommand(
+			"setContext",
+			"gaffer.inspecting",
+			inspecting,
+		);
 	};
 
 	context.subscriptions.push(
@@ -76,8 +87,14 @@ export function activate(context: vscode.ExtensionContext): void {
 	);
 
 	context.subscriptions.push(
-		vscode.languages.registerCodeLensProvider({ pattern: "**/gaffer.toml" }, tomlCodeLens),
-		vscode.languages.registerCodeLensProvider({ language: "javascript" }, jsCodeLens),
+		vscode.languages.registerCodeLensProvider(
+			{ pattern: "**/gaffer.toml" },
+			tomlCodeLens,
+		),
+		vscode.languages.registerCodeLensProvider(
+			{ language: "javascript" },
+			jsCodeLens,
+		),
 	);
 
 	context.subscriptions.push(
@@ -102,7 +119,9 @@ export function activate(context: vscode.ExtensionContext): void {
 					case "gaffer/stepError": {
 						const body = e.body as StepErrorBody;
 						stepProvider.setError(body.code, body.description);
-						vscode.window.showErrorMessage(`Gaffer: ${body.code} - ${body.description}`);
+						vscode.window.showErrorMessage(
+							`Gaffer: ${body.code} - ${body.description}`,
+						);
 						break;
 					}
 					case "gaffer/state":
@@ -152,7 +171,9 @@ export function activate(context: vscode.ExtensionContext): void {
 				}
 
 				if (debugState.status !== "idle") {
-					log(`Ignoring debug request: ${debugState.name ?? "session"} is ${debugState.status}`);
+					log(
+						`Ignoring debug request: ${debugState.name ?? "session"} is ${debugState.status}`,
+					);
 					return;
 				}
 
@@ -245,17 +266,19 @@ export function activate(context: vscode.ExtensionContext): void {
 
 				setDebugState(name, "debugging");
 
-				const disposable = vscode.debug.onDidTerminateDebugSession((dbgSession) => {
-					if (dbgSession.name === `Gaffer: ${name}`) {
-						log("Debug session ended");
-						session.dispose();
-						if (activeSession === session) activeSession = null;
-						setDebugState(null, "idle");
-						setSessionActive(false);
-						setInspecting(false);
-						disposable.dispose();
-					}
-				});
+				const disposable = vscode.debug.onDidTerminateDebugSession(
+					(dbgSession) => {
+						if (dbgSession.name === `Gaffer: ${name}`) {
+							log("Debug session ended");
+							session.dispose();
+							if (activeSession === session) activeSession = null;
+							setDebugState(null, "idle");
+							setSessionActive(false);
+							setInspecting(false);
+							disposable.dispose();
+						}
+					},
+				);
 				context.subscriptions.push(disposable);
 			},
 		),
@@ -291,7 +314,8 @@ export function activate(context: vscode.ExtensionContext): void {
 		}
 	};
 
-	const tomlWatcher = vscode.workspace.createFileSystemWatcher("**/gaffer.toml");
+	const tomlWatcher =
+		vscode.workspace.createFileSystemWatcher("**/gaffer.toml");
 	tomlWatcher.onDidChange(() => {
 		log("gaffer.toml changed");
 		refreshAll();

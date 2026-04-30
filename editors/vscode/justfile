@@ -17,9 +17,13 @@ watch:
 test:
     pnpm run test
 
-# Type check without emit
-typecheck:
-    pnpm run typecheck
+# Type check, lint, and format check
+check:
+    pnpm run check
+
+# Format code and apply lint fixes
+fix:
+    pnpm run fix
 
 # Build and package as .vsix
 package:

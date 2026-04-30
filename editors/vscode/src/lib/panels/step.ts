@@ -39,8 +39,14 @@ export class StepProvider implements vscode.TreeDataProvider<TreeItemWithChildre
 	}
 
 	setError(code: string, description: string): void {
-		const item = new vscode.TreeItem(code, vscode.TreeItemCollapsibleState.None);
-		item.iconPath = new vscode.ThemeIcon("error", new vscode.ThemeColor("testing.iconFailed"));
+		const item = new vscode.TreeItem(
+			code,
+			vscode.TreeItemCollapsibleState.None,
+		);
+		item.iconPath = new vscode.ThemeIcon(
+			"error",
+			new vscode.ThemeColor("testing.iconFailed"),
+		);
 		item.description = description;
 		this._items.push(item);
 		this._onDidChange.fire();
@@ -79,7 +85,8 @@ function buildInputItem(event: InputEvent): TreeItemWithChildren {
 	children.push(leaf("seq", String(event.sequenceNumber)));
 
 	if (hasValue(event.data)) children.push(buildNested("data", event.data));
-	if (hasValue(event.metadata)) children.push(buildNested("metadata", event.metadata));
+	if (hasValue(event.metadata))
+		children.push(buildNested("metadata", event.metadata));
 
 	item.children = children;
 	return item;
@@ -101,16 +108,18 @@ function buildEmitItem(em: EmittedEvent): TreeItemWithChildren {
 		em.streamId,
 		vscode.TreeItemCollapsibleState.Collapsed,
 	);
-	item.description = isLink ? "link" : em.eventType;
+	item.description = isLink ? "link" : (em.eventType ?? "");
 	item.iconPath = new vscode.ThemeIcon(isLink ? "link" : "forward");
 
 	const children: TreeItemWithChildren[] = [];
 	if (!isLink && em.eventType) children.push(leaf("type", em.eventType));
 	if (hasValue(em.data)) children.push(buildNested("data", em.data));
-	if (hasValue(em.metadata)) children.push(buildNested("metadata", em.metadata));
+	if (hasValue(em.metadata))
+		children.push(buildNested("metadata", em.metadata));
 
 	item.children = children;
-	if (children.length === 0) item.collapsibleState = vscode.TreeItemCollapsibleState.None;
+	if (children.length === 0)
+		item.collapsibleState = vscode.TreeItemCollapsibleState.None;
 	return item;
 }
 
@@ -135,7 +144,10 @@ function buildResultItem(result: StepResult): TreeItemWithChildren {
 		return item;
 	}
 
-	const item = new vscode.TreeItem("skipped", vscode.TreeItemCollapsibleState.None);
+	const item = new vscode.TreeItem(
+		"skipped",
+		vscode.TreeItemCollapsibleState.None,
+	);
 	item.iconPath = new vscode.ThemeIcon("circle-large");
 	item.description = result.reason;
 	return item;

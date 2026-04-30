@@ -63,17 +63,29 @@ function parseProjections(tomlPath: string): ParsedProjection[] {
 				continue;
 			}
 
-			const nameMatch = trimmed.match(/^name\s*=\s*(?:"([^"]+)"|'([^']+)')/);
-			if (nameMatch) current.name = nameMatch[1] ?? nameMatch[2];
+			const name = matchQuoted(trimmed, "name");
+			if (name !== undefined) current.name = name;
 
-			const entryMatch = trimmed.match(/^entry\s*=\s*(?:"([^"]+)"|'([^']+)')/);
-			if (entryMatch) current.entry = entryMatch[1] ?? entryMatch[2];
+			const entry = matchQuoted(trimmed, "entry");
+			if (entry !== undefined) current.entry = entry;
 		}
 		if (current) projections.push(current);
 	} catch {
 		// ignore read errors
 	}
-	return projections.filter(
-		(p): p is ParsedProjection => Boolean(p.name && p.entry),
+	return projections.filter((p): p is ParsedProjection =>
+		Boolean(p.name && p.entry),
 	);
+}
+
+// Matches a TOML key with a double- or single-quoted string value:
+//   key = "value"  or  key = 'value'
+// Returns the captured value, or undefined if the line doesn't match.
+// Caller must pass a regex-safe `key` (no metacharacters); current callers
+// pass literals only.
+function matchQuoted(line: string, key: string): string | undefined {
+	const re = new RegExp(`^${key}\\s*=\\s*(?:"([^"]+)"|'([^']+)')`);
+	const m = line.match(re);
+	if (!m) return undefined;
+	return m[1] ?? m[2];
 }

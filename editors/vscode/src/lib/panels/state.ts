@@ -33,19 +33,32 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 		return element;
 	}
 
-	async getChildren(element?: TreeItemWithChildren): Promise<TreeItemWithChildren[]> {
+	async getChildren(
+		element?: TreeItemWithChildren,
+	): Promise<TreeItemWithChildren[]> {
 		if (element) {
 			if (element.contextValue === "partition") {
 				if (!this._debugSession) {
-					return [new vscode.TreeItem("No active session", vscode.TreeItemCollapsibleState.None)];
+					return [
+						new vscode.TreeItem(
+							"No active session",
+							vscode.TreeItemCollapsibleState.None,
+						),
+					];
 				}
-				const label = typeof element.label === "string" ? element.label : element.label?.label ?? "";
+				const label =
+					typeof element.label === "string"
+						? element.label
+						: (element.label?.label ?? "");
 				return this._fetchPartitionState(label);
 			}
 			return element.children ?? [];
 		}
 		if (!this._state) {
-			const empty = new vscode.TreeItem("No state yet", vscode.TreeItemCollapsibleState.None);
+			const empty = new vscode.TreeItem(
+				"No state yet",
+				vscode.TreeItemCollapsibleState.None,
+			);
 			empty.iconPath = new vscode.ThemeIcon("info");
 			return [empty];
 		}
@@ -54,12 +67,19 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 		const s = this._state;
 
 		if (s.state) items.push(buildSection("state", "symbol-variable", s.state));
-		if (s.result) items.push(buildSection("result", "symbol-variable", s.result));
-		if (s.sharedState) items.push(buildSection("shared state", "symbol-variable", s.sharedState));
+		if (s.result)
+			items.push(buildSection("result", "symbol-variable", s.result));
+		if (s.sharedState)
+			items.push(
+				buildSection("shared state", "symbol-variable", s.sharedState),
+			);
 
 		if (s.partitions?.length) {
 			for (const name of s.partitions) {
-				const partItem = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.Collapsed);
+				const partItem = new vscode.TreeItem(
+					name,
+					vscode.TreeItemCollapsibleState.Collapsed,
+				);
 				partItem.iconPath = new vscode.ThemeIcon("symbol-namespace");
 				partItem.contextValue = "partition";
 				items.push(partItem);
@@ -77,22 +97,32 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 		}, 50);
 	}
 
-	private async _fetchPartitionState(partition: string): Promise<TreeItemWithChildren[]> {
+	private async _fetchPartitionState(
+		partition: string,
+	): Promise<TreeItemWithChildren[]> {
 		try {
-			const body = await this._debugSession!.customRequest(
+			const body = (await this._debugSession!.customRequest(
 				"gaffer/partitionState",
 				{ partition },
-			) as PartitionStateResponse;
+			)) as PartitionStateResponse;
 
 			const items: TreeItemWithChildren[] = [];
 			if (body.state) items.push(buildSection("state", undefined, body.state));
-			if (body.result) items.push(buildSection("result", undefined, body.result));
+			if (body.result)
+				items.push(buildSection("result", undefined, body.result));
 			if (items.length === 0) {
-				items.push(new vscode.TreeItem("(empty)", vscode.TreeItemCollapsibleState.None));
+				items.push(
+					new vscode.TreeItem("(empty)", vscode.TreeItemCollapsibleState.None),
+				);
 			}
 			return items;
 		} catch {
-			return [new vscode.TreeItem("Failed to load", vscode.TreeItemCollapsibleState.None)];
+			return [
+				new vscode.TreeItem(
+					"Failed to load",
+					vscode.TreeItemCollapsibleState.None,
+				),
+			];
 		}
 	}
 }

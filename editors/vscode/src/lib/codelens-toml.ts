@@ -50,7 +50,10 @@ export function buildLens(
 		};
 		const label = labels[debugState.status];
 		if (debugState.status === "debugging") {
-			return new vscode.CodeLens(range, { title: label, command: "gaffer.stopDebug" });
+			return new vscode.CodeLens(range, {
+				title: label,
+				command: "gaffer.stopDebug",
+			});
 		}
 		// Informational lens (no command). VS Code accepts a command-less lens at runtime;
 		// the cast satisfies @types/vscode which marks `command` as required.

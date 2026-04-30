@@ -7,7 +7,9 @@ export interface TreeItemWithChildren extends vscode.TreeItem {
 export function jsonToTreeItems(value: unknown): TreeItemWithChildren[] {
 	if (value === null || value === undefined) return [];
 	if (typeof value !== "object") {
-		return [new vscode.TreeItem(String(value), vscode.TreeItemCollapsibleState.None)];
+		return [
+			new vscode.TreeItem(String(value), vscode.TreeItemCollapsibleState.None),
+		];
 	}
 	if (Array.isArray(value)) {
 		return value.map((v, i) => makeChild(`[${i}]`, v));

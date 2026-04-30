@@ -3,13 +3,14 @@ import readline from "node:readline";
 import type { CliMessage, CliMessageType } from "../types.js";
 
 export interface ProcessOptions {
-	log?: (msg: string) => void;
-	cwd?: string;
+	log?: ((msg: string) => void) | undefined;
+	cwd?: string | undefined;
 }
 
 type LineHandler = (msg: CliMessage) => void;
 type ExitHandler = (code: number | null) => void;
 
+// eslint-disable-next-line no-control-regex
 const ansiRegex = /\x1b\[[0-9;]*m/g;
 const stripAnsi = (s: string) => s.replace(ansiRegex, "");
 
@@ -86,22 +87,25 @@ export class GafferProcess {
 			const prevLine = this._onLine;
 			const prevExit = this._onExit;
 
-			let timer: NodeJS.Timeout;
-			const restore = () => {
+			// `restore` is declared below; the setTimeout callback fires async,
+			// so it runs after the `const restore` initializer.
+			const timer = setTimeout(() => {
+				restore();
+				reject(new Error(`Timeout waiting for "${type}" message`));
+			}, timeoutMs);
+
+			const restore = (): void => {
 				this._onLine = prevLine;
 				this._onExit = prevExit;
 				clearTimeout(timer);
 			};
 
-			timer = setTimeout(() => {
-				restore();
-				reject(new Error(`Timeout waiting for "${type}" message`));
-			}, timeoutMs);
-
 			this._onExit = (code) => {
 				restore();
 				prevExit(code);
-				reject(new Error(`Process exited (code ${code}) before "${type}" message`));
+				reject(
+					new Error(`Process exited (code ${code}) before "${type}" message`),
+				);
 			};
 
 			this._onLine = (msg) => {

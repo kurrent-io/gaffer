@@ -64,7 +64,7 @@ export class GafferCli {
 
 function execFileAsync(
 	argv: string[],
-	options: { cwd?: string } = {},
+	options: { cwd?: string | undefined } = {},
 ): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const [head, ...rest] = argv;
@@ -75,7 +75,7 @@ function execFileAsync(
 		execFile(
 			head,
 			rest,
-			{ ...options, timeout: 10_000, shell: false },
+			{ cwd: options.cwd, timeout: 10_000, shell: false },
 			(err, stdout, stderr) => {
 				if (err) {
 					const stderrSuffix = stderr ? ` (stderr: ${stderr.trim()})` : "";

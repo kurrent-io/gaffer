@@ -1,125 +1,147 @@
 {
-  "name": "gaffer",
-  "displayName": "Gaffer",
-  "description": "KurrentDB projection toolkit",
-  "version": "0.0.1",
-  "publisher": "kurrent-io",
-  "engines": {
-    "vscode": "^1.80.0"
-  },
-  "categories": ["Debuggers", "Other"],
-  "activationEvents": [
-    "onDebugResolve:gaffer",
-    "workspaceContains:**/gaffer.toml"
-  ],
-  "main": "./dist/extension.js",
-  "capabilities": {
-    "untrustedWorkspaces": {
-      "supported": "limited",
-      "description": "Gaffer spawns the gaffer CLI as a child process to debug projections. Workspace settings cannot override `gaffer.command`; debugging is disabled until the workspace is trusted."
-    }
-  },
-  "scripts": {
-    "build": "vite build",
-    "watch": "vite build --watch",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "package": "vite build && vsce package"
-  },
-  "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@types/vscode": "^1.80.0",
-    "@vscode/vsce": "^3.3.2",
-    "typescript": "^5.6.0",
-    "vite": "^5.4.0",
-    "vitest": "^2.1.0"
-  },
-  "contributes": {
-    "configuration": {
-      "title": "Gaffer",
-      "properties": {
-        "gaffer.command": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": ["./bin/gaffer"],
-          "scope": "application",
-          "description": "Argv used to invoke gaffer. Examples: [\"gaffer\"] (PATH), [\"./bin/gaffer\"] (local build), [\"/usr/local/bin/gaffer\"] (explicit path), [\"sudo\", \"gaffer\"] (with privileges). Subcommand args are appended. Only User-scope value is honored - workspace and folder settings are ignored as a defense against hostile workspaces."
-        }
-      }
-    },
-    "commands": [
-      {
-        "command": "gaffer.debugProjection",
-        "title": "Gaffer: Debug Projection"
-      },
-      {
-        "command": "gaffer.stopDebug",
-        "title": "Gaffer: Stop Projection"
-      }
-    ],
-    "debuggers": [
-      {
-        "type": "gaffer",
-        "label": "Gaffer",
-        "languages": ["javascript"],
-        "configurationAttributes": {
-          "attach": {
-            "properties": {
-              "port": {
-                "type": "number",
-                "description": "DAP server port",
-                "default": 4711
-              }
-            }
-          }
-        },
-        "initialConfigurations": [
-          {
-            "type": "gaffer",
-            "request": "attach",
-            "name": "Gaffer Debug",
-            "port": 4711
-          }
-        ]
-      }
-    ],
-    "menus": {
-      "commandPalette": [
-        { "command": "gaffer.debugProjection", "when": "false" },
-        { "command": "gaffer.stopDebug", "when": "false" }
-      ]
-    },
-    "viewsContainers": {
-      "panel": [
-        {
-          "id": "gaffer",
-          "title": "Gaffer",
-          "icon": "$(activate-breakpoints)"
-        }
-      ]
-    },
-    "views": {
-      "gaffer": [
-        {
-          "id": "gaffer.status",
-          "name": "Status",
-          "type": "webview",
-          "when": "gaffer.sessionActive && !gaffer.inspecting"
-        },
-        {
-          "id": "gaffer.step",
-          "name": "Step",
-          "when": "gaffer.inspecting"
-        },
-        {
-          "id": "gaffer.state",
-          "name": "State",
-          "when": "gaffer.inspecting"
-        }
-      ]
-    },
-    "breakpoints": [
-      { "language": "javascript" }
-    ]
-  }
+	"name": "gaffer",
+	"displayName": "Gaffer",
+	"description": "KurrentDB projection toolkit",
+	"version": "0.0.1",
+	"publisher": "kurrent-io",
+	"engines": {
+		"vscode": "^1.80.0"
+	},
+	"categories": [
+		"Debuggers",
+		"Other"
+	],
+	"activationEvents": [
+		"onDebugResolve:gaffer",
+		"workspaceContains:**/gaffer.toml"
+	],
+	"main": "./dist/extension.js",
+	"capabilities": {
+		"untrustedWorkspaces": {
+			"supported": "limited",
+			"description": "Gaffer spawns the gaffer CLI as a child process to debug projections. Workspace settings cannot override `gaffer.command`; debugging is disabled until the workspace is trusted."
+		}
+	},
+	"scripts": {
+		"build": "vite build",
+		"watch": "vite build --watch",
+		"test": "vitest run",
+		"check": "tsc --noEmit && eslint . && prettier --check .",
+		"fix": "eslint --fix . && prettier --write .",
+		"package": "vite build && vsce package"
+	},
+	"devDependencies": {
+		"@eslint/js": "^9.0.0",
+		"@types/node": "^22.0.0",
+		"@types/vscode": "^1.80.0",
+		"@vscode/vsce": "^3.3.2",
+		"eslint": "^9.0.0",
+		"prettier": "^3.0.0",
+		"typescript": "^5.6.0",
+		"typescript-eslint": "^8.0.0",
+		"vite": "^5.4.0",
+		"vitest": "^2.1.0"
+	},
+	"contributes": {
+		"configuration": {
+			"title": "Gaffer",
+			"properties": {
+				"gaffer.command": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [
+						"./bin/gaffer"
+					],
+					"scope": "application",
+					"description": "Argv used to invoke gaffer. Examples: [\"gaffer\"] (PATH), [\"./bin/gaffer\"] (local build), [\"/usr/local/bin/gaffer\"] (explicit path), [\"sudo\", \"gaffer\"] (with privileges). Subcommand args are appended. Only User-scope value is honored - workspace and folder settings are ignored as a defense against hostile workspaces."
+				}
+			}
+		},
+		"commands": [
+			{
+				"command": "gaffer.debugProjection",
+				"title": "Gaffer: Debug Projection"
+			},
+			{
+				"command": "gaffer.stopDebug",
+				"title": "Gaffer: Stop Projection"
+			}
+		],
+		"debuggers": [
+			{
+				"type": "gaffer",
+				"label": "Gaffer",
+				"languages": [
+					"javascript"
+				],
+				"configurationAttributes": {
+					"attach": {
+						"properties": {
+							"port": {
+								"type": "number",
+								"description": "DAP server port",
+								"default": 4711
+							}
+						}
+					}
+				},
+				"initialConfigurations": [
+					{
+						"type": "gaffer",
+						"request": "attach",
+						"name": "Gaffer Debug",
+						"port": 4711
+					}
+				]
+			}
+		],
+		"menus": {
+			"commandPalette": [
+				{
+					"command": "gaffer.debugProjection",
+					"when": "false"
+				},
+				{
+					"command": "gaffer.stopDebug",
+					"when": "false"
+				}
+			]
+		},
+		"viewsContainers": {
+			"panel": [
+				{
+					"id": "gaffer",
+					"title": "Gaffer",
+					"icon": "$(activate-breakpoints)"
+				}
+			]
+		},
+		"views": {
+			"gaffer": [
+				{
+					"id": "gaffer.status",
+					"name": "Status",
+					"type": "webview",
+					"when": "gaffer.sessionActive && !gaffer.inspecting"
+				},
+				{
+					"id": "gaffer.step",
+					"name": "Step",
+					"when": "gaffer.inspecting"
+				},
+				{
+					"id": "gaffer.state",
+					"name": "State",
+					"when": "gaffer.inspecting"
+				}
+			]
+		},
+		"breakpoints": [
+			{
+				"language": "javascript"
+			}
+		]
+	}
 }

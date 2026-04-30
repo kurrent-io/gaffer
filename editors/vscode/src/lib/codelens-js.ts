@@ -36,7 +36,12 @@ export class JsCodeLensProvider implements vscode.CodeLensProvider {
 		if (fromLine === -1) return [];
 
 		const { name, tomlDir } = resolved;
-		const range = new vscode.Range(fromLine, 0, fromLine, lines[fromLine]!.length);
+		const range = new vscode.Range(
+			fromLine,
+			0,
+			fromLine,
+			lines[fromLine]!.length,
+		);
 		const tomlUri = vscode.Uri.file(path.join(tomlDir, "gaffer.toml"));
 		const lens = buildLens(this._cli, this._debugState, name, range, tomlUri);
 		return lens ? [lens] : [];

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { jsonToTreeItems, type TreeItemWithChildren } from "./json-tree.js";
-import type { EmittedEvent, InputEvent, StepResult } from "../../types.js";
+import type { EmittedEvent, InputEvent, StepResult } from "../ipc/schemas.js";
 
 export class StepProvider implements vscode.TreeDataProvider<TreeItemWithChildren> {
 	readonly #onDidChange = new vscode.EventEmitter<void>();

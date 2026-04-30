@@ -6,7 +6,7 @@ import {
 	CliMessageWireSchema,
 	type CliMessage,
 	type CliMessageType,
-} from "../types.js";
+} from "./schemas.js";
 
 export interface ProcessOptions {
 	log?: (msg: string) => void;

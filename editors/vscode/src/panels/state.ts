@@ -1,7 +1,10 @@
 import * as vscode from "vscode";
 import * as v from "valibot";
 import { jsonToTreeItems, type TreeItemWithChildren } from "./json-tree.js";
-import { PartitionStateResponseSchema, type StateBody } from "../../types.js";
+import {
+	PartitionStateResponseSchema,
+	type StateBody,
+} from "../debugging/schemas.js";
 
 export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildren> {
 	readonly #onDidChange = new vscode.EventEmitter<void>();

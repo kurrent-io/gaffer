@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { GafferProcess, type ProcessOptions } from "./process.js";
-import type { CliMessage } from "../types.js";
+import { renderCliMessage } from "./output-renderer.js";
+import type { CliMessage } from "./schemas.js";
 
 export interface SessionOptions {
 	log?: (msg: string) => void;
@@ -57,10 +58,7 @@ export class GafferSession {
 		this.#proc = proc;
 
 		proc.onLine((msg) => this.#dispatch(msg));
-		proc.onExit((code) => {
-			this.#writeOutput(`Process exited (code ${code})`);
-			this.#dispatch({ type: "exit", code });
-		});
+		proc.onExit((code) => this.#dispatch({ type: "exit", code }));
 
 		proc.start();
 		return this;
@@ -85,64 +83,8 @@ export class GafferSession {
 	}
 
 	#dispatch(msg: CliMessage): void {
-		this.#renderOutput(msg);
-
+		renderCliMessage(this.#output, msg);
 		for (const fn of this.#listeners.get(msg.type) ?? []) fn(msg);
 		for (const fn of this.#listeners.get("*") ?? []) fn(msg);
-	}
-
-	#renderOutput(msg: CliMessage): void {
-		switch (msg.type) {
-			case "info": {
-				const p = msg.projection;
-				this.#writeOutput(p.name);
-				if (p.source) this.#writeOutput(`  Source: ${p.source}`);
-				if (p.partitioning)
-					this.#writeOutput(`  Partitioning: ${p.partitioning}`);
-				if (p.events) this.#writeOutput(`  Events: ${p.events.join(", ")}`);
-				if (p.engineVersion != null)
-					this.#writeOutput(`  Engine: v${p.engineVersion}`);
-				this.#writeOutput("");
-				break;
-			}
-			case "event":
-				this.#writeOutput(
-					`${msg.sequenceNumber}@${msg.streamId} ${msg.eventType}`,
-				);
-				break;
-			case "result":
-				if (msg.status === "processed") {
-					const partition = msg.partition ? ` [${msg.partition}]` : "";
-					this.#writeOutput(`  -> processed${partition}`);
-					if (msg.logs?.length) {
-						for (const l of msg.logs) this.#writeOutput(`  [log] ${l}`);
-					}
-				} else {
-					this.#writeOutput(`  -> ${msg.status}: ${msg.reason}`);
-				}
-				break;
-			case "error":
-				this.#writeOutput(`  ERROR: ${msg.code} - ${msg.description}`);
-				break;
-			case "summary":
-				this.#writeOutput("");
-				this.#writeOutput(
-					`Summary: ${msg.handled} handled, ${msg.skipped} skipped, ${msg.errors} errors`,
-				);
-				break;
-			case "debug":
-			case "exit":
-				break;
-			default: {
-				// Exhaustiveness check: a new CliMessage variant added to types.ts
-				// without a matching case here is a TS error.
-				const _exhaustive: never = msg;
-				void _exhaustive;
-			}
-		}
-	}
-
-	#writeOutput(text: string): void {
-		this.#output.appendLine(text);
 	}
 }

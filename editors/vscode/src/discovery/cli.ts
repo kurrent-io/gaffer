@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { execFile } from "node:child_process";
 import * as v from "valibot";
-import { ManifestSchema, type Manifest } from "../types.js";
+import { ManifestSchema, type Manifest } from "./schemas.js";
 
 type Logger = (msg: string) => void;
 

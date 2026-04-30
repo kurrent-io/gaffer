@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
-import { projectionBlocks } from "./project.js";
-import type { GafferCli } from "./cli.js";
+import { projectionBlocks } from "../discovery/project-index.js";
+import { buildLens } from "./lens.js";
+import type { GafferCli } from "../discovery/cli.js";
 import type { DebugState } from "../types.js";
 
 export class TomlCodeLensProvider implements vscode.CodeLensProvider {
@@ -78,45 +79,4 @@ function findProjectionHeaderLines(text: string): HeaderLine[] {
 		}
 	}
 	return headers;
-}
-
-export function buildLens(
-	cli: GafferCli,
-	debugState: DebugState,
-	name: string,
-	range: vscode.Range,
-	tomlUri: vscode.Uri,
-): vscode.CodeLens | null {
-	if (debugState.name === name) {
-		const labels: Record<DebugState["status"], string> = {
-			idle: "idle",
-			starting: "$(sync~spin) Starting",
-			debugging: "$(debug-stop) Debugging",
-		};
-		const label = labels[debugState.status];
-		if (debugState.status === "debugging") {
-			return new vscode.CodeLens(range, {
-				title: label,
-				command: "gaffer.stopDebug",
-			});
-		}
-		// Informational lens (no command). VS Code accepts a command-less lens at runtime;
-		// the cast satisfies @types/vscode which marks `command` as required.
-		return new vscode.CodeLens(range, { title: label } as vscode.Command);
-	}
-
-	if (!vscode.workspace.isTrusted) {
-		return new vscode.CodeLens(range, {
-			title: "$(workspace-untrusted) Trust workspace to debug",
-			command: "workbench.trust.manage",
-		});
-	}
-
-	if (!cli.hasCommand("dev") || !cli.hasFlag("dev", "debug")) return null;
-
-	return new vscode.CodeLens(range, {
-		title: "$(debug-start) Debug",
-		command: "gaffer.debugProjection",
-		arguments: [{ name, tomlUri }],
-	});
 }

@@ -1,23 +1,14 @@
 import * as vscode from "vscode";
-import * as v from "valibot";
-import { GafferCli } from "./lib/cli.js";
-import { GafferSession } from "./lib/session.js";
-import { ProjectIndex } from "./lib/project.js";
-import { TomlCodeLensProvider } from "./lib/codelens-toml.js";
-import { JsCodeLensProvider } from "./lib/codelens-js.js";
-import { StepProvider } from "./lib/panels/step.js";
-import { StateProvider } from "./lib/panels/state.js";
-import { StatusViewProvider } from "./lib/panels/status.js";
-import {
-	ModeBodySchema,
-	StateBodySchema,
-	StepEmitBodySchema,
-	StepErrorBodySchema,
-	StepLogBodySchema,
-	StepResultBodySchema,
-	StepStartBodySchema,
-	type DebugState,
-} from "./types.js";
+import { GafferCli } from "./discovery/cli.js";
+import { ProjectIndex } from "./discovery/project-index.js";
+import { GafferSession } from "./ipc/session.js";
+import { TomlCodeLensProvider } from "./lensing/toml-provider.js";
+import { JsCodeLensProvider } from "./lensing/js-provider.js";
+import { StepProvider } from "./panels/step.js";
+import { StateProvider } from "./panels/state.js";
+import { StatusViewProvider } from "./panels/status.js";
+import { dispatchDapEvent } from "./debugging/dap-dispatch.js";
+import type { DebugState } from "./types.js";
 
 interface DebugProjectionArgs {
 	name: string;
@@ -25,24 +16,6 @@ interface DebugProjectionArgs {
 }
 
 const DEBUG_PORT = 4711;
-
-// Validate a DAP custom-event body against a schema. On parse failure log the
-// event name and issues to the output channel and return undefined so the
-// caller skips the dispatch. Keeps malformed events from corrupting state.
-function parseDapBody<TSchema extends v.GenericSchema>(
-	schema: TSchema,
-	event: vscode.DebugSessionCustomEvent,
-	log: (msg: string) => void,
-): v.InferOutput<TSchema> | undefined {
-	const result = v.safeParse(schema, event.body);
-	if (result.success) return result.output;
-	log(
-		`Malformed DAP event ${event.event}: ${result.issues
-			.map((i) => i.message)
-			.join("; ")}`,
-	);
-	return undefined;
-}
 
 export function activate(context: vscode.ExtensionContext): void {
 	const output = vscode.window.createOutputChannel("Gaffer");
@@ -117,53 +90,14 @@ export function activate(context: vscode.ExtensionContext): void {
 	);
 
 	context.subscriptions.push(
-		vscode.debug.onDidReceiveDebugSessionCustomEvent(async (e) => {
-			if (e.session.type !== "gaffer") return;
-			stateProvider.setDebugSession(e.session);
-
-			switch (e.event) {
-				case "gaffer/stepStart": {
-					const body = parseDapBody(StepStartBodySchema, e, log);
-					if (body) stepProvider.startStep(body.event);
-					break;
-				}
-				case "gaffer/stepLog": {
-					const body = parseDapBody(StepLogBodySchema, e, log);
-					if (body) stepProvider.addLog(body.message);
-					break;
-				}
-				case "gaffer/stepEmit": {
-					const body = parseDapBody(StepEmitBodySchema, e, log);
-					if (body) stepProvider.addEmit(body);
-					break;
-				}
-				case "gaffer/stepResult": {
-					const body = parseDapBody(StepResultBodySchema, e, log);
-					if (body) stepProvider.setResult(body.result);
-					break;
-				}
-				case "gaffer/stepError": {
-					const body = parseDapBody(StepErrorBodySchema, e, log);
-					if (body) {
-						stepProvider.setError(body.code, body.description);
-						await vscode.window.showErrorMessage(
-							`Gaffer: ${body.code} - ${body.description}`,
-						);
-					}
-					break;
-				}
-				case "gaffer/state": {
-					const body = parseDapBody(StateBodySchema, e, log);
-					if (body) stateProvider.updateFromState(body);
-					break;
-				}
-				case "gaffer/mode": {
-					const body = parseDapBody(ModeBodySchema, e, log);
-					if (body) await setInspecting(body.mode === "inspect");
-					break;
-				}
-			}
-		}),
+		vscode.debug.onDidReceiveDebugSessionCustomEvent((e) =>
+			dispatchDapEvent(e, {
+				stepProvider,
+				stateProvider,
+				setInspecting,
+				log,
+			}),
+		),
 	);
 
 	const stopSession = async (): Promise<void> => {

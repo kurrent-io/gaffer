@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import path from "node:path";
-import { buildLens } from "./codelens-toml.js";
-import type { GafferCli } from "./cli.js";
-import type { ProjectIndex } from "./project.js";
+import { buildLens } from "./lens.js";
+import type { GafferCli } from "../discovery/cli.js";
+import type { ProjectIndex } from "../discovery/project-index.js";
 import type { DebugState } from "../types.js";
 
 const fromPattern = /^(fromAll|fromStream|fromCategory|fromStreams)\s*\(/;

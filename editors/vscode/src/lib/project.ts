@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import path from "node:path";
 import fs from "node:fs";
+import { parse as parseToml } from "smol-toml";
 import type { ProjectEntry } from "../types.js";
 
 export class ProjectIndex {
@@ -43,49 +44,37 @@ interface ParsedProjection {
 }
 
 function parseProjections(tomlPath: string): ParsedProjection[] {
-	const projections: Partial<ParsedProjection>[] = [];
+	let text: string;
 	try {
-		const text = fs.readFileSync(tomlPath, "utf8");
-		const lines = text.split("\n");
-
-		let current: Partial<ParsedProjection> | null = null;
-		for (const line of lines) {
-			const trimmed = line.trim();
-			if (trimmed === "[[projection]]") {
-				if (current) projections.push(current);
-				current = {};
-				continue;
-			}
-			if (!current) continue;
-			if (trimmed.startsWith("[")) {
-				projections.push(current);
-				current = null;
-				continue;
-			}
-
-			const name = matchQuoted(trimmed, "name");
-			if (name !== undefined) current.name = name;
-
-			const entry = matchQuoted(trimmed, "entry");
-			if (entry !== undefined) current.entry = entry;
-		}
-		if (current) projections.push(current);
+		text = fs.readFileSync(tomlPath, "utf8");
 	} catch {
-		// ignore read errors
+		return [];
 	}
-	return projections.filter((p): p is ParsedProjection =>
-		Boolean(p.name && p.entry),
+	return projectionBlocks(text).filter(
+		(p): p is ParsedProjection => p !== null,
 	);
 }
 
-// Matches a TOML key with a double- or single-quoted string value:
-//   key = "value"  or  key = 'value'
-// Returns the captured value, or undefined if the line doesn't match.
-// Caller must pass a regex-safe `key` (no metacharacters); current callers
-// pass literals only.
-function matchQuoted(line: string, key: string): string | undefined {
-	const re = new RegExp(`^${key}\\s*=\\s*(?:"([^"]+)"|'([^']+)')`);
-	const m = line.match(re);
-	if (!m) return undefined;
-	return m[1] ?? m[2];
+// Returns one slot per [[projection]] block in source order. Slots are null
+// when the block is malformed (missing name or entry). Preserving order with
+// nulls lets callers (e.g. the lens provider) zip against header line
+// positions without index drift.
+export function projectionBlocks(text: string): Array<ParsedProjection | null> {
+	let parsed: unknown;
+	try {
+		parsed = parseToml(text);
+	} catch {
+		return [];
+	}
+	if (typeof parsed !== "object" || parsed === null) return [];
+	const projections = (parsed as Record<string, unknown>)["projection"];
+	if (!Array.isArray(projections)) return [];
+	return projections.map((p) => {
+		if (typeof p !== "object" || p === null) return null;
+		const obj = p as Record<string, unknown>;
+		const name = obj["name"];
+		const entry = obj["entry"];
+		if (typeof name !== "string" || typeof entry !== "string") return null;
+		return { name, entry };
+	});
 }

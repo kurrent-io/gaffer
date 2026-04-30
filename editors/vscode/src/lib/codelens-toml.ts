@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { projectionBlocks } from "./project.js";
 import type { GafferCli } from "./cli.js";
 import type { DebugState } from "../types.js";
 
@@ -16,23 +17,65 @@ export class TomlCodeLensProvider implements vscode.CodeLensProvider {
 	}
 
 	provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
-		const lenses: vscode.CodeLens[] = [];
-		const lines = document.getText().split("\n");
+		const text = document.getText();
+		const blocks = projectionBlocks(text);
+		if (blocks.length === 0) return [];
+
+		const headers = findProjectionHeaderLines(text);
 		const tomlUri = document.uri;
 
-		for (const [i, line] of lines.entries()) {
-			if (line.trim() !== "[[projection]]") continue;
+		const lenses: vscode.CodeLens[] = [];
+		// blocks and headers are aligned by appearance order. If they don't
+		// match in length the source is malformed (or the header scan missed
+		// a variant); skip rather than mis-attribute lenses.
+		if (blocks.length !== headers.length) return [];
 
-			const name = extractName(lines, i + 1);
-			if (!name) continue;
-
-			const range = new vscode.Range(i, 0, i, line.length);
-			const lens = buildLens(this._cli, this._debugState, name, range, tomlUri);
+		for (const [i, block] of blocks.entries()) {
+			if (!block) continue;
+			const header = headers[i];
+			if (!header) continue;
+			const range = new vscode.Range(
+				header.line,
+				0,
+				header.line,
+				header.length,
+			);
+			const lens = buildLens(
+				this._cli,
+				this._debugState,
+				block.name,
+				range,
+				tomlUri,
+			);
 			if (lens) lenses.push(lens);
 		}
-
 		return lenses;
 	}
+}
+
+interface HeaderLine {
+	line: number;
+	length: number;
+}
+
+// TOML array-of-table header for [[projection]]. Allows leading whitespace,
+// optional spaces inside the brackets, and a trailing line comment - all
+// valid per the TOML spec. We'd rather over-match here than under-match
+// since the parser is the source of truth.
+const projectionHeaderPattern = /^\s*\[\[\s*projection\s*\]\]\s*(?:#.*)?$/;
+
+// Find each [[projection]] header line so we can position lenses on it.
+// smol-toml returns values but not source positions; this lightweight scan
+// zips back to lines by appearance order.
+function findProjectionHeaderLines(text: string): HeaderLine[] {
+	const headers: HeaderLine[] = [];
+	const lines = text.split("\n");
+	for (const [i, line] of lines.entries()) {
+		if (projectionHeaderPattern.test(line)) {
+			headers.push({ line: i, length: line.length });
+		}
+	}
+	return headers;
 }
 
 export function buildLens(
@@ -74,16 +117,4 @@ export function buildLens(
 		command: "gaffer.debugProjection",
 		arguments: [{ name, tomlUri }],
 	});
-}
-
-function extractName(lines: string[], startLine: number): string | null {
-	for (let i = startLine; i < lines.length && i < startLine + 10; i++) {
-		const line = lines[i]?.trim();
-		if (line === undefined) break;
-		if (line.startsWith("[")) break;
-
-		const match = line.match(/^name\s*=\s*(?:"([^"]+)"|'([^']+)')/);
-		if (match) return match[1] ?? match[2] ?? null;
-	}
-	return null;
 }

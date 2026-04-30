@@ -1,5 +1,30 @@
-package:
-    pnpm exec vsce package
+default:
+    @just --list
 
+# Install dependencies
+init:
+    pnpm install
+
+# Build the extension
+build:
+    pnpm run build
+
+# Watch mode for development
+watch:
+    pnpm run watch
+
+# Run tests
+test:
+    pnpm run test
+
+# Type check without emit
+typecheck:
+    pnpm run typecheck
+
+# Build and package as .vsix
+package:
+    pnpm run package
+
+# Remove built artifacts
 clean:
-    rm -f *.vsix
+    rm -rf dist *.vsix

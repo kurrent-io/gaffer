@@ -1,0 +1,167 @@
+import * as vscode from "vscode";
+import { jsonToTreeItems, type TreeItemWithChildren } from "./json-tree.js";
+import type { EmittedEvent, InputEvent, StepResult } from "../../types.js";
+
+export class StepProvider implements vscode.TreeDataProvider<TreeItemWithChildren> {
+	private readonly _onDidChange = new vscode.EventEmitter<void>();
+	readonly onDidChangeTreeData = this._onDidChange.event;
+
+	private _items: TreeItemWithChildren[] = [];
+	private _refreshTimer: NodeJS.Timeout | null = null;
+
+	clear(): void {
+		this._items = [];
+		if (this._refreshTimer) {
+			clearTimeout(this._refreshTimer);
+			this._refreshTimer = null;
+		}
+		this._onDidChange.fire();
+	}
+
+	startStep(event: InputEvent): void {
+		this._items = [buildInputItem(event)];
+		this._onDidChange.fire();
+	}
+
+	addLog(message: string): void {
+		this._items.push(buildLogItem(message));
+		this._scheduleRefresh();
+	}
+
+	addEmit(emitData: EmittedEvent): void {
+		this._items.push(buildEmitItem(emitData));
+		this._scheduleRefresh();
+	}
+
+	setResult(result: StepResult): void {
+		this._items.push(buildResultItem(result));
+		this._scheduleRefresh();
+	}
+
+	setError(code: string, description: string): void {
+		const item = new vscode.TreeItem(code, vscode.TreeItemCollapsibleState.None);
+		item.iconPath = new vscode.ThemeIcon("error", new vscode.ThemeColor("testing.iconFailed"));
+		item.description = description;
+		this._items.push(item);
+		this._onDidChange.fire();
+	}
+
+	getTreeItem(element: TreeItemWithChildren): vscode.TreeItem {
+		return element;
+	}
+
+	getChildren(element?: TreeItemWithChildren): TreeItemWithChildren[] {
+		if (element) return element.children ?? [];
+		return this._items;
+	}
+
+	private _scheduleRefresh(): void {
+		if (this._refreshTimer) return;
+		this._refreshTimer = setTimeout(() => {
+			this._refreshTimer = null;
+			this._onDidChange.fire();
+		}, 50);
+	}
+}
+
+function buildInputItem(event: InputEvent): TreeItemWithChildren {
+	const label = `${event.sequenceNumber}@${event.streamId}`;
+	const item: TreeItemWithChildren = new vscode.TreeItem(
+		label,
+		vscode.TreeItemCollapsibleState.Expanded,
+	);
+	item.description = event.eventType;
+	item.iconPath = new vscode.ThemeIcon("rocket");
+
+	const children: TreeItemWithChildren[] = [];
+	children.push(leaf("type", event.eventType));
+	children.push(leaf("stream", event.streamId));
+	children.push(leaf("seq", String(event.sequenceNumber)));
+
+	if (hasValue(event.data)) children.push(buildNested("data", event.data));
+	if (hasValue(event.metadata)) children.push(buildNested("metadata", event.metadata));
+
+	item.children = children;
+	return item;
+}
+
+function buildLogItem(message: string): TreeItemWithChildren {
+	const item: TreeItemWithChildren = new vscode.TreeItem(
+		message,
+		vscode.TreeItemCollapsibleState.None,
+	);
+	item.iconPath = new vscode.ThemeIcon("comment");
+	item.description = "";
+	return item;
+}
+
+function buildEmitItem(em: EmittedEvent): TreeItemWithChildren {
+	const isLink = em.isLink ?? false;
+	const item: TreeItemWithChildren = new vscode.TreeItem(
+		em.streamId,
+		vscode.TreeItemCollapsibleState.Collapsed,
+	);
+	item.description = isLink ? "link" : em.eventType;
+	item.iconPath = new vscode.ThemeIcon(isLink ? "link" : "forward");
+
+	const children: TreeItemWithChildren[] = [];
+	if (!isLink && em.eventType) children.push(leaf("type", em.eventType));
+	if (hasValue(em.data)) children.push(buildNested("data", em.data));
+	if (hasValue(em.metadata)) children.push(buildNested("metadata", em.metadata));
+
+	item.children = children;
+	if (children.length === 0) item.collapsibleState = vscode.TreeItemCollapsibleState.None;
+	return item;
+}
+
+function buildResultItem(result: StepResult): TreeItemWithChildren {
+	if (result.status === "processed") {
+		const desc = result.partition ? `[${result.partition}]` : "";
+		const item: TreeItemWithChildren = new vscode.TreeItem(
+			"processed",
+			result.state
+				? vscode.TreeItemCollapsibleState.Collapsed
+				: vscode.TreeItemCollapsibleState.None,
+		);
+		item.iconPath = new vscode.ThemeIcon("arrow-circle-right");
+		item.description = desc;
+
+		if (result.state) {
+			const children: TreeItemWithChildren[] = [];
+			if (result.partition) children.push(leaf("partition", result.partition));
+			children.push(buildNested("state", result.state));
+			item.children = children;
+		}
+		return item;
+	}
+
+	const item = new vscode.TreeItem("skipped", vscode.TreeItemCollapsibleState.None);
+	item.iconPath = new vscode.ThemeIcon("circle-large");
+	item.description = result.reason;
+	return item;
+}
+
+// Treat null and undefined as "absent" for event payload fields - a literal
+// null `data`/`metadata` isn't worth a "null" node. Falsy values (0, "", false)
+// inside actual state are still rendered by jsonToTreeItems.
+function hasValue(v: unknown): boolean {
+	return v !== undefined && v !== null;
+}
+
+function buildNested(label: string, value: unknown): TreeItemWithChildren {
+	const item: TreeItemWithChildren = new vscode.TreeItem(
+		label,
+		vscode.TreeItemCollapsibleState.Collapsed,
+	);
+	item.children = jsonToTreeItems(value);
+	return item;
+}
+
+function leaf(label: string, value: string): TreeItemWithChildren {
+	const item: TreeItemWithChildren = new vscode.TreeItem(
+		label,
+		vscode.TreeItemCollapsibleState.None,
+	);
+	item.description = value;
+	return item;
+}

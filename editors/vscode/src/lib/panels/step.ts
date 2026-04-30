@@ -3,39 +3,39 @@ import { jsonToTreeItems, type TreeItemWithChildren } from "./json-tree.js";
 import type { EmittedEvent, InputEvent, StepResult } from "../../types.js";
 
 export class StepProvider implements vscode.TreeDataProvider<TreeItemWithChildren> {
-	private readonly _onDidChange = new vscode.EventEmitter<void>();
-	readonly onDidChangeTreeData = this._onDidChange.event;
+	readonly #onDidChange = new vscode.EventEmitter<void>();
+	readonly onDidChangeTreeData = this.#onDidChange.event;
 
-	private _items: TreeItemWithChildren[] = [];
-	private _refreshTimer: NodeJS.Timeout | null = null;
+	#items: TreeItemWithChildren[] = [];
+	#refreshTimer: NodeJS.Timeout | null = null;
 
 	clear(): void {
-		this._items = [];
-		if (this._refreshTimer) {
-			clearTimeout(this._refreshTimer);
-			this._refreshTimer = null;
+		this.#items = [];
+		if (this.#refreshTimer) {
+			clearTimeout(this.#refreshTimer);
+			this.#refreshTimer = null;
 		}
-		this._onDidChange.fire();
+		this.#onDidChange.fire();
 	}
 
 	startStep(event: InputEvent): void {
-		this._items = [buildInputItem(event)];
-		this._onDidChange.fire();
+		this.#items = [buildInputItem(event)];
+		this.#onDidChange.fire();
 	}
 
 	addLog(message: string): void {
-		this._items.push(buildLogItem(message));
-		this._scheduleRefresh();
+		this.#items.push(buildLogItem(message));
+		this.#scheduleRefresh();
 	}
 
 	addEmit(emitData: EmittedEvent): void {
-		this._items.push(buildEmitItem(emitData));
-		this._scheduleRefresh();
+		this.#items.push(buildEmitItem(emitData));
+		this.#scheduleRefresh();
 	}
 
 	setResult(result: StepResult): void {
-		this._items.push(buildResultItem(result));
-		this._scheduleRefresh();
+		this.#items.push(buildResultItem(result));
+		this.#scheduleRefresh();
 	}
 
 	setError(code: string, description: string): void {
@@ -48,8 +48,8 @@ export class StepProvider implements vscode.TreeDataProvider<TreeItemWithChildre
 			new vscode.ThemeColor("testing.iconFailed"),
 		);
 		item.description = description;
-		this._items.push(item);
-		this._onDidChange.fire();
+		this.#items.push(item);
+		this.#onDidChange.fire();
 	}
 
 	getTreeItem(element: TreeItemWithChildren): vscode.TreeItem {
@@ -58,14 +58,14 @@ export class StepProvider implements vscode.TreeDataProvider<TreeItemWithChildre
 
 	getChildren(element?: TreeItemWithChildren): TreeItemWithChildren[] {
 		if (element) return element.children ?? [];
-		return this._items;
+		return this.#items;
 	}
 
-	private _scheduleRefresh(): void {
-		if (this._refreshTimer) return;
-		this._refreshTimer = setTimeout(() => {
-			this._refreshTimer = null;
-			this._onDidChange.fire();
+	#scheduleRefresh(): void {
+		if (this.#refreshTimer) return;
+		this.#refreshTimer = setTimeout(() => {
+			this.#refreshTimer = null;
+			this.#onDidChange.fire();
 		}, 50);
 	}
 }

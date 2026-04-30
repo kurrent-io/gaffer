@@ -17,36 +17,36 @@ type LineHandler = (msg: CliMessage) => void;
 type ExitHandler = (code: number | null) => void;
 
 export class GafferProcess {
-	private readonly _argv: string[];
-	private readonly _cwd: string | undefined;
-	private readonly _log: (msg: string) => void;
-	private _proc: ChildProcess | null = null;
-	private _onLine: LineHandler = () => {};
-	private _onExit: ExitHandler = () => {};
+	readonly #argv: string[];
+	readonly #cwd: string | undefined;
+	readonly #log: (msg: string) => void;
+	#proc: ChildProcess | null = null;
+	#onLine: LineHandler = () => {};
+	#onExit: ExitHandler = () => {};
 
 	constructor(argv: string[], options: ProcessOptions = {}) {
 		if (argv.length === 0) throw new Error("argv must not be empty");
-		this._argv = argv;
-		this._cwd = options.cwd;
-		this._log = options.log ?? (() => {});
+		this.#argv = argv;
+		this.#cwd = options.cwd;
+		this.#log = options.log ?? (() => {});
 	}
 
 	start(): this {
-		const [head, ...rest] = this._argv;
+		const [head, ...rest] = this.#argv;
 		// Constructor validates argv is non-empty.
 		if (head === undefined) throw new Error("argv must not be empty");
 
-		this._log(
-			`Spawning: ${this._argv.map((a) => JSON.stringify(a)).join(" ")}` +
-				(this._cwd ? ` (cwd: ${this._cwd})` : ""),
+		this.#log(
+			`Spawning: ${this.#argv.map((a) => JSON.stringify(a)).join(" ")}` +
+				(this.#cwd ? ` (cwd: ${this.#cwd})` : ""),
 		);
 
 		const proc = spawn(head, rest, {
 			stdio: ["ignore", "pipe", "pipe"],
-			cwd: this._cwd,
+			cwd: this.#cwd,
 			shell: false,
 		});
-		this._proc = proc;
+		this.#proc = proc;
 
 		if (!proc.stdout || !proc.stderr) {
 			throw new Error("spawn returned a process without piped stdout/stderr");
@@ -58,37 +58,37 @@ export class GafferProcess {
 			try {
 				raw = JSON.parse(line);
 			} catch {
-				this._log(`[stdout] ${line}`);
+				this.#log(`[stdout] ${line}`);
 				return;
 			}
 			const result = v.safeParse(CliMessageWireSchema, raw);
 			if (result.success) {
-				this._onLine(result.output);
+				this.#onLine(result.output);
 			} else {
-				this._log(`[stdout] ${line}`);
+				this.#log(`[stdout] ${line}`);
 			}
 		});
 
 		proc.stderr.on("data", (data: Buffer) => {
 			const text = stripAnsi(data.toString()).trim();
-			if (text) this._log(`[stderr] ${text}`);
+			if (text) this.#log(`[stderr] ${text}`);
 		});
 
 		proc.on("exit", (code) => {
-			this._log(`Process exited with code ${code}`);
-			this._onExit(code);
+			this.#log(`Process exited with code ${code}`);
+			this.#onExit(code);
 		});
 
 		return this;
 	}
 
 	onLine(fn: LineHandler): this {
-		this._onLine = fn;
+		this.#onLine = fn;
 		return this;
 	}
 
 	onExit(fn: ExitHandler): this {
-		this._onExit = fn;
+		this.#onExit = fn;
 		return this;
 	}
 
@@ -97,8 +97,8 @@ export class GafferProcess {
 		timeoutMs = 15000,
 	): Promise<Extract<CliMessage, { type: T }>> {
 		return new Promise((resolve, reject) => {
-			const prevLine = this._onLine;
-			const prevExit = this._onExit;
+			const prevLine = this.#onLine;
+			const prevExit = this.#onExit;
 
 			// `restore` is declared below; the setTimeout callback fires async,
 			// so it runs after the `const restore` initializer.
@@ -108,12 +108,12 @@ export class GafferProcess {
 			}, timeoutMs);
 
 			const restore = (): void => {
-				this._onLine = prevLine;
-				this._onExit = prevExit;
+				this.#onLine = prevLine;
+				this.#onExit = prevExit;
 				clearTimeout(timer);
 			};
 
-			this._onExit = (code) => {
+			this.#onExit = (code) => {
 				restore();
 				prevExit(code);
 				reject(
@@ -121,7 +121,7 @@ export class GafferProcess {
 				);
 			};
 
-			this._onLine = (msg) => {
+			this.#onLine = (msg) => {
 				prevLine(msg);
 				if (msg.type === type) {
 					restore();
@@ -132,8 +132,8 @@ export class GafferProcess {
 	}
 
 	kill(): void {
-		if (this._proc && !this._proc.killed) {
-			this._proc.kill();
+		if (this.#proc && !this.#proc.killed) {
+			this.#proc.kill();
 		}
 	}
 }

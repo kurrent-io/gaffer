@@ -8,23 +8,23 @@ type Logger = (msg: string) => void;
 const DEFAULT_COMMAND: readonly string[] = ["./bin/gaffer"];
 
 export class GafferCli {
-	private readonly _log: Logger;
-	private _manifest: Manifest | null = null;
+	readonly #log: Logger;
+	#manifest: Manifest | null = null;
 
 	constructor(log?: Logger) {
-		this._log = log ?? (() => {});
+		this.#log = log ?? (() => {});
 	}
 
 	get manifest(): Manifest | null {
-		return this._manifest;
+		return this.#manifest;
 	}
 
 	hasCommand(name: string): boolean {
-		return this._manifest?.commands?.[name] != null;
+		return this.#manifest?.commands?.[name] != null;
 	}
 
 	hasFlag(command: string, flag: string): boolean {
-		return this._manifest?.commands?.[command]?.flags?.includes(flag) ?? false;
+		return this.#manifest?.commands?.[command]?.flags?.includes(flag) ?? false;
 	}
 
 	/**
@@ -57,13 +57,13 @@ export class GafferCli {
 					`malformed manifest: ${parsed.issues.map((i) => i.message).join("; ")}`,
 				);
 			}
-			this._manifest = parsed.output;
-			this._log(`Manifest loaded (v${parsed.output.version})`);
+			this.#manifest = parsed.output;
+			this.#log(`Manifest loaded (v${parsed.output.version})`);
 			return parsed.output;
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			this._log(`Manifest fetch failed: ${msg}`);
-			this._manifest = null;
+			this.#log(`Manifest fetch failed: ${msg}`);
+			this.#manifest = null;
 			throw err;
 		}
 	}

@@ -4,16 +4,18 @@ import type { GafferCli } from "./cli.js";
 import type { DebugState } from "../types.js";
 
 export class TomlCodeLensProvider implements vscode.CodeLensProvider {
-	private readonly _onDidChange = new vscode.EventEmitter<void>();
-	readonly onDidChangeCodeLenses = this._onDidChange.event;
+	readonly #onDidChange = new vscode.EventEmitter<void>();
+	readonly onDidChangeCodeLenses = this.#onDidChange.event;
+	readonly #cli: GafferCli;
+	readonly #debugState: DebugState;
 
-	constructor(
-		private readonly _cli: GafferCli,
-		private readonly _debugState: DebugState,
-	) {}
+	constructor(cli: GafferCli, debugState: DebugState) {
+		this.#cli = cli;
+		this.#debugState = debugState;
+	}
 
 	refresh(): void {
-		this._onDidChange.fire();
+		this.#onDidChange.fire();
 	}
 
 	provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
@@ -41,8 +43,8 @@ export class TomlCodeLensProvider implements vscode.CodeLensProvider {
 				header.length,
 			);
 			const lens = buildLens(
-				this._cli,
-				this._debugState,
+				this.#cli,
+				this.#debugState,
 				block.name,
 				range,
 				tomlUri,

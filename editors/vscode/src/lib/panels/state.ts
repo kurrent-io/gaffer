@@ -4,30 +4,30 @@ import { jsonToTreeItems, type TreeItemWithChildren } from "./json-tree.js";
 import { PartitionStateResponseSchema, type StateBody } from "../../types.js";
 
 export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildren> {
-	private readonly _onDidChange = new vscode.EventEmitter<void>();
-	readonly onDidChangeTreeData = this._onDidChange.event;
+	readonly #onDidChange = new vscode.EventEmitter<void>();
+	readonly onDidChangeTreeData = this.#onDidChange.event;
 
-	private _state: StateBody | null = null;
-	private _debugSession: vscode.DebugSession | null = null;
-	private _refreshTimer: NodeJS.Timeout | null = null;
+	#state: StateBody | null = null;
+	#debugSession: vscode.DebugSession | null = null;
+	#refreshTimer: NodeJS.Timeout | null = null;
 
 	clear(): void {
-		this._state = null;
-		this._debugSession = null;
-		if (this._refreshTimer) {
-			clearTimeout(this._refreshTimer);
-			this._refreshTimer = null;
+		this.#state = null;
+		this.#debugSession = null;
+		if (this.#refreshTimer) {
+			clearTimeout(this.#refreshTimer);
+			this.#refreshTimer = null;
 		}
-		this._onDidChange.fire();
+		this.#onDidChange.fire();
 	}
 
 	setDebugSession(session: vscode.DebugSession): void {
-		this._debugSession = session;
+		this.#debugSession = session;
 	}
 
 	updateFromState(stateMsg: StateBody): void {
-		this._state = stateMsg;
-		this._scheduleRefresh();
+		this.#state = stateMsg;
+		this.#scheduleRefresh();
 	}
 
 	getTreeItem(element: TreeItemWithChildren): vscode.TreeItem {
@@ -39,7 +39,7 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 	): Promise<TreeItemWithChildren[]> {
 		if (element) {
 			if (element.contextValue === "partition") {
-				if (!this._debugSession) {
+				if (!this.#debugSession) {
 					return [
 						new vscode.TreeItem(
 							"No active session",
@@ -51,11 +51,11 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 					typeof element.label === "string"
 						? element.label
 						: (element.label?.label ?? "");
-				return this._fetchPartitionState(this._debugSession, label);
+				return this.#fetchPartitionState(this.#debugSession, label);
 			}
 			return element.children ?? [];
 		}
-		if (!this._state) {
+		if (!this.#state) {
 			const empty = new vscode.TreeItem(
 				"No state yet",
 				vscode.TreeItemCollapsibleState.None,
@@ -65,7 +65,7 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 		}
 
 		const items: TreeItemWithChildren[] = [];
-		const s = this._state;
+		const s = this.#state;
 
 		if (s.state) items.push(buildSection("state", "symbol-variable", s.state));
 		if (s.result)
@@ -90,15 +90,15 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 		return items;
 	}
 
-	private _scheduleRefresh(): void {
-		if (this._refreshTimer) return;
-		this._refreshTimer = setTimeout(() => {
-			this._refreshTimer = null;
-			this._onDidChange.fire();
+	#scheduleRefresh(): void {
+		if (this.#refreshTimer) return;
+		this.#refreshTimer = setTimeout(() => {
+			this.#refreshTimer = null;
+			this.#onDidChange.fire();
 		}, 50);
 	}
 
-	private async _fetchPartitionState(
+	async #fetchPartitionState(
 		session: vscode.DebugSession,
 		partition: string,
 	): Promise<TreeItemWithChildren[]> {

@@ -1,15 +1,15 @@
 import * as vscode from "vscode";
 
 export class StatusViewProvider implements vscode.WebviewViewProvider {
-	private _view: vscode.WebviewView | null = null;
-	private _name = "";
-	private _processed = 0;
-	private _skipped = 0;
-	private _errors = 0;
-	private _renderTimer: NodeJS.Timeout | null = null;
+	#view: vscode.WebviewView | null = null;
+	#name = "";
+	#processed = 0;
+	#skipped = 0;
+	#errors = 0;
+	#renderTimer: NodeJS.Timeout | null = null;
 
 	resolveWebviewView(webviewView: vscode.WebviewView): void {
-		this._view = webviewView;
+		this.#view = webviewView;
 		webviewView.webview.options = { enableScripts: true };
 
 		webviewView.webview.onDidReceiveMessage((msg: { command?: string }) => {
@@ -19,58 +19,58 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		});
 
 		webviewView.onDidDispose(() => {
-			this._view = null;
+			this.#view = null;
 		});
 
-		this._render();
+		this.#render();
 	}
 
 	reset(name: string): void {
-		this._name = name;
-		this._processed = 0;
-		this._skipped = 0;
-		this._errors = 0;
-		this._render();
+		this.#name = name;
+		this.#processed = 0;
+		this.#skipped = 0;
+		this.#errors = 0;
+		this.#render();
 	}
 
 	addProcessed(): void {
-		this._processed++;
-		this._scheduleRender();
+		this.#processed++;
+		this.#scheduleRender();
 	}
 
 	addSkipped(): void {
-		this._skipped++;
-		this._scheduleRender();
+		this.#skipped++;
+		this.#scheduleRender();
 	}
 
 	addError(): void {
-		this._errors++;
-		this._scheduleRender();
+		this.#errors++;
+		this.#scheduleRender();
 	}
 
-	private _scheduleRender(): void {
-		if (this._renderTimer) return;
-		this._renderTimer = setTimeout(() => {
-			this._renderTimer = null;
-			this._render();
+	#scheduleRender(): void {
+		if (this.#renderTimer) return;
+		this.#renderTimer = setTimeout(() => {
+			this.#renderTimer = null;
+			this.#render();
 		}, 200);
 	}
 
-	private _render(): void {
-		if (!this._view) return;
+	#render(): void {
+		if (!this.#view) return;
 
-		const name = this._name || "projection";
+		const name = this.#name || "projection";
 		const stats: string[] = [];
-		if (this._processed > 0)
-			stats.push(`${this._processed.toLocaleString()} events processed`);
-		if (this._skipped > 0)
-			stats.push(`${this._skipped.toLocaleString()} events skipped`);
-		if (this._errors > 0) stats.push(`${this._errors.toLocaleString()} errors`);
+		if (this.#processed > 0)
+			stats.push(`${this.#processed.toLocaleString()} events processed`);
+		if (this.#skipped > 0)
+			stats.push(`${this.#skipped.toLocaleString()} events skipped`);
+		if (this.#errors > 0) stats.push(`${this.#errors.toLocaleString()} errors`);
 		const statsHtml = stats.length
 			? stats.map((s) => `<div class="stat">${s}</div>`).join("")
 			: `<div class="stat">Waiting for events...</div>`;
 
-		this._view.webview.html = `<!DOCTYPE html>
+		this.#view.webview.html = `<!DOCTYPE html>
 <html>
 <head>
 <style>

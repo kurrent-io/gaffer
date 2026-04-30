@@ -16,6 +16,8 @@
 		"noImplicitReturns": true,
 		"exactOptionalPropertyTypes": true,
 		"forceConsistentCasingInFileNames": true,
+		"noUncheckedSideEffectImports": true,
+		"erasableSyntaxOnly": true,
 		"outDir": "dist",
 		"noEmit": true,
 		"types": ["node"]

@@ -5,10 +5,10 @@ import { parse as parseToml } from "smol-toml";
 import type { ProjectEntry } from "../types.js";
 
 export class ProjectIndex {
-	private readonly _entries = new Map<string, ProjectEntry>();
+	readonly #entries = new Map<string, ProjectEntry>();
 
 	async refresh(): Promise<void> {
-		this._entries.clear();
+		this.#entries.clear();
 		const uris = await vscode.workspace.findFiles(
 			"**/gaffer.toml",
 			"**/node_modules/**",
@@ -17,21 +17,21 @@ export class ProjectIndex {
 			const tomlDir = path.dirname(uri.fsPath);
 			for (const proj of parseProjections(uri.fsPath)) {
 				const absEntry = path.resolve(tomlDir, proj.entry);
-				this._entries.set(absEntry, { name: proj.name, tomlDir });
+				this.#entries.set(absEntry, { name: proj.name, tomlDir });
 			}
 		}
 	}
 
 	lookup(filePath: string): ProjectEntry | null {
-		return this._entries.get(filePath) ?? null;
+		return this.#entries.get(filePath) ?? null;
 	}
 
 	get entryPaths(): string[] {
-		return [...this._entries.keys()];
+		return [...this.#entries.keys()];
 	}
 
 	get projectRoot(): string | undefined {
-		for (const entry of this._entries.values()) {
+		for (const entry of this.#entries.values()) {
 			return entry.tomlDir;
 		}
 		return undefined;

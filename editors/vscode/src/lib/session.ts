@@ -14,53 +14,53 @@ type Listener<T extends CliMessageType = CliMessageType> = (
 type AnyListener = (msg: CliMessage) => void;
 
 export class GafferSession {
-	private readonly _name: string;
-	private readonly _argv: string[];
-	private readonly _log: (msg: string) => void;
-	private readonly _cwd: string | undefined;
-	private readonly _listeners = new Map<CliMessageType | "*", AnyListener[]>();
-	private readonly _output: vscode.OutputChannel;
-	private _proc: GafferProcess | null = null;
+	readonly #name: string;
+	readonly #argv: string[];
+	readonly #log: (msg: string) => void;
+	readonly #cwd: string | undefined;
+	readonly #listeners = new Map<CliMessageType | "*", AnyListener[]>();
+	readonly #output: vscode.OutputChannel;
+	#proc: GafferProcess | null = null;
 
 	constructor(name: string, argv: string[], options: SessionOptions = {}) {
-		this._name = name;
-		this._argv = argv;
-		this._log = options.log ?? (() => {});
-		this._cwd = options.cwd;
-		this._output = vscode.window.createOutputChannel(`Gaffer: ${name}`, "log");
+		this.#name = name;
+		this.#argv = argv;
+		this.#log = options.log ?? (() => {});
+		this.#cwd = options.cwd;
+		this.#output = vscode.window.createOutputChannel(`Gaffer: ${name}`, "log");
 	}
 
 	get name(): string {
-		return this._name;
+		return this.#name;
 	}
 
 	get output(): vscode.OutputChannel {
-		return this._output;
+		return this.#output;
 	}
 
 	on<T extends CliMessageType>(type: T, fn: Listener<T>): this;
 	on(type: "*", fn: AnyListener): this;
 	on(type: CliMessageType | "*", fn: AnyListener): this {
-		const list = this._listeners.get(type);
+		const list = this.#listeners.get(type);
 		if (list) {
 			list.push(fn);
 		} else {
-			this._listeners.set(type, [fn]);
+			this.#listeners.set(type, [fn]);
 		}
 		return this;
 	}
 
 	start(): this {
-		const proc = new GafferProcess(this._argv, {
-			log: this._log,
-			cwd: this._cwd,
+		const proc = new GafferProcess(this.#argv, {
+			log: this.#log,
+			cwd: this.#cwd,
 		});
-		this._proc = proc;
+		this.#proc = proc;
 
-		proc.onLine((msg) => this._dispatch(msg));
+		proc.onLine((msg) => this.#dispatch(msg));
 		proc.onExit((code) => {
-			this._writeOutput(`Process exited (code ${code})`);
-			this._dispatch({ type: "exit", code });
+			this.#writeOutput(`Process exited (code ${code})`);
+			this.#dispatch({ type: "exit", code });
 		});
 
 		proc.start();
@@ -68,66 +68,66 @@ export class GafferSession {
 	}
 
 	async waitForDebug(): Promise<Extract<CliMessage, { type: "debug" }>> {
-		if (!this._proc) throw new Error("session not started");
-		return this._proc.waitForMessage("debug");
+		if (!this.#proc) throw new Error("session not started");
+		return this.#proc.waitForMessage("debug");
 	}
 
 	stop(): void {
-		if (this._proc) {
-			this._proc.kill();
-			this._proc = null;
+		if (this.#proc) {
+			this.#proc.kill();
+			this.#proc = null;
 		}
 	}
 
 	dispose(): void {
 		this.stop();
-		this._output.dispose();
-		this._listeners.clear();
+		this.#output.dispose();
+		this.#listeners.clear();
 	}
 
-	private _dispatch(msg: CliMessage): void {
-		this._renderOutput(msg);
+	#dispatch(msg: CliMessage): void {
+		this.#renderOutput(msg);
 
-		for (const fn of this._listeners.get(msg.type) ?? []) fn(msg);
-		for (const fn of this._listeners.get("*") ?? []) fn(msg);
+		for (const fn of this.#listeners.get(msg.type) ?? []) fn(msg);
+		for (const fn of this.#listeners.get("*") ?? []) fn(msg);
 	}
 
-	private _renderOutput(msg: CliMessage): void {
+	#renderOutput(msg: CliMessage): void {
 		switch (msg.type) {
 			case "info": {
 				const p = msg.projection;
-				this._writeOutput(p.name);
-				if (p.source) this._writeOutput(`  Source: ${p.source}`);
+				this.#writeOutput(p.name);
+				if (p.source) this.#writeOutput(`  Source: ${p.source}`);
 				if (p.partitioning)
-					this._writeOutput(`  Partitioning: ${p.partitioning}`);
-				if (p.events) this._writeOutput(`  Events: ${p.events.join(", ")}`);
+					this.#writeOutput(`  Partitioning: ${p.partitioning}`);
+				if (p.events) this.#writeOutput(`  Events: ${p.events.join(", ")}`);
 				if (p.engineVersion != null)
-					this._writeOutput(`  Engine: v${p.engineVersion}`);
-				this._writeOutput("");
+					this.#writeOutput(`  Engine: v${p.engineVersion}`);
+				this.#writeOutput("");
 				break;
 			}
 			case "event":
-				this._writeOutput(
+				this.#writeOutput(
 					`${msg.sequenceNumber}@${msg.streamId} ${msg.eventType}`,
 				);
 				break;
 			case "result":
 				if (msg.status === "processed") {
 					const partition = msg.partition ? ` [${msg.partition}]` : "";
-					this._writeOutput(`  -> processed${partition}`);
+					this.#writeOutput(`  -> processed${partition}`);
 					if (msg.logs?.length) {
-						for (const l of msg.logs) this._writeOutput(`  [log] ${l}`);
+						for (const l of msg.logs) this.#writeOutput(`  [log] ${l}`);
 					}
 				} else {
-					this._writeOutput(`  -> ${msg.status}: ${msg.reason}`);
+					this.#writeOutput(`  -> ${msg.status}: ${msg.reason}`);
 				}
 				break;
 			case "error":
-				this._writeOutput(`  ERROR: ${msg.code} - ${msg.description}`);
+				this.#writeOutput(`  ERROR: ${msg.code} - ${msg.description}`);
 				break;
 			case "summary":
-				this._writeOutput("");
-				this._writeOutput(
+				this.#writeOutput("");
+				this.#writeOutput(
 					`Summary: ${msg.handled} handled, ${msg.skipped} skipped, ${msg.errors} errors`,
 				);
 				break;
@@ -143,7 +143,7 @@ export class GafferSession {
 		}
 	}
 
-	private _writeOutput(text: string): void {
-		this._output.appendLine(text);
+	#writeOutput(text: string): void {
+		this.#output.appendLine(text);
 	}
 }

@@ -40,7 +40,7 @@ func runInfo(cmd *cobra.Command, name string, asJSON bool) error {
 		return writeInfoJSON(proj, info)
 	}
 
-	tw := newTextWriter(os.Stdout)
+	tw := newTextWriter(os.Stdout, os.Stderr)
 	tw.WriteInfo(proj.Def.Name, info, proj.EngineVersion)
 	return nil
 }

@@ -57,21 +57,28 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 		return err
 	}
 
+	sourcePath, _ := filepath.Abs(filepath.Join(proj.Root, proj.Def.Entry))
+
+	var writer outputWriter
+	var tw *textWriter
+	if opts.JSON {
+		writer = newJSONWriter(os.Stdout)
+	} else {
+		tw = newTextWriter(os.Stdout, os.Stderr)
+		writer = tw
+	}
+
 	session, info, err := engine.CreateSession(proj, opts.Debug)
 	if err != nil {
-		return handleSessionError(cmd, err)
+		writer.WriteFatalError(toFatalError(err, sourcePath))
+		return silent(err)
 	}
 	defer session.Destroy()
 
 	engineVersion := proj.EngineVersion
 
-	var writer outputWriter
-	if opts.JSON {
-		writer = newJSONWriter(os.Stdout)
-	} else {
-		tw := newTextWriter(os.Stdout)
+	if tw != nil {
 		tw.RegisterCallbacks(session)
-		writer = tw
 	}
 
 	writer.WriteInfo(proj.Def.Name, info, engineVersion)
@@ -87,7 +94,6 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 			return fmt.Errorf("creating history store: %w", err)
 		}
 
-		sourcePath, _ := filepath.Abs(filepath.Join(proj.Root, proj.Def.Entry))
 		absRoot, _ := filepath.Abs(proj.Root)
 
 		adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot)
@@ -187,6 +193,9 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 	writer.WriteSummary(r.Stats(), summary)
 
 	if r.Faulted() {
+		if lastErr := r.LastError(); lastErr != nil {
+			writer.WriteFatalError(toFatalError(lastErr, sourcePath))
+		}
 		return silent(fmt.Errorf("projection faulted"))
 	}
 

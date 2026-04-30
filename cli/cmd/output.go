@@ -21,7 +21,86 @@ type outputWriter interface {
 	WriteEvent(event eventInfo)
 	WriteResult(eventID string, result *gafferruntime.FeedResult)
 	WriteError(eventID string, code string, description string)
+	WriteFatalError(fe fatalError)
 	WriteSummary(stats engine.EventStats, state engine.StateSummary)
+}
+
+// fatalError carries everything the editor / TTY needs to surface a fatal
+// projection failure: the runtime error code, a human description, the source
+// file the error points at, and (when the runtime can identify it) the JS
+// position. eventId is set for handler errors that fail mid-stream.
+type fatalError struct {
+	Code        string
+	Description string
+	File        string
+	Line        *int
+	Column      *int
+	JsStack     string
+	EventID     string
+}
+
+func toFatalError(err error, sourcePath string) fatalError {
+	fe := fatalError{File: sourcePath}
+	switch e := err.(type) {
+	case *gafferruntime.InvalidProjectionError:
+		fe.Code = e.ErrorCode()
+		fe.Description = e.ErrorDescription()
+		if e.Location != nil {
+			fe.Line = &e.Location.Line
+			fe.Column = &e.Location.Column
+		}
+	case *gafferruntime.ProjectionHandlerError:
+		fe.Code = e.ErrorCode()
+		fe.Description = e.ErrorDescription()
+		fe.JsStack = e.JsStack
+		fe.EventID = formatEventID(e.Event)
+		if e.Location != nil {
+			fe.Line = &e.Location.Line
+			fe.Column = &e.Location.Column
+		}
+	case *gafferruntime.ProjectionTransformError:
+		fe.Code = e.ErrorCode()
+		fe.Description = e.ErrorDescription()
+		fe.JsStack = e.JsStack
+		if e.Location != nil {
+			fe.Line = &e.Location.Line
+			fe.Column = &e.Location.Column
+		}
+	case *gafferruntime.ExecutionTimeoutError:
+		fe.Code = e.ErrorCode()
+		fe.Description = fmt.Sprintf("%s (elapsed %dms, allowed %dms)",
+			e.ErrorDescription(), e.ElapsedMs, e.AllowedMs)
+		fe.EventID = formatEventID(e.Event)
+	case *gafferruntime.CompilationTimeoutError:
+		fe.Code = e.ErrorCode()
+		fe.Description = fmt.Sprintf("%s (elapsed %dms, allowed %dms)",
+			e.ErrorDescription(), e.ElapsedMs, e.AllowedMs)
+	case *gafferruntime.MalformedEventError:
+		fe.Code = e.ErrorCode()
+		fe.Description = e.ErrorDescription()
+		fe.EventID = formatEventID(e.Event)
+	case *gafferruntime.StateSerializationError:
+		fe.Code = e.ErrorCode()
+		fe.Description = e.ErrorDescription()
+		fe.EventID = formatEventID(e.Event)
+	case gafferruntime.ProjectionError:
+		fe.Code = e.ErrorCode()
+		fe.Description = e.ErrorDescription()
+	default:
+		fe.Code = "unexpected-error"
+		fe.Description = err.Error()
+	}
+	if fe.Description == "" {
+		fe.Description = err.Error()
+	}
+	return fe
+}
+
+func formatEventID(ec gafferruntime.EventContext) string {
+	if ec.StreamID == "" {
+		return ""
+	}
+	return fmt.Sprintf("%d@%s", ec.SequenceNumber, ec.StreamID)
 }
 
 type sessionCallbacks interface {

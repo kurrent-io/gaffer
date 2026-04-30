@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -56,7 +57,7 @@ func TestHasContent(t *testing.T) {
 
 func TestTextWriter_WriteInfo(t *testing.T) {
 	var buf bytes.Buffer
-	tw := newTextWriter(&buf)
+	tw := newTextWriter(&buf, nil)
 
 	info := gafferruntime.ProjectionInfo{
 		AllStreams: true,
@@ -75,7 +76,7 @@ func TestTextWriter_WriteInfo(t *testing.T) {
 
 func TestTextWriter_WriteInfo_BiStateAndProducesResults(t *testing.T) {
 	var buf bytes.Buffer
-	tw := newTextWriter(&buf)
+	tw := newTextWriter(&buf, nil)
 
 	info := gafferruntime.ProjectionInfo{
 		AllStreams:      true,
@@ -91,7 +92,7 @@ func TestTextWriter_WriteInfo_BiStateAndProducesResults(t *testing.T) {
 
 func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
 	var buf bytes.Buffer
-	tw := newTextWriter(&buf)
+	tw := newTextWriter(&buf, nil)
 
 	info := gafferruntime.ProjectionInfo{
 		AllStreams: true,
@@ -109,7 +110,7 @@ func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
 
 func TestTextWriter_WriteEvent(t *testing.T) {
 	var buf bytes.Buffer
-	tw := newTextWriter(&buf)
+	tw := newTextWriter(&buf, nil)
 
 	event := eventInfo{
 		SequenceNumber: 1,
@@ -129,7 +130,7 @@ func TestTextWriter_WriteEvent(t *testing.T) {
 
 func TestTextWriter_WriteResult_Processed(t *testing.T) {
 	var buf bytes.Buffer
-	tw := newTextWriter(&buf)
+	tw := newTextWriter(&buf, nil)
 
 	result := &gafferruntime.FeedResult{
 		Status:    "processed",
@@ -145,7 +146,7 @@ func TestTextWriter_WriteResult_Processed(t *testing.T) {
 
 func TestTextWriter_WriteResult_Skipped(t *testing.T) {
 	var buf bytes.Buffer
-	tw := newTextWriter(&buf)
+	tw := newTextWriter(&buf, nil)
 
 	result := &gafferruntime.FeedResult{
 		Status:     "skipped",
@@ -160,7 +161,7 @@ func TestTextWriter_WriteResult_Skipped(t *testing.T) {
 
 func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {
 	var buf bytes.Buffer
-	tw := newTextWriter(&buf)
+	tw := newTextWriter(&buf, nil)
 
 	stats := engine.EventStats{Handled: 42, Skipped: 0}
 	state := engine.StateSummary{
@@ -175,7 +176,7 @@ func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {
 
 func TestTextWriter_WriteSummary_Partitioned(t *testing.T) {
 	var buf bytes.Buffer
-	tw := newTextWriter(&buf)
+	tw := newTextWriter(&buf, nil)
 
 	stats := engine.EventStats{Handled: 3, Skipped: 1}
 	state := engine.StateSummary{
@@ -384,7 +385,7 @@ func TestJSONWriter_WriteSummary_Partitioned(t *testing.T) {
 
 func TestTextWriter_WriteSummary_WithTransforms(t *testing.T) {
 	var buf bytes.Buffer
-	tw := newTextWriter(&buf)
+	tw := newTextWriter(&buf, nil)
 
 	stats := engine.EventStats{Handled: 10}
 	state := engine.StateSummary{
@@ -401,7 +402,7 @@ func TestTextWriter_WriteSummary_WithTransforms(t *testing.T) {
 
 func TestTextWriter_WriteSummary_BiState(t *testing.T) {
 	var buf bytes.Buffer
-	tw := newTextWriter(&buf)
+	tw := newTextWriter(&buf, nil)
 
 	stats := engine.EventStats{Handled: 5}
 	state := engine.StateSummary{
@@ -421,7 +422,7 @@ func TestTextWriter_WriteSummary_BiState(t *testing.T) {
 
 func TestTextWriter_SideEffects(t *testing.T) {
 	var buf bytes.Buffer
-	tw := newTextWriter(&buf)
+	tw := newTextWriter(&buf, nil)
 
 	ms := &mockSession{}
 	tw.RegisterCallbacks(ms)
@@ -455,7 +456,7 @@ func (m *mockSession) OnLog(cb gafferruntime.LogCallback)   { m.logCb = cb }
 
 func TestTextWriter_WriteError(t *testing.T) {
 	var buf bytes.Buffer
-	tw := newTextWriter(&buf)
+	tw := newTextWriter(&buf, nil)
 
 	tw.WriteError("1@order-1", "handler-error", "boom")
 
@@ -466,7 +467,7 @@ func TestTextWriter_WriteError(t *testing.T) {
 
 func TestTextWriter_WriteSummary_WithErrors(t *testing.T) {
 	var buf bytes.Buffer
-	tw := newTextWriter(&buf)
+	tw := newTextWriter(&buf, nil)
 
 	stats := engine.EventStats{Handled: 5, Skipped: 1, Errors: 2}
 	state := engine.StateSummary{}
@@ -541,4 +542,192 @@ func TestJSONWriter_WriteResult_WithEmitted(t *testing.T) {
 	}
 	testutil.AssertEqual(t, "streamId", "out", evt["streamId"])
 	testutil.AssertEqual(t, "eventType", "Created", evt["eventType"])
+}
+
+func TestToFatalError_InvalidProjection(t *testing.T) {
+	err := &gafferruntime.InvalidProjectionError{
+		Desc:     "Unexpected token",
+		Location: &gafferruntime.JsLocation{Line: 5, Column: 12},
+		Msg:      "Unexpected token",
+	}
+
+	fe := toFatalError(err, "/abs/path/projection.js")
+
+	testutil.AssertEqual(t, "code", "invalid-projection", fe.Code)
+	testutil.AssertEqual(t, "description", "Unexpected token", fe.Description)
+	testutil.AssertEqual(t, "file", "/abs/path/projection.js", fe.File)
+	if fe.Line == nil || *fe.Line != 5 {
+		t.Errorf("expected line=5, got %v", fe.Line)
+	}
+	if fe.Column == nil || *fe.Column != 12 {
+		t.Errorf("expected column=12, got %v", fe.Column)
+	}
+}
+
+func TestToFatalError_HandlerError(t *testing.T) {
+	err := &gafferruntime.ProjectionHandlerError{
+		Desc:     "Cannot read property 'x' of undefined",
+		JsStack:  "at line 10",
+		Location: &gafferruntime.JsLocation{Line: 10, Column: 3},
+		Event:    gafferruntime.EventContext{EventType: "ItemAdded", StreamID: "s-1", SequenceNumber: 5},
+		Msg:      "handler threw",
+	}
+
+	fe := toFatalError(err, "/abs/path/projection.js")
+
+	testutil.AssertEqual(t, "code", "handler-error", fe.Code)
+	if fe.Line == nil || *fe.Line != 10 {
+		t.Errorf("expected line=10, got %v", fe.Line)
+	}
+	testutil.AssertEqual(t, "jsStack", "at line 10", fe.JsStack)
+	testutil.AssertEqual(t, "eventId", "5@s-1", fe.EventID)
+}
+
+func TestToFatalError_TransformError(t *testing.T) {
+	err := &gafferruntime.ProjectionTransformError{
+		Desc:     "transform threw",
+		JsStack:  "at line 20",
+		Location: &gafferruntime.JsLocation{Line: 20, Column: 5},
+		Msg:      "transform threw",
+	}
+
+	fe := toFatalError(err, "/abs/path/projection.js")
+
+	testutil.AssertEqual(t, "code", "projection-transform-error", fe.Code)
+	if fe.Line == nil || *fe.Line != 20 {
+		t.Errorf("expected line=20, got %v", fe.Line)
+	}
+	testutil.AssertEqual(t, "jsStack", "at line 20", fe.JsStack)
+}
+
+func TestToFatalError_ExecutionTimeout(t *testing.T) {
+	err := &gafferruntime.ExecutionTimeoutError{
+		Desc:      "execution timed out",
+		ElapsedMs: 5100,
+		AllowedMs: 5000,
+		Event:     gafferruntime.EventContext{EventType: "Slow", StreamID: "s-2", SequenceNumber: 7},
+		Msg:       "execution timed out",
+	}
+
+	fe := toFatalError(err, "/p.js")
+
+	testutil.AssertEqual(t, "code", "execution-timeout", fe.Code)
+	testutil.AssertContains(t, fe.Description, "elapsed 5100ms")
+	testutil.AssertContains(t, fe.Description, "allowed 5000ms")
+	testutil.AssertEqual(t, "eventId", "7@s-2", fe.EventID)
+}
+
+func TestToFatalError_MalformedEvent(t *testing.T) {
+	err := &gafferruntime.MalformedEventError{
+		Desc:  "JSON parse error",
+		Event: gafferruntime.EventContext{EventType: "Bad", StreamID: "s-3", SequenceNumber: 2},
+		Msg:   "JSON parse error",
+	}
+
+	fe := toFatalError(err, "/p.js")
+
+	testutil.AssertEqual(t, "code", "malformed-event", fe.Code)
+	testutil.AssertEqual(t, "eventId", "2@s-3", fe.EventID)
+}
+
+func TestToFatalError_FallbackDescription(t *testing.T) {
+	err := &gafferruntime.InvalidProjectionError{
+		Desc: "",
+		Msg:  "raw message from runtime",
+	}
+
+	fe := toFatalError(err, "/p.js")
+
+	testutil.AssertEqual(t, "description", "raw message from runtime", fe.Description)
+}
+
+func TestToFatalError_GenericError(t *testing.T) {
+	err := errors.New("something exploded")
+
+	fe := toFatalError(err, "/p.js")
+
+	testutil.AssertEqual(t, "code", "unexpected-error", fe.Code)
+	testutil.AssertEqual(t, "description", "something exploded", fe.Description)
+	if fe.Line != nil {
+		t.Errorf("expected nil line, got %v", *fe.Line)
+	}
+}
+
+func TestJSONWriter_WriteFatalError(t *testing.T) {
+	var buf bytes.Buffer
+	jw := newJSONWriter(&buf)
+
+	line := 5
+	col := 12
+	jw.WriteFatalError(fatalError{
+		Code:        "invalid-projection",
+		Description: "Unexpected token",
+		File:        "/abs/path/projection.js",
+		Line:        &line,
+		Column:      &col,
+	})
+
+	var got map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	testutil.AssertEqual(t, "type", "fatal_error", got["type"])
+	testutil.AssertEqual(t, "code", "invalid-projection", got["code"])
+	testutil.AssertEqual(t, "description", "Unexpected token", got["description"])
+	testutil.AssertEqual(t, "file", "/abs/path/projection.js", got["file"])
+	testutil.AssertEqualFloat(t, "line", 5, got["line"])
+	testutil.AssertEqualFloat(t, "column", 12, got["column"])
+}
+
+func TestJSONWriter_WriteFatalError_OmitsAbsentFields(t *testing.T) {
+	var buf bytes.Buffer
+	jw := newJSONWriter(&buf)
+
+	jw.WriteFatalError(fatalError{
+		Code:        "unexpected-error",
+		Description: "boom",
+	})
+
+	var got map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	if _, ok := got["line"]; ok {
+		t.Error("line should be omitted when nil")
+	}
+	if _, ok := got["column"]; ok {
+		t.Error("column should be omitted when nil")
+	}
+	if _, ok := got["file"]; ok {
+		t.Error("file should be omitted when empty")
+	}
+	if _, ok := got["jsStack"]; ok {
+		t.Error("jsStack should be omitted when empty")
+	}
+}
+
+func TestTextWriter_WriteFatalError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	tw := newTextWriter(&stdout, &stderr)
+
+	line := 5
+	col := 12
+	tw.WriteFatalError(fatalError{
+		Code:        "invalid-projection",
+		Description: "Unexpected token",
+		File:        "/abs/path/projection.js",
+		Line:        &line,
+		Column:      &col,
+	})
+
+	if stdout.Len() != 0 {
+		t.Errorf("stdout should be empty, got %q", stdout.String())
+	}
+
+	out := stderr.String()
+	testutil.AssertContains(t, out, "invalid-projection")
+	testutil.AssertContains(t, out, "Unexpected token")
+	testutil.AssertContains(t, out, "/abs/path/projection.js:5:12")
 }

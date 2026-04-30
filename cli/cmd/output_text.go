@@ -18,6 +18,7 @@ type field struct{ label, value string }
 type textWriter struct {
 	prefixed
 	w      io.Writer
+	errW   io.Writer
 	line   prefixed
 	corner prefixed
 	styles textStyles
@@ -39,10 +40,11 @@ type prefixed struct {
 	pfx string
 }
 
-func newTextWriter(w io.Writer) *textWriter {
+func newTextWriter(w, errW io.Writer) *textWriter {
 	r := lipgloss.NewRenderer(w)
 	tw := &textWriter{
-		w: w,
+		w:    w,
+		errW: errW,
 		styles: textStyles{
 			label:     r.NewStyle().Foreground(lipgloss.Color("6")),
 			pipe:      r.NewStyle().Faint(true).Foreground(lipgloss.Color("6")),
@@ -216,6 +218,26 @@ func (tw *textWriter) WriteError(eventID string, code, description string) {
 	tw.corner.status(tw.styles.errStatus.Render(code))
 	tw.write("%s%s\n", tw.ind(), tw.styles.errDetail.Render(description))
 	tw.blank()
+}
+
+func (tw *textWriter) WriteFatalError(fe fatalError) {
+	// Fall back to stdout if no stderr was provided - fatal errors should
+	// never be silently dropped.
+	out := tw.errW
+	if out == nil {
+		out = tw.w
+	}
+	_, _ = fmt.Fprintf(out, "\n%s\n%s\n", tw.styles.errStatus.Render(fe.Code), fe.Description)
+	if fe.Line != nil {
+		col := 0
+		if fe.Column != nil {
+			col = *fe.Column
+		}
+		_, _ = fmt.Fprintf(out, "  at %s:%d:%d\n", fe.File, *fe.Line, col)
+	}
+	if fe.JsStack != "" {
+		_, _ = fmt.Fprintln(out, fe.JsStack)
+	}
 }
 
 func (tw *textWriter) statsLine(stats engine.EventStats) {

@@ -112,6 +112,30 @@ func (jw *jsonWriter) WriteError(eventID string, code, description string) {
 	})
 }
 
+func (jw *jsonWriter) WriteFatalError(fe fatalError) {
+	line := map[string]any{
+		"type":        "fatal_error",
+		"code":        fe.Code,
+		"description": fe.Description,
+	}
+	if fe.File != "" {
+		line["file"] = fe.File
+	}
+	if fe.Line != nil {
+		line["line"] = *fe.Line
+	}
+	if fe.Column != nil {
+		line["column"] = *fe.Column
+	}
+	if fe.JsStack != "" {
+		line["jsStack"] = fe.JsStack
+	}
+	if fe.EventID != "" {
+		line["eventId"] = fe.EventID
+	}
+	jw.writeLine(line)
+}
+
 func (jw *jsonWriter) WriteSummary(stats engine.EventStats, state engine.StateSummary) {
 	line := map[string]any{
 		"type":      "summary",

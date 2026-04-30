@@ -43,6 +43,10 @@ importers:
   bindings/js/native/linux-x64: {}
 
   editors/vscode:
+    dependencies:
+      strip-ansi:
+        specifier: ^7.2.0
+        version: 7.2.0
     devDependencies:
       '@eslint/js':
         specifier: ^9.0.0

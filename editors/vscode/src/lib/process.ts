@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import readline from "node:readline";
+import stripAnsi from "strip-ansi";
 import type { CliMessage, CliMessageType } from "../types.js";
 
 export interface ProcessOptions {
@@ -9,10 +10,6 @@ export interface ProcessOptions {
 
 type LineHandler = (msg: CliMessage) => void;
 type ExitHandler = (code: number | null) => void;
-
-// eslint-disable-next-line no-control-regex
-const ansiRegex = /\x1b\[[0-9;]*m/g;
-const stripAnsi = (s: string) => s.replace(ansiRegex, "");
 
 export class GafferProcess {
 	private readonly _argv: string[];

@@ -9,8 +9,8 @@ import {
 } from "../types.js";
 
 export interface ProcessOptions {
-	log?: ((msg: string) => void) | undefined;
-	cwd?: string | undefined;
+	log?: (msg: string) => void;
+	cwd?: string;
 }
 
 type LineHandler = (msg: CliMessage) => void;

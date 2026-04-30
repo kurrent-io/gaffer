@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
-import { GafferProcess } from "./process.js";
+import { GafferProcess, type ProcessOptions } from "./process.js";
 import type { CliMessage } from "../types.js";
 
 export interface SessionOptions {
-	log?: ((msg: string) => void) | undefined;
-	cwd?: string | undefined;
+	log?: (msg: string) => void;
+	cwd?: string;
 }
 
 type CliMessageType = CliMessage["type"];
@@ -51,10 +51,9 @@ export class GafferSession {
 	}
 
 	start(): this {
-		const proc = new GafferProcess(this.#argv, {
-			log: this.#log,
-			cwd: this.#cwd,
-		});
+		const opts: ProcessOptions = { log: this.#log };
+		if (this.#cwd !== undefined) opts.cwd = this.#cwd;
+		const proc = new GafferProcess(this.#argv, opts);
 		this.#proc = proc;
 
 		proc.onLine((msg) => this.#dispatch(msg));

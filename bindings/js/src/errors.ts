@@ -18,7 +18,7 @@ export class ProjectionError extends Error {
 }
 
 export class InvalidProjectionError extends ProjectionError {
-	readonly location?: { line: number; column: number } | undefined;
+	readonly location?: { line: number; column: number };
 	readonly source: string;
 
 	constructor(
@@ -30,7 +30,7 @@ export class InvalidProjectionError extends ProjectionError {
 	) {
 		super("invalid-projection", description, cause, message);
 		this.source = source;
-		this.location = location;
+		if (location !== undefined) this.location = location;
 	}
 }
 
@@ -64,12 +64,12 @@ export interface EventContext {
 	eventType: string;
 	streamId: string;
 	sequenceNumber: number;
-	partition?: string | undefined;
+	partition?: string;
 }
 
 export class ProjectionHandlerError extends ProjectionError {
-	readonly jsStack?: string | undefined;
-	readonly location?: { line: number; column: number } | undefined;
+	readonly jsStack?: string;
+	readonly location?: { line: number; column: number };
 	readonly event: EventContext;
 	readonly source: string;
 
@@ -85,8 +85,8 @@ export class ProjectionHandlerError extends ProjectionError {
 		super("handler-error", description, cause, message);
 		this.event = event;
 		this.source = source;
-		this.jsStack = jsStack;
-		this.location = location;
+		if (jsStack !== undefined) this.jsStack = jsStack;
+		if (location !== undefined) this.location = location;
 	}
 }
 
@@ -139,8 +139,8 @@ export class StateSerializationError extends ProjectionError {
 }
 
 export class ProjectionTransformError extends ProjectionError {
-	readonly jsStack?: string | undefined;
-	readonly location?: { line: number; column: number } | undefined;
+	readonly jsStack?: string;
+	readonly location?: { line: number; column: number };
 	readonly source: string;
 
 	constructor(
@@ -153,8 +153,8 @@ export class ProjectionTransformError extends ProjectionError {
 	) {
 		super("projection-transform-error", description, cause, message);
 		this.source = source;
-		this.jsStack = jsStack;
-		this.location = location;
+		if (jsStack !== undefined) this.jsStack = jsStack;
+		if (location !== undefined) this.location = location;
 	}
 }
 
@@ -182,12 +182,13 @@ function required<T>(value: T | undefined, code: string, field: string): T {
 }
 
 function eventContextOf(err: ErrorJson): EventContext {
-	return {
+	const ctx: EventContext = {
 		eventType: required(err.eventType, err.code, "eventType"),
 		streamId: required(err.streamId, err.code, "streamId"),
 		sequenceNumber: required(err.sequenceNumber, err.code, "sequenceNumber"),
-		partition: err.partition,
 	};
+	if (err.partition !== undefined) ctx.partition = err.partition;
+	return ctx;
 }
 
 function locationOf(

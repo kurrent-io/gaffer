@@ -49,7 +49,9 @@ export class GafferCli {
 	async fetchManifest(cwd: string | undefined): Promise<Manifest> {
 		const argv = this.buildArgv(["manifest"]);
 		try {
-			const output = await execFileAsync(argv, { cwd });
+			const opts: { cwd?: string } = {};
+			if (cwd !== undefined) opts.cwd = cwd;
+			const output = await execFileAsync(argv, opts);
 			const raw: unknown = JSON.parse(output);
 			const parsed = v.safeParse(ManifestSchema, raw);
 			if (!parsed.success) {
@@ -71,7 +73,7 @@ export class GafferCli {
 
 function execFileAsync(
 	argv: string[],
-	options: { cwd?: string | undefined } = {},
+	options: { cwd?: string } = {},
 ): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const [head, ...rest] = argv;
@@ -79,18 +81,18 @@ function execFileAsync(
 			reject(new Error("argv must not be empty"));
 			return;
 		}
-		execFile(
-			head,
-			rest,
-			{ cwd: options.cwd, timeout: 10_000, shell: false },
-			(err, stdout, stderr) => {
-				if (err) {
-					const stderrSuffix = stderr ? ` (stderr: ${stderr.trim()})` : "";
-					reject(new Error(`${err.message}${stderrSuffix}`));
-				} else {
-					resolve(stdout);
-				}
-			},
-		);
+		const execOpts: { cwd?: string; timeout: number; shell: false } = {
+			timeout: 10_000,
+			shell: false,
+		};
+		if (options.cwd !== undefined) execOpts.cwd = options.cwd;
+		execFile(head, rest, execOpts, (err, stdout, stderr) => {
+			if (err) {
+				const stderrSuffix = stderr ? ` (stderr: ${stderr.trim()})` : "";
+				reject(new Error(`${err.message}${stderrSuffix}`));
+			} else {
+				resolve(stdout);
+			}
+		});
 	});
 }

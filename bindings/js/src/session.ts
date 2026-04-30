@@ -196,8 +196,7 @@ function parseFeedResult(json: string): FeedResult {
 	if (raw.state != null) result.state = raw.state;
 	if (raw.result != null) result.result = raw.result;
 	if (raw.sharedState != null) result.sharedState = raw.sharedState;
-	if (raw.emitted != null)
-		result.emitted = raw.emitted as FeedResult["emitted"];
+	if (raw.emitted != null) result.emitted = raw.emitted as EmittedEvent[];
 	if (raw.logs != null) result.logs = raw.logs as string[];
 
 	return result;

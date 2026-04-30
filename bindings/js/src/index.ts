@@ -15,6 +15,6 @@ export type {
 	ProjectionEvent,
 	EmittedEvent,
 	FeedResult,
-	QuerySources,
+	ProjectionInfo,
 	SessionOptions,
 } from "./types.js";

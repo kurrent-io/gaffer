@@ -173,8 +173,8 @@ func TestCollectState_BiState(t *testing.T) {
 	})`)
 	info := session.GetSources()
 
-	if !info.IsBiState {
-		t.Skip("runtime did not report IsBiState")
+	if !info.BiState {
+		t.Skip("runtime did not report BiState")
 	}
 
 	if _, err := session.Feed(testutil.Event("ItemAdded", "s-1", 0)); err != nil {
@@ -325,13 +325,13 @@ func TestToMap_Empty(t *testing.T) {
 func TestDescribeSource(t *testing.T) {
 	tests := []struct {
 		name string
-		info gafferruntime.QuerySources
+		info gafferruntime.ProjectionInfo
 		want string
 	}{
-		{"all", gafferruntime.QuerySources{AllStreams: true}, "all"},
-		{"categories", gafferruntime.QuerySources{Categories: []string{"order"}}, "categories"},
-		{"streams", gafferruntime.QuerySources{Streams: []string{"order-1"}}, "streams"},
-		{"unknown", gafferruntime.QuerySources{}, "unknown"},
+		{"all", gafferruntime.ProjectionInfo{AllStreams: true}, "all"},
+		{"categories", gafferruntime.ProjectionInfo{Categories: []string{"order"}}, "categories"},
+		{"streams", gafferruntime.ProjectionInfo{Streams: []string{"order-1"}}, "streams"},
+		{"unknown", gafferruntime.ProjectionInfo{}, "unknown"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -346,12 +346,12 @@ func TestDescribeSource(t *testing.T) {
 func TestDescribePartitioning(t *testing.T) {
 	tests := []struct {
 		name string
-		info gafferruntime.QuerySources
+		info gafferruntime.ProjectionInfo
 		want string
 	}{
-		{"byStream", gafferruntime.QuerySources{ByStreams: true}, "byStream"},
-		{"byCustomKey", gafferruntime.QuerySources{ByCustomPartitions: true}, "byCustomKey"},
-		{"none", gafferruntime.QuerySources{}, "none"},
+		{"byStream", gafferruntime.ProjectionInfo{ByStreams: true}, "byStream"},
+		{"byCustomKey", gafferruntime.ProjectionInfo{ByCustomPartitions: true}, "byCustomKey"},
+		{"none", gafferruntime.ProjectionInfo{}, "none"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

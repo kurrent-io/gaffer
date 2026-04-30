@@ -17,7 +17,7 @@ Each fixture file is a JSON array of test cases:
   ],
   "expect": {
     "valid": true,
-    "sources": { "AllStreams": true, "Streams": null, ... },
+    "sources": { "allStreams": true, "streams": null, ... },
     "state": { "count": 1 },
     "states": { "partition-1": { "items": 2 } },
     "sharedState": { "total": 30 },
@@ -32,7 +32,7 @@ Each fixture file is a JSON array of test cases:
 All fields in `expect` are optional. Only specified fields are checked.
 
 - `valid: false` - expect compilation to fail (no events fed)
-- `sources` - raw QuerySources shape from the runtime
+- `sources` - raw `ProjectionInfo` shape from the runtime SDK (camelCase keys)
 - `state` - state after feeding all events (default partition)
 - `states` - per-partition state (key is partition name)
 - `sharedState` - biState shared state after all events

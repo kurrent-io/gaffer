@@ -5,7 +5,7 @@ import type {
 	EmittedEvent,
 	FeedResult,
 	ProjectionEvent,
-	QuerySources,
+	ProjectionInfo,
 	SessionOptions,
 } from "./types.js";
 
@@ -130,11 +130,11 @@ export class ProjectionSession {
 	}
 
 	/** Get the source definition (what the projection reads). */
-	getSources(): QuerySources {
+	getSources(): ProjectionInfo {
 		this.ensureNotDisposed();
 		const json = getNativeBindings().sessionGetSources(this.handle);
 		if (!json) throw new Error("Failed to get sources");
-		return JSON.parse(json) as QuerySources;
+		return JSON.parse(json) as ProjectionInfo;
 	}
 
 	/** Get the partition key for an event. */

@@ -52,7 +52,7 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 		"source":          engine.DescribeSource(info),
 		"events":          info.Events,
 		"partitioning":    engine.DescribePartitioning(info),
-		"biState":         info.IsBiState,
+		"biState":         info.BiState,
 		"producesResults": info.ProducesResults,
 	}), nil, nil
 }

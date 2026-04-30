@@ -137,14 +137,14 @@ func (s *Session) GetResult(partition *string) (*string, error) {
 }
 
 // GetSources returns the projection's source configuration and features.
-func (s *Session) GetSources() QuerySources {
+func (s *Session) GetSources() ProjectionInfo {
 	s.ensureAlive()
 	result := C.gaffer_session_get_sources(s.handle)
 	if result == nil {
-		return QuerySources{}
+		return ProjectionInfo{}
 	}
 	str := C.GoString(result)
-	var info QuerySources
+	var info ProjectionInfo
 	_ = json.Unmarshal([]byte(str), &info)
 	return info
 }

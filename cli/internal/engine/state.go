@@ -21,13 +21,13 @@ type PartitionState struct {
 	Result json.RawMessage
 }
 
-func CollectState(session *gafferruntime.Session, info gafferruntime.QuerySources, partitions map[string]bool) StateSummary {
+func CollectState(session *gafferruntime.Session, info gafferruntime.ProjectionInfo, partitions map[string]bool) StateSummary {
 	isPartitioned := info.ByStreams || info.ByCustomPartitions
 
 	summary := StateSummary{
 		Partitioned:   isPartitioned,
 		HasTransforms: info.DefinesStateTransform,
-		HasBiState:    info.IsBiState,
+		HasBiState:    info.BiState,
 	}
 
 	if isPartitioned {
@@ -55,7 +55,7 @@ func CollectState(session *gafferruntime.Session, info gafferruntime.QuerySource
 		}
 	}
 
-	if info.IsBiState {
+	if info.BiState {
 		if shared := session.GetSharedState(); shared != nil {
 			summary.SharedState = json.RawMessage(*shared)
 		}
@@ -66,7 +66,7 @@ func CollectState(session *gafferruntime.Session, info gafferruntime.QuerySource
 
 // DescribeSource classifies the projection's source into a map with
 // the type and, for categories/streams, the actual values.
-func DescribeSource(info gafferruntime.QuerySources) map[string]any {
+func DescribeSource(info gafferruntime.ProjectionInfo) map[string]any {
 	if info.AllStreams {
 		return map[string]any{"type": "all"}
 	}
@@ -80,7 +80,7 @@ func DescribeSource(info gafferruntime.QuerySources) map[string]any {
 }
 
 // DescribePartitioning returns the projection's partitioning strategy.
-func DescribePartitioning(info gafferruntime.QuerySources) string {
+func DescribePartitioning(info gafferruntime.ProjectionInfo) string {
 	if info.ByStreams {
 		return "byStream"
 	}

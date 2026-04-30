@@ -58,7 +58,7 @@ func TestTextWriter_WriteInfo(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf)
 
-	info := gafferruntime.QuerySources{
+	info := gafferruntime.ProjectionInfo{
 		AllStreams: true,
 		ByStreams:  true,
 		Events:     []string{"OrderPlaced", "OrderShipped"},
@@ -77,9 +77,9 @@ func TestTextWriter_WriteInfo_BiStateAndProducesResults(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf)
 
-	info := gafferruntime.QuerySources{
+	info := gafferruntime.ProjectionInfo{
 		AllStreams:      true,
-		IsBiState:       true,
+		BiState:         true,
 		ProducesResults: true,
 	}
 	tw.WriteInfo("bi-state-proj", info, 2)
@@ -93,7 +93,7 @@ func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf)
 
-	info := gafferruntime.QuerySources{
+	info := gafferruntime.ProjectionInfo{
 		AllStreams: true,
 	}
 	tw.WriteInfo("simple-proj", info, 2)
@@ -294,7 +294,7 @@ func TestJSONWriter_WriteInfo(t *testing.T) {
 	var buf bytes.Buffer
 	jw := newJSONWriter(&buf)
 
-	info := gafferruntime.QuerySources{
+	info := gafferruntime.ProjectionInfo{
 		Categories: []string{"order"},
 		ByStreams:  true,
 		Events:     []string{"OrderPlaced"},

@@ -81,7 +81,7 @@ type eventTypeSummary struct {
 	Example   any    `json:"example"`
 }
 
-func (s *Server) sampleProjectionEvents(ctx context.Context, client *kurrentdb.Client, info gafferruntime.QuerySources, engineVersion int, limit int) ([]eventTypeSummary, error) {
+func (s *Server) sampleProjectionEvents(ctx context.Context, client *kurrentdb.Client, info gafferruntime.ProjectionInfo, engineVersion int, limit int) ([]eventTypeSummary, error) {
 	sub, err := subscription.Subscribe(ctx, client, info, engineVersion)
 	if err != nil {
 		return nil, fmt.Errorf("subscribing: %w", err)

@@ -25,7 +25,7 @@ type EventWriter interface {
 type RunnerConfig struct {
 	Feed          FeedFn
 	Session       *gafferruntime.Session
-	Info          gafferruntime.QuerySources
+	Info          gafferruntime.ProjectionInfo
 	EngineVersion int
 	Writer        EventWriter
 	History       *history.Store
@@ -36,7 +36,7 @@ type Runner struct {
 	mu            sync.Mutex
 	feed          FeedFn
 	session       *gafferruntime.Session
-	info          gafferruntime.QuerySources
+	info          gafferruntime.ProjectionInfo
 	engineVersion int
 	writer        EventWriter
 	history       *history.Store
@@ -224,7 +224,7 @@ func (r *Runner) SetBreakAtPosition(pos int64) {
 	r.breakAtPosition = pos
 }
 
-func (r *Runner) Info() gafferruntime.QuerySources {
+func (r *Runner) Info() gafferruntime.ProjectionInfo {
 	return r.info
 }
 

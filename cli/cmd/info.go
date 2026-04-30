@@ -45,14 +45,14 @@ func runInfo(cmd *cobra.Command, name string, asJSON bool) error {
 	return nil
 }
 
-func writeInfoJSON(proj *engine.Projection, info gafferruntime.QuerySources) error {
+func writeInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) error {
 	src := engine.DescribeSource(info)
 	out := map[string]any{
 		"name":            proj.Def.Name,
 		"entry":           proj.Def.Entry,
 		"engineVersion":   proj.EngineVersion,
 		"source":          src["type"],
-		"biState":         info.IsBiState,
+		"biState":         info.BiState,
 		"producesResults": info.ProducesResults,
 	}
 	if cats, ok := src["categories"]; ok {

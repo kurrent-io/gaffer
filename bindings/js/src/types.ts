@@ -22,24 +22,24 @@ export interface EmittedEvent {
 }
 
 /** Projection source definition - what the projection reads. */
-export interface QuerySources {
-	AllStreams: boolean;
-	AllEvents: boolean;
-	Categories: string[] | null;
-	Streams: string[] | null;
-	Events: string[] | null;
-	ByStreams: boolean;
-	ByCustomPartitions: boolean;
-	IsBiState: boolean;
-	DefinesFold: boolean;
-	DefinesStateTransform: boolean;
-	ProducesResults: boolean;
-	HandlesDeletedNotifications: boolean;
-	IncludeLinks: boolean;
-	ResultStreamName: string | null;
-	PartitionResultStreamNamePattern: string | null;
-	ReorderEvents: boolean;
-	ProcessingLag: number | null;
+export interface ProjectionInfo {
+	allStreams: boolean;
+	allEvents: boolean;
+	categories: string[] | null;
+	streams: string[] | null;
+	events: string[] | null;
+	byStreams: boolean;
+	byCustomPartitions: boolean;
+	biState: boolean;
+	definesHandlers: boolean;
+	definesStateTransform: boolean;
+	producesResults: boolean;
+	handlesDeletedNotifications: boolean;
+	includeLinks: boolean;
+	resultStreamName: string | null;
+	partitionResultStreamNamePattern: string | null;
+	reorderEvents: boolean;
+	processingLag: number | null;
 }
 
 /** Result of feeding a single event to a projection session. */

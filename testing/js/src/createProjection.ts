@@ -4,7 +4,7 @@ import {
 	buildSubscriptionFilter,
 	getResolveLinks,
 } from "./subscriptionFilter.js";
-import { mapQuerySources, type ProjectionInfo } from "./ProjectionInfo.js";
+import { mapProjectionInfo, type ProjectionInfo } from "./ProjectionInfo.js";
 import {
 	ProjectionTest,
 	toSessionOptions,
@@ -75,7 +75,7 @@ export function createProjection<
 			let session: ProjectionSession | null = null;
 			try {
 				session = new ProjectionSession(source, toSessionOptions(options));
-				return mapQuerySources(session.getSources());
+				return mapProjectionInfo(session.getSources());
 			} finally {
 				session?.dispose();
 			}

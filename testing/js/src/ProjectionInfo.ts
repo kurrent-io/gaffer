@@ -1,6 +1,6 @@
-import type { QuerySources } from "@kurrent/gaffer-runtime";
+import type { ProjectionInfo as RawProjectionInfo } from "@kurrent/gaffer-runtime";
 
-/** Cleaned-up projection source definition, mapped from the runtime's raw QuerySources. */
+/** Cleaned-up projection source definition, mapped from the runtime's raw ProjectionInfo. */
 export interface ProjectionInfo {
 	/** What the projection reads from: all streams, specific streams, or categories. */
 	source:
@@ -36,23 +36,23 @@ export interface ProjectionInfo {
 	};
 }
 
-/** Map the runtime's raw QuerySources to a cleaner ProjectionInfo shape. */
-export function mapQuerySources(raw: QuerySources): ProjectionInfo {
+/** Map the runtime's raw ProjectionInfo to a cleaner shape with discriminated unions. */
+export function mapProjectionInfo(raw: RawProjectionInfo): ProjectionInfo {
 	let source: ProjectionInfo["source"];
-	if (raw.AllStreams) {
+	if (raw.allStreams) {
 		source = { type: "all" };
-	} else if (raw.Categories && raw.Categories.length > 0) {
-		source = { type: "categories", categories: raw.Categories };
-	} else if (raw.Streams && raw.Streams.length > 0) {
-		source = { type: "streams", streams: raw.Streams };
+	} else if (raw.categories && raw.categories.length > 0) {
+		source = { type: "categories", categories: raw.categories };
+	} else if (raw.streams && raw.streams.length > 0) {
+		source = { type: "streams", streams: raw.streams };
 	} else {
 		source = { type: "all" };
 	}
 
 	let partitioning: ProjectionInfo["partitioning"];
-	if (raw.ByStreams) {
+	if (raw.byStreams) {
 		partitioning = { type: "byStream" };
-	} else if (raw.ByCustomPartitions) {
+	} else if (raw.byCustomPartitions) {
 		partitioning = { type: "byCustomKey" };
 	} else {
 		partitioning = { type: "none" };
@@ -61,15 +61,15 @@ export function mapQuerySources(raw: QuerySources): ProjectionInfo {
 	return {
 		source,
 		partitioning,
-		events: raw.AllEvents ? "all" : (raw.Events ?? []),
-		biState: raw.IsBiState,
+		events: raw.allEvents ? "all" : (raw.events ?? []),
+		biState: raw.biState,
 		settings: {
-			includeLinks: raw.IncludeLinks,
-			reorderEvents: raw.ReorderEvents,
-			processingLag: raw.ProcessingLag,
-			resultStreamName: raw.ResultStreamName,
-			partitionResultStreamNamePattern: raw.PartitionResultStreamNamePattern,
-			handlesDeletedNotifications: raw.HandlesDeletedNotifications,
+			includeLinks: raw.includeLinks,
+			reorderEvents: raw.reorderEvents,
+			processingLag: raw.processingLag,
+			resultStreamName: raw.resultStreamName,
+			partitionResultStreamNamePattern: raw.partitionResultStreamNamePattern,
+			handlesDeletedNotifications: raw.handlesDeletedNotifications,
 		},
 	};
 }

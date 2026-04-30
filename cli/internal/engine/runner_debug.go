@@ -8,7 +8,7 @@ import (
 
 type DebugConfig struct {
 	Session *gafferruntime.Session
-	Info    gafferruntime.QuerySources
+	Info    gafferruntime.ProjectionInfo
 	OnBreak func(gafferruntime.BreakInfo) // must not call Runner methods
 }
 

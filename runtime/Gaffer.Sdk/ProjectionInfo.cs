@@ -1,6 +1,9 @@
-namespace Gaffer.Runtime.Projection;
+namespace Gaffer.Sdk;
 
-public sealed class QuerySources {
+/// <summary>
+/// Describes a projection's source configuration and features.
+/// </summary>
+public sealed class ProjectionInfo {
 	public bool AllStreams { get; init; }
 	public bool AllEvents { get; init; }
 	public string[]? Categories { get; init; }
@@ -8,8 +11,8 @@ public sealed class QuerySources {
 	public string[]? Events { get; init; }
 	public bool ByStreams { get; init; }
 	public bool ByCustomPartitions { get; init; }
-	public bool IsBiState { get; init; }
-	public bool DefinesFold { get; init; }
+	public bool BiState { get; init; }
+	public bool DefinesHandlers { get; init; }
 	public bool DefinesStateTransform { get; init; }
 	public bool ProducesResults { get; init; }
 	public bool HandlesDeletedNotifications { get; init; }

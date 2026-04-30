@@ -68,11 +68,11 @@ func ReadSource(root, entry string) (string, error) {
 	return string(data), nil
 }
 
-func CreateSession(proj *Projection, debug bool) (*gafferruntime.Session, gafferruntime.QuerySources, error) {
+func CreateSession(proj *Projection, debug bool) (*gafferruntime.Session, gafferruntime.ProjectionInfo, error) {
 	opts := buildSessionOptions(proj.Config, proj.Def, debug)
 	session, err := gafferruntime.NewSession(proj.Source, opts)
 	if err != nil {
-		return nil, gafferruntime.QuerySources{}, err
+		return nil, gafferruntime.ProjectionInfo{}, err
 	}
 	info := session.GetSources()
 	return session, info, nil

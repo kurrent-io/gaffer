@@ -5,15 +5,15 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"AllStreams": true,
-				"AllEvents": false,
-				"Streams": null,
-				"Categories": null,
-				"Events": [
+				"allStreams": true,
+				"allEvents": false,
+				"streams": null,
+				"categories": null,
+				"events": [
 					"Ping"
 				],
-				"ByStreams": false,
-				"ByCustomPartitions": false
+				"byStreams": false,
+				"byCustomPartitions": false
 			}
 		},
 		"options": {
@@ -26,8 +26,8 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"AllStreams": false,
-				"Streams": [
+				"allStreams": false,
+				"streams": [
 					"orders"
 				]
 			}
@@ -42,8 +42,8 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"AllStreams": false,
-				"Streams": [
+				"allStreams": false,
+				"streams": [
 					"a",
 					"b"
 				]
@@ -59,8 +59,8 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"AllStreams": false,
-				"Streams": [
+				"allStreams": false,
+				"streams": [
 					"a",
 					"b"
 				]
@@ -76,8 +76,8 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"AllStreams": false,
-				"Categories": [
+				"allStreams": false,
+				"categories": [
 					"orders"
 				]
 			}
@@ -92,7 +92,7 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"Streams": [
+				"streams": [
 					"$ce-orders",
 					"$ce-invoices"
 				]
@@ -108,7 +108,7 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"Streams": [
+				"streams": [
 					"$ce-orders",
 					"$ce-invoices"
 				]
@@ -124,8 +124,8 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"AllStreams": true,
-				"ByStreams": true
+				"allStreams": true,
+				"byStreams": true
 			}
 		},
 		"options": {
@@ -138,8 +138,8 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"ByStreams": true,
-				"Categories": [
+				"byStreams": true,
+				"categories": [
 					"cart"
 				]
 			}
@@ -154,7 +154,7 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"ByCustomPartitions": true
+				"byCustomPartitions": true
 			}
 		},
 		"options": {
@@ -167,7 +167,7 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"Events": [
+				"events": [
 					"OrderPlaced",
 					"OrderShipped",
 					"OrderCancelled"
@@ -184,8 +184,8 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"AllEvents": true,
-				"Events": null
+				"allEvents": true,
+				"events": null
 			}
 		},
 		"options": {
@@ -198,7 +198,7 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"IncludeLinks": true
+				"includeLinks": true
 			}
 		},
 		"options": {
@@ -211,8 +211,8 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"ReorderEvents": true,
-				"ProcessingLag": 500
+				"reorderEvents": true,
+				"processingLag": 500
 			}
 		},
 		"options": {
@@ -225,7 +225,7 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"IsBiState": true
+				"biState": true
 			}
 		},
 		"options": {
@@ -250,8 +250,8 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"AllStreams": true,
-				"DefinesFold": false
+				"allStreams": true,
+				"definesHandlers": false
 			}
 		},
 		"options": {

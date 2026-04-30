@@ -163,8 +163,8 @@ describe("ProjectionSession", () => {
 		);
 
 		const sources = session.getSources();
-		expect(sources.AllStreams).toBe(true);
-		expect(sources.ByStreams).toBe(true);
+		expect(sources.allStreams).toBe(true);
+		expect(sources.byStreams).toBe(true);
 	});
 
 	it("sets and restores state", () => {

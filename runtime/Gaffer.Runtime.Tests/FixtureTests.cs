@@ -200,13 +200,13 @@ public class FixtureTests {
 	private static void AssertSources(QuerySources sources, JsonElement expected) {
 		foreach (var prop in expected.EnumerateObject()) {
 			switch (prop.Name) {
-				case "AllStreams":
+				case "allStreams":
 					Assert.Equal(prop.Value.GetBoolean(), sources.AllStreams);
 					break;
-				case "AllEvents":
+				case "allEvents":
 					Assert.Equal(prop.Value.GetBoolean(), sources.AllEvents);
 					break;
-				case "Streams":
+				case "streams":
 					if (prop.Value.ValueKind == JsonValueKind.Null)
 						Assert.Null(sources.Streams);
 					else
@@ -214,7 +214,7 @@ public class FixtureTests {
 							prop.Value.EnumerateArray().Select(s => s.GetString()!).ToArray(),
 							sources.Streams);
 					break;
-				case "Categories":
+				case "categories":
 					if (prop.Value.ValueKind == JsonValueKind.Null)
 						Assert.Null(sources.Categories);
 					else
@@ -222,7 +222,7 @@ public class FixtureTests {
 							prop.Value.EnumerateArray().Select(s => s.GetString()!).ToArray(),
 							sources.Categories);
 					break;
-				case "Events":
+				case "events":
 					if (prop.Value.ValueKind == JsonValueKind.Null)
 						Assert.Null(sources.Events);
 					else
@@ -230,39 +230,41 @@ public class FixtureTests {
 							prop.Value.EnumerateArray().Select(s => s.GetString()!).ToArray(),
 							sources.Events);
 					break;
-				case "ByStreams":
+				case "byStreams":
 					Assert.Equal(prop.Value.GetBoolean(), sources.ByStreams);
 					break;
-				case "ByCustomPartitions":
+				case "byCustomPartitions":
 					Assert.Equal(prop.Value.GetBoolean(), sources.ByCustomPartitions);
 					break;
-				case "IsBiState":
+				case "biState":
 					Assert.Equal(prop.Value.GetBoolean(), sources.IsBiState);
 					break;
-				case "DefinesFold":
+				case "definesHandlers":
 					Assert.Equal(prop.Value.GetBoolean(), sources.DefinesFold);
 					break;
-				case "DefinesStateTransform":
+				case "definesStateTransform":
 					Assert.Equal(prop.Value.GetBoolean(), sources.DefinesStateTransform);
 					break;
-				case "ProducesResults":
+				case "producesResults":
 					Assert.Equal(prop.Value.GetBoolean(), sources.ProducesResults);
 					break;
-				case "HandlesDeletedNotifications":
+				case "handlesDeletedNotifications":
 					Assert.Equal(prop.Value.GetBoolean(), sources.HandlesDeletedNotifications);
 					break;
-				case "IncludeLinks":
+				case "includeLinks":
 					Assert.Equal(prop.Value.GetBoolean(), sources.IncludeLinks);
 					break;
-				case "ReorderEvents":
+				case "reorderEvents":
 					Assert.Equal(prop.Value.GetBoolean(), sources.ReorderEvents);
 					break;
-				case "ProcessingLag":
+				case "processingLag":
 					if (prop.Value.ValueKind == JsonValueKind.Null)
 						Assert.Null(sources.ProcessingLag);
 					else
 						Assert.Equal(prop.Value.GetInt32(), sources.ProcessingLag);
 					break;
+				default:
+					throw new ArgumentException($"Unknown sources key in fixture: {prop.Name}");
 			}
 		}
 	}

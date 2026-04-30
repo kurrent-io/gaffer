@@ -8,14 +8,14 @@ import (
 )
 
 func TestBuildFilter_FromAll_NoEvents(t *testing.T) {
-	filter := buildFilter(gafferruntime.QuerySources{AllStreams: true}, 2)
+	filter := buildFilter(gafferruntime.ProjectionInfo{AllStreams: true}, 2)
 	if filter != nil {
 		t.Error("expected nil filter for fromAll with no event filter")
 	}
 }
 
 func TestBuildFilter_FromAll_WithEvents(t *testing.T) {
-	filter := buildFilter(gafferruntime.QuerySources{
+	filter := buildFilter(gafferruntime.ProjectionInfo{
 		AllStreams: true,
 		Events:     []string{"OrderPlaced", "OrderShipped"},
 	}, 2)
@@ -32,7 +32,7 @@ func TestBuildFilter_FromAll_WithEvents(t *testing.T) {
 }
 
 func TestBuildFilter_FromAll_WithEvents_DeleteHandler(t *testing.T) {
-	filter := buildFilter(gafferruntime.QuerySources{
+	filter := buildFilter(gafferruntime.ProjectionInfo{
 		AllStreams:                  true,
 		Events:                      []string{"OrderPlaced"},
 		HandlesDeletedNotifications: true,
@@ -47,7 +47,7 @@ func TestBuildFilter_FromAll_WithEvents_DeleteHandler(t *testing.T) {
 }
 
 func TestBuildFilter_FromCategory(t *testing.T) {
-	filter := buildFilter(gafferruntime.QuerySources{
+	filter := buildFilter(gafferruntime.ProjectionInfo{
 		Categories: []string{"order"},
 	}, 2)
 
@@ -63,7 +63,7 @@ func TestBuildFilter_FromCategory(t *testing.T) {
 }
 
 func TestBuildFilter_FromStreams(t *testing.T) {
-	filter := buildFilter(gafferruntime.QuerySources{
+	filter := buildFilter(gafferruntime.ProjectionInfo{
 		Streams: []string{"order-1", "cart-1"},
 	}, 2)
 
@@ -79,7 +79,7 @@ func TestBuildFilter_FromStreams(t *testing.T) {
 }
 
 func TestBuildFilter_FromCategoryMultiArg(t *testing.T) {
-	filter := buildFilter(gafferruntime.QuerySources{
+	filter := buildFilter(gafferruntime.ProjectionInfo{
 		Streams: []string{"$ce-order", "$ce-cart"},
 	}, 2)
 

@@ -11,7 +11,7 @@ import (
 type LiveSourceConfig struct {
 	ConnStr       string
 	Root          string
-	Info          gafferruntime.QuerySources
+	Info          gafferruntime.ProjectionInfo
 	EngineVersion int
 	OnCaughtUp    func() // called when subscription reaches head of stream, nil = ignore, must not block
 }

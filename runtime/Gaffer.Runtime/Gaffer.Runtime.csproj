@@ -17,4 +17,8 @@
     <PackageReference Include="Jint" Version="4.6.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Gaffer.Sdk\Gaffer.Sdk.csproj" />
+  </ItemGroup>
+
 </Project>

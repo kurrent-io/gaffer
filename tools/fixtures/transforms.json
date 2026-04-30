@@ -75,8 +75,8 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"ProducesResults": true,
-				"DefinesStateTransform": false
+				"producesResults": true,
+				"definesStateTransform": false
 			}
 		},
 		"options": {
@@ -89,8 +89,8 @@
 		"expect": {
 			"valid": true,
 			"sources": {
-				"DefinesStateTransform": true,
-				"ProducesResults": true
+				"definesStateTransform": true,
+				"producesResults": true
 			}
 		},
 		"options": {

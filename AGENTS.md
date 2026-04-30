@@ -48,7 +48,7 @@ The runtime is a puppetable projection engine. Callers feed JS source and events
 register callbacks, and query state. It does not do I/O or connect to KurrentDB -
 that is the caller's responsibility.
 
-Key types: `ProjectionSession`, `ProjectionEvent`, `EmittedEvent`, `QuerySources`.
+Key types: `ProjectionSession`, `ProjectionEvent`, `EmittedEvent`, `ProjectionInfo` (in `Gaffer.Sdk`).
 
 Errors: `ProjectionException` base with 8 typed exceptions (InvalidProjection,
 CompilationTimeout, InvalidArgument, ProjectionHandler, ExecutionTimeout,

@@ -145,7 +145,7 @@ func (tw *textWriter) writeEmittedCb(streamID, eventType, data, metadata string,
 	}
 }
 
-func (tw *textWriter) WriteInfo(name string, info gafferruntime.QuerySources, engineVersion int) {
+func (tw *textWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, engineVersion int) {
 	tw.heading(name)
 
 	if info.AllStreams {
@@ -166,7 +166,7 @@ func (tw *textWriter) WriteInfo(name string, info gafferruntime.QuerySources, en
 		tw.detail("Events", strings.Join(info.Events, ", "))
 	}
 
-	if info.IsBiState {
+	if info.BiState {
 		tw.detail("BiState", "yes")
 	}
 	if info.ProducesResults {

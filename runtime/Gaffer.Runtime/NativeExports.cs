@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Events;
+using Gaffer.Runtime.Projection;
+using Gaffer.Sdk;
 
 namespace Gaffer.Runtime;
 
@@ -459,8 +461,8 @@ internal static unsafe class NativeExports {
 			return null;
 		}
 		try {
-			var sources = handle.Session.Sources;
-			var json = JsonSerializer.Serialize(sources, GafferJsonContext.Default.QuerySources);
+			var info = ProjectionInfoMapper.ToProjectionInfo(handle.Session.Sources);
+			var json = JsonSerializer.Serialize(info, SdkJsonContext.Default.ProjectionInfo);
 			ClearLastError();
 			return ToUnmanaged(handle, json);
 		} catch (Exception ex) {

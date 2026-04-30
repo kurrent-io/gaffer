@@ -8,12 +8,6 @@ import (
 	"github.com/spf13/pflag"
 )
 
-var manifestCmd = &cobra.Command{
-	Use:   "manifest",
-	Short: "Print CLI capabilities as JSON",
-	RunE:  runManifest,
-}
-
 type manifest struct {
 	Version  string                     `json:"version"`
 	Commands map[string]manifestCommand `json:"commands"`
@@ -23,23 +17,29 @@ type manifestCommand struct {
 	Flags []string `json:"flags"`
 }
 
-func runManifest(cmd *cobra.Command, args []string) error {
-	m := manifest{
-		Version:  version,
-		Commands: buildCommandManifest(),
-	}
+func newManifestCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "manifest",
+		Short: "Print CLI capabilities as JSON",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			m := manifest{
+				Version:  version,
+				Commands: buildCommandManifest(cmd.Root()),
+			}
 
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(m)
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(m)
+		},
+	}
 }
 
-func buildCommandManifest() map[string]manifestCommand {
+func buildCommandManifest(root *cobra.Command) map[string]manifestCommand {
 	commands := map[string]manifestCommand{}
 
-	for _, child := range rootCmd.Commands() {
+	for _, child := range root.Commands() {
 		name := child.Name()
-		if name == "manifest" || name == "help" || name == "version" || name == "completion" {
+		if name == "manifest" || name == "help" || name == "version" || name == "completion" || name == "man" {
 			continue
 		}
 

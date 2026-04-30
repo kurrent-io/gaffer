@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -28,11 +29,12 @@ func TestHandleSessionError_ProjectionError(t *testing.T) {
 
 	got := handleSessionError(cmd, err)
 
-	if !cmd.SilenceErrors {
-		t.Fatal("expected SilenceErrors to be set")
+	var silent *silentError
+	if !errors.As(got, &silent) {
+		t.Fatalf("expected silentError, got %T", got)
 	}
-	if got != err {
-		t.Fatalf("expected original error returned, got %v", got)
+	if silent.err != err {
+		t.Fatalf("expected wrapped original error, got %v", silent.err)
 	}
 }
 
@@ -42,8 +44,9 @@ func TestHandleSessionError_RegularError(t *testing.T) {
 
 	got := handleSessionError(cmd, original)
 
-	if cmd.SilenceErrors {
-		t.Fatal("expected SilenceErrors to remain false")
+	var silent *silentError
+	if errors.As(got, &silent) {
+		t.Fatal("expected non-silent error for generic case")
 	}
 	if !strings.Contains(got.Error(), "failed to create projection session") {
 		t.Fatalf("expected wrapped error, got %q", got.Error())

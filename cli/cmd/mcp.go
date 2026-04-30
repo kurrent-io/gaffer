@@ -5,19 +5,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var mcpCmd = &cobra.Command{
-	Use:   "mcp",
-	Short: "Start an MCP server for AI agent integration",
-	RunE:  runMCP,
-}
+func newMCPCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "mcp",
+		Short: "Start an MCP server for AI agent integration",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			srv, err := mcpserver.NewFromProjectRoot()
+			if err != nil {
+				return err
+			}
 
-func runMCP(cmd *cobra.Command, args []string) error {
-	cmd.SilenceUsage = true
-
-	srv, err := mcpserver.NewFromProjectRoot()
-	if err != nil {
-		return err
+			return srv.Run(cmd.Context())
+		},
 	}
-
-	return srv.Run(cmd.Context())
 }

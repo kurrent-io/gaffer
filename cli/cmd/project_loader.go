@@ -14,8 +14,7 @@ func handleSessionError(cmd *cobra.Command, err error) error {
 		r := lipgloss.NewRenderer(os.Stderr)
 		errStyle := r.NewStyle().Foreground(lipgloss.Color("9"))
 		_, _ = fmt.Fprintf(os.Stderr, "\n%s\n%s\n", errStyle.Render(projErr.ErrorCode()), projErr.Error())
-		cmd.SilenceErrors = true
-		return err
+		return silent(err)
 	}
 	return fmt.Errorf("failed to create projection session: %w", err)
 }

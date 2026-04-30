@@ -71,13 +71,9 @@ func TestDev_LiveSubscription(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	devJSON = false
-	devEvents = ""
-	devConnection = ""
-	devDebug = false
-	devDebugPort = 4711
-	rootCmd.SetArgs([]string{"dev", "counter", "--json"})
-	rootCmd.SetErr(&bytes.Buffer{})
+	root := NewRootCmd()
+	root.SetArgs([]string{"dev", "counter", "--json"})
+	root.SetErr(&bytes.Buffer{})
 
 	// The live subscription runs until interrupted.
 	// Run in a goroutine, send SIGINT after a delay.
@@ -91,7 +87,7 @@ func TestDev_LiveSubscription(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- rootCmd.Execute()
+		done <- ExecuteRoot(context.Background(), root)
 	}()
 
 	// Give the subscription time to catch up and process events

@@ -10,28 +10,30 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var scaffoldCmd = &cobra.Command{
-	Use:   "scaffold [name]",
-	Short: "Add a new projection to the project",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runScaffold,
+type scaffoldOpts struct {
+	Source    string
+	Partition string
+	Emit      bool
 }
 
-var (
-	scaffoldSource    string
-	scaffoldPartition string
-	scaffoldEmit      bool
-)
+func newScaffoldCmd() *cobra.Command {
+	opts := &scaffoldOpts{}
 
-func init() {
-	scaffoldCmd.Flags().StringVar(&scaffoldSource, "source", "all", "Event source (all, stream:name, category:name)")
-	scaffoldCmd.Flags().StringVar(&scaffoldPartition, "partition", "none", "Partitioning (none, per-stream)")
-	scaffoldCmd.Flags().BoolVar(&scaffoldEmit, "emit", false, "Enable emit/linkTo")
+	cmd := &cobra.Command{
+		Use:   "scaffold [name]",
+		Short: "Add a new projection to the project",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runScaffold(args[0], opts)
+		},
+	}
+	cmd.Flags().StringVar(&opts.Source, "source", "all", "Event source (all, stream:name, category:name)")
+	cmd.Flags().StringVar(&opts.Partition, "partition", "none", "Partitioning (none, per-stream)")
+	cmd.Flags().BoolVar(&opts.Emit, "emit", false, "Enable emit/linkTo")
+	return cmd
 }
 
-func runScaffold(cmd *cobra.Command, args []string) error {
-	name := args[0]
-
+func runScaffold(name string, opts *scaffoldOpts) error {
 	root := project.FindRoot()
 	if root == "" {
 		return project.ErrNotInProject
@@ -42,7 +44,7 @@ func runScaffold(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	result, err := scaffold.Scaffold(root, cfg, name, scaffoldSource, scaffoldPartition, scaffoldEmit)
+	result, err := scaffold.Scaffold(root, cfg, name, opts.Source, opts.Partition, opts.Emit)
 	if err != nil {
 		return err
 	}

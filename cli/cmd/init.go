@@ -10,21 +10,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var initCmd = &cobra.Command{
-	Use:   "init",
-	Short: "Initialize a new gaffer project",
-	Long:  "Creates gaffer.toml, .gitignore, and .gaffer/ directory in the current directory.",
-	RunE:  runInit,
+func newInitCmd() *cobra.Command {
+	var yes bool
+
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "Initialize a new gaffer project",
+		Long:  "Creates gaffer.toml, .gitignore, and .gaffer/ directory in the current directory.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runInit(yes)
+		},
+	}
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Accept all defaults, no prompts")
+	return cmd
 }
 
-var initYes bool
-
-func init() {
-	initCmd.Flags().BoolVarP(&initYes, "yes", "y", false, "Accept all defaults, no prompts")
-}
-
-func runInit(cmd *cobra.Command, args []string) error {
-	if !initYes {
+func runInit(yes bool) error {
+	if !yes {
 		return fmt.Errorf("interactive mode not yet supported, use --yes / -y")
 	}
 

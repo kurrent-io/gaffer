@@ -9,23 +9,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var infoCmd = &cobra.Command{
-	Use:   "info [projection]",
-	Short: "Show projection details",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runInfo,
+func newInfoCmd() *cobra.Command {
+	var asJSON bool
+
+	cmd := &cobra.Command{
+		Use:   "info [projection]",
+		Short: "Show projection details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runInfo(cmd, args[0], asJSON)
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Output as JSON")
+	return cmd
 }
 
-var infoJSON bool
-
-func init() {
-	infoCmd.Flags().BoolVar(&infoJSON, "json", false, "Output as JSON")
-}
-
-func runInfo(cmd *cobra.Command, args []string) error {
-	cmd.SilenceUsage = true
-
-	proj, err := engine.LoadProjection(args[0])
+func runInfo(cmd *cobra.Command, name string, asJSON bool) error {
+	proj, err := engine.LoadProjection(name)
 	if err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	}
 	defer session.Destroy()
 
-	if infoJSON {
+	if asJSON {
 		return writeInfoJSON(proj, info)
 	}
 

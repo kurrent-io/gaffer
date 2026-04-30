@@ -15,38 +15,40 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var devCmd = &cobra.Command{
-	Use:   "dev [projection]",
-	Short: "Run a projection locally",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runDev,
+type devOpts struct {
+	Events     string
+	JSON       bool
+	Connection string
+	Debug      bool
+	DebugPort  int
 }
 
-var (
-	devEvents     string
-	devJSON       bool
-	devConnection string
-	devDebug      bool
-	devDebugPort  int
-)
+func newDevCmd() *cobra.Command {
+	opts := &devOpts{}
 
-func init() {
-	devCmd.Flags().StringVar(&devEvents, "events", "", "Path to JSON events file")
-	devCmd.Flags().BoolVar(&devJSON, "json", false, "Output as NDJSON")
-	devCmd.Flags().StringVar(&devConnection, "connection", "", "KurrentDB connection string (overrides config)")
-	devCmd.Flags().BoolVar(&devDebug, "debug", false, "Start DAP debug server")
-	devCmd.Flags().IntVar(&devDebugPort, "debug-port", 4711, "DAP debug server port")
+	cmd := &cobra.Command{
+		Use:   "dev [projection]",
+		Short: "Run a projection locally",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runDev(cmd, args[0], opts)
+		},
+	}
+	cmd.Flags().StringVar(&opts.Events, "events", "", "Path to JSON events file")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output as NDJSON")
+	cmd.Flags().StringVar(&opts.Connection, "connection", "", "KurrentDB connection string (overrides config)")
+	cmd.Flags().BoolVar(&opts.Debug, "debug", false, "Start DAP debug server")
+	cmd.Flags().IntVar(&opts.DebugPort, "debug-port", 4711, "DAP debug server port")
+	return cmd
 }
 
-func runDev(cmd *cobra.Command, args []string) error {
-	cmd.SilenceUsage = true
-
-	proj, err := engine.LoadProjection(args[0])
+func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
+	proj, err := engine.LoadProjection(name)
 	if err != nil {
 		return err
 	}
 
-	session, info, err := engine.CreateSession(proj, devDebug)
+	session, info, err := engine.CreateSession(proj, opts.Debug)
 	if err != nil {
 		return handleSessionError(cmd, err)
 	}
@@ -55,7 +57,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 	version := proj.Engine
 
 	var writer outputWriter
-	if devJSON {
+	if opts.JSON {
 		writer = newJSONWriter(os.Stdout)
 	} else {
 		tw := newTextWriter(os.Stdout)
@@ -70,7 +72,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 	var afterRun func()
 	var r *engine.Runner
 
-	if devDebug {
+	if opts.Debug {
 		store, err := history.New()
 		if err != nil {
 			return fmt.Errorf("creating history store: %w", err)
@@ -96,7 +98,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 		adapter.SetRunner(r)
 
 		handler := adapter.Handler()
-		addr := fmt.Sprintf("127.0.0.1:%d", devDebugPort)
+		addr := fmt.Sprintf("127.0.0.1:%d", opts.DebugPort)
 		srv, err := dapserver.NewServer(addr, handler)
 		if err != nil {
 			return fmt.Errorf("starting debug server: %w", err)
@@ -105,7 +107,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 		adapter.SetServer(srv)
 
 		_, _ = fmt.Fprintf(os.Stderr, "Debug server listening on %s\nWaiting for editor to attach...\n", srv.Addr())
-		writer.WriteDebugListening(srv.Addr().String(), devDebugPort)
+		writer.WriteDebugListening(srv.Addr().String(), opts.DebugPort)
 
 		go func() {
 			_ = srv.Serve()
@@ -134,14 +136,14 @@ func runDev(cmd *cobra.Command, args []string) error {
 	}
 
 	var source engine.EventSource
-	if devEvents != "" {
-		events, err := engine.LoadEvents(devEvents)
+	if opts.Events != "" {
+		events, err := engine.LoadEvents(opts.Events)
 		if err != nil {
 			return err
 		}
 		source = engine.NewFixtureSource(events)
 	} else {
-		connStr := resolveConnection(proj.Config)
+		connStr := resolveConnection(opts.Connection, proj.Config)
 		if connStr == "" {
 			return fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
 		}
@@ -170,16 +172,15 @@ func runDev(cmd *cobra.Command, args []string) error {
 	writer.WriteSummary(r.Stats(), summary)
 
 	if r.Faulted() {
-		cmd.SilenceErrors = true
-		return fmt.Errorf("projection faulted")
+		return silent(fmt.Errorf("projection faulted"))
 	}
 
 	return nil
 }
 
-func resolveConnection(cfg *config.Config) string {
-	if devConnection != "" {
-		return devConnection
+func resolveConnection(override string, cfg *config.Config) string {
+	if override != "" {
+		return override
 	}
 	return cfg.Connection
 }

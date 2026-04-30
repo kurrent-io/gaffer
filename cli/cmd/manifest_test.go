@@ -6,7 +6,7 @@ import (
 )
 
 func TestBuildCommandManifest_IncludesExpectedCommands(t *testing.T) {
-	commands := buildCommandManifest()
+	commands := buildCommandManifest(NewRootCmd())
 
 	expected := []string{"init", "scaffold", "dev", "info", "mcp"}
 	for _, name := range expected {
@@ -17,7 +17,7 @@ func TestBuildCommandManifest_IncludesExpectedCommands(t *testing.T) {
 }
 
 func TestBuildCommandManifest_ExcludesInternalCommands(t *testing.T) {
-	commands := buildCommandManifest()
+	commands := buildCommandManifest(NewRootCmd())
 
 	excluded := []string{"manifest", "help", "version", "completion"}
 	for _, name := range excluded {
@@ -28,7 +28,7 @@ func TestBuildCommandManifest_ExcludesInternalCommands(t *testing.T) {
 }
 
 func TestBuildCommandManifest_DevFlags(t *testing.T) {
-	commands := buildCommandManifest()
+	commands := buildCommandManifest(NewRootCmd())
 
 	dev, ok := commands["dev"]
 	if !ok {
@@ -49,7 +49,7 @@ func TestBuildCommandManifest_DevFlags(t *testing.T) {
 }
 
 func TestBuildCommandManifest_ScaffoldFlags(t *testing.T) {
-	commands := buildCommandManifest()
+	commands := buildCommandManifest(NewRootCmd())
 
 	scaffold, ok := commands["scaffold"]
 	if !ok {
@@ -70,7 +70,7 @@ func TestBuildCommandManifest_ScaffoldFlags(t *testing.T) {
 }
 
 func TestBuildCommandManifest_InitFlags(t *testing.T) {
-	commands := buildCommandManifest()
+	commands := buildCommandManifest(NewRootCmd())
 
 	init, ok := commands["init"]
 	if !ok {
@@ -88,7 +88,7 @@ func TestBuildCommandManifest_InitFlags(t *testing.T) {
 }
 
 func TestBuildCommandManifest_InfoFlags(t *testing.T) {
-	commands := buildCommandManifest()
+	commands := buildCommandManifest(NewRootCmd())
 
 	info, ok := commands["info"]
 	if !ok {
@@ -108,7 +108,7 @@ func TestBuildCommandManifest_InfoFlags(t *testing.T) {
 func TestManifestJSON(t *testing.T) {
 	m := manifest{
 		Version:  "1.0.0",
-		Commands: buildCommandManifest(),
+		Commands: buildCommandManifest(NewRootCmd()),
 	}
 
 	data, err := json.Marshal(m)

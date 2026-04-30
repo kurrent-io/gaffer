@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -38,29 +39,28 @@ func setupIntegrationProject(t *testing.T) string {
 	return p.Dir
 }
 
-func TestDev_FixtureJSON(t *testing.T) {
-	dir := setupIntegrationProject(t)
-
+func chdirTo(t *testing.T, dir string) {
+	t.Helper()
 	orig, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = os.Chdir(orig) }()
+	t.Cleanup(func() { _ = os.Chdir(orig) })
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
+}
 
-	devJSON = false
-	devEvents = ""
-	devConnection = ""
-	devDebug = false
-	devDebugPort = 4711
+func TestDev_FixtureJSON(t *testing.T) {
+	dir := setupIntegrationProject(t)
+	chdirTo(t, dir)
 
-	rootCmd.SetArgs([]string{"dev", "orders", "--events", "fixtures/orders.json", "--json"})
-	rootCmd.SetErr(&bytes.Buffer{})
+	root := NewRootCmd()
+	root.SetArgs([]string{"dev", "orders", "--events", "fixtures/orders.json", "--json"})
+	root.SetErr(&bytes.Buffer{})
 
 	output := testutil.CaptureStdout(t, func() {
-		if err := rootCmd.Execute(); err != nil {
+		if err := ExecuteRoot(context.Background(), root); err != nil {
 			t.Fatalf("command failed: %v", err)
 		}
 	})
@@ -93,23 +93,14 @@ func TestDev_FixtureJSON(t *testing.T) {
 
 func TestInfo_JSON(t *testing.T) {
 	dir := setupIntegrationProject(t)
+	chdirTo(t, dir)
 
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.Chdir(orig) }()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-
-	infoJSON = false
-
-	rootCmd.SetArgs([]string{"info", "orders", "--json"})
-	rootCmd.SetErr(&bytes.Buffer{})
+	root := NewRootCmd()
+	root.SetArgs([]string{"info", "orders", "--json"})
+	root.SetErr(&bytes.Buffer{})
 
 	output := testutil.CaptureStdout(t, func() {
-		if err := rootCmd.Execute(); err != nil {
+		if err := ExecuteRoot(context.Background(), root); err != nil {
 			t.Fatalf("command failed: %v", err)
 		}
 	})
@@ -128,24 +119,14 @@ func TestInfo_JSON(t *testing.T) {
 
 func TestEndToEnd_InitScaffoldDev(t *testing.T) {
 	dir := t.TempDir()
-
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.Chdir(orig) }()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-
-	stderr := &bytes.Buffer{}
-	rootCmd.SetErr(stderr)
+	chdirTo(t, dir)
 
 	// 1. init
-	initYes = false
-	rootCmd.SetArgs([]string{"init", "--yes"})
+	initRoot := NewRootCmd()
+	initRoot.SetArgs([]string{"init", "--yes"})
+	initRoot.SetErr(&bytes.Buffer{})
 	testutil.CaptureStdout(t, func() {
-		if err := rootCmd.Execute(); err != nil {
+		if err := ExecuteRoot(context.Background(), initRoot); err != nil {
 			t.Fatalf("init failed: %v", err)
 		}
 	})
@@ -158,12 +139,11 @@ func TestEndToEnd_InitScaffoldDev(t *testing.T) {
 	}
 
 	// 2. scaffold
-	scaffoldSource = "all"
-	scaffoldPartition = "none"
-	scaffoldEmit = false
-	rootCmd.SetArgs([]string{"scaffold", "counter"})
+	scaffoldRoot := NewRootCmd()
+	scaffoldRoot.SetArgs([]string{"scaffold", "counter"})
+	scaffoldRoot.SetErr(&bytes.Buffer{})
 	testutil.CaptureStdout(t, func() {
-		if err := rootCmd.Execute(); err != nil {
+		if err := ExecuteRoot(context.Background(), scaffoldRoot); err != nil {
 			t.Fatalf("scaffold failed: %v", err)
 		}
 	})
@@ -172,7 +152,6 @@ func TestEndToEnd_InitScaffoldDev(t *testing.T) {
 		t.Fatal("expected projections/counter.js after scaffold")
 	}
 
-	// Verify config was updated
 	cfg, err := config.Load(filepath.Join(dir, "gaffer.toml"))
 	if err != nil {
 		t.Fatal(err)
@@ -193,15 +172,12 @@ func TestEndToEnd_InitScaffoldDev(t *testing.T) {
 	}
 
 	// 4. dev with fixture
-	devJSON = false
-	devEvents = ""
-	devConnection = ""
-	devDebug = false
-	devDebugPort = 4711
-	rootCmd.SetArgs([]string{"dev", "counter", "--events", "fixtures/events.json", "--json"})
+	devRoot := NewRootCmd()
+	devRoot.SetArgs([]string{"dev", "counter", "--events", "fixtures/events.json", "--json"})
+	devRoot.SetErr(&bytes.Buffer{})
 
 	output := testutil.CaptureStdout(t, func() {
-		if err := rootCmd.Execute(); err != nil {
+		if err := ExecuteRoot(context.Background(), devRoot); err != nil {
 			t.Fatalf("dev failed: %v", err)
 		}
 	})

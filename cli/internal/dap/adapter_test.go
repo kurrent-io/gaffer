@@ -690,3 +690,200 @@ func TestAdapter_GafferPartitionState_UnknownPartition(t *testing.T) {
 		t.Fatal("expected no state for unknown partition")
 	}
 }
+
+func TestAdapter_StartPausedIfNoBreakpoints_PausesWhenNoBreakpointsSet(t *testing.T) {
+	adapter, runner, conn, reader := mustSetupDebugSession(t)
+	adapter.SetStartPausedIfNoBreakpoints(true)
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	feedDone := make(chan struct{})
+	go func() {
+		runner.ProcessOne(testFeedEvent)
+		close(feedDone)
+	}()
+
+	msg := readMessage(t, conn, reader)
+	stopped, ok := msg.(*godap.StoppedEvent)
+	if !ok {
+		t.Fatalf("expected StoppedEvent at entry, got %T", msg)
+	}
+	if stopped.Body.Reason != "entry" {
+		t.Fatalf("expected entry reason, got %s", stopped.Body.Reason)
+	}
+
+	sendRequest(t, conn, &godap.ContinueRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 3, Type: "request"},
+			Command:         "continue",
+		},
+		Arguments: godap.ContinueArguments{ThreadId: 1},
+	})
+	readMessage(t, conn, reader) // ContinueResponse
+	readMessage(t, conn, reader) // ContinuedEvent
+
+	select {
+	case <-feedDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for feed to complete after continue")
+	}
+}
+
+func TestAdapter_StartPausedIfNoBreakpoints_NoPauseWhenBreakpointSet(t *testing.T) {
+	adapter, runner, conn, reader := mustSetupDebugSession(t)
+	adapter.SetStartPausedIfNoBreakpoints(true)
+
+	// Set a breakpoint - the entry pause should NOT fire because a breakpoint exists.
+	sendRequest(t, conn, &godap.SetBreakpointsRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "setBreakpoints",
+		},
+		Arguments: godap.SetBreakpointsArguments{
+			Source:      godap.Source{Path: "/tmp/test/projection.js"},
+			Breakpoints: []godap.SourceBreakpoint{{Line: 4}},
+		},
+	})
+	readMessage(t, conn, reader) // SetBreakpointsResponse
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 3, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	feedDone := make(chan struct{})
+	go func() {
+		runner.ProcessOne(testFeedEvent)
+		close(feedDone)
+	}()
+
+	// Should hit the user's breakpoint, not an entry pause.
+	msg := readMessage(t, conn, reader)
+	stopped, ok := msg.(*godap.StoppedEvent)
+	if !ok {
+		t.Fatalf("expected StoppedEvent at breakpoint, got %T", msg)
+	}
+	if stopped.Body.Reason != "breakpoint" {
+		t.Fatalf("expected breakpoint reason (not entry pause), got %s", stopped.Body.Reason)
+	}
+
+	sendRequest(t, conn, &godap.ContinueRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 4, Type: "request"},
+			Command:         "continue",
+		},
+		Arguments: godap.ContinueArguments{ThreadId: 1},
+	})
+	readMessage(t, conn, reader) // ContinueResponse
+	readMessage(t, conn, reader) // ContinuedEvent
+
+	select {
+	case <-feedDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for feed to complete")
+	}
+	_ = adapter
+}
+
+func TestAdapter_StartPausedIfNoBreakpoints_PausesAfterClearingBreakpoints(t *testing.T) {
+	adapter, runner, conn, reader := mustSetupDebugSession(t)
+	adapter.SetStartPausedIfNoBreakpoints(true)
+
+	// Set then clear breakpoints. Count should return to zero, entry pause fires.
+	sendRequest(t, conn, &godap.SetBreakpointsRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "setBreakpoints",
+		},
+		Arguments: godap.SetBreakpointsArguments{
+			Source:      godap.Source{Path: "/tmp/test/projection.js"},
+			Breakpoints: []godap.SourceBreakpoint{{Line: 4}},
+		},
+	})
+	readMessage(t, conn, reader)
+
+	sendRequest(t, conn, &godap.SetBreakpointsRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 3, Type: "request"},
+			Command:         "setBreakpoints",
+		},
+		Arguments: godap.SetBreakpointsArguments{
+			Source:      godap.Source{Path: "/tmp/test/projection.js"},
+			Breakpoints: []godap.SourceBreakpoint{},
+		},
+	})
+	readMessage(t, conn, reader)
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 4, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader)
+
+	feedDone := make(chan struct{})
+	go func() {
+		runner.ProcessOne(testFeedEvent)
+		close(feedDone)
+	}()
+
+	msg := readMessage(t, conn, reader)
+	stopped, ok := msg.(*godap.StoppedEvent)
+	if !ok {
+		t.Fatalf("expected StoppedEvent at entry, got %T", msg)
+	}
+	if stopped.Body.Reason != "entry" {
+		t.Fatalf("expected entry reason after clearing breakpoints, got %s", stopped.Body.Reason)
+	}
+
+	sendRequest(t, conn, &godap.ContinueRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 5, Type: "request"},
+			Command:         "continue",
+		},
+		Arguments: godap.ContinueArguments{ThreadId: 1},
+	})
+	readMessage(t, conn, reader)
+	readMessage(t, conn, reader)
+
+	select {
+	case <-feedDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for feed to complete")
+	}
+}
+
+func TestAdapter_StartPausedIfNoBreakpoints_DisabledByDefault(t *testing.T) {
+	_, runner, conn, reader := mustSetupDebugSession(t)
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	feedDone := make(chan struct{})
+	go func() {
+		runner.ProcessOne(testFeedEvent)
+		close(feedDone)
+	}()
+
+	// No flag, no breakpoints - should run straight through.
+	select {
+	case <-feedDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for feed to complete")
+	}
+}

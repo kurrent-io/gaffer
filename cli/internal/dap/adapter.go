@@ -22,9 +22,12 @@ type DebugAdapter struct {
 	remoteRoot string
 	localRoot  string
 
-	mu         sync.Mutex
-	inspect    bool
-	stepBuffer []*CustomEvent
+	mu                         sync.Mutex
+	inspect                    bool
+	stepBuffer                 []*CustomEvent
+	breakpointCount            int
+	startPausedIfNoBreakpoints bool
+	entryPausePending          bool
 
 	readyOnce sync.Once
 	readyCh   chan struct{}
@@ -48,6 +51,15 @@ func (a *DebugAdapter) SetRunner(r *engine.Runner) {
 	a.runner = r
 }
 
+// SetStartPausedIfNoBreakpoints enables an entry pause when no breakpoints
+// are registered by the time configurationDone arrives. The pause fires at
+// the first handler invocation.
+func (a *DebugAdapter) SetStartPausedIfNoBreakpoints(v bool) {
+	a.mu.Lock()
+	a.startPausedIfNoBreakpoints = v
+	a.mu.Unlock()
+}
+
 // HandleBreak is called by the runner's OnBreak callback.
 func (a *DebugAdapter) HandleBreak(info gafferruntime.BreakInfo) {
 	if a.server == nil {
@@ -56,10 +68,15 @@ func (a *DebugAdapter) HandleBreak(info gafferruntime.BreakInfo) {
 
 	a.mu.Lock()
 	a.inspect = true
+	entryPause := a.entryPausePending
+	a.entryPausePending = false
 	a.mu.Unlock()
 
 	reason := info.Reason
-	if reason == "debugger_statement" {
+	switch {
+	case entryPause:
+		reason = "entry"
+	case reason == "debugger_statement":
 		reason = "pause"
 	}
 	a.server.SendEvent(&godap.StoppedEvent{
@@ -226,6 +243,10 @@ func (a *DebugAdapter) handleSetBreakpoints(s *Server, req *godap.SetBreakpoints
 		}
 	}
 	snapped, _ := a.runner.SetBreakpoints(bps)
+
+	a.mu.Lock()
+	a.breakpointCount = len(bps)
+	a.mu.Unlock()
 
 	breakpoints := make([]godap.Breakpoint, len(req.Arguments.Breakpoints))
 	for i := range req.Arguments.Breakpoints {
@@ -397,6 +418,17 @@ func (a *DebugAdapter) handleConfigurationDone(s *Server, req *godap.Configurati
 	resp := &godap.ConfigurationDoneResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
 	s.Send(resp)
+
+	a.mu.Lock()
+	pauseAtEntry := a.startPausedIfNoBreakpoints && a.breakpointCount == 0
+	if pauseAtEntry {
+		a.entryPausePending = true
+	}
+	a.mu.Unlock()
+	if pauseAtEntry {
+		a.session.Pause()
+	}
+
 	a.readyOnce.Do(func() { close(a.readyCh) })
 }
 

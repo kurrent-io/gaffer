@@ -17,12 +17,13 @@ import (
 )
 
 type devOpts struct {
-	Events        string
-	JSON          bool
-	Connection    string
-	Debug         bool
-	DebugPort     int
-	UntilCaughtUp bool
+	Events                     string
+	JSON                       bool
+	Connection                 string
+	Debug                      bool
+	DebugPort                  int
+	UntilCaughtUp              bool
+	StartPausedIfNoBreakpoints bool
 }
 
 func newDevCmd() *cobra.Command {
@@ -42,10 +43,15 @@ func newDevCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.Debug, "debug", false, "Start DAP debug server")
 	cmd.Flags().IntVar(&opts.DebugPort, "debug-port", 4711, "DAP debug server port")
 	cmd.Flags().BoolVar(&opts.UntilCaughtUp, "until-caught-up", false, "Exit when subscription catches up (live mode only)")
+	cmd.Flags().BoolVar(&opts.StartPausedIfNoBreakpoints, "start-paused-if-no-breakpoints", false, "Pause at the start of the first event when no breakpoints are set (debug mode only)")
 	return cmd
 }
 
 func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
+	if opts.StartPausedIfNoBreakpoints && !opts.Debug {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: --start-paused-if-no-breakpoints requires --debug; ignoring")
+	}
+
 	proj, err := engine.LoadProjection(name)
 	if err != nil {
 		return err
@@ -85,6 +91,7 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 		absRoot, _ := filepath.Abs(proj.Root)
 
 		adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot)
+		adapter.SetStartPausedIfNoBreakpoints(opts.StartPausedIfNoBreakpoints)
 
 		r = engine.NewRunner(engine.RunnerConfig{
 			Feed:    engine.FeedFn(session.Feed),

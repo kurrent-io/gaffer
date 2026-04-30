@@ -204,7 +204,7 @@ describe("ProjectionSession", () => {
 		);
 
 		expect(() =>
-			session!.feed({
+			session?.feed({
 				eventType: "Bad",
 				streamId: "s-1",
 				sequenceNumber: 0,
@@ -297,9 +297,11 @@ describe("ProjectionSession", () => {
 		});
 
 		expect(emitted).toHaveLength(1);
-		expect(emitted[0].streamId).toBe("notifications");
-		expect(emitted[0].eventType).toBe("OrderNotification");
-		expect(emitted[0].data).toContain("ABC");
+		const e0 = emitted[0];
+		expect(e0).toBeDefined();
+		expect(e0?.streamId).toBe("notifications");
+		expect(e0?.eventType).toBe("OrderNotification");
+		expect(e0?.data).toContain("ABC");
 	});
 
 	it("onLog captures console.log", () => {
@@ -368,8 +370,8 @@ describe("ProjectionSession", () => {
 		});
 
 		expect(changes).toHaveLength(2);
-		expect(changes[0].state).toContain('"count":1');
-		expect(changes[1].state).toContain('"count":2');
+		expect(changes[0]?.state).toContain('"count":1');
+		expect(changes[1]?.state).toContain('"count":2');
 	});
 
 	it("biState shared state", () => {
@@ -516,8 +518,8 @@ describe("ProjectionSession", () => {
 		expect(result.status).toBe("processed");
 		expect(result.emitted).toBeDefined();
 		expect(result.emitted).toHaveLength(1);
-		expect(result.emitted![0].streamId).toBe("notifications");
-		expect(result.emitted![0].eventType).toBe("OrderNotification");
+		expect(result.emitted?.[0]?.streamId).toBe("notifications");
+		expect(result.emitted?.[0]?.eventType).toBe("OrderNotification");
 	});
 
 	it("feed returns logs in result", () => {
@@ -546,7 +548,7 @@ describe("ProjectionSession", () => {
 		expect(result.status).toBe("processed");
 		expect(result.logs).toBeDefined();
 		expect(result.logs).toHaveLength(1);
-		expect(result.logs![0]).toBe("hello from projection");
+		expect(result.logs?.[0]).toBe("hello from projection");
 	});
 
 	it("feed returns partition for foreachStream", () => {

@@ -18,7 +18,7 @@ export class ProjectionError extends Error {
 }
 
 export class InvalidProjectionError extends ProjectionError {
-	readonly location?: { line: number; column: number };
+	readonly location?: { line: number; column: number } | undefined;
 	readonly source: string;
 
 	constructor(
@@ -64,12 +64,12 @@ export interface EventContext {
 	eventType: string;
 	streamId: string;
 	sequenceNumber: number;
-	partition?: string;
+	partition?: string | undefined;
 }
 
 export class ProjectionHandlerError extends ProjectionError {
-	readonly jsStack?: string;
-	readonly location?: { line: number; column: number };
+	readonly jsStack?: string | undefined;
+	readonly location?: { line: number; column: number } | undefined;
 	readonly event: EventContext;
 	readonly source: string;
 
@@ -139,8 +139,8 @@ export class StateSerializationError extends ProjectionError {
 }
 
 export class ProjectionTransformError extends ProjectionError {
-	readonly jsStack?: string;
-	readonly location?: { line: number; column: number };
+	readonly jsStack?: string | undefined;
+	readonly location?: { line: number; column: number } | undefined;
 	readonly source: string;
 
 	constructor(
@@ -174,6 +174,29 @@ interface ErrorJson {
 	partition?: string;
 }
 
+function required<T>(value: T | undefined, code: string, field: string): T {
+	if (value === undefined) {
+		throw new Error(`malformed ${code} error from runtime: missing ${field}`);
+	}
+	return value;
+}
+
+function eventContextOf(err: ErrorJson): EventContext {
+	return {
+		eventType: required(err.eventType, err.code, "eventType"),
+		streamId: required(err.streamId, err.code, "streamId"),
+		sequenceNumber: required(err.sequenceNumber, err.code, "sequenceNumber"),
+		partition: err.partition,
+	};
+}
+
+function locationOf(
+	err: ErrorJson,
+): { line: number; column: number } | undefined {
+	if (err.line == null) return undefined;
+	return { line: err.line, column: required(err.column, err.code, "column") };
+}
+
 export function parseErrorJson(json: string, source: string): ProjectionError {
 	const err: ErrorJson = JSON.parse(json);
 
@@ -182,7 +205,7 @@ export function parseErrorJson(json: string, source: string): ProjectionError {
 			return new InvalidProjectionError(
 				err.description,
 				source,
-				err.line != null ? { line: err.line, column: err.column! } : undefined,
+				locationOf(err),
 				undefined,
 				err.message,
 			);
@@ -190,27 +213,25 @@ export function parseErrorJson(json: string, source: string): ProjectionError {
 		case "compilation-timeout":
 			return new CompilationTimeoutError(
 				err.description,
-				err.elapsed!,
-				err.allowed!,
+				required(err.elapsed, err.code, "elapsed"),
+				required(err.allowed, err.code, "allowed"),
 				undefined,
 				err.message,
 			);
 
 		case "invalid-argument":
-			return new InvalidArgumentError(err.description, err.field!);
+			return new InvalidArgumentError(
+				err.description,
+				required(err.field, err.code, "field"),
+			);
 
 		case "handler-error":
 			return new ProjectionHandlerError(
 				err.description,
-				{
-					eventType: err.eventType!,
-					streamId: err.streamId!,
-					sequenceNumber: err.sequenceNumber!,
-					partition: err.partition,
-				},
+				eventContextOf(err),
 				source,
 				err.jsStack,
-				err.line != null ? { line: err.line, column: err.column! } : undefined,
+				locationOf(err),
 				undefined,
 				err.message,
 			);
@@ -218,14 +239,9 @@ export function parseErrorJson(json: string, source: string): ProjectionError {
 		case "execution-timeout":
 			return new ExecutionTimeoutError(
 				err.description,
-				err.elapsed!,
-				err.allowed!,
-				{
-					eventType: err.eventType!,
-					streamId: err.streamId!,
-					sequenceNumber: err.sequenceNumber!,
-					partition: err.partition,
-				},
+				required(err.elapsed, err.code, "elapsed"),
+				required(err.allowed, err.code, "allowed"),
+				eventContextOf(err),
 				undefined,
 				err.message,
 			);
@@ -233,12 +249,7 @@ export function parseErrorJson(json: string, source: string): ProjectionError {
 		case "malformed-event":
 			return new MalformedEventError(
 				err.description,
-				{
-					eventType: err.eventType!,
-					streamId: err.streamId!,
-					sequenceNumber: err.sequenceNumber!,
-					partition: err.partition,
-				},
+				eventContextOf(err),
 				undefined,
 				err.message,
 			);
@@ -246,12 +257,7 @@ export function parseErrorJson(json: string, source: string): ProjectionError {
 		case "state-serialization-error":
 			return new StateSerializationError(
 				err.description,
-				{
-					eventType: err.eventType!,
-					streamId: err.streamId!,
-					sequenceNumber: err.sequenceNumber!,
-					partition: err.partition,
-				},
+				eventContextOf(err),
 				undefined,
 				err.message,
 			);
@@ -261,7 +267,7 @@ export function parseErrorJson(json: string, source: string): ProjectionError {
 				err.description,
 				source,
 				err.jsStack,
-				err.line != null ? { line: err.line, column: err.column! } : undefined,
+				locationOf(err),
 				undefined,
 				err.message,
 			);

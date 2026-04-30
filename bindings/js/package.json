@@ -14,19 +14,17 @@
 	"engines": {
 		"node": ">=22"
 	},
-	"dependencies": {
-		"koffi": "^2"
-	},
 	"optionalDependencies": {
 		"@kurrent/gaffer-runtime-linux-x64": "workspace:*"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
-		"@types/node": "^25.5.0",
-		"eslint": "^10.0.3",
-		"prettier": "^3.8.1",
-		"typescript": "^5",
-		"typescript-eslint": "^8.57.1",
-		"vitest": "^3"
+		"@types/node": "^25.6.0",
+		"eslint": "^10.2.1",
+		"koffi": "^2.16.1",
+		"prettier": "^3.8.3",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "^8.59.1",
+		"vitest": "^4.1.5"
 	}
 }

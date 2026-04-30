@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ProjectionSession, ProjectionError } from "../src/index.js";
 import type { EmittedEvent } from "../src/index.js";
 
@@ -118,18 +118,22 @@ function runFixture(f: Fixture) {
 			// Check feed error (not getResult)
 			if (f.expect.error && !f.expect.getResult) {
 				expect(lastFeedError).not.toBeNull();
-				assertError(lastFeedError!, f.expect.error);
+				if (!lastFeedError) return;
+				assertError(lastFeedError, f.expect.error);
 				return;
 			}
 
 			// Check emitted
 			if (f.expect.emitted !== undefined) {
 				expect(lastEmitted).toHaveLength(f.expect.emitted.length);
-				for (let i = 0; i < f.expect.emitted.length; i++) {
-					expect(lastEmitted[i].streamId).toBe(f.expect.emitted[i].streamId);
-					expect(lastEmitted[i].eventType).toBe(f.expect.emitted[i].eventType);
-					if (f.expect.emitted[i].data) {
-						expect(lastEmitted[i].data).toBe(f.expect.emitted[i].data);
+				for (const [i, expected] of f.expect.emitted.entries()) {
+					const actual = lastEmitted[i];
+					expect(actual).toBeDefined();
+					if (!actual) continue;
+					expect(actual.streamId).toBe(expected.streamId);
+					expect(actual.eventType).toBe(expected.eventType);
+					if (expected.data) {
+						expect(actual.data).toBe(expected.data);
 					}
 				}
 			}

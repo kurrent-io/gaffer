@@ -35,8 +35,8 @@ describe("Error types", () => {
 			expect(e.description).toBeTruthy();
 			expect(e.source).toBe(source);
 			expect(e.location).toBeDefined();
-			expect(e.location!.line).toBeGreaterThan(0);
-			expect(e.location!.column).toBeGreaterThanOrEqual(0);
+			expect(e.location?.line).toBeGreaterThan(0);
+			expect(e.location?.column).toBeGreaterThanOrEqual(0);
 			expect(e.message).toMatchInlineSnapshot(`
 				"Failed to compile projection
 

@@ -45,20 +45,20 @@ export interface ProjectionInfo {
 /** Result of feeding a single event to a projection session. */
 export interface FeedResult {
 	status: "processed" | "skipped";
-	reason?: string;
-	partition?: string;
+	reason?: string | undefined;
+	partition?: string | undefined;
 	state?: unknown;
 	result?: unknown;
 	sharedState?: unknown;
-	emitted?: EmittedEvent[];
-	logs?: string[];
+	emitted?: EmittedEvent[] | undefined;
+	logs?: string[] | undefined;
 }
 
 /** Options for creating a projection session. */
 export interface SessionOptions {
 	/** Projection engine version. 1 drops non-JSON events. Required. */
 	engineVersion: 1 | 2;
-	compilationTimeoutMs?: number;
-	executionTimeoutMs?: number;
-	debug?: boolean;
+	compilationTimeoutMs?: number | undefined;
+	executionTimeoutMs?: number | undefined;
+	debug?: boolean | undefined;
 }

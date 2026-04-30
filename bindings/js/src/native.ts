@@ -1,7 +1,7 @@
 import koffi, { type IKoffiRegisteredCallback } from "koffi";
-import { existsSync } from "fs";
-import { resolve, join } from "path";
-import { createRequire } from "module";
+import { existsSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { createRequire } from "node:module";
 
 const PLATFORM_PACKAGES: Record<string, string> = {
 	"linux-x64": "@kurrent/gaffer-runtime-linux-x64",

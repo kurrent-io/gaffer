@@ -17,13 +17,16 @@ export class ProjectIndex {
 			const tomlDir = path.dirname(uri.fsPath);
 			for (const proj of parseProjections(uri.fsPath)) {
 				const absEntry = path.resolve(tomlDir, proj.entry);
-				this.#entries.set(absEntry, { name: proj.name, tomlDir });
+				this.#entries.set(normalizePath(absEntry), {
+					name: proj.name,
+					tomlDir,
+				});
 			}
 		}
 	}
 
 	lookup(filePath: string): ProjectEntry | null {
-		return this.#entries.get(filePath) ?? null;
+		return this.#entries.get(normalizePath(filePath)) ?? null;
 	}
 
 	get entryPaths(): string[] {
@@ -36,6 +39,13 @@ export class ProjectIndex {
 		}
 		return undefined;
 	}
+}
+
+// NTFS is case-insensitive and VS Code can return mixed-case fsPaths;
+// canonicalise on Windows so set and get hit the same key.
+function normalizePath(p: string): string {
+	const normalized = path.normalize(p);
+	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
 interface ParsedProjection {

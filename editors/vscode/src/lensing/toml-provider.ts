@@ -72,7 +72,7 @@ const projectionHeaderPattern = /^\s*\[\[\s*projection\s*\]\]\s*(?:#.*)?$/;
 // zips back to lines by appearance order.
 function findProjectionHeaderLines(text: string): HeaderLine[] {
 	const headers: HeaderLine[] = [];
-	const lines = text.split("\n");
+	const lines = text.split(/\r?\n/);
 	for (const [i, line] of lines.entries()) {
 		if (projectionHeaderPattern.test(line)) {
 			headers.push({ line: i, length: line.length });

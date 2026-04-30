@@ -32,7 +32,7 @@ export class JsCodeLensProvider implements vscode.CodeLensProvider {
 		const resolved = this.#projectIndex.lookup(document.uri.fsPath);
 		if (!resolved) return [];
 
-		const lines = document.getText().split("\n");
+		const lines = document.getText().split(/\r?\n/);
 		let fromLine = -1;
 		let fromLineLength = 0;
 		for (const [i, line] of lines.entries()) {

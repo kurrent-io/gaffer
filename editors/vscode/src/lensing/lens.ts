@@ -1,8 +1,7 @@
 // Shared CodeLens decision tree used by both the TOML and JS providers.
 //
 // Returns the right lens for the projection's current state:
-// - currently being debugged here -> Stop button
-// - currently starting here -> spinner (Stop button while #14 lands)
+// - currently being debugged here -> Stop button (debugging or starting)
 // - workspace untrusted -> "Trust workspace" prompt
 // - manifest not loaded / `dev --debug` not in manifest -> no lens
 // - otherwise -> Debug button
@@ -19,21 +18,15 @@ export function buildLens(
 	tomlUri: vscode.Uri,
 ): vscode.CodeLens | null {
 	if (debugState.name === name) {
-		const labels: Record<DebugState["status"], string> = {
-			idle: "idle",
-			starting: "$(sync~spin) Starting",
-			debugging: "$(debug-stop) Debugging",
-		};
-		const label = labels[debugState.status];
-		if (debugState.status === "debugging") {
+		// Stop is active during both starting and debugging - the user can
+		// abort if waitForDebug hangs the 15s timeout.
+		const title = stopTitle(debugState.status);
+		if (title !== null) {
 			return new vscode.CodeLens(range, {
-				title: label,
+				title,
 				command: "gaffer.stopDebug",
 			});
 		}
-		// Informational lens (no command). VS Code accepts a command-less lens at runtime;
-		// the cast satisfies @types/vscode which marks `command` as required.
-		return new vscode.CodeLens(range, { title: label } as vscode.Command);
 	}
 
 	if (!vscode.workspace.isTrusted) {
@@ -50,4 +43,20 @@ export function buildLens(
 		command: "gaffer.debugProjection",
 		arguments: [{ name, tomlUri }],
 	});
+}
+
+function stopTitle(status: DebugState["status"]): string | null {
+	switch (status) {
+		case "starting":
+			return "$(sync~spin) Starting (cancel)";
+		case "debugging":
+			return "$(debug-stop) Debugging";
+		case "idle":
+			return null;
+		default: {
+			const _exhaustive: never = status;
+			void _exhaustive;
+			return null;
+		}
+	}
 }

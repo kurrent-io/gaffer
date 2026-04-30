@@ -67,11 +67,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	context.subscriptions.push(
 		vscode.languages.registerCodeLensProvider(
-			{ pattern: "**/gaffer.toml" },
+			{ scheme: "file", pattern: "**/gaffer.toml" },
 			tomlCodeLens,
 		),
 		vscode.languages.registerCodeLensProvider(
-			{ language: "javascript" },
+			{ scheme: "file", language: "javascript" },
 			jsCodeLens,
 		),
 	);

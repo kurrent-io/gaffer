@@ -36,7 +36,6 @@ export class JsCodeLensProvider implements vscode.CodeLensProvider {
 		let fromLine = -1;
 		let fromLineLength = 0;
 		for (const [i, line] of lines.entries()) {
-			if (i >= 20) break;
 			if (fromPattern.test(line.trim())) {
 				fromLine = i;
 				fromLineLength = line.length;

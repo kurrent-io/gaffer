@@ -39,8 +39,8 @@ func mustGetState(t *testing.T, session *Session, partition *string) string {
 func TestSessionCreateAndDestroy(t *testing.T) {
 	session, err := NewSession(`
 		fromAll().when({
-			$init: function() { return {}; },
-			Ping: function(s, e) { return s; }
+			$init() { return {}; },
+			Ping(s, e) { return s; }
 		})
 	`, nil)
 	if err != nil {
@@ -66,8 +66,8 @@ func TestCreateWithInvalidJS(t *testing.T) {
 func TestFeedAndGetState(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().when({
-			$init: function() { return { count: 0 }; },
-			ItemAdded: function(s, e) { s.count++; return s; }
+			$init() { return { count: 0 }; },
+			ItemAdded(s, e) { s.count++; return s; }
 		})
 	`)
 
@@ -84,8 +84,8 @@ func TestFeedAndGetState(t *testing.T) {
 func TestEventDataAccessible(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().when({
-			$init: function() { return { total: 0 }; },
-			Deposited: function(s, e) { s.total += e.data.amount; return s; }
+			$init() { return { total: 0 }; },
+			Deposited(s, e) { s.total += e.data.amount; return s; }
 		})
 	`)
 
@@ -101,8 +101,8 @@ func TestEventDataAccessible(t *testing.T) {
 func TestGetSources(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().foreachStream().when({
-			$init: function() { return {}; },
-			Ping: function(s, e) { return s; }
+			$init() { return {}; },
+			Ping(s, e) { return s; }
 		})
 	`)
 
@@ -115,8 +115,8 @@ func TestGetSources(t *testing.T) {
 func TestForeachStreamPartitioning(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromCategory("cart").foreachStream().when({
-			$init: function() { return { items: 0 }; },
-			ItemAdded: function(s, e) { s.items++; return s; }
+			$init() { return { items: 0 }; },
+			ItemAdded(s, e) { s.items++; return s; }
 		})
 	`)
 
@@ -140,8 +140,8 @@ func TestForeachStreamPartitioning(t *testing.T) {
 func TestSetAndRestoreState(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().when({
-			$init: function() { return { count: 0 }; },
-			Ping: function(s, e) { s.count++; return s; }
+			$init() { return { count: 0 }; },
+			Ping(s, e) { s.count++; return s; }
 		})
 	`)
 
@@ -157,8 +157,8 @@ func TestSetAndRestoreState(t *testing.T) {
 func TestFeedError(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().when({
-			$init: function() { return {}; },
-			Bad: function(s, e) { throw "boom"; }
+			$init() { return {}; },
+			Bad(s, e) { throw "boom"; }
 		})
 	`)
 
@@ -182,8 +182,8 @@ func TestCreateWithOptions(t *testing.T) {
 	opts := `{"compilationTimeoutMs":10000}`
 	session, err := NewSession(`
 		fromAll().when({
-			$init: function() { return {}; },
-			Ping: function(s, e) { return s; }
+			$init() { return {}; },
+			Ping(s, e) { return s; }
 		})
 	`, &opts)
 	if err != nil {
@@ -195,8 +195,8 @@ func TestCreateWithOptions(t *testing.T) {
 func TestUnknownPartitionReturnsNil(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().foreachStream().when({
-			$init: function() { return {}; },
-			Ping: function(s, e) { return s; }
+			$init() { return {}; },
+			Ping(s, e) { return s; }
 		})
 	`)
 
@@ -210,8 +210,8 @@ func TestUnknownPartitionReturnsNil(t *testing.T) {
 func TestDoubleDestroyIsSafe(t *testing.T) {
 	session, err := NewSession(`
 		fromAll().when({
-			$init: function() { return {}; },
-			Ping: function(s, e) { return s; }
+			$init() { return {}; },
+			Ping(s, e) { return s; }
 		})
 	`, nil)
 	if err != nil {
@@ -224,8 +224,8 @@ func TestDoubleDestroyIsSafe(t *testing.T) {
 func TestOnEmitCallback(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().when({
-			$init: function() { return {}; },
-			OrderPlaced: function(s, e) {
+			$init() { return {}; },
+			OrderPlaced(s, e) {
 				emit("notifications", "OrderNotification", { orderId: e.data.orderId });
 				return s;
 			}
@@ -256,7 +256,7 @@ func TestOnEmitCallback(t *testing.T) {
 func TestOnLogCallback(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().when({
-			TestEvent: function(s, e) {
+			TestEvent(s, e) {
 				log("hello from projection");
 				return s;
 			}
@@ -281,8 +281,8 @@ func TestOnLogCallback(t *testing.T) {
 func TestOnStateChangedCallback(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().when({
-			$init: function() { return { count: 0 }; },
-			ItemAdded: function(s, e) { s.count++; return s; }
+			$init() { return { count: 0 }; },
+			ItemAdded(s, e) { s.count++; return s; }
 		})
 	`)
 
@@ -309,9 +309,9 @@ func TestBiStateSharedState(t *testing.T) {
 	session := mustCreateSession(t, `
 		options({ biState: true });
 		fromAll().when({
-			$init: function() { return { count: 0 }; },
-			$initShared: function() { return { total: 0 }; },
-			Added: function(s, e) {
+			$init() { return { count: 0 }; },
+			$initShared() { return { total: 0 }; },
+			Added(s, e) {
 				s[0].count++;
 				s[1].total += e.data.amount;
 				return s;
@@ -340,8 +340,8 @@ func TestBiStateSharedState(t *testing.T) {
 func TestGetResultWithTransformBy(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().when({
-			$init: function() { return { count: 0 }; },
-			Ping: function(s, e) { s.count++; return s; }
+			$init() { return { count: 0 }; },
+			Ping(s, e) { s.count++; return s; }
 		}).transformBy(function(s) {
 			return { total: s.count * 2 };
 		}).outputState()
@@ -367,8 +367,8 @@ func TestGetPartitionKey(t *testing.T) {
 		fromAll().partitionBy(function(e) {
 			return e.data.region;
 		}).when({
-			$init: function() { return {}; },
-			Event: function(s, e) { return s; }
+			$init() { return {}; },
+			Event(s, e) { return s; }
 		})
 	`)
 
@@ -385,8 +385,8 @@ func TestGetPartitionKey(t *testing.T) {
 func TestFeedResultProcessed(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().when({
-			$init: function() { return { count: 0 }; },
-			ItemAdded: function(s, e) { s.count++; return s; }
+			$init() { return { count: 0 }; },
+			ItemAdded(s, e) { s.count++; return s; }
 		})
 	`)
 
@@ -410,8 +410,8 @@ func TestFeedResultProcessed(t *testing.T) {
 func TestFeedResultSkipped(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().when({
-			$init: function() { return {}; },
-			Handled: function(s, e) { return s; }
+			$init() { return {}; },
+			Handled(s, e) { return s; }
 		})
 	`)
 
@@ -428,8 +428,8 @@ func TestFeedResultSkipped(t *testing.T) {
 func TestFeedResultEmittedEvents(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().when({
-			$init: function() { return {}; },
-			OrderPlaced: function(s, e) {
+			$init() { return {}; },
+			OrderPlaced(s, e) {
 				emit("notifications", "OrderNotification", { orderId: e.data.orderId });
 				return s;
 			}
@@ -458,8 +458,8 @@ func TestFeedResultEmittedEvents(t *testing.T) {
 func TestFeedResultPartition(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().foreachStream().when({
-			$init: function() { return { count: 0 }; },
-			Ping: function(s, e) { s.count++; return s; }
+			$init() { return { count: 0 }; },
+			Ping(s, e) { s.count++; return s; }
 		})
 	`)
 

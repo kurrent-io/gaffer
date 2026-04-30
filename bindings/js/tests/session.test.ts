@@ -17,8 +17,8 @@ describe("ProjectionSession", () => {
 	it("creates and destroys a session", () => {
 		session = new ProjectionSession(`
 			fromAll().when({
-				$init: function() { return {}; },
-				Ping: function(s, e) { return s; }
+				$init() { return {}; },
+				Ping(s, e) { return s; }
 			})
 		`);
 	});
@@ -32,8 +32,8 @@ describe("ProjectionSession", () => {
 	it("feeds events and gets state", () => {
 		session = new ProjectionSession(`
 			fromAll().when({
-				$init: function() { return { count: 0 }; },
-				ItemAdded: function(s, e) { s.count++; return s; }
+				$init() { return { count: 0 }; },
+				ItemAdded(s, e) { s.count++; return s; }
 			})
 		`);
 
@@ -71,8 +71,8 @@ describe("ProjectionSession", () => {
 	it("accesses event data", () => {
 		session = new ProjectionSession(`
 			fromAll().when({
-				$init: function() { return { total: 0 }; },
-				Deposited: function(s, e) { s.total += e.data.amount; return s; }
+				$init() { return { total: 0 }; },
+				Deposited(s, e) { s.total += e.data.amount; return s; }
 			})
 		`);
 
@@ -101,8 +101,8 @@ describe("ProjectionSession", () => {
 	it("partitions by stream", () => {
 		session = new ProjectionSession(`
 			fromCategory("cart").foreachStream().when({
-				$init: function() { return { items: 0 }; },
-				ItemAdded: function(s, e) { s.items++; return s; }
+				$init() { return { items: 0 }; },
+				ItemAdded(s, e) { s.items++; return s; }
 			})
 		`);
 
@@ -141,8 +141,8 @@ describe("ProjectionSession", () => {
 	it("gets source definition", () => {
 		session = new ProjectionSession(`
 			fromAll().foreachStream().when({
-				$init: function() { return {}; },
-				Ping: function(s, e) { return s; }
+				$init() { return {}; },
+				Ping(s, e) { return s; }
 			})
 		`);
 
@@ -154,8 +154,8 @@ describe("ProjectionSession", () => {
 	it("sets and restores state", () => {
 		session = new ProjectionSession(`
 			fromAll().when({
-				$init: function() { return { count: 0 }; },
-				Ping: function(s, e) { s.count++; return s; }
+				$init() { return { count: 0 }; },
+				Ping(s, e) { s.count++; return s; }
 			})
 		`);
 
@@ -176,8 +176,8 @@ describe("ProjectionSession", () => {
 	it("throws on handler error", () => {
 		session = new ProjectionSession(`
 			fromAll().when({
-				$init: function() { return {}; },
-				Bad: function(s, e) { throw "boom"; }
+				$init() { return {}; },
+				Bad(s, e) { throw "boom"; }
 			})
 		`);
 
@@ -197,8 +197,8 @@ describe("ProjectionSession", () => {
 	it("returns null for unknown partition", () => {
 		session = new ProjectionSession(`
 			fromAll().foreachStream().when({
-				$init: function() { return {}; },
-				Ping: function(s, e) { return s; }
+				$init() { return {}; },
+				Ping(s, e) { return s; }
 			})
 		`);
 
@@ -208,8 +208,8 @@ describe("ProjectionSession", () => {
 	it("throws after dispose", () => {
 		const s = new ProjectionSession(`
 			fromAll().when({
-				$init: function() { return {}; },
-				Ping: function(s, e) { return s; }
+				$init() { return {}; },
+				Ping(s, e) { return s; }
 			})
 		`);
 		s.dispose();
@@ -230,8 +230,8 @@ describe("ProjectionSession", () => {
 	it("double dispose is safe", () => {
 		const s = new ProjectionSession(`
 			fromAll().when({
-				$init: function() { return {}; },
-				Ping: function(s, e) { return s; }
+				$init() { return {}; },
+				Ping(s, e) { return s; }
 			})
 		`);
 		s.dispose();
@@ -241,8 +241,8 @@ describe("ProjectionSession", () => {
 	it("onEmit receives emitted events", () => {
 		session = new ProjectionSession(`
 			fromAll().when({
-				$init: function() { return {}; },
-				OrderPlaced: function(s, e) {
+				$init() { return {}; },
+				OrderPlaced(s, e) {
 					emit("notifications", "OrderNotification", { orderId: e.data.orderId });
 					return s;
 				}
@@ -271,7 +271,7 @@ describe("ProjectionSession", () => {
 	it("onLog captures console.log", () => {
 		session = new ProjectionSession(`
 			fromAll().when({
-				TestEvent: function(s, e) {
+				TestEvent(s, e) {
 					log("hello from projection");
 					return s;
 				}
@@ -298,8 +298,8 @@ describe("ProjectionSession", () => {
 	it("onStateChanged fires on state update", () => {
 		session = new ProjectionSession(`
 			fromAll().when({
-				$init: function() { return { count: 0 }; },
-				Ping: function(s, e) { s.count++; return s; }
+				$init() { return { count: 0 }; },
+				Ping(s, e) { s.count++; return s; }
 			})
 		`);
 
@@ -336,9 +336,9 @@ describe("ProjectionSession", () => {
 		session = new ProjectionSession(`
 			options({ biState: true });
 			fromAll().when({
-				$init: function() { return { count: 0 }; },
-				$initShared: function() { return { total: 0 }; },
-				Added: function(s, e) {
+				$init() { return { count: 0 }; },
+				$initShared() { return { total: 0 }; },
+				Added(s, e) {
 					s[0].count++;
 					s[1].total += e.data.amount;
 					return s;
@@ -372,8 +372,8 @@ describe("ProjectionSession", () => {
 	it("getResult with transformBy", () => {
 		session = new ProjectionSession(`
 			fromAll().when({
-				$init: function() { return { count: 0 }; },
-				Ping: function(s, e) { s.count++; return s; }
+				$init() { return { count: 0 }; },
+				Ping(s, e) { s.count++; return s; }
 			}).transformBy(function(s) {
 				return { total: s.count * 2 };
 			}).outputState()
@@ -395,8 +395,8 @@ describe("ProjectionSession", () => {
 	it("feed returns processed result with state", () => {
 		session = new ProjectionSession(`
 			fromAll().when({
-				$init: function() { return { count: 0 }; },
-				Ping: function(s, e) { s.count++; return s; }
+				$init() { return { count: 0 }; },
+				Ping(s, e) { s.count++; return s; }
 			})
 		`);
 
@@ -418,8 +418,8 @@ describe("ProjectionSession", () => {
 	it("feed returns skipped for unhandled event", () => {
 		session = new ProjectionSession(`
 			fromAll().when({
-				$init: function() { return {}; },
-				Ping: function(s, e) { return s; }
+				$init() { return {}; },
+				Ping(s, e) { return s; }
 			})
 		`);
 
@@ -440,8 +440,8 @@ describe("ProjectionSession", () => {
 	it("feed returns emitted events in result", () => {
 		session = new ProjectionSession(`
 			fromAll().when({
-				$init: function() { return {}; },
-				OrderPlaced: function(s, e) {
+				$init() { return {}; },
+				OrderPlaced(s, e) {
 					emit("notifications", "OrderNotification", { orderId: e.data.orderId });
 					return s;
 				}
@@ -468,7 +468,7 @@ describe("ProjectionSession", () => {
 	it("feed returns logs in result", () => {
 		session = new ProjectionSession(`
 			fromAll().when({
-				TestEvent: function(s, e) {
+				TestEvent(s, e) {
 					log("hello from projection");
 					return s;
 				}
@@ -494,8 +494,8 @@ describe("ProjectionSession", () => {
 	it("feed returns partition for foreachStream", () => {
 		session = new ProjectionSession(`
 			fromAll().foreachStream().when({
-				$init: function() { return { count: 0 }; },
-				Ping: function(s, e) { s.count++; return s; }
+				$init() { return { count: 0 }; },
+				Ping(s, e) { s.count++; return s; }
 			})
 		`);
 
@@ -518,8 +518,8 @@ describe("ProjectionSession", () => {
 			fromAll().partitionBy(function(e) {
 				return e.data.region;
 			}).when({
-				$init: function() { return {}; },
-				Event: function(s, e) { return s; }
+				$init() { return {}; },
+				Event(s, e) { return s; }
 			})
 		`);
 

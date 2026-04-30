@@ -220,7 +220,7 @@ func TestNewProjection_DefaultEngine(t *testing.T) {
 func TestCreateSession_ValidSource(t *testing.T) {
 	cfg := &config.Config{}
 	def := &config.Projection{Name: "test", Entry: "test.js"}
-	proj := NewProjection("/tmp", cfg, def, `fromAll().when({$init: function() { return {}; }})`)
+	proj := NewProjection("/tmp", cfg, def, `fromAll().when({$init() { return {}; }})`)
 
 	session, sources, err := CreateSession(proj, false)
 	if err != nil {

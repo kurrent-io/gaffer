@@ -16,15 +16,15 @@ import (
 const testProjection = `fromCategory('order')
   .foreachStream()
   .when({
-    $init: function() {
+    $init() {
       return { count: 0, totalCents: 0 };
     },
-    OrderPlaced: function(state, event) {
+    OrderPlaced(state, event) {
       state.count++;
       state.totalCents += event.data.cents;
       return state;
     },
-    OrderShipped: function(state, event) {
+    OrderShipped(state, event) {
       state.shipped = true;
       return state;
     }
@@ -40,8 +40,8 @@ const testFixture = `[
 ]`
 
 const testBrokenProjection = `fromAll().when({
-    $init: function() { return {}; },
-    $any: function(state, event) {
+    $init() { return {}; },
+    $any(state, event) {
         throw new Error("intentional error");
     }
 })`

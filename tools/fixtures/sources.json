@@ -1,7 +1,7 @@
 [
 	{
 		"name": "fromAll",
-		"source": "fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "fromAll().when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -17,7 +17,7 @@
 	},
 	{
 		"name": "fromStream",
-		"source": "fromStream(\"orders\").when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "fromStream(\"orders\").when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -28,7 +28,7 @@
 	},
 	{
 		"name": "fromStreams with array",
-		"source": "fromStreams([\"a\", \"b\"]).when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "fromStreams([\"a\", \"b\"]).when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -39,7 +39,7 @@
 	},
 	{
 		"name": "fromStreams with varargs",
-		"source": "fromStreams(\"a\", \"b\").when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "fromStreams(\"a\", \"b\").when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -50,7 +50,7 @@
 	},
 	{
 		"name": "fromCategory",
-		"source": "fromCategory(\"orders\").when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "fromCategory(\"orders\").when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -61,7 +61,7 @@
 	},
 	{
 		"name": "fromCategories with array",
-		"source": "fromCategories([\"orders\", \"invoices\"]).when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "fromCategories([\"orders\", \"invoices\"]).when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -71,7 +71,7 @@
 	},
 	{
 		"name": "fromCategories with varargs",
-		"source": "fromCategories(\"orders\", \"invoices\").when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "fromCategories(\"orders\", \"invoices\").when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -81,7 +81,7 @@
 	},
 	{
 		"name": "foreachStream from all",
-		"source": "fromAll().foreachStream().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "fromAll().foreachStream().when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -92,7 +92,7 @@
 	},
 	{
 		"name": "foreachStream from category",
-		"source": "fromCategory(\"cart\").foreachStream().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "fromCategory(\"cart\").foreachStream().when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -103,7 +103,7 @@
 	},
 	{
 		"name": "partitionBy",
-		"source": "fromAll().partitionBy(function(e) { return e.data.region; }).when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "fromAll().partitionBy(function(e) { return e.data.region; }).when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -113,7 +113,7 @@
 	},
 	{
 		"name": "multiple event types in when",
-		"source": "fromAll().when({ $init: function() { return {}; }, OrderPlaced: function(s, e) { return s; }, OrderShipped: function(s, e) { return s; }, OrderCancelled: function(s, e) { return s; } })",
+		"source": "fromAll().when({ $init() { return {}; }, OrderPlaced(s, e) { return s; }, OrderShipped(s, e) { return s; }, OrderCancelled(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -123,7 +123,7 @@
 	},
 	{
 		"name": "$any handler reports AllEvents",
-		"source": "fromAll().when({ $init: function() { return {}; }, $any: function(s, e) { return s; } })",
+		"source": "fromAll().when({ $init() { return {}; }, $any(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -134,7 +134,7 @@
 	},
 	{
 		"name": "includeLinks option",
-		"source": "options({ $includeLinks: true }); fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "options({ $includeLinks: true }); fromAll().when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -144,7 +144,7 @@
 	},
 	{
 		"name": "reorderEvents option",
-		"source": "options({ reorderEvents: true, processingLag: 500 }); fromStreams([\"a\", \"b\"]).when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "options({ reorderEvents: true, processingLag: 500 }); fromStreams([\"a\", \"b\"]).when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {
@@ -155,7 +155,7 @@
 	},
 	{
 		"name": "biState option",
-		"source": "options({ biState: true }); fromAll().when({ $init: function() { return {}; }, $initShared: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "options({ biState: true }); fromAll().when({ $init() { return {}; }, $initShared() { return {}; }, Ping(s, e) { return s; } })",
 		"expect": {
 			"valid": true,
 			"sources": {

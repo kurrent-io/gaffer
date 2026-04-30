@@ -208,8 +208,8 @@ func TestRunner_ProcessOne_RecordsErrorInHistory(t *testing.T) {
 
 func TestRunner_Integration_Handled(t *testing.T) {
 	session := newTestSession(t, `fromAll().when({
-		$init: function() { return { count: 0 }; },
-		ItemAdded: function(s, e) { s.count++; return s; }
+		$init() { return { count: 0 }; },
+		ItemAdded(s, e) { s.count++; return s; }
 	})`)
 
 	r := NewRunner(RunnerConfig{Feed: session.Feed})
@@ -229,8 +229,8 @@ func TestRunner_Integration_Handled(t *testing.T) {
 
 func TestRunner_Integration_Skipped(t *testing.T) {
 	session := newTestSession(t, `fromAll().when({
-		$init: function() { return { count: 0 }; },
-		ItemAdded: function(s, e) { s.count++; return s; }
+		$init() { return { count: 0 }; },
+		ItemAdded(s, e) { s.count++; return s; }
 	})`)
 
 	r := NewRunner(RunnerConfig{Feed: session.Feed})
@@ -250,8 +250,8 @@ func TestRunner_Integration_Skipped(t *testing.T) {
 
 func TestRunner_Integration_Partitioned(t *testing.T) {
 	session := newTestSession(t, `fromAll().foreachStream().when({
-		$init: function() { return { count: 0 }; },
-		ItemAdded: function(s, e) { s.count++; return s; }
+		$init() { return { count: 0 }; },
+		ItemAdded(s, e) { s.count++; return s; }
 	})`)
 
 	r := NewRunner(RunnerConfig{Feed: session.Feed})
@@ -272,7 +272,7 @@ func TestRunner_Integration_Partitioned(t *testing.T) {
 
 func TestRunner_Integration_Faulted(t *testing.T) {
 	session := newTestSession(t, `fromAll().when({
-		BadEvent: function(s, e) { throw new Error("boom"); }
+		BadEvent(s, e) { throw new Error("boom"); }
 	})`)
 
 	r := NewRunner(RunnerConfig{Feed: session.Feed})
@@ -295,9 +295,9 @@ func TestRunner_Integration_Faulted(t *testing.T) {
 
 func TestRunner_Integration_FaultedMidStream(t *testing.T) {
 	session := newTestSession(t, `fromAll().when({
-		$init: function() { return { count: 0 }; },
-		ItemAdded: function(s, e) { s.count++; return s; },
-		BadEvent: function(s, e) { throw new Error("boom"); }
+		$init() { return { count: 0 }; },
+		ItemAdded(s, e) { s.count++; return s; },
+		BadEvent(s, e) { throw new Error("boom"); }
 	})`)
 
 	r := NewRunner(RunnerConfig{Feed: session.Feed})

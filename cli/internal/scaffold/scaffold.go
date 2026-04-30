@@ -78,11 +78,11 @@ func GenerateSource(source, partition string, emit bool) (string, error) {
 	}
 
 	sb.WriteString("  .when({\n")
-	sb.WriteString("    $init: function() {\n")
+	sb.WriteString("    $init() {\n")
 	sb.WriteString("      return {};\n")
 	sb.WriteString("    },\n")
 	sb.WriteString("    // Add your event handlers here\n")
-	sb.WriteString("    // EventType: function(state, event) {\n")
+	sb.WriteString("    // EventType(state, event) {\n")
 
 	if emit {
 		sb.WriteString("    //   emit('stream-name', 'EmittedType', { data: event.data });\n")

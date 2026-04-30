@@ -1,7 +1,7 @@
 [
 	{
 		"name": "emit event",
-		"source": "fromAll().when({ $init: function() { return {}; }, OrderPlaced: function(s, e) { emit(\"notifications\", \"OrderNotification\", { orderId: e.data.orderId }); return s; } })",
+		"source": "fromAll().when({ $init() { return {}; }, OrderPlaced(s, e) { emit(\"notifications\", \"OrderNotification\", { orderId: e.data.orderId }); return s; } })",
 		"events": [
 			{ "eventType": "OrderPlaced", "streamId": "order-1", "sequenceNumber": 0, "data": "{\"orderId\":\"ABC\"}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -13,7 +13,7 @@
 	},
 	{
 		"name": "emit with metadata",
-		"source": "fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { emit(\"out\", \"Pong\", {}, { source: \"test\" }); return s; } })",
+		"source": "fromAll().when({ $init() { return {}; }, Ping(s, e) { emit(\"out\", \"Pong\", {}, { source: \"test\" }); return s; } })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -25,7 +25,7 @@
 	},
 	{
 		"name": "linkTo event",
-		"source": "fromAll().when({ $init: function() { return {}; }, OrderPlaced: function(s, e) { linkTo(\"all-orders\", e); return s; } })",
+		"source": "fromAll().when({ $init() { return {}; }, OrderPlaced(s, e) { linkTo(\"all-orders\", e); return s; } })",
 		"events": [
 			{ "eventType": "OrderPlaced", "streamId": "order-1", "sequenceNumber": 5, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -37,7 +37,7 @@
 	},
 	{
 		"name": "linkTo with metadata",
-		"source": "fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { linkTo(\"linked\", e, { reason: \"test\" }); return s; } })",
+		"source": "fromAll().when({ $init() { return {}; }, Ping(s, e) { linkTo(\"linked\", e, { reason: \"test\" }); return s; } })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 3, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -49,7 +49,7 @@
 	},
 	{
 		"name": "log output",
-		"source": "fromAll().when({ TestEvent: function(s, e) { log(\"hello from projection\"); return s; } })",
+		"source": "fromAll().when({ TestEvent(s, e) { log(\"hello from projection\"); return s; } })",
 		"events": [
 			{ "eventType": "TestEvent", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -59,7 +59,7 @@
 	},
 	{
 		"name": "multiple log calls",
-		"source": "fromAll().when({ Ping: function(s, e) { log(\"first\"); log(\"second\"); log(\"third\"); return s; } })",
+		"source": "fromAll().when({ Ping(s, e) { log(\"first\"); log(\"second\"); log(\"third\"); return s; } })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -69,7 +69,7 @@
 	},
 	{
 		"name": "multiple emits per event",
-		"source": "fromAll().when({ $init: function() { return {}; }, Batch: function(s, e) { emit(\"out\", \"A\", {}); emit(\"out\", \"B\", {}); return s; } })",
+		"source": "fromAll().when({ $init() { return {}; }, Batch(s, e) { emit(\"out\", \"A\", {}); emit(\"out\", \"B\", {}); return s; } })",
 		"events": [
 			{ "eventType": "Batch", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -82,7 +82,7 @@
 	},
 	{
 		"name": "emit and log in same handler",
-		"source": "fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { log(\"processing\"); emit(\"out\", \"Pong\", {}); return s; } })",
+		"source": "fromAll().when({ $init() { return {}; }, Ping(s, e) { log(\"processing\"); emit(\"out\", \"Pong\", {}); return s; } })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -95,7 +95,7 @@
 	},
 	{
 		"name": "emit from partitioned projection",
-		"source": "fromAll().foreachStream().when({ $init: function() { return {}; }, OrderPlaced: function(s, e) { emit(\"all-orders\", \"OrderReceived\", { stream: e.streamId }); return s; } })",
+		"source": "fromAll().foreachStream().when({ $init() { return {}; }, OrderPlaced(s, e) { emit(\"all-orders\", \"OrderReceived\", { stream: e.streamId }); return s; } })",
 		"events": [
 			{ "eventType": "OrderPlaced", "streamId": "order-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
 			{ "eventType": "OrderPlaced", "streamId": "order-2", "sequenceNumber": 1, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
@@ -108,7 +108,7 @@
 	},
 	{
 		"name": "no emits when handler does not emit",
-		"source": "fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "fromAll().when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],

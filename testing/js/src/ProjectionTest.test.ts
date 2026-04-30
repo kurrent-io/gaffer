@@ -7,8 +7,8 @@ import {
 
 const counterSource = `
 	fromAll().when({
-		$init: function() { return { count: 0 }; },
-		ItemAdded: function(s, e) { s.count++; return s; }
+		$init() { return { count: 0 }; },
+		ItemAdded(s, e) { s.count++; return s; }
 	})
 `;
 
@@ -70,8 +70,8 @@ describe("ProjectionTest", () => {
 	it("returns state by partition", () => {
 		const test = new ProjectionTest<{ items: number }>(`
 			fromCategory("cart").foreachStream().when({
-				$init: function() { return { items: 0 }; },
-				ItemAdded: function(s, e) { s.items++; return s; }
+				$init() { return { items: 0 }; },
+				ItemAdded(s, e) { s.items++; return s; }
 			})
 		`);
 
@@ -115,8 +115,8 @@ describe("ProjectionTest", () => {
 	it("collects emitted events", () => {
 		const test = new ProjectionTest(`
 			fromAll().when({
-				$init: function() { return {}; },
-				OrderPlaced: function(s, e) {
+				$init() { return {}; },
+				OrderPlaced(s, e) {
 					emit("notifications", "OrderNotification", { orderId: e.data.orderId });
 					return s;
 				}
@@ -144,7 +144,7 @@ describe("ProjectionTest", () => {
 	it("collects logs", () => {
 		const test = new ProjectionTest(`
 			fromAll().when({
-				TestEvent: function(s, e) {
+				TestEvent(s, e) {
 					log("hello from projection");
 					return s;
 				}
@@ -168,8 +168,8 @@ describe("ProjectionTest", () => {
 	it("resets emitted and logs per step", () => {
 		const test = new ProjectionTest(`
 			fromAll().when({
-				$init: function() { return {}; },
-				Ping: function(s, e) {
+				$init() { return {}; },
+				Ping(s, e) {
 					log("ping");
 					emit("out", "Pong", {});
 					return s;
@@ -211,9 +211,9 @@ describe("ProjectionTest", () => {
 		>(`
 			options({ biState: true });
 			fromAll().when({
-				$init: function() { return { count: 0 }; },
-				$initShared: function() { return { total: 0 }; },
-				Added: function(s, e) {
+				$init() { return { count: 0 }; },
+				$initShared() { return { total: 0 }; },
+				Added(s, e) {
 					s[0].count++;
 					s[1].total += e.data.amount;
 					return s;
@@ -247,8 +247,8 @@ describe("ProjectionTest", () => {
 	it("returns result with transformBy", () => {
 		const test = new ProjectionTest<{ count: number }, { total: number }>(`
 			fromAll().when({
-				$init: function() { return { count: 0 }; },
-				Ping: function(s, e) { s.count++; return s; }
+				$init() { return { count: 0 }; },
+				Ping(s, e) { s.count++; return s; }
 			}).transformBy(function(s) {
 				return { total: s.count * 2 };
 			}).outputState()
@@ -270,8 +270,8 @@ describe("ProjectionTest", () => {
 	it("accepts object data and auto-stringifies", () => {
 		const test = new ProjectionTest<{ total: number }>(`
 			fromAll().when({
-				$init: function() { return { total: 0 }; },
-				Deposited: function(s, e) { s.total += e.data.amount; return s; }
+				$init() { return { total: 0 }; },
+				Deposited(s, e) { s.total += e.data.amount; return s; }
 			})
 		`);
 
@@ -324,8 +324,8 @@ describe("ProjectionTest", () => {
 	it("wraps errors with event context", () => {
 		const test = new ProjectionTest(`
 			fromAll().when({
-				$init: function() { return {}; },
-				Bad: function(s, e) { throw "boom"; }
+				$init() { return {}; },
+				Bad(s, e) { throw "boom"; }
 			})
 		`);
 
@@ -388,8 +388,8 @@ describe("ProjectionTest", () => {
 	it("unhandled event in partitioned projection returns skipped", () => {
 		const test = new ProjectionTest<{ items: number }>(`
 			fromCategory("cart").foreachStream().when({
-				$init: function() { return { items: 0 }; },
-				ItemAdded: function(s, e) { s.items++; return s; }
+				$init() { return { items: 0 }; },
+				ItemAdded(s, e) { s.items++; return s; }
 			})
 		`);
 
@@ -458,8 +458,8 @@ describe("ProjectionTest", () => {
 	it("detects link events via isLink", () => {
 		const test = new ProjectionTest(`
 			fromAll().when({
-				$init: function() { return {}; },
-				OrderPlaced: function(s, e) {
+				$init() { return {}; },
+				OrderPlaced(s, e) {
 					linkTo("all-orders", e);
 					return s;
 				}
@@ -486,8 +486,8 @@ describe("ProjectionTest", () => {
 	it("handles non-JSON emitted data gracefully", () => {
 		const test = new ProjectionTest(`
 			fromAll().when({
-				$init: function() { return {}; },
-				OrderPlaced: function(s, e) {
+				$init() { return {}; },
+				OrderPlaced(s, e) {
 					linkTo("all-orders", e);
 					return s;
 				}

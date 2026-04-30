@@ -1,10 +1,10 @@
 fromAll()
   .when({
-    $init: function() {
+    $init() {
       return {};
     },
     // Add your event handlers here
-    // EventType: function(state, event) {
+    // EventType(state, event) {
     //   emit('stream-name', 'EmittedType', { data: event.data });
     //   return state;
     // }

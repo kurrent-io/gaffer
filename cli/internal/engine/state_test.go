@@ -20,8 +20,8 @@ func newTestSession(t *testing.T, source string) *gafferruntime.Session {
 
 func TestCollectState_Unpartitioned(t *testing.T) {
 	session := newTestSession(t, `fromAll().when({
-		$init: function() { return { count: 0 }; },
-		ItemAdded: function(s, e) { s.count++; return s; }
+		$init() { return { count: 0 }; },
+		ItemAdded(s, e) { s.count++; return s; }
 	})`)
 	info := session.GetSources()
 
@@ -49,8 +49,8 @@ func TestCollectState_Unpartitioned(t *testing.T) {
 
 func TestCollectState_Partitioned(t *testing.T) {
 	session := newTestSession(t, `fromAll().foreachStream().when({
-		$init: function() { return { count: 0 }; },
-		ItemAdded: function(s, e) { s.count++; return s; }
+		$init() { return { count: 0 }; },
+		ItemAdded(s, e) { s.count++; return s; }
 	})`)
 	info := session.GetSources()
 
@@ -89,8 +89,8 @@ func TestCollectState_Partitioned(t *testing.T) {
 
 func TestCollectState_WithTransforms(t *testing.T) {
 	session := newTestSession(t, `fromAll().when({
-		$init: function() { return { count: 0 }; },
-		ItemAdded: function(s, e) { s.count++; return s; }
+		$init() { return { count: 0 }; },
+		ItemAdded(s, e) { s.count++; return s; }
 	}).transformBy(function(s) { return { doubled: s.count * 2 }; })`)
 	info := session.GetSources()
 
@@ -118,8 +118,8 @@ func TestCollectState_WithTransforms(t *testing.T) {
 
 func TestCollectState_PartitionedWithTransforms(t *testing.T) {
 	session := newTestSession(t, `fromAll().foreachStream().when({
-		$init: function() { return { count: 0 }; },
-		ItemAdded: function(s, e) { s.count++; return s; }
+		$init() { return { count: 0 }; },
+		ItemAdded(s, e) { s.count++; return s; }
 	}).transformBy(function(s) { return { doubled: s.count * 2 }; })`)
 	info := session.GetSources()
 
@@ -159,14 +159,14 @@ func TestCollectState_PartitionedWithTransforms(t *testing.T) {
 
 func TestCollectState_BiState(t *testing.T) {
 	session := newTestSession(t, `fromAll().foreachStream().when({
-		$init: function() { return { count: 0 }; },
-		$initShared: function() { return { total: 0 }; },
-		ItemAdded: function(s, e) {
+		$init() { return { count: 0 }; },
+		$initShared() { return { total: 0 }; },
+		ItemAdded(s, e) {
 			s.count++;
 			linkTo('totals', e);
 			return s;
 		},
-		$any: function(s, e) {
+		$any(s, e) {
 			if (e.streamId === 'totals') { s.total++; return s; }
 		}
 	})`)

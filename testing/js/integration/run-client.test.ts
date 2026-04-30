@@ -28,8 +28,8 @@ describe("run(client)", () => {
 
 		const projection = createProjection<{ count: number }>(`
 			fromAll().when({
-				$init: function() { return { count: 0 }; },
-				Ping: function(s, e) { s.count++; return s; }
+				$init() { return { count: 0 }; },
+				Ping(s, e) { s.count++; return s; }
 			})
 		`);
 
@@ -58,8 +58,8 @@ describe("run(client)", () => {
 
 		const projection = createProjection<{ total: number }>(`
 			fromCategory("orders").when({
-				$init: function() { return { total: 0 }; },
-				OrderPlaced: function(s, e) { s.total += e.data.amount; return s; }
+				$init() { return { total: 0 }; },
+				OrderPlaced(s, e) { s.total += e.data.amount; return s; }
 			})
 		`);
 
@@ -85,8 +85,8 @@ describe("run(client)", () => {
 
 		const projection = createProjection<{ count: number }>(`
 			fromStream("${stream}").when({
-				$init: function() { return { count: 0 }; },
-				Tick: function(s, e) { s.count++; return s; }
+				$init() { return { count: 0 }; },
+				Tick(s, e) { s.count++; return s; }
 			})
 		`);
 
@@ -116,8 +116,8 @@ describe("run(client)", () => {
 		const source = [
 			`fromStreams("${streamA}", "${streamB}")`,
 			".when({",
-			"  $init: function() { return { count: 0 }; },",
-			"  Hit: function(s, e) { s.count++; return s; }",
+			"  $init() { return { count: 0 }; },",
+			"  Hit(s, e) { s.count++; return s; }",
 			"})",
 		].join("\n");
 
@@ -149,8 +149,8 @@ describe("run(client)", () => {
 
 		const projection = createProjection<{ items: number }>(`
 			fromCategory("carts").foreachStream().when({
-				$init: function() { return { items: 0 }; },
-				ItemAdded: function(s, e) { s.items++; return s; }
+				$init() { return { items: 0 }; },
+				ItemAdded(s, e) { s.items++; return s; }
 			})
 		`);
 
@@ -173,8 +173,8 @@ describe("run(client)", () => {
 
 		const projection = createProjection(`
 			fromAll().when({
-				$init: function() { return {}; },
-				${eventType}: function(s, e) {
+				$init() { return {}; },
+				${eventType}(s, e) {
 					emit("notifications", "OrderNotification", { orderId: e.data.orderId });
 					return s;
 				}
@@ -202,7 +202,7 @@ describe("run(client)", () => {
 
 		const projection = createProjection(`
 			fromAll().when({
-				${eventType}: function(s, e) {
+				${eventType}(s, e) {
 					log("hello from integration");
 					return s;
 				}
@@ -229,8 +229,8 @@ describe("run(client)", () => {
 
 		const projection = createProjection<{ total: number }>(`
 			fromAll().when({
-				$init: function() { return { total: 0 }; },
-				${eventType}: function(s, e) { s.total += e.data.amount; return s; }
+				$init() { return { total: 0 }; },
+				${eventType}(s, e) { s.total += e.data.amount; return s; }
 			})
 		`);
 

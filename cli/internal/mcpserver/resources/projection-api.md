@@ -89,10 +89,10 @@ Register event handlers. This is where your projection logic lives.
 fromCategory('order')
 .foreachStream()
 .when({
-    $init: function() {
+    $init() {
         return { total: 0 };
     },
-    OrderPlaced: function(s, e) {
+    OrderPlaced(s, e) {
         s.total += e.body.cents;
         return s;
     }
@@ -226,7 +226,7 @@ receives state and an event, and must return the new state.
 ### $init
 
 ```javascript
-$init: function() {
+$init() {
     return { count: 0, totalCents: 0 };
 }
 ```
@@ -240,7 +240,7 @@ initial state. Always define `$init` explicitly for clarity.
 ### Named event handlers
 
 ```javascript
-OrderPlaced: function(s, e) {
+OrderPlaced(s, e) {
     s.count += 1;
     s.totalCents += e.body.cents;
     return s;
@@ -258,7 +258,7 @@ handler call. Return `null` to explicitly reset state.
 ### $any
 
 ```javascript
-$any: function(s, e) {
+$any(s, e) {
     s.eventCount += 1;
     return s;
 }
@@ -276,7 +276,7 @@ Signature: `(state, event) => state | null | void`
 ### $created
 
 ```javascript
-$created: function(s, e) {
+$created(s, e) {
     log('New partition:', e.partition);
 }
 ```
@@ -290,7 +290,7 @@ Signature: `(state, event) => void`
 ### $deleted
 
 ```javascript
-$deleted: function(s, event, partition, isSoftDelete) {
+$deleted(s, event, partition, isSoftDelete) {
     s.active = false;
 }
 ```
@@ -402,13 +402,13 @@ array and must return the same structure.
 fromAll()
 .foreachStream()
 .when({
-    $init: function() {
+    $init() {
         return { streamCount: 0 };
     },
-    $initShared: function() {
+    $initShared() {
         return { globalCount: 0 };
     },
-    $any: function(state, e) {
+    $any(state, e) {
         var s = state[0];
         var shared = state[1];
         s.streamCount += 1;

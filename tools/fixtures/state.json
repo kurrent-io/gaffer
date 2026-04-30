@@ -1,7 +1,7 @@
 [
 	{
 		"name": "init and accumulate",
-		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, ItemAdded: function(s, e) { s.count++; return s; } })",
+		"source": "fromAll().when({ $init() { return { count: 0 }; }, ItemAdded(s, e) { s.count++; return s; } })",
 		"events": [
 			{ "eventType": "ItemAdded", "streamId": "cart-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
 			{ "eventType": "ItemAdded", "streamId": "cart-1", "sequenceNumber": 1, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
@@ -13,7 +13,7 @@
 	},
 	{
 		"name": "access event data",
-		"source": "fromAll().when({ $init: function() { return { total: 0 }; }, Deposited: function(s, e) { s.total += e.data.amount; return s; } })",
+		"source": "fromAll().when({ $init() { return { total: 0 }; }, Deposited(s, e) { s.total += e.data.amount; return s; } })",
 		"events": [
 			{ "eventType": "Deposited", "streamId": "acc-1", "sequenceNumber": 0, "data": "{\"amount\":50}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
 			{ "eventType": "Deposited", "streamId": "acc-1", "sequenceNumber": 1, "data": "{\"amount\":30}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
@@ -24,7 +24,7 @@
 	},
 	{
 		"name": "access nested event data",
-		"source": "fromAll().when({ $init: function() { return { name: '' }; }, UserUpdated: function(s, e) { s.name = e.data.user.name; return s; } })",
+		"source": "fromAll().when({ $init() { return { name: '' }; }, UserUpdated(s, e) { s.name = e.data.user.name; return s; } })",
 		"events": [
 			{ "eventType": "UserUpdated", "streamId": "user-1", "sequenceNumber": 0, "data": "{\"user\":{\"name\":\"Alice\",\"age\":30}}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -34,7 +34,7 @@
 	},
 	{
 		"name": "unhandled events ignored",
-		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Wanted: function(s, e) { s.count++; return s; } })",
+		"source": "fromAll().when({ $init() { return { count: 0 }; }, Wanted(s, e) { s.count++; return s; } })",
 		"events": [
 			{ "eventType": "Wanted", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
 			{ "eventType": "Ignored", "streamId": "s-1", "sequenceNumber": 1, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
@@ -46,7 +46,7 @@
 	},
 	{
 		"name": "$any catches all events",
-		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, $any: function(s, e) { s.count++; return s; } })",
+		"source": "fromAll().when({ $init() { return { count: 0 }; }, $any(s, e) { s.count++; return s; } })",
 		"events": [
 			{ "eventType": "Foo", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
 			{ "eventType": "Bar", "streamId": "s-1", "sequenceNumber": 1, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
@@ -58,7 +58,7 @@
 	},
 	{
 		"name": "named handler takes priority over $any",
-		"source": "fromAll().when({ $init: function() { return { specific: 0, other: 0 }; }, Specific: function(s, e) { s.specific++; return s; }, $any: function(s, e) { s.other++; return s; } })",
+		"source": "fromAll().when({ $init() { return { specific: 0, other: 0 }; }, Specific(s, e) { s.specific++; return s; }, $any(s, e) { s.other++; return s; } })",
 		"events": [
 			{ "eventType": "Specific", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
 			{ "eventType": "Other", "streamId": "s-1", "sequenceNumber": 1, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
@@ -69,7 +69,7 @@
 	},
 	{
 		"name": "foreachStream partitioning",
-		"source": "fromCategory(\"cart\").foreachStream().when({ $init: function() { return { items: 0 }; }, ItemAdded: function(s, e) { s.items++; return s; } })",
+		"source": "fromCategory(\"cart\").foreachStream().when({ $init() { return { items: 0 }; }, ItemAdded(s, e) { s.items++; return s; } })",
 		"events": [
 			{ "eventType": "ItemAdded", "streamId": "cart-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
 			{ "eventType": "ItemAdded", "streamId": "cart-1", "sequenceNumber": 1, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
@@ -84,7 +84,7 @@
 	},
 	{
 		"name": "partitionBy custom key",
-		"source": "fromAll().partitionBy(function(e) { return e.data.region; }).when({ $init: function() { return { count: 0 }; }, Event: function(s, e) { s.count++; return s; } })",
+		"source": "fromAll().partitionBy(function(e) { return e.data.region; }).when({ $init() { return { count: 0 }; }, Event(s, e) { s.count++; return s; } })",
 		"events": [
 			{ "eventType": "Event", "streamId": "s-1", "sequenceNumber": 0, "data": "{\"region\":\"eu\"}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
 			{ "eventType": "Event", "streamId": "s-2", "sequenceNumber": 1, "data": "{\"region\":\"us\"}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
@@ -99,7 +99,7 @@
 	},
 	{
 		"name": "set and restore state",
-		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Ping: function(s, e) { s.count++; return s; } })",
+		"source": "fromAll().when({ $init() { return { count: 0 }; }, Ping(s, e) { s.count++; return s; } })",
 		"setState": { "partition": null, "state": "{\"count\":10}" },
 		"events": [
 			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
@@ -110,7 +110,7 @@
 	},
 	{
 		"name": "set and restore partitioned state",
-		"source": "fromAll().foreachStream().when({ $init: function() { return { count: 0 }; }, Ping: function(s, e) { s.count++; return s; } })",
+		"source": "fromAll().foreachStream().when({ $init() { return { count: 0 }; }, Ping(s, e) { s.count++; return s; } })",
 		"setState": { "partition": "s-1", "state": "{\"count\":5}" },
 		"events": [
 			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
@@ -123,7 +123,7 @@
 	},
 	{
 		"name": "biState with shared state",
-		"source": "options({ biState: true }); fromAll().when({ $init: function() { return { count: 0 }; }, $initShared: function() { return { total: 0 }; }, Added: function(s, e) { s[0].count++; s[1].total += e.data.amount; return s; } })",
+		"source": "options({ biState: true }); fromAll().when({ $init() { return { count: 0 }; }, $initShared() { return { total: 0 }; }, Added(s, e) { s[0].count++; s[1].total += e.data.amount; return s; } })",
 		"events": [
 			{ "eventType": "Added", "streamId": "s-1", "sequenceNumber": 0, "data": "{\"amount\":10}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
 			{ "eventType": "Added", "streamId": "s-1", "sequenceNumber": 1, "data": "{\"amount\":20}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
@@ -135,7 +135,7 @@
 	},
 	{
 		"name": "state with nested objects",
-		"source": "fromAll().when({ $init: function() { return { users: {}, count: 0 }; }, UserCreated: function(s, e) { s.users[e.data.id] = { name: e.data.name }; s.count++; return s; } })",
+		"source": "fromAll().when({ $init() { return { users: {}, count: 0 }; }, UserCreated(s, e) { s.users[e.data.id] = { name: e.data.name }; s.count++; return s; } })",
 		"events": [
 			{ "eventType": "UserCreated", "streamId": "s-1", "sequenceNumber": 0, "data": "{\"id\":\"u1\",\"name\":\"Alice\"}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
 			{ "eventType": "UserCreated", "streamId": "s-1", "sequenceNumber": 1, "data": "{\"id\":\"u2\",\"name\":\"Bob\"}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
@@ -149,7 +149,7 @@
 	},
 	{
 		"name": "state with arrays",
-		"source": "fromAll().when({ $init: function() { return { items: [] }; }, Added: function(s, e) { s.items.push(e.data.item); return s; } })",
+		"source": "fromAll().when({ $init() { return { items: [] }; }, Added(s, e) { s.items.push(e.data.item); return s; } })",
 		"events": [
 			{ "eventType": "Added", "streamId": "s-1", "sequenceNumber": 0, "data": "{\"item\":\"apple\"}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
 			{ "eventType": "Added", "streamId": "s-1", "sequenceNumber": 1, "data": "{\"item\":\"banana\"}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
@@ -160,7 +160,7 @@
 	},
 	{
 		"name": "unknown partition returns null",
-		"source": "fromAll().foreachStream().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } })",
+		"source": "fromAll().foreachStream().when({ $init() { return {}; }, Ping(s, e) { return s; } })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -173,7 +173,7 @@
 	},
 	{
 		"name": "event metadata accessible",
-		"source": "fromAll().when({ $init: function() { return { correlation: '' }; }, Ping: function(s, e) { s.correlation = e.metadata.correlationId; return s; } })",
+		"source": "fromAll().when({ $init() { return { correlation: '' }; }, Ping(s, e) { s.correlation = e.metadata.correlationId; return s; } })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "metadata": "{\"correlationId\":\"abc-123\"}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -183,7 +183,7 @@
 	},
 	{
 		"name": "event streamId accessible",
-		"source": "fromAll().when({ $init: function() { return { stream: '' }; }, Ping: function(s, e) { s.stream = e.streamId; return s; } })",
+		"source": "fromAll().when({ $init() { return { stream: '' }; }, Ping(s, e) { s.stream = e.streamId; return s; } })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "order-42", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -193,7 +193,7 @@
 	},
 	{
 		"name": "event sequenceNumber accessible",
-		"source": "fromAll().when({ $init: function() { return { seq: -1 }; }, Ping: function(s, e) { s.seq = e.sequenceNumber; return s; } })",
+		"source": "fromAll().when({ $init() { return { seq: -1 }; }, Ping(s, e) { s.seq = e.sequenceNumber; return s; } })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 42, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -203,7 +203,7 @@
 	},
 	{
 		"name": "event eventType accessible",
-		"source": "fromAll().when({ $init: function() { return { type: '' }; }, $any: function(s, e) { s.type = e.eventType; return s; } })",
+		"source": "fromAll().when({ $init() { return { type: '' }; }, $any(s, e) { s.type = e.eventType; return s; } })",
 		"events": [
 			{ "eventType": "SpecificType", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -213,7 +213,7 @@
 	},
 	{
 		"name": "event isJson accessible",
-		"source": "fromAll().when({ $init: function() { return { json: false }; }, Ping: function(s, e) { s.json = e.isJson; return s; } })",
+		"source": "fromAll().when({ $init() { return { json: false }; }, Ping(s, e) { s.json = e.isJson; return s; } })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -223,7 +223,7 @@
 	},
 	{
 		"name": "unicode in event data",
-		"source": "fromAll().when({ $init: function() { return { name: '' }; }, Named: function(s, e) { s.name = e.data.name; return s; } })",
+		"source": "fromAll().when({ $init() { return { name: '' }; }, Named(s, e) { s.name = e.data.name; return s; } })",
 		"events": [
 			{ "eventType": "Named", "streamId": "s-1", "sequenceNumber": 0, "data": "{\"name\":\"日本語テスト\"}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -233,7 +233,7 @@
 	},
 	{
 		"name": "special characters in stream names",
-		"source": "fromAll().foreachStream().when({ $init: function() { return { seen: true }; }, Ping: function(s, e) { return s; } })",
+		"source": "fromAll().foreachStream().when({ $init() { return { seen: true }; }, Ping(s, e) { return s; } })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "stream-with-dashes_and_underscores.and.dots", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -245,7 +245,7 @@
 	},
 	{
 		"name": "empty data object",
-		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Ping: function(s, e) { s.count++; return s; } })",
+		"source": "fromAll().when({ $init() { return { count: 0 }; }, Ping(s, e) { s.count++; return s; } })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -255,7 +255,7 @@
 	},
 	{
 		"name": "events from multiple streams to same projection",
-		"source": "fromAll().when({ $init: function() { return { streams: {} }; }, Ping: function(s, e) { s.streams[e.streamId] = (s.streams[e.streamId] || 0) + 1; return s; } })",
+		"source": "fromAll().when({ $init() { return { streams: {} }; }, Ping(s, e) { s.streams[e.streamId] = (s.streams[e.streamId] || 0) + 1; return s; } })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "a", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
 			{ "eventType": "Ping", "streamId": "b", "sequenceNumber": 1, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },

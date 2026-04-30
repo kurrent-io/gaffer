@@ -9,18 +9,18 @@ The most common mistake. If you forget to return from a handler, state becomes
 
 ```javascript
 // WRONG - state becomes undefined
-OrderPlaced: function(s, e) {
+OrderPlaced(s, e) {
     s.count += 1;
 }
 
 // CORRECT - always return state
-OrderPlaced: function(s, e) {
+OrderPlaced(s, e) {
     s.count += 1;
     return s;
 }
 
 // CORRECT - explicit reset with null
-OrderCancelled: function(s, e) {
+OrderCancelled(s, e) {
     return null;
 }
 ```
@@ -39,16 +39,16 @@ silently dropped.
 ```javascript
 // WRONG - $any will miss unmatched events
 .when({
-    $init: function() { return { count: 0 }; },
-    $any: function(s, e) { s.count += 1; return s; },
-    OrderPlaced: function(s, e) { s.count += 10; return s; }
+    $init() { return { count: 0 }; },
+    $any(s, e) { s.count += 1; return s; },
+    OrderPlaced(s, e) { s.count += 10; return s; }
 })
 
 // CORRECT - $any listed last
 .when({
-    $init: function() { return { count: 0 }; },
-    OrderPlaced: function(s, e) { s.count += 10; return s; },
-    $any: function(s, e) { s.count += 1; return s; }
+    $init() { return { count: 0 }; },
+    OrderPlaced(s, e) { s.count += 10; return s; },
+    $any(s, e) { s.count += 1; return s; }
 })
 ```
 
@@ -76,13 +76,13 @@ in state.
 
 ```javascript
 // WRONG - state grows without bound
-$any: function(s, e) {
+$any(s, e) {
     s.events.push(e.body);
     return s;
 }
 
 // BETTER - emit to a stream, keep only a summary in state
-OrderPlaced: function(s, e) {
+OrderPlaced(s, e) {
     s.orderCount += 1;
     s.totalCents += e.body.cents;
     emit('order-log', 'OrderTracked', { orderId: e.streamId });
@@ -133,7 +133,7 @@ The `$deleted` handler has several restrictions:
 
 ```javascript
 // CORRECT - mutate in-place, don't rely on return
-$deleted: function(s, event, partition, isSoftDelete) {
+$deleted(s, event, partition, isSoftDelete) {
     s.active = false;
     s.deletedAt = new Date().toISOString();
 }
@@ -149,7 +149,7 @@ Either handle all expected event types with named handlers, or add `$any` as a
 catch-all. If you want to ignore unmatched events, return state unchanged:
 
 ```javascript
-$any: function(s, e) {
+$any(s, e) {
     return s;
 }
 ```

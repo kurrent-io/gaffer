@@ -1,7 +1,7 @@
 [
 	{
 		"name": "handler throws string",
-		"source": "fromAll().when({ $init: function() { return {}; }, Bad: function(s, e) { throw \"boom\"; } })",
+		"source": "fromAll().when({ $init() { return {}; }, Bad(s, e) { throw \"boom\"; } })",
 		"events": [
 			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -11,7 +11,7 @@
 	},
 	{
 		"name": "handler throws Error object",
-		"source": "fromAll().when({ $init: function() { return {}; }, Bad: function(s, e) { throw new Error(\"something went wrong\"); } })",
+		"source": "fromAll().when({ $init() { return {}; }, Bad(s, e) { throw new Error(\"something went wrong\"); } })",
 		"events": [
 			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -21,7 +21,7 @@
 	},
 	{
 		"name": "handler throws TypeError",
-		"source": "fromAll().when({ $init: function() { return {}; }, Bad: function(s, e) { return e.data.foo.bar; } })",
+		"source": "fromAll().when({ $init() { return {}; }, Bad(s, e) { return e.data.foo.bar; } })",
 		"events": [
 			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -52,35 +52,35 @@
 	},
 	{
 		"name": "source definition error - filterBy expects function",
-		"source": "fromAll().when({ $init: function() { return {}; } }).filterBy(123)",
+		"source": "fromAll().when({ $init() { return {}; } }).filterBy(123)",
 		"expect": {
 			"error": { "code": "invalid-projection", "description": "filterBy expects a function" }
 		}
 	},
 	{
 		"name": "source definition error - unrecognized option",
-		"source": "options({ bogus: true }); fromAll().when({ $init: function() { return {}; } })",
+		"source": "options({ bogus: true }); fromAll().when({ $init() { return {}; } })",
 		"expect": {
 			"error": { "code": "invalid-projection", "description": "Unrecognized option: bogus" }
 		}
 	},
 	{
 		"name": "source definition error - invalid option value",
-		"source": "options({ biState: \"not a bool\" }); fromAll().when({ $init: function() { return {}; } })",
+		"source": "options({ biState: \"not a bool\" }); fromAll().when({ $init() { return {}; } })",
 		"expect": {
 			"error": { "code": "invalid-projection", "description": "Invalid value for option 'biState': expected a boolean" }
 		}
 	},
 	{
 		"name": "source definition error - $deleted in biState",
-		"source": "options({ biState: true }); fromAll().when({ $init: function() { return {}; }, $initShared: function() { return {}; }, $deleted: function(s) { return s; } })",
+		"source": "options({ biState: true }); fromAll().when({ $init() { return {}; }, $initShared() { return {}; }, $deleted(s) { return s; } })",
 		"expect": {
 			"error": { "code": "invalid-projection", "description": "Cannot handle deletes in bi-state projections" }
 		}
 	},
 	{
 		"name": "first event succeeds then second fails",
-		"source": "fromAll().when({ $init: function() { return { count: 0 }; }, Good: function(s, e) { s.count++; return s; }, Bad: function(s, e) { throw \"fail\"; } })",
+		"source": "fromAll().when({ $init() { return { count: 0 }; }, Good(s, e) { s.count++; return s; }, Bad(s, e) { throw \"fail\"; } })",
 		"events": [
 			{ "eventType": "Good", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" },
 			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 1, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
@@ -91,7 +91,7 @@
 	},
 	{
 		"name": "execution timeout",
-		"source": "fromAll().when({ $init: function() { return {}; }, Hang: function(s, e) { while(true) {} return s; } })",
+		"source": "fromAll().when({ $init() { return {}; }, Hang(s, e) { while(true) {} return s; } })",
 		"options": { "executionTimeoutMs": 100 },
 		"events": [
 			{ "eventType": "Hang", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
@@ -110,7 +110,7 @@
 	},
 	{
 		"name": "malformed event data - isJson true with invalid JSON",
-		"source": "fromAll().when({ $init: function() { return {}; }, Bad: function(s, e) { return e.data; } })",
+		"source": "fromAll().when({ $init() { return {}; }, Bad(s, e) { return e.data; } })",
 		"events": [
 			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 0, "data": "not json", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -120,7 +120,7 @@
 	},
 	{
 		"name": "NaN in state",
-		"source": "fromAll().when({ $init: function() { return {}; }, Bad: function(s, e) { s.value = NaN; return s; } })",
+		"source": "fromAll().when({ $init() { return {}; }, Bad(s, e) { s.value = NaN; return s; } })",
 		"events": [
 			{ "eventType": "Bad", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],
@@ -130,7 +130,7 @@
 	},
 	{
 		"name": "transform throws",
-		"source": "fromAll().when({ $init: function() { return {}; }, Ping: function(s, e) { return s; } }).transformBy(function(s) { throw new Error(\"transform failed\"); })",
+		"source": "fromAll().when({ $init() { return {}; }, Ping(s, e) { return s; } }).transformBy(function(s) { throw new Error(\"transform failed\"); })",
 		"events": [
 			{ "eventType": "Ping", "streamId": "s-1", "sequenceNumber": 0, "data": "{}", "isJson": true, "eventId": "00000000-0000-0000-0000-000000000000", "created": "2026-01-01T00:00:00Z" }
 		],

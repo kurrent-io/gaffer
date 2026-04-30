@@ -17,8 +17,8 @@ import gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 
 session := gafferruntime.SessionCreate(`
     fromAll().when({
-        $init: function() { return { count: 0 }; },
-        OrderPlaced: function(s, e) { s.count++; return s; }
+        $init() { return { count: 0 }; },
+        OrderPlaced(s, e) { s.count++; return s; }
     })
 `, nil)
 defer gafferruntime.SessionDestroy(session)

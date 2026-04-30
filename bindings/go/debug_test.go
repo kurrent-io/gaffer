@@ -12,7 +12,7 @@ const debugTestEvent = `{"eventType":"ItemAdded","streamId":"stream-1","sequence
 
 func TestDebug_BreakpointPausesAndContinues(t *testing.T) {
 	opts := debugOpts
-	source := "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})"
+	source := "fromAll().when({\n$init() { return { count: 0 }; },\nItemAdded(s, e) {\ns.count++;\nreturn s;\n}\n})"
 	session, err := NewSession(source, &opts)
 	if err != nil {
 		t.Fatal(err)
@@ -67,7 +67,7 @@ func TestDebug_BreakpointPausesAndContinues(t *testing.T) {
 
 func TestDebug_GetCallStack(t *testing.T) {
 	opts := debugOpts
-	source := "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function handler(s, e) {\ns.count++;\nreturn s;\n}\n})"
+	source := "fromAll().when({\n$init() { return { count: 0 }; },\nItemAdded(s, e) {\ns.count++;\nreturn s;\n}\n})"
 	session, err := NewSession(source, &opts)
 	if err != nil {
 		t.Fatal(err)
@@ -99,8 +99,8 @@ func TestDebug_GetCallStack(t *testing.T) {
 	if len(frames) < 1 {
 		t.Fatal("expected at least 1 frame")
 	}
-	if frames[0].Name != "handler" {
-		t.Fatalf("expected handler, got %s", frames[0].Name)
+	if frames[0].Name != "ItemAdded" {
+		t.Fatalf("expected ItemAdded, got %s", frames[0].Name)
 	}
 
 	session.Continue()
@@ -109,7 +109,7 @@ func TestDebug_GetCallStack(t *testing.T) {
 
 func TestDebug_GetScopesAndVariables(t *testing.T) {
 	opts := debugOpts
-	source := "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})"
+	source := "fromAll().when({\n$init() { return { count: 0 }; },\nItemAdded(s, e) {\ns.count++;\nreturn s;\n}\n})"
 	session, err := NewSession(source, &opts)
 	if err != nil {
 		t.Fatal(err)
@@ -172,7 +172,7 @@ func TestDebug_GetScopesAndVariables(t *testing.T) {
 
 func TestDebug_ClearBreakpoints(t *testing.T) {
 	opts := debugOpts
-	source := "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})"
+	source := "fromAll().when({\n$init() { return { count: 0 }; },\nItemAdded(s, e) {\ns.count++;\nreturn s;\n}\n})"
 	session, err := NewSession(source, &opts)
 	if err != nil {
 		t.Fatal(err)

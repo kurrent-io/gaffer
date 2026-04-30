@@ -40,11 +40,11 @@ describe("Error types", () => {
 			expect(e.message).toMatchInlineSnapshot(`
 				"Failed to compile projection
 
-				error: Unexpected identifier 'is' (<anonymous>:1:6)
+				error: Unexpected identifier 'is' (projection.js:1:6)
 				    ┌─ 1:6
 				    │
 				  1 │ this is not valid {{{{
-				    │      ^ Unexpected identifier 'is' (<anonymous>:1:6)
+				    │      ^ Unexpected identifier 'is' (projection.js:1:6)
 				    │
 				"
 			`);
@@ -95,8 +95,8 @@ describe("Error types", () => {
 
 	it("ProjectionHandlerError - with event context", () => {
 		const source = `fromAll().when({
-	$init: function() { return {}; },
-	Test: function(s, e) { throw new Error("boom"); }
+	$init() { return {}; },
+	Test(s, e) { throw new Error("boom"); }
 })`;
 		const session = new ProjectionSession(source);
 		try {
@@ -117,15 +117,15 @@ describe("Error types", () => {
 				"Error in 'Test' handler
 
 				Handler threw: boom
-				    ┌─ 3:31
+				    ┌─ 3:21
 				    │
 				  1 │ fromAll().when({
-				  2 │ 	$init: function() { return {}; },
-				  3 │ 	Test: function(s, e) { throw new Error("boom"); }
-				    │ 	                             ^ boom
+				  2 │ 	$init() { return {}; },
+				  3 │ 	Test(s, e) { throw new Error("boom"); }
+				    │ 	                   ^ boom
 				    │
-				  at Test (<anonymous>:3:31)
-				  at <anonymous>:3:8
+				  at Test (projection.js:3:21)
+				  at projection.js:3:6
 
 				Event: 42@s-1
 				Type:  Test
@@ -138,8 +138,8 @@ describe("Error types", () => {
 
 	it("ProjectionHandlerError - with partition", () => {
 		const source = `fromAll().foreachStream().when({
-	$init: function() { return {}; },
-	Test: function(s, e) { throw "fail"; }
+	$init() { return {}; },
+	Test(s, e) { throw "fail"; }
 })`;
 		const session = new ProjectionSession(source);
 		try {
@@ -152,15 +152,15 @@ describe("Error types", () => {
 				"Error in 'Test' handler
 
 				Handler threw: fail
-				    ┌─ 3:31
+				    ┌─ 3:21
 				    │
 				  1 │ fromAll().foreachStream().when({
-				  2 │ 	$init: function() { return {}; },
-				  3 │ 	Test: function(s, e) { throw "fail"; }
-				    │ 	                             ^ fail
+				  2 │ 	$init() { return {}; },
+				  3 │ 	Test(s, e) { throw "fail"; }
+				    │ 	                   ^ fail
 				    │
-				  at Test (<anonymous>:3:31)
-				  at <anonymous>:3:8
+				  at Test (projection.js:3:21)
+				  at projection.js:3:6
 
 				Event: 42@s-1
 				Type:  Test
@@ -174,8 +174,8 @@ describe("Error types", () => {
 
 	it("ExecutionTimeoutError", () => {
 		const source = `fromAll().when({
-			$init: function() { return {}; },
-			Test: function(s, e) { while(true) {} }
+			$init() { return {}; },
+			Test(s, e) { while(true) {} }
 		})`;
 		const session = new ProjectionSession(source, {
 			executionTimeoutMs: 100,
@@ -210,8 +210,8 @@ describe("Error types", () => {
 
 	it("MalformedEventError - isJson with invalid data", () => {
 		const source = `fromAll().when({
-			$init: function() { return {}; },
-			Test: function(s, e) { return e.data; }
+			$init() { return {}; },
+			Test(s, e) { return e.data; }
 		})`;
 		const session = new ProjectionSession(source);
 		try {
@@ -240,8 +240,8 @@ describe("Error types", () => {
 
 	it("StateSerializationError - NaN in state", () => {
 		const source = `fromAll().when({
-			$init: function() { return {}; },
-			Test: function(s, e) { s.value = NaN; return s; }
+			$init() { return {}; },
+			Test(s, e) { s.value = NaN; return s; }
 		})`;
 		const session = new ProjectionSession(source);
 		try {
@@ -272,8 +272,8 @@ describe("Error types", () => {
 
 	it("ProjectionTransformError", () => {
 		const source = `fromAll().when({
-			$init: function() { return {}; },
-			Test: function(s, e) { return s; }
+			$init() { return {}; },
+			Test(s, e) { return s; }
 		}).transformBy(function(s) {
 			throw new Error("transform failed");
 		}).outputState()`;
@@ -295,13 +295,13 @@ describe("Error types", () => {
 				error: transform failed
 				    ┌─ 5:8
 				    │
-				  3 │ 	Test: function(s, e) { return s; }
+				  3 │ 	Test(s, e) { return s; }
 				  4 │ }).transformBy(function(s) {
 				  5 │ 	throw new Error("transform failed");
 				    │ 	      ^ transform failed
 				    │
-				  at <anonymous>:5:10
-				  at <anonymous>:6:18
+				  at projection.js:5:10
+				  at projection.js:6:18
 				"
 			`);
 		} finally {

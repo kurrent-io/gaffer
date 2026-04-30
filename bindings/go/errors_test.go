@@ -60,7 +60,7 @@ func TestError_CompilationTimeout(t *testing.T) {
 }
 
 func TestError_ProjectionHandler(t *testing.T) {
-	source := "fromAll().when({\n\t$init: function() { return {}; },\n\tTest: function(s, e) { throw new Error(\"boom\"); }\n})"
+	source := "fromAll().when({\n\t$init() { return {}; },\n\tTest(s, e) { throw new Error(\"boom\"); }\n})"
 	session, err := NewSession(source, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +89,7 @@ func TestError_ProjectionHandler(t *testing.T) {
 }
 
 func TestError_ProjectionHandler_WithPartition(t *testing.T) {
-	source := "fromAll().foreachStream().when({\n\t$init: function() { return {}; },\n\tTest: function(s, e) { throw \"fail\"; }\n})"
+	source := "fromAll().foreachStream().when({\n\t$init() { return {}; },\n\tTest(s, e) { throw \"fail\"; }\n})"
 	session, err := NewSession(source, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -110,7 +110,7 @@ func TestError_ProjectionHandler_WithPartition(t *testing.T) {
 
 func TestError_ExecutionTimeout(t *testing.T) {
 	opts := `{"executionTimeoutMs":100}`
-	source := "fromAll().when({\n\t$init: function() { return {}; },\n\tTest: function(s, e) { while(true) {} }\n})"
+	source := "fromAll().when({\n\t$init() { return {}; },\n\tTest(s, e) { while(true) {} }\n})"
 	session, err := NewSession(source, &opts)
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +137,7 @@ func TestError_ExecutionTimeout(t *testing.T) {
 }
 
 func TestError_MalformedEvent(t *testing.T) {
-	source := "fromAll().when({\n\t$init: function() { return {}; },\n\tTest: function(s, e) { return e.data; }\n})"
+	source := "fromAll().when({\n\t$init() { return {}; },\n\tTest(s, e) { return e.data; }\n})"
 	session, err := NewSession(source, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +162,7 @@ func TestError_MalformedEvent(t *testing.T) {
 }
 
 func TestError_StateSerialization_NaN(t *testing.T) {
-	source := "fromAll().when({\n\t$init: function() { return {}; },\n\tTest: function(s, e) { s.value = NaN; return s; }\n})"
+	source := "fromAll().when({\n\t$init() { return {}; },\n\tTest(s, e) { s.value = NaN; return s; }\n})"
 	session, err := NewSession(source, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -187,7 +187,7 @@ func TestError_StateSerialization_NaN(t *testing.T) {
 }
 
 func TestError_ProjectionTransform(t *testing.T) {
-	source := "fromAll().when({\n\t$init: function() { return {}; },\n\tTest: function(s, e) { return s; }\n}).transformBy(function(s) {\n\tthrow new Error(\"transform failed\");\n}).outputState()"
+	source := "fromAll().when({\n\t$init() { return {}; },\n\tTest(s, e) { return s; }\n}).transformBy(function(s) {\n\tthrow new Error(\"transform failed\");\n}).outputState()"
 	session, err := NewSession(source, nil)
 	if err != nil {
 		t.Fatal(err)

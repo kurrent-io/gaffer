@@ -14,8 +14,8 @@ import (
 const integrationProjection = `fromCategory('order')
   .foreachStream()
   .when({
-    $init: function() { return { count: 0, totalCents: 0 }; },
-    OrderPlaced: function(state, event) {
+    $init() { return { count: 0, totalCents: 0 }; },
+    OrderPlaced(state, event) {
       state.count++;
       state.totalCents += event.data.cents;
       return state;

@@ -20,7 +20,7 @@ const testFeedEvent = `{"eventType":"ItemAdded","streamId":"stream-1","sequenceN
 func mustSetupDebugSession(t *testing.T) (*DebugAdapter, *engine.Runner, net.Conn, *bufio.Reader) {
 	t.Helper()
 	opts := testDebugOpts
-	source := "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function handler(s, e) {\ns.count++;\nreturn s;\n}\n})"
+	source := "fromAll().when({\n$init() { return { count: 0 }; },\nItemAdded(s, e) {\ns.count++;\nreturn s;\n}\n})"
 	session, err := gafferruntime.NewSession(source, &opts)
 	if err != nil {
 		t.Fatal(err)
@@ -155,8 +155,8 @@ func TestAdapter_SetBreakpointsAndPause(t *testing.T) {
 	if len(stResp.Body.StackFrames) < 1 {
 		t.Fatal("expected at least 1 stack frame")
 	}
-	if stResp.Body.StackFrames[0].Name != "handler" {
-		t.Fatalf("expected handler, got %s", stResp.Body.StackFrames[0].Name)
+	if stResp.Body.StackFrames[0].Name != "ItemAdded" {
+		t.Fatalf("expected ItemAdded, got %s", stResp.Body.StackFrames[0].Name)
 	}
 
 	// Get scopes
@@ -309,7 +309,7 @@ func TestAdapter_PathMapping_PartialPrefixNoMatch(t *testing.T) {
 func mustSetupDebugSessionWithHistory(t *testing.T) (*DebugAdapter, *engine.Runner, net.Conn, *bufio.Reader) {
 	t.Helper()
 	opts := testDebugOpts
-	source := "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function handler(s, e) {\ns.count++;\nreturn s;\n}\n})"
+	source := "fromAll().when({\n$init() { return { count: 0 }; },\nItemAdded(s, e) {\ns.count++;\nreturn s;\n}\n})"
 	session, err := gafferruntime.NewSession(source, &opts)
 	if err != nil {
 		t.Fatal(err)

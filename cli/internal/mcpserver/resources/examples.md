@@ -13,10 +13,10 @@ Count all orders placed across the entire event store.
 ```javascript
 fromAll()
 .when({
-    $init: function() {
+    $init() {
         return { count: 0, totalCents: 0 };
     },
-    OrderPlaced: function(s, e) {
+    OrderPlaced(s, e) {
         s.count += 1;
         s.totalCents += e.body.cents;
         return s;
@@ -33,19 +33,19 @@ category gets its own independent state.
 fromCategory('order')
 .foreachStream()
 .when({
-    $init: function() {
+    $init() {
         return { items: 0, totalCents: 0, status: 'open' };
     },
-    ItemAdded: function(s, e) {
+    ItemAdded(s, e) {
         s.items += 1;
         s.totalCents += e.body.priceCents;
         return s;
     },
-    OrderShipped: function(s, e) {
+    OrderShipped(s, e) {
         s.status = 'shipped';
         return s;
     },
-    OrderDelivered: function(s, e) {
+    OrderDelivered(s, e) {
         s.status = 'delivered';
         return s;
     }
@@ -63,10 +63,10 @@ fromCategory('order')
     return e.body.customerId;
 })
 .when({
-    $init: function() {
+    $init() {
         return { orderCount: 0, totalSpentCents: 0 };
     },
-    OrderPlaced: function(s, e) {
+    OrderPlaced(s, e) {
         s.orderCount += 1;
         s.totalSpentCents += e.body.cents;
         return s;
@@ -83,13 +83,13 @@ Handlers receive `[partitionState, sharedState]` and must return the same struct
 fromCategory('order')
 .foreachStream()
 .when({
-    $init: function() {
+    $init() {
         return { totalCents: 0 };
     },
-    $initShared: function() {
+    $initShared() {
         return { orderCount: 0, revenueCents: 0 };
     },
-    OrderPlaced: function(state, e) {
+    OrderPlaced(state, e) {
         var s = state[0];
         var shared = state[1];
         s.totalCents += e.body.cents;
@@ -109,10 +109,10 @@ track what has already been emitted to avoid duplicates on replay.
 fromCategory('order')
 .foreachStream()
 .when({
-    $init: function() {
+    $init() {
         return { notified: false };
     },
-    OrderPlaced: function(s, e) {
+    OrderPlaced(s, e) {
         if (!s.notified) {
             emit('order-notifications', 'NewOrderAlert', {
                 orderId: e.streamId,
@@ -134,10 +134,10 @@ each link is a pointer to the original event.
 ```javascript
 fromCategory('order')
 .when({
-    $init: function() {
+    $init() {
         return {};
     },
-    OrderPlaced: function(s, e) {
+    OrderPlaced(s, e) {
         if (e.body.cents >= 10000) {
             linkTo('high-value-orders', e, e.metadata);
         }
@@ -151,10 +151,10 @@ Dynamic stream routing - group orders by region based on event data:
 ```javascript
 fromCategory('order')
 .when({
-    $init: function() {
+    $init() {
         return {};
     },
-    OrderPlaced: function(s, e) {
+    OrderPlaced(s, e) {
         var region = e.body.region;
         linkTo('orders-' + region, e, e.metadata);
         return s;
@@ -171,14 +171,14 @@ state in-place (return value is discarded). The `event` parameter is null.
 fromCategory('order')
 .foreachStream()
 .when({
-    $init: function() {
+    $init() {
         return { active: true, totalCents: 0 };
     },
-    OrderPlaced: function(s, e) {
+    OrderPlaced(s, e) {
         s.totalCents += e.body.cents;
         return s;
     },
-    $deleted: function(s, event, partition, isSoftDelete) {
+    $deleted(s, event, partition, isSoftDelete) {
         s.active = false;
     }
 })
@@ -194,10 +194,10 @@ the output.
 fromCategory('order')
 .foreachStream()
 .when({
-    $init: function() {
+    $init() {
         return { count: 0, totalCents: 0 };
     },
-    ItemAdded: function(s, e) {
+    ItemAdded(s, e) {
         s.count += 1;
         s.totalCents += e.body.priceCents;
         return s;
@@ -224,17 +224,17 @@ must be the last handler listed.
 fromCategory('order')
 .foreachStream()
 .when({
-    $init: function() {
+    $init() {
         return { eventCount: 0, lastEventType: null };
     },
-    OrderCancelled: function(s, e) {
+    OrderCancelled(s, e) {
         log('Order cancelled:', e.streamId);
         emit('cancellations', 'OrderCancelled', { orderId: e.streamId });
         s.eventCount += 1;
         s.lastEventType = e.eventType;
         return s;
     },
-    $any: function(s, e) {
+    $any(s, e) {
         s.eventCount += 1;
         s.lastEventType = e.eventType;
         return s;

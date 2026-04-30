@@ -51,8 +51,8 @@ func TestDev_LiveSubscription(t *testing.T) {
 	projSource := fmt.Sprintf(`fromCategory('livetest%s')
   .foreachStream()
   .when({
-    $init: function() { return { count: 0 }; },
-    Ping: function(s, e) { s.count++; return s; }
+    $init() { return { count: 0 }; },
+    Ping(s, e) { s.count++; return s; }
   })
 `, suffix)
 

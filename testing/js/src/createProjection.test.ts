@@ -8,8 +8,8 @@ import { systemEvents } from "./systemEvents.js";
 
 const counterSource = `
 	fromAll().when({
-		$init: function() { return { count: 0 }; },
-		ItemAdded: function(s, e) { s.count++; return s; }
+		$init() { return { count: 0 }; },
+		ItemAdded(s, e) { s.count++; return s; }
 	})
 `;
 
@@ -31,8 +31,8 @@ describe("createProjection", () => {
 		it("maps foreachStream partitioning", () => {
 			const projection = createProjection(`
 				fromAll().foreachStream().when({
-					$init: function() { return {}; },
-					Ping: function(s, e) { return s; }
+					$init() { return {}; },
+					Ping(s, e) { return s; }
 				})
 			`);
 			expect(projection.validate().partitioning.type).toBe("byStream");
@@ -41,8 +41,8 @@ describe("createProjection", () => {
 		it("maps category source", () => {
 			const projection = createProjection(`
 				fromCategory("orders").when({
-					$init: function() { return {}; },
-					Ping: function(s, e) { return s; }
+					$init() { return {}; },
+					Ping(s, e) { return s; }
 				})
 			`);
 			expect(projection.validate().source).toEqual({
@@ -55,9 +55,9 @@ describe("createProjection", () => {
 			const projection = createProjection(`
 				options({ biState: true });
 				fromAll().when({
-					$init: function() { return {}; },
-					$initShared: function() { return {}; },
-					Ping: function(s, e) { return s; }
+					$init() { return {}; },
+					$initShared() { return {}; },
+					Ping(s, e) { return s; }
 				})
 			`);
 			expect(projection.validate().biState).toBe(true);
@@ -80,9 +80,9 @@ describe("createProjection", () => {
 		it("propagates handler error mid-iteration", () => {
 			const source = `
 				fromAll().when({
-					$init: function() { return { count: 0 }; },
-					Good: function(s, e) { s.count++; return s; },
-					Bad: function(s, e) { throw "mid-stream error"; }
+					$init() { return { count: 0 }; },
+					Good(s, e) { s.count++; return s; },
+					Bad(s, e) { throw "mid-stream error"; }
 				})
 			`;
 			const projection = createProjection<{ count: number }>(source);
@@ -273,9 +273,9 @@ describe("createProjection", () => {
 		it("propagates handler error mid-async-stream", async () => {
 			const source = `
 				fromAll().when({
-					$init: function() { return { count: 0 }; },
-					Good: function(s, e) { s.count++; return s; },
-					Bad: function(s, e) { throw "async error"; }
+					$init() { return { count: 0 }; },
+					Good(s, e) { s.count++; return s; },
+					Bad(s, e) { throw "async error"; }
 				})
 			`;
 			const projection = createProjection<{ count: number }>(source);
@@ -328,9 +328,9 @@ describe("createProjection", () => {
 		it("stream deletion feeds correctly", () => {
 			const projection = createProjection<{ a: number; deleted?: boolean }>(`
 				fromAll().foreachStream().when({
-					$init: function() { return { a: 0 }; },
-					ItemAdded: function(s, e) { s.a++; return s; },
-					$deleted: function(s, e) { s.deleted = true; return s; }
+					$init() { return { a: 0 }; },
+					ItemAdded(s, e) { s.a++; return s; },
+					$deleted(s, e) { s.deleted = true; return s; }
 				}).outputState()
 			`);
 

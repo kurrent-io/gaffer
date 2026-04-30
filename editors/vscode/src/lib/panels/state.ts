@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
+import * as v from "valibot";
 import { jsonToTreeItems, type TreeItemWithChildren } from "./json-tree.js";
-import type { PartitionStateResponse, StateBody } from "../../types.js";
+import { PartitionStateResponseSchema, type StateBody } from "../../types.js";
 
 export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildren> {
 	private readonly _onDidChange = new vscode.EventEmitter<void>();
@@ -101,21 +102,11 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 		session: vscode.DebugSession,
 		partition: string,
 	): Promise<TreeItemWithChildren[]> {
+		let raw: unknown;
 		try {
-			const body = (await session.customRequest("gaffer/partitionState", {
+			raw = await session.customRequest("gaffer/partitionState", {
 				partition,
-			})) as PartitionStateResponse;
-
-			const items: TreeItemWithChildren[] = [];
-			if (body.state) items.push(buildSection("state", undefined, body.state));
-			if (body.result)
-				items.push(buildSection("result", undefined, body.result));
-			if (items.length === 0) {
-				items.push(
-					new vscode.TreeItem("(empty)", vscode.TreeItemCollapsibleState.None),
-				);
-			}
-			return items;
+			});
 		} catch {
 			return [
 				new vscode.TreeItem(
@@ -124,6 +115,25 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 				),
 			];
 		}
+		const parsed = v.safeParse(PartitionStateResponseSchema, raw);
+		if (!parsed.success) {
+			return [
+				new vscode.TreeItem(
+					"Failed to load (malformed response)",
+					vscode.TreeItemCollapsibleState.None,
+				),
+			];
+		}
+		const body = parsed.output;
+		const items: TreeItemWithChildren[] = [];
+		if (body.state) items.push(buildSection("state", undefined, body.state));
+		if (body.result) items.push(buildSection("result", undefined, body.result));
+		if (items.length === 0) {
+			items.push(
+				new vscode.TreeItem("(empty)", vscode.TreeItemCollapsibleState.None),
+			);
+		}
+		return items;
 	}
 }
 

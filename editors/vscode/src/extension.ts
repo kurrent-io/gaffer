@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as v from "valibot";
 import { GafferCli } from "./lib/cli.js";
 import { GafferSession } from "./lib/session.js";
 import { ProjectIndex } from "./lib/project.js";
@@ -7,15 +8,15 @@ import { JsCodeLensProvider } from "./lib/codelens-js.js";
 import { StepProvider } from "./lib/panels/step.js";
 import { StateProvider } from "./lib/panels/state.js";
 import { StatusViewProvider } from "./lib/panels/status.js";
-import type {
-	DebugState,
-	ModeBody,
-	StateBody,
-	StepEmitBody,
-	StepErrorBody,
-	StepLogBody,
-	StepResultBody,
-	StepStartBody,
+import {
+	ModeBodySchema,
+	StateBodySchema,
+	StepEmitBodySchema,
+	StepErrorBodySchema,
+	StepLogBodySchema,
+	StepResultBodySchema,
+	StepStartBodySchema,
+	type DebugState,
 } from "./types.js";
 
 interface DebugProjectionArgs {
@@ -24,6 +25,24 @@ interface DebugProjectionArgs {
 }
 
 const DEBUG_PORT = 4711;
+
+// Validate a DAP custom-event body against a schema. On parse failure log the
+// event name and issues to the output channel and return undefined so the
+// caller skips the dispatch. Keeps malformed events from corrupting state.
+function parseDapBody<TSchema extends v.GenericSchema>(
+	schema: TSchema,
+	event: vscode.DebugSessionCustomEvent,
+	log: (msg: string) => void,
+): v.InferOutput<TSchema> | undefined {
+	const result = v.safeParse(schema, event.body);
+	if (result.success) return result.output;
+	log(
+		`Malformed DAP event ${event.event}: ${result.issues
+			.map((i) => i.message)
+			.join("; ")}`,
+	);
+	return undefined;
+}
 
 export function activate(context: vscode.ExtensionContext): void {
 	const output = vscode.window.createOutputChannel("Gaffer");
@@ -102,38 +121,47 @@ export function activate(context: vscode.ExtensionContext): void {
 			if (e.session.type !== "gaffer") return;
 			stateProvider.setDebugSession(e.session);
 
-			try {
-				switch (e.event) {
-					case "gaffer/stepStart":
-						stepProvider.startStep((e.body as StepStartBody).event);
-						break;
-					case "gaffer/stepLog":
-						stepProvider.addLog((e.body as StepLogBody).message);
-						break;
-					case "gaffer/stepEmit":
-						stepProvider.addEmit(e.body as StepEmitBody);
-						break;
-					case "gaffer/stepResult":
-						stepProvider.setResult((e.body as StepResultBody).result);
-						break;
-					case "gaffer/stepError": {
-						const body = e.body as StepErrorBody;
+			switch (e.event) {
+				case "gaffer/stepStart": {
+					const body = parseDapBody(StepStartBodySchema, e, log);
+					if (body) stepProvider.startStep(body.event);
+					break;
+				}
+				case "gaffer/stepLog": {
+					const body = parseDapBody(StepLogBodySchema, e, log);
+					if (body) stepProvider.addLog(body.message);
+					break;
+				}
+				case "gaffer/stepEmit": {
+					const body = parseDapBody(StepEmitBodySchema, e, log);
+					if (body) stepProvider.addEmit(body);
+					break;
+				}
+				case "gaffer/stepResult": {
+					const body = parseDapBody(StepResultBodySchema, e, log);
+					if (body) stepProvider.setResult(body.result);
+					break;
+				}
+				case "gaffer/stepError": {
+					const body = parseDapBody(StepErrorBodySchema, e, log);
+					if (body) {
 						stepProvider.setError(body.code, body.description);
 						await vscode.window.showErrorMessage(
 							`Gaffer: ${body.code} - ${body.description}`,
 						);
-						break;
 					}
-					case "gaffer/state":
-						stateProvider.updateFromState(e.body as StateBody);
-						break;
-					case "gaffer/mode":
-						await setInspecting((e.body as ModeBody).mode === "inspect");
-						break;
+					break;
 				}
-			} catch (err) {
-				const msg = err instanceof Error ? err.message : String(err);
-				log(`Malformed DAP event ${e.event}: ${msg}`);
+				case "gaffer/state": {
+					const body = parseDapBody(StateBodySchema, e, log);
+					if (body) stateProvider.updateFromState(body);
+					break;
+				}
+				case "gaffer/mode": {
+					const body = parseDapBody(ModeBodySchema, e, log);
+					if (body) await setInspecting(body.mode === "inspect");
+					break;
+				}
 			}
 		}),
 	);

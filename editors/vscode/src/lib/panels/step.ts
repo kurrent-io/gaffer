@@ -98,7 +98,6 @@ function buildLogItem(message: string): TreeItemWithChildren {
 		vscode.TreeItemCollapsibleState.None,
 	);
 	item.iconPath = new vscode.ThemeIcon("comment");
-	item.description = "";
 	return item;
 }
 

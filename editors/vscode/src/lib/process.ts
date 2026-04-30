@@ -1,7 +1,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import readline from "node:readline";
+import * as v from "valibot";
 import stripAnsi from "strip-ansi";
-import type { CliMessage, CliMessageType } from "../types.js";
+import {
+	CliMessageWireSchema,
+	type CliMessage,
+	type CliMessageType,
+} from "../types.js";
 
 export interface ProcessOptions {
 	log?: ((msg: string) => void) | undefined;
@@ -49,10 +54,17 @@ export class GafferProcess {
 
 		const rl = readline.createInterface({ input: proc.stdout });
 		rl.on("line", (line) => {
+			let raw: unknown;
 			try {
-				const msg = JSON.parse(line) as CliMessage;
-				this._onLine(msg);
+				raw = JSON.parse(line);
 			} catch {
+				this._log(`[stdout] ${line}`);
+				return;
+			}
+			const result = v.safeParse(CliMessageWireSchema, raw);
+			if (result.success) {
+				this._onLine(result.output);
+			} else {
 				this._log(`[stdout] ${line}`);
 			}
 		});

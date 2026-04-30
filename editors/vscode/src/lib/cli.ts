@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { execFile } from "node:child_process";
-import type { Manifest } from "../types.js";
+import * as v from "valibot";
+import { ManifestSchema, type Manifest } from "../types.js";
 
 type Logger = (msg: string) => void;
 
@@ -49,10 +50,16 @@ export class GafferCli {
 		const argv = this.buildArgv(["manifest"]);
 		try {
 			const output = await execFileAsync(argv, { cwd });
-			const manifest = JSON.parse(output) as Manifest;
-			this._manifest = manifest;
-			this._log(`Manifest loaded (v${manifest.version})`);
-			return manifest;
+			const raw: unknown = JSON.parse(output);
+			const parsed = v.safeParse(ManifestSchema, raw);
+			if (!parsed.success) {
+				throw new Error(
+					`malformed manifest: ${parsed.issues.map((i) => i.message).join("; ")}`,
+				);
+			}
+			this._manifest = parsed.output;
+			this._log(`Manifest loaded (v${parsed.output.version})`);
+			return parsed.output;
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			this._log(`Manifest fetch failed: ${msg}`);

@@ -27,12 +27,16 @@ export class GafferProcess {
 	}
 
 	start(): this {
+		const [head, ...rest] = this._argv;
+		// Constructor validates argv is non-empty.
+		if (head === undefined) throw new Error("argv must not be empty");
+
 		this._log(
 			`Spawning: ${this._argv.map((a) => JSON.stringify(a)).join(" ")}` +
 				(this._cwd ? ` (cwd: ${this._cwd})` : ""),
 		);
 
-		const proc = spawn(this._argv[0]!, this._argv.slice(1), {
+		const proc = spawn(head, rest, {
 			stdio: ["ignore", "pipe", "pipe"],
 			cwd: this._cwd,
 			shell: false,

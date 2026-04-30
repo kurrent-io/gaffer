@@ -13,6 +13,7 @@ export default [
 				"error",
 				{ argsIgnorePattern: "^_" },
 			],
+			"@typescript-eslint/no-non-null-assertion": "error",
 		},
 	},
 ];

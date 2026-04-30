@@ -50,7 +50,7 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 					typeof element.label === "string"
 						? element.label
 						: (element.label?.label ?? "");
-				return this._fetchPartitionState(label);
+				return this._fetchPartitionState(this._debugSession, label);
 			}
 			return element.children ?? [];
 		}
@@ -98,13 +98,13 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 	}
 
 	private async _fetchPartitionState(
+		session: vscode.DebugSession,
 		partition: string,
 	): Promise<TreeItemWithChildren[]> {
 		try {
-			const body = (await this._debugSession!.customRequest(
-				"gaffer/partitionState",
-				{ partition },
-			)) as PartitionStateResponse;
+			const body = (await session.customRequest("gaffer/partitionState", {
+				partition,
+			})) as PartitionStateResponse;
 
 			const items: TreeItemWithChildren[] = [];
 			if (body.state) items.push(buildSection("state", undefined, body.state));

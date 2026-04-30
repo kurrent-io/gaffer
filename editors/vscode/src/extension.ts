@@ -55,15 +55,15 @@ export function activate(context: vscode.ExtensionContext): void {
 		jsCodeLens.refresh();
 	};
 
-	const setSessionActive = (active: boolean): void => {
-		vscode.commands.executeCommand(
+	const setSessionActive = async (active: boolean): Promise<void> => {
+		await vscode.commands.executeCommand(
 			"setContext",
 			"gaffer.sessionActive",
 			active,
 		);
 	};
-	const setInspecting = (inspecting: boolean): void => {
-		vscode.commands.executeCommand(
+	const setInspecting = async (inspecting: boolean): Promise<void> => {
+		await vscode.commands.executeCommand(
 			"setContext",
 			"gaffer.inspecting",
 			inspecting,
@@ -98,7 +98,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	);
 
 	context.subscriptions.push(
-		vscode.debug.onDidReceiveDebugSessionCustomEvent((e) => {
+		vscode.debug.onDidReceiveDebugSessionCustomEvent(async (e) => {
 			if (e.session.type !== "gaffer") return;
 			stateProvider.setDebugSession(e.session);
 
@@ -119,7 +119,7 @@ export function activate(context: vscode.ExtensionContext): void {
 					case "gaffer/stepError": {
 						const body = e.body as StepErrorBody;
 						stepProvider.setError(body.code, body.description);
-						vscode.window.showErrorMessage(
+						await vscode.window.showErrorMessage(
 							`Gaffer: ${body.code} - ${body.description}`,
 						);
 						break;
@@ -128,7 +128,7 @@ export function activate(context: vscode.ExtensionContext): void {
 						stateProvider.updateFromState(e.body as StateBody);
 						break;
 					case "gaffer/mode":
-						setInspecting((e.body as ModeBody).mode === "inspect");
+						await setInspecting((e.body as ModeBody).mode === "inspect");
 						break;
 				}
 			} catch (err) {
@@ -138,14 +138,14 @@ export function activate(context: vscode.ExtensionContext): void {
 		}),
 	);
 
-	const stopSession = (): void => {
+	const stopSession = async (): Promise<void> => {
 		if (!activeSession) return;
-		vscode.debug.stopDebugging();
+		await vscode.debug.stopDebugging();
 		activeSession.dispose();
 		activeSession = null;
 		setDebugState(null, "idle");
-		setSessionActive(false);
-		setInspecting(false);
+		await setSessionActive(false);
+		await setInspecting(false);
 	};
 
 	context.subscriptions.push(
@@ -197,19 +197,19 @@ export function activate(context: vscode.ExtensionContext): void {
 				const session = new GafferSession(name, argv, { log, cwd: tomlDir });
 				activeSession = session;
 
-				session.on("exit", (msg) => {
+				session.on("exit", async (msg) => {
 					if (activeSession !== session) return;
 					// During "starting", waitForDebug's catch surfaces the error.
 					// Once "debugging", the debug-terminate handler tears down. Only
 					// surface here for non-zero exits while idle/transitional.
 					if (msg.code !== 0 && debugState.status === "debugging") {
 						log(`CLI exited with code ${msg.code}`);
-						vscode.window.showErrorMessage(
+						await vscode.window.showErrorMessage(
 							`Gaffer: projection faulted (exit code ${msg.code})`,
 						);
 						setDebugState(null, "idle");
-						setSessionActive(false);
-						setInspecting(false);
+						await setSessionActive(false);
+						await setInspecting(false);
 						activeSession = null;
 					}
 				});
@@ -223,9 +223,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
 				statusProvider.reset(name);
 				session.start();
-				setSessionActive(true);
-				setInspecting(false);
-				vscode.commands.executeCommand("gaffer.status.focus");
+				await setSessionActive(true);
+				await setInspecting(false);
+				await vscode.commands.executeCommand("gaffer.status.focus");
 
 				let debugPort: number;
 				try {
@@ -235,12 +235,12 @@ export function activate(context: vscode.ExtensionContext): void {
 				} catch (err) {
 					const errMsg = err instanceof Error ? err.message : String(err);
 					log(`Failed to start: ${errMsg}`);
-					vscode.window.showErrorMessage(`Gaffer: ${errMsg}`);
+					await vscode.window.showErrorMessage(`Gaffer: ${errMsg}`);
 					session.dispose();
 					if (activeSession === session) activeSession = null;
 					setDebugState(null, "idle");
-					setSessionActive(false);
-					setInspecting(false);
+					await setSessionActive(false);
+					await setInspecting(false);
 					return;
 				}
 
@@ -267,14 +267,14 @@ export function activate(context: vscode.ExtensionContext): void {
 				setDebugState(name, "debugging");
 
 				const disposable = vscode.debug.onDidTerminateDebugSession(
-					(dbgSession) => {
+					async (dbgSession) => {
 						if (dbgSession.name === `Gaffer: ${name}`) {
 							log("Debug session ended");
 							session.dispose();
 							if (activeSession === session) activeSession = null;
 							setDebugState(null, "idle");
-							setSessionActive(false);
-							setInspecting(false);
+							await setSessionActive(false);
+							await setInspecting(false);
 							disposable.dispose();
 						}
 					},

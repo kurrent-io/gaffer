@@ -27,21 +27,19 @@ export class JsCodeLensProvider implements vscode.CodeLensProvider {
 
 		const lines = document.getText().split("\n");
 		let fromLine = -1;
-		for (let i = 0; i < lines.length && i < 20; i++) {
-			if (fromPattern.test(lines[i]!.trim())) {
+		let fromLineLength = 0;
+		for (const [i, line] of lines.entries()) {
+			if (i >= 20) break;
+			if (fromPattern.test(line.trim())) {
 				fromLine = i;
+				fromLineLength = line.length;
 				break;
 			}
 		}
 		if (fromLine === -1) return [];
 
 		const { name, tomlDir } = resolved;
-		const range = new vscode.Range(
-			fromLine,
-			0,
-			fromLine,
-			lines[fromLine]!.length,
-		);
+		const range = new vscode.Range(fromLine, 0, fromLine, fromLineLength);
 		const tomlUri = vscode.Uri.file(path.join(tomlDir, "gaffer.toml"));
 		const lens = buildLens(this._cli, this._debugState, name, range, tomlUri);
 		return lens ? [lens] : [];

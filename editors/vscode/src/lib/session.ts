@@ -134,6 +134,12 @@ export class GafferSession {
 			case "debug":
 			case "exit":
 				break;
+			default: {
+				// Exhaustiveness check: a new CliMessage variant added to types.ts
+				// without a matching case here is a TS error.
+				const _exhaustive: never = msg;
+				void _exhaustive;
+			}
 		}
 	}
 

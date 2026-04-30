@@ -20,13 +20,13 @@ export class TomlCodeLensProvider implements vscode.CodeLensProvider {
 		const lines = document.getText().split("\n");
 		const tomlUri = document.uri;
 
-		for (let i = 0; i < lines.length; i++) {
-			if (lines[i]!.trim() !== "[[projection]]") continue;
+		for (const [i, line] of lines.entries()) {
+			if (line.trim() !== "[[projection]]") continue;
 
 			const name = extractName(lines, i + 1);
 			if (!name) continue;
 
-			const range = new vscode.Range(i, 0, i, lines[i]!.length);
+			const range = new vscode.Range(i, 0, i, line.length);
 			const lens = buildLens(this._cli, this._debugState, name, range, tomlUri);
 			if (lens) lenses.push(lens);
 		}
@@ -78,7 +78,8 @@ export function buildLens(
 
 function extractName(lines: string[], startLine: number): string | null {
 	for (let i = startLine; i < lines.length && i < startLine + 10; i++) {
-		const line = lines[i]!.trim();
+		const line = lines[i]?.trim();
+		if (line === undefined) break;
 		if (line.startsWith("[")) break;
 
 		const match = line.match(/^name\s*=\s*(?:"([^"]+)"|'([^']+)')/);

@@ -45,6 +45,9 @@ export class GafferProcess {
 			stdio: ["ignore", "pipe", "pipe"],
 			cwd: this.#cwd,
 			shell: false,
+			// POSIX: become group leader so kill(-pid) takes the whole tree.
+			// Windows ignores this; tree-kill uses taskkill /T instead.
+			detached: process.platform !== "win32",
 		});
 		this.#proc = proc;
 
@@ -104,6 +107,9 @@ export class GafferProcess {
 			// so it runs after the `const restore` initializer.
 			const timer = setTimeout(() => {
 				restore();
+				// Kill the child so it can't outlive the timeout regardless of
+				// what the caller does with the rejected promise.
+				this.kill();
 				reject(new Error(`Timeout waiting for "${type}" message`));
 			}, timeoutMs);
 
@@ -131,9 +137,30 @@ export class GafferProcess {
 		});
 	}
 
+	// Kill the child and any descendants. Plain `proc.kill()` only signals
+	// the immediate child, leaving grandchildren orphaned. The CLI shells
+	// out (engine, native helpers), so a leak here means real processes
+	// staying behind on stop.
 	kill(): void {
-		if (this.#proc && !this.#proc.killed) {
-			this.#proc.kill();
+		const proc = this.#proc;
+		if (!proc || proc.killed || proc.pid === undefined) return;
+		const pid = proc.pid;
+		if (process.platform === "win32") {
+			const tk = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
+				stdio: "ignore",
+				shell: false,
+			});
+			// Swallow ENOENT etc. - the process is probably gone anyway and an
+			// unhandled error would crash the extension host.
+			tk.on("error", () => {});
+			return;
+		}
+		try {
+			// Negative pid signals the process group (we spawned detached).
+			process.kill(-pid, "SIGTERM");
+		} catch {
+			// Group already gone or never formed; fall back to direct kill.
+			proc.kill();
 		}
 	}
 }

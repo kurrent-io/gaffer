@@ -30,9 +30,10 @@ export interface SessionControllerDeps {
 	debugState: DebugState;
 	refreshLenses: () => void;
 	log: (msg: string) => void;
+	output: vscode.OutputChannel;
 }
 
-export class SessionController {
+export class SessionController implements vscode.Disposable {
 	readonly #cli: GafferCli;
 	readonly #stepProvider: StepProvider;
 	readonly #stateProvider: StateProvider;
@@ -40,6 +41,7 @@ export class SessionController {
 	readonly #debugState: DebugState;
 	readonly #refreshLenses: () => void;
 	readonly #log: (msg: string) => void;
+	readonly #output: vscode.OutputChannel;
 	#activeSession: GafferSession | null = null;
 
 	constructor(deps: SessionControllerDeps) {
@@ -50,12 +52,17 @@ export class SessionController {
 		this.#debugState = deps.debugState;
 		this.#refreshLenses = deps.refreshLenses;
 		this.#log = deps.log;
+		this.#output = deps.output;
 	}
 
-	// Register the one persistent terminate listener. Replaces the
-	// per-session disposable pattern in the old code.
+	// Register the one persistent terminate listener and self-register for
+	// disposal. Disposal during deactivate is what reaps the detached child
+	// process group on POSIX (parent doesn't reap detached children
+	// automatically) - dropping it would leak the gaffer CLI on extension
+	// reload mid-session.
 	register(context: vscode.ExtensionContext): void {
 		context.subscriptions.push(
+			this,
 			vscode.debug.onDidTerminateDebugSession((dbgSession) => {
 				if (dbgSession.name === `Gaffer: ${this.#debugState.name}`) {
 					this.#log("Debug session ended");
@@ -63,6 +70,13 @@ export class SessionController {
 				}
 			}),
 		);
+	}
+
+	dispose(): void {
+		if (this.#activeSession) {
+			this.#activeSession.dispose();
+			this.#activeSession = null;
+		}
 	}
 
 	async start(args: DebugProjectionArgs): Promise<void> {
@@ -107,6 +121,7 @@ export class SessionController {
 		const session = new GafferSession(name, argv, {
 			log: this.#log,
 			cwd: tomlDir,
+			output: this.#output,
 		});
 		this.#activeSession = session;
 

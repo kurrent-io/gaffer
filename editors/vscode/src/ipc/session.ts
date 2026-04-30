@@ -4,6 +4,7 @@ import { renderCliMessage } from "./output-renderer.js";
 import type { CliMessage } from "./schemas.js";
 
 export interface SessionOptions {
+	output: vscode.OutputChannel;
 	log?: (msg: string) => void;
 	cwd?: string;
 }
@@ -23,20 +24,20 @@ export class GafferSession {
 	readonly #output: vscode.OutputChannel;
 	#proc: GafferProcess | null = null;
 
-	constructor(name: string, argv: string[], options: SessionOptions = {}) {
+	constructor(name: string, argv: string[], options: SessionOptions) {
 		this.#name = name;
 		this.#argv = argv;
 		this.#log = options.log ?? (() => {});
 		this.#cwd = options.cwd;
-		this.#output = vscode.window.createOutputChannel(`Gaffer: ${name}`, "log");
+		// Channel is owned by the caller and reused across sessions; we
+		// just clear and write to it.
+		this.#output = options.output;
+		this.#output.clear();
+		this.#output.appendLine(`=== ${name} ===`);
 	}
 
 	get name(): string {
 		return this.#name;
-	}
-
-	get output(): vscode.OutputChannel {
-		return this.#output;
 	}
 
 	on<T extends CliMessageType>(type: T, fn: Listener<T>): this;
@@ -71,6 +72,11 @@ export class GafferSession {
 
 	stop(): void {
 		if (this.#proc) {
+			// Detach line/exit handlers before kill so any buffered stdout
+			// flushed between SIGTERM and process exit can't dispatch into a
+			// shared output channel that the next session has already cleared.
+			this.#proc.onLine(() => {});
+			this.#proc.onExit(() => {});
 			this.#proc.kill();
 			this.#proc = null;
 		}
@@ -78,7 +84,6 @@ export class GafferSession {
 
 	dispose(): void {
 		this.stop();
-		this.#output.dispose();
 		this.#listeners.clear();
 	}
 

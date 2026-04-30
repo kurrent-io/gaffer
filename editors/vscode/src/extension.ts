@@ -16,7 +16,8 @@ import type { DebugState } from "./types.js";
 const DEBUG_PORT = 4711;
 
 export function activate(context: vscode.ExtensionContext): void {
-	const output = vscode.window.createOutputChannel("Gaffer");
+	const output = vscode.window.createOutputChannel("Gaffer", "log");
+	context.subscriptions.push(output);
 	const log = (msg: string): void => {
 		output.appendLine(msg);
 		console.log(`Gaffer: ${msg}`);
@@ -46,6 +47,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		debugState,
 		refreshLenses,
 		log,
+		output,
 	});
 	controller.register(context);
 

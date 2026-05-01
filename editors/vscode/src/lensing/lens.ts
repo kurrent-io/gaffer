@@ -52,9 +52,11 @@ function stopTitle(status: DebugState["status"]): string | null {
 	switch (status) {
 		case "starting":
 			return "$(sync~spin) Starting (cancel)";
-		case "debugging":
+		case "running":
+		case "inspecting":
 			return "$(debug-stop) Debugging";
 		case "idle":
+		case "ended":
 			return null;
 		default: {
 			const _exhaustive: never = status;

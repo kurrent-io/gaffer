@@ -16,6 +16,7 @@ import statusTemplate from "./status.html?raw";
 
 interface UpdateMessage {
 	type: "update";
+	mode: "running" | "ended";
 	title: string;
 	stats: string[];
 	showPauseButton: boolean;
@@ -27,6 +28,11 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	#processed = 0;
 	#skipped = 0;
 	#errors = 0;
+	// Stored on the provider so that view reconstruction (when VS Code
+	// re-shows after the visibility when-clause flips) re-renders with
+	// the right mode. The webview instance is recreated on re-show; the
+	// provider is the singleton that remembers state across.
+	#mode: "running" | "ended" = "running";
 	#renderTimer: NodeJS.Timeout | null = null;
 
 	resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -59,6 +65,12 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		this.#processed = 0;
 		this.#skipped = 0;
 		this.#errors = 0;
+		this.#mode = "running";
+		this.#postUpdate();
+	}
+
+	markEnded(): void {
+		this.#mode = "ended";
 		this.#postUpdate();
 	}
 
@@ -97,16 +109,27 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		if (this.#errors > 0) {
 			stats.push(`${this.#errors.toLocaleString()} errors`);
 		}
-		if (stats.length === 0) {
+		if (stats.length === 0 && this.#mode === "running") {
 			stats.push("Waiting for events...");
 		}
 
-		const update: UpdateMessage = {
-			type: "update",
-			title: `Running ${this.#name || "projection"}...`,
-			stats,
-			showPauseButton: true,
-		};
+		const name = this.#name || "projection";
+		const update: UpdateMessage =
+			this.#mode === "ended"
+				? {
+						type: "update",
+						mode: "ended",
+						title: `Finished ${name}`,
+						stats,
+						showPauseButton: false,
+					}
+				: {
+						type: "update",
+						mode: "running",
+						title: `Running ${name}...`,
+						stats,
+						showPauseButton: true,
+					};
 		void this.#view.webview.postMessage(update);
 	}
 }

@@ -112,7 +112,7 @@
 				},
 				{
 					"command": "gaffer.stopDebug",
-					"when": "gaffer.sessionActive"
+					"when": "gaffer.mode == 'running' || gaffer.mode == 'inspecting'"
 				}
 			]
 		},
@@ -131,17 +131,17 @@
 					"id": "gaffer.status",
 					"name": "Status",
 					"type": "webview",
-					"when": "gaffer.sessionActive && !gaffer.inspecting"
+					"when": "gaffer.mode == 'running' || gaffer.mode == 'ended'"
 				},
 				{
 					"id": "gaffer.step",
 					"name": "Step",
-					"when": "gaffer.inspecting"
+					"when": "gaffer.mode == 'inspecting'"
 				},
 				{
 					"id": "gaffer.state",
 					"name": "State",
-					"when": "gaffer.inspecting"
+					"when": "gaffer.mode == 'inspecting' || gaffer.mode == 'ended'"
 				}
 			]
 		},

@@ -25,7 +25,7 @@ import type { StepProvider } from "../panels/step.js";
 export interface DapHandlers {
 	stepProvider: StepProvider;
 	stateProvider: StateProvider;
-	setInspecting: (inspecting: boolean) => Promise<void> | void;
+	setEngineMode: (mode: "running" | "inspecting") => Promise<void> | void;
 }
 
 export async function dispatchDapEvent(
@@ -71,7 +71,11 @@ export async function dispatchDapEvent(
 		}
 		case "gaffer/mode": {
 			const body = parseDapBody(ModeBodySchema, e);
-			if (body) await handlers.setInspecting(body.mode === "inspect");
+			if (body) {
+				await handlers.setEngineMode(
+					body.mode === "inspect" ? "inspecting" : "running",
+				);
+			}
 			break;
 		}
 	}

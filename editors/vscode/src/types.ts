@@ -4,7 +4,7 @@
 
 export interface DebugState {
 	name: string | null;
-	status: "idle" | "starting" | "debugging";
+	status: "idle" | "starting" | "running" | "inspecting" | "ended";
 }
 
 export interface ProjectEntry {

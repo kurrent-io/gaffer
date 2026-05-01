@@ -25,6 +25,12 @@
 				font-size: 12px;
 				color: var(--vscode-descriptionForeground);
 			}
+			.caption {
+				font-size: 11px;
+				color: var(--vscode-descriptionForeground);
+				font-style: italic;
+				margin-top: 4px;
+			}
 			button {
 				margin-top: 8px;
 				padding: 4px 16px;
@@ -47,11 +53,13 @@
 		<div class="title" id="title"></div>
 		<div id="stats"></div>
 		<button id="pause">Pause to inspect</button>
+		<div class="caption" id="caption"></div>
 		<script nonce="{{NONCE}}">
 			const vscode = acquireVsCodeApi();
 			const titleEl = document.getElementById("title");
 			const statsEl = document.getElementById("stats");
 			const pauseBtn = document.getElementById("pause");
+			const captionEl = document.getElementById("caption");
 
 			pauseBtn.addEventListener("click", () => {
 				vscode.postMessage({ command: "pause" });
@@ -69,6 +77,10 @@
 					statsEl.appendChild(div);
 				}
 				pauseBtn.classList.toggle("hidden", !msg.showPauseButton);
+				captionEl.textContent =
+					msg.mode === "ended"
+						? "Run finished. State preserved below."
+						: "Returns to inspect mode";
 			});
 		</script>
 	</body>

@@ -120,7 +120,7 @@ export async function activate(
 			dispatchDapEvent(e, {
 				stepProvider,
 				stateProvider,
-				setInspecting: (inspecting) => controller.setInspecting(inspecting),
+				setEngineMode: (mode) => controller.setEngineMode(mode),
 			}),
 		),
 	);

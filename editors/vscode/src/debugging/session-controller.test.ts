@@ -4,6 +4,7 @@ import { SessionController } from "./session-controller.js";
 import { FakeSession } from "../../test/testutil/fake-session.js";
 import { makeContext } from "../../test/testutil/fake-context.js";
 import {
+	fireDebugStarted,
 	fireDebugTerminated,
 	getLastStartedDebugSession,
 	getShownMessages,
@@ -575,5 +576,109 @@ describe("SessionController gaffer.mode setContext across all transitions", () =
 			"inspecting",
 			"running",
 		]);
+	});
+});
+
+describe("SessionController diagnostic lifecycle across cleanups", () => {
+	// Plan-table row: "diagnostics survive across cleanups; cleared on
+	// next session." The first half (a fatal_error squiggle survives a
+	// running -> ended cleanup) was previously implicit. The second half
+	// (next start() clears) had partial coverage. Drive both halves
+	// explicitly here.
+
+	it("a fatal-error diagnostic survives running->ended cleanup and is cleared by the next start", async () => {
+		const { initDiagnostics } = await import("../diagnostics.js");
+		initDiagnostics(makeContext());
+
+		const h = makeHarness();
+		const { session } = await startToRunning(h);
+		// fatal_error WITH file -> reportFatalError attaches a diagnostic
+		// on the gaffer collection.
+		session.fire({
+			type: "fatal_error",
+			code: "JS_ERROR",
+			description: "boom",
+			file: "/p/checkout/projection.js",
+			line: 5,
+			column: 3,
+		});
+		// Non-zero exit routes through cleanup("ended"). Per the source
+		// comment in cleanupSession, diagnostics are NOT cleared in
+		// cleanup so the squiggle survives for post-mortem inspection.
+		session.fire({ type: "exit", code: 1 });
+		await flushAllMicrotasks();
+		expect(h.pushed.at(-1)?.status).toBe("ended");
+		expect(getState().diagnosticCollections[0]?.entries.size).toBe(1);
+
+		// Next start() clears diagnostics before the new session begins.
+		await startToRunning(h);
+		expect(getState().diagnosticCollections[0]?.entries.size).toBe(0);
+	});
+});
+
+describe("SessionController onDidStartDebugSession capture guard", () => {
+	// Production filters by `s.configuration.type === "gaffer"` AND
+	// `status === "starting"`. Without the type guard, a stranger debug
+	// session (a Node debug session running in the same window) would
+	// be captured and torn down when the user stops it - tearing down
+	// our gaffer session along with it.
+
+	it("does not capture a non-gaffer DebugSession started during 'starting'", async () => {
+		const h = makeHarness();
+		const { startPromise, session } = await startUntilWaitForDebug(h);
+
+		// A foreign debug session starts while we're in `starting`.
+		// Production must NOT capture it as #activeDebugSession.
+		const foreign = {
+			id: "foreign-1",
+			type: "node",
+			name: "Some Node Debug",
+			configuration: { type: "node" },
+			customRequest: () => Promise.resolve(undefined),
+		} as unknown as vscode.DebugSession;
+		fireDebugStarted(foreign);
+
+		// Complete our start cycle - mock auto-fires our own gaffer
+		// onDidStartDebugSession during startDebugging.
+		session.resolveDebug(4711);
+		await startPromise;
+
+		// Tear down the foreign session: must NOT cleanup our gaffer
+		// controller, since #activeDebugSession is the gaffer one.
+		const before = h.pushed.length;
+		fireDebugTerminated(foreign);
+		await flushAllMicrotasks();
+		expect(h.pushed.length).toBe(before);
+		expect(h.pushed.at(-1)?.status).toBe("running");
+
+		// Sanity: terminating OUR session does cleanup.
+		const ours = getLastStartedDebugSession();
+		if (!ours) throw new Error("expected our debug session to exist");
+		fireDebugTerminated(ours);
+		await flushAllMicrotasks();
+		expect(h.pushed.at(-1)?.status).toBe("ended");
+	});
+
+	it("does not capture a gaffer DebugSession that arrives outside the 'starting' window", async () => {
+		// While idle, a stale onDidStartDebugSession (e.g. from a stop
+		// race where the host fires the event after our cleanup) must
+		// not get captured.
+		const h = makeHarness();
+		const stale = {
+			id: "stale",
+			type: "gaffer",
+			name: "Gaffer: stale",
+			configuration: { type: "gaffer" },
+			customRequest: () => Promise.resolve(undefined),
+		} as unknown as vscode.DebugSession;
+		fireDebugStarted(stale);
+		// Now do a real start.
+		await startToRunning(h);
+		// Tear down the stale session: must not cleanup our running session.
+		const before = h.pushed.length;
+		fireDebugTerminated(stale);
+		await flushAllMicrotasks();
+		expect(h.pushed.length).toBe(before);
+		expect(h.pushed.at(-1)?.status).toBe("running");
 	});
 });

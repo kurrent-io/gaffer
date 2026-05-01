@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StateProvider } from "./state.js";
+import { makePartitionElement } from "../../test/testutil/fixtures.js";
 import type { StateBody } from "../debugging/schemas.js";
 
 interface FakeDebugSession {
@@ -89,11 +90,7 @@ describe("StateProvider", () => {
 				return { state: { count: 7 } };
 			});
 			provider.setDebugSession(session as unknown as vscode.DebugSession);
-			const partition = new vscode.TreeItem(
-				"p1",
-				vscode.TreeItemCollapsibleState.Collapsed,
-			);
-			partition.contextValue = "partition";
+			const partition = makePartitionElement("p1");
 			vi.useRealTimers();
 			const items = await provider.getChildren(partition);
 			expect(calls).toEqual([
@@ -106,11 +103,7 @@ describe("StateProvider", () => {
 			const provider = new StateProvider();
 			const session = makeSession(() => Promise.reject(new Error("boom")));
 			provider.setDebugSession(session as unknown as vscode.DebugSession);
-			const partition = new vscode.TreeItem(
-				"p1",
-				vscode.TreeItemCollapsibleState.Collapsed,
-			);
-			partition.contextValue = "partition";
+			const partition = makePartitionElement("p1");
 			vi.useRealTimers();
 			const items = await provider.getChildren(partition);
 			expect(items[0]?.label).toMatch(/Failed to load: boom/);
@@ -120,11 +113,7 @@ describe("StateProvider", () => {
 			const provider = new StateProvider();
 			const session = makeSession(async () => "not-an-object");
 			provider.setDebugSession(session as unknown as vscode.DebugSession);
-			const partition = new vscode.TreeItem(
-				"p1",
-				vscode.TreeItemCollapsibleState.Collapsed,
-			);
-			partition.contextValue = "partition";
+			const partition = makePartitionElement("p1");
 			vi.useRealTimers();
 			const items = await provider.getChildren(partition);
 			expect(items[0]?.label).toMatch(/malformed response/);
@@ -134,11 +123,7 @@ describe("StateProvider", () => {
 			const provider = new StateProvider();
 			const session = makeSession(() => new Promise(() => {}));
 			provider.setDebugSession(session as unknown as vscode.DebugSession);
-			const partition = new vscode.TreeItem(
-				"p1",
-				vscode.TreeItemCollapsibleState.Collapsed,
-			);
-			partition.contextValue = "partition";
+			const partition = makePartitionElement("p1");
 			const fetch = provider.getChildren(partition);
 			vi.advanceTimersByTime(5001);
 			const items = await fetch;
@@ -151,11 +136,7 @@ describe("StateProvider", () => {
 			const provider = new StateProvider();
 			const session = makeSession(async () => ({ state: { count: 7 } }));
 			provider.setDebugSession(session as unknown as vscode.DebugSession);
-			const partition = new vscode.TreeItem(
-				"p1",
-				vscode.TreeItemCollapsibleState.Collapsed,
-			);
-			partition.contextValue = "partition";
+			const partition = makePartitionElement("p1");
 			vi.useRealTimers();
 			await provider.getChildren(partition);
 			// End the session.
@@ -167,11 +148,7 @@ describe("StateProvider", () => {
 		it("returns a 'not loaded during session' item for partitions never expanded live", async () => {
 			const provider = new StateProvider();
 			provider.markEnded();
-			const partition = new vscode.TreeItem(
-				"p1",
-				vscode.TreeItemCollapsibleState.Collapsed,
-			);
-			partition.contextValue = "partition";
+			const partition = makePartitionElement("p1");
 			const items = await provider.getChildren(partition);
 			expect(items[0]?.label).toMatch(/not loaded/);
 		});
@@ -196,11 +173,7 @@ describe("StateProvider", () => {
 			provider.markEnded();
 			const session = makeSession(async () => ({ state: { v: 1 } }));
 			provider.setDebugSession(session as unknown as vscode.DebugSession);
-			const partition = new vscode.TreeItem(
-				"p1",
-				vscode.TreeItemCollapsibleState.Collapsed,
-			);
-			partition.contextValue = "partition";
+			const partition = makePartitionElement("p1");
 			const items = await provider.getChildren(partition);
 			// No live session honoured -> falls through to cache miss.
 			expect(items[0]?.label).toMatch(/not loaded/);
@@ -221,11 +194,7 @@ describe("StateProvider", () => {
 			const provider = new StateProvider();
 			const session = makeSession(async () => ({ state: { v: 1 } }));
 			provider.setDebugSession(session as unknown as vscode.DebugSession);
-			const partition = new vscode.TreeItem(
-				"p1",
-				vscode.TreeItemCollapsibleState.Collapsed,
-			);
-			partition.contextValue = "partition";
+			const partition = makePartitionElement("p1");
 			vi.useRealTimers();
 			await provider.getChildren(partition); // populate cache
 			provider.clear();

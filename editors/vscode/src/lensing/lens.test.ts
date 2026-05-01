@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { describe, expect, it } from "vitest";
 import { buildLens } from "./lens.js";
+import { okManifest } from "../../test/testutil/fixtures.js";
 import { setTrusted } from "../../test/testutil/vscode-state.js";
 import type { Manifest } from "../discovery/schemas.js";
 import type { DebugState } from "../types.js";
@@ -8,10 +9,6 @@ import type { DebugState } from "../types.js";
 const range = new vscode.Range(0, 0, 0, 10);
 const tomlUri = vscode.Uri.file("/p/gaffer.toml");
 const idle: DebugState = { name: null, status: "idle" };
-const okManifest: Manifest = {
-	version: "1.0.0",
-	commands: { dev: { flags: ["debug"] } },
-};
 
 describe("buildLens", () => {
 	it("returns a Debug lens when manifest supports `dev --debug` and idle", () => {

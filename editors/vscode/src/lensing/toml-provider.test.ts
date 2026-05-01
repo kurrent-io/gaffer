@@ -1,19 +1,7 @@
 import * as vscode from "vscode";
 import { describe, expect, it } from "vitest";
 import { TomlCodeLensProvider } from "./toml-provider.js";
-import type { Manifest } from "../discovery/schemas.js";
-
-function makeDoc(uri: vscode.Uri, text: string): vscode.TextDocument {
-	return {
-		uri,
-		getText: () => text,
-	} as unknown as vscode.TextDocument;
-}
-
-const okManifest: Manifest = {
-	version: "1.0.0",
-	commands: { dev: { flags: ["debug"] } },
-};
+import { makeDoc, okManifest } from "../../test/testutil/fixtures.js";
 
 describe("TomlCodeLensProvider.provideCodeLenses", () => {
 	it("returns one lens per [[projection]] header line", () => {

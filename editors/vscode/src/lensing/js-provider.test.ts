@@ -1,20 +1,8 @@
 import * as vscode from "vscode";
 import { describe, expect, it } from "vitest";
 import { JsCodeLensProvider } from "./js-provider.js";
+import { makeDoc, okManifest } from "../../test/testutil/fixtures.js";
 import type { ProjectIndex } from "../discovery/project-index.js";
-import type { Manifest } from "../discovery/schemas.js";
-
-const okManifest: Manifest = {
-	version: "1.0.0",
-	commands: { dev: { flags: ["debug"] } },
-};
-
-function makeDoc(uri: vscode.Uri, text: string): vscode.TextDocument {
-	return {
-		uri,
-		getText: () => text,
-	} as unknown as vscode.TextDocument;
-}
 
 function indexWith(
 	entry: string,

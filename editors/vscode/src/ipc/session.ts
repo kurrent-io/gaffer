@@ -13,7 +13,31 @@ type Listener<T extends CliMessageType = CliMessageType> = (
 ) => void;
 type AnyListener = (msg: CliMessage) => void;
 
-export class GafferSession {
+// Surface SessionController consumes. Extracted as an interface so
+// tests can substitute a fake without spawning a subprocess. The
+// production implementation is GafferSession below; the
+// SessionController takes a `createSession` factory in its deps so
+// the test seam is a one-line override.
+export interface SessionLike {
+	readonly name: string;
+	on<T extends CliMessageType>(type: T, fn: Listener<T>): this;
+	on(type: "*", fn: AnyListener): this;
+	start(): this;
+	waitForDebug(): Promise<Extract<CliMessage, { type: "debug" }>>;
+	stop(): void;
+	dispose(): void;
+}
+
+export type CreateSession = (
+	name: string,
+	argv: string[],
+	options?: SessionOptions,
+) => SessionLike;
+
+export const createGafferSession: CreateSession = (name, argv, options) =>
+	new GafferSession(name, argv, options);
+
+export class GafferSession implements SessionLike {
 	readonly #name: string;
 	readonly #argv: string[];
 	readonly #cwd: string | undefined;
@@ -83,7 +107,7 @@ export class GafferSession {
 	}
 
 	#dispatch(msg: CliMessage): void {
-		renderCliMessage(msg);
+		renderCliMessage(msg, writeOutput);
 		for (const fn of this.#listeners.get(msg.type) ?? []) fn(msg);
 		for (const fn of this.#listeners.get("*") ?? []) fn(msg);
 	}

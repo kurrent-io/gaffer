@@ -72,15 +72,17 @@ export async function createProjectIndex(): Promise<ProjectIndex> {
 }
 
 // NTFS is case-insensitive and VS Code can return mixed-case fsPaths;
-// canonicalise on Windows so set and get hit the same key.
-function normalizePath(p: string): string {
+// canonicalise on Windows so set and get hit the same key. Exported
+// for test coverage; production callers don't need to import it.
+export function normalizePath(p: string): string {
 	const normalized = path.normalize(p);
 	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
 // True iff `child` is `parent` itself or a descendant. Compares
-// normalized paths; matches Windows case-insensitivity.
-function isWithin(child: string, parent: string): boolean {
+// normalized paths; matches Windows case-insensitivity. Exported for
+// test coverage.
+export function isWithin(child: string, parent: string): boolean {
 	const c = normalizePath(child);
 	const p = normalizePath(parent);
 	if (c === p) return true;

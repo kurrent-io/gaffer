@@ -13,7 +13,11 @@
 //   status: starting -> idle (never reached running), otherwise ended.
 
 import * as vscode from "vscode";
-import { GafferSession } from "../ipc/session.js";
+import {
+	createGafferSession,
+	type CreateSession,
+	type SessionLike,
+} from "../ipc/session.js";
 import { log } from "../output.js";
 import { clearDiagnostics, reportFatalError } from "../diagnostics.js";
 import {
@@ -47,6 +51,10 @@ export interface SessionControllerDeps {
 	// onDidChange. Push semantics (no shared mutable reference) - the
 	// state value is the contract, not the object identity.
 	pushDebugState: (state: Readonly<DebugState>) => void;
+	// Factory for the underlying CLI-driving session. Production
+	// passes createGafferSession; tests substitute a fake to avoid
+	// spawning a real subprocess.
+	createSession?: CreateSession;
 }
 
 export class SessionController implements vscode.Disposable {
@@ -59,7 +67,8 @@ export class SessionController implements vscode.Disposable {
 	// is the single point that pushes to consumers via #pushDebugState.
 	readonly #debugState: DebugState = { name: null, status: "idle" };
 	readonly #pushDebugState: (state: Readonly<DebugState>) => void;
-	#activeSession: GafferSession | null = null;
+	readonly #createSession: CreateSession;
+	#activeSession: SessionLike | null = null;
 	// Captured via onDidStartDebugSession, compared by reference in the
 	// terminate listener. Name-based comparison is racey when the user
 	// rapidly Stop+Starts the same projection.
@@ -82,6 +91,7 @@ export class SessionController implements vscode.Disposable {
 		this.#stateProvider = deps.stateProvider;
 		this.#statusProvider = deps.statusProvider;
 		this.#pushDebugState = deps.pushDebugState;
+		this.#createSession = deps.createSession ?? createGafferSession;
 	}
 
 	getDebugState(): Readonly<DebugState> {
@@ -163,7 +173,7 @@ export class SessionController implements vscode.Disposable {
 		await this.#setStatus(name, "starting");
 		log(`Starting: ${name}`);
 
-		const session = new GafferSession(name, argv, { cwd: tomlDir });
+		const session = this.#createSession(name, argv, { cwd: tomlDir });
 		this.#activeSession = session;
 
 		session.on("exit", async (msg) => {

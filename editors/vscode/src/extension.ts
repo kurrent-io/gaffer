@@ -150,17 +150,18 @@ export function activate(context: vscode.ExtensionContext): void {
 	};
 
 	const runProjection = async (): Promise<void> => {
-		// Refresh before ensureManifest: the CLI runs from projectIndex.projectRoot,
-		// so a stale index would point fetchManifest at the wrong cwd (or undefined).
 		await projectIndex.refresh();
-		if (!(await ensureManifest())) return;
 		const projections = projectIndex.projections;
+		// Empty check before manifest fetch: a workspace with no gaffer.toml
+		// would otherwise misreport "Gaffer CLI failed" when the real
+		// diagnostic is "no projections here".
 		if (projections.length === 0) {
 			void vscode.window.showInformationMessage(
 				"Gaffer: no projections found in this workspace.",
 			);
 			return;
 		}
+		if (!(await ensureManifest())) return;
 		const picked = await vscode.window.showQuickPick(
 			projections.map((p) => ({
 				label: p.name,

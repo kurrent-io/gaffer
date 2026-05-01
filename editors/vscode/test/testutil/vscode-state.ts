@@ -4,15 +4,14 @@
 // because it imports from "vscode" (mapped to test/__mocks__/vscode.ts
 // via vite.config alias).
 
+import type * as vscode from "vscode";
 import {
 	__clearShownMessages,
 	__getShownMessages,
 	__resetState,
 	state,
-	Uri,
 	type DebugSession,
 	type DebugSessionCustomEvent,
-	type WorkspaceFolder,
 } from "../__mocks__/vscode.js";
 
 export function resetVscode(): void {
@@ -26,8 +25,8 @@ export function setTrusted(trusted: boolean): void {
 
 // Each call to vscode.workspace.findFiles() shifts one batch off the
 // queue. Push as many batches as the test will trigger.
-export function queueFindFiles(uris: Uri[]): void {
-	state.findFilesQueue.push(uris);
+export function queueFindFiles(uris: vscode.Uri[]): void {
+	state.findFilesQueue.push(uris as never);
 }
 
 export function setConfiguration(
@@ -100,8 +99,8 @@ export function fireWorkspaceTrustGranted(): void {
 	state.workspaceTrustGranted.fire();
 }
 
-export function setWorkspaceFolders(folders: WorkspaceFolder[]): void {
-	state.workspaceFolders = folders;
+export function setWorkspaceFolders(folders: vscode.WorkspaceFolder[]): void {
+	state.workspaceFolders = folders as never;
 }
 
 export const getState = (): typeof state => state;

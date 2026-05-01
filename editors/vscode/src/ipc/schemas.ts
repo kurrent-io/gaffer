@@ -114,6 +114,17 @@ const DebugMessageSchema = v.object({
 	port: v.number(),
 });
 
+const FatalErrorMessageSchema = v.object({
+	type: v.literal("fatal_error"),
+	code: v.string(),
+	description: v.string(),
+	file: v.optional(v.string()),
+	line: v.optional(v.number()),
+	column: v.optional(v.number()),
+	jsStack: v.optional(v.string()),
+	eventId: v.optional(v.string()),
+});
+
 // CLI-emitted messages as they appear on stdout. v.variant is O(1) on the
 // discriminator vs v.union's linear try-each.
 export const CliMessageWireSchema = v.variant("type", [
@@ -124,6 +135,7 @@ export const CliMessageWireSchema = v.variant("type", [
 	ErrorMessageSchema,
 	SummaryMessageSchema,
 	DebugMessageSchema,
+	FatalErrorMessageSchema,
 ]);
 export type CliMessageWire = v.InferOutput<typeof CliMessageWireSchema>;
 

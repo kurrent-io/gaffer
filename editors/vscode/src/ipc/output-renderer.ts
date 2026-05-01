@@ -42,6 +42,23 @@ export function renderCliMessage(msg: CliMessage): void {
 			break;
 		case "debug":
 			break;
+		case "fatal_error": {
+			const where = msg.file
+				? `${msg.file}${msg.line != null ? `:${msg.line}` : ""}${
+						msg.column != null ? `:${msg.column}` : ""
+					}`
+				: "";
+			const eventSuffix = msg.eventId ? ` (event ${msg.eventId})` : "";
+			writeOutput(
+				`  FATAL: ${msg.code}${eventSuffix}: ${msg.description}${where ? ` at ${where}` : ""}`,
+			);
+			if (msg.jsStack) {
+				for (const line of msg.jsStack.split(/\r?\n/)) {
+					if (line) writeOutput(`    ${line}`);
+				}
+			}
+			break;
+		}
 		case "exit":
 			writeOutput(`Process exited (code ${msg.code})`);
 			break;

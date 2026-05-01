@@ -1,11 +1,34 @@
 import * as vscode from "vscode";
 import * as v from "valibot";
 import { jsonToTreeItems, type TreeItemWithChildren } from "./json-tree.js";
+import { log } from "../output.js";
 import {
 	PartitionStateResponseSchema,
 	type StateBody,
 	type PartitionStateResponse,
 } from "../debugging/schemas.js";
+
+const PARTITION_FETCH_TIMEOUT_MS = 5000;
+
+class PartitionFetchTimeout extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "PartitionFetchTimeout";
+	}
+}
+
+function withTimeout<T>(promise: Thenable<T>, ms: number): Promise<T> {
+	let timer: NodeJS.Timeout;
+	const timeout = new Promise<never>((_, reject) => {
+		timer = setTimeout(
+			() => reject(new PartitionFetchTimeout(`Timed out after ${ms}ms`)),
+			ms,
+		);
+	});
+	return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+		clearTimeout(timer);
+	});
+}
 
 export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildren> {
 	readonly #onDidChange = new vscode.EventEmitter<void>();
@@ -120,29 +143,33 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 	async #fetchPartitionState(
 		partition: string,
 	): Promise<TreeItemWithChildren[]> {
-		// Live: customRequest, populate cache, render.
+		// Live: customRequest with timeout, populate cache, render.
 		if (this.#debugSession) {
 			let raw: unknown;
 			try {
-				raw = await this.#debugSession.customRequest("gaffer/partitionState", {
-					partition,
-				});
-			} catch {
-				return [
-					new vscode.TreeItem(
-						"Failed to load",
-						vscode.TreeItemCollapsibleState.None,
-					),
-				];
+				raw = await withTimeout(
+					this.#debugSession.customRequest("gaffer/partitionState", {
+						partition,
+					}),
+					PARTITION_FETCH_TIMEOUT_MS,
+				);
+			} catch (err) {
+				if (err instanceof PartitionFetchTimeout) {
+					log(`Partition fetch timed out: ${partition}`);
+					return [errorItem("Failed to load (timeout)")];
+				}
+				const msg = err instanceof Error ? err.message : String(err);
+				log(`Partition fetch failed for ${partition}: ${msg}`);
+				return [errorItem(`Failed to load: ${truncate(msg, 80)}`)];
 			}
 			const parsed = v.safeParse(PartitionStateResponseSchema, raw);
 			if (!parsed.success) {
-				return [
-					new vscode.TreeItem(
-						"Failed to load (malformed response)",
-						vscode.TreeItemCollapsibleState.None,
-					),
-				];
+				log(
+					`Malformed partition response for ${partition}: ${parsed.issues
+						.map((i) => i.message)
+						.join("; ")}`,
+				);
+				return [errorItem("Failed to load (malformed response)")];
 			}
 			this.#partitionCache.set(partition, parsed.output);
 			return renderPartition(parsed.output);
@@ -150,13 +177,16 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 		// Post-mortem: serve from cache.
 		const cached = this.#partitionCache.get(partition);
 		if (cached) return renderPartition(cached);
-		return [
-			new vscode.TreeItem(
-				"(not loaded during session)",
-				vscode.TreeItemCollapsibleState.None,
-			),
-		];
+		return [errorItem("(not loaded during session)")];
 	}
+}
+
+function errorItem(label: string): TreeItemWithChildren {
+	return new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+}
+
+function truncate(s: string, max: number): string {
+	return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
 function renderPartition(body: PartitionStateResponse): TreeItemWithChildren[] {

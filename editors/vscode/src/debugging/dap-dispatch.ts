@@ -9,7 +9,6 @@
 import * as vscode from "vscode";
 import * as v from "valibot";
 import { log } from "../output.js";
-import { showStepError } from "../notifications.js";
 import {
 	ModeBodySchema,
 	StateBodySchema,
@@ -58,10 +57,9 @@ export async function dispatchDapEvent(
 		}
 		case "gaffer/stepError": {
 			const body = parseDapBody(StepErrorBodySchema, e);
-			if (body) {
-				handlers.stepProvider.setError(body.code, body.description);
-				await showStepError(body.code, body.description);
-			}
+			// Tree item is sufficient signal for per-event handler errors.
+			// Catastrophic failures come via fatal_error -> Diagnostic.
+			if (body) handlers.stepProvider.setError(body.code, body.description);
 			break;
 		}
 		case "gaffer/state": {

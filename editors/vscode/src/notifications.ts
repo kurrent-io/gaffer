@@ -59,8 +59,7 @@ export const showProjectionFault = (
 export const showStartFailure = (message: string): Thenable<unknown> =>
 	vscode.window.showErrorMessage(`Gaffer: ${message}`);
 
-export const showStepError = (
-	code: string,
-	description: string,
-): Thenable<unknown> =>
-	vscode.window.showErrorMessage(`Gaffer: ${code} - ${description}`);
+export const showProjectionFailed = (): Thenable<unknown> =>
+	vscode.window.showErrorMessage(
+		"Gaffer: projection failed - see Problems panel",
+	);

@@ -12,6 +12,7 @@ import {
 	type DebugProjectionArgs,
 } from "./debugging/session-controller.js";
 import { initOutput, log } from "./output.js";
+import { initDiagnostics } from "./diagnostics.js";
 import {
 	showManifestFailure,
 	showNoProjections,
@@ -25,6 +26,7 @@ export async function activate(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
 	initOutput(context);
+	initDiagnostics(context);
 
 	const debugState: DebugState = { name: null, status: "idle" };
 

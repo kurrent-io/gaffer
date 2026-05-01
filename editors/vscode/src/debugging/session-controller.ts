@@ -15,7 +15,9 @@
 import * as vscode from "vscode";
 import { GafferSession } from "../ipc/session.js";
 import { log } from "../output.js";
+import { clearDiagnostics, reportFatalError } from "../diagnostics.js";
 import {
+	showProjectionFailed,
 	showProjectionFault,
 	showStartFailure,
 	showTrustWarning,
@@ -62,6 +64,11 @@ export class SessionController implements vscode.Disposable {
 	// arrives before our status flip; without queueing we'd be stuck
 	// in running while the engine is paused.
 	#pendingEngineMode: EngineMode | null = null;
+	// Set by the fatal_error session listener; checked by the
+	// waitForDebug catch and exit handler to suppress their own toasts
+	// when fatal_error already surfaced its own. Reset in cleanupSession
+	// so the next session starts clean.
+	#fatalErrorSeen = false;
 
 	constructor(deps: SessionControllerDeps) {
 		this.#buildArgv = deps.buildArgv;
@@ -123,6 +130,11 @@ export class SessionController implements vscode.Disposable {
 			await this.#cleanupSession("idle");
 		}
 
+		// Fresh slate for diagnostics: any squiggles from a previous
+		// session (or a previous compile-time fatal that never reached
+		// running) get cleared right before we kick off the new one.
+		clearDiagnostics();
+
 		const { name, tomlUri } = args;
 		const tomlDir = vscode.Uri.joinPath(tomlUri, "..").fsPath;
 		const argv = this.#buildArgv([
@@ -148,7 +160,9 @@ export class SessionController implements vscode.Disposable {
 			// post-mortem to preserve - never reached running.
 			if (s === "starting") {
 				log(`CLI exited during start (code ${msg.code})`);
-				await showStartFailure(`CLI exited (code ${msg.code})`);
+				if (!this.#fatalErrorSeen) {
+					await showStartFailure(`CLI exited (code ${msg.code})`);
+				}
 				await this.#cleanupSession("idle");
 				return;
 			}
@@ -156,12 +170,30 @@ export class SessionController implements vscode.Disposable {
 			// State view + Status counters survive for inspection.
 			if (s === "running" || s === "inspecting") {
 				log(`CLI exited with code ${msg.code}`);
-				if (msg.code !== 0) {
+				if (msg.code !== 0 && !this.#fatalErrorSeen) {
 					await showProjectionFault(msg.code);
 				}
 				await this.#cleanupSession("ended");
 			}
 			// idle/ended: already cleaned up; ignore.
+		});
+
+		session.on("fatal_error", (msg) => {
+			this.#fatalErrorSeen = true;
+			if (msg.file) {
+				reportFatalError({
+					file: msg.file,
+					line: msg.line,
+					column: msg.column,
+					code: msg.code,
+					description: msg.description,
+					jsStack: msg.jsStack,
+					eventId: msg.eventId,
+				});
+			} else {
+				log(`Fatal error (no file): ${msg.code} - ${msg.description}`);
+			}
+			void showProjectionFailed();
 		});
 
 		session
@@ -183,7 +215,9 @@ export class SessionController implements vscode.Disposable {
 		} catch (err) {
 			const errMsg = err instanceof Error ? err.message : String(err);
 			log(`Failed to start: ${errMsg}`);
-			await showStartFailure(errMsg);
+			if (!this.#fatalErrorSeen) {
+				await showStartFailure(errMsg);
+			}
 			await this.#cleanupSession("idle");
 			return;
 		}
@@ -259,18 +293,25 @@ export class SessionController implements vscode.Disposable {
 		}
 		this.#activeDebugSession = null;
 		this.#pendingEngineMode = null;
+		this.#fatalErrorSeen = false;
 
 		if (mode === "idle") {
 			this.#stepProvider.clear();
 			this.#stateProvider.clear();
 			await this.#setStatus(null, "idle");
 		} else {
-			// "ended" - preserve state + counters for post-mortem.
+			// "ended" - preserve state + counters for post-mortem
+			// inspection.
 			this.#stepProvider.clear();
 			this.#stateProvider.markEnded();
 			this.#statusProvider.markEnded();
 			await this.#setStatus(this.#debugState.name, "ended");
 		}
+		// Diagnostics are NOT cleared here. A compile-time fatal_error
+		// fires during `starting` and routes through cleanup("idle") -
+		// wiping the diagnostic in the same tick would defeat the whole
+		// point. Diagnostics survive across cleanups; they get cleared
+		// at the start of the next session (see start()).
 	}
 
 	async #setStatus(

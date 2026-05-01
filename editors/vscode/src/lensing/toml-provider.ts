@@ -7,16 +7,23 @@ import type { DebugState } from "../types.js";
 export class TomlCodeLensProvider implements vscode.CodeLensProvider {
 	readonly #onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChangeCodeLenses = this.#onDidChange.event;
-	readonly #debugState: DebugState;
+	#debugState: DebugState = { name: null, status: "idle" };
 	#manifest: Manifest | null;
 
-	constructor(initialManifest: Manifest | null, debugState: DebugState) {
+	constructor(initialManifest: Manifest | null) {
 		this.#manifest = initialManifest;
-		this.#debugState = debugState;
 	}
 
 	setManifest(manifest: Manifest | null): void {
 		this.#manifest = manifest;
+		this.#onDidChange.fire();
+	}
+
+	// Lens-side copy of the controller's debug state. Pushed via the
+	// SessionController's pushDebugState callback rather than a shared
+	// reference so the controller's mutations don't reach in here.
+	setDebugState(state: Readonly<DebugState>): void {
+		this.#debugState = { ...state };
 		this.#onDidChange.fire();
 	}
 

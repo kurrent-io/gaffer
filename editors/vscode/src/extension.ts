@@ -18,15 +18,12 @@ import {
 	showNoProjections,
 	showTrustWarning,
 } from "./notifications.js";
-import type { DebugState } from "./types.js";
 
 export async function activate(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
 	initOutput(context);
 	initDiagnostics(context);
-
-	const debugState: DebugState = { name: null, status: "idle" };
 
 	// Initial snapshots - both awaited up front. Lens providers are
 	// constructed with the loaded data and registered after, so first
@@ -40,28 +37,18 @@ export async function activate(
 	const stepProvider = new StepProvider();
 	const stateProvider = new StateProvider();
 	const statusProvider = new StatusViewProvider();
-	const tomlCodeLens = new TomlCodeLensProvider(initialManifest, debugState);
-	const jsCodeLens = new JsCodeLensProvider(
-		initialIndex,
-		initialManifest,
-		debugState,
-	);
-
-	// Sync re-render hook for things that don't change index/manifest
-	// state (e.g. debug-state transitions). Distinct from the async
-	// reloadLensState orchestrator below, which actually refetches.
-	const rerenderLenses = (): void => {
-		tomlCodeLens.refresh();
-		jsCodeLens.refresh();
-	};
+	const tomlCodeLens = new TomlCodeLensProvider(initialManifest);
+	const jsCodeLens = new JsCodeLensProvider(initialIndex, initialManifest);
 
 	const controller = new SessionController({
 		buildArgv: buildGafferArgv,
 		stepProvider,
 		stateProvider,
 		statusProvider,
-		debugState,
-		refreshLenses: rerenderLenses,
+		pushDebugState: (state) => {
+			tomlCodeLens.setDebugState(state);
+			jsCodeLens.setDebugState(state);
+		},
 	});
 	controller.register(context);
 

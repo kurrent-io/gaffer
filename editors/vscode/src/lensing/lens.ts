@@ -13,7 +13,7 @@ import type { DebugState } from "../types.js";
 
 export function buildLens(
 	manifest: Manifest | null,
-	debugState: DebugState,
+	debugState: Readonly<DebugState>,
 	name: string,
 	range: vscode.Range,
 	tomlUri: vscode.Uri,

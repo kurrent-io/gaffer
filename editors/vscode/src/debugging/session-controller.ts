@@ -42,8 +42,11 @@ export interface SessionControllerDeps {
 	stepProvider: StepProvider;
 	stateProvider: StateProvider;
 	statusProvider: StatusViewProvider;
-	debugState: DebugState;
-	refreshLenses: () => void;
+	// Called after every status transition with the new state. Lens
+	// providers each hold their own copy and rerender via the state's
+	// onDidChange. Push semantics (no shared mutable reference) - the
+	// state value is the contract, not the object identity.
+	pushDebugState: (state: Readonly<DebugState>) => void;
 }
 
 export class SessionController implements vscode.Disposable {
@@ -51,8 +54,11 @@ export class SessionController implements vscode.Disposable {
 	readonly #stepProvider: StepProvider;
 	readonly #stateProvider: StateProvider;
 	readonly #statusProvider: StatusViewProvider;
-	readonly #debugState: DebugState;
-	readonly #refreshLenses: () => void;
+	// Owned privately. External readers go through getDebugState which
+	// returns a Readonly view. Mutations only inside #setStatus, which
+	// is the single point that pushes to consumers via #pushDebugState.
+	readonly #debugState: DebugState = { name: null, status: "idle" };
+	readonly #pushDebugState: (state: Readonly<DebugState>) => void;
 	#activeSession: GafferSession | null = null;
 	// Captured via onDidStartDebugSession, compared by reference in the
 	// terminate listener. Name-based comparison is racey when the user
@@ -75,8 +81,11 @@ export class SessionController implements vscode.Disposable {
 		this.#stepProvider = deps.stepProvider;
 		this.#stateProvider = deps.stateProvider;
 		this.#statusProvider = deps.statusProvider;
-		this.#debugState = deps.debugState;
-		this.#refreshLenses = deps.refreshLenses;
+		this.#pushDebugState = deps.pushDebugState;
+	}
+
+	getDebugState(): Readonly<DebugState> {
+		return this.#debugState;
 	}
 
 	register(context: vscode.ExtensionContext): void {
@@ -328,7 +337,7 @@ export class SessionController implements vscode.Disposable {
 		// callers see the new status before any of them yield.
 		this.#debugState.name = name;
 		this.#debugState.status = status;
-		this.#refreshLenses();
+		this.#pushDebugState(this.#debugState);
 		await vscode.commands.executeCommand(
 			"setContext",
 			"gaffer.mode",

@@ -10,18 +10,13 @@ const fromPattern = /^(fromAll|fromStream|fromCategory|fromStreams)\s*\(/;
 export class JsCodeLensProvider implements vscode.CodeLensProvider {
 	readonly #onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChangeCodeLenses = this.#onDidChange.event;
-	readonly #debugState: DebugState;
+	#debugState: DebugState = { name: null, status: "idle" };
 	#index: ProjectIndex;
 	#manifest: Manifest | null;
 
-	constructor(
-		initialIndex: ProjectIndex,
-		initialManifest: Manifest | null,
-		debugState: DebugState,
-	) {
+	constructor(initialIndex: ProjectIndex, initialManifest: Manifest | null) {
 		this.#index = initialIndex;
 		this.#manifest = initialManifest;
-		this.#debugState = debugState;
 	}
 
 	setIndex(index: ProjectIndex): void {
@@ -31,6 +26,14 @@ export class JsCodeLensProvider implements vscode.CodeLensProvider {
 
 	setManifest(manifest: Manifest | null): void {
 		this.#manifest = manifest;
+		this.#onDidChange.fire();
+	}
+
+	// Lens-side copy of the controller's debug state. Pushed via the
+	// SessionController's pushDebugState callback rather than a shared
+	// reference so the controller's mutations don't reach in here.
+	setDebugState(state: Readonly<DebugState>): void {
+		this.#debugState = { ...state };
 		this.#onDidChange.fire();
 	}
 

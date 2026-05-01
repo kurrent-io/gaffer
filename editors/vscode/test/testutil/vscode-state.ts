@@ -10,8 +10,6 @@ import {
 	__getShownMessages,
 	__resetState,
 	state,
-	type DebugSession,
-	type DebugSessionCustomEvent,
 } from "../__mocks__/vscode.js";
 
 export function resetVscode(): void {
@@ -26,7 +24,7 @@ export function setTrusted(trusted: boolean): void {
 // Each call to vscode.workspace.findFiles() shifts one batch off the
 // queue. Push as many batches as the test will trigger.
 export function queueFindFiles(uris: vscode.Uri[]): void {
-	state.findFilesQueue.push(uris as never);
+	state.findFilesQueue.push(uris);
 }
 
 export function setConfiguration(
@@ -74,15 +72,15 @@ export function setStartDebuggingResult(result: boolean): void {
 	state.startDebuggingResult = result;
 }
 
-export function fireDebugStarted(session: DebugSession): void {
+export function fireDebugStarted(session: vscode.DebugSession): void {
 	state.debugStarted.fire(session);
 }
 
-export function fireDebugTerminated(session: DebugSession): void {
+export function fireDebugTerminated(session: vscode.DebugSession): void {
 	state.debugTerminated.fire(session);
 }
 
-export function fireDebugCustomEvent(e: DebugSessionCustomEvent): void {
+export function fireDebugCustomEvent(e: vscode.DebugSessionCustomEvent): void {
 	state.debugCustomEvent.fire(e);
 }
 
@@ -100,7 +98,7 @@ export function fireWorkspaceTrustGranted(): void {
 }
 
 export function setWorkspaceFolders(folders: vscode.WorkspaceFolder[]): void {
-	state.workspaceFolders = folders as never;
+	state.workspaceFolders = folders;
 }
 
 export const getState = (): typeof state => state;
@@ -110,6 +108,6 @@ export const getShownMessages = __getShownMessages;
 // startDebugging call. Use this to drive onDidTerminateDebugSession in
 // tests where the controller's internal session reference matters
 // (terminate identity check).
-export function getLastStartedDebugSession(): DebugSession | null {
+export function getLastStartedDebugSession(): vscode.DebugSession | null {
 	return state.lastStartedDebugSession;
 }

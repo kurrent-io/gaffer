@@ -1,30 +1,39 @@
 // Hand-rolled stub for the `vscode` module, aliased in vite.config.ts.
 //
-// Purpose-built for the surface this extension actually uses; it is not
-// a faithful re-implementation of the public API. New imports require a
-// new mock entry. Mutable shared state lives in `state` and is reset
-// per-test via `resetVscode()` (test/testutil/vscode-state.ts).
+// Each class `implements vscode.X` so tsc flags drift between the mock
+// and the public API. Methods we don't use throw at runtime - if a
+// production change starts calling one, tests fail loud. Mutable shared
+// state lives in `state` and is reset per-test via `resetVscode()`.
 
-export interface Disposable {
-	dispose(): void;
-}
+import type * as vscode from "vscode";
+
+const NOT_IMPLEMENTED = (name: string): Error =>
+	new Error(`vscode mock: ${name} is not implemented`);
 
 // ---- EventEmitter ---------------------------------------------------------
 
-export class EventEmitter<T> {
-	#listeners: Array<(e: T) => void> = [];
-	readonly event = (listener: (e: T) => void): Disposable => {
-		this.#listeners.push(listener);
-		return {
+export class EventEmitter<T> implements vscode.EventEmitter<T> {
+	#listeners: Array<(e: T) => unknown> = [];
+	readonly event: vscode.Event<T> = ((listener, thisArgs, disposables) => {
+		const bound: (e: T) => unknown = thisArgs
+			? (e) => listener.call(thisArgs, e)
+			: listener;
+		this.#listeners.push(bound);
+		const disp: vscode.Disposable = {
 			dispose: () => {
-				const i = this.#listeners.indexOf(listener);
+				const i = this.#listeners.indexOf(bound);
 				if (i >= 0) this.#listeners.splice(i, 1);
 			},
 		};
-	};
-	// Real vscode swallows individual listener throws so one bug doesn't
-	// stop the others. Mirror that, otherwise a buggy listener masks the
-	// rest in tests in a way it wouldn't in production.
+		if (disposables) disposables.push(disp);
+		return disp;
+	}) as vscode.Event<T>;
+	// Wrap each listener call in try/catch so a buggy listener doesn't
+	// halt subsequent listeners. The real vscode.EventEmitter doesn't
+	// guarantee this directly - it's the host-side dispatcher in VS
+	// Code that absorbs throws around the events it pumps. Tests would
+	// otherwise see one buggy listener mask the rest, which is not the
+	// runtime experience we're trying to model.
 	fire(value: T): void {
 		for (const fn of [...this.#listeners]) {
 			try {
@@ -41,9 +50,12 @@ export class EventEmitter<T> {
 
 // ---- Uri ------------------------------------------------------------------
 
-export class Uri {
+export class Uri implements vscode.Uri {
 	readonly scheme: string;
+	readonly authority: string = "";
 	readonly path: string;
+	readonly query: string = "";
+	readonly fragment: string = "";
 	readonly fsPath: string;
 	private constructor(scheme: string, path: string) {
 		this.scheme = scheme;
@@ -53,7 +65,14 @@ export class Uri {
 	static file(p: string): Uri {
 		return new Uri("file", p);
 	}
-	static joinPath(base: Uri, ...segments: string[]): Uri {
+	static parse(value: string, _strict?: boolean): Uri {
+		// Minimal: accept "scheme:path" or treat the whole thing as a
+		// file path. Production doesn't call parse; the stub exists so
+		// the type satisfies vscode.Uri's static surface.
+		const m = /^([a-zA-Z][a-zA-Z0-9+\-.]*):(.*)$/.exec(value);
+		return m ? new Uri(m[1] ?? "file", m[2] ?? "") : Uri.file(value);
+	}
+	static joinPath(base: vscode.Uri, ...segments: string[]): Uri {
 		// Mirror node:path.join semantics for the cases we hit in production:
 		// Uri.joinPath(tomlUri, "..") -> parent dir as a Uri.
 		const parts = [base.path, ...segments];
@@ -68,23 +87,85 @@ export class Uri {
 		}, "");
 		return Uri.file(joined);
 	}
-	toString(): string {
+	static from(_components: {
+		scheme: string;
+		authority?: string;
+		path?: string;
+		query?: string;
+		fragment?: string;
+	}): Uri {
+		throw NOT_IMPLEMENTED("Uri.from");
+	}
+	with(_change: {
+		scheme?: string;
+		authority?: string;
+		path?: string;
+		query?: string;
+		fragment?: string;
+	}): Uri {
+		throw NOT_IMPLEMENTED("Uri.with");
+	}
+	toString(_skipEncoding?: boolean): string {
 		return `${this.scheme}://${this.path}`;
+	}
+	toJSON(): unknown {
+		return {
+			scheme: this.scheme,
+			path: this.path,
+			fsPath: this.fsPath,
+		};
 	}
 }
 
 // ---- Position / Range -----------------------------------------------------
 
-export class Position {
+export class Position implements vscode.Position {
 	readonly line: number;
 	readonly character: number;
 	constructor(line: number, character: number) {
 		this.line = line;
 		this.character = character;
 	}
+	isBefore(other: vscode.Position): boolean {
+		return (
+			this.line < other.line ||
+			(this.line === other.line && this.character < other.character)
+		);
+	}
+	isBeforeOrEqual(other: vscode.Position): boolean {
+		return this.isBefore(other) || this.isEqual(other);
+	}
+	isAfter(other: vscode.Position): boolean {
+		return !this.isBeforeOrEqual(other);
+	}
+	isAfterOrEqual(other: vscode.Position): boolean {
+		return !this.isBefore(other);
+	}
+	isEqual(other: vscode.Position): boolean {
+		return this.line === other.line && this.character === other.character;
+	}
+	compareTo(other: vscode.Position): number {
+		if (this.isBefore(other)) return -1;
+		if (this.isAfter(other)) return 1;
+		return 0;
+	}
+	translate(
+		_lineDeltaOrChange?:
+			| number
+			| { lineDelta?: number; characterDelta?: number },
+		_characterDelta?: number,
+	): Position {
+		throw NOT_IMPLEMENTED("Position.translate");
+	}
+	with(
+		_lineOrChange?: number | { line?: number; character?: number },
+		_character?: number,
+	): Position {
+		throw NOT_IMPLEMENTED("Position.with");
+	}
 }
 
-export class Range {
+export class Range implements vscode.Range {
 	readonly start: Position;
 	readonly end: Position;
 	constructor(
@@ -109,58 +190,100 @@ export class Range {
 			throw new Error("invalid Range arguments");
 		}
 	}
+	get isEmpty(): boolean {
+		return this.start.isEqual(this.end);
+	}
+	get isSingleLine(): boolean {
+		return this.start.line === this.end.line;
+	}
+	contains(_positionOrRange: vscode.Position | vscode.Range): boolean {
+		throw NOT_IMPLEMENTED("Range.contains");
+	}
+	isEqual(other: vscode.Range): boolean {
+		return this.start.isEqual(other.start) && this.end.isEqual(other.end);
+	}
+	intersection(_range: vscode.Range): Range | undefined {
+		throw NOT_IMPLEMENTED("Range.intersection");
+	}
+	union(_other: vscode.Range): Range {
+		throw NOT_IMPLEMENTED("Range.union");
+	}
+	with(
+		_startOrChange?:
+			| vscode.Position
+			| { start?: vscode.Position; end?: vscode.Position },
+		_end?: vscode.Position,
+	): Range {
+		throw NOT_IMPLEMENTED("Range.with");
+	}
 }
 
 // ---- Theme / TreeItem -----------------------------------------------------
 
-export class ThemeIcon {
+export class ThemeIcon implements vscode.ThemeIcon {
+	static readonly File = new ThemeIcon("file");
+	static readonly Folder = new ThemeIcon("folder");
 	readonly id: string;
-	readonly color: ThemeColor | undefined;
+	readonly color?: ThemeColor;
 	constructor(id: string, color?: ThemeColor) {
 		this.id = id;
-		this.color = color;
+		if (color !== undefined) this.color = color;
 	}
 }
 
-export class ThemeColor {
+export class ThemeColor implements vscode.ThemeColor {
 	readonly id: string;
 	constructor(id: string) {
 		this.id = id;
 	}
 }
 
+// vscode.TreeItemCollapsibleState is a numeric enum at runtime. We re-
+// declare with the same numeric values; the field types below cast to
+// the real enum so consumers get the right type.
 export const TreeItemCollapsibleState = {
 	None: 0,
 	Collapsed: 1,
 	Expanded: 2,
 } as const;
 
-export class TreeItem {
-	label?: string | { label: string };
-	collapsibleState?: number;
+export class TreeItem implements vscode.TreeItem {
+	label?: string | vscode.TreeItemLabel;
+	collapsibleState?: vscode.TreeItemCollapsibleState;
 	iconPath?: ThemeIcon;
 	description?: string;
 	contextValue?: string;
+	tooltip?: string | vscode.MarkdownString;
+	command?: vscode.Command;
+	id?: string;
+	resourceUri?: vscode.Uri;
+	accessibilityInformation?: vscode.AccessibilityInformation;
+	checkboxState?:
+		| vscode.TreeItemCheckboxState
+		| {
+				readonly state: vscode.TreeItemCheckboxState;
+				readonly tooltip?: string;
+		  };
 	constructor(
-		label: string | { label: string },
+		label: string | vscode.TreeItemLabel,
 		collapsibleState: number = TreeItemCollapsibleState.None,
 	) {
 		this.label = label;
-		this.collapsibleState = collapsibleState;
+		this.collapsibleState = collapsibleState as vscode.TreeItemCollapsibleState;
 	}
 }
 
 // ---- CodeLens / Diagnostics -----------------------------------------------
 
-export class CodeLens {
+export class CodeLens implements vscode.CodeLens {
 	readonly range: Range;
-	command?: { title: string; command: string; arguments?: unknown[] };
-	constructor(
-		range: Range,
-		command?: { title: string; command: string; arguments?: unknown[] },
-	) {
+	command?: vscode.Command;
+	constructor(range: Range, command?: vscode.Command) {
 		this.range = range;
 		if (command) this.command = command;
+	}
+	get isResolved(): boolean {
+		return this.command != null;
 	}
 }
 
@@ -171,11 +294,14 @@ export const DiagnosticSeverity = {
 	Hint: 3,
 } as const;
 
-export class Diagnostic {
+export class Diagnostic implements vscode.Diagnostic {
 	readonly range: Range;
 	readonly message: string;
-	readonly severity: number;
+	readonly severity: vscode.DiagnosticSeverity;
 	source?: string;
+	code?: string | number | { value: string | number; target: vscode.Uri };
+	relatedInformation?: vscode.DiagnosticRelatedInformation[];
+	tags?: vscode.DiagnosticTag[];
 	constructor(
 		range: Range,
 		message: string,
@@ -183,118 +309,261 @@ export class Diagnostic {
 	) {
 		this.range = range;
 		this.message = message;
-		this.severity = severity;
+		this.severity = severity as vscode.DiagnosticSeverity;
 	}
 }
 
 // ---- Debug ----------------------------------------------------------------
 
-export class DebugAdapterServer {
+export class DebugAdapterServer implements vscode.DebugAdapterServer {
 	readonly port: number;
-	constructor(port: number) {
+	readonly host?: string;
+	constructor(port: number, host?: string) {
 		this.port = port;
+		if (host !== undefined) this.host = host;
 	}
 }
 
 // ---- Output channel / Diagnostics collection ------------------------------
 
-export interface FakeOutputChannel extends Disposable {
-	readonly name: string;
-	readonly languageId: string | undefined;
+export interface FakeOutputChannel extends vscode.OutputChannel {
+	languageId: string | undefined;
 	lines: string[];
 	clearCount: number;
 	showCount: number;
-	appendLine(line: string): void;
-	clear(): void;
-	show(): void;
 }
 
-export interface FakeDiagnosticCollection extends Disposable {
-	readonly name: string;
-	readonly entries: Map<string, Diagnostic[]>;
+function makeOutputChannel(
+	name: string,
+	languageId: string | undefined,
+): FakeOutputChannel {
+	const channel: FakeOutputChannel = {
+		name,
+		languageId,
+		lines: [],
+		clearCount: 0,
+		showCount: 0,
+		append(value: string): void {
+			channel.lines.push(value);
+		},
+		appendLine(line: string): void {
+			channel.lines.push(line);
+		},
+		replace(value: string): void {
+			channel.lines = [value];
+		},
+		clear(): void {
+			channel.lines = [];
+			channel.clearCount++;
+		},
+		show(
+			_columnOrPreserveFocus?: vscode.ViewColumn | boolean,
+			_preserveFocus?: boolean,
+		): void {
+			channel.showCount++;
+		},
+		hide(): void {},
+		dispose(): void {},
+	};
+	return channel;
+}
+
+export interface FakeDiagnosticCollection extends vscode.DiagnosticCollection {
+	readonly entries: Map<string, vscode.Diagnostic[]>;
 	clearCount: number;
-	set(uri: Uri, diagnostics: Diagnostic[]): void;
-	clear(): void;
+}
+
+function makeDiagnosticCollection(name: string): FakeDiagnosticCollection {
+	const entries = new Map<string, vscode.Diagnostic[]>();
+	const collection: FakeDiagnosticCollection = {
+		name,
+		entries,
+		clearCount: 0,
+		set(
+			uriOrEntries:
+				| vscode.Uri
+				| ReadonlyArray<[vscode.Uri, readonly vscode.Diagnostic[] | undefined]>,
+			diagnostics?: readonly vscode.Diagnostic[],
+		): void {
+			if (Array.isArray(uriOrEntries)) {
+				for (const [u, d] of uriOrEntries) {
+					if (d) entries.set(u.fsPath, [...d]);
+					else entries.delete(u.fsPath);
+				}
+			} else {
+				const u = uriOrEntries as vscode.Uri;
+				entries.set(u.fsPath, diagnostics ? [...diagnostics] : []);
+			}
+		},
+		delete(uri: vscode.Uri): void {
+			entries.delete(uri.fsPath);
+		},
+		clear(): void {
+			entries.clear();
+			collection.clearCount++;
+		},
+		forEach(
+			callback: (
+				uri: vscode.Uri,
+				diagnostics: readonly vscode.Diagnostic[],
+				collection: vscode.DiagnosticCollection,
+			) => unknown,
+			thisArg?: unknown,
+		): void {
+			for (const [k, v] of entries) {
+				callback.call(thisArg, Uri.file(k), v, collection);
+			}
+		},
+		get(uri: vscode.Uri): readonly vscode.Diagnostic[] | undefined {
+			return entries.get(uri.fsPath);
+		},
+		has(uri: vscode.Uri): boolean {
+			return entries.has(uri.fsPath);
+		},
+		dispose(): void {},
+		[Symbol.iterator](): Iterator<[vscode.Uri, readonly vscode.Diagnostic[]]> {
+			const it = entries[Symbol.iterator]();
+			return {
+				next(): IteratorResult<[vscode.Uri, readonly vscode.Diagnostic[]]> {
+					const r = it.next();
+					if (r.done) return { done: true, value: undefined };
+					return { done: false, value: [Uri.file(r.value[0]), r.value[1]] };
+				},
+			};
+		},
+	};
+	return collection;
 }
 
 // ---- Webview / View providers ---------------------------------------------
 
-export interface FakeWebview {
-	options: unknown;
-	html: string;
-	cspSource: string;
+export interface FakeWebview extends vscode.Webview {
 	postedMessages: unknown[];
-	onDidReceiveMessage: EventEmitter<unknown>["event"];
-	postMessage(msg: unknown): Thenable<boolean>;
 	emitMessage(msg: unknown): void;
 }
 
-export interface FakeWebviewView {
+export interface FakeWebviewView extends vscode.WebviewView {
 	readonly webview: FakeWebview;
-	readonly onDidDispose: EventEmitter<void>["event"];
 	emitDispose(): void;
 }
 
 export function makeFakeWebviewView(): FakeWebviewView {
 	const onDidReceiveMessage = new EventEmitter<unknown>();
 	const onDidDispose = new EventEmitter<void>();
+	const onDidChangeVisibility = new EventEmitter<void>();
 	const webview: FakeWebview = {
 		options: {},
 		html: "",
 		cspSource: "vscode-resource:fake",
 		postedMessages: [],
 		onDidReceiveMessage: onDidReceiveMessage.event,
-		postMessage(msg) {
+		postMessage(msg: unknown): Thenable<boolean> {
 			webview.postedMessages.push(msg);
 			return Promise.resolve(true);
 		},
-		emitMessage(msg) {
+		emitMessage(msg: unknown): void {
 			onDidReceiveMessage.fire(msg);
 		},
+		asWebviewUri(localResource: vscode.Uri): vscode.Uri {
+			return localResource;
+		},
 	};
-	return {
+	const view: FakeWebviewView = {
+		viewType: "fake",
 		webview,
+		visible: true,
 		onDidDispose: onDidDispose.event,
-		emitDispose: () => onDidDispose.fire(),
+		onDidChangeVisibility: onDidChangeVisibility.event,
+		show(_preserveFocus?: boolean): void {},
+		emitDispose(): void {
+			onDidDispose.fire();
+		},
 	};
+	return view;
 }
 
 // ---- File system watcher --------------------------------------------------
 
-export interface FakeFileSystemWatcher extends Disposable {
+export interface FakeFileSystemWatcher extends vscode.FileSystemWatcher {
 	readonly pattern: string;
-	onDidChange: EventEmitter<Uri>["event"];
-	onDidCreate: EventEmitter<Uri>["event"];
-	onDidDelete: EventEmitter<Uri>["event"];
-	emitChange(uri: Uri): void;
-	emitCreate(uri: Uri): void;
-	emitDelete(uri: Uri): void;
+	emitChange(uri: vscode.Uri): void;
+	emitCreate(uri: vscode.Uri): void;
+	emitDelete(uri: vscode.Uri): void;
+}
+
+function makeFileSystemWatcher(pattern: string): FakeFileSystemWatcher {
+	const onDidChange = new EventEmitter<vscode.Uri>();
+	const onDidCreate = new EventEmitter<vscode.Uri>();
+	const onDidDelete = new EventEmitter<vscode.Uri>();
+	return {
+		pattern,
+		ignoreCreateEvents: false,
+		ignoreChangeEvents: false,
+		ignoreDeleteEvents: false,
+		onDidChange: onDidChange.event,
+		onDidCreate: onDidCreate.event,
+		onDidDelete: onDidDelete.event,
+		emitChange: (uri) => onDidChange.fire(uri),
+		emitCreate: (uri) => onDidCreate.fire(uri),
+		emitDelete: (uri) => onDidDelete.fire(uri),
+		dispose(): void {
+			onDidChange.dispose();
+			onDidCreate.dispose();
+			onDidDelete.dispose();
+		},
+	};
 }
 
 // ---- Configuration --------------------------------------------------------
 
-export interface ConfigurationInspectResult<T> {
+interface ConfigEntry {
+	value?: unknown;
+	inspect?: ConfigInspectAny;
+}
+
+type ConfigInspectAny = {
+	defaultValue?: unknown;
+	globalValue?: unknown;
+	workspaceValue?: unknown;
+	workspaceFolderValue?: unknown;
+};
+
+type InspectResult<T> = {
+	key: string;
 	defaultValue?: T;
 	globalValue?: T;
 	workspaceValue?: T;
 	workspaceFolderValue?: T;
-}
+};
 
-export interface FakeConfiguration {
-	get<T>(section: string, defaultValue?: T): T | undefined;
-	inspect<T>(section: string): ConfigurationInspectResult<T> | undefined;
+function makeConfiguration(section: string): vscode.WorkspaceConfiguration {
+	const sec = state.configurations.get(section) ?? new Map();
+	const config: vscode.WorkspaceConfiguration = {
+		get<T>(key: string, defaultValue?: T): T | undefined {
+			const e = sec.get(key);
+			if (!e) return defaultValue;
+			return (e.value as T) ?? defaultValue;
+		},
+		has(key: string): boolean {
+			return sec.has(key);
+		},
+		inspect<T>(key: string): InspectResult<T> | undefined {
+			const e = sec.get(key);
+			if (!e?.inspect) return undefined;
+			return { key, ...(e.inspect as Omit<InspectResult<T>, "key">) };
+		},
+		update(): Thenable<void> {
+			throw NOT_IMPLEMENTED("WorkspaceConfiguration.update");
+		},
+	};
+	return config;
 }
 
 // ---- Mutable shared state -------------------------------------------------
 
-interface ConfigEntry {
-	value?: unknown;
-	inspect?: ConfigurationInspectResult<unknown>;
-}
-
 export interface MockState {
 	isTrusted: boolean;
-	findFilesQueue: Uri[][];
+	findFilesQueue: vscode.Uri[][];
 	findFilesCalls: Array<{ pattern: string; exclude: string | undefined }>;
 	configurations: Map<string, Map<string, ConfigEntry>>;
 	registeredCommands: Map<string, (...args: unknown[]) => unknown>;
@@ -317,36 +586,17 @@ export interface MockState {
 	startDebuggingResult: boolean;
 	startDebuggingCalls: Array<{ folder: unknown; configuration: unknown }>;
 	stopDebuggingCount: number;
-	lastStartedDebugSession: DebugSession | null;
-	configurationChanged: EventEmitter<{
-		affectsConfiguration: (section: string) => boolean;
-	}>;
+	lastStartedDebugSession: vscode.DebugSession | null;
+	configurationChanged: EventEmitter<vscode.ConfigurationChangeEvent>;
 	workspaceTrustGranted: EventEmitter<void>;
-	debugStarted: EventEmitter<DebugSession>;
-	debugTerminated: EventEmitter<DebugSession>;
-	debugCustomEvent: EventEmitter<DebugSessionCustomEvent>;
-	workspaceFolders: WorkspaceFolder[];
-	asRelativePathImpl: (uri: Uri | string) => string;
-}
-
-export interface DebugSession {
-	id: string;
-	type: string;
-	name: string;
-	configuration: { [key: string]: unknown };
-	customRequest(command: string, args?: unknown): Thenable<unknown>;
-}
-
-export interface DebugSessionCustomEvent {
-	session: DebugSession;
-	event: string;
-	body: unknown;
-}
-
-export interface WorkspaceFolder {
-	uri: Uri;
-	name: string;
-	index: number;
+	debugStarted: EventEmitter<vscode.DebugSession>;
+	debugTerminated: EventEmitter<vscode.DebugSession>;
+	debugCustomEvent: EventEmitter<vscode.DebugSessionCustomEvent>;
+	workspaceFolders: vscode.WorkspaceFolder[];
+	asRelativePathImpl: (
+		uri: vscode.Uri | string,
+		includeWorkspaceFolder?: boolean,
+	) => string;
 }
 
 export const state: MockState = createInitialState();
@@ -398,68 +648,108 @@ export function __resetState(): void {
 	Object.assign(state, next);
 }
 
-// ---- workspace ------------------------------------------------------------
+// ---- Aliases re-exported as values ---------------------------------------
+//
+// vscode.d.ts declares Disposable, CancellationToken etc. as values
+// too. Re-export the bits production code uses so both `import * as
+// vscode` and direct named imports work.
 
-export const workspace = {
+export const Disposable = {
+	from(...items: { dispose(): unknown }[]): vscode.Disposable {
+		return {
+			dispose: () => {
+				for (const i of items) i.dispose();
+			},
+		};
+	},
+};
+
+// ---- workspace ------------------------------------------------------------
+//
+// Each namespace export below is typed as Pick<typeof vscode.X, ...>.
+// This catches *signature* drift between the mock and the real API for
+// the methods we DO mock - e.g. if @types/vscode changes findFiles to
+// take a CancellationToken, the mock fails to compile.
+//
+// It does NOT catch production code reaching for an *unmocked*
+// namespace method. Production imports "vscode" -> @types/vscode (no
+// `paths` override in tsconfig); the alias is runtime-only. So
+// `vscode.window.someUnmockedMethod()` will type-check and then throw
+// at runtime with a TypeError. If we ever care, a test-only tsconfig
+// with a `paths` override would close this.
+
+type WorkspaceShape = Pick<
+	typeof vscode.workspace,
+	| "isTrusted"
+	| "workspaceFolders"
+	| "getWorkspaceFolder"
+	| "asRelativePath"
+	| "findFiles"
+	| "getConfiguration"
+	| "createFileSystemWatcher"
+	| "onDidChangeConfiguration"
+	| "onDidGrantWorkspaceTrust"
+>;
+
+export const workspace: WorkspaceShape = {
 	get isTrusted(): boolean {
 		return state.isTrusted;
 	},
-	get workspaceFolders(): readonly WorkspaceFolder[] {
-		return state.workspaceFolders;
+	get workspaceFolders(): readonly vscode.WorkspaceFolder[] | undefined {
+		return state.workspaceFolders.length === 0
+			? undefined
+			: state.workspaceFolders;
 	},
-	getWorkspaceFolder(_uri: Uri): WorkspaceFolder | undefined {
+	getWorkspaceFolder(_uri: vscode.Uri): vscode.WorkspaceFolder | undefined {
+		// Single-folder assumption: tests don't exercise the multi-folder
+		// case. If they ever do, match by uri prefix here.
 		return state.workspaceFolders[0];
 	},
-	asRelativePath(uri: Uri | string): string {
+	asRelativePath(
+		uri: vscode.Uri | string,
+		_includeWorkspaceFolder?: boolean,
+	): string {
 		return state.asRelativePathImpl(uri);
 	},
-	async findFiles(pattern: string, exclude?: string): Promise<Uri[]> {
-		state.findFilesCalls.push({ pattern, exclude });
-		return state.findFilesQueue.shift() ?? [];
+	findFiles(
+		include: vscode.GlobPattern,
+		exclude?: vscode.GlobPattern | null,
+	): Thenable<vscode.Uri[]> {
+		state.findFilesCalls.push({
+			pattern: typeof include === "string" ? include : String(include),
+			exclude:
+				exclude == null
+					? undefined
+					: typeof exclude === "string"
+						? exclude
+						: String(exclude),
+		});
+		return Promise.resolve(state.findFilesQueue.shift() ?? []);
 	},
-	getConfiguration(section: string): FakeConfiguration {
-		const sec = state.configurations.get(section) ?? new Map();
-		return {
-			get<T>(key: string, defaultValue?: T): T | undefined {
-				const e = sec.get(key);
-				if (!e) return defaultValue;
-				return (e.value as T) ?? defaultValue;
-			},
-			inspect<T>(key: string): ConfigurationInspectResult<T> | undefined {
-				const e = sec.get(key);
-				return e?.inspect as ConfigurationInspectResult<T> | undefined;
-			},
-		};
+	getConfiguration(section?: string): vscode.WorkspaceConfiguration {
+		return makeConfiguration(section ?? "");
 	},
-	createFileSystemWatcher(pattern: string): FakeFileSystemWatcher {
-		const onDidChange = new EventEmitter<Uri>();
-		const onDidCreate = new EventEmitter<Uri>();
-		const onDidDelete = new EventEmitter<Uri>();
-		const w: FakeFileSystemWatcher = {
-			pattern,
-			onDidChange: onDidChange.event,
-			onDidCreate: onDidCreate.event,
-			onDidDelete: onDidDelete.event,
-			emitChange: (uri) => onDidChange.fire(uri),
-			emitCreate: (uri) => onDidCreate.fire(uri),
-			emitDelete: (uri) => onDidDelete.fire(uri),
-			dispose() {
-				onDidChange.dispose();
-				onDidCreate.dispose();
-				onDidDelete.dispose();
-			},
-		};
+	createFileSystemWatcher(
+		globPattern: vscode.GlobPattern,
+	): vscode.FileSystemWatcher {
+		const w = makeFileSystemWatcher(
+			typeof globPattern === "string" ? globPattern : String(globPattern),
+		);
 		state.fileWatchers.push(w);
 		return w;
 	},
-	onDidChangeConfiguration: ((listener) =>
+	onDidChangeConfiguration: ((listener, thisArgs, disposables) =>
 		state.configurationChanged.event(
 			listener,
-		)) as (typeof state.configurationChanged)["event"],
-	onDidGrantWorkspaceTrust: ((listener) =>
+			thisArgs,
+			disposables,
+		)) as typeof vscode.workspace.onDidChangeConfiguration,
+	onDidGrantWorkspaceTrust: ((listener, thisArgs, disposables) =>
 		state.workspaceTrustGranted.event(
 			listener,
-		)) as (typeof state.workspaceTrustGranted)["event"],
+			thisArgs,
+			disposables,
+		)) as typeof vscode.workspace.onDidGrantWorkspaceTrust,
 };
 
 // ---- window ---------------------------------------------------------------
@@ -487,115 +777,128 @@ function showMessage(
 	return Promise.resolve(next as string | undefined);
 }
 
-interface QuickPickItem {
-	label: string;
-	description?: string;
-}
+// `createOutputChannel` is overloaded in the real type. We deliberately
+// only support the (name, languageId?) form, so we drop it from the
+// Pick and add a narrower signature manually below.
+type WindowShape = Pick<
+	typeof vscode.window,
+	| "showErrorMessage"
+	| "showWarningMessage"
+	| "showInformationMessage"
+	| "showQuickPick"
+	| "registerTreeDataProvider"
+	| "registerWebviewViewProvider"
+> & {
+	createOutputChannel(name: string, languageId?: string): vscode.OutputChannel;
+};
 
-export const window = {
-	showErrorMessage(
+export const window: WindowShape = {
+	showErrorMessage: ((
 		message: string,
-		...items: string[]
-	): Thenable<string | undefined> {
-		return showMessage("error", message, items);
-	},
-	showWarningMessage(
+		...items: (string | vscode.MessageItem | vscode.MessageOptions)[]
+	) =>
+		showMessage(
+			"error",
+			message,
+			items.filter((i): i is string => typeof i === "string"),
+		)) as typeof vscode.window.showErrorMessage,
+	showWarningMessage: ((
 		message: string,
-		...items: string[]
-	): Thenable<string | undefined> {
-		return showMessage("warning", message, items);
-	},
-	showInformationMessage(
+		...items: (string | vscode.MessageItem | vscode.MessageOptions)[]
+	) =>
+		showMessage(
+			"warning",
+			message,
+			items.filter((i): i is string => typeof i === "string"),
+		)) as typeof vscode.window.showWarningMessage,
+	showInformationMessage: ((
 		message: string,
-		...items: string[]
-	): Thenable<string | undefined> {
-		return showMessage("info", message, items);
-	},
-	async showQuickPick<T extends QuickPickItem>(
-		items: T[] | Thenable<T[]>,
+		...items: (string | vscode.MessageItem | vscode.MessageOptions)[]
+	) =>
+		showMessage(
+			"info",
+			message,
+			items.filter((i): i is string => typeof i === "string"),
+		)) as typeof vscode.window.showInformationMessage,
+	showQuickPick: (async (
+		items: readonly unknown[] | Thenable<readonly unknown[]>,
 		options?: unknown,
-	): Promise<T | undefined> {
+	) => {
 		const resolved = await Promise.resolve(items);
 		state.quickPickCalls.push({ items: resolved, options });
-		const next = state.quickPickResolutions.shift();
-		return next as T | undefined;
-	},
-	createOutputChannel(name: string, languageId?: string): FakeOutputChannel {
-		const channel: FakeOutputChannel = {
-			name,
-			languageId,
-			lines: [],
-			clearCount: 0,
-			showCount: 0,
-			appendLine(line) {
-				channel.lines.push(line);
-			},
-			clear() {
-				channel.lines = [];
-				channel.clearCount++;
-			},
-			show() {
-				channel.showCount++;
-			},
-			dispose() {},
-		};
+		return state.quickPickResolutions.shift();
+	}) as typeof vscode.window.showQuickPick,
+	createOutputChannel(name: string, languageId?: string): vscode.OutputChannel {
+		const channel = makeOutputChannel(name, languageId);
 		state.outputChannels.push(channel);
 		return channel;
 	},
-	registerTreeDataProvider(id: string, provider: unknown): Disposable {
-		state.registeredTreeProviders.push({ id, provider });
+	registerTreeDataProvider<T>(
+		viewId: string,
+		provider: vscode.TreeDataProvider<T>,
+	): vscode.Disposable {
+		state.registeredTreeProviders.push({ id: viewId, provider });
 		return { dispose: () => {} };
 	},
-	registerWebviewViewProvider(id: string, provider: unknown): Disposable {
-		state.registeredWebviewProviders.push({ id, provider });
+	registerWebviewViewProvider(
+		viewId: string,
+		provider: vscode.WebviewViewProvider,
+	): vscode.Disposable {
+		state.registeredWebviewProviders.push({ id: viewId, provider });
 		return { dispose: () => {} };
 	},
 };
 
 // ---- commands -------------------------------------------------------------
 
-export const commands = {
+type CommandsShape = Pick<
+	typeof vscode.commands,
+	"registerCommand" | "executeCommand"
+>;
+
+export const commands: CommandsShape = {
 	registerCommand(
-		name: string,
-		handler: (...args: unknown[]) => unknown,
-	): Disposable {
-		state.registeredCommands.set(name, handler);
+		command: string,
+		callback: (...args: unknown[]) => unknown,
+	): vscode.Disposable {
+		state.registeredCommands.set(command, callback);
 		return {
 			dispose: () => {
-				state.registeredCommands.delete(name);
+				state.registeredCommands.delete(command);
 			},
 		};
 	},
-	executeCommand<T = unknown>(name: string, ...args: unknown[]): Thenable<T> {
+	// Built-in VS Code commands (setContext, workbench.*, etc.) silently
+	// resolve to undefined unless a test stubs them via setCommandHandler.
+	// Production code that reads the resolved value for one of these
+	// (none does today) would see undefined - tests should stub
+	// explicitly.
+	executeCommand: (<T>(name: string, ...args: unknown[]) => {
 		state.executeCommandCalls.push({ name, args });
 		const handler =
 			state.commandHandlers.get(name) ?? state.registeredCommands.get(name);
 		const result = handler ? handler(...args) : undefined;
 		return Promise.resolve(result as T);
-	},
+	}) as typeof vscode.commands.executeCommand,
 };
 
 // ---- languages ------------------------------------------------------------
 
-export const languages = {
-	createDiagnosticCollection(name: string): FakeDiagnosticCollection {
-		const collection: FakeDiagnosticCollection = {
-			name,
-			entries: new Map(),
-			clearCount: 0,
-			set(uri, diagnostics) {
-				collection.entries.set(uri.fsPath, diagnostics);
-			},
-			clear() {
-				collection.entries.clear();
-				collection.clearCount++;
-			},
-			dispose() {},
-		};
+type LanguagesShape = Pick<
+	typeof vscode.languages,
+	"createDiagnosticCollection" | "registerCodeLensProvider"
+>;
+
+export const languages: LanguagesShape = {
+	createDiagnosticCollection(name?: string): vscode.DiagnosticCollection {
+		const collection = makeDiagnosticCollection(name ?? "");
 		state.diagnosticCollections.push(collection);
 		return collection;
 	},
-	registerCodeLensProvider(selector: unknown, provider: unknown): Disposable {
+	registerCodeLensProvider(
+		selector: vscode.DocumentSelector,
+		provider: vscode.CodeLensProvider,
+	): vscode.Disposable {
 		state.registeredCodeLensProviders.push({ selector, provider });
 		return { dispose: () => {} };
 	},
@@ -605,54 +908,70 @@ export const languages = {
 
 let nextDebugSessionId = 0;
 
-export const debug = {
-	async startDebugging(
-		folder: unknown,
-		configuration: unknown,
-	): Promise<boolean> {
+type DebugShape = Pick<
+	typeof vscode.debug,
+	| "startDebugging"
+	| "stopDebugging"
+	| "registerDebugAdapterDescriptorFactory"
+	| "onDidStartDebugSession"
+	| "onDidTerminateDebugSession"
+	| "onDidReceiveDebugSessionCustomEvent"
+>;
+
+export const debug: DebugShape = {
+	startDebugging: (async (
+		folder: vscode.WorkspaceFolder | undefined,
+		configuration: string | vscode.DebugConfiguration,
+	) => {
 		state.startDebuggingCalls.push({ folder, configuration });
 		if (!state.startDebuggingResult) return false;
 		// Mirror production order: VS Code fires onDidStartDebugSession
 		// while startDebugging is in flight, before resolving the promise.
-		// Tests that need a specific session reference for terminate
-		// identity should grab `state.startDebuggingCalls.at(-1)` or
-		// listen for the event.
-		const config = configuration as { type?: string; name?: string } & Record<
-			string,
-			unknown
-		>;
-		const session: DebugSession = {
+		const config = (
+			typeof configuration === "string"
+				? { type: configuration, name: configuration, request: "attach" }
+				: configuration
+		) as vscode.DebugConfiguration;
+		const session: vscode.DebugSession = {
 			id: `dbg-${++nextDebugSessionId}`,
-			type: config.type ?? "gaffer",
-			name: config.name ?? "Gaffer",
+			type: config.type,
+			name: config.name,
+			workspaceFolder: folder,
 			configuration: config,
 			customRequest: () => Promise.resolve(undefined),
+			getDebugProtocolBreakpoint: () => Promise.resolve(undefined),
 		};
 		state.lastStartedDebugSession = session;
 		state.debugStarted.fire(session);
 		return true;
-	},
-	stopDebugging(): Thenable<void> {
+	}) as typeof vscode.debug.startDebugging,
+	stopDebugging(_session?: vscode.DebugSession): Thenable<void> {
 		state.stopDebuggingCount++;
 		return Promise.resolve();
 	},
 	registerDebugAdapterDescriptorFactory(
-		type: string,
-		factory: unknown,
-	): Disposable {
-		state.registeredDebugFactories.push({ type, factory });
+		debugType: string,
+		factory: vscode.DebugAdapterDescriptorFactory,
+	): vscode.Disposable {
+		state.registeredDebugFactories.push({ type: debugType, factory });
 		return { dispose: () => {} };
 	},
-	onDidStartDebugSession: ((listener: (s: DebugSession) => void) =>
-		state.debugStarted.event(listener)) as (typeof state.debugStarted)["event"],
-	onDidTerminateDebugSession: ((listener: (s: DebugSession) => void) =>
+	onDidStartDebugSession: ((listener, thisArgs, disposables) =>
+		state.debugStarted.event(
+			listener,
+			thisArgs,
+			disposables,
+		)) as typeof vscode.debug.onDidStartDebugSession,
+	onDidTerminateDebugSession: ((listener, thisArgs, disposables) =>
 		state.debugTerminated.event(
 			listener,
-		)) as (typeof state.debugTerminated)["event"],
-	onDidReceiveDebugSessionCustomEvent: ((
-		listener: (e: DebugSessionCustomEvent) => void,
-	) =>
+			thisArgs,
+			disposables,
+		)) as typeof vscode.debug.onDidTerminateDebugSession,
+	onDidReceiveDebugSessionCustomEvent: ((listener, thisArgs, disposables) =>
 		state.debugCustomEvent.event(
 			listener,
-		)) as (typeof state.debugCustomEvent)["event"],
+			thisArgs,
+			disposables,
+		)) as typeof vscode.debug.onDidReceiveDebugSessionCustomEvent,
 };

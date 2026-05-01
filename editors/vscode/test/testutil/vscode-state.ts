@@ -105,3 +105,11 @@ export function setWorkspaceFolders(folders: vscode.WorkspaceFolder[]): void {
 
 export const getState = (): typeof state => state;
 export const getShownMessages = __getShownMessages;
+
+// The DebugSession the mock auto-fired from the most recent
+// startDebugging call. Use this to drive onDidTerminateDebugSession in
+// tests where the controller's internal session reference matters
+// (terminate identity check).
+export function getLastStartedDebugSession(): DebugSession | null {
+	return state.lastStartedDebugSession;
+}

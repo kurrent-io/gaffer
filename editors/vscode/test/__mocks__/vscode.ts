@@ -317,6 +317,7 @@ export interface MockState {
 	startDebuggingResult: boolean;
 	startDebuggingCalls: Array<{ folder: unknown; configuration: unknown }>;
 	stopDebuggingCount: number;
+	lastStartedDebugSession: DebugSession | null;
 	configurationChanged: EventEmitter<{
 		affectsConfiguration: (section: string) => boolean;
 	}>;
@@ -372,6 +373,7 @@ function createInitialState(): MockState {
 		startDebuggingResult: true,
 		startDebuggingCalls: [],
 		stopDebuggingCount: 0,
+		lastStartedDebugSession: null,
 		configurationChanged: new EventEmitter(),
 		workspaceTrustGranted: new EventEmitter(),
 		debugStarted: new EventEmitter(),
@@ -601,10 +603,34 @@ export const languages = {
 
 // ---- debug ----------------------------------------------------------------
 
+let nextDebugSessionId = 0;
+
 export const debug = {
-	startDebugging(folder: unknown, configuration: unknown): Thenable<boolean> {
+	async startDebugging(
+		folder: unknown,
+		configuration: unknown,
+	): Promise<boolean> {
 		state.startDebuggingCalls.push({ folder, configuration });
-		return Promise.resolve(state.startDebuggingResult);
+		if (!state.startDebuggingResult) return false;
+		// Mirror production order: VS Code fires onDidStartDebugSession
+		// while startDebugging is in flight, before resolving the promise.
+		// Tests that need a specific session reference for terminate
+		// identity should grab `state.startDebuggingCalls.at(-1)` or
+		// listen for the event.
+		const config = configuration as { type?: string; name?: string } & Record<
+			string,
+			unknown
+		>;
+		const session: DebugSession = {
+			id: `dbg-${++nextDebugSessionId}`,
+			type: config.type ?? "gaffer",
+			name: config.name ?? "Gaffer",
+			configuration: config,
+			customRequest: () => Promise.resolve(undefined),
+		};
+		state.lastStartedDebugSession = session;
+		state.debugStarted.fire(session);
+		return true;
 	},
 	stopDebugging(): Thenable<void> {
 		state.stopDebuggingCount++;

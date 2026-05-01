@@ -59,6 +59,11 @@
 					],
 					"scope": "application",
 					"description": "Argv used to invoke gaffer. Examples: [\"gaffer\"] (PATH), [\"./bin/gaffer\"] (local build), [\"/usr/local/bin/gaffer\"] (explicit path), [\"sudo\", \"gaffer\"] (with privileges). Subcommand args are appended. Only User-scope value is honored - workspace and folder settings are ignored as a defense against hostile workspaces."
+				},
+				"gaffer.debugPort": {
+					"type": "number",
+					"default": 4711,
+					"description": "Port the Gaffer CLI's DAP server binds to (loopback only). Change this if 4711 conflicts with another service on your machine."
 				}
 			}
 		},
@@ -88,7 +93,7 @@
 						"properties": {
 							"port": {
 								"type": "number",
-								"description": "DAP server port",
+								"description": "DAP server port (overrides gaffer.debugPort for this configuration only).",
 								"default": 4711
 							}
 						}

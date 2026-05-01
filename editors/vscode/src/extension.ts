@@ -20,8 +20,6 @@ import {
 } from "./notifications.js";
 import type { DebugState } from "./types.js";
 
-const DEBUG_PORT = 4711;
-
 export async function activate(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
@@ -99,8 +97,13 @@ export async function activate(
 	context.subscriptions.push(
 		vscode.debug.registerDebugAdapterDescriptorFactory("gaffer", {
 			createDebugAdapterDescriptor(session) {
-				const configured = session.configuration.port;
-				const port = typeof configured === "number" ? configured : DEBUG_PORT;
+				// session.configuration.port is set by SessionController.start
+				// (from the CLI's actual bound port via waitForDebug). For
+				// launch.json-driven attach the schema defaults it to 4711.
+				const port = session.configuration.port;
+				if (typeof port !== "number") {
+					throw new Error("gaffer debug session missing port in configuration");
+				}
 				return new vscode.DebugAdapterServer(port);
 			},
 		}),

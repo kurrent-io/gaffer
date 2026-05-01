@@ -27,7 +27,7 @@ import type { StateProvider } from "../panels/state.js";
 import type { StatusViewProvider } from "../panels/status.js";
 import type { DebugState } from "../types.js";
 
-const DEBUG_PORT = 4711;
+const DEFAULT_DEBUG_PORT = 4711;
 
 type Mode = "idle" | "ended";
 type EngineMode = "running" | "inspecting";
@@ -137,13 +137,18 @@ export class SessionController implements vscode.Disposable {
 
 		const { name, tomlUri } = args;
 		const tomlDir = vscode.Uri.joinPath(tomlUri, "..").fsPath;
+		// Port we ask the CLI to bind to. The CLI confirms via the debug
+		// message and we attach using whatever it actually bound (below).
+		const requestedPort = vscode.workspace
+			.getConfiguration("gaffer")
+			.get<number>("debugPort", DEFAULT_DEBUG_PORT);
 		const argv = this.#buildArgv([
 			"dev",
 			name,
 			"--json",
 			"--debug",
 			"--debug-port",
-			String(DEBUG_PORT),
+			String(requestedPort),
 		]);
 
 		await this.#setStatus(name, "starting");

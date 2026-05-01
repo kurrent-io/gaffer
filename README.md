@@ -34,6 +34,8 @@ just init
 just build    # build all projects
 just test     # run all tests (99 C# + 9 Go FFI)
 just check    # check formatting and linting
+just fix      # auto-fix formatting and lint issues
+just clean    # remove build artifacts
 ```
 
 ## Project structure

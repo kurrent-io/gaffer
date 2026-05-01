@@ -9,8 +9,8 @@ init:
 test:
     CGO_ENABLED=1 go test -v ./...
 
-# Format code
-format:
+# Format code and apply lint fixes
+fix:
     golangci-lint fmt
 
 # Run linter

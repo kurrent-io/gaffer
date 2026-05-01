@@ -13,10 +13,13 @@ test: js::test
 # Run integration tests (requires KurrentDB)
 test-integration: js::test-integration
 
-# Format code
-format: js::format
+# Format code and apply lint fixes
+fix: js::fix
 
 # Check formatting and linting
 check: js::check
+
+# Remove build artifacts
+clean: js::clean
 
 mod js

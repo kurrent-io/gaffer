@@ -41,4 +41,6 @@ just runtime build         # build
 just runtime test          # run tests
 just runtime publish       # NativeAOT shared library
 just runtime check         # verify formatting
+just runtime fix           # auto-fix formatting
+just runtime clean         # remove build artifacts
 ```

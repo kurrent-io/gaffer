@@ -17,10 +17,14 @@ test-integration:
 run *args:
     CGO_ENABLED=1 go run . {{args}}
 
-# Format code
-format:
+# Format code and apply lint fixes
+fix:
     golangci-lint fmt
 
 # Run linter
 check:
     golangci-lint run
+
+# Remove build artifacts
+clean:
+    rm -f gaffer

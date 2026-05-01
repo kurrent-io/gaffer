@@ -5,21 +5,25 @@ default:
 [parallel]
 init: go::init js::init
 
-# Build platform packages (copies native binaries)
+# Build platform packages and JS bindings (requires `just runtime publish` first)
 [parallel]
-build: js-linux-x64::build
+build: js::build js-linux-x64::build
 
 # Run all binding tests
 [parallel]
 test: go::test js::test
 
-# Format all bindings
+# Format all bindings and apply lint fixes
 [parallel]
-format: go::format js::format
+fix: go::fix js::fix
 
 # Check all binding formatting and linting
 [parallel]
 check: go::check js::check
+
+# Remove build artifacts
+[parallel]
+clean: js::clean js-linux-x64::clean
 
 mod go
 mod js

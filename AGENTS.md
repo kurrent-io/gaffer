@@ -12,6 +12,7 @@ Gaffer must match KurrentDB projection behaviour 1:1, bug:bug where possible. No
 runtime/                   # C# (.NET 10) - projection runtime
   Gaffer.Runtime/          # NativeAOT shared library, Jint-based JS execution
   Gaffer.Runtime.Tests/    # xUnit tests
+  Gaffer.Sdk/              # Shared types (ProjectionInfo) for runtime and consumers
   include/gaffer.h         # C API header
 bindings/
   go/                      # Go bindings (gafferruntime package), FFI tests
@@ -20,6 +21,8 @@ bindings/
 cli/                       # Go CLI (Cobra) - init, scaffold, dev
 testing/
   js/                      # @kurrent/projections-testing - test lib wrapping runtime
+editors/
+  vscode/                  # VS Code extension (debug adapter, gaffer.toml support)
 demo/                      # Example gaffer project with fixtures
 tools/
   fixtures/                # Shared JSON test fixtures (sources, state, callbacks, etc.)
@@ -34,7 +37,8 @@ Uses devcontainer (.NET 10, Go, Node 22).
 just build                 # build all
 just test                  # test all
 just check                 # check formatting and linting
-just format                # auto-fix formatting across all projects
+just fix                   # auto-fix formatting and lint issues across all projects
+just clean                 # remove build artifacts across all projects
 just runtime publish       # build NativeAOT shared library
 just bindings go test      # run Go FFI tests (requires runtime publish)
 just db-up                 # start KurrentDB for integration tests

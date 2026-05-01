@@ -17,6 +17,10 @@ test:
 check:
     pnpm run check
 
-# Format code
-format:
+# Format code and apply lint fixes
+fix:
     pnpm run fix
+
+# Remove build artifacts
+clean:
+    rm -rf dist

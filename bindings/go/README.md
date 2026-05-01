@@ -34,5 +34,5 @@ fmt.Println(*state) // {"count":1}
 ```
 just bindings go test      # run tests
 just bindings go check     # run linter
-just bindings go fmt       # format code
+just bindings go fix       # format code and apply lint fixes
 ```

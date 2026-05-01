@@ -13,8 +13,8 @@ build:
 test:
     dotnet test --verbosity quiet
 
-# Format code
-format:
+# Format code and apply lint fixes
+fix:
     dotnet format
 
 # Check formatting without changes
@@ -24,3 +24,7 @@ check:
 # Publish NativeAOT shared library
 publish:
     dotnet publish Gaffer.Runtime -c Release -r linux-x64
+
+# Remove build artifacts
+clean:
+    rm -rf Gaffer.Runtime/bin Gaffer.Runtime/obj Gaffer.Runtime.Tests/bin Gaffer.Runtime.Tests/obj Gaffer.Sdk/bin Gaffer.Sdk/obj

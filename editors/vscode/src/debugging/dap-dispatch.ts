@@ -3,11 +3,13 @@
 // failure the dispatch is skipped and the issue is logged.
 //
 // Kept separate from extension.ts so the switch can be reasoned about as
-// a function of (event, providers, log) without sharing the activate()
+// a function of (event, providers) without sharing the activate()
 // closure.
 
 import * as vscode from "vscode";
 import * as v from "valibot";
+import { log } from "../output.js";
+import { showStepError } from "../notifications.js";
 import {
 	ModeBodySchema,
 	StateBodySchema,
@@ -24,7 +26,6 @@ export interface DapHandlers {
 	stepProvider: StepProvider;
 	stateProvider: StateProvider;
 	setInspecting: (inspecting: boolean) => Promise<void> | void;
-	log: (msg: string) => void;
 }
 
 export async function dispatchDapEvent(
@@ -36,55 +37,52 @@ export async function dispatchDapEvent(
 
 	switch (e.event) {
 		case "gaffer/stepStart": {
-			const body = parseDapBody(StepStartBodySchema, e, handlers.log);
+			const body = parseDapBody(StepStartBodySchema, e);
 			if (body) handlers.stepProvider.startStep(body.event);
 			break;
 		}
 		case "gaffer/stepLog": {
-			const body = parseDapBody(StepLogBodySchema, e, handlers.log);
+			const body = parseDapBody(StepLogBodySchema, e);
 			if (body) handlers.stepProvider.addLog(body.message);
 			break;
 		}
 		case "gaffer/stepEmit": {
-			const body = parseDapBody(StepEmitBodySchema, e, handlers.log);
+			const body = parseDapBody(StepEmitBodySchema, e);
 			if (body) handlers.stepProvider.addEmit(body);
 			break;
 		}
 		case "gaffer/stepResult": {
-			const body = parseDapBody(StepResultBodySchema, e, handlers.log);
+			const body = parseDapBody(StepResultBodySchema, e);
 			if (body) handlers.stepProvider.setResult(body.result);
 			break;
 		}
 		case "gaffer/stepError": {
-			const body = parseDapBody(StepErrorBodySchema, e, handlers.log);
+			const body = parseDapBody(StepErrorBodySchema, e);
 			if (body) {
 				handlers.stepProvider.setError(body.code, body.description);
-				await vscode.window.showErrorMessage(
-					`Gaffer: ${body.code} - ${body.description}`,
-				);
+				await showStepError(body.code, body.description);
 			}
 			break;
 		}
 		case "gaffer/state": {
-			const body = parseDapBody(StateBodySchema, e, handlers.log);
+			const body = parseDapBody(StateBodySchema, e);
 			if (body) handlers.stateProvider.updateFromState(body);
 			break;
 		}
 		case "gaffer/mode": {
-			const body = parseDapBody(ModeBodySchema, e, handlers.log);
+			const body = parseDapBody(ModeBodySchema, e);
 			if (body) await handlers.setInspecting(body.mode === "inspect");
 			break;
 		}
 	}
 }
 
-// Validate a DAP custom-event body against a schema. On parse failure log
-// the event name and issues, return undefined so the caller skips the
-// dispatch. Keeps malformed events from corrupting state.
+// Validate a DAP custom-event body against a schema. On parse failure
+// log the event name and issues, return undefined so the caller skips
+// the dispatch. Keeps malformed events from corrupting state.
 function parseDapBody<TSchema extends v.GenericSchema>(
 	schema: TSchema,
 	event: vscode.DebugSessionCustomEvent,
-	log: (msg: string) => void,
 ): v.InferOutput<TSchema> | undefined {
 	const result = v.safeParse(schema, event.body);
 	if (result.success) return result.output;

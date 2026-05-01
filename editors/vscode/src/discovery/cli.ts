@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { execFile } from "node:child_process";
 import * as v from "valibot";
+import { log } from "../output.js";
 import { ManifestSchema, type Manifest } from "./schemas.js";
 
 const DEFAULT_COMMAND: readonly string[] = ["./bin/gaffer"];
@@ -34,7 +35,6 @@ export function buildGafferArgv(args: string[]): string[] {
  */
 export async function tryFetchManifest(
 	cwd: string | undefined,
-	log: (msg: string) => void,
 	onError?: (err: unknown) => void,
 ): Promise<Manifest | null> {
 	if (!vscode.workspace.isTrusted) {

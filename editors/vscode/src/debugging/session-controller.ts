@@ -9,6 +9,12 @@
 
 import * as vscode from "vscode";
 import { GafferSession } from "../ipc/session.js";
+import { log } from "../output.js";
+import {
+	showProjectionFault,
+	showStartFailure,
+	showTrustWarning,
+} from "../notifications.js";
 import type { StepProvider } from "../panels/step.js";
 import type { StateProvider } from "../panels/state.js";
 import type { StatusViewProvider } from "../panels/status.js";
@@ -28,8 +34,6 @@ export interface SessionControllerDeps {
 	statusProvider: StatusViewProvider;
 	debugState: DebugState;
 	refreshLenses: () => void;
-	log: (msg: string) => void;
-	output: vscode.OutputChannel;
 }
 
 export class SessionController implements vscode.Disposable {
@@ -39,8 +43,6 @@ export class SessionController implements vscode.Disposable {
 	readonly #statusProvider: StatusViewProvider;
 	readonly #debugState: DebugState;
 	readonly #refreshLenses: () => void;
-	readonly #log: (msg: string) => void;
-	readonly #output: vscode.OutputChannel;
 	#activeSession: GafferSession | null = null;
 
 	constructor(deps: SessionControllerDeps) {
@@ -50,8 +52,6 @@ export class SessionController implements vscode.Disposable {
 		this.#statusProvider = deps.statusProvider;
 		this.#debugState = deps.debugState;
 		this.#refreshLenses = deps.refreshLenses;
-		this.#log = deps.log;
-		this.#output = deps.output;
 	}
 
 	// Register the one persistent terminate listener and self-register for
@@ -64,7 +64,7 @@ export class SessionController implements vscode.Disposable {
 			this,
 			vscode.debug.onDidTerminateDebugSession((dbgSession) => {
 				if (dbgSession.name === `Gaffer: ${this.#debugState.name}`) {
-					this.#log("Debug session ended");
+					log("Debug session ended");
 					void this.#cleanup();
 				}
 			}),
@@ -80,21 +80,12 @@ export class SessionController implements vscode.Disposable {
 
 	async start(args: DebugProjectionArgs): Promise<void> {
 		if (!vscode.workspace.isTrusted) {
-			void vscode.window
-				.showWarningMessage(
-					"Trust this workspace to enable Gaffer debugging.",
-					"Manage Trust",
-				)
-				.then((choice) => {
-					if (choice === "Manage Trust") {
-						void vscode.commands.executeCommand("workbench.trust.manage");
-					}
-				});
+			void showTrustWarning();
 			return;
 		}
 
 		if (this.#debugState.status !== "idle") {
-			this.#log(
+			log(
 				`Ignoring debug request: ${this.#debugState.name ?? "session"} is ${this.#debugState.status}`,
 			);
 			return;
@@ -115,13 +106,9 @@ export class SessionController implements vscode.Disposable {
 		this.#stateProvider.clear();
 
 		await this.#setMode(name, "starting");
-		this.#log(`Starting: ${name}`);
+		log(`Starting: ${name}`);
 
-		const session = new GafferSession(name, argv, {
-			log: this.#log,
-			cwd: tomlDir,
-			output: this.#output,
-		});
+		const session = new GafferSession(name, argv, { cwd: tomlDir });
 		this.#activeSession = session;
 
 		session.on("exit", async (msg) => {
@@ -130,10 +117,8 @@ export class SessionController implements vscode.Disposable {
 			// Once "debugging", the persistent terminate listener tears down.
 			// Only surface here for non-zero exits while debugging.
 			if (msg.code !== 0 && this.#debugState.status === "debugging") {
-				this.#log(`CLI exited with code ${msg.code}`);
-				await vscode.window.showErrorMessage(
-					`Gaffer: projection faulted (exit code ${msg.code})`,
-				);
+				log(`CLI exited with code ${msg.code}`);
+				await showProjectionFault(msg.code);
 				await this.#cleanup();
 			}
 		});
@@ -153,11 +138,11 @@ export class SessionController implements vscode.Disposable {
 		try {
 			const msg = await session.waitForDebug();
 			debugPort = msg.port;
-			this.#log(`Debug server listening on port ${debugPort}`);
+			log(`Debug server listening on port ${debugPort}`);
 		} catch (err) {
 			const errMsg = err instanceof Error ? err.message : String(err);
-			this.#log(`Failed to start: ${errMsg}`);
-			await vscode.window.showErrorMessage(`Gaffer: ${errMsg}`);
+			log(`Failed to start: ${errMsg}`);
+			await showStartFailure(errMsg);
 			await this.#cleanup();
 			return;
 		}
@@ -175,7 +160,7 @@ export class SessionController implements vscode.Disposable {
 		);
 
 		if (!started) {
-			this.#log("Debug session failed to start");
+			log("Debug session failed to start");
 			await this.#cleanup();
 			return;
 		}

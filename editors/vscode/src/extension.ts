@@ -11,6 +11,12 @@ import {
 	SessionController,
 	type DebugProjectionArgs,
 } from "./debugging/session-controller.js";
+import { initOutput, log } from "./output.js";
+import {
+	showManifestFailure,
+	showNoProjections,
+	showTrustWarning,
+} from "./notifications.js";
 import type { DebugState } from "./types.js";
 
 const DEBUG_PORT = 4711;
@@ -18,35 +24,9 @@ const DEBUG_PORT = 4711;
 export async function activate(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
-	const output = vscode.window.createOutputChannel("Gaffer", "log");
-	context.subscriptions.push(output);
-	const log = (msg: string): void => {
-		output.appendLine(msg);
-		console.log(`Gaffer: ${msg}`);
-	};
+	initOutput(context);
 
 	const debugState: DebugState = { name: null, status: "idle" };
-
-	const showManifestFailure = (err: unknown): void => {
-		const raw = err instanceof Error ? err.message : String(err);
-		const truncated = raw.length > 200 ? `${raw.slice(0, 200)}…` : raw;
-		void vscode.window
-			.showErrorMessage(
-				`Gaffer CLI failed: ${truncated}`,
-				"View Output",
-				"Open Settings",
-			)
-			.then((choice) => {
-				if (choice === "View Output") {
-					output.show();
-				} else if (choice === "Open Settings") {
-					void vscode.commands.executeCommand(
-						"workbench.action.openSettings",
-						"gaffer.command",
-					);
-				}
-			});
-	};
 
 	// Initial snapshots - both awaited up front. Lens providers are
 	// constructed with the loaded data and registered after, so first
@@ -54,7 +34,6 @@ export async function activate(
 	const initialIndex = await createProjectIndex();
 	const initialManifest = await tryFetchManifest(
 		initialIndex.projectRoot,
-		log,
 		showManifestFailure,
 	);
 
@@ -83,8 +62,6 @@ export async function activate(
 		statusProvider,
 		debugState,
 		refreshLenses: rerenderLenses,
-		log,
-		output,
 	});
 	controller.register(context);
 
@@ -98,11 +75,7 @@ export async function activate(
 		refreshChain = refreshChain.then(async () => {
 			try {
 				const idx = await createProjectIndex();
-				const m = await tryFetchManifest(
-					idx.projectRoot,
-					log,
-					showManifestFailure,
-				);
+				const m = await tryFetchManifest(idx.projectRoot, showManifestFailure);
 				jsCodeLens.setIndex(idx);
 				jsCodeLens.setManifest(m);
 				tomlCodeLens.setManifest(m);
@@ -148,7 +121,6 @@ export async function activate(
 				stepProvider,
 				stateProvider,
 				setInspecting: (inspecting) => controller.setInspecting(inspecting),
-				log,
 			}),
 		),
 	);
@@ -161,23 +133,12 @@ export async function activate(
 	// would pick a projection and see nothing happen.
 	const runProjection = async (): Promise<void> => {
 		if (!vscode.workspace.isTrusted) {
-			void vscode.window
-				.showWarningMessage(
-					"Trust this workspace to enable Gaffer debugging.",
-					"Manage Trust",
-				)
-				.then((choice) => {
-					if (choice === "Manage Trust") {
-						void vscode.commands.executeCommand("workbench.trust.manage");
-					}
-				});
+			void showTrustWarning();
 			return;
 		}
 		const index = await createProjectIndex();
 		if (index.size === 0) {
-			void vscode.window.showInformationMessage(
-				"Gaffer: no projections found in this workspace.",
-			);
+			void showNoProjections();
 			return;
 		}
 		const picked = await vscode.window.showQuickPick(
@@ -191,7 +152,6 @@ export async function activate(
 		if (!picked) return;
 		const manifest = await tryFetchManifest(
 			index.projectRoot,
-			log,
 			showManifestFailure,
 		);
 		if (!manifest) return;

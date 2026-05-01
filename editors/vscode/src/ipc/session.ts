@@ -1,11 +1,9 @@
-import * as vscode from "vscode";
 import { GafferProcess, type ProcessOptions } from "./process.js";
 import { renderCliMessage } from "./output-renderer.js";
+import { clearOutput, writeOutput } from "../output.js";
 import type { CliMessage } from "./schemas.js";
 
 export interface SessionOptions {
-	output: vscode.OutputChannel;
-	log?: (msg: string) => void;
 	cwd?: string;
 }
 
@@ -18,22 +16,19 @@ type AnyListener = (msg: CliMessage) => void;
 export class GafferSession {
 	readonly #name: string;
 	readonly #argv: string[];
-	readonly #log: (msg: string) => void;
 	readonly #cwd: string | undefined;
 	readonly #listeners = new Map<CliMessageType | "*", AnyListener[]>();
-	readonly #output: vscode.OutputChannel;
 	#proc: GafferProcess | null = null;
 
-	constructor(name: string, argv: string[], options: SessionOptions) {
+	constructor(name: string, argv: string[], options: SessionOptions = {}) {
 		this.#name = name;
 		this.#argv = argv;
-		this.#log = options.log ?? (() => {});
 		this.#cwd = options.cwd;
-		// Channel is owned by the caller and reused across sessions; we
-		// just clear and write to it.
-		this.#output = options.output;
-		this.#output.clear();
-		this.#output.appendLine(`=== ${name} ===`);
+		// Channel is a module-level singleton (output.ts), reused across
+		// sessions. Clear on construction and write the session header so
+		// subsequent renderCliMessage calls land under it.
+		clearOutput();
+		writeOutput(`=== ${name} ===`);
 	}
 
 	get name(): string {
@@ -53,7 +48,7 @@ export class GafferSession {
 	}
 
 	start(): this {
-		const opts: ProcessOptions = { log: this.#log };
+		const opts: ProcessOptions = {};
 		if (this.#cwd !== undefined) opts.cwd = this.#cwd;
 		const proc = new GafferProcess(this.#argv, opts);
 		this.#proc = proc;
@@ -88,7 +83,7 @@ export class GafferSession {
 	}
 
 	#dispatch(msg: CliMessage): void {
-		renderCliMessage(this.#output, msg);
+		renderCliMessage(msg);
 		for (const fn of this.#listeners.get(msg.type) ?? []) fn(msg);
 		for (const fn of this.#listeners.get("*") ?? []) fn(msg);
 	}

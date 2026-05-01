@@ -7,11 +7,12 @@
 // - otherwise -> Debug button
 
 import * as vscode from "vscode";
-import type { GafferCli } from "../discovery/cli.js";
+import { hasCommand, hasFlag } from "../discovery/cli.js";
+import type { Manifest } from "../discovery/schemas.js";
 import type { DebugState } from "../types.js";
 
 export function buildLens(
-	cli: GafferCli,
+	manifest: Manifest | null,
 	debugState: DebugState,
 	name: string,
 	range: vscode.Range,
@@ -36,7 +37,9 @@ export function buildLens(
 		});
 	}
 
-	if (!cli.hasCommand("dev") || !cli.hasFlag("dev", "debug")) return null;
+	if (!hasCommand(manifest, "dev") || !hasFlag(manifest, "dev", "debug")) {
+		return null;
+	}
 
 	return new vscode.CodeLens(range, {
 		title: "$(debug-start) Debug",

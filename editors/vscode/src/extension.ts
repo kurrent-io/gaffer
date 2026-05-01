@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { GafferCli } from "./discovery/cli.js";
-import { ProjectIndex } from "./discovery/project-index.js";
+import { buildGafferArgv, tryFetchManifest } from "./discovery/cli.js";
+import { createProjectIndex } from "./discovery/project-index.js";
 import { TomlCodeLensProvider } from "./lensing/toml-provider.js";
 import { JsCodeLensProvider } from "./lensing/js-provider.js";
 import { StepProvider } from "./panels/step.js";
@@ -15,7 +15,9 @@ import type { DebugState } from "./types.js";
 
 const DEBUG_PORT = 4711;
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(
+	context: vscode.ExtensionContext,
+): Promise<void> {
 	const output = vscode.window.createOutputChannel("Gaffer", "log");
 	context.subscriptions.push(output);
 	const log = (msg: string): void => {
@@ -23,33 +25,95 @@ export function activate(context: vscode.ExtensionContext): void {
 		console.log(`Gaffer: ${msg}`);
 	};
 
-	const cli = new GafferCli(log);
-	const projectIndex = new ProjectIndex();
-
 	const debugState: DebugState = { name: null, status: "idle" };
+
+	const showManifestFailure = (err: unknown): void => {
+		const raw = err instanceof Error ? err.message : String(err);
+		const truncated = raw.length > 200 ? `${raw.slice(0, 200)}…` : raw;
+		void vscode.window
+			.showErrorMessage(
+				`Gaffer CLI failed: ${truncated}`,
+				"View Output",
+				"Open Settings",
+			)
+			.then((choice) => {
+				if (choice === "View Output") {
+					output.show();
+				} else if (choice === "Open Settings") {
+					void vscode.commands.executeCommand(
+						"workbench.action.openSettings",
+						"gaffer.command",
+					);
+				}
+			});
+	};
+
+	// Initial snapshots - both awaited up front. Lens providers are
+	// constructed with the loaded data and registered after, so first
+	// provideCodeLenses call sees real state.
+	const initialIndex = await createProjectIndex();
+	const initialManifest = await tryFetchManifest(
+		initialIndex.projectRoot,
+		log,
+		showManifestFailure,
+	);
 
 	const stepProvider = new StepProvider();
 	const stateProvider = new StateProvider();
 	const statusProvider = new StatusViewProvider();
-	const tomlCodeLens = new TomlCodeLensProvider(cli, debugState);
-	const jsCodeLens = new JsCodeLensProvider(cli, projectIndex, debugState);
+	const tomlCodeLens = new TomlCodeLensProvider(initialManifest, debugState);
+	const jsCodeLens = new JsCodeLensProvider(
+		initialIndex,
+		initialManifest,
+		debugState,
+	);
 
-	const refreshLenses = (): void => {
+	// Sync re-render hook for things that don't change index/manifest
+	// state (e.g. debug-state transitions). Distinct from the async
+	// reloadLensState orchestrator below, which actually refetches.
+	const rerenderLenses = (): void => {
 		tomlCodeLens.refresh();
 		jsCodeLens.refresh();
 	};
 
 	const controller = new SessionController({
-		cli,
+		buildArgv: buildGafferArgv,
 		stepProvider,
 		stateProvider,
 		statusProvider,
 		debugState,
-		refreshLenses,
+		refreshLenses: rerenderLenses,
 		log,
 		output,
 	});
 	controller.register(context);
+
+	// Async orchestrator, serialised on a promise chain so overlapping
+	// events (toml save + config change in quick succession) can't
+	// interleave setters out of order. The body is try/caught so a
+	// transient failure (e.g. workspace becoming briefly unavailable)
+	// can't poison the chain and brick all future refreshes.
+	let refreshChain: Promise<void> = Promise.resolve();
+	const reloadLensState = (): Promise<void> => {
+		refreshChain = refreshChain.then(async () => {
+			try {
+				const idx = await createProjectIndex();
+				const m = await tryFetchManifest(
+					idx.projectRoot,
+					log,
+					showManifestFailure,
+				);
+				jsCodeLens.setIndex(idx);
+				jsCodeLens.setManifest(m);
+				tomlCodeLens.setManifest(m);
+			} catch (err) {
+				log(
+					`Lens state reload failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+		});
+		return refreshChain;
+	};
 
 	context.subscriptions.push(
 		vscode.window.registerTreeDataProvider("gaffer.step", stepProvider),
@@ -89,81 +153,35 @@ export function activate(context: vscode.ExtensionContext): void {
 		),
 	);
 
-	const refreshAll = (): void => {
-		refreshLenses();
-		void projectIndex.refresh().then(() => jsCodeLens.refresh());
-	};
-
-	const showManifestFailure = (err: unknown): void => {
-		const raw = err instanceof Error ? err.message : String(err);
-		const truncated = raw.length > 200 ? `${raw.slice(0, 200)}…` : raw;
-		void vscode.window
-			.showErrorMessage(
-				`Gaffer CLI failed: ${truncated}`,
-				"View Output",
-				"Open Settings",
-			)
-			.then((choice) => {
-				if (choice === "View Output") {
-					output.show();
-				} else if (choice === "Open Settings") {
-					void vscode.commands.executeCommand(
-						"workbench.action.openSettings",
-						"gaffer.command",
-					);
-				}
-			});
-	};
-
-	const tryFetchManifest = async (): Promise<void> => {
+	// Commands fetch fresh state per call - no shared cache reads. The
+	// QuickPick appears instantly from the local index; manifest fetch
+	// is deferred until after the user picks so it doesn't gate the UI.
+	// Trust is checked explicitly: tryFetchManifest is silent on untrust
+	// (returns null without onError), so without this gate the user
+	// would pick a projection and see nothing happen.
+	const runProjection = async (): Promise<void> => {
 		if (!vscode.workspace.isTrusted) {
-			log("workspace untrusted, skipping manifest fetch");
+			void vscode.window
+				.showWarningMessage(
+					"Trust this workspace to enable Gaffer debugging.",
+					"Manage Trust",
+				)
+				.then((choice) => {
+					if (choice === "Manage Trust") {
+						void vscode.commands.executeCommand("workbench.trust.manage");
+					}
+				});
 			return;
 		}
-		try {
-			await cli.fetchManifest(projectIndex.projectRoot);
-			refreshAll();
-		} catch (err) {
-			showManifestFailure(err);
-		}
-	};
-
-	// One-shot retry used by the command handlers. Lens-driven Debug already
-	// requires a loaded manifest (the lens hides itself otherwise), but the
-	// palette-invoked Run Projection has no such gate, and a stale null
-	// manifest after a failed activation fetch shouldn't permanently brick
-	// the commands.
-	const ensureManifest = async (): Promise<boolean> => {
-		if (cli.manifest) return true;
-		if (!vscode.workspace.isTrusted) {
-			showManifestFailure(new Error("workspace not trusted"));
-			return false;
-		}
-		try {
-			await cli.fetchManifest(projectIndex.projectRoot);
-			refreshAll();
-			return true;
-		} catch (err) {
-			showManifestFailure(err);
-			return false;
-		}
-	};
-
-	const runProjection = async (): Promise<void> => {
-		await projectIndex.refresh();
-		const projections = projectIndex.projections;
-		// Empty check before manifest fetch: a workspace with no gaffer.toml
-		// would otherwise misreport "Gaffer CLI failed" when the real
-		// diagnostic is "no projections here".
-		if (projections.length === 0) {
+		const index = await createProjectIndex();
+		if (index.size === 0) {
 			void vscode.window.showInformationMessage(
 				"Gaffer: no projections found in this workspace.",
 			);
 			return;
 		}
-		if (!(await ensureManifest())) return;
 		const picked = await vscode.window.showQuickPick(
-			projections.map((p) => ({
+			index.projections.map((p) => ({
 				label: p.name,
 				description: vscode.workspace.asRelativePath(p.tomlUri),
 				projection: p,
@@ -171,6 +189,12 @@ export function activate(context: vscode.ExtensionContext): void {
 			{ placeHolder: "Select a projection to debug" },
 		);
 		if (!picked) return;
+		const manifest = await tryFetchManifest(
+			index.projectRoot,
+			log,
+			showManifestFailure,
+		);
+		if (!manifest) return;
 		await controller.start({
 			name: picked.projection.name,
 			tomlUri: picked.projection.tomlUri,
@@ -183,47 +207,39 @@ export function activate(context: vscode.ExtensionContext): void {
 		),
 		vscode.commands.registerCommand(
 			"gaffer.debugProjection",
-			async (args: DebugProjectionArgs) => {
-				if (!(await ensureManifest())) return;
-				await controller.start(args);
-			},
+			(args: DebugProjectionArgs) => controller.start(args),
 		),
 		vscode.commands.registerCommand("gaffer.runProjection", runProjection),
 	);
 
 	const tomlWatcher =
 		vscode.workspace.createFileSystemWatcher("**/gaffer.toml");
-	tomlWatcher.onDidChange(() => {
+	tomlWatcher.onDidChange(async () => {
 		log("gaffer.toml changed");
-		refreshAll();
+		await reloadLensState();
 	});
-	tomlWatcher.onDidCreate(() => {
+	tomlWatcher.onDidCreate(async () => {
 		log("gaffer.toml created");
-		void tryFetchManifest();
+		await reloadLensState();
 	});
-	tomlWatcher.onDidDelete(() => {
+	tomlWatcher.onDidDelete(async () => {
 		log("gaffer.toml deleted");
-		refreshAll();
+		await reloadLensState();
 	});
 	context.subscriptions.push(tomlWatcher);
 
 	context.subscriptions.push(
-		vscode.workspace.onDidChangeConfiguration((e) => {
+		vscode.workspace.onDidChangeConfiguration(async (e) => {
 			if (e.affectsConfiguration("gaffer.command")) {
-				log("gaffer.command setting changed, refetching manifest");
-				void tryFetchManifest();
+				log("gaffer.command setting changed");
+				await reloadLensState();
 			}
 		}),
-	);
-
-	context.subscriptions.push(
-		vscode.workspace.onDidGrantWorkspaceTrust(() => {
-			log("workspace trusted, fetching manifest");
-			void tryFetchManifest();
+		vscode.workspace.onDidGrantWorkspaceTrust(async () => {
+			log("workspace trusted");
+			await reloadLensState();
 		}),
 	);
-
-	void projectIndex.refresh().then(tryFetchManifest);
 }
 
 export function deactivate(): void {}

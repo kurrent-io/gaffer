@@ -3,73 +3,74 @@ import { execFile } from "node:child_process";
 import * as v from "valibot";
 import { ManifestSchema, type Manifest } from "./schemas.js";
 
-type Logger = (msg: string) => void;
-
 const DEFAULT_COMMAND: readonly string[] = ["./bin/gaffer"];
 
-export class GafferCli {
-	readonly #log: Logger;
-	#manifest: Manifest | null = null;
+/**
+ * Build the argv to invoke gaffer with the given subcommand args.
+ *
+ * Reads `gaffer.command` only from User scope - workspace and folder scope
+ * are ignored as a defense against hostile workspaces overriding the
+ * binary path. Falls back to `["./bin/gaffer"]`.
+ */
+export function buildGafferArgv(args: string[]): string[] {
+	const inspected = vscode.workspace
+		.getConfiguration("gaffer")
+		.inspect<string[]>("command");
+	const userValue = inspected?.globalValue;
+	const prefix =
+		Array.isArray(userValue) && userValue.length > 0
+			? userValue
+			: [...DEFAULT_COMMAND];
+	return [...prefix, ...args];
+}
 
-	constructor(log?: Logger) {
-		this.#log = log ?? (() => {});
+/**
+ * Fetch and parse the gaffer CLI manifest. Returns `null` rather than
+ * throwing - the manifest can legitimately fail to load (CLI not
+ * installed, workspace untrusted, bad config) and the rest of the
+ * extension is built to handle a null manifest. `onError` fires for
+ * actual fetch failures (CLI missing, parse errors); trust-skip is
+ * silent.
+ */
+export async function tryFetchManifest(
+	cwd: string | undefined,
+	log: (msg: string) => void,
+	onError?: (err: unknown) => void,
+): Promise<Manifest | null> {
+	if (!vscode.workspace.isTrusted) {
+		log("workspace untrusted, skipping manifest fetch");
+		return null;
 	}
-
-	get manifest(): Manifest | null {
-		return this.#manifest;
-	}
-
-	hasCommand(name: string): boolean {
-		return this.#manifest?.commands?.[name] != null;
-	}
-
-	hasFlag(command: string, flag: string): boolean {
-		return this.#manifest?.commands?.[command]?.flags?.includes(flag) ?? false;
-	}
-
-	/**
-	 * Build the argv to invoke gaffer with the given subcommand args.
-	 *
-	 * Reads `gaffer.command` only from User scope - workspace and folder scope
-	 * are ignored as a defense against hostile workspaces overriding the
-	 * binary path. Falls back to `["./bin/gaffer"]`.
-	 */
-	buildArgv(args: string[]): string[] {
-		const inspected = vscode.workspace
-			.getConfiguration("gaffer")
-			.inspect<string[]>("command");
-		const userValue = inspected?.globalValue;
-		const prefix =
-			Array.isArray(userValue) && userValue.length > 0
-				? userValue
-				: [...DEFAULT_COMMAND];
-		return [...prefix, ...args];
-	}
-
-	async fetchManifest(cwd: string | undefined): Promise<Manifest> {
-		const argv = this.buildArgv(["manifest"]);
-		try {
-			const opts: { cwd?: string } = {};
-			if (cwd !== undefined) opts.cwd = cwd;
-			const output = await execFileAsync(argv, opts);
-			const raw: unknown = JSON.parse(output);
-			const parsed = v.safeParse(ManifestSchema, raw);
-			if (!parsed.success) {
-				throw new Error(
-					`malformed manifest: ${parsed.issues.map((i) => i.message).join("; ")}`,
-				);
-			}
-			this.#manifest = parsed.output;
-			this.#log(`Manifest loaded (v${parsed.output.version})`);
-			return parsed.output;
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			this.#log(`Manifest fetch failed: ${msg}`);
-			this.#manifest = null;
-			throw err;
+	const argv = buildGafferArgv(["manifest"]);
+	try {
+		const opts: { cwd?: string } = {};
+		if (cwd !== undefined) opts.cwd = cwd;
+		const output = await execFileAsync(argv, opts);
+		const raw: unknown = JSON.parse(output);
+		const parsed = v.safeParse(ManifestSchema, raw);
+		if (!parsed.success) {
+			throw new Error(
+				`malformed manifest: ${parsed.issues.map((i) => i.message).join("; ")}`,
+			);
 		}
+		log(`Manifest loaded (v${parsed.output.version})`);
+		return parsed.output;
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		log(`Manifest fetch failed: ${msg}`);
+		onError?.(err);
+		return null;
 	}
 }
+
+export const hasCommand = (m: Manifest | null, name: string): boolean =>
+	m?.commands?.[name] != null;
+
+export const hasFlag = (
+	m: Manifest | null,
+	command: string,
+	flag: string,
+): boolean => m?.commands?.[command]?.flags?.includes(flag) ?? false;
 
 function execFileAsync(
 	argv: string[],

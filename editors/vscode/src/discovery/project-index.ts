@@ -4,52 +4,57 @@ import fs from "node:fs";
 import { parse as parseToml } from "smol-toml";
 import type { ProjectEntry } from "../types.js";
 
-export class ProjectIndex {
-	readonly #entries = new Map<string, ProjectEntry>();
+export interface ProjectIndex {
+	lookup(filePath: string): ProjectEntry | null;
+	readonly size: number;
+	readonly entryPaths: ReadonlyArray<string>;
+	readonly projections: ReadonlyArray<{
+		name: string;
+		tomlUri: vscode.Uri;
+	}>;
+	readonly projectRoot: string | undefined;
+}
 
-	async refresh(): Promise<void> {
-		this.#entries.clear();
-		const uris = await vscode.workspace.findFiles(
-			"**/gaffer.toml",
-			"**/node_modules/**",
-		);
-		for (const uri of uris) {
-			const tomlDir = path.dirname(uri.fsPath);
-			for (const proj of parseProjections(uri.fsPath)) {
-				const absEntry = path.resolve(tomlDir, proj.entry);
-				this.#entries.set(normalizePath(absEntry), {
-					name: proj.name,
-					tomlDir,
-				});
-			}
-		}
-	}
-
-	lookup(filePath: string): ProjectEntry | null {
-		return this.#entries.get(normalizePath(filePath)) ?? null;
-	}
-
-	get entryPaths(): string[] {
-		return [...this.#entries.keys()];
-	}
-
-	get projections(): Array<{ name: string; tomlUri: vscode.Uri }> {
-		const out: Array<{ name: string; tomlUri: vscode.Uri }> = [];
-		for (const entry of this.#entries.values()) {
-			out.push({
-				name: entry.name,
-				tomlUri: vscode.Uri.file(path.join(entry.tomlDir, "gaffer.toml")),
+export async function createProjectIndex(): Promise<ProjectIndex> {
+	const entries = new Map<string, ProjectEntry>();
+	const uris = await vscode.workspace.findFiles(
+		"**/gaffer.toml",
+		"**/node_modules/**",
+	);
+	for (const uri of uris) {
+		const tomlDir = path.dirname(uri.fsPath);
+		for (const proj of parseProjections(uri.fsPath)) {
+			const absEntry = path.resolve(tomlDir, proj.entry);
+			entries.set(normalizePath(absEntry), {
+				name: proj.name,
+				tomlDir,
 			});
 		}
-		return out;
 	}
 
-	get projectRoot(): string | undefined {
-		for (const entry of this.#entries.values()) {
-			return entry.tomlDir;
-		}
-		return undefined;
-	}
+	return {
+		lookup: (filePath) => entries.get(normalizePath(filePath)) ?? null,
+		get size() {
+			return entries.size;
+		},
+		get entryPaths() {
+			return [...entries.keys()];
+		},
+		get projections() {
+			const out: Array<{ name: string; tomlUri: vscode.Uri }> = [];
+			for (const entry of entries.values()) {
+				out.push({
+					name: entry.name,
+					tomlUri: vscode.Uri.file(path.join(entry.tomlDir, "gaffer.toml")),
+				});
+			}
+			return out;
+		},
+		get projectRoot() {
+			for (const entry of entries.values()) return entry.tomlDir;
+			return undefined;
+		},
+	};
 }
 
 // NTFS is case-insensitive and VS Code can return mixed-case fsPaths;

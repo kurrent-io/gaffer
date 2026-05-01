@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import path from "node:path";
 import { buildLens } from "./lens.js";
-import type { GafferCli } from "../discovery/cli.js";
+import type { Manifest } from "../discovery/schemas.js";
 import type { ProjectIndex } from "../discovery/project-index.js";
 import type { DebugState } from "../types.js";
 
@@ -10,18 +10,28 @@ const fromPattern = /^(fromAll|fromStream|fromCategory|fromStreams)\s*\(/;
 export class JsCodeLensProvider implements vscode.CodeLensProvider {
 	readonly #onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChangeCodeLenses = this.#onDidChange.event;
-	readonly #cli: GafferCli;
-	readonly #projectIndex: ProjectIndex;
 	readonly #debugState: DebugState;
+	#index: ProjectIndex;
+	#manifest: Manifest | null;
 
 	constructor(
-		cli: GafferCli,
-		projectIndex: ProjectIndex,
+		initialIndex: ProjectIndex,
+		initialManifest: Manifest | null,
 		debugState: DebugState,
 	) {
-		this.#cli = cli;
-		this.#projectIndex = projectIndex;
+		this.#index = initialIndex;
+		this.#manifest = initialManifest;
 		this.#debugState = debugState;
+	}
+
+	setIndex(index: ProjectIndex): void {
+		this.#index = index;
+		this.#onDidChange.fire();
+	}
+
+	setManifest(manifest: Manifest | null): void {
+		this.#manifest = manifest;
+		this.#onDidChange.fire();
 	}
 
 	refresh(): void {
@@ -29,7 +39,7 @@ export class JsCodeLensProvider implements vscode.CodeLensProvider {
 	}
 
 	provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
-		const resolved = this.#projectIndex.lookup(document.uri.fsPath);
+		const resolved = this.#index.lookup(document.uri.fsPath);
 		if (!resolved) return [];
 
 		const lines = document.getText().split(/\r?\n/);
@@ -47,7 +57,13 @@ export class JsCodeLensProvider implements vscode.CodeLensProvider {
 		const { name, tomlDir } = resolved;
 		const range = new vscode.Range(fromLine, 0, fromLine, fromLineLength);
 		const tomlUri = vscode.Uri.file(path.join(tomlDir, "gaffer.toml"));
-		const lens = buildLens(this.#cli, this.#debugState, name, range, tomlUri);
+		const lens = buildLens(
+			this.#manifest,
+			this.#debugState,
+			name,
+			range,
+			tomlUri,
+		);
 		return lens ? [lens] : [];
 	}
 }

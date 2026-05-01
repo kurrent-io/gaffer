@@ -9,7 +9,6 @@
 
 import * as vscode from "vscode";
 import { GafferSession } from "../ipc/session.js";
-import type { GafferCli } from "../discovery/cli.js";
 import type { StepProvider } from "../panels/step.js";
 import type { StateProvider } from "../panels/state.js";
 import type { StatusViewProvider } from "../panels/status.js";
@@ -23,7 +22,7 @@ export interface DebugProjectionArgs {
 }
 
 export interface SessionControllerDeps {
-	cli: GafferCli;
+	buildArgv: (args: string[]) => string[];
 	stepProvider: StepProvider;
 	stateProvider: StateProvider;
 	statusProvider: StatusViewProvider;
@@ -34,7 +33,7 @@ export interface SessionControllerDeps {
 }
 
 export class SessionController implements vscode.Disposable {
-	readonly #cli: GafferCli;
+	readonly #buildArgv: (args: string[]) => string[];
 	readonly #stepProvider: StepProvider;
 	readonly #stateProvider: StateProvider;
 	readonly #statusProvider: StatusViewProvider;
@@ -45,7 +44,7 @@ export class SessionController implements vscode.Disposable {
 	#activeSession: GafferSession | null = null;
 
 	constructor(deps: SessionControllerDeps) {
-		this.#cli = deps.cli;
+		this.#buildArgv = deps.buildArgv;
 		this.#stepProvider = deps.stepProvider;
 		this.#stateProvider = deps.stateProvider;
 		this.#statusProvider = deps.statusProvider;
@@ -103,7 +102,7 @@ export class SessionController implements vscode.Disposable {
 
 		const { name, tomlUri } = args;
 		const tomlDir = vscode.Uri.joinPath(tomlUri, "..").fsPath;
-		const argv = this.#cli.buildArgv([
+		const argv = this.#buildArgv([
 			"dev",
 			name,
 			"--json",

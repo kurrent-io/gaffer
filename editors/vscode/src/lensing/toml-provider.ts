@@ -1,18 +1,23 @@
 import * as vscode from "vscode";
 import { projectionBlocks } from "../discovery/project-index.js";
 import { buildLens } from "./lens.js";
-import type { GafferCli } from "../discovery/cli.js";
+import type { Manifest } from "../discovery/schemas.js";
 import type { DebugState } from "../types.js";
 
 export class TomlCodeLensProvider implements vscode.CodeLensProvider {
 	readonly #onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChangeCodeLenses = this.#onDidChange.event;
-	readonly #cli: GafferCli;
 	readonly #debugState: DebugState;
+	#manifest: Manifest | null;
 
-	constructor(cli: GafferCli, debugState: DebugState) {
-		this.#cli = cli;
+	constructor(initialManifest: Manifest | null, debugState: DebugState) {
+		this.#manifest = initialManifest;
 		this.#debugState = debugState;
+	}
+
+	setManifest(manifest: Manifest | null): void {
+		this.#manifest = manifest;
+		this.#onDidChange.fire();
 	}
 
 	refresh(): void {
@@ -44,7 +49,7 @@ export class TomlCodeLensProvider implements vscode.CodeLensProvider {
 				header.length,
 			);
 			const lens = buildLens(
-				this.#cli,
+				this.#manifest,
 				this.#debugState,
 				block.name,
 				range,

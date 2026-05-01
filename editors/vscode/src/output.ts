@@ -36,3 +36,9 @@ export const clearOutput = (): void => {
 export const showOutputPanel = (): void => {
 	channel?.show();
 };
+
+// Test-only: drop the cached channel so the next initOutput in a fresh
+// test starts clean. Production never calls this.
+export const __resetForTest = (): void => {
+	channel = null;
+};

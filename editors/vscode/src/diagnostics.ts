@@ -53,3 +53,9 @@ export function reportFatalError(report: FatalErrorReport): void {
 export function clearDiagnostics(): void {
 	collection?.clear();
 }
+
+// Test-only: drop the cached collection so the next initDiagnostics in
+// a fresh test starts clean. Production never calls this.
+export function __resetForTest(): void {
+	collection = null;
+}

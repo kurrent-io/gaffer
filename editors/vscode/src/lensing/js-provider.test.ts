@@ -72,6 +72,50 @@ describe("JsCodeLensProvider.provideCodeLenses", () => {
 		expect(provider.provideCodeLenses(doc)).toEqual([]);
 	});
 
+	describe("regex specificity", () => {
+		// The fromPattern regex in js-provider.ts is anchored with `^` and
+		// tested against `line.trim()`. trim only strips whitespace, so
+		// leading `//` or `*` prefixes survive and the anchor blocks the
+		// match. Lock the negative cases in - a future regex change that
+		// drops `^` would silently start lensing comment lines.
+		const provider = (): JsCodeLensProvider =>
+			new JsCodeLensProvider(
+				indexWith("/p/app/a.js", "/p/app", "checkout"),
+				okManifest,
+			);
+		const docOf = (text: string): vscode.TextDocument =>
+			makeDoc(vscode.Uri.file("/p/app/a.js"), text);
+
+		it("does not match a `// fromAll()` line comment", () => {
+			expect(provider().provideCodeLenses(docOf("// fromAll()"))).toEqual([]);
+		});
+
+		it("does not match an indented `// fromAll()` line comment", () => {
+			expect(provider().provideCodeLenses(docOf("    // fromAll()"))).toEqual(
+				[],
+			);
+		});
+
+		it("does not match a `* fromAll()` JSDoc-style line", () => {
+			expect(provider().provideCodeLenses(docOf(" * fromAll()"))).toEqual([]);
+		});
+
+		it("does not match a lookalike like `myFromStream(...)`", () => {
+			expect(
+				provider().provideCodeLenses(docOf("myFromStream('x').when({})")),
+			).toEqual([]);
+		});
+
+		it("does match `fromAll()` after non-matching content", () => {
+			const text = ["// header", "const x = 1;", "", "fromAll().when({})"].join(
+				"\n",
+			);
+			const lenses = provider().provideCodeLenses(docOf(text));
+			expect(lenses).toHaveLength(1);
+			expect(lenses[0]?.range.start.line).toBe(3);
+		});
+	});
+
 	it("reflects setIndex by switching from no-lens to a Debug lens", () => {
 		const provider = new JsCodeLensProvider(emptyIndex, okManifest);
 		const doc = makeDoc(vscode.Uri.file("/p/app/a.js"), "fromAll().when({})");

@@ -209,6 +209,15 @@ describe("SessionController.start - happy path", () => {
 		expect(session.argv[idx + 1]).toBe("4711");
 	});
 
+	it("passes --start-paused-if-no-breakpoints by default", async () => {
+		// Extension's UX default: lands the user in `inspecting` mode
+		// immediately so the State view is populated before any events
+		// are processed. With breakpoints set, the CLI runs to first hit.
+		const h = makeHarness();
+		const { session } = await startToRunning(h);
+		expect(session.argv).toContain("--start-paused-if-no-breakpoints");
+	});
+
 	it("clears diagnostics at start() (not in cleanup)", async () => {
 		// Pre-populate a diagnostic so we can observe whether start clears it.
 		const { reportFatalError, initDiagnostics } =

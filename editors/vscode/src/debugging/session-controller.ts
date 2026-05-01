@@ -168,6 +168,12 @@ export class SessionController implements vscode.Disposable {
 			"--debug",
 			"--debug-port",
 			String(requestedPort),
+			// Start-paused is the extension's default UX: clicking Debug
+			// lands the user in `inspecting` immediately so the State view
+			// is populated and the user can explore before processing
+			// begins. With breakpoints set the CLI runs to the first hit
+			// instead.
+			"--start-paused-if-no-breakpoints",
 		]);
 
 		await this.#setStatus(name, "starting");

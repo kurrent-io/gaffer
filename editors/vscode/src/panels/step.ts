@@ -59,8 +59,12 @@ export class StepProvider implements vscode.TreeDataProvider<TreeItemWithChildre
 	getChildren(element?: TreeItemWithChildren): TreeItemWithChildren[] {
 		if (element) return element.children ?? [];
 		if (this.#items.length === 0) {
+			// With --start-paused-if-no-breakpoints the user lands here on
+			// click-Debug; the placeholder is the primary cue for what to
+			// do next. Lead with the action ("Press Continue") rather than
+			// the passive state ("Waiting for an event").
 			const placeholder = new vscode.TreeItem(
-				"Waiting for an event. Press Continue or set breakpoints.",
+				"Press Continue to start, or set breakpoints to pause at specific events.",
 				vscode.TreeItemCollapsibleState.None,
 			);
 			placeholder.iconPath = new vscode.ThemeIcon("info");

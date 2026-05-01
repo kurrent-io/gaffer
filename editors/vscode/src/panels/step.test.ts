@@ -14,7 +14,7 @@ describe("StepProvider", () => {
 		const provider = new StepProvider();
 		const items = provider.getChildren();
 		expect(items).toHaveLength(1);
-		expect(items[0]?.label).toMatch(/Waiting/);
+		expect(items[0]?.label).toMatch(/Press Continue/);
 	});
 
 	it("startStep replaces previous items with the input event", async () => {
@@ -152,7 +152,7 @@ describe("StepProvider", () => {
 		provider.clear();
 		const items = provider.getChildren();
 		expect(items).toHaveLength(1);
-		expect(items[0]?.label).toMatch(/Waiting/);
+		expect(items[0]?.label).toMatch(/Press Continue/);
 	});
 
 	it("addLog debounces onDidChangeTreeData fires within 50ms", () => {

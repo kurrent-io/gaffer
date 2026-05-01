@@ -564,6 +564,7 @@ function makeConfiguration(section: string): vscode.WorkspaceConfiguration {
 export interface MockState {
 	isTrusted: boolean;
 	findFilesQueue: vscode.Uri[][];
+	findFilesGates: Array<Promise<void>>;
 	findFilesCalls: Array<{ pattern: string; exclude: string | undefined }>;
 	configurations: Map<string, Map<string, ConfigEntry>>;
 	registeredCommands: Map<string, (...args: unknown[]) => unknown>;
@@ -605,6 +606,7 @@ function createInitialState(): MockState {
 	return {
 		isTrusted: true,
 		findFilesQueue: [],
+		findFilesGates: [],
 		findFilesCalls: [],
 		configurations: new Map(),
 		registeredCommands: new Map(),
@@ -711,10 +713,10 @@ export const workspace: WorkspaceShape = {
 	): string {
 		return state.asRelativePathImpl(uri);
 	},
-	findFiles(
+	async findFiles(
 		include: vscode.GlobPattern,
 		exclude?: vscode.GlobPattern | null,
-	): Thenable<vscode.Uri[]> {
+	): Promise<vscode.Uri[]> {
 		state.findFilesCalls.push({
 			pattern: typeof include === "string" ? include : String(include),
 			exclude:
@@ -724,7 +726,13 @@ export const workspace: WorkspaceShape = {
 						? exclude
 						: String(exclude),
 		});
-		return Promise.resolve(state.findFilesQueue.shift() ?? []);
+		// Optional per-call gate: tests that need to prove ordering of
+		// concurrent vs serialised reloads push one promise per expected
+		// findFiles call. The call awaits the gate before returning. With
+		// no gate set, behaves as before.
+		const gate = state.findFilesGates.shift();
+		if (gate) await gate;
+		return state.findFilesQueue.shift() ?? [];
 	},
 	getConfiguration(section?: string): vscode.WorkspaceConfiguration {
 		return makeConfiguration(section ?? "");

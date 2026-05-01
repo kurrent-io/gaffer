@@ -2,10 +2,14 @@
 // runProjection ends in `controller.start()` which spawns a real CLI
 // subprocess - that's the e2e tier. The four bail-early paths
 // (untrusted, empty index, manifest fetch fails, user cancels) are
-// covered here without any spawn.
+// covered here. The `manifest fetch fails` case spawns ENOENT against
+// a non-existent path - documented exception, fails before any IO.
 
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import * as vscode from "vscode";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activate } from "./extension.js";
 import { JsCodeLensProvider } from "./lensing/js-provider.js";
 import { TomlCodeLensProvider } from "./lensing/toml-provider.js";
@@ -14,8 +18,10 @@ import { makeContext } from "../test/testutil/fake-context.js";
 import {
 	fireConfigurationChange,
 	fireWorkspaceTrustGranted,
+	getShownMessages,
 	getState,
 	queueFindFiles,
+	queueFindFilesGate,
 	queueMessageResponse,
 	queueQuickPick,
 	setConfiguration,
@@ -142,8 +148,6 @@ describe("runProjection bail-early paths", () => {
 		await activateBare();
 		// Workspace stays untrusted from activateBare.
 		await runProjection();
-		const { getShownMessages } =
-			await import("../test/testutil/vscode-state.js");
 		const msgs = getShownMessages();
 		expect(msgs.some((m) => /Trust this workspace/.test(m.message))).toBe(true);
 		expect(getState().quickPickCalls).toEqual([]);
@@ -155,8 +159,6 @@ describe("runProjection bail-early paths", () => {
 		// runProjection calls createProjectIndex -> findFiles (empty queue
 		// returns []), so the index is empty.
 		await runProjection();
-		const { getShownMessages } =
-			await import("../test/testutil/vscode-state.js");
 		const msgs = getShownMessages();
 		expect(msgs.some((m) => /no projections found/.test(m.message))).toBe(true);
 		expect(getState().quickPickCalls).toEqual([]);
@@ -186,18 +188,39 @@ describe("tomlWatcher reload chain", () => {
 		expect(jsSetManifest).toHaveBeenCalledTimes(1);
 	});
 
-	it("rapid back-to-back changes serialise through refreshChain (both reloads complete in order)", async () => {
+	it("rapid back-to-back changes serialise through refreshChain (one reload at a time)", async () => {
+		// Proof of serialisation: gate each findFiles call. With the
+		// chain, only the *first* reload's findFiles is in-flight after
+		// firing both events; the second is queued behind it. Without
+		// the chain, both would be in-flight concurrently.
 		const setIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
 		await activateBare();
 		setIndex.mockClear();
 
 		queueFindFiles([]);
 		queueFindFiles([]);
+		const gate1 = queueFindFilesGate();
+		const gate2 = queueFindFilesGate();
+		const findFilesCallsBefore = getState().findFilesCalls.length;
+
 		const watcher = getState().fileWatchers[0];
 		watcher?.emitChange(vscode.Uri.file("/p/gaffer.toml"));
 		watcher?.emitChange(vscode.Uri.file("/p/gaffer.toml"));
 		await flushAllMicrotasks();
-		// Two changes = two reloads, both completed.
+		// Serialised: only the first reload has reached findFiles.
+		expect(getState().findFilesCalls.length - findFilesCallsBefore).toBe(1);
+		expect(setIndex).toHaveBeenCalledTimes(0);
+
+		// Release the first gate -> first reload completes -> second
+		// reload starts and reaches findFiles.
+		gate1.release();
+		await flushAllMicrotasks();
+		expect(setIndex).toHaveBeenCalledTimes(1);
+		expect(getState().findFilesCalls.length - findFilesCallsBefore).toBe(2);
+
+		// Release the second gate -> second reload completes.
+		gate2.release();
+		await flushAllMicrotasks();
 		expect(setIndex).toHaveBeenCalledTimes(2);
 	});
 
@@ -289,13 +312,15 @@ describe("workspace trust grant", () => {
 // non-empty projection index, which means writing a real toml. Easier
 // to do this in fs-backed tests below.
 
+// runProjection paths that need a non-empty index. Backed by a real
+// tmp toml since createProjectIndex reads via node:fs. The
+// manifest-fetch-fails case spawns execFile against a non-existent
+// path - documented exception to the "no spawn in extension.test.ts"
+// header. This is an ENOENT path; the spawn fails before any IO.
 describe("runProjection (with a real projection index)", () => {
 	let tmpDir: string;
 
-	beforeEach(async () => {
-		const fs = await import("node:fs");
-		const os = await import("node:os");
-		const path = await import("node:path");
+	beforeEach(() => {
 		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gaffer-ext-"));
 		const tomlPath = path.join(tmpDir, "gaffer.toml");
 		const entryPath = path.join(tmpDir, "checkout.js");
@@ -306,6 +331,10 @@ describe("runProjection (with a real projection index)", () => {
 		fs.writeFileSync(entryPath, "fromAll().when({})\n");
 	});
 
+	afterEach(() => {
+		fs.rmSync(tmpDir, { recursive: true, force: true });
+	});
+
 	function runProjection(): Promise<unknown> {
 		const handler = getState().registeredCommands.get("gaffer.runProjection");
 		if (!handler) throw new Error("gaffer.runProjection not registered");
@@ -313,7 +342,6 @@ describe("runProjection (with a real projection index)", () => {
 	}
 
 	it("user cancels the quickpick: silent no-op, controller.start not invoked", async () => {
-		const path = await import("node:path");
 		await activateBare();
 		setTrusted(true);
 		queueFindFiles([vscode.Uri.file(path.join(tmpDir, "gaffer.toml"))]);
@@ -325,7 +353,6 @@ describe("runProjection (with a real projection index)", () => {
 	});
 
 	it("manifest fetch fails: shows error toast, controller.start not invoked", async () => {
-		const path = await import("node:path");
 		await activateBare();
 		setTrusted(true);
 		queueFindFiles([vscode.Uri.file(path.join(tmpDir, "gaffer.toml"))]);
@@ -346,8 +373,6 @@ describe("runProjection (with a real projection index)", () => {
 		// Drain the (possible) toast click resolution.
 		queueMessageResponse(undefined);
 		await runProjection();
-		const { getShownMessages } =
-			await import("../test/testutil/vscode-state.js");
 		const msgs = getShownMessages();
 		expect(msgs.some((m) => /Gaffer CLI failed/.test(m.message))).toBe(true);
 		expect(getState().startDebuggingCalls).toEqual([]);

@@ -106,7 +106,7 @@ describe("JsCodeLensProvider.provideCodeLenses", () => {
 			).toEqual([]);
 		});
 
-		it("does match `fromAll()` after non-matching content", () => {
+		it("matches `fromAll()` after preceding non-matching lines", () => {
 			const text = ["// header", "const x = 1;", "", "fromAll().when({})"].join(
 				"\n",
 			);

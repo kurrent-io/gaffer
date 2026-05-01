@@ -27,6 +27,19 @@ export function queueFindFiles(uris: vscode.Uri[]): void {
 	state.findFilesQueue.push(uris);
 }
 
+// Optional gate for the next findFiles call: the call awaits the
+// returned `release` promise before resolving its uris. Use this to
+// pin sequencing in tests that need to prove serialisation rather
+// than just "both reloads ran". Push one gate per expected call.
+export function queueFindFilesGate(): { release: () => void } {
+	let release!: () => void;
+	const promise = new Promise<void>((r) => {
+		release = r;
+	});
+	state.findFilesGates.push(promise);
+	return { release };
+}
+
 export function setConfiguration(
 	section: string,
 	key: string,

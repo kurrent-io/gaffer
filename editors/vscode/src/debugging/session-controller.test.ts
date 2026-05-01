@@ -650,6 +650,9 @@ describe("SessionController onDidStartDebugSession capture guard", () => {
 		await flushAllMicrotasks();
 		expect(h.pushed.length).toBe(before);
 		expect(h.pushed.at(-1)?.status).toBe("running");
+		// Stronger: no cleanup side-effects ran.
+		expect(h.providerCalls.state.markEnded).toBe(0);
+		expect(h.providerCalls.status.markEnded).toBe(0);
 
 		// Sanity: terminating OUR session does cleanup.
 		const ours = getLastStartedDebugSession();
@@ -680,5 +683,7 @@ describe("SessionController onDidStartDebugSession capture guard", () => {
 		await flushAllMicrotasks();
 		expect(h.pushed.length).toBe(before);
 		expect(h.pushed.at(-1)?.status).toBe("running");
+		expect(h.providerCalls.state.markEnded).toBe(0);
+		expect(h.providerCalls.status.markEnded).toBe(0);
 	});
 });

@@ -89,19 +89,30 @@ export function activate(context: vscode.ExtensionContext): void {
 		),
 	);
 
-	context.subscriptions.push(
-		vscode.commands.registerCommand("gaffer.stopDebug", () =>
-			controller.stop(),
-		),
-		vscode.commands.registerCommand(
-			"gaffer.debugProjection",
-			(args: DebugProjectionArgs) => controller.start(args),
-		),
-	);
-
 	const refreshAll = (): void => {
 		refreshLenses();
 		void projectIndex.refresh().then(() => jsCodeLens.refresh());
+	};
+
+	const showManifestFailure = (err: unknown): void => {
+		const raw = err instanceof Error ? err.message : String(err);
+		const truncated = raw.length > 200 ? `${raw.slice(0, 200)}…` : raw;
+		void vscode.window
+			.showErrorMessage(
+				`Gaffer CLI failed: ${truncated}`,
+				"View Output",
+				"Open Settings",
+			)
+			.then((choice) => {
+				if (choice === "View Output") {
+					output.show();
+				} else if (choice === "Open Settings") {
+					void vscode.commands.executeCommand(
+						"workbench.action.openSettings",
+						"gaffer.command",
+					);
+				}
+			});
 	};
 
 	const tryFetchManifest = async (): Promise<void> => {
@@ -112,22 +123,72 @@ export function activate(context: vscode.ExtensionContext): void {
 		try {
 			await cli.fetchManifest(projectIndex.projectRoot);
 			refreshAll();
-		} catch {
-			void vscode.window
-				.showWarningMessage(
-					'Gaffer CLI not found. Install gaffer or configure "gaffer.command" in settings.',
-					"Open Settings",
-				)
-				.then((choice) => {
-					if (choice === "Open Settings") {
-						void vscode.commands.executeCommand(
-							"workbench.action.openSettings",
-							"gaffer.command",
-						);
-					}
-				});
+		} catch (err) {
+			showManifestFailure(err);
 		}
 	};
+
+	// One-shot retry used by the command handlers. Lens-driven Debug already
+	// requires a loaded manifest (the lens hides itself otherwise), but the
+	// palette-invoked Run Projection has no such gate, and a stale null
+	// manifest after a failed activation fetch shouldn't permanently brick
+	// the commands.
+	const ensureManifest = async (): Promise<boolean> => {
+		if (cli.manifest) return true;
+		if (!vscode.workspace.isTrusted) {
+			showManifestFailure(new Error("workspace not trusted"));
+			return false;
+		}
+		try {
+			await cli.fetchManifest(projectIndex.projectRoot);
+			refreshAll();
+			return true;
+		} catch (err) {
+			showManifestFailure(err);
+			return false;
+		}
+	};
+
+	const runProjection = async (): Promise<void> => {
+		// Refresh before ensureManifest: the CLI runs from projectIndex.projectRoot,
+		// so a stale index would point fetchManifest at the wrong cwd (or undefined).
+		await projectIndex.refresh();
+		if (!(await ensureManifest())) return;
+		const projections = projectIndex.projections;
+		if (projections.length === 0) {
+			void vscode.window.showInformationMessage(
+				"Gaffer: no projections found in this workspace.",
+			);
+			return;
+		}
+		const picked = await vscode.window.showQuickPick(
+			projections.map((p) => ({
+				label: p.name,
+				description: vscode.workspace.asRelativePath(p.tomlUri),
+				projection: p,
+			})),
+			{ placeHolder: "Select a projection to debug" },
+		);
+		if (!picked) return;
+		await controller.start({
+			name: picked.projection.name,
+			tomlUri: picked.projection.tomlUri,
+		});
+	};
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("gaffer.stopDebug", () =>
+			controller.stop(),
+		),
+		vscode.commands.registerCommand(
+			"gaffer.debugProjection",
+			async (args: DebugProjectionArgs) => {
+				if (!(await ensureManifest())) return;
+				await controller.start(args);
+			},
+		),
+		vscode.commands.registerCommand("gaffer.runProjection", runProjection),
+	);
 
 	const tomlWatcher =
 		vscode.workspace.createFileSystemWatcher("**/gaffer.toml");

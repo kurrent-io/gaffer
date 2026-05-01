@@ -33,6 +33,17 @@ export class ProjectIndex {
 		return [...this.#entries.keys()];
 	}
 
+	get projections(): Array<{ name: string; tomlUri: vscode.Uri }> {
+		const out: Array<{ name: string; tomlUri: vscode.Uri }> = [];
+		for (const entry of this.#entries.values()) {
+			out.push({
+				name: entry.name,
+				tomlUri: vscode.Uri.file(path.join(entry.tomlDir, "gaffer.toml")),
+			});
+		}
+		return out;
+	}
+
 	get projectRoot(): string | undefined {
 		for (const entry of this.#entries.values()) {
 			return entry.tomlDir;

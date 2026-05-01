@@ -64,6 +64,10 @@
 		},
 		"commands": [
 			{
+				"command": "gaffer.runProjection",
+				"title": "Gaffer: Run Projection"
+			},
+			{
 				"command": "gaffer.debugProjection",
 				"title": "Gaffer: Debug Projection"
 			},
@@ -108,7 +112,7 @@
 				},
 				{
 					"command": "gaffer.stopDebug",
-					"when": "false"
+					"when": "gaffer.sessionActive"
 				}
 			]
 		},

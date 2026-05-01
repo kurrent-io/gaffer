@@ -58,6 +58,14 @@ export class StepProvider implements vscode.TreeDataProvider<TreeItemWithChildre
 
 	getChildren(element?: TreeItemWithChildren): TreeItemWithChildren[] {
 		if (element) return element.children ?? [];
+		if (this.#items.length === 0) {
+			const placeholder = new vscode.TreeItem(
+				"Waiting for an event. Press Continue or set breakpoints.",
+				vscode.TreeItemCollapsibleState.None,
+			);
+			placeholder.iconPath = new vscode.ThemeIcon("info");
+			return [placeholder];
+		}
 		return this.#items;
 	}
 
@@ -131,7 +139,7 @@ function buildResultItem(result: StepResult): TreeItemWithChildren {
 				? vscode.TreeItemCollapsibleState.Collapsed
 				: vscode.TreeItemCollapsibleState.None,
 		);
-		item.iconPath = new vscode.ThemeIcon("arrow-circle-right");
+		item.iconPath = new vscode.ThemeIcon("pass");
 		item.description = desc;
 
 		if (result.state) {
@@ -147,7 +155,7 @@ function buildResultItem(result: StepResult): TreeItemWithChildren {
 		"skipped",
 		vscode.TreeItemCollapsibleState.None,
 	);
-	item.iconPath = new vscode.ThemeIcon("circle-large");
+	item.iconPath = new vscode.ThemeIcon("skip");
 	item.description = result.reason;
 	return item;
 }

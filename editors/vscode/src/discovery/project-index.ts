@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import path from "node:path";
 import fs from "node:fs";
 import { parse as parseToml } from "smol-toml";
+import { log } from "../output.js";
 import type { ProjectEntry } from "../types.js";
 
 export interface ProjectIndex {
@@ -24,7 +25,20 @@ export async function createProjectIndex(): Promise<ProjectIndex> {
 	for (const uri of uris) {
 		const tomlDir = path.dirname(uri.fsPath);
 		for (const proj of parseProjections(uri.fsPath)) {
+			if (proj.entry === "") {
+				log(`Rejecting projection ${proj.name}: empty entry path`);
+				continue;
+			}
 			const absEntry = path.resolve(tomlDir, proj.entry);
+			// Reject entry paths that escape the toml's directory. A
+			// hostile or malformed gaffer.toml could otherwise point the
+			// extension at arbitrary files outside the workspace via "..".
+			if (!isWithin(absEntry, tomlDir)) {
+				log(
+					`Rejecting projection ${proj.name}: entry path "${proj.entry}" escapes ${tomlDir}`,
+				);
+				continue;
+			}
 			entries.set(normalizePath(absEntry), {
 				name: proj.name,
 				tomlDir,
@@ -62,6 +76,16 @@ export async function createProjectIndex(): Promise<ProjectIndex> {
 function normalizePath(p: string): string {
 	const normalized = path.normalize(p);
 	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+// True iff `child` is `parent` itself or a descendant. Compares
+// normalized paths; matches Windows case-insensitivity.
+function isWithin(child: string, parent: string): boolean {
+	const c = normalizePath(child);
+	const p = normalizePath(parent);
+	if (c === p) return true;
+	const parentWithSep = p.endsWith(path.sep) ? p : p + path.sep;
+	return c.startsWith(parentWithSep);
 }
 
 interface ParsedProjection {

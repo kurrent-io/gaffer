@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { projectionBlocks } from "../discovery/project-index.js";
+import { log } from "../output.js";
 import { buildLens } from "./lens.js";
 import type { Manifest } from "../discovery/schemas.js";
 import type { DebugState } from "../types.js";
@@ -43,7 +44,12 @@ export class TomlCodeLensProvider implements vscode.CodeLensProvider {
 		// blocks and headers are aligned by appearance order. If they don't
 		// match in length the source is malformed (or the header scan missed
 		// a variant); skip rather than mis-attribute lenses.
-		if (blocks.length !== headers.length) return [];
+		if (blocks.length !== headers.length) {
+			log(
+				`Lens skipped for ${document.uri.fsPath}: ${blocks.length} blocks vs ${headers.length} headers (malformed toml or unhandled syntax)`,
+			);
+			return [];
+		}
 
 		for (const [i, block] of blocks.entries()) {
 			if (!block) continue;

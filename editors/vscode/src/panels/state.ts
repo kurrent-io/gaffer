@@ -4,9 +4,9 @@ import { jsonToTreeItems, type TreeItemWithChildren } from "./json-tree.js";
 import { log } from "../output.js";
 import {
 	PartitionStateResponseSchema,
-	type StateBody,
 	type PartitionStateResponse,
-} from "../debugging/schemas.js";
+} from "./schemas.js";
+import type { StateBody } from "../debugging/schemas.js";
 
 const PARTITION_FETCH_TIMEOUT_MS = 5000;
 

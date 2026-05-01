@@ -1,9 +1,9 @@
-// Schemas for DAP custom events emitted by the gaffer CLI's DAP server,
-// and for the one custom DAP request response we issue.
+// Schemas for DAP custom events emitted by the gaffer CLI's DAP server.
 //
-// Validated per-event in dap-dispatch.ts and at the customRequest call site
-// in panels/state.ts. Shared shapes (InputEvent, EmittedEvent, StepResult)
-// originate in ipc/schemas.ts since the same types appear in CLI NDJSON.
+// Validated per-event in dap-dispatch.ts. Shared shapes (InputEvent,
+// EmittedEvent, StepResult) originate in ipc/schemas.ts since the same
+// types appear in CLI NDJSON. Schemas for panel-initiated DAP requests
+// live with their consumer in panels/schemas.ts.
 
 import * as v from "valibot";
 import {
@@ -42,12 +42,3 @@ export const ModeBodySchema = v.object({
 	mode: v.string(),
 });
 export type ModeBody = v.InferOutput<typeof ModeBodySchema>;
-
-// DAP custom request response for gaffer/partitionState.
-export const PartitionStateResponseSchema = v.object({
-	state: v.optional(v.unknown()),
-	result: v.optional(v.unknown()),
-});
-export type PartitionStateResponse = v.InferOutput<
-	typeof PartitionStateResponseSchema
->;

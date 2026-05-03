@@ -10,7 +10,7 @@ export default defineConfig({
 		target: "node18",
 		outDir: "dist",
 		emptyOutDir: true,
-		sourcemap: true,
+		sourcemap: false,
 		lib: {
 			entry: { extension: "src/extension.ts" },
 			formats: ["cjs"],

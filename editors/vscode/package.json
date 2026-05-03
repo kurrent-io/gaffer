@@ -16,6 +16,9 @@
 		"workspaceContains:**/gaffer.toml"
 	],
 	"main": "./dist/extension.js",
+	"files": [
+		"dist"
+	],
 	"capabilities": {
 		"untrustedWorkspaces": {
 			"supported": "limited",

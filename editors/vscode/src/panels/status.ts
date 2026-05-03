@@ -33,7 +33,6 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	// the right mode. The webview instance is recreated on re-show; the
 	// provider is the singleton that remembers state across.
 	#mode: "running" | "ended" = "running";
-	#renderTimer: NodeJS.Timeout | null = null;
 
 	resolveWebviewView(webviewView: vscode.WebviewView): void {
 		this.#view = webviewView;
@@ -74,27 +73,22 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		this.#postUpdate();
 	}
 
-	addProcessed(): void {
-		this.#processed++;
-		this.#scheduleUpdate();
-	}
-
-	addSkipped(): void {
-		this.#skipped++;
-		this.#scheduleUpdate();
-	}
-
-	addError(): void {
-		this.#errors++;
-		this.#scheduleUpdate();
-	}
-
-	#scheduleUpdate(): void {
-		if (this.#renderTimer) return;
-		this.#renderTimer = setTimeout(() => {
-			this.#renderTimer = null;
-			this.#postUpdate();
-		}, 200);
+	// Cumulative replace, fed by the CLI's gaffer/stats DAP event.
+	// The CLI throttles its emit cadence so a 200ms render coalesce
+	// here is unnecessary - by the time setStats fires the values are
+	// already at most 100ms behind the engine.
+	setStats(processed: number, skipped: number, errors: number): void {
+		if (
+			this.#processed === processed &&
+			this.#skipped === skipped &&
+			this.#errors === errors
+		) {
+			return;
+		}
+		this.#processed = processed;
+		this.#skipped = skipped;
+		this.#errors = errors;
+		this.#postUpdate();
 	}
 
 	#postUpdate(): void {

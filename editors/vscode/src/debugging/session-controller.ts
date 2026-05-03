@@ -226,13 +226,6 @@ export class SessionController implements vscode.Disposable {
 			void showProjectionFailed();
 		});
 
-		session
-			.on("result", (msg) => {
-				if (msg.status === "processed") this.#statusProvider.addProcessed();
-				else if (msg.status === "skipped") this.#statusProvider.addSkipped();
-			})
-			.on("error", () => this.#statusProvider.addError());
-
 		this.#statusProvider.reset(name);
 		session.start();
 

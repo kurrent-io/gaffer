@@ -887,3 +887,126 @@ func TestAdapter_StartPausedIfNoBreakpoints_DisabledByDefault(t *testing.T) {
 		t.Fatal("timed out waiting for feed to complete")
 	}
 }
+
+func TestAdapter_EmitStateIfChanged(t *testing.T) {
+	adapter, runner, conn, reader := mustSetupDebugSession(t)
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	// First call: empty state still differs from "never seen any state",
+	// so the editor receives a baseline event.
+	adapter.EmitStateIfChanged()
+	body := readCustomEvent(t, conn, reader, "gaffer/state")
+	if body["state"] != nil {
+		t.Fatalf("expected empty initial state, got %+v", body)
+	}
+
+	// Re-emitting with the same (still empty) state is a no-op.
+	adapter.EmitStateIfChanged()
+	expectNoMessage(t, conn)
+
+	// Process an event that mutates state.
+	runner.ProcessOne(testFeedEvent)
+	adapter.EmitStateIfChanged()
+	body = readCustomEvent(t, conn, reader, "gaffer/state")
+	if body["state"] == nil {
+		t.Fatalf("expected state body, got %+v", body)
+	}
+
+	// Re-emitting with no state movement is a no-op.
+	adapter.EmitStateIfChanged()
+	expectNoMessage(t, conn)
+}
+
+func TestAdapter_EmitStatsIfChanged(t *testing.T) {
+	adapter, runner, conn, reader := mustSetupDebugSession(t)
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	// Before any events: no emit (stats unchanged from zero).
+	adapter.EmitStatsIfChanged()
+	expectNoMessage(t, conn)
+
+	// Process an event that the projection handles, then a non-handled
+	// type that gets skipped. lastStats should advance after each emit.
+	runner.ProcessOne(testFeedEvent)
+	adapter.EmitStatsIfChanged()
+	stats := readCustomEvent(t, conn, reader, "gaffer/stats")
+	if stats["handled"] != float64(1) || stats["skipped"] != float64(0) || stats["errors"] != float64(0) {
+		t.Fatalf("expected handled=1 skipped=0 errors=0, got %+v", stats)
+	}
+
+	// Re-emitting with no new activity is a no-op.
+	adapter.EmitStatsIfChanged()
+	expectNoMessage(t, conn)
+
+	skippedEvent := `{"eventType":"NotHandled","streamId":"stream-1","sequenceNumber":1,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000001","created":"2026-01-01T00:00:00Z"}`
+	runner.ProcessOne(skippedEvent)
+	adapter.EmitStatsIfChanged()
+	stats = readCustomEvent(t, conn, reader, "gaffer/stats")
+	if stats["handled"] != float64(1) || stats["skipped"] != float64(1) {
+		t.Fatalf("expected handled=1 skipped=1, got %+v", stats)
+	}
+}
+
+// Reproduces F6 (manual testing): after entry pause, Continue should let
+// the source keep feeding subsequent events without further pauses.
+func TestAdapter_StartPausedIfNoBreakpoints_ContinueProcessesSubsequentEvents(t *testing.T) {
+	adapter, runner, conn, reader := mustSetupDebugSession(t)
+	adapter.SetStartPausedIfNoBreakpoints(true)
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	feedDone := make(chan struct{})
+	go func() {
+		runner.ProcessOne(testFeedEvent)
+		runner.ProcessOne(testFeedEvent)
+		runner.ProcessOne(testFeedEvent)
+		close(feedDone)
+	}()
+
+	// First event triggers entry pause.
+	msg := readMessage(t, conn, reader)
+	stopped, ok := msg.(*godap.StoppedEvent)
+	if !ok {
+		t.Fatalf("expected StoppedEvent at entry, got %T", msg)
+	}
+	if stopped.Body.Reason != "entry" {
+		t.Fatalf("expected entry reason, got %s", stopped.Body.Reason)
+	}
+
+	sendRequest(t, conn, &godap.ContinueRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 3, Type: "request"},
+			Command:         "continue",
+		},
+		Arguments: godap.ContinueArguments{ThreadId: 1},
+	})
+	readMessage(t, conn, reader) // ContinueResponse
+	readMessage(t, conn, reader) // ContinuedEvent
+
+	// All three events must complete without any further pauses.
+	select {
+	case <-feedDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("F6: events 2 and 3 did not process after Continue from entry pause")
+	}
+}

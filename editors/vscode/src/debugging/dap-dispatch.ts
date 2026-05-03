@@ -12,6 +12,7 @@ import { log } from "../output.js";
 import {
 	ModeBodySchema,
 	StateBodySchema,
+	StatsBodySchema,
 	StepEmitBodySchema,
 	StepErrorBodySchema,
 	StepLogBodySchema,
@@ -19,11 +20,13 @@ import {
 	StepStartBodySchema,
 } from "./schemas.js";
 import type { StateProvider } from "../panels/state.js";
+import type { StatusViewProvider } from "../panels/status.js";
 import type { StepProvider } from "../panels/step.js";
 
 export interface DapHandlers {
 	stepProvider: StepProvider;
 	stateProvider: StateProvider;
+	statusProvider: StatusViewProvider;
 	setEngineMode: (mode: "running" | "inspecting") => Promise<void> | void;
 }
 
@@ -72,6 +75,17 @@ export async function dispatchDapEvent(
 			if (body) {
 				await handlers.setEngineMode(
 					body.mode === "inspect" ? "inspecting" : "running",
+				);
+			}
+			break;
+		}
+		case "gaffer/stats": {
+			const body = parseDapBody(StatsBodySchema, e);
+			if (body) {
+				handlers.statusProvider.setStats(
+					body.handled,
+					body.skipped,
+					body.errors,
 				);
 			}
 			break;

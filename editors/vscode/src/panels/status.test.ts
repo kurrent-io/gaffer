@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { StatusViewProvider } from "./status.js";
 import { makeFakeWebviewView } from "../../test/__mocks__/vscode.js";
 
@@ -21,13 +21,6 @@ function lastUpdate(
 }
 
 describe("StatusViewProvider", () => {
-	beforeEach(() => {
-		vi.useFakeTimers();
-	});
-	afterEach(() => {
-		vi.useRealTimers();
-	});
-
 	it("posts an initial update with the running title and a Waiting placeholder when resolved", () => {
 		const provider = new StatusViewProvider();
 		const view = makeFakeWebviewView();
@@ -57,21 +50,26 @@ describe("StatusViewProvider", () => {
 		expect(update.title).toBe("Running checkout...");
 	});
 
-	it("debounces counter updates and posts a single message after 200ms", () => {
+	it("setStats posts a single update reflecting the cumulative totals", () => {
 		const provider = new StatusViewProvider();
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
 		const beforeCount = view.webview.postedMessages.length;
-		provider.addProcessed();
-		provider.addProcessed();
-		provider.addProcessed();
-		// Within debounce: no update yet.
-		expect(view.webview.postedMessages.length).toBe(beforeCount);
-		vi.advanceTimersByTime(200);
+		provider.setStats(3, 0, 0);
 		expect(view.webview.postedMessages.length).toBe(beforeCount + 1);
 		const update = lastUpdate(view);
 		expect(update.stats).toContain("3 events processed");
+	});
+
+	it("setStats is a no-op when nothing has changed", () => {
+		const provider = new StatusViewProvider();
+		const view = makeFakeWebviewView();
+		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+		provider.setStats(5, 1, 0);
+		const beforeCount = view.webview.postedMessages.length;
+		provider.setStats(5, 1, 0);
+		expect(view.webview.postedMessages.length).toBe(beforeCount);
 	});
 
 	it("includes processed/skipped/errors in stats when non-zero", () => {
@@ -79,10 +77,7 @@ describe("StatusViewProvider", () => {
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
-		provider.addProcessed();
-		provider.addSkipped();
-		provider.addError();
-		vi.advanceTimersByTime(200);
+		provider.setStats(1, 1, 1);
 		expect(lastUpdate(view).stats).toEqual([
 			"1 events processed",
 			"1 events skipped",
@@ -95,8 +90,7 @@ describe("StatusViewProvider", () => {
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
-		provider.addProcessed();
-		vi.advanceTimersByTime(200);
+		provider.setStats(1, 0, 0);
 		provider.markEnded();
 		const update = lastUpdate(view);
 		expect(update.mode).toBe("ended");
@@ -109,8 +103,7 @@ describe("StatusViewProvider", () => {
 		const view1 = makeFakeWebviewView();
 		provider.resolveWebviewView(view1 as unknown as vscode.WebviewView);
 		provider.reset("checkout");
-		provider.addProcessed();
-		vi.advanceTimersByTime(200);
+		provider.setStats(1, 0, 0);
 		provider.markEnded();
 		// View flips out (e.g. when-clause toggles) and a new one resolves.
 		const view2 = makeFakeWebviewView();

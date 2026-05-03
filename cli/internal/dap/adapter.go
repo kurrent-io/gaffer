@@ -28,6 +28,8 @@ type DebugAdapter struct {
 	breakpointCount            int
 	startPausedIfNoBreakpoints bool
 	entryPausePending          bool
+	lastStats                  engine.EventStats
+	lastStateJSON              string
 
 	readyOnce sync.Once
 	readyCh   chan struct{}
@@ -494,6 +496,61 @@ func (a *DebugAdapter) SendTerminated() {
 		Event: NewEvent("exited"),
 		Body:  godap.ExitedEventBody{ExitCode: 0},
 	})
+}
+
+// EmitStatsIfChanged sends a gaffer/stats custom event with cumulative
+// counters if anything has moved since the last emit. Used by the dev
+// command's activity ticker to drive the editor's Status counter
+// without flooding DAP - per-event step events are buffered for the
+// inspect view, so without this the counter would never tick during
+// live mode.
+func (a *DebugAdapter) EmitStatsIfChanged() {
+	if a.runner == nil || a.server == nil {
+		return
+	}
+	cur := a.runner.Stats()
+	a.mu.Lock()
+	if cur == a.lastStats {
+		a.mu.Unlock()
+		return
+	}
+	a.lastStats = cur
+	a.mu.Unlock()
+	a.server.Send(NewCustomEvent("gaffer/stats", map[string]any{
+		"handled": cur.Handled,
+		"skipped": cur.Skipped,
+		"errors":  cur.Errors,
+	}))
+}
+
+// EmitStateIfChanged sends a gaffer/state custom event when the
+// projection state has moved since the last emit. Without this, the
+// extension's StateProvider would have no data to preserve when the
+// user disconnects from a live session - state is otherwise sent
+// only when a break flushes the step buffer (inspect mode only).
+//
+// Wraps the runner read in a recover so a concurrent Destroy on the
+// session doesn't take the ticker goroutine down with it; the
+// extension already has the previous tick's state to display.
+func (a *DebugAdapter) EmitStateIfChanged() {
+	if a.runner == nil || a.server == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+
+	evt := a.buildStateEvent()
+	body, err := json.Marshal(evt.Body)
+	if err != nil {
+		return
+	}
+	a.mu.Lock()
+	if string(body) == a.lastStateJSON {
+		a.mu.Unlock()
+		return
+	}
+	a.lastStateJSON = string(body)
+	a.mu.Unlock()
+	a.server.Send(evt)
 }
 
 func (a *DebugAdapter) handleGafferGoto(s *Server, req *GafferGotoRequest) {

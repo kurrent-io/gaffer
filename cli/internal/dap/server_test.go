@@ -2,6 +2,7 @@ package dap
 
 import (
 	"bufio"
+	"encoding/json"
 	"net"
 	"testing"
 	"time"
@@ -64,6 +65,44 @@ func readMessage(t *testing.T, conn net.Conn, reader *bufio.Reader) godap.Messag
 			continue
 		}
 		return msg
+	}
+}
+
+// readCustomEvent reads the next message off the wire and decodes it as
+// a gaffer custom event with the given event name. The codec doesn't
+// know about gaffer/* event subtypes, so this bypasses it and parses
+// the JSON envelope directly.
+func readCustomEvent(t *testing.T, conn net.Conn, reader *bufio.Reader, expected string) map[string]any {
+	t.Helper()
+	data, err := godap.ReadBaseMessage(reader)
+	if err != nil {
+		t.Fatalf("failed to read message: %v", err)
+	}
+	var envelope struct {
+		Type  string         `json:"type"`
+		Event string         `json:"event"`
+		Body  map[string]any `json:"body"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		t.Fatalf("failed to decode custom event: %v", err)
+	}
+	if envelope.Type != "event" || envelope.Event != expected {
+		t.Fatalf("expected event %s, got %s/%s: %s", expected, envelope.Type, envelope.Event, string(data))
+	}
+	return envelope.Body
+}
+
+// expectNoMessage fails if any message arrives within a short window.
+// Used to assert that an action did not produce a wire send.
+func expectNoMessage(t *testing.T, conn net.Conn) {
+	t.Helper()
+	if err := conn.SetReadDeadline(time.Now().Add(50 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.SetReadDeadline(time.Time{}) }()
+	buf := make([]byte, 1)
+	if n, err := conn.Read(buf); err == nil && n > 0 {
+		t.Fatalf("expected no message, got byte %q", buf[0])
 	}
 }
 

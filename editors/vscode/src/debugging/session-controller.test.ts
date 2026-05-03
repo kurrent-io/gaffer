@@ -24,13 +24,7 @@ import type { DebugState } from "../types.js";
 interface ProviderCalls {
 	step: { clear: number };
 	state: { clear: number; markEnded: number; setDebugSessionCount: number };
-	status: {
-		reset: string[];
-		markEnded: number;
-		processed: number;
-		skipped: number;
-		errors: number;
-	};
+	status: { reset: string[]; markEnded: number };
 }
 
 function fakeProviders(): {
@@ -42,13 +36,7 @@ function fakeProviders(): {
 	const calls: ProviderCalls = {
 		step: { clear: 0 },
 		state: { clear: 0, markEnded: 0, setDebugSessionCount: 0 },
-		status: {
-			reset: [],
-			markEnded: 0,
-			processed: 0,
-			skipped: 0,
-			errors: 0,
-		},
+		status: { reset: [], markEnded: 0 },
 	};
 	const step = {
 		clear: () => {
@@ -72,15 +60,6 @@ function fakeProviders(): {
 		},
 		markEnded: () => {
 			calls.status.markEnded++;
-		},
-		addProcessed: () => {
-			calls.status.processed++;
-		},
-		addSkipped: () => {
-			calls.status.skipped++;
-		},
-		addError: () => {
-			calls.status.errors++;
 		},
 	} as unknown as StatusViewProvider;
 	return { step, state, status, calls };
@@ -511,19 +490,6 @@ describe("SessionController.setEngineMode", () => {
 		const h = makeHarness();
 		await h.controller.setEngineMode("inspecting");
 		expect(h.pushed).toEqual([]);
-	});
-});
-
-describe("SessionController result/error counters", () => {
-	it("forwards processed results to statusProvider", async () => {
-		const h = makeHarness();
-		const { session } = await startToRunning(h);
-		session.fire({ type: "result", status: "processed" });
-		session.fire({ type: "result", status: "skipped", reason: "filter" });
-		session.fire({ type: "error", code: "E", description: "x" });
-		expect(h.providerCalls.status.processed).toBe(1);
-		expect(h.providerCalls.status.skipped).toBe(1);
-		expect(h.providerCalls.status.errors).toBe(1);
 	});
 });
 

@@ -114,6 +114,7 @@ export async function activate(
 			dispatchDapEvent(e, {
 				stepProvider,
 				stateProvider,
+				statusProvider,
 				setEngineMode: (mode) => controller.setEngineMode(mode),
 			}),
 		),

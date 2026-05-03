@@ -2,6 +2,7 @@ import type * as vscode from "vscode";
 import { describe, expect, it } from "vitest";
 import { dispatchDapEvent } from "./dap-dispatch.js";
 import type { StateProvider } from "../panels/state.js";
+import type { StatusViewProvider } from "../panels/status.js";
 import type { StepProvider } from "../panels/step.js";
 import type { EmittedEvent, InputEvent, StepResult } from "../ipc/schemas.js";
 import type { StateBody } from "./schemas.js";
@@ -49,6 +50,19 @@ function fakeState(): { provider: StateProvider; calls: RecordedState } {
 	return { provider, calls };
 }
 
+interface RecordedStatus {
+	setStats: Array<{ processed: number; skipped: number; errors: number }>;
+}
+
+function fakeStatus(): { provider: StatusViewProvider; calls: RecordedStatus } {
+	const calls: RecordedStatus = { setStats: [] };
+	const provider = {
+		setStats: (processed: number, skipped: number, errors: number) =>
+			calls.setStats.push({ processed, skipped, errors }),
+	} as unknown as StatusViewProvider;
+	return { provider, calls };
+}
+
 const session = {
 	id: "1",
 	type: "gaffer",
@@ -64,11 +78,13 @@ function event(name: string, body: unknown): vscode.DebugSessionCustomEvent {
 const handlers = (overrides: {
 	step?: StepProvider;
 	state?: StateProvider;
+	status?: StatusViewProvider;
 	setEngineMode?: (m: "running" | "inspecting") => Promise<void> | void;
 }) =>
 	({
 		stepProvider: overrides.step ?? fakeStep().provider,
 		stateProvider: overrides.state ?? fakeState().provider,
+		statusProvider: overrides.status ?? fakeStatus().provider,
 		setEngineMode: overrides.setEngineMode ?? (() => {}),
 	}) as Parameters<typeof dispatchDapEvent>[1];
 
@@ -190,6 +206,17 @@ describe("dispatchDapEvent - happy paths", () => {
 		expect(modes).toEqual(["inspecting", "running", "running"]);
 	});
 
+	it("routes gaffer/stats to setStats", async () => {
+		const status = fakeStatus();
+		await dispatchDapEvent(
+			event("gaffer/stats", { handled: 12, skipped: 3, errors: 1 }),
+			handlers({ status: status.provider }),
+		);
+		expect(status.calls.setStats).toEqual([
+			{ processed: 12, skipped: 3, errors: 1 },
+		]);
+	});
+
 	it("awaits setEngineMode before returning", async () => {
 		let resolved = false;
 		await dispatchDapEvent(
@@ -219,18 +246,21 @@ describe("dispatchDapEvent - malformed bodies", () => {
 		["gaffer/stepError", { code: "x" /* missing description */ }],
 		["gaffer/state", { partitions: "not-an-array" }],
 		["gaffer/mode", { mode: 42 }],
+		["gaffer/stats", { handled: "many", skipped: 0, errors: 0 }],
 	];
 
 	for (const [name, body] of malformed) {
 		it(`drops the dispatch for malformed ${name}`, async () => {
 			const step = fakeStep();
 			const state = fakeState();
+			const status = fakeStatus();
 			let modeCalled = false;
 			await dispatchDapEvent(
 				event(name, body),
 				handlers({
 					step: step.provider,
 					state: state.provider,
+					status: status.provider,
 					setEngineMode: () => {
 						modeCalled = true;
 					},
@@ -242,6 +272,7 @@ describe("dispatchDapEvent - malformed bodies", () => {
 			expect(step.calls.setResult).toEqual([]);
 			expect(step.calls.setError).toEqual([]);
 			expect(state.calls.updateFromState).toEqual([]);
+			expect(status.calls.setStats).toEqual([]);
 			expect(modeCalled).toBe(false);
 			// setDebugSession fires before the per-event parse since
 			// every gaffer event needs the session reference for

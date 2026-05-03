@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"time"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
@@ -15,6 +16,8 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/spf13/cobra"
 )
+
+const statsEmitInterval = 100 * time.Millisecond
 
 type devOpts struct {
 	Events                     string
@@ -87,6 +90,7 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 	defer stop()
 	var afterRun func()
 	var r *engine.Runner
+	var processWithActivity func(string) bool
 
 	if opts.Debug {
 		store, err := history.New()
@@ -141,7 +145,38 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 			return nil
 		}
 
-		afterRun = func() { adapter.SendTerminated() }
+		// Per-event step events are buffered (only flushed on next
+		// break) and gaffer/state is inspect-only, so without a side
+		// channel the editor sees nothing after the user presses
+		// Continue and has no state to preserve on disconnect.
+		//
+		// We drive Status counter + State view updates from inside
+		// the source goroutine: a process wrapper around r.ProcessOne
+		// throttles emits to one per statsEmitInterval. Crucial that
+		// these calls run on the same goroutine as Feed - the
+		// underlying session is single-threaded (per its own contract)
+		// and ToUnmanaged in the runtime races on handle.LastReturnedPtr
+		// if a separate goroutine calls session methods concurrently.
+		// (Symptom: garbage bytes leaking into Feed's JSON result,
+		// "invalid character 'á' looking for beginning of value".)
+		var lastEmit time.Time
+		processWithActivity = func(eventJSON string) bool {
+			stop := r.ProcessOne(eventJSON)
+			if time.Since(lastEmit) >= statsEmitInterval {
+				adapter.EmitStatsIfChanged()
+				adapter.EmitStateIfChanged()
+				lastEmit = time.Now()
+			}
+			return stop
+		}
+
+		afterRun = func() {
+			// Final flush so the editor's counter + state reflect the
+			// run's final values regardless of throttle window.
+			adapter.EmitStatsIfChanged()
+			adapter.EmitStateIfChanged()
+			adapter.SendTerminated()
+		}
 	} else {
 		r = engine.NewRunner(engine.RunnerConfig{
 			Feed:    engine.FeedFn(session.Feed),
@@ -179,7 +214,11 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 		source = engine.NewLiveSource(liveCfg)
 	}
 
-	srcErr := source.Run(ctx, r.ProcessOne)
+	process := r.ProcessOne
+	if processWithActivity != nil {
+		process = processWithActivity
+	}
+	srcErr := source.Run(ctx, process)
 
 	if afterRun != nil {
 		afterRun()
@@ -201,6 +240,7 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 
 	return nil
 }
+
 
 // finalizeRun handles post-loop disposition. If the context was cancelled
 // without catching up (user interrupt), prints a notice and clears the

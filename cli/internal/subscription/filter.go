@@ -12,7 +12,11 @@ import (
 func buildFilter(info gafferruntime.ProjectionInfo, engineVersion int) *kurrentdb.SubscriptionFilter {
 	sourceFilter := buildSourceFilter(info)
 
-	if info.AllStreams && len(info.Events) > 0 {
+	// AllEvents is set by a $any handler; in that case every event
+	// type is handled, so no event-type filter applies. Events is
+	// still populated with the specific handler names regardless,
+	// so the AllEvents check has to come before the len(Events) one.
+	if info.AllStreams && !info.AllEvents && len(info.Events) > 0 {
 		prefixes := make([]string, len(info.Events))
 		copy(prefixes, info.Events)
 		if info.HandlesDeletedNotifications {
@@ -81,15 +85,31 @@ func resolveLinkTos(engineVersion int) bool {
 	return engineVersion == 2
 }
 
-// Subscribe subscribes to $all with the correct filter and link resolution
-// for the given projection source and engine version, per the subscription spec.
-func Subscribe(ctx context.Context, client *kurrentdb.Client, info gafferruntime.ProjectionInfo, engineVersion int) (*kurrentdb.Subscription, error) {
+// BuildSubscribeOptions assembles the subscribe-to-$all options for a
+// projection. Pure function - exposed separately from Subscribe so the
+// options shape (including read-window tuning) is unit-testable.
+//
+// MaxSearchWindow + CheckpointInterval override the client defaults
+// (32 / 1) which produce a checkpoint per ~32 events read. On a busy
+// store with a narrow filter that means thousands of network round-
+// trips before catch-up; verified empirically that the CLI never
+// reaches CaughtUp against the demo cloud instance under defaults.
+// 10000 / 10 lets the server scan multi-GB regions of $all in seconds.
+func BuildSubscribeOptions(info gafferruntime.ProjectionInfo, engineVersion int) kurrentdb.SubscribeToAllOptions {
 	opts := kurrentdb.SubscribeToAllOptions{
-		From:           kurrentdb.Start{},
-		ResolveLinkTos: resolveLinkTos(engineVersion),
+		From:               kurrentdb.Start{},
+		ResolveLinkTos:     resolveLinkTos(engineVersion),
+		MaxSearchWindow:    10000,
+		CheckpointInterval: 10,
 	}
 	if filter := buildFilter(info, engineVersion); filter != nil {
 		opts.Filter = filter
 	}
-	return client.SubscribeToAll(ctx, opts)
+	return opts
+}
+
+// Subscribe subscribes to $all with the correct filter and link resolution
+// for the given projection source and engine version, per the subscription spec.
+func Subscribe(ctx context.Context, client *kurrentdb.Client, info gafferruntime.ProjectionInfo, engineVersion int) (*kurrentdb.Subscription, error) {
+	return client.SubscribeToAll(ctx, BuildSubscribeOptions(info, engineVersion))
 }

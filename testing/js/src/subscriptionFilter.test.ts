@@ -39,6 +39,37 @@ describe("buildSubscriptionFilter", () => {
 		});
 	});
 
+	it("returns no filter when events is 'all' (e.g. $any handler) regardless of source", () => {
+		// Cross-language regression: bindings that flatten the
+		// `events: "all" | string[]` union into separate fields can
+		// accidentally narrow on the array even when `all` is set,
+		// silently dropping every event type a $any handler should
+		// have caught. TS's tagged union prevents the same trip-up
+		// here, but the behaviour is still spec-required.
+		expect(
+			buildSubscriptionFilter(makeInfo({ events: "all" })),
+		).toBeUndefined();
+	});
+
+	it("sets maxSearchWindow and checkpointInterval on filtered subscriptions", () => {
+		// Client defaults (32 / 1) make CaughtUp effectively never
+		// fire on a busy store. Every filter we build should override
+		// them - see docs/specs/subscription.md.
+		const cases: ProjectionInfo[] = [
+			makeInfo({ events: ["OrderPlaced"] }),
+			makeInfo({ source: { type: "streams", streams: ["orders"] } }),
+			makeInfo({ source: { type: "streams", streams: ["$ce-order"] } }),
+			makeInfo({ source: { type: "categories", categories: ["order"] } }),
+		];
+		for (const info of cases) {
+			const filter = buildSubscriptionFilter(info);
+			expect(filter).toMatchObject({
+				maxSearchWindow: expect.any(Number),
+				checkpointInterval: expect.any(Number),
+			});
+		}
+	});
+
 	it("returns stream name regex for fromStreams", () => {
 		const filter = buildSubscriptionFilter(
 			makeInfo({ source: { type: "streams", streams: ["orders", "carts"] } }),

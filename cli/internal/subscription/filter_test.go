@@ -31,6 +31,23 @@ func TestBuildFilter_FromAll_WithEvents(t *testing.T) {
 	}
 }
 
+func TestBuildFilter_FromAll_AllEvents_NoFilter(t *testing.T) {
+	// $any handler sets AllEvents=true. The runtime still populates
+	// Events with the names of the specific handlers ($UserCreated etc.)
+	// alongside $any, so the filter must check AllEvents first - else
+	// it narrows to the specific handlers and silently misses every
+	// event type the projection meant to catch via $any.
+	filter := buildFilter(gafferruntime.ProjectionInfo{
+		AllStreams: true,
+		AllEvents:  true,
+		Events:     []string{"$UserCreated", "$ProjectionCreated"},
+	}, 2)
+
+	if filter != nil {
+		t.Errorf("expected nil filter (AllEvents=true), got %+v", filter)
+	}
+}
+
 func TestBuildFilter_FromAll_WithEvents_DeleteHandler(t *testing.T) {
 	filter := buildFilter(gafferruntime.ProjectionInfo{
 		AllStreams:                  true,
@@ -103,5 +120,38 @@ func TestLinkResolution(t *testing.T) {
 	}
 	if !resolveLinkTos(2) {
 		t.Error("v2 should resolve links")
+	}
+}
+
+func TestBuildSubscribeOptions_ReadWindow(t *testing.T) {
+	// Client defaults (32 / 1) make CaughtUp effectively never fire on
+	// a busy store. Every Subscribe should override them - see
+	// docs/specs/subscription.md "Subscription read parameters".
+	cases := []struct {
+		name string
+		info gafferruntime.ProjectionInfo
+	}{
+		{"AllStreams", gafferruntime.ProjectionInfo{AllStreams: true}},
+		{"AllStreams+Events", gafferruntime.ProjectionInfo{
+			AllStreams: true,
+			Events:     []string{"OrderPlaced"},
+		}},
+		{"Categories", gafferruntime.ProjectionInfo{
+			Categories: []string{"order"},
+		}},
+		{"Streams", gafferruntime.ProjectionInfo{
+			Streams: []string{"order-1"},
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			opts := BuildSubscribeOptions(c.info, 2)
+			if opts.MaxSearchWindow <= 32 {
+				t.Errorf("MaxSearchWindow=%d, want > 32 (client default)", opts.MaxSearchWindow)
+			}
+			if opts.CheckpointInterval <= 1 {
+				t.Errorf("CheckpointInterval=%d, want > 1 (client default)", opts.CheckpointInterval)
+			}
+		})
 	}
 }

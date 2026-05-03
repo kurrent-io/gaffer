@@ -31,7 +31,11 @@ function buildFilter(info: ProjectionInfo, version: Version): Filter | undefined
     if (info.settings.handlesDeletedNotifications) {
       prefixes.push("$streamDeleted", "$metadata");
     }
-    return eventTypeFilter({ prefixes });
+    return eventTypeFilter({
+      prefixes,
+      maxSearchWindow: 10000,
+      checkpointInterval: 10,
+    });
   }
 
   return sourceFilter;
@@ -48,17 +52,25 @@ function buildSourceFilter(info: ProjectionInfo, version: Version): Filter | und
       // fromCategory multi-arg puts $ce- streams in the streams array
       if (streams.every((s) => s.startsWith("$ce-"))) {
         const categories = streams.map((s) => s.slice("$ce-".length));
-        return streamNameFilter({ prefixes: categories.map((c) => `${c}-`) });
+        return streamNameFilter({
+          prefixes: categories.map((c) => `${c}-`),
+          maxSearchWindow: 10000,
+          checkpointInterval: 10,
+        });
       }
 
       return streamNameFilter({
         regex: `^(${streams.map(escapeRegex).join("|")})$`,
+        maxSearchWindow: 10000,
+        checkpointInterval: 10,
       });
     }
 
     case "categories":
       return streamNameFilter({
         prefixes: info.source.categories.map((c) => `${c}-`),
+        maxSearchWindow: 10000,
+        checkpointInterval: 10,
       });
   }
 }
@@ -98,6 +110,22 @@ A consumer MAY optimize single-stream cases with `subscribeToStream` for V1 if p
 
 KurrentDB V2 uses prefix matching at the read layer. `eventTypeFilter({ prefixes: ["Order"] })` matches `Order`, `OrderPlaced`, `OrderShipped`. The runtime does exact dispatch internally via `ShouldProcess`. Over-subscribing is safe, under-subscribing means missing events.
 
+### `events: "all"` vs `events: [...]` is a tagged union
+
+`info.events` is `"all"` when the projection's `when()` block contains a `$any` handler, and an array of specific event-type names otherwise. The check at line 29 (`info.events !== "all"`) is what gates the event-type filter on - when it's `"all"`, every event type is handled and **no filter applies**.
+
+If a binding flattens this union into two separate fields (e.g. a Go `AllEvents bool` plus `Events []string`), watch out: the runtime populates the names array with the specific handler names *even when `$any` is also present*. So `Events` being non-empty does not imply "filter by these". The `AllEvents` flag is the source of truth, and any check on the array's length must be gated on `!AllEvents` first.
+
+This caught us once (gaffer's Go CLI silently filtered out every event-type that should have hit `$any`). Tests below cover the regression.
+
+### Subscription read parameters
+
+KurrentDB clients default `MaxSearchWindow` to 32 and `CheckpointInterval` to 1 for filtered subscriptions. With a narrow filter on a large `$all` (anything beyond a fresh local instance), the server checkpoints after every 32 events read, producing thousands of round-trips before the read pointer reaches the live tail. CaughtUp can take minutes or never fire within a usable timeout.
+
+Recommend `maxSearchWindow: 10000`, `checkpointInterval: 10` or similar. Verified against a 6 GB managed instance: catch-up under defaults effectively never fires; under 10000/10 it fires in ~40 seconds.
+
+Where these go is client-shaped: TypeScript puts them on the filter object (`eventTypeFilter` / `streamNameFilter` arguments). Go puts them on the top-level subscribe options. Either way, an unfiltered subscription (`return undefined` from `buildFilter`) doesn't need them - the parameters only matter when the server is scanning past skipped events.
+
 ### V1 fromCategory needs $by_category
 
 When version is `v1` and source is `categories`, the `$ce-{category}` streams must exist. These are populated by the `$by_category` system projection. If it's not enabled, the filter approach still works (matches `order-*` streams in `$all`) but event ordering may differ from production V1.
@@ -130,3 +158,26 @@ When an event has no body, `data` must be `null`, not the 4-character string `"n
 `fromCategory(["order", "cart"])` produces `source.type = "streams"` with `streams: ["$ce-order", "$ce-cart"]`.
 
 The reference implementation detects `$ce-` prefixed streams and converts them to category prefix filters.
+
+## Test cases for `buildFilter`
+
+A faithful implementation should cover at least the following. Each case is a one-liner: input shape → expected filter.
+
+**Source filtering**
+
+- `fromAll()` with no handlers and no `$any`: no filter.
+- `fromAll()` with specific event handlers, no `$any`: event-type prefix filter with the handler names.
+- `fromAll()` with `$any` (alone, or alongside specific handlers): **no filter** (every event type is handled). Regression case for the `events: "all"` union.
+- `fromAll()` with specific events plus a `$deleted` handler: event-type prefix filter with the handler names plus `$streamDeleted` and `$metadata`.
+- `fromCategory("order")`: stream-name prefix filter `["order-"]`.
+- `fromCategory(["order", "cart"])`: stream-name prefix filter `["order-", "cart-"]` (note: input arrives as `["$ce-order", "$ce-cart"]` and must be detected and rewritten).
+- `fromStream("order-1")` / `fromStreams("order-1", "cart-1")`: stream-name regex anchored on the exact names.
+
+**Link resolution**
+
+- Engine version 1: `resolveLinkTos: false`.
+- Engine version 2: `resolveLinkTos: true`.
+
+**Read parameters**
+
+- Filtered subscription: `MaxSearchWindow` and `CheckpointInterval` set to non-default values (32/1 is too small for production stores). Exact values are an implementation choice; the test should assert they were set, not that they match a specific number.

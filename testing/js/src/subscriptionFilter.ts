@@ -5,6 +5,15 @@ import {
 } from "@kurrent/kurrentdb-client";
 import type { ProjectionInfo } from "./ProjectionInfo.js";
 
+// Read-window defaults for filtered subscriptions. The TS client's
+// own defaults (maxSearchWindow=32, checkpointInterval=1) make
+// CaughtUp effectively never fire on a busy store - see docs/specs/
+// subscription.md "Subscription read parameters".
+const READ_WINDOW = {
+	maxSearchWindow: 10000,
+	checkpointInterval: 10,
+};
+
 /**
  * Build a subscription filter from a projection's source definition.
  *
@@ -24,15 +33,18 @@ export function buildSubscriptionFilter(
 				);
 				return streamNameFilter({
 					prefixes: categories.map((c) => `${c}-`),
+					...READ_WINDOW,
 				});
 			}
 			return streamNameFilter({
 				regex: `^(${info.source.streams.map(escapeRegex).join("|")})$`,
+				...READ_WINDOW,
 			});
 		}
 		case "categories":
 			return streamNameFilter({
 				prefixes: info.source.categories.map((c) => `${c}-`),
+				...READ_WINDOW,
 			});
 	}
 }
@@ -44,7 +56,7 @@ function buildEventTypeFilter(info: ProjectionInfo): Filter | undefined {
 	if (info.settings.handlesDeletedNotifications) {
 		prefixes.push("$streamDeleted", "$metadata");
 	}
-	return eventTypeFilter({ prefixes });
+	return eventTypeFilter({ prefixes, ...READ_WINDOW });
 }
 
 /**

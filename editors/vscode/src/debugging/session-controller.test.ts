@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SessionController } from "./session-controller.js";
+import { PhaseTracker } from "./phase-tracker.js";
 import { FakeSession } from "../../test/testutil/fake-session.js";
 import { makeContext } from "../../test/testutil/fake-context.js";
 import {
@@ -92,6 +93,7 @@ function makeHarness(): Harness {
 		stepProvider: providers.step,
 		stateProvider: providers.state,
 		statusProvider: providers.status,
+		phaseTracker: new PhaseTracker(() => {}),
 		// Defensive copy so the controller's internal state mutations
 		// can't retroactively change the recorded value.
 		pushDebugState: (s) => {

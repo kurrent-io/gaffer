@@ -14,6 +14,7 @@ type LiveSourceConfig struct {
 	Info          gafferruntime.ProjectionInfo
 	EngineVersion int
 	OnCaughtUp    func() // called when subscription reaches head of stream, nil = ignore, must not block
+	OnFellBehind  func() // called when subscription falls back behind the live tail. nil = ignore, must not block
 }
 
 type liveSource struct {
@@ -50,6 +51,13 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 		if subEvent.CaughtUp != nil {
 			if l.cfg.OnCaughtUp != nil {
 				l.cfg.OnCaughtUp()
+			}
+			continue
+		}
+
+		if subEvent.FellBehind != nil {
+			if l.cfg.OnFellBehind != nil {
+				l.cfg.OnFellBehind()
 			}
 			continue
 		}

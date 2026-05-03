@@ -95,6 +95,9 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 	var afterRun func()
 	var r *engine.Runner
 	var processWithActivity func(string) bool
+	// Captured by the live-source config so the editor sees subscription
+	// catch-up state changes. Stays nil in non-debug runs.
+	var adapter *dapserver.DebugAdapter
 
 	if opts.Debug {
 		store, err := history.New()
@@ -105,7 +108,7 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 
 		absRoot, _ := filepath.Abs(proj.Root)
 
-		adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot)
+		adapter = dapserver.NewDebugAdapter(session, sourcePath, absRoot)
 		adapter.SetStartPausedIfNoBreakpoints(opts.StartPausedIfNoBreakpoints)
 
 		r = engine.NewRunner(engine.RunnerConfig{
@@ -215,10 +218,22 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 			Info:          info,
 			EngineVersion: engineVersion,
 		}
-		if opts.UntilCaughtUp {
-			liveCfg.OnCaughtUp = func() {
+		// Compose two responsibilities into the OnCaughtUp / OnFellBehind
+		// callbacks: the optional --until-caught-up exit, and the DAP
+		// emit that drives the editor's catch-up indicator. Both are
+		// set independently so either can be active.
+		liveCfg.OnCaughtUp = func() {
+			if opts.UntilCaughtUp {
 				caughtUp = true
 				stop()
+			}
+			if adapter != nil {
+				adapter.EmitCaughtUp()
+			}
+		}
+		liveCfg.OnFellBehind = func() {
+			if adapter != nil {
+				adapter.EmitFellBehind()
 			}
 		}
 		source = engine.NewLiveSource(liveCfg)

@@ -4,6 +4,7 @@ import { dispatchDapEvent } from "./dap-dispatch.js";
 import type { StateProvider } from "../panels/state.js";
 import type { StatusViewProvider } from "../panels/status.js";
 import type { StepProvider } from "../panels/step.js";
+import type { PhaseTracker } from "./phase-tracker.js";
 import type { EmittedEvent, InputEvent, StepResult } from "../ipc/schemas.js";
 import type { StateBody } from "./schemas.js";
 
@@ -63,6 +64,22 @@ function fakeStatus(): { provider: StatusViewProvider; calls: RecordedStatus } {
 	return { provider, calls };
 }
 
+interface RecordedTracker {
+	noteSignal: number;
+	setCaughtUp: boolean[];
+}
+
+function fakeTracker(): { tracker: PhaseTracker; calls: RecordedTracker } {
+	const calls: RecordedTracker = { noteSignal: 0, setCaughtUp: [] };
+	const tracker = {
+		noteSignal: () => {
+			calls.noteSignal++;
+		},
+		setCaughtUp: (b: boolean) => calls.setCaughtUp.push(b),
+	} as unknown as PhaseTracker;
+	return { tracker, calls };
+}
+
 const session = {
 	id: "1",
 	type: "gaffer",
@@ -79,19 +96,25 @@ const handlers = (overrides: {
 	step?: StepProvider;
 	state?: StateProvider;
 	status?: StatusViewProvider;
+	tracker?: PhaseTracker;
 	setEngineMode?: (m: "running" | "inspecting") => Promise<void> | void;
 }) =>
 	({
 		stepProvider: overrides.step ?? fakeStep().provider,
 		stateProvider: overrides.state ?? fakeState().provider,
 		statusProvider: overrides.status ?? fakeStatus().provider,
+		phaseTracker: overrides.tracker ?? fakeTracker().tracker,
 		setEngineMode: overrides.setEngineMode ?? (() => {}),
 	}) as Parameters<typeof dispatchDapEvent>[1];
 
 describe("dispatchDapEvent - non-gaffer sessions", () => {
 	it("ignores events from non-gaffer sessions", async () => {
+		// Locks in the early-return: another extension's debug session
+		// firing custom events must not leak into our state, including
+		// the phase tracker.
 		const step = fakeStep();
 		const state = fakeState();
+		const tracker = fakeTracker();
 		await dispatchDapEvent(
 			{
 				...event("gaffer/stepStart", {
@@ -99,10 +122,15 @@ describe("dispatchDapEvent - non-gaffer sessions", () => {
 				}),
 				session: { ...session, type: "node" },
 			},
-			handlers({ step: step.provider, state: state.provider }),
+			handlers({
+				step: step.provider,
+				state: state.provider,
+				tracker: tracker.tracker,
+			}),
 		);
 		expect(step.calls.startStep).toEqual([]);
 		expect(state.calls.setDebugSession).toBe(0);
+		expect(tracker.calls.noteSignal).toBe(0);
 	});
 });
 
@@ -215,6 +243,35 @@ describe("dispatchDapEvent - happy paths", () => {
 		expect(status.calls.setStats).toEqual([{ processed: 12, errors: 1 }]);
 	});
 
+	it("routes gaffer/caughtUp to phaseTracker.setCaughtUp", async () => {
+		const tracker = fakeTracker();
+		await dispatchDapEvent(
+			event("gaffer/caughtUp", { caughtUp: true }),
+			handlers({ tracker: tracker.tracker }),
+		);
+		await dispatchDapEvent(
+			event("gaffer/caughtUp", { caughtUp: false }),
+			handlers({ tracker: tracker.tracker }),
+		);
+		expect(tracker.calls.setCaughtUp).toEqual([true, false]);
+	});
+
+	it("any gaffer/* event flips phaseTracker out of Connecting", async () => {
+		// Specific signals (stats / caughtUp) are what move the phase
+		// from Catching up <-> Caught up. But the user might be paused
+		// at a breakpoint with no live stats / caughtUp - just stepStart
+		// and stepResult firing. Any custom event still proves the CLI
+		// is talking, so the dispatcher calls noteSignal unconditionally.
+		const tracker = fakeTracker();
+		await dispatchDapEvent(
+			event("gaffer/stepStart", {
+				event: { sequenceNumber: 1, streamId: "s", eventType: "T" },
+			}),
+			handlers({ tracker: tracker.tracker }),
+		);
+		expect(tracker.calls.noteSignal).toBeGreaterThan(0);
+	});
+
 	it("awaits setEngineMode before returning", async () => {
 		let resolved = false;
 		await dispatchDapEvent(
@@ -245,6 +302,7 @@ describe("dispatchDapEvent - malformed bodies", () => {
 		["gaffer/state", { partitions: "not-an-array" }],
 		["gaffer/mode", { mode: 42 }],
 		["gaffer/stats", { handled: "many", errors: 0 }],
+		["gaffer/caughtUp", { caughtUp: "yes" }],
 	];
 
 	for (const [name, body] of malformed) {

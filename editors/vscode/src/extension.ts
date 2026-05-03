@@ -7,6 +7,7 @@ import { StepProvider } from "./panels/step.js";
 import { StateProvider } from "./panels/state.js";
 import { StatusViewProvider } from "./panels/status.js";
 import { dispatchDapEvent } from "./debugging/dap-dispatch.js";
+import { PhaseTracker } from "./debugging/phase-tracker.js";
 import {
 	SessionController,
 	type DebugProjectionArgs,
@@ -37,6 +38,9 @@ export async function activate(
 	const stepProvider = new StepProvider();
 	const stateProvider = new StateProvider();
 	const statusProvider = new StatusViewProvider();
+	const phaseTracker = new PhaseTracker((label) =>
+		statusProvider.setDescription(label),
+	);
 	const tomlCodeLens = new TomlCodeLensProvider(initialManifest);
 	const jsCodeLens = new JsCodeLensProvider(initialIndex, initialManifest);
 
@@ -45,6 +49,7 @@ export async function activate(
 		stepProvider,
 		stateProvider,
 		statusProvider,
+		phaseTracker,
 		pushDebugState: (state) => {
 			tomlCodeLens.setDebugState(state);
 			jsCodeLens.setDebugState(state);
@@ -115,6 +120,7 @@ export async function activate(
 				stepProvider,
 				stateProvider,
 				statusProvider,
+				phaseTracker,
 				setEngineMode: (mode) => controller.setEngineMode(mode),
 			}),
 		),

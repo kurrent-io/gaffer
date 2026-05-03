@@ -10,6 +10,7 @@ import * as vscode from "vscode";
 import * as v from "valibot";
 import { log } from "../output.js";
 import {
+	CaughtUpBodySchema,
 	ModeBodySchema,
 	StateBodySchema,
 	StatsBodySchema,
@@ -22,11 +23,13 @@ import {
 import type { StateProvider } from "../panels/state.js";
 import type { StatusViewProvider } from "../panels/status.js";
 import type { StepProvider } from "../panels/step.js";
+import type { PhaseTracker } from "./phase-tracker.js";
 
 export interface DapHandlers {
 	stepProvider: StepProvider;
 	stateProvider: StateProvider;
 	statusProvider: StatusViewProvider;
+	phaseTracker: PhaseTracker;
 	setEngineMode: (mode: "running" | "inspecting") => Promise<void> | void;
 }
 
@@ -36,6 +39,11 @@ export async function dispatchDapEvent(
 ): Promise<void> {
 	if (e.session.type !== "gaffer") return;
 	handlers.stateProvider.setDebugSession(e.session);
+	// Any custom event from the gaffer DAP server proves the CLI is
+	// running and talking to us; promote out of the "Connecting"
+	// phase. Specific signals (stats / caughtUp) refine the state
+	// further below.
+	handlers.phaseTracker.noteSignal();
 
 	switch (e.event) {
 		case "gaffer/stepStart": {
@@ -81,9 +89,12 @@ export async function dispatchDapEvent(
 		}
 		case "gaffer/stats": {
 			const body = parseDapBody(StatsBodySchema, e);
-			if (body) {
-				handlers.statusProvider.setStats(body.handled, body.errors);
-			}
+			if (body) handlers.statusProvider.setStats(body.handled, body.errors);
+			break;
+		}
+		case "gaffer/caughtUp": {
+			const body = parseDapBody(CaughtUpBodySchema, e);
+			if (body) handlers.phaseTracker.setCaughtUp(body.caughtUp);
 			break;
 		}
 	}

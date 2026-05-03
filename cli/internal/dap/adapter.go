@@ -558,6 +558,29 @@ func (a *DebugAdapter) EmitStateIfChanged() {
 	a.server.Send(evt)
 }
 
+// EmitCaughtUp sends a gaffer/caughtUp DAP event marking the
+// subscription as caught up to the live tail.
+func (a *DebugAdapter) EmitCaughtUp() {
+	if a.server == nil {
+		return
+	}
+	a.server.Send(NewCustomEvent("gaffer/caughtUp", map[string]any{
+		"caughtUp": true,
+	}))
+}
+
+// EmitFellBehind sends a gaffer/caughtUp DAP event marking the
+// subscription as having fallen back behind the live tail (the
+// reader is scanning chunks again).
+func (a *DebugAdapter) EmitFellBehind() {
+	if a.server == nil {
+		return
+	}
+	a.server.Send(NewCustomEvent("gaffer/caughtUp", map[string]any{
+		"caughtUp": false,
+	}))
+}
+
 func (a *DebugAdapter) handleGafferGoto(s *Server, req *GafferGotoRequest) {
 	step, err := a.runner.GetStep(req.Arguments.Position)
 	if err != nil || step == nil {

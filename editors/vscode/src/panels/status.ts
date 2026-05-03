@@ -1,5 +1,7 @@
 // Webview that shows running counters during a debug session: events
-// processed, skipped, errors, plus a "Pause to inspect" button.
+// processed, errors, plus a "Pause at next event" button. Phase /
+// catch-up state is owned by PhaseTracker and pushed in via
+// setDescription; this provider is just stats + mode.
 //
 // HTML lives in status.html (loaded as a raw string at build time).
 // Rendered once on resolveWebviewView; subsequent updates are posted
@@ -32,6 +34,11 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	// the right mode. The webview instance is recreated on re-show; the
 	// provider is the singleton that remembers state across.
 	#mode: "running" | "ended" = "running";
+	// Latest description supplied by PhaseTracker. Held on the
+	// provider because VS Code resolves the webview lazily; the
+	// string is re-applied on every resolveWebviewView so the chip
+	// survives panel switches.
+	#description = "";
 
 	resolveWebviewView(webviewView: vscode.WebviewView): void {
 		this.#view = webviewView;
@@ -39,6 +46,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 			enableScripts: true,
 			localResourceRoots: [],
 		};
+		webviewView.description = this.#description;
 
 		const nonce = generateNonce();
 		webviewView.webview.html = statusTemplate
@@ -56,6 +64,13 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		});
 
 		this.#postUpdate();
+	}
+
+	// Called by PhaseTracker when the phase label changes. Cached so
+	// re-resolves of the webview can re-apply.
+	setDescription(value: string): void {
+		this.#description = value;
+		if (this.#view) this.#view.description = value;
 	}
 
 	reset(name: string): void {
@@ -81,9 +96,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	// got it and didn't want it"). Tracked internally on the CLI side
 	// for future verbose/debug surfaces.
 	setStats(processed: number, errors: number): void {
-		if (this.#processed === processed && this.#errors === errors) {
-			return;
-		}
+		if (this.#processed === processed && this.#errors === errors) return;
 		this.#processed = processed;
 		this.#errors = errors;
 		this.#postUpdate();

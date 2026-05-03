@@ -72,6 +72,20 @@ describe("StatusViewProvider", () => {
 		expect(view.webview.postedMessages.length).toBe(beforeCount);
 	});
 
+	it("setDescription writes through to the webviewView; survives view re-resolve", () => {
+		const provider = new StatusViewProvider();
+		const view1 = makeFakeWebviewView();
+		provider.resolveWebviewView(view1 as unknown as vscode.WebviewView);
+		provider.setDescription("Catching up");
+		expect(view1.description).toBe("Catching up");
+
+		// View flips out (e.g. when-clause toggles in inspecting mode)
+		// and a new one resolves. The cached description is re-applied.
+		const view2 = makeFakeWebviewView();
+		provider.resolveWebviewView(view2 as unknown as vscode.WebviewView);
+		expect(view2.description).toBe("Catching up");
+	});
+
 	it("includes processed/errors in stats when non-zero (skipped intentionally hidden)", () => {
 		const provider = new StatusViewProvider();
 		const view = makeFakeWebviewView();

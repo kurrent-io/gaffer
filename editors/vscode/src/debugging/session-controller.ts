@@ -29,6 +29,7 @@ import {
 import type { StepProvider } from "../panels/step.js";
 import type { StateProvider } from "../panels/state.js";
 import type { StatusViewProvider } from "../panels/status.js";
+import type { PhaseTracker } from "./phase-tracker.js";
 import type { DebugState } from "../types.js";
 
 const DEFAULT_DEBUG_PORT = 4711;
@@ -46,6 +47,7 @@ export interface SessionControllerDeps {
 	stepProvider: StepProvider;
 	stateProvider: StateProvider;
 	statusProvider: StatusViewProvider;
+	phaseTracker: PhaseTracker;
 	// Called after every status transition with the new state. Lens
 	// providers each hold their own copy and rerender via the state's
 	// onDidChange. Push semantics (no shared mutable reference) - the
@@ -62,6 +64,7 @@ export class SessionController implements vscode.Disposable {
 	readonly #stepProvider: StepProvider;
 	readonly #stateProvider: StateProvider;
 	readonly #statusProvider: StatusViewProvider;
+	readonly #phaseTracker: PhaseTracker;
 	// Owned privately. External readers go through getDebugState which
 	// returns a Readonly view. Mutations only inside #setStatus, which
 	// is the single point that pushes to consumers via #pushDebugState.
@@ -90,6 +93,7 @@ export class SessionController implements vscode.Disposable {
 		this.#stepProvider = deps.stepProvider;
 		this.#stateProvider = deps.stateProvider;
 		this.#statusProvider = deps.statusProvider;
+		this.#phaseTracker = deps.phaseTracker;
 		this.#pushDebugState = deps.pushDebugState;
 		this.#createSession = deps.createSession ?? createGafferSession;
 	}
@@ -227,6 +231,7 @@ export class SessionController implements vscode.Disposable {
 		});
 
 		this.#statusProvider.reset(name);
+		this.#phaseTracker.reset();
 		session.start();
 
 		let debugPort: number;
@@ -329,6 +334,12 @@ export class SessionController implements vscode.Disposable {
 		if (mode === "idle") {
 			this.#stepProvider.clear();
 			this.#stateProvider.clear();
+			// Phase tracker still terminates cleanly even on the idle
+			// path so a future session.start()'s reset() flips us off
+			// "Disconnected" cleanly. Without this an aborted-during-
+			// starting session would leave the chip stuck at whatever
+			// state it last reached.
+			this.#phaseTracker.markEnded();
 			await this.#setStatus(null, "idle");
 		} else {
 			// "ended" - preserve state + counters for post-mortem
@@ -336,6 +347,7 @@ export class SessionController implements vscode.Disposable {
 			this.#stepProvider.clear();
 			this.#stateProvider.markEnded();
 			this.#statusProvider.markEnded();
+			this.#phaseTracker.markEnded();
 			await this.#setStatus(this.#debugState.name, "ended");
 		}
 		// Diagnostics are NOT cleared here. A compile-time fatal_error

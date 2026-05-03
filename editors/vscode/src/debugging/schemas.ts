@@ -48,3 +48,8 @@ export const StatsBodySchema = v.object({
 	errors: v.number(),
 });
 export type StatsBody = v.InferOutput<typeof StatsBodySchema>;
+
+export const CaughtUpBodySchema = v.object({
+	caughtUp: v.boolean(),
+});
+export type CaughtUpBody = v.InferOutput<typeof CaughtUpBodySchema>;

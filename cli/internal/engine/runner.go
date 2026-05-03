@@ -134,6 +134,11 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 		return true
 	}
 
+	// Defensive against a binding contract violation: Feed must return
+	// (non-nil result, nil err) on success and (nil, err) on failure.
+	// The current C# runtime always builds a FeedResult so this branch
+	// is unreachable in practice. Kept so a future binding rewrite
+	// can't silently nil-deref through the result fields below.
 	if result == nil {
 		result = &gafferruntime.FeedResult{Status: "skipped", SkipReason: "no-handler"}
 	}

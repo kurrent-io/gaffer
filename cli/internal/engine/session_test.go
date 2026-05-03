@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
@@ -28,6 +29,30 @@ func TestLoadEvents_ValidArray(t *testing.T) {
 
 	if len(events) != 2 {
 		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+}
+
+func TestLoadEvents_PreservesInt64Precision(t *testing.T) {
+	// Soft-delete $metadata fixtures use $tb=long.MaxValue (9223372036854775807)
+	// to mark a stream as tombstoned. Without UseNumber the loader rounds
+	// through float64 and the marker no longer compares equal, which the
+	// runtime then interprets as a malformed metadata event rather than a
+	// soft delete.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "events.json")
+	content := `[
+		{"eventType":"X","streamId":"s","sequenceNumber":9223372036854775807}
+	]`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := LoadEvents(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(events[0], "9223372036854775807") {
+		t.Errorf("int64 max not preserved through round-trip:\n%s", events[0])
 	}
 }
 

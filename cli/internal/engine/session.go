@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -121,8 +122,14 @@ func LoadEvents(path string) ([]string, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	result := make([]string, len(events))
 	for i, evt := range events {
+		// UseNumber preserves JSON number precision through the round-trip.
+		// Without it, large integers (e.g. $tb=long.MaxValue in soft-delete
+		// $metadata events) would be coerced to float64 and re-marshaled as
+		// approximations, breaking equality checks downstream.
 		var obj map[string]any
-		if err := json.Unmarshal(evt, &obj); err != nil {
+		dec := json.NewDecoder(bytes.NewReader(evt))
+		dec.UseNumber()
+		if err := dec.Decode(&obj); err != nil {
 			return nil, fmt.Errorf("event %d: %w", i+1, err)
 		}
 

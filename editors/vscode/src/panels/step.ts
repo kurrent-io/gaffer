@@ -100,7 +100,7 @@ function buildInputItem(event: InputEvent): TreeItemWithChildren {
 	const children: TreeItemWithChildren[] = [];
 	children.push(leaf("type", event.eventType));
 	children.push(leaf("stream", event.streamId));
-	children.push(leaf("seq", String(event.sequenceNumber)));
+	children.push(leaf("revision", String(event.sequenceNumber)));
 
 	if (hasValue(event.data)) children.push(buildNested("data", event.data));
 	if (hasValue(event.metadata))

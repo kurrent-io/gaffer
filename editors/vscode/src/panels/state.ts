@@ -6,7 +6,7 @@ import {
 	PartitionStateResponseSchema,
 	type PartitionStateResponse,
 } from "./schemas.js";
-import type { StateBody } from "../debugging/schemas.js";
+import type { FinalStateBody, StateBody } from "../debugging/schemas.js";
 
 const PARTITION_FETCH_TIMEOUT_MS = 5000;
 
@@ -77,6 +77,43 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 	updateFromState(stateMsg: StateBody): void {
 		if (this.#ended) return;
 		this.#state = stateMsg;
+		this.#scheduleRefresh();
+	}
+
+	// Pre-populates the partition cache from a final-state snapshot
+	// the CLI emits just before terminating. Without this, partitions
+	// the user didn't expand during the live session show
+	// "(not loaded during session)" in the post-mortem - the
+	// customRequest path is unavailable once the debug session ends.
+	// Also updates #state so the partition list reflects what the CLI
+	// actually finished with.
+	//
+	// Deliberately runs even after markEnded: VS Code dispatches
+	// onDidTerminateDebugSession and onDidReceiveDebugSessionCustomEvent
+	// on independent queues, so the terminate-driven markEnded often
+	// races ahead of this final custom event. The whole point of the
+	// hydration is the post-mortem view; gating on #ended would make
+	// it a no-op exactly when it's needed.
+	hydrateFinalState(body: FinalStateBody): void {
+		const partitionEntries = body.partitions
+			? Object.entries(body.partitions)
+			: [];
+		for (const [name, partition] of partitionEntries) {
+			this.#partitionCache.set(name, {
+				...(partition.state !== undefined && { state: partition.state }),
+				...(partition.result !== undefined && { result: partition.result }),
+			});
+		}
+		this.#state = {
+			...(body.state !== undefined && { state: body.state }),
+			...(body.result !== undefined && { result: body.result }),
+			...(body.sharedState !== undefined && {
+				sharedState: body.sharedState,
+			}),
+			...(partitionEntries.length > 0 && {
+				partitions: partitionEntries.map(([name]) => name),
+			}),
+		};
 		this.#scheduleRefresh();
 	}
 

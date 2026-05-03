@@ -38,6 +38,26 @@ export const StateBodySchema = v.object({
 });
 export type StateBody = v.InferOutput<typeof StateBodySchema>;
 
+// Final-state snapshot sent just before the session terminates.
+// Same shape as a partition's customRequest response (state / result),
+// but keyed by partition name and accompanied by the unpartitioned /
+// shared fields, mirroring engine.StateSummary.ToMap on the CLI side.
+export const FinalStateBodySchema = v.object({
+	state: v.optional(v.unknown()),
+	result: v.optional(v.unknown()),
+	sharedState: v.optional(v.unknown()),
+	partitions: v.optional(
+		v.record(
+			v.string(),
+			v.object({
+				state: v.optional(v.unknown()),
+				result: v.optional(v.unknown()),
+			}),
+		),
+	),
+});
+export type FinalStateBody = v.InferOutput<typeof FinalStateBodySchema>;
+
 export const ModeBodySchema = v.object({
 	mode: v.string(),
 });

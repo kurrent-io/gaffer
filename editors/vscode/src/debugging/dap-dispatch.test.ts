@@ -6,7 +6,7 @@ import type { StatusViewProvider } from "../panels/status.js";
 import type { StepProvider } from "../panels/step.js";
 import type { PhaseTracker } from "./phase-tracker.js";
 import type { EmittedEvent, InputEvent, StepResult } from "../ipc/schemas.js";
-import type { StateBody } from "./schemas.js";
+import type { FinalStateBody, StateBody } from "./schemas.js";
 
 interface RecordedStep {
 	startStep: InputEvent[];
@@ -19,6 +19,7 @@ interface RecordedStep {
 interface RecordedState {
 	setDebugSession: number;
 	updateFromState: StateBody[];
+	hydrateFinalState: FinalStateBody[];
 }
 
 function fakeStep(): { provider: StepProvider; calls: RecordedStep } {
@@ -41,12 +42,17 @@ function fakeStep(): { provider: StepProvider; calls: RecordedStep } {
 }
 
 function fakeState(): { provider: StateProvider; calls: RecordedState } {
-	const calls: RecordedState = { setDebugSession: 0, updateFromState: [] };
+	const calls: RecordedState = {
+		setDebugSession: 0,
+		updateFromState: [],
+		hydrateFinalState: [],
+	};
 	const provider = {
 		setDebugSession: () => {
 			calls.setDebugSession++;
 		},
 		updateFromState: (b: StateBody) => calls.updateFromState.push(b),
+		hydrateFinalState: (b: FinalStateBody) => calls.hydrateFinalState.push(b),
 	} as unknown as StateProvider;
 	return { provider, calls };
 }
@@ -211,6 +217,18 @@ describe("dispatchDapEvent - happy paths", () => {
 		expect(state.calls.updateFromState).toEqual([body]);
 	});
 
+	it("routes gaffer/finalState to hydrateFinalState", async () => {
+		const state = fakeState();
+		const body = {
+			partitions: { p1: { state: { count: 1 } } },
+		};
+		await dispatchDapEvent(
+			event("gaffer/finalState", body),
+			handlers({ state: state.provider }),
+		);
+		expect(state.calls.hydrateFinalState).toEqual([body]);
+	});
+
 	it("translates gaffer/mode 'inspect' to inspecting; everything else to running", async () => {
 		// ModeBodySchema only validates that `mode` is a string, not its
 		// value. Production maps `"inspect"` -> "inspecting" and ANY other
@@ -300,6 +318,7 @@ describe("dispatchDapEvent - malformed bodies", () => {
 		["gaffer/stepResult", { result: { status: "weird" } }],
 		["gaffer/stepError", { code: "x" /* missing description */ }],
 		["gaffer/state", { partitions: "not-an-array" }],
+		["gaffer/finalState", { partitions: "not-a-record" }],
 		["gaffer/mode", { mode: 42 }],
 		["gaffer/stats", { handled: "many", errors: 0 }],
 		["gaffer/caughtUp", { caughtUp: "yes" }],

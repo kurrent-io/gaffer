@@ -381,7 +381,7 @@ func mustSetupDebugSessionWithHistory(t *testing.T) (*DebugAdapter, *engine.Runn
 }
 
 func TestAdapter_SendTerminated(t *testing.T) {
-	adapter, _, conn, reader := mustSetupDebugSession(t)
+	adapter, runner, conn, reader := mustSetupDebugSession(t)
 
 	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
 		Request: godap.Request{
@@ -391,18 +391,73 @@ func TestAdapter_SendTerminated(t *testing.T) {
 	})
 	readMessage(t, conn, reader) // ConfigurationDoneResponse
 
+	// Process an event so there's real state to snapshot.
+	runner.ProcessOne(testFeedEvent)
+
 	adapter.SendTerminated()
 
+	// Order: gaffer/finalState (snapshot) -> TerminatedEvent -> ExitedEvent.
+	// The snapshot pre-populates the editor's per-partition cache so the
+	// post-mortem view doesn't fall back to "(not loaded during session)".
+	body := readCustomEvent(t, conn, reader, "gaffer/finalState")
+	if body["state"] == nil {
+		t.Fatalf("expected state body in final snapshot, got %+v", body)
+	}
+
 	msg := readMessage(t, conn, reader)
-	_, ok := msg.(*godap.TerminatedEvent)
-	if !ok {
+	if _, ok := msg.(*godap.TerminatedEvent); !ok {
 		t.Fatalf("expected TerminatedEvent, got %T", msg)
 	}
 
 	msg = readMessage(t, conn, reader)
-	_, ok = msg.(*godap.ExitedEvent)
-	if !ok {
+	if _, ok := msg.(*godap.ExitedEvent); !ok {
 		t.Fatalf("expected ExitedEvent, got %T", msg)
+	}
+}
+
+func TestAdapter_HandleDisconnect_EmitsFinalStateBeforeResponse(t *testing.T) {
+	adapter, runner, conn, reader := mustSetupDebugSession(t)
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	runner.ProcessOne(testFeedEvent)
+
+	sendRequest(t, conn, &godap.DisconnectRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 3, Type: "request"},
+			Command:         "disconnect",
+		},
+	})
+
+	// finalState must precede the DisconnectResponse: VS Code closes
+	// the socket once it sees the response, so a snapshot queued after
+	// would never reach the editor.
+	body := readCustomEvent(t, conn, reader, "gaffer/finalState")
+	if body["state"] == nil {
+		t.Fatalf("expected state body in final snapshot, got %+v", body)
+	}
+
+	msg := readMessage(t, conn, reader)
+	if _, ok := msg.(*godap.DisconnectResponse); !ok {
+		t.Fatalf("expected DisconnectResponse, got %T", msg)
+	}
+
+	// Subsequent SendTerminated should NOT emit a second finalState
+	// (sync.Once dedup); only the Terminated/Exited pair.
+	adapter.SendTerminated()
+	msg = readMessage(t, conn, reader)
+	if _, ok := msg.(*godap.TerminatedEvent); !ok {
+		t.Fatalf("expected TerminatedEvent after disconnect, got %T", msg)
+	}
+	msg = readMessage(t, conn, reader)
+	if _, ok := msg.(*godap.ExitedEvent); !ok {
+		t.Fatalf("expected ExitedEvent after disconnect, got %T", msg)
 	}
 }
 

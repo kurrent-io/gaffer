@@ -153,6 +153,43 @@ describe("StateProvider", () => {
 			expect(items[0]?.label).toMatch(/not loaded/);
 		});
 
+		it("hydrateFinalState pre-populates the cache so post-mortem expansion shows real values", async () => {
+			const provider = new StateProvider();
+			provider.hydrateFinalState({
+				partitions: {
+					p1: { state: { count: 1 } },
+					p2: { state: { count: 2 } },
+				},
+			});
+			provider.markEnded();
+			const items = await provider.getChildren(makePartitionElement("p2"));
+			expect(items.map((i) => i.label)).toEqual(["state"]);
+		});
+
+		it("hydrateFinalState updates the partition list so the tree shows the final shape", async () => {
+			const provider = new StateProvider();
+			provider.hydrateFinalState({
+				partitions: {
+					p1: { state: { count: 1 } },
+					p2: { state: { count: 2 } },
+				},
+			});
+			vi.advanceTimersByTime(50);
+			const items = await provider.getChildren();
+			const partitions = items.filter((i) => i.contextValue === "partition");
+			expect(partitions.map((i) => i.label).sort()).toEqual(["p1", "p2"]);
+		});
+
+		it("hydrateFinalState applies even when called after markEnded", async () => {
+			const provider = new StateProvider();
+			provider.markEnded();
+			provider.hydrateFinalState({
+				partitions: { p1: { state: { count: 99 } } },
+			});
+			const items = await provider.getChildren(makePartitionElement("p1"));
+			expect(items.map((i) => i.label)).toEqual(["state"]);
+		});
+
 		it("ignores updateFromState after markEnded", async () => {
 			const provider = new StateProvider();
 			provider.updateFromState({ state: { v: 1 } });

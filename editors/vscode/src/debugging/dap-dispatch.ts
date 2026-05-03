@@ -11,6 +11,7 @@ import * as v from "valibot";
 import { log } from "../output.js";
 import {
 	CaughtUpBodySchema,
+	FinalStateBodySchema,
 	ModeBodySchema,
 	StateBodySchema,
 	StatsBodySchema,
@@ -76,6 +77,11 @@ export async function dispatchDapEvent(
 		case "gaffer/state": {
 			const body = parseDapBody(StateBodySchema, e);
 			if (body) handlers.stateProvider.updateFromState(body);
+			break;
+		}
+		case "gaffer/finalState": {
+			const body = parseDapBody(FinalStateBodySchema, e);
+			if (body) handlers.stateProvider.hydrateFinalState(body);
 			break;
 		}
 		case "gaffer/mode": {

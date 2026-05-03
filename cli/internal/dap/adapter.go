@@ -31,8 +31,9 @@ type DebugAdapter struct {
 	lastStats                  engine.EventStats
 	lastStateJSON              string
 
-	readyOnce sync.Once
-	readyCh   chan struct{}
+	readyOnce      sync.Once
+	readyCh        chan struct{}
+	finalStateOnce sync.Once
 }
 
 // NewDebugAdapter creates an adapter that bridges a DAP server to an engine Runner.
@@ -441,6 +442,11 @@ func (a *DebugAdapter) Ready() <-chan struct{} {
 }
 
 func (a *DebugAdapter) handleDisconnect(s *Server, req *godap.DisconnectRequest) {
+	// Send the snapshot before the response: VS Code closes the
+	// socket once it sees the DisconnectResponse, so anything we'd
+	// have queued from afterRun's SendTerminated never reaches the
+	// editor. Final-state has to ride out on this side of the close.
+	a.emitFinalState()
 	resp := &godap.DisconnectResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
 	s.Send(resp)
@@ -475,6 +481,11 @@ func (a *DebugAdapter) buildStateEvent() *CustomEvent {
 	summary := a.runner.CollectState()
 	body := summary.ToMap()
 
+	// gaffer/state ships partitions as just names; per-partition state
+	// is fetched on demand via gaffer/partitionState. gaffer/finalState
+	// (emitFinalState) leaves ToMap's keyed object in place so the
+	// editor can pre-populate its post-mortem cache - shapes diverge
+	// deliberately.
 	if summary.Partitioned {
 		names := make([]string, 0, len(summary.Partitions))
 		for name := range summary.Partitions {
@@ -486,15 +497,34 @@ func (a *DebugAdapter) buildStateEvent() *CustomEvent {
 	return NewCustomEvent("gaffer/state", body)
 }
 
-// SendTerminated sends terminated and exited events to the editor.
+// SendTerminated sends a final-state snapshot followed by terminated
+// and exited events. The snapshot pre-populates the editor's
+// per-partition state cache so post-mortem expansion of partitions
+// the user didn't open during the live session shows real values
+// rather than "(not loaded during session)".
 func (a *DebugAdapter) SendTerminated() {
 	if a.server == nil {
 		return
 	}
+	a.emitFinalState()
 	a.server.SendEvent(&godap.TerminatedEvent{Event: NewEvent("terminated")})
 	a.server.SendEvent(&godap.ExitedEvent{
 		Event: NewEvent("exited"),
 		Body:  godap.ExitedEventBody{ExitCode: 0},
+	})
+}
+
+func (a *DebugAdapter) emitFinalState() {
+	// Guards live outside Do so a no-op call (runner not yet set, or
+	// server torn down) doesn't burn the Once - otherwise a later
+	// legitimate caller would silently skip.
+	if a.runner == nil || a.server == nil {
+		return
+	}
+	a.finalStateOnce.Do(func() {
+		defer func() { _ = recover() }()
+		summary := a.runner.CollectState()
+		a.server.Send(NewCustomEvent("gaffer/finalState", summary.ToMap()))
 	})
 }
 

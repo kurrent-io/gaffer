@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -24,10 +25,15 @@ type textWriter struct {
 	styles textStyles
 	// Pending event held between WriteEvent and the matching
 	// WriteResult / WriteError. Lets WriteResult drop the entire
-	// event block silently when the result is "skipped" - those
-	// events are runtime-internal noise (link events, system
-	// metadata, etc.) and not user-relevant.
+	// event block silently when the result is "skipped" and
+	// showSkipped is off.
 	pending *eventInfo
+	// showSkipped renders the per-event skip row + a breakdown in
+	// the summary. Set true for fixture mode (the user curated
+	// the events; a skip is diagnostic - "you forgot a handler",
+	// "your partitionBy returned null"), false for live mode
+	// (skips are runtime hygiene noise from $all).
+	showSkipped bool
 }
 
 type textStyles struct {
@@ -215,9 +221,20 @@ func (tw *textWriter) flushPending() {
 
 func (tw *textWriter) WriteResult(_ string, result *gafferruntime.FeedResult) {
 	if result.Status == "skipped" {
-		// Drop both the pending event and the result. Skipped is
-		// runtime hygiene noise, not user-actionable.
-		tw.pending = nil
+		if !tw.showSkipped {
+			// Live mode: drop the entire event block. Skipped is
+			// runtime hygiene noise (link metadata, system events).
+			tw.pending = nil
+			return
+		}
+		// Fixture mode: surface the skip with its reason - the user
+		// curated the events, so a skip is diagnostic.
+		tw.flushPending()
+		tw.corner.status(tw.styles.skipped.Render("skipped"))
+		if result.SkipReason != "" {
+			tw.detail("reason", result.SkipReason)
+		}
+		tw.blank()
 		return
 	}
 	tw.flushPending()
@@ -265,6 +282,44 @@ func (tw *textWriter) statsLine(stats engine.EventStats) {
 		line += fmt.Sprintf(", %s errors", gold(formatNumber(stats.Errors)))
 	}
 	tw.write("%s\n", line)
+
+	// Fixture mode: surface skipped with a per-reason breakdown
+	// underneath. The user picked these events, so each skip line
+	// answers a "why didn't this run?" question.
+	if tw.showSkipped && stats.Skipped > 0 {
+		tw.write("%s events skipped\n", gold(formatNumber(stats.Skipped)))
+		// Stable order so rerun output diffs cleanly.
+		reasons := make([]string, 0, len(stats.SkippedByReason))
+		for r := range stats.SkippedByReason {
+			reasons = append(reasons, r)
+		}
+		sort.Strings(reasons)
+		for _, r := range reasons {
+			tw.write("  %s %s\n", gold(formatNumber(stats.SkippedByReason[r])), describeSkipReason(r))
+		}
+	}
+}
+
+// describeSkipReason maps the runtime's SkipReason tags to short
+// user-readable phrases. Falls back to the raw tag if unrecognised
+// so a future runtime addition still renders sensibly.
+func describeSkipReason(reason string) string {
+	switch reason {
+	case "unhandled":
+		return "no handler for this event type"
+	case "no-handler":
+		return "no handler returned a result"
+	case "no-partition":
+		return "partitionBy returned null"
+	case "link":
+		return "link event ($includeLinks not set)"
+	case "no-delete-handler":
+		return "stream deletion (no $deleted handler)"
+	case "non-json":
+		return "non-JSON event (V1 only)"
+	default:
+		return reason
+	}
 }
 
 func (tw *textWriter) WriteSummary(stats engine.EventStats, state engine.StateSummary) {

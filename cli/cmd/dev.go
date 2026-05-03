@@ -68,6 +68,10 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 		writer = newJSONWriter(os.Stdout)
 	} else {
 		tw = newTextWriter(os.Stdout, os.Stderr)
+		// Fixture mode: surface skipped events + reasons. The user
+		// curated these events; a skip is diagnostic. Live mode
+		// hides them as runtime hygiene noise.
+		tw.showSkipped = opts.Events != ""
 		writer = tw
 	}
 

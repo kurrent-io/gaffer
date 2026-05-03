@@ -164,6 +164,18 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 	summary["errors"] = sess.errors()
 	summary["totalEvents"] = len(events)
 
+	// Fixture mode: surface skipped count + per-reason breakdown.
+	// The user picked the events for this run, so a skip is
+	// diagnostic ("you forgot a handler", "partitionBy returned
+	// null"). Live mode (the other run paths) keeps it hidden.
+	stats := sess.runner.Stats()
+	if stats.Skipped > 0 {
+		summary["skipped"] = stats.Skipped
+		if len(stats.SkippedByReason) > 0 {
+			summary["skippedByReason"] = stats.SkippedByReason
+		}
+	}
+
 	if sess.runner.Faulted() {
 		if lastErr := sess.runner.LastError(); lastErr != nil {
 			summary["lastError"] = classifyError(lastErr)

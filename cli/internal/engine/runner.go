@@ -57,6 +57,11 @@ type EventStats struct {
 	Handled int
 	Skipped int
 	Errors  int
+	// SkippedByReason breaks Skipped down by the FeedResult.SkipReason
+	// the runtime returned (link, no-handler, no-partition, etc).
+	// Only consumers that explicitly want the breakdown look at this -
+	// most callers just read Skipped.
+	SkippedByReason map[string]int
 }
 
 func (s EventStats) Total() int {
@@ -140,6 +145,14 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 
 	if result.Status == "skipped" {
 		r.stats.Skipped++
+		if r.stats.SkippedByReason == nil {
+			r.stats.SkippedByReason = make(map[string]int)
+		}
+		reason := result.SkipReason
+		if reason == "" {
+			reason = "unknown"
+		}
+		r.stats.SkippedByReason[reason]++
 	} else {
 		r.stats.Handled++
 		if result.Partition != "" {
@@ -159,7 +172,19 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 func (r *Runner) Stats() EventStats {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.stats
+	s := r.stats
+	// Snapshot the map so the caller can iterate without racing
+	// against further ProcessOne increments.
+	if len(r.stats.SkippedByReason) > 0 {
+		cp := make(map[string]int, len(r.stats.SkippedByReason))
+		for k, v := range r.stats.SkippedByReason {
+			cp[k] = v
+		}
+		s.SkippedByReason = cp
+	} else {
+		s.SkippedByReason = nil
+	}
+	return s
 }
 
 func (r *Runner) Partitions() map[string]bool {

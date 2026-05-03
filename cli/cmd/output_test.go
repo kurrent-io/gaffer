@@ -472,6 +472,49 @@ func TestTextWriter_WriteSummary_WithErrors(t *testing.T) {
 	testutil.AssertContains(t, out, "2 errors")
 }
 
+func TestTextWriter_WriteSummary_FixtureMode_SkipBreakdown(t *testing.T) {
+	// Fixture mode renders a breakdown by reason so the user can see
+	// why specific curated events didn't run.
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+	tw.showSkipped = true
+
+	stats := engine.EventStats{
+		Handled: 5,
+		Skipped: 4,
+		SkippedByReason: map[string]int{
+			"unhandled":    3,
+			"no-partition": 1,
+		},
+	}
+	tw.WriteSummary(stats, engine.StateSummary{})
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "5 events processed")
+	testutil.AssertContains(t, out, "4 events skipped")
+	testutil.AssertContains(t, out, "3 no handler for this event type")
+	testutil.AssertContains(t, out, "1 partitionBy returned null")
+}
+
+func TestTextWriter_WriteResult_FixtureMode_RendersSkip(t *testing.T) {
+	// Fixture mode shows the skip row + reason. Live mode (covered
+	// elsewhere) drops both.
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+	tw.showSkipped = true
+
+	tw.WriteEvent(eventInfo{SequenceNumber: 1, StreamID: "deletes-1", EventType: "$streamDeleted"})
+	tw.WriteResult("1@deletes-1", &gafferruntime.FeedResult{
+		Status:     "skipped",
+		SkipReason: "no-delete-handler",
+	})
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "1@deletes-1")
+	testutil.AssertContains(t, out, "skipped")
+	testutil.AssertContains(t, out, "reason: no-delete-handler")
+}
+
 func TestDisplayJSON_String(t *testing.T) {
 	raw := json.RawMessage(`"{\"cents\": 2999}"`)
 	got := displayJSON(raw)

@@ -31,7 +31,7 @@
 		"test": "vitest run",
 		"check": "tsc --noEmit && eslint . && prettier --check .",
 		"fix": "eslint --fix . && prettier --write .",
-		"package": "vite build && vsce package"
+		"package": "vite build && vsce package --allow-missing-repository --skip-license"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

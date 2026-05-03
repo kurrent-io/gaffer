@@ -33,7 +33,15 @@ type DebugAdapter struct {
 
 	readyOnce      sync.Once
 	readyCh        chan struct{}
-	finalStateOnce sync.Once
+	finalStateSent bool
+
+	// Restart coordination. handleRestart blocks the DAP read goroutine
+	// while dev.go's main loop tears down the current engine session
+	// and stands up a fresh one. Buffered so a click-spam doesn't drop
+	// the signal; ack is unbuffered so the response is gated on real
+	// readiness, not a fire-and-forget.
+	restartReqCh chan struct{}
+	restartAckCh chan struct{}
 }
 
 // NewDebugAdapter creates an adapter that bridges a DAP server to an engine Runner.
@@ -42,10 +50,12 @@ type DebugAdapter struct {
 // session is needed for OnLog/OnEmit callbacks (output events to the editor).
 func NewDebugAdapter(session *gafferruntime.Session, sourcePath, remoteRoot string) *DebugAdapter {
 	return &DebugAdapter{
-		session:    session,
-		sourcePath: sourcePath,
-		remoteRoot: remoteRoot,
-		readyCh:    make(chan struct{}),
+		session:      session,
+		sourcePath:   sourcePath,
+		remoteRoot:   remoteRoot,
+		readyCh:      make(chan struct{}),
+		restartReqCh: make(chan struct{}, 1),
+		restartAckCh: make(chan struct{}),
 	}
 }
 
@@ -97,10 +107,26 @@ func (a *DebugAdapter) HandleBreak(info gafferruntime.BreakInfo) {
 }
 
 // SetServer connects the adapter to a DAP server for sending events.
-// Wires up session callbacks (OnLog, OnEmit) for output events.
+// Wires up session callbacks (OnLog, OnEmit) for output events on the
+// current session.
 func (a *DebugAdapter) SetServer(server *Server) {
 	a.server = server
+	a.wireSessionCallbacks()
+}
 
+// SetSession replaces the bound runtime session and re-wires OnLog /
+// OnEmit callbacks against it. Called per-iteration in dev.go's
+// session loop so a restart's freshly-spun session keeps emitting
+// output / step events to the still-attached editor.
+func (a *DebugAdapter) SetSession(session *gafferruntime.Session) {
+	a.session = session
+	a.wireSessionCallbacks()
+}
+
+func (a *DebugAdapter) wireSessionCallbacks() {
+	if a.session == nil || a.server == nil {
+		return
+	}
 	a.session.OnLog(func(message string) {
 		a.server.SendEvent(&godap.OutputEvent{
 			Event: NewEvent("output"),
@@ -207,6 +233,7 @@ func (a *DebugAdapter) Handler() Handler {
 		OnEvaluate:             a.handleEvaluate,
 		OnConfigurationDone:    a.handleConfigurationDone,
 		OnDisconnect:           a.handleDisconnect,
+		OnRestart:              a.handleRestart,
 		OnGafferGoto:           a.handleGafferGoto,
 		OnGafferTimeline:       a.handleGafferTimeline,
 		OnGafferPartitionState: a.handleGafferPartitionState,
@@ -432,13 +459,75 @@ func (a *DebugAdapter) handleConfigurationDone(s *Server, req *godap.Configurati
 		a.session.Pause()
 	}
 
+	a.mu.Lock()
 	a.readyOnce.Do(func() { close(a.readyCh) })
+	a.mu.Unlock()
 }
 
 // Ready returns a channel that is closed when the editor has completed
-// the DAP configuration sequence (configurationDone received).
+// the DAP configuration sequence (configurationDone received). Each
+// restart re-arms a fresh channel; callers should re-fetch after
+// AckRestart rather than caching the returned value.
 func (a *DebugAdapter) Ready() <-chan struct{} {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	return a.readyCh
+}
+
+// handleRestart implements DAP's `restart` request (gated on
+// SupportsRestartRequest in the InitializeResponse). VS Code sends it
+// instead of the disconnect+attach cycle when the user clicks the
+// Restart button. We block the read goroutine while dev.go's main
+// loop tears down the engine and stands up a fresh one - that way
+// the response and the followup Initialized event aren't sent until
+// the editor's resent breakpoints will actually land on a live
+// session.
+func (a *DebugAdapter) handleRestart(s *Server, req *godap.RestartRequest) {
+	select {
+	case a.restartReqCh <- struct{}{}:
+	default:
+		// Already pending - dev.go will pick this one up too.
+	}
+	<-a.restartAckCh
+
+	resp := &godap.RestartResponse{}
+	resp.Response = NewResponse(req.Seq, req.Command)
+	s.Send(resp)
+	s.Send(&godap.InitializedEvent{Event: NewEvent("initialized")})
+}
+
+// RestartRequested returns a channel that receives whenever the editor
+// has asked for a restart. dev.go's main loop selects on it to
+// interrupt source.Run.
+func (a *DebugAdapter) RestartRequested() <-chan struct{} {
+	return a.restartReqCh
+}
+
+// AckRestart unblocks handleRestart once dev.go has finished tearing
+// down the old session and bound a new one. Pairs with the receive
+// in handleRestart.
+func (a *DebugAdapter) AckRestart() {
+	a.restartAckCh <- struct{}{}
+}
+
+// ResetForRestart clears per-session adapter state so the next
+// configurationDone-driven boot lands cleanly. Called by dev.go's
+// main loop between iterations, after the new session/runner are
+// bound. The editor's pause-pending UI state lives in
+// pause-pending-tracker.ts (driven by stopped/pause DAP wire events)
+// and is not mirrored here, so it doesn't need clearing.
+func (a *DebugAdapter) ResetForRestart() {
+	a.mu.Lock()
+	a.inspect = false
+	a.entryPausePending = false
+	a.lastStats = engine.EventStats{}
+	a.lastStateJSON = ""
+	a.stepBuffer = nil
+	a.breakpointCount = 0
+	a.finalStateSent = false
+	a.readyOnce = sync.Once{}
+	a.readyCh = make(chan struct{})
+	a.mu.Unlock()
 }
 
 func (a *DebugAdapter) handleDisconnect(s *Server, req *godap.DisconnectRequest) {
@@ -515,17 +604,18 @@ func (a *DebugAdapter) SendTerminated() {
 }
 
 func (a *DebugAdapter) emitFinalState() {
-	// Guards live outside Do so a no-op call (runner not yet set, or
-	// server torn down) doesn't burn the Once - otherwise a later
-	// legitimate caller would silently skip.
-	if a.runner == nil || a.server == nil {
+	a.mu.Lock()
+	skip := a.finalStateSent || a.runner == nil || a.server == nil
+	if !skip {
+		a.finalStateSent = true
+	}
+	a.mu.Unlock()
+	if skip {
 		return
 	}
-	a.finalStateOnce.Do(func() {
-		defer func() { _ = recover() }()
-		summary := a.runner.CollectState()
-		a.server.Send(NewCustomEvent("gaffer/finalState", summary.ToMap()))
-	})
+	defer func() { _ = recover() }()
+	summary := a.runner.CollectState()
+	a.server.Send(NewCustomEvent("gaffer/finalState", summary.ToMap()))
 }
 
 // EmitStatsIfChanged sends a gaffer/stats custom event with cumulative

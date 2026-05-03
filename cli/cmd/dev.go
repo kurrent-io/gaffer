@@ -75,43 +75,133 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 		writer = tw
 	}
 
-	session, info, err := engine.CreateSession(proj, opts.Debug)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	if opts.Debug {
+		return runDevDebug(ctx, stop, proj, sourcePath, writer, tw, opts)
+	}
+	return runDevSingle(ctx, stop, proj, sourcePath, writer, tw, opts)
+}
+
+// runDevSingle handles the non-debug path: one engine.Session, one
+// source.Run, summary write. Restart isn't relevant here.
+func runDevSingle(
+	ctx context.Context,
+	stop context.CancelFunc,
+	proj *engine.Projection,
+	sourcePath string,
+	writer outputWriter,
+	tw *textWriter,
+	opts *devOpts,
+) error {
+	session, info, err := engine.CreateSession(proj, false)
 	if err != nil {
 		writer.WriteFatalError(toFatalError(err, sourcePath))
 		return silent(err)
 	}
 	defer session.Destroy()
 
-	engineVersion := proj.EngineVersion
-
 	if tw != nil {
 		tw.RegisterCallbacks(session)
 	}
 
-	writer.WriteInfo(proj.Def.Name, info, engineVersion)
+	writer.WriteInfo(proj.Def.Name, info, proj.EngineVersion)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	var afterRun func()
-	var r *engine.Runner
-	var processWithActivity func(string) bool
-	// Captured by the live-source config so the editor sees subscription
-	// catch-up state changes. Stays nil in non-debug runs.
-	var adapter *dapserver.DebugAdapter
+	r := engine.NewRunner(engine.RunnerConfig{
+		Feed:    engine.FeedFn(session.Feed),
+		Session: session,
+		Info:    info,
+		Writer:  &eventWriterAdapter{writer: writer},
+	})
 
-	if opts.Debug {
-		store, err := history.New()
-		if err != nil {
-			return fmt.Errorf("creating history store: %w", err)
+	var caughtUp bool
+	source, err := buildSource(opts, proj, info, nil, stop, &caughtUp)
+	if err != nil {
+		return err
+	}
+	srcErr := source.Run(ctx, r.ProcessOne)
+
+	if err := finalizeRun(ctx, caughtUp, srcErr, r, os.Stderr); err != nil {
+		return err
+	}
+
+	summary := r.CollectState()
+	writer.WriteSummary(r.Stats(), summary)
+	if r.Faulted() {
+		if lastErr := r.LastError(); lastErr != nil {
+			writer.WriteFatalError(toFatalError(lastErr, sourcePath))
 		}
-		defer func() { _ = store.Close() }()
+		return silent(fmt.Errorf("projection faulted"))
+	}
+	return nil
+}
 
-		absRoot, _ := filepath.Abs(proj.Root)
+// runDevDebug handles the --debug path with restart support. The DAP
+// server, history store, and adapter persist across restart; engine
+// session, runner, and the source loop are recreated per iteration.
+// Outer ctx done = real teardown (signal or socket close); the loop
+// ends naturally after the source's final iteration.
+func runDevDebug(
+	ctx context.Context,
+	stop context.CancelFunc,
+	proj *engine.Projection,
+	sourcePath string,
+	writer outputWriter,
+	tw *textWriter,
+	opts *devOpts,
+) error {
+	store, err := history.New()
+	if err != nil {
+		return fmt.Errorf("creating history store: %w", err)
+	}
+	defer func() { _ = store.Close() }()
 
-		adapter = dapserver.NewDebugAdapter(session, sourcePath, absRoot)
-		adapter.SetStartPausedIfNoBreakpoints(opts.StartPausedIfNoBreakpoints)
+	absRoot, _ := filepath.Abs(proj.Root)
 
-		r = engine.NewRunner(engine.RunnerConfig{
+	// Bootstrap session for the first iteration. Provides the initial
+	// session ref to the adapter so OnLog/OnEmit wiring has something
+	// to bind to before the loop's first iteration explicitly rebinds.
+	session, info, err := engine.CreateSession(proj, true)
+	if err != nil {
+		writer.WriteFatalError(toFatalError(err, sourcePath))
+		return silent(err)
+	}
+
+	writer.WriteInfo(proj.Def.Name, info, proj.EngineVersion)
+
+	adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot)
+	adapter.SetStartPausedIfNoBreakpoints(opts.StartPausedIfNoBreakpoints)
+
+	addr := fmt.Sprintf("127.0.0.1:%d", opts.DebugPort)
+	srv, err := dapserver.NewServer(addr, adapter.Handler())
+	if err != nil {
+		session.Destroy()
+		return fmt.Errorf("starting debug server: %w", err)
+	}
+	defer func() { _ = srv.Close() }()
+	adapter.SetServer(srv)
+
+	_, _ = fmt.Fprintf(os.Stderr, "Debug server listening on %s\nWaiting for editor to attach...\n", srv.Addr())
+	writer.WriteDebugListening(srv.Addr().String(), opts.DebugPort)
+
+	go func() {
+		_ = srv.Serve()
+		stop()
+	}()
+
+	// Per-iteration loop: each pass owns one engine.Session + Runner
+	// + source.Run. A `restart` request triggers a fresh iteration; a
+	// real disconnect (or signal) ends the loop after the in-flight
+	// iteration unwinds. Both paths must ack any pending restart so
+	// handleRestart's response goroutine can return - even on a
+	// dying socket, the alternative is leaking it forever.
+	for {
+		if tw != nil {
+			tw.RegisterCallbacks(session)
+		}
+
+		r := engine.NewRunner(engine.RunnerConfig{
 			Feed:    engine.FeedFn(session.Feed),
 			Session: session,
 			Info:    info,
@@ -123,57 +213,68 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 				OnBreak: adapter.HandleBreak,
 			},
 		})
+		adapter.SetSession(session)
 		adapter.SetRunner(r)
 
-		handler := adapter.Handler()
-		addr := fmt.Sprintf("127.0.0.1:%d", opts.DebugPort)
-		srv, err := dapserver.NewServer(addr, handler)
-		if err != nil {
-			return fmt.Errorf("starting debug server: %w", err)
-		}
-		defer func() { _ = srv.Close() }()
-		adapter.SetServer(srv)
-
-		_, _ = fmt.Fprintf(os.Stderr, "Debug server listening on %s\nWaiting for editor to attach...\n", srv.Addr())
-		writer.WriteDebugListening(srv.Addr().String(), opts.DebugPort)
-
-		go func() {
-			_ = srv.Serve()
-			stop()
-		}()
-
-		go func() {
-			<-ctx.Done()
-			// Unblock so a Feed paused at a breakpoint returns and
-			// source.Run exits. Don't tear the session down here -
-			// the post-run summary write on the main goroutine still
-			// needs to read state. The session+history are freed by
-			// the deferred close paths above.
-			r.Unblock()
-		}()
-
+		// Wait for configurationDone, or fast-path restart-before-config,
+		// or teardown.
 		select {
 		case <-adapter.Ready():
+		case <-adapter.RestartRequested():
+			session.Destroy()
+			session, info, err = engine.CreateSession(proj, true)
+			if err != nil {
+				adapter.AckRestart()
+				return silent(err)
+			}
+			adapter.ResetForRestart()
+			adapter.AckRestart()
+			continue
 		case <-ctx.Done():
+			session.Destroy()
 			return nil
 		}
 
-		// Per-event step events are buffered (only flushed on next
-		// break) and gaffer/state is inspect-only, so without a side
-		// channel the editor sees nothing after the user presses
-		// Continue and has no state to preserve on disconnect.
-		//
-		// We drive Status counter + State view updates from inside
-		// the source goroutine: a process wrapper around r.ProcessOne
-		// throttles emits to one per statsEmitInterval. Crucial that
-		// these calls run on the same goroutine as Feed - the
-		// underlying session is single-threaded (per its own contract)
-		// and ToUnmanaged in the runtime races on handle.LastReturnedPtr
-		// if a separate goroutine calls session methods concurrently.
-		// (Symptom: garbage bytes leaking into Feed's JSON result,
-		// "invalid character 'á' looking for beginning of value".)
+		// Per-iteration ctx so a restart can cancel source.Run without
+		// tearing down the outer process. The watcher goroutine signals
+		// `restartCh` when it observed RestartRequested, so the main
+		// loop can disambiguate "restart-driven exit" from "natural
+		// completion" - a select on adapter.RestartRequested() here
+		// would race with the watcher consuming the same value.
+		innerCtx, innerCancel := context.WithCancel(ctx)
+		iterDone := make(chan struct{})
+		restartCh := make(chan struct{}, 1)
+		go func() {
+			select {
+			case <-adapter.RestartRequested():
+				select {
+				case restartCh <- struct{}{}:
+				default:
+				}
+				innerCancel()
+				r.Unblock()
+			case <-ctx.Done():
+				innerCancel()
+				r.Unblock()
+			case <-iterDone:
+				// source.Run returned naturally; nothing to do.
+			}
+		}()
+
+		var caughtUp bool
+		source, err := buildSource(opts, proj, info, adapter, stop, &caughtUp)
+		if err != nil {
+			innerCancel()
+			close(iterDone)
+			session.Destroy()
+			return err
+		}
+
 		var lastEmit time.Time
-		processWithActivity = func(eventJSON string) bool {
+		// See the long comment in the original runDev about why this
+		// runs on the source goroutine: session is single-threaded;
+		// concurrent calls race on handle.LastReturnedPtr.
+		process := func(eventJSON string) bool {
 			stop := r.ProcessOne(eventJSON)
 			if time.Since(lastEmit) >= statsEmitInterval {
 				adapter.EmitStatsIfChanged()
@@ -183,87 +284,122 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 			return stop
 		}
 
-		afterRun = func() {
-			// Final flush so the editor's counter + state reflect the
-			// run's final values regardless of throttle window.
-			adapter.EmitStatsIfChanged()
-			adapter.EmitStateIfChanged()
-			adapter.SendTerminated()
-		}
-	} else {
-		r = engine.NewRunner(engine.RunnerConfig{
-			Feed:    engine.FeedFn(session.Feed),
-			Session: session,
-			Info:    info,
-			Writer:  &eventWriterAdapter{writer: writer},
-		})
-	}
+		srcErr := source.Run(innerCtx, process)
+		close(iterDone)
+		innerCancel()
 
-	var source engine.EventSource
-	var caughtUp bool
+		// Final flush regardless of how this iteration ended.
+		adapter.EmitStatsIfChanged()
+		adapter.EmitStateIfChanged()
+
+		// Did this exit because the user hit restart? The watcher
+		// goroutine writes to restartCh when it sees RestartRequested;
+		// we also do a non-blocking drain to catch the rare race where
+		// the request lands AFTER source.Run returned naturally.
+		restartRequested := false
+		select {
+		case <-restartCh:
+			restartRequested = true
+		default:
+		}
+		if !restartRequested {
+			select {
+			case <-adapter.RestartRequested():
+				restartRequested = true
+			default:
+			}
+		}
+
+		if restartRequested && ctx.Err() == nil {
+			// Genuine restart: tear down this iteration, stand up a
+			// fresh session, ack so handleRestart sends its response.
+			session.Destroy()
+			session, info, err = engine.CreateSession(proj, true)
+			if err != nil {
+				adapter.AckRestart()
+				return silent(err)
+			}
+			adapter.ResetForRestart()
+			adapter.AckRestart()
+			if err := finalizeRun(ctx, caughtUp, srcErr, r, os.Stderr); err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "ignoring iteration error during restart: %v\n", err)
+			}
+			continue
+		}
+
+		// Teardown path: real disconnect, signal, or natural source
+		// completion (fixture exhausted, --until-caught-up). Ack any
+		// raced restart so handleRestart's response goroutine isn't
+		// pinned forever (the response may not reach the editor over
+		// a closing socket, but that's fine - the goroutine exits
+		// cleanly either way).
+		if restartRequested {
+			adapter.AckRestart()
+		}
+
+		adapter.SendTerminated()
+		if err := finalizeRun(ctx, caughtUp, srcErr, r, os.Stderr); err != nil {
+			session.Destroy()
+			return err
+		}
+
+		summary := r.CollectState()
+		writer.WriteSummary(r.Stats(), summary)
+		session.Destroy()
+		if r.Faulted() {
+			if lastErr := r.LastError(); lastErr != nil {
+				writer.WriteFatalError(toFatalError(lastErr, sourcePath))
+			}
+			return silent(fmt.Errorf("projection faulted"))
+		}
+		return nil
+	}
+}
+
+// buildSource constructs the event source for one iteration. The
+// caller owns `caughtUp`; buildSource just installs the OnCaughtUp
+// callback that flips it when --until-caught-up fires. adapter may be
+// nil for the non-debug single-run path.
+func buildSource(
+	opts *devOpts,
+	proj *engine.Projection,
+	info gafferruntime.ProjectionInfo,
+	adapter *dapserver.DebugAdapter,
+	stop context.CancelFunc,
+	caughtUp *bool,
+) (engine.EventSource, error) {
 	if opts.Events != "" {
 		events, err := engine.LoadEvents(opts.Events)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		source = engine.NewFixtureSource(events)
-	} else {
-		connStr := resolveConnection(opts.Connection, proj.Config)
-		if connStr == "" {
-			return fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
-		}
-		liveCfg := engine.LiveSourceConfig{
-			ConnStr:       connStr,
-			Root:          proj.Root,
-			Info:          info,
-			EngineVersion: engineVersion,
-		}
-		// Compose two responsibilities into the OnCaughtUp / OnFellBehind
-		// callbacks: the optional --until-caught-up exit, and the DAP
-		// emit that drives the editor's catch-up indicator. Both are
-		// set independently so either can be active.
-		liveCfg.OnCaughtUp = func() {
-			if opts.UntilCaughtUp {
-				caughtUp = true
-				stop()
-			}
-			if adapter != nil {
-				adapter.EmitCaughtUp()
-			}
-		}
-		liveCfg.OnFellBehind = func() {
-			if adapter != nil {
-				adapter.EmitFellBehind()
-			}
-		}
-		source = engine.NewLiveSource(liveCfg)
+		return engine.NewFixtureSource(events), nil
 	}
-
-	process := r.ProcessOne
-	if processWithActivity != nil {
-		process = processWithActivity
+	connStr := resolveConnection(opts.Connection, proj.Config)
+	if connStr == "" {
+		return nil, fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
 	}
-	srcErr := source.Run(ctx, process)
-
-	if afterRun != nil {
-		afterRun()
+	liveCfg := engine.LiveSourceConfig{
+		ConnStr:       connStr,
+		Root:          proj.Root,
+		Info:          info,
+		EngineVersion: proj.EngineVersion,
 	}
-
-	if err := finalizeRun(ctx, caughtUp, srcErr, r, os.Stderr); err != nil {
-		return err
-	}
-
-	summary := r.CollectState()
-	writer.WriteSummary(r.Stats(), summary)
-
-	if r.Faulted() {
-		if lastErr := r.LastError(); lastErr != nil {
-			writer.WriteFatalError(toFatalError(lastErr, sourcePath))
+	liveCfg.OnCaughtUp = func() {
+		if opts.UntilCaughtUp {
+			*caughtUp = true
+			stop()
 		}
-		return silent(fmt.Errorf("projection faulted"))
+		if adapter != nil {
+			adapter.EmitCaughtUp()
+		}
 	}
-
-	return nil
+	liveCfg.OnFellBehind = func() {
+		if adapter != nil {
+			adapter.EmitFellBehind()
+		}
+	}
+	return engine.NewLiveSource(liveCfg), nil
 }
 
 

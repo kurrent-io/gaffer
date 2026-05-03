@@ -415,6 +415,54 @@ func TestAdapter_SendTerminated(t *testing.T) {
 	}
 }
 
+func TestAdapter_HandleRestart_BlocksUntilAcked(t *testing.T) {
+	adapter, _, conn, reader := mustSetupDebugSession(t)
+
+	// Drain the dev.go side: read off the restart request, recreate
+	// state, and ack. In production this is the main loop's job.
+	go func() {
+		<-adapter.RestartRequested()
+		adapter.ResetForRestart()
+		adapter.AckRestart()
+	}()
+
+	sendRequest(t, conn, &godap.RestartRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "restart",
+		},
+	})
+
+	// Expected order: RestartResponse, then a fresh InitializedEvent
+	// (so VS Code resends breakpoints + configurationDone).
+	if _, ok := readMessage(t, conn, reader).(*godap.RestartResponse); !ok {
+		t.Fatal("expected RestartResponse")
+	}
+	if _, ok := readMessage(t, conn, reader).(*godap.InitializedEvent); !ok {
+		t.Fatal("expected InitializedEvent after restart")
+	}
+
+	// Adapter Ready() must be re-armed after ResetForRestart so the
+	// next configurationDone unblocks the main loop.
+	select {
+	case <-adapter.Ready():
+		t.Fatal("Ready should not fire before configurationDone")
+	default:
+	}
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 3, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+	select {
+	case <-adapter.Ready():
+	case <-time.After(time.Second):
+		t.Fatal("Ready did not fire after post-restart configurationDone")
+	}
+}
+
 func TestAdapter_HandleDisconnect_EmitsFinalStateBeforeResponse(t *testing.T) {
 	adapter, runner, conn, reader := mustSetupDebugSession(t)
 

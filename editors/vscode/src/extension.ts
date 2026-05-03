@@ -9,6 +9,7 @@ import { StatusViewProvider } from "./panels/status.js";
 import { dispatchDapEvent } from "./debugging/dap-dispatch.js";
 import { PausePendingTrackerFactory } from "./debugging/pause-pending-tracker.js";
 import { PhaseTracker } from "./debugging/phase-tracker.js";
+import { RestartTrackerFactory } from "./debugging/restart-tracker.js";
 import {
 	SessionController,
 	type DebugProjectionArgs,
@@ -93,6 +94,16 @@ export async function activate(
 		vscode.debug.registerDebugAdapterTrackerFactory(
 			"gaffer",
 			new PausePendingTrackerFactory(statusProvider),
+		),
+		vscode.debug.registerDebugAdapterTrackerFactory(
+			"gaffer",
+			new RestartTrackerFactory({
+				stepProvider,
+				stateProvider,
+				statusProvider,
+				phaseTracker,
+				sessionName: () => controller.getDebugState().name ?? "projection",
+			}),
 		),
 	);
 

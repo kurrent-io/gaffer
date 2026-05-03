@@ -278,10 +278,12 @@ func TestUnknownRequestReturnsError(t *testing.T) {
 	readMessage(t, conn, reader) // InitializeResponse
 	readMessage(t, conn, reader) // InitializedEvent
 
-	sendRequest(t, conn, &godap.RestartRequest{
+	// LaunchRequest isn't in the dispatch switch (we're attach-only),
+	// so it falls through to the default "not supported" branch.
+	sendRequest(t, conn, &godap.LaunchRequest{
 		Request: godap.Request{
 			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
-			Command:         "restart",
+			Command:         "launch",
 		},
 	})
 

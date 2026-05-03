@@ -149,7 +149,7 @@
 				{
 					"id": "gaffer.state",
 					"name": "State",
-					"when": "gaffer.mode == 'inspecting' || gaffer.mode == 'ended'"
+					"when": "gaffer.mode == 'running' || gaffer.mode == 'inspecting' || gaffer.mode == 'ended'"
 				}
 			]
 		},

@@ -261,6 +261,46 @@ func TestDisconnect(t *testing.T) {
 	}
 }
 
+func TestSendDropsWhenBufferFull(t *testing.T) {
+	// A wedged buffer means the editor stopped reading; Send must
+	// drop rather than block (which would stall the engine behind a
+	// doomed connection).
+	srv := &Server{
+		sendCh:   make(chan godap.Message, 1),
+		sendOpen: true,
+	}
+	srv.Send(&godap.OutputEvent{Event: NewEvent("output")})
+	if len(srv.sendCh) != 1 {
+		t.Fatalf("expected first send to land in buffer, got len=%d", len(srv.sendCh))
+	}
+	// Second send: buffer full, must drop without blocking or panicking.
+	done := make(chan struct{})
+	go func() {
+		srv.Send(&godap.OutputEvent{Event: NewEvent("output")})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Send blocked on full buffer")
+	}
+	if len(srv.sendCh) != 1 {
+		t.Fatalf("expected dropped send to leave len=1, got %d", len(srv.sendCh))
+	}
+}
+
+func TestSendDropsWhenClosed(t *testing.T) {
+	// sendOpen=false (post-Serve teardown) must short-circuit Send so
+	// late callbacks from the engine don't panic on a closed channel.
+	srv := &Server{
+		sendCh:   make(chan godap.Message, 1),
+		sendOpen: false,
+	}
+	close(srv.sendCh)
+	// Would panic without the sendOpen guard.
+	srv.Send(&godap.OutputEvent{Event: NewEvent("output")})
+}
+
 func TestUnknownRequestReturnsError(t *testing.T) {
 	_, conn := mustStartServer(t, Handler{})
 	reader := bufio.NewReader(conn)

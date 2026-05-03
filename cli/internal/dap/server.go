@@ -19,9 +19,20 @@ type Server struct {
 	handler  Handler
 	codec    *godap.Codec
 
-	sendCh chan godap.Message
-	seq    atomic.Int64
-	sendWg sync.WaitGroup
+	// sendMu guards sendCh + sendOpen. Send may be called from any
+	// goroutine (engine source loop, DAP handler, runtime callbacks)
+	// while Serve owns the open/close lifecycle. Without the mutex,
+	// the field write from `s.sendCh = make(...)` races the read in
+	// Send, and a Send racing the close panics "send on closed
+	// channel". writeLoop's `for msg := range s.sendCh` reads the
+	// channel via the value captured at goroutine launch, after the
+	// open assignment - safe without the mutex because sendWg.Wait
+	// gates the close on writeLoop's exit.
+	sendMu   sync.Mutex
+	sendCh   chan godap.Message
+	sendOpen bool
+	seq      atomic.Int64
+	sendWg   sync.WaitGroup
 
 	linesStartAt1   bool
 	columnsStartAt1 bool
@@ -82,7 +93,11 @@ func (s *Server) Serve() error {
 	}
 	defer func() { _ = conn.Close() }()
 
+	s.sendMu.Lock()
 	s.sendCh = make(chan godap.Message, 100)
+	s.sendOpen = true
+	s.sendMu.Unlock()
+
 	reader := bufio.NewReader(conn)
 
 	s.sendWg.Add(1)
@@ -90,9 +105,14 @@ func (s *Server) Serve() error {
 
 	err = s.readLoop(reader)
 
+	// Mark closed before closing the channel so any racing Send sees
+	// !sendOpen and bails before attempting a panicking send.
+	s.sendMu.Lock()
+	s.sendOpen = false
 	close(s.sendCh)
+	s.sendMu.Unlock()
+
 	s.sendWg.Wait()
-	s.sendCh = nil
 	return err
 }
 
@@ -102,9 +122,19 @@ func (s *Server) Close() error {
 }
 
 // Send queues a message (response or event) to be sent to the client.
+// Drop-on-full: a wedged buffer means the editor has stopped reading
+// (broken connection); blocking here would just stall the engine
+// behind a doomed write. Drops are logged.
 func (s *Server) Send(msg godap.Message) {
-	if s.sendCh != nil {
-		s.sendCh <- msg
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	if !s.sendOpen {
+		return
+	}
+	select {
+	case s.sendCh <- msg:
+	default:
+		log.Printf("dap: send buffer full (%d/%d), dropping %T", len(s.sendCh), cap(s.sendCh), msg)
 	}
 }
 

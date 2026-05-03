@@ -78,7 +78,9 @@ export async function activate(
 	context.subscriptions.push(
 		vscode.window.registerTreeDataProvider("gaffer.step", stepProvider),
 		vscode.window.registerTreeDataProvider("gaffer.state", stateProvider),
-		vscode.window.registerWebviewViewProvider("gaffer.status", statusProvider),
+		vscode.window.registerWebviewViewProvider("gaffer.status", statusProvider, {
+			webviewOptions: { retainContextWhenHidden: true },
+		}),
 	);
 
 	context.subscriptions.push(

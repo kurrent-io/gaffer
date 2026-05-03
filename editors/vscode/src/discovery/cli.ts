@@ -4,14 +4,14 @@ import * as v from "valibot";
 import { log } from "../output.js";
 import { ManifestSchema, type Manifest } from "./schemas.js";
 
-const DEFAULT_COMMAND: readonly string[] = ["./bin/gaffer"];
+const DEFAULT_COMMAND: readonly string[] = ["gaffer"];
 
 /**
  * Build the argv to invoke gaffer with the given subcommand args.
  *
  * Reads `gaffer.command` only from User scope - workspace and folder scope
  * are ignored as a defense against hostile workspaces overriding the
- * binary path. Falls back to `["./bin/gaffer"]`.
+ * binary path. Falls back to `["gaffer"]` (resolved from PATH).
  */
 export function buildGafferArgv(args: string[]): string[] {
 	const inspected = vscode.workspace

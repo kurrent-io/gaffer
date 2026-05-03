@@ -235,7 +235,6 @@ export class SessionController implements vscode.Disposable {
 
 		this.#statusProvider.reset(name);
 		session.start();
-		await vscode.commands.executeCommand("gaffer.status.focus");
 
 		let debugPort: number;
 		try {
@@ -277,6 +276,15 @@ export class SessionController implements vscode.Disposable {
 		const initial: EngineMode = this.#pendingEngineMode ?? "running";
 		this.#pendingEngineMode = null;
 		await this.#setStatus(name, initial);
+
+		// Focus the Gaffer panel after the views are revealed. Done last
+		// because vscode.debug.startDebugging gives focus to the panel
+		// container's last-used tab (often Terminal); we need to override
+		// that, and the Gaffer views have when-clauses gated on
+		// gaffer.mode so they're not focusable until #setStatus flips it.
+		const focusTarget =
+			initial === "inspecting" ? "gaffer.step.focus" : "gaffer.status.focus";
+		await vscode.commands.executeCommand(focusTarget);
 	}
 
 	async stop(): Promise<void> {

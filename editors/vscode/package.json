@@ -55,7 +55,7 @@
 						"type": "string"
 					},
 					"default": [
-						"./bin/gaffer"
+						"gaffer"
 					],
 					"scope": "application",
 					"description": "Argv used to invoke gaffer. Examples: [\"gaffer\"] (PATH), [\"./bin/gaffer\"] (local build), [\"/usr/local/bin/gaffer\"] (explicit path), [\"sudo\", \"gaffer\"] (with privileges). Subcommand args are appended. Only User-scope value is honored - workspace and folder settings are ignored as a defense against hostile workspaces."

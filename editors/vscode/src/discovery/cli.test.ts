@@ -20,13 +20,13 @@ describe("buildGafferArgv", () => {
 		expect(buildGafferArgv(["dev"])).toEqual(["my-gaffer", "dev"]);
 	});
 
-	it("falls back to ./bin/gaffer when User-scope is empty array", () => {
+	it("falls back to gaffer when User-scope is empty array", () => {
 		setConfiguration("gaffer", "command", { globalValue: [] });
-		expect(buildGafferArgv(["dev"])).toEqual(["./bin/gaffer", "dev"]);
+		expect(buildGafferArgv(["dev"])).toEqual(["gaffer", "dev"]);
 	});
 
-	it("falls back to ./bin/gaffer when no value is set", () => {
-		expect(buildGafferArgv(["dev"])).toEqual(["./bin/gaffer", "dev"]);
+	it("falls back to gaffer when no value is set", () => {
+		expect(buildGafferArgv(["dev"])).toEqual(["gaffer", "dev"]);
 	});
 
 	it("ignores workspace-scope override (defense against hostile workspaces)", () => {
@@ -36,7 +36,7 @@ describe("buildGafferArgv", () => {
 		// `inspected?.globalValue` only, so any non-globalValue is
 		// ignored. With nothing set, we get the default.
 		setConfiguration("gaffer", "command", {});
-		expect(buildGafferArgv(["dev"])).toEqual(["./bin/gaffer", "dev"]);
+		expect(buildGafferArgv(["dev"])).toEqual(["gaffer", "dev"]);
 	});
 });
 

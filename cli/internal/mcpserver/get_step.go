@@ -12,7 +12,7 @@ var getStepTool = &mcp.Tool{
 }
 
 type getStepInput struct {
-	Position int64 `json:"position" jsonschema:"Event position (1-based) from the session history"`
+	Step int64 `json:"step" jsonschema:"Step number (1-based) from the session history"`
 }
 
 func (s *Server) handleGetStep(_ context.Context, _ *mcp.CallToolRequest, input getStepInput) (*mcp.CallToolResult, any, error) {
@@ -24,12 +24,12 @@ func (s *Server) handleGetStep(_ context.Context, _ *mcp.CallToolRequest, input 
 		return errResult, nil, nil
 	}
 
-	step, err := sess.runner.GetStep(input.Position)
+	step, err := sess.runner.GetStep(input.Step)
 	if err != nil {
 		return toolError("querying history: %v", err), nil, nil
 	}
 	if step == nil {
-		return toolError("no step at position %d", input.Position), nil, nil
+		return toolError("no step at %d", input.Step), nil, nil
 	}
 
 	return toolResult(formatStep(step)), nil, nil

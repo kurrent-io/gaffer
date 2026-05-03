@@ -104,8 +104,8 @@ func TestLatest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if step.Position != 3 {
-		t.Errorf("Position = %d, want 3", step.Position)
+	if step.Index != 3 {
+		t.Errorf("Index = %d, want 3", step.Index)
 	}
 	if step.Status != "skipped" {
 		t.Errorf("Status = %q, want skipped", step.Status)
@@ -120,7 +120,7 @@ func TestGetNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 	if step != nil {
-		t.Errorf("expected nil, got step at position %d", step.Position)
+		t.Errorf("expected nil, got step at %d", step.Index)
 	}
 }
 
@@ -174,7 +174,7 @@ func TestEviction(t *testing.T) {
 		t.Fatal(err)
 	}
 	if step != nil {
-		t.Error("expected position 1 to be evicted")
+		t.Error("expected step 1 to be evicted")
 	}
 
 	// Latest should exist
@@ -183,7 +183,7 @@ func TestEviction(t *testing.T) {
 		t.Fatal(err)
 	}
 	if step == nil {
-		t.Error("expected position 10 to exist")
+		t.Error("expected step 10 to exist")
 	}
 }
 
@@ -195,7 +195,7 @@ func TestLatestEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	if step != nil {
-		t.Errorf("expected nil, got step at position %d", step.Position)
+		t.Errorf("expected nil, got step at %d", step.Index)
 	}
 }
 

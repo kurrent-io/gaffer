@@ -12,7 +12,7 @@ import (
 
 var runTool = &mcp.Tool{
 	Name:        "run",
-	Description: "Run a projection against events. Creates a new session (replacing any existing one). Always blocks until completion. Fixture mode: returns summary when all events are consumed. Live mode: blocks until caught_up, error, or timeout. Set breakpoints (source lines) or break_at (event position) to pause at specific points - returns debug context with call stack, variables, and state.",
+	Description: "Run a projection against events. Creates a new session (replacing any existing one). Always blocks until completion. Fixture mode: returns summary when all events are consumed. Live mode: blocks until caught_up, error, or timeout. Set breakpoints (source lines) or break_at (step number) to pause at specific points - returns debug context with call stack, variables, and state.",
 }
 
 type breakpointInput struct {
@@ -24,7 +24,7 @@ type runInput struct {
 	Name        string            `json:"name" jsonschema:"Projection name from gaffer.toml"`
 	Events      string            `json:"events,omitempty" jsonschema:"Path to a JSON fixture file (relative to project root or absolute). Omit for live KurrentDB subscription."`
 	Breakpoints []breakpointInput `json:"breakpoints,omitempty" jsonschema:"Source line breakpoints to set before feeding events. Enables debug mode."`
-	BreakAt     int64             `json:"break_at,omitempty" jsonschema:"Pause at a specific event position (1-based). Enables debug mode."`
+	BreakAt     int64             `json:"break_at,omitempty" jsonschema:"Pause at a specific step (1-based). Enables debug mode."`
 }
 
 func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input runInput) (*mcp.CallToolResult, any, error) {
@@ -92,7 +92,7 @@ func (s *Server) setupBreakpoints(sess *activeSession, breakpoints []breakpointI
 	}
 	for i, s := range snapped {
 		if s == nil {
-			return fmt.Errorf("no breakable position at or after line %d", breakpoints[i].Line)
+			return fmt.Errorf("no breakable step at or after line %d", breakpoints[i].Line)
 		}
 	}
 	return nil
@@ -100,7 +100,7 @@ func (s *Server) setupBreakpoints(sess *activeSession, breakpoints []breakpointI
 
 func (s *Server) startLiveMode(sess *activeSession, breakAt int64) error {
 	if breakAt > 0 {
-		sess.runner.SetBreakAtPosition(breakAt)
+		sess.runner.SetBreakAtStep(breakAt)
 	}
 	return s.startLiveSubscription(sess)
 }
@@ -119,7 +119,7 @@ func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string, bre
 		return fmt.Errorf("break_at %d exceeds total events (%d)", breakAt, len(events))
 	}
 
-	sess.runner.SetBreakAtPosition(breakAt)
+	sess.runner.SetBreakAtStep(breakAt)
 
 	done := make(chan struct{})
 	sess.done = done

@@ -94,7 +94,7 @@ func TestLive_RunAndInspect(t *testing.T) {
 	}
 
 	// Check first step
-	step := callTool(t, s, getStepTool, s.handleGetStep, getStepInput{Position: int64(entries[0].(map[string]any)["position"].(float64))})
+	step := callTool(t, s, getStepTool, s.handleGetStep, getStepInput{Step: int64(entries[0].(map[string]any)["step"].(float64))})
 	if step["eventType"] != "Ping" {
 		t.Errorf("expected eventType=Ping, got %v", step["eventType"])
 	}

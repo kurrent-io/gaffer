@@ -42,15 +42,15 @@ type Runner struct {
 	history       *history.Store
 	debug         *DebugConfig
 
-	stats           EventStats
-	partitions      map[string]bool
-	faulted         bool
-	lastError       error
-	position        atomic.Int64
-	status          string
-	paused          bool
-	pausedEvent     string
-	breakAtPosition int64
+	stats       EventStats
+	partitions  map[string]bool
+	faulted     bool
+	lastError   error
+	step        atomic.Int64
+	status      string
+	paused      bool
+	pausedEvent string
+	breakAtStep int64
 }
 
 type EventStats struct {
@@ -82,7 +82,7 @@ func NewRunner(cfg RunnerConfig) *Runner {
 	if r.debug != nil && r.debug.OnBreak != nil {
 		r.debug.Session.OnBreak(func(info gafferruntime.BreakInfo) {
 			r.mu.Lock()
-			breakAt := r.breakAtPosition
+			breakAt := r.breakAtStep
 			r.mu.Unlock()
 			if info.Reason == "pause" && breakAt > 0 {
 				go r.debug.Session.StepInto()
@@ -99,10 +99,10 @@ func NewRunner(cfg RunnerConfig) *Runner {
 
 func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 	r.mu.Lock()
-	pos := r.position.Add(1)
+	step := r.step.Add(1)
 	if r.debug != nil {
 		r.pausedEvent = eventJSON
-		if r.breakAtPosition > 0 && pos == r.breakAtPosition {
+		if r.breakAtStep > 0 && step == r.breakAtStep {
 			r.debug.Session.Pause()
 		}
 	}
@@ -214,8 +214,8 @@ func (r *Runner) LastError() error {
 	return r.lastError
 }
 
-func (r *Runner) Position() int64 {
-	return r.position.Load()
+func (r *Runner) Step() int64 {
+	return r.step.Load()
 }
 
 func (r *Runner) SetFaulted(v bool) {
@@ -248,10 +248,10 @@ func (r *Runner) SetStatus(s string) {
 	r.status = s
 }
 
-func (r *Runner) SetBreakAtPosition(pos int64) {
+func (r *Runner) SetBreakAtStep(step int64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.breakAtPosition = pos
+	r.breakAtStep = step
 }
 
 func (r *Runner) Info() gafferruntime.ProjectionInfo {

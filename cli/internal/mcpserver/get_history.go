@@ -9,12 +9,12 @@ import (
 
 var getHistoryTool = &mcp.Tool{
 	Name:        "get_history",
-	Description: "Get state snapshots and a compact step summary between two positions. Returns the projection state before the range, the state after the range, and timeline entries for each step in between. Use get_step for full event/result detail at a specific position.",
+	Description: "Get state snapshots and a compact step summary between two steps. Returns the projection state before the range, the state after the range, and timeline entries for each step in between. Use get_step for full event/result detail at a specific step.",
 }
 
 type getHistoryInput struct {
-	From      int64  `json:"from" jsonschema:"Start position (inclusive). Defaults to 1 if 0."`
-	To        int64  `json:"to" jsonschema:"End position (inclusive). Defaults to last position if 0."`
+	From      int64  `json:"from" jsonschema:"Start step (inclusive). Defaults to 1 if 0."`
+	To        int64  `json:"to" jsonschema:"End step (inclusive). Defaults to last step if 0."`
 	Partition string `json:"partition,omitempty" jsonschema:"Filter to a specific partition key"`
 }
 

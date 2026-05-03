@@ -8,11 +8,11 @@ import (
 
 // History accessors
 
-func (r *Runner) GetStep(position int64) (*history.Step, error) {
+func (r *Runner) GetStep(step int64) (*history.Step, error) {
 	if r.history == nil {
 		return nil, fmt.Errorf("no history store")
 	}
-	return r.history.Get(position)
+	return r.history.Get(step)
 }
 
 func (r *Runner) Timeline(from, to int64) ([]history.TimelineEntry, error) {

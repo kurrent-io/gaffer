@@ -20,14 +20,15 @@ func NewCustomEvent(event string, body any) *CustomEvent {
 	}
 }
 
-// GafferGotoRequest is a custom DAP request to navigate to a history position.
+// GafferGotoRequest is a custom DAP request to navigate to a step in
+// the session history.
 type GafferGotoRequest struct {
 	godap.Request
 	Arguments GafferGotoArguments `json:"arguments"`
 }
 
 type GafferGotoArguments struct {
-	Position int64 `json:"position"`
+	Step int64 `json:"step"`
 }
 
 func (r *GafferGotoRequest) GetRequest() *godap.Request { return &r.Request }

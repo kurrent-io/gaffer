@@ -225,7 +225,7 @@ func TestStop(t *testing.T) {
 	callTool(t, s, stopTool, s.handleStop, stopInput{})
 
 	// After stop, inspection tools should error
-	callToolExpectError(t, s.handleGetStep, getStepInput{Position: 1})
+	callToolExpectError(t, s.handleGetStep, getStepInput{Step: 1})
 }
 
 // --- Inspection tools ---
@@ -234,7 +234,7 @@ func TestGetStep(t *testing.T) {
 	s := setupTestProject(t)
 	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
 
-	result := callTool(t, s, getStepTool, s.handleGetStep, getStepInput{Position: 1})
+	result := callTool(t, s, getStepTool, s.handleGetStep, getStepInput{Step: 1})
 	if result["eventType"] != "OrderPlaced" {
 		t.Errorf("expected eventType=OrderPlaced, got %v", result["eventType"])
 	}
@@ -245,13 +245,13 @@ func TestGetStep(t *testing.T) {
 
 func TestGetStep_NoSession(t *testing.T) {
 	s := setupTestProject(t)
-	callToolExpectError(t, s.handleGetStep, getStepInput{Position: 1})
+	callToolExpectError(t, s.handleGetStep, getStepInput{Step: 1})
 }
 
-func TestGetStep_InvalidPosition(t *testing.T) {
+func TestGetStep_InvalidStep(t *testing.T) {
 	s := setupTestProject(t)
 	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
-	callToolExpectError(t, s.handleGetStep, getStepInput{Position: 999})
+	callToolExpectError(t, s.handleGetStep, getStepInput{Step: 999})
 }
 
 func TestGetTimeline(t *testing.T) {
@@ -519,7 +519,7 @@ func TestStop_WhilePaused(t *testing.T) {
 	callTool(t, s, stopTool, s.handleStop, stopInput{})
 
 	// Session should be gone
-	callToolExpectError(t, s.handleGetStep, getStepInput{Position: 1})
+	callToolExpectError(t, s.handleGetStep, getStepInput{Step: 1})
 }
 
 // --- Resources ---
@@ -671,7 +671,7 @@ func TestErrorHint(t *testing.T) {
 
 func TestFormatStep(t *testing.T) {
 	step := &history.Step{
-		Position:   3,
+		Index:      3,
 		EventType:  "OrderPlaced",
 		StreamID:   "order-1",
 		Status:     "processed",
@@ -681,8 +681,8 @@ func TestFormatStep(t *testing.T) {
 	}
 
 	result := formatStep(step)
-	if result["position"] != int64(3) {
-		t.Errorf("position: got %v", result["position"])
+	if result["step"] != int64(3) {
+		t.Errorf("step: got %v", result["step"])
 	}
 	if result["eventType"] != "OrderPlaced" {
 		t.Errorf("eventType: got %v", result["eventType"])

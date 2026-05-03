@@ -198,8 +198,8 @@ func (w *dapEventWriter) OnResult(eventID string, result *gafferruntime.FeedResu
 	w.adapter.mu.Unlock()
 
 	resultEvt := NewCustomEvent("gaffer/stepResult", map[string]any{
-		"position": w.adapter.runner.Position(),
-		"result":   json.RawMessage(resultJSON),
+		"step":   w.adapter.runner.Step(),
+		"result": json.RawMessage(resultJSON),
 	})
 	w.adapter.bufferOrSend(resultEvt, inspect)
 
@@ -702,16 +702,16 @@ func (a *DebugAdapter) EmitFellBehind() {
 }
 
 func (a *DebugAdapter) handleGafferGoto(s *Server, req *GafferGotoRequest) {
-	step, err := a.runner.GetStep(req.Arguments.Position)
+	step, err := a.runner.GetStep(req.Arguments.Step)
 	if err != nil || step == nil {
-		s.Send(NewErrorResponse(req.Seq, req.Command, "position not found"))
+		s.Send(NewErrorResponse(req.Seq, req.Command, "step not found"))
 		return
 	}
 
 	body, _ := json.Marshal(map[string]any{
-		"position": step.Position,
-		"event":    json.RawMessage(step.EventJSON),
-		"result":   json.RawMessage(step.ResultJSON),
+		"step":   step.Index,
+		"event":  json.RawMessage(step.EventJSON),
+		"result": json.RawMessage(step.ResultJSON),
 	})
 
 	resp := &GafferGotoResponse{}

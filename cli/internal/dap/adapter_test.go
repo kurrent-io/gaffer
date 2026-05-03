@@ -578,7 +578,7 @@ func TestAdapter_GafferGoto(t *testing.T) {
 			ProtocolMessage: godap.ProtocolMessage{Seq: seq, Type: "request"},
 			Command:         "gaffer/goto",
 		},
-		Arguments: GafferGotoArguments{Position: 1},
+		Arguments: GafferGotoArguments{Step: 1},
 	})
 
 	msg := readMessage(t, conn, reader)
@@ -594,8 +594,8 @@ func TestAdapter_GafferGoto(t *testing.T) {
 	if err := json.Unmarshal(resp.Body, &body); err != nil {
 		t.Fatalf("failed to unmarshal body: %v", err)
 	}
-	if _, ok := body["position"]; !ok {
-		t.Fatal("expected position in response body")
+	if _, ok := body["step"]; !ok {
+		t.Fatal("expected step in response body")
 	}
 	if _, ok := body["event"]; !ok {
 		t.Fatal("expected event in response body")
@@ -605,7 +605,7 @@ func TestAdapter_GafferGoto(t *testing.T) {
 	}
 }
 
-func TestAdapter_GafferGoto_InvalidPosition(t *testing.T) {
+func TestAdapter_GafferGoto_InvalidStep(t *testing.T) {
 	_, runner, conn, reader := mustSetupDebugSessionWithHistory(t)
 
 	seq := feedAndContinue(t, runner, conn, reader, 2)
@@ -615,7 +615,7 @@ func TestAdapter_GafferGoto_InvalidPosition(t *testing.T) {
 			ProtocolMessage: godap.ProtocolMessage{Seq: seq, Type: "request"},
 			Command:         "gaffer/goto",
 		},
-		Arguments: GafferGotoArguments{Position: 999},
+		Arguments: GafferGotoArguments{Step: 999},
 	})
 
 	msg := readMessage(t, conn, reader)
@@ -626,8 +626,8 @@ func TestAdapter_GafferGoto_InvalidPosition(t *testing.T) {
 	if resp.Success {
 		t.Fatal("expected error response")
 	}
-	if resp.Message != "position not found" {
-		t.Fatalf("expected 'position not found', got %q", resp.Message)
+	if resp.Message != "step not found" {
+		t.Fatalf("expected 'step not found', got %q", resp.Message)
 	}
 }
 
@@ -647,7 +647,7 @@ func TestAdapter_GafferGoto_NoHistory(t *testing.T) {
 			ProtocolMessage: godap.ProtocolMessage{Seq: 3, Type: "request"},
 			Command:         "gaffer/goto",
 		},
-		Arguments: GafferGotoArguments{Position: 1},
+		Arguments: GafferGotoArguments{Step: 1},
 	})
 
 	msg := readMessage(t, conn, reader)

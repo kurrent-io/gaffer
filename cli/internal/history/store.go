@@ -16,7 +16,10 @@ type Store struct {
 }
 
 type Step struct {
-	Position   int64  `json:"position"`
+	// Index is the 1-based step counter - the Nth call to ProcessOne
+	// in this session. Named Index (not Step) so the field doesn't
+	// shadow the type and read as `step.Step`.
+	Index      int64  `json:"step"`
 	EventJSON  string `json:"eventJson"`
 	ResultJSON string `json:"resultJson"`
 	EventType  string `json:"eventType"`
@@ -28,7 +31,7 @@ type Step struct {
 }
 
 type TimelineEntry struct {
-	Position  int64  `json:"position"`
+	Index     int64  `json:"step"`
 	EventType string `json:"eventType,omitempty"`
 	StreamID  string `json:"streamId,omitempty"`
 	Status    string `json:"status"`
@@ -49,7 +52,7 @@ func NewWithLimit(maxSteps int) (*Store, error) {
 
 	if _, err := db.Exec(`
 		CREATE TABLE steps (
-			position    INTEGER PRIMARY KEY AUTOINCREMENT,
+			step        INTEGER PRIMARY KEY AUTOINCREMENT,
 			event_json  TEXT NOT NULL,
 			result_json TEXT NOT NULL,
 			event_type  TEXT,
@@ -82,30 +85,30 @@ func (s *Store) Insert(eventJSON, resultJSON string) (int64, error) {
 		return 0, fmt.Errorf("history: insert: %w", err)
 	}
 
-	pos, err := result.LastInsertId()
+	step, err := result.LastInsertId()
 	if err != nil {
 		return 0, fmt.Errorf("history: last insert id: %w", err)
 	}
 
 	if int64(s.maxSteps) > 0 {
-		_, _ = s.db.Exec(`DELETE FROM steps WHERE position <= ?`, pos-int64(s.maxSteps))
+		_, _ = s.db.Exec(`DELETE FROM steps WHERE step <= ?`, step-int64(s.maxSteps))
 	}
 
-	return pos, nil
+	return step, nil
 }
 
-func (s *Store) Get(position int64) (*Step, error) {
+func (s *Store) Get(step int64) (*Step, error) {
 	row := s.db.QueryRow(`
-		SELECT position, event_json, result_json, event_type, stream_id, status, partition, has_emit, has_log
-		FROM steps WHERE position = ?
-	`, position)
+		SELECT step, event_json, result_json, event_type, stream_id, status, partition, has_emit, has_log
+		FROM steps WHERE step = ?
+	`, step)
 	return scanStep(row)
 }
 
 func (s *Store) Latest() (*Step, error) {
 	row := s.db.QueryRow(`
-		SELECT position, event_json, result_json, event_type, stream_id, status, partition, has_emit, has_log
-		FROM steps ORDER BY position DESC LIMIT 1
+		SELECT step, event_json, result_json, event_type, stream_id, status, partition, has_emit, has_log
+		FROM steps ORDER BY step DESC LIMIT 1
 	`)
 	return scanStep(row)
 }
@@ -119,14 +122,14 @@ func (s *Store) TimelineFiltered(from, to int64, partition string) ([]TimelineEn
 	var args []any
 
 	if partition != "" {
-		query = `SELECT position, event_type, stream_id, status, partition, has_emit, has_log
-			FROM steps WHERE position >= ? AND position <= ? AND partition = ?
-			ORDER BY position`
+		query = `SELECT step, event_type, stream_id, status, partition, has_emit, has_log
+			FROM steps WHERE step >= ? AND step <= ? AND partition = ?
+			ORDER BY step`
 		args = []any{from, to, partition}
 	} else {
-		query = `SELECT position, event_type, stream_id, status, partition, has_emit, has_log
-			FROM steps WHERE position >= ? AND position <= ?
-			ORDER BY position`
+		query = `SELECT step, event_type, stream_id, status, partition, has_emit, has_log
+			FROM steps WHERE step >= ? AND step <= ?
+			ORDER BY step`
 		args = []any{from, to}
 	}
 
@@ -139,7 +142,7 @@ func (s *Store) TimelineFiltered(from, to int64, partition string) ([]TimelineEn
 	entries := []TimelineEntry{}
 	for rows.Next() {
 		var e TimelineEntry
-		if err := rows.Scan(&e.Position, &e.EventType, &e.StreamID, &e.Status, &e.Partition, &e.HasEmit, &e.HasLog); err != nil {
+		if err := rows.Scan(&e.Index, &e.EventType, &e.StreamID, &e.Status, &e.Partition, &e.HasEmit, &e.HasLog); err != nil {
 			return nil, fmt.Errorf("history: scan timeline: %w", err)
 		}
 		entries = append(entries, e)
@@ -154,7 +157,7 @@ func (s *Store) Count() (int64, error) {
 }
 
 func (s *Store) Range() (min, max int64, err error) {
-	err = s.db.QueryRow(`SELECT COALESCE(MIN(position), 0), COALESCE(MAX(position), 0) FROM steps`).Scan(&min, &max)
+	err = s.db.QueryRow(`SELECT COALESCE(MIN(step), 0), COALESCE(MAX(step), 0) FROM steps`).Scan(&min, &max)
 	return
 }
 
@@ -165,7 +168,7 @@ func (s *Store) Close() error {
 func scanStep(row *sql.Row) (*Step, error) {
 	var step Step
 	err := row.Scan(
-		&step.Position, &step.EventJSON, &step.ResultJSON,
+		&step.Index, &step.EventJSON, &step.ResultJSON,
 		&step.EventType, &step.StreamID, &step.Status,
 		&step.Partition, &step.HasEmit, &step.HasLog,
 	)

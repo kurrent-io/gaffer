@@ -9,15 +9,15 @@ import (
 )
 
 func (s *Server) resolveRange(from, to int64) (int64, int64) {
-	minPos, maxPos, _ := s.session.runner.HistoryRange()
+	minStep, maxStep, _ := s.session.runner.HistoryRange()
 	if from <= 0 {
-		from = minPos
+		from = minStep
 	}
 	if to <= 0 {
-		to = maxPos
+		to = maxStep
 	}
-	if from < minPos {
-		from = minPos
+	if from < minStep {
+		from = minStep
 	}
 	if to < from {
 		to = from
@@ -33,7 +33,7 @@ func formatStep(step *history.Step) map[string]any {
 	_ = json.Unmarshal([]byte(step.ResultJSON), &result)
 
 	return map[string]any{
-		"position":  step.Position,
+		"step":      step.Index,
 		"eventType": step.EventType,
 		"streamId":  step.StreamID,
 		"status":    step.Status,

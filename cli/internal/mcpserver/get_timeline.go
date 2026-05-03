@@ -8,12 +8,12 @@ import (
 
 var getTimelineTool = &mcp.Tool{
 	Name:        "get_timeline",
-	Description: "Get a compact overview of a range of steps. Returns position, event type, stream ID, status, and flags for each step. Use this to scan for interesting positions, then drill in with get_step.",
+	Description: "Get a compact overview of a range of steps. Returns step number, event type, stream ID, status, and flags for each step. Use this to scan for interesting steps, then drill in with get_step.",
 }
 
 type getTimelineInput struct {
-	From      int64  `json:"from" jsonschema:"Start position (inclusive). Defaults to 1 if 0."`
-	To        int64  `json:"to" jsonschema:"End position (inclusive). Defaults to last position if 0."`
+	From      int64  `json:"from" jsonschema:"Start step (inclusive). Defaults to 1 if 0."`
+	To        int64  `json:"to" jsonschema:"End step (inclusive). Defaults to last step if 0."`
 	Partition string `json:"partition,omitempty" jsonschema:"Filter to a specific partition key"`
 }
 

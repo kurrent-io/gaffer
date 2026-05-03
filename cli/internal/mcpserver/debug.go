@@ -69,7 +69,6 @@ func (s *Server) handleWaitResult(sess *activeSession, wr waitResult) (*mcp.Call
 			"caughtUp":  true,
 			"message":   "Subscription caught up to the head of the stream without hitting a breakpoint.",
 			"processed": sess.handled(),
-			"skipped":   sess.skipped(),
 		}), nil, nil
 	}
 
@@ -77,7 +76,6 @@ func (s *Server) handleWaitResult(sess *activeSession, wr waitResult) (*mcp.Call
 		summary := sess.runner.CollectState().ToMap()
 		summary["completed"] = true
 		summary["processed"] = sess.handled()
-		summary["skipped"] = sess.skipped()
 		summary["errors"] = sess.errors()
 		return toolResult(summary), nil, nil
 	}

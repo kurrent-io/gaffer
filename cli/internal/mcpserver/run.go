@@ -161,7 +161,6 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 	summary := sess.runner.CollectState().ToMap()
 	summary["completed"] = !sess.runner.Faulted()
 	summary["processed"] = sess.handled()
-	summary["skipped"] = sess.skipped()
 	summary["errors"] = sess.errors()
 	summary["totalEvents"] = len(events)
 

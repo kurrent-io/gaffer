@@ -56,7 +56,7 @@ describe("StatusViewProvider", () => {
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
 		const beforeCount = view.webview.postedMessages.length;
-		provider.setStats(3, 0, 0);
+		provider.setStats(3, 0);
 		expect(view.webview.postedMessages.length).toBe(beforeCount + 1);
 		const update = lastUpdate(view);
 		expect(update.stats).toContain("3 events processed");
@@ -66,23 +66,19 @@ describe("StatusViewProvider", () => {
 		const provider = new StatusViewProvider();
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
-		provider.setStats(5, 1, 0);
+		provider.setStats(5, 0);
 		const beforeCount = view.webview.postedMessages.length;
-		provider.setStats(5, 1, 0);
+		provider.setStats(5, 0);
 		expect(view.webview.postedMessages.length).toBe(beforeCount);
 	});
 
-	it("includes processed/skipped/errors in stats when non-zero", () => {
+	it("includes processed/errors in stats when non-zero (skipped intentionally hidden)", () => {
 		const provider = new StatusViewProvider();
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
-		provider.setStats(1, 1, 1);
-		expect(lastUpdate(view).stats).toEqual([
-			"1 events processed",
-			"1 events skipped",
-			"1 errors",
-		]);
+		provider.setStats(1, 1);
+		expect(lastUpdate(view).stats).toEqual(["1 events processed", "1 errors"]);
 	});
 
 	it("markEnded flips mode to 'ended', updates title, and hides the pause button", () => {
@@ -90,7 +86,7 @@ describe("StatusViewProvider", () => {
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
-		provider.setStats(1, 0, 0);
+		provider.setStats(1, 0);
 		provider.markEnded();
 		const update = lastUpdate(view);
 		expect(update.mode).toBe("ended");
@@ -103,7 +99,7 @@ describe("StatusViewProvider", () => {
 		const view1 = makeFakeWebviewView();
 		provider.resolveWebviewView(view1 as unknown as vscode.WebviewView);
 		provider.reset("checkout");
-		provider.setStats(1, 0, 0);
+		provider.setStats(1, 0);
 		provider.markEnded();
 		// View flips out (e.g. when-clause toggles) and a new one resolves.
 		const view2 = makeFakeWebviewView();

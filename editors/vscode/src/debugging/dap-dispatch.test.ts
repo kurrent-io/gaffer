@@ -51,14 +51,14 @@ function fakeState(): { provider: StateProvider; calls: RecordedState } {
 }
 
 interface RecordedStatus {
-	setStats: Array<{ processed: number; skipped: number; errors: number }>;
+	setStats: Array<{ processed: number; errors: number }>;
 }
 
 function fakeStatus(): { provider: StatusViewProvider; calls: RecordedStatus } {
 	const calls: RecordedStatus = { setStats: [] };
 	const provider = {
-		setStats: (processed: number, skipped: number, errors: number) =>
-			calls.setStats.push({ processed, skipped, errors }),
+		setStats: (processed: number, errors: number) =>
+			calls.setStats.push({ processed, errors }),
 	} as unknown as StatusViewProvider;
 	return { provider, calls };
 }
@@ -209,12 +209,10 @@ describe("dispatchDapEvent - happy paths", () => {
 	it("routes gaffer/stats to setStats", async () => {
 		const status = fakeStatus();
 		await dispatchDapEvent(
-			event("gaffer/stats", { handled: 12, skipped: 3, errors: 1 }),
+			event("gaffer/stats", { handled: 12, errors: 1 }),
 			handlers({ status: status.provider }),
 		);
-		expect(status.calls.setStats).toEqual([
-			{ processed: 12, skipped: 3, errors: 1 },
-		]);
+		expect(status.calls.setStats).toEqual([{ processed: 12, errors: 1 }]);
 	});
 
 	it("awaits setEngineMode before returning", async () => {
@@ -246,7 +244,7 @@ describe("dispatchDapEvent - malformed bodies", () => {
 		["gaffer/stepError", { code: "x" /* missing description */ }],
 		["gaffer/state", { partitions: "not-an-array" }],
 		["gaffer/mode", { mode: 42 }],
-		["gaffer/stats", { handled: "many", skipped: 0, errors: 0 }],
+		["gaffer/stats", { handled: "many", errors: 0 }],
 	];
 
 	for (const [name, body] of malformed) {

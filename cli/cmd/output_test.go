@@ -108,7 +108,10 @@ func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
 	}
 }
 
-func TestTextWriter_WriteEvent(t *testing.T) {
+func TestTextWriter_WriteEvent_DeferredUntilResult(t *testing.T) {
+	// WriteEvent buffers; the actual print only happens on a
+	// non-skipped WriteResult / WriteError. Verifies the contract
+	// that lets us drop skipped events transparently from text output.
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
 
@@ -120,6 +123,11 @@ func TestTextWriter_WriteEvent(t *testing.T) {
 		Metadata:       json.RawMessage(`{"corr":"abc"}`),
 	}
 	tw.WriteEvent(event)
+	if buf.Len() != 0 {
+		t.Fatalf("expected nothing written before the result, got %q", buf.String())
+	}
+
+	tw.WriteResult("1@order-1", &gafferruntime.FeedResult{Status: "processed"})
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "1@order-1")
@@ -132,6 +140,7 @@ func TestTextWriter_WriteResult_Processed(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
 
+	tw.WriteEvent(eventInfo{SequenceNumber: 1, StreamID: "order-1", EventType: "OrderPlaced"})
 	result := &gafferruntime.FeedResult{
 		Status:    "processed",
 		Partition: "order-1",
@@ -142,21 +151,6 @@ func TestTextWriter_WriteResult_Processed(t *testing.T) {
 	out := buf.String()
 	testutil.AssertContains(t, out, "partition: order-1\n")
 	testutil.AssertContains(t, out, `state: {"count":1}`)
-}
-
-func TestTextWriter_WriteResult_Skipped(t *testing.T) {
-	var buf bytes.Buffer
-	tw := newTextWriter(&buf, nil)
-
-	result := &gafferruntime.FeedResult{
-		Status:     "skipped",
-		SkipReason: "unhandled",
-	}
-	tw.WriteResult("1@order-1", result)
-
-	out := buf.String()
-	testutil.AssertContains(t, out, "skipped\n")
-	testutil.AssertContains(t, out, "reason: unhandled")
 }
 
 func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {
@@ -170,7 +164,7 @@ func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {
 	tw.WriteSummary(stats, state)
 
 	out := buf.String()
-	testutil.AssertContains(t, out, "42 events processed (42 handled, 0 skipped)")
+	testutil.AssertContains(t, out, "42 events processed")
 	testutil.AssertContains(t, out, `State: {"count":42}`)
 }
 
@@ -188,7 +182,7 @@ func TestTextWriter_WriteSummary_Partitioned(t *testing.T) {
 	tw.WriteSummary(stats, state)
 
 	out := buf.String()
-	testutil.AssertContains(t, out, "4 events processed (3 handled, 1 skipped)")
+	testutil.AssertContains(t, out, "3 events processed")
 	testutil.AssertContains(t, out, "order-1")
 	testutil.AssertContains(t, out, `state: {"count":2}`)
 }
@@ -474,7 +468,7 @@ func TestTextWriter_WriteSummary_WithErrors(t *testing.T) {
 	tw.WriteSummary(stats, state)
 
 	out := buf.String()
-	testutil.AssertContains(t, out, "8 events processed")
+	testutil.AssertContains(t, out, "5 events processed")
 	testutil.AssertContains(t, out, "2 errors")
 }
 

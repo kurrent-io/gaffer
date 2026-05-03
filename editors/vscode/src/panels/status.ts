@@ -26,7 +26,6 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	#view: vscode.WebviewView | null = null;
 	#name = "";
 	#processed = 0;
-	#skipped = 0;
 	#errors = 0;
 	// Stored on the provider so that view reconstruction (when VS Code
 	// re-shows after the visibility when-clause flips) re-renders with
@@ -62,7 +61,6 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	reset(name: string): void {
 		this.#name = name;
 		this.#processed = 0;
-		this.#skipped = 0;
 		this.#errors = 0;
 		this.#mode = "running";
 		this.#postUpdate();
@@ -77,16 +75,16 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	// The CLI throttles its emit cadence so a 200ms render coalesce
 	// here is unnecessary - by the time setStats fires the values are
 	// already at most 100ms behind the engine.
-	setStats(processed: number, skipped: number, errors: number): void {
-		if (
-			this.#processed === processed &&
-			this.#skipped === skipped &&
-			this.#errors === errors
-		) {
+	//
+	// Skipped events are intentionally not surfaced: they're noise from
+	// the user's perspective ("we couldn't filter this on the server but
+	// got it and didn't want it"). Tracked internally on the CLI side
+	// for future verbose/debug surfaces.
+	setStats(processed: number, errors: number): void {
+		if (this.#processed === processed && this.#errors === errors) {
 			return;
 		}
 		this.#processed = processed;
-		this.#skipped = skipped;
 		this.#errors = errors;
 		this.#postUpdate();
 	}
@@ -96,9 +94,6 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		const stats: string[] = [];
 		if (this.#processed > 0) {
 			stats.push(`${this.#processed.toLocaleString()} events processed`);
-		}
-		if (this.#skipped > 0) {
-			stats.push(`${this.#skipped.toLocaleString()} events skipped`);
 		}
 		if (this.#errors > 0) {
 			stats.push(`${this.#errors.toLocaleString()} errors`);

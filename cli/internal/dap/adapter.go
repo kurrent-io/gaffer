@@ -499,18 +499,24 @@ func (a *DebugAdapter) SendTerminated() {
 }
 
 // EmitStatsIfChanged sends a gaffer/stats custom event with cumulative
-// counters if anything has moved since the last emit. Used by the dev
-// command's activity ticker to drive the editor's Status counter
-// without flooding DAP - per-event step events are buffered for the
-// inspect view, so without this the counter would never tick during
-// live mode.
+// counters if anything user-facing has moved since the last emit. Used
+// by the dev command's activity ticker to drive the editor's Status
+// counter without flooding DAP - per-event step events are buffered
+// for the inspect view, so without this the counter would never tick
+// during live mode.
+//
+// Skipped is tracked internally on EventStats but not emitted: skips
+// are runtime hygiene noise (link metadata, system deletes, etc.)
+// rather than user-actionable events. The change check only looks at
+// fields we actually send so a flurry of pure-skip events doesn't
+// produce redundant wire traffic.
 func (a *DebugAdapter) EmitStatsIfChanged() {
 	if a.runner == nil || a.server == nil {
 		return
 	}
 	cur := a.runner.Stats()
 	a.mu.Lock()
-	if cur == a.lastStats {
+	if cur.Handled == a.lastStats.Handled && cur.Errors == a.lastStats.Errors {
 		a.mu.Unlock()
 		return
 	}
@@ -518,7 +524,6 @@ func (a *DebugAdapter) EmitStatsIfChanged() {
 	a.mu.Unlock()
 	a.server.Send(NewCustomEvent("gaffer/stats", map[string]any{
 		"handled": cur.Handled,
-		"skipped": cur.Skipped,
 		"errors":  cur.Errors,
 	}))
 }

@@ -22,6 +22,12 @@ type textWriter struct {
 	line   prefixed
 	corner prefixed
 	styles textStyles
+	// Pending event held between WriteEvent and the matching
+	// WriteResult / WriteError. Lets WriteResult drop the entire
+	// event block silently when the result is "skipped" - those
+	// events are runtime-internal noise (link events, system
+	// metadata, etc.) and not user-relevant.
+	pending *eventInfo
 }
 
 type textStyles struct {
@@ -185,9 +191,20 @@ func (tw *textWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, 
 func (tw *textWriter) WriteDebugListening(addr string, port int) {}
 
 func (tw *textWriter) WriteEvent(event eventInfo) {
+	// Defer the actual print until we know the result. Skipped events
+	// won't render at all; processed / errored ones get flushed by
+	// WriteResult / WriteError.
+	tw.pending = &event
+}
+
+func (tw *textWriter) flushPending() {
+	if tw.pending == nil {
+		return
+	}
+	event := *tw.pending
+	tw.pending = nil
 	tw.heading(event.ID())
 	tw.line.detail("type", event.EventType)
-
 	if hasContent(event.Data) {
 		tw.line.detail("data", displayJSON(event.Data))
 	}
@@ -196,25 +213,26 @@ func (tw *textWriter) WriteEvent(event eventInfo) {
 	}
 }
 
-func (tw *textWriter) WriteResult(eventID string, result *gafferruntime.FeedResult) {
-	s := tw.styles
-	if result.Status == "processed" {
-		tw.corner.status(s.processed.Render("processed"))
-		if result.Partition != "" {
-			tw.detail("partition", result.Partition)
-		}
-		if hasContent(result.State) {
-			tw.detail("state", string(result.State))
-		}
-	} else {
-		tw.corner.status(s.skipped.Render("skipped"))
-		tw.detail("reason", result.SkipReason)
+func (tw *textWriter) WriteResult(_ string, result *gafferruntime.FeedResult) {
+	if result.Status == "skipped" {
+		// Drop both the pending event and the result. Skipped is
+		// runtime hygiene noise, not user-actionable.
+		tw.pending = nil
+		return
 	}
-
+	tw.flushPending()
+	tw.corner.status(tw.styles.processed.Render("processed"))
+	if result.Partition != "" {
+		tw.detail("partition", result.Partition)
+	}
+	if hasContent(result.State) {
+		tw.detail("state", string(result.State))
+	}
 	tw.blank()
 }
 
-func (tw *textWriter) WriteError(eventID string, code, description string) {
+func (tw *textWriter) WriteError(_ string, code, description string) {
+	tw.flushPending()
 	tw.corner.status(tw.styles.errStatus.Render(code))
 	tw.write("%s%s\n", tw.ind(), tw.styles.errDetail.Render(description))
 	tw.blank()
@@ -242,12 +260,11 @@ func (tw *textWriter) WriteFatalError(fe fatalError) {
 
 func (tw *textWriter) statsLine(stats engine.EventStats) {
 	gold := tw.styles.skipped.Bold(true).Render
-	line := fmt.Sprintf("%s events processed (%s handled, %s skipped",
-		gold(formatNumber(stats.Total())), gold(formatNumber(stats.Handled)), gold(formatNumber(stats.Skipped)))
+	line := fmt.Sprintf("%s events processed", gold(formatNumber(stats.Handled)))
 	if stats.Errors > 0 {
 		line += fmt.Sprintf(", %s errors", gold(formatNumber(stats.Errors)))
 	}
-	tw.write("%s)\n", line)
+	tw.write("%s\n", line)
 }
 
 func (tw *textWriter) WriteSummary(stats engine.EventStats, state engine.StateSummary) {

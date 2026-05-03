@@ -35,4 +35,8 @@ fromAll()
       state.count++;
       return state;
     },
+    $any(state, event) {
+      state.count++;
+      return state;
+    },
   });

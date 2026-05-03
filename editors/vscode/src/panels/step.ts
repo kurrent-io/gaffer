@@ -7,10 +7,16 @@ export class StepProvider implements vscode.TreeDataProvider<TreeItemWithChildre
 	readonly onDidChangeTreeData = this.#onDidChange.event;
 
 	#items: TreeItemWithChildren[] = [];
+	// Snapshot of #items at startStep time, restored on a skipped
+	// result. Skipped events are not user-relevant ("we got it from
+	// the server but the projection's filters dropped it") so they're
+	// transparently rolled back, leaving the previous step on screen.
+	#preStepItems: TreeItemWithChildren[] = [];
 	#refreshTimer: NodeJS.Timeout | null = null;
 
 	clear(): void {
 		this.#items = [];
+		this.#preStepItems = [];
 		if (this.#refreshTimer) {
 			clearTimeout(this.#refreshTimer);
 			this.#refreshTimer = null;
@@ -19,6 +25,7 @@ export class StepProvider implements vscode.TreeDataProvider<TreeItemWithChildre
 	}
 
 	startStep(event: InputEvent): void {
+		this.#preStepItems = this.#items;
 		this.#items = [buildInputItem(event)];
 		this.#onDidChange.fire();
 	}
@@ -34,6 +41,13 @@ export class StepProvider implements vscode.TreeDataProvider<TreeItemWithChildre
 	}
 
 	setResult(result: StepResult): void {
+		if (result.status === "skipped") {
+			this.#items = this.#preStepItems;
+			this.#preStepItems = [];
+			this.#scheduleRefresh();
+			return;
+		}
+		this.#preStepItems = [];
 		this.#items.push(buildResultItem(result));
 		this.#scheduleRefresh();
 	}

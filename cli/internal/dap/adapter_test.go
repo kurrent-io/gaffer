@@ -939,26 +939,25 @@ func TestAdapter_EmitStatsIfChanged(t *testing.T) {
 	adapter.EmitStatsIfChanged()
 	expectNoMessage(t, conn)
 
-	// Process an event that the projection handles, then a non-handled
-	// type that gets skipped. lastStats should advance after each emit.
+	// Process an event that the projection handles. handled goes 0->1
+	// so a stats event fires.
 	runner.ProcessOne(testFeedEvent)
 	adapter.EmitStatsIfChanged()
 	stats := readCustomEvent(t, conn, reader, "gaffer/stats")
-	if stats["handled"] != float64(1) || stats["skipped"] != float64(0) || stats["errors"] != float64(0) {
-		t.Fatalf("expected handled=1 skipped=0 errors=0, got %+v", stats)
+	if stats["handled"] != float64(1) || stats["errors"] != float64(0) {
+		t.Fatalf("expected handled=1 errors=0, got %+v", stats)
 	}
 
 	// Re-emitting with no new activity is a no-op.
 	adapter.EmitStatsIfChanged()
 	expectNoMessage(t, conn)
 
+	// A pure-skip event moves EventStats.Skipped but NOT any field we
+	// emit. No wire traffic - the editor's view didn't change.
 	skippedEvent := `{"eventType":"NotHandled","streamId":"stream-1","sequenceNumber":1,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000001","created":"2026-01-01T00:00:00Z"}`
 	runner.ProcessOne(skippedEvent)
 	adapter.EmitStatsIfChanged()
-	stats = readCustomEvent(t, conn, reader, "gaffer/stats")
-	if stats["handled"] != float64(1) || stats["skipped"] != float64(1) {
-		t.Fatalf("expected handled=1 skipped=1, got %+v", stats)
-	}
+	expectNoMessage(t, conn)
 }
 
 // Reproduces F6 (manual testing): after entry pause, Continue should let

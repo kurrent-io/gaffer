@@ -45,7 +45,6 @@ export type ModeBody = v.InferOutput<typeof ModeBodySchema>;
 
 export const StatsBodySchema = v.object({
 	handled: v.number(),
-	skipped: v.number(),
 	errors: v.number(),
 });
 export type StatsBody = v.InferOutput<typeof StatsBodySchema>;

@@ -82,11 +82,7 @@ export async function dispatchDapEvent(
 		case "gaffer/stats": {
 			const body = parseDapBody(StatsBodySchema, e);
 			if (body) {
-				handlers.statusProvider.setStats(
-					body.handled,
-					body.skipped,
-					body.errors,
-				);
+				handlers.statusProvider.setStats(body.handled, body.errors);
 			}
 			break;
 		}

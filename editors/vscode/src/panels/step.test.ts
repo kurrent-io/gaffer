@@ -112,19 +112,35 @@ describe("StepProvider", () => {
 		);
 	});
 
-	it("setResult appends a skipped result with reason", async () => {
+	it("setResult with status 'skipped' rolls back to the prior step", async () => {
+		// Skipped events are runtime hygiene noise (link metadata, system
+		// deletes, etc.) and shouldn't appear in the step view. The
+		// provider snapshots at startStep and restores on a skipped result.
 		const provider = new StepProvider();
+
+		// First step: a real processed event the user cares about.
 		provider.startStep({
 			sequenceNumber: 1,
-			streamId: "s",
-			eventType: "T",
+			streamId: "orders-1",
+			eventType: "OrderPlaced",
 		});
-		provider.setResult({ status: "skipped", reason: "filtered out" });
+		provider.setResult({ status: "processed", partition: "orders-1" });
 		vi.advanceTimersByTime(50);
-		const items = provider.getChildren();
-		const result = items.at(-1);
-		expect(result?.label).toBe("skipped");
-		expect(result?.description).toBe("filtered out");
+		const beforeItems = provider.getChildren();
+		expect(beforeItems[0]?.label).toBe("1@orders-1");
+
+		// Second step: a skipped event. The view should NOT show this -
+		// the previous step stays as-is.
+		provider.startStep({
+			sequenceNumber: 2,
+			streamId: "deletes-1",
+			eventType: "$streamDeleted",
+		});
+		provider.setResult({ status: "skipped", reason: "no-delete-handler" });
+		vi.advanceTimersByTime(50);
+		const afterItems = provider.getChildren();
+		expect(afterItems).toEqual(beforeItems);
+		expect(afterItems[0]?.label).toBe("1@orders-1");
 	});
 
 	it("setError appends an error item with description", async () => {

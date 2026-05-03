@@ -39,10 +39,6 @@ func (sess *activeSession) handled() int64 {
 	return int64(sess.runner.Stats().Handled)
 }
 
-func (sess *activeSession) skipped() int64 {
-	return int64(sess.runner.Stats().Skipped)
-}
-
 func (sess *activeSession) errors() int64 {
 	return int64(sess.runner.Stats().Errors)
 }

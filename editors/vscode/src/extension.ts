@@ -7,6 +7,7 @@ import { StepProvider } from "./panels/step.js";
 import { StateProvider } from "./panels/state.js";
 import { StatusViewProvider } from "./panels/status.js";
 import { dispatchDapEvent } from "./debugging/dap-dispatch.js";
+import { PausePendingTrackerFactory } from "./debugging/pause-pending-tracker.js";
 import { PhaseTracker } from "./debugging/phase-tracker.js";
 import {
 	SessionController,
@@ -38,8 +39,8 @@ export async function activate(
 	const stepProvider = new StepProvider();
 	const stateProvider = new StateProvider();
 	const statusProvider = new StatusViewProvider();
-	const phaseTracker = new PhaseTracker((label) =>
-		statusProvider.setDescription(label),
+	const phaseTracker = new PhaseTracker((phase) =>
+		statusProvider.setPhase(phase),
 	);
 	const tomlCodeLens = new TomlCodeLensProvider(initialManifest);
 	const jsCodeLens = new JsCodeLensProvider(initialIndex, initialManifest);
@@ -86,6 +87,13 @@ export async function activate(
 		vscode.window.registerWebviewViewProvider("gaffer.status", statusProvider, {
 			webviewOptions: { retainContextWhenHidden: true },
 		}),
+	);
+
+	context.subscriptions.push(
+		vscode.debug.registerDebugAdapterTrackerFactory(
+			"gaffer",
+			new PausePendingTrackerFactory(statusProvider),
+		),
 	);
 
 	context.subscriptions.push(

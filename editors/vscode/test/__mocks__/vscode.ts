@@ -584,6 +584,7 @@ export interface MockState {
 	registeredWebviewProviders: Array<{ id: string; provider: unknown }>;
 	registeredCodeLensProviders: Array<{ selector: unknown; provider: unknown }>;
 	registeredDebugFactories: Array<{ type: string; factory: unknown }>;
+	registeredDebugTrackerFactories: Array<{ type: string; factory: unknown }>;
 	startDebuggingResult: boolean;
 	startDebuggingCalls: Array<{ folder: unknown; configuration: unknown }>;
 	stopDebuggingCount: number;
@@ -622,6 +623,7 @@ function createInitialState(): MockState {
 		registeredWebviewProviders: [],
 		registeredCodeLensProviders: [],
 		registeredDebugFactories: [],
+		registeredDebugTrackerFactories: [],
 		startDebuggingResult: true,
 		startDebuggingCalls: [],
 		stopDebuggingCount: 0,
@@ -921,6 +923,7 @@ type DebugShape = Pick<
 	| "startDebugging"
 	| "stopDebugging"
 	| "registerDebugAdapterDescriptorFactory"
+	| "registerDebugAdapterTrackerFactory"
 	| "onDidStartDebugSession"
 	| "onDidTerminateDebugSession"
 	| "onDidReceiveDebugSessionCustomEvent"
@@ -962,6 +965,13 @@ export const debug: DebugShape = {
 		factory: vscode.DebugAdapterDescriptorFactory,
 	): vscode.Disposable {
 		state.registeredDebugFactories.push({ type: debugType, factory });
+		return { dispose: () => {} };
+	},
+	registerDebugAdapterTrackerFactory(
+		debugType: string,
+		factory: vscode.DebugAdapterTrackerFactory,
+	): vscode.Disposable {
+		state.registeredDebugTrackerFactories.push({ type: debugType, factory });
 		return { dispose: () => {} };
 	},
 	onDidStartDebugSession: ((listener, thisArgs, disposables) =>

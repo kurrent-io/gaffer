@@ -14,6 +14,7 @@
 // fully self-contained.
 
 import * as vscode from "vscode";
+import { type Phase, PHASE_LABELS } from "../debugging/phase-tracker.js";
 import statusTemplate from "./status.html?raw";
 
 interface UpdateMessage {
@@ -22,6 +23,8 @@ interface UpdateMessage {
 	title: string;
 	stats: string[];
 	showPauseButton: boolean;
+	pauseButtonLabel: string;
+	pauseButtonDisabled: boolean;
 }
 
 export class StatusViewProvider implements vscode.WebviewViewProvider {
@@ -34,11 +37,18 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	// the right mode. The webview instance is recreated on re-show; the
 	// provider is the singleton that remembers state across.
 	#mode: "running" | "ended" = "running";
-	// Latest description supplied by PhaseTracker. Held on the
-	// provider because VS Code resolves the webview lazily; the
-	// string is re-applied on every resolveWebviewView so the chip
-	// survives panel switches.
-	#description = "";
+	// True between the user requesting a pause (via this panel's
+	// button, the debug toolbar, or F6) and the engine actually
+	// stopping on the next event. When caught up, no events arrive,
+	// so the click can sit unresolved indefinitely - we surface the
+	// in-flight state so the button isn't a black hole. Driven by
+	// PausePendingTrackerFactory tapping the DAP wire.
+	#pausePending = false;
+	// Latest phase from PhaseTracker. While connecting, the engine
+	// hasn't started talking to us yet - "Pause at next event" would
+	// do nothing, so we hide it, and the stats placeholder reads
+	// "Connecting..." instead of "Waiting for events...".
+	#phase: Phase = "connecting";
 
 	resolveWebviewView(webviewView: vscode.WebviewView): void {
 		this.#view = webviewView;
@@ -46,7 +56,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 			enableScripts: true,
 			localResourceRoots: [],
 		};
-		webviewView.description = this.#description;
+		webviewView.description = PHASE_LABELS[this.#phase];
 
 		const nonce = generateNonce();
 		webviewView.webview.html = statusTemplate
@@ -66,11 +76,15 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		this.#postUpdate();
 	}
 
-	// Called by PhaseTracker when the phase label changes. Cached so
-	// re-resolves of the webview can re-apply.
-	setDescription(value: string): void {
-		this.#description = value;
-		if (this.#view) this.#view.description = value;
+	// Called by PhaseTracker. Drives both the description chip
+	// (re-applied on every resolveWebviewView so it survives panel
+	// switches) and the in-panel UI (Connecting placeholder / pause
+	// button visibility).
+	setPhase(phase: Phase): void {
+		if (this.#phase === phase) return;
+		this.#phase = phase;
+		if (this.#view) this.#view.description = PHASE_LABELS[phase];
+		this.#postUpdate();
 	}
 
 	reset(name: string): void {
@@ -78,11 +92,20 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		this.#processed = 0;
 		this.#errors = 0;
 		this.#mode = "running";
+		this.#pausePending = false;
+		this.#phase = "connecting";
 		this.#postUpdate();
 	}
 
 	markEnded(): void {
 		this.#mode = "ended";
+		this.#pausePending = false;
+		this.#postUpdate();
+	}
+
+	setPausePending(pending: boolean): void {
+		if (this.#pausePending === pending) return;
+		this.#pausePending = pending;
 		this.#postUpdate();
 	}
 
@@ -104,6 +127,13 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 
 	#postUpdate(): void {
 		if (!this.#view) return;
+		const connecting = this.#mode === "running" && this.#phase === "connecting";
+		// Defensive: phase=disconnected with mode=running shouldn't be
+		// reachable (idle cleanup ends the phase tracker but hides the
+		// panel via the gaffer.mode when-clause), but if we ever land
+		// here with a phantom session we don't want a clickable pause
+		// button on a dead DAP socket.
+		const stale = this.#mode === "running" && this.#phase === "disconnected";
 		const stats: string[] = [];
 		if (this.#processed > 0) {
 			stats.push(`${this.#processed.toLocaleString()} events processed`);
@@ -112,7 +142,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 			stats.push(`${this.#errors.toLocaleString()} errors`);
 		}
 		if (stats.length === 0 && this.#mode === "running") {
-			stats.push("Waiting for events...");
+			stats.push(connecting ? "Connecting..." : "Waiting for events...");
 		}
 
 		const name = this.#name || "projection";
@@ -124,13 +154,19 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 						title: `Finished ${name}`,
 						stats,
 						showPauseButton: false,
+						pauseButtonLabel: "Pause at next event",
+						pauseButtonDisabled: false,
 					}
 				: {
 						type: "update",
 						mode: "running",
 						title: `Running ${name}...`,
 						stats,
-						showPauseButton: true,
+						showPauseButton: !connecting && !stale,
+						pauseButtonLabel: this.#pausePending
+							? "Waiting for event to pause"
+							: "Pause at next event",
+						pauseButtonDisabled: this.#pausePending,
 					};
 		void this.#view.webview.postMessage(update);
 	}

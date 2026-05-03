@@ -14,14 +14,14 @@
 
 export type Phase = "connecting" | "catching-up" | "caught-up" | "disconnected";
 
-const PHASE_LABELS: Record<Phase, string> = {
+export const PHASE_LABELS: Record<Phase, string> = {
 	connecting: "Connecting",
 	"catching-up": "Catching up",
 	"caught-up": "Caught up",
 	disconnected: "Disconnected",
 };
 
-export type PhaseSetter = (label: string) => void;
+export type PhaseSetter = (phase: Phase) => void;
 
 export class PhaseTracker {
 	readonly #setter: PhaseSetter;
@@ -72,6 +72,6 @@ export class PhaseTracker {
 	}
 
 	#apply(): void {
-		this.#setter(PHASE_LABELS[this.phase]);
+		this.#setter(this.phase);
 	}
 }

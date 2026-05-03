@@ -52,7 +52,7 @@
 	<body>
 		<div class="title" id="title"></div>
 		<div id="stats"></div>
-		<button id="pause">Pause to inspect</button>
+		<button id="pause">Pause at next event</button>
 		<div class="caption" id="caption"></div>
 		<script nonce="{{NONCE}}">
 			const vscode = acquireVsCodeApi();
@@ -78,9 +78,7 @@
 				}
 				pauseBtn.classList.toggle("hidden", !msg.showPauseButton);
 				captionEl.textContent =
-					msg.mode === "ended"
-						? "State preserved until next run."
-						: "Returns to inspect mode";
+					msg.mode === "ended" ? "State preserved until next run." : "";
 			});
 		</script>
 	</body>

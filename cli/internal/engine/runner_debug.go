@@ -60,13 +60,25 @@ func (r *Runner) StepOver() { r.doStep(func() { r.debug.Session.StepOver() }) }
 func (r *Runner) StepInto() { r.doStep(func() { r.debug.Session.StepInto() }) }
 func (r *Runner) StepOut()  { r.doStep(func() { r.debug.Session.StepOut() }) }
 
-func (r *Runner) Destroy() {
-	if r.debug != nil {
-		r.debug.Session.ClearBreakpoints()
-		if r.Paused() {
-			r.debug.Session.Continue()
-		}
+// Unblock releases the JS thread if it's paused at a breakpoint so a
+// blocked ProcessOne can return. Use this on cancellation paths where
+// the caller needs the source loop to exit but still wants to read
+// state, write a summary, etc. against a live session afterwards.
+//
+// Safe to call when no breakpoints are set or the runner isn't paused.
+// Safe to call when debug is disabled (no-op).
+func (r *Runner) Unblock() {
+	if r.debug == nil {
+		return
 	}
+	r.debug.Session.ClearBreakpoints()
+	if r.Paused() {
+		r.debug.Session.Continue()
+	}
+}
+
+func (r *Runner) Destroy() {
+	r.Unblock()
 	if r.session != nil {
 		r.session.Destroy()
 	}

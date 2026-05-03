@@ -347,6 +347,7 @@ func TestRunner_DebugNilGuards(t *testing.T) {
 	r.StepOver()
 	r.StepInto()
 	r.StepOut()
+	r.Unblock()
 	r.Destroy()
 }
 

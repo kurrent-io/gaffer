@@ -97,6 +97,7 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 		if err != nil {
 			return fmt.Errorf("creating history store: %w", err)
 		}
+		defer func() { _ = store.Close() }()
 
 		absRoot, _ := filepath.Abs(proj.Root)
 
@@ -136,7 +137,12 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 
 		go func() {
 			<-ctx.Done()
-			r.Destroy()
+			// Unblock so a Feed paused at a breakpoint returns and
+			// source.Run exits. Don't tear the session down here -
+			// the post-run summary write on the main goroutine still
+			// needs to read state. The session+history are freed by
+			// the deferred close paths above.
+			r.Unblock()
 		}()
 
 		select {

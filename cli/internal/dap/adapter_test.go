@@ -1010,3 +1010,52 @@ func TestAdapter_StartPausedIfNoBreakpoints_ContinueProcessesSubsequentEvents(t 
 		t.Fatal("F6: events 2 and 3 did not process after Continue from entry pause")
 	}
 }
+
+// Reproduces F4 (manual testing): on disconnect the dev command's
+// ctx-cancellation goroutine used to call r.Destroy(), tearing down
+// the session before the post-run summary path could read state.
+// CollectState then panicked with "use of destroyed session".
+//
+// r.Unblock is the cancellation-path replacement: it clears
+// breakpoints + resumes if paused, but leaves the session alive so
+// state can still be collected.
+func TestAdapter_UnblockReleasesPausedFeedAndKeepsSessionAlive(t *testing.T) {
+	adapter, runner, conn, reader := mustSetupDebugSession(t)
+	adapter.SetStartPausedIfNoBreakpoints(true)
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	feedDone := make(chan struct{})
+	go func() {
+		runner.ProcessOne(testFeedEvent)
+		close(feedDone)
+	}()
+
+	// First event triggers entry pause - confirms feed is blocked.
+	msg := readMessage(t, conn, reader)
+	if _, ok := msg.(*godap.StoppedEvent); !ok {
+		t.Fatalf("expected StoppedEvent at entry, got %T", msg)
+	}
+
+	// Simulate the dev command's ctx-cancellation handler. Must
+	// release the paused feed without destroying the session.
+	runner.Unblock()
+
+	select {
+	case <-feedDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Unblock did not release the paused feed")
+	}
+
+	// The session must still be queryable - this is what dev.go's
+	// post-run summary write needs after disconnect. CollectState
+	// panicked here under the previous Destroy-based teardown.
+	summary := runner.CollectState()
+	_ = summary // smoke test: must not panic
+}

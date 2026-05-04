@@ -21,6 +21,7 @@ import {
 import { log } from "../output.js";
 import { clearDiagnostics, reportFatalError } from "../diagnostics.js";
 import {
+	showPortInUse,
 	showProjectionFailed,
 	showProjectionFault,
 	showStartFailure,
@@ -31,8 +32,6 @@ import type { StateProvider } from "../panels/state.js";
 import type { StatusViewProvider } from "../panels/status.js";
 import type { PhaseTracker } from "./phase-tracker.js";
 import type { DebugState } from "../types.js";
-
-const DEFAULT_DEBUG_PORT = 4711;
 
 type Mode = "idle" | "ended";
 type EngineMode = "running" | "inspecting";
@@ -84,8 +83,9 @@ export class SessionController implements vscode.Disposable {
 	#pendingEngineMode: EngineMode | null = null;
 	// Set by the fatal_error session listener; checked by the
 	// waitForDebug catch and exit handler to suppress their own toasts
-	// when fatal_error already surfaced its own. Reset in cleanupSession
-	// so the next session starts clean.
+	// when fatal_error already surfaced its own. Reset at the start of
+	// each new session (not in cleanup) so the catch path can still
+	// observe it after cleanup has awaited in the same async chain.
 	#fatalErrorSeen = false;
 
 	constructor(deps: SessionControllerDeps) {
@@ -157,21 +157,28 @@ export class SessionController implements vscode.Disposable {
 		// session (or a previous compile-time fatal that never reached
 		// running) get cleared right before we kick off the new one.
 		clearDiagnostics();
+		// Reset the fatal-error signal at the start (not in cleanup) so
+		// the waitForDebug catch can still see it after the exit handler
+		// has awaited cleanup - cleanup awaits in the same async chain
+		// and would otherwise wipe the flag before the catch checks it.
+		this.#fatalErrorSeen = false;
 
 		const { name, tomlUri } = args;
 		const tomlDir = vscode.Uri.joinPath(tomlUri, "..").fsPath;
 		// Port we ask the CLI to bind to. The CLI confirms via the debug
 		// message and we attach using whatever it actually bound (below).
+		// gaffer.debugPort defaults to -1 ("unset") - we omit the flag
+		// in that case and let the CLI's own default (auto-pick a free
+		// port) take effect.
 		const requestedPort = vscode.workspace
 			.getConfiguration("gaffer")
-			.get<number>("debugPort", DEFAULT_DEBUG_PORT);
+			.get<number>("debugPort", -1);
 		const argv = this.#buildArgv([
 			"dev",
 			name,
 			"--json",
 			"--debug",
-			"--debug-port",
-			String(requestedPort),
+			...(requestedPort >= 0 ? ["--debug-port", String(requestedPort)] : []),
 			// Start-paused is the extension's default UX: clicking Debug
 			// lands the user in `inspecting` immediately so the State view
 			// is populated and the user can explore before processing
@@ -214,6 +221,11 @@ export class SessionController implements vscode.Disposable {
 
 		session.on("fatal_error", (msg) => {
 			this.#fatalErrorSeen = true;
+			if (msg.code === "PORT_IN_USE") {
+				log(`Port in use: ${msg.description}`);
+				void showPortInUse(msg.description);
+				return;
+			}
 			if (msg.file) {
 				reportFatalError({
 					file: msg.file,
@@ -329,7 +341,6 @@ export class SessionController implements vscode.Disposable {
 		}
 		this.#activeDebugSession = null;
 		this.#pendingEngineMode = null;
-		this.#fatalErrorSeen = false;
 
 		if (mode === "idle") {
 			this.#stepProvider.clear();

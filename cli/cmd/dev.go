@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -44,7 +47,7 @@ func newDevCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output as NDJSON")
 	cmd.Flags().StringVar(&opts.Connection, "connection", "", "KurrentDB connection string (overrides config)")
 	cmd.Flags().BoolVar(&opts.Debug, "debug", false, "Start DAP debug server")
-	cmd.Flags().IntVar(&opts.DebugPort, "debug-port", 4711, "DAP debug server port")
+	cmd.Flags().IntVar(&opts.DebugPort, "debug-port", 0, "DAP debug server port (0 = OS picks a free port; the actual bound port is reported on stderr and in --json output)")
 	cmd.Flags().BoolVar(&opts.UntilCaughtUp, "until-caught-up", false, "Exit when subscription catches up (live mode only)")
 	cmd.Flags().BoolVar(&opts.StartPausedIfNoBreakpoints, "start-paused-if-no-breakpoints", false, "Pause at the start of the first event when no breakpoints are set (debug mode only)")
 	return cmd
@@ -177,13 +180,27 @@ func runDevDebug(
 	srv, err := dapserver.NewServer(addr, adapter.Handler())
 	if err != nil {
 		session.Destroy()
+		// Surface EADDRINUSE as a structured fatal_error so the
+		// extension can route it to a "change port" toast instead of
+		// the generic "projection failed" path. Other bind errors
+		// (permission denied, etc) fall through to the generic error.
+		if errors.Is(err, syscall.EADDRINUSE) {
+			writer.WriteFatalError(fatalError{
+				Code:        "PORT_IN_USE",
+				Description: fmt.Sprintf("port %d is already in use", opts.DebugPort),
+			})
+		}
 		return fmt.Errorf("starting debug server: %w", err)
 	}
 	defer func() { _ = srv.Close() }()
 	adapter.SetServer(srv)
 
-	_, _ = fmt.Fprintf(os.Stderr, "Debug server listening on %s\nWaiting for editor to attach...\n", srv.Addr())
-	writer.WriteDebugListening(srv.Addr().String(), opts.DebugPort)
+	// Report the actual bound port, not opts.DebugPort - the latter is
+	// the requested port (often 0 for OS-pick) and the editor needs to
+	// know the real port to attach to.
+	boundAddr := srv.Addr().(*net.TCPAddr)
+	_, _ = fmt.Fprintf(os.Stderr, "Debug server listening on %s\nWaiting for editor to attach...\n", boundAddr)
+	writer.WriteDebugListening(boundAddr.String(), boundAddr.Port)
 
 	go func() {
 		_ = srv.Serve()

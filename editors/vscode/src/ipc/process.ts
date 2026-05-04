@@ -75,7 +75,12 @@ export class GafferProcess {
 			if (text) log(`[stderr] ${text}`);
 		});
 
-		proc.on("exit", (code) => {
+		// 'close' fires after stdout/stderr have been drained and parsed,
+		// not just after the process exits. Critical for the fatal_error
+		// path: the CLI prints a fatal_error JSON line then exits, and
+		// 'exit' fires while that line is still in flight - subscribers
+		// would get the exit event before the fatal_error one.
+		proc.on("close", (code) => {
 			log(`Process exited with code ${code}`);
 			this.#onExit(code);
 		});

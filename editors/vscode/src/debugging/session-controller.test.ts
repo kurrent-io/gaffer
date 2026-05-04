@@ -183,11 +183,17 @@ describe("SessionController.start - happy path", () => {
 		expect(session.argv[idx + 1]).toBe("5555");
 	});
 
-	it("falls back to 4711 when gaffer.debugPort is unset", async () => {
+	it("omits --debug-port when gaffer.debugPort is unset (CLI auto-picks a free port)", async () => {
 		const h = makeHarness();
 		const { session } = await startToRunning(h);
-		const idx = session.argv.indexOf("--debug-port");
-		expect(session.argv[idx + 1]).toBe("4711");
+		expect(session.argv).not.toContain("--debug-port");
+	});
+
+	it("omits --debug-port when gaffer.debugPort is explicitly -1", async () => {
+		setConfiguration("gaffer", "debugPort", { value: -1 });
+		const h = makeHarness();
+		const { session } = await startToRunning(h);
+		expect(session.argv).not.toContain("--debug-port");
 	});
 
 	it("passes --start-paused-if-no-breakpoints by default", async () => {

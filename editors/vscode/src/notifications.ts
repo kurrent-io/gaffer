@@ -63,3 +63,18 @@ export const showProjectionFailed = (): Thenable<unknown> =>
 	vscode.window.showErrorMessage(
 		"Gaffer: projection failed - see Problems panel",
 	);
+
+export const showPortInUse = (description: string): Thenable<unknown> =>
+	vscode.window
+		.showErrorMessage(
+			`Gaffer: ${description}. Change gaffer.debugPort or set it to -1 to let the OS pick a free port.`,
+			"Open Settings",
+		)
+		.then((choice) => {
+			if (choice === "Open Settings") {
+				void vscode.commands.executeCommand(
+					"workbench.action.openSettings",
+					"gaffer.debugPort",
+				);
+			}
+		});

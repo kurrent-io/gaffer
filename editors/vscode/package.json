@@ -65,8 +65,8 @@
 				},
 				"gaffer.debugPort": {
 					"type": "number",
-					"default": 4711,
-					"description": "Port the Gaffer CLI's DAP server binds to (loopback only). Change this if 4711 conflicts with another service on your machine."
+					"default": -1,
+					"description": "DAP server port (loopback only). Leave at -1 (default) to let the OS pick a free port - the editor reads the actual port back from the CLI on connect. Set to a specific port (e.g. 4711) only if you need to pin it for an external attach."
 				}
 			}
 		},

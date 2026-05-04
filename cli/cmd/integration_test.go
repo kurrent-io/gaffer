@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
@@ -91,6 +92,118 @@ func TestDev_FixtureJSON(t *testing.T) {
 	}
 }
 
+func TestDev_FixtureFlag(t *testing.T) {
+	// Resolves a named fixture from gaffer.toml via --fixture <name>.
+	p := testutil.NewProject(t).
+		AddProjection("orders", integrationProjection).
+		AddNamedFixture("orders", "happy", integrationFixture).
+		Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"dev", "orders", "--fixture", "happy", "--json"})
+	root.SetErr(&bytes.Buffer{})
+
+	output := testutil.CaptureStdout(t, func() {
+		if err := ExecuteRoot(context.Background(), root); err != nil {
+			t.Fatalf("command failed: %v", err)
+		}
+	})
+
+	lines := testutil.SplitNDJSON(output)
+	if len(lines) == 0 {
+		t.Fatalf("no output")
+	}
+	summary := lines[len(lines)-1]
+	if summary["type"] != "summary" {
+		t.Fatalf("expected summary, got: %v", summary)
+	}
+	if h, _ := summary["handled"].(float64); h != 3 {
+		t.Errorf("handled: got %v, want 3", summary["handled"])
+	}
+}
+
+func TestDev_FixtureFlag_UnknownName(t *testing.T) {
+	p := testutil.NewProject(t).
+		AddProjection("orders", integrationProjection).
+		AddNamedFixture("orders", "happy", integrationFixture).
+		Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"dev", "orders", "--fixture", "nope"})
+	var stderr bytes.Buffer
+	root.SetErr(&stderr)
+
+	err := ExecuteRoot(context.Background(), root)
+	if err == nil {
+		t.Fatal("expected error for unknown fixture")
+	}
+	if !strings.Contains(err.Error(), "no fixture named \"nope\"") {
+		t.Errorf("error should mention the bad name, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "happy") {
+		t.Errorf("error should list available fixtures, got: %v", err)
+	}
+}
+
+func TestDev_FixtureFlag_NoneDeclared(t *testing.T) {
+	p := testutil.NewProject(t).
+		AddProjection("orders", integrationProjection).
+		Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"dev", "orders", "--fixture", "anything"})
+	root.SetErr(&bytes.Buffer{})
+
+	err := ExecuteRoot(context.Background(), root)
+	if err == nil || !strings.Contains(err.Error(), "no fixtures declared") {
+		t.Fatalf("expected no-fixtures error, got: %v", err)
+	}
+}
+
+func TestDev_FixtureAndEventsMutuallyExclusive(t *testing.T) {
+	p := testutil.NewProject(t).
+		AddProjection("orders", integrationProjection).
+		AddNamedFixture("orders", "happy", integrationFixture).
+		Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"dev", "orders", "--fixture", "happy", "--events", "fixtures/happy.json"})
+	root.SetErr(&bytes.Buffer{})
+
+	err := ExecuteRoot(context.Background(), root)
+	if err == nil {
+		t.Fatal("expected mutex error")
+	}
+	if !strings.Contains(err.Error(), "only one of --events or --fixture") {
+		t.Errorf("expected mutex error, got: %v", err)
+	}
+}
+
+func TestDev_NoSource_ErrorMentionsFixture(t *testing.T) {
+	// No --fixture, no --events, no connection: error should
+	// mention --fixture as a valid option.
+	p := testutil.NewProject(t).
+		AddProjection("orders", integrationProjection).
+		Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"dev", "orders"})
+	root.SetErr(&bytes.Buffer{})
+
+	err := ExecuteRoot(context.Background(), root)
+	if err == nil {
+		t.Fatal("expected no-source error")
+	}
+	if !strings.Contains(err.Error(), "--fixture") {
+		t.Errorf("expected error to mention --fixture, got: %v", err)
+	}
+}
+
 func TestInfo_JSON(t *testing.T) {
 	dir := setupIntegrationProject(t)
 	chdirTo(t, dir)
@@ -114,6 +227,73 @@ func TestInfo_JSON(t *testing.T) {
 	}
 	if info["source"] != "categories" {
 		t.Errorf("source: got %v, want categories", info["source"])
+	}
+}
+
+func TestInfo_JSON_FixturesField(t *testing.T) {
+	p := testutil.NewProject(t).
+		AddProjection("orders", integrationProjection).
+		AddNamedFixture("orders", "happy", integrationFixture).
+		AddNamedFixture("orders", "edge", integrationFixture).
+		Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"info", "orders", "--json"})
+	root.SetErr(&bytes.Buffer{})
+
+	output := testutil.CaptureStdout(t, func() {
+		if err := ExecuteRoot(context.Background(), root); err != nil {
+			t.Fatalf("command failed: %v", err)
+		}
+	})
+
+	var info map[string]any
+	if err := json.Unmarshal([]byte(output), &info); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	fixtures, ok := info["fixtures"].([]any)
+	if !ok {
+		t.Fatalf("expected fixtures array, got %T", info["fixtures"])
+	}
+	if len(fixtures) != 2 {
+		t.Fatalf("expected 2 fixtures, got %d", len(fixtures))
+	}
+	first, ok := fixtures[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected fixture object, got %T", fixtures[0])
+	}
+	// Output is sorted alphabetically; "edge" comes before "happy".
+	if first["name"] != "edge" {
+		t.Errorf("fixtures[0].name: got %v, want edge", first["name"])
+	}
+	if first["path"] != "fixtures/edge.json" {
+		t.Errorf("fixtures[0].path: got %v, want fixtures/edge.json", first["path"])
+	}
+}
+
+func TestInfo_JSON_NoFixturesFieldWhenNoneDeclared(t *testing.T) {
+	p := testutil.NewProject(t).
+		AddProjection("orders", integrationProjection).
+		Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"info", "orders", "--json"})
+	root.SetErr(&bytes.Buffer{})
+
+	output := testutil.CaptureStdout(t, func() {
+		if err := ExecuteRoot(context.Background(), root); err != nil {
+			t.Fatalf("command failed: %v", err)
+		}
+	})
+
+	var info map[string]any
+	if err := json.Unmarshal([]byte(output), &info); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	if _, present := info["fixtures"]; present {
+		t.Errorf("expected no fixtures field, got %v", info["fixtures"])
 	}
 }
 

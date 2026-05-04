@@ -1063,6 +1063,37 @@ func TestAdapter_EmitStatsIfChanged(t *testing.T) {
 	expectNoMessage(t, conn)
 }
 
+func TestAdapter_EmitStatsIfChanged_FixtureMode(t *testing.T) {
+	adapter, runner, conn, reader := mustSetupDebugSession(t)
+	adapter.SetFixtureMode(true)
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	// Pure-skip events drive Skipped but not Handled. In fixture mode
+	// that's diagnostic, so the wire emit fires.
+	skippedEvent := `{"eventType":"NotHandled","streamId":"stream-1","sequenceNumber":1,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000001","created":"2026-01-01T00:00:00Z"}`
+	runner.ProcessOne(skippedEvent)
+	adapter.EmitStatsIfChanged()
+
+	stats := readCustomEvent(t, conn, reader, "gaffer/stats")
+	if stats["handled"] != float64(0) {
+		t.Fatalf("handled: got %v, want 0", stats["handled"])
+	}
+	if stats["skipped"] != float64(1) {
+		t.Fatalf("skipped: got %v, want 1", stats["skipped"])
+	}
+	byReason, ok := stats["skippedByReason"].(map[string]any)
+	if !ok || len(byReason) == 0 {
+		t.Fatalf("expected skippedByReason map, got %+v", stats["skippedByReason"])
+	}
+}
+
 // Reproduces F6 (manual testing): after entry pause, Continue should let
 // the source keep feeding subsequent events without further pauses.
 func TestAdapter_StartPausedIfNoBreakpoints_ContinueProcessesSubsequentEvents(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -19,12 +20,35 @@ type Config struct {
 }
 
 // Projection is a single projection entry in the config.
+//
+// Fixtures is a name -> path map, declared in the toml as
+// `fixtures.<name> = "<path>"`. Paths are resolved relative to the
+// project root, same as Projection.Entry.
 type Projection struct {
-	Name             string `toml:"name"`
-	Entry            string `toml:"entry"`
-	EngineVersion    int    `toml:"engine_version,omitempty"`
-	Enabled          *bool  `toml:"enabled,omitempty"`
-	ExecutionTimeout *int   `toml:"execution_timeout,omitempty"`
+	Name             string            `toml:"name"`
+	Entry            string            `toml:"entry"`
+	EngineVersion    int               `toml:"engine_version,omitempty"`
+	Enabled          *bool             `toml:"enabled,omitempty"`
+	ExecutionTimeout *int              `toml:"execution_timeout,omitempty"`
+	Fixtures         map[string]string `toml:"fixtures,omitempty"`
+}
+
+// FindFixture returns the path of the named fixture and true, or "" and
+// false if no such fixture exists.
+func (p *Projection) FindFixture(name string) (string, bool) {
+	path, ok := p.Fixtures[name]
+	return path, ok
+}
+
+// FixtureNames returns the declared fixture names in alphabetical order
+// (TOML map iteration is unordered).
+func (p *Projection) FixtureNames() []string {
+	names := make([]string, 0, len(p.Fixtures))
+	for n := range p.Fixtures {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // EffectiveEngineVersion returns the projection's engine_version, falling
@@ -111,6 +135,20 @@ func (c *Config) validate() error {
 			return fmt.Errorf("duplicate projection name: %q", p.Name)
 		}
 		seen[p.Name] = true
+
+		// Iterate in sorted order so error messages are stable.
+		for _, name := range p.FixtureNames() {
+			if name == "" {
+				return fmt.Errorf("projection %q has a fixture with an empty name", p.Name)
+			}
+			path := p.Fixtures[name]
+			if path == "" {
+				return fmt.Errorf("projection %q fixture %q has empty path", p.Name, name)
+			}
+			if strings.HasPrefix(filepath.Clean(path), "..") {
+				return fmt.Errorf("projection %q fixture %q path must not escape project root: %s", p.Name, name, path)
+			}
+		}
 	}
 	return nil
 }

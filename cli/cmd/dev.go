@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -24,6 +25,7 @@ const statsEmitInterval = 100 * time.Millisecond
 
 type devOpts struct {
 	Events                     string
+	Fixture                    string
 	JSON                       bool
 	Connection                 string
 	Debug                      bool
@@ -43,14 +45,34 @@ func newDevCmd() *cobra.Command {
 			return runDev(cmd, args[0], opts)
 		},
 	}
-	cmd.Flags().StringVar(&opts.Events, "events", "", "Path to JSON events file")
+	cmd.Flags().StringVar(&opts.Events, "events", "", "Path to a JSON events file (ad-hoc fixture)")
+	cmd.Flags().StringVar(&opts.Fixture, "fixture", "", "Named fixture declared as fixtures.<name> in gaffer.toml")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output as NDJSON")
 	cmd.Flags().StringVar(&opts.Connection, "connection", "", "KurrentDB connection string (overrides config)")
 	cmd.Flags().BoolVar(&opts.Debug, "debug", false, "Start DAP debug server")
 	cmd.Flags().IntVar(&opts.DebugPort, "debug-port", 0, "DAP debug server port (0 = OS picks a free port; the actual bound port is reported on stderr and in --json output)")
 	cmd.Flags().BoolVar(&opts.UntilCaughtUp, "until-caught-up", false, "Exit when subscription catches up (live mode only)")
 	cmd.Flags().BoolVar(&opts.StartPausedIfNoBreakpoints, "start-paused-if-no-breakpoints", false, "Pause at the start of the first event when no breakpoints are set (debug mode only)")
+	_ = cmd.RegisterFlagCompletionFunc("fixture", completeFixtures)
 	return cmd
+}
+
+// completeFixtures returns the declared fixture names for the
+// projection in the positional arg. Returns no suggestions when
+// the projection isn't yet on the command line or the toml can't
+// be loaded; load failures here are normal (cwd outside a gaffer
+// project, gaffer.toml not yet saved) and shouldn't surface as
+// shell error noise. The user finds real config errors when they
+// run `gaffer dev` for actual.
+func completeFixtures(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+	if len(args) < 1 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	proj, err := engine.LoadProjection(args[0])
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return proj.Def.FixtureNames(), cobra.ShellCompDirectiveNoFileComp
 }
 
 func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
@@ -58,9 +80,30 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: --start-paused-if-no-breakpoints requires --debug; ignoring")
 	}
 
+	if opts.Events != "" && opts.Fixture != "" {
+		return fmt.Errorf("only one of --events or --fixture may be used at a time")
+	}
+
 	proj, err := engine.LoadProjection(name)
 	if err != nil {
 		return err
+	}
+
+	// --fixture is a layer on top of --events: resolve the named
+	// fixture's path through the loaded config, then everything
+	// downstream uses opts.Events as the path. Mutex with --events
+	// is the manual check above, not cobra-enforced - so we never
+	// reach here with both set.
+	if opts.Fixture != "" {
+		path, ok := proj.Def.FindFixture(opts.Fixture)
+		if !ok {
+			names := proj.Def.FixtureNames()
+			if len(names) == 0 {
+				return fmt.Errorf("projection %q has no fixtures declared in gaffer.toml", name)
+			}
+			return fmt.Errorf("projection %q has no fixture named %q (available: %s)", name, opts.Fixture, strings.Join(names, ", "))
+		}
+		opts.Events = filepath.Join(proj.Root, path)
 	}
 
 	sourcePath, _ := filepath.Abs(filepath.Join(proj.Root, proj.Def.Entry))
@@ -175,6 +218,7 @@ func runDevDebug(
 
 	adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot)
 	adapter.SetStartPausedIfNoBreakpoints(opts.StartPausedIfNoBreakpoints)
+	adapter.SetFixtureMode(opts.Events != "")
 
 	addr := fmt.Sprintf("127.0.0.1:%d", opts.DebugPort)
 	srv, err := dapserver.NewServer(addr, adapter.Handler())
@@ -394,7 +438,7 @@ func buildSource(
 	}
 	connStr := resolveConnection(opts.Connection, proj.Config)
 	if connStr == "" {
-		return nil, fmt.Errorf("no event source: use --events for fixtures or configure connection in gaffer.toml")
+		return nil, fmt.Errorf("no event source: use --fixture <name>, --events <path>, or configure connection in gaffer.toml")
 	}
 	liveCfg := engine.LiveSourceConfig{
 		ConnStr:       connStr,
@@ -418,7 +462,6 @@ func buildSource(
 	}
 	return engine.NewLiveSource(liveCfg), nil
 }
-
 
 // finalizeRun handles post-loop disposition. If the context was cancelled
 // without catching up (user interrupt), prints a notice and clears the

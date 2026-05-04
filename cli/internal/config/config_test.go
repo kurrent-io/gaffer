@@ -244,6 +244,176 @@ execution_timeout = 2000
 	}
 }
 
+func TestLoadFixtures(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+engine_version = 2
+
+[[projection]]
+name = "order-count"
+entry = "projections/order-count.js"
+fixtures.happy-path = "fixtures/happy.json"
+fixtures.edge-cases = "fixtures/edge.json"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := cfg.Projection[0]
+	if len(p.Fixtures) != 2 {
+		t.Fatalf("expected 2 fixtures, got %d", len(p.Fixtures))
+	}
+	if p.Fixtures["happy-path"] != "fixtures/happy.json" {
+		t.Fatalf("unexpected fixtures[happy-path]: %q", p.Fixtures["happy-path"])
+	}
+	if got, ok := p.FindFixture("edge-cases"); !ok || got != "fixtures/edge.json" {
+		t.Fatalf("FindFixture lookup failed: %q ok=%v", got, ok)
+	}
+	if _, ok := p.FindFixture("missing"); ok {
+		t.Fatal("expected ok=false for unknown fixture")
+	}
+	// FixtureNames is sorted; declaration order is irrelevant since the
+	// underlying TOML representation is a map.
+	if names := p.FixtureNames(); len(names) != 2 || names[0] != "edge-cases" || names[1] != "happy-path" {
+		t.Fatalf("FixtureNames mismatch: %v", names)
+	}
+}
+
+func TestLoadFixtures_DuplicateName(t *testing.T) {
+	// Duplicate fixtures.<name> entries are caught by the TOML parser
+	// itself as a duplicate-key error - no validate() rule needed.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+engine_version = 2
+
+[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.dup = "a.json"
+fixtures.dup = "b.json"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected duplicate-key parse error")
+	}
+}
+
+func TestLoadFixtures_EmptyName(t *testing.T) {
+	// fixtures."" = "x.json" parses as a quoted-empty key. The map
+	// lookup would silently treat this as nameless. Reject explicitly.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `engine_version = 2
+[[projection]]
+name = "p"
+entry = "p.js"
+fixtures."" = "x.json"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "empty name") {
+		t.Fatalf("expected empty-name error, got %v", err)
+	}
+}
+
+func TestLoadFixtures_EmptyPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `engine_version = 2
+[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.empty = ""
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "empty path") {
+		t.Fatalf("expected empty-path error, got %v", err)
+	}
+}
+
+func TestLoadFixtures_InternalDotDotResolvesInsideRoot(t *testing.T) {
+	// fixtures/sub/../happy.json resolves to fixtures/happy.json -
+	// still inside the project root, must be accepted. Only paths
+	// whose Clean form starts with ".." are escapes.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `engine_version = 2
+[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.happy = "fixtures/sub/../happy.json"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestLoadFixtures_PathEscape(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+engine_version = 2
+
+[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.evil = "../outside.json"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "escape project root") {
+		t.Fatalf("expected path-escape error, got %v", err)
+	}
+}
+
+func TestLoadFixtures_NameMatchesProjection(t *testing.T) {
+	// A fixture named the same as its parent projection should be allowed.
+	// They live in different namespaces (projection name in --, fixture in --fixture).
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+engine_version = 2
+
+[[projection]]
+name = "happy-path"
+entry = "p.js"
+fixtures.happy-path = "fixtures/happy.json"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if got, ok := cfg.Projection[0].FindFixture("happy-path"); !ok || got != "fixtures/happy.json" {
+		t.Fatalf("expected fixture lookup to succeed, got %q ok=%v", got, ok)
+	}
+}
+
 func TestLoadMissingFile(t *testing.T) {
 	_, err := Load("nonexistent/path/gaffer.toml")
 	if err == nil {
@@ -293,5 +463,48 @@ func TestSaveAndReload(t *testing.T) {
 
 	if loaded.Projection[0].EngineVersion != 1 {
 		t.Fatalf("expected engine_version 1, got %d", loaded.Projection[0].EngineVersion)
+	}
+}
+
+func TestSaveAndReload_Fixtures(t *testing.T) {
+	// Round-trip: encoding the Fixtures map through toml.NewEncoder
+	// and decoding back must preserve names and paths. Without this
+	// test a regression that drops the map on save (or scrambles
+	// keys) would only surface in production.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+
+	cfg := &Config{
+		EngineVersion: 2,
+		Projection: []Projection{
+			{
+				Name:  "checkout",
+				Entry: "checkout.js",
+				Fixtures: map[string]string{
+					"happy": "fixtures/orders.json",
+					"full":  "fixtures/orders-full.json",
+				},
+			},
+		},
+	}
+
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := loaded.Projection[0].Fixtures
+	if len(got) != 2 {
+		t.Fatalf("expected 2 fixtures, got %d", len(got))
+	}
+	if got["happy"] != "fixtures/orders.json" {
+		t.Errorf("happy: got %q, want fixtures/orders.json", got["happy"])
+	}
+	if got["full"] != "fixtures/orders-full.json" {
+		t.Errorf("full: got %q, want fixtures/orders-full.json", got["full"])
 	}
 }

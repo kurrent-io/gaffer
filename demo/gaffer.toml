@@ -4,6 +4,8 @@ engine_version = 2
 [[projection]]
   name = "order-count"
   entry = "projections/order-count.js"
+  fixtures.happy = "fixtures/orders.json"
+  fixtures.full = "fixtures/orders-full.json"
 
 [[projection]]
   name = "event-counter"
@@ -12,6 +14,8 @@ engine_version = 2
 [[projection]]
   name = "order-notifications"
   entry = "projections/order-notifications.js"
+  fixtures.happy = "fixtures/orders.json"
+  fixtures.full = "fixtures/orders-full.json"
 
 [[projection]]
   name = "broken"

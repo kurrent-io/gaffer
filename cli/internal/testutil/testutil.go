@@ -144,6 +144,33 @@ func (p *Project) AddFixture(name, content string) *Project {
 	return p
 }
 
+// AddNamedFixture writes the fixture file AND registers it under the
+// named projection's fixtures map, so it's addressable via
+// `gaffer dev <projection> --fixture <fixtureName>`.
+func (p *Project) AddNamedFixture(projection, fixtureName, content string) *Project {
+	p.t.Helper()
+	relPath := filepath.Join("fixtures", fixtureName+".json")
+	absPath := filepath.Join(p.Dir, relPath)
+
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+		p.t.Fatal(err)
+	}
+	if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
+		p.t.Fatal(err)
+	}
+	for i := range p.Cfg.Projection {
+		if p.Cfg.Projection[i].Name == projection {
+			if p.Cfg.Projection[i].Fixtures == nil {
+				p.Cfg.Projection[i].Fixtures = make(map[string]string)
+			}
+			p.Cfg.Projection[i].Fixtures[fixtureName] = relPath
+			return p
+		}
+	}
+	p.t.Fatalf("AddNamedFixture: projection %q not found", projection)
+	return p
+}
+
 func (p *Project) Save() *Project {
 	p.t.Helper()
 	if err := config.Save(filepath.Join(p.Dir, "gaffer.toml"), p.Cfg); err != nil {

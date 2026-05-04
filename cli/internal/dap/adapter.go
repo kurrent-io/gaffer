@@ -28,8 +28,14 @@ type DebugAdapter struct {
 	breakpointCount            int
 	startPausedIfNoBreakpoints bool
 	entryPausePending          bool
-	lastStats                  engine.EventStats
-	lastStateJSON              string
+	// fixtureMode is true when the dev command was invoked with
+	// --fixture or --events. Surfaces skipped-event counts on the
+	// gaffer/stats wire so the editor can render them. In live mode
+	// skips are runtime hygiene noise (link metadata, system deletes)
+	// and the wire stays lean.
+	fixtureMode   bool
+	lastStats     engine.EventStats
+	lastStateJSON string
 
 	readyOnce      sync.Once
 	readyCh        chan struct{}
@@ -70,6 +76,16 @@ func (a *DebugAdapter) SetRunner(r *engine.Runner) {
 func (a *DebugAdapter) SetStartPausedIfNoBreakpoints(v bool) {
 	a.mu.Lock()
 	a.startPausedIfNoBreakpoints = v
+	a.mu.Unlock()
+}
+
+// SetFixtureMode controls whether skipped-event counts are surfaced on
+// the gaffer/stats wire. Set true when the dev command was invoked
+// with --fixture or --events; the user curated those events so a skip
+// is diagnostic, not noise.
+func (a *DebugAdapter) SetFixtureMode(v bool) {
+	a.mu.Lock()
+	a.fixtureMode = v
 	a.mu.Unlock()
 }
 
@@ -625,27 +641,40 @@ func (a *DebugAdapter) emitFinalState() {
 // for the inspect view, so without this the counter would never tick
 // during live mode.
 //
-// Skipped is tracked internally on EventStats but not emitted: skips
-// are runtime hygiene noise (link metadata, system deletes, etc.)
-// rather than user-actionable events. The change check only looks at
-// fields we actually send so a flurry of pure-skip events doesn't
-// produce redundant wire traffic.
+// Skipped counts and per-reason breakdown are wire-gated on fixtureMode
+// to mirror the existing CLI text/MCP split: in live mode skips are
+// runtime hygiene noise (link metadata, system deletes) and the wire
+// stays lean; in fixture mode the user curated the events, a skip is
+// diagnostic, and we ship the breakdown.
 func (a *DebugAdapter) EmitStatsIfChanged() {
 	if a.runner == nil || a.server == nil {
 		return
 	}
 	cur := a.runner.Stats()
 	a.mu.Lock()
-	if cur.Handled == a.lastStats.Handled && cur.Errors == a.lastStats.Errors {
+	fixtureMode := a.fixtureMode
+	unchanged := cur.Handled == a.lastStats.Handled && cur.Errors == a.lastStats.Errors
+	if fixtureMode {
+		unchanged = unchanged && cur.Skipped == a.lastStats.Skipped
+	}
+	if unchanged {
 		a.mu.Unlock()
 		return
 	}
 	a.lastStats = cur
 	a.mu.Unlock()
-	a.server.Send(NewCustomEvent("gaffer/stats", map[string]any{
+
+	body := map[string]any{
 		"handled": cur.Handled,
 		"errors":  cur.Errors,
-	}))
+	}
+	if fixtureMode {
+		body["skipped"] = cur.Skipped
+		if len(cur.SkippedByReason) > 0 {
+			body["skippedByReason"] = cur.SkippedByReason
+		}
+	}
+	a.server.Send(NewCustomEvent("gaffer/stats", body))
 }
 
 // EmitStateIfChanged sends a gaffer/state custom event when the

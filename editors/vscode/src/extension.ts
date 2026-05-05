@@ -15,7 +15,7 @@ import {
 	type DebugProjectionArgs,
 } from "./debugging/session-controller.js";
 import { initOutput, log } from "./output.js";
-import { initDiagnostics } from "./diagnostics.js";
+import { initDiagnostics, setTomlDiagnostics } from "./diagnostics.js";
 import {
 	showManifestFailure,
 	showNoProjections,
@@ -56,6 +56,8 @@ export async function activate(
 			tomlCodeLens.setDebugState(state);
 			jsCodeLens.setDebugState(state);
 		},
+		readDebugPort: () =>
+			vscode.workspace.getConfiguration("gaffer").get<number>("debugPort", -1),
 	});
 	controller.register(context);
 
@@ -181,6 +183,23 @@ export async function activate(
 		});
 	};
 
+	const debugProjectionPick = async (args: {
+		name: string;
+		tomlUri: vscode.Uri;
+		fixtureNames: string[];
+	}): Promise<void> => {
+		if (args.fixtureNames.length === 0) return;
+		const picked = await vscode.window.showQuickPick(args.fixtureNames, {
+			placeHolder: `Pick a fixture to debug ${args.name} with`,
+		});
+		if (!picked) return;
+		await controller.start({
+			name: args.name,
+			tomlUri: args.tomlUri,
+			fixture: picked,
+		});
+	};
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand("gaffer.stopDebug", () =>
 			controller.stop(),
@@ -189,7 +208,15 @@ export async function activate(
 			"gaffer.debugProjection",
 			(args: DebugProjectionArgs) => controller.start(args),
 		),
+		vscode.commands.registerCommand(
+			"gaffer.debugProjectionPick",
+			debugProjectionPick,
+		),
 		vscode.commands.registerCommand("gaffer.runProjection", runProjection),
+		// Click target for the "Invalid fixture: <reason>" lens. The lens
+		// is informational; the user fixes the toml. CodeLens.command is
+		// required by VS Code, so we route to a registered no-op.
+		vscode.commands.registerCommand("gaffer.noop", () => {}),
 	);
 
 	const tomlWatcher =
@@ -202,8 +229,13 @@ export async function activate(
 		log("gaffer.toml created");
 		await reloadLensState();
 	});
-	tomlWatcher.onDidDelete(async () => {
+	tomlWatcher.onDidDelete(async (uri) => {
 		log("gaffer.toml deleted");
+		// provideCodeLenses is the only writer of toml diagnostics for
+		// a given URI, but it never re-fires once the document is gone.
+		// Clear here so a deleted toml's invalid-fixture warnings don't
+		// linger in the Problems panel.
+		setTomlDiagnostics(uri, []);
 		await reloadLensState();
 	});
 	context.subscriptions.push(tomlWatcher);

@@ -95,7 +95,18 @@ export async function dispatchDapEvent(
 		}
 		case "gaffer/stats": {
 			const body = parseDapBody(StatsBodySchema, e);
-			if (body) handlers.statusProvider.setStats(body.handled, body.errors);
+			if (body) {
+				handlers.statusProvider.setStats(body.handled, body.errors);
+				// Live mode omits both fields entirely; only forward when
+				// the CLI is in fixture mode (a previously-set count clears
+				// via reset() at session start, not mid-stream).
+				if (body.skipped !== undefined || body.skippedByReason !== undefined) {
+					handlers.statusProvider.setSkipped(
+						body.skipped ?? 0,
+						body.skippedByReason ?? {},
+					);
+				}
+			}
 			break;
 		}
 		case "gaffer/caughtUp": {

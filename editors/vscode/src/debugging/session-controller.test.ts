@@ -1,6 +1,9 @@
 import * as vscode from "vscode";
 import { beforeEach, describe, expect, it } from "vitest";
-import { SessionController } from "./session-controller.js";
+import {
+	SessionController,
+	type DebugProjectionArgs,
+} from "./session-controller.js";
 import { PhaseTracker } from "./phase-tracker.js";
 import { FakeSession } from "../../test/testutil/fake-session.js";
 import { makeContext } from "../../test/testutil/fake-context.js";
@@ -99,6 +102,8 @@ function makeHarness(): Harness {
 		pushDebugState: (s) => {
 			pushed.push({ ...s });
 		},
+		readDebugPort: () =>
+			vscode.workspace.getConfiguration("gaffer").get<number>("debugPort", -1),
 		createSession: factory,
 	});
 	const ctx = makeContext();
@@ -112,7 +117,7 @@ function makeHarness(): Harness {
 	};
 }
 
-const projectionArgs = {
+const projectionArgs: DebugProjectionArgs = {
 	name: "checkout",
 	tomlUri: vscode.Uri.file("/p/checkout/gaffer.toml"),
 };
@@ -122,8 +127,12 @@ const projectionArgs = {
 // rejectDebug on the returned FakeSession.
 async function startUntilWaitForDebug(
 	h: Harness,
+	argsOverride: Partial<DebugProjectionArgs> = {},
 ): Promise<{ startPromise: Promise<void>; session: FakeSession }> {
-	const startPromise = h.controller.start(projectionArgs);
+	const startPromise = h.controller.start({
+		...projectionArgs,
+		...argsOverride,
+	});
 	await flushAllMicrotasks();
 	const session = h.getActiveSession();
 	if (!session) throw new Error("expected createSession to have been called");
@@ -162,10 +171,16 @@ describe("SessionController.start - happy path", () => {
 		expect(h.pushed.map((s) => s.name)).toEqual(["checkout", "checkout"]);
 	});
 
-	it("sets gaffer.mode context to undefined for starting and 'running' for running", async () => {
+	it("sets gaffer.mode to undefined while starting and 'running' once running", async () => {
+		// Assert the mapping at each transition without locking in the
+		// total call count - a refactor that adds idempotent resets
+		// shouldn't fail this.
 		const h = makeHarness();
-		await startToRunning(h);
-		expect(h.contextCalls).toEqual([undefined, "running"]);
+		const { startPromise, session } = await startUntilWaitForDebug(h);
+		expect(h.contextCalls.at(-1)).toBeUndefined();
+		session.resolveDebug(4711);
+		await startPromise;
+		expect(h.contextCalls.at(-1)).toBe("running");
 	});
 
 	it("resets the status provider with the projection name", async () => {
@@ -194,6 +209,24 @@ describe("SessionController.start - happy path", () => {
 		const h = makeHarness();
 		const { session } = await startToRunning(h);
 		expect(session.argv).not.toContain("--debug-port");
+	});
+
+	it("passes --fixture <name> when args.fixture is set", async () => {
+		const h = makeHarness();
+		const { startPromise, session } = await startUntilWaitForDebug(h, {
+			fixture: "happy",
+		});
+		session.resolveDebug(4711);
+		await startPromise;
+		expect(session.argv).toContain("--fixture");
+		const idx = session.argv.indexOf("--fixture");
+		expect(session.argv[idx + 1]).toBe("happy");
+	});
+
+	it("omits --fixture when args.fixture is unset", async () => {
+		const h = makeHarness();
+		const { session } = await startToRunning(h);
+		expect(session.argv).not.toContain("--fixture");
 	});
 
 	it("passes --start-paused-if-no-breakpoints by default", async () => {
@@ -236,32 +269,74 @@ describe("SessionController.start - guards", () => {
 		expect(h.pushed).toEqual([]);
 	});
 
-	it("ignores start() when already starting", async () => {
+	it("tears down the in-flight start and launches the new one when called during starting", async () => {
+		// Cross-projection click while A is still starting: the user
+		// clicks Debug on B before A has finished attaching. The first
+		// start unwinds via cleanup('idle'); the second proceeds.
 		const h = makeHarness();
-		const { startPromise, session } = await startUntilWaitForDebug(h);
-		// Second start while in 'starting' should resolve quickly without
-		// creating a second session.
-		const second = h.controller.start(projectionArgs);
-		let secondResolved = false;
-		void second.then(() => {
-			secondResolved = true;
-		});
+		const first = await startUntilWaitForDebug(h);
+		const otherArgs: DebugProjectionArgs = {
+			name: "other",
+			tomlUri: vscode.Uri.file("/p/other/gaffer.toml"),
+		};
+		const secondPromise = h.controller.start(otherArgs);
+		// Let stop() interrupt the in-flight first start by rejecting its
+		// pending waitForDebug, so the first start can unwind.
+		first.session.rejectDebug(new Error("aborted by restart"));
+		await first.startPromise;
 		await flushAllMicrotasks();
-		expect(secondResolved).toBe(true);
-		expect(h.getActiveSession()).toBe(session);
-		// Drain the first start so afterEach is clean.
-		session.resolveDebug(4711);
-		await startPromise;
+		const newSession = h.getActiveSession();
+		expect(newSession).not.toBe(first.session);
+		if (!newSession) throw new Error("expected a new session");
+		newSession.resolveDebug(4712);
+		await secondPromise;
+		expect(h.pushed.at(-1)?.status).toBe("running");
+		expect(h.pushed.at(-1)?.name).toBe("other");
+		expect(first.session.disposeCount).toBeGreaterThan(0);
 	});
 
-	it("ignores start() when running", async () => {
+	it("stops the active session and starts the new one when called during running", async () => {
+		// Cross-projection Debug click while A is running. The active
+		// session is disposed, the panels run through ended -> idle, and
+		// the new session reaches running.
 		const h = makeHarness();
-		const { session } = await startToRunning(h);
-		const second = h.controller.start(projectionArgs);
+		const { session: first } = await startToRunning(h);
+		const otherArgs: DebugProjectionArgs = {
+			name: "other",
+			tomlUri: vscode.Uri.file("/p/other/gaffer.toml"),
+		};
+		const secondPromise = h.controller.start(otherArgs);
 		await flushAllMicrotasks();
-		await second;
-		// Same session - no second factory call.
-		expect(h.getActiveSession()).toBe(session);
+		const newSession = h.getActiveSession();
+		expect(newSession).not.toBe(first);
+		if (!newSession) throw new Error("expected a new session");
+		newSession.resolveDebug(4713);
+		await secondPromise;
+		expect(h.pushed.at(-1)?.status).toBe("running");
+		expect(h.pushed.at(-1)?.name).toBe("other");
+		expect(first.disposeCount).toBeGreaterThan(0);
+	});
+
+	it("restarts the same projection with a fixture mid-session", async () => {
+		// User is running checkout live, then clicks the "happy" fixture
+		// lens on the same projection. Existing session stops; new one
+		// launches with --fixture happy.
+		const h = makeHarness();
+		const { session: first } = await startToRunning(h);
+		const secondPromise = h.controller.start({
+			...projectionArgs,
+			fixture: "happy",
+		});
+		await flushAllMicrotasks();
+		const newSession = h.getActiveSession();
+		expect(newSession).not.toBe(first);
+		if (!newSession) throw new Error("expected a new session");
+		newSession.resolveDebug(4714);
+		await secondPromise;
+		expect(newSession.argv).toContain("--fixture");
+		expect(newSession.argv[newSession.argv.indexOf("--fixture") + 1]).toBe(
+			"happy",
+		);
 	});
 
 	it("treats start() from ended as a fresh idle->starting transition", async () => {
@@ -527,26 +602,28 @@ describe("SessionController.dispose", () => {
 });
 
 describe("SessionController gaffer.mode setContext across all transitions", () => {
-	it("idle->starting->running->ended->idle pushes the right context values", async () => {
-		// Plan row: gaffer.mode setContext fires with the right value at
-		// each transition. Cover the full cycle in one pass.
+	it("flips gaffer.mode at each lifecycle boundary", async () => {
+		// Assert the latest setContext value after each meaningful
+		// transition. Doesn't lock in the count - a refactor that
+		// adds idempotent resets is allowed as long as the
+		// observed-status mapping stays correct.
 		const h = makeHarness();
-		const { session } = await startToRunning(h);
+		const { startPromise, session } = await startUntilWaitForDebug(h);
+		expect(h.contextCalls.at(-1)).toBeUndefined(); // starting
+		session.resolveDebug(4711);
+		await startPromise;
+		expect(h.contextCalls.at(-1)).toBe("running");
+
 		session.fire({ type: "exit", code: 0 });
 		await flushAllMicrotasks();
-		// running -> ended
 		expect(h.contextCalls.at(-1)).toBe("ended");
-		// Restart from ended -> cleanup("idle") sets undefined, then
-		// starting also undefined, then running.
-		await startToRunning(h);
-		expect(h.contextCalls).toEqual([
-			undefined, // starting (1)
-			"running", // running (1)
-			"ended", // exit
-			undefined, // cleanup("idle") on next start
-			undefined, // starting (2)
-			"running", // running (2)
-		]);
+
+		// Restart from ended.
+		const second = await startUntilWaitForDebug(h);
+		expect(h.contextCalls.at(-1)).toBeUndefined(); // starting again
+		second.session.resolveDebug(4712);
+		await second.startPromise;
+		expect(h.contextCalls.at(-1)).toBe("running");
 	});
 
 	it("flips between running and inspecting", async () => {

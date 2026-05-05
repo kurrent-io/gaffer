@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import path from "node:path";
-import { buildLens } from "./lens.js";
+import { buildLens, buildPickLens } from "./lens.js";
 import type { Manifest } from "../discovery/schemas.js";
 import type { ProjectIndex } from "../discovery/project-index.js";
 import type { DebugState } from "../types.js";
@@ -57,16 +57,33 @@ export class JsCodeLensProvider implements vscode.CodeLensProvider {
 		}
 		if (fromLine === -1) return [];
 
-		const { name, tomlDir } = resolved;
+		const { name, tomlDir, fixtures } = resolved;
 		const range = new vscode.Range(fromLine, 0, fromLine, fromLineLength);
 		const tomlUri = vscode.Uri.file(path.join(tomlDir, "gaffer.toml"));
-		const lens = buildLens(
+		const lenses: vscode.CodeLens[] = [];
+		const liveLens = buildLens(
 			this.#manifest,
 			this.#debugState,
 			name,
 			range,
 			tomlUri,
 		);
-		return lens ? [lens] : [];
+		if (liveLens) lenses.push(liveLens);
+		// Second lens for fixture-driven debug. Only rendered when the
+		// projection has at least one valid fixture - otherwise the
+		// dropdown would be empty. Distinct command + title so the
+		// existing "Debug" muscle memory still maps to live.
+		if (fixtures.length > 0) {
+			const fixtureLens = buildPickLens(
+				this.#manifest,
+				this.#debugState,
+				name,
+				range,
+				tomlUri,
+				fixtures.map((f) => f.name),
+			);
+			if (fixtureLens) lenses.push(fixtureLens);
+		}
+		return lenses;
 	}
 }

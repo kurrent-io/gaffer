@@ -1,11 +1,17 @@
+import * as vscode from "vscode";
 import { describe, expect, it } from "vitest";
 import {
 	clearDiagnostics,
 	initDiagnostics,
 	reportFatalError,
+	setTomlDiagnostics,
 } from "./diagnostics.js";
 import { makeContext } from "../test/testutil/fake-context.js";
 import { getState } from "../test/testutil/vscode-state.js";
+
+function tomlCollection() {
+	return getState().diagnosticCollections.find((c) => c.name === "gaffer-toml");
+}
 
 describe("diagnostics", () => {
 	it("reportFatalError is a no-op when not initialised", () => {
@@ -110,5 +116,72 @@ describe("diagnostics", () => {
 		expect(getState().diagnosticCollections[0]?.entries.size).toBe(1);
 		clearDiagnostics();
 		expect(getState().diagnosticCollections[0]?.entries.size).toBe(0);
+	});
+
+	it("setTomlDiagnostics writes to the toml-scoped collection", () => {
+		initDiagnostics(makeContext());
+		const uri = vscode.Uri.file("/p/gaffer.toml");
+		const diag = new vscode.Diagnostic(
+			new vscode.Range(3, 0, 3, 30),
+			'Invalid fixture "x": empty path',
+			vscode.DiagnosticSeverity.Error,
+		);
+		setTomlDiagnostics(uri, [diag]);
+		expect(tomlCollection()?.entries.get("/p/gaffer.toml")).toHaveLength(1);
+	});
+
+	it("setTomlDiagnostics with [] clears that uri's entries", () => {
+		// Pass empty to delete rather than set [] - keeps the Problems
+		// panel from showing a stale "no problems" entry for the file.
+		initDiagnostics(makeContext());
+		const uri = vscode.Uri.file("/p/gaffer.toml");
+		setTomlDiagnostics(uri, [
+			new vscode.Diagnostic(
+				new vscode.Range(0, 0, 0, 1),
+				"x",
+				vscode.DiagnosticSeverity.Error,
+			),
+		]);
+		expect(tomlCollection()?.entries.has("/p/gaffer.toml")).toBe(true);
+		setTomlDiagnostics(uri, []);
+		expect(tomlCollection()?.entries.has("/p/gaffer.toml")).toBe(false);
+	});
+
+	it("setTomlDiagnostics is a no-op when not initialised", () => {
+		const uri = vscode.Uri.file("/p/gaffer.toml");
+		setTomlDiagnostics(uri, [
+			new vscode.Diagnostic(
+				new vscode.Range(0, 0, 0, 1),
+				"x",
+				vscode.DiagnosticSeverity.Error,
+			),
+		]);
+		expect(getState().diagnosticCollections).toEqual([]);
+	});
+
+	it("toml diagnostics survive clearDiagnostics (different collection)", () => {
+		// clearDiagnostics is called at session start to wipe the
+		// fatal-error collection; toml validation diagnostics must not
+		// be wiped along with it.
+		initDiagnostics(makeContext());
+		const tomlUri = vscode.Uri.file("/p/gaffer.toml");
+		setTomlDiagnostics(tomlUri, [
+			new vscode.Diagnostic(
+				new vscode.Range(0, 0, 0, 1),
+				"x",
+				vscode.DiagnosticSeverity.Error,
+			),
+		]);
+		reportFatalError({
+			file: "/p/projection.js",
+			line: 1,
+			column: 1,
+			code: "JS_ERROR",
+			description: "x",
+			jsStack: undefined,
+			eventId: undefined,
+		});
+		clearDiagnostics();
+		expect(tomlCollection()?.entries.has("/p/gaffer.toml")).toBe(true);
 	});
 });

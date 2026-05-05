@@ -70,11 +70,13 @@ describe("activate registrations", () => {
 		]);
 	});
 
-	it("registers the three commands", async () => {
+	it("registers the lifecycle commands", async () => {
 		await activateBare();
 		const names = [...getState().registeredCommands.keys()].sort();
 		expect(names).toEqual([
 			"gaffer.debugProjection",
+			"gaffer.debugProjectionPick",
+			"gaffer.noop",
 			"gaffer.runProjection",
 			"gaffer.stopDebug",
 		]);
@@ -246,6 +248,33 @@ describe("tomlWatcher reload chain", () => {
 		watcher?.emitDelete(vscode.Uri.file("/p/gaffer.toml"));
 		await flushAllMicrotasks();
 		expect(setIndex).toHaveBeenCalledTimes(1);
+	});
+
+	it("delete event clears toml diagnostics for the deleted uri", async () => {
+		// provideCodeLenses is the only writer of gaffer-toml diagnostics,
+		// and it never re-fires for a deleted document. Without an explicit
+		// clear here, invalid-fixture warnings would linger in Problems
+		// after the user deletes the toml.
+		const { setTomlDiagnostics } = await import("./diagnostics.js");
+		await activateBare();
+		const tomlUri = vscode.Uri.file("/p/gaffer.toml");
+		setTomlDiagnostics(tomlUri, [
+			new vscode.Diagnostic(
+				new vscode.Range(0, 0, 0, 1),
+				"x",
+				vscode.DiagnosticSeverity.Error,
+			),
+		]);
+		const tomlColl = getState().diagnosticCollections.find(
+			(c) => c.name === "gaffer-toml",
+		);
+		expect(tomlColl?.entries.has(tomlUri.fsPath)).toBe(true);
+
+		queueFindFiles([]);
+		const watcher = getState().fileWatchers[0];
+		watcher?.emitDelete(tomlUri);
+		await flushAllMicrotasks();
+		expect(tomlColl?.entries.has(tomlUri.fsPath)).toBe(false);
 	});
 
 	it("the watcher is on context.subscriptions for disposal", async () => {

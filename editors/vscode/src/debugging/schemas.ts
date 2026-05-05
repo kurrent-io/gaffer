@@ -63,9 +63,14 @@ export const ModeBodySchema = v.object({
 });
 export type ModeBody = v.InferOutput<typeof ModeBodySchema>;
 
+// skipped + skippedByReason are emitted only in fixture mode; live mode
+// drops are engine pre-filter noise.
+const NonNegativeInt = v.pipe(v.number(), v.integer(), v.minValue(0));
 export const StatsBodySchema = v.object({
 	handled: v.number(),
 	errors: v.number(),
+	skipped: v.optional(NonNegativeInt),
+	skippedByReason: v.optional(v.record(v.string(), NonNegativeInt)),
 });
 export type StatsBody = v.InferOutput<typeof StatsBodySchema>;
 

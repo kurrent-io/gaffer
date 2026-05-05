@@ -124,13 +124,109 @@ describe("StatusViewProvider", () => {
 		expect(view2.description).toBe("Catching up");
 	});
 
-	it("includes processed/errors in stats when non-zero (skipped intentionally hidden)", () => {
+	it("includes processed/errors in stats when non-zero", () => {
 		const provider = new StatusViewProvider();
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
 		provider.setStats(1, 1);
 		expect(lastUpdate(view).stats).toEqual(["1 events processed", "1 errors"]);
+	});
+
+	it("setSkipped surfaces a skipped line with the by-reason breakdown", () => {
+		const provider = new StatusViewProvider();
+		const view = makeFakeWebviewView();
+		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+		provider.reset("checkout");
+		provider.setStats(1, 0);
+		provider.setSkipped(5, { "wrong-stream": 3, "no-handler": 2 });
+		expect(lastUpdate(view).stats).toEqual([
+			"1 events processed",
+			"5 skipped (3 wrong-stream, 2 no-handler)",
+		]);
+	});
+
+	it("renders skipped without breakdown when byReason is empty", () => {
+		const provider = new StatusViewProvider();
+		const view = makeFakeWebviewView();
+		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+		provider.reset("checkout");
+		provider.setSkipped(2, {});
+		expect(lastUpdate(view).stats).toEqual(["2 skipped"]);
+	});
+
+	it("orders the breakdown by descending count, not alphabetical", () => {
+		const provider = new StatusViewProvider();
+		const view = makeFakeWebviewView();
+		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+		provider.setSkipped(7, { deleted: 1, "wrong-stream": 4, "no-handler": 2 });
+		expect(lastUpdate(view).stats).toEqual([
+			"7 skipped (4 wrong-stream, 2 no-handler, 1 deleted)",
+		]);
+	});
+
+	it("caps the breakdown at three entries with a +N more suffix", () => {
+		// Five different reasons compresses to top-3 + "+2 more". Keeps
+		// the line scannable on long fixture runs without losing the
+		// signal that the breakdown is richer.
+		const provider = new StatusViewProvider();
+		const view = makeFakeWebviewView();
+		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+		provider.setSkipped(15, {
+			"wrong-stream": 5,
+			"no-handler": 4,
+			deleted: 3,
+			"system-event": 2,
+			other: 1,
+		});
+		expect(lastUpdate(view).stats).toEqual([
+			"15 skipped (5 wrong-stream, 4 no-handler, 3 deleted, +2 more)",
+		]);
+	});
+
+	it("setSkipped(0, {}) does not surface a skipped line", () => {
+		// Live mode: CLI omits the fields, dispatcher defaults to 0 / {}.
+		// Don't render a "0 skipped" line in that case.
+		const provider = new StatusViewProvider();
+		const view = makeFakeWebviewView();
+		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+		provider.reset("checkout");
+		provider.setStats(3, 0);
+		provider.setSkipped(0, {});
+		expect(lastUpdate(view).stats).toEqual(["3 events processed"]);
+	});
+
+	it("setSkipped is a no-op when neither count nor byReason changes", () => {
+		const provider = new StatusViewProvider();
+		const view = makeFakeWebviewView();
+		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+		provider.setSkipped(2, { "wrong-stream": 2 });
+		const beforeCount = view.webview.postedMessages.length;
+		provider.setSkipped(2, { "wrong-stream": 2 });
+		expect(view.webview.postedMessages.length).toBe(beforeCount);
+	});
+
+	it("setSkipped re-renders when byReason changes even if count is unchanged", () => {
+		// A reason transition (e.g. only "wrong-stream" -> only "deleted")
+		// at the same count is still meaningful - the panel may grow a
+		// breakdown over time.
+		const provider = new StatusViewProvider();
+		const view = makeFakeWebviewView();
+		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+		provider.setSkipped(2, { "wrong-stream": 2 });
+		const beforeCount = view.webview.postedMessages.length;
+		provider.setSkipped(2, { deleted: 2 });
+		expect(view.webview.postedMessages.length).toBe(beforeCount + 1);
+	});
+
+	it("reset() clears skipped count", () => {
+		const provider = new StatusViewProvider();
+		const view = makeFakeWebviewView();
+		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+		provider.setSkipped(2, { "wrong-stream": 2 });
+		provider.reset("checkout");
+		const update = lastUpdate(view);
+		expect(update.stats).not.toContain("2 skipped");
 	});
 
 	it("markEnded flips mode to 'ended', updates title, and hides the pause button", () => {

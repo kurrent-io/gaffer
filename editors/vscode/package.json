@@ -80,6 +80,10 @@
 				"title": "Gaffer: Debug Projection"
 			},
 			{
+				"command": "gaffer.debugProjectionPick",
+				"title": "Gaffer: Debug Projection from Fixture"
+			},
+			{
 				"command": "gaffer.stopDebug",
 				"title": "Gaffer: Stop Projection"
 			}
@@ -116,6 +120,10 @@
 			"commandPalette": [
 				{
 					"command": "gaffer.debugProjection",
+					"when": "false"
+				},
+				{
+					"command": "gaffer.debugProjectionPick",
 					"when": "false"
 				},
 				{

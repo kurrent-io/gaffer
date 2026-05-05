@@ -8,15 +8,26 @@ function indexWith(
 	entry: string,
 	tomlDir: string,
 	projectionName: string,
+	fixtures: ReadonlyArray<{ name: string; path: string }> = [],
 ): ProjectIndex {
 	return {
-		lookup: (p) => (p === entry ? { name: projectionName, tomlDir } : null),
+		lookup: (p) =>
+			p === entry
+				? {
+						name: projectionName,
+						tomlDir,
+						fixtures: [...fixtures],
+						invalidFixtures: [],
+					}
+				: null,
 		size: 1,
 		entryPaths: [entry],
 		projections: [
 			{
 				name: projectionName,
 				tomlUri: vscode.Uri.file(`${tomlDir}/gaffer.toml`),
+				fixtures,
+				invalidFixtures: [],
 			},
 		],
 		projectRoot: tomlDir,
@@ -139,5 +150,98 @@ describe("JsCodeLensProvider.provideCodeLenses", () => {
 		expect(provider.provideCodeLenses(doc)[0]?.command?.command).toBe(
 			"gaffer.stopDebug",
 		);
+	});
+
+	describe("fixture dropdown lens", () => {
+		it("renders only the live lens when the projection has no fixtures", () => {
+			const provider = new JsCodeLensProvider(
+				indexWith("/p/app/a.js", "/p/app", "checkout"),
+				okManifest,
+			);
+			const doc = makeDoc(vscode.Uri.file("/p/app/a.js"), "fromAll().when({})");
+			const lenses = provider.provideCodeLenses(doc);
+			expect(lenses).toHaveLength(1);
+			expect(lenses[0]?.command?.command).toBe("gaffer.debugProjection");
+		});
+
+		it("renders both the live and fixture-pick lenses when fixtures exist", () => {
+			const provider = new JsCodeLensProvider(
+				indexWith("/p/app/a.js", "/p/app", "checkout", [
+					{ name: "happy", path: "fixtures/happy.json" },
+					{ name: "full", path: "fixtures/full.json" },
+				]),
+				okManifest,
+			);
+			const doc = makeDoc(vscode.Uri.file("/p/app/a.js"), "fromAll().when({})");
+			const lenses = provider.provideCodeLenses(doc);
+			expect(lenses).toHaveLength(2);
+			expect(lenses.map((l) => l.command?.command)).toEqual([
+				"gaffer.debugProjection",
+				"gaffer.debugProjectionPick",
+			]);
+		});
+
+		it("passes the projection name, tomlUri, and fixture names to the pick command", () => {
+			const provider = new JsCodeLensProvider(
+				indexWith("/p/app/a.js", "/p/app", "checkout", [
+					{ name: "happy", path: "fixtures/happy.json" },
+					{ name: "full", path: "fixtures/full.json" },
+				]),
+				okManifest,
+			);
+			const doc = makeDoc(vscode.Uri.file("/p/app/a.js"), "fromAll().when({})");
+			const pickLens = provider
+				.provideCodeLenses(doc)
+				.find((l) => l.command?.command === "gaffer.debugProjectionPick");
+			expect(pickLens).toBeDefined();
+			const args = pickLens?.command?.arguments?.[0] as {
+				name: string;
+				tomlUri: vscode.Uri;
+				fixtureNames: string[];
+			};
+			expect(args.name).toBe("checkout");
+			expect(args.tomlUri.fsPath).toBe("/p/app/gaffer.toml");
+			expect(args.fixtureNames).toEqual(["happy", "full"]);
+		});
+
+		it("hides the fixture-pick lens while the projection is being debugged live", () => {
+			const provider = new JsCodeLensProvider(
+				indexWith("/p/app/a.js", "/p/app", "checkout", [
+					{ name: "happy", path: "fixtures/happy.json" },
+				]),
+				okManifest,
+			);
+			const doc = makeDoc(vscode.Uri.file("/p/app/a.js"), "fromAll().when({})");
+			expect(provider.provideCodeLenses(doc)).toHaveLength(2);
+
+			provider.setDebugState({ name: "checkout", status: "running" });
+			const lenses = provider.provideCodeLenses(doc);
+			expect(lenses).toHaveLength(1);
+			expect(lenses[0]?.command?.command).toBe("gaffer.stopDebug");
+		});
+
+		it("restores the fixture-pick lens when the session ends", () => {
+			// debugState.name stays set to the projection after the session
+			// terminates (the projection-level lens relies on this to fall
+			// back to a Debug button via stopTitle). The dropdown must use
+			// the same status check or it stays hidden forever post-session.
+			const provider = new JsCodeLensProvider(
+				indexWith("/p/app/a.js", "/p/app", "checkout", [
+					{ name: "happy", path: "fixtures/happy.json" },
+				]),
+				okManifest,
+			);
+			const doc = makeDoc(vscode.Uri.file("/p/app/a.js"), "fromAll().when({})");
+			provider.setDebugState({ name: "checkout", status: "running" });
+			expect(provider.provideCodeLenses(doc)).toHaveLength(1);
+
+			provider.setDebugState({ name: "checkout", status: "ended" });
+			const lenses = provider.provideCodeLenses(doc);
+			expect(lenses).toHaveLength(2);
+			expect(lenses.map((l) => l.command?.command)).toEqual([
+				"gaffer.debugProjection",
+				"gaffer.debugProjectionPick",
+			]);
+		});
 	});
 });

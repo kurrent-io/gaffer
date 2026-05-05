@@ -32,6 +32,8 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	#name = "";
 	#processed = 0;
 	#errors = 0;
+	#skipped = 0;
+	#skippedByReason: Readonly<Record<string, number>> = {};
 	// Stored on the provider so that view reconstruction (when VS Code
 	// re-shows after the visibility when-clause flips) re-renders with
 	// the right mode. The webview instance is recreated on re-show; the
@@ -91,6 +93,8 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		this.#name = name;
 		this.#processed = 0;
 		this.#errors = 0;
+		this.#skipped = 0;
+		this.#skippedByReason = {};
 		this.#mode = "running";
 		this.#pausePending = false;
 		this.#phase = "connecting";
@@ -113,15 +117,26 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	// The CLI throttles its emit cadence so a 200ms render coalesce
 	// here is unnecessary - by the time setStats fires the values are
 	// already at most 100ms behind the engine.
-	//
-	// Skipped events are intentionally not surfaced: they're noise from
-	// the user's perspective ("we couldn't filter this on the server but
-	// got it and didn't want it"). Tracked internally on the CLI side
-	// for future verbose/debug surfaces.
 	setStats(processed: number, errors: number): void {
 		if (this.#processed === processed && this.#errors === errors) return;
 		this.#processed = processed;
 		this.#errors = errors;
+		this.#postUpdate();
+	}
+
+	// Skipped events are surfaced only in fixture mode (the CLI omits
+	// the fields in live mode). In live runs the user is watching a real
+	// stream and engine-level drops are noise; in fixture mode every
+	// drop is a fixture authoring problem worth flagging.
+	setSkipped(count: number, byReason: Readonly<Record<string, number>>): void {
+		if (
+			this.#skipped === count &&
+			recordsEqual(this.#skippedByReason, byReason)
+		) {
+			return;
+		}
+		this.#skipped = count;
+		this.#skippedByReason = { ...byReason };
 		this.#postUpdate();
 	}
 
@@ -140,6 +155,9 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		}
 		if (this.#errors > 0) {
 			stats.push(`${this.#errors.toLocaleString()} errors`);
+		}
+		if (this.#skipped > 0) {
+			stats.push(formatSkipped(this.#skipped, this.#skippedByReason));
 		}
 		if (stats.length === 0 && this.#mode === "running") {
 			stats.push(connecting ? "Connecting..." : "Waiting for events...");
@@ -174,4 +192,35 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 
 function generateNonce(): string {
 	return crypto.randomUUID().replaceAll("-", "");
+}
+
+// "5 skipped (3 wrong-stream, 2 no-handler)" - top-3 reasons by
+// count, with "+N more" if there are additional categories. Mirrors
+// the CLI text writer's per-reason breakdown so the editor and the
+// terminal show the same shape.
+function formatSkipped(
+	count: number,
+	byReason: Readonly<Record<string, number>>,
+): string {
+	const total = `${count.toLocaleString()} skipped`;
+	const entries = Object.entries(byReason)
+		.filter(([, n]) => n > 0)
+		.sort(([, a], [, b]) => b - a);
+	if (entries.length === 0) return total;
+	const TOP = 3;
+	const top = entries.slice(0, TOP).map(([r, n]) => `${n} ${r}`);
+	const overflow = entries.length - TOP;
+	const parts = overflow > 0 ? [...top, `+${overflow} more`] : top;
+	return `${total} (${parts.join(", ")})`;
+}
+
+function recordsEqual(
+	a: Readonly<Record<string, number>>,
+	b: Readonly<Record<string, number>>,
+): boolean {
+	const ak = Object.keys(a);
+	const bk = Object.keys(b);
+	if (ak.length !== bk.length) return false;
+	for (const k of ak) if (a[k] !== b[k]) return false;
+	return true;
 }

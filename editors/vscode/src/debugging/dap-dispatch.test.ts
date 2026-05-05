@@ -59,13 +59,16 @@ function fakeState(): { provider: StateProvider; calls: RecordedState } {
 
 interface RecordedStatus {
 	setStats: Array<{ processed: number; errors: number }>;
+	setSkipped: Array<{ count: number; byReason: Record<string, number> }>;
 }
 
 function fakeStatus(): { provider: StatusViewProvider; calls: RecordedStatus } {
-	const calls: RecordedStatus = { setStats: [] };
+	const calls: RecordedStatus = { setStats: [], setSkipped: [] };
 	const provider = {
 		setStats: (processed: number, errors: number) =>
 			calls.setStats.push({ processed, errors }),
+		setSkipped: (count: number, byReason: Record<string, number>) =>
+			calls.setSkipped.push({ count, byReason }),
 	} as unknown as StatusViewProvider;
 	return { provider, calls };
 }
@@ -261,6 +264,43 @@ describe("dispatchDapEvent - happy paths", () => {
 		expect(status.calls.setStats).toEqual([{ processed: 12, errors: 1 }]);
 	});
 
+	it("routes gaffer/stats with skipped fields to setSkipped", async () => {
+		// Fixture mode case: CLI includes skipped + skippedByReason.
+		const status = fakeStatus();
+		await dispatchDapEvent(
+			event("gaffer/stats", {
+				handled: 3,
+				errors: 0,
+				skipped: 2,
+				skippedByReason: { "wrong-stream": 2 },
+			}),
+			handlers({ status: status.provider }),
+		);
+		expect(status.calls.setSkipped).toEqual([
+			{ count: 2, byReason: { "wrong-stream": 2 } },
+		]);
+	});
+
+	it("does not call setSkipped when neither skipped field is present", async () => {
+		// Live mode case: CLI omits the fields. The panel's skipped count
+		// is reset() at session start, so we don't need a per-event clear.
+		const status = fakeStatus();
+		await dispatchDapEvent(
+			event("gaffer/stats", { handled: 12, errors: 1 }),
+			handlers({ status: status.provider }),
+		);
+		expect(status.calls.setSkipped).toEqual([]);
+	});
+
+	it("routes gaffer/stats with only skipped (no byReason) to setSkipped(n, {})", async () => {
+		const status = fakeStatus();
+		await dispatchDapEvent(
+			event("gaffer/stats", { handled: 1, errors: 0, skipped: 4 }),
+			handlers({ status: status.provider }),
+		);
+		expect(status.calls.setSkipped).toEqual([{ count: 4, byReason: {} }]);
+	});
+
 	it("routes gaffer/caughtUp to phaseTracker.setCaughtUp", async () => {
 		const tracker = fakeTracker();
 		await dispatchDapEvent(
@@ -321,6 +361,17 @@ describe("dispatchDapEvent - malformed bodies", () => {
 		["gaffer/finalState", { partitions: "not-a-record" }],
 		["gaffer/mode", { mode: 42 }],
 		["gaffer/stats", { handled: "many", errors: 0 }],
+		["gaffer/stats", { handled: 1, errors: 0, skipped: "two" }],
+		["gaffer/stats", { handled: 1, errors: 0, skipped: -1 }],
+		["gaffer/stats", { handled: 1, errors: 0, skipped: 1.5 }],
+		[
+			"gaffer/stats",
+			{ handled: 1, errors: 0, skippedByReason: { "wrong-stream": "1" } },
+		],
+		[
+			"gaffer/stats",
+			{ handled: 1, errors: 0, skippedByReason: { "wrong-stream": -1 } },
+		],
 		["gaffer/caughtUp", { caughtUp: "yes" }],
 	];
 
@@ -348,6 +399,7 @@ describe("dispatchDapEvent - malformed bodies", () => {
 			expect(step.calls.setError).toEqual([]);
 			expect(state.calls.updateFromState).toEqual([]);
 			expect(status.calls.setStats).toEqual([]);
+			expect(status.calls.setSkipped).toEqual([]);
 			expect(modeCalled).toBe(false);
 			// setDebugSession fires before the per-event parse since
 			// every gaffer event needs the session reference for

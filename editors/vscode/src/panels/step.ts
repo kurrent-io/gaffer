@@ -33,12 +33,6 @@ export class StepProvider implements vscode.TreeDataProvider<TreeItemWithChildre
 		this.#scheduleRefresh();
 	}
 
-	// The CLI never sends a skipped stepResult to the editor today -
-	// in live mode (the only mode the extension currently supports)
-	// the entire skip is suppressed wire-side. When fixture mode
-	// lands in the extension (UI-1540) we'll need to surface skips
-	// here with their reason: the user curated those events and a
-	// skip is diagnostic, not noise.
 	setResult(result: StepResult): void {
 		this.#items.push(buildResultItem(result));
 		this.#scheduleRefresh();

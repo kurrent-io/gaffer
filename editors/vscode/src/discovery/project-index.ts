@@ -3,7 +3,11 @@ import path from "node:path";
 import fs from "node:fs";
 import { parse as parseToml } from "smol-toml";
 import { log } from "../output.js";
-import type { ProjectEntry } from "../types.js";
+import type {
+	InvalidProjectFixture,
+	ProjectEntry,
+	ProjectFixture,
+} from "../types.js";
 
 export interface ProjectIndex {
 	lookup(filePath: string): ProjectEntry | null;
@@ -12,6 +16,8 @@ export interface ProjectIndex {
 	readonly projections: ReadonlyArray<{
 		name: string;
 		tomlUri: vscode.Uri;
+		fixtures: ReadonlyArray<ProjectFixture>;
+		invalidFixtures: ReadonlyArray<InvalidProjectFixture>;
 	}>;
 	readonly projectRoot: string | undefined;
 }
@@ -39,9 +45,14 @@ export async function createProjectIndex(): Promise<ProjectIndex> {
 				);
 				continue;
 			}
+			const { fixtures, invalidFixtures } = partitionFixtures(
+				classifyFixtures(proj.name, proj.fixtures, tomlDir),
+			);
 			entries.set(normalizePath(absEntry), {
 				name: proj.name,
 				tomlDir,
+				fixtures,
+				invalidFixtures,
 			});
 		}
 	}
@@ -55,14 +66,12 @@ export async function createProjectIndex(): Promise<ProjectIndex> {
 			return [...entries.keys()];
 		},
 		get projections() {
-			const out: Array<{ name: string; tomlUri: vscode.Uri }> = [];
-			for (const entry of entries.values()) {
-				out.push({
-					name: entry.name,
-					tomlUri: vscode.Uri.file(path.join(entry.tomlDir, "gaffer.toml")),
-				});
-			}
-			return out;
+			return [...entries.values()].map((entry) => ({
+				name: entry.name,
+				tomlUri: vscode.Uri.file(path.join(entry.tomlDir, "gaffer.toml")),
+				fixtures: entry.fixtures,
+				invalidFixtures: entry.invalidFixtures,
+			}));
 		},
 		get projectRoot() {
 			for (const entry of entries.values()) return entry.tomlDir;
@@ -93,6 +102,12 @@ export function isWithin(child: string, parent: string): boolean {
 interface ParsedProjection {
 	name: string;
 	entry: string;
+	// Loose name -> raw-value map straight off the TOML. Values are
+	// `unknown` because a malformed toml could declare a non-string
+	// (`fixtures.x = 42`) and we want to surface that as a warning
+	// lens rather than silently dropping the entry. Type validation
+	// happens in classifyFixtures.
+	fixtures: Record<string, unknown>;
 }
 
 function parseProjections(tomlPath: string): ParsedProjection[] {
@@ -127,6 +142,129 @@ export function projectionBlocks(text: string): Array<ParsedProjection | null> {
 		const name = obj["name"];
 		const entry = obj["entry"];
 		if (typeof name !== "string" || typeof entry !== "string") return null;
-		return { name, entry };
+		return { name, entry, fixtures: parseFixtures(obj["fixtures"]) };
 	});
+}
+
+function parseFixtures(raw: unknown): Record<string, unknown> {
+	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
+	return { ...(raw as Record<string, unknown>) };
+}
+
+// FixtureStatus is one entry per fixture key, classified as valid or
+// invalid. classifyFixtures sorts entries alphabetically by name so
+// the TOML provider's dropdown matches the CLI's FixtureNames() order;
+// per-fixture line lenses anchor by name lookup, not by order.
+export type FixtureStatus =
+	| ({ kind: "valid" } & ProjectFixture)
+	| ({ kind: "invalid" } & InvalidProjectFixture);
+
+// classifyFixtures applies the editor-side validation. Mirrors the
+// CLI's strict rules (empty path, path-escape) but without erroring
+// on the first failure - the editor should keep working with one
+// bad fixture in a projection that otherwise has good ones.
+// Duplicate names are impossible by TOML semantics (parser rejects
+// them at load time). Output is sorted alphabetically by name to
+// match the CLI's FixtureNames() ordering for completion + JSON
+// output.
+export function classifyFixtures(
+	projection: string,
+	parsed: Record<string, unknown>,
+	tomlDir: string,
+): FixtureStatus[] {
+	const out: FixtureStatus[] = [];
+	const sortedEntries = Object.entries(parsed).sort(([a], [b]) =>
+		a.localeCompare(b),
+	);
+
+	for (const [name, fixturePath] of sortedEntries) {
+		if (typeof fixturePath !== "string") {
+			out.push({ kind: "invalid", name, reason: "path must be a string" });
+			log(
+				`Rejecting fixture ${projection}/${name}: path is not a string (got ${typeof fixturePath})`,
+			);
+			continue;
+		}
+		if (fixturePath === "") {
+			out.push({ kind: "invalid", name, reason: "empty path" });
+			continue;
+		}
+		const absPath = path.resolve(tomlDir, fixturePath);
+		if (!isWithin(absPath, tomlDir)) {
+			out.push({
+				kind: "invalid",
+				name,
+				path: fixturePath,
+				reason: "path escapes project root",
+			});
+			log(
+				`Rejecting fixture ${projection}/${name}: path "${fixturePath}" escapes ${tomlDir}`,
+			);
+			continue;
+		}
+		out.push({ kind: "valid", name, path: fixturePath });
+	}
+	return out;
+}
+
+interface ProjectionHeaderLine {
+	line: number;
+	length: number;
+}
+
+interface FixtureKeyLine {
+	line: number;
+	length: number;
+	name: string;
+}
+
+export interface ScannedLines {
+	projectionHeaders: ProjectionHeaderLine[];
+	fixtureLines: FixtureKeyLine[];
+}
+
+// TOML bare keys allow [A-Za-z0-9_-]; we accept the same set for
+// fixture names so the scanner matches whatever the parser will
+// accept. The projection header may include leading whitespace,
+// internal spaces, and a trailing line comment.
+const projectionHeaderPattern = /^\s*\[\[\s*projection\s*\]\]\s*(?:#.*)?$/;
+const fixtureKeyPattern = /^\s*fixtures\s*\.\s*([A-Za-z0-9_-]+)\s*=/;
+
+// Find every [[projection]] header line and every `fixtures.<name> = ...`
+// line in source order. smol-toml returns values but not positions;
+// this lightweight scan zips back to lines by appearance order so the
+// lens provider can place ranges on real source lines.
+export function scanLines(text: string): ScannedLines {
+	const out: ScannedLines = { projectionHeaders: [], fixtureLines: [] };
+	const lines = text.split(/\r?\n/);
+	for (const [i, line] of lines.entries()) {
+		if (projectionHeaderPattern.test(line)) {
+			out.projectionHeaders.push({ line: i, length: line.length });
+			continue;
+		}
+		const m = fixtureKeyPattern.exec(line);
+		if (m && m[1]) {
+			out.fixtureLines.push({ line: i, length: line.length, name: m[1] });
+		}
+	}
+	return out;
+}
+
+function partitionFixtures(statuses: FixtureStatus[]): {
+	fixtures: ProjectFixture[];
+	invalidFixtures: InvalidProjectFixture[];
+} {
+	const fixtures: ProjectFixture[] = [];
+	const invalidFixtures: InvalidProjectFixture[] = [];
+	for (const s of statuses) {
+		if (s.kind === "valid") {
+			fixtures.push({ name: s.name, path: s.path });
+			continue;
+		}
+		const inv: InvalidProjectFixture = { reason: s.reason };
+		if (s.name !== undefined) inv.name = s.name;
+		if (s.path !== undefined) inv.path = s.path;
+		invalidFixtures.push(inv);
+	}
+	return { fixtures, invalidFixtures };
 }

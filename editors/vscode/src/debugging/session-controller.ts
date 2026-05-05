@@ -39,6 +39,10 @@ type EngineMode = "running" | "inspecting";
 export interface DebugProjectionArgs {
 	name: string;
 	tomlUri: vscode.Uri;
+	// When set, run against the named fixture from gaffer.toml's
+	// [[projection.fixtures]]; the CLI resolves the name to a path.
+	// Omit for a live KurrentDB run (default).
+	fixture?: string;
 }
 
 export interface SessionControllerDeps {
@@ -52,6 +56,11 @@ export interface SessionControllerDeps {
 	// onDidChange. Push semantics (no shared mutable reference) - the
 	// state value is the contract, not the object identity.
 	pushDebugState: (state: Readonly<DebugState>) => void;
+	// Reads the user's preferred DAP port (gaffer.debugPort). Returns
+	// -1 when unset; the controller omits --debug-port in that case
+	// and lets the CLI auto-pick a free port. Injected so the
+	// controller stays decoupled from vscode.workspace.
+	readDebugPort: () => number;
 	// Factory for the underlying CLI-driving session. Production
 	// passes createGafferSession; tests substitute a fake to avoid
 	// spawning a real subprocess.
@@ -69,6 +78,7 @@ export class SessionController implements vscode.Disposable {
 	// is the single point that pushes to consumers via #pushDebugState.
 	readonly #debugState: DebugState = { name: null, status: "idle" };
 	readonly #pushDebugState: (state: Readonly<DebugState>) => void;
+	readonly #readDebugPort: () => number;
 	readonly #createSession: CreateSession;
 	#activeSession: SessionLike | null = null;
 	// Captured via onDidStartDebugSession, compared by reference in the
@@ -95,6 +105,7 @@ export class SessionController implements vscode.Disposable {
 		this.#statusProvider = deps.statusProvider;
 		this.#phaseTracker = deps.phaseTracker;
 		this.#pushDebugState = deps.pushDebugState;
+		this.#readDebugPort = deps.readDebugPort;
 		this.#createSession = deps.createSession ?? createGafferSession;
 	}
 
@@ -138,6 +149,12 @@ export class SessionController implements vscode.Disposable {
 			return;
 		}
 
+		// Active session? Stop it before launching the new one. This
+		// covers cross-projection clicks (Debug on B while A is running)
+		// and per-fixture-lens switches mid-session - both used to
+		// silently early-return. stop() routes through cleanupSession
+		// which is idempotent w.r.t. the terminate listener, so the
+		// listener firing concurrently is harmless.
 		const status = this.#debugState.status;
 		if (
 			status === "starting" ||
@@ -145,11 +162,14 @@ export class SessionController implements vscode.Disposable {
 			status === "inspecting"
 		) {
 			log(
-				`Ignoring debug request: ${this.#debugState.name ?? "session"} is ${status}`,
+				`Stopping ${this.#debugState.name ?? "session"} (${status}) to start ${args.name}`,
 			);
-			return;
+			await this.stop();
 		}
-		if (status === "ended") {
+		// stop() leaves us in idle (was starting) or ended (was running/
+		// inspecting). The "ended" branch also catches user clicks after
+		// a previous session ended on its own.
+		if (this.#debugState.status === "ended") {
 			await this.#cleanupSession("idle");
 		}
 
@@ -163,22 +183,20 @@ export class SessionController implements vscode.Disposable {
 		// and would otherwise wipe the flag before the catch checks it.
 		this.#fatalErrorSeen = false;
 
-		const { name, tomlUri } = args;
+		const { name, tomlUri, fixture } = args;
 		const tomlDir = vscode.Uri.joinPath(tomlUri, "..").fsPath;
 		// Port we ask the CLI to bind to. The CLI confirms via the debug
 		// message and we attach using whatever it actually bound (below).
-		// gaffer.debugPort defaults to -1 ("unset") - we omit the flag
-		// in that case and let the CLI's own default (auto-pick a free
-		// port) take effect.
-		const requestedPort = vscode.workspace
-			.getConfiguration("gaffer")
-			.get<number>("debugPort", -1);
+		// readDebugPort returns -1 when unset; we omit the flag in that
+		// case and let the CLI auto-pick a free port.
+		const requestedPort = this.#readDebugPort();
 		const argv = this.#buildArgv([
 			"dev",
 			name,
 			"--json",
 			"--debug",
 			...(requestedPort >= 0 ? ["--debug-port", String(requestedPort)] : []),
+			...(fixture ? ["--fixture", fixture] : []),
 			// Start-paused is the extension's default UX: clicking Debug
 			// lands the user in `inspecting` immediately so the State view
 			// is populated and the user can explore before processing

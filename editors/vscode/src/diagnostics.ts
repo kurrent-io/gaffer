@@ -2,14 +2,23 @@
 // editor + entries in the Problems panel. Module-level singleton -
 // like output.ts and notifications.ts, this is write-only ambient
 // infrastructure that doesn't fit the snapshot-factory pattern.
+//
+// Two collections live here:
+// - "gaffer" tracks runtime fatal errors from a debug session; cleared
+//   at session start.
+// - "gaffer-toml" tracks static gaffer.toml validation issues (invalid
+//   fixtures); driven by lens re-evaluation and never cleared by the
+//   session lifecycle.
 
 import * as vscode from "vscode";
 
 let collection: vscode.DiagnosticCollection | null = null;
+let tomlCollection: vscode.DiagnosticCollection | null = null;
 
 export function initDiagnostics(context: vscode.ExtensionContext): void {
 	collection = vscode.languages.createDiagnosticCollection("gaffer");
-	context.subscriptions.push(collection);
+	tomlCollection = vscode.languages.createDiagnosticCollection("gaffer-toml");
+	context.subscriptions.push(collection, tomlCollection);
 }
 
 export interface FatalErrorReport {
@@ -54,8 +63,22 @@ export function clearDiagnostics(): void {
 	collection?.clear();
 }
 
-// Test-only: drop the cached collection so the next initDiagnostics in
-// a fresh test starts clean. Production never calls this.
+// Replace this URI's toml-validation diagnostics with the given list.
+// Pass an empty array to clear them. Empty array also leaves the
+// "gaffer-toml" Problems-panel section absent rather than showing a
+// stale "no problems" entry.
+export function setTomlDiagnostics(
+	uri: vscode.Uri,
+	diagnostics: vscode.Diagnostic[],
+): void {
+	if (!tomlCollection) return;
+	if (diagnostics.length === 0) tomlCollection.delete(uri);
+	else tomlCollection.set(uri, diagnostics);
+}
+
+// Test-only: drop the cached collections so the next initDiagnostics
+// in a fresh test starts clean. Production never calls this.
 export function __resetForTest(): void {
 	collection = null;
+	tomlCollection = null;
 }

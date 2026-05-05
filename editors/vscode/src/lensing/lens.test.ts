@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { describe, expect, it } from "vitest";
-import { buildLens } from "./lens.js";
+import { buildLens, lensState } from "./lens.js";
 import { okManifest } from "../../test/testutil/fixtures.js";
 import { setTrusted } from "../../test/testutil/vscode-state.js";
 import type { Manifest } from "../discovery/schemas.js";
@@ -88,5 +88,53 @@ describe("buildLens", () => {
 		const state: DebugState = { name: "other", status: "running" };
 		const lens = buildLens(okManifest, state, "checkout", range, tomlUri);
 		expect(lens?.command?.command).toBe("gaffer.debugProjection");
+	});
+});
+
+describe("lensState", () => {
+	it("returns off when the debug state is for a different projection", () => {
+		expect(lensState({ name: "other", status: "running" }, "checkout")).toEqual(
+			{
+				kind: "off",
+			},
+		);
+	});
+
+	it("returns off when no session is active (idle)", () => {
+		expect(lensState({ name: null, status: "idle" }, "checkout")).toEqual({
+			kind: "off",
+		});
+	});
+
+	it("returns off when the session has ended (post-mortem)", () => {
+		// Name still matches (post-mortem state), but the projection-level
+		// lens should fall back to a Debug button. Equivalent for the
+		// dropdown: it should re-appear once a session ends.
+		expect(
+			lensState({ name: "checkout", status: "ended" }, "checkout"),
+		).toEqual({ kind: "off" });
+	});
+
+	it("returns stop with starting title during attach", () => {
+		// Title carries the user-visible string so callers don't have
+		// to re-derive it from status.
+		const state = lensState(
+			{ name: "checkout", status: "starting" },
+			"checkout",
+		);
+		expect(state.kind).toBe("stop");
+		if (state.kind === "stop") {
+			expect(state.title).toContain("Starting");
+		}
+	});
+
+	it("returns stop for running and inspecting", () => {
+		for (const status of ["running", "inspecting"] as const) {
+			const state = lensState({ name: "checkout", status }, "checkout");
+			expect(state.kind).toBe("stop");
+			if (state.kind === "stop") {
+				expect(state.title).toContain("Debugging");
+			}
+		}
 	});
 });

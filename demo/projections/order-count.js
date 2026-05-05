@@ -1,4 +1,4 @@
-fromCategory('order')
+fromCategory("order")
   .foreachStream()
   .when({
     $init() {
@@ -12,5 +12,5 @@ fromCategory('order')
     OrderShipped(state, event) {
       state.shipped = true;
       return state;
-    }
-  })
+    },
+  });

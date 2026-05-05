@@ -17,6 +17,7 @@ import { flushAllMicrotasks } from "../test/testutil/promise.js";
 import { makeContext } from "../test/testutil/fake-context.js";
 import {
 	fireConfigurationChange,
+	fireTextDocumentChange,
 	fireWorkspaceTrustGranted,
 	getShownMessages,
 	getState,
@@ -76,6 +77,7 @@ describe("activate registrations", () => {
 		expect(names).toEqual([
 			"gaffer.debugProjection",
 			"gaffer.debugProjectionPick",
+			"gaffer.dismissDiagnostic",
 			"gaffer.noop",
 			"gaffer.runProjection",
 			"gaffer.stopDebug",
@@ -282,6 +284,100 @@ describe("tomlWatcher reload chain", () => {
 		expect(
 			ctx.subscriptions.some((d) => d === getState().fileWatchers[0]),
 		).toBe(true);
+	});
+});
+
+describe("runtime fatal-error dismissal", () => {
+	it("text change clears the runtime diagnostic for that URI", async () => {
+		// Stale-on-edit: any change to a file with a runtime error
+		// invalidates the squiggle since the in-memory content no
+		// longer matches what was running when the error fired.
+		const { reportFatalError } = await import("./diagnostics.js");
+		await activateBare();
+		reportFatalError({
+			file: "/p/projection.js",
+			line: 1,
+			column: 1,
+			code: "JS_ERROR",
+			description: "boom",
+			jsStack: undefined,
+			eventId: undefined,
+		});
+		const coll = getState().diagnosticCollections.find(
+			(c) => c.name === "gaffer",
+		);
+		expect(coll?.entries.has("/p/projection.js")).toBe(true);
+
+		fireTextDocumentChange(vscode.Uri.file("/p/projection.js"));
+		expect(coll?.entries.has("/p/projection.js")).toBe(false);
+	});
+
+	it("text change leaves diagnostics for other files alone", async () => {
+		const { reportFatalError } = await import("./diagnostics.js");
+		await activateBare();
+		reportFatalError({
+			file: "/p/a.js",
+			line: 1,
+			column: 1,
+			code: "JS_ERROR",
+			description: "x",
+			jsStack: undefined,
+			eventId: undefined,
+		});
+		reportFatalError({
+			file: "/p/b.js",
+			line: 1,
+			column: 1,
+			code: "JS_ERROR",
+			description: "y",
+			jsStack: undefined,
+			eventId: undefined,
+		});
+
+		fireTextDocumentChange(vscode.Uri.file("/p/a.js"));
+		const coll = getState().diagnosticCollections.find(
+			(c) => c.name === "gaffer",
+		);
+		expect(coll?.entries.has("/p/a.js")).toBe(false);
+		expect(coll?.entries.has("/p/b.js")).toBe(true);
+	});
+
+	it("registers a CodeActionsProvider for any file (matches reportFatalError's URI scope)", async () => {
+		// Selector intentionally NOT language-scoped: reportFatalError
+		// publishes against any path the runtime emits, so the
+		// dismiss-action provider has to cover the same surface.
+		await activateBare();
+		const providers = getState().registeredCodeActionProviders;
+		expect(providers).toHaveLength(1);
+		expect(providers[0]?.selector).toMatchObject({ scheme: "file" });
+		expect(providers[0]?.selector).not.toHaveProperty("language");
+	});
+
+	it("gaffer.dismissDiagnostic command clears the URI's runtime diagnostic", async () => {
+		const { reportFatalError } = await import("./diagnostics.js");
+		await activateBare();
+		reportFatalError({
+			file: "/p/projection.js",
+			line: 1,
+			column: 1,
+			code: "JS_ERROR",
+			description: "boom",
+			jsStack: undefined,
+			eventId: undefined,
+		});
+		const coll = getState().diagnosticCollections.find(
+			(c) => c.name === "gaffer",
+		);
+		expect(coll?.entries.has("/p/projection.js")).toBe(true);
+
+		// Invoke through executeCommand to exercise the registration
+		// rather than just the underlying function — catches a future
+		// refactor that breaks the command wiring.
+		await vscode.commands.executeCommand(
+			"gaffer.dismissDiagnostic",
+			vscode.Uri.file("/p/projection.js"),
+		);
+		expect(coll?.entries.has("/p/projection.js")).toBe(false);
 	});
 });
 

@@ -15,7 +15,12 @@ import {
 	type DebugProjectionArgs,
 } from "./debugging/session-controller.js";
 import { initOutput, log } from "./output.js";
-import { initDiagnostics, setTomlDiagnostics } from "./diagnostics.js";
+import {
+	DismissDiagnosticActionProvider,
+	clearDiagnosticsForUri,
+	initDiagnostics,
+	setTomlDiagnostics,
+} from "./diagnostics.js";
 import {
 	showManifestFailure,
 	showNoProjections,
@@ -27,6 +32,28 @@ export async function activate(
 ): Promise<void> {
 	initOutput(context);
 	initDiagnostics(context);
+
+	// Stale-on-edit: any text change to a file with a runtime error
+	// invalidates that error (the in-memory content no longer matches
+	// what was running when the error fired). Clear preemptively so
+	// the user doesn't keep staring at a squiggle on code they're
+	// already fixing. Wired here, adjacent to initDiagnostics, so
+	// it's live before any awaited work below could surface a fatal.
+	// Selector intentionally broad (any file) so we cover whatever
+	// path the runtime reports — selector and reportFatalError stay
+	// in sync regardless of future projection extensions.
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeTextDocument((e) => {
+			if (e.document.uri.scheme === "file" && e.contentChanges.length > 0) {
+				clearDiagnosticsForUri(e.document.uri);
+			}
+		}),
+		vscode.languages.registerCodeActionsProvider(
+			{ scheme: "file" },
+			new DismissDiagnosticActionProvider(),
+			{ providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] },
+		),
+	);
 
 	// Initial snapshots - both awaited up front. Lens providers are
 	// constructed with the loaded data and registered after, so first
@@ -217,6 +244,12 @@ export async function activate(
 		// is informational; the user fixes the toml. CodeLens.command is
 		// required by VS Code, so we route to a registered no-op.
 		vscode.commands.registerCommand("gaffer.noop", () => {}),
+		// Lightbulb action target for runtime fatal-error squiggles.
+		// Clears the diagnostic for the file without requiring an edit.
+		vscode.commands.registerCommand(
+			"gaffer.dismissDiagnostic",
+			(uri: vscode.Uri) => clearDiagnosticsForUri(uri),
+		),
 	);
 
 	const tomlWatcher =

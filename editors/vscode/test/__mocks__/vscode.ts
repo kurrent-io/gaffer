@@ -294,6 +294,42 @@ export const DiagnosticSeverity = {
 	Hint: 3,
 } as const;
 
+export class CodeActionKind {
+	static readonly Empty = new CodeActionKind("");
+	static readonly QuickFix = new CodeActionKind("quickfix");
+	static readonly Refactor = new CodeActionKind("refactor");
+	static readonly Source = new CodeActionKind("source");
+	readonly value: string;
+	constructor(value: string) {
+		this.value = value;
+	}
+	append(parts: string): CodeActionKind {
+		return new CodeActionKind(`${this.value}.${parts}`);
+	}
+	// Stubbed: real CodeActionKind does value-prefix containment, but
+	// no test currently exercises filtering via `only`. If a provider
+	// starts branching on `context.only`, implement these properly.
+	intersects(_other: CodeActionKind): boolean {
+		return false;
+	}
+	contains(_other: CodeActionKind): boolean {
+		return false;
+	}
+}
+
+export class CodeAction {
+	command?: vscode.Command;
+	diagnostics?: vscode.Diagnostic[];
+	edit?: vscode.WorkspaceEdit;
+	isPreferred?: boolean;
+	kind?: CodeActionKind;
+	readonly title: string;
+	constructor(title: string, kind?: CodeActionKind) {
+		this.title = title;
+		if (kind) this.kind = kind;
+	}
+}
+
 export class Diagnostic implements vscode.Diagnostic {
 	readonly range: Range;
 	readonly message: string;
@@ -591,6 +627,11 @@ export interface MockState {
 	lastStartedDebugSession: vscode.DebugSession | null;
 	configurationChanged: EventEmitter<vscode.ConfigurationChangeEvent>;
 	workspaceTrustGranted: EventEmitter<void>;
+	textDocumentChanged: EventEmitter<vscode.TextDocumentChangeEvent>;
+	registeredCodeActionProviders: Array<{
+		selector: unknown;
+		provider: unknown;
+	}>;
 	debugStarted: EventEmitter<vscode.DebugSession>;
 	debugTerminated: EventEmitter<vscode.DebugSession>;
 	debugCustomEvent: EventEmitter<vscode.DebugSessionCustomEvent>;
@@ -630,6 +671,8 @@ function createInitialState(): MockState {
 		lastStartedDebugSession: null,
 		configurationChanged: new EventEmitter(),
 		workspaceTrustGranted: new EventEmitter(),
+		textDocumentChanged: new EventEmitter(),
+		registeredCodeActionProviders: [],
 		debugStarted: new EventEmitter(),
 		debugTerminated: new EventEmitter(),
 		debugCustomEvent: new EventEmitter(),
@@ -693,6 +736,7 @@ type WorkspaceShape = Pick<
 	| "createFileSystemWatcher"
 	| "onDidChangeConfiguration"
 	| "onDidGrantWorkspaceTrust"
+	| "onDidChangeTextDocument"
 >;
 
 export const workspace: WorkspaceShape = {
@@ -760,6 +804,12 @@ export const workspace: WorkspaceShape = {
 			thisArgs,
 			disposables,
 		)) as typeof vscode.workspace.onDidGrantWorkspaceTrust,
+	onDidChangeTextDocument: ((listener, thisArgs, disposables) =>
+		state.textDocumentChanged.event(
+			listener,
+			thisArgs,
+			disposables,
+		)) as typeof vscode.workspace.onDidChangeTextDocument,
 };
 
 // ---- window ---------------------------------------------------------------
@@ -896,7 +946,9 @@ export const commands: CommandsShape = {
 
 type LanguagesShape = Pick<
 	typeof vscode.languages,
-	"createDiagnosticCollection" | "registerCodeLensProvider"
+	| "createDiagnosticCollection"
+	| "registerCodeLensProvider"
+	| "registerCodeActionsProvider"
 >;
 
 export const languages: LanguagesShape = {
@@ -910,6 +962,14 @@ export const languages: LanguagesShape = {
 		provider: vscode.CodeLensProvider,
 	): vscode.Disposable {
 		state.registeredCodeLensProviders.push({ selector, provider });
+		return { dispose: () => {} };
+	},
+	registerCodeActionsProvider(
+		selector: vscode.DocumentSelector,
+		provider: vscode.CodeActionProvider,
+		_metadata?: vscode.CodeActionProviderMetadata,
+	): vscode.Disposable {
+		state.registeredCodeActionProviders.push({ selector, provider });
 		return { dispose: () => {} };
 	},
 };

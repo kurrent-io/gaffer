@@ -110,6 +110,14 @@ export function fireWorkspaceTrustGranted(): void {
 	state.workspaceTrustGranted.fire();
 }
 
+export function fireTextDocumentChange(uri: vscode.Uri): void {
+	state.textDocumentChanged.fire({
+		document: { uri } as vscode.TextDocument,
+		contentChanges: [{} as vscode.TextDocumentContentChangeEvent],
+		reason: undefined,
+	});
+}
+
 export function setWorkspaceFolders(folders: vscode.WorkspaceFolder[]): void {
 	state.workspaceFolders = folders;
 }

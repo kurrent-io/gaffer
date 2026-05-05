@@ -63,6 +63,43 @@ export function clearDiagnostics(): void {
 	collection?.clear();
 }
 
+// Clear runtime fatal-error diagnostics for a single URI. Used when
+// the user starts editing the file (stale-on-edit) or explicitly
+// dismisses via the code action. Cheap when the URI has no entries.
+export function clearDiagnosticsForUri(uri: vscode.Uri): void {
+	collection?.delete(uri);
+}
+
+// Code action provider for runtime fatal-error diagnostics: offers
+// "Dismiss this error" for any source: "gaffer" entry. Lets the user
+// clear the squiggle without editing the file (e.g. they want to
+// retry the projection after fixing something else).
+export class DismissDiagnosticActionProvider
+	implements vscode.CodeActionProvider
+{
+	provideCodeActions(
+		document: vscode.TextDocument,
+		_range: vscode.Range | vscode.Selection,
+		context: vscode.CodeActionContext,
+	): vscode.CodeAction[] {
+		return context.diagnostics
+			.filter((d) => d.source === "gaffer")
+			.map((d) => {
+				const action = new vscode.CodeAction(
+					"Dismiss this error",
+					vscode.CodeActionKind.QuickFix,
+				);
+				action.command = {
+					title: "Dismiss",
+					command: "gaffer.dismissDiagnostic",
+					arguments: [document.uri],
+				};
+				action.diagnostics = [d];
+				return action;
+			});
+	}
+}
+
 // Replace this URI's toml-validation diagnostics with the given list.
 // Pass an empty array to clear them. Empty array also leaves the
 // "gaffer-toml" Problems-panel section absent rather than showing a

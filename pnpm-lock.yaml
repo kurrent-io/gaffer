@@ -62,6 +62,24 @@ importers:
 
   bindings/js/native/win32-x64: {}
 
+  cli:
+    optionalDependencies:
+      '@kurrent/gaffer-darwin-arm64':
+        specifier: workspace:*
+        version: link:native/darwin-arm64
+      '@kurrent/gaffer-darwin-x64':
+        specifier: workspace:*
+        version: link:native/darwin-x64
+      '@kurrent/gaffer-linux-arm64':
+        specifier: workspace:*
+        version: link:native/linux-arm64
+      '@kurrent/gaffer-linux-x64':
+        specifier: workspace:*
+        version: link:native/linux-x64
+      '@kurrent/gaffer-win32-x64':
+        specifier: workspace:*
+        version: link:native/win32-x64
+
   cli/native/darwin-arm64: {}
 
   cli/native/darwin-x64: {}

@@ -1,6 +1,7 @@
 packages:
   - 'bindings/js'
   - 'bindings/js/native/*'
+  - 'cli'
   - 'cli/native/*'
   - 'testing/js'
   - 'editors/vscode'

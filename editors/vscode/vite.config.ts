@@ -30,15 +30,19 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			vscode: path.resolve(here, "test/__mocks__/vscode.ts"),
-			"vscode-languageclient/node": path.resolve(
-				here,
-				"test/__mocks__/vscode-languageclient-node.ts",
-			),
 		},
 	},
 	test: {
 		environment: "node",
 		include: ["src/**/*.test.ts"],
 		setupFiles: ["./test/setup.ts"],
+		// Aliases scoped to the test runner only - production
+		// builds must NOT pick up these stubs.
+		alias: {
+			"vscode-languageclient/node": path.resolve(
+				here,
+				"test/__mocks__/vscode-languageclient-node.ts",
+			),
+		},
 	},
 });

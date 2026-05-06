@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { buildGafferArgv, tryFetchManifest } from "./discovery/cli.js";
 import { createProjectIndex } from "./discovery/project-index.js";
-import { TomlCodeLensProvider } from "./lensing/toml-provider.js";
+import { LspCodeLensProvider } from "./lsp/lens-provider.js";
 import { JsCodeLensProvider } from "./lensing/js-provider.js";
 import { StepProvider } from "./panels/step.js";
 import { StateProvider } from "./panels/state.js";
@@ -19,26 +19,19 @@ import {
 	DismissDiagnosticActionProvider,
 	clearDiagnosticsForUri,
 	initDiagnostics,
-	setTomlDiagnostics,
 } from "./diagnostics.js";
 import {
 	showManifestFailure,
 	showNoProjections,
 	showTrustWarning,
 } from "./notifications.js";
-import { startLanguageClient } from "./lsp/client.js";
+import { startLanguageClient, stopLanguageClient } from "./lsp/client.js";
 
 export async function activate(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
 	initOutput(context);
 	initDiagnostics(context);
-
-	// Spawn the LSP server early. While the existing in-process
-	// lens / diagnostic providers continue to run, this lets us
-	// verify the server connects and publishes diagnostics in
-	// parallel before later chunks delete the in-process path.
-	void startLanguageClient(context);
 
 	// Stale-on-edit: any text change to a file with a runtime error
 	// invalidates that error (the in-memory content no longer matches
@@ -77,8 +70,16 @@ export async function activate(
 	const phaseTracker = new PhaseTracker((phase) =>
 		statusProvider.setPhase(phase),
 	);
-	const tomlCodeLens = new TomlCodeLensProvider(initialManifest);
+	const tomlCodeLens = new LspCodeLensProvider();
+	tomlCodeLens.setManifest(initialManifest);
 	const jsCodeLens = new JsCodeLensProvider(initialIndex, initialManifest);
+
+	// Spawn the LSP server. tomlCodeLens activates once the
+	// client is ready; until then provideCodeLenses returns []
+	// (briefly, while initialize completes).
+	void startLanguageClient(context, (client) => {
+		tomlCodeLens.setClient(client);
+	});
 
 	const controller = new SessionController({
 		buildArgv: buildGafferArgv,
@@ -269,13 +270,11 @@ export async function activate(
 		log("gaffer.toml created");
 		await reloadLensState();
 	});
-	tomlWatcher.onDidDelete(async (uri) => {
+	tomlWatcher.onDidDelete(async () => {
 		log("gaffer.toml deleted");
-		// provideCodeLenses is the only writer of toml diagnostics for
-		// a given URI, but it never re-fires once the document is gone.
-		// Clear here so a deleted toml's invalid-fixture warnings don't
-		// linger in the Problems panel.
-		setTomlDiagnostics(uri, []);
+		// LSP server publishes empty diagnostics for deleted tomls
+		// via its own watcher; the extension only needs to refresh
+		// the JS lens path's project index.
 		await reloadLensState();
 	});
 	context.subscriptions.push(tomlWatcher);
@@ -289,9 +288,12 @@ export async function activate(
 		}),
 		vscode.workspace.onDidGrantWorkspaceTrust(async () => {
 			log("workspace trusted");
+			tomlCodeLens.refresh();
 			await reloadLensState();
 		}),
 	);
 }
 
-export function deactivate(): void {}
+export async function deactivate(): Promise<void> {
+	await stopLanguageClient();
+}

@@ -12,23 +12,27 @@ let client: LanguageClient | undefined;
 
 /**
  * Start the gaffer LSP client. Spawns `gaffer lsp` over stdio
- * via the configured `gaffer.command` argv.
+ * via the User-scope `gaffer.command` argv.
  *
  * The document selector covers gaffer.toml (where the server
  * does the actual parsing) and JavaScript files (where the
  * server emits entry-script lenses by cross-referencing every
  * cached toml's projection entry paths). The watcher pattern
  * is registered server-side via dynamic capability
- * registration; the client doesn't synchronize anything from
- * VS Code's `FileSystemWatcher` directly.
+ * registration.
  *
  * Resolves once the client is ready (initialize handshake
- * complete). Failures during spawn or initialize log and
- * return without throwing - the rest of the extension
+ * complete) or has failed to start. Failures log to the
+ * "Gaffer LSP" output channel; the rest of the extension
  * (commands, panels, DAP) keeps working.
+ *
+ * onReady fires exactly once with the live client when start
+ * succeeds. Callers register lens providers etc. that depend
+ * on a working client.
  */
 export async function startLanguageClient(
 	context: vscode.ExtensionContext,
+	onReady?: (client: LanguageClient) => void,
 ): Promise<void> {
 	const argv = buildGafferArgv(["lsp"]);
 	const command = argv[0];
@@ -54,15 +58,19 @@ export async function startLanguageClient(
 		serverOptions,
 		clientOptions,
 	);
+	// Push the disposable BEFORE awaiting start - if activation
+	// disposes mid-start, the partially-initialised client still
+	// gets stop()ped (no-op on a not-yet-started client).
+	context.subscriptions.push({
+		dispose: () => {
+			void c.stop();
+		},
+	});
 	try {
 		await c.start();
 		client = c;
-		context.subscriptions.push({
-			dispose: () => {
-				void c.stop();
-			},
-		});
 		log("LSP client started");
+		onReady?.(c);
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
 		log(`LSP client failed to start: ${msg}`);
@@ -70,9 +78,16 @@ export async function startLanguageClient(
 }
 
 /**
- * Returns the active LSP client, or undefined if startup
- * hasn't completed (or failed).
+ * Stop the active language client. Used by deactivate() to
+ * give the server a chance to flush before the host exits.
  */
-export function getLanguageClient(): LanguageClient | undefined {
-	return client;
+export async function stopLanguageClient(): Promise<void> {
+	if (!client) return;
+	try {
+		await client.stop();
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		log(`LSP client stop failed: ${msg}`);
+	}
+	client = undefined;
 }

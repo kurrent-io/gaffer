@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"sync"
 
 	"github.com/sourcegraph/jsonrpc2"
@@ -24,12 +25,13 @@ type ServerOptions struct {
 // stdin, sends shutdown+exit, or the run context is cancelled.
 //
 // Concurrency: jsonrpc2 dispatches each request in its own
-// goroutine, so handler methods are called concurrently. Document-
-// state coordination lives in chunks 2.2+; for now the server only
-// handles initialize / initialized / shutdown / exit, which the
-// LSP spec serializes by ordering.
+// goroutine, so handler methods are called concurrently. The
+// document store has its own mutex; lifecycle flags here are
+// guarded by mu.
 type Server struct {
 	opts ServerOptions
+
+	docs *DocumentStore
 
 	mu          sync.Mutex
 	initialized bool
@@ -46,6 +48,7 @@ type Server struct {
 func NewServer(opts ServerOptions) *Server {
 	return &Server{
 		opts:   opts,
+		docs:   NewDocumentStore(),
 		exitCh: make(chan struct{}),
 	}
 }
@@ -99,6 +102,16 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 		// hang waiting for the client to also close stdin.
 		s.signalExit()
 		return nil, nil
+	case MethodDidOpen:
+		return s.handleDidOpen(req)
+	case MethodDidChange:
+		return s.handleDidChange(req)
+	case MethodDidClose:
+		return s.handleDidClose(req)
+	case MethodDidSave:
+		// No-op for V1: under full sync we already have the latest
+		// content from didChange. Acknowledge and move on.
+		return nil, nil
 	default:
 		// CodeMethodNotFound is dropped by jsonrpc2 when the
 		// inbound was a notification (no ID, no response slot).
@@ -144,6 +157,59 @@ func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (int
 			Version: s.opts.Version,
 		},
 	}, nil
+}
+
+func (s *Server) handleDidOpen(req *jsonrpc2.Request) (interface{}, error) {
+	if req.Params == nil {
+		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: "didOpen missing params"}
+	}
+	var params DidOpenTextDocumentParams
+	if err := json.Unmarshal(*req.Params, &params); err != nil {
+		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: err.Error()}
+	}
+	s.docs.Open(params.TextDocument.URI, params.TextDocument.Text)
+	// Parse + publishDiagnostics + codeLens emission lands in 2.3.
+	return nil, nil
+}
+
+func (s *Server) handleDidChange(req *jsonrpc2.Request) (interface{}, error) {
+	if req.Params == nil {
+		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: "didChange missing params"}
+	}
+	var params DidChangeTextDocumentParams
+	if err := json.Unmarshal(*req.Params, &params); err != nil {
+		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: err.Error()}
+	}
+	if len(params.ContentChanges) == 0 {
+		// Spec allows this but it's a no-op for full sync.
+		return nil, nil
+	}
+	// Full sync: take the last change's text as authoritative.
+	// (Spec says clients SHOULD send only one event under full
+	// sync, but be liberal in what we accept.)
+	last := params.ContentChanges[len(params.ContentChanges)-1]
+	if _, err := s.docs.Change(params.TextDocument.URI, last.Text); err != nil {
+		// Client bug (didChange before didOpen, or against a
+		// disk-sourced URI). Log to stderr so a misbehaving client
+		// is observable; returning nil keeps the connection alive
+		// since notifications can't carry an error response back
+		// to the client anyway.
+		log.Printf("lsp: dropping didChange: %v", err)
+		return nil, nil
+	}
+	return nil, nil
+}
+
+func (s *Server) handleDidClose(req *jsonrpc2.Request) (interface{}, error) {
+	if req.Params == nil {
+		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: "didClose missing params"}
+	}
+	var params DidCloseTextDocumentParams
+	if err := json.Unmarshal(*req.Params, &params); err != nil {
+		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: err.Error()}
+	}
+	s.docs.Close(params.TextDocument.URI)
+	return nil, nil
 }
 
 func (s *Server) handleShutdown() (interface{}, error) {

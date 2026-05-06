@@ -21,6 +21,11 @@ const (
 	MethodInitialized = "initialized"
 	MethodShutdown    = "shutdown"
 	MethodExit        = "exit"
+
+	MethodDidOpen   = "textDocument/didOpen"
+	MethodDidChange = "textDocument/didChange"
+	MethodDidClose  = "textDocument/didClose"
+	MethodDidSave   = "textDocument/didSave"
 )
 
 // InitializeParams is the subset of LSP InitializeParams we care
@@ -70,4 +75,63 @@ type ServerCapabilities struct {
 	// Decision 1: we explicitly chose full sync over incremental
 	// since config files are tiny.
 	TextDocumentSync int `json:"textDocumentSync"`
+}
+
+// TextDocumentItem is the payload for didOpen: full URI, language,
+// version, content. The server keeps the text in its document
+// store; languageId is informational for V1 (we dispatch by file
+// extension).
+type TextDocumentItem struct {
+	URI        string `json:"uri"`
+	LanguageID string `json:"languageId"`
+	Version    int    `json:"version"`
+	Text       string `json:"text"`
+}
+
+// VersionedTextDocumentIdentifier identifies a document at a
+// specific client-side version. Used in didChange.
+type VersionedTextDocumentIdentifier struct {
+	URI     string `json:"uri"`
+	Version int    `json:"version"`
+}
+
+// TextDocumentIdentifier identifies a document without versioning.
+// Used in didClose / didSave.
+type TextDocumentIdentifier struct {
+	URI string `json:"uri"`
+}
+
+// TextDocumentContentChangeEvent under full sync (TextDocumentSync=1)
+// always carries the entire new content in Text. Range / RangeLength
+// are absent under full sync; we don't model them.
+type TextDocumentContentChangeEvent struct {
+	Text string `json:"text"`
+}
+
+// DidOpenTextDocumentParams: client opened a buffer.
+type DidOpenTextDocumentParams struct {
+	TextDocument TextDocumentItem `json:"textDocument"`
+}
+
+// DidChangeTextDocumentParams: client edited a buffer. ContentChanges
+// has one element under full sync.
+type DidChangeTextDocumentParams struct {
+	TextDocument   VersionedTextDocumentIdentifier  `json:"textDocument"`
+	ContentChanges []TextDocumentContentChangeEvent `json:"contentChanges"`
+}
+
+// DidCloseTextDocumentParams: client closed the buffer. Server
+// drops its in-memory state for the URI.
+type DidCloseTextDocumentParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+}
+
+// DidSaveTextDocumentParams: client saved. Text is optional (only
+// present if the server requested it via the saveOptions
+// capability, which we don't). For full-sync semantics we have
+// the latest content from didChange already, so this is mostly
+// informational.
+type DidSaveTextDocumentParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Text         string                 `json:"text,omitempty"`
 }

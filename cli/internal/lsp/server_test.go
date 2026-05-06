@@ -189,7 +189,7 @@ func TestServer_UnknownMethodReturnsMethodNotFound(t *testing.T) {
 	if err := conn.Call(ctx, MethodInitialize, &InitializeParams{}, &InitializeResult{}); err != nil {
 		t.Fatalf("initialize: %v", err)
 	}
-	err := conn.Call(ctx, "textDocument/didOpen", nil, nil)
+	err := conn.Call(ctx, "textDocument/foreachStream", nil, nil)
 	if err == nil {
 		t.Fatal("expected unknown-method error")
 	}
@@ -264,6 +264,204 @@ func TestServer_ExitBeforeInitializeIsClean(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("expected clean exit, got %v", err)
 	}
+}
+
+// startServerWithStore runs a server in a goroutine over the given
+// stream and returns its document store handle plus the result
+// channel from Run. Convenient for tests that want to assert on
+// store state after driving lifecycle messages.
+func startServerWithStore(ctx context.Context, stream io.ReadWriteCloser, opts ServerOptions) (*Server, <-chan error) {
+	srv := NewServer(opts)
+	done := make(chan error, 1)
+	go func() {
+		done <- srv.Run(ctx, stream)
+	}()
+	return srv, done
+}
+
+func TestServer_DidOpenStoresTheBuffer(t *testing.T) {
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	conn := newClientConn(ctx, cli)
+	defer func() { _ = conn.Close() }()
+
+	if err := conn.Call(ctx, MethodInitialize, &InitializeParams{}, &InitializeResult{}); err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+	uri := "file:///workspace/gaffer.toml"
+	if err := conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{URI: uri, LanguageID: "toml", Version: 1, Text: "engine_version = 2"},
+	}); err != nil {
+		t.Fatalf("didOpen: %v", err)
+	}
+
+	// didOpen is a notification - wait briefly for the handler to
+	// run before asserting on store state.
+	waitFor(t, func() bool {
+		state, ok := server.docs.Get(uri)
+		return ok && state.Source == SourceMemory && state.Content == "engine_version = 2"
+	}, time.Second)
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidChangeUpdatesContent(t *testing.T) {
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	conn := newClientConn(ctx, cli)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{}, &InitializeResult{})
+
+	uri := "file:///a.toml"
+	_ = conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{URI: uri, LanguageID: "toml", Version: 1, Text: "first"},
+	})
+	_ = conn.Notify(ctx, MethodDidChange, &DidChangeTextDocumentParams{
+		TextDocument:   VersionedTextDocumentIdentifier{URI: uri, Version: 2},
+		ContentChanges: []TextDocumentContentChangeEvent{{Text: "second"}},
+	})
+
+	waitFor(t, func() bool {
+		state, ok := server.docs.Get(uri)
+		return ok && state.Content == "second"
+	}, time.Second)
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidChangeMultipleEventsTakesLast(t *testing.T) {
+	// Pin the choice: under full sync, if a client sends multiple
+	// content-change events in one didChange (spec says SHOULD
+	// send only one but doesn't forbid more), we treat the last
+	// one as authoritative. A future "first wins" refactor breaks
+	// this test loudly.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	conn := newClientConn(ctx, cli)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{}, &InitializeResult{})
+
+	uri := "file:///a.toml"
+	_ = conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{URI: uri, Text: "initial"},
+	})
+	_ = conn.Notify(ctx, MethodDidChange, &DidChangeTextDocumentParams{
+		TextDocument: VersionedTextDocumentIdentifier{URI: uri, Version: 2},
+		ContentChanges: []TextDocumentContentChangeEvent{
+			{Text: "intermediate"},
+			{Text: "final"},
+		},
+	})
+
+	waitFor(t, func() bool {
+		state, ok := server.docs.Get(uri)
+		return ok && state.Content == "final"
+	}, time.Second)
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidCloseRemovesFromStore(t *testing.T) {
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	conn := newClientConn(ctx, cli)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{}, &InitializeResult{})
+
+	uri := "file:///a.toml"
+	_ = conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{URI: uri, LanguageID: "toml", Version: 1, Text: "x"},
+	})
+	// Wait for didOpen to land before sending didClose so we know
+	// the close is acting on a present URI.
+	waitFor(t, func() bool {
+		_, ok := server.docs.Get(uri)
+		return ok
+	}, time.Second)
+	_ = conn.Notify(ctx, MethodDidClose, &DidCloseTextDocumentParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+	})
+	waitFor(t, func() bool {
+		_, ok := server.docs.Get(uri)
+		return !ok
+	}, time.Second)
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidSaveIsAccepted(t *testing.T) {
+	// V1 didSave is a no-op (full sync means we already have the
+	// content from didChange). Verify no error response and the
+	// store stays at the last didChange-supplied content.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	conn := newClientConn(ctx, cli)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{}, &InitializeResult{})
+
+	uri := "file:///a.toml"
+	_ = conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{URI: uri, Text: "x"},
+	})
+	waitFor(t, func() bool {
+		_, ok := server.docs.Get(uri)
+		return ok
+	}, time.Second)
+	if err := conn.Notify(ctx, MethodDidSave, &DidSaveTextDocumentParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+	}); err != nil {
+		t.Fatalf("didSave: %v", err)
+	}
+	state, _ := server.docs.Get(uri)
+	if state.Content != "x" {
+		t.Errorf("didSave should not alter content: got %q", state.Content)
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+// waitFor polls cond until it returns true or `timeout` elapses,
+// failing the test if the latter. Used to bridge the async gap
+// between sending an LSP notification and its handler completing.
+func waitFor(t *testing.T, cond func() bool, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("waitFor: condition never became true")
 }
 
 func TestServer_AcceptsNullWorkspaceFolders(t *testing.T) {

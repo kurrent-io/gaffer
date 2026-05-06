@@ -1,56 +1,71 @@
 # Gaffer
 
-Projection toolkit for [KurrentDB](https://kurrent.io). Develop, test, debug, and deploy projections.
+Develop, test, debug, and deploy [KurrentDB](https://kurrent.io) projections.
 
-**Status:** Early development
+KurrentDB projections are server-side JavaScript that derive new streams and state from existing events. Gaffer uses the same JS engine as KurrentDB itself, so what you debug locally behaves like what runs in production.
 
-## What is Gaffer?
+## Install
 
-Gaffer is a CLI and runtime for working with KurrentDB projections. It lets you:
-
-- Run and debug projections locally
-- Test projections against fixture data or live streams
-- Deploy projections to KurrentDB
-- Manage projection lifecycle across environments
-
-## Getting started
-
-### Prerequisites
-
-- [DevPod](https://devpod.sh/) or a devcontainer-compatible tool
-- Or manually: .NET 9, Go 1.26+, Node 22+, [just](https://just.systems)
-
-### Setup
+CLI:
 
 ```sh
-git clone https://github.com/kurrent-io/gaffer.git
-cd gaffer
-just init
+npm i -g @kurrent/gaffer
 ```
 
-### Build and test
+VS Code extension - debug-on-click and `gaffer.toml` config support. (Marketplace listing landing soon as part of v0; for now build from source - see [editors/vscode/](editors/vscode/).)
+
+Test library:
 
 ```sh
-just build    # build all projects
-just test     # run all tests (99 C# + 9 Go FFI)
-just check    # check formatting and linting
-just fix      # auto-fix formatting and lint issues
-just clean    # remove build artifacts
+npm i -D @kurrent/projections-testing
 ```
 
-## Project structure
+## Quick start
 
-| Path | What |
-|------|------|
-| [runtime/](runtime/) | C# projection runtime (Jint-based JS execution, NativeAOT shared library) |
-| [bindings/go/](bindings/go/) | Go bindings for the runtime (cgo) |
+Run a projection from the CLI:
 
-## How it works
+```sh
+gaffer dev order-count --fixture happy
+```
 
-The **runtime** executes KurrentDB projection JavaScript locally using [Jint](https://github.com/sebastienros/jint), the same JS interpreter KurrentDB uses. It supports the full projection API: `fromAll`, `fromStream`, `fromCategory`, `when`, `foreachStream`, `partitionBy`, `emit`, `linkTo`, biState, and more.
+Or test it from your existing test suite:
 
-The runtime builds as a NativeAOT shared library with a C API, allowing it to be embedded in any language via FFI. The **Go bindings** wrap this C API for use by the CLI and Go test libraries.
+```typescript
+import { createProjection } from "@kurrent/projections-testing";
 
-## License
+const projection = createProjection<{ count: number }>(`
+  fromAll().when({
+    $init: () => ({ count: 0 }),
+    OrderPlaced: (s) => ({ count: s.count + 1 }),
+  });
+`);
 
-TBD
+for (const { state } of projection.run(events)) {
+  // assert on state at each step
+}
+```
+
+See the [demo project](demo/) for a complete example with fixtures, errors, partitioned state, and bi-state projections.
+
+## Packages
+
+| Component | Package | Licence |
+|---|---|---|
+| CLI | `@kurrent/gaffer` | [Kurrent License v1](LICENSE.md) |
+| VS Code extension | (Marketplace) | [Kurrent License v1](LICENSE.md) |
+| Test library | `@kurrent/projections-testing` | [Apache 2.0](testing/js/LICENSE) |
+| JS bindings | `@kurrent/gaffer-runtime` | [Kurrent License v1](LICENSE.md) |
+| Go bindings | `github.com/kurrent-io/gaffer/bindings/go` | [Kurrent License v1](LICENSE.md) |
+
+Per-component `LICENSE` files live in each directory. See [LICENSE_CONTRIBUTIONS.md](LICENSE_CONTRIBUTIONS.md) for the licence map and [NOTICE.md](NOTICE.md) for third-party attribution.
+
+## Communities
+
+- [Kurrent community](https://www.kurrent.io/community)
+- [Discuss](https://discuss.kurrent.io/)
+- [Discord (Kurrent)](https://discord.gg/Phn9pmCw3t)
+- [Discord (ddd-cqrs-es)](https://discord.com/invite/sEZGSHNNbH)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and conventions. Bugs go to [Issues](https://github.com/kurrent-io/gaffer/issues); feature requests and questions to [Discussions](https://github.com/kurrent-io/gaffer/discussions).

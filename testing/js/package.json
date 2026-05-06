@@ -1,7 +1,17 @@
 {
 	"name": "@kurrent/projections-testing",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"description": "Test library for KurrentDB projections",
+	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/kurrent-io/gaffer.git",
+		"directory": "testing/js"
+	},
+	"homepage": "https://github.com/kurrent-io/gaffer#readme",
+	"bugs": {
+		"url": "https://github.com/kurrent-io/gaffer/issues"
+	},
 	"type": "module",
 	"main": "dist/src/index.js",
 	"types": "dist/src/index.d.ts",

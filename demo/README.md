@@ -1,17 +1,44 @@
-# Demo
+# Gaffer demo
 
-Example gaffer project for manual testing.
+Example projects showing what Gaffer can do. Each projection demonstrates a different feature of the KurrentDB projection API, runnable against fixture event files - no KurrentDB instance required.
 
-## Run
+## Run a demo
+
+Install the Gaffer CLI:
 
 ```sh
-just cli run -- -C demo dev order-count --events fixtures/orders.json
+npm i -g @kurrent/gaffer
 ```
 
-Or build the CLI first:
+Then from this directory:
+
+```sh
+gaffer dev order-count --fixture happy
+```
+
+The `--fixture` flag picks an event set defined in [`gaffer.toml`](gaffer.toml). The CLI replays those events through the projection and prints the resulting state.
+
+## What's in here
+
+| Projection | Demonstrates |
+|---|---|
+| [`order-count`](projections/order-count.js) | Per-stream state with `foreachStream`; aggregate counts and totals |
+| [`order-notifications`](projections/order-notifications.js) | `log()`, `emit()`, `linkTo()`, error handling |
+| [`event-counter`](projections/event-counter.js) | `partitionBy` to count events by type |
+| [`bistate-counter`](projections/bistate-counter.js) | Bi-state projections with `$initShared` |
+| [`broken`](projections/broken.js) | Syntax errors and how Gaffer reports them |
+
+Fixtures (`fixtures/orders.json`, `fixtures/orders-full.json`) are JSON arrays of event records. See `gaffer.toml` for how each projection is wired to its fixtures.
+
+## Building from source
+
+If you'd rather run the demo against a local build of the CLI, see the [contributing guide](../CONTRIBUTING.md) for workspace setup, then:
 
 ```sh
 just cli build
-cd demo
-../cli/gaffer dev order-count --events fixtures/orders.json
+../cli/gaffer dev order-count --fixture happy
 ```
+
+## Licence
+
+Apache License 2.0. See [LICENSE](LICENSE) in this directory.

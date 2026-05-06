@@ -2,11 +2,29 @@
 	"name": "gaffer",
 	"displayName": "Gaffer",
 	"description": "KurrentDB projection toolkit",
-	"version": "0.0.1",
+	"version": "0.1.0",
+	"license": "LicenseRef-KurrentLicenseV1",
 	"publisher": "kurrent-io",
+	"preview": true,
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/kurrent-io/gaffer.git",
+		"directory": "editors/vscode"
+	},
+	"homepage": "https://github.com/kurrent-io/gaffer#readme",
+	"bugs": {
+		"url": "https://github.com/kurrent-io/gaffer/issues"
+	},
 	"engines": {
 		"vscode": "^1.80.0"
 	},
+	"keywords": [
+		"kurrent",
+		"kurrentdb",
+		"projections",
+		"event-sourcing",
+		"debugger"
+	],
 	"categories": [
 		"Debuggers",
 		"Other"
@@ -17,7 +35,8 @@
 	],
 	"main": "./dist/extension.js",
 	"files": [
-		"dist"
+		"dist",
+		"LICENSE"
 	],
 	"capabilities": {
 		"untrustedWorkspaces": {
@@ -31,7 +50,7 @@
 		"test": "vitest run",
 		"check": "tsc --noEmit && eslint . && prettier --check .",
 		"fix": "eslint --fix . && prettier --write .",
-		"package": "vite build && vsce package --allow-missing-repository --skip-license"
+		"package": "vite build && vsce package"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

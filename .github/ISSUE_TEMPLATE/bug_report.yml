@@ -1,0 +1,82 @@
+name: Bug report
+description: Report a bug in Gaffer
+labels:
+  - bug
+  - triage
+body:
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Before filing
+      options:
+        - label: I've searched existing issues for this bug.
+          required: true
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: 🐛 Current behavior
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: 🔍 Steps to reproduce
+      description: How can someone else reproduce the bug?
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: 💭 Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of Gaffer is affected?
+      options:
+        - CLI (`@kurrent/gaffer`)
+        - VS Code extension
+        - Runtime (`gaffer.so`)
+        - Go bindings
+        - JS bindings (`@kurrent/gaffer-runtime`)
+        - JS test library (`@kurrent/projections-testing`)
+        - Other / not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Version of the component above. Accepts a release version (`0.1.0`), a Go module pseudo-version, or a commit SHA for local builds.
+    validations:
+      required: true
+  - type: input
+    id: kurrentdb-version
+    attributes:
+      label: KurrentDB version
+      description: Version of KurrentDB you're targeting (e.g. `25.0`).
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: e.g. Ubuntu 24.04, macOS 15, Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / config
+      description: Any relevant log output, error messages, or configuration.
+      render: shell
+    validations:
+      required: false

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Feature request
+    url: https://github.com/kurrent-io/gaffer/discussions/new?category=ideas
+    about: Suggest a new capability or improvement
+  - name: Ask a question
+    url: https://github.com/kurrent-io/gaffer/discussions/new?category=q-a
+    about: Ask a question or discuss with other community members

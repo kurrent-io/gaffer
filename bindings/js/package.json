@@ -1,7 +1,17 @@
 {
 	"name": "@kurrent/gaffer-runtime",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"description": "Node.js bindings for the Gaffer projection runtime",
+	"license": "LicenseRef-KurrentLicenseV1",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/kurrent-io/gaffer.git",
+		"directory": "bindings/js"
+	},
+	"homepage": "https://github.com/kurrent-io/gaffer#readme",
+	"bugs": {
+		"url": "https://github.com/kurrent-io/gaffer/issues"
+	},
 	"type": "module",
 	"main": "src/index.ts",
 	"types": "src/index.ts",

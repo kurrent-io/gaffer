@@ -190,3 +190,10 @@ try {
 	}
 }
 ```
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE) in this directory.
+
+This package depends on `@kurrent/gaffer-runtime`, which is distributed
+under the Kurrent License v1.

@@ -41,6 +41,9 @@ func (jw *jsonWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, 
 	if p := engine.DescribePartitioning(info); p != "none" {
 		proj["partitioning"] = p
 	}
+	if len(info.Diagnostics) > 0 {
+		proj["diagnostics"] = info.Diagnostics
+	}
 
 	jw.writeLine(map[string]any{
 		"type":       "info",

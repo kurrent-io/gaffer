@@ -192,6 +192,45 @@ func (tw *textWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, 
 	}
 
 	tw.blank()
+
+	for _, d := range info.Diagnostics {
+		tw.writeDiagnostic(d)
+	}
+}
+
+func (tw *textWriter) writeDiagnostic(d gafferruntime.Diagnostic) {
+	header := fmt.Sprintf("[%s] %s", severityLabel(d.Severity), d.Code)
+	if d.Range != nil {
+		header += fmt.Sprintf(" (line %d:%d)", d.Range.Start.Line, d.Range.Start.Column)
+	}
+	tw.write("%s\n", tw.severityStyle(d.Severity).Render(header))
+	tw.write("%s%s\n\n", tw.ind(), d.Message)
+}
+
+func severityLabel(s gafferruntime.DiagnosticSeverity) string {
+	switch s {
+	case gafferruntime.DiagnosticSeverityError:
+		return "error"
+	case gafferruntime.DiagnosticSeverityWarning:
+		return "warning"
+	case gafferruntime.DiagnosticSeverityInformation:
+		return "info"
+	case gafferruntime.DiagnosticSeverityHint:
+		return "hint"
+	default:
+		return "diagnostic"
+	}
+}
+
+func (tw *textWriter) severityStyle(s gafferruntime.DiagnosticSeverity) lipgloss.Style {
+	switch s {
+	case gafferruntime.DiagnosticSeverityError:
+		return tw.styles.errStatus
+	case gafferruntime.DiagnosticSeverityWarning:
+		return tw.styles.skipped
+	default:
+		return tw.styles.processed
+	}
 }
 
 func (tw *textWriter) WriteDebugListening(addr string, port int) {}

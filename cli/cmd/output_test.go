@@ -90,6 +90,53 @@ func TestTextWriter_WriteInfo_BiStateAndProducesResults(t *testing.T) {
 	testutil.AssertContains(t, out, "Produces results: yes")
 }
 
+func TestTextWriter_WriteInfo_RendersDiagnostics(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+
+	info := gafferruntime.ProjectionInfo{
+		AllStreams: true,
+		Diagnostics: []gafferruntime.Diagnostic{{
+			Code:     "deprecated.linkStreamTo",
+			Message:  "linkStreamTo is undocumented in KurrentDB and may be removed in a future version.",
+			Severity: gafferruntime.DiagnosticSeverityWarning,
+			Range: &gafferruntime.SourceRange{
+				Start: gafferruntime.SourcePosition{Line: 3, Column: 5},
+				End:   gafferruntime.SourcePosition{Line: 3, Column: 17},
+			},
+		}},
+	}
+	tw.WriteInfo("p", info, 2)
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "[warning]")
+	testutil.AssertContains(t, out, "deprecated.linkStreamTo")
+	testutil.AssertContains(t, out, "line 3:5")
+	testutil.AssertContains(t, out, "linkStreamTo is undocumented")
+}
+
+func TestTextWriter_WriteInfo_DiagnosticWithoutRange(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+
+	info := gafferruntime.ProjectionInfo{
+		AllStreams: true,
+		Diagnostics: []gafferruntime.Diagnostic{{
+			Code:     "deprecated.something",
+			Message:  "no location available",
+			Severity: gafferruntime.DiagnosticSeverityWarning,
+		}},
+	}
+	tw.WriteInfo("p", info, 2)
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "deprecated.something")
+	testutil.AssertContains(t, out, "no location available")
+	if strings.Contains(out, "line ") {
+		t.Error("expected no line/column info when range is nil")
+	}
+}
+
 func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
@@ -315,6 +362,60 @@ func TestJSONWriter_WriteInfo(t *testing.T) {
 
 	if _, ok := proj["categories"]; !ok {
 		t.Error("expected categories in JSON info")
+	}
+}
+
+func TestJSONWriter_WriteInfo_IncludesDiagnostics(t *testing.T) {
+	var buf bytes.Buffer
+	jw := newJSONWriter(&buf)
+
+	info := gafferruntime.ProjectionInfo{
+		AllStreams: true,
+		Diagnostics: []gafferruntime.Diagnostic{{
+			Code:     "deprecated.linkStreamTo",
+			Message:  "linkStreamTo is undocumented",
+			Severity: gafferruntime.DiagnosticSeverityWarning,
+			Range: &gafferruntime.SourceRange{
+				Start: gafferruntime.SourcePosition{Line: 3, Column: 5},
+				End:   gafferruntime.SourcePosition{Line: 3, Column: 17},
+			},
+		}},
+	}
+	jw.WriteInfo("p", info, 2)
+
+	var line map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	proj, ok := line["projection"].(map[string]any)
+	if !ok {
+		t.Fatal("expected projection object")
+	}
+	diags, ok := proj["diagnostics"].([]any)
+	if !ok || len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %v", proj["diagnostics"])
+	}
+	d, ok := diags[0].(map[string]any)
+	if !ok {
+		t.Fatal("expected diagnostic object")
+	}
+	testutil.AssertEqual(t, "code", "deprecated.linkStreamTo", d["code"])
+	testutil.AssertEqualFloat(t, "severity", 2, d["severity"])
+}
+
+func TestJSONWriter_WriteInfo_OmitsEmptyDiagnostics(t *testing.T) {
+	var buf bytes.Buffer
+	jw := newJSONWriter(&buf)
+
+	jw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2)
+
+	var line map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	proj := line["projection"].(map[string]any)
+	if _, ok := proj["diagnostics"]; ok {
+		t.Error("expected diagnostics to be omitted when empty")
 	}
 }
 

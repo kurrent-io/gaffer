@@ -148,11 +148,12 @@ type projectionPickArgs struct {
 // distinguishable; toml-side lenses don't need this because the
 // projection name is visible in the surrounding source.
 //
-// Path comparison is syntactic on filepath.Clean output. V1 is
-// Linux-only and we don't follow symlinks - a user opening a
-// symlink path for an entry script that's resolved through
-// EvalSymlinks in describe.go won't match here. Acceptable for
-// V1; revisit when other-OS support lands.
+// Path comparison goes through samePath so case-insensitive
+// filesystems (Windows NTFS, macOS APFS default) match
+// regardless of the client's chosen casing. We don't follow
+// symlinks - a user opening a symlink path for an entry script
+// that's resolved through EvalSymlinks in describe.go won't
+// match here. Acceptable for V0.
 //
 // uri is the URI the client opened. We compare absolute paths
 // because clients sometimes encode URIs with trailing slashes,
@@ -165,7 +166,7 @@ func emitEntryScriptLenses(parses []parseResult, uri string) []CodeLens {
 	out := []CodeLens{}
 	zeroRange := Range{Start: Position{Line: 0, Character: 0}, End: Position{Line: 0, Character: 0}}
 	for parse, p := range validProjections(parses) {
-		if p.EntryAbsPath != target {
+		if !samePath(p.EntryAbsPath, target) {
 			continue
 		}
 		tomlURI := pathToURI(parse.Description.ConfigFile)

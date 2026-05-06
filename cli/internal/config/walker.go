@@ -96,6 +96,10 @@ func WalkConfigs(ctx context.Context, root string) ([]string, error) {
 		if err != nil {
 			return nil
 		}
+		// .gitignore patterns are forward-slash; on Windows
+		// filepath.Rel returns backslashes which sabhiram's
+		// MatchesPath would silently fail to match. Normalise.
+		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
 			if _, skip := hardcodedSkipDirs[d.Name()]; skip {
 				return filepath.SkipDir

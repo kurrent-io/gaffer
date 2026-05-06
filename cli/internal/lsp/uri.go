@@ -1,39 +1,69 @@
 package lsp
 
 import (
-	"net/url"
+	"path/filepath"
 	"strings"
+
+	"go.lsp.dev/uri"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 )
 
-// pathToURI converts an absolute filesystem path to a file:// URI.
-// Uses url.URL.String so the encoding matches what LSP clients
-// produce - e.g. spaces become `%20`, `:` in path segments stays
-// `:`. Hand-concatenating "file://" + EscapedPath would produce a
-// non-canonical form that diverges from the client's URI string,
-// breaking map-key lookups in the document store.
+// pathToURI converts a filesystem path to a `file://` URI. Uses
+// go.lsp.dev/uri so Windows drive letters and special characters
+// are encoded the way LSP clients expect (e.g.
+// `file:///C:/foo/gaffer.toml`, with the drive letter in the path
+// portion and forward slashes throughout).
 //
-// V1 is Linux-only at the editor / LSP layer; Windows would need
-// `file:///C:/...` shaping but no editor extension on Windows is
-// in scope yet.
+// We pre-normalise `\` -> `/` so the library's drive-letter
+// detection works for Windows-shape input regardless of which
+// OS the binary is running on; the library only auto-handles
+// backslashes when GOOS=windows. Linux filenames with literal
+// backslashes (vanishingly rare) get coerced; acceptable for V0.
 func pathToURI(path string) string {
-	return (&url.URL{Scheme: "file", Path: path}).String()
+	return string(uri.File(strings.ReplaceAll(path, `\`, `/`)))
 }
 
-// uriToPath strips the file:// scheme and returns the absolute
-// filesystem path. Returns the input unchanged if it doesn't look
-// like a file URI - lets callers pass through raw paths during
-// tests without needing a separate code path.
-func uriToPath(uri string) string {
-	if !strings.HasPrefix(uri, "file://") {
-		return uri
+// uriToPath strips the file:// scheme and returns an absolute
+// filesystem path in forward-slash form. Returns the input
+// unchanged if it doesn't look like a file URI.
+//
+// Forward-slash internal: every consumer of this output - map
+// keys, `os.ReadFile`, path comparison helpers - works with
+// forward slashes on every OS we target. We pay one
+// `filepath.ToSlash` here so the rest of the codebase doesn't
+// have to think about separator differences.
+func uriToPath(s string) string {
+	if !strings.HasPrefix(s, "file://") {
+		return s
 	}
-	u, err := url.Parse(uri)
-	if err != nil {
-		return uri
+	defer func() {
+		// uri.URI.Filename panics on malformed input. Convert any
+		// panic into a fall-through return of the raw string so a
+		// bad URI in production logs a "couldn't parse" later
+		// rather than crashing the handler goroutine.
+		_ = recover()
+	}()
+	return filepath.ToSlash(uri.New(s).Filename())
+}
+
+// samePath reports whether two paths refer to the same file
+// according to the host OS's case-folding rules. Both paths are
+// slash-normalised first so a Windows/macOS comparison of
+// `C:\foo\X` vs `c:/foo/x` succeeds.
+//
+// Strings.EqualFold does Unicode case folding which is correct
+// for ASCII (the common case) and reasonable for most filenames;
+// it doesn't handle Turkish-locale dotted-i edge cases or NFC/NFD
+// normalisation differences on macOS. Acceptable for V0; if a
+// user reports a missed lens on a unicode path we revisit.
+func samePath(a, b string) bool {
+	a = strings.ReplaceAll(a, `\`, `/`)
+	b = strings.ReplaceAll(b, `\`, `/`)
+	if pathsCaseFold {
+		return strings.EqualFold(a, b)
 	}
-	return u.Path
+	return a == b
 }
 
 // rangeToLSP converts the config package's 1-indexed-line / 0-

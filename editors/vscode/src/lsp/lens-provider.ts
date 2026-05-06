@@ -4,8 +4,28 @@ import * as v from "valibot";
 import { hasCommand, hasFlag } from "../discovery/cli.js";
 import type { Manifest } from "../discovery/schemas.js";
 import type { DebugState } from "../types.js";
-import { lensState } from "../lensing/lens.js";
 import { log } from "../output.js";
+
+// A projection's debug state from a lens's perspective. "stop"
+// means the projection-level lens should swap to a Stop button
+// (with the embedded title for the current substate); the
+// dropdown should hide. "off" means no active session for this
+// projection - render the regular Debug affordance.
+type LensState = { kind: "stop"; title: string } | { kind: "off" };
+
+function lensState(debugState: Readonly<DebugState>, name: string): LensState {
+	if (debugState.name !== name) return { kind: "off" };
+	switch (debugState.status) {
+		case "starting":
+			return { kind: "stop", title: "$(sync~spin) Starting (cancel)" };
+		case "running":
+		case "inspecting":
+			return { kind: "stop", title: "$(debug-stop) Debugging" };
+		case "idle":
+		case "ended":
+			return { kind: "off" };
+	}
+}
 
 // Server-side intent constants (must match cli/internal/lsp/protocol.go).
 const IntentDebug = "debug";

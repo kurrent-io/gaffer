@@ -8,9 +8,9 @@ import (
 )
 
 func TestDocumentStore_OpenAndGet(t *testing.T) {
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	got := s.Open("file:///a.toml", "hello")
-	if got.URI != "file:///a.toml" || got.Content != "hello" || got.Source != SourceMemory {
+	if got.URI != "file:///a.toml" || got.Content != "hello" || got.Source != sourceMemory {
 		t.Fatalf("unexpected open result: %+v", got)
 	}
 	if got.Version < 1 {
@@ -29,7 +29,7 @@ func TestDocumentStore_VersionMonotonicAcrossClose(t *testing.T) {
 	// Without this, a stale parse from before the close (with
 	// version V) could land after the reopen (whose version
 	// resets to 1) and overwrite fresh diagnostics with stale ones.
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	v1 := s.Open("file:///a.toml", "v1").Version
 	c, _ := s.Change("file:///a.toml", "v1.1")
 	v1Prime := c.Version
@@ -49,7 +49,7 @@ func TestDocumentStore_VersionMonotonicAcrossURIs(t *testing.T) {
 	// the previous mutation on URI B. Pin so a future per-URI
 	// counter refactor doesn't silently break the staleness
 	// check.
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	a := s.Open("file:///a.toml", "x").Version
 	b := s.Open("file:///b.toml", "y").Version
 	if b <= a {
@@ -58,7 +58,7 @@ func TestDocumentStore_VersionMonotonicAcrossURIs(t *testing.T) {
 }
 
 func TestDocumentStore_ChangeIncrementsVersion(t *testing.T) {
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	pre := s.Open("file:///a.toml", "first").Version
 	got, err := s.Change("file:///a.toml", "second")
 	if err != nil {
@@ -76,7 +76,7 @@ func TestDocumentStore_ChangeWithoutOpenIsAnError(t *testing.T) {
 	// LSP spec: didChange before didOpen is a client bug. Server
 	// returns an error rather than silently auto-promoting; caller
 	// logs and drops.
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	if _, err := s.Change("file:///a.toml", "x"); err == nil {
 		t.Fatal("expected error on Change of non-open URI")
 	}
@@ -86,7 +86,7 @@ func TestDocumentStore_ChangeAfterAddFromDiskIsRejected(t *testing.T) {
 	// Disk-sourced state isn't a client buffer. didChange against
 	// it should fail loudly so the caller doesn't accidentally
 	// promote disk content to memory via a stray client message.
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	s.AddFromDisk("file:///a.toml", "from disk")
 	if _, err := s.Change("file:///a.toml", "x"); err == nil {
 		t.Fatal("expected error on Change of disk-sourced URI")
@@ -94,7 +94,7 @@ func TestDocumentStore_ChangeAfterAddFromDiskIsRejected(t *testing.T) {
 }
 
 func TestDocumentStore_Close(t *testing.T) {
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	s.Open("file:///a.toml", "x")
 	if !s.Close("file:///a.toml") {
 		t.Error("expected Close to return true for open URI")
@@ -105,20 +105,20 @@ func TestDocumentStore_Close(t *testing.T) {
 }
 
 func TestDocumentStore_CloseAbsentIsFalse(t *testing.T) {
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	if s.Close("file:///never.toml") {
 		t.Error("expected Close to return false for absent URI")
 	}
 }
 
 func TestDocumentStore_AddFromDiskOnEmpty(t *testing.T) {
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	state, ok := s.AddFromDisk("file:///a.toml", "from disk")
 	if !ok {
 		t.Fatal("expected AddFromDisk to succeed on empty slot")
 	}
-	if state.Source != SourceDisk {
-		t.Errorf("expected SourceDisk, got %v", state.Source)
+	if state.Source != sourceDisk {
+		t.Errorf("expected sourceDisk, got %v", state.Source)
 	}
 	if state.Content != "from disk" {
 		t.Errorf("content: got %q want from disk", state.Content)
@@ -129,7 +129,7 @@ func TestDocumentStore_AddFromDiskRefreshesDiskState(t *testing.T) {
 	// File watcher onChange path: walker / watcher reads new disk
 	// content and calls AddFromDisk. Existing disk-sourced state
 	// is updated; version bumps so a stale parse can be dropped.
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	pre, _ := s.AddFromDisk("file:///a.toml", "v1")
 	got, ok := s.AddFromDisk("file:///a.toml", "v2")
 	if !ok {
@@ -150,7 +150,7 @@ func TestDocumentStore_AddFromDiskSkipsMemoryWins(t *testing.T) {
 	// On skip, return the existing memory state so a caller that
 	// ignores `ok` still has the URI / content it asked about
 	// (avoids zero-value footguns).
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	mem := s.Open("file:///a.toml", "in memory")
 	got, ok := s.AddFromDisk("file:///a.toml", "from disk")
 	if ok {
@@ -166,7 +166,7 @@ func TestDocumentStore_AddFromDiskSkipsMemoryWins(t *testing.T) {
 }
 
 func TestDocumentStore_OpenURIsReturnsMemorySourcedOnly(t *testing.T) {
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	s.Open("file:///mem-a.toml", "x")
 	s.Open("file:///mem-b.toml", "y")
 	s.AddFromDisk("file:///disk.toml", "z")
@@ -180,10 +180,10 @@ func TestDocumentStore_OpenURIsReturnsMemorySourcedOnly(t *testing.T) {
 }
 
 func TestDocumentStore_GetReturnsByValue(t *testing.T) {
-	// Pin the contract: caller can mutate the returned DocState
+	// Pin the contract: caller can mutate the returned docState
 	// without affecting the store. Defends against accidental
 	// shared-mutable-state bugs in higher layers.
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	s.Open("file:///a.toml", "original")
 	got, _ := s.Get("file:///a.toml")
 	got.Content = "mutated"
@@ -196,9 +196,9 @@ func TestDocumentStore_GetReturnsByValue(t *testing.T) {
 func TestDocumentStore_ApplyParseIfFresh_DropsStale(t *testing.T) {
 	// A parse stamped with an older version than the URI's current
 	// state must be dropped - the buffer changed underneath it.
-	store := NewDocumentStore()
+	store := newDocumentStore()
 	state := store.Open("file:///a.toml", "v1")
-	stale := ParseResult{URI: "file:///a.toml", Version: state.Version - 1}
+	stale := parseResult{URI: "file:///a.toml", Version: state.Version - 1}
 	if store.ApplyParseIfFresh(stale) {
 		t.Fatal("expected stale parse to be dropped")
 	}
@@ -210,9 +210,9 @@ func TestDocumentStore_ApplyParseIfFresh_DropsStale(t *testing.T) {
 func TestDocumentStore_ApplyParseIfFresh_AppliesAtSameVersion(t *testing.T) {
 	// A parse stamped with the URI's current version is fresh and
 	// gets cached.
-	store := NewDocumentStore()
+	store := newDocumentStore()
 	state := store.Open("file:///a.toml", "v1")
-	fresh := ParseResult{URI: "file:///a.toml", Version: state.Version}
+	fresh := parseResult{URI: "file:///a.toml", Version: state.Version}
 	if !store.ApplyParseIfFresh(fresh) {
 		t.Fatal("expected fresh parse to apply")
 	}
@@ -225,10 +225,10 @@ func TestDocumentStore_ApplyParseIfFresh_DropsAfterClose(t *testing.T) {
 	// URI was open during parse; client closed it before the parse
 	// finished. The result must not be cached - the URI is gone
 	// from the store, no one's looking at it.
-	store := NewDocumentStore()
+	store := newDocumentStore()
 	state := store.Open("file:///a.toml", "v1")
 	store.Close("file:///a.toml")
-	result := ParseResult{URI: "file:///a.toml", Version: state.Version}
+	result := parseResult{URI: "file:///a.toml", Version: state.Version}
 	if store.ApplyParseIfFresh(result) {
 		t.Fatal("expected parse to be dropped after close")
 	}
@@ -240,7 +240,7 @@ func TestDocumentStore_ConcurrentMutationsRace(t *testing.T) {
 	// data races on docs[]. Open the URI synchronously first so
 	// Change is unconditionally legal in the goroutines (avoids
 	// scheduling-dependent test flakes).
-	s := NewDocumentStore()
+	s := newDocumentStore()
 	s.Open("file:///shared.toml", "initial")
 
 	const N = 200

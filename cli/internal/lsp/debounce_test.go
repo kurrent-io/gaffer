@@ -232,7 +232,7 @@ fixtures.happy = "fixtures/happy.json"
 	})
 	waitFor(t, func() bool {
 		state, ok := server.docs.Get(uri)
-		return ok && state.Source == SourceMemory
+		return ok && state.Source == sourceMemory
 	}, time.Second)
 
 	// Arm a debounce that will eventually parse the buffer.
@@ -259,8 +259,8 @@ fixtures.evil = "../escape.json"
 	if !ok {
 		t.Fatal("expected URI to remain in store")
 	}
-	if state.Source != SourceMemory {
-		t.Errorf("source: got %v want SourceMemory", state.Source)
+	if state.Source != sourceMemory {
+		t.Errorf("source: got %v want sourceMemory", state.Source)
 	}
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)

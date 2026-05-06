@@ -149,7 +149,7 @@ fixtures.evil = "../escape.json"
 	if d.Code != "fixture.path-escapes-root" {
 		t.Errorf("rule code: got %q want fixture.path-escapes-root", d.Code)
 	}
-	if d.Severity != DiagnosticSeverityError {
+	if d.Severity != diagnosticSeverityError {
 		t.Errorf("severity: got %d want Error", d.Severity)
 	}
 	if d.Source != "gaffer" {

@@ -192,7 +192,7 @@ func TestServer_InitializedRegistersFileWatcher(t *testing.T) {
 func TestServer_InitializedSkipsOpenBuffers(t *testing.T) {
 	// A buffer the client opened during initialize must not be
 	// overwritten by the walk's disk-sourced AddFromDisk - memory
-	// wins. The store's Source must remain SourceMemory after the
+	// wins. The store's Source must remain sourceMemory after the
 	// walk completes.
 	srv, cli := pipePair()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -227,7 +227,7 @@ fixtures.evil = "../escape.json"
 	})
 	waitFor(t, func() bool {
 		state, ok := server.docs.Get(uri)
-		return ok && state.Source == SourceMemory
+		return ok && state.Source == sourceMemory
 	}, time.Second)
 
 	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
@@ -242,8 +242,8 @@ fixtures.evil = "../escape.json"
 	if !ok {
 		t.Fatal("expected URI in store")
 	}
-	if state.Source != SourceMemory {
-		t.Errorf("source: got %v want SourceMemory", state.Source)
+	if state.Source != sourceMemory {
+		t.Errorf("source: got %v want sourceMemory", state.Source)
 	}
 	if state.Content != "MEMORY-CONTENT" {
 		t.Errorf("content: got %q want MEMORY-CONTENT", state.Content)
@@ -439,7 +439,7 @@ fixtures.happy = "fixtures/happy.json"
 	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
 	waitFor(t, func() bool {
 		state, ok := server.docs.Get(uri)
-		return ok && state.Source == SourceMemory && state.Content == memContent
+		return ok && state.Source == sourceMemory && state.Content == memContent
 	}, time.Second)
 
 	// Disk-side change + watcher event.
@@ -456,8 +456,8 @@ fixtures.happy = "fixtures/happy.json"
 	if !ok {
 		t.Fatal("expected URI to remain in store")
 	}
-	if state.Source != SourceMemory {
-		t.Errorf("source: got %v want SourceMemory", state.Source)
+	if state.Source != sourceMemory {
+		t.Errorf("source: got %v want sourceMemory", state.Source)
 	}
 	if state.Content != memContent {
 		t.Errorf("buffer was overwritten: got %q", state.Content)

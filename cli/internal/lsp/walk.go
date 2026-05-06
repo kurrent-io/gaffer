@@ -2,7 +2,6 @@ package lsp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
 	"os"
@@ -85,9 +84,7 @@ func (s *Server) seedFromDisk(ctx context.Context, path string) {
 // the request fails and the editor just won't push live disk events.
 // The walk-based seed already reflects current state.
 func (s *Server) registerFileWatcher(ctx context.Context) {
-	s.mu.Lock()
-	conn := s.conn
-	s.mu.Unlock()
+	conn, _ := s.snapshotRunState()
 	if conn == nil {
 		return
 	}
@@ -130,17 +127,16 @@ func (s *Server) handleDidChangeWatchedFiles(_ context.Context, req *jsonrpc2.Re
 	if req.Params == nil {
 		return nil, nil
 	}
-	var params DidChangeWatchedFilesParams
-	if err := json.Unmarshal(*req.Params, &params); err != nil {
-		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: err.Error()}
+	params, jerr := decodeParams[DidChangeWatchedFilesParams](req, "didChangeWatchedFiles")
+	if jerr != nil {
+		return nil, jerr
 	}
-	s.mu.Lock()
-	runCtx := s.runCtx
-	s.mu.Unlock()
+	_, runCtx := s.snapshotRunState()
 	if runCtx == nil {
 		return nil, nil
 	}
-	go s.applyWatchedFileEvents(runCtx, params.Changes)
+	events := params.Changes
+	s.spawn(func() { s.applyWatchedFileEvents(runCtx, events) })
 	return nil, nil
 }
 
@@ -161,7 +157,7 @@ func (s *Server) applyWatchedFileEvents(ctx context.Context, events []FileEvent)
 			s.seedFromDisk(ctx, uriToPath(ev.URI))
 		case FileChangeDeleted:
 			s.docs.Close(ev.URI)
-			s.publishDiagnostics(ev.URI, []LSPDiagnostic{})
+			s.publishDiagnostics(ev.URI, []lspDiagnostic{})
 		}
 	}
 }

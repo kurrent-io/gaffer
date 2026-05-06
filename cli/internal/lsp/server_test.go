@@ -302,7 +302,7 @@ func TestServer_DidOpenStoresTheBuffer(t *testing.T) {
 	// run before asserting on store state.
 	waitFor(t, func() bool {
 		state, ok := server.docs.Get(uri)
-		return ok && state.Source == SourceMemory && state.Content == "engine_version = 2"
+		return ok && state.Source == sourceMemory && state.Content == "engine_version = 2"
 	}, time.Second)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)

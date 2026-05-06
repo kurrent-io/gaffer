@@ -42,7 +42,7 @@ func (s *Server) parseAndPublish(ctx context.Context, uri string) {
 		}
 		return
 	}
-	applied := s.docs.ApplyParseIfFresh(ParseResult{
+	applied := s.docs.ApplyParseIfFresh(parseResult{
 		URI:         uri,
 		Version:     state.Version,
 		Description: desc,
@@ -56,10 +56,8 @@ func (s *Server) parseAndPublish(ctx context.Context, uri string) {
 // publishDiagnostics sends a textDocument/publishDiagnostics
 // notification. Empty Diagnostics intentionally clears squiggles
 // for the URI - the client treats it as "no problems here."
-func (s *Server) publishDiagnostics(uri string, diags []LSPDiagnostic) {
-	s.mu.Lock()
-	conn := s.conn
-	s.mu.Unlock()
+func (s *Server) publishDiagnostics(uri string, diags []lspDiagnostic) {
+	conn, _ := s.snapshotRunState()
 	if conn == nil {
 		// Server not connected yet (or already disconnected).
 		// Dropping is the right call - the client wouldn't see it.

@@ -8,26 +8,26 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 )
 
-// Source tracks where a document's current content came from. The
+// source tracks where a document's current content came from. The
 // LSP server prefers memory-sourced state over disk state - if a
 // client has the file open, the in-memory buffer is authoritative
 // and the workspace walker must not overwrite it. See the LSP
 // plan's "Document state and concurrency" section.
-type Source int
+type source int
 
 const (
-	// SourceDisk: content was read from the filesystem (e.g. by the
+	// sourceDisk: content was read from the filesystem (e.g. by the
 	// workspace walker on initialize, or by a file-watcher event).
-	SourceDisk Source = iota
-	// SourceMemory: content came from a client buffer via didOpen
+	sourceDisk source = iota
+	// sourceMemory: content came from a client buffer via didOpen
 	// or didChange. Authoritative over disk.
-	SourceMemory
+	sourceMemory
 )
 
-// DocState is a snapshot of a document's content + provenance.
-// Returned by-value from DocumentStore methods; callers can mutate
+// docState is a snapshot of a document's content + provenance.
+// Returned by-value from documentStore methods; callers can mutate
 // their copy without affecting the store.
-type DocState struct {
+type docState struct {
 	URI     string
 	Content string
 	// Version is per-URI monotonic. Each mutation (Open, Change,
@@ -35,10 +35,10 @@ type DocState struct {
 	// the version they observed at parse-start so out-of-order
 	// completions can be dropped on apply.
 	Version int
-	Source  Source
+	Source  source
 }
 
-// DocumentStore is the thread-safe source of truth for what
+// documentStore is the thread-safe source of truth for what
 // content the LSP server believes is in each document. Memory
 // state (from didOpen/didChange) wins over disk state (from the
 // walker / file watcher) for the same URI.
@@ -49,38 +49,38 @@ type DocState struct {
 // what when.
 //
 // Versioning: a single monotonic counter ticks for every mutation
-// across all URIs. Each DocState's Version is the counter value
+// across all URIs. Each docState's Version is the counter value
 // at the time of its last mutation. The counter does NOT reset on
 // Close - that's load-bearing for the parse-staleness check (a
 // stale parse from before a Close would otherwise have a higher
 // version than the post-reopen state and silently overwrite it).
-type DocumentStore struct {
+type documentStore struct {
 	mu      sync.RWMutex
-	docs    map[string]DocState
-	parses  map[string]ParseResult
+	docs    map[string]docState
+	parses  map[string]parseResult
 	nextVer int
 }
 
-// ParseResult is the cached output of a parse pass for a URI. The
+// parseResult is the cached output of a parse pass for a URI. The
 // codeLens handler reads from this; the parse pipeline writes to
-// it via ApplyParseIfFresh. Version is the DocState.Version that
+// it via ApplyParseIfFresh. Version is the docState.Version that
 // was current when parsing began - used to drop stale results.
-type ParseResult struct {
+type parseResult struct {
 	URI         string
 	Version     int
 	Description config.Description
 }
 
-// NewDocumentStore returns an empty store.
-func NewDocumentStore() *DocumentStore {
-	return &DocumentStore{
-		docs:   map[string]DocState{},
-		parses: map[string]ParseResult{},
+// newDocumentStore returns an empty store.
+func newDocumentStore() *documentStore {
+	return &documentStore{
+		docs:   map[string]docState{},
+		parses: map[string]parseResult{},
 	}
 }
 
 // bumpLocked returns the next version. Caller must hold s.mu.
-func (s *DocumentStore) bumpLocked() int {
+func (s *documentStore) bumpLocked() int {
 	s.nextVer++
 	return s.nextVer
 }
@@ -88,14 +88,14 @@ func (s *DocumentStore) bumpLocked() int {
 // Open records a client buffer for URI. Memory-sourced. Version
 // pulls from the global counter so it monotonically advances even
 // across Close + reopen cycles for the same URI.
-func (s *DocumentStore) Open(uri, content string) DocState {
+func (s *documentStore) Open(uri, content string) docState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	state := DocState{
+	state := docState{
 		URI:     uri,
 		Content: content,
 		Version: s.bumpLocked(),
-		Source:  SourceMemory,
+		Source:  sourceMemory,
 	}
 	s.docs[uri] = state
 	return state
@@ -104,21 +104,21 @@ func (s *DocumentStore) Open(uri, content string) DocState {
 // Change updates the content of an already-open buffer. Increments
 // version. Returns an error if URI isn't currently open - LSP spec
 // makes this a client error and the caller should log + drop.
-func (s *DocumentStore) Change(uri, content string) (DocState, error) {
+func (s *documentStore) Change(uri, content string) (docState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	prev, ok := s.docs[uri]
 	if !ok {
-		return DocState{}, fmt.Errorf("change before didOpen: %s", uri)
+		return docState{}, fmt.Errorf("change before didOpen: %s", uri)
 	}
-	if prev.Source != SourceMemory {
-		return DocState{}, fmt.Errorf("change requires memory-sourced URI (was disk): %s", uri)
+	if prev.Source != sourceMemory {
+		return docState{}, fmt.Errorf("change requires memory-sourced URI (was disk): %s", uri)
 	}
-	state := DocState{
+	state := docState{
 		URI:     uri,
 		Content: content,
 		Version: s.bumpLocked(),
-		Source:  SourceMemory,
+		Source:  sourceMemory,
 	}
 	s.docs[uri] = state
 	return state, nil
@@ -132,7 +132,7 @@ func (s *DocumentStore) Change(uri, content string) (DocState, error) {
 // Also drops any cached parse result for the URI so a future
 // reopen starts with a clean slate (stale lenses won't survive
 // the close).
-func (s *DocumentStore) Close(uri string) bool {
+func (s *documentStore) Close(uri string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, ok := s.docs[uri]
@@ -144,8 +144,8 @@ func (s *DocumentStore) Close(uri string) bool {
 }
 
 // Get returns the current state for URI and ok=true if any state
-// is recorded. The returned DocState is a copy.
-func (s *DocumentStore) Get(uri string) (DocState, bool) {
+// is recorded. The returned docState is a copy.
+func (s *documentStore) Get(uri string) (docState, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	state, ok := s.docs[uri]
@@ -155,12 +155,12 @@ func (s *DocumentStore) Get(uri string) (DocState, bool) {
 // OpenURIs returns the memory-sourced URIs in lexicographic order.
 // The walker uses this to skip files the client already has open
 // (memory wins).
-func (s *DocumentStore) OpenURIs() []string {
+func (s *documentStore) OpenURIs() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]string, 0, len(s.docs))
 	for uri, state := range s.docs {
-		if state.Source == SourceMemory {
+		if state.Source == sourceMemory {
 			out = append(out, uri)
 		}
 	}
@@ -177,7 +177,7 @@ func (s *DocumentStore) OpenURIs() []string {
 // out-of-date squiggles. Returns false in two cases:
 //   - URI was closed mid-parse (no state).
 //   - State has advanced past the parse's stamped version.
-func (s *DocumentStore) ApplyParseIfFresh(result ParseResult) bool {
+func (s *documentStore) ApplyParseIfFresh(result parseResult) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	state, ok := s.docs[result.URI]
@@ -194,7 +194,7 @@ func (s *DocumentStore) ApplyParseIfFresh(result ParseResult) bool {
 // GetParse returns the cached parse for URI, ok=true if present.
 // Used by the codeLens request handler to render lenses without
 // re-parsing.
-func (s *DocumentStore) GetParse(uri string) (ParseResult, bool) {
+func (s *documentStore) GetParse(uri string) (parseResult, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	r, ok := s.parses[uri]
@@ -210,17 +210,17 @@ func (s *DocumentStore) GetParse(uri string) (ParseResult, bool) {
 // memory-wins skip returns the existing memory state and ok=false
 // so a caller that misuses the result still has useful info
 // (the URI it asked about) instead of zero values.
-func (s *DocumentStore) AddFromDisk(uri, content string) (DocState, bool) {
+func (s *documentStore) AddFromDisk(uri, content string) (docState, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if prev, ok := s.docs[uri]; ok && prev.Source == SourceMemory {
+	if prev, ok := s.docs[uri]; ok && prev.Source == sourceMemory {
 		return prev, false
 	}
-	state := DocState{
+	state := docState{
 		URI:     uri,
 		Content: content,
 		Version: s.bumpLocked(),
-		Source:  SourceDisk,
+		Source:  sourceDisk,
 	}
 	s.docs[uri] = state
 	return state, true

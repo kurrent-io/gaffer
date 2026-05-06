@@ -60,11 +60,10 @@ const (
 // avoiding integer-as-float64 coercion that map[string]interface{}
 // would force.
 type InitializeParams struct {
-	ProcessID        *int               `json:"processId,omitempty"`
-	RootURI          string             `json:"rootUri,omitempty"`
-	WorkspaceFolders []WorkspaceFolder  `json:"workspaceFolders,omitempty"`
-	Capabilities     ClientCapabilities `json:"capabilities"`
-	InitOptions      json.RawMessage    `json:"initializationOptions,omitempty"`
+	ProcessID        *int              `json:"processId,omitempty"`
+	RootURI          string            `json:"rootUri,omitempty"`
+	WorkspaceFolders []WorkspaceFolder `json:"workspaceFolders,omitempty"`
+	InitOptions      json.RawMessage   `json:"initializationOptions,omitempty"`
 }
 
 // WorkspaceFolder is an entry in InitializeParams.WorkspaceFolders.
@@ -72,11 +71,6 @@ type WorkspaceFolder struct {
 	URI  string `json:"uri"`
 	Name string `json:"name"`
 }
-
-// ClientCapabilities is intentionally empty for V1 - we don't gate
-// behavior on what the client supports, only on what we emit. Add
-// fields as we start using them.
-type ClientCapabilities struct{}
 
 // InitializeResult is what we send back to the client. ServerInfo
 // helps with logs / "About Gaffer LSP" UIs in the editor.
@@ -157,23 +151,21 @@ type CodeLensParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`
 }
 
-// DiagnosticSeverity matches LSP spec values: 1=Error, 2=Warning,
+// diagnosticSeverity matches LSP spec values: 1=Error, 2=Warning,
 // 3=Information, 4=Hint.
-type DiagnosticSeverity int
+type diagnosticSeverity int
 
 const (
-	DiagnosticSeverityError       DiagnosticSeverity = 1
-	DiagnosticSeverityWarning     DiagnosticSeverity = 2
-	DiagnosticSeverityInformation DiagnosticSeverity = 3
-	DiagnosticSeverityHint        DiagnosticSeverity = 4
+	diagnosticSeverityError diagnosticSeverity = 1
+	// (Warning, Information, Hint reserved by spec but not emitted
+	// today; add when a Warning-level rule lands.)
 )
 
-// LSPDiagnostic is the wire-format diagnostic. Named to disambiguate
-// from config.Diagnostic which is the upstream loose-validation
-// shape.
-type LSPDiagnostic struct {
+// lspDiagnostic is the wire-format diagnostic. Disambiguates from
+// config.Diagnostic, the upstream loose-validation shape.
+type lspDiagnostic struct {
 	Range    Range              `json:"range"`
-	Severity DiagnosticSeverity `json:"severity,omitempty"`
+	Severity diagnosticSeverity `json:"severity,omitempty"`
 	Code     string             `json:"code,omitempty"`
 	Source   string             `json:"source,omitempty"`
 	Message  string             `json:"message"`
@@ -184,7 +176,7 @@ type LSPDiagnostic struct {
 // clears the URI (drops squiggles).
 type PublishDiagnosticsParams struct {
 	URI         string          `json:"uri"`
-	Diagnostics []LSPDiagnostic `json:"diagnostics"`
+	Diagnostics []lspDiagnostic `json:"diagnostics"`
 }
 
 // TextDocumentItem is the payload for didOpen: full URI, language,

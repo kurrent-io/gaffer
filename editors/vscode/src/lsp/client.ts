@@ -198,10 +198,19 @@ export function getLanguageClient(): LanguageClient | undefined {
 const MAX_RESTART_COUNT = 4;
 const RESTART_WINDOW_MS = 3 * 60 * 1000;
 
-function makeErrorHandler(channel: vscode.OutputChannel): ErrorHandler {
+// Exported for direct testing of the restart-budget policy. The
+// production caller is spawnLanguageClient; nothing else should
+// reach for this.
+export function makeErrorHandler(channel: vscode.OutputChannel): ErrorHandler {
 	const restarts: number[] = [];
 	let toastShown = false;
 	const giveUp = (): void => {
+		// Drop our handle on the dead client so retryStartLanguageClient
+		// can spawn a new one once the user fixes whatever broke.
+		// Without this the gate's `if (client) return` branch keeps
+		// the never-running stale handle and recovery becomes
+		// "reload window".
+		client = undefined;
 		if (!toastShown) {
 			toastShown = true;
 			void showLspCrashed(channel);

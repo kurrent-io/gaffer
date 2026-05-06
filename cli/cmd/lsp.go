@@ -29,8 +29,13 @@ func newLSPCmd() *cobra.Command {
 	}
 	// vscode-languageclient unconditionally appends --stdio when the
 	// transport is stdio (which is also its default). Accept it as
-	// a no-op so the spawn doesn't fail with "Unknown flag".
-	cmd.Flags().Bool("stdio", true, "use stdio transport (default; accepted for editor compatibility)")
+	// a no-op so the spawn doesn't fail with "Unknown flag". Hidden
+	// so it doesn't appear in --help and falsely advertise a
+	// transport switch (passing --stdio=false still uses stdio).
+	cmd.Flags().Bool("stdio", true, "")
+	if err := cmd.Flags().MarkHidden("stdio"); err != nil {
+		panic(err)
+	}
 	return cmd
 }
 

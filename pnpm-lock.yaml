@@ -36,11 +36,59 @@ importers:
         specifier: ^4.1.5
         version: 4.1.5(@types/node@25.6.0)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.4))
     optionalDependencies:
+      '@kurrent/gaffer-runtime-darwin-arm64':
+        specifier: workspace:*
+        version: link:native/darwin-arm64
+      '@kurrent/gaffer-runtime-darwin-x64':
+        specifier: workspace:*
+        version: link:native/darwin-x64
+      '@kurrent/gaffer-runtime-linux-arm64':
+        specifier: workspace:*
+        version: link:native/linux-arm64
       '@kurrent/gaffer-runtime-linux-x64':
         specifier: workspace:*
         version: link:native/linux-x64
+      '@kurrent/gaffer-runtime-win32-x64':
+        specifier: workspace:*
+        version: link:native/win32-x64
+
+  bindings/js/native/darwin-arm64: {}
+
+  bindings/js/native/darwin-x64: {}
+
+  bindings/js/native/linux-arm64: {}
 
   bindings/js/native/linux-x64: {}
+
+  bindings/js/native/win32-x64: {}
+
+  cli:
+    optionalDependencies:
+      '@kurrent/gaffer-darwin-arm64':
+        specifier: workspace:*
+        version: link:native/darwin-arm64
+      '@kurrent/gaffer-darwin-x64':
+        specifier: workspace:*
+        version: link:native/darwin-x64
+      '@kurrent/gaffer-linux-arm64':
+        specifier: workspace:*
+        version: link:native/linux-arm64
+      '@kurrent/gaffer-linux-x64':
+        specifier: workspace:*
+        version: link:native/linux-x64
+      '@kurrent/gaffer-win32-x64':
+        specifier: workspace:*
+        version: link:native/win32-x64
+
+  cli/native/darwin-arm64: {}
+
+  cli/native/darwin-x64: {}
+
+  cli/native/linux-arm64: {}
+
+  cli/native/linux-x64: {}
+
+  cli/native/win32-x64: {}
 
   editors/vscode:
     devDependencies:

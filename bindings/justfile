@@ -23,8 +23,12 @@ check: go::check js::check
 
 # Remove build artifacts
 [parallel]
-clean: js::clean js-linux-x64::clean
+clean: js::clean js-linux-x64::clean js-linux-arm64::clean js-darwin-x64::clean js-darwin-arm64::clean js-win32-x64::clean
 
 mod go
 mod js
 mod js-linux-x64 'js/native/linux-x64'
+mod js-linux-arm64 'js/native/linux-arm64'
+mod js-darwin-x64 'js/native/darwin-x64'
+mod js-darwin-arm64 'js/native/darwin-arm64'
+mod js-win32-x64 'js/native/win32-x64'

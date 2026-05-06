@@ -32,7 +32,11 @@
 		"koffi": "^2.16.1"
 	},
 	"optionalDependencies": {
-		"@kurrent/gaffer-runtime-linux-x64": "workspace:*"
+		"@kurrent/gaffer-runtime-darwin-arm64": "workspace:*",
+		"@kurrent/gaffer-runtime-darwin-x64": "workspace:*",
+		"@kurrent/gaffer-runtime-linux-arm64": "workspace:*",
+		"@kurrent/gaffer-runtime-linux-x64": "workspace:*",
+		"@kurrent/gaffer-runtime-win32-x64": "workspace:*"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

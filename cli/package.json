@@ -1,0 +1,31 @@
+{
+	"name": "@kurrent/gaffer",
+	"version": "0.1.0",
+	"description": "Develop, test, debug, and deploy KurrentDB projections from the command line",
+	"license": "LicenseRef-KurrentLicenseV1",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/kurrent-io/gaffer.git",
+		"directory": "cli"
+	},
+	"homepage": "https://github.com/kurrent-io/gaffer#readme",
+	"bugs": {
+		"url": "https://github.com/kurrent-io/gaffer/issues"
+	},
+	"bin": {
+		"gaffer": "bin/gaffer.js"
+	},
+	"files": [
+		"bin"
+	],
+	"engines": {
+		"node": ">=22"
+	},
+	"optionalDependencies": {
+		"@kurrent/gaffer-darwin-arm64": "workspace:*",
+		"@kurrent/gaffer-darwin-x64": "workspace:*",
+		"@kurrent/gaffer-linux-arm64": "workspace:*",
+		"@kurrent/gaffer-linux-x64": "workspace:*",
+		"@kurrent/gaffer-win32-x64": "workspace:*"
+	}
+}

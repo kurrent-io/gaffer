@@ -1,0 +1,10 @@
+default:
+    @just --list
+
+# Copy the runtime .so into this package (requires runtime publish for linux-arm64)
+build:
+    cp ../../../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-arm64/publish/Gaffer.Runtime.so gaffer.so
+
+# Remove build artifacts
+clean:
+    rm -f gaffer.so

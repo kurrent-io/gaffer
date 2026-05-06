@@ -32,7 +32,7 @@ func (s *Server) Run(ctx context.Context, stream io.ReadWriteCloser) error {
 	// cleanly.
 	s.mu.Lock()
 	s.conn = conn
-	s.runCtx = runCtx
+	s.runCtxFn = func() context.Context { return runCtx }
 	s.cancelRun = cancel
 	s.mu.Unlock()
 	defer func() {
@@ -56,7 +56,7 @@ func (s *Server) Run(ctx context.Context, stream io.ReadWriteCloser) error {
 		s.wg.Wait()
 		s.mu.Lock()
 		s.conn = nil
-		s.runCtx = nil
+		s.runCtxFn = nil
 		s.cancelRun = nil
 		s.mu.Unlock()
 	}()
@@ -91,7 +91,10 @@ func (s *Server) Run(ctx context.Context, stream io.ReadWriteCloser) error {
 func (s *Server) snapshotRunState() (*jsonrpc2.Conn, context.Context) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.conn, s.runCtx
+	if s.runCtxFn == nil {
+		return s.conn, nil
+	}
+	return s.conn, s.runCtxFn()
 }
 
 // spawn runs fn in a goroutine tracked by s.wg so Run's defer

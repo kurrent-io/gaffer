@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
@@ -64,20 +65,27 @@ func (s *Server) parseAndPublish(ctx context.Context, uri string) {
 // publishDiagnostics sends a textDocument/publishDiagnostics
 // notification. Empty Diagnostics intentionally clears squiggles
 // for the URI - the client treats it as "no problems here."
+//
+// Bounded by runCtx + a short timeout so a client that's stopped
+// reading can't wedge the parse pipeline. Matches the pattern
+// used elsewhere for server-pushed messages
+// (registerCapability, codeLensRefresh).
 func (s *Server) publishDiagnostics(uri string, diags []lspDiagnostic) {
-	conn, _ := s.snapshotRunState()
-	if conn == nil {
+	conn, runCtx := s.snapshotRunState()
+	if conn == nil || runCtx == nil {
 		// Server not connected yet (or already disconnected).
 		// Dropping is the right call - the client wouldn't see it.
 		return
 	}
-	if err := conn.Notify(context.Background(), MethodPublishDiagnostics, PublishDiagnosticsParams{
+	callCtx, cancel := context.WithTimeout(runCtx, 5*time.Second)
+	defer cancel()
+	if err := conn.Notify(callCtx, MethodPublishDiagnostics, PublishDiagnosticsParams{
 		URI:         uri,
 		Diagnostics: diags,
 	}); err != nil {
-		// The wire is gone (peer disconnect, write timeout). Not
-		// recoverable from here, but worth a log line so a failing
-		// client connection is observable.
+		if errors.Is(err, context.Canceled) {
+			return
+		}
 		log.Printf("lsp: publishDiagnostics %q: %v", uri, err)
 	}
 }
@@ -93,12 +101,19 @@ const gafferConfigName = "gaffer.toml"
 const gafferConfigGlob = "**/" + gafferConfigName
 
 // isGafferConfig is the parse-trigger gate. V1: any URI whose
-// basename matches gafferConfigName.
+// scheme is `file://` and whose basename matches gafferConfigName.
 //
 // The basename check defends against false positives like
 // notgaffer.toml or mygaffer.toml that a naive HasSuffix would
-// match.
+// match. The scheme check defends against non-local URIs
+// (vscode-vfs://, untitled:, etc.) that uriToPath would pass
+// through unchanged - without it, applyWatchedFileEvents would
+// happily route a `vscode-vfs:///gaffer.toml` event into
+// seedFromDisk's os.ReadFile.
 func isGafferConfig(uri string) bool {
+	if !strings.HasPrefix(uri, "file://") {
+		return false
+	}
 	return path.Base(uriToPath(uri)) == gafferConfigName
 }
 

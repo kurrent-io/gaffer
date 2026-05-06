@@ -52,12 +52,14 @@ type Server struct {
 	// after wg.Wait had already returned, which is a documented
 	// data race for sync.WaitGroup.
 	draining bool
-	// runCtx is cancelled when Run is about to return (clean exit,
-	// disconnect, or ctx-Done). Long-running work spawned from
-	// handlers - the workspace walk, watched-file event processing -
-	// derive from this so shutdown doesn't leave goroutines blocked
-	// on I/O after the connection is gone.
-	runCtx    context.Context
+	// runCtxFn returns the active run-scope context, or nil after
+	// Run's defer clears it. Stored as a closure rather than a
+	// `context.Context` field so the type doesn't trip golangci-
+	// lint's `containedctx`. Long-running work spawned from
+	// handlers - the workspace walk, watched-file event processing
+	// - derives its context from this so shutdown doesn't leave
+	// goroutines blocked on I/O after the connection is gone.
+	runCtxFn  func() context.Context
 	cancelRun context.CancelFunc
 	// roots holds workspace folder paths captured from initialize.
 	// Used by the initialized handler to walk for gaffer.toml files.

@@ -142,6 +142,14 @@ func TestIsGafferConfig_BasenameGate(t *testing.T) {
 		{"file:///workspace/gaffer.toml.bak", false},
 		{"file:///workspace/gaffer.tomlx", false},
 		{"file:///workspace/projection.js", false},
+		// Non-file schemes never qualify, even with a matching
+		// basename. Without this gate, a watcher event for a
+		// remote-FS URI would route into seedFromDisk's
+		// os.ReadFile and trigger a noisy "no such file" log.
+		{"vscode-vfs:///gaffer.toml", false},
+		{"untitled:gaffer.toml", false},
+		{"http://example.com/gaffer.toml", false},
+		{"/no/scheme/gaffer.toml", false},
 	}
 	for _, c := range cases {
 		if got := isGafferConfig(c.uri); got != c.want {

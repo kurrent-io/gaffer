@@ -30,14 +30,18 @@ func newLSPCmd() *cobra.Command {
 }
 
 // stdioStream adapts os.Stdin / os.Stdout into the io.ReadWriteCloser
-// expected by the LSP server. Close is a no-op because the runtime
-// owns the underlying file descriptors; the server detects EOF via
-// the read side.
+// expected by the LSP server. Close closes os.Stdin so a Read
+// blocked on the read loop unblocks - the server's Run path
+// drives disconnect by calling conn.Close() on `exit` and on
+// ctx-cancel (SIGINT), and that flow then waits on
+// DisconnectNotify(). Without Close unblocking the read side,
+// DisconnectNotify never fires under real stdio (test pipes
+// close their own end so the bug only surfaces in production).
 type stdioStream struct{}
 
 func (stdioStream) Read(p []byte) (int, error)  { return os.Stdin.Read(p) }
 func (stdioStream) Write(p []byte) (int, error) { return os.Stdout.Write(p) }
-func (stdioStream) Close() error                { return nil }
+func (stdioStream) Close() error                { return os.Stdin.Close() }
 
 // Compile-time interface check.
 var _ io.ReadWriteCloser = stdioStream{}

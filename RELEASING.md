@@ -18,8 +18,8 @@ Internal-tooling, docs-only, and test-only changes don't need a changeset.
 
 Two `fixed` groups in [`.changeset/config.json`](.changeset/config.json) keep native sub-packages in sync with their parent:
 
-- **CLI cluster** — `@kurrent/gaffer` and its five `@kurrent/gaffer-<platform>-<arch>` native packages.
-- **Runtime cluster** — `@kurrent/gaffer-runtime` and its five `@kurrent/gaffer-runtime-<platform>-<arch>` native packages.
+- **CLI cluster** - `@kurrent/gaffer` and its five `@kurrent/gaffer-<platform>-<arch>` native packages.
+- **Runtime cluster** - `@kurrent/gaffer-runtime` and its five `@kurrent/gaffer-runtime-<platform>-<arch>` native packages.
 
 Picking either parent in the changeset prompt bumps the whole cluster to the same version. The two clusters version independently of each other.
 
@@ -33,11 +33,11 @@ Picking either parent in the changeset prompt bumps the whole cluster to the sam
    - Bumps `version` fields in the affected `package.json` files
    - Generates / updates per-package `CHANGELOG.md`
    - Deletes the consumed changeset markdown files
-4. The push to `main` from the merge triggers the publish step. Each package owns its publish path:
-   - `@kurrent/gaffer` and its CLI native packages — owned by UI-1530.
-   - `@kurrent/gaffer-runtime` and its runtime native packages — owned by UI-1536.
-   - `@kurrent/projections-testing` — owned by UI-1537.
-   - `gaffer` (VS Code extension) — owned by UI-1532; publishes via `vsce` to the Marketplace, not npm. Marked `private: true` in its `package.json` so npm publish skips it.
+4. Each package's publish workflow takes over from there. Until the publish tickets land, the publish jobs in [`release.yml`](.github/workflows/release.yml) are stubs gated to `workflow_dispatch`, so nothing actually publishes yet. Owners:
+   - `@kurrent/gaffer` and its CLI native packages - owned by UI-1530.
+   - `@kurrent/gaffer-runtime` and its runtime native packages - owned by UI-1536.
+   - `@kurrent/projections-testing` - owned by UI-1537.
+   - `gaffer` (VS Code extension) - owned by UI-1532; publishes via `vsce` to the Marketplace, not npm. Marked `private: true` in its `package.json` so npm publish skips it.
 
 ## Cadence
 

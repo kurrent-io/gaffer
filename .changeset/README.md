@@ -1,6 +1,6 @@
 # Changesets
 
-This directory holds [changesets](https://github.com/changesets/changesets) — short notes describing changes that should appear in a future release.
+This directory holds [changesets](https://github.com/changesets/changesets) - short notes describing changes that should appear in a future release.
 
 ## Adding a changeset
 
@@ -16,8 +16,8 @@ Pick the affected packages, the bump level (patch / minor / major), and write a 
 
 Two `fixed` groups in [`config.json`](config.json) keep native sub-packages in sync with their parent:
 
-- **CLI cluster** — `@kurrent/gaffer` and its five `@kurrent/gaffer-<platform>-<arch>` native packages
-- **Runtime cluster** — `@kurrent/gaffer-runtime` and its five `@kurrent/gaffer-runtime-<platform>-<arch>` native packages
+- **CLI cluster** - `@kurrent/gaffer` and its five `@kurrent/gaffer-<platform>-<arch>` native packages
+- **Runtime cluster** - `@kurrent/gaffer-runtime` and its five `@kurrent/gaffer-runtime-<platform>-<arch>` native packages
 
 Picking either parent in the changeset prompt bumps the whole cluster to the same version. The two clusters version independently of each other, as do `@kurrent/projections-testing` and `gaffer` (the VS Code extension).
 

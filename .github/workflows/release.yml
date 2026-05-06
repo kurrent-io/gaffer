@@ -14,6 +14,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -25,7 +29,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,7 +48,7 @@ jobs:
 
       - uses: changesets/action@v1
         with:
-          version: pnpm version
+          version: pnpm bump-versions
           publish: echo "publish step is filled in by UI-1530 / UI-1532 / UI-1536 / UI-1537"
           commit: "chore(release): version packages"
           title: "Version Packages"

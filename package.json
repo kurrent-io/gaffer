@@ -1,8 +1,8 @@
 {
+  "private": true,
   "packageManager": "pnpm@10.32.1",
   "scripts": {
-    "changeset": "changeset",
-    "version": "changeset version",
+    "bump-versions": "changeset version",
     "release": "changeset publish"
   },
   "devDependencies": {

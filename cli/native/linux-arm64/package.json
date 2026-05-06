@@ -1,0 +1,24 @@
+{
+	"name": "@kurrent/gaffer-linux-arm64",
+	"version": "0.1.0",
+	"description": "Gaffer CLI binary for Linux arm64",
+	"license": "LicenseRef-KurrentLicenseV1",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/kurrent-io/gaffer.git",
+		"directory": "cli/native/linux-arm64"
+	},
+	"homepage": "https://github.com/kurrent-io/gaffer#readme",
+	"bugs": {
+		"url": "https://github.com/kurrent-io/gaffer/issues"
+	},
+	"os": [
+		"linux"
+	],
+	"cpu": [
+		"arm64"
+	],
+	"files": [
+		"gaffer"
+	]
+}

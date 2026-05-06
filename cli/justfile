@@ -26,5 +26,11 @@ check:
     golangci-lint run --allow-parallel-runners
 
 # Remove build artifacts
-clean:
-    rm -f gaffer
+clean: linux-x64::clean linux-arm64::clean darwin-x64::clean darwin-arm64::clean win32-x64::clean
+    rm -f gaffer gaffer.exe
+
+mod linux-x64 'native/linux-x64'
+mod linux-arm64 'native/linux-arm64'
+mod darwin-x64 'native/darwin-x64'
+mod darwin-arm64 'native/darwin-arm64'
+mod win32-x64 'native/win32-x64'

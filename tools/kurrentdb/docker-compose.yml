@@ -1,6 +1,6 @@
 services:
   kurrentdb:
-    image: docker.kurrent.io/kurrent-latest/kurrentdb:latest
+    image: docker.kurrent.io/kurrent-latest/kurrentdb:26.1.0
     ports:
       - "2113:2113"
     environment:

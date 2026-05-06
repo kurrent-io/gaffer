@@ -156,12 +156,15 @@ func (s *Server) applyWatchedFileEvents(ctx context.Context, events []FileEvent)
 		case FileChangeCreated, FileChangeChanged:
 			s.seedFromDisk(ctx, uriToPath(ev.URI))
 		case FileChangeDeleted:
+			_, hadParse := s.docs.GetParse(ev.URI)
 			s.docs.Close(ev.URI)
 			s.publishDiagnostics(ev.URI, []lspDiagnostic{})
-			// Cached parse for this toml is gone - any .js URI
-			// whose lenses pointed at one of its projections is
-			// now stale.
-			s.requestCodeLensRefresh()
+			if hadParse {
+				// Cached parse for this toml is gone - any .js
+				// URI whose lenses pointed at one of its
+				// projections is now stale.
+				s.requestCodeLensRefresh()
+			}
 		}
 	}
 }

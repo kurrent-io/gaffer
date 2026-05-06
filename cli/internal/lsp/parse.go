@@ -112,6 +112,12 @@ func isGafferConfig(uri string) bool {
 // the user-visible cost of an unsupported client is just stale
 // .js lenses until the user retriggers the request themselves.
 func (s *Server) requestCodeLensRefresh() {
+	s.mu.Lock()
+	supported := s.codeLensRefreshSupported
+	s.mu.Unlock()
+	if !supported {
+		return
+	}
 	s.spawn(func() {
 		conn, runCtx := s.snapshotRunState()
 		if conn == nil || runCtx == nil {

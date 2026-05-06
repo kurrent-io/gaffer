@@ -77,15 +77,16 @@ func TestServer_WorkspaceSymbolSkipsInvalidProjections(t *testing.T) {
 	defer cancel()
 
 	root := t.TempDir()
-	writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
 name = "good"
 entry = "good.js"
 
 [[projection]]
 entry = "missing-name.js"
 `)
+	tomlURI := pathToURI(cfg)
 
-	_, done := startServerWithStore(ctx, srv, ServerOptions{})
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
 	stub := &clientStub{}
 	conn := newClientConnStub(ctx, cli, stub)
 	defer func() { _ = conn.Close() }()
@@ -95,16 +96,9 @@ entry = "missing-name.js"
 	}, &InitializeResult{})
 	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
 	waitFor(t, func() bool {
-		for _, r := range stub.requestSnapshot() {
-			if r.Method == MethodRegisterCapability {
-				return true
-			}
-		}
-		return false
+		_, ok := server.docs.GetParse(tomlURI)
+		return ok
 	}, time.Second)
-	// Walk completes before registerCapability returns; give the
-	// last parse a moment to land.
-	time.Sleep(50 * time.Millisecond)
 
 	var symbols []SymbolInformation
 	if err := conn.Call(ctx, MethodWorkspaceSymbol, WorkspaceSymbolParams{}, &symbols); err != nil {

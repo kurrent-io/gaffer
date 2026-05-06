@@ -123,7 +123,16 @@ type projectionPickArgs struct {
 // the entry for multiple projections (e.g. a shared handler used
 // by separate fixtures bundles). Each lens is anchored at line 0
 // since the entry script doesn't have a meaningful "projection
-// header" line of its own.
+// header" line of its own. The projection name is woven into
+// every lens title so stacked lenses on the same line stay
+// distinguishable; toml-side lenses don't need this because the
+// projection name is visible in the surrounding source.
+//
+// Path comparison is syntactic on filepath.Clean output. V1 is
+// Linux-only and we don't follow symlinks - a user opening a
+// symlink path for an entry script that's resolved through
+// EvalSymlinks in describe.go won't match here. Acceptable for
+// V1; revisit when other-OS support lands.
 //
 // uri is the URI the client opened. We compare absolute paths
 // because clients sometimes encode URIs with trailing slashes,
@@ -148,7 +157,7 @@ func emitEntryScriptLenses(parses []parseResult, uri string) []CodeLens {
 			out = append(out, CodeLens{
 				Range: zeroRange,
 				Command: &Command{
-					Title:   "Debug",
+					Title:   `Debug "` + p.Name + `"`,
 					Command: CommandDebugProjection,
 					Arguments: []interface{}{
 						projectionArgs{Name: p.Name, ConfigURI: tomlURI},
@@ -167,7 +176,7 @@ func emitEntryScriptLenses(parses []parseResult, uri string) []CodeLens {
 				out = append(out, CodeLens{
 					Range: zeroRange,
 					Command: &Command{
-						Title:   "Debug from fixture...",
+						Title:   `Debug "` + p.Name + `" from fixture...`,
 						Command: CommandDebugProjectionPick,
 						Arguments: []interface{}{
 							projectionPickArgs{Name: p.Name, ConfigURI: tomlURI, FixtureNames: validNames},

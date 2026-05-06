@@ -70,6 +70,11 @@ type Server struct {
 	// Stored as filesystem paths (URIs converted at capture time)
 	// so the walker doesn't need to re-do the conversion.
 	roots []string
+	// codeLensRefreshSupported mirrors the client's
+	// workspace.codeLens.refreshSupport capability so we don't
+	// fire workspace/codeLens/refresh into a void. LSP 3.16 spec:
+	// servers MUST gate the request on this.
+	codeLensRefreshSupported bool
 	// exitCh closes when the client sends `exit`. Run selects on
 	// this so the server tears down its connection without waiting
 	// for the client to also close stdin (a well-behaved client
@@ -241,12 +246,16 @@ func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (int
 	// legal - the server still works for single-buffer sessions
 	// without any workspace.
 	s.roots = nil
+	s.codeLensRefreshSupported = false
 	if req.Params != nil {
 		params, jerr := decodeParams[InitializeParams](req, "initialize")
 		if jerr != nil {
 			return nil, jerr
 		}
 		s.roots = extractRoots(params)
+		if cl := params.Capabilities.Workspace.CodeLens; cl != nil && cl.RefreshSupport {
+			s.codeLensRefreshSupported = true
+		}
 	}
 	s.initialized = true
 	return InitializeResult{

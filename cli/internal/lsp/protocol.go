@@ -62,10 +62,32 @@ const (
 // avoiding integer-as-float64 coercion that map[string]interface{}
 // would force.
 type InitializeParams struct {
-	ProcessID        *int              `json:"processId,omitempty"`
-	RootURI          string            `json:"rootUri,omitempty"`
-	WorkspaceFolders []WorkspaceFolder `json:"workspaceFolders,omitempty"`
-	InitOptions      json.RawMessage   `json:"initializationOptions,omitempty"`
+	ProcessID        *int               `json:"processId,omitempty"`
+	RootURI          string             `json:"rootUri,omitempty"`
+	WorkspaceFolders []WorkspaceFolder  `json:"workspaceFolders,omitempty"`
+	Capabilities     ClientCapabilities `json:"capabilities"`
+	InitOptions      json.RawMessage    `json:"initializationOptions,omitempty"`
+}
+
+// ClientCapabilities captures the slices of the client's
+// capability tree we actually gate behavior on. The full LSP
+// type has dozens of nested fields; we model only what we
+// consult.
+type ClientCapabilities struct {
+	Workspace WorkspaceClientCapabilities `json:"workspace"`
+}
+
+// WorkspaceClientCapabilities is the workspace-scoped subset of
+// ClientCapabilities. CodeLens lives here in the LSP spec.
+type WorkspaceClientCapabilities struct {
+	CodeLens *CodeLensWorkspaceClientCapabilities `json:"codeLens,omitempty"`
+}
+
+// CodeLensWorkspaceClientCapabilities advertises whether the
+// client can handle workspace/codeLens/refresh. Servers MUST
+// gate that request on this flag per the LSP 3.16 spec.
+type CodeLensWorkspaceClientCapabilities struct {
+	RefreshSupport bool `json:"refreshSupport,omitempty"`
 }
 
 // WorkspaceFolder is an entry in InitializeParams.WorkspaceFolders.

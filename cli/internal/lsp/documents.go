@@ -203,10 +203,14 @@ func (s *documentStore) GetParse(uri string) (parseResult, bool) {
 
 // AllParses returns every cached parse, in arbitrary order. Used
 // by entry-script codeLens lookup and workspace/symbol to walk
-// every parsed projection across the workspace. Returned slice
-// is a fresh copy so callers can mutate without affecting the
-// store; the parseResult values themselves contain a pointer-
-// free Description tree so they're safe to read concurrently.
+// every parsed projection across the workspace.
+//
+// Concurrency: the returned slice is a fresh copy so callers can
+// mutate it. The parseResult values share their Description with
+// the store, but ApplyParseIfFresh always replaces an entry
+// rather than mutating in place, so a reader holding a copy
+// observes a consistent snapshot for that URI even if a fresh
+// parse lands during iteration.
 func (s *documentStore) AllParses() []parseResult {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -36,6 +36,9 @@ func rangeForLine(line, length int) SourceRange {
 // `ctx` cancels promptly between major steps. The work itself is
 // sub-ms per file so cancellation is cheap insurance, not a
 // frequently-hit code path.
+//
+// Use DescribeBytes when the content is already in memory (e.g.
+// the LSP server's didChange flow).
 func Describe(ctx context.Context, path string) (Description, error) {
 	if err := ctx.Err(); err != nil {
 		return Description{}, err
@@ -52,6 +55,27 @@ func Describe(ctx context.Context, path string) (Description, error) {
 		// from "permission denied" or other I/O failures (surface
 		// to user).
 		return Description{}, fmt.Errorf("read config: %w", err)
+	}
+	return DescribeBytes(ctx, absPath, data)
+}
+
+// DescribeBytes is Describe over in-memory content. The path is
+// used to anchor ConfigFile and to resolve entry / fixture paths
+// relative to its directory; no I/O is performed against the path
+// itself. Used by the LSP server's didOpen / didChange flow where
+// the in-memory buffer may differ from the on-disk file.
+//
+// As with Describe, returns an error only for context cancellation
+// or path-resolution failures; parse errors and per-element issues
+// flow back through Description.Diagnostics.
+func DescribeBytes(ctx context.Context, path string, data []byte) (Description, error) {
+	if err := ctx.Err(); err != nil {
+		return Description{}, err
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return Description{}, err
 	}
 
 	desc := Description{

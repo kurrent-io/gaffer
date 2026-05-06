@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+
+	"github.com/kurrent-io/gaffer/cli/internal/config"
 )
 
 // Source tracks where a document's current content came from. The
@@ -55,12 +57,26 @@ type DocState struct {
 type DocumentStore struct {
 	mu      sync.RWMutex
 	docs    map[string]DocState
+	parses  map[string]ParseResult
 	nextVer int
+}
+
+// ParseResult is the cached output of a parse pass for a URI. The
+// codeLens handler reads from this; the parse pipeline writes to
+// it via ApplyParseIfFresh. Version is the DocState.Version that
+// was current when parsing began - used to drop stale results.
+type ParseResult struct {
+	URI         string
+	Version     int
+	Description config.Description
 }
 
 // NewDocumentStore returns an empty store.
 func NewDocumentStore() *DocumentStore {
-	return &DocumentStore{docs: map[string]DocState{}}
+	return &DocumentStore{
+		docs:   map[string]DocState{},
+		parses: map[string]ParseResult{},
+	}
 }
 
 // bumpLocked returns the next version. Caller must hold s.mu.
@@ -112,6 +128,10 @@ func (s *DocumentStore) Change(uri, content string) (DocState, error) {
 // present. The global version counter does NOT roll back - a
 // future reopen gets a strictly-greater version than any prior
 // state for the URI.
+//
+// Also drops any cached parse result for the URI so a future
+// reopen starts with a clean slate (stale lenses won't survive
+// the close).
 func (s *DocumentStore) Close(uri string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -119,6 +139,7 @@ func (s *DocumentStore) Close(uri string) bool {
 	if ok {
 		delete(s.docs, uri)
 	}
+	delete(s.parses, uri)
 	return ok
 }
 
@@ -145,6 +166,39 @@ func (s *DocumentStore) OpenURIs() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// ApplyParseIfFresh stores a parse result iff it's still fresh -
+// i.e. the URI's current state version isn't newer than the
+// version observed at parse start. Stale results are dropped.
+//
+// Returns true when the result was applied; callers use this to
+// gate publishDiagnostics emission so a stale parse can't push
+// out-of-date squiggles. Returns false in two cases:
+//   - URI was closed mid-parse (no state).
+//   - State has advanced past the parse's stamped version.
+func (s *DocumentStore) ApplyParseIfFresh(result ParseResult) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, ok := s.docs[result.URI]
+	if !ok {
+		return false
+	}
+	if state.Version > result.Version {
+		return false
+	}
+	s.parses[result.URI] = result
+	return true
+}
+
+// GetParse returns the cached parse for URI, ok=true if present.
+// Used by the codeLens request handler to render lenses without
+// re-parsing.
+func (s *DocumentStore) GetParse(uri string) (ParseResult, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	r, ok := s.parses[uri]
+	return r, ok
 }
 
 // AddFromDisk seeds (or refreshes) disk-sourced content for URI.

@@ -193,6 +193,47 @@ func TestDocumentStore_GetReturnsByValue(t *testing.T) {
 	}
 }
 
+func TestDocumentStore_ApplyParseIfFresh_DropsStale(t *testing.T) {
+	// A parse stamped with an older version than the URI's current
+	// state must be dropped - the buffer changed underneath it.
+	store := NewDocumentStore()
+	state := store.Open("file:///a.toml", "v1")
+	stale := ParseResult{URI: "file:///a.toml", Version: state.Version - 1}
+	if store.ApplyParseIfFresh(stale) {
+		t.Fatal("expected stale parse to be dropped")
+	}
+	if _, ok := store.GetParse("file:///a.toml"); ok {
+		t.Fatal("expected no cached parse after stale apply")
+	}
+}
+
+func TestDocumentStore_ApplyParseIfFresh_AppliesAtSameVersion(t *testing.T) {
+	// A parse stamped with the URI's current version is fresh and
+	// gets cached.
+	store := NewDocumentStore()
+	state := store.Open("file:///a.toml", "v1")
+	fresh := ParseResult{URI: "file:///a.toml", Version: state.Version}
+	if !store.ApplyParseIfFresh(fresh) {
+		t.Fatal("expected fresh parse to apply")
+	}
+	if _, ok := store.GetParse("file:///a.toml"); !ok {
+		t.Fatal("expected cached parse after fresh apply")
+	}
+}
+
+func TestDocumentStore_ApplyParseIfFresh_DropsAfterClose(t *testing.T) {
+	// URI was open during parse; client closed it before the parse
+	// finished. The result must not be cached - the URI is gone
+	// from the store, no one's looking at it.
+	store := NewDocumentStore()
+	state := store.Open("file:///a.toml", "v1")
+	store.Close("file:///a.toml")
+	result := ParseResult{URI: "file:///a.toml", Version: state.Version}
+	if store.ApplyParseIfFresh(result) {
+		t.Fatal("expected parse to be dropped after close")
+	}
+}
+
 func TestDocumentStore_ConcurrentMutationsRace(t *testing.T) {
 	// Race-detector duty: goroutines hammer the store with mixed
 	// reads + mutations. The mutex / RWMutex must prevent any

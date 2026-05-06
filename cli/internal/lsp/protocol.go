@@ -26,6 +26,27 @@ const (
 	MethodDidChange = "textDocument/didChange"
 	MethodDidClose  = "textDocument/didClose"
 	MethodDidSave   = "textDocument/didSave"
+
+	MethodCodeLens           = "textDocument/codeLens"
+	MethodPublishDiagnostics = "textDocument/publishDiagnostics"
+)
+
+// LSP intent codes for code lenses. Per the LSP plan, the server
+// emits a semantic intent in `data.intent` and each editor extension
+// maps it to its native icon / treatment. Five intents cover the
+// surface; the server only emits two (Debug / DebugChoose) - the
+// rest (stop, starting, untrusted) are client-side concerns the
+// extension overrides on top of the server's lens.
+const (
+	IntentDebug       = "debug"
+	IntentDebugChoose = "debug-choose"
+)
+
+// Gaffer command IDs surfaced via CodeLens.command. Each editor
+// extension routes these to its native debug-launch API.
+const (
+	CommandDebugProjection     = "gaffer.debugProjection"
+	CommandDebugProjectionPick = "gaffer.debugProjectionPick"
 )
 
 // InitializeParams is the subset of LSP InitializeParams we care
@@ -75,6 +96,92 @@ type ServerCapabilities struct {
 	// Decision 1: we explicitly chose full sync over incremental
 	// since config files are tiny.
 	TextDocumentSync int `json:"textDocumentSync"`
+	// CodeLensProvider advertises that the server responds to
+	// textDocument/codeLens requests. Empty options struct is
+	// fine - we don't require resolveProvider since lenses are
+	// fully populated on the initial response.
+	CodeLensProvider *CodeLensOptions `json:"codeLensProvider,omitempty"`
+}
+
+// CodeLensOptions is the value of ServerCapabilities.CodeLensProvider.
+type CodeLensOptions struct {
+	// ResolveProvider would be true if the server wanted clients
+	// to call back via codeLens/resolve to fill in lens details
+	// lazily. We populate everything upfront so it's false/absent.
+	ResolveProvider bool `json:"resolveProvider,omitempty"`
+}
+
+// Position is a 0-indexed line+character pair per the LSP spec.
+// Distinct from config.SourceRange's 1-indexed lines: this is the
+// wire format, where character is in UTF-16 code units.
+type Position struct {
+	Line      int `json:"line"`
+	Character int `json:"character"`
+}
+
+// Range is a half-open span of text in a document.
+type Range struct {
+	Start Position `json:"start"`
+	End   Position `json:"end"`
+}
+
+// Command identifies an editor-side command that runs when the user
+// activates a CodeLens. Arguments is opaque - the editor extension
+// passes it through to its registered handler verbatim.
+type Command struct {
+	Title     string        `json:"title"`
+	Command   string        `json:"command"`
+	Arguments []interface{} `json:"arguments,omitempty"`
+}
+
+// CodeLens is a clickable annotation rendered inline in the editor.
+// Title is plain text - editor extensions decorate with native
+// icons via the Data.Intent field per the LSP plan.
+type CodeLens struct {
+	Range   Range         `json:"range"`
+	Command *Command      `json:"command,omitempty"`
+	Data    *CodeLensData `json:"data,omitempty"`
+}
+
+// CodeLensData carries the semantic intent so client extensions
+// can map to a native icon / treatment without parsing the title.
+type CodeLensData struct {
+	Intent string `json:"intent"`
+}
+
+// CodeLensParams is the request payload for textDocument/codeLens.
+type CodeLensParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+}
+
+// DiagnosticSeverity matches LSP spec values: 1=Error, 2=Warning,
+// 3=Information, 4=Hint.
+type DiagnosticSeverity int
+
+const (
+	DiagnosticSeverityError       DiagnosticSeverity = 1
+	DiagnosticSeverityWarning     DiagnosticSeverity = 2
+	DiagnosticSeverityInformation DiagnosticSeverity = 3
+	DiagnosticSeverityHint        DiagnosticSeverity = 4
+)
+
+// LSPDiagnostic is the wire-format diagnostic. Named to disambiguate
+// from config.Diagnostic which is the upstream loose-validation
+// shape.
+type LSPDiagnostic struct {
+	Range    Range              `json:"range"`
+	Severity DiagnosticSeverity `json:"severity,omitempty"`
+	Code     string             `json:"code,omitempty"`
+	Source   string             `json:"source,omitempty"`
+	Message  string             `json:"message"`
+}
+
+// PublishDiagnosticsParams is the payload for the server-pushed
+// textDocument/publishDiagnostics notification. Empty Diagnostics
+// clears the URI (drops squiggles).
+type PublishDiagnosticsParams struct {
+	URI         string          `json:"uri"`
+	Diagnostics []LSPDiagnostic `json:"diagnostics"`
 }
 
 // TextDocumentItem is the payload for didOpen: full URI, language,

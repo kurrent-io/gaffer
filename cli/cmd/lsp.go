@@ -11,7 +11,7 @@ import (
 )
 
 func newLSPCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "lsp",
 		Short: "Run the gaffer LSP server over stdio",
 		Long: "Run the gaffer Language Server Protocol server, " +
@@ -27,6 +27,11 @@ func newLSPCmd() *cobra.Command {
 			return server.Run(ctx, stdioStream{})
 		},
 	}
+	// vscode-languageclient unconditionally appends --stdio when the
+	// transport is stdio (which is also its default). Accept it as
+	// a no-op so the spawn doesn't fail with "Unknown flag".
+	cmd.Flags().Bool("stdio", true, "use stdio transport (default; accepted for editor compatibility)")
+	return cmd
 }
 
 // stdioStream adapts os.Stdin / os.Stdout into the io.ReadWriteCloser

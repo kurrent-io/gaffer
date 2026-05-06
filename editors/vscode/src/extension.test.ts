@@ -11,7 +11,6 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activate } from "./extension.js";
-import { JsCodeLensProvider } from "./lensing/js-provider.js";
 import { LspCodeLensProvider } from "./lsp/lens-provider.js";
 import { flushAllMicrotasks } from "../test/testutil/promise.js";
 import { makeContext } from "../test/testutil/fake-context.js";
@@ -60,14 +59,19 @@ describe("activate registrations", () => {
 		expect(types).toEqual(["gaffer"]);
 	});
 
-	it("registers code lens providers for **/gaffer.toml and javascript", async () => {
+	it("registers a single code lens provider for both **/gaffer.toml and javascript", async () => {
+		// Both the toml lens and the entry-script .js lens come
+		// from the same LSP server via the same LspCodeLensProvider;
+		// one registration with an array selector.
 		await activateBare();
 		const selectors = getState().registeredCodeLensProviders.map(
 			(r) => r.selector,
 		);
 		expect(selectors).toEqual([
-			{ scheme: "file", pattern: "**/gaffer.toml" },
-			{ scheme: "file", language: "javascript" },
+			[
+				{ scheme: "file", pattern: "**/gaffer.toml" },
+				{ scheme: "file", language: "javascript" },
+			],
 		]);
 	});
 
@@ -170,26 +174,20 @@ describe("runProjection bail-early paths", () => {
 });
 
 describe("tomlWatcher reload chain", () => {
-	it("setIndex+setManifest fires on the lens providers when a toml change is observed", async () => {
-		const tomlSetIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
+	it("setManifest fires on the lens provider when a toml change is observed", async () => {
 		const lspSetManifest = vi.spyOn(
 			LspCodeLensProvider.prototype,
 			"setManifest",
 		);
-		const jsSetManifest = vi.spyOn(JsCodeLensProvider.prototype, "setManifest");
 		await activateBare();
 		// Reset call history accumulated during activate's own initial load.
-		tomlSetIndex.mockClear();
 		lspSetManifest.mockClear();
-		jsSetManifest.mockClear();
 
 		queueFindFiles([]); // for the reload's createProjectIndex
 		const watcher = getState().fileWatchers[0];
 		watcher?.emitChange(vscode.Uri.file("/p/gaffer.toml"));
 		await flushAllMicrotasks();
-		expect(tomlSetIndex).toHaveBeenCalledTimes(1);
 		expect(lspSetManifest).toHaveBeenCalledTimes(1);
-		expect(jsSetManifest).toHaveBeenCalledTimes(1);
 	});
 
 	it("rapid back-to-back changes serialise through refreshChain (one reload at a time)", async () => {
@@ -197,9 +195,9 @@ describe("tomlWatcher reload chain", () => {
 		// chain, only the *first* reload's findFiles is in-flight after
 		// firing both events; the second is queued behind it. Without
 		// the chain, both would be in-flight concurrently.
-		const setIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
+		const setManifest = vi.spyOn(LspCodeLensProvider.prototype, "setManifest");
 		await activateBare();
-		setIndex.mockClear();
+		setManifest.mockClear();
 
 		queueFindFiles([]);
 		queueFindFiles([]);
@@ -213,43 +211,43 @@ describe("tomlWatcher reload chain", () => {
 		await flushAllMicrotasks();
 		// Serialised: only the first reload has reached findFiles.
 		expect(getState().findFilesCalls.length - findFilesCallsBefore).toBe(1);
-		expect(setIndex).toHaveBeenCalledTimes(0);
+		expect(setManifest).toHaveBeenCalledTimes(0);
 
 		// Release the first gate -> first reload completes -> second
 		// reload starts and reaches findFiles.
 		gate1.release();
 		await flushAllMicrotasks();
-		expect(setIndex).toHaveBeenCalledTimes(1);
+		expect(setManifest).toHaveBeenCalledTimes(1);
 		expect(getState().findFilesCalls.length - findFilesCallsBefore).toBe(2);
 
 		// Release the second gate -> second reload completes.
 		gate2.release();
 		await flushAllMicrotasks();
-		expect(setIndex).toHaveBeenCalledTimes(2);
+		expect(setManifest).toHaveBeenCalledTimes(2);
 	});
 
 	it("create event triggers a reload", async () => {
-		const setIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
+		const setManifest = vi.spyOn(LspCodeLensProvider.prototype, "setManifest");
 		await activateBare();
-		setIndex.mockClear();
+		setManifest.mockClear();
 
 		queueFindFiles([]);
 		const watcher = getState().fileWatchers[0];
 		watcher?.emitCreate(vscode.Uri.file("/p/gaffer.toml"));
 		await flushAllMicrotasks();
-		expect(setIndex).toHaveBeenCalledTimes(1);
+		expect(setManifest).toHaveBeenCalledTimes(1);
 	});
 
 	it("delete event triggers a reload", async () => {
-		const setIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
+		const setManifest = vi.spyOn(LspCodeLensProvider.prototype, "setManifest");
 		await activateBare();
-		setIndex.mockClear();
+		setManifest.mockClear();
 
 		queueFindFiles([]);
 		const watcher = getState().fileWatchers[0];
 		watcher?.emitDelete(vscode.Uri.file("/p/gaffer.toml"));
 		await flushAllMicrotasks();
-		expect(setIndex).toHaveBeenCalledTimes(1);
+		expect(setManifest).toHaveBeenCalledTimes(1);
 	});
 
 	it("the watcher is on context.subscriptions for disposal", async () => {
@@ -356,24 +354,24 @@ describe("runtime fatal-error dismissal", () => {
 
 describe("configuration change filter", () => {
 	it("triggers reloadLensState when gaffer.command changes", async () => {
-		const setIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
+		const setManifest = vi.spyOn(LspCodeLensProvider.prototype, "setManifest");
 		await activateBare();
-		setIndex.mockClear();
+		setManifest.mockClear();
 
 		queueFindFiles([]);
 		fireConfigurationChange(["gaffer.command"]);
 		await flushAllMicrotasks();
-		expect(setIndex).toHaveBeenCalledTimes(1);
+		expect(setManifest).toHaveBeenCalledTimes(1);
 	});
 
 	it("does NOT trigger reloadLensState for unrelated config changes", async () => {
-		const setIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
+		const setManifest = vi.spyOn(LspCodeLensProvider.prototype, "setManifest");
 		await activateBare();
-		setIndex.mockClear();
+		setManifest.mockClear();
 
 		fireConfigurationChange(["editor.fontSize"]);
 		await flushAllMicrotasks();
-		expect(setIndex).not.toHaveBeenCalled();
+		expect(setManifest).not.toHaveBeenCalled();
 	});
 });
 
@@ -395,14 +393,14 @@ describe("workspace trust grant", () => {
 	}
 
 	it("triggers reloadLensState when trust is granted", async () => {
-		const setIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
+		const setManifest = vi.spyOn(LspCodeLensProvider.prototype, "setManifest");
 		await activateBare();
-		setIndex.mockClear();
+		setManifest.mockClear();
 
 		queueFindFiles([]);
 		fireWorkspaceTrustGranted();
-		await waitForCall(setIndex);
-		expect(setIndex).toHaveBeenCalledTimes(1);
+		await waitForCall(setManifest);
+		expect(setManifest).toHaveBeenCalledTimes(1);
 	});
 });
 

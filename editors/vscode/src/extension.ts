@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import { buildGafferArgv, tryFetchManifest } from "./discovery/cli.js";
 import { createProjectIndex } from "./discovery/project-index.js";
 import { LspCodeLensProvider } from "./lsp/lens-provider.js";
-import { JsCodeLensProvider } from "./lensing/js-provider.js";
 import { StepProvider } from "./panels/step.js";
 import { StateProvider } from "./panels/state.js";
 import { StatusViewProvider } from "./panels/status.js";
@@ -70,15 +69,14 @@ export async function activate(
 	const phaseTracker = new PhaseTracker((phase) =>
 		statusProvider.setPhase(phase),
 	);
-	const tomlCodeLens = new LspCodeLensProvider();
-	tomlCodeLens.setManifest(initialManifest);
-	const jsCodeLens = new JsCodeLensProvider(initialIndex, initialManifest);
+	const lspCodeLens = new LspCodeLensProvider();
+	lspCodeLens.setManifest(initialManifest);
 
-	// Spawn the LSP server. tomlCodeLens activates once the
-	// client is ready; until then provideCodeLenses returns []
-	// (briefly, while initialize completes).
+	// Spawn the LSP server. The lens provider activates once
+	// the client is ready; until then provideCodeLenses returns
+	// [] (briefly, while initialize completes).
 	void startLanguageClient(context, (client) => {
-		tomlCodeLens.setClient(client);
+		lspCodeLens.setClient(client);
 	});
 
 	const controller = new SessionController({
@@ -88,8 +86,7 @@ export async function activate(
 		statusProvider,
 		phaseTracker,
 		pushDebugState: (state) => {
-			tomlCodeLens.setDebugState(state);
-			jsCodeLens.setDebugState(state);
+			lspCodeLens.setDebugState(state);
 		},
 		readDebugPort: () =>
 			vscode.workspace.getConfiguration("gaffer").get<number>("debugPort", -1),
@@ -107,9 +104,7 @@ export async function activate(
 			try {
 				const idx = await createProjectIndex();
 				const m = await tryFetchManifest(idx.projectRoot, showManifestFailure);
-				jsCodeLens.setIndex(idx);
-				jsCodeLens.setManifest(m);
-				tomlCodeLens.setManifest(m);
+				lspCodeLens.setManifest(m);
 			} catch (err) {
 				log(
 					`Lens state reload failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -161,12 +156,11 @@ export async function activate(
 
 	context.subscriptions.push(
 		vscode.languages.registerCodeLensProvider(
-			{ scheme: "file", pattern: "**/gaffer.toml" },
-			tomlCodeLens,
-		),
-		vscode.languages.registerCodeLensProvider(
-			{ scheme: "file", language: "javascript" },
-			jsCodeLens,
+			[
+				{ scheme: "file", pattern: "**/gaffer.toml" },
+				{ scheme: "file", language: "javascript" },
+			],
+			lspCodeLens,
 		),
 	);
 
@@ -288,7 +282,7 @@ export async function activate(
 		}),
 		vscode.workspace.onDidGrantWorkspaceTrust(async () => {
 			log("workspace trusted");
-			tomlCodeLens.refresh();
+			lspCodeLens.refresh();
 			await reloadLensState();
 		}),
 	);

@@ -5,13 +5,14 @@
 // job is wire-up, not interactive flows.
 
 import * as vscode from "vscode";
-import { tryFetchManifest } from "../discovery/cli.js";
+import { hasCommand, hasFlag, tryFetchManifest } from "../discovery/cli.js";
 import {
 	fetchProjectionDetails,
 	fetchProjections,
 	type ProjectionDetails,
 } from "../lsp/symbols.js";
 import {
+	showDebugUnsupported,
 	showLspError,
 	showLspNotReady,
 	showManifestFailure,
@@ -69,6 +70,15 @@ export function runProjection(deps: RunProjectionDeps): () => Promise<void> {
 			showManifestFailure,
 		);
 		if (!manifest) return;
+		// Same capability gate the lens provider applies. If the
+		// installed gaffer can't run `dev --debug`, the lens path
+		// hides the lens entirely; the command palette has no lens
+		// to hide, so surface the same fact as a toast instead of
+		// kicking a session that would fail at attach time.
+		if (!hasCommand(manifest, "dev") || !hasFlag(manifest, "dev", "debug")) {
+			void showDebugUnsupported();
+			return;
+		}
 		await deps.start({
 			name: picked.projection.name,
 			tomlUri: picked.projection.tomlUri,

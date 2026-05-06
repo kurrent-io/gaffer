@@ -66,6 +66,11 @@ export const showLspError = (): Thenable<unknown> =>
 			}
 		});
 
+export const showDebugUnsupported = (): Thenable<unknown> =>
+	vscode.window.showErrorMessage(
+		"Gaffer: this gaffer version doesn't support `dev --debug`. Update gaffer or set gaffer.command to a newer build.",
+	);
+
 // Shared shape for any "LSP isn't running" surface: error toast
 // with a "View Output" button that opens the LSP channel (NOT
 // our generic Gaffer channel - the LSP one carries the

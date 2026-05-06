@@ -442,6 +442,34 @@ describe("SessionController.start - failures", () => {
 		expect(h.pushed.at(-1)?.status).toBe("idle");
 	});
 
+	it("does not hang when cleanup runs while start() is awaiting the post-start deferred", async () => {
+		// Race: between #setStatus("starting") flipping the gate
+		// and the onDidStartDebugSession listener calling
+		// #runPostStart, the CLI could exit (or fatal_error fire)
+		// and route through cleanupSession. That cleanup flips
+		// status away from "starting", so when the listener fires
+		// it skips #runPostStart and the start() deferred would
+		// otherwise hang forever. cleanupSession resolves the
+		// deferred itself so start() unblocks.
+		const h = makeHarness();
+		const { startPromise, session } = await startUntilWaitForDebug(h);
+		session.resolveDebug(4711);
+		// Race step: as soon as startDebugging fires, simulate a
+		// CLI exit that runs cleanup before the listener can do
+		// post-start work. The exit handler routes through
+		// cleanupSession("ended" or "idle" depending on phase).
+		session.fire({ type: "exit", code: 1 });
+		// startPromise must NOT hang. Bound the wait so a future
+		// regression that re-introduces the hang fails this test
+		// rather than the whole suite.
+		await Promise.race([
+			startPromise,
+			new Promise((_, reject) =>
+				setTimeout(() => reject(new Error("start() hung")), 1000),
+			),
+		]);
+	});
+
 	it("suppresses showStartFailure when fatal_error preceded the rejection", async () => {
 		const h = makeHarness();
 		const { startPromise, session } = await startUntilWaitForDebug(h);

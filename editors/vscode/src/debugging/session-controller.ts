@@ -239,6 +239,17 @@ export class SessionController implements vscode.Disposable {
 		await this.#setStatus(name, "starting");
 		log(`Starting: ${name}`);
 
+		// Set up the post-start deferred up-front so EVERY exit path
+		// from "starting" can settle it: the listener (happy path),
+		// waitForDebug rejection, startDebugging returning false, the
+		// session.on("exit") / fatal_error race during attach. Each
+		// of those routes through #cleanupSession, which resolves
+		// #startedReady. Without an up-front deferred, a race where
+		// cleanup runs before we'd otherwise create the deferred
+		// would leave start() awaiting a stale promise forever.
+		const ready = createDeferred<void>();
+		this.#startedReady = ready;
+
 		const session = this.#createSession(name, argv, { cwd: tomlDir });
 		this.#activeSession = session;
 
@@ -320,13 +331,6 @@ export class SessionController implements vscode.Disposable {
 		// setStatus + focus afterwards as the final source of truth.
 		await vscode.commands.executeCommand("gaffer.state.focus");
 
-		// Set up the deferred BEFORE startDebugging so the
-		// onDidStartDebugSession listener (which fires synchronously
-		// inside the await) can latch onto it. Cleared on the failure
-		// branch so a subsequent run isn't blocked on a stale promise.
-		const ready = createDeferred<void>();
-		this.#startedReady = ready;
-
 		const started = await vscode.debug.startDebugging(
 			vscode.workspace.getWorkspaceFolder(tomlUri),
 			{
@@ -340,15 +344,15 @@ export class SessionController implements vscode.Disposable {
 		);
 
 		if (!started) {
-			this.#startedReady = null;
 			log("Debug session failed to start");
 			await this.#cleanupSession("idle");
+			// cleanupSession settled the deferred; nothing to await.
 			return;
 		}
 
-		// Wait for the listener to finish its setStatus + focus work
-		// before returning. Keeps the public start() contract (resolves
-		// when the session is fully visible) intact.
+		// Wait for either the onDidStartDebugSession listener
+		// (#runPostStart settles the deferred) or any cleanup path
+		// (cleanupSession also settles). Either resolves cleanly.
 		await ready.promise;
 		this.#startedReady = null;
 	}
@@ -422,6 +426,18 @@ export class SessionController implements vscode.Disposable {
 		// check reliable - the *first* of multiple overlapping cleanups
 		// flips status before any await, so subsequent calls early-return.
 		if (this.#debugState.status === mode) return;
+
+		// Settle any pending start() deferred. If cleanup runs while
+		// start() is waiting on #runPostStart (CLI exited mid-attach,
+		// fatal_error during starting, etc.), the listener gate
+		// (status === "starting") will skip the post-start work and
+		// the deferred would otherwise hang forever. Resolving here
+		// lets start() unblock and return cleanly through this
+		// cleanup path.
+		if (this.#startedReady) {
+			this.#startedReady.resolve();
+			this.#startedReady = null;
+		}
 
 		if (this.#activeSession) {
 			this.#activeSession.dispose();

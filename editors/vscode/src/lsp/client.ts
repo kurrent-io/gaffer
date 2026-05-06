@@ -189,12 +189,11 @@ export function getLanguageClient(): LanguageClient | undefined {
 	return client;
 }
 
-// vscode-languageclient's default policy: tolerate the first
-// `maxRestartCount` (5) restarts in a 3-minute window, then give
-// up. Mirror that, but on the give-up branch surface a toast so
-// the user knows features are broken instead of silently
-// degrading. Keeps the same restart budget - just makes the
-// final outcome observable.
+// Restart on the first MAX_RESTART_COUNT closes within
+// RESTART_WINDOW_MS, give up on the next one. The give-up branch
+// surfaces a toast (showLspCrashed) so the user knows features
+// are broken instead of silently degrading - that's the
+// difference from vscode-languageclient's default handler.
 const MAX_RESTART_COUNT = 4;
 const RESTART_WINDOW_MS = 3 * 60 * 1000;
 

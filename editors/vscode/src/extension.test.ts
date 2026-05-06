@@ -11,6 +11,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activate } from "./extension.js";
+import * as cliModule from "./discovery/cli.js";
 import { LspCodeLensProvider } from "./lsp/lens-provider.js";
 import { flushAllMicrotasks } from "../test/testutil/promise.js";
 import { makeContext } from "../test/testutil/fake-context.js";
@@ -47,6 +48,33 @@ async function activateBare(): Promise<vscode.ExtensionContext> {
 	const ctx = makeContext();
 	await activate(ctx);
 	return ctx;
+}
+
+// Stub tryFetchManifest with a fake-success so the LSP spawn's
+// manifest gate clears in tests without requiring a real `gaffer`
+// binary on the test runner's PATH. Returns the spy so tests
+// that want to override the response (e.g. simulate a failed
+// fetch on reload) can re-use it.
+function stubManifestFetch(): ReturnType<typeof vi.spyOn> {
+	return vi.spyOn(cliModule, "tryFetchManifest").mockResolvedValue({
+		version: "test",
+		commands: { dev: { flags: ["debug"] } },
+	});
+}
+
+// Poll until getLanguageClient() returns a live client. The LSP
+// spawn is now gated on a successful manifest fetch (which runs
+// execFile and resolves on a future event-loop tick rather than a
+// microtask), so flushAllMicrotasks alone isn't enough after a
+// trust grant - we need to wait for the spawn to land.
+async function waitForLspClient(ms = 1000): Promise<void> {
+	const { getLanguageClient } = await import("./lsp/client.js");
+	const deadline = Date.now() + ms;
+	while (Date.now() < deadline) {
+		if (getLanguageClient()) return;
+		await new Promise<void>((r) => setTimeout(r, 10));
+	}
+	throw new Error(`LSP client did not spawn within ${ms}ms`);
 }
 
 beforeEach(() => {
@@ -167,10 +195,14 @@ describe("runProjection bail-early paths", () => {
 		await activateBare();
 		// Flip trust + fire the grant event so the trust-gated LSP
 		// spawn proceeds. activateBare leaves the workspace
-		// untrusted, which now defers the spawn.
+		// untrusted, which now defers the spawn. The spawn is also
+		// gated on a successful manifest fetch, so stub a fake
+		// success and wait for the client to come up before
+		// exercising fetchProjections.
+		stubManifestFetch();
 		setTrusted(true);
 		fireWorkspaceTrustGranted();
-		await flushAllMicrotasks();
+		await waitForLspClient();
 		// Stub workspace/symbol with an empty array to differentiate
 		// "LSP returned no projections" from "LSP not ready yet".
 		setLspRequestHandler("workspace/symbol", () => []);
@@ -398,10 +430,11 @@ describe("runProjection (with a populated projection list)", () => {
 	}
 
 	it("user cancels the quickpick: silent no-op, controller.start not invoked", async () => {
+		stubManifestFetch();
 		await activateBare();
 		setTrusted(true);
 		fireWorkspaceTrustGranted();
-		await flushAllMicrotasks();
+		await waitForLspClient();
 		stubProjectionsResponse("checkout", path.join(tmpDir, "gaffer.toml"));
 		queueQuickPick(undefined); // user dismisses
 		await runProjection();
@@ -411,10 +444,17 @@ describe("runProjection (with a populated projection list)", () => {
 	});
 
 	it("manifest fetch fails: shows error toast, controller.start not invoked", async () => {
+		// Initial activate + trust grant gets the LSP up. The "fetch
+		// fails" half of this test then reverts the stub to the real
+		// implementation so the post-pick manifest fetch in
+		// runProjection (which uses the bad gaffer.command set below)
+		// hits ENOENT and surfaces showManifestFailure as expected.
+		const stub = stubManifestFetch();
 		await activateBare();
 		setTrusted(true);
 		fireWorkspaceTrustGranted();
-		await flushAllMicrotasks();
+		await waitForLspClient();
+		stub.mockRestore();
 		stubProjectionsResponse("checkout", path.join(tmpDir, "gaffer.toml"));
 		queueQuickPick({
 			label: "checkout",

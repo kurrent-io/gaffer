@@ -66,6 +66,35 @@ export const showLspError = (): Thenable<unknown> =>
 			}
 		});
 
+// Shared shape for any "LSP isn't running" surface: error toast
+// with a "View Output" button that opens the LSP channel (NOT
+// our generic Gaffer channel - the LSP one carries the
+// actionable detail). Used by both the initial-start failure
+// path (c.start() threw) and the give-up-after-restarts path.
+const showLspBroken = (
+	message: string,
+	channel: vscode.OutputChannel,
+): Thenable<unknown> =>
+	vscode.window.showErrorMessage(message, "View Output").then((choice) => {
+		if (choice === "View Output") {
+			channel.show(true);
+		}
+	});
+
+export const showLspFailedToStart = (
+	detail: string,
+	channel: vscode.OutputChannel,
+): Thenable<unknown> =>
+	showLspBroken(`Gaffer LSP failed to start: ${detail}`, channel);
+
+export const showLspCrashed = (
+	channel: vscode.OutputChannel,
+): Thenable<unknown> =>
+	showLspBroken(
+		"Gaffer LSP keeps crashing - features that depend on it (lenses, projection list) are unavailable.",
+		channel,
+	);
+
 export const showProjectionFault = (
 	exitCode: number | null,
 ): Thenable<unknown> =>

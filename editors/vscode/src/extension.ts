@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { buildGafferArgv, tryFetchManifest } from "./discovery/cli.js";
+import type { Manifest } from "./discovery/schemas.js";
 import { LspCodeLensProvider } from "./lsp/lens-provider.js";
 import { fetchProjections } from "./lsp/symbols.js";
 import { StepProvider } from "./panels/step.js";
@@ -26,7 +27,11 @@ import {
 	showNoProjections,
 	showTrustWarning,
 } from "./notifications.js";
-import { startLanguageClient, stopLanguageClient } from "./lsp/client.js";
+import {
+	retryStartLanguageClient,
+	startLanguageClient,
+	stopLanguageClient,
+} from "./lsp/client.js";
 
 // workspaceCwd returns the first workspace folder's filesystem
 // path so child processes (e.g. gaffer manifest) spawn relative
@@ -85,14 +90,24 @@ export async function activate(
 	const lspCodeLens = new LspCodeLensProvider();
 	lspCodeLens.setManifest(initialManifest);
 
+	// Single source of truth for the latest manifest. The LSP spawn
+	// gate reads it via predicate; the reload chain updates it.
+	let latestManifest: Manifest | null = initialManifest;
+
 	// Spawn the LSP server. The lens provider activates once
 	// the client is ready; until then provideCodeLenses returns
 	// [] (briefly, while initialize completes). startLanguageClient
-	// owns the trust gate and will defer the spawn until trust
-	// is granted if the workspace is currently untrusted.
-	startLanguageClient(context, (client) => {
-		lspCodeLens.setClient(client);
-	});
+	// owns both the trust gate and the manifest gate, deferring
+	// the spawn until both clear and reattempting via
+	// retryStartLanguageClient when the manifest reload chain
+	// publishes a non-null result.
+	startLanguageClient(
+		context,
+		() => latestManifest !== null,
+		(client) => {
+			lspCodeLens.setClient(client);
+		},
+	);
 
 	const controller = new SessionController({
 		buildArgv: buildGafferArgv,
@@ -120,7 +135,13 @@ export async function activate(
 		refreshChain = refreshChain.then(async () => {
 			try {
 				const m = await tryFetchManifest(workspaceCwd(), showManifestFailure);
+				latestManifest = m;
 				lspCodeLens.setManifest(m);
+				// Re-evaluate the LSP spawn gate. Idempotent if the
+				// client is already running; kicks the spawn if the
+				// manifest just transitioned from null to a value
+				// (e.g. user fixed gaffer.command after a failed init).
+				retryStartLanguageClient();
 			} catch (err) {
 				log(
 					`Manifest reload failed: ${err instanceof Error ? err.message : String(err)}`,

@@ -92,10 +92,34 @@ public class DiagnosticsTests {
 
 	[Fact]
 	public void Scan_ReturnsNullOnParseFailure() {
-		// Source Acornima rejects. The fallback path in Scan catches
-		// ParseErrorException and returns null so a parser-option drift
-		// between Jint and Acornima doesn't break otherwise-valid sessions.
+		// Source Acornima rejects. The fallback path in Scan returns null
+		// so parser drift between Jint and Acornima doesn't break otherwise-
+		// valid sessions.
 		Assert.Null(DiagnosticCollector.Scan("this is not valid {{{{"));
+	}
+
+	[Fact]
+	public void LinkStreamTo_SuppressedWhenLocallyDeclared() {
+		// User shadows the runtime global with their own linkStreamTo - the
+		// call isn't the deprecated API, so we shouldn't warn. Conservative
+		// suppression: any var/let/const/function declaration with the name
+		// anywhere in the script switches the rule off.
+		using var session = new ProjectionSession(
+			"var linkStreamTo = function () {};\n" +
+			"fromAll().when({ $any: function (s, e) { linkStreamTo('a', e.streamId); return s; } });",
+			Options);
+
+		Assert.Null(session.Diagnostics);
+	}
+
+	[Fact]
+	public void LinkStreamTo_SuppressedWhenLocalFunction() {
+		using var session = new ProjectionSession(
+			"function linkStreamTo() {}\n" +
+			"fromAll().when({ $any: function (s, e) { linkStreamTo(); return s; } });",
+			Options);
+
+		Assert.Null(session.Diagnostics);
 	}
 
 	[Fact]

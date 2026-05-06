@@ -427,7 +427,7 @@ internal static unsafe class NativeExports {
 			return null;
 		}
 		try {
-			var info = ProjectionInfoMapper.ToProjectionInfo(handle.Session.Sources);
+			var info = ProjectionInfoMapper.ToProjectionInfo(handle.Session.Sources, handle.Session.Diagnostics);
 			return AllocUtf8(JsonSerializer.Serialize(info, SdkJsonContext.Default.ProjectionInfo));
 		} catch (Exception ex) {
 			WriteError(errorOut, ex);

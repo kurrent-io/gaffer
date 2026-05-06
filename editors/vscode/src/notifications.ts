@@ -49,6 +49,23 @@ export const showNoProjections = (): Thenable<unknown> =>
 		"Gaffer: no projections found in this workspace.",
 	);
 
+export const showLspNotReady = (): Thenable<unknown> =>
+	vscode.window.showInformationMessage(
+		"Gaffer is still starting up. Try again in a moment.",
+	);
+
+export const showLspError = (): Thenable<unknown> =>
+	vscode.window
+		.showErrorMessage(
+			"Gaffer: failed to fetch projections from the LSP server.",
+			"View Output",
+		)
+		.then((choice) => {
+			if (choice === "View Output") {
+				showOutputPanel();
+			}
+		});
+
 export const showProjectionFault = (
 	exitCode: number | null,
 ): Thenable<unknown> =>

@@ -20,11 +20,21 @@ import {
 	initDiagnostics,
 } from "./diagnostics.js";
 import {
+	showLspError,
+	showLspNotReady,
 	showManifestFailure,
 	showNoProjections,
 	showTrustWarning,
 } from "./notifications.js";
 import { startLanguageClient, stopLanguageClient } from "./lsp/client.js";
+
+// workspaceCwd returns the first workspace folder's filesystem
+// path so child processes (e.g. gaffer manifest) spawn relative
+// to the user's project, not the editor's launch cwd. Returns
+// undefined for single-buffer sessions with no workspace.
+function workspaceCwd(): string | undefined {
+	return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
 
 export async function activate(
 	context: vscode.ExtensionContext,
@@ -56,11 +66,13 @@ export async function activate(
 
 	// Initial manifest snapshot - awaited up front so the lens
 	// provider's first provideCodeLenses call sees the real
-	// dev/--debug capability set instead of bailing on a null
-	// manifest. cwd defaults to the workspace root via the
-	// underlying execFile when not provided.
+	// dev/--debug capability set. cwd is the first workspace
+	// folder so gaffer-relative binaries resolve correctly;
+	// node's execFile defaults to process.cwd() (the editor's
+	// launch directory), not the workspace, so we must pass
+	// it explicitly.
 	const initialManifest = await tryFetchManifest(
-		undefined,
+		workspaceCwd(),
 		showManifestFailure,
 	);
 
@@ -107,7 +119,7 @@ export async function activate(
 	const reloadManifest = (): Promise<void> => {
 		refreshChain = refreshChain.then(async () => {
 			try {
-				const m = await tryFetchManifest(undefined, showManifestFailure);
+				const m = await tryFetchManifest(workspaceCwd(), showManifestFailure);
 				lspCodeLens.setManifest(m);
 			} catch (err) {
 				log(
@@ -191,13 +203,21 @@ export async function activate(
 			void showTrustWarning();
 			return;
 		}
-		const projections = await fetchProjections();
-		if (projections.length === 0) {
+		const result = await fetchProjections();
+		if (result.kind === "not-ready") {
+			void showLspNotReady();
+			return;
+		}
+		if (result.kind === "error") {
+			void showLspError();
+			return;
+		}
+		if (result.projections.length === 0) {
 			void showNoProjections();
 			return;
 		}
 		const picked = await vscode.window.showQuickPick(
-			projections.map((p) => ({
+			result.projections.map((p) => ({
 				label: p.name,
 				description: vscode.workspace.asRelativePath(p.tomlUri),
 				projection: p,
@@ -205,7 +225,10 @@ export async function activate(
 			{ placeHolder: "Select a projection to debug" },
 		);
 		if (!picked) return;
-		const manifest = await tryFetchManifest(undefined, showManifestFailure);
+		const manifest = await tryFetchManifest(
+			workspaceCwd(),
+			showManifestFailure,
+		);
 		if (!manifest) return;
 		await controller.start({
 			name: picked.projection.name,

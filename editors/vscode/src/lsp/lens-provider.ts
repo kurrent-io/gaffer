@@ -1,9 +1,11 @@
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/node";
+import * as v from "valibot";
 import { hasCommand, hasFlag } from "../discovery/cli.js";
 import type { Manifest } from "../discovery/schemas.js";
 import type { DebugState } from "../types.js";
 import { lensState } from "../lensing/lens.js";
+import { log } from "../output.js";
 
 // Server-side intent constants (must match cli/internal/lsp/protocol.go).
 const IntentDebug = "debug";
@@ -40,19 +42,37 @@ interface CodeLensParams {
 	textDocument: { uri: string };
 }
 
-// Args[0] payloads as the LSP server emits them. configURI is a
-// file:// URI string; we convert to vscode.Uri before passing to
-// the debug-launch command, which expects tomlUri as a Uri.
-interface ProjectionArgs {
-	name: string;
-	configURI: string;
-	fixture?: string;
-}
+// Args[0] payloads as the LSP server emits them, validated at
+// the wire boundary. Schema mismatch (server-side typo, version
+// skew) gets rejected loudly here instead of letting an undefined
+// `name` propagate into a no-op debug command. Same posture as
+// the manifest fetch.
+const ProjectionArgsSchema = v.object({
+	name: v.string(),
+	configURI: v.string(),
+	fixture: v.optional(v.string()),
+});
 
-interface ProjectionPickArgs {
-	name: string;
-	configURI: string;
-	fixtureNames: string[];
+const ProjectionPickArgsSchema = v.object({
+	name: v.string(),
+	configURI: v.string(),
+	fixtureNames: v.array(v.string()),
+});
+
+// parseConfigURI guards `vscode.Uri.parse` so a malformed URI
+// from the server doesn't throw out of provideCodeLenses and
+// drop every remaining lens for the document.
+function parseConfigURI(uri: string): vscode.Uri | null {
+	try {
+		return vscode.Uri.parse(uri, true);
+	} catch (err) {
+		log(
+			`Lens: rejecting malformed configURI ${JSON.stringify(uri)}: ${
+				err instanceof Error ? err.message : String(err)
+			}`,
+		);
+		return null;
+	}
 }
 
 /**
@@ -117,8 +137,16 @@ export class LspCodeLensProvider implements vscode.CodeLensProvider {
 
 		const lenses: vscode.CodeLens[] = [];
 		for (const sl of serverLenses) {
-			const decorated = this.#decorate(sl);
-			if (decorated) lenses.push(decorated);
+			try {
+				const decorated = this.#decorate(sl);
+				if (decorated) lenses.push(decorated);
+			} catch (err) {
+				// One bad lens shouldn't drop the whole document's
+				// rendering. Log and continue.
+				log(
+					`Lens: dropping malformed lens: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
 		}
 		return lenses;
 	}
@@ -138,9 +166,11 @@ export class LspCodeLensProvider implements vscode.CodeLensProvider {
 			return this.#decorateDebugChoose(sl, range);
 		}
 		// Unknown intent: pass through with the server's title and
-		// command. Forward-compatible for future intents we don't yet
-		// know about.
+		// command, but trust-gate it. Future intents we don't yet
+		// know about still respect the workspace-trust contract -
+		// no client-side dispatch on untrusted state.
 		if (sl.command) {
+			if (!vscode.workspace.isTrusted) return null;
 			return new vscode.CodeLens(range, {
 				title: sl.command.title,
 				command: sl.command.command,
@@ -151,9 +181,19 @@ export class LspCodeLensProvider implements vscode.CodeLensProvider {
 	}
 
 	#decorateDebug(sl: LspCodeLens, range: vscode.Range): vscode.CodeLens | null {
-		const args = (sl.command?.arguments?.[0] ?? null) as ProjectionArgs | null;
-		if (!args) return null;
-		const tomlUri = vscode.Uri.parse(args.configURI);
+		const parsed = v.safeParse(
+			ProjectionArgsSchema,
+			sl.command?.arguments?.[0],
+		);
+		if (!parsed.success) {
+			log(
+				`Lens: rejecting debug args: ${parsed.issues.map((i) => i.message).join("; ")}`,
+			);
+			return null;
+		}
+		const args = parsed.output;
+		const tomlUri = parseConfigURI(args.configURI);
+		if (!tomlUri) return null;
 
 		// Active-session overlay only applies to projection-level
 		// lenses. Per-fixture lenses (fixture set) stay clickable
@@ -186,10 +226,8 @@ export class LspCodeLensProvider implements vscode.CodeLensProvider {
 			tomlUri,
 		};
 		if (args.fixture !== undefined) cmdArgs.fixture = args.fixture;
-		const titleSuffix =
-			args.fixture !== undefined ? (sl.command?.title ?? "Debug") : "Debug";
 		return new vscode.CodeLens(range, {
-			title: `$(debug-start) ${titleSuffix}`,
+			title: "$(debug-start) Debug",
 			command: "gaffer.debugProjection",
 			arguments: [cmdArgs],
 		});
@@ -199,9 +237,17 @@ export class LspCodeLensProvider implements vscode.CodeLensProvider {
 		sl: LspCodeLens,
 		range: vscode.Range,
 	): vscode.CodeLens | null {
-		const args = (sl.command?.arguments?.[0] ??
-			null) as ProjectionPickArgs | null;
-		if (!args) return null;
+		const parsed = v.safeParse(
+			ProjectionPickArgsSchema,
+			sl.command?.arguments?.[0],
+		);
+		if (!parsed.success) {
+			log(
+				`Lens: rejecting debug-choose args: ${parsed.issues.map((i) => i.message).join("; ")}`,
+			);
+			return null;
+		}
+		const args = parsed.output;
 
 		// Hidden during an active session for this projection - the
 		// user should stop (or use per-fixture lenses) before
@@ -215,9 +261,10 @@ export class LspCodeLensProvider implements vscode.CodeLensProvider {
 			return null;
 		}
 
-		const tomlUri = vscode.Uri.parse(args.configURI);
+		const tomlUri = parseConfigURI(args.configURI);
+		if (!tomlUri) return null;
 		return new vscode.CodeLens(range, {
-			title: `$(debug-start) ${sl.command?.title ?? "Debug from fixture..."}`,
+			title: "$(debug-start) Debug from fixture...",
 			command: "gaffer.debugProjectionPick",
 			arguments: [
 				{ name: args.name, tomlUri, fixtureNames: args.fixtureNames },

@@ -44,6 +44,13 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 	case MethodDidChangeWatchedFiles:
 		return s.handleDidChangeWatchedFiles(ctx, req)
 	default:
+		// $/-prefixed messages are optional per the LSP spec.
+		// Notifications must be silently ignored; requests get the
+		// standard MethodNotFound response. Without this branch the
+		// client's chatty $/setTrace pings flood the server log.
+		if strings.HasPrefix(req.Method, "$/") && req.Notif {
+			return nil, nil
+		}
 		// CodeMethodNotFound is dropped by jsonrpc2 when the
 		// inbound was a notification (no ID, no response slot).
 		// For requests it surfaces as a proper JSON-RPC error.

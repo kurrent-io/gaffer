@@ -80,11 +80,33 @@ func TestSamePath_Equality(t *testing.T) {
 		{"/foo/bar.js", "/foo/baz.js", false},
 		// slash-fold: different separators, same file
 		{"C:/foo/bar.js", "C:\\foo\\bar.js", true},
+		// path.Clean folds: client URI shapes vary
+		{"/foo/bar.js", "/foo/./bar.js", true},
+		{"/foo/bar.js", "/foo/bar.js/", true},
+		{"/foo/bar.js", "/foo//bar.js", true},
 	}
 	for _, c := range cases {
 		if got := samePath(c.a, c.b); got != c.want {
 			t.Errorf("samePath(%q, %q): got %v want %v", c.a, c.b, got, c.want)
 		}
+	}
+}
+
+func TestUriToPath_MalformedDoesNotCrash(t *testing.T) {
+	// go.lsp.dev/uri panics on some malformed URIs (non-file
+	// scheme, unparseable percent-escapes, etc.). uriToPath must
+	// recover so a bad URI from a buggy client doesn't crash
+	// the handler goroutine. The test passes if no panic is
+	// raised; the resulting string isn't pinned (it can be
+	// empty for degenerate input like "file://").
+	cases := []string{
+		"file://",
+		"file:///%XX_invalid",
+		"file://[bad",
+		"file://%",
+	}
+	for _, in := range cases {
+		_ = uriToPath(in)
 	}
 }
 

@@ -89,7 +89,11 @@ func WalkConfigs(ctx context.Context, root string) ([]string, error) {
 		// files we need to skip explicitly so a `gaffer.toml`
 		// symlink pointing outside the workspace isn't matched by
 		// basename below.
-		if d.Type()&fs.ModeSymlink != 0 {
+		//
+		// ModeIrregular catches NTFS directory junctions created
+		// with `mklink /J` - those don't carry ModeSymlink but
+		// are still a workspace-escape vector on Windows.
+		if d.Type()&(fs.ModeSymlink|fs.ModeIrregular) != 0 {
 			return nil
 		}
 		rel, err := filepath.Rel(rootAbs, path)

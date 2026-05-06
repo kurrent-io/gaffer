@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -26,23 +27,25 @@ func pathToURI(path string) string {
 
 // uriToPath strips the file:// scheme and returns an absolute
 // filesystem path in forward-slash form. Returns the input
-// unchanged if it doesn't look like a file URI.
+// unchanged if it doesn't look like a file URI or if parsing
+// panics (the library panics on some malformed URIs).
 //
-// Forward-slash internal: every consumer of this output - map
-// keys, `os.ReadFile`, path comparison helpers - works with
-// forward slashes on every OS we target. We pay one
-// `filepath.ToSlash` here so the rest of the codebase doesn't
-// have to think about separator differences.
-func uriToPath(s string) string {
+// Forward-slash convention applies at URI / comparison
+// boundaries: every consumer of this output - map keys for
+// dispatch, `samePath`, `os.ReadFile` (which accepts forward
+// slashes on Windows) - works with forward slashes on every
+// OS. Disk-side calls into `internal/config` keep native
+// separators since `filepath` handles them; the boundary is
+// here.
+func uriToPath(s string) (out string) {
 	if !strings.HasPrefix(s, "file://") {
 		return s
 	}
+	out = s
 	defer func() {
-		// uri.URI.Filename panics on malformed input. Convert any
-		// panic into a fall-through return of the raw string so a
-		// bad URI in production logs a "couldn't parse" later
-		// rather than crashing the handler goroutine.
-		_ = recover()
+		if r := recover(); r != nil {
+			out = s
+		}
 	}()
 	return filepath.ToSlash(uri.New(s).Filename())
 }
@@ -58,8 +61,8 @@ func uriToPath(s string) string {
 // normalisation differences on macOS. Acceptable for V0; if a
 // user reports a missed lens on a unicode path we revisit.
 func samePath(a, b string) bool {
-	a = strings.ReplaceAll(a, `\`, `/`)
-	b = strings.ReplaceAll(b, `\`, `/`)
+	a = path.Clean(strings.ReplaceAll(a, `\`, `/`))
+	b = path.Clean(strings.ReplaceAll(b, `\`, `/`))
 	if pathsCaseFold {
 		return strings.EqualFold(a, b)
 	}

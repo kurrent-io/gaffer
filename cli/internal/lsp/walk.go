@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"time"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/sourcegraph/jsonrpc2"
@@ -101,7 +102,13 @@ func (s *Server) registerFileWatcher(ctx context.Context) {
 			},
 		}},
 	}
-	if err := conn.Call(ctx, MethodRegisterCapability, params, nil); err != nil {
+	// Bound the call - a misbehaving client that ACKed initialize
+	// but never responds to capability registration would otherwise
+	// wedge this goroutine until shutdown. 30s is generous; a
+	// healthy client responds in single-digit ms.
+	callCtx, cancelCall := context.WithTimeout(ctx, 30*time.Second)
+	defer cancelCall()
+	if err := conn.Call(callCtx, MethodRegisterCapability, params, nil); err != nil {
 		// Cancellation = clean shutdown raced the registration -
 		// don't pollute logs.
 		if errors.Is(err, context.Canceled) {

@@ -22,7 +22,13 @@ import (
 // (per the lens contract: every lens is actionable). Projection-
 // level diagnostics suppress the projection's lenses entirely - a
 // projection missing its name or entry isn't actionable.
-func emitCodeLenses(desc config.Description) []CodeLens {
+//
+// uri is the client's request URI, threaded through verbatim into
+// the lens's configURI argument. Re-deriving it from
+// desc.ConfigFile would risk subtle encoding mismatches (the
+// client's URI string is the canonical handle, not a path the
+// server transformed).
+func emitCodeLenses(desc config.Description, uri string) []CodeLens {
 	out := []CodeLens{}
 	for _, p := range desc.Projections {
 		if p.Diagnostic != nil {
@@ -32,7 +38,6 @@ func emitCodeLenses(desc config.Description) []CodeLens {
 			// the problem.
 			continue
 		}
-		uri := pathToURI(desc.ConfigFile)
 		// Projection-level Debug lens.
 		out = append(out, CodeLens{
 			Range: rangeToLSP(p.Range),
@@ -173,11 +178,17 @@ func max0(x int) int {
 }
 
 // pathToURI converts an absolute filesystem path to a file:// URI.
+// Uses url.URL.String so the encoding matches what LSP clients
+// produce - e.g. spaces become `%20`, `:` in path segments stays
+// `:`. Hand-concatenating "file://" + EscapedPath would produce a
+// non-canonical form that diverges from the client's URI string,
+// breaking map-key lookups in the document store.
+//
 // V1 is Linux-only at the editor / LSP layer; Windows would need
 // `file:///C:/...` shaping but no editor extension on Windows is
 // in scope yet.
 func pathToURI(path string) string {
-	return "file://" + (&url.URL{Path: path}).EscapedPath()
+	return (&url.URL{Scheme: "file", Path: path}).String()
 }
 
 // uriToPath strips the file:// scheme and returns the absolute

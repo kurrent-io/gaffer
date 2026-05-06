@@ -497,5 +497,28 @@ func TestServer_DisconnectBeforeInitializeIsClean(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("expected clean exit, got %v", err)
 	}
-	_ = srv
+}
+
+func TestServer_CtxCancelMidSessionIsClean(t *testing.T) {
+	// SIGINT (or any caller-side ctx cancel) mid-session must
+	// not surface as a protocol error - the client never had a
+	// chance to send shutdown, so blaming them is wrong. Pin the
+	// fix for the bug where ctx-cancel was reported as
+	// "client disconnected without sending shutdown".
+	srv, cli := pipePair()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := startServer(ctx, srv, ServerOptions{})
+	conn := newClientConn(ctx, cli)
+	defer func() { _ = conn.Close() }()
+	if err := conn.Call(ctx, MethodInitialize, &InitializeParams{}, &InitializeResult{}); err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+
+	cancel() // <-- caller pulls the rug
+
+	if err := <-done; err != nil {
+		t.Fatalf("expected clean exit on ctx cancel, got %v", err)
+	}
 }

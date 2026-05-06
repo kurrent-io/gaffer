@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"log"
 	"path"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
@@ -32,8 +33,13 @@ func (s *Server) parseAndPublish(ctx context.Context, uri string) {
 	}
 	desc, err := config.DescribeBytes(ctx, uriToPath(uri), []byte(state.Content))
 	if err != nil {
-		// Context cancelled or path-resolution failure. Either way
-		// nothing actionable to publish.
+		// Context cancelled = clean shutdown / debounce supersede;
+		// not worth a log line. Anything else (path-resolution, an
+		// unexpected parser failure) is real and worth logging so
+		// it's diagnosable.
+		if ctx.Err() == nil {
+			log.Printf("lsp: parse %q: %v", uri, err)
+		}
 		return
 	}
 	applied := s.docs.ApplyParseIfFresh(ParseResult{
@@ -59,10 +65,15 @@ func (s *Server) publishDiagnostics(uri string, diags []LSPDiagnostic) {
 		// Dropping is the right call - the client wouldn't see it.
 		return
 	}
-	_ = conn.Notify(context.Background(), MethodPublishDiagnostics, PublishDiagnosticsParams{
+	if err := conn.Notify(context.Background(), MethodPublishDiagnostics, PublishDiagnosticsParams{
 		URI:         uri,
 		Diagnostics: diags,
-	})
+	}); err != nil {
+		// The wire is gone (peer disconnect, write timeout). Not
+		// recoverable from here, but worth a log line so a failing
+		// client connection is observable.
+		log.Printf("lsp: publishDiagnostics %q: %v", uri, err)
+	}
 }
 
 // isGafferConfig is the parse-trigger gate. V1: any URI whose

@@ -144,14 +144,22 @@ func (s *Server) Run(ctx context.Context, stream io.ReadWriteCloser) error {
 	// disconnect), or our run context was cancelled (e.g. SIGINT).
 	// All three converge on closing the connection and waiting for
 	// jsonrpc2 to drain in-flight handlers.
+	var ctxQuit bool
 	select {
 	case <-conn.DisconnectNotify():
 	case <-s.exitCh:
 		_ = conn.Close()
 		<-conn.DisconnectNotify()
 	case <-ctx.Done():
+		ctxQuit = true
 		_ = conn.Close()
 		<-conn.DisconnectNotify()
+	}
+	if ctxQuit {
+		// Server-side quit (caller cancelled ctx, e.g. SIGINT).
+		// Don't blame the client for not sending shutdown - they
+		// had no chance.
+		return nil
 	}
 	return s.exitStatus()
 }
@@ -339,7 +347,7 @@ func (s *Server) handleCodeLens(req *jsonrpc2.Request) (interface{}, error) {
 		// canonical "no lenses for this document."
 		return []CodeLens{}, nil
 	}
-	return emitCodeLenses(parse.Description), nil
+	return emitCodeLenses(parse.Description, params.TextDocument.URI), nil
 }
 
 // runContext returns the captured Run-scope context. Used by

@@ -2,11 +2,6 @@ import * as vscode from "vscode";
 import { buildGafferArgv, tryFetchManifest } from "./discovery/cli.js";
 import type { Manifest } from "./discovery/schemas.js";
 import { LspCodeLensProvider } from "./lsp/lens-provider.js";
-import {
-	fetchProjectionDetails,
-	fetchProjections,
-	type ProjectionDetails,
-} from "./lsp/symbols.js";
 import { StepProvider } from "./panels/step.js";
 import { StateProvider } from "./panels/state.js";
 import { StatusViewProvider } from "./panels/status.js";
@@ -24,18 +19,14 @@ import {
 	clearDiagnosticsForUri,
 	initDiagnostics,
 } from "./diagnostics.js";
-import {
-	showLspError,
-	showLspNotReady,
-	showManifestFailure,
-	showNoProjections,
-	showTrustWarning,
-} from "./notifications.js";
+import { showManifestFailure } from "./notifications.js";
 import {
 	retryStartLanguageClient,
 	startLanguageClient,
 	stopLanguageClient,
 } from "./lsp/client.js";
+import { runProjection } from "./commands/run-projection.js";
+import { debugProjectionPick } from "./commands/debug-projection-pick.js";
 
 // workspaceCwd returns the first workspace folder's filesystem
 // path so child processes (e.g. gaffer manifest) spawn relative
@@ -217,119 +208,12 @@ export async function activate(
 		),
 	);
 
-	// Commands fetch fresh state per call - no shared cache reads. The
-	// QuickPick appears instantly from the local index; manifest fetch
-	// is deferred until after the user picks so it doesn't gate the UI.
-	// Trust is checked explicitly: tryFetchManifest is silent on untrust
-	// (returns null without onError), so without this gate the user
-	// would pick a projection and see nothing happen.
-	// pickRunMode resolves the second-step QuickPick for the Run
-	// Projection command. Return value:
-	//   - `undefined`: user dismissed, abort the run
-	//   - `null`: live run (no fixture)
-	//   - `string`: named fixture to run against
-	// When details is null (LSP didn't answer or rejected), default
-	// to live - the same single-step flow we had before this picker.
-	// Likewise when the projection has neither a connection nor any
-	// fixtures: the CLI will surface the error itself, so just push
-	// it through without an extra confirmation step.
-	const pickRunMode = async (
-		projectionName: string,
-		details: ProjectionDetails | null,
-	): Promise<string | null | undefined> => {
-		if (!details) return null;
-		const hasConnection = details.connection !== null;
-		const fixtures = details.fixtures;
-		if (!hasConnection && fixtures.length === 0) return null;
-		if (hasConnection && fixtures.length === 0) return null;
-		// items: live entry first when available, then each fixture.
-		// We attach the discriminator on the item itself so the
-		// resolution stays exact (fixture names could in theory collide
-		// with the "live" label phrasing).
-		type Item = vscode.QuickPickItem & { mode: "live" | "fixture"; name?: string };
-		const items: Item[] = [];
-		if (hasConnection) {
-			items.push({
-				label: `connection: ${details.connection}`,
-				mode: "live",
-			});
-		}
-		for (const f of fixtures) {
-			items.push({
-				label: `fixture: ${f}`,
-				mode: "fixture",
-				name: f,
-			});
-		}
-		const picked = await vscode.window.showQuickPick(items, {
-			placeHolder: `Run ${projectionName} against...`,
-		});
-		if (!picked) return undefined;
-		return picked.mode === "live" ? null : (picked.name ?? null);
-	};
-
-	const runProjection = async (): Promise<void> => {
-		if (!vscode.workspace.isTrusted) {
-			void showTrustWarning();
-			return;
-		}
-		const result = await fetchProjections();
-		if (result.kind === "not-ready") {
-			void showLspNotReady();
-			return;
-		}
-		if (result.kind === "error") {
-			void showLspError();
-			return;
-		}
-		if (result.projections.length === 0) {
-			void showNoProjections();
-			return;
-		}
-		const picked = await vscode.window.showQuickPick(
-			result.projections.map((p) => ({
-				label: p.name,
-				description: vscode.workspace.asRelativePath(p.tomlUri),
-				projection: p,
-			})),
-			{ placeHolder: "Select a projection to debug" },
-		);
-		if (!picked) return;
-		const details = await fetchProjectionDetails(
-			picked.projection.name,
-			picked.projection.tomlUri,
-		);
-		const fixture = await pickRunMode(picked.projection.name, details);
-		if (fixture === undefined) return;
-		const manifest = await tryFetchManifest(
-			workspaceCwd(),
-			showManifestFailure,
-		);
-		if (!manifest) return;
-		await controller.start({
-			name: picked.projection.name,
-			tomlUri: picked.projection.tomlUri,
-			...(fixture === null ? {} : { fixture }),
-		});
-	};
-
-	const debugProjectionPick = async (args: {
-		name: string;
-		tomlUri: vscode.Uri;
-		fixtureNames: string[];
-	}): Promise<void> => {
-		if (args.fixtureNames.length === 0) return;
-		const picked = await vscode.window.showQuickPick(args.fixtureNames, {
-			placeHolder: `Pick a fixture to debug ${args.name} with`,
-		});
-		if (!picked) return;
-		await controller.start({
-			name: args.name,
-			tomlUri: args.tomlUri,
-			fixture: picked,
-		});
-	};
-
+	// Command handlers live in src/commands/. activate() injects the
+	// SessionController.start binding (and workspace cwd resolver for
+	// runProjection's manifest fetch); the command bodies own their
+	// own UX flows.
+	const startSession = (args: DebugProjectionArgs): Promise<void> =>
+		controller.start(args);
 	context.subscriptions.push(
 		vscode.commands.registerCommand("gaffer.stopDebug", () =>
 			controller.stop(),
@@ -340,9 +224,12 @@ export async function activate(
 		),
 		vscode.commands.registerCommand(
 			"gaffer.debugProjectionPick",
-			debugProjectionPick,
+			debugProjectionPick({ start: startSession }),
 		),
-		vscode.commands.registerCommand("gaffer.runProjection", runProjection),
+		vscode.commands.registerCommand(
+			"gaffer.runProjection",
+			runProjection({ start: startSession, workspaceCwd }),
+		),
 		// Click target for the "Invalid fixture: <reason>" lens. The lens
 		// is informational; the user fixes the toml. CodeLens.command is
 		// required by VS Code, so we route to a registered no-op.

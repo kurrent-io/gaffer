@@ -1,6 +1,6 @@
 import koffi, { type IKoffiRegisteredCallback } from "koffi";
 import { existsSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { resolve } from "node:path";
 import { createRequire } from "node:module";
 
 interface PlatformInfo {
@@ -59,14 +59,9 @@ function findLibPath(): string {
 	// 2. Platform-specific npm package
 	try {
 		const require = createRequire(import.meta.url);
-		const packageDir = resolve(
-			require.resolve(`${platform.packageName}/package.json`),
-			"..",
-		);
-		const candidate = join(packageDir, platform.libFile);
-		if (existsSync(candidate)) return candidate;
+		return require.resolve(`${platform.packageName}/${platform.libFile}`);
 	} catch {
-		// package not installed, fall through
+		// package or binary not found, fall through
 	}
 
 	// 3. Walk up looking for the runtime library (dev fallback)

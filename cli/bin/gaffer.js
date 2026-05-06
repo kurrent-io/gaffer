@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // Resolve the platform-specific gaffer binary from optional dependencies and exec it.
 const { spawnSync } = require("node:child_process");
-const path = require("node:path");
 
 // Keep in sync with optionalDependencies in package.json.
 const SUPPORTED = new Set([
@@ -24,11 +23,7 @@ if (!SUPPORTED.has(platformKey)) {
 
 let binaryPath;
 try {
-	// Anchor on package.json then join the binary name. Avoids breaking
-	// if a platform package ever adds an `exports` field, which would
-	// reject `require.resolve("@kurrent/gaffer-X-Y/gaffer")` directly.
-	const pkgPath = require.resolve(`${platformPackage}/package.json`);
-	binaryPath = path.join(path.dirname(pkgPath), binaryName);
+	binaryPath = require.resolve(`${platformPackage}/${binaryName}`);
 } catch {
 	console.error(`gaffer: native binary for ${platformKey} not found.`);
 	console.error(`The optional dependency ${platformPackage} may have failed to install.`);

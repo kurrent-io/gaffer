@@ -18,12 +18,14 @@ bindings/
   go/                      # Go bindings (gafferruntime package), FFI tests
   js/                      # JS/TS bindings (@kurrent/gaffer-runtime), koffi FFI
     native/linux-x64/      # Platform-specific native package
-cli/                       # Go CLI (Cobra) - init, scaffold, dev
+cli/                       # Go CLI (Cobra) - dev, info, init, mcp, scaffold; hosts the DAP and MCP servers
 testing/
   js/                      # @kurrent/projections-testing - test lib wrapping runtime
 editors/
-  vscode/                  # VS Code extension (debug adapter, gaffer.toml support)
+  vscode/                  # VS Code extension - debug adapter, status panels, lensing, gaffer.toml support
 demo/                      # Example gaffer project with fixtures
+docs/
+  specs/                   # Internal protocol / behaviour specifications
 tools/
   fixtures/                # Shared JSON test fixtures (sources, state, callbacks, etc.)
   kurrentdb/               # Docker compose for integration tests
@@ -34,6 +36,7 @@ tools/
 Uses devcontainer (.NET 10, Go, Node 22).
 
 ```
+just init                  # install dependencies across all modules
 just build                 # build all
 just test                  # test all
 just check                 # check formatting and linting
@@ -64,6 +67,31 @@ The C API (gaffer.h) exposes the same functionality for FFI consumers.
 Go bindings wrap the C API via cgo with a `Session` struct.
 JS bindings use koffi FFI with typed error classes.
 
+## Debugging
+
+The runtime exposes a debug API on `ProjectionSession` when constructed
+with `Debug = true`: `SetBreakpoint`/`ClearBreakpoints`,
+`Continue`/`Pause`, `StepInto`/`StepOver`/`StepOut`, `GetCallStack`,
+`GetScopes`, `GetVariables`, `Evaluate`, and an
+`OnBreak: Action<BreakInfo>` callback. Debug types (`BreakInfo`,
+`DebugCallFrame`, `DebugScopeInfo`, `DebugVariable`) live in
+`runtime/Gaffer.Runtime/Events/`.
+
+The CLI runs a DAP server (`cli/internal/dap`) that adapts this API to
+the Debug Adapter Protocol. The VS Code extension is a real debug
+adapter that connects to the CLI's DAP server, with breakpoint UI,
+call-stack and scope panels, and `Run > Debug` integration tied to
+`gaffer.toml` projections.
+
+## MCP server
+
+The CLI hosts an MCP server (`gaffer mcp`, in `cli/internal/mcpserver`)
+that exposes projection lifecycle and debug tools to AI assistants:
+run, validate, stop, scaffold, get state/step/history/timeline, list
+projections and events, debug-continue, step, and evaluate. Breakpoints
+are managed via DAP, not MCP. The `demo/.mcp.json` registers the server
+for the demo project.
+
 ## NativeAOT rules
 
 Do not use LINQ extension methods on arrays in runtime code (AsEnumerable, Select, Where, etc.). LINQ interface dispatch on arrays crashes when the .so is loaded by non-.NET FFI hosts (koffi/Node). Use indexed `for` loops instead.
@@ -72,3 +100,4 @@ Do not use LINQ extension methods on arrays in runtime code (AsEnumerable, Selec
 
 - C#: .editorconfig matching KurrentDB (tabs, K&R braces, file-scoped namespaces)
 - Go: golangci-lint with all linters enabled, goimports + gofumpt formatting
+- JS/TS (bindings/js, testing/js, editors/vscode): prettier + eslint, tabs

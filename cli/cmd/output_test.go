@@ -111,7 +111,7 @@ func TestTextWriter_WriteInfo_RendersDiagnostics(t *testing.T) {
 	out := buf.String()
 	testutil.AssertContains(t, out, "[warning]")
 	testutil.AssertContains(t, out, "deprecated.linkStreamTo")
-	testutil.AssertContains(t, out, "line 3:5")
+	testutil.AssertContains(t, out, "line 3, col 5")
 	testutil.AssertContains(t, out, "linkStreamTo is undocumented")
 }
 
@@ -132,7 +132,7 @@ func TestTextWriter_WriteInfo_DiagnosticWithoutRange(t *testing.T) {
 	out := buf.String()
 	testutil.AssertContains(t, out, "deprecated.something")
 	testutil.AssertContains(t, out, "no location available")
-	if strings.Contains(out, "line ") {
+	if strings.Contains(out, "(line ") {
 		t.Error("expected no line/column info when range is nil")
 	}
 }

@@ -1,4 +1,10 @@
-namespace Gaffer.Sdk;
+namespace Gaffer.Sdk.Diagnostics;
+
+/// <summary>Inclusive start, exclusive end - matches LSP and most editor APIs.</summary>
+public sealed class SourceRange {
+	public required SourcePosition Start { get; init; }
+	public required SourcePosition End { get; init; }
+}
 
 /// <summary>
 /// 1-based line and column in projection source. Both 1-based for editor UI

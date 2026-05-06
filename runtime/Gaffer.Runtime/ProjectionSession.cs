@@ -3,7 +3,7 @@ using Acornima;
 using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Events;
 using Gaffer.Runtime.Projection;
-using Gaffer.Sdk;
+using Gaffer.Sdk.Diagnostics;
 using Jint;
 using Jint.Runtime;
 

@@ -5,7 +5,7 @@ import {
 	ProjectionHandlerError,
 	DiagnosticSeverity,
 } from "../src/index.js";
-import type { EmittedEvent } from "../src/index.js";
+import type { EmittedEvent, ProjectionInfo } from "../src/index.js";
 
 describe("ProjectionSession", () => {
 	let session: ProjectionSession | null = null;
@@ -166,7 +166,37 @@ describe("ProjectionSession", () => {
 		const sources = session.getSources();
 		expect(sources.allStreams).toBe(true);
 		expect(sources.byStreams).toBe(true);
-		expect(sources.diagnostics).toBeNull();
+		// Tolerate both null and [] - the wire format may evolve, but
+		// either should mean "no diagnostics" to the consumer.
+		expect(sources.diagnostics ?? []).toHaveLength(0);
+	});
+
+	// Pin the JSON wire shape independently of the runtime - catches
+	// field-tag drift (e.g. "code" -> "id") even when the .so hasn't
+	// been rebuilt against new C# code.
+	it.each([
+		["null diagnostics", `{"allStreams":true,"diagnostics":null}`, 0],
+		["empty diagnostics", `{"allStreams":true,"diagnostics":[]}`, 0],
+		[
+			"populated",
+			`{"allStreams":true,"diagnostics":[{` +
+				`"code":"deprecated.linkStreamTo",` +
+				`"message":"linkStreamTo is undocumented",` +
+				`"severity":2,` +
+				`"range":{"start":{"line":3,"column":5},"end":{"line":3,"column":17}}` +
+				`}]}`,
+			1,
+		],
+	])("decodes %s from raw JSON", (_label, raw, expectedCount) => {
+		const info = JSON.parse(raw as string) as ProjectionInfo;
+		const diags = info.diagnostics ?? [];
+		expect(diags).toHaveLength(expectedCount as number);
+		if (expectedCount === 0) return;
+		const d = diags[0];
+		expect(d?.code).toBe("deprecated.linkStreamTo");
+		expect(d?.severity).toBe(DiagnosticSeverity.Warning);
+		expect(d?.range?.start).toEqual({ line: 3, column: 5 });
+		expect(d?.range?.end).toEqual({ line: 3, column: 17 });
 	});
 
 	it("reports linkStreamTo as a deprecation diagnostic", () => {

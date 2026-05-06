@@ -45,6 +45,7 @@ type textStyles struct {
 	errStatus lipgloss.Style
 	errDetail lipgloss.Style
 	heading   lipgloss.Style
+	info      lipgloss.Style
 }
 
 type prefixed struct {
@@ -66,6 +67,7 @@ func newTextWriter(w, errW io.Writer) *textWriter {
 			errStatus: r.NewStyle().Foreground(lipgloss.Color("9")),
 			errDetail: r.NewStyle().Foreground(lipgloss.Color("1")),
 			heading:   r.NewStyle().Bold(true),
+			info:      r.NewStyle().Foreground(lipgloss.Color("4")),
 		},
 	}
 	tw.prefixed = prefixed{tw: tw, pfx: tw.ind()}
@@ -201,7 +203,7 @@ func (tw *textWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, 
 func (tw *textWriter) writeDiagnostic(d gafferruntime.Diagnostic) {
 	header := fmt.Sprintf("[%s] %s", severityLabel(d.Severity), d.Code)
 	if d.Range != nil {
-		header += fmt.Sprintf(" (line %d:%d)", d.Range.Start.Line, d.Range.Start.Column)
+		header += fmt.Sprintf(" (line %d, col %d)", d.Range.Start.Line, d.Range.Start.Column)
 	}
 	tw.write("%s\n", tw.severityStyle(d.Severity).Render(header))
 	tw.write("%s%s\n\n", tw.ind(), d.Message)
@@ -229,7 +231,7 @@ func (tw *textWriter) severityStyle(s gafferruntime.DiagnosticSeverity) lipgloss
 	case gafferruntime.DiagnosticSeverityWarning:
 		return tw.styles.skipped
 	default:
-		return tw.styles.processed
+		return tw.styles.info
 	}
 }
 

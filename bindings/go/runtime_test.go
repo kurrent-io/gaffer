@@ -142,13 +142,68 @@ func TestGetSourcesReportsLinkStreamToDeprecation(t *testing.T) {
 	if d.Range == nil {
 		t.Fatal("expected range to be set")
 	}
-	if d.Range.Start.Line < 1 || d.Range.Start.Column < 1 {
-		t.Errorf("expected 1-based start position, got line=%d column=%d",
-			d.Range.Start.Line, d.Range.Start.Column)
+	// linkStreamTo is on the 4th line of the multiline source above
+	// (line 1 = "", line 2 = fromAll().when(...), line 3 = $any:...,
+	// line 4 = linkStreamTo(...)). 1-based.
+	if d.Range.Start.Line != 4 {
+		t.Errorf("expected start line 4, got %d", d.Range.Start.Line)
+	}
+	if d.Range.Start.Column < 1 {
+		t.Errorf("expected 1-based start column, got %d", d.Range.Start.Column)
 	}
 	if d.Range.End.Column-d.Range.Start.Column != len("linkStreamTo") {
 		t.Errorf("expected end-start to span %d chars, got %d",
 			len("linkStreamTo"), d.Range.End.Column-d.Range.Start.Column)
+	}
+}
+
+// TestProjectionInfo_DecodesDiagnosticsWireFormat pins the JSON shape
+// independently of the runtime so a tag drift (e.g. "code" -> "id") is
+// caught even when the runtime hasn't been rebuilt yet.
+func TestProjectionInfo_DecodesDiagnosticsWireFormat(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+		want int
+	}{
+		{"null", `{"allStreams":true,"diagnostics":null}`, 0},
+		{"empty", `{"allStreams":true,"diagnostics":[]}`, 0},
+		{
+			"populated",
+			`{"allStreams":true,"diagnostics":[{` +
+				`"code":"deprecated.linkStreamTo",` +
+				`"message":"linkStreamTo is undocumented",` +
+				`"severity":2,` +
+				`"range":{"start":{"line":3,"column":5},"end":{"line":3,"column":17}}` +
+				`}]}`,
+			1,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var info ProjectionInfo
+			if err := json.Unmarshal([]byte(tc.json), &info); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if len(info.Diagnostics) != tc.want {
+				t.Fatalf("want %d diagnostics, got %d", tc.want, len(info.Diagnostics))
+			}
+			if tc.want == 0 {
+				return
+			}
+			d := info.Diagnostics[0]
+			if d.Code != "deprecated.linkStreamTo" {
+				t.Errorf("code: %q", d.Code)
+			}
+			if d.Severity != DiagnosticSeverityWarning {
+				t.Errorf("severity: %d", d.Severity)
+			}
+			if d.Range == nil ||
+				d.Range.Start.Line != 3 || d.Range.Start.Column != 5 ||
+				d.Range.End.Line != 3 || d.Range.End.Column != 17 {
+				t.Errorf("range: %+v", d.Range)
+			}
+		})
 	}
 }
 

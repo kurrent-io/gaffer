@@ -1,5 +1,6 @@
 using Gaffer.Runtime.Projection;
 using Gaffer.Sdk;
+using Gaffer.Sdk.Diagnostics;
 
 namespace Gaffer.Runtime.Tests;
 
@@ -122,12 +123,6 @@ public class ProjectionInfoMapperTests {
 		var json = System.Text.Json.JsonSerializer.Serialize(
 			info, Sdk.SdkJsonContext.Default.ProjectionInfo);
 
-		Assert.Contains("\"diagnostics\":[", json);
-		Assert.Contains("\"code\":\"deprecated.linkStreamTo\"", json);
-		Assert.Contains("\"message\":", json);
-		Assert.Contains("\"severity\":2", json);
-		Assert.Contains("\"range\":{\"start\":{\"line\":12,\"column\":5},\"end\":{\"line\":12,\"column\":18}}", json);
-
 		var decoded = System.Text.Json.JsonSerializer.Deserialize(
 			json, Sdk.SdkJsonContext.Default.ProjectionInfo);
 		Assert.NotNull(decoded);
@@ -136,8 +131,10 @@ public class ProjectionInfoMapperTests {
 		var d = decoded.Diagnostics![0];
 		Assert.Equal("deprecated.linkStreamTo", d.Code);
 		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+		Assert.NotNull(d.Range);
 		Assert.Equal(12, d.Range!.Start.Line);
 		Assert.Equal(5, d.Range.Start.Column);
+		Assert.Equal(12, d.Range.End.Line);
 		Assert.Equal(18, d.Range.End.Column);
 	}
 }

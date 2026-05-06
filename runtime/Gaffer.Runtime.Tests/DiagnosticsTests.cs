@@ -1,4 +1,6 @@
-using Gaffer.Sdk;
+using Gaffer.Runtime.Errors;
+using Gaffer.Runtime.Projection;
+using Gaffer.Sdk.Diagnostics;
 
 namespace Gaffer.Runtime.Tests;
 
@@ -15,8 +17,8 @@ public class DiagnosticsTests {
 
 	[Fact]
 	public void LinkStreamTo_Detected() {
-		// linkStreamTo starts at column 42 (1-based) on line 1; "linkStreamTo" is 12 chars, end column 54.
 		var source = "fromAll().when({ $any: function (s, e) { linkStreamTo('a-' + e.streamId, e.streamId); return s; } });";
+		var expectedCol = source.IndexOf("linkStreamTo", StringComparison.Ordinal) + 1;
 
 		using var session = new ProjectionSession(source, Options);
 
@@ -27,9 +29,9 @@ public class DiagnosticsTests {
 		Assert.Contains("linkStreamTo", d.Message);
 		Assert.NotNull(d.Range);
 		Assert.Equal(1, d.Range!.Start.Line);
-		Assert.Equal(42, d.Range.Start.Column);
+		Assert.Equal(expectedCol, d.Range.Start.Column);
 		Assert.Equal(1, d.Range.End.Line);
-		Assert.Equal(54, d.Range.End.Column);
+		Assert.Equal(expectedCol + "linkStreamTo".Length, d.Range.End.Column);
 	}
 
 	[Fact]
@@ -86,6 +88,27 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		Assert.Single(session.Diagnostics!);
+	}
+
+	[Fact]
+	public void Scan_ReturnsNullOnParseFailure() {
+		// Source Acornima rejects. The fallback path in Scan catches
+		// ParseErrorException and returns null so a parser-option drift
+		// between Jint and Acornima doesn't break otherwise-valid sessions.
+		Assert.Null(DiagnosticCollector.Scan("this is not valid {{{{"));
+	}
+
+	[Fact]
+	public void Ctor_ThrowsAndDisposes_OnPostHandlerValidation() {
+		// Triggers the HandlesDeletedNotifications && !ByStreams validation
+		// throw - which happens AFTER the Jint handler is constructed, so
+		// the ctor's try/dispose block is responsible for tearing the
+		// handler down. We can't easily observe disposal directly; the test
+		// pins that the throw goes through that path without crashing.
+		Assert.Throws<InvalidProjectionException>(() =>
+			new ProjectionSession(
+				"fromAll().when({ $deleted: function (s, e) { return s; } });",
+				Options));
 	}
 
 	[Fact]

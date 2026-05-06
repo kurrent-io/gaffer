@@ -1,4 +1,5 @@
 using Gaffer.Sdk;
+using Gaffer.Sdk.Diagnostics;
 
 namespace Gaffer.Runtime.Projection;
 

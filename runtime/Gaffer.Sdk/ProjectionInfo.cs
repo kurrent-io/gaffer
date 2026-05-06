@@ -1,3 +1,5 @@
+using Gaffer.Sdk.Diagnostics;
+
 namespace Gaffer.Sdk;
 
 /// <summary>

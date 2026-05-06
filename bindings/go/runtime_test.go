@@ -110,6 +110,46 @@ func TestGetSources(t *testing.T) {
 	if !sources.ByStreams {
 		t.Fatal("expected ByStreams to be true")
 	}
+	if len(sources.Diagnostics) != 0 {
+		t.Fatalf("expected no diagnostics, got %v", sources.Diagnostics)
+	}
+}
+
+func TestGetSourcesReportsLinkStreamToDeprecation(t *testing.T) {
+	session := mustCreateSession(t, `
+		fromAll().when({
+			$any: function (s, e) {
+				linkStreamTo("archive-" + e.streamId, e.streamId);
+				return s;
+			}
+		})
+	`)
+
+	sources := session.GetSources()
+	if len(sources.Diagnostics) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %d: %v", len(sources.Diagnostics), sources.Diagnostics)
+	}
+	d := sources.Diagnostics[0]
+	if d.Code != "deprecated.linkStreamTo" {
+		t.Errorf("expected code deprecated.linkStreamTo, got %q", d.Code)
+	}
+	if d.Severity != DiagnosticSeverityWarning {
+		t.Errorf("expected severity Warning (2), got %d", d.Severity)
+	}
+	if !strings.Contains(d.Message, "linkStreamTo") {
+		t.Errorf("expected message to mention linkStreamTo, got %q", d.Message)
+	}
+	if d.Range == nil {
+		t.Fatal("expected range to be set")
+	}
+	if d.Range.Start.Line < 1 || d.Range.Start.Column < 1 {
+		t.Errorf("expected 1-based start position, got line=%d column=%d",
+			d.Range.Start.Line, d.Range.Start.Column)
+	}
+	if d.Range.End.Column-d.Range.Start.Column != len("linkStreamTo") {
+		t.Errorf("expected end-start to span %d chars, got %d",
+			len("linkStreamTo"), d.Range.End.Column-d.Range.Start.Column)
+	}
 }
 
 func TestForeachStreamPartitioning(t *testing.T) {

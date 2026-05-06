@@ -3,6 +3,13 @@ import * as v from "valibot";
 import { getLanguageClient } from "./client.js";
 import { log } from "../output.js";
 
+const ProjectionDetailsSchema = v.object({
+	connection: v.nullable(v.string()),
+	fixtures: v.array(v.string()),
+});
+
+export type ProjectionDetails = v.InferOutput<typeof ProjectionDetailsSchema>;
+
 // Wire shape - mirrors the LSP server's emitWorkspaceSymbols
 // (legacy SymbolInformation form, not LSP 3.17 WorkspaceSymbol).
 const SymbolInformationSchema = v.object({
@@ -80,4 +87,43 @@ export async function fetchProjections(): Promise<FetchProjectionsResult> {
 		}
 	}
 	return { kind: "ok", projections };
+}
+
+/**
+ * Fetch the parsed details for a single projection: its
+ * project-level connection (or null if undeclared) and the list
+ * of named fixtures. Used by the Run Projection picker to choose
+ * between live and fixture runs.
+ *
+ * Returns null on any failure (LSP not ready, request error,
+ * malformed response). The caller falls back to "live" - the
+ * worst case is the user sees the same single-step pick as
+ * before the feature landed.
+ */
+export async function fetchProjectionDetails(
+	name: string,
+	tomlUri: vscode.Uri,
+): Promise<ProjectionDetails | null> {
+	const client = getLanguageClient();
+	if (!client) return null;
+	let raw: unknown;
+	try {
+		raw = await client.sendRequest("gaffer/projectionDetails", {
+			name,
+			configURI: tomlUri.toString(),
+		});
+	} catch (err) {
+		log(
+			`gaffer/projectionDetails failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return null;
+	}
+	const parsed = v.safeParse(ProjectionDetailsSchema, raw);
+	if (!parsed.success) {
+		log(
+			`gaffer/projectionDetails: malformed response: ${parsed.issues.map((i) => i.message).join("; ")}`,
+		);
+		return null;
+	}
+	return parsed.output;
 }

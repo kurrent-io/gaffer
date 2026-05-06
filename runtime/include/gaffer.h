@@ -7,10 +7,11 @@
  * Thread safety: Sessions are NOT thread-safe. Do not feed events or query
  * state from multiple threads concurrently on the same session.
  *
- * Memory: All returned strings are owned by the runtime and valid until the
- * next API call on the same session (or globally for gaffer_get_last_error).
- * Callers must copy if they need to keep the data. Callback string arguments
- * are valid for the duration of the callback only.
+ * Memory: All returned strings are owned by the caller and must be freed via
+ * gaffer_free(). The exception is gaffer_get_last_error(), whose returned
+ * pointer is owned by the runtime and remains valid until the next API call
+ * on the same thread. Callback string arguments are valid for the duration
+ * of the callback only.
  *
  * Error handling: On failure, functions return NULL/non-zero and store
  * structured error JSON retrievable via gaffer_get_last_error(). The JSON
@@ -131,7 +132,7 @@ void gaffer_on_break(gaffer_session* session, gaffer_break_cb cb, void* user_dat
  *                     "eventType", "streamId", "sequenceNumber",
  *                     "isJson", "eventId", "created"
  *                   Optional: "data", "metadata", "linkMetadata"
- * @return JSON string with step result. Valid until next API call on this session.
+ * @return JSON string with step result. Caller must free with gaffer_free().
  *         NULL on error - call gaffer_get_last_error() for details.
  *
  *         Result shapes:
@@ -149,14 +150,14 @@ const char* gaffer_session_feed(gaffer_session* session, const char* event_json)
  * Get current state for a partition.
  * @param partition Partition key, or NULL for the default (unpartitioned) state.
  * @return State JSON string, or NULL if the partition has not been seen.
- *         Valid until the next API call on this session.
+ *         Caller must free with gaffer_free().
  */
 const char* gaffer_session_get_state(gaffer_session* session, const char* partition);
 
 /**
  * Get shared state for biState projections.
  * @return Shared state JSON, or NULL if not a biState projection or no
- *         events have been processed. Valid until the next API call.
+ *         events have been processed. Caller must free with gaffer_free().
  */
 const char* gaffer_session_get_shared_state(gaffer_session* session);
 
@@ -171,14 +172,14 @@ void gaffer_session_set_state(gaffer_session* session, const char* partition, co
  * Get the transformed result for a partition (applies transformBy/filterBy).
  * @param partition Partition key, or NULL for the default.
  * @return Result JSON, or NULL if the partition is unknown or filtered out.
- *         Valid until the next API call.
+ *         Caller must free with gaffer_free().
  */
 const char* gaffer_session_get_result(gaffer_session* session, const char* partition);
 
 /**
  * Get the source definition - what events/streams the projection reads.
  * @return JSON object describing the projection's source configuration.
- *         Valid until the next API call.
+ *         Caller must free with gaffer_free().
  */
 const char* gaffer_session_get_sources(gaffer_session* session);
 
@@ -186,7 +187,7 @@ const char* gaffer_session_get_sources(gaffer_session* session);
  * Get the partition key that would be computed for an event.
  * Only meaningful for projections using partitionBy or foreachStream.
  * @param event_json JSON event string (same shape as gaffer_session_feed).
- * @return Partition key string, or NULL. Valid until the next API call.
+ * @return Partition key string, or NULL. Caller must free with gaffer_free().
  */
 const char* gaffer_session_get_partition_key(gaffer_session* session, const char* event_json);
 
@@ -205,7 +206,7 @@ const char* gaffer_session_get_partition_key(gaffer_session* session, const char
  * @param log_message   Log message template with {expr} interpolation. NULL for normal breakpoint.
  *                      When set, logs instead of pausing (logpoint).
  * Returns JSON {"line": int, "column": int} with the actual position (1-based),
- * or NULL if no breakable position was found.
+ * or NULL if no breakable position was found. Caller must free with gaffer_free().
  */
 const char* gaffer_debug_set_breakpoint(gaffer_session* session, int line, int column, const char* condition, const char* hit_condition, const char* log_message);
 
@@ -231,6 +232,7 @@ void gaffer_debug_step_out(gaffer_session* session);
  * Get the current call stack as a JSON array.
  * Each frame: {"id": int, "name": string, "line": int, "column": int}
  * Only valid while paused. Returns NULL on error.
+ * Caller must free with gaffer_free().
  */
 const char* gaffer_debug_get_call_stack(gaffer_session* session);
 
@@ -238,6 +240,7 @@ const char* gaffer_debug_get_call_stack(gaffer_session* session);
  * Get scopes for a call frame as a JSON array.
  * Each scope: {"name": string, "variablesReference": int, "expensive": bool}
  * Only valid while paused. Returns NULL on error.
+ * Caller must free with gaffer_free().
  */
 const char* gaffer_debug_get_scopes(gaffer_session* session, int frame_index);
 
@@ -246,6 +249,7 @@ const char* gaffer_debug_get_scopes(gaffer_session* session, int frame_index);
  * Each variable: {"name": string, "value": string, "type": string, "variablesReference": int}
  * variablesReference is 0 for leaf values, non-zero for expandable objects.
  * Only valid while paused. Returns NULL on error.
+ * Caller must free with gaffer_free().
  */
 const char* gaffer_debug_get_variables(gaffer_session* session, int variables_reference);
 
@@ -253,6 +257,7 @@ const char* gaffer_debug_get_variables(gaffer_session* session, int variables_re
  * Evaluate an expression in the current debug context.
  * Returns JSON {"name": string, "value": string, "type": string, "variablesReference": int}
  * Only valid while paused. Returns NULL on error.
+ * Caller must free with gaffer_free().
  */
 const char* gaffer_debug_evaluate(gaffer_session* session, const char* expression);
 
@@ -264,11 +269,26 @@ const char* gaffer_debug_evaluate(gaffer_session* session, const char* expressio
  * Get the last error as structured JSON.
  *
  * Returns NULL if the last operation succeeded. The returned string is
- * valid until the next API call on the same thread.
+ * owned by the runtime and remains valid until the next API call on the
+ * same thread. Do not free with gaffer_free().
  *
  * @return Error JSON string, or NULL if no error.
  */
 const char* gaffer_get_last_error(void);
+
+/* --------------------------------------------------------------------------
+ * Memory management
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Free a string returned by the runtime.
+ *
+ * Use to release any non-NULL pointer returned from a string-returning API
+ * (gaffer_session_feed, gaffer_session_get_state, debug getters, ...).
+ * Do NOT pass pointers from gaffer_get_last_error() - those are runtime-owned.
+ * Passing NULL is a no-op.
+ */
+void gaffer_free(void* ptr);
 
 #ifdef __cplusplus
 }

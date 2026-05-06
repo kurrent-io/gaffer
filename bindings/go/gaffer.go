@@ -64,6 +64,7 @@ func (s *Session) Feed(eventJSON string) (*FeedResult, error) {
 	cs := C.CString(eventJSON)
 	defer C.free(unsafe.Pointer(cs))
 	result := C.gaffer_session_feed(s.handle, cs)
+	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return nil, getLastError(s.source)
 	}
@@ -84,6 +85,7 @@ func (s *Session) GetState(partition *string) *string {
 		defer C.free(unsafe.Pointer(cp))
 	}
 	result := C.gaffer_session_get_state(s.handle, cp)
+	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return nil
 	}
@@ -95,6 +97,7 @@ func (s *Session) GetState(partition *string) *string {
 func (s *Session) GetSharedState() *string {
 	s.ensureAlive()
 	result := C.gaffer_session_get_shared_state(s.handle)
+	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return nil
 	}
@@ -126,6 +129,7 @@ func (s *Session) GetResult(partition *string) (*string, error) {
 		defer C.free(unsafe.Pointer(cp))
 	}
 	result := C.gaffer_session_get_result(s.handle, cp)
+	defer C.gaffer_free(unsafe.Pointer(result))
 	if err := checkLastError(s.source); err != nil {
 		return nil, err
 	}
@@ -140,6 +144,7 @@ func (s *Session) GetResult(partition *string) (*string, error) {
 func (s *Session) GetSources() ProjectionInfo {
 	s.ensureAlive()
 	result := C.gaffer_session_get_sources(s.handle)
+	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return ProjectionInfo{}
 	}
@@ -155,6 +160,7 @@ func (s *Session) GetPartitionKey(eventJSON string) *string {
 	cs := C.CString(eventJSON)
 	defer C.free(unsafe.Pointer(cs))
 	result := C.gaffer_session_get_partition_key(s.handle, cs)
+	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return nil
 	}
@@ -216,6 +222,7 @@ func (s *Session) SetBreakpoint(line, column int, opts *BreakpointOptions) (*Sna
 		}
 	}
 	result := C.gaffer_debug_set_breakpoint(s.handle, C.int(line), C.int(column), cond, hitCond, logMsg)
+	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return nil, nil
 	}
@@ -256,6 +263,7 @@ func (s *Session) Evaluate(expression string) (*DebugVariable, error) {
 	cs := C.CString(expression)
 	defer C.free(unsafe.Pointer(cs))
 	result := C.gaffer_debug_evaluate(s.handle, cs)
+	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return nil, getLastError(s.source)
 	}
@@ -282,6 +290,7 @@ func (s *Session) Continue() {
 func (s *Session) GetCallStack() ([]DebugCallFrame, error) {
 	s.ensureAlive()
 	result := C.gaffer_debug_get_call_stack(s.handle)
+	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return nil, getLastError(s.source)
 	}
@@ -296,6 +305,7 @@ func (s *Session) GetCallStack() ([]DebugCallFrame, error) {
 func (s *Session) GetScopes(frameIndex int) ([]DebugScopeInfo, error) {
 	s.ensureAlive()
 	result := C.gaffer_debug_get_scopes(s.handle, C.int(frameIndex))
+	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return nil, getLastError(s.source)
 	}
@@ -310,6 +320,7 @@ func (s *Session) GetScopes(frameIndex int) ([]DebugScopeInfo, error) {
 func (s *Session) GetVariables(variablesReference int) ([]DebugVariable, error) {
 	s.ensureAlive()
 	result := C.gaffer_debug_get_variables(s.handle, C.int(variablesReference))
+	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return nil, getLastError(s.source)
 	}

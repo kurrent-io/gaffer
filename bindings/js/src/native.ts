@@ -118,19 +118,25 @@ export function getNativeBindings(): NativeBindings {
 
 	const l = getLib();
 
+	// Returned strings are caller-owned: we get raw pointers, decode them,
+	// then release with gaffer_free. gaffer_get_last_error is the exception -
+	// runtime-owned, no free.
 	const sessionCreate = l.func("gaffer_session_create", "intptr", [
 		"str",
 		"str",
 	]);
 	const sessionDestroy = l.func("gaffer_session_destroy", "void", ["intptr"]);
-	const sessionFeed = l.func("gaffer_session_feed", "str", ["intptr", "str"]);
-	const sessionGetState = l.func("gaffer_session_get_state", "str", [
+	const sessionFeed = l.func("gaffer_session_feed", "void*", [
+		"intptr",
+		"str",
+	]);
+	const sessionGetState = l.func("gaffer_session_get_state", "void*", [
 		"intptr",
 		"str",
 	]);
 	const sessionGetSharedState = l.func(
 		"gaffer_session_get_shared_state",
-		"str",
+		"void*",
 		["intptr"],
 	);
 	const sessionSetState = l.func("gaffer_session_set_state", "void", [
@@ -138,19 +144,20 @@ export function getNativeBindings(): NativeBindings {
 		"str",
 		"str",
 	]);
-	const sessionGetResult = l.func("gaffer_session_get_result", "str", [
+	const sessionGetResult = l.func("gaffer_session_get_result", "void*", [
 		"intptr",
 		"str",
 	]);
-	const sessionGetSources = l.func("gaffer_session_get_sources", "str", [
+	const sessionGetSources = l.func("gaffer_session_get_sources", "void*", [
 		"intptr",
 	]);
 	const sessionGetPartitionKey = l.func(
 		"gaffer_session_get_partition_key",
-		"str",
+		"void*",
 		["intptr", "str"],
 	);
 	const getLastError = l.func("gaffer_get_last_error", "str", []);
+	const gafferFree = l.func("gaffer_free", "void", ["void*"]);
 	const onEmit = l.func("gaffer_on_emit", "void", [
 		"intptr",
 		koffi.pointer(emitCbType),
@@ -167,23 +174,32 @@ export function getNativeBindings(): NativeBindings {
 		"void*",
 	]);
 
+	function consumeStr(ptr: unknown): string | null {
+		if (ptr == null) return null;
+		try {
+			return koffi.decode(ptr, "str") as string;
+		} finally {
+			gafferFree(ptr);
+		}
+	}
+
 	bindings = {
 		sessionCreate: (source, optionsJson) =>
 			sessionCreate(source, optionsJson) as number,
 		sessionDestroy: (handle) => sessionDestroy(handle),
 		sessionFeed: (handle, eventJson) =>
-			sessionFeed(handle, eventJson) as string | null,
+			consumeStr(sessionFeed(handle, eventJson)),
 		sessionGetState: (handle, partition) =>
-			sessionGetState(handle, partition) as string | null,
+			consumeStr(sessionGetState(handle, partition)),
 		sessionGetSharedState: (handle) =>
-			sessionGetSharedState(handle) as string | null,
+			consumeStr(sessionGetSharedState(handle)),
 		sessionSetState: (handle, partition, stateJson) =>
 			sessionSetState(handle, partition, stateJson),
 		sessionGetResult: (handle, partition) =>
-			sessionGetResult(handle, partition) as string | null,
-		sessionGetSources: (handle) => sessionGetSources(handle) as string | null,
+			consumeStr(sessionGetResult(handle, partition)),
+		sessionGetSources: (handle) => consumeStr(sessionGetSources(handle)),
 		sessionGetPartitionKey: (handle, eventJson) =>
-			sessionGetPartitionKey(handle, eventJson) as string | null,
+			consumeStr(sessionGetPartitionKey(handle, eventJson)),
 		getLastError: () => getLastError() as string | null,
 		onEmit: (handle, cb) => {
 			const nativeCb = koffi.register(

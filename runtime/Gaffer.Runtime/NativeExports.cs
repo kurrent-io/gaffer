@@ -23,25 +23,6 @@ internal static unsafe class NativeExports {
 
 	private sealed class SessionHandle {
 		public required ProjectionSession Session { get; init; }
-		public byte* LastReturnedPtr { get; set; }
-
-	}
-
-	private static byte* ToUnmanaged(SessionHandle handle, string? value) {
-		if (handle.LastReturnedPtr != null) {
-			NativeMemory.Free(handle.LastReturnedPtr);
-			handle.LastReturnedPtr = null;
-		}
-
-		if (value == null)
-			return null;
-
-		var bytes = Encoding.UTF8.GetBytes(value);
-		var ptr = (byte*)NativeMemory.Alloc((nuint)(bytes.Length + 1));
-		bytes.CopyTo(new Span<byte>(ptr, bytes.Length));
-		ptr[bytes.Length] = 0;
-		handle.LastReturnedPtr = ptr;
-		return ptr;
 	}
 
 	private static string? FromUtf8(byte* ptr) {
@@ -280,9 +261,6 @@ internal static unsafe class NativeExports {
 			return;
 
 		try {
-			if (handle.LastReturnedPtr != null)
-				NativeMemory.Free(handle.LastReturnedPtr);
-
 			handle.Session.Dispose();
 		} catch {
 			// Best effort cleanup
@@ -383,7 +361,7 @@ internal static unsafe class NativeExports {
 			var evt = ParseEvent(json);
 			var result = handle.Session.Feed(evt);
 			ClearLastError();
-			return ToUnmanaged(handle, SerializeFeedResult(result));
+			return AllocUtf8(SerializeFeedResult(result));
 		} catch (Exception ex) {
 			SetLastError(ex);
 			return null;
@@ -401,7 +379,7 @@ internal static unsafe class NativeExports {
 		try {
 			var state = handle.Session.GetState(FromUtf8(partition));
 			ClearLastError();
-			return ToUnmanaged(handle, state);
+			return AllocUtf8(state);
 		} catch (Exception ex) {
 			SetLastError(ex);
 			return null;
@@ -415,9 +393,9 @@ internal static unsafe class NativeExports {
 			return null;
 		}
 		try {
-			var result = ToUnmanaged(handle, handle.Session.GetSharedState());
+			var sharedState = handle.Session.GetSharedState();
 			ClearLastError();
-			return result;
+			return AllocUtf8(sharedState);
 		} catch (Exception ex) {
 			SetLastError(ex);
 			return null;
@@ -445,9 +423,9 @@ internal static unsafe class NativeExports {
 			return null;
 		}
 		try {
-			var result = ToUnmanaged(handle, handle.Session.GetResult(FromUtf8(partition)));
+			var transformed = handle.Session.GetResult(FromUtf8(partition));
 			ClearLastError();
-			return result;
+			return AllocUtf8(transformed);
 		} catch (Exception ex) {
 			SetLastError(ex);
 			return null;
@@ -464,7 +442,7 @@ internal static unsafe class NativeExports {
 			var info = ProjectionInfoMapper.ToProjectionInfo(handle.Session.Sources);
 			var json = JsonSerializer.Serialize(info, SdkJsonContext.Default.ProjectionInfo);
 			ClearLastError();
-			return ToUnmanaged(handle, json);
+			return AllocUtf8(json);
 		} catch (Exception ex) {
 			SetLastError(ex);
 			return null;
@@ -485,7 +463,7 @@ internal static unsafe class NativeExports {
 			}
 			var evt = ParseEvent(json);
 			ClearLastError();
-			return ToUnmanaged(handle, handle.Session.GetPartitionKey(evt));
+			return AllocUtf8(handle.Session.GetPartitionKey(evt));
 		} catch (Exception ex) {
 			SetLastError(ex);
 			return null;
@@ -506,7 +484,7 @@ internal static unsafe class NativeExports {
 			if (snapped == null)
 				return null;
 			var json = $"{{\"line\":{snapped.Value.Line},\"column\":{snapped.Value.Column}}}";
-			return ToUnmanaged(handle, json);
+			return AllocUtf8(json);
 		} catch (Exception ex) {
 			SetLastError(ex);
 			return null;
@@ -589,7 +567,7 @@ internal static unsafe class NativeExports {
 		try {
 			var frames = handle.Session.GetCallStack();
 			ClearLastError();
-			return ToUnmanaged(handle, SerializeCallStack(frames));
+			return AllocUtf8(SerializeCallStack(frames));
 		} catch (Exception ex) {
 			SetLastError(ex);
 			return null;
@@ -605,7 +583,7 @@ internal static unsafe class NativeExports {
 		try {
 			var scopes = handle.Session.GetScopes(frameIndex);
 			ClearLastError();
-			return ToUnmanaged(handle, SerializeScopes(scopes));
+			return AllocUtf8(SerializeScopes(scopes));
 		} catch (Exception ex) {
 			SetLastError(ex);
 			return null;
@@ -621,7 +599,7 @@ internal static unsafe class NativeExports {
 		try {
 			var variables = handle.Session.GetVariables(variablesReference);
 			ClearLastError();
-			return ToUnmanaged(handle, SerializeVariables(variables));
+			return AllocUtf8(SerializeVariables(variables));
 		} catch (Exception ex) {
 			SetLastError(ex);
 			return null;
@@ -695,7 +673,7 @@ internal static unsafe class NativeExports {
 			}
 			var result = handle.Session.Evaluate(expr);
 			ClearLastError();
-			return ToUnmanaged(handle, SerializeVariable(result));
+			return AllocUtf8(SerializeVariable(result));
 		} catch (Exception ex) {
 			SetLastError(ex);
 			return null;
@@ -713,6 +691,14 @@ internal static unsafe class NativeExports {
 		writer.WriteEndObject();
 		writer.Flush();
 		return Encoding.UTF8.GetString(stream.ToArray());
+	}
+
+	// -- Memory management --
+
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_free")]
+	public static void Free(void* ptr) {
+		if (ptr != null)
+			NativeMemory.Free(ptr);
 	}
 
 	// -- Error handling --

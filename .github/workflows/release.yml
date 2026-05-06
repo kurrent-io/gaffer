@@ -1,0 +1,37 @@
+name: Release
+
+# Manually-triggered placeholder. Each publish ticket fills in its own
+# job: UI-1530 (CLI), UI-1536 (runtime), UI-1537 (testing library),
+# UI-1532 (VS Code extension). Changesets (UI-1534) wires release
+# triggering once those jobs exist.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish-cli:
+    name: Publish @kurrent/gaffer (CLI)
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Stub. Filled in by UI-1530."
+
+  publish-runtime:
+    name: Publish @kurrent/gaffer-runtime
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Stub. Filled in by UI-1536."
+
+  publish-testing:
+    name: Publish @kurrent/projections-testing
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Stub. Filled in by UI-1537."
+
+  publish-vscode:
+    name: Publish VS Code extension
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Stub. Filled in by UI-1532."

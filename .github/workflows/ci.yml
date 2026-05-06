@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache-dependency-path: cli/go.sum
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: extractions/setup-just@v3
+
+      - name: Install module dependencies
+        run: just init
+
+      - name: Check formatting and linting
+        run: just check
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache-dependency-path: cli/go.sum
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: extractions/setup-just@v3
+
+      - name: Install module dependencies
+        run: just init
+
+      # Publish gaffer.so once. The public build/test/test-integration
+      # targets each depend on _runtime; calling them sequentially would
+      # let dotnet's incremental build skip work but still run noise. By
+      # publishing once and then invoking the underscore-prefixed
+      # orchestration recipes directly we avoid the redundancy.
+      - name: Publish runtime (NativeAOT)
+        run: just runtime publish
+
+      - name: Build other modules
+        run: just _build
+
+      - name: Unit tests
+        run: just _test
+
+      - name: Start KurrentDB
+        run: just db-up
+
+      - name: Integration tests
+        run: just _test-integration
+
+      - name: KurrentDB logs
+        if: failure()
+        run: docker compose -f tools/kurrentdb/docker-compose.yml logs
+
+      - name: Stop KurrentDB
+        if: always()
+        run: just db-down

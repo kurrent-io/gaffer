@@ -75,8 +75,10 @@ export async function activate(
 
 	// Spawn the LSP server. The lens provider activates once
 	// the client is ready; until then provideCodeLenses returns
-	// [] (briefly, while initialize completes).
-	void startLanguageClient(context, (client) => {
+	// [] (briefly, while initialize completes). startLanguageClient
+	// owns the trust gate and will defer the spawn until trust
+	// is granted if the workspace is currently untrusted.
+	startLanguageClient(context, (client) => {
 		lspCodeLens.setClient(client);
 	});
 

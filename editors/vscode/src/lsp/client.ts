@@ -11,26 +11,46 @@ import { log } from "../output.js";
 let client: LanguageClient | undefined;
 
 /**
- * Start the gaffer LSP client. Spawns `gaffer lsp` over stdio
- * via the User-scope `gaffer.command` argv.
+ * Start the gaffer LSP client iff the workspace is currently
+ * trusted, and re-attempt a start when trust is later granted.
  *
- * The document selector covers gaffer.toml (where the server
- * does the actual parsing) and JavaScript files (where the
- * server emits entry-script lenses by cross-referencing every
- * cached toml's projection entry paths). The watcher pattern
- * is registered server-side via dynamic capability
- * registration.
+ * The trust gate matches the manifest fetch path
+ * (`tryFetchManifest` in `discovery/cli.ts`) and the spawn
+ * promise declared in `package.json`'s `untrustedWorkspaces`
+ * capability ("debugging is disabled until the workspace is
+ * trusted"). The LSP server walks workspace files and parses
+ * `gaffer.toml`s; an untrusted workspace's content shouldn't be
+ * fed into a process the user implicitly trusts.
  *
- * Resolves once the client is ready (initialize handshake
- * complete) or has failed to start. Failures log to the
- * "Gaffer LSP" output channel; the rest of the extension
- * (commands, panels, DAP) keeps working.
+ * Spawns `gaffer lsp` over stdio using the User-scope
+ * `gaffer.command` argv. Document selector covers `gaffer.toml`
+ * and JavaScript files. The watcher pattern is registered
+ * server-side via dynamic capability registration.
  *
  * onReady fires exactly once with the live client when start
  * succeeds. Callers register lens providers etc. that depend
  * on a working client.
  */
-export async function startLanguageClient(
+export function startLanguageClient(
+	context: vscode.ExtensionContext,
+	onReady?: (client: LanguageClient) => void,
+): void {
+	const tryStart = (): void => {
+		if (!vscode.workspace.isTrusted) {
+			log("LSP client: workspace untrusted, deferring spawn");
+			return;
+		}
+		void spawnLanguageClient(context, onReady);
+	};
+	tryStart();
+	context.subscriptions.push(
+		vscode.workspace.onDidGrantWorkspaceTrust(() => {
+			if (!client) tryStart();
+		}),
+	);
+}
+
+async function spawnLanguageClient(
 	context: vscode.ExtensionContext,
 	onReady?: (client: LanguageClient) => void,
 ): Promise<void> {
@@ -45,12 +65,14 @@ export async function startLanguageClient(
 		run: { command, args, transport: TransportKind.stdio },
 		debug: { command, args, transport: TransportKind.stdio },
 	};
+	const channel = vscode.window.createOutputChannel("Gaffer LSP");
+	context.subscriptions.push(channel);
 	const clientOptions: LanguageClientOptions = {
 		documentSelector: [
 			{ scheme: "file", pattern: "**/gaffer.toml" },
 			{ scheme: "file", language: "javascript" },
 		],
-		outputChannel: vscode.window.createOutputChannel("Gaffer LSP"),
+		outputChannel: channel,
 	};
 	const c = new LanguageClient(
 		"gaffer-lsp",
@@ -58,22 +80,33 @@ export async function startLanguageClient(
 		serverOptions,
 		clientOptions,
 	);
-	// Push the disposable BEFORE awaiting start - if activation
-	// disposes mid-start, the partially-initialised client still
-	// gets stop()ped (no-op on a not-yet-started client).
+	// Push the disposable BEFORE awaiting start so a mid-init
+	// dispose cancels cleanly. The dispose returns the stop()
+	// Promise so VS Code (which awaits disposables on
+	// extension teardown) waits for the child process to flush.
+	let disposed = false;
 	context.subscriptions.push({
 		dispose: () => {
-			void c.stop();
+			disposed = true;
+			return c.stop();
 		},
 	});
 	try {
 		await c.start();
+		// If the disposable fired between push and now, c.stop()
+		// already ran (or is racing); don't promote the dead
+		// client to the module-level `client` or fire onReady on
+		// a torn-down session.
+		if (disposed) return;
 		client = c;
 		log("LSP client started");
 		onReady?.(c);
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
 		log(`LSP client failed to start: ${msg}`);
+		void vscode.window.showWarningMessage(
+			`Gaffer LSP failed to start: ${msg}. Check the "Gaffer LSP" output channel for details.`,
+		);
 	}
 }
 

@@ -1,0 +1,24 @@
+{
+	"name": "@kurrent/gaffer-runtime-darwin-x64",
+	"version": "0.1.0",
+	"description": "Gaffer projection runtime native binary for macOS x64",
+	"license": "LicenseRef-KurrentLicenseV1",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/kurrent-io/gaffer.git",
+		"directory": "bindings/js/native/darwin-x64"
+	},
+	"homepage": "https://github.com/kurrent-io/gaffer#readme",
+	"bugs": {
+		"url": "https://github.com/kurrent-io/gaffer/issues"
+	},
+	"os": [
+		"darwin"
+	],
+	"cpu": [
+		"x64"
+	],
+	"files": [
+		"gaffer.dylib"
+	]
+}

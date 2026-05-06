@@ -486,6 +486,39 @@ func TestServer_AcceptsNullWorkspaceFolders(t *testing.T) {
 	<-done
 }
 
+func TestExtractRoots_FiltersNonFileURIs(t *testing.T) {
+	// vscode-vfs and untitled URIs aren't on the local fs - the
+	// walker would emit log noise trying to ReadDir them. Drop
+	// silently so a multi-folder workspace mixing local and
+	// remote roots still walks the local ones.
+	got := extractRoots(InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{
+			{URI: "file:///local", Name: "local"},
+			{URI: "vscode-vfs://github/owner/repo", Name: "remote"},
+			{URI: "untitled:Untitled-1", Name: "buffer"},
+			{URI: "file:///also-local", Name: "also"},
+		},
+	})
+	want := []string{"/local", "/also-local"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("extractRoots: got %v want %v", got, want)
+	}
+}
+
+func TestExtractRoots_PrefersWorkspaceFoldersOverRootURI(t *testing.T) {
+	// When both are present, WorkspaceFolders wins per the LSP
+	// spec. RootURI is the older single-folder fallback.
+	got := extractRoots(InitializeParams{
+		RootURI: "file:///old",
+		WorkspaceFolders: []WorkspaceFolder{
+			{URI: "file:///new", Name: "new"},
+		},
+	})
+	if !reflect.DeepEqual(got, []string{"/new"}) {
+		t.Errorf("expected WorkspaceFolders to win, got %v", got)
+	}
+}
+
 func TestServer_FallsBackToRootURIWhenWorkspaceFoldersAbsent(t *testing.T) {
 	// Older LSP clients may not send WorkspaceFolders. The server
 	// must still walk the rootUri so the lens contract holds for
@@ -513,6 +546,18 @@ func TestServer_FallsBackToRootURIWhenWorkspaceFoldersAbsent(t *testing.T) {
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
 	<-done
+}
+
+func TestServer_SpawnRefusesAfterDraining(t *testing.T) {
+	// Race regression: a handler that calls spawn after Run's
+	// defer set draining=true must not increment wg (Add(1) racing
+	// Wait is undefined under sync.WaitGroup's contract). Verify
+	// spawn returns false in that state.
+	server := NewServer(ServerOptions{})
+	server.draining = true
+	if server.spawn(func() { t.Error("spawn should not have run fn") }) {
+		t.Error("spawn returned true while draining")
+	}
 }
 
 func TestServer_DidOpenSameURITwiceOverwritesBuffer(t *testing.T) {

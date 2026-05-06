@@ -560,11 +560,16 @@ fixtures.happy = "fixtures/happy.json"
 
 func TestServer_DidChangeWatchedFiles_ChangedThenDeletedOrderPreserved(t *testing.T) {
 	// Load-bearing per walk.go's comment: a [Changed, Deleted]
-	// burst on the same URI must apply IN ORDER. If Changed
-	// spawned its own goroutine while Deleted ran inline, the
-	// async seedFromDisk could re-insert a URI the synchronous
-	// Close just dropped. applyWatchedFileEvents replays the
-	// batch on a single goroutine to guarantee order.
+	// burst on the same URI must apply IN ORDER. If Changed ran
+	// its seedFromDisk asynchronously while Deleted ran inline,
+	// the late Changed parse would publish non-empty diagnostics
+	// AFTER the empty publish from Deleted. applyWatchedFileEvents
+	// replays the batch on a single goroutine to guarantee order.
+	//
+	// Assertion shape: the FINAL publish for the URI is the empty
+	// (deleted) one. "URI absent from store at end" alone wouldn't
+	// distinguish - that holds even if Changed re-inserted then
+	// some later cleanup removed it.
 	srv, cli := pipePair()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -599,12 +604,23 @@ fixtures.evil = "../escape.json"
 		},
 	})
 
-	// Final state must be: URI absent from store. If Changed
-	// raced past Deleted we'd see it back in the store.
+	// Wait for the empty (deleted) publish to arrive.
 	waitFor(t, func() bool {
-		_, ok := server.docs.Get(uri)
-		return !ok
+		got := findPublishDiagnostics(stub.notifSnapshot(), uri)
+		return got != nil && len(got.Diagnostics) == 0
 	}, time.Second)
+	// Sleep past any spurious late Changed publish from a
+	// parallelised implementation. If parsing was kicked off
+	// async, its publish would land here.
+	time.Sleep(150 * time.Millisecond)
+
+	got := findPublishDiagnostics(stub.notifSnapshot(), uri)
+	if got == nil {
+		t.Fatal("expected a publish for URI")
+	}
+	if len(got.Diagnostics) != 0 {
+		t.Errorf("expected final publish to be empty (Deleted last), got %+v", got.Diagnostics)
+	}
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)

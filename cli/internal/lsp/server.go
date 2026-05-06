@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,6 +52,12 @@ type Server struct {
 	conn        *jsonrpc2.Conn // captured during Run, used for server-pushed notifications
 	initialized bool
 	shutdownReq bool
+	// draining flips true once Run's defer starts winding down.
+	// spawn() checks this under mu before incrementing wg; without
+	// the gate, a handler racing teardown could call wg.Add(1)
+	// after wg.Wait had already returned, which is a documented
+	// data race for sync.WaitGroup.
+	draining bool
 	// runCtx is cancelled when Run is about to return (clean exit,
 	// disconnect, or ctx-Done). Long-running work spawned from
 	// handlers - the workspace walk, watched-file event processing -
@@ -118,16 +125,23 @@ func (s *Server) Run(ctx context.Context, stream io.ReadWriteCloser) error {
 	s.cancelRun = cancel
 	s.mu.Unlock()
 	defer func() {
-		// Cancel runCtx first so any in-flight parseAndPublish
-		// notices and exits its DescribeBytes call promptly. Then
-		// drain pending timers - any already-queued callback's
-		// identity check finds an empty map and bails. Wait for
-		// every spawned goroutine to settle before clearing the
-		// captured fields, so handlers can rely on conn / runCtx
-		// being non-nil for the lifetime of any goroutine they
-		// launched.
+		// Teardown order:
+		//   1. Cancel runCtx so in-flight parseAndPublish notices
+		//      and exits its DescribeBytes call promptly.
+		//   2. Drain debouncer timers - any already-queued
+		//      callback's identity check finds an empty map and
+		//      bails.
+		//   3. Set draining under mu - spawn() now refuses new
+		//      work, so wg.Add can no longer race wg.Wait.
+		//   4. Wait for already-spawned goroutines to settle.
+		//   5. Clear captured fields. Goroutines that ran during
+		//      steps 1-4 saw the still-live conn/runCtx, which is
+		//      what the wg promise gives them.
 		cancel()
 		s.debouncer.drain()
+		s.mu.Lock()
+		s.draining = true
+		s.mu.Unlock()
 		s.wg.Wait()
 		s.mu.Lock()
 		s.conn = nil
@@ -343,22 +357,29 @@ func (s *Server) handleCodeLens(req *jsonrpc2.Request) (interface{}, error) {
 
 // extractRoots returns workspace folder paths in WorkspaceFolders
 // (preferred per the LSP spec) or, for older clients, falls back
-// to RootURI. Empty slice for single-buffer sessions without any
+// to RootURI. Non-file URIs (vscode-vfs://, untitled:, etc.) are
+// dropped - the workspace walker reads from the local filesystem,
+// so a remote-workspace URI would surface as a "permission denied"
+// log line. Empty slice for single-buffer sessions without any
 // workspace.
 func extractRoots(params InitializeParams) []string {
 	var roots []string
+	add := func(uri string) {
+		if !strings.HasPrefix(uri, "file://") {
+			return
+		}
+		if path := uriToPath(uri); path != "" {
+			roots = append(roots, path)
+		}
+	}
 	if len(params.WorkspaceFolders) > 0 {
 		for _, wf := range params.WorkspaceFolders {
-			if path := uriToPath(wf.URI); path != "" {
-				roots = append(roots, path)
-			}
+			add(wf.URI)
 		}
 		return roots
 	}
 	if params.RootURI != "" {
-		if path := uriToPath(params.RootURI); path != "" {
-			roots = append(roots, path)
-		}
+		add(params.RootURI)
 	}
 	return roots
 }
@@ -375,12 +396,27 @@ func (s *Server) snapshotRunState() (*jsonrpc2.Conn, context.Context) {
 
 // spawn runs fn in a goroutine tracked by s.wg so Run's defer
 // can wait for it to drain before clearing captured fields.
-func (s *Server) spawn(fn func()) {
+// Returns false (and does not run fn) if Run has begun winding
+// down - no-op for callers, since the runCtx they captured is
+// already cancelled and any work would terminate immediately.
+//
+// The draining check + wg.Add(1) MUST happen under s.mu.
+// Otherwise a handler could pass snapshotRunState (getting non-
+// nil conn/ctx) and call spawn after Run's defer began wg.Wait
+// with counter zero - the resulting Add races with Wait.
+func (s *Server) spawn(fn func()) bool {
+	s.mu.Lock()
+	if s.draining {
+		s.mu.Unlock()
+		return false
+	}
 	s.wg.Add(1)
+	s.mu.Unlock()
 	go func() {
 		defer s.wg.Done()
 		fn()
 	}()
+	return true
 }
 
 // decodeParams is the shared boilerplate for unmarshalling a

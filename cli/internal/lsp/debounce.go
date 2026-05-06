@@ -40,6 +40,12 @@ func newDebouncer(window time.Duration) *debouncer {
 // schedule (re-)arms the timer for `key`. After the window
 // elapses with no further schedule calls, fn runs in its own
 // goroutine.
+//
+// fn MUST be cancellation-aware: drain() stops the timer but
+// can't reach into a callback that already fired - it relies on
+// fn observing whatever cancellation signal the caller arranged
+// (typically a context the caller captured). A non-cancellable
+// fn would outlive shutdown.
 func (d *debouncer) schedule(key string, fn func()) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

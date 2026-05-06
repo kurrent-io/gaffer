@@ -1,10 +1,30 @@
 package lsp
 
 import (
+	"iter"
 	"path/filepath"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 )
+
+// validProjections yields each (parse, projection) pair across
+// every cached parse where the projection has no header-level
+// diagnostic. Skips non-actionable projections so callers don't
+// have to repeat the `if p.Diagnostic != nil { continue }` dance.
+func validProjections(parses []parseResult) iter.Seq2[parseResult, config.ProjectionDescription] {
+	return func(yield func(parseResult, config.ProjectionDescription) bool) {
+		for _, parse := range parses {
+			for _, p := range parse.Description.Projections {
+				if p.Diagnostic != nil {
+					continue
+				}
+				if !yield(parse, p) {
+					return
+				}
+			}
+		}
+	}
+}
 
 // emitCodeLenses converts a config.Description into the LSP code
 // lenses to render. Three kinds today:
@@ -144,47 +164,41 @@ func emitEntryScriptLenses(parses []parseResult, uri string) []CodeLens {
 	}
 	out := []CodeLens{}
 	zeroRange := Range{Start: Position{Line: 0, Character: 0}, End: Position{Line: 0, Character: 0}}
-	for _, parse := range parses {
-		desc := parse.Description
-		for _, p := range desc.Projections {
-			if p.Diagnostic != nil {
+	for parse, p := range validProjections(parses) {
+		if p.EntryAbsPath != target {
+			continue
+		}
+		tomlURI := pathToURI(parse.Description.ConfigFile)
+		out = append(out, CodeLens{
+			Range: zeroRange,
+			Command: &Command{
+				Title:   `Debug "` + p.Name + `"`,
+				Command: CommandDebugProjection,
+				Arguments: []interface{}{
+					projectionArgs{Name: p.Name, ConfigURI: tomlURI},
+				},
+			},
+			Data: &CodeLensData{Intent: IntentDebug},
+		})
+		validNames := make([]string, 0, len(p.Fixtures))
+		for _, fx := range p.Fixtures {
+			if fx.Diagnostic != nil {
 				continue
 			}
-			if p.EntryAbsPath != target {
-				continue
-			}
-			tomlURI := pathToURI(desc.ConfigFile)
+			validNames = append(validNames, fx.Name)
+		}
+		if len(validNames) > 0 {
 			out = append(out, CodeLens{
 				Range: zeroRange,
 				Command: &Command{
-					Title:   `Debug "` + p.Name + `"`,
-					Command: CommandDebugProjection,
+					Title:   `Debug "` + p.Name + `" from fixture...`,
+					Command: CommandDebugProjectionPick,
 					Arguments: []interface{}{
-						projectionArgs{Name: p.Name, ConfigURI: tomlURI},
+						projectionPickArgs{Name: p.Name, ConfigURI: tomlURI, FixtureNames: validNames},
 					},
 				},
-				Data: &CodeLensData{Intent: IntentDebug},
+				Data: &CodeLensData{Intent: IntentDebugChoose},
 			})
-			validNames := make([]string, 0, len(p.Fixtures))
-			for _, fx := range p.Fixtures {
-				if fx.Diagnostic != nil {
-					continue
-				}
-				validNames = append(validNames, fx.Name)
-			}
-			if len(validNames) > 0 {
-				out = append(out, CodeLens{
-					Range: zeroRange,
-					Command: &Command{
-						Title:   `Debug "` + p.Name + `" from fixture...`,
-						Command: CommandDebugProjectionPick,
-						Arguments: []interface{}{
-							projectionPickArgs{Name: p.Name, ConfigURI: tomlURI, FixtureNames: validNames},
-						},
-					},
-					Data: &CodeLensData{Intent: IntentDebugChoose},
-				})
-			}
 		}
 	}
 	return out
@@ -202,24 +216,16 @@ func emitEntryScriptLenses(parses []parseResult, uri string) []CodeLens {
 // rather than the raw absolute path.
 func emitWorkspaceSymbols(parses []parseResult) []SymbolInformation {
 	out := []SymbolInformation{}
-	for _, parse := range parses {
-		desc := parse.Description
-		uri := pathToURI(desc.ConfigFile)
-		container := filepath.Base(desc.ConfigFile)
-		for _, p := range desc.Projections {
-			if p.Diagnostic != nil {
-				continue
-			}
-			out = append(out, SymbolInformation{
-				Name: p.Name,
-				Kind: SymbolKindFunction,
-				Location: Location{
-					URI:   uri,
-					Range: rangeToLSP(p.Range),
-				},
-				ContainerName: container,
-			})
-		}
+	for parse, p := range validProjections(parses) {
+		out = append(out, SymbolInformation{
+			Name: p.Name,
+			Kind: SymbolKindFunction,
+			Location: Location{
+				URI:   pathToURI(parse.Description.ConfigFile),
+				Range: rangeToLSP(p.Range),
+			},
+			ContainerName: filepath.Base(parse.Description.ConfigFile),
+		})
 	}
 	return out
 }

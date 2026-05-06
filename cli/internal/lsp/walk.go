@@ -131,12 +131,10 @@ func (s *Server) handleDidChangeWatchedFiles(_ context.Context, req *jsonrpc2.Re
 	if jerr != nil {
 		return nil, jerr
 	}
-	_, runCtx := s.snapshotRunState()
-	if runCtx == nil {
-		return nil, nil
-	}
 	events := params.Changes
-	s.spawn(func() { s.applyWatchedFileEvents(runCtx, events) })
+	s.spawnWithCtx(func(runCtx context.Context) {
+		s.applyWatchedFileEvents(runCtx, events)
+	})
 	return nil, nil
 }
 

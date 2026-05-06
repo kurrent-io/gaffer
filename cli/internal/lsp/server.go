@@ -37,6 +37,18 @@ type Server struct {
 	conn        *jsonrpc2.Conn // captured during Run, used for server-pushed notifications
 	initialized bool
 	shutdownReq bool
+	// runCtx is cancelled when Run is about to return (clean exit,
+	// disconnect, or ctx-Done). Long-running work spawned from
+	// handlers - the workspace walk, watched-file event processing -
+	// derive from this so shutdown doesn't leave goroutines blocked
+	// on I/O after the connection is gone.
+	runCtx    context.Context
+	cancelRun context.CancelFunc
+	// roots holds workspace folder paths captured from initialize.
+	// Used by the initialized handler to walk for gaffer.toml files.
+	// Stored as filesystem paths (URIs converted at capture time)
+	// so the walker doesn't need to re-do the conversion.
+	roots []string
 	// exitCh closes when the client sends `exit`. Run selects on
 	// this so the server tears down its connection without waiting
 	// for the client to also close stdin (a well-behaved client
@@ -64,20 +76,28 @@ func NewServer(opts ServerOptions) *Server {
 // exit). Callers map clean shutdown to exit code 0 and protocol
 // errors to non-zero.
 func (s *Server) Run(ctx context.Context, stream io.ReadWriteCloser) error {
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	conn := jsonrpc2.NewConn(
-		ctx,
+		runCtx,
 		jsonrpc2.NewBufferedStream(stream, jsonrpc2.VSCodeObjectCodec{}),
 		jsonrpc2.HandlerWithError(s.handle),
 	)
-	// Capture the conn for server-pushed notifications
-	// (publishDiagnostics). Cleared on disconnect so handlers
-	// that reach for it post-shutdown bail cleanly.
+	// Capture the conn + runCtx for server-pushed notifications
+	// (publishDiagnostics, registerCapability) and for spawned work
+	// (workspace walk) that needs a shutdown signal. Cleared on
+	// disconnect so handlers that reach for them post-shutdown bail
+	// cleanly.
 	s.mu.Lock()
 	s.conn = conn
+	s.runCtx = runCtx
+	s.cancelRun = cancel
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
 		s.conn = nil
+		s.runCtx = nil
+		s.cancelRun = nil
 		s.mu.Unlock()
 	}()
 	// Three ways out: peer disconnects, client sent exit (we drive
@@ -103,8 +123,16 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 	case MethodInitialize:
 		return s.handleInitialize(ctx, req)
 	case MethodInitialized:
-		// Notification, no response. Currently a no-op; chunks 2.4+
-		// will use it as the signal to register watchers.
+		// Notification. Now the client is ready to receive
+		// server-pushed messages, kick off the workspace walk and
+		// register the watcher pattern. Uses runCtx so shutdown
+		// cancels any in-flight walk.
+		s.mu.Lock()
+		runCtx := s.runCtx
+		s.mu.Unlock()
+		if runCtx != nil {
+			go s.handleInitialized(runCtx)
+		}
 		return nil, nil
 	case MethodShutdown:
 		return s.handleShutdown()
@@ -126,6 +154,8 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 		return nil, nil
 	case MethodCodeLens:
 		return s.handleCodeLens(req)
+	case MethodDidChangeWatchedFiles:
+		return s.handleDidChangeWatchedFiles(ctx, req)
 	default:
 		// CodeMethodNotFound is dropped by jsonrpc2 when the
 		// inbound was a notification (no ID, no response slot).
@@ -147,17 +177,30 @@ func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (int
 			Message: "initialize called twice",
 		}
 	}
-	// Validate params shape now even though we don't use the
-	// content yet - rejects malformed initialize requests upfront
-	// rather than letting them through to be re-parsed (and
-	// possibly fail differently) once chunks 2.2+ wire workspace
-	// folders into the document store.
+	// Capture workspace roots for the initialized-time walk.
+	// WorkspaceFolders supersedes RootURI per the LSP spec; fall
+	// back to RootURI only when the modern field is absent (older
+	// clients, or callers that haven't set it). Empty params is
+	// legal - the server still works for single-buffer sessions
+	// without any workspace.
+	s.roots = nil
 	if req.Params != nil {
 		var params InitializeParams
 		if err := json.Unmarshal(*req.Params, &params); err != nil {
 			return nil, &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInvalidParams,
 				Message: err.Error(),
+			}
+		}
+		if len(params.WorkspaceFolders) > 0 {
+			for _, wf := range params.WorkspaceFolders {
+				if path := uriToPath(wf.URI); path != "" {
+					s.roots = append(s.roots, path)
+				}
+			}
+		} else if params.RootURI != "" {
+			if path := uriToPath(params.RootURI); path != "" {
+				s.roots = append(s.roots, path)
 			}
 		}
 	}

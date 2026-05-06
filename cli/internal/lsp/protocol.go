@@ -29,6 +29,9 @@ const (
 
 	MethodCodeLens           = "textDocument/codeLens"
 	MethodPublishDiagnostics = "textDocument/publishDiagnostics"
+
+	MethodDidChangeWatchedFiles = "workspace/didChangeWatchedFiles"
+	MethodRegisterCapability    = "client/registerCapability"
 )
 
 // LSP intent codes for code lenses. Per the LSP plan, the server
@@ -241,4 +244,59 @@ type DidCloseTextDocumentParams struct {
 type DidSaveTextDocumentParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`
 	Text         string                 `json:"text,omitempty"`
+}
+
+// FileChangeType matches LSP spec values: 1=Created, 2=Changed,
+// 3=Deleted. Reported in workspace/didChangeWatchedFiles events.
+type FileChangeType int
+
+const (
+	FileChangeCreated FileChangeType = 1
+	FileChangeChanged FileChangeType = 2
+	FileChangeDeleted FileChangeType = 3
+)
+
+// FileEvent is a single create/change/delete report on a watched
+// path. Editors batch these into a DidChangeWatchedFilesParams.
+type FileEvent struct {
+	URI  string         `json:"uri"`
+	Type FileChangeType `json:"type"`
+}
+
+// DidChangeWatchedFilesParams is the payload for the client-pushed
+// workspace/didChangeWatchedFiles notification.
+type DidChangeWatchedFilesParams struct {
+	Changes []FileEvent `json:"changes"`
+}
+
+// Registration is one entry in a client/registerCapability request.
+// The server uses this to dynamically register a watcher pattern
+// after `initialized` (we can't statically advertise watchers via
+// ServerCapabilities - LSP routes file watching through the editor,
+// and the editor wants the pattern set at runtime).
+type Registration struct {
+	ID              string      `json:"id"`
+	Method          string      `json:"method"`
+	RegisterOptions interface{} `json:"registerOptions,omitempty"`
+}
+
+// RegistrationParams is the payload for the server->client
+// client/registerCapability request.
+type RegistrationParams struct {
+	Registrations []Registration `json:"registrations"`
+}
+
+// FileSystemWatcher is one entry in
+// DidChangeWatchedFilesRegistrationOptions.Watchers. GlobPattern is
+// a glob like `**/gaffer.toml`. Kind is a bitmask: 1=Create, 2=Change,
+// 4=Delete; default (0/unset) is "all three" per spec.
+type FileSystemWatcher struct {
+	GlobPattern string `json:"globPattern"`
+	Kind        int    `json:"kind,omitempty"`
+}
+
+// DidChangeWatchedFilesRegistrationOptions is the registerOptions
+// payload for a workspace/didChangeWatchedFiles registration.
+type DidChangeWatchedFilesRegistrationOptions struct {
+	Watchers []FileSystemWatcher `json:"watchers"`
 }

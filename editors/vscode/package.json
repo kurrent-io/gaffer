@@ -17,7 +17,7 @@
 		"url": "https://github.com/kurrent-io/gaffer/issues"
 	},
 	"engines": {
-		"vscode": "^1.80.0"
+		"vscode": "^1.82.0"
 	},
 	"keywords": [
 		"kurrent",
@@ -51,12 +51,12 @@
 		"test": "vitest run",
 		"check": "tsc --noEmit && eslint . && prettier --check .",
 		"fix": "eslint --fix . && prettier --write .",
-		"package": "vite build && vsce package"
+		"package": "vite build && vsce package --no-dependencies"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
 		"@types/node": "^25.6.0",
-		"@types/vscode": "1.80.0",
+		"@types/vscode": "1.82.0",
 		"@vscode/vsce": "^3.9.1",
 		"eslint": "^10.3.0",
 		"prettier": "^3.8.3",
@@ -167,7 +167,7 @@
 					"id": "gaffer.status",
 					"name": "Status",
 					"type": "webview",
-					"when": "gaffer.mode == 'running' || gaffer.mode == 'ended'"
+					"when": "gaffer.mode == 'starting' || gaffer.mode == 'running' || gaffer.mode == 'ended'"
 				},
 				{
 					"id": "gaffer.step",
@@ -177,7 +177,7 @@
 				{
 					"id": "gaffer.state",
 					"name": "State",
-					"when": "gaffer.mode == 'running' || gaffer.mode == 'inspecting' || gaffer.mode == 'ended'"
+					"when": "gaffer.mode == 'starting' || gaffer.mode == 'running' || gaffer.mode == 'inspecting' || gaffer.mode == 'ended'"
 				}
 			]
 		},
@@ -186,5 +186,8 @@
 				"language": "javascript"
 			}
 		]
+	},
+	"dependencies": {
+		"vscode-languageclient": "^9.0.1"
 	}
 }

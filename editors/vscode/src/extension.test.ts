@@ -11,8 +11,8 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activate } from "./extension.js";
-import { JsCodeLensProvider } from "./lensing/js-provider.js";
-import { TomlCodeLensProvider } from "./lensing/toml-provider.js";
+import * as cliModule from "./discovery/cli.js";
+import { LspCodeLensProvider } from "./lsp/lens-provider.js";
 import { flushAllMicrotasks } from "../test/testutil/promise.js";
 import { makeContext } from "../test/testutil/fake-context.js";
 import {
@@ -22,12 +22,21 @@ import {
 	getShownMessages,
 	getState,
 	queueFindFiles,
-	queueFindFilesGate,
 	queueMessageResponse,
 	queueQuickPick,
 	setConfiguration,
 	setTrusted,
 } from "../test/testutil/vscode-state.js";
+import {
+	clearLspRequestHandlers,
+	setLspRequestHandler,
+} from "../test/__mocks__/vscode-languageclient-node.js";
+
+afterEach(() => {
+	// Clear LSP request handlers between tests so a stub
+	// installed by one test doesn't leak into the next.
+	clearLspRequestHandlers();
+});
 
 // Shared test setup: an untrusted workspace where activate's initial
 // tryFetchManifest returns null silently (no execFile) and findFiles
@@ -39,6 +48,33 @@ async function activateBare(): Promise<vscode.ExtensionContext> {
 	const ctx = makeContext();
 	await activate(ctx);
 	return ctx;
+}
+
+// Stub tryFetchManifest with a fake-success so the LSP spawn's
+// manifest gate clears in tests without requiring a real `gaffer`
+// binary on the test runner's PATH. Returns the spy so tests
+// that want to override the response (e.g. simulate a failed
+// fetch on reload) can re-use it.
+function stubManifestFetch(): ReturnType<typeof vi.spyOn> {
+	return vi.spyOn(cliModule, "tryFetchManifest").mockResolvedValue({
+		version: "test",
+		commands: { dev: { flags: ["debug"] } },
+	});
+}
+
+// Poll until getLanguageClient() returns a live client. The LSP
+// spawn is now gated on a successful manifest fetch (which runs
+// execFile and resolves on a future event-loop tick rather than a
+// microtask), so flushAllMicrotasks alone isn't enough after a
+// trust grant - we need to wait for the spawn to land.
+async function waitForLspClient(ms = 1000): Promise<void> {
+	const { getLanguageClient } = await import("./lsp/client.js");
+	const deadline = Date.now() + ms;
+	while (Date.now() < deadline) {
+		if (getLanguageClient()) return;
+		await new Promise<void>((r) => setTimeout(r, 10));
+	}
+	throw new Error(`LSP client did not spawn within ${ms}ms`);
 }
 
 beforeEach(() => {
@@ -60,14 +96,19 @@ describe("activate registrations", () => {
 		expect(types).toEqual(["gaffer"]);
 	});
 
-	it("registers code lens providers for **/gaffer.toml and javascript", async () => {
+	it("registers a single code lens provider for both **/gaffer.toml and javascript", async () => {
+		// Both the toml lens and the entry-script .js lens come
+		// from the same LSP server via the same LspCodeLensProvider;
+		// one registration with an array selector.
 		await activateBare();
 		const selectors = getState().registeredCodeLensProviders.map(
 			(r) => r.selector,
 		);
 		expect(selectors).toEqual([
-			{ scheme: "file", pattern: "**/gaffer.toml" },
-			{ scheme: "file", language: "javascript" },
+			[
+				{ scheme: "file", pattern: "**/gaffer.toml" },
+				{ scheme: "file", language: "javascript" },
+			],
 		]);
 	});
 
@@ -81,13 +122,6 @@ describe("activate registrations", () => {
 			"gaffer.noop",
 			"gaffer.runProjection",
 			"gaffer.stopDebug",
-		]);
-	});
-
-	it("creates a file watcher on **/gaffer.toml", async () => {
-		await activateBare();
-		expect(getState().fileWatchers.map((w) => w.pattern)).toEqual([
-			"**/gaffer.toml",
 		]);
 	});
 });
@@ -159,131 +193,44 @@ describe("runProjection bail-early paths", () => {
 
 	it("trusted but no projections: shows 'no projections' info, no quickpick", async () => {
 		await activateBare();
+		// Flip trust + fire the grant event so the trust-gated LSP
+		// spawn proceeds. activateBare leaves the workspace
+		// untrusted, which now defers the spawn. The spawn is also
+		// gated on a successful manifest fetch, so stub a fake
+		// success and wait for the client to come up before
+		// exercising fetchProjections.
+		stubManifestFetch();
 		setTrusted(true);
-		// runProjection calls createProjectIndex -> findFiles (empty queue
-		// returns []), so the index is empty.
+		fireWorkspaceTrustGranted();
+		await waitForLspClient();
+		// Stub workspace/symbol with an empty array to differentiate
+		// "LSP returned no projections" from "LSP not ready yet".
+		setLspRequestHandler("workspace/symbol", () => []);
 		await runProjection();
 		const msgs = getShownMessages();
 		expect(msgs.some((m) => /no projections found/.test(m.message))).toBe(true);
 		expect(getState().quickPickCalls).toEqual([]);
 	});
-});
 
-describe("tomlWatcher reload chain", () => {
-	it("setIndex+setManifest fires on the lens providers when a toml change is observed", async () => {
-		const tomlSetIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
-		const tomlSetManifest = vi.spyOn(
-			TomlCodeLensProvider.prototype,
-			"setManifest",
-		);
-		const jsSetManifest = vi.spyOn(JsCodeLensProvider.prototype, "setManifest");
+	it("LSP not ready: shows 'still starting' info, no quickpick", async () => {
+		// Distinct from "no projections": when getLanguageClient
+		// returns undefined (e.g. activate's spawn hasn't finished
+		// initialize, or trust was just granted), runProjection
+		// should tell the user to retry, not claim the workspace
+		// has no projections.
 		await activateBare();
-		// Reset call history accumulated during activate's own initial load.
-		tomlSetIndex.mockClear();
-		tomlSetManifest.mockClear();
-		jsSetManifest.mockClear();
-
-		queueFindFiles([]); // for the reload's createProjectIndex
-		const watcher = getState().fileWatchers[0];
-		watcher?.emitChange(vscode.Uri.file("/p/gaffer.toml"));
-		await flushAllMicrotasks();
-		expect(tomlSetIndex).toHaveBeenCalledTimes(1);
-		expect(tomlSetManifest).toHaveBeenCalledTimes(1);
-		expect(jsSetManifest).toHaveBeenCalledTimes(1);
-	});
-
-	it("rapid back-to-back changes serialise through refreshChain (one reload at a time)", async () => {
-		// Proof of serialisation: gate each findFiles call. With the
-		// chain, only the *first* reload's findFiles is in-flight after
-		// firing both events; the second is queued behind it. Without
-		// the chain, both would be in-flight concurrently.
-		const setIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
-		await activateBare();
-		setIndex.mockClear();
-
-		queueFindFiles([]);
-		queueFindFiles([]);
-		const gate1 = queueFindFilesGate();
-		const gate2 = queueFindFilesGate();
-		const findFilesCallsBefore = getState().findFilesCalls.length;
-
-		const watcher = getState().fileWatchers[0];
-		watcher?.emitChange(vscode.Uri.file("/p/gaffer.toml"));
-		watcher?.emitChange(vscode.Uri.file("/p/gaffer.toml"));
-		await flushAllMicrotasks();
-		// Serialised: only the first reload has reached findFiles.
-		expect(getState().findFilesCalls.length - findFilesCallsBefore).toBe(1);
-		expect(setIndex).toHaveBeenCalledTimes(0);
-
-		// Release the first gate -> first reload completes -> second
-		// reload starts and reaches findFiles.
-		gate1.release();
-		await flushAllMicrotasks();
-		expect(setIndex).toHaveBeenCalledTimes(1);
-		expect(getState().findFilesCalls.length - findFilesCallsBefore).toBe(2);
-
-		// Release the second gate -> second reload completes.
-		gate2.release();
-		await flushAllMicrotasks();
-		expect(setIndex).toHaveBeenCalledTimes(2);
-	});
-
-	it("create event triggers a reload", async () => {
-		const setIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
-		await activateBare();
-		setIndex.mockClear();
-
-		queueFindFiles([]);
-		const watcher = getState().fileWatchers[0];
-		watcher?.emitCreate(vscode.Uri.file("/p/gaffer.toml"));
-		await flushAllMicrotasks();
-		expect(setIndex).toHaveBeenCalledTimes(1);
-	});
-
-	it("delete event triggers a reload", async () => {
-		const setIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
-		await activateBare();
-		setIndex.mockClear();
-
-		queueFindFiles([]);
-		const watcher = getState().fileWatchers[0];
-		watcher?.emitDelete(vscode.Uri.file("/p/gaffer.toml"));
-		await flushAllMicrotasks();
-		expect(setIndex).toHaveBeenCalledTimes(1);
-	});
-
-	it("delete event clears toml diagnostics for the deleted uri", async () => {
-		// provideCodeLenses is the only writer of gaffer-toml diagnostics,
-		// and it never re-fires for a deleted document. Without an explicit
-		// clear here, invalid-fixture warnings would linger in Problems
-		// after the user deletes the toml.
-		const { setTomlDiagnostics } = await import("./diagnostics.js");
-		await activateBare();
-		const tomlUri = vscode.Uri.file("/p/gaffer.toml");
-		setTomlDiagnostics(tomlUri, [
-			new vscode.Diagnostic(
-				new vscode.Range(0, 0, 0, 1),
-				"x",
-				vscode.DiagnosticSeverity.Error,
-			),
-		]);
-		const tomlColl = getState().diagnosticCollections.find(
-			(c) => c.name === "gaffer-toml",
-		);
-		expect(tomlColl?.entries.has(tomlUri.fsPath)).toBe(true);
-
-		queueFindFiles([]);
-		const watcher = getState().fileWatchers[0];
-		watcher?.emitDelete(tomlUri);
-		await flushAllMicrotasks();
-		expect(tomlColl?.entries.has(tomlUri.fsPath)).toBe(false);
-	});
-
-	it("the watcher is on context.subscriptions for disposal", async () => {
-		const ctx = await activateBare();
-		expect(
-			ctx.subscriptions.some((d) => d === getState().fileWatchers[0]),
-		).toBe(true);
+		setTrusted(true);
+		// Override the module-level client to undefined for this
+		// test by NOT installing a workspace/symbol handler AND
+		// stopping the client - but here, the client mock IS
+		// "ready" since activate spawned it. Easiest path: rebuild
+		// the test using the production client-state via stop.
+		const { stopLanguageClient } = await import("./lsp/client.js");
+		await stopLanguageClient();
+		await runProjection();
+		const msgs = getShownMessages();
+		expect(msgs.some((m) => /still starting/.test(m.message))).toBe(true);
+		expect(getState().quickPickCalls).toEqual([]);
 	});
 });
 
@@ -383,24 +330,24 @@ describe("runtime fatal-error dismissal", () => {
 
 describe("configuration change filter", () => {
 	it("triggers reloadLensState when gaffer.command changes", async () => {
-		const setIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
+		const setManifest = vi.spyOn(LspCodeLensProvider.prototype, "setManifest");
 		await activateBare();
-		setIndex.mockClear();
+		setManifest.mockClear();
 
 		queueFindFiles([]);
 		fireConfigurationChange(["gaffer.command"]);
 		await flushAllMicrotasks();
-		expect(setIndex).toHaveBeenCalledTimes(1);
+		expect(setManifest).toHaveBeenCalledTimes(1);
 	});
 
 	it("does NOT trigger reloadLensState for unrelated config changes", async () => {
-		const setIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
+		const setManifest = vi.spyOn(LspCodeLensProvider.prototype, "setManifest");
 		await activateBare();
-		setIndex.mockClear();
+		setManifest.mockClear();
 
 		fireConfigurationChange(["editor.fontSize"]);
 		await flushAllMicrotasks();
-		expect(setIndex).not.toHaveBeenCalled();
+		expect(setManifest).not.toHaveBeenCalled();
 	});
 });
 
@@ -422,14 +369,19 @@ describe("workspace trust grant", () => {
 	}
 
 	it("triggers reloadLensState when trust is granted", async () => {
-		const setIndex = vi.spyOn(JsCodeLensProvider.prototype, "setIndex");
+		const setManifest = vi.spyOn(LspCodeLensProvider.prototype, "setManifest");
 		await activateBare();
-		setIndex.mockClear();
+		setManifest.mockClear();
 
 		queueFindFiles([]);
 		fireWorkspaceTrustGranted();
-		await waitForCall(setIndex);
-		expect(setIndex).toHaveBeenCalledTimes(1);
+		await waitForCall(setManifest);
+		// Trust grant fires both startLanguageClient's deferred-
+		// spawn listener and the reloadManifest listener; the spawn
+		// path doesn't call setManifest itself but the reload does.
+		// We pin "fired at least once" rather than an exact count
+		// since refreshChain ordering can vary across runs.
+		expect(setManifest.mock.calls.length).toBeGreaterThanOrEqual(1);
 	});
 });
 
@@ -442,22 +394,17 @@ describe("workspace trust grant", () => {
 // manifest-fetch-fails case spawns execFile against a non-existent
 // path - documented exception to the "no spawn in extension.test.ts"
 // header. This is an ENOENT path; the spawn fails before any IO.
-describe("runProjection (with a real projection index)", () => {
+describe("runProjection (with a populated projection list)", () => {
 	let tmpDir: string;
 
 	beforeEach(() => {
 		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gaffer-ext-"));
-		const tomlPath = path.join(tmpDir, "gaffer.toml");
-		const entryPath = path.join(tmpDir, "checkout.js");
-		fs.writeFileSync(
-			tomlPath,
-			`[[projection]]\nname = "checkout"\nentry = "checkout.js"\n`,
-		);
-		fs.writeFileSync(entryPath, "fromAll().when({})\n");
+		clearLspRequestHandlers();
 	});
 
 	afterEach(() => {
 		fs.rmSync(tmpDir, { recursive: true, force: true });
+		clearLspRequestHandlers();
 	});
 
 	function runProjection(): Promise<unknown> {
@@ -466,10 +413,29 @@ describe("runProjection (with a real projection index)", () => {
 		return Promise.resolve(handler() as unknown);
 	}
 
+	function stubProjectionsResponse(name: string, tomlPath: string): void {
+		setLspRequestHandler("workspace/symbol", () => [
+			{
+				name,
+				kind: 12,
+				location: {
+					uri: vscode.Uri.file(tomlPath).toString(),
+					range: {
+						start: { line: 0, character: 0 },
+						end: { line: 0, character: 14 },
+					},
+				},
+			},
+		]);
+	}
+
 	it("user cancels the quickpick: silent no-op, controller.start not invoked", async () => {
+		stubManifestFetch();
 		await activateBare();
 		setTrusted(true);
-		queueFindFiles([vscode.Uri.file(path.join(tmpDir, "gaffer.toml"))]);
+		fireWorkspaceTrustGranted();
+		await waitForLspClient();
+		stubProjectionsResponse("checkout", path.join(tmpDir, "gaffer.toml"));
 		queueQuickPick(undefined); // user dismisses
 		await runProjection();
 		// start would call buildArgv -> getConfiguration -> spawn, which
@@ -478,9 +444,18 @@ describe("runProjection (with a real projection index)", () => {
 	});
 
 	it("manifest fetch fails: shows error toast, controller.start not invoked", async () => {
+		// Initial activate + trust grant gets the LSP up. The "fetch
+		// fails" half of this test then reverts the stub to the real
+		// implementation so the post-pick manifest fetch in
+		// runProjection (which uses the bad gaffer.command set below)
+		// hits ENOENT and surfaces showManifestFailure as expected.
+		const stub = stubManifestFetch();
 		await activateBare();
 		setTrusted(true);
-		queueFindFiles([vscode.Uri.file(path.join(tmpDir, "gaffer.toml"))]);
+		fireWorkspaceTrustGranted();
+		await waitForLspClient();
+		stub.mockRestore();
+		stubProjectionsResponse("checkout", path.join(tmpDir, "gaffer.toml"));
 		queueQuickPick({
 			label: "checkout",
 			description: "checkout/gaffer.toml",

@@ -34,6 +34,12 @@ const (
 	MethodRegisterCapability    = "client/registerCapability"
 	MethodWorkspaceSymbol       = "workspace/symbol"
 	MethodCodeLensRefresh       = "workspace/codeLens/refresh"
+
+	// MethodProjectionDetails is a gaffer-specific extension. Returns
+	// the bits of a projection's parsed config that the editor needs
+	// to drive the Run Projection picker (live vs fixture). Editors
+	// without this knowledge (zed, neovim) just default to live.
+	MethodProjectionDetails = "gaffer/projectionDetails"
 )
 
 // LSP intent codes for code lenses. Per the LSP plan, the server
@@ -357,6 +363,24 @@ type Registration struct {
 // client/registerCapability request.
 type RegistrationParams struct {
 	Registrations []Registration `json:"registrations"`
+}
+
+// ProjectionDetailsParams identifies a single projection by its
+// declaring gaffer.toml URI plus its name (names are unique within
+// a config but can repeat across configs in a multi-root workspace).
+type ProjectionDetailsParams struct {
+	ConfigURI string `json:"configURI"`
+	Name      string `json:"name"`
+}
+
+// ProjectionDetailsResult is the bits of a projection's parsed
+// config that the editor needs to drive a "live vs fixture" picker.
+// Connection is the project-level connection string; nil means
+// no `connection` field in the toml (live runs would fail). Fixtures
+// is the projection's named-fixture list, alphabetically sorted.
+type ProjectionDetailsResult struct {
+	Connection *string  `json:"connection"`
+	Fixtures   []string `json:"fixtures"`
 }
 
 // FileSystemWatcher is one entry in

@@ -43,7 +43,16 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 		return s.handleWorkspaceSymbol(req)
 	case MethodDidChangeWatchedFiles:
 		return s.handleDidChangeWatchedFiles(ctx, req)
+	case MethodProjectionDetails:
+		return s.handleProjectionDetails(req)
 	default:
+		// $/-prefixed messages are optional per the LSP spec.
+		// Notifications must be silently ignored; requests get the
+		// standard MethodNotFound response. Without this branch the
+		// client's chatty $/setTrace pings flood the server log.
+		if strings.HasPrefix(req.Method, "$/") && req.Notif {
+			return nil, nil
+		}
 		// CodeMethodNotFound is dropped by jsonrpc2 when the
 		// inbound was a notification (no ID, no response slot).
 		// For requests it surfaces as a proper JSON-RPC error.
@@ -214,6 +223,49 @@ func (s *Server) handleWorkspaceSymbol(req *jsonrpc2.Request) (interface{}, erro
 		}
 	}
 	return emitWorkspaceSymbols(s.docs.AllParses()), nil
+}
+
+// handleProjectionDetails returns the bits of a projection's
+// parsed config the editor needs to drive the Run Projection
+// picker. Returns the connection (empty string == none declared)
+// and the projection's fixture names. Lookup is by configURI +
+// name; missing config or missing projection both surface as
+// "config has nothing to say" - the editor falls back to live.
+func (s *Server) handleProjectionDetails(req *jsonrpc2.Request) (interface{}, error) {
+	params, jerr := decodeParams[ProjectionDetailsParams](req, "projectionDetails")
+	if jerr != nil {
+		return nil, jerr
+	}
+	parse, ok := s.docs.GetParse(params.ConfigURI)
+	if !ok {
+		// No cached parse for this URI - return an empty result
+		// rather than an error so the client falls through to
+		// "live" without a toast. A truly bogus URI gets the same
+		// treatment; the projection lens that produced the call
+		// already vouched for the URI's existence.
+		return ProjectionDetailsResult{Fixtures: []string{}}, nil
+	}
+	for _, p := range parse.Description.Projections {
+		if p.Name != params.Name {
+			continue
+		}
+		var conn *string
+		if parse.Description.Connection != "" {
+			c := parse.Description.Connection
+			conn = &c
+		}
+		fixtures := make([]string, 0, len(p.Fixtures))
+		for _, fx := range p.Fixtures {
+			if fx.Diagnostic == nil {
+				fixtures = append(fixtures, fx.Name)
+			}
+		}
+		return ProjectionDetailsResult{
+			Connection: conn,
+			Fixtures:   fixtures,
+		}, nil
+	}
+	return ProjectionDetailsResult{Fixtures: []string{}}, nil
 }
 
 func (s *Server) handleShutdown() (interface{}, error) {

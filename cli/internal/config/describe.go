@@ -104,6 +104,7 @@ func DescribeBytes(ctx context.Context, path string, data []byte) (Description, 
 		})
 		return desc, nil
 	}
+	desc.Connection = cfg.Connection
 
 	if err := ctx.Err(); err != nil {
 		return Description{}, err

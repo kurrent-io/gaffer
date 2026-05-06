@@ -278,6 +278,42 @@ func TestDescribe_ParseErrorBecomesFileLevelDiagnostic(t *testing.T) {
 	}
 }
 
+func TestDescribe_PopulatesConnectionFromTopLevel(t *testing.T) {
+	// Connection is project-level (top of toml). The LSP server
+	// surfaces it via gaffer/projectionDetails so the editor can
+	// gate the "live" run option in the picker.
+	path := describeFile(t, `connection = "esdb://localhost:2113"
+[[projection]]
+name = "p"
+entry = "p.js"
+`)
+	desc, err := Describe(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if desc.Connection != "esdb://localhost:2113" {
+		t.Errorf("Connection: got %q want %q", desc.Connection, "esdb://localhost:2113")
+	}
+}
+
+func TestDescribe_OmitsConnectionWhenAbsent(t *testing.T) {
+	// Empty string (zero value) means "no connection declared" -
+	// distinct from a declared empty string (which the strict
+	// validator would catch). The editor reads nil here as
+	// "fixture-only project; gate the live option".
+	path := describeFile(t, `[[projection]]
+name = "p"
+entry = "p.js"
+`)
+	desc, err := Describe(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if desc.Connection != "" {
+		t.Errorf("Connection: got %q want empty", desc.Connection)
+	}
+}
+
 func TestDescribe_NonexistentFileReturnsErrNotExist(t *testing.T) {
 	// Pin the wrapped error so the LSP server can use
 	// errors.Is(err, fs.ErrNotExist) to distinguish "file gone"

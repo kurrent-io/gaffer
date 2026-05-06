@@ -31,10 +31,26 @@ export default defineConfig({
 		alias: {
 			vscode: path.resolve(here, "test/__mocks__/vscode.ts"),
 		},
+		// Force Node resolution so vscode-languageclient/node doesn't
+		// get rewritten to its browser variant via the legacy
+		// `browser` field map. The browser variant uses Worker
+		// transports and doesn't export TransportKind, so the spawn
+		// blew up at runtime with "Cannot read properties of undefined
+		// (reading 'stdio')".
+		mainFields: ["module", "main"],
+		conditions: ["node"],
 	},
 	test: {
 		environment: "node",
 		include: ["src/**/*.test.ts"],
 		setupFiles: ["./test/setup.ts"],
+		// Aliases scoped to the test runner only - production
+		// builds must NOT pick up these stubs.
+		alias: {
+			"vscode-languageclient/node": path.resolve(
+				here,
+				"test/__mocks__/vscode-languageclient-node.ts",
+			),
+		},
 	},
 });

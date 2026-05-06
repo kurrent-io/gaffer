@@ -1,4 +1,5 @@
 using Gaffer.Runtime.Projection;
+using Gaffer.Sdk;
 
 namespace Gaffer.Runtime.Tests;
 
@@ -62,6 +63,26 @@ public class ProjectionInfoMapperTests {
 		Assert.Null(info.ResultStreamName);
 		Assert.Null(info.PartitionResultStreamNamePattern);
 		Assert.Null(info.ProcessingLag);
+		Assert.Null(info.Diagnostics);
+	}
+
+	[Fact]
+	public void ToProjectionInfo_PassesDiagnosticsThrough() {
+		var diagnostics = new[] {
+			new Diagnostic {
+				Code = "deprecated.linkStreamTo",
+				Message = "linkStreamTo is undocumented in KurrentDB and may be removed.",
+				Severity = DiagnosticSeverity.Warning,
+				Range = new SourceRange {
+					Start = new SourcePosition { Line = 7, Column = 3 },
+					End = new SourcePosition { Line = 7, Column = 16 },
+				},
+			},
+		};
+
+		var info = ProjectionInfoMapper.ToProjectionInfo(new QuerySources(), diagnostics);
+
+		Assert.Same(diagnostics, info.Diagnostics);
 	}
 
 	[Fact]
@@ -81,5 +102,42 @@ public class ProjectionInfoMapperTests {
 		Assert.DoesNotContain("\"AllStreams\"", json);
 		Assert.DoesNotContain("\"IsBiState\"", json);
 		Assert.DoesNotContain("\"DefinesFold\"", json);
+	}
+
+	[Fact]
+	public void Serialize_DiagnosticRoundTrip() {
+		var diagnostics = new[] {
+			new Diagnostic {
+				Code = "deprecated.linkStreamTo",
+				Message = "linkStreamTo is undocumented in KurrentDB and may be removed.",
+				Severity = DiagnosticSeverity.Warning,
+				Range = new SourceRange {
+					Start = new SourcePosition { Line = 12, Column = 5 },
+					End = new SourcePosition { Line = 12, Column = 18 },
+				},
+			},
+		};
+		var info = ProjectionInfoMapper.ToProjectionInfo(new QuerySources(), diagnostics);
+
+		var json = System.Text.Json.JsonSerializer.Serialize(
+			info, Sdk.SdkJsonContext.Default.ProjectionInfo);
+
+		Assert.Contains("\"diagnostics\":[", json);
+		Assert.Contains("\"code\":\"deprecated.linkStreamTo\"", json);
+		Assert.Contains("\"message\":", json);
+		Assert.Contains("\"severity\":2", json);
+		Assert.Contains("\"range\":{\"start\":{\"line\":12,\"column\":5},\"end\":{\"line\":12,\"column\":18}}", json);
+
+		var decoded = System.Text.Json.JsonSerializer.Deserialize(
+			json, Sdk.SdkJsonContext.Default.ProjectionInfo);
+		Assert.NotNull(decoded);
+		Assert.NotNull(decoded!.Diagnostics);
+		Assert.Single(decoded.Diagnostics!);
+		var d = decoded.Diagnostics![0];
+		Assert.Equal("deprecated.linkStreamTo", d.Code);
+		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+		Assert.Equal(12, d.Range!.Start.Line);
+		Assert.Equal(5, d.Range.Start.Column);
+		Assert.Equal(18, d.Range.End.Column);
 	}
 }

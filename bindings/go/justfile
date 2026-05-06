@@ -15,4 +15,4 @@ fix:
 
 # Run linter
 check:
-    golangci-lint run
+    golangci-lint run --allow-parallel-runners

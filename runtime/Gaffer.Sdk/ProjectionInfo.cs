@@ -1,3 +1,5 @@
+using Gaffer.Sdk.Diagnostics;
+
 namespace Gaffer.Sdk;
 
 /// <summary>
@@ -21,4 +23,5 @@ public sealed class ProjectionInfo {
 	public string? PartitionResultStreamNamePattern { get; init; }
 	public bool ReorderEvents { get; init; }
 	public int? ProcessingLag { get; init; }
+	public Diagnostic[]? Diagnostics { get; init; }
 }

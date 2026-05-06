@@ -67,6 +67,9 @@ func writeInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) e
 	if p := engine.DescribePartitioning(info); p != "none" {
 		out["partitioning"] = p
 	}
+	if len(info.Diagnostics) > 0 {
+		out["diagnostics"] = info.Diagnostics
+	}
 	if len(proj.Def.Fixtures) > 0 {
 		names := proj.Def.FixtureNames()
 		fixtures := make([]map[string]any, len(names))

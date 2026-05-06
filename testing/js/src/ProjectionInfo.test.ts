@@ -20,6 +20,7 @@ const defaults: RawProjectionInfo = {
 	partitionResultStreamNamePattern: null,
 	reorderEvents: false,
 	processingLag: null,
+	diagnostics: null,
 };
 
 describe("mapProjectionInfo", () => {

@@ -3,6 +3,7 @@ using Acornima;
 using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Events;
 using Gaffer.Runtime.Projection;
+using Gaffer.Sdk.Diagnostics;
 using Jint;
 using Jint.Runtime;
 
@@ -16,6 +17,7 @@ public sealed class ProjectionSession : IDisposable {
 	private readonly JintProjectionHandler _handler;
 	private readonly string _source;
 	private readonly QuerySources _sources;
+	private readonly Diagnostic[]? _diagnostics;
 	private readonly Dictionary<string, string?> _stateCache = new();
 	private readonly HashSet<string>? _handledEventTypes;
 	private string? _sharedState;
@@ -38,6 +40,9 @@ public sealed class ProjectionSession : IDisposable {
 
 	/// <summary>The projection's source definition (what streams/events it reads).</summary>
 	public QuerySources Sources => _sources;
+
+	/// <summary>Compile-time diagnostics, or null if there are none.</summary>
+	public Diagnostic[]? Diagnostics => _diagnostics;
 
 	/// <summary>
 	/// Create a new projection session from JavaScript source code.
@@ -93,12 +98,21 @@ public sealed class ProjectionSession : IDisposable {
 			throw new InvalidProjectionException(ex.Message, ex) { ProjectionSource = source };
 		}
 
-		_sources = _handler.GetSourceDefinition();
-		if (_sources.HandlesDeletedNotifications && !_sources.ByStreams)
-			throw new InvalidProjectionException(
-				"Deleted stream notifications are only supported with foreachStream()") { ProjectionSource = source };
-		if (!_sources.AllEvents && _sources.Events != null)
-			_handledEventTypes = new HashSet<string>(_sources.Events, StringComparer.Ordinal);
+		// Anything that throws past this point would leak _handler (and its
+		// Jint Engine + BlockingCollection); dispose it on failure.
+		try {
+			_sources = _handler.GetSourceDefinition();
+			if (_sources.HandlesDeletedNotifications && !_sources.ByStreams)
+				throw new InvalidProjectionException(
+					"Deleted stream notifications are only supported with foreachStream()") { ProjectionSource = source };
+			if (!_sources.AllEvents && _sources.Events != null)
+				_handledEventTypes = new HashSet<string>(_sources.Events, StringComparer.Ordinal);
+
+			_diagnostics = DiagnosticCollector.Scan(source);
+		} catch {
+			_handler.Dispose();
+			throw;
+		}
 	}
 
 	public void Dispose() {

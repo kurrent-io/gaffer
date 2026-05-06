@@ -45,6 +45,7 @@ type textStyles struct {
 	errStatus lipgloss.Style
 	errDetail lipgloss.Style
 	heading   lipgloss.Style
+	info      lipgloss.Style
 }
 
 type prefixed struct {
@@ -66,6 +67,7 @@ func newTextWriter(w, errW io.Writer) *textWriter {
 			errStatus: r.NewStyle().Foreground(lipgloss.Color("9")),
 			errDetail: r.NewStyle().Foreground(lipgloss.Color("1")),
 			heading:   r.NewStyle().Bold(true),
+			info:      r.NewStyle().Foreground(lipgloss.Color("4")),
 		},
 	}
 	tw.prefixed = prefixed{tw: tw, pfx: tw.ind()}
@@ -192,6 +194,45 @@ func (tw *textWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, 
 	}
 
 	tw.blank()
+
+	for _, d := range info.Diagnostics {
+		tw.writeDiagnostic(d)
+	}
+}
+
+func (tw *textWriter) writeDiagnostic(d gafferruntime.Diagnostic) {
+	header := fmt.Sprintf("[%s] %s", severityLabel(d.Severity), d.Code)
+	if d.Range != nil {
+		header += fmt.Sprintf(" (line %d, col %d)", d.Range.Start.Line, d.Range.Start.Column)
+	}
+	tw.write("%s\n", tw.severityStyle(d.Severity).Render(header))
+	tw.write("%s%s\n\n", tw.ind(), d.Message)
+}
+
+func severityLabel(s gafferruntime.DiagnosticSeverity) string {
+	switch s {
+	case gafferruntime.DiagnosticSeverityError:
+		return "error"
+	case gafferruntime.DiagnosticSeverityWarning:
+		return "warning"
+	case gafferruntime.DiagnosticSeverityInformation:
+		return "info"
+	case gafferruntime.DiagnosticSeverityHint:
+		return "hint"
+	default:
+		return "diagnostic"
+	}
+}
+
+func (tw *textWriter) severityStyle(s gafferruntime.DiagnosticSeverity) lipgloss.Style {
+	switch s {
+	case gafferruntime.DiagnosticSeverityError:
+		return tw.styles.errStatus
+	case gafferruntime.DiagnosticSeverityWarning:
+		return tw.styles.skipped
+	default:
+		return tw.styles.info
+	}
 }
 
 func (tw *textWriter) WriteDebugListening(addr string, port int) {}

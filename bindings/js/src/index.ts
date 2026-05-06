@@ -17,4 +17,8 @@ export type {
 	FeedResult,
 	ProjectionInfo,
 	SessionOptions,
+	Diagnostic,
+	SourceRange,
+	SourcePosition,
 } from "./types.js";
+export { DiagnosticSeverity } from "./types.js";

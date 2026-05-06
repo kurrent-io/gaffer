@@ -63,7 +63,10 @@ MalformedEvent, StateSerialization, ProjectionTransform). Formatted messages
 built by `ErrorFormatter` with Gleam-style source snippets and event context.
 
 The C API (gaffer.h) exposes the same functionality for FFI consumers.
-`gaffer_get_last_error()` returns structured error JSON on failure.
+Fallible functions take a `const char** error_out` out-parameter; on
+failure they return NULL/0 and `*error_out` points to structured error
+JSON the caller frees via `gaffer_free`. All returned strings are
+caller-owned and freed the same way.
 Go bindings wrap the C API via cgo with a `Session` struct.
 JS bindings use koffi FFI with typed error classes.
 

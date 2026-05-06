@@ -18,30 +18,8 @@ internal static unsafe class NativeExports {
 	private static readonly ConcurrentDictionary<nint, SessionHandle> Sessions = new();
 	private static long _nextHandle;
 
-	[ThreadStatic]
-	private static byte* _lastErrorPtr;
-
 	private sealed class SessionHandle {
 		public required ProjectionSession Session { get; init; }
-		public byte* LastReturnedPtr { get; set; }
-
-	}
-
-	private static byte* ToUnmanaged(SessionHandle handle, string? value) {
-		if (handle.LastReturnedPtr != null) {
-			NativeMemory.Free(handle.LastReturnedPtr);
-			handle.LastReturnedPtr = null;
-		}
-
-		if (value == null)
-			return null;
-
-		var bytes = Encoding.UTF8.GetBytes(value);
-		var ptr = (byte*)NativeMemory.Alloc((nuint)(bytes.Length + 1));
-		bytes.CopyTo(new Span<byte>(ptr, bytes.Length));
-		ptr[bytes.Length] = 0;
-		handle.LastReturnedPtr = ptr;
-		return ptr;
 	}
 
 	private static string? FromUtf8(byte* ptr) {
@@ -50,29 +28,13 @@ internal static unsafe class NativeExports {
 		return Marshal.PtrToStringUTF8((nint)ptr);
 	}
 
-	private static void SetLastError(Exception ex) {
-		if (_lastErrorPtr != null) {
-			NativeMemory.Free(_lastErrorPtr);
-			_lastErrorPtr = null;
-		}
-
-		string json;
-		if (ex is ProjectionException ge)
-			json = SerializeProjectionError(ge);
-		else
-			json = SerializeUnexpectedError(ex);
-
-		var bytes = Encoding.UTF8.GetBytes(json);
-		_lastErrorPtr = (byte*)NativeMemory.Alloc((nuint)(bytes.Length + 1));
-		bytes.CopyTo(new Span<byte>(_lastErrorPtr, bytes.Length));
-		_lastErrorPtr[bytes.Length] = 0;
-	}
-
-	private static void ClearLastError() {
-		if (_lastErrorPtr != null) {
-			NativeMemory.Free(_lastErrorPtr);
-			_lastErrorPtr = null;
-		}
+	private static void WriteError(byte** errorOut, Exception ex) {
+		if (errorOut == null)
+			return;
+		var json = ex is ProjectionException ge
+			? SerializeProjectionError(ge)
+			: SerializeUnexpectedError(ex);
+		*errorOut = AllocUtf8(json);
 	}
 
 	internal static string SerializeProjectionError(ProjectionException ex) {
@@ -252,11 +214,13 @@ internal static unsafe class NativeExports {
 	// -- Session lifecycle --
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_create")]
-	public static nint Create(byte* source, byte* optionsJson) {
+	public static nint Create(byte* source, byte* optionsJson, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
 		try {
 			var sourceStr = FromUtf8(source);
 			if (sourceStr == null) {
-				SetLastError(new InvalidArgumentException("source is null", "source"));
+				WriteError(errorOut, new InvalidArgumentException("source is null", "source"));
 				return 0;
 			}
 
@@ -266,10 +230,9 @@ internal static unsafe class NativeExports {
 			var handle = new SessionHandle { Session = session };
 			var id = (nint)Interlocked.Increment(ref _nextHandle);
 			Sessions[id] = handle;
-			ClearLastError();
 			return id;
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 			return 0;
 		}
 	}
@@ -280,9 +243,6 @@ internal static unsafe class NativeExports {
 			return;
 
 		try {
-			if (handle.LastReturnedPtr != null)
-				NativeMemory.Free(handle.LastReturnedPtr);
-
 			handle.Session.Dispose();
 		} catch {
 			// Best effort cleanup
@@ -367,25 +327,26 @@ internal static unsafe class NativeExports {
 		new("Invalid session handle", "session");
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_feed")]
-	public static byte* Feed(nint sessionId, byte* eventJson) {
+	public static byte* Feed(nint sessionId, byte* eventJson, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {
-			SetLastError(InvalidSessionError);
+			WriteError(errorOut, InvalidSessionError);
 			return null;
 		}
 
 		try {
 			var json = FromUtf8(eventJson);
 			if (json == null) {
-				SetLastError(new InvalidArgumentException("event_json is null", "event_json"));
+				WriteError(errorOut, new InvalidArgumentException("event_json is null", "event_json"));
 				return null;
 			}
 
 			var evt = ParseEvent(json);
 			var result = handle.Session.Feed(evt);
-			ClearLastError();
-			return ToUnmanaged(handle, SerializeFeedResult(result));
+			return AllocUtf8(SerializeFeedResult(result));
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 			return null;
 		}
 	}
@@ -393,101 +354,105 @@ internal static unsafe class NativeExports {
 	// -- State --
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_state")]
-	public static byte* GetState(nint sessionId, byte* partition) {
+	public static byte* GetState(nint sessionId, byte* partition, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {
-			SetLastError(InvalidSessionError);
+			WriteError(errorOut, InvalidSessionError);
 			return null;
 		}
 		try {
-			var state = handle.Session.GetState(FromUtf8(partition));
-			ClearLastError();
-			return ToUnmanaged(handle, state);
+			return AllocUtf8(handle.Session.GetState(FromUtf8(partition)));
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 			return null;
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_shared_state")]
-	public static byte* GetSharedState(nint sessionId) {
+	public static byte* GetSharedState(nint sessionId, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {
-			SetLastError(InvalidSessionError);
+			WriteError(errorOut, InvalidSessionError);
 			return null;
 		}
 		try {
-			var result = ToUnmanaged(handle, handle.Session.GetSharedState());
-			ClearLastError();
-			return result;
+			return AllocUtf8(handle.Session.GetSharedState());
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 			return null;
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_set_state")]
-	public static void SetState(nint sessionId, byte* partition, byte* stateJson) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+	public static void SetState(nint sessionId, byte* partition, byte* stateJson, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			WriteError(errorOut, InvalidSessionError);
 			return;
+		}
 		try {
 			var json = FromUtf8(stateJson);
 			if (json != null)
 				handle.Session.SetState(FromUtf8(partition), json);
-			ClearLastError();
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_result")]
-	public static byte* GetResult(nint sessionId, byte* partition) {
+	public static byte* GetResult(nint sessionId, byte* partition, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {
-			SetLastError(InvalidSessionError);
+			WriteError(errorOut, InvalidSessionError);
 			return null;
 		}
 		try {
-			var result = ToUnmanaged(handle, handle.Session.GetResult(FromUtf8(partition)));
-			ClearLastError();
-			return result;
+			return AllocUtf8(handle.Session.GetResult(FromUtf8(partition)));
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 			return null;
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_sources")]
-	public static byte* GetSources(nint sessionId) {
+	public static byte* GetSources(nint sessionId, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {
-			SetLastError(InvalidSessionError);
+			WriteError(errorOut, InvalidSessionError);
 			return null;
 		}
 		try {
 			var info = ProjectionInfoMapper.ToProjectionInfo(handle.Session.Sources);
-			var json = JsonSerializer.Serialize(info, SdkJsonContext.Default.ProjectionInfo);
-			ClearLastError();
-			return ToUnmanaged(handle, json);
+			return AllocUtf8(JsonSerializer.Serialize(info, SdkJsonContext.Default.ProjectionInfo));
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 			return null;
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_session_get_partition_key")]
-	public static byte* GetPartitionKey(nint sessionId, byte* eventJson) {
+	public static byte* GetPartitionKey(nint sessionId, byte* eventJson, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {
-			SetLastError(InvalidSessionError);
+			WriteError(errorOut, InvalidSessionError);
 			return null;
 		}
 		try {
 			var json = FromUtf8(eventJson);
 			if (json == null) {
-				SetLastError(new InvalidArgumentException("event_json is null", "event_json"));
+				WriteError(errorOut, new InvalidArgumentException("event_json is null", "event_json"));
 				return null;
 			}
 			var evt = ParseEvent(json);
-			ClearLastError();
-			return ToUnmanaged(handle, handle.Session.GetPartitionKey(evt));
+			return AllocUtf8(handle.Session.GetPartitionKey(evt));
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 			return null;
 		}
 	}
@@ -495,135 +460,158 @@ internal static unsafe class NativeExports {
 	// -- Debug controls --
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_set_breakpoint")]
-	public static byte* DebugSetBreakpoint(nint sessionId, int line, int column, byte* condition, byte* hitCondition, byte* logMessage) {
+	public static byte* DebugSetBreakpoint(nint sessionId, int line, int column, byte* condition, byte* hitCondition, byte* logMessage, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {
-			SetLastError(InvalidSessionError);
+			WriteError(errorOut, InvalidSessionError);
 			return null;
 		}
 		try {
 			var snapped = handle.Session.SetBreakpoint(line, column, FromUtf8(condition), FromUtf8(hitCondition), FromUtf8(logMessage));
-			ClearLastError();
 			if (snapped == null)
 				return null;
-			var json = $"{{\"line\":{snapped.Value.Line},\"column\":{snapped.Value.Column}}}";
-			return ToUnmanaged(handle, json);
+			return AllocUtf8($"{{\"line\":{snapped.Value.Line},\"column\":{snapped.Value.Column}}}");
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 			return null;
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_clear_breakpoints")]
-	public static void DebugClearBreakpoints(nint sessionId) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+	public static void DebugClearBreakpoints(nint sessionId, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			WriteError(errorOut, InvalidSessionError);
 			return;
+		}
 		try {
 			handle.Session.ClearBreakpoints();
-			ClearLastError();
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_continue")]
-	public static void DebugContinue(nint sessionId) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+	public static void DebugContinue(nint sessionId, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			WriteError(errorOut, InvalidSessionError);
 			return;
+		}
 		try {
 			handle.Session.Continue();
-			ClearLastError();
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_pause")]
-	public static void DebugPause(nint sessionId) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+	public static void DebugPause(nint sessionId, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			WriteError(errorOut, InvalidSessionError);
 			return;
-		handle.Session.Pause();
+		}
+		try {
+			handle.Session.Pause();
+		} catch (Exception ex) {
+			WriteError(errorOut, ex);
+		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_step_into")]
-	public static void DebugStepInto(nint sessionId) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+	public static void DebugStepInto(nint sessionId, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			WriteError(errorOut, InvalidSessionError);
 			return;
+		}
 		try {
 			handle.Session.StepInto();
-			ClearLastError();
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_step_over")]
-	public static void DebugStepOver(nint sessionId) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+	public static void DebugStepOver(nint sessionId, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			WriteError(errorOut, InvalidSessionError);
 			return;
+		}
 		try {
 			handle.Session.StepOver();
-			ClearLastError();
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_step_out")]
-	public static void DebugStepOut(nint sessionId) {
-		if (!Sessions.TryGetValue(sessionId, out var handle))
+	public static void DebugStepOut(nint sessionId, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
+		if (!Sessions.TryGetValue(sessionId, out var handle)) {
+			WriteError(errorOut, InvalidSessionError);
 			return;
+		}
 		try {
 			handle.Session.StepOut();
-			ClearLastError();
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_get_call_stack")]
-	public static byte* DebugGetCallStack(nint sessionId) {
+	public static byte* DebugGetCallStack(nint sessionId, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {
-			SetLastError(InvalidSessionError);
+			WriteError(errorOut, InvalidSessionError);
 			return null;
 		}
 		try {
-			var frames = handle.Session.GetCallStack();
-			ClearLastError();
-			return ToUnmanaged(handle, SerializeCallStack(frames));
+			return AllocUtf8(SerializeCallStack(handle.Session.GetCallStack()));
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 			return null;
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_get_scopes")]
-	public static byte* DebugGetScopes(nint sessionId, int frameIndex) {
+	public static byte* DebugGetScopes(nint sessionId, int frameIndex, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {
-			SetLastError(InvalidSessionError);
+			WriteError(errorOut, InvalidSessionError);
 			return null;
 		}
 		try {
-			var scopes = handle.Session.GetScopes(frameIndex);
-			ClearLastError();
-			return ToUnmanaged(handle, SerializeScopes(scopes));
+			return AllocUtf8(SerializeScopes(handle.Session.GetScopes(frameIndex)));
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 			return null;
 		}
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_get_variables")]
-	public static byte* DebugGetVariables(nint sessionId, int variablesReference) {
+	public static byte* DebugGetVariables(nint sessionId, int variablesReference, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {
-			SetLastError(InvalidSessionError);
+			WriteError(errorOut, InvalidSessionError);
 			return null;
 		}
 		try {
-			var variables = handle.Session.GetVariables(variablesReference);
-			ClearLastError();
-			return ToUnmanaged(handle, SerializeVariables(variables));
+			return AllocUtf8(SerializeVariables(handle.Session.GetVariables(variablesReference)));
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 			return null;
 		}
 	}
@@ -682,22 +670,22 @@ internal static unsafe class NativeExports {
 	}
 
 	[UnmanagedCallersOnly(EntryPoint = "gaffer_debug_evaluate")]
-	public static byte* DebugEvaluate(nint sessionId, byte* expression) {
+	public static byte* DebugEvaluate(nint sessionId, byte* expression, byte** errorOut) {
+		if (errorOut != null)
+			*errorOut = null;
 		if (!Sessions.TryGetValue(sessionId, out var handle)) {
-			SetLastError(InvalidSessionError);
+			WriteError(errorOut, InvalidSessionError);
 			return null;
 		}
 		try {
 			var expr = FromUtf8(expression);
 			if (expr == null) {
-				SetLastError(new InvalidArgumentException("expression is null", "expression"));
+				WriteError(errorOut, new InvalidArgumentException("expression is null", "expression"));
 				return null;
 			}
-			var result = handle.Session.Evaluate(expr);
-			ClearLastError();
-			return ToUnmanaged(handle, SerializeVariable(result));
+			return AllocUtf8(SerializeVariable(handle.Session.Evaluate(expr)));
 		} catch (Exception ex) {
-			SetLastError(ex);
+			WriteError(errorOut, ex);
 			return null;
 		}
 	}
@@ -715,10 +703,13 @@ internal static unsafe class NativeExports {
 		return Encoding.UTF8.GetString(stream.ToArray());
 	}
 
-	// -- Error handling --
+	// -- Memory management --
 
-	[UnmanagedCallersOnly(EntryPoint = "gaffer_get_last_error")]
-	public static byte* GetLastError() => _lastErrorPtr;
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_free")]
+	public static void Free(void* ptr) {
+		if (ptr != null)
+			NativeMemory.Free(ptr);
+	}
 
 	// -- Helpers --
 

@@ -23,10 +23,14 @@ export class ProjectionSession {
 		this.#source = source;
 		const native = getNativeBindings();
 		const optionsJson = JSON.stringify(options);
-		this.#handle = native.sessionCreate(source, optionsJson);
-		if (this.#handle === 0) {
-			this.#throwLastError();
+		const { handle, errorJson } = native.sessionCreate(source, optionsJson);
+		if (errorJson) {
+			throw parseErrorJson(errorJson, source);
 		}
+		if (handle === 0) {
+			throw new Error("Unknown error creating session");
+		}
+		this.#handle = handle;
 	}
 
 	/** Register a callback for emitted events (emit and linkTo). */
@@ -70,14 +74,17 @@ export class ProjectionSession {
 	/** Feed a single event to the projection and return the step result. */
 	feed(event: ProjectionEvent): FeedResult {
 		this.#ensureNotDisposed();
-		const json = getNativeBindings().sessionFeed(
+		const { result, errorJson } = getNativeBindings().sessionFeed(
 			this.#handle,
 			JSON.stringify(event),
 		);
-		if (json == null) {
-			this.#throwLastError();
+		if (errorJson) {
+			throw parseErrorJson(errorJson, this.#source);
 		}
-		return parseFeedResult(json);
+		if (result == null) {
+			throw new Error("Unknown error feeding event");
+		}
+		return parseFeedResult(result);
 	}
 
 	/** Get current state for a partition, or null if not seen. */
@@ -113,13 +120,13 @@ export class ProjectionSession {
 	/** Get the transformed result for a partition. */
 	getResult(partition?: string): string | null {
 		this.#ensureNotDisposed();
-		const result = getNativeBindings().sessionGetResult(
+		const { result, errorJson } = getNativeBindings().sessionGetResult(
 			this.#handle,
 			partition ?? null,
 		);
-		// getResult returns null for both "filtered out" and "transform threw",
-		// so we check the error to distinguish
-		this.#checkLastError();
+		if (errorJson) {
+			throw parseErrorJson(errorJson, this.#source);
+		}
 		return result;
 	}
 
@@ -132,9 +139,14 @@ export class ProjectionSession {
 	/** Get the source definition (what the projection reads). */
 	getSources(): ProjectionInfo {
 		this.#ensureNotDisposed();
-		const json = getNativeBindings().sessionGetSources(this.#handle);
-		if (!json) throw new Error("Failed to get sources");
-		return JSON.parse(json) as ProjectionInfo;
+		const { result, errorJson } = getNativeBindings().sessionGetSources(
+			this.#handle,
+		);
+		if (errorJson) {
+			throw parseErrorJson(errorJson, this.#source);
+		}
+		if (!result) throw new Error("Failed to get sources");
+		return JSON.parse(result) as ProjectionInfo;
 	}
 
 	/** Get the partition key for an event. */
@@ -161,21 +173,6 @@ export class ProjectionSession {
 	/** Implements Symbol.dispose for `using` syntax. */
 	[Symbol.dispose](): void {
 		this.dispose();
-	}
-
-	#throwLastError(): never {
-		const json = getNativeBindings().getLastError();
-		if (json) {
-			throw parseErrorJson(json, this.#source);
-		}
-		throw new Error("Unknown error");
-	}
-
-	#checkLastError(): void {
-		const json = getNativeBindings().getLastError();
-		if (json) {
-			throw parseErrorJson(json, this.#source);
-		}
 	}
 
 	#ensureNotDisposed(): void {

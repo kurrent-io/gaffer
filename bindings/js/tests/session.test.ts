@@ -3,6 +3,7 @@ import {
 	ProjectionSession,
 	InvalidProjectionError,
 	ProjectionHandlerError,
+	DiagnosticSeverity,
 } from "../src/index.js";
 import type { EmittedEvent } from "../src/index.js";
 
@@ -165,6 +166,31 @@ describe("ProjectionSession", () => {
 		const sources = session.getSources();
 		expect(sources.allStreams).toBe(true);
 		expect(sources.byStreams).toBe(true);
+		expect(sources.diagnostics).toBeNull();
+	});
+
+	it("reports linkStreamTo as a deprecation diagnostic", () => {
+		session = new ProjectionSession(
+			`
+			fromAll().when({
+				$any: function (s, e) {
+					linkStreamTo("archive-" + e.streamId, e.streamId);
+					return s;
+				}
+			})
+		`,
+			{ engineVersion: 2 },
+		);
+
+		const sources = session.getSources();
+		expect(sources.diagnostics).toHaveLength(1);
+		const d = sources.diagnostics?.[0];
+		expect(d?.code).toBe("deprecated.linkStreamTo");
+		expect(d?.severity).toBe(DiagnosticSeverity.Warning);
+		expect(d?.message).toContain("linkStreamTo");
+		expect(d?.range).not.toBeNull();
+		const span = (d?.range?.end.column ?? 0) - (d?.range?.start.column ?? 0);
+		expect(span).toBe("linkStreamTo".length);
 	});
 
 	it("sets and restores state", () => {

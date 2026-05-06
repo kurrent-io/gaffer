@@ -16,6 +16,22 @@ export const TransportKind = {
 	socket: 3,
 } as const;
 
+// Per-test request hook. Tests can install responses for
+// LSP method names (e.g. "workspace/symbol") that the
+// extension code calls via client.sendRequest.
+const requestHandlers = new Map<string, (params: unknown) => unknown>();
+
+export function setLspRequestHandler(
+	method: string,
+	handler: (params: unknown) => unknown,
+): void {
+	requestHandlers.set(method, handler);
+}
+
+export function clearLspRequestHandlers(): void {
+	requestHandlers.clear();
+}
+
 export class LanguageClient {
 	id: string;
 	name: string;
@@ -39,6 +55,14 @@ export class LanguageClient {
 
 	async stop(): Promise<void> {
 		return;
+	}
+
+	async sendRequest<T>(method: string, params?: unknown): Promise<T> {
+		const handler = requestHandlers.get(method);
+		if (!handler) {
+			return null as T;
+		}
+		return handler(params) as T;
 	}
 }
 

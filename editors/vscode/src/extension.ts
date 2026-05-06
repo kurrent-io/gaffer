@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { buildGafferArgv, tryFetchManifest } from "./discovery/cli.js";
-import { createProjectIndex } from "./discovery/project-index.js";
 import { LspCodeLensProvider } from "./lsp/lens-provider.js";
+import { fetchProjections } from "./lsp/symbols.js";
 import { StepProvider } from "./panels/step.js";
 import { StateProvider } from "./panels/state.js";
 import { StatusViewProvider } from "./panels/status.js";
@@ -54,12 +54,13 @@ export async function activate(
 		),
 	);
 
-	// Initial snapshots - both awaited up front. Lens providers are
-	// constructed with the loaded data and registered after, so first
-	// provideCodeLenses call sees real state.
-	const initialIndex = await createProjectIndex();
+	// Initial manifest snapshot - awaited up front so the lens
+	// provider's first provideCodeLenses call sees the real
+	// dev/--debug capability set instead of bailing on a null
+	// manifest. cwd defaults to the workspace root via the
+	// underlying execFile when not provided.
 	const initialManifest = await tryFetchManifest(
-		initialIndex.projectRoot,
+		undefined,
 		showManifestFailure,
 	);
 
@@ -93,21 +94,22 @@ export async function activate(
 	});
 	controller.register(context);
 
-	// Async orchestrator, serialised on a promise chain so overlapping
-	// events (toml save + config change in quick succession) can't
-	// interleave setters out of order. The body is try/caught so a
-	// transient failure (e.g. workspace becoming briefly unavailable)
-	// can't poison the chain and brick all future refreshes.
+	// Async orchestrator, serialised on a promise chain so
+	// overlapping events (config change + trust grant in quick
+	// succession) can't interleave setters out of order. Body is
+	// try/caught so a transient failure can't poison the chain.
+	// Drives the manifest only - toml content and projection
+	// metadata flow through the LSP server's own walker /
+	// watcher / cached parses.
 	let refreshChain: Promise<void> = Promise.resolve();
-	const reloadLensState = (): Promise<void> => {
+	const reloadManifest = (): Promise<void> => {
 		refreshChain = refreshChain.then(async () => {
 			try {
-				const idx = await createProjectIndex();
-				const m = await tryFetchManifest(idx.projectRoot, showManifestFailure);
+				const m = await tryFetchManifest(undefined, showManifestFailure);
 				lspCodeLens.setManifest(m);
 			} catch (err) {
 				log(
-					`Lens state reload failed: ${err instanceof Error ? err.message : String(err)}`,
+					`Manifest reload failed: ${err instanceof Error ? err.message : String(err)}`,
 				);
 			}
 		});
@@ -187,13 +189,13 @@ export async function activate(
 			void showTrustWarning();
 			return;
 		}
-		const index = await createProjectIndex();
-		if (index.size === 0) {
+		const projections = await fetchProjections();
+		if (projections.length === 0) {
 			void showNoProjections();
 			return;
 		}
 		const picked = await vscode.window.showQuickPick(
-			index.projections.map((p) => ({
+			projections.map((p) => ({
 				label: p.name,
 				description: vscode.workspace.asRelativePath(p.tomlUri),
 				projection: p,
@@ -201,10 +203,7 @@ export async function activate(
 			{ placeHolder: "Select a projection to debug" },
 		);
 		if (!picked) return;
-		const manifest = await tryFetchManifest(
-			index.projectRoot,
-			showManifestFailure,
-		);
+		const manifest = await tryFetchManifest(undefined, showManifestFailure);
 		if (!manifest) return;
 		await controller.start({
 			name: picked.projection.name,
@@ -254,36 +253,17 @@ export async function activate(
 		),
 	);
 
-	const tomlWatcher =
-		vscode.workspace.createFileSystemWatcher("**/gaffer.toml");
-	tomlWatcher.onDidChange(async () => {
-		log("gaffer.toml changed");
-		await reloadLensState();
-	});
-	tomlWatcher.onDidCreate(async () => {
-		log("gaffer.toml created");
-		await reloadLensState();
-	});
-	tomlWatcher.onDidDelete(async () => {
-		log("gaffer.toml deleted");
-		// LSP server publishes empty diagnostics for deleted tomls
-		// via its own watcher; the extension only needs to refresh
-		// the JS lens path's project index.
-		await reloadLensState();
-	});
-	context.subscriptions.push(tomlWatcher);
-
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration(async (e) => {
 			if (e.affectsConfiguration("gaffer.command")) {
 				log("gaffer.command setting changed");
-				await reloadLensState();
+				await reloadManifest();
 			}
 		}),
 		vscode.workspace.onDidGrantWorkspaceTrust(async () => {
 			log("workspace trusted");
 			lspCodeLens.refresh();
-			await reloadLensState();
+			await reloadManifest();
 		}),
 	);
 }

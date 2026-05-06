@@ -78,6 +78,16 @@ export async function startLanguageClient(
 }
 
 /**
+ * Returns the active LSP client, or undefined if startup
+ * hasn't completed (or failed). Callers that send requests
+ * (workspace/symbol, etc.) should handle the undefined case
+ * with a sensible fallback - usually an empty result.
+ */
+export function getLanguageClient(): LanguageClient | undefined {
+	return client;
+}
+
+/**
  * Stop the active language client. Used by deactivate() to
  * give the server a chance to flush before the host exits.
  */

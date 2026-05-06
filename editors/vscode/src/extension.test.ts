@@ -21,12 +21,15 @@ import {
 	getShownMessages,
 	getState,
 	queueFindFiles,
-	queueFindFilesGate,
 	queueMessageResponse,
 	queueQuickPick,
 	setConfiguration,
 	setTrusted,
 } from "../test/testutil/vscode-state.js";
+import {
+	clearLspRequestHandlers,
+	setLspRequestHandler,
+} from "../test/__mocks__/vscode-languageclient-node.js";
 
 // Shared test setup: an untrusted workspace where activate's initial
 // tryFetchManifest returns null silently (no execFile) and findFiles
@@ -85,13 +88,6 @@ describe("activate registrations", () => {
 			"gaffer.noop",
 			"gaffer.runProjection",
 			"gaffer.stopDebug",
-		]);
-	});
-
-	it("creates a file watcher on **/gaffer.toml", async () => {
-		await activateBare();
-		expect(getState().fileWatchers.map((w) => w.pattern)).toEqual([
-			"**/gaffer.toml",
 		]);
 	});
 });
@@ -170,91 +166,6 @@ describe("runProjection bail-early paths", () => {
 		const msgs = getShownMessages();
 		expect(msgs.some((m) => /no projections found/.test(m.message))).toBe(true);
 		expect(getState().quickPickCalls).toEqual([]);
-	});
-});
-
-describe("tomlWatcher reload chain", () => {
-	it("setManifest fires on the lens provider when a toml change is observed", async () => {
-		const lspSetManifest = vi.spyOn(
-			LspCodeLensProvider.prototype,
-			"setManifest",
-		);
-		await activateBare();
-		// Reset call history accumulated during activate's own initial load.
-		lspSetManifest.mockClear();
-
-		queueFindFiles([]); // for the reload's createProjectIndex
-		const watcher = getState().fileWatchers[0];
-		watcher?.emitChange(vscode.Uri.file("/p/gaffer.toml"));
-		await flushAllMicrotasks();
-		expect(lspSetManifest).toHaveBeenCalledTimes(1);
-	});
-
-	it("rapid back-to-back changes serialise through refreshChain (one reload at a time)", async () => {
-		// Proof of serialisation: gate each findFiles call. With the
-		// chain, only the *first* reload's findFiles is in-flight after
-		// firing both events; the second is queued behind it. Without
-		// the chain, both would be in-flight concurrently.
-		const setManifest = vi.spyOn(LspCodeLensProvider.prototype, "setManifest");
-		await activateBare();
-		setManifest.mockClear();
-
-		queueFindFiles([]);
-		queueFindFiles([]);
-		const gate1 = queueFindFilesGate();
-		const gate2 = queueFindFilesGate();
-		const findFilesCallsBefore = getState().findFilesCalls.length;
-
-		const watcher = getState().fileWatchers[0];
-		watcher?.emitChange(vscode.Uri.file("/p/gaffer.toml"));
-		watcher?.emitChange(vscode.Uri.file("/p/gaffer.toml"));
-		await flushAllMicrotasks();
-		// Serialised: only the first reload has reached findFiles.
-		expect(getState().findFilesCalls.length - findFilesCallsBefore).toBe(1);
-		expect(setManifest).toHaveBeenCalledTimes(0);
-
-		// Release the first gate -> first reload completes -> second
-		// reload starts and reaches findFiles.
-		gate1.release();
-		await flushAllMicrotasks();
-		expect(setManifest).toHaveBeenCalledTimes(1);
-		expect(getState().findFilesCalls.length - findFilesCallsBefore).toBe(2);
-
-		// Release the second gate -> second reload completes.
-		gate2.release();
-		await flushAllMicrotasks();
-		expect(setManifest).toHaveBeenCalledTimes(2);
-	});
-
-	it("create event triggers a reload", async () => {
-		const setManifest = vi.spyOn(LspCodeLensProvider.prototype, "setManifest");
-		await activateBare();
-		setManifest.mockClear();
-
-		queueFindFiles([]);
-		const watcher = getState().fileWatchers[0];
-		watcher?.emitCreate(vscode.Uri.file("/p/gaffer.toml"));
-		await flushAllMicrotasks();
-		expect(setManifest).toHaveBeenCalledTimes(1);
-	});
-
-	it("delete event triggers a reload", async () => {
-		const setManifest = vi.spyOn(LspCodeLensProvider.prototype, "setManifest");
-		await activateBare();
-		setManifest.mockClear();
-
-		queueFindFiles([]);
-		const watcher = getState().fileWatchers[0];
-		watcher?.emitDelete(vscode.Uri.file("/p/gaffer.toml"));
-		await flushAllMicrotasks();
-		expect(setManifest).toHaveBeenCalledTimes(1);
-	});
-
-	it("the watcher is on context.subscriptions for disposal", async () => {
-		const ctx = await activateBare();
-		expect(
-			ctx.subscriptions.some((d) => d === getState().fileWatchers[0]),
-		).toBe(true);
 	});
 });
 
@@ -413,22 +324,17 @@ describe("workspace trust grant", () => {
 // manifest-fetch-fails case spawns execFile against a non-existent
 // path - documented exception to the "no spawn in extension.test.ts"
 // header. This is an ENOENT path; the spawn fails before any IO.
-describe("runProjection (with a real projection index)", () => {
+describe("runProjection (with a populated projection list)", () => {
 	let tmpDir: string;
 
 	beforeEach(() => {
 		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gaffer-ext-"));
-		const tomlPath = path.join(tmpDir, "gaffer.toml");
-		const entryPath = path.join(tmpDir, "checkout.js");
-		fs.writeFileSync(
-			tomlPath,
-			`[[projection]]\nname = "checkout"\nentry = "checkout.js"\n`,
-		);
-		fs.writeFileSync(entryPath, "fromAll().when({})\n");
+		clearLspRequestHandlers();
 	});
 
 	afterEach(() => {
 		fs.rmSync(tmpDir, { recursive: true, force: true });
+		clearLspRequestHandlers();
 	});
 
 	function runProjection(): Promise<unknown> {
@@ -437,10 +343,26 @@ describe("runProjection (with a real projection index)", () => {
 		return Promise.resolve(handler() as unknown);
 	}
 
+	function stubProjectionsResponse(name: string, tomlPath: string): void {
+		setLspRequestHandler("workspace/symbol", () => [
+			{
+				name,
+				kind: 12,
+				location: {
+					uri: vscode.Uri.file(tomlPath).toString(),
+					range: {
+						start: { line: 0, character: 0 },
+						end: { line: 0, character: 14 },
+					},
+				},
+			},
+		]);
+	}
+
 	it("user cancels the quickpick: silent no-op, controller.start not invoked", async () => {
 		await activateBare();
 		setTrusted(true);
-		queueFindFiles([vscode.Uri.file(path.join(tmpDir, "gaffer.toml"))]);
+		stubProjectionsResponse("checkout", path.join(tmpDir, "gaffer.toml"));
 		queueQuickPick(undefined); // user dismisses
 		await runProjection();
 		// start would call buildArgv -> getConfiguration -> spawn, which
@@ -451,7 +373,7 @@ describe("runProjection (with a real projection index)", () => {
 	it("manifest fetch fails: shows error toast, controller.start not invoked", async () => {
 		await activateBare();
 		setTrusted(true);
-		queueFindFiles([vscode.Uri.file(path.join(tmpDir, "gaffer.toml"))]);
+		stubProjectionsResponse("checkout", path.join(tmpDir, "gaffer.toml"));
 		queueQuickPick({
 			label: "checkout",
 			description: "checkout/gaffer.toml",

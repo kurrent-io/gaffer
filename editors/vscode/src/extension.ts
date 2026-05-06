@@ -26,12 +26,19 @@ import {
 	showNoProjections,
 	showTrustWarning,
 } from "./notifications.js";
+import { startLanguageClient } from "./lsp/client.js";
 
 export async function activate(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
 	initOutput(context);
 	initDiagnostics(context);
+
+	// Spawn the LSP server early. While the existing in-process
+	// lens / diagnostic providers continue to run, this lets us
+	// verify the server connects and publishes diagnostics in
+	// parallel before later chunks delete the in-process path.
+	void startLanguageClient(context);
 
 	// Stale-on-edit: any text change to a file with a runtime error
 	// invalidates that error (the in-memory content no longer matches

@@ -30,6 +30,10 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			vscode: path.resolve(here, "test/__mocks__/vscode.ts"),
+			"vscode-languageclient/node": path.resolve(
+				here,
+				"test/__mocks__/vscode-languageclient-node.ts",
+			),
 		},
 	},
 	test: {

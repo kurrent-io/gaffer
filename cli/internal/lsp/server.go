@@ -208,10 +208,6 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 		return s.handleDidChange(ctx, req)
 	case MethodDidClose:
 		return s.handleDidClose(req)
-	case MethodDidSave:
-		// No-op for V1: under full sync we already have the latest
-		// content from didChange. Acknowledge and move on.
-		return nil, nil
 	case MethodCodeLens:
 		return s.handleCodeLens(req)
 	case MethodWorkspaceSymbol:
@@ -260,7 +256,7 @@ func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (int
 	s.initialized = true
 	return InitializeResult{
 		Capabilities: ServerCapabilities{
-			TextDocumentSync:        1, // full document sync (Decision 1)
+			TextDocumentSync:        TextDocumentSyncFull,
 			CodeLensProvider:        &CodeLensOptions{},
 			WorkspaceSymbolProvider: &WorkspaceSymbolOptions{},
 		},

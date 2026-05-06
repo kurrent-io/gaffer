@@ -414,9 +414,12 @@ func TestServer_DidCloseRemovesFromStore(t *testing.T) {
 }
 
 func TestServer_DidSaveIsAccepted(t *testing.T) {
-	// V1 didSave is a no-op (full sync means we already have the
-	// content from didChange). Verify no error response and the
-	// store stays at the last didChange-supplied content.
+	// V1 advertises bare-int TextDocumentSync (no save field), so
+	// well-behaved clients won't send didSave at all. But some
+	// clients send it regardless. The server falls through to the
+	// default-branch MethodNotFound response, which jsonrpc2
+	// silently drops for notifications. Verify the connection
+	// stays alive and the store is untouched.
 	srv, cli := pipePair()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()

@@ -82,15 +82,24 @@ func (s *Server) publishDiagnostics(uri string, diags []lspDiagnostic) {
 	}
 }
 
+// gafferConfigName is the basename of the file we recognise as a
+// gaffer config. The watcher glob and isGafferConfig both derive
+// from this so adding a second format is one place plus each
+// editor's activation manifest.
+const gafferConfigName = "gaffer.toml"
+
+// gafferConfigGlob is the watcher pattern matching every
+// gafferConfigName under the workspace.
+const gafferConfigGlob = "**/" + gafferConfigName
+
 // isGafferConfig is the parse-trigger gate. V1: any URI whose
-// basename is exactly "gaffer.toml". Adding a second format is a
-// one-line update here + each editor's activation manifest.
+// basename matches gafferConfigName.
 //
 // The basename check defends against false positives like
 // notgaffer.toml or mygaffer.toml that a naive HasSuffix would
 // match.
 func isGafferConfig(uri string) bool {
-	return path.Base(uriToPath(uri)) == "gaffer.toml"
+	return path.Base(uriToPath(uri)) == gafferConfigName
 }
 
 // requestCodeLensRefresh asks the client to re-issue every

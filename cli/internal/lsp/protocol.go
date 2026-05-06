@@ -112,11 +112,14 @@ type ServerInfo struct {
 // ServerCapabilities advertises what the server provides. V1 surface
 // is intentionally minimal; more fields land with chunks 2.2+.
 type ServerCapabilities struct {
-	// TextDocumentSync = 1 means "full document sync" - the client
-	// re-sends the entire document on each change. See LSP plan
-	// Decision 1: we explicitly chose full sync over incremental
-	// since config files are tiny.
-	TextDocumentSync int `json:"textDocumentSync"`
+	// TextDocumentSync uses the bare-integer form
+	// (TextDocumentSyncKind enum). Full = 1: client re-sends the
+	// entire document on each change. See LSP plan Decision 1:
+	// we chose full sync over incremental since config files
+	// are tiny. The bare-int form does not include a `save`
+	// field; clients infer "no didSave wanted" and skip it,
+	// which is what we want.
+	TextDocumentSync TextDocumentSyncKind `json:"textDocumentSync"`
 	// CodeLensProvider advertises that the server responds to
 	// textDocument/codeLens requests. Empty options struct is
 	// fine - we don't require resolveProvider since lenses are
@@ -127,6 +130,15 @@ type ServerCapabilities struct {
 	// projections via Cmd+T and powers our QuickPick.
 	WorkspaceSymbolProvider *WorkspaceSymbolOptions `json:"workspaceSymbolProvider,omitempty"`
 }
+
+// TextDocumentSyncKind matches LSP spec values: 0=None, 1=Full,
+// 2=Incremental. We only emit Full today; add the others if/when
+// incremental sync is needed (LSP plan Decision 1 picked Full).
+type TextDocumentSyncKind int
+
+const (
+	TextDocumentSyncFull TextDocumentSyncKind = 1
+)
 
 // CodeLensOptions is the value of ServerCapabilities.CodeLensProvider.
 type CodeLensOptions struct {

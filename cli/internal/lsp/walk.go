@@ -94,7 +94,7 @@ func (s *Server) registerFileWatcher(ctx context.Context) {
 			Method: MethodDidChangeWatchedFiles,
 			RegisterOptions: DidChangeWatchedFilesRegistrationOptions{
 				Watchers: []FileSystemWatcher{
-					{GlobPattern: "**/gaffer.toml"},
+					{GlobPattern: gafferConfigGlob},
 				},
 			},
 		}},

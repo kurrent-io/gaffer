@@ -3,11 +3,41 @@ import { existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { createRequire } from "node:module";
 
-const PLATFORM_PACKAGES: Record<string, string> = {
-	"linux-x64": "@kurrent/gaffer-runtime-linux-x64",
-	// "darwin-arm64": "@kurrent/gaffer-runtime-darwin-arm64",
-	// "darwin-x64": "@kurrent/gaffer-runtime-darwin-x64",
-	// "win32-x64": "@kurrent/gaffer-runtime-win32-x64",
+interface PlatformInfo {
+	/** npm package that ships the native binary */
+	packageName: string;
+	/** binary filename inside the npm package (and at the dev publish path) */
+	libFile: string;
+	/** .NET runtime identifier used for the dev-fallback publish path */
+	dotnetRid: string;
+}
+
+const PLATFORMS: Record<string, PlatformInfo> = {
+	"linux-x64": {
+		packageName: "@kurrent/gaffer-runtime-linux-x64",
+		libFile: "gaffer.so",
+		dotnetRid: "linux-x64",
+	},
+	"linux-arm64": {
+		packageName: "@kurrent/gaffer-runtime-linux-arm64",
+		libFile: "gaffer.so",
+		dotnetRid: "linux-arm64",
+	},
+	"darwin-x64": {
+		packageName: "@kurrent/gaffer-runtime-darwin-x64",
+		libFile: "gaffer.dylib",
+		dotnetRid: "osx-x64",
+	},
+	"darwin-arm64": {
+		packageName: "@kurrent/gaffer-runtime-darwin-arm64",
+		libFile: "gaffer.dylib",
+		dotnetRid: "osx-arm64",
+	},
+	"win32-x64": {
+		packageName: "@kurrent/gaffer-runtime-win32-x64",
+		libFile: "gaffer.dll",
+		dotnetRid: "win-x64",
+	},
 };
 
 function findLibPath(): string {
@@ -16,24 +46,31 @@ function findLibPath(): string {
 		return process.env.GAFFER_RUNTIME_LIB;
 	}
 
-	// 2. Platform-specific npm package
 	const platformKey = `${process.platform}-${process.arch}`;
-	const packageName = PLATFORM_PACKAGES[platformKey];
-	if (packageName) {
-		try {
-			const require = createRequire(import.meta.url);
-			const packageDir = resolve(
-				require.resolve(`${packageName}/package.json`),
-				"..",
-			);
-			const candidate = join(packageDir, "gaffer.so");
-			if (existsSync(candidate)) return candidate;
-		} catch {
-			// package not installed, fall through
-		}
+	const platform = PLATFORMS[platformKey];
+
+	if (!platform) {
+		throw new Error(
+			`Unsupported platform ${platformKey}. ` +
+				`Supported: ${Object.keys(PLATFORMS).join(", ")}.`,
+		);
 	}
 
-	// 3. Walk up looking for the runtime .so (dev fallback)
+	// 2. Platform-specific npm package
+	try {
+		const require = createRequire(import.meta.url);
+		const packageDir = resolve(
+			require.resolve(`${platform.packageName}/package.json`),
+			"..",
+		);
+		const candidate = join(packageDir, platform.libFile);
+		if (existsSync(candidate)) return candidate;
+	} catch {
+		// package not installed, fall through
+	}
+
+	// 3. Walk up looking for the runtime library (dev fallback)
+	const dotnetLibFile = `Gaffer.Runtime.${platform.libFile.split(".").pop()}`;
 	let dir = import.meta.dirname;
 	for (let i = 0; i < 10; i++) {
 		const candidate = resolve(
@@ -43,9 +80,9 @@ function findLibPath(): string {
 			"bin",
 			"Release",
 			"net10.0",
-			"linux-x64",
+			platform.dotnetRid,
 			"publish",
-			"Gaffer.Runtime.so",
+			dotnetLibFile,
 		);
 		if (existsSync(candidate)) return candidate;
 		dir = resolve(dir, "..");
@@ -53,7 +90,7 @@ function findLibPath(): string {
 
 	throw new Error(
 		`Could not find Gaffer runtime library for ${platformKey}. ` +
-			`Install @kurrent/gaffer-runtime-${platformKey} or set GAFFER_RUNTIME_LIB.`,
+			`Install ${platform.packageName} or set GAFFER_RUNTIME_LIB.`,
 	);
 }
 

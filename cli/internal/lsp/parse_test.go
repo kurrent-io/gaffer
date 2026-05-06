@@ -80,6 +80,26 @@ func findPublishDiagnostics(calls []capturedNotify, uri string) *PublishDiagnost
 	return latest
 }
 
+// countPublishDiagnostics returns the number of publishDiagnostics
+// notifications recorded for `uri`. Useful for asserting that a
+// debounce collapsed N events into 1 publish.
+func countPublishDiagnostics(calls []capturedNotify, uri string) int {
+	count := 0
+	for i := range calls {
+		if calls[i].Method != MethodPublishDiagnostics {
+			continue
+		}
+		var p PublishDiagnosticsParams
+		if err := json.Unmarshal(calls[i].Params, &p); err != nil {
+			continue
+		}
+		if p.URI == uri {
+			count++
+		}
+	}
+	return count
+}
+
 // tempTOMLPath returns the absolute path + file URI for a
 // gaffer.toml under a fresh t.TempDir. Doesn't write the file -
 // parseAndPublish reads from the in-memory document store, not

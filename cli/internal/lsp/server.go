@@ -8,9 +8,17 @@ import (
 	"io"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/sourcegraph/jsonrpc2"
 )
+
+// defaultDebounceWindow is the canonical LSP "pause to read"
+// interval - long enough that transient invalid states during a
+// keystroke burst (`fixtures.foo = "` -> `"esc` -> `"escape.json"`)
+// don't flicker squiggles, short enough that the user perceives
+// feedback as live.
+const defaultDebounceWindow = 250 * time.Millisecond
 
 // ServerOptions configures a Server before Run starts the message
 // loop. Zero-value is usable; callers override individual fields.
@@ -18,6 +26,11 @@ type ServerOptions struct {
 	// Version surfaced via InitializeResult.ServerInfo.Version.
 	// Callers (e.g. cmd/lsp.go) inject the build version.
 	Version string
+	// DebounceWindow gates how long a quiet period must follow a
+	// didChange before the server runs the parse + publish for that
+	// URI. Each new didChange resets the window. Zero falls back to
+	// the conventional 250ms (matches gopls/clangd/pyright).
+	DebounceWindow time.Duration
 }
 
 // Server is the gaffer LSP server. One instance per stdio session;
@@ -54,16 +67,33 @@ type Server struct {
 	// for the client to also close stdin (a well-behaved client
 	// expects the server to drive disconnect on exit).
 	exitCh chan struct{}
+
+	// debounceMu guards the per-URI debounce timer map. Held only
+	// for the timer-table mutation, not while the timer's callback
+	// runs - that path takes the lock again to delete its own
+	// entry.
+	debounceMu sync.Mutex
+	debounces  map[string]*time.Timer
 }
 
 // NewServer constructs a server with the given options. Doesn't
 // touch I/O; call Run to start the message loop.
 func NewServer(opts ServerOptions) *Server {
 	return &Server{
-		opts:   opts,
-		docs:   NewDocumentStore(),
-		exitCh: make(chan struct{}),
+		opts:      opts,
+		docs:      NewDocumentStore(),
+		exitCh:    make(chan struct{}),
+		debounces: make(map[string]*time.Timer),
 	}
+}
+
+// debounceWindow returns the configured window or the default.
+// Centralised so future per-method overrides land in one place.
+func (s *Server) debounceWindow() time.Duration {
+	if s.opts.DebounceWindow > 0 {
+		return s.opts.DebounceWindow
+	}
+	return defaultDebounceWindow
 }
 
 // Run drives the JSON-RPC message loop over the given stream until
@@ -94,6 +124,16 @@ func (s *Server) Run(ctx context.Context, stream io.ReadWriteCloser) error {
 	s.cancelRun = cancel
 	s.mu.Unlock()
 	defer func() {
+		// Cancel runCtx first so any in-flight parseAndPublish
+		// notices and exits its DescribeBytes call promptly. Then
+		// drain pending timers - any already-queued callback's
+		// identity check finds an empty map and bails. Only
+		// after both have happened do we clear the captured
+		// fields, so a late callback's runContext() lookup still
+		// returns the cancelled ctx (rather than falling back to
+		// Background and running uncancellable work).
+		cancel()
+		s.drainDebounces()
 		s.mu.Lock()
 		s.conn = nil
 		s.runCtx = nil
@@ -217,7 +257,7 @@ func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (int
 	}, nil
 }
 
-func (s *Server) handleDidOpen(ctx context.Context, req *jsonrpc2.Request) (interface{}, error) {
+func (s *Server) handleDidOpen(_ context.Context, req *jsonrpc2.Request) (interface{}, error) {
 	if req.Params == nil {
 		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: "didOpen missing params"}
 	}
@@ -226,16 +266,16 @@ func (s *Server) handleDidOpen(ctx context.Context, req *jsonrpc2.Request) (inte
 		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: err.Error()}
 	}
 	s.docs.Open(params.TextDocument.URI, params.TextDocument.Text)
-	// Parse off the handler goroutine so jsonrpc2 can dispatch the
-	// next message without waiting on us. Spawned ctx is divorced
-	// from the request's ctx because the parse + publish should
-	// outlive the request handler's return.
-	go s.parseAndPublish(context.Background(), params.TextDocument.URI)
-	_ = ctx // ctx held for future cancellation propagation
+	// didOpen drives the first parse - users expect immediate
+	// feedback when a file opens, not a 250ms wait. Cancel any
+	// stale debounce from a previous Open/Change cycle so two
+	// parses don't race.
+	s.cancelDebounce(params.TextDocument.URI)
+	go s.parseAndPublish(s.runContext(), params.TextDocument.URI)
 	return nil, nil
 }
 
-func (s *Server) handleDidChange(ctx context.Context, req *jsonrpc2.Request) (interface{}, error) {
+func (s *Server) handleDidChange(_ context.Context, req *jsonrpc2.Request) (interface{}, error) {
 	if req.Params == nil {
 		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: "didChange missing params"}
 	}
@@ -260,8 +300,7 @@ func (s *Server) handleDidChange(ctx context.Context, req *jsonrpc2.Request) (in
 		log.Printf("lsp: dropping didChange: %v", err)
 		return nil, nil
 	}
-	go s.parseAndPublish(context.Background(), params.TextDocument.URI)
-	_ = ctx
+	s.scheduleDebouncedParse(params.TextDocument.URI)
 	return nil, nil
 }
 
@@ -273,6 +312,10 @@ func (s *Server) handleDidClose(req *jsonrpc2.Request) (interface{}, error) {
 	if err := json.Unmarshal(*req.Params, &params); err != nil {
 		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: err.Error()}
 	}
+	// Cancel any pending debounce - parsing a closed buffer would
+	// publish stale squiggles that the close itself is meant to
+	// clear.
+	s.cancelDebounce(params.TextDocument.URI)
 	s.docs.Close(params.TextDocument.URI)
 	// Clear any lingering diagnostics for this URI so the editor's
 	// Problems panel doesn't show squiggles for a file that's no
@@ -297,6 +340,79 @@ func (s *Server) handleCodeLens(req *jsonrpc2.Request) (interface{}, error) {
 		return []CodeLens{}, nil
 	}
 	return emitCodeLenses(parse.Description), nil
+}
+
+// runContext returns the captured Run-scope context. Used by
+// async work spawned from per-request handlers so shutdown
+// cancels their parse/publish in flight. Falls back to
+// context.Background when called outside an active Run (during
+// tests that drive handlers directly).
+func (s *Server) runContext() context.Context {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.runCtx != nil {
+		return s.runCtx
+	}
+	return context.Background()
+}
+
+// scheduleDebouncedParse arms (or re-arms) the per-URI debounce
+// timer. The most recent didChange wins: each call cancels the
+// pending timer and replaces it with a fresh one. After the
+// window elapses with no further didChange the parse runs against
+// the current document store state.
+//
+// Callback identity check: AfterFunc's Stop() doesn't wait for an
+// already-fired callback. A callback that lost the Stop race
+// could otherwise corrupt the map (deleting a successor's entry)
+// or run a parse the caller meant to cancel. Each callback checks
+// "am I still the current timer for this URI?" before doing
+// anything; if a later scheduleDebouncedParse / cancelDebounce /
+// drainDebounces replaced or removed our entry, the callback is
+// stale and bails.
+func (s *Server) scheduleDebouncedParse(uri string) {
+	s.debounceMu.Lock()
+	defer s.debounceMu.Unlock()
+	if t, ok := s.debounces[uri]; ok {
+		t.Stop()
+	}
+	var timer *time.Timer
+	timer = time.AfterFunc(s.debounceWindow(), func() {
+		s.debounceMu.Lock()
+		if s.debounces[uri] != timer {
+			s.debounceMu.Unlock()
+			return
+		}
+		delete(s.debounces, uri)
+		s.debounceMu.Unlock()
+		s.parseAndPublish(s.runContext(), uri)
+	})
+	s.debounces[uri] = timer
+}
+
+// cancelDebounce stops the pending debounce timer for URI and
+// removes it from the map. The map removal alone is sufficient -
+// even if the callback has already been queued, the identity
+// check inside it will bail.
+func (s *Server) cancelDebounce(uri string) {
+	s.debounceMu.Lock()
+	defer s.debounceMu.Unlock()
+	if t, ok := s.debounces[uri]; ok {
+		t.Stop()
+		delete(s.debounces, uri)
+	}
+}
+
+// drainDebounces stops every pending timer at shutdown. Map
+// entries are deleted so any already-queued callbacks fail their
+// identity check and bail without calling parseAndPublish.
+func (s *Server) drainDebounces() {
+	s.debounceMu.Lock()
+	defer s.debounceMu.Unlock()
+	for uri, t := range s.debounces {
+		t.Stop()
+		delete(s.debounces, uri)
+	}
 }
 
 func (s *Server) handleShutdown() (interface{}, error) {

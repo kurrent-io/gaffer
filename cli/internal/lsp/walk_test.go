@@ -1,0 +1,766 @@
+package lsp
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/sourcegraph/jsonrpc2"
+)
+
+// capturedRequest records a single server-pushed request to the
+// client. Distinct from capturedNotify - requests carry IDs and
+// require responses.
+type capturedRequest struct {
+	Method string
+	Params json.RawMessage
+}
+
+// clientStub is a richer test-side handler than notifyCapture: it
+// records both notifications AND requests, and answers requests
+// with a nil result so server-side conn.Call doesn't hang.
+type clientStub struct {
+	mu       sync.Mutex
+	notifs   []capturedNotify
+	requests []capturedRequest
+}
+
+func (c *clientStub) handler(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) (interface{}, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var raw json.RawMessage
+	if req.Params != nil {
+		raw = *req.Params
+	}
+	if req.Notif {
+		c.notifs = append(c.notifs, capturedNotify{Method: req.Method, Params: raw})
+	} else {
+		c.requests = append(c.requests, capturedRequest{Method: req.Method, Params: raw})
+	}
+	return nil, nil
+}
+
+func (c *clientStub) notifSnapshot() []capturedNotify {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]capturedNotify, len(c.notifs))
+	copy(out, c.notifs)
+	return out
+}
+
+func (c *clientStub) requestSnapshot() []capturedRequest {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]capturedRequest, len(c.requests))
+	copy(out, c.requests)
+	return out
+}
+
+func newClientConnStub(ctx context.Context, stream io.ReadWriteCloser, c *clientStub) *jsonrpc2.Conn {
+	return jsonrpc2.NewConn(
+		ctx,
+		jsonrpc2.NewBufferedStream(stream, jsonrpc2.VSCodeObjectCodec{}),
+		jsonrpc2.HandlerWithError(c.handler),
+	)
+}
+
+// writeWorkspaceFile creates dir + file and returns the absolute
+// file path. Test helper for setting up a workspace tree.
+func writeWorkspaceFile(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %q: %v", dir, err)
+	}
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %q: %v", path, err)
+	}
+	return path
+}
+
+func TestServer_InitializedWalksWorkspaceAndPublishes(t *testing.T) {
+	// Workspace with a single invalid gaffer.toml. After
+	// initialize+initialized the server should walk, parse, and
+	// publish diagnostics for the file - without the client ever
+	// sending didOpen.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.evil = "../escape.json"
+`)
+	uri := pathToURI(cfg)
+
+	_, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+
+	waitFor(t, func() bool {
+		got := findPublishDiagnostics(stub.notifSnapshot(), uri)
+		return got != nil && len(got.Diagnostics) == 1
+	}, time.Second)
+
+	got := findPublishDiagnostics(stub.notifSnapshot(), uri)
+	if got == nil || got.Diagnostics[0].Code != "fixture.path-escapes-root" {
+		t.Fatalf("expected escape diagnostic, got %+v", got)
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_InitializedRegistersFileWatcher(t *testing.T) {
+	// Server should send a client/registerCapability request after
+	// initialized, asking the editor to watch **/gaffer.toml.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	_, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+
+	waitFor(t, func() bool {
+		for _, r := range stub.requestSnapshot() {
+			if r.Method == MethodRegisterCapability {
+				return true
+			}
+		}
+		return false
+	}, time.Second)
+
+	var foundPattern string
+	for _, r := range stub.requestSnapshot() {
+		if r.Method != MethodRegisterCapability {
+			continue
+		}
+		var p RegistrationParams
+		if err := json.Unmarshal(r.Params, &p); err != nil {
+			t.Fatalf("registerCapability params: %v", err)
+		}
+		if len(p.Registrations) == 0 {
+			t.Fatalf("expected at least one registration: %+v", p)
+		}
+		reg := p.Registrations[0]
+		if reg.Method != MethodDidChangeWatchedFiles {
+			t.Errorf("registration method: got %q want %q", reg.Method, MethodDidChangeWatchedFiles)
+		}
+		// registerOptions arrives as a generic JSON object; round-trip
+		// to extract the pattern.
+		raw, _ := json.Marshal(reg.RegisterOptions)
+		var opts DidChangeWatchedFilesRegistrationOptions
+		if err := json.Unmarshal(raw, &opts); err != nil {
+			t.Fatalf("registerOptions: %v", err)
+		}
+		if len(opts.Watchers) == 0 {
+			t.Fatalf("expected at least one watcher: %+v", opts)
+		}
+		foundPattern = opts.Watchers[0].GlobPattern
+	}
+	if foundPattern != "**/gaffer.toml" {
+		t.Errorf("watcher pattern: got %q want **/gaffer.toml", foundPattern)
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_InitializedSkipsOpenBuffers(t *testing.T) {
+	// A buffer the client opened during initialize must not be
+	// overwritten by the walk's disk-sourced AddFromDisk - memory
+	// wins. The store's Source must remain sourceMemory after the
+	// walk completes.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `engine_version = 2`)
+	uri := pathToURI(cfg)
+	// Decoy gaffer.toml in a subdirectory. WalkConfigs returns paths
+	// in lex order, so root/gaffer.toml is processed before
+	// root/sub/gaffer.toml. Once we see diagnostics for the decoy
+	// the walk has already passed the open buffer's URI.
+	decoy := writeWorkspaceFile(t, filepath.Join(root, "sub"), "gaffer.toml", `[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.evil = "../escape.json"
+`)
+	decoyURI := pathToURI(decoy)
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	// Open the buffer BEFORE initialized fires the walk. Memory
+	// should win.
+	_ = conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{URI: uri, Text: "MEMORY-CONTENT"},
+	})
+	waitFor(t, func() bool {
+		state, ok := server.docs.Get(uri)
+		return ok && state.Source == sourceMemory
+	}, time.Second)
+
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	// Wait for the decoy's diagnostics - by then the walk has
+	// already passed (and skipped) the open buffer's URI.
+	waitFor(t, func() bool {
+		got := findPublishDiagnostics(stub.notifSnapshot(), decoyURI)
+		return got != nil
+	}, time.Second)
+
+	state, ok := server.docs.Get(uri)
+	if !ok {
+		t.Fatal("expected URI in store")
+	}
+	if state.Source != sourceMemory {
+		t.Errorf("source: got %v want sourceMemory", state.Source)
+	}
+	if state.Content != "MEMORY-CONTENT" {
+		t.Errorf("content: got %q want MEMORY-CONTENT", state.Content)
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidChangeWatchedFiles_RereadsFromDisk(t *testing.T) {
+	// Editor reports that the user edited gaffer.toml in another
+	// editor / on the CLI. Server should re-read disk and republish.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.evil = "../escape.json"
+`)
+	uri := pathToURI(cfg)
+
+	_, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	waitFor(t, func() bool {
+		got := findPublishDiagnostics(stub.notifSnapshot(), uri)
+		return got != nil && len(got.Diagnostics) == 1
+	}, time.Second)
+
+	// Now repair the file on disk and tell the server it changed.
+	if err := os.WriteFile(cfg, []byte(`[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.happy = "fixtures/happy.json"
+`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
+		Changes: []FileEvent{{URI: uri, Type: FileChangeChanged}},
+	})
+	waitFor(t, func() bool {
+		got := findPublishDiagnostics(stub.notifSnapshot(), uri)
+		return got != nil && len(got.Diagnostics) == 0
+	}, time.Second)
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidChangeWatchedFiles_DeletedClearsState(t *testing.T) {
+	// Watcher reports the file was deleted. Server should drop it
+	// from the store and clear its diagnostics.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.evil = "../escape.json"
+`)
+	uri := pathToURI(cfg)
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	waitFor(t, func() bool {
+		_, ok := server.docs.Get(uri)
+		return ok
+	}, time.Second)
+
+	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
+		Changes: []FileEvent{{URI: uri, Type: FileChangeDeleted}},
+	})
+
+	waitFor(t, func() bool {
+		got := findPublishDiagnostics(stub.notifSnapshot(), uri)
+		// Final published state is "no diagnostics" AND the URI is
+		// gone from the store.
+		_, ok := server.docs.Get(uri)
+		return got != nil && len(got.Diagnostics) == 0 && !ok
+	}, time.Second)
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidChangeWatchedFiles_CreatedSeedsAndPublishes(t *testing.T) {
+	// Primary use case: a new gaffer.toml drops into the workspace
+	// after the initial walk. Watcher reports Created; server reads
+	// and publishes diagnostics.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	// Wait for the registerCapability handshake so we know the
+	// initial walk finished (it ran zero files).
+	waitFor(t, func() bool {
+		for _, r := range stub.requestSnapshot() {
+			if r.Method == MethodRegisterCapability {
+				return true
+			}
+		}
+		return false
+	}, time.Second)
+
+	// Drop a fresh file and tell the server.
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.evil = "../escape.json"
+`)
+	uri := pathToURI(cfg)
+	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
+		Changes: []FileEvent{{URI: uri, Type: FileChangeCreated}},
+	})
+
+	waitFor(t, func() bool {
+		got := findPublishDiagnostics(stub.notifSnapshot(), uri)
+		return got != nil && len(got.Diagnostics) == 1
+	}, time.Second)
+	if _, ok := server.docs.Get(uri); !ok {
+		t.Fatal("expected URI in store after Created event")
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidChangeWatchedFiles_OpenBufferSurvivesDiskEvent(t *testing.T) {
+	// User has gaffer.toml open with valid in-memory content. A
+	// disk-side write happens (perhaps a teammate's git pull) and
+	// the watcher reports Changed. The buffer must NOT be
+	// overwritten - memory wins until the user closes the buffer.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.evil = "../escape.json"
+`)
+	uri := pathToURI(cfg)
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	memContent := `[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.happy = "fixtures/happy.json"
+`
+	_ = conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{URI: uri, Text: memContent},
+	})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	waitFor(t, func() bool {
+		state, ok := server.docs.Get(uri)
+		return ok && state.Source == sourceMemory && state.Content == memContent
+	}, time.Second)
+
+	// Disk-side change + watcher event.
+	if err := os.WriteFile(cfg, []byte("CORRUPT-DISK-CONTENT"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
+		Changes: []FileEvent{{URI: uri, Type: FileChangeChanged}},
+	})
+	// Give the handler time to (incorrectly) overwrite if it would.
+	time.Sleep(100 * time.Millisecond)
+
+	state, ok := server.docs.Get(uri)
+	if !ok {
+		t.Fatal("expected URI to remain in store")
+	}
+	if state.Source != sourceMemory {
+		t.Errorf("source: got %v want sourceMemory", state.Source)
+	}
+	if state.Content != memContent {
+		t.Errorf("buffer was overwritten: got %q", state.Content)
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_InitializeWithoutInitializedDoesNotWalk(t *testing.T) {
+	// Pin the lifecycle: the workspace walk and watcher
+	// registration only fire after `initialized`. If the client
+	// stops at `initialize`, the server must not poke the
+	// filesystem or push capability registrations.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.evil = "../escape.json"
+`)
+	uri := pathToURI(cfg)
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+
+	// Wait long enough for any errant goroutine to have done its
+	// work. Negative assertion - polling can't help us here.
+	time.Sleep(150 * time.Millisecond)
+	if _, ok := server.docs.Get(uri); ok {
+		t.Errorf("expected URI absent from store after initialize-only")
+	}
+	for _, r := range stub.requestSnapshot() {
+		if r.Method == MethodRegisterCapability {
+			t.Errorf("registerCapability fired without initialized")
+		}
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_CodeLensServedFromWalkedDiskState(t *testing.T) {
+	// Primary user flow: open a workspace, see Debug lenses on
+	// every gaffer.toml without having to open each file. The
+	// walk seeds disk-sourced state and parses it; codeLens reads
+	// the cached parse.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
+name = "checkout"
+entry = "checkout.js"
+fixtures.happy = "fixtures/happy.json"
+`)
+	uri := pathToURI(cfg)
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	waitFor(t, func() bool {
+		_, ok := server.docs.GetParse(uri)
+		return ok
+	}, time.Second)
+
+	// No didOpen was sent; lenses must come from the walk-seeded
+	// parse alone.
+	var lenses []CodeLens
+	if err := conn.Call(ctx, MethodCodeLens, CodeLensParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+	}, &lenses); err != nil {
+		t.Fatalf("codeLens: %v", err)
+	}
+	if len(lenses) != 3 {
+		t.Errorf("expected 3 lenses (projection + per-fixture + dropdown), got %d", len(lenses))
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidChangeWatchedFiles_ChangedThenDeletedOrderPreserved(t *testing.T) {
+	// Load-bearing per walk.go's comment: a [Changed, Deleted]
+	// burst on the same URI must apply IN ORDER. If Changed ran
+	// its seedFromDisk asynchronously while Deleted ran inline,
+	// the late Changed parse would publish non-empty diagnostics
+	// AFTER the empty publish from Deleted. applyWatchedFileEvents
+	// replays the batch on a single goroutine to guarantee order.
+	//
+	// Assertion shape: the FINAL publish for the URI is the empty
+	// (deleted) one. "URI absent from store at end" alone wouldn't
+	// distinguish - that holds even if Changed re-inserted then
+	// some later cleanup removed it.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.evil = "../escape.json"
+`)
+	uri := pathToURI(cfg)
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	waitFor(t, func() bool {
+		_, ok := server.docs.Get(uri)
+		return ok
+	}, time.Second)
+
+	// One batch, two events: Changed then Deleted.
+	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
+		Changes: []FileEvent{
+			{URI: uri, Type: FileChangeChanged},
+			{URI: uri, Type: FileChangeDeleted},
+		},
+	})
+
+	// Wait for the empty (deleted) publish to arrive.
+	waitFor(t, func() bool {
+		got := findPublishDiagnostics(stub.notifSnapshot(), uri)
+		return got != nil && len(got.Diagnostics) == 0
+	}, time.Second)
+	// Sleep past any spurious late Changed publish from a
+	// parallelised implementation. If parsing was kicked off
+	// async, its publish would land here.
+	time.Sleep(150 * time.Millisecond)
+
+	got := findPublishDiagnostics(stub.notifSnapshot(), uri)
+	if got == nil {
+		t.Fatal("expected a publish for URI")
+	}
+	if len(got.Diagnostics) != 0 {
+		t.Errorf("expected final publish to be empty (Deleted last), got %+v", got.Diagnostics)
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidChangeWatchedFiles_DeletedThenCreatedOrderPreserved(t *testing.T) {
+	// Real `mv tmp gaffer.toml` from the editor produces a
+	// [Deleted-of-tmp, Created-of-gaffer.toml] burst on the same
+	// effective URI when a buffer is renamed. The order must be
+	// honoured: Deleted first wipes any cached parse, Created
+	// then re-seeds. Asserting the final state has a parse pins
+	// that the Created landed AFTER the Deleted.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
+name = "alpha"
+entry = "alpha.js"
+`)
+	uri := pathToURI(cfg)
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	waitFor(t, func() bool {
+		_, ok := server.docs.GetParse(uri)
+		return ok
+	}, time.Second)
+
+	// One batch with [Deleted, Created]. Sequential processing
+	// must apply Deleted first, then Created.
+	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
+		Changes: []FileEvent{
+			{URI: uri, Type: FileChangeDeleted},
+			{URI: uri, Type: FileChangeCreated},
+		},
+	})
+
+	// Final state must be: URI parse cached again. If Deleted ran
+	// last we'd see no parse.
+	waitFor(t, func() bool {
+		_, ok := server.docs.GetParse(uri)
+		return ok
+	}, time.Second)
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidChangeWatchedFiles_MixedURIBatch(t *testing.T) {
+	// A single batch with events for two distinct URIs must
+	// process both. Pin that one URI's events don't somehow
+	// suppress the other's.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfgA := writeWorkspaceFile(t, filepath.Join(root, "a"), "gaffer.toml", `[[projection]]
+name = "alpha"
+entry = "alpha.js"
+`)
+	cfgB := writeWorkspaceFile(t, filepath.Join(root, "b"), "gaffer.toml", `[[projection]]
+name = "beta"
+entry = "beta.js"
+`)
+	uriA := pathToURI(cfgA)
+	uriB := pathToURI(cfgB)
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	waitFor(t, func() bool {
+		_, okA := server.docs.GetParse(uriA)
+		_, okB := server.docs.GetParse(uriB)
+		return okA && okB
+	}, time.Second)
+
+	// Delete A, change B - in one batch. Both must apply.
+	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
+		Changes: []FileEvent{
+			{URI: uriA, Type: FileChangeDeleted},
+			{URI: uriB, Type: FileChangeChanged},
+		},
+	})
+
+	waitFor(t, func() bool {
+		_, hasA := server.docs.GetParse(uriA)
+		_, hasB := server.docs.GetParse(uriB)
+		return !hasA && hasB
+	}, time.Second)
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidChangeWatchedFiles_NonGafferIgnored(t *testing.T) {
+	// Editors sometimes register broader watchers; ensure the
+	// gate by basename keeps non-gaffer events from reaching the
+	// document store.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+
+	uri := "file:///workspace/projection.js"
+	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
+		Changes: []FileEvent{{URI: uri, Type: FileChangeChanged}},
+	})
+	// Give the handler a moment to (not) act.
+	time.Sleep(100 * time.Millisecond)
+	if _, ok := server.docs.Get(uri); ok {
+		t.Errorf("expected non-gaffer URI to be ignored, found in store")
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}

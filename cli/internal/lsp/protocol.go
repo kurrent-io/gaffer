@@ -1,0 +1,375 @@
+// Package lsp implements the gaffer Language Server Protocol server.
+//
+// Hand-written LSP message types for the narrow surface gaffer needs:
+// initialize / initialized / shutdown / exit plus textDocument
+// lifecycle, codeLens, publishDiagnostics, watchers (added in
+// subsequent chunks).
+//
+// We use sourcegraph/jsonrpc2 for Content-Length framing and request
+// dispatch but write our own protocol struct definitions - the LSP
+// surface we use is small enough that vendoring a full protocol
+// library (e.g. tliron/glsp) buys little and pulls in deps we don't
+// want. See ~/notes/gaffer/editor-extensions/planning/lsp-plan.md
+// Decision 7 for the rationale.
+package lsp
+
+import "encoding/json"
+
+// LSP method names. Server registers handlers keyed on these.
+const (
+	MethodInitialize  = "initialize"
+	MethodInitialized = "initialized"
+	MethodShutdown    = "shutdown"
+	MethodExit        = "exit"
+
+	MethodDidOpen   = "textDocument/didOpen"
+	MethodDidChange = "textDocument/didChange"
+	MethodDidClose  = "textDocument/didClose"
+	MethodDidSave   = "textDocument/didSave"
+
+	MethodCodeLens           = "textDocument/codeLens"
+	MethodPublishDiagnostics = "textDocument/publishDiagnostics"
+
+	MethodDidChangeWatchedFiles = "workspace/didChangeWatchedFiles"
+	MethodRegisterCapability    = "client/registerCapability"
+	MethodWorkspaceSymbol       = "workspace/symbol"
+	MethodCodeLensRefresh       = "workspace/codeLens/refresh"
+)
+
+// LSP intent codes for code lenses. Per the LSP plan, the server
+// emits a semantic intent in `data.intent` and each editor extension
+// maps it to its native icon / treatment. Five intents cover the
+// surface; the server only emits two (Debug / DebugChoose) - the
+// rest (stop, starting, untrusted) are client-side concerns the
+// extension overrides on top of the server's lens.
+const (
+	IntentDebug       = "debug"
+	IntentDebugChoose = "debug-choose"
+)
+
+// Gaffer command IDs surfaced via CodeLens.command. Each editor
+// extension routes these to its native debug-launch API.
+const (
+	CommandDebugProjection     = "gaffer.debugProjection"
+	CommandDebugProjectionPick = "gaffer.debugProjectionPick"
+)
+
+// InitializeParams is the subset of LSP InitializeParams we care
+// about. Real LSP InitializeParams has dozens of fields; unmodelled
+// fields stay in the wire JSON without forcing us to commit to a
+// shape. InitOptions is held as json.RawMessage so the eventual
+// consumer can decode just-in-time, preserving forward compat and
+// avoiding integer-as-float64 coercion that map[string]interface{}
+// would force.
+type InitializeParams struct {
+	ProcessID        *int               `json:"processId,omitempty"`
+	RootURI          string             `json:"rootUri,omitempty"`
+	WorkspaceFolders []WorkspaceFolder  `json:"workspaceFolders,omitempty"`
+	Capabilities     ClientCapabilities `json:"capabilities"`
+	InitOptions      json.RawMessage    `json:"initializationOptions,omitempty"`
+}
+
+// ClientCapabilities captures the slices of the client's
+// capability tree we actually gate behavior on. The full LSP
+// type has dozens of nested fields; we model only what we
+// consult.
+type ClientCapabilities struct {
+	Workspace WorkspaceClientCapabilities `json:"workspace"`
+}
+
+// WorkspaceClientCapabilities is the workspace-scoped subset of
+// ClientCapabilities. CodeLens lives here in the LSP spec.
+type WorkspaceClientCapabilities struct {
+	CodeLens *CodeLensWorkspaceClientCapabilities `json:"codeLens,omitempty"`
+}
+
+// CodeLensWorkspaceClientCapabilities advertises whether the
+// client can handle workspace/codeLens/refresh. Servers MUST
+// gate that request on this flag per the LSP 3.16 spec.
+type CodeLensWorkspaceClientCapabilities struct {
+	RefreshSupport bool `json:"refreshSupport,omitempty"`
+}
+
+// WorkspaceFolder is an entry in InitializeParams.WorkspaceFolders.
+type WorkspaceFolder struct {
+	URI  string `json:"uri"`
+	Name string `json:"name"`
+}
+
+// InitializeResult is what we send back to the client. ServerInfo
+// helps with logs / "About Gaffer LSP" UIs in the editor.
+type InitializeResult struct {
+	Capabilities ServerCapabilities `json:"capabilities"`
+	ServerInfo   ServerInfo         `json:"serverInfo"`
+}
+
+// ServerInfo identifies the server in the client's UI / logs.
+type ServerInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version,omitempty"`
+}
+
+// ServerCapabilities advertises what the server provides. V1 surface
+// is intentionally minimal; more fields land with chunks 2.2+.
+type ServerCapabilities struct {
+	// TextDocumentSync uses the bare-integer form
+	// (TextDocumentSyncKind enum). Full = 1: client re-sends the
+	// entire document on each change. See LSP plan Decision 1:
+	// we chose full sync over incremental since config files
+	// are tiny. The bare-int form does not include a `save`
+	// field; clients infer "no didSave wanted" and skip it,
+	// which is what we want.
+	TextDocumentSync TextDocumentSyncKind `json:"textDocumentSync"`
+	// CodeLensProvider advertises that the server responds to
+	// textDocument/codeLens requests. Empty options struct is
+	// fine - we don't require resolveProvider since lenses are
+	// fully populated on the initial response.
+	CodeLensProvider *CodeLensOptions `json:"codeLensProvider,omitempty"`
+	// WorkspaceSymbolProvider advertises that the server responds
+	// to workspace/symbol requests. Lets editors fuzzy-find
+	// projections via Cmd+T and powers our QuickPick.
+	WorkspaceSymbolProvider *WorkspaceSymbolOptions `json:"workspaceSymbolProvider,omitempty"`
+}
+
+// TextDocumentSyncKind matches LSP spec values: 0=None, 1=Full,
+// 2=Incremental. We only emit Full today; add the others if/when
+// incremental sync is needed (LSP plan Decision 1 picked Full).
+type TextDocumentSyncKind int
+
+const (
+	TextDocumentSyncFull TextDocumentSyncKind = 1
+)
+
+// CodeLensOptions is the value of ServerCapabilities.CodeLensProvider.
+type CodeLensOptions struct {
+	// ResolveProvider would be true if the server wanted clients
+	// to call back via codeLens/resolve to fill in lens details
+	// lazily. We populate everything upfront so it's false/absent.
+	ResolveProvider bool `json:"resolveProvider,omitempty"`
+}
+
+// WorkspaceSymbolOptions is the value of
+// ServerCapabilities.WorkspaceSymbolProvider when sent as an
+// object (the spec also accepts a bare bool).
+type WorkspaceSymbolOptions struct{}
+
+// WorkspaceSymbolParams is the request payload for workspace/symbol.
+// Query is a fuzzy filter; we treat empty as "return everything"
+// and let the client do the matching, since our domain (projection
+// names) is small.
+type WorkspaceSymbolParams struct {
+	Query string `json:"query"`
+}
+
+// SymbolKind matches LSP spec values. We only emit Function for
+// projections; the full enum has 26 entries that we don't need.
+type SymbolKind int
+
+const (
+	// SymbolKindFunction is the closest fit for a projection - it's
+	// a callable, named unit. Could revisit if the projection model
+	// gains structure (Class, Method, etc.).
+	SymbolKindFunction SymbolKind = 12
+)
+
+// Location is a URI + range pair, the standard LSP shape.
+type Location struct {
+	URI   string `json:"uri"`
+	Range Range  `json:"range"`
+}
+
+// SymbolInformation is the legacy workspace/symbol return shape.
+// LSP 3.17 added WorkspaceSymbol with deferred location resolution,
+// but the legacy form is universally supported and our payloads are
+// small enough that lazy resolution buys nothing.
+type SymbolInformation struct {
+	Name          string     `json:"name"`
+	Kind          SymbolKind `json:"kind"`
+	Location      Location   `json:"location"`
+	ContainerName string     `json:"containerName,omitempty"`
+}
+
+// Position is a 0-indexed line+character pair per the LSP spec.
+// Distinct from config.SourceRange's 1-indexed lines: this is the
+// wire format, where character is in UTF-16 code units.
+type Position struct {
+	Line      int `json:"line"`
+	Character int `json:"character"`
+}
+
+// Range is a half-open span of text in a document.
+type Range struct {
+	Start Position `json:"start"`
+	End   Position `json:"end"`
+}
+
+// Command identifies an editor-side command that runs when the user
+// activates a CodeLens. Arguments is opaque - the editor extension
+// passes it through to its registered handler verbatim.
+type Command struct {
+	Title     string        `json:"title"`
+	Command   string        `json:"command"`
+	Arguments []interface{} `json:"arguments,omitempty"`
+}
+
+// CodeLens is a clickable annotation rendered inline in the editor.
+// Title is plain text - editor extensions decorate with native
+// icons via the Data.Intent field per the LSP plan.
+type CodeLens struct {
+	Range   Range         `json:"range"`
+	Command *Command      `json:"command,omitempty"`
+	Data    *CodeLensData `json:"data,omitempty"`
+}
+
+// CodeLensData carries the semantic intent so client extensions
+// can map to a native icon / treatment without parsing the title.
+type CodeLensData struct {
+	Intent string `json:"intent"`
+}
+
+// CodeLensParams is the request payload for textDocument/codeLens.
+type CodeLensParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+}
+
+// diagnosticSeverity matches LSP spec values: 1=Error, 2=Warning,
+// 3=Information, 4=Hint.
+type diagnosticSeverity int
+
+const (
+	diagnosticSeverityError diagnosticSeverity = 1
+	// (Warning, Information, Hint reserved by spec but not emitted
+	// today; add when a Warning-level rule lands.)
+)
+
+// lspDiagnostic is the wire-format diagnostic. Disambiguates from
+// config.Diagnostic, the upstream loose-validation shape.
+type lspDiagnostic struct {
+	Range    Range              `json:"range"`
+	Severity diagnosticSeverity `json:"severity,omitempty"`
+	Code     string             `json:"code,omitempty"`
+	Source   string             `json:"source,omitempty"`
+	Message  string             `json:"message"`
+}
+
+// PublishDiagnosticsParams is the payload for the server-pushed
+// textDocument/publishDiagnostics notification. Empty Diagnostics
+// clears the URI (drops squiggles).
+type PublishDiagnosticsParams struct {
+	URI         string          `json:"uri"`
+	Diagnostics []lspDiagnostic `json:"diagnostics"`
+}
+
+// TextDocumentItem is the payload for didOpen: full URI, language,
+// version, content. The server keeps the text in its document
+// store; languageId is informational for V1 (we dispatch by file
+// extension).
+type TextDocumentItem struct {
+	URI        string `json:"uri"`
+	LanguageID string `json:"languageId"`
+	Version    int    `json:"version"`
+	Text       string `json:"text"`
+}
+
+// VersionedTextDocumentIdentifier identifies a document at a
+// specific client-side version. Used in didChange.
+type VersionedTextDocumentIdentifier struct {
+	URI     string `json:"uri"`
+	Version int    `json:"version"`
+}
+
+// TextDocumentIdentifier identifies a document without versioning.
+// Used in didClose / didSave.
+type TextDocumentIdentifier struct {
+	URI string `json:"uri"`
+}
+
+// TextDocumentContentChangeEvent under full sync (TextDocumentSync=1)
+// always carries the entire new content in Text. Range / RangeLength
+// are absent under full sync; we don't model them.
+type TextDocumentContentChangeEvent struct {
+	Text string `json:"text"`
+}
+
+// DidOpenTextDocumentParams: client opened a buffer.
+type DidOpenTextDocumentParams struct {
+	TextDocument TextDocumentItem `json:"textDocument"`
+}
+
+// DidChangeTextDocumentParams: client edited a buffer. ContentChanges
+// has one element under full sync.
+type DidChangeTextDocumentParams struct {
+	TextDocument   VersionedTextDocumentIdentifier  `json:"textDocument"`
+	ContentChanges []TextDocumentContentChangeEvent `json:"contentChanges"`
+}
+
+// DidCloseTextDocumentParams: client closed the buffer. Server
+// drops its in-memory state for the URI.
+type DidCloseTextDocumentParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+}
+
+// DidSaveTextDocumentParams: client saved. Text is optional (only
+// present if the server requested it via the saveOptions
+// capability, which we don't). For full-sync semantics we have
+// the latest content from didChange already, so this is mostly
+// informational.
+type DidSaveTextDocumentParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Text         string                 `json:"text,omitempty"`
+}
+
+// FileChangeType matches LSP spec values: 1=Created, 2=Changed,
+// 3=Deleted. Reported in workspace/didChangeWatchedFiles events.
+type FileChangeType int
+
+const (
+	FileChangeCreated FileChangeType = 1
+	FileChangeChanged FileChangeType = 2
+	FileChangeDeleted FileChangeType = 3
+)
+
+// FileEvent is a single create/change/delete report on a watched
+// path. Editors batch these into a DidChangeWatchedFilesParams.
+type FileEvent struct {
+	URI  string         `json:"uri"`
+	Type FileChangeType `json:"type"`
+}
+
+// DidChangeWatchedFilesParams is the payload for the client-pushed
+// workspace/didChangeWatchedFiles notification.
+type DidChangeWatchedFilesParams struct {
+	Changes []FileEvent `json:"changes"`
+}
+
+// Registration is one entry in a client/registerCapability request.
+// The server uses this to dynamically register a watcher pattern
+// after `initialized` (we can't statically advertise watchers via
+// ServerCapabilities - LSP routes file watching through the editor,
+// and the editor wants the pattern set at runtime).
+type Registration struct {
+	ID              string      `json:"id"`
+	Method          string      `json:"method"`
+	RegisterOptions interface{} `json:"registerOptions,omitempty"`
+}
+
+// RegistrationParams is the payload for the server->client
+// client/registerCapability request.
+type RegistrationParams struct {
+	Registrations []Registration `json:"registrations"`
+}
+
+// FileSystemWatcher is one entry in
+// DidChangeWatchedFilesRegistrationOptions.Watchers. GlobPattern is
+// a glob like `**/gaffer.toml`. Kind is a bitmask: 1=Create, 2=Change,
+// 4=Delete; default (0/unset) is "all three" per spec.
+type FileSystemWatcher struct {
+	GlobPattern string `json:"globPattern"`
+	Kind        int    `json:"kind,omitempty"`
+}
+
+// DidChangeWatchedFilesRegistrationOptions is the registerOptions
+// payload for a workspace/didChangeWatchedFiles registration.
+type DidChangeWatchedFilesRegistrationOptions struct {
+	Watchers []FileSystemWatcher `json:"watchers"`
+}

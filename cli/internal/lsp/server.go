@@ -1,0 +1,99 @@
+package lsp
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"github.com/sourcegraph/jsonrpc2"
+)
+
+// defaultDebounceWindow is the canonical LSP "pause to read"
+// interval - long enough that transient invalid states during a
+// keystroke burst (`fixtures.foo = "` -> `"esc` -> `"escape.json"`)
+// don't flicker squiggles, short enough that the user perceives
+// feedback as live.
+const defaultDebounceWindow = 250 * time.Millisecond
+
+// ServerOptions configures a Server before Run starts the message
+// loop. Zero-value is usable; callers override individual fields.
+type ServerOptions struct {
+	// Version surfaced via InitializeResult.ServerInfo.Version.
+	// Callers (e.g. cmd/lsp.go) inject the build version.
+	Version string
+	// DebounceWindow gates how long a quiet period must follow a
+	// didChange before the server runs the parse + publish for that
+	// URI. Each new didChange resets the window. Zero falls back to
+	// the conventional 250ms (matches gopls/clangd/pyright).
+	DebounceWindow time.Duration
+}
+
+// Server is the gaffer LSP server. One instance per stdio session;
+// the message loop runs in Run and exits when the client closes
+// stdin, sends shutdown+exit, or the run context is cancelled.
+//
+// Concurrency: jsonrpc2 dispatches each request in its own
+// goroutine, so handler methods are called concurrently. The
+// document store has its own mutex; lifecycle flags here are
+// guarded by mu.
+type Server struct {
+	opts ServerOptions
+
+	docs      *documentStore
+	debouncer *debouncer
+
+	mu          sync.Mutex
+	conn        *jsonrpc2.Conn // captured during Run, used for server-pushed notifications
+	initialized bool
+	shutdownReq bool
+	// draining flips true once Run's defer starts winding down.
+	// spawn() checks this under mu before incrementing wg; without
+	// the gate, a handler racing teardown could call wg.Add(1)
+	// after wg.Wait had already returned, which is a documented
+	// data race for sync.WaitGroup.
+	draining bool
+	// runCtxFn returns the active run-scope context, or nil after
+	// Run's defer clears it. Stored as a closure rather than a
+	// `context.Context` field so the type doesn't trip golangci-
+	// lint's `containedctx`. Long-running work spawned from
+	// handlers - the workspace walk, watched-file event processing
+	// - derives its context from this so shutdown doesn't leave
+	// goroutines blocked on I/O after the connection is gone.
+	runCtxFn  func() context.Context
+	cancelRun context.CancelFunc
+	// roots holds workspace folder paths captured from initialize.
+	// Used by the initialized handler to walk for gaffer.toml files.
+	// Stored as filesystem paths (URIs converted at capture time)
+	// so the walker doesn't need to re-do the conversion.
+	roots []string
+	// codeLensRefreshSupported mirrors the client's
+	// workspace.codeLens.refreshSupport capability so we don't
+	// fire workspace/codeLens/refresh into a void. LSP 3.16 spec:
+	// servers MUST gate the request on this.
+	codeLensRefreshSupported bool
+	// exitCh closes when the client sends `exit`. Run selects on
+	// this so the server tears down its connection without waiting
+	// for the client to also close stdin (a well-behaved client
+	// expects the server to drive disconnect on exit).
+	exitCh chan struct{}
+
+	// wg tracks goroutines spawned from handlers (parse-and-
+	// publish, the initialized walk, watched-file event batches)
+	// so Run can wait for them to drain before returning.
+	wg sync.WaitGroup
+}
+
+// NewServer constructs a server with the given options. Doesn't
+// touch I/O; call Run to start the message loop.
+func NewServer(opts ServerOptions) *Server {
+	window := opts.DebounceWindow
+	if window <= 0 {
+		window = defaultDebounceWindow
+	}
+	return &Server{
+		opts:      opts,
+		docs:      newDocumentStore(),
+		debouncer: newDebouncer(window),
+		exitCh:    make(chan struct{}),
+	}
+}

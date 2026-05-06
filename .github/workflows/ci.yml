@@ -76,17 +76,25 @@ jobs:
       - name: Install module dependencies
         run: just init
 
-      - name: Build
-        run: just build
+      # Publish gaffer.so once. The public build/test/test-integration
+      # targets each depend on _runtime; calling them sequentially would
+      # let dotnet's incremental build skip work but still run noise. By
+      # publishing once and then invoking the underscore-prefixed
+      # orchestration recipes directly we avoid the redundancy.
+      - name: Publish runtime (NativeAOT)
+        run: just runtime publish
+
+      - name: Build other modules
+        run: just _build
 
       - name: Unit tests
-        run: just test
+        run: just _test
 
       - name: Start KurrentDB
         run: just db-up
 
       - name: Integration tests
-        run: just test-integration
+        run: just _test-integration
 
       - name: KurrentDB logs
         if: failure()

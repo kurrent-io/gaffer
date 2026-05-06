@@ -24,6 +24,11 @@ permissions:
 jobs:
   changesets:
     name: Version Packages
+    # Only run from push-to-main; workflow_dispatch is for the stub
+    # publish jobs below. A manual dispatch from a non-main ref would
+    # otherwise let the action open a Version Packages PR off unmerged
+    # branch state.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

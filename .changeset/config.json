@@ -1,0 +1,28 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [
+    [
+      "@kurrent/gaffer",
+      "@kurrent/gaffer-linux-x64",
+      "@kurrent/gaffer-linux-arm64",
+      "@kurrent/gaffer-darwin-x64",
+      "@kurrent/gaffer-darwin-arm64",
+      "@kurrent/gaffer-win32-x64"
+    ],
+    [
+      "@kurrent/gaffer-runtime",
+      "@kurrent/gaffer-runtime-linux-x64",
+      "@kurrent/gaffer-runtime-linux-arm64",
+      "@kurrent/gaffer-runtime-darwin-x64",
+      "@kurrent/gaffer-runtime-darwin-arm64",
+      "@kurrent/gaffer-runtime-win32-x64"
+    ]
+  ],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": []
+}

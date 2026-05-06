@@ -4,6 +4,7 @@
 	"description": "KurrentDB projection toolkit",
 	"version": "0.1.0",
 	"license": "LicenseRef-KurrentLicenseV1",
+	"private": true,
 	"publisher": "kurrent-io",
 	"preview": true,
 	"repository": {

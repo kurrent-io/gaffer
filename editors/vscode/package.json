@@ -167,7 +167,7 @@
 					"id": "gaffer.status",
 					"name": "Status",
 					"type": "webview",
-					"when": "gaffer.mode == 'running' || gaffer.mode == 'ended'"
+					"when": "gaffer.mode == 'starting' || gaffer.mode == 'running' || gaffer.mode == 'ended'"
 				},
 				{
 					"id": "gaffer.step",
@@ -177,7 +177,7 @@
 				{
 					"id": "gaffer.state",
 					"name": "State",
-					"when": "gaffer.mode == 'running' || gaffer.mode == 'inspecting' || gaffer.mode == 'ended'"
+					"when": "gaffer.mode == 'starting' || gaffer.mode == 'running' || gaffer.mode == 'inspecting' || gaffer.mode == 'ended'"
 				}
 			]
 		},

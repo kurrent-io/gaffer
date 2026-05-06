@@ -171,13 +171,14 @@ describe("SessionController.start - happy path", () => {
 		expect(h.pushed.map((s) => s.name)).toEqual(["checkout", "checkout"]);
 	});
 
-	it("sets gaffer.mode to undefined while starting and 'running' once running", async () => {
-		// Assert the mapping at each transition without locking in the
-		// total call count - a refactor that adds idempotent resets
-		// shouldn't fail this.
+	it("sets gaffer.mode to 'starting' while starting and 'running' once running", async () => {
+		// "starting" emits its own context value (not undefined) so the
+		// State + Status views stay mounted across the boot phase
+		// instead of unmounting and remounting (visible flicker on
+		// re-debug).
 		const h = makeHarness();
 		const { startPromise, session } = await startUntilWaitForDebug(h);
-		expect(h.contextCalls.at(-1)).toBeUndefined();
+		expect(h.contextCalls.at(-1)).toBe("starting");
 		session.resolveDebug(4711);
 		await startPromise;
 		expect(h.contextCalls.at(-1)).toBe("running");
@@ -236,6 +237,55 @@ describe("SessionController.start - happy path", () => {
 		const h = makeHarness();
 		const { session } = await startToRunning(h);
 		expect(session.argv).toContain("--start-paused-if-no-breakpoints");
+	});
+
+	it("focuses gaffer.state twice: pre-startDebugging and post-listener", async () => {
+		// Regression chain: the original "focus after startDebugging"
+		// flow lost the panel-show race; moving focus into the
+		// onDidStartDebugSession listener fixed correctness but left a
+		// visible Terminal-then-Gaffer flicker because VS Code's
+		// panel-show happened before the listener fired. Now we also
+		// pre-focus gaffer.state before startDebugging so the panel
+		// container's last-active tab IS Gaffer:State at the moment
+		// VS Code surfaces the panel, eliminating the flicker. The
+		// post-listener focus stays as the final source of truth.
+		const h = makeHarness();
+		const before = getState().executeCommandCalls.length;
+		const { startPromise, session } = await startUntilWaitForDebug(h);
+		// Pre-startDebugging focus hasn't fired yet (still in waitForDebug).
+		const focusBefore = getState()
+			.executeCommandCalls.slice(before)
+			.filter((c) => c.name.endsWith(".focus"));
+		expect(focusBefore).toEqual([]);
+		session.resolveDebug(4711);
+		await startPromise;
+		const focusAfter = getState()
+			.executeCommandCalls.slice(before)
+			.filter((c) => c.name.endsWith(".focus"));
+		expect(focusAfter.map((c) => c.name)).toEqual([
+			"gaffer.state.focus",
+			"gaffer.state.focus",
+		]);
+	});
+
+	it("still targets gaffer.state in inspect mode (mode-agnostic focus)", async () => {
+		// State is the only view whose when-clause covers every
+		// active mode. Pinned so a future "switch to step on
+		// inspecting" optimisation doesn't regress without thinking
+		// through the when-clause race.
+		const h = makeHarness();
+		const { startPromise, session } = await startUntilWaitForDebug(h);
+		h.controller.setEngineMode("inspecting");
+		const before = getState().executeCommandCalls.length;
+		session.resolveDebug(4711);
+		await startPromise;
+		const focusCalls = getState()
+			.executeCommandCalls.slice(before)
+			.filter((c) => c.name.endsWith(".focus"));
+		expect(focusCalls.map((c) => c.name)).toEqual([
+			"gaffer.state.focus",
+			"gaffer.state.focus",
+		]);
 	});
 
 	it("clears diagnostics at start() (not in cleanup)", async () => {
@@ -339,7 +389,14 @@ describe("SessionController.start - guards", () => {
 		);
 	});
 
-	it("treats start() from ended as a fresh idle->starting transition", async () => {
+	it("treats start() from ended as a direct ended->starting transition", async () => {
+		// We deliberately skip routing through `idle` on a re-debug
+		// from `ended` - going via idle would flip gaffer.mode to
+		// undefined for one frame, unmounting the entire Gaffer panel
+		// container (no views match) and remounting it on starting.
+		// Visible to the user as the panel disappearing and
+		// reappearing. Inline cleanup keeps the container mounted
+		// across the transition.
 		const h = makeHarness();
 		const { session } = await startToRunning(h);
 		// Force ended via exit.
@@ -354,10 +411,14 @@ describe("SessionController.start - guards", () => {
 			"starting",
 			"running",
 			"ended",
-			"idle",
 			"starting",
 			"running",
 		]);
+		// Inline cleanup still clears the providers so the new run
+		// starts from a fresh slate (no stale step rows or state KVs
+		// carried over from the previous session).
+		expect(h.providerCalls.state.clear).toBeGreaterThan(0);
+		expect(h.providerCalls.step.clear).toBeGreaterThan(0);
 	});
 });
 
@@ -550,7 +611,7 @@ describe("SessionController.setEngineMode", () => {
 		await startPromise;
 		// Initial transition should land directly on inspecting, not running.
 		expect(h.pushed.map((s) => s.status)).toEqual(["starting", "inspecting"]);
-		expect(h.contextCalls).toEqual([undefined, "inspecting"]);
+		expect(h.contextCalls).toEqual(["starting", "inspecting"]);
 	});
 
 	it("changes status when called during running", async () => {
@@ -609,7 +670,7 @@ describe("SessionController gaffer.mode setContext across all transitions", () =
 		// observed-status mapping stays correct.
 		const h = makeHarness();
 		const { startPromise, session } = await startUntilWaitForDebug(h);
-		expect(h.contextCalls.at(-1)).toBeUndefined(); // starting
+		expect(h.contextCalls.at(-1)).toBe("starting");
 		session.resolveDebug(4711);
 		await startPromise;
 		expect(h.contextCalls.at(-1)).toBe("running");
@@ -620,7 +681,7 @@ describe("SessionController gaffer.mode setContext across all transitions", () =
 
 		// Restart from ended.
 		const second = await startUntilWaitForDebug(h);
-		expect(h.contextCalls.at(-1)).toBeUndefined(); // starting again
+		expect(h.contextCalls.at(-1)).toBe("starting"); // starting again
 		second.session.resolveDebug(4712);
 		await second.startPromise;
 		expect(h.contextCalls.at(-1)).toBe("running");

@@ -97,6 +97,18 @@ export class SessionController implements vscode.Disposable {
 	// each new session (not in cleanup) so the catch path can still
 	// observe it after cleanup has awaited in the same async chain.
 	#fatalErrorSeen = false;
+	// Deferred awaited by start() so it doesn't return until the
+	// onDidStartDebugSession-driven post-start work (setStatus + focus)
+	// has completed. Set just before vscode.debug.startDebugging, read
+	// by the listener, awaited after the call resolves. Necessary
+	// because that post-start work moved into the listener (see
+	// register()) - calling it inline after startDebugging lost the
+	// focus race against VS Code's async panel-show layout pass.
+	#startedReady: {
+		promise: Promise<void>;
+		resolve: () => void;
+		reject: (err: unknown) => void;
+	} | null = null;
 
 	constructor(deps: SessionControllerDeps) {
 		this.#buildArgv = deps.buildArgv;
@@ -118,11 +130,21 @@ export class SessionController implements vscode.Disposable {
 			this,
 			vscode.debug.onDidStartDebugSession((s) => {
 				if (
-					s.configuration.type === "gaffer" &&
-					this.#debugState.status === "starting"
+					s.configuration.type !== "gaffer" ||
+					this.#debugState.status !== "starting"
 				) {
-					this.#activeDebugSession = s;
+					return;
 				}
+				this.#activeDebugSession = s;
+				// Post-start work runs here, not after the startDebugging
+				// await in start(). VS Code fires this event after its
+				// session-start layout pass completes, so a focus call
+				// from inside the listener wins against the panel
+				// container's last-tab focus (typically Terminal). Done
+				// inline as an async IIFE so the listener registration
+				// stays synchronous, with the deferred coordinating
+				// completion back to start().
+				void this.#runPostStart();
 			}),
 			vscode.debug.onDidTerminateDebugSession((dbg) => {
 				if (dbg !== this.#activeDebugSession) return;
@@ -168,9 +190,18 @@ export class SessionController implements vscode.Disposable {
 		}
 		// stop() leaves us in idle (was starting) or ended (was running/
 		// inspecting). The "ended" branch also catches user clicks after
-		// a previous session ended on its own.
+		// a previous session ended on its own. We DON'T route through
+		// cleanupSession("idle") here because that would flip
+		// gaffer.mode to undefined for one frame, unmounting the whole
+		// Gaffer panel container (no views match), and the user sees
+		// the entire panel + tab vanish and reappear. Inline the
+		// reset bits we actually need; setStatus("starting") below
+		// takes us straight to the next session without touching
+		// `idle`.
 		if (this.#debugState.status === "ended") {
-			await this.#cleanupSession("idle");
+			this.#stepProvider.clear();
+			this.#stateProvider.clear();
+			this.#pendingEngineMode = null;
 		}
 
 		// Fresh slate for diagnostics: any squiggles from a previous
@@ -279,6 +310,23 @@ export class SessionController implements vscode.Disposable {
 			return;
 		}
 
+		// Pre-focus the State view BEFORE startDebugging triggers VS
+		// Code's panel-show. State is in the always-on group (visible
+		// during starting/running/inspecting/ended) so it's already
+		// mounted by the time we get here. By picking it as the panel
+		// container's active tab now, we win the upcoming panel-show
+		// race - VS Code surfaces the panel area with Gaffer:State
+		// already active, no Terminal flash. The listener fires
+		// setStatus + focus afterwards as the final source of truth.
+		await vscode.commands.executeCommand("gaffer.state.focus");
+
+		// Set up the deferred BEFORE startDebugging so the
+		// onDidStartDebugSession listener (which fires synchronously
+		// inside the await) can latch onto it. Cleared on the failure
+		// branch so a subsequent run isn't blocked on a stale promise.
+		const ready = createDeferred<void>();
+		this.#startedReady = ready;
+
 		const started = await vscode.debug.startDebugging(
 			vscode.workspace.getWorkspaceFolder(tomlUri),
 			{
@@ -292,27 +340,49 @@ export class SessionController implements vscode.Disposable {
 		);
 
 		if (!started) {
+			this.#startedReady = null;
 			log("Debug session failed to start");
 			await this.#cleanupSession("idle");
 			return;
 		}
 
-		// Apply any engine mode that arrived during starting. With #29a
-		// the CLI emits gaffer/mode=inspect immediately on connect; that
-		// event landed during starting and got stashed. Default to
-		// "running" if nothing was pending.
-		const initial: EngineMode = this.#pendingEngineMode ?? "running";
-		this.#pendingEngineMode = null;
-		await this.#setStatus(name, initial);
+		// Wait for the listener to finish its setStatus + focus work
+		// before returning. Keeps the public start() contract (resolves
+		// when the session is fully visible) intact.
+		await ready.promise;
+		this.#startedReady = null;
+	}
 
-		// Focus the Gaffer panel after the views are revealed. Done last
-		// because vscode.debug.startDebugging gives focus to the panel
-		// container's last-used tab (often Terminal); we need to override
-		// that, and the Gaffer views have when-clauses gated on
-		// gaffer.mode so they're not focusable until #setStatus flips it.
-		const focusTarget =
-			initial === "inspecting" ? "gaffer.step.focus" : "gaffer.status.focus";
-		await vscode.commands.executeCommand(focusTarget);
+	// Called from the onDidStartDebugSession listener once VS Code has
+	// reported the session is up. Applies any engine mode stashed during
+	// `starting`, flips gaffer.mode (which makes the views visible), and
+	// focuses the appropriate view. Errors propagate to start() via the
+	// deferred so the caller doesn't hang.
+	async #runPostStart(): Promise<void> {
+		const ready = this.#startedReady;
+		const name = this.#debugState.name;
+		if (!ready || name === null) return;
+		try {
+			// Apply any engine mode that arrived during starting. With
+			// #29a the CLI emits gaffer/mode=inspect immediately on
+			// connect; that event landed during starting and got
+			// stashed. Default to "running" if nothing was pending.
+			const initial: EngineMode = this.#pendingEngineMode ?? "running";
+			this.#pendingEngineMode = null;
+			await this.#setStatus(name, initial);
+			// Focus the State view, which is the only Gaffer view whose
+			// when-clause covers every active mode (running, inspecting,
+			// ended). Picking a mode-specific view (status / step)
+			// races the when-clause propagation: setContext returns,
+			// but the view isn't actually instantiated until VS Code's
+			// next layout pass, so a focus call between the two no-ops
+			// silently and Terminal keeps focus. Targeting an
+			// always-visible view makes the focus always land.
+			await vscode.commands.executeCommand("gaffer.state.focus");
+			ready.resolve();
+		} catch (err) {
+			ready.reject(err);
+		}
 	}
 
 	async stop(): Promise<void> {
@@ -404,17 +474,36 @@ export class SessionController implements vscode.Disposable {
 	}
 }
 
-// Internal status -> gaffer.mode context value. Idle and starting map
-// to undefined (context unset) - the lens spinner is the indicator
-// during starting; idle has no UI.
+interface Deferred<T> {
+	promise: Promise<T>;
+	resolve: (value: T | PromiseLike<T>) => void;
+	reject: (err: unknown) => void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+	let resolve!: (value: T | PromiseLike<T>) => void;
+	let reject!: (err: unknown) => void;
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	return { promise, resolve, reject };
+}
+
+// Internal status -> gaffer.mode context value. Idle is the only
+// status that maps to undefined (no session, all views hidden).
+// "starting" emits its own value so the State + Status views stay
+// mounted across the boot phase - otherwise they'd unmount when
+// the session goes ended -> idle -> starting and remount when
+// starting -> running, which the user sees as a panel flicker.
 function contextValue(status: DebugState["status"]): string | undefined {
 	switch (status) {
 		case "running":
 		case "inspecting":
 		case "ended":
+		case "starting":
 			return status;
 		case "idle":
-		case "starting":
 			return undefined;
 		default: {
 			const _exhaustive: never = status;

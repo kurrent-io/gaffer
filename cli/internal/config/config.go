@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -68,22 +67,34 @@ func (p Projection) IsEnabled() bool {
 	return *p.Enabled
 }
 
-// Load reads and parses a gaffer.toml file.
+// Load reads and parses a gaffer.toml file with strict validation.
+// The loose-validation counterpart used by the LSP server is
+// Describe, which shares this function's parse step via Parse.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
+	cfg, err := Parse(data)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
 
+// Parse decodes raw config bytes into a Config without running
+// validation. Shared by Load (which then runs strict validate())
+// and Describe (which runs loose per-element checks). Callers that
+// want the file's content from disk should use Load; Parse is for
+// in-memory bytes (LSP didChange flow, tests).
+func Parse(data []byte) (*Config, error) {
 	var cfg Config
 	if err := toml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
-
-	if err := cfg.validate(); err != nil {
-		return nil, err
-	}
-
 	return &cfg, nil
 }
 
@@ -115,21 +126,20 @@ func (c *Config) validate() error {
 	}
 	seen := make(map[string]bool)
 	for _, p := range c.Projection {
-		if p.Name == "" {
-			return fmt.Errorf("projection missing required field: name")
+		// Shared with Describe via checkProjection - rule list and
+		// ordering live in validation.go so the loose path can't drift.
+		if _, msg, fail := checkProjection(p); fail {
+			return fmt.Errorf("%s", msg)
 		}
-		if p.Entry == "" {
-			return fmt.Errorf("projection %q missing required field: entry", p.Name)
-		}
+		// Strict-only checks: engine_version, duplicate-name. Loose
+		// path either doesn't surface them (engine_version) or
+		// handles them post-loop with cross-element state
+		// (duplicate-name).
 		if p.EngineVersion != 0 && p.EngineVersion != 1 && p.EngineVersion != 2 {
 			return fmt.Errorf("projection %q engine_version must be 1 or 2, got %d", p.Name, p.EngineVersion)
 		}
 		if c.EffectiveEngineVersion(&p) == 0 {
 			return fmt.Errorf("projection %q has no engine_version set (also missing top-level engine_version)", p.Name)
-		}
-		cleaned := filepath.Clean(p.Entry)
-		if strings.HasPrefix(cleaned, "..") {
-			return fmt.Errorf("projection %q entry must not escape project root: %s", p.Name, p.Entry)
 		}
 		if seen[p.Name] {
 			return fmt.Errorf("duplicate projection name: %q", p.Name)
@@ -138,15 +148,8 @@ func (c *Config) validate() error {
 
 		// Iterate in sorted order so error messages are stable.
 		for _, name := range p.FixtureNames() {
-			if name == "" {
-				return fmt.Errorf("projection %q has a fixture with an empty name", p.Name)
-			}
-			path := p.Fixtures[name]
-			if path == "" {
-				return fmt.Errorf("projection %q fixture %q has empty path", p.Name, name)
-			}
-			if strings.HasPrefix(filepath.Clean(path), "..") {
-				return fmt.Errorf("projection %q fixture %q path must not escape project root: %s", p.Name, name, path)
+			if _, msg, fail := checkFixture(p.Name, name, p.Fixtures[name]); fail {
+				return fmt.Errorf("%s", msg)
 			}
 		}
 	}

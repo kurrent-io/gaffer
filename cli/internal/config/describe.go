@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -155,30 +154,14 @@ func describeProjection(
 		entry.EntryAbsPath = filepath.Clean(filepath.Join(tomlDir, p.Entry))
 	}
 
-	// First projection-level issue wins. The LSP server can only
-	// publish one diagnostic per projection-header line cleanly
-	// anyway; ordering matches the strictest sequential validation.
-	switch {
-	case p.Name == "":
+	// Shared with strict validate() via checkProjection - first
+	// failing rule wins. Loose path attaches the rule code to the
+	// diagnostic; strict path used the same message verbatim.
+	if rule, msg, fail := checkProjection(p); fail {
 		entry.Diagnostic = &Diagnostic{
 			Range:   headerRange,
-			Rule:    RuleProjectionMissingName,
-			Message: "projection missing required field: name",
-		}
-	case p.Entry == "":
-		entry.Diagnostic = &Diagnostic{
-			Range:   headerRange,
-			Rule:    RuleProjectionMissingEntry,
-			Message: fmt.Sprintf("projection %q missing required field: entry", p.Name),
-		}
-	case strings.HasPrefix(filepath.Clean(p.Entry), ".."):
-		entry.Diagnostic = &Diagnostic{
-			Range: headerRange,
-			Rule:  RuleProjectionEntryEscapesRoot,
-			Message: fmt.Sprintf(
-				"projection %q entry must not escape project root: %s",
-				p.Name, p.Entry,
-			),
+			Rule:    rule,
+			Message: msg,
 		}
 	}
 
@@ -211,14 +194,14 @@ func describeProjection(
 
 	for _, name := range names {
 		entry.Fixtures = append(entry.Fixtures, describeFixture(
-			name, p.Fixtures[name], fixtureLines, headerRange, tomlDir,
+			p.Name, name, p.Fixtures[name], fixtureLines, headerRange, tomlDir,
 		))
 	}
 	return entry
 }
 
 func describeFixture(
-	name, path string,
+	projection, name, path string,
 	fixtureLines map[string]fixtureKeyLine,
 	fallbackRange SourceRange,
 	tomlDir string,
@@ -238,30 +221,17 @@ func describeFixture(
 		Range: r,
 	}
 
-	switch {
-	case name == "":
+	// Shared with strict validate() via checkFixture - same rule
+	// list, same ordering. Strict's projection name lives outside
+	// the fixture; loose passes it through for message formatting.
+	if rule, msg, fail := checkFixture(projection, name, path); fail {
 		fx.Diagnostic = &Diagnostic{
 			Range:   r,
-			Rule:    RuleFixtureEmptyName,
-			Message: "fixture has an empty name",
+			Rule:    rule,
+			Message: msg,
 		}
-	case path == "":
-		fx.Diagnostic = &Diagnostic{
-			Range:   r,
-			Rule:    RuleFixtureEmptyPath,
-			Message: fmt.Sprintf("fixture %q has empty path", name),
-		}
-	case strings.HasPrefix(filepath.Clean(path), ".."):
-		fx.Diagnostic = &Diagnostic{
-			Range: r,
-			Rule:  RuleFixturePathEscapesRoot,
-			Message: fmt.Sprintf(
-				"fixture %q path must not escape project root: %s",
-				name, path,
-			),
-		}
-	default:
-		fx.AbsPath = filepath.Clean(filepath.Join(tomlDir, path))
+		return fx
 	}
+	fx.AbsPath = filepath.Clean(filepath.Join(tomlDir, path))
 	return fx
 }

@@ -18,7 +18,7 @@ Gaffer is a CLI and runtime for working with KurrentDB projections. It lets you:
 ### Prerequisites
 
 - [DevPod](https://devpod.sh/) or a devcontainer-compatible tool
-- Or manually: .NET 9, Go 1.26+, Node 22+, [just](https://just.systems)
+- Or manually: .NET 10, Go 1.26+, Node 22+, [just](https://just.systems)
 
 ### Setup
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"reflect"
 	"testing"
 	"time"
 
@@ -480,6 +481,70 @@ func TestServer_AcceptsNullWorkspaceFolders(t *testing.T) {
 	if err := conn.Call(ctx, MethodInitialize, raw, &InitializeResult{}); err != nil {
 		t.Fatalf("initialize with null workspaceFolders: %v", err)
 	}
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_FallsBackToRootURIWhenWorkspaceFoldersAbsent(t *testing.T) {
+	// Older LSP clients may not send WorkspaceFolders. The server
+	// must still walk the rootUri so the lens contract holds for
+	// those clients.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	server := NewServer(ServerOptions{})
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx, srv) }()
+	conn := newClientConn(ctx, cli)
+	defer func() { _ = conn.Close() }()
+
+	if err := conn.Call(ctx, MethodInitialize, &InitializeParams{
+		RootURI: pathToURI(root),
+	}, &InitializeResult{}); err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+	if !reflect.DeepEqual(server.roots, []string{root}) {
+		t.Errorf("roots: got %v want [%q]", server.roots, root)
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidOpenSameURITwiceOverwritesBuffer(t *testing.T) {
+	// LSP spec says didOpen of an already-open URI without an
+	// intervening didClose is a client bug. Pin our actual
+	// behavior - the second Open replaces the first - so a
+	// future contract change is loud.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	conn := newClientConn(ctx, cli)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{}, &InitializeResult{})
+	uri := "file:///x.toml"
+	_ = conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{URI: uri, Text: "first"},
+	})
+	waitFor(t, func() bool {
+		state, ok := server.docs.Get(uri)
+		return ok && state.Content == "first"
+	}, time.Second)
+	_ = conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{URI: uri, Text: "second"},
+	})
+	waitFor(t, func() bool {
+		state, ok := server.docs.Get(uri)
+		return ok && state.Content == "second"
+	}, time.Second)
+
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
 	<-done

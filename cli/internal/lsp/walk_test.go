@@ -510,6 +510,107 @@ fixtures.evil = "../escape.json"
 	<-done
 }
 
+func TestServer_CodeLensServedFromWalkedDiskState(t *testing.T) {
+	// Primary user flow: open a workspace, see Debug lenses on
+	// every gaffer.toml without having to open each file. The
+	// walk seeds disk-sourced state and parses it; codeLens reads
+	// the cached parse.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
+name = "checkout"
+entry = "checkout.js"
+fixtures.happy = "fixtures/happy.json"
+`)
+	uri := pathToURI(cfg)
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	waitFor(t, func() bool {
+		_, ok := server.docs.GetParse(uri)
+		return ok
+	}, time.Second)
+
+	// No didOpen was sent; lenses must come from the walk-seeded
+	// parse alone.
+	var lenses []CodeLens
+	if err := conn.Call(ctx, MethodCodeLens, CodeLensParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+	}, &lenses); err != nil {
+		t.Fatalf("codeLens: %v", err)
+	}
+	if len(lenses) != 3 {
+		t.Errorf("expected 3 lenses (projection + per-fixture + dropdown), got %d", len(lenses))
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidChangeWatchedFiles_ChangedThenDeletedOrderPreserved(t *testing.T) {
+	// Load-bearing per walk.go's comment: a [Changed, Deleted]
+	// burst on the same URI must apply IN ORDER. If Changed
+	// spawned its own goroutine while Deleted ran inline, the
+	// async seedFromDisk could re-insert a URI the synchronous
+	// Close just dropped. applyWatchedFileEvents replays the
+	// batch on a single goroutine to guarantee order.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.evil = "../escape.json"
+`)
+	uri := pathToURI(cfg)
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	waitFor(t, func() bool {
+		_, ok := server.docs.Get(uri)
+		return ok
+	}, time.Second)
+
+	// One batch, two events: Changed then Deleted.
+	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
+		Changes: []FileEvent{
+			{URI: uri, Type: FileChangeChanged},
+			{URI: uri, Type: FileChangeDeleted},
+		},
+	})
+
+	// Final state must be: URI absent from store. If Changed
+	// raced past Deleted we'd see it back in the store.
+	waitFor(t, func() bool {
+		_, ok := server.docs.Get(uri)
+		return !ok
+	}, time.Second)
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
 func TestServer_DidChangeWatchedFiles_NonGafferIgnored(t *testing.T) {
 	// Editors sometimes register broader watchers; ensure the
 	// gate by basename keeps non-gaffer events from reaching the

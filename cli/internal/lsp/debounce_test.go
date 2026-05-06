@@ -268,6 +268,71 @@ fixtures.evil = "../escape.json"
 	<-done
 }
 
+func TestServer_DidChangeDebounceIsPerURI(t *testing.T) {
+	// Bursting on URI A must NOT delay URI B's parse. Per-URI
+	// keying is the contract - a future "global debounce" refactor
+	// would break it loudly.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	_, done := startServerWithStore(ctx, srv, ServerOptions{
+		DebounceWindow: 200 * time.Millisecond,
+	})
+	n := &notifyCapture{}
+	conn := newClientConnCapturing(ctx, cli, n)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{}, &InitializeResult{})
+
+	_, uriA := tempTOMLPath(t)
+	_, uriB := tempTOMLPath(t)
+	_ = conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{URI: uriA, Text: "engine_version = 2"},
+	})
+	_ = conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{URI: uriB, Text: "engine_version = 2"},
+	})
+	waitFor(t, func() bool {
+		return findPublishDiagnostics(n.snapshot(), uriA) != nil &&
+			findPublishDiagnostics(n.snapshot(), uriB) != nil
+	}, time.Second)
+	baselineA := countPublishDiagnostics(n.snapshot(), uriA)
+	baselineB := countPublishDiagnostics(n.snapshot(), uriB)
+
+	// Burst URI A but leave URI B alone. After A's debounce
+	// fires, both should have advanced by exactly one - A from
+	// the burst, B from its single change.
+	for i := 0; i < 5; i++ {
+		_ = conn.Notify(ctx, MethodDidChange, &DidChangeTextDocumentParams{
+			TextDocument:   VersionedTextDocumentIdentifier{URI: uriA, Version: i + 2},
+			ContentChanges: []TextDocumentContentChangeEvent{{Text: "engine_version = 2"}},
+		})
+		time.Sleep(20 * time.Millisecond)
+	}
+	_ = conn.Notify(ctx, MethodDidChange, &DidChangeTextDocumentParams{
+		TextDocument:   VersionedTextDocumentIdentifier{URI: uriB, Version: 2},
+		ContentChanges: []TextDocumentContentChangeEvent{{Text: "engine_version = 2"}},
+	})
+
+	waitFor(t, func() bool {
+		return countPublishDiagnostics(n.snapshot(), uriA)-baselineA >= 1 &&
+			countPublishDiagnostics(n.snapshot(), uriB)-baselineB >= 1
+	}, time.Second)
+
+	// Each URI should have produced exactly one debounced publish.
+	if got := countPublishDiagnostics(n.snapshot(), uriA) - baselineA; got != 1 {
+		t.Errorf("URI A: expected 1 debounced publish, got %d", got)
+	}
+	if got := countPublishDiagnostics(n.snapshot(), uriB) - baselineB; got != 1 {
+		t.Errorf("URI B: expected 1 debounced publish, got %d", got)
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
 func TestServer_DidOpenIsImmediate(t *testing.T) {
 	// didOpen must publish well before the debounce window - it's
 	// the first parse, not a keystroke. With a generous 500ms

@@ -1,6 +1,8 @@
 package lsp
 
 import (
+	"path/filepath"
+
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 )
 
@@ -111,6 +113,106 @@ type projectionPickArgs struct {
 	Name         string   `json:"name"`
 	ConfigURI    string   `json:"configURI"`
 	FixtureNames []string `json:"fixtureNames"`
+}
+
+// emitEntryScriptLenses returns Debug lenses for a non-toml URI
+// (typically a projection's entry .js) by scanning every cached
+// parse for a projection whose resolved entry path matches.
+//
+// One lens per matching projection - a single .js file can be
+// the entry for multiple projections (e.g. a shared handler used
+// by separate fixtures bundles). Each lens is anchored at line 0
+// since the entry script doesn't have a meaningful "projection
+// header" line of its own.
+//
+// uri is the URI the client opened. We compare absolute paths
+// because clients sometimes encode URIs with trailing slashes,
+// extra encoding, etc.; uriToPath canonicalises both sides.
+func emitEntryScriptLenses(parses []parseResult, uri string) []CodeLens {
+	target := uriToPath(uri)
+	if target == "" {
+		return []CodeLens{}
+	}
+	out := []CodeLens{}
+	zeroRange := Range{Start: Position{Line: 0, Character: 0}, End: Position{Line: 0, Character: 0}}
+	for _, parse := range parses {
+		desc := parse.Description
+		for _, p := range desc.Projections {
+			if p.Diagnostic != nil {
+				continue
+			}
+			if p.EntryAbsPath != target {
+				continue
+			}
+			tomlURI := pathToURI(desc.ConfigFile)
+			out = append(out, CodeLens{
+				Range: zeroRange,
+				Command: &Command{
+					Title:   "Debug",
+					Command: CommandDebugProjection,
+					Arguments: []interface{}{
+						projectionArgs{Name: p.Name, ConfigURI: tomlURI},
+					},
+				},
+				Data: &CodeLensData{Intent: IntentDebug},
+			})
+			validNames := make([]string, 0, len(p.Fixtures))
+			for _, fx := range p.Fixtures {
+				if fx.Diagnostic != nil {
+					continue
+				}
+				validNames = append(validNames, fx.Name)
+			}
+			if len(validNames) > 0 {
+				out = append(out, CodeLens{
+					Range: zeroRange,
+					Command: &Command{
+						Title:   "Debug from fixture...",
+						Command: CommandDebugProjectionPick,
+						Arguments: []interface{}{
+							projectionPickArgs{Name: p.Name, ConfigURI: tomlURI, FixtureNames: validNames},
+						},
+					},
+					Data: &CodeLensData{Intent: IntentDebugChoose},
+				})
+			}
+		}
+	}
+	return out
+}
+
+// emitWorkspaceSymbols turns every cached projection into a
+// SymbolInformation. Used for both Cmd+T navigation in the editor
+// and as the data source for the extension's QuickPick. We emit
+// one symbol per valid projection; projections with a header-level
+// diagnostic (missing name, escape) are skipped so the result is
+// guaranteed actionable.
+//
+// Container name is the relative-style toml filename so editors
+// that group symbols by container display "checkout - gaffer.toml"
+// rather than the raw absolute path.
+func emitWorkspaceSymbols(parses []parseResult) []SymbolInformation {
+	out := []SymbolInformation{}
+	for _, parse := range parses {
+		desc := parse.Description
+		uri := pathToURI(desc.ConfigFile)
+		container := filepath.Base(desc.ConfigFile)
+		for _, p := range desc.Projections {
+			if p.Diagnostic != nil {
+				continue
+			}
+			out = append(out, SymbolInformation{
+				Name: p.Name,
+				Kind: SymbolKindFunction,
+				Location: Location{
+					URI:   uri,
+					Range: rangeToLSP(p.Range),
+				},
+				ContainerName: container,
+			})
+		}
+	}
+	return out
 }
 
 // emitDiagnostics flattens a Description's per-element diagnostics

@@ -32,6 +32,8 @@ const (
 
 	MethodDidChangeWatchedFiles = "workspace/didChangeWatchedFiles"
 	MethodRegisterCapability    = "client/registerCapability"
+	MethodWorkspaceSymbol       = "workspace/symbol"
+	MethodCodeLensRefresh       = "workspace/codeLens/refresh"
 )
 
 // LSP intent codes for code lenses. Per the LSP plan, the server
@@ -98,6 +100,10 @@ type ServerCapabilities struct {
 	// fine - we don't require resolveProvider since lenses are
 	// fully populated on the initial response.
 	CodeLensProvider *CodeLensOptions `json:"codeLensProvider,omitempty"`
+	// WorkspaceSymbolProvider advertises that the server responds
+	// to workspace/symbol requests. Lets editors fuzzy-find
+	// projections via Cmd+T and powers our QuickPick.
+	WorkspaceSymbolProvider *WorkspaceSymbolOptions `json:"workspaceSymbolProvider,omitempty"`
 }
 
 // CodeLensOptions is the value of ServerCapabilities.CodeLensProvider.
@@ -106,6 +112,47 @@ type CodeLensOptions struct {
 	// to call back via codeLens/resolve to fill in lens details
 	// lazily. We populate everything upfront so it's false/absent.
 	ResolveProvider bool `json:"resolveProvider,omitempty"`
+}
+
+// WorkspaceSymbolOptions is the value of
+// ServerCapabilities.WorkspaceSymbolProvider when sent as an
+// object (the spec also accepts a bare bool).
+type WorkspaceSymbolOptions struct{}
+
+// WorkspaceSymbolParams is the request payload for workspace/symbol.
+// Query is a fuzzy filter; we treat empty as "return everything"
+// and let the client do the matching, since our domain (projection
+// names) is small.
+type WorkspaceSymbolParams struct {
+	Query string `json:"query"`
+}
+
+// SymbolKind matches LSP spec values. We only emit Function for
+// projections; the full enum has 26 entries that we don't need.
+type SymbolKind int
+
+const (
+	// SymbolKindFunction is the closest fit for a projection - it's
+	// a callable, named unit. Could revisit if the projection model
+	// gains structure (Class, Method, etc.).
+	SymbolKindFunction SymbolKind = 12
+)
+
+// Location is a URI + range pair, the standard LSP shape.
+type Location struct {
+	URI   string `json:"uri"`
+	Range Range  `json:"range"`
+}
+
+// SymbolInformation is the legacy workspace/symbol return shape.
+// LSP 3.17 added WorkspaceSymbol with deferred location resolution,
+// but the legacy form is universally supported and our payloads are
+// small enough that lazy resolution buys nothing.
+type SymbolInformation struct {
+	Name          string     `json:"name"`
+	Kind          SymbolKind `json:"kind"`
+	Location      Location   `json:"location"`
+	ContainerName string     `json:"containerName,omitempty"`
 }
 
 // Position is a 0-indexed line+character pair per the LSP spec.

@@ -209,6 +209,8 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 		return nil, nil
 	case MethodCodeLens:
 		return s.handleCodeLens(req)
+	case MethodWorkspaceSymbol:
+		return s.handleWorkspaceSymbol(req)
 	case MethodDidChangeWatchedFiles:
 		return s.handleDidChangeWatchedFiles(ctx, req)
 	default:
@@ -249,8 +251,9 @@ func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (int
 	s.initialized = true
 	return InitializeResult{
 		Capabilities: ServerCapabilities{
-			TextDocumentSync: 1, // full document sync (Decision 1)
-			CodeLensProvider: &CodeLensOptions{},
+			TextDocumentSync:        1, // full document sync (Decision 1)
+			CodeLensProvider:        &CodeLensOptions{},
+			WorkspaceSymbolProvider: &WorkspaceSymbolOptions{},
 		},
 		ServerInfo: ServerInfo{
 			Name:    "gaffer-lsp",
@@ -329,11 +332,20 @@ func (s *Server) handleDidClose(req *jsonrpc2.Request) (interface{}, error) {
 	// publish stale squiggles that the close itself is meant to
 	// clear.
 	s.debouncer.cancel(params.TextDocument.URI)
+	hadParse := false
+	if _, ok := s.docs.GetParse(params.TextDocument.URI); ok {
+		hadParse = true
+	}
 	s.docs.Close(params.TextDocument.URI)
 	// Clear any lingering diagnostics for this URI so the editor's
 	// Problems panel doesn't show squiggles for a file that's no
 	// longer open.
 	s.publishDiagnostics(params.TextDocument.URI, []lspDiagnostic{})
+	if hadParse {
+		// A cached parse just went away; any .js URI whose
+		// lenses depended on its projections is stale.
+		s.requestCodeLensRefresh()
+	}
 	return nil, nil
 }
 
@@ -345,14 +357,31 @@ func (s *Server) handleCodeLens(req *jsonrpc2.Request) (interface{}, error) {
 	if jerr != nil {
 		return nil, jerr
 	}
-	parse, ok := s.docs.GetParse(params.TextDocument.URI)
-	if !ok {
-		// No parse cached - either didOpen hasn't happened or the
-		// URI isn't a gaffer config. Empty response is the
-		// canonical "no lenses for this document."
-		return []CodeLens{}, nil
+	uri := params.TextDocument.URI
+	// gaffer.toml URIs serve from their own cached parse. Any
+	// other URI (typically a projection entry .js) serves by
+	// scanning every cached parse for a matching entry path.
+	if isGafferConfig(uri) {
+		parse, ok := s.docs.GetParse(uri)
+		if !ok {
+			return []CodeLens{}, nil
+		}
+		return emitCodeLenses(parse.Description, uri), nil
 	}
-	return emitCodeLenses(parse.Description, params.TextDocument.URI), nil
+	return emitEntryScriptLenses(s.docs.AllParses(), uri), nil
+}
+
+func (s *Server) handleWorkspaceSymbol(req *jsonrpc2.Request) (interface{}, error) {
+	// Empty params is a legal "give me everything" query. Our
+	// catalogue (one entry per projection) is small enough that
+	// the client can do its own filtering on the result; we
+	// always return the full set.
+	if req.Params != nil {
+		if _, jerr := decodeParams[WorkspaceSymbolParams](req, "workspace/symbol"); jerr != nil {
+			return nil, jerr
+		}
+	}
+	return emitWorkspaceSymbols(s.docs.AllParses()), nil
 }
 
 // extractRoots returns workspace folder paths in WorkspaceFolders

@@ -2,8 +2,10 @@ package lsp
 
 import (
 	"context"
+	"errors"
 	"log"
 	"path"
+	"time"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 )
@@ -51,6 +53,12 @@ func (s *Server) parseAndPublish(ctx context.Context, uri string) {
 		return
 	}
 	s.publishDiagnostics(uri, emitDiagnostics(desc))
+	// A new parse may have changed which entry scripts are
+	// projection entries (or shifted projection metadata). Open
+	// .js buffers showing entry-script lenses derived from the
+	// old parse must refresh - publishDiagnostics on the toml
+	// only refreshes the toml's own lenses, not any .js URI's.
+	s.requestCodeLensRefresh()
 }
 
 // publishDiagnostics sends a textDocument/publishDiagnostics
@@ -83,4 +91,43 @@ func (s *Server) publishDiagnostics(uri string, diags []lspDiagnostic) {
 // match.
 func isGafferConfig(uri string) bool {
 	return path.Base(uriToPath(uri)) == "gaffer.toml"
+}
+
+// requestCodeLensRefresh asks the client to re-issue every
+// outstanding textDocument/codeLens request. Used when something
+// changed that could affect lenses on URIs other than the one
+// being parsed - specifically, an entry-script .js file's lens
+// depends on every cached gaffer.toml's projections, so a parse
+// of any toml needs to refresh those .js URIs.
+//
+// Fire-and-forget on a separate goroutine: a synchronous Call
+// from inside parseAndPublish would hold up the parse pipeline
+// (and could deadlock against handler dispatch ordering on the
+// same conn). We track the goroutine via s.wg so shutdown still
+// waits for it to drain.
+//
+// Best-effort: clients that don't advertise refresh support will
+// reject the request and we log + continue. The TOML side still
+// gets fresh lenses via publishDiagnostics-triggered refresh, so
+// the user-visible cost of an unsupported client is just stale
+// .js lenses until the user retriggers the request themselves.
+func (s *Server) requestCodeLensRefresh() {
+	s.spawn(func() {
+		conn, runCtx := s.snapshotRunState()
+		if conn == nil || runCtx == nil {
+			return
+		}
+		// 5s is generous; healthy clients ack in single-digit ms.
+		// The bound matters because a misbehaving client that
+		// never responds would otherwise leave the goroutine
+		// blocked until shutdown.
+		callCtx, cancel := context.WithTimeout(runCtx, 5*time.Second)
+		defer cancel()
+		if err := conn.Call(callCtx, MethodCodeLensRefresh, nil, nil); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			log.Printf("lsp: %s: %v", MethodCodeLensRefresh, err)
+		}
+	})
 }

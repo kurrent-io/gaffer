@@ -158,6 +158,10 @@ func (s *Server) applyWatchedFileEvents(ctx context.Context, events []FileEvent)
 		case FileChangeDeleted:
 			s.docs.Close(ev.URI)
 			s.publishDiagnostics(ev.URI, []lspDiagnostic{})
+			// Cached parse for this toml is gone - any .js URI
+			// whose lenses pointed at one of its projections is
+			// now stale.
+			s.requestCodeLensRefresh()
 		}
 	}
 }

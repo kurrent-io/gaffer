@@ -201,6 +201,22 @@ func (s *documentStore) GetParse(uri string) (parseResult, bool) {
 	return r, ok
 }
 
+// AllParses returns every cached parse, in arbitrary order. Used
+// by entry-script codeLens lookup and workspace/symbol to walk
+// every parsed projection across the workspace. Returned slice
+// is a fresh copy so callers can mutate without affecting the
+// store; the parseResult values themselves contain a pointer-
+// free Description tree so they're safe to read concurrently.
+func (s *documentStore) AllParses() []parseResult {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]parseResult, 0, len(s.parses))
+	for _, r := range s.parses {
+		out = append(out, r)
+	}
+	return out
+}
+
 // AddFromDisk seeds (or refreshes) disk-sourced content for URI.
 // No-op if the URI is currently memory-sourced - memory wins,
 // caller should NOT proceed to parse/publish based on the disk

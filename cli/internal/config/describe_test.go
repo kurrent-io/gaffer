@@ -70,7 +70,7 @@ fixtures.full = "fixtures/orders-full.json"
 		t.Errorf("fixtures not sorted: %v", []string{p.Fixtures[0].Name, p.Fixtures[1].Name})
 	}
 	for _, fx := range p.Fixtures {
-		if !fx.Valid || fx.Diagnostic != nil {
+		if fx.Diagnostic != nil {
 			t.Errorf("expected valid fixture, got %+v", fx)
 		}
 	}
@@ -170,14 +170,14 @@ fixtures.empty = ""
 	}
 	// Sorted: empty, evil.
 	empty := p.Fixtures[0]
-	if empty.Name != "empty" || empty.Valid || empty.Diagnostic == nil {
+	if empty.Name != "empty" || empty.Diagnostic == nil {
 		t.Fatalf("expected empty fixture invalid: %+v", empty)
 	}
 	if empty.Diagnostic.Rule != RuleFixtureEmptyPath {
 		t.Errorf("rule: got %q want %q", empty.Diagnostic.Rule, RuleFixtureEmptyPath)
 	}
 	evil := p.Fixtures[1]
-	if evil.Name != "evil" || evil.Valid || evil.Diagnostic == nil {
+	if evil.Name != "evil" || evil.Diagnostic == nil {
 		t.Fatalf("expected evil fixture invalid: %+v", evil)
 	}
 	if evil.Diagnostic.Rule != RuleFixturePathEscapesRoot {
@@ -204,7 +204,7 @@ fixtures."" = "x.json"
 		t.Fatalf("expected 1 fixture")
 	}
 	fx := p.Fixtures[0]
-	if fx.Valid || fx.Diagnostic == nil {
+	if fx.Diagnostic == nil {
 		t.Fatalf("expected invalid fixture, got %+v", fx)
 	}
 	if fx.Diagnostic.Rule != RuleFixtureEmptyName {
@@ -460,7 +460,7 @@ fixtures.happy = "fixtures/dir/"
 		t.Fatal(err)
 	}
 	fx := desc.Projections[0].Fixtures[0]
-	if !fx.Valid || fx.Diagnostic != nil {
+	if fx.Diagnostic != nil {
 		t.Fatalf("expected trailing-slash path valid, got %+v", fx)
 	}
 }
@@ -479,7 +479,7 @@ fixtures.happy = "fixtures/sub/../happy.json"
 		t.Fatal(err)
 	}
 	fx := desc.Projections[0].Fixtures[0]
-	if !fx.Valid || fx.Diagnostic != nil {
+	if fx.Diagnostic != nil {
 		t.Fatalf("expected internal `..` path valid, got %+v", fx)
 	}
 }

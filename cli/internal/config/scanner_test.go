@@ -7,8 +7,8 @@ import (
 
 func TestScanLines_LocatesProjectionHeaders(t *testing.T) {
 	text := "[[projection]]\nname = \"a\"\n\n[[projection]]\n"
-	got := ScanLines(text)
-	want := []ProjectionHeaderLine{
+	got := scanLines(text)
+	want := []projectionHeaderLine{
 		{Line: 1, Length: len("[[projection]]")},
 		{Line: 4, Length: len("[[projection]]")},
 	}
@@ -21,7 +21,7 @@ func TestScanLines_HeaderWithWhitespaceAndComment(t *testing.T) {
 	// Leading spaces + trailing comment + interior spaces inside
 	// the brackets all allowed (BurntSushi/toml accepts them too).
 	text := "  [[ projection ]] # main"
-	got := ScanLines(text)
+	got := scanLines(text)
 	if len(got.ProjectionHeaders) != 1 {
 		t.Fatalf("expected 1 header, got %d", len(got.ProjectionHeaders))
 	}
@@ -32,7 +32,7 @@ func TestScanLines_HeaderWithWhitespaceAndComment(t *testing.T) {
 
 func TestScanLines_LocatesFixturesAndCapturesNames(t *testing.T) {
 	text := "[[projection]]\nfixtures.happy = \"a.json\"\nfixtures.edge = \"b.json\"\n"
-	got := ScanLines(text)
+	got := scanLines(text)
 	if len(got.FixtureLines) != 2 {
 		t.Fatalf("expected 2 fixture lines, got %d", len(got.FixtureLines))
 	}
@@ -48,7 +48,7 @@ func TestScanLines_ToleratesWhitespaceAroundDot(t *testing.T) {
 	// TOML grammar permits whitespace around dotted keys. Without
 	// allowing it, the scanner would miss legal source.
 	text := "  fixtures . happy   = \"a.json\""
-	got := ScanLines(text)
+	got := scanLines(text)
 	if len(got.FixtureLines) != 1 {
 		t.Fatalf("expected 1 fixture line, got %d", len(got.FixtureLines))
 	}
@@ -62,7 +62,7 @@ func TestScanLines_DoesNotMatchInlineTableForm(t *testing.T) {
 	// the scanner correctly returns nothing. Callers fall back to
 	// the projection-header range for these fixtures.
 	text := "[[projection]]\nfixtures = { happy = \"a.json\" }"
-	got := ScanLines(text)
+	got := scanLines(text)
 	if len(got.FixtureLines) != 0 {
 		t.Fatalf("expected 0 fixture lines, got %+v", got.FixtureLines)
 	}
@@ -72,7 +72,7 @@ func TestScanLines_DoesNotMatchPrefixedNames(t *testing.T) {
 	// `fixturesNot.happy` shares a prefix but isn't `fixtures.<key>`.
 	// Anchored regex must reject.
 	text := "fixturesNot.happy = \"a.json\""
-	got := ScanLines(text)
+	got := scanLines(text)
 	if len(got.FixtureLines) != 0 {
 		t.Fatalf("expected 0 fixture lines, got %+v", got.FixtureLines)
 	}
@@ -84,7 +84,7 @@ func TestScanLines_DoesNotMatchQuotedKeys(t *testing.T) {
 	// per V0 design, no per-line lens for those, fall through to
 	// projection-level dropdown.
 	text := "fixtures.\"weird name\" = \"a.json\""
-	got := ScanLines(text)
+	got := scanLines(text)
 	if len(got.FixtureLines) != 0 {
 		t.Fatalf("expected 0 fixture lines, got %+v", got.FixtureLines)
 	}
@@ -93,7 +93,7 @@ func TestScanLines_DoesNotMatchQuotedKeys(t *testing.T) {
 func TestScanLines_DoesNotMatchCommentLines(t *testing.T) {
 	// Anchored regex must not match commented-out fixture lines.
 	text := "# fixtures.happy = \"a.json\"\n   # fixtures.edge = \"b.json\""
-	got := ScanLines(text)
+	got := scanLines(text)
 	if len(got.FixtureLines) != 0 {
 		t.Fatalf("expected 0 fixture lines, got %+v", got.FixtureLines)
 	}
@@ -102,7 +102,7 @@ func TestScanLines_DoesNotMatchCommentLines(t *testing.T) {
 func TestScanLines_NormalisesWindowsLineEndings(t *testing.T) {
 	// CRLF source must produce the same line numbers as LF.
 	text := "[[projection]]\r\nfixtures.happy = \"a.json\"\r\n"
-	got := ScanLines(text)
+	got := scanLines(text)
 	if len(got.ProjectionHeaders) != 1 || got.ProjectionHeaders[0].Line != 1 {
 		t.Errorf("projection header: %+v", got.ProjectionHeaders)
 	}
@@ -112,9 +112,9 @@ func TestScanLines_NormalisesWindowsLineEndings(t *testing.T) {
 }
 
 func TestScanLines_EmptyInput(t *testing.T) {
-	got := ScanLines("")
+	got := scanLines("")
 	if got.ProjectionHeaders != nil || got.FixtureLines != nil {
-		t.Fatalf("expected zero-value ScannedLines, got %+v", got)
+		t.Fatalf("expected zero-value scannedLines, got %+v", got)
 	}
 }
 
@@ -123,7 +123,7 @@ func TestScanLines_StripsLeadingUTF8BOM(t *testing.T) {
 	// stripping, the ^\s* anchor doesn't consume the BOM and the
 	// header on line 1 would be missed. Pin the strip.
 	text := "\uFEFF[[projection]]\nfixtures.happy = \"a.json\""
-	got := ScanLines(text)
+	got := scanLines(text)
 	if len(got.ProjectionHeaders) != 1 || got.ProjectionHeaders[0].Line != 1 {
 		t.Errorf("projection header missed under BOM: %+v", got.ProjectionHeaders)
 	}
@@ -135,7 +135,7 @@ func TestScanLines_StripsLeadingUTF8BOM(t *testing.T) {
 func TestScanLines_TrailingWhitespaceOnHeader(t *testing.T) {
 	// `[[projection]]   ` should still match — the \s* tail eats it.
 	text := "[[projection]]   "
-	got := ScanLines(text)
+	got := scanLines(text)
 	if len(got.ProjectionHeaders) != 1 {
 		t.Fatalf("expected 1 header, got %+v", got.ProjectionHeaders)
 	}
@@ -146,7 +146,7 @@ func TestScanLines_FixtureNameWithLeadingDigit(t *testing.T) {
 	// matches; pin it so a future tightening doesn't silently break
 	// numeric-prefixed fixture names.
 	text := "fixtures.1happy = \"a.json\""
-	got := ScanLines(text)
+	got := scanLines(text)
 	if len(got.FixtureLines) != 1 || got.FixtureLines[0].Name != "1happy" {
 		t.Fatalf("expected name 1happy, got %+v", got.FixtureLines)
 	}
@@ -160,7 +160,7 @@ func TestScanLines_HeaderInsideMultilineStringIsAFalsePositive(t *testing.T) {
 	// future reader doesn't think it's a bug; if we ever care, the
 	// fix is real TOML tokenisation, not a regex tweak.
 	text := "value = \"\"\"\n[[projection]]\n\"\"\""
-	got := ScanLines(text)
+	got := scanLines(text)
 	if len(got.ProjectionHeaders) != 1 {
 		t.Fatalf("expected 1 false-positive header (limitation), got %+v", got.ProjectionHeaders)
 	}
@@ -170,7 +170,7 @@ func TestScanLines_LinesAre1Indexed(t *testing.T) {
 	// Pin the convention - LSP wire is 1-indexed and the scanner
 	// matches. A 0-indexed regression here would break every
 	// editor's lens placement until conversion code was added.
-	got := ScanLines("[[projection]]")
+	got := scanLines("[[projection]]")
 	if len(got.ProjectionHeaders) != 1 {
 		t.Fatalf("expected 1 header")
 	}

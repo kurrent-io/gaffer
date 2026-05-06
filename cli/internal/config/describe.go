@@ -11,81 +11,6 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// Description is the LSP-shaped view of a parsed gaffer config
-// file: the file path, format, projections (with source ranges and
-// resolved entry/fixture paths), plus any file-level diagnostics
-// (parse errors). The LSP server iterates this to emit code lenses
-// and diagnostics.
-//
-// "Loose" semantics: parse failures and per-element issues become
-// diagnostics rather than aborting the whole call, so the editor
-// can still show partial state. Compare with strict Load which
-// returns the first error.
-//
-// JSON tags are present so the LSP server can marshal directly
-// without an intermediate transform; `omitempty` on optional
-// fields keeps the wire shape stable across V1's narrow surface
-// and any future fields.
-type Description struct {
-	ConfigFile  string            `json:"configFile"`
-	Format      string            `json:"format"`
-	Projections []ProjectionEntry `json:"projections,omitempty"`
-	Diagnostics []Diagnostic      `json:"diagnostics,omitempty"`
-}
-
-// ProjectionEntry is a single projection's view: name, entry path
-// (raw + resolved), source range of its [[projection]] header,
-// per-fixture details, plus an optional projection-level diagnostic
-// (missing name, escaping entry path, duplicate name).
-type ProjectionEntry struct {
-	Name         string         `json:"name"`
-	Entry        string         `json:"entry"`
-	EntryAbsPath string         `json:"entryAbsPath,omitempty"`
-	Range        SourceRange    `json:"range"`
-	Fixtures     []FixtureEntry `json:"fixtures,omitempty"`
-	Diagnostic   *Diagnostic    `json:"diagnostic,omitempty"`
-}
-
-// FixtureEntry is a single fixture's view: name, path (raw +
-// resolved), source range (the `fixtures.<name>` line if the
-// dotted-key form was used, else the projection header range),
-// validity, and a diagnostic when invalid.
-type FixtureEntry struct {
-	Name       string      `json:"name"`
-	Path       string      `json:"path"`
-	AbsPath    string      `json:"absPath,omitempty"`
-	Range      SourceRange `json:"range"`
-	Valid      bool        `json:"valid"`
-	Diagnostic *Diagnostic `json:"diagnostic,omitempty"`
-}
-
-// Diagnostic carries a rule code (machine-readable) plus a
-// human-readable message and the source range to anchor on.
-type Diagnostic struct {
-	Range   SourceRange `json:"range"`
-	Rule    string      `json:"rule"`
-	Message string      `json:"message"`
-}
-
-// SourceRange is a 1-indexed (line) / 0-indexed (column)
-// half-open range matching the LSP convention. Single-line ranges
-// have StartLine == EndLine.
-//
-// Columns are byte offsets, not UTF-16 code units. Sufficient for
-// ASCII content (which is most of the surface here - bare TOML
-// keys and short paths). For non-ASCII content the wire emission
-// over-reports the column by some amount, but editors clamp to
-// line length so the visible result is correct - the diagnostic /
-// lens just covers a few characters more than necessary. Revisit
-// when in-line ranges (token-level squiggles) land; not relevant
-// for V1's full-line ranges.
-type SourceRange struct {
-	StartLine int `json:"startLine"`
-	StartCol  int `json:"startCol"`
-	EndLine   int `json:"endLine"`
-	EndCol    int `json:"endCol"`
-}
-
 // rangeForLine builds a single-line SourceRange covering an entire
 // line as reported by the scanner. Length=0 produces a 1-char wide
 // range so a diagnostic on an effectively-empty line still has a
@@ -161,7 +86,7 @@ func Describe(ctx context.Context, path string) (Description, error) {
 		return Description{}, err
 	}
 
-	scan := ScanLines(text)
+	scan := scanLines(text)
 
 	// Drift: BurntSushi found N projections, the line scanner found
 	// M headers, and they disagree. Source is malformed in a way
@@ -215,13 +140,13 @@ func Describe(ctx context.Context, path string) (Description, error) {
 
 func describeProjection(
 	p Projection,
-	header ProjectionHeaderLine,
-	scan ScannedLines,
+	header projectionHeaderLine,
+	scan scannedLines,
 	tomlDir string,
 	idx int,
-) ProjectionEntry {
+) ProjectionDescription {
 	headerRange := rangeForLine(header.Line, header.Length)
-	entry := ProjectionEntry{
+	entry := ProjectionDescription{
 		Name:  p.Name,
 		Entry: p.Entry,
 		Range: headerRange,
@@ -264,7 +189,7 @@ func describeProjection(
 	if idx+1 < len(scan.ProjectionHeaders) {
 		nextLine = scan.ProjectionHeaders[idx+1].Line
 	}
-	fixtureLines := map[string]FixtureKeyLine{}
+	fixtureLines := map[string]fixtureKeyLine{}
 	for _, fl := range scan.FixtureLines {
 		if fl.Line <= header.Line {
 			continue
@@ -294,10 +219,10 @@ func describeProjection(
 
 func describeFixture(
 	name, path string,
-	fixtureLines map[string]FixtureKeyLine,
+	fixtureLines map[string]fixtureKeyLine,
 	fallbackRange SourceRange,
 	tomlDir string,
-) FixtureEntry {
+) FixtureDescription {
 	// Range: prefer the fixture's `fixtures.<name>` line when the
 	// dotted-key form was used; fall back to the projection header
 	// for inline-table or [projection.fixtures] table forms where
@@ -307,7 +232,7 @@ func describeFixture(
 		r = rangeForLine(fl.Line, fl.Length)
 	}
 
-	fx := FixtureEntry{
+	fx := FixtureDescription{
 		Name:  name,
 		Path:  path,
 		Range: r,
@@ -336,7 +261,6 @@ func describeFixture(
 			),
 		}
 	default:
-		fx.Valid = true
 		fx.AbsPath = filepath.Clean(filepath.Join(tomlDir, path))
 	}
 	return fx

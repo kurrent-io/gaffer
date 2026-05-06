@@ -5,27 +5,27 @@ import (
 	"strings"
 )
 
-// ProjectionHeaderLine locates a `[[projection]]` array-of-tables
+// projectionHeaderLine locates a `[[projection]]` array-of-tables
 // header in source order. Line is 1-indexed; Length is the byte
 // length of the line.
-type ProjectionHeaderLine struct {
+type projectionHeaderLine struct {
 	Line   int
 	Length int
 }
 
-// FixtureKeyLine locates a `fixtures.<name> = ...` line in source
+// fixtureKeyLine locates a `fixtures.<name> = ...` line in source
 // order. Name is the captured key (TOML bare-key syntax only).
-type FixtureKeyLine struct {
+type fixtureKeyLine struct {
 	Line   int
 	Length int
 	Name   string
 }
 
-// ScannedLines is the source-position view of a config file: every
+// scannedLines is the source-position view of a config file: every
 // projection header line and every per-fixture key line. The TOML
 // parser returns values but not positions; this scan recovers them
-// so the LSP server can anchor lenses and diagnostics on real
-// source lines.
+// so Describe can anchor lenses and diagnostics on real source
+// lines.
 //
 // Lines are 1-indexed for direct use on the LSP wire. Length is the
 // byte length of the line - safe to use as a column-end position
@@ -33,9 +33,13 @@ type FixtureKeyLine struct {
 // would over-report the column on the LSP wire (which uses UTF-16
 // code units); clients clamp, so the worst case is a slightly-
 // extended highlight rather than misalignment.
-type ScannedLines struct {
-	ProjectionHeaders []ProjectionHeaderLine
-	FixtureLines      []FixtureKeyLine
+//
+// All scanner types are unexported - the only consumer is Describe
+// inside this package. Promote back if a future caller wants raw
+// positions.
+type scannedLines struct {
+	ProjectionHeaders []projectionHeaderLine
+	FixtureLines      []fixtureKeyLine
 }
 
 // Bare `[[projection]]` header. Allow leading whitespace, interior
@@ -47,20 +51,20 @@ var projectionHeaderPattern = regexp.MustCompile(`^\s*\[\[\s*projection\s*\]\]\s
 // works for them via the parser, but no per-line lens.
 var fixtureKeyPattern = regexp.MustCompile(`^\s*fixtures\s*\.\s*([A-Za-z0-9_-]+)\s*=`)
 
-// ScanLines walks `text` line-by-line and returns the position info
+// scanLines walks `text` line-by-line and returns the position info
 // for every projection header and fixture-key line, in source order.
-func ScanLines(text string) ScannedLines {
-	var out ScannedLines
+func scanLines(text string) scannedLines {
+	var out scannedLines
 	for i, line := range splitLines(text) {
 		if projectionHeaderPattern.MatchString(line) {
-			out.ProjectionHeaders = append(out.ProjectionHeaders, ProjectionHeaderLine{
+			out.ProjectionHeaders = append(out.ProjectionHeaders, projectionHeaderLine{
 				Line:   i + 1,
 				Length: len(line),
 			})
 			continue
 		}
 		if m := fixtureKeyPattern.FindStringSubmatch(line); m != nil {
-			out.FixtureLines = append(out.FixtureLines, FixtureKeyLine{
+			out.FixtureLines = append(out.FixtureLines, fixtureKeyLine{
 				Line:   i + 1,
 				Length: len(line),
 				Name:   m[1],

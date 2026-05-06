@@ -74,10 +74,20 @@ const stateChangedCbType = koffi.proto(
 	"void gaffer_state_changed_cb(const char*, const char*, void*)",
 );
 
+/** Result of a fallible call. errorJson is null on success; result may be
+ * legitimately null (e.g. partition not seen) when errorJson is also null. */
+export interface FallibleResult {
+	result: string | null;
+	errorJson: string | null;
+}
+
 export interface NativeBindings {
-	sessionCreate(source: string, optionsJson: string | null): number;
+	sessionCreate(
+		source: string,
+		optionsJson: string | null,
+	): { handle: number; errorJson: string | null };
 	sessionDestroy(handle: number): void;
-	sessionFeed(handle: number, eventJson: string): string | null;
+	sessionFeed(handle: number, eventJson: string): FallibleResult;
 	sessionGetState(handle: number, partition: string | null): string | null;
 	sessionGetSharedState(handle: number): string | null;
 	sessionSetState(
@@ -85,10 +95,9 @@ export interface NativeBindings {
 		partition: string | null,
 		stateJson: string,
 	): void;
-	sessionGetResult(handle: number, partition: string | null): string | null;
-	sessionGetSources(handle: number): string | null;
+	sessionGetResult(handle: number, partition: string | null): FallibleResult;
+	sessionGetSources(handle: number): FallibleResult;
 	sessionGetPartitionKey(handle: number, eventJson: string): string | null;
-	getLastError(): string | null;
 	onEmit(
 		handle: number,
 		cb: (
@@ -118,46 +127,64 @@ export function getNativeBindings(): NativeBindings {
 
 	const l = getLib();
 
-	// Returned strings are caller-owned: we get raw pointers, decode them,
-	// then release with gaffer_free. gaffer_get_last_error is the exception -
-	// runtime-owned, no free.
+	// gaffer_free must be bound first because the disposable string type
+	// references it as the cleanup function.
+	const gafferFree = l.func("gaffer_free", "void", ["void*"]);
+
+	// Disposable string type: koffi reads the C string into a JS string and
+	// then calls gafferFree on the original pointer. Used as the return type
+	// for every fallible string-returning C export so we don't have to track
+	// the raw pointer manually.
+	const HeapStr = koffi.disposable("HeapStr", "str", gafferFree);
+
+	// error_out is a `void**` slot the C function writes a `char*` into.
+	// We allocate the slot per call via koffi.alloc("void*", 1) and pass it
+	// as a `void*`. After the call, koffi.decode(slot, "char *") reads the
+	// string at the slot's pointer; koffi.decode(slot, "void *") gives us
+	// the External we pass to gafferFree.
+	const errorSlotType = "void*";
+
 	const sessionCreate = l.func("gaffer_session_create", "intptr", [
 		"str",
 		"str",
+		errorSlotType,
 	]);
 	const sessionDestroy = l.func("gaffer_session_destroy", "void", ["intptr"]);
-	const sessionFeed = l.func("gaffer_session_feed", "void*", [
+	const sessionFeed = l.func("gaffer_session_feed", HeapStr, [
 		"intptr",
 		"str",
+		errorSlotType,
 	]);
-	const sessionGetState = l.func("gaffer_session_get_state", "void*", [
+	const sessionGetState = l.func("gaffer_session_get_state", HeapStr, [
 		"intptr",
 		"str",
+		errorSlotType,
 	]);
 	const sessionGetSharedState = l.func(
 		"gaffer_session_get_shared_state",
-		"void*",
-		["intptr"],
+		HeapStr,
+		["intptr", errorSlotType],
 	);
 	const sessionSetState = l.func("gaffer_session_set_state", "void", [
 		"intptr",
 		"str",
 		"str",
+		errorSlotType,
 	]);
-	const sessionGetResult = l.func("gaffer_session_get_result", "void*", [
+	const sessionGetResult = l.func("gaffer_session_get_result", HeapStr, [
 		"intptr",
 		"str",
+		errorSlotType,
 	]);
-	const sessionGetSources = l.func("gaffer_session_get_sources", "void*", [
+	const sessionGetSources = l.func("gaffer_session_get_sources", HeapStr, [
 		"intptr",
+		errorSlotType,
 	]);
 	const sessionGetPartitionKey = l.func(
 		"gaffer_session_get_partition_key",
-		"void*",
-		["intptr", "str"],
+		HeapStr,
+		["intptr", "str", errorSlotType],
 	);
-	const getLastError = l.func("gaffer_get_last_error", "str", []);
-	const gafferFree = l.func("gaffer_free", "void", ["void*"]);
 	const onEmit = l.func("gaffer_on_emit", "void", [
 		"intptr",
 		koffi.pointer(emitCbType),
@@ -174,33 +201,72 @@ export function getNativeBindings(): NativeBindings {
 		"void*",
 	]);
 
-	function consumeStr(ptr: unknown): string | null {
-		if (ptr == null) return null;
-		try {
-			return koffi.decode(ptr, "str") as string;
-		} finally {
-			gafferFree(ptr);
-		}
+	// Reads the error pointer from a slot, decodes the string, and frees.
+	// Returns null when the slot contains NULL (success path).
+	function consumeErrorSlot(slot: unknown): string | null {
+		const str = koffi.decode(slot, "char *") as string | null;
+		if (str == null) return null;
+		const ptr = koffi.decode(slot, "void *");
+		gafferFree(ptr);
+		return str;
+	}
+
+	function newErrorSlot(): unknown {
+		return koffi.alloc("void*", 1);
 	}
 
 	bindings = {
-		sessionCreate: (source, optionsJson) =>
-			sessionCreate(source, optionsJson) as number,
+		sessionCreate: (source, optionsJson) => {
+			const errSlot = newErrorSlot();
+			const handle = sessionCreate(source, optionsJson, errSlot) as number;
+			return { handle, errorJson: consumeErrorSlot(errSlot) };
+		},
 		sessionDestroy: (handle) => sessionDestroy(handle),
-		sessionFeed: (handle, eventJson) =>
-			consumeStr(sessionFeed(handle, eventJson)),
-		sessionGetState: (handle, partition) =>
-			consumeStr(sessionGetState(handle, partition)),
-		sessionGetSharedState: (handle) =>
-			consumeStr(sessionGetSharedState(handle)),
-		sessionSetState: (handle, partition, stateJson) =>
-			sessionSetState(handle, partition, stateJson),
-		sessionGetResult: (handle, partition) =>
-			consumeStr(sessionGetResult(handle, partition)),
-		sessionGetSources: (handle) => consumeStr(sessionGetSources(handle)),
-		sessionGetPartitionKey: (handle, eventJson) =>
-			consumeStr(sessionGetPartitionKey(handle, eventJson)),
-		getLastError: () => getLastError() as string | null,
+		sessionFeed: (handle, eventJson) => {
+			const errSlot = newErrorSlot();
+			const result = sessionFeed(handle, eventJson, errSlot) as string | null;
+			return { result, errorJson: consumeErrorSlot(errSlot) };
+		},
+		sessionGetState: (handle, partition) => {
+			const errSlot = newErrorSlot();
+			const result = sessionGetState(handle, partition, errSlot) as
+				| string
+				| null;
+			// silent: discard any error
+			consumeErrorSlot(errSlot);
+			return result;
+		},
+		sessionGetSharedState: (handle) => {
+			const errSlot = newErrorSlot();
+			const result = sessionGetSharedState(handle, errSlot) as string | null;
+			consumeErrorSlot(errSlot);
+			return result;
+		},
+		sessionSetState: (handle, partition, stateJson) => {
+			const errSlot = newErrorSlot();
+			sessionSetState(handle, partition, stateJson, errSlot);
+			consumeErrorSlot(errSlot);
+		},
+		sessionGetResult: (handle, partition) => {
+			const errSlot = newErrorSlot();
+			const result = sessionGetResult(handle, partition, errSlot) as
+				| string
+				| null;
+			return { result, errorJson: consumeErrorSlot(errSlot) };
+		},
+		sessionGetSources: (handle) => {
+			const errSlot = newErrorSlot();
+			const result = sessionGetSources(handle, errSlot) as string | null;
+			return { result, errorJson: consumeErrorSlot(errSlot) };
+		},
+		sessionGetPartitionKey: (handle, eventJson) => {
+			const errSlot = newErrorSlot();
+			const result = sessionGetPartitionKey(handle, eventJson, errSlot) as
+				| string
+				| null;
+			consumeErrorSlot(errSlot);
+			return result;
+		},
 		onEmit: (handle, cb) => {
 			const nativeCb = koffi.register(
 				(

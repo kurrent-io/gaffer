@@ -2,12 +2,14 @@ package gafferruntime
 
 /*
 #include "gaffer.h"
+#include <stdlib.h>
 */
 import "C"
 
 import (
 	"encoding/json"
 	"errors"
+	"unsafe"
 )
 
 // ErrSessionDestroyed is returned when calling methods on a destroyed session.
@@ -150,20 +152,14 @@ type errorJSON struct {
 	Partition      string `json:"partition,omitempty"`
 }
 
-func getLastError(source string) error {
-	raw := C.gaffer_get_last_error()
-	if raw == nil {
-		return &UnexpectedError{Code: "unexpected", Desc: "unknown error", Msg: "unknown error"}
-	}
-	return parseErrorJSON(C.GoString(raw), source)
-}
-
-func checkLastError(source string) error {
-	raw := C.gaffer_get_last_error()
-	if raw == nil {
+// consumeError decodes and frees a runtime-allocated error pointer.
+// Returns nil if cErr is nil. Caller must not free cErr afterwards.
+func consumeError(cErr *C.char, source string) error {
+	if cErr == nil {
 		return nil
 	}
-	return parseErrorJSON(C.GoString(raw), source)
+	defer C.gaffer_free(unsafe.Pointer(cErr))
+	return parseErrorJSON(C.GoString(cErr), source)
 }
 
 func parseErrorJSON(jsonStr string, source string) error {

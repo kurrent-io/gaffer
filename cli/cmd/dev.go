@@ -332,9 +332,9 @@ func runDevDebug(
 		}
 
 		var lastEmit time.Time
-		// See the long comment in the original runDev about why this
-		// runs on the source goroutine: session is single-threaded;
-		// concurrent calls race on handle.LastReturnedPtr.
+		// Run on the source goroutine: ProjectionSession is not
+		// thread-safe, so concurrent Feed/state calls would corrupt
+		// internal projection state.
 		process := func(eventJSON string) bool {
 			stop := r.ProcessOne(eventJSON)
 			if time.Since(lastEmit) >= statsEmitInterval {

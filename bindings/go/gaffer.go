@@ -35,9 +35,13 @@ func NewSession(source string, optionsJSON *string) (*Session, error) {
 		opts = C.CString(*optionsJSON)
 		defer C.free(unsafe.Pointer(opts))
 	}
-	handle := C.gaffer_session_create(cs, opts)
+	var cErr *C.char
+	handle := C.gaffer_session_create(cs, opts, &cErr)
+	if err := consumeError(cErr, source); err != nil {
+		return nil, err
+	}
 	if handle == nil {
-		return nil, getLastError(source)
+		return nil, &UnexpectedError{Code: "unexpected", Desc: "unknown error", Msg: "unknown error"}
 	}
 	return &Session{handle: handle, source: source}, nil
 }
@@ -63,10 +67,14 @@ func (s *Session) Feed(eventJSON string) (*FeedResult, error) {
 	s.ensureAlive()
 	cs := C.CString(eventJSON)
 	defer C.free(unsafe.Pointer(cs))
-	result := C.gaffer_session_feed(s.handle, cs)
+	var cErr *C.char
+	result := C.gaffer_session_feed(s.handle, cs, &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
+	if err := consumeError(cErr, s.source); err != nil {
+		return nil, err
+	}
 	if result == nil {
-		return nil, getLastError(s.source)
+		return nil, &UnexpectedError{Code: "unexpected", Desc: "unknown error", Msg: "unknown error"}
 	}
 	var fr FeedResult
 	if err := json.Unmarshal([]byte(C.GoString(result)), &fr); err != nil {
@@ -84,7 +92,7 @@ func (s *Session) GetState(partition *string) *string {
 		cp = C.CString(*partition)
 		defer C.free(unsafe.Pointer(cp))
 	}
-	result := C.gaffer_session_get_state(s.handle, cp)
+	result := C.gaffer_session_get_state(s.handle, cp, nil)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return nil
@@ -96,7 +104,7 @@ func (s *Session) GetState(partition *string) *string {
 // GetSharedState returns the shared state for biState projections, or nil.
 func (s *Session) GetSharedState() *string {
 	s.ensureAlive()
-	result := C.gaffer_session_get_shared_state(s.handle)
+	result := C.gaffer_session_get_shared_state(s.handle, nil)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return nil
@@ -116,7 +124,7 @@ func (s *Session) SetState(partition *string, stateJSON string) {
 	}
 	cs := C.CString(stateJSON)
 	defer C.free(unsafe.Pointer(cs))
-	C.gaffer_session_set_state(s.handle, cp, cs)
+	C.gaffer_session_set_state(s.handle, cp, cs, nil)
 }
 
 // GetResult returns the transformed result for a partition (applies
@@ -128,9 +136,10 @@ func (s *Session) GetResult(partition *string) (*string, error) {
 		cp = C.CString(*partition)
 		defer C.free(unsafe.Pointer(cp))
 	}
-	result := C.gaffer_session_get_result(s.handle, cp)
+	var cErr *C.char
+	result := C.gaffer_session_get_result(s.handle, cp, &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
-	if err := checkLastError(s.source); err != nil {
+	if err := consumeError(cErr, s.source); err != nil {
 		return nil, err
 	}
 	if result == nil {
@@ -143,7 +152,7 @@ func (s *Session) GetResult(partition *string) (*string, error) {
 // GetSources returns the projection's source configuration and features.
 func (s *Session) GetSources() ProjectionInfo {
 	s.ensureAlive()
-	result := C.gaffer_session_get_sources(s.handle)
+	result := C.gaffer_session_get_sources(s.handle, nil)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return ProjectionInfo{}
@@ -159,7 +168,7 @@ func (s *Session) GetPartitionKey(eventJSON string) *string {
 	s.ensureAlive()
 	cs := C.CString(eventJSON)
 	defer C.free(unsafe.Pointer(cs))
-	result := C.gaffer_session_get_partition_key(s.handle, cs)
+	result := C.gaffer_session_get_partition_key(s.handle, cs, nil)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return nil
@@ -221,8 +230,12 @@ func (s *Session) SetBreakpoint(line, column int, opts *BreakpointOptions) (*Sna
 			defer C.free(unsafe.Pointer(logMsg))
 		}
 	}
-	result := C.gaffer_debug_set_breakpoint(s.handle, C.int(line), C.int(column), cond, hitCond, logMsg)
+	var cErr *C.char
+	result := C.gaffer_debug_set_breakpoint(s.handle, C.int(line), C.int(column), cond, hitCond, logMsg, &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
+	if err := consumeError(cErr, s.source); err != nil {
+		return nil, err
+	}
 	if result == nil {
 		return nil, nil
 	}
@@ -236,25 +249,25 @@ func (s *Session) SetBreakpoint(line, column int, opts *BreakpointOptions) (*Sna
 // Pause requests a pause before the next event is processed.
 func (s *Session) Pause() {
 	s.ensureAlive()
-	C.gaffer_debug_pause(s.handle)
+	C.gaffer_debug_pause(s.handle, nil)
 }
 
 // StepInto steps into the next function call. Only valid while paused.
 func (s *Session) StepInto() {
 	s.ensureAlive()
-	C.gaffer_debug_step_into(s.handle)
+	C.gaffer_debug_step_into(s.handle, nil)
 }
 
 // StepOver steps over the next statement. Only valid while paused.
 func (s *Session) StepOver() {
 	s.ensureAlive()
-	C.gaffer_debug_step_over(s.handle)
+	C.gaffer_debug_step_over(s.handle, nil)
 }
 
 // StepOut steps out of the current function. Only valid while paused.
 func (s *Session) StepOut() {
 	s.ensureAlive()
-	C.gaffer_debug_step_out(s.handle)
+	C.gaffer_debug_step_out(s.handle, nil)
 }
 
 // Evaluate evaluates an expression in the current debug context. Only valid while paused.
@@ -262,10 +275,14 @@ func (s *Session) Evaluate(expression string) (*DebugVariable, error) {
 	s.ensureAlive()
 	cs := C.CString(expression)
 	defer C.free(unsafe.Pointer(cs))
-	result := C.gaffer_debug_evaluate(s.handle, cs)
+	var cErr *C.char
+	result := C.gaffer_debug_evaluate(s.handle, cs, &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
+	if err := consumeError(cErr, s.source); err != nil {
+		return nil, err
+	}
 	if result == nil {
-		return nil, getLastError(s.source)
+		return nil, &UnexpectedError{Code: "unexpected", Desc: "unknown error", Msg: "unknown error"}
 	}
 	var v DebugVariable
 	if err := json.Unmarshal([]byte(C.GoString(result)), &v); err != nil {
@@ -277,22 +294,26 @@ func (s *Session) Evaluate(expression string) (*DebugVariable, error) {
 // ClearBreakpoints removes all breakpoints.
 func (s *Session) ClearBreakpoints() {
 	s.ensureAlive()
-	C.gaffer_debug_clear_breakpoints(s.handle)
+	C.gaffer_debug_clear_breakpoints(s.handle, nil)
 }
 
 // Continue resumes execution after a debug pause.
 func (s *Session) Continue() {
 	s.ensureAlive()
-	C.gaffer_debug_continue(s.handle)
+	C.gaffer_debug_continue(s.handle, nil)
 }
 
 // GetCallStack returns the call stack while paused.
 func (s *Session) GetCallStack() ([]DebugCallFrame, error) {
 	s.ensureAlive()
-	result := C.gaffer_debug_get_call_stack(s.handle)
+	var cErr *C.char
+	result := C.gaffer_debug_get_call_stack(s.handle, &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
+	if err := consumeError(cErr, s.source); err != nil {
+		return nil, err
+	}
 	if result == nil {
-		return nil, getLastError(s.source)
+		return nil, &UnexpectedError{Code: "unexpected", Desc: "unknown error", Msg: "unknown error"}
 	}
 	var frames []DebugCallFrame
 	if err := json.Unmarshal([]byte(C.GoString(result)), &frames); err != nil {
@@ -304,10 +325,14 @@ func (s *Session) GetCallStack() ([]DebugCallFrame, error) {
 // GetScopes returns the scopes for a call frame while paused.
 func (s *Session) GetScopes(frameIndex int) ([]DebugScopeInfo, error) {
 	s.ensureAlive()
-	result := C.gaffer_debug_get_scopes(s.handle, C.int(frameIndex))
+	var cErr *C.char
+	result := C.gaffer_debug_get_scopes(s.handle, C.int(frameIndex), &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
+	if err := consumeError(cErr, s.source); err != nil {
+		return nil, err
+	}
 	if result == nil {
-		return nil, getLastError(s.source)
+		return nil, &UnexpectedError{Code: "unexpected", Desc: "unknown error", Msg: "unknown error"}
 	}
 	var scopes []DebugScopeInfo
 	if err := json.Unmarshal([]byte(C.GoString(result)), &scopes); err != nil {
@@ -319,10 +344,14 @@ func (s *Session) GetScopes(frameIndex int) ([]DebugScopeInfo, error) {
 // GetVariables returns the variables for a scope or object reference while paused.
 func (s *Session) GetVariables(variablesReference int) ([]DebugVariable, error) {
 	s.ensureAlive()
-	result := C.gaffer_debug_get_variables(s.handle, C.int(variablesReference))
+	var cErr *C.char
+	result := C.gaffer_debug_get_variables(s.handle, C.int(variablesReference), &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
+	if err := consumeError(cErr, s.source); err != nil {
+		return nil, err
+	}
 	if result == nil {
-		return nil, getLastError(s.source)
+		return nil, &UnexpectedError{Code: "unexpected", Desc: "unknown error", Msg: "unknown error"}
 	}
 	var vars []DebugVariable
 	if err := json.Unmarshal([]byte(C.GoString(result)), &vars); err != nil {

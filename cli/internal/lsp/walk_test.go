@@ -627,6 +627,113 @@ fixtures.evil = "../escape.json"
 	<-done
 }
 
+func TestServer_DidChangeWatchedFiles_DeletedThenCreatedOrderPreserved(t *testing.T) {
+	// Real `mv tmp gaffer.toml` from the editor produces a
+	// [Deleted-of-tmp, Created-of-gaffer.toml] burst on the same
+	// effective URI when a buffer is renamed. The order must be
+	// honoured: Deleted first wipes any cached parse, Created
+	// then re-seeds. Asserting the final state has a parse pins
+	// that the Created landed AFTER the Deleted.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
+name = "alpha"
+entry = "alpha.js"
+`)
+	uri := pathToURI(cfg)
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	waitFor(t, func() bool {
+		_, ok := server.docs.GetParse(uri)
+		return ok
+	}, time.Second)
+
+	// One batch with [Deleted, Created]. Sequential processing
+	// must apply Deleted first, then Created.
+	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
+		Changes: []FileEvent{
+			{URI: uri, Type: FileChangeDeleted},
+			{URI: uri, Type: FileChangeCreated},
+		},
+	})
+
+	// Final state must be: URI parse cached again. If Deleted ran
+	// last we'd see no parse.
+	waitFor(t, func() bool {
+		_, ok := server.docs.GetParse(uri)
+		return ok
+	}, time.Second)
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_DidChangeWatchedFiles_MixedURIBatch(t *testing.T) {
+	// A single batch with events for two distinct URIs must
+	// process both. Pin that one URI's events don't somehow
+	// suppress the other's.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	root := t.TempDir()
+	cfgA := writeWorkspaceFile(t, filepath.Join(root, "a"), "gaffer.toml", `[[projection]]
+name = "alpha"
+entry = "alpha.js"
+`)
+	cfgB := writeWorkspaceFile(t, filepath.Join(root, "b"), "gaffer.toml", `[[projection]]
+name = "beta"
+entry = "beta.js"
+`)
+	uriA := pathToURI(cfgA)
+	uriB := pathToURI(cfgB)
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	waitFor(t, func() bool {
+		_, okA := server.docs.GetParse(uriA)
+		_, okB := server.docs.GetParse(uriB)
+		return okA && okB
+	}, time.Second)
+
+	// Delete A, change B - in one batch. Both must apply.
+	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
+		Changes: []FileEvent{
+			{URI: uriA, Type: FileChangeDeleted},
+			{URI: uriB, Type: FileChangeChanged},
+		},
+	})
+
+	waitFor(t, func() bool {
+		_, hasA := server.docs.GetParse(uriA)
+		_, hasB := server.docs.GetParse(uriB)
+		return !hasA && hasB
+	}, time.Second)
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
 func TestServer_DidChangeWatchedFiles_NonGafferIgnored(t *testing.T) {
 	// Editors sometimes register broader watchers; ensure the
 	// gate by basename keeps non-gaffer events from reaching the

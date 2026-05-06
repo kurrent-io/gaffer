@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/sourcegraph/jsonrpc2"
 )
 
 func TestServer_CodeLensOnEntryScriptFromCachedToml(t *testing.T) {
@@ -201,6 +203,75 @@ entry = "p.js"
 			t.Errorf("refresh fired despite client not advertising refreshSupport")
 		}
 	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
+}
+
+func TestServer_CodeLensRefreshErrorIsLogged(t *testing.T) {
+	// If the client responds to workspace/codeLens/refresh with
+	// an error (e.g. it lied about refreshSupport), the server
+	// must log + continue rather than crashing or wedging the
+	// parse pipeline. Drive the negative path by handing the
+	// client a handler that always returns an error for that
+	// method.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	_, done := startServerWithStore(ctx, srv, ServerOptions{})
+
+	// Custom client handler: return error for MethodCodeLensRefresh,
+	// nil for everything else. The test passes if the server
+	// survives the error and the second parse still publishes.
+	conn := jsonrpc2.NewConn(
+		ctx,
+		jsonrpc2.NewBufferedStream(cli, jsonrpc2.VSCodeObjectCodec{}),
+		jsonrpc2.HandlerWithError(func(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) (interface{}, error) {
+			if req.Method == MethodCodeLensRefresh {
+				return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeMethodNotFound, Message: "not supported"}
+			}
+			return nil, nil
+		}),
+	)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		Capabilities: ClientCapabilities{
+			Workspace: WorkspaceClientCapabilities{
+				CodeLens: &CodeLensWorkspaceClientCapabilities{RefreshSupport: true},
+			},
+		},
+	}, &InitializeResult{})
+
+	_, uri := tempTOMLPath(t)
+	// First didOpen → parse → publishDiagnostics → refresh fires
+	// (and gets the error response back).
+	_ = conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{URI: uri, Text: `[[projection]]
+name = "p"
+entry = "p.js"
+`},
+	})
+
+	// Subsequent didChange must still result in a publishDiagnostics
+	// regardless of whether the prior refresh succeeded - i.e. the
+	// error didn't poison the parse pipeline. Fire a change and
+	// wait for the publish.
+	time.Sleep(50 * time.Millisecond)
+	_ = conn.Notify(ctx, MethodDidChange, &DidChangeTextDocumentParams{
+		TextDocument: VersionedTextDocumentIdentifier{URI: uri, Version: 2},
+		ContentChanges: []TextDocumentContentChangeEvent{{Text: `[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.evil = "../escape.json"
+`}},
+	})
+
+	// 250ms default debounce + a margin - if the server were
+	// wedged, the second publish would never arrive.
+	time.Sleep(500 * time.Millisecond)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)

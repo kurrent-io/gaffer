@@ -26,6 +26,7 @@ import {
 	stopLanguageClient,
 } from "./lsp/client.js";
 import { registerTypeScriptPlugin } from "./lsp/typescript-plugin.js";
+import { GafferMcpProvider } from "./mcp/provider.js";
 import { runProjection } from "./commands/run-projection.js";
 import { debugProjectionPick } from "./commands/debug-projection-pick.js";
 
@@ -110,6 +111,24 @@ export async function activate(
 	// with the vendored projection-types path. Static for the session
 	// unless the user toggles gaffer.injectProjectionTypes.
 	registerTypeScriptPlugin(context);
+
+	// Register `gaffer mcp` as an MCP server with VS Code so
+	// Copilot Chat (and any other MCP-aware agent in VS Code) picks
+	// it up automatically. Provider returns [] under untrusted
+	// workspaces; fires onDidChange on trust grant and on workspace
+	// folder changes so the picker tracks reality.
+	const mcpProvider = new GafferMcpProvider();
+	context.subscriptions.push(
+		mcpProvider,
+		vscode.lm.registerMcpServerDefinitionProvider("gaffer", mcpProvider),
+		vscode.workspace.onDidGrantWorkspaceTrust(() => mcpProvider.refresh()),
+		vscode.workspace.onDidChangeWorkspaceFolders(() => mcpProvider.refresh()),
+		vscode.workspace.onDidChangeConfiguration((e) => {
+			if (e.affectsConfiguration("gaffer.command")) {
+				mcpProvider.refresh();
+			}
+		}),
+	);
 
 	const controller = new SessionController({
 		buildArgv: buildGafferArgv,

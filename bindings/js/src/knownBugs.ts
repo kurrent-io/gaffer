@@ -21,5 +21,10 @@ export interface KnownBug {
  */
 export function knownBugs(): KnownBug[] {
 	const json = getNativeBindings().knownBugs();
+	// Native returns null on allocation failure. Surface as a descriptive
+	// error rather than letting JSON.parse(null) throw "Unexpected token u".
+	if (json === null) {
+		throw new Error("gaffer_known_bugs returned null (allocation failure)");
+	}
 	return JSON.parse(json) as KnownBug[];
 }

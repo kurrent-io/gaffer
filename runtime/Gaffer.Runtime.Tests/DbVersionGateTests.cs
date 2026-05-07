@@ -48,6 +48,9 @@ public class DbVersionGateTests {
 
 		Assert.Contains("V2", ex.Message);
 		Assert.Contains("26.1.0", ex.Message);
+		// Field name matches the JSON option key, matching ParseDbVersion's
+		// other validation throws and the bindings' field-name contract.
+		Assert.Equal("dbVersion", ex.Field);
 	}
 
 	[Fact]

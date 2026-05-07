@@ -64,9 +64,11 @@ public sealed class ProjectionSession : IDisposable {
 		// downstream failures. Unversioned (null DbVersion) is permissive -
 		// matches the unversioned-defaults model.
 		if (_version == ProjectionVersion.V2 && !KnownFeatures.ProjectionsV2.AvailableAt(_dbVersion)) {
+			// Field name matches the JSON option key the caller provided,
+			// not the C# property - that's what bindings expose to users.
 			throw new InvalidArgumentException(
 				$"V2 engine requires KurrentDB {KnownFeatures.ProjectionsV2.IntroducedIn} or later; got {_dbVersion}.",
-				nameof(ProjectionSessionOptions.DbVersion));
+				"dbVersion");
 		}
 
 		try {

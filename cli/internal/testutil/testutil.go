@@ -220,7 +220,8 @@ func CaptureStdout(t *testing.T, fn func()) string {
 }
 
 // CaptureStdio redirects both os.Stdout and os.Stderr for the duration
-// of fn and returns what was written to each.
+// of fn and returns what was written to each. Safe against panics: the
+// originals are always restored and pipe fds always closed.
 func CaptureStdio(t *testing.T, fn func()) (stdout, stderr string) {
 	t.Helper()
 	rOut, wOut, err := os.Pipe()
@@ -229,19 +230,31 @@ func CaptureStdio(t *testing.T, fn func()) (stdout, stderr string) {
 	}
 	rErr, wErr, err := os.Pipe()
 	if err != nil {
+		_ = rOut.Close()
+		_ = wOut.Close()
 		t.Fatal(err)
 	}
 
 	origOut, origErr := os.Stdout, os.Stderr
 	os.Stdout = wOut
 	os.Stderr = wErr
+
+	// Defers cover the panic path: restore originals and close every fd
+	// even if fn() never returns. Double-Close on *os.File returns an
+	// error we ignore.
 	defer func() {
 		os.Stdout = origOut
 		os.Stderr = origErr
+		_ = wOut.Close()
+		_ = wErr.Close()
+		_ = rOut.Close()
+		_ = rErr.Close()
 	}()
 
 	fn()
 
+	// Close write ends before reading so ReadFrom returns at EOF instead
+	// of blocking. The deferred Closes above are no-ops after this.
 	_ = wOut.Close()
 	_ = wErr.Close()
 

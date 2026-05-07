@@ -25,6 +25,7 @@ import {
 	startLanguageClient,
 	stopLanguageClient,
 } from "./lsp/client.js";
+import { registerTypeScriptPlugin } from "./lsp/typescript-plugin.js";
 import { runProjection } from "./commands/run-projection.js";
 import { debugProjectionPick } from "./commands/debug-projection-pick.js";
 
@@ -103,6 +104,12 @@ export async function activate(
 			lspCodeLens.setClient(client);
 		},
 	);
+
+	// Wire the tsserver plugin's configuration. Loaded by tsserver
+	// via the `typescriptServerPlugins` contribution; configured here
+	// with the vendored projection-types path. Static for the session
+	// unless the user toggles gaffer.injectProjectionTypes.
+	registerTypeScriptPlugin(context);
 
 	const controller = new SessionController({
 		buildArgv: buildGafferArgv,

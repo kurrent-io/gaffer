@@ -1053,3 +1053,7 @@ export const debug: DebugShape = {
 			disposables,
 		)) as typeof vscode.debug.onDidReceiveDebugSessionCustomEvent,
 };
+
+export const extensions = {
+	getExtension: () => undefined,
+} as unknown as typeof import("vscode").extensions;

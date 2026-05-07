@@ -6,22 +6,34 @@
 // Loaded by tsserver via the `typescriptServerPlugins` contribution
 // point in the VS Code extension. Configuration arrives at runtime
 // through `info.config` (set via `configurePlugin` by the extension)
-// and is updated whenever the projection set changes.
+// and is updated when the user toggles the gaffer.injectProjectionTypes
+// setting.
+//
+// The plugin scopes injection at the tsserver-project level: globals
+// declared via `declare global` in projections.d.ts apply to every
+// file in the same inferred project, not just registered projections.
+// In practice tsserver groups loose JS in one InferredProject per
+// workspace root, so the types appear in any sibling .js. The
+// gaffer.injectProjectionTypes setting lets users opt out for
+// workspaces where that's noisy.
 
-import * as path from "node:path";
 import type ts from "typescript/lib/tsserverlibrary.js";
 
 interface PluginConfig {
-	// Absolute paths of every valid projection's entry .js, sourced
-	// from gaffer/projectionEntryPaths over LSP. Programs containing
-	// any of these files get the projection types injected.
-	projectionPaths?: readonly string[];
-	// Absolute path of types/src/projections.d.ts, sourced from the
-	// extension at activation time (it knows where it shipped the
-	// vendored copy). Required for the plugin to do anything useful;
-	// when missing, the plugin no-ops.
+	// Absolute path of the vendored projections.d.ts the extension
+	// shipped. When unset (or when the extension explicitly disables
+	// the plugin via `enabled: false`) the plugin no-ops.
 	typesEntryPath?: string;
+	enabled?: boolean;
 }
+
+// Marker on a wrapped getScriptFileNames so repeated create() calls
+// against the same host don't stack wrappers (which would let the
+// types entry be included multiple times). VS Code's tsserver
+// reconfigures projects when configurePlugin is called, and create()
+// can run again on the same host - without the marker, each run
+// adds another layer.
+const WRAPPED = Symbol.for("gaffer-tsserver-plugin/wrapped");
 
 function init(_modules: { typescript: typeof ts }): ts.server.PluginModule {
 	// Shared between create() and onConfigurationChanged. tsserver
@@ -38,18 +50,25 @@ function init(_modules: { typescript: typeof ts }): ts.server.PluginModule {
 			);
 
 			const host = info.languageServiceHost;
+			const existing =
+				host.getScriptFileNames as typeof host.getScriptFileNames & {
+					[WRAPPED]?: true;
+				};
+			if (existing[WRAPPED]) {
+				return info.languageService;
+			}
 			const originalGetScriptFileNames = host.getScriptFileNames.bind(host);
 
-			host.getScriptFileNames = () => {
+			const wrapped: (() => string[]) & { [WRAPPED]?: true } = () => {
 				const base = originalGetScriptFileNames();
-				if (!config.typesEntryPath) {
-					return base;
+				if (config.enabled === false) {
+					return [...base];
 				}
-				if (!isProjectionProgram(base, config.projectionPaths)) {
-					return base;
+				if (!config.typesEntryPath) {
+					return [...base];
 				}
 				if (base.includes(config.typesEntryPath)) {
-					return base;
+					return [...base];
 				}
 				// Return the program's existing files plus the
 				// projection types entry. tsserver follows the
@@ -57,6 +76,8 @@ function init(_modules: { typescript: typeof ts }): ts.server.PluginModule {
 				// modules - no need to enumerate them here.
 				return [...base, config.typesEntryPath];
 			};
+			wrapped[WRAPPED] = true;
+			host.getScriptFileNames = wrapped;
 
 			return info.languageService;
 		},
@@ -66,26 +87,10 @@ function init(_modules: { typescript: typeof ts }): ts.server.PluginModule {
 	};
 }
 
-function isProjectionProgram(
-	files: readonly string[],
-	projectionPaths: readonly string[] | undefined,
-): boolean {
-	if (!projectionPaths || projectionPaths.length === 0) {
-		return false;
-	}
-	const set = new Set(projectionPaths.map((p) => path.normalize(p)));
-	for (const f of files) {
-		if (set.has(path.normalize(f))) {
-			return true;
-		}
-	}
-	return false;
-}
-
 function describeConfig(config: PluginConfig): string {
-	const count = config.projectionPaths?.length ?? 0;
+	const enabled = config.enabled === false ? "disabled" : "enabled";
 	const types = config.typesEntryPath ?? "<unset>";
-	return `projectionPaths=${count} typesEntryPath=${types}`;
+	return `${enabled} typesEntryPath=${types}`;
 }
 
 // tsserver loads the plugin by `require`ing the package and calling

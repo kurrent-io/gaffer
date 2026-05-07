@@ -51,7 +51,7 @@
 		"test": "vitest run",
 		"check": "tsc --noEmit && eslint . && prettier --check .",
 		"fix": "eslint --fix . && prettier --write .",
-		"package": "vite build && vsce package --no-dependencies"
+		"package": "vite build && vsce package --no-dependencies && ./scripts/inject-tsserver-plugin.sh"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
@@ -87,6 +87,11 @@
 					"type": "number",
 					"default": -1,
 					"description": "DAP server port (loopback only). Leave at -1 (default) to let the OS pick a free port - the editor reads the actual port back from the CLI on connect. Set to a specific port (e.g. 4711) only if you need to pin it for an external attach."
+				},
+				"gaffer.injectProjectionTypes": {
+					"type": "boolean",
+					"default": true,
+					"description": "Inject projection-runtime types (`fromStream`, `when`, `emit`, etc.) into JavaScript files via the gaffer tsserver plugin. Types apply at the tsserver-project level - any loose .js sharing a workspace root with a registered projection sees them. Disable to keep non-projection JS clean."
 				}
 			}
 		},
@@ -185,9 +190,24 @@
 			{
 				"language": "javascript"
 			}
+		],
+		"typescriptServerPlugins": [
+			{
+				"name": "gaffer-tsserver-plugin",
+				"enableForWorkspaceTypeScriptVersions": true,
+				"languages": [
+					"javascript"
+				]
+			}
 		]
 	},
 	"dependencies": {
+		"gaffer-tsserver-plugin": "workspace:*",
 		"vscode-languageclient": "^9.0.1"
+	},
+	"dependenciesMeta": {
+		"gaffer-tsserver-plugin": {
+			"injected": true
+		}
 	}
 }

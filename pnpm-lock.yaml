@@ -96,9 +96,15 @@ importers:
 
   editors/vscode:
     dependencies:
+      gaffer-tsserver-plugin:
+        specifier: workspace:*
+        version: file:editors/vscode/tsserver-plugin(typescript@6.0.3)
       vscode-languageclient:
         specifier: ^9.0.1
         version: 9.0.1
+    dependenciesMeta:
+      gaffer-tsserver-plugin:
+        injected: true
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -1489,6 +1495,12 @@ packages:
 
   function-bind@1.1.2:
     resolution: {integrity: sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==}
+
+  gaffer-tsserver-plugin@file:editors/vscode/tsserver-plugin:
+    resolution: {directory: editors/vscode/tsserver-plugin, type: directory}
+    engines: {node: '>=22'}
+    peerDependencies:
+      typescript: '>=5'
 
   get-caller-file@2.0.5:
     resolution: {integrity: sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==}
@@ -4074,6 +4086,10 @@ snapshots:
     optional: true
 
   function-bind@1.1.2: {}
+
+  gaffer-tsserver-plugin@file:editors/vscode/tsserver-plugin(typescript@6.0.3):
+    dependencies:
+      typescript: 6.0.3
 
   get-caller-file@2.0.5: {}
 

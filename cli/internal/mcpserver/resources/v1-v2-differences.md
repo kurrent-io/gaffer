@@ -135,7 +135,7 @@ diagnostics so you find it before the result stream surprises you:
 
 * `compat.transforms.notApplied` (Warning) on `transformBy` / `filterBy`
   calls when `engine_version=2`.
-* `compat.outputState.implicit` (Hint) on `outputState()` calls when
+* `compat.outputState.unconditional` (Hint) on `outputState()` calls when
   `engine_version=2`.
 
 <!-- TODO: cite engine-v2.md once it lands on KurrentDB master. -->

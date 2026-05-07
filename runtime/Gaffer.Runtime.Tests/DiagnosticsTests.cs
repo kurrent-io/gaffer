@@ -269,7 +269,7 @@ public class DiagnosticsTests {
 		Assert.Null(session.Diagnostics);
 	}
 
-	// -- compat.outputState.implicit (V2) --
+	// -- compat.outputState.unconditional (V2) --
 
 	[Fact]
 	public void OutputState_InV2_EmitsHint() {
@@ -279,7 +279,7 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		var d = Assert.Single(session.Diagnostics!);
-		Assert.Equal("compat.outputState.implicit", d.Code);
+		Assert.Equal("compat.outputState.unconditional", d.Code);
 		Assert.Equal(DiagnosticSeverity.Hint, d.Severity);
 		Assert.Contains("outputState", d.Message);
 	}

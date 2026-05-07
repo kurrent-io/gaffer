@@ -264,7 +264,7 @@ internal static class DiagnosticCollector {
 				return;
 			foreach (var loc in scanner.Calls) {
 				diagnostics.Add(new Diagnostic {
-					Code = "compat.outputState.implicit",
+					Code = "compat.outputState.unconditional",
 					Message = "outputState() has no effect under engine_version=2; state is always emitted to the result stream. See v1-v2-differences.",
 					Severity = DiagnosticSeverity.Hint,
 					Range = ToSourceRange(loc),

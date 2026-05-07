@@ -144,7 +144,7 @@ Returns a chain with only `when`.
 after each event is processed. Without this, state is only held in memory.
 
 **V2:** No effect - state is always written to the result stream regardless.
-Calls under `engine_version=2` emit `compat.outputState.implicit` (Hint).
+Calls under `engine_version=2` emit `compat.outputState.unconditional` (Hint).
 
 ```javascript
 fromCategory('order')

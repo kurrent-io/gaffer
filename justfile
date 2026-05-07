@@ -9,6 +9,7 @@ default:
 [parallel]
 _init-root:
     corepack enable
+    corepack install
 
 # Install all module dependencies in parallel
 [private]

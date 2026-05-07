@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import { buildGafferArgv } from "../discovery/cli.js";
-import { log } from "../output.js";
 
 /**
  * Provides one MCP server definition per workspace folder, invoking
@@ -24,10 +23,11 @@ export class GafferMcpProvider implements vscode.McpServerDefinitionProvider<vsc
 	provideMcpServerDefinitions(
 		_token: vscode.CancellationToken,
 	): vscode.McpStdioServerDefinition[] {
-		if (!vscode.workspace.isTrusted) {
-			log("mcp: workspace untrusted, withholding gaffer mcp server");
-			return [];
-		}
+		// VS Code calls this on every picker open and on each
+		// onDidChange fire, so the untrusted/empty paths intentionally
+		// don't log - the channel doesn't need a line per query and
+		// trust state is already user-visible elsewhere.
+		if (!vscode.workspace.isTrusted) return [];
 		const folders = vscode.workspace.workspaceFolders ?? [];
 		if (folders.length === 0) return [];
 

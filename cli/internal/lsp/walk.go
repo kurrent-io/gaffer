@@ -156,13 +156,17 @@ func (s *Server) applyWatchedFileEvents(ctx context.Context, events []FileEvent)
 		case FileChangeDeleted:
 			_, hadParse := s.docs.GetParse(ev.URI)
 			s.docs.Close(ev.URI)
-			s.publishDiagnostics(ev.URI, []lspDiagnostic{})
 			if hadParse {
 				// Cached parse for this toml is gone - any .js
 				// URI whose lenses pointed at one of its
-				// projections is now stale.
+				// projections is now stale. Fired before
+				// publishDiagnostics for the same reason as the
+				// other call sites: keep the .js lens
+				// invalidation off the synchronous
+				// publishDiagnostics wire-write critical path.
 				s.requestCodeLensRefresh()
 			}
+			s.publishDiagnostics(ev.URI, []lspDiagnostic{})
 		}
 	}
 }

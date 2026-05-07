@@ -161,7 +161,7 @@ func (tw *textWriter) writeEmittedCb(streamID, eventType, data, metadata string,
 	}
 }
 
-func (tw *textWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, engineVersion int) {
+func (tw *textWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, engineVersion int, dbVersion string) {
 	tw.heading(name)
 
 	if info.AllStreams {
@@ -191,6 +191,12 @@ func (tw *textWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, 
 
 	if engineVersion != 0 {
 		tw.detail("Engine", fmt.Sprintf("v%d", engineVersion))
+	}
+
+	if dbVersion != "" {
+		tw.detail("DB version", dbVersion)
+	} else {
+		tw.detail("DB version", "unversioned (matching all KurrentDB quirks)")
 	}
 
 	tw.blank()
@@ -313,6 +319,32 @@ func (tw *textWriter) WriteFatalError(fe fatalError) {
 	}
 	if fe.JsStack != "" {
 		_, _ = fmt.Fprintln(out, fe.JsStack)
+	}
+	tw.writeCompatBlock(out, fe.CompatCode, compatBugLookup)
+}
+
+// writeCompatBlock renders the "Compat: <code>" hint when the fatal error
+// was driven by an upstream-bug-compat code path. Pulls description +
+// fixedIn from the runtime's KnownBugs registry via the supplied lookup.
+// Stays terse: state the fact ("Fixed in KurrentDB X") rather than
+// prescribe ("bump your version"). Lookup is a parameter so tests can
+// inject a synthetic registry covering the FixedIn-set path (today every
+// real entry has FixedIn = nil).
+func (tw *textWriter) writeCompatBlock(out io.Writer, code string, lookup func(string) (gafferruntime.KnownBug, bool)) {
+	if code == "" {
+		return
+	}
+	style := tw.styles.skipped // yellow, matching warning severity
+	_, _ = fmt.Fprintf(out, "\n%s %s\n", style.Render("Compat:"), code)
+	if bug, ok := lookup(code); ok {
+		if bug.Description != "" {
+			_, _ = fmt.Fprintf(out, "  %s\n", bug.Description)
+		}
+		if bug.FixedIn != nil {
+			_, _ = fmt.Fprintf(out, "  Fixed in KurrentDB %s.\n", *bug.FixedIn)
+		} else {
+			_, _ = fmt.Fprintln(out, "  Current KurrentDB behaviour.")
+		}
 	}
 }
 

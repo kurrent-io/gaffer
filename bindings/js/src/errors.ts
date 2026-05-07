@@ -2,6 +2,14 @@ export class ProjectionError extends Error {
 	readonly code: string;
 	readonly description: string;
 	override readonly cause: unknown;
+	/**
+	 * `KnownBug` code (e.g. `compat.event.bodyCast`) when this error was
+	 * thrown by an upstream-bug-compat code path. Lets editors and CLIs
+	 * annotate the error with "fixed in DB version X". Set by
+	 * `parseErrorJson` from the runtime payload; not part of any subclass
+	 * constructor.
+	 */
+	compatCode?: string;
 
 	constructor(
 		code: string,
@@ -54,8 +62,13 @@ export class CompilationTimeoutError extends ProjectionError {
 export class InvalidArgumentError extends ProjectionError {
 	readonly field: string;
 
-	constructor(description: string, field: string, cause?: unknown) {
-		super("invalid-argument", description, cause);
+	constructor(
+		description: string,
+		field: string,
+		cause?: unknown,
+		message?: string,
+	) {
+		super("invalid-argument", description, cause, message);
 		this.field = field;
 	}
 }
@@ -162,6 +175,7 @@ interface ErrorJson {
 	code: string;
 	description: string;
 	message?: string;
+	compatCode?: string;
 	line?: number;
 	column?: number;
 	elapsed?: number;
@@ -200,7 +214,12 @@ function locationOf(
 
 export function parseErrorJson(json: string, source: string): ProjectionError {
 	const err: ErrorJson = JSON.parse(json);
+	const result = constructError(err, source);
+	if (err.compatCode !== undefined) result.compatCode = err.compatCode;
+	return result;
+}
 
+function constructError(err: ErrorJson, source: string): ProjectionError {
 	switch (err.code) {
 		case "invalid-projection":
 			return new InvalidProjectionError(
@@ -224,6 +243,8 @@ export function parseErrorJson(json: string, source: string): ProjectionError {
 			return new InvalidArgumentError(
 				err.description,
 				required(err.field, err.code, "field"),
+				undefined,
+				err.message,
 			);
 
 		case "handler-error":

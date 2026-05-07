@@ -22,12 +22,17 @@ func (jw *jsonWriter) writeLine(v any) {
 	_ = jw.enc.Encode(v)
 }
 
-func (jw *jsonWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, engineVersion int) {
+func (jw *jsonWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, engineVersion int, dbVersion string) {
 	src := engine.DescribeSource(info)
 	proj := map[string]any{
 		"name":          name,
 		"source":        src["type"],
 		"engineVersion": engineVersion,
+		// Always emit dbVersion: null distinguishes unversioned (bugs on)
+		// from a real version. Consumers (LSP, tooling) need this signal
+		// since the field's absence wouldn't tell them whether they're
+		// in compat mode or whether a future schema dropped the field.
+		"dbVersion": nullableString(dbVersion),
 	}
 	if cats, ok := src["categories"]; ok {
 		proj["categories"] = cats
@@ -135,6 +140,9 @@ func (jw *jsonWriter) WriteFatalError(fe fatalError) {
 	}
 	if fe.EventID != "" {
 		line["eventId"] = fe.EventID
+	}
+	if fe.CompatCode != "" {
+		line["compatCode"] = fe.CompatCode
 	}
 	jw.writeLine(line)
 }

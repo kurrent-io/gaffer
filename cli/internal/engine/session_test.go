@@ -108,9 +108,10 @@ func TestLoadEvents_FileNotFound(t *testing.T) {
 
 func TestBuildSessionOptions_EngineVersionFromProjection(t *testing.T) {
 	cfg := &config.Config{EngineVersion: 2}
-	proj := &config.Projection{EngineVersion: 1}
+	def := &config.Projection{EngineVersion: 1}
+	proj := NewProjection("/tmp", cfg, def, "")
 
-	opts := buildSessionOptions(cfg, proj, false)
+	opts := buildSessionOptions(proj, false)
 	if opts == nil {
 		t.Fatal("expected options")
 	}
@@ -129,9 +130,10 @@ func TestBuildSessionOptions_ProjectionTimeoutOverridesGlobal(t *testing.T) {
 	globalTimeout := 500
 	projTimeout := 2000
 	cfg := &config.Config{ExecutionTimeout: &globalTimeout}
-	proj := &config.Projection{ExecutionTimeout: &projTimeout}
+	def := &config.Projection{ExecutionTimeout: &projTimeout}
+	proj := NewProjection("/tmp", cfg, def, "")
 
-	opts := buildSessionOptions(cfg, proj, false)
+	opts := buildSessionOptions(proj, false)
 	if opts == nil {
 		t.Fatal("expected options")
 	}
@@ -146,11 +148,47 @@ func TestBuildSessionOptions_ProjectionTimeoutOverridesGlobal(t *testing.T) {
 	}
 }
 
+func TestBuildSessionOptions_DbVersionPassedThroughWhenSet(t *testing.T) {
+	t.Setenv("GAFFER_DB_VERSION", "")
+	cfg := &config.Config{EngineVersion: 2, DbVersion: "26.1.0"}
+	def := &config.Projection{Name: "p", Entry: "p.js"}
+	proj := NewProjection("/tmp", cfg, def, "")
+
+	opts := buildSessionOptions(proj, false)
+	if opts == nil {
+		t.Fatal("expected non-nil options")
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(*opts), &m); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if m["dbVersion"] != "26.1.0" {
+		t.Errorf("expected dbVersion 26.1.0, got %v", m["dbVersion"])
+	}
+}
+
+func TestBuildSessionOptions_DbVersionOmittedWhenUnset(t *testing.T) {
+	t.Setenv("GAFFER_DB_VERSION", "")
+	cfg := &config.Config{EngineVersion: 2}
+	def := &config.Projection{Name: "p", Entry: "p.js"}
+	proj := NewProjection("/tmp", cfg, def, "")
+
+	opts := buildSessionOptions(proj, false)
+	var m map[string]any
+	if err := json.Unmarshal([]byte(*opts), &m); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if _, ok := m["dbVersion"]; ok {
+		t.Errorf("expected dbVersion to be omitted, got %v", m["dbVersion"])
+	}
+}
+
 func TestBuildSessionOptions_AlwaysIncludesEngineVersion(t *testing.T) {
 	cfg := &config.Config{EngineVersion: 2}
-	proj := &config.Projection{}
+	def := &config.Projection{}
+	proj := NewProjection("/tmp", cfg, def, "")
 
-	opts := buildSessionOptions(cfg, proj, false)
+	opts := buildSessionOptions(proj, false)
 	if opts == nil {
 		t.Fatal("expected non-nil options - engineVersion is required")
 	}
@@ -172,9 +210,10 @@ func TestBuildSessionOptions_GlobalFallback(t *testing.T) {
 		ExecutionTimeout:   &execTimeout,
 		CompilationTimeout: &compTimeout,
 	}
-	proj := &config.Projection{}
+	def := &config.Projection{}
+	proj := NewProjection("/tmp", cfg, def, "")
 
-	opts := buildSessionOptions(cfg, proj, false)
+	opts := buildSessionOptions(proj, false)
 	if opts == nil {
 		t.Fatal("expected options")
 	}

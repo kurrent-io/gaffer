@@ -297,6 +297,76 @@ func TestInfo_JSON_NoFixturesFieldWhenNoneDeclared(t *testing.T) {
 	}
 }
 
+// 3-arg linkStreamTo always throws via the upstream out-of-bounds-parameters
+// bug, so these tests exercise the full compat-error path: runtime tags the
+// throw with KnownBugs.LinkStreamToOutOfBoundsParameters.Code, error flows
+// through Go bindings, dev's writer renders it with the compatCode field
+// (--json) or the "Compat:" block (text).
+const compatLinkStreamToProjection = `fromAll().when({
+  $any: function (s, e) { linkStreamTo("archive", e.streamId, { reason: "x" }); return s; }
+})`
+
+const compatLinkStreamToFixture = `[
+  { "eventType": "Trigger", "streamId": "trigger-1", "data": "{}" }
+]`
+
+func TestDev_FatalError_CompatCodeRoundTrips(t *testing.T) {
+	p := testutil.NewProject(t).
+		AddProjection("archive", compatLinkStreamToProjection).
+		AddFixture("archive", compatLinkStreamToFixture).
+		Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"dev", "archive", "--events", "fixtures/archive.json", "--json"})
+	root.SetErr(&bytes.Buffer{})
+
+	output := testutil.CaptureStdout(t, func() {
+		_ = ExecuteRoot(context.Background(), root)
+	})
+
+	lines := testutil.SplitNDJSON(output)
+	if len(lines) == 0 {
+		t.Fatalf("no output, raw: %q", output)
+	}
+
+	var fatal map[string]any
+	for _, line := range lines {
+		if line["type"] == "fatal_error" {
+			fatal = line
+			break
+		}
+	}
+	if fatal == nil {
+		t.Fatalf("expected a fatal_error event in output, got: %v", lines)
+	}
+	if got := fatal["compatCode"]; got != "compat.linkStreamTo.outOfBoundsParameters" {
+		t.Errorf("compatCode: got %v, want compat.linkStreamTo.outOfBoundsParameters", got)
+	}
+}
+
+func TestDev_FatalError_CompatBlockInText(t *testing.T) {
+	p := testutil.NewProject(t).
+		AddProjection("archive", compatLinkStreamToProjection).
+		AddFixture("archive", compatLinkStreamToFixture).
+		Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"dev", "archive", "--events", "fixtures/archive.json"})
+
+	_, stderr := testutil.CaptureStdio(t, func() {
+		_ = ExecuteRoot(context.Background(), root)
+	})
+
+	if !strings.Contains(stderr, "Compat:") {
+		t.Errorf("expected stderr to contain 'Compat:' block, got:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "compat.linkStreamTo.outOfBoundsParameters") {
+		t.Errorf("expected stderr to contain compat code, got:\n%s", stderr)
+	}
+}
+
 func TestEndToEnd_InitScaffoldDev(t *testing.T) {
 	dir := t.TempDir()
 	chdirTo(t, dir)

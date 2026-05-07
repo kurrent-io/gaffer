@@ -228,7 +228,7 @@ fromCategory('order')
         return { eventCount: 0, lastEventType: null };
     },
     OrderCancelled(s, e) {
-        log('Order cancelled:', e.streamId);
+        log(`Order cancelled: ${e.streamId}`);
         emit('cancellations', 'OrderCancelled', { orderId: e.streamId });
         s.eventCount += 1;
         s.lastEventType = e.eventType;

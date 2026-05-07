@@ -64,7 +64,7 @@ func TestTextWriter_WriteInfo(t *testing.T) {
 		ByStreams:  true,
 		Events:     []string{"OrderPlaced", "OrderShipped"},
 	}
-	tw.WriteInfo("my-projection", info, 2)
+	tw.WriteInfo("my-projection", info, 2, "")
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "my-projection")
@@ -83,7 +83,7 @@ func TestTextWriter_WriteInfo_BiStateAndProducesResults(t *testing.T) {
 		BiState:         true,
 		ProducesResults: true,
 	}
-	tw.WriteInfo("bi-state-proj", info, 2)
+	tw.WriteInfo("bi-state-proj", info, 2, "")
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "BiState: yes")
@@ -106,7 +106,7 @@ func TestTextWriter_WriteInfo_RendersDiagnostics(t *testing.T) {
 			},
 		}},
 	}
-	tw.WriteInfo("p", info, 2)
+	tw.WriteInfo("p", info, 2, "")
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "[warning]")
@@ -127,7 +127,7 @@ func TestTextWriter_WriteInfo_DiagnosticWithoutRange(t *testing.T) {
 			Severity: gafferruntime.DiagnosticSeverityWarning,
 		}},
 	}
-	tw.WriteInfo("p", info, 2)
+	tw.WriteInfo("p", info, 2, "")
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "deprecated.something")
@@ -137,6 +137,180 @@ func TestTextWriter_WriteInfo_DiagnosticWithoutRange(t *testing.T) {
 	}
 }
 
+func TestTextWriter_WriteInfo_DbVersion_Set(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+
+	tw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "26.1.0")
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "DB version: 26.1.0")
+}
+
+func TestTextWriter_WriteInfo_DbVersion_Unversioned(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+
+	tw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "")
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "unversioned")
+	testutil.AssertContains(t, out, "matching all KurrentDB quirks")
+}
+
+func TestJSONWriter_WriteInfo_DbVersion_Set(t *testing.T) {
+	var buf bytes.Buffer
+	jw := newJSONWriter(&buf)
+
+	jw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "26.1.0")
+
+	var line map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	proj := line["projection"].(map[string]any)
+	testutil.AssertEqual(t, "dbVersion", "26.1.0", proj["dbVersion"])
+}
+
+func TestJSONWriter_WriteInfo_DbVersion_NullWhenUnset(t *testing.T) {
+	var buf bytes.Buffer
+	jw := newJSONWriter(&buf)
+
+	jw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "")
+
+	var line map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	proj := line["projection"].(map[string]any)
+	v, ok := proj["dbVersion"]
+	if !ok {
+		t.Fatal("expected dbVersion to be present (as null) when empty")
+	}
+	if v != nil {
+		t.Errorf("expected dbVersion null, got %v (%T)", v, v)
+	}
+}
+
+func TestTextWriter_WriteFatalError_RendersCompatBlock(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	tw := newTextWriter(&stdout, &stderr)
+
+	// Use a real registry code so the lookup hits.
+	tw.WriteFatalError(fatalError{
+		Code:        "handler-error",
+		Description: "Argument is not an object",
+		CompatCode:  "compat.event.bodyCast",
+	})
+
+	out := stderr.String()
+	testutil.AssertContains(t, out, "Compat:")
+	testutil.AssertContains(t, out, "compat.event.bodyCast")
+	// Today every registry entry has FixedIn = nil, so the rendering
+	// shows "Current KurrentDB behaviour" rather than "Fixed in ...".
+	testutil.AssertContains(t, out, "Current KurrentDB behaviour")
+}
+
+func TestTextWriter_WriteCompatBlock_RendersFixedInWhenSet(t *testing.T) {
+	// The "Fixed in KurrentDB X" branch is dead code today (every registry
+	// entry has FixedIn = nil), so we test it directly with a stubbed
+	// lookup. When upstream PR #5610 ships and runtime sets FixedIn, this
+	// path activates.
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, &buf)
+	fixed := "26.1.1"
+	stub := func(code string) (gafferruntime.KnownBug, bool) {
+		if code != "compat.event.bodyCast" {
+			return gafferruntime.KnownBug{}, false
+		}
+		return gafferruntime.KnownBug{
+			Code:        "compat.event.bodyCast",
+			Description: "Accessing event.body throws on non-object bodies.",
+			FixedIn:     &fixed,
+		}, true
+	}
+
+	tw.writeCompatBlock(&buf, "compat.event.bodyCast", stub)
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "Compat:")
+	testutil.AssertContains(t, out, "compat.event.bodyCast")
+	testutil.AssertContains(t, out, "Accessing event.body throws on non-object bodies.")
+	testutil.AssertContains(t, out, "Fixed in KurrentDB 26.1.1.")
+	if strings.Contains(out, "Current KurrentDB behaviour") {
+		t.Error("expected Fixed-in branch, got Current-behaviour line")
+	}
+}
+
+func TestToFatalError_PropagatesCompatCodeFromInvalidArgument(t *testing.T) {
+	err := &gafferruntime.InvalidArgumentError{
+		Desc:       "bad input",
+		Field:      "dbVersion",
+		CompatCode: "compat.test.synthetic",
+		Msg:        "bad input",
+	}
+	fe := toFatalError(err, "/p.js")
+	testutil.AssertEqual(t, "compatCode", "compat.test.synthetic", fe.CompatCode)
+}
+
+func TestTextWriter_WriteFatalError_OmitsCompatBlockWhenAbsent(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	tw := newTextWriter(&stdout, &stderr)
+
+	tw.WriteFatalError(fatalError{
+		Code:        "invalid-projection",
+		Description: "Unexpected token",
+	})
+
+	out := stderr.String()
+	if strings.Contains(out, "Compat:") {
+		t.Errorf("expected no Compat block when CompatCode is empty, got:\n%s", out)
+	}
+}
+
+func TestJSONWriter_WriteFatalError_IncludesCompatCode(t *testing.T) {
+	var buf bytes.Buffer
+	jw := newJSONWriter(&buf)
+
+	jw.WriteFatalError(fatalError{
+		Code:        "handler-error",
+		Description: "boom",
+		CompatCode:  "compat.event.bodyCast",
+	})
+
+	var got map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	testutil.AssertEqual(t, "compatCode", "compat.event.bodyCast", got["compatCode"])
+}
+
+func TestJSONWriter_WriteFatalError_OmitsCompatCodeWhenEmpty(t *testing.T) {
+	var buf bytes.Buffer
+	jw := newJSONWriter(&buf)
+
+	jw.WriteFatalError(fatalError{Code: "handler-error", Description: "boom"})
+
+	var got map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if _, ok := got["compatCode"]; ok {
+		t.Error("expected compatCode to be omitted when empty")
+	}
+}
+
+func TestToFatalError_PropagatesCompatCode(t *testing.T) {
+	err := &gafferruntime.ProjectionHandlerError{
+		Desc:       "boom",
+		Event:      gafferruntime.EventContext{StreamID: "s-1", SequenceNumber: 1},
+		CompatCode: "compat.event.bodyCast",
+		Msg:        "boom",
+	}
+	fe := toFatalError(err, "/p.js")
+	testutil.AssertEqual(t, "compatCode", "compat.event.bodyCast", fe.CompatCode)
+}
+
 func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
@@ -144,7 +318,7 @@ func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
 	info := gafferruntime.ProjectionInfo{
 		AllStreams: true,
 	}
-	tw.WriteInfo("simple-proj", info, 2)
+	tw.WriteInfo("simple-proj", info, 2, "")
 
 	out := buf.String()
 	if strings.Contains(out, "BiState") {
@@ -341,7 +515,7 @@ func TestJSONWriter_WriteInfo(t *testing.T) {
 		ByStreams:  true,
 		Events:     []string{"OrderPlaced"},
 	}
-	jw.WriteInfo("my-projection", info, 2)
+	jw.WriteInfo("my-projection", info, 2, "")
 
 	var line map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
@@ -381,7 +555,7 @@ func TestJSONWriter_WriteInfo_IncludesDiagnostics(t *testing.T) {
 			},
 		}},
 	}
-	jw.WriteInfo("p", info, 2)
+	jw.WriteInfo("p", info, 2, "")
 
 	var line map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
@@ -407,7 +581,7 @@ func TestJSONWriter_WriteInfo_OmitsEmptyDiagnostics(t *testing.T) {
 	var buf bytes.Buffer
 	jw := newJSONWriter(&buf)
 
-	jw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2)
+	jw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "")
 
 	var line map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {

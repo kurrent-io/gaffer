@@ -3,9 +3,12 @@ package mcpserver
 import (
 	"context"
 	"embed"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -47,6 +50,57 @@ func (s *Server) registerResources() {
 		Description: "Behavioral differences between V1 and V2 projection engines. Read when working with V1 projections or migrating.",
 		MIMEType:    "text/markdown",
 	}, staticResource("resources/v1-v2-differences.md"))
+
+	s.mcp.AddResource(&mcp.Resource{
+		URI:         "gaffer://docs/db-version-bugs",
+		Name:        "db-version-bugs",
+		Description: "Catalogue of KurrentDB upstream bugs gaffer reproduces for fidelity. Look here when a fatal error reports a compat.* code, or to see what bugs would fire for a given db_version.",
+		MIMEType:    "text/markdown",
+	}, dbVersionBugsResource)
+}
+
+// dbVersionBugsResource auto-generates a markdown reference from the runtime's
+// KnownBugs registry. Single source of truth: the C# Sdk.Versioning.KnownBugs
+// table flows through gaffer_known_bugs() into this rendering.
+func dbVersionBugsResource(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+	bugs, err := gafferruntime.KnownBugs()
+	if err != nil {
+		return nil, fmt.Errorf("loading known-bugs registry: %w", err)
+	}
+	return &mcp.ReadResourceResult{
+		Contents: []*mcp.ResourceContents{{
+			URI:      req.Params.URI,
+			MIMEType: "text/markdown",
+			Text:     renderDbVersionBugsMarkdown(bugs),
+		}},
+	}, nil
+}
+
+func renderDbVersionBugsMarkdown(bugs []gafferruntime.KnownBug) string {
+	var sb strings.Builder
+	sb.WriteString("# KurrentDB compat bugs\n\n")
+	sb.WriteString("Each entry lists an upstream bug that gaffer reproduces for ")
+	sb.WriteString("fidelity. Bugs fire whenever `db_version` is unset (the ")
+	sb.WriteString("\"unversioned\" default - matches all KurrentDB quirks) or set ")
+	sb.WriteString("to a release earlier than the bug's `fixedIn`. Setting ")
+	sb.WriteString("`db_version` to a release that fixed the bug disables ")
+	sb.WriteString("reproduction.\n\n")
+	if len(bugs) == 0 {
+		sb.WriteString("*No bugs registered in the runtime.*\n")
+		return sb.String()
+	}
+	for _, b := range bugs {
+		fmt.Fprintf(&sb, "## %s\n\n", b.Code)
+		if b.Description != "" {
+			fmt.Fprintf(&sb, "%s\n\n", b.Description)
+		}
+		if b.FixedIn != nil {
+			fmt.Fprintf(&sb, "**Fixed in:** KurrentDB %s\n\n", *b.FixedIn)
+		} else {
+			sb.WriteString("**Fixed in:** *not yet shipped upstream*\n\n")
+		}
+	}
+	return sb.String()
 }
 
 func (s *Server) handleConfigResource(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {

@@ -92,10 +92,10 @@ OrderPlaced(s, e) {
 
 ## Stream ownership
 
-Streams that receive projection output (via `emit`, `linkTo`, or `linkStreamTo`)
-are exclusively owned by the projection. If application code writes to a stream
-that a projection also writes to, the projection will break. This includes
-`$`-prefixed system streams.
+Streams that receive projection output (via `emit` or `linkTo`) are exclusively
+owned by the projection. If application code writes to a stream that a projection
+also writes to, the projection will break. This includes `$`-prefixed system
+streams.
 
 Plan your stream naming so projection output streams don't collide with
 application streams.

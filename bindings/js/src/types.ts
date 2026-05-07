@@ -100,6 +100,13 @@ export interface FeedResult {
 export interface SessionOptions {
 	/** Projection engine version. 1 drops non-JSON events. Required. */
 	engineVersion: 1 | 2;
+	/**
+	 * Target KurrentDB version (`MAJOR.MINOR.PATCH`, e.g. `"26.1.0"`). Unset
+	 * means "unversioned": gaffer matches every known KurrentDB quirk. Set to
+	 * a specific version to opt out of bugs that have been fixed upstream as
+	 * of that version.
+	 */
+	dbVersion?: string;
 	compilationTimeoutMs?: number;
 	executionTimeoutMs?: number;
 	debug?: boolean;

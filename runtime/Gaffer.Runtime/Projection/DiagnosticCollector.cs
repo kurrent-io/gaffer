@@ -1,6 +1,7 @@
 using Acornima;
 using Acornima.Ast;
 using Gaffer.Sdk.Diagnostics;
+using Gaffer.Sdk.Versioning;
 
 namespace Gaffer.Runtime.Projection;
 
@@ -10,10 +11,12 @@ namespace Gaffer.Runtime.Projection;
 /// New rules plug in by adding to <see cref="Rules"/>.
 /// </summary>
 internal static class DiagnosticCollector {
-	// Add new rules here. Each owns its own AST walk; UI-1527 (compat
-	// warnings) and UI-1543 (telemetry-shaped rules) plug in alongside.
+	// Add new rules here. Each owns its own AST walk; UI-1543 (telemetry-
+	// shaped rules) plug in alongside.
 	private static readonly IRule[] Rules = new IRule[] {
 		new LinkStreamToDeprecationRule(),
+		new LinkStreamToOutOfBoundsParametersRule(),
+		new LogMultiParamRule(),
 	};
 
 	/// <summary>
@@ -25,7 +28,7 @@ internal static class DiagnosticCollector {
 	/// an otherwise-valid projection. The user just doesn't get diagnostics.
 	/// </para>
 	/// </summary>
-	public static Diagnostic[]? Scan(string source) {
+	public static Diagnostic[]? Scan(string source, KurrentDbVersion? dbVersion) {
 		Script ast;
 		try {
 			ast = new Parser().ParseScript(source, "projection.js");
@@ -35,7 +38,7 @@ internal static class DiagnosticCollector {
 		var diagnostics = new List<Diagnostic>();
 		foreach (var rule in Rules) {
 			try {
-				rule.Run(ast, diagnostics);
+				rule.Run(ast, dbVersion, diagnostics);
 			} catch {
 				// One rule failing doesn't taint the others.
 			}
@@ -44,7 +47,7 @@ internal static class DiagnosticCollector {
 	}
 
 	internal interface IRule {
-		void Run(Script ast, List<Diagnostic> diagnostics);
+		void Run(Script ast, KurrentDbVersion? dbVersion, List<Diagnostic> diagnostics);
 	}
 
 	// Acornima: line 1-based, column 0-based. Sdk: both 1-based.
@@ -55,13 +58,49 @@ internal static class DiagnosticCollector {
 		End = new SourcePosition { Line = loc.End.Line, Column = loc.End.Column + 1 },
 	};
 
+	/// <summary>
+	/// Scans for calls to a named global identifier, with shadow detection.
+	/// A top-level <c>var</c>/<c>function</c> declaration of the same name
+	/// flips <see cref="Shadowed"/>; rules that depend on the global then
+	/// suppress their diagnostics. <paramref name="matchCall"/> filters which
+	/// calls land in <see cref="Calls"/> (e.g. arity gate).
+	/// </summary>
+	private sealed class IdentifierShadowScanner : AstVisitor {
+		private readonly string _name;
+		private readonly Func<CallExpression, bool> _matchCall;
+
+		public IdentifierShadowScanner(string name, Func<CallExpression, bool> matchCall) {
+			_name = name;
+			_matchCall = matchCall;
+		}
+
+		public bool Shadowed { get; private set; }
+		public List<Acornima.SourceLocation> Calls { get; } = new();
+
+		protected override object? VisitVariableDeclarator(VariableDeclarator node) {
+			if (node.Id is Identifier id && id.Name == _name)
+				Shadowed = true;
+			return base.VisitVariableDeclarator(node);
+		}
+
+		protected override object? VisitFunctionDeclaration(FunctionDeclaration node) {
+			if (node.Id is Identifier id && id.Name == _name)
+				Shadowed = true;
+			return base.VisitFunctionDeclaration(node);
+		}
+
+		protected override object? VisitCallExpression(CallExpression node) {
+			if (node.Callee is Identifier callee && callee.Name == _name && _matchCall(node))
+				Calls.Add(callee.Location);
+			return base.VisitCallExpression(node);
+		}
+	}
+
 	private sealed class LinkStreamToDeprecationRule : IRule {
-		public void Run(Script ast, List<Diagnostic> diagnostics) {
-			// Two-pass: first detect whether the projection shadows the
-			// runtime-provided `linkStreamTo` (var/let/const/function with
-			// that name). If so, suppress - the call we'd flag isn't the
-			// deprecated global.
-			var scanner = new Scanner();
+		public void Run(Script ast, KurrentDbVersion? dbVersion, List<Diagnostic> diagnostics) {
+			// Deprecation is independent of dbVersion - linkStreamTo is
+			// undocumented at every released version we know about.
+			var scanner = new IdentifierShadowScanner("linkStreamTo", _ => true);
 			scanner.Visit(ast);
 			if (scanner.Shadowed)
 				return;
@@ -75,34 +114,62 @@ internal static class DiagnosticCollector {
 				});
 			}
 		}
+	}
+
+	private sealed class LinkStreamToOutOfBoundsParametersRule : IRule {
+		public void Run(Script ast, KurrentDbVersion? dbVersion, List<Diagnostic> diagnostics) {
+			if (!KnownBugs.LinkStreamToOutOfBoundsParameters.FiresAt(dbVersion))
+				return;
+
+			// 3+ args triggers the bug. 2-arg form is fine.
+			var scanner = new IdentifierShadowScanner("linkStreamTo", call => call.Arguments.Count >= 3);
+			scanner.Visit(ast);
+			// Shadowed local linkStreamTo masks the upstream bug entirely -
+			// the call goes to the user's function, not the buggy global.
+			if (scanner.Shadowed)
+				return;
+
+			foreach (var loc in scanner.Calls) {
+				diagnostics.Add(new Diagnostic {
+					Code = KnownBugs.LinkStreamToOutOfBoundsParameters.Code,
+					Message = "linkStreamTo with metadata (3+ args) crashes due to an upstream parameter-indexing bug; metadata is never captured.",
+					Severity = DiagnosticSeverity.Warning,
+					Range = ToSourceRange(loc),
+				});
+			}
+		}
+	}
+
+	private sealed class LogMultiParamRule : IRule {
+		public void Run(Script ast, KurrentDbVersion? dbVersion, List<Diagnostic> diagnostics) {
+			if (!KnownBugs.LogMultiParam.FiresAt(dbVersion))
+				return;
+
+			// No shadow check: gaffer (and KurrentDB) registers `log` as a
+			// non-configurable, non-writable global, so top-level
+			// `var log = ...` / `function log() {}` collides at engine
+			// initialisation and the projection won't even compile.
+			// Inner-scope shadows are possible in theory but rare in practice.
+			var scanner = new Scanner();
+			scanner.Visit(ast);
+
+			foreach (var loc in scanner.ProblematicCalls) {
+				diagnostics.Add(new Diagnostic {
+					Code = KnownBugs.LogMultiParam.Code,
+					Message = "log() with multiple args produces unexpected output due to an upstream bug: primitives become separate log lines and objects use a ' ,' separator.",
+					Severity = DiagnosticSeverity.Warning,
+					Range = ToSourceRange(loc),
+				});
+			}
+		}
 
 		private sealed class Scanner : AstVisitor {
-			public bool Shadowed;
-			public readonly List<Acornima.SourceLocation> Calls = new();
-
-			protected override object? VisitVariableDeclarator(VariableDeclarator node) {
-				// var/let/const linkStreamTo = ...
-				if (node.Id is Identifier { Name: "linkStreamTo" })
-					Shadowed = true;
-				return base.VisitVariableDeclarator(node);
-			}
-
-			protected override object? VisitFunctionDeclaration(FunctionDeclaration node) {
-				// function linkStreamTo() {}
-				if (node.Id is Identifier { Name: "linkStreamTo" })
-					Shadowed = true;
-				return base.VisitFunctionDeclaration(node);
-			}
+			public readonly List<Acornima.SourceLocation> ProblematicCalls = new();
 
 			protected override object? VisitCallExpression(CallExpression node) {
-				// Identifier callee only - we deliberately don't match
-				// member access (`obj.linkStreamTo()`) or indirect calls
-				// (`(0, linkStreamTo)()`). KurrentDB binds linkStreamTo
-				// as a global; users virtually always call it directly,
-				// and KurrentDB itself can't resolve the indirect forms
-				// either.
-				if (node.Callee is Identifier { Name: "linkStreamTo" } id)
-					Calls.Add(id.Location);
+				// 2+ args triggers the upstream multi-param bug. 1-arg path is fine.
+				if (node.Callee is Identifier { Name: "log" } id && node.Arguments.Count >= 2)
+					ProblematicCalls.Add(id.Location);
 				return base.VisitCallExpression(node);
 			}
 		}

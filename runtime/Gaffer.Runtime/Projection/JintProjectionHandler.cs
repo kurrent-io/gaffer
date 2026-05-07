@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Gaffer.Runtime.Events;
+using Gaffer.Sdk.Versioning;
 using Jint;
 using Jint.Native;
 using Jint.Native.Function;
@@ -34,6 +35,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	// behavior. We match that by always enabling it rather than exposing a toggle.
 	private readonly bool _enableContentTypeValidation = true;
 	private readonly bool _debug;
+	private readonly KurrentDbVersion? _dbVersion;
 	private readonly TimeConstraint _timeConstraint;
 	private readonly BlockingCollection<DebugCommand> _debugCommands = new();
 	private readonly Dictionary<int, object> _variableStore = new();
@@ -48,6 +50,46 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private JsValue _sharedState;
 	private bool _faulted;
 
+	/// <summary>
+	/// Key under which bug-firing branches stash a <c>KnownBugs</c> code on
+	/// <see cref="Exception.Data"/> so <see cref="ProjectionSession"/> can
+	/// pluck it off when wrapping the exception.
+	/// </summary>
+	internal const string CompatCodeDataKey = "GafferCompatCode";
+
+	/// <summary>
+	/// Run an upstream-bug-firing code block whose throw will be wrapped by
+	/// Jint into a <c>JavaScriptException</c>. On throw, stash the bug's
+	/// code on <see cref="Exception.Data"/> so
+	/// <see cref="ProjectionSession.WrapHandlerException"/> can plumb it
+	/// through to <see cref="ProjectionException.CompatCode"/>.
+	/// <para>
+	/// Use this only for the Jint-wrapped path - i.e. when our CLR code
+	/// throws inside a method Jint calls and the runtime sees
+	/// <c>JavaScriptException</c> with our throw as <c>InnerException</c>.
+	/// If the bug-firing branch throws a <see cref="ProjectionException"/>
+	/// directly (e.g. <c>StateSerializationException</c> for NaN/Infinity),
+	/// set <c>CompatCode</c> on the exception's object initializer instead.
+	/// </para>
+	/// </summary>
+	private static T RunBuggyPath<T>(Bug bug, Func<T> body) {
+		try {
+			return body();
+		} catch (Exception ex) {
+			ex.Data[CompatCodeDataKey] = bug.Code;
+			throw;
+		}
+	}
+
+	private static void RunBuggyPath(Bug bug, Action body) {
+		try {
+			body();
+		} catch (Exception ex) {
+			ex.Data[CompatCodeDataKey] = bug.Code;
+			throw;
+		}
+	}
+
 	/// <summary>Fired when execution pauses at a breakpoint or debugger statement. Informational only.</summary>
 	public Action<BreakInfo>? OnBreak { get; set; }
 
@@ -57,10 +99,12 @@ internal sealed class JintProjectionHandler : IDisposable {
 		TimeSpan executionTimeout,
 		Action<string>? onLog = null,
 		Action<EmittedEvent>? onEmit = null,
-		bool debug = false) {
+		bool debug = false,
+		KurrentDbVersion? dbVersion = null) {
 		_onLog = onLog;
 		_onEmit = onEmit;
 		_debug = debug;
+		_dbVersion = dbVersion;
 		_definitionBuilder = new SourceDefinitionBuilder();
 		_definitionBuilder.NoWhen();
 		_definitionBuilder.AllEvents();
@@ -77,7 +121,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		_state = JsValue.Undefined;
 		_sharedState = JsValue.Undefined;
 		_runtime = new ProjectionRuntime(_engine, _definitionBuilder);
-		_serializer = new Serializer();
+		_serializer = new Serializer(_dbVersion);
 		_engine.Global.FastAddProperty("log", new ClrFunction(_engine, "log", Log), false, false, false);
 
 		if (debug) {
@@ -223,9 +267,20 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private void PrepareOutput(out string? newState, out string? newSharedState) {
 		if (_definitionBuilder.IsBiState && _state.IsArray()) {
 			var arr = _state.AsArray();
-			newState = arr.TryGetValue(0, out var state)
-				? (state.IsString() ? state.AsString() : ConvertToStringHandlingNulls(state))
-				: "";
+			if (KnownBugs.BiStateStringSlot.FiresAt(_dbVersion)) {
+				// Reproduce upstream: checks _state.IsString() (the array,
+				// always false here) instead of state.IsString() (the slot-0
+				// element), so the string-passthrough branch is unreachable.
+				// Every value goes through ConvertToStringHandlingNulls, which
+				// JSON-quotes raw strings.
+				newState = arr.TryGetValue(0, out var state)
+					? ConvertToStringHandlingNulls(state)
+					: "";
+			} else {
+				newState = arr.TryGetValue(0, out var state)
+					? (state.IsString() ? state.AsString() : ConvertToStringHandlingNulls(state))
+					: "";
+			}
 			newSharedState = arr.TryGetValue(1, out var sharedState)
 				? ConvertToStringHandlingNulls(sharedState)
 				: null;
@@ -313,9 +368,22 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 		Dictionary<string, string?>? metadata = null;
 		if (parameters.Length == 3) {
-			metadata = new Dictionary<string, string?>();
-			foreach (var kvp in parameters.At(2).AsObject().GetOwnProperties())
-				metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, false));
+			if (KnownBugs.LinkStreamToOutOfBoundsParameters.FiresAt(_dbVersion)) {
+				RunBuggyPath(KnownBugs.LinkStreamToOutOfBoundsParameters, () => {
+					// Reproduce upstream's parameters.At(4) bug: index 4 is
+					// out of bounds for a 3-arg call, returns Undefined,
+					// AsObject() throws. Calling it here gives the byte-
+					// identical exception the user would see in KurrentDB.
+					var md = parameters.At(4).AsObject();
+					metadata = new Dictionary<string, string?>();
+					foreach (var kvp in md.GetOwnProperties())
+						metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, false));
+				});
+			} else {
+				metadata = new Dictionary<string, string?>();
+				foreach (var kvp in parameters.At(2).AsObject().GetOwnProperties())
+					metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, false));
+			}
 		}
 
 		var emitted = new EmittedEvent {
@@ -341,6 +409,29 @@ internal sealed class JintProjectionHandler : IDisposable {
 				SafeInvokeLog(p0.ToString());
 			else if (p0 is ObjectInstance oi)
 				SafeInvokeLog(Serialize(oi));
+			return JsValue.Undefined;
+		}
+
+		if (KnownBugs.LogMultiParam.FiresAt(_dbVersion)) {
+			// Reproduce upstream multi-param log() bugs:
+			// - Separator gate is i>1 (so first object has no leading separator).
+			// - Separator string is " ," (space-comma).
+			// - Primitives are logged as separate lines instead of appended.
+			// - The accumulated buffer is logged once at the end regardless.
+			// The two `if`s (not `if`/`else if`) mirror upstream's structure;
+			// in Jint primitives and ObjectInstance are disjoint so it makes
+			// no observable difference, but byte-fidelity is the goal.
+			var buggy = new StringBuilder();
+			for (var i = 0; i < parameters.Length; i++) {
+				if (i > 1)
+					buggy.Append(" ,");
+				var p = parameters.At(i);
+				if (p != null && p.IsPrimitive())
+					SafeInvokeLog(p.ToString());
+				if (p is ObjectInstance oi)
+					buggy.Append(Serialize(oi));
+			}
+			SafeInvokeLog(buggy.ToString());
 			return JsValue.Undefined;
 		}
 
@@ -1441,7 +1532,17 @@ internal sealed class JintProjectionHandler : IDisposable {
 				var pd = new PropertyDescriptor(body, false, true, false);
 				SetOwnProperty("body", pd);
 				SetOwnProperty("data", pd);
-				objectInstance = body;
+				if (KnownBugs.EventBodyCast.FiresAt(_parent._dbVersion)) {
+					// Reproduce upstream: out parameter is typed
+					// ObjectInstance, forcing a cast that throws
+					// InvalidCastException when body is null, a number,
+					// a string, or a boolean.
+					objectInstance = RunBuggyPath<JsValue>(
+						KnownBugs.EventBodyCast,
+						() => (ObjectInstance)body);
+				} else {
+					objectInstance = body;
+				}
 				return true;
 			}
 			objectInstance = Undefined;
@@ -1564,9 +1665,13 @@ internal sealed class JintProjectionHandler : IDisposable {
 		private readonly ArrayBufferWriter<byte> _bufferWriter;
 		private readonly Utf8JsonWriter _writer;
 		private readonly Dictionary<string, JsonEncodedText> _knownPropertyNames;
+		private readonly bool _nonFiniteWritesNull;
 		private int _depth;
 
-		public Serializer() {
+		public Serializer(KurrentDbVersion? dbVersion) {
+			// The clean (post-fix) path writes JSON null for NaN/Infinity,
+			// matching JSON.stringify. The buggy path throws.
+			_nonFiniteWritesNull = !KnownBugs.SerializeNonFinite.FiresAt(dbVersion);
 			_iterators = new WriteState[64];
 			_bufferWriter = new ArrayBufferWriter<byte>(1024 * 1024);
 			_writer = new Utf8JsonWriter(_bufferWriter, new JsonWriterOptions {
@@ -1590,7 +1695,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 				_iterators[_depth] = new WriteState(value);
 
 			ref var current = ref _iterators[0];
-			while (current.Write(_writer, ref _depth, _iterators, _knownPropertyNames))
+			while (current.Write(_writer, ref _depth, _iterators, _knownPropertyNames, _nonFiniteWritesNull))
 				current = ref _iterators[_depth];
 
 			_writer.Flush();
@@ -1649,7 +1754,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 			[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 			public bool Write(
 				Utf8JsonWriter writer, ref int depth, WriteState[] writeStates,
-				Dictionary<string, JsonEncodedText> knownPropertyNames) {
+				Dictionary<string, JsonEncodedText> knownPropertyNames, bool nonFiniteWritesNull) {
 				switch (_type) {
 					case Type.Array:
 						if (_position == -1) { writer.WriteStartArray(); _position++; }
@@ -1661,7 +1766,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 								_position++;
 								return true;
 							}
-							SerializePrimitive(value, writer);
+							SerializePrimitive(value, writer, nonFiniteWritesNull);
 						}
 						writer.WriteEndArray();
 						break;
@@ -1678,12 +1783,12 @@ internal sealed class JintProjectionHandler : IDisposable {
 								_position++;
 								return true;
 							}
-							SerializePrimitive(value, writer);
+							SerializePrimitive(value, writer, nonFiniteWritesNull);
 						}
 						writer.WriteEndObject();
 						break;
 					case Type.Primitive:
-						SerializePrimitive(_instance, writer);
+						SerializePrimitive(_instance, writer, nonFiniteWritesNull);
 						break;
 				}
 				writeStates[depth] = default;
@@ -1704,7 +1809,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-		private static void SerializePrimitive(JsValue value, Utf8JsonWriter writer) {
+		private static void SerializePrimitive(JsValue value, Utf8JsonWriter writer, bool nonFiniteWritesNull) {
 			switch (value.Type) {
 				case Types.Null:
 				case Types.Undefined:
@@ -1715,11 +1820,18 @@ internal sealed class JintProjectionHandler : IDisposable {
 					writer.WriteBooleanValue(ReferenceEquals(value, JsBoolean.False) ? false : true);
 					break;
 				case Types.Number:
-					// Matches KurrentDB: throws on NaN/Infinity rather than writing null
 					var num = value.AsNumber();
-					if (double.IsNaN(num) || double.IsInfinity(num))
-						throw new Errors.StateSerializationException($"{num} is not a valid JSON value", "", "", 0);
-					writer.WriteNumberValue(num);
+					if (double.IsNaN(num) || double.IsInfinity(num)) {
+						if (nonFiniteWritesNull) {
+							writer.WriteNullValue();
+						} else {
+							throw new Errors.StateSerializationException($"{num} is not a valid JSON value", "", "", 0) {
+								CompatCode = KnownBugs.SerializeNonFinite.Code,
+							};
+						}
+					} else {
+						writer.WriteNumberValue(num);
+					}
 					break;
 				case Types.BigInt:
 					writer.WriteStringValue(value.ToString());

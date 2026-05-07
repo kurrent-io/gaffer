@@ -19,6 +19,9 @@ type Projection struct {
 	Def           *config.Projection
 	Source        string
 	EngineVersion int
+	// DbVersion is the resolved target KurrentDB version (env > projection
+	// > config). Empty string means unversioned.
+	DbVersion string
 }
 
 func NewProjection(root string, cfg *config.Config, def *config.Projection, source string) *Projection {
@@ -28,6 +31,7 @@ func NewProjection(root string, cfg *config.Config, def *config.Projection, sour
 		Def:           def,
 		Source:        source,
 		EngineVersion: cfg.EffectiveEngineVersion(def),
+		DbVersion:     cfg.EffectiveDbVersion(def),
 	}
 }
 
@@ -58,6 +62,7 @@ func LoadProjection(name string) (*Projection, error) {
 		Def:           proj,
 		Source:        source,
 		EngineVersion: cfg.EffectiveEngineVersion(proj),
+		DbVersion:     cfg.EffectiveDbVersion(proj),
 	}, nil
 }
 
@@ -70,7 +75,7 @@ func ReadSource(root, entry string) (string, error) {
 }
 
 func CreateSession(proj *Projection, debug bool) (*gafferruntime.Session, gafferruntime.ProjectionInfo, error) {
-	opts := buildSessionOptions(proj.Config, proj.Def, debug)
+	opts := buildSessionOptions(proj, debug)
 	session, err := gafferruntime.NewSession(proj.Source, opts)
 	if err != nil {
 		return nil, gafferruntime.ProjectionInfo{}, err
@@ -79,23 +84,32 @@ func CreateSession(proj *Projection, debug bool) (*gafferruntime.Session, gaffer
 	return session, info, nil
 }
 
-func buildSessionOptions(cfg *config.Config, proj *config.Projection, debug bool) *string {
+// buildSessionOptions reads the resolved engine/db versions off the
+// Projection (already computed at construction). Re-resolving via
+// cfg.EffectiveDbVersion here would risk diverging from the cached value
+// if GAFFER_DB_VERSION changed between Projection construction and this
+// call.
+func buildSessionOptions(proj *Projection, debug bool) *string {
 	opts := map[string]any{
-		"engineVersion": cfg.EffectiveEngineVersion(proj),
+		"engineVersion": proj.EngineVersion,
+	}
+
+	if proj.DbVersion != "" {
+		opts["dbVersion"] = proj.DbVersion
 	}
 
 	if debug {
 		opts["debug"] = true
 	}
 
-	if proj.ExecutionTimeout != nil && *proj.ExecutionTimeout > 0 {
-		opts["executionTimeoutMs"] = *proj.ExecutionTimeout
-	} else if cfg.ExecutionTimeout != nil && *cfg.ExecutionTimeout > 0 {
-		opts["executionTimeoutMs"] = *cfg.ExecutionTimeout
+	if proj.Def.ExecutionTimeout != nil && *proj.Def.ExecutionTimeout > 0 {
+		opts["executionTimeoutMs"] = *proj.Def.ExecutionTimeout
+	} else if proj.Config.ExecutionTimeout != nil && *proj.Config.ExecutionTimeout > 0 {
+		opts["executionTimeoutMs"] = *proj.Config.ExecutionTimeout
 	}
 
-	if cfg.CompilationTimeout != nil && *cfg.CompilationTimeout > 0 {
-		opts["compilationTimeoutMs"] = *cfg.CompilationTimeout
+	if proj.Config.CompilationTimeout != nil && *proj.Config.CompilationTimeout > 0 {
+		opts["compilationTimeoutMs"] = *proj.Config.CompilationTimeout
 	}
 
 	data, err := json.Marshal(opts)

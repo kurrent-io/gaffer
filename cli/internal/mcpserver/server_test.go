@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -556,6 +557,71 @@ func TestResourceDocs(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("expected projection-api doc to contain %q", want)
 		}
+	}
+}
+
+func TestResourceDbVersionBugs(t *testing.T) {
+	result, err := dbVersionBugsResource(context.Background(), &mcp.ReadResourceRequest{
+		Params: &mcp.ReadResourceParams{URI: "gaffer://docs/db-version-bugs"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Contents) != 1 {
+		t.Fatal("expected 1 resource content")
+	}
+	if got := result.Contents[0].MIMEType; got != "text/markdown" {
+		t.Errorf("expected text/markdown, got %q", got)
+	}
+	text := result.Contents[0].Text
+	// Top heading + intro framing.
+	for _, want := range []string{"# KurrentDB compat bugs", "unversioned", "db_version"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("expected resource to contain %q\n--- got ---\n%s", want, text)
+		}
+	}
+	// Every registry code is present as a heading.
+	for _, code := range []string{
+		"compat.linkStreamTo.outOfBoundsParameters",
+		"compat.log.multiParam",
+		"compat.event.bodyCast",
+		"compat.biState.stringSlot",
+		"compat.serialize.nonFinite",
+	} {
+		if !strings.Contains(text, "## "+code) {
+			t.Errorf("expected resource to include heading for %q", code)
+		}
+	}
+	// Today every entry has FixedIn = nil; the rendering shows "not yet
+	// shipped upstream" rather than a version. Once upstream ships, that
+	// flips to "Fixed in: KurrentDB X".
+	if !strings.Contains(text, "not yet shipped upstream") {
+		t.Errorf("expected at least one 'not yet shipped upstream' line")
+	}
+}
+
+func TestRenderDbVersionBugsMarkdown_FixedInRendering(t *testing.T) {
+	// The "Fixed in: KurrentDB X" branch is dead at the registry level
+	// today. Test it directly.
+	fixed := "26.1.1"
+	bugs := []gafferruntime.KnownBug{{
+		Code:        "compat.test.synthetic",
+		Description: "Test description.",
+		FixedIn:     &fixed,
+	}}
+	out := renderDbVersionBugsMarkdown(bugs)
+	if !strings.Contains(out, "## compat.test.synthetic") {
+		t.Error("expected synthetic heading")
+	}
+	if !strings.Contains(out, "**Fixed in:** KurrentDB 26.1.1") {
+		t.Errorf("expected fixed-in line, got:\n%s", out)
+	}
+}
+
+func TestRenderDbVersionBugsMarkdown_EmptyRegistry(t *testing.T) {
+	out := renderDbVersionBugsMarkdown(nil)
+	if !strings.Contains(out, "No bugs registered") {
+		t.Errorf("expected empty-registry hint, got:\n%s", out)
 	}
 }
 

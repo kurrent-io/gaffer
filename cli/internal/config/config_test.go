@@ -211,6 +211,105 @@ func TestEffectiveEngineVersion(t *testing.T) {
 	}
 }
 
+func TestEffectiveDbVersion(t *testing.T) {
+	t.Run("env wins", func(t *testing.T) {
+		t.Setenv("GAFFER_DB_VERSION", "26.99.99")
+		cfg := &Config{DbVersion: "26.0.0"}
+		p := Projection{DbVersion: "25.5.5"}
+		if got := cfg.EffectiveDbVersion(&p); got != "26.99.99" {
+			t.Fatalf("expected env to win, got %q", got)
+		}
+	})
+
+	t.Run("projection > config", func(t *testing.T) {
+		t.Setenv("GAFFER_DB_VERSION", "")
+		cfg := &Config{DbVersion: "26.0.0"}
+		p := Projection{DbVersion: "26.1.0"}
+		if got := cfg.EffectiveDbVersion(&p); got != "26.1.0" {
+			t.Fatalf("expected projection override, got %q", got)
+		}
+	})
+
+	t.Run("config fallback", func(t *testing.T) {
+		t.Setenv("GAFFER_DB_VERSION", "")
+		cfg := &Config{DbVersion: "26.0.0"}
+		p := Projection{}
+		if got := cfg.EffectiveDbVersion(&p); got != "26.0.0" {
+			t.Fatalf("expected config fallback, got %q", got)
+		}
+	})
+
+	t.Run("unset everywhere returns empty", func(t *testing.T) {
+		t.Setenv("GAFFER_DB_VERSION", "")
+		cfg := &Config{}
+		p := Projection{}
+		if got := cfg.EffectiveDbVersion(&p); got != "" {
+			t.Fatalf("expected empty, got %q", got)
+		}
+	})
+}
+
+func TestLoadValidatesDbVersion(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+engine_version = 2
+db_version = "not-a-version"
+
+[[projection]]
+name = "a"
+entry = "a.js"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected validation error for malformed db_version")
+	}
+}
+
+func TestLoadValidatesProjectionDbVersion(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+engine_version = 2
+
+[[projection]]
+name = "a"
+entry = "a.js"
+db_version = "26.1"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected validation error for malformed projection db_version")
+	}
+}
+
+func TestLoadValidatesEnvDbVersion(t *testing.T) {
+	t.Setenv("GAFFER_DB_VERSION", "garbage")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+engine_version = 2
+
+[[projection]]
+name = "a"
+entry = "a.js"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected validation error for malformed GAFFER_DB_VERSION")
+	}
+	if !strings.Contains(err.Error(), "GAFFER_DB_VERSION") {
+		t.Errorf("expected error to mention GAFFER_DB_VERSION, got: %v", err)
+	}
+}
+
 func TestLoadGlobalTimeouts(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")

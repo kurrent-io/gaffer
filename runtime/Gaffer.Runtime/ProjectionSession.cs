@@ -4,6 +4,7 @@ using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Events;
 using Gaffer.Runtime.Projection;
 using Gaffer.Sdk.Diagnostics;
+using Gaffer.Sdk.Versioning;
 using Jint;
 using Jint.Runtime;
 
@@ -22,6 +23,7 @@ public sealed class ProjectionSession : IDisposable {
 	private readonly HashSet<string>? _handledEventTypes;
 	private string? _sharedState;
 	private readonly ProjectionVersion _version;
+	private readonly KurrentDbVersion? _dbVersion;
 	private bool _sharedStateInitialized;
 	private List<EmittedEvent> _pendingEmitted = new();
 	private List<string> _pendingLogs = new();
@@ -55,6 +57,19 @@ public sealed class ProjectionSession : IDisposable {
 		_source = source;
 		var opts = options;
 		_version = opts.EngineVersion;
+		_dbVersion = opts.DbVersion;
+
+		// V2 engine doesn't exist in DB versions before its introduction.
+		// Reject up-front so the user gets a clear error instead of mysterious
+		// downstream failures. Unversioned (null DbVersion) is permissive -
+		// matches the unversioned-defaults model.
+		if (_version == ProjectionVersion.V2 && !KnownFeatures.ProjectionsV2.AvailableAt(_dbVersion)) {
+			// Field name matches the JSON option key the caller provided,
+			// not the C# property - that's what bindings expose to users.
+			throw new InvalidArgumentException(
+				$"V2 engine requires KurrentDB {KnownFeatures.ProjectionsV2.IntroducedIn} or later; got {_dbVersion}.",
+				"dbVersion");
+		}
 
 		try {
 			_handler = new JintProjectionHandler(
@@ -69,7 +84,8 @@ public sealed class ProjectionSession : IDisposable {
 					_pendingEmitted.Add(emitted);
 					OnEmit?.Invoke(emitted);
 				},
-				debug: opts.Debug);
+				debug: opts.Debug,
+				dbVersion: _dbVersion);
 
 			_handler.OnBreak = info => OnBreak?.Invoke(info);
 		} catch (ScriptPreparationException ex) when (ex.InnerException is ParseErrorException parseError) {
@@ -108,7 +124,7 @@ public sealed class ProjectionSession : IDisposable {
 			if (!_sources.AllEvents && _sources.Events != null)
 				_handledEventTypes = new HashSet<string>(_sources.Events, StringComparer.Ordinal);
 
-			_diagnostics = DiagnosticCollector.Scan(source);
+			_diagnostics = DiagnosticCollector.Scan(source, _dbVersion);
 		} catch {
 			_handler.Dispose();
 			throw;
@@ -234,7 +250,7 @@ public sealed class ProjectionSession : IDisposable {
 			throw new StateSerializationException(
 				ex.Description,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
-				ex.InnerException);
+				ex.InnerException) { CompatCode = ex.CompatCode };
 		} catch (Exception ex) when (ex is not ProjectionException) {
 			throw WrapHandlerException(ex, @event, partition);
 		}
@@ -303,7 +319,7 @@ public sealed class ProjectionSession : IDisposable {
 			throw new ProjectionTransformException(
 				ex.Message,
 				ex.JavaScriptStackTrace, line, column,
-				ex) { ProjectionSource = _source };
+				ex) { ProjectionSource = _source, CompatCode = ExtractCompatCode(ex) };
 		} catch (TimeConstraintException ex) {
 			throw new ProjectionTransformException(
 				$"Projection transform took too long to execute ({ex.AllowedMs}ms limit)",
@@ -311,9 +327,9 @@ public sealed class ProjectionSession : IDisposable {
 		} catch (StateSerializationException ex) {
 			throw new ProjectionTransformException(
 				ex.Description,
-				innerException: ex) { ProjectionSource = _source };
+				innerException: ex) { ProjectionSource = _source, CompatCode = ex.CompatCode };
 		} catch (Exception ex) when (ex is not ProjectionException) {
-			throw new ProjectionTransformException(ex.Message, innerException: ex) { ProjectionSource = _source };
+			throw new ProjectionTransformException(ex.Message, innerException: ex) { ProjectionSource = _source, CompatCode = ExtractCompatCode(ex) };
 		}
 	}
 
@@ -321,28 +337,41 @@ public sealed class ProjectionSession : IDisposable {
 
 	private ProjectionException WrapHandlerException(Exception ex, ProjectionEvent @event, string partition) {
 		var part = IsPartitioned ? partition : null;
+		var compatCode = ExtractCompatCode(ex);
 		return ex switch {
 			TimeConstraintException tc => new ExecutionTimeoutException(
 				$"Projection script took too long to execute ({tc.AllowedMs}ms limit)",
 				tc.ElapsedMs, tc.AllowedMs,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
-				tc),
+				tc) { CompatCode = compatCode },
 			MalformedEventDataException med => new MalformedEventException(
 				med.Message,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
-				med.InnerException),
+				med.InnerException) { CompatCode = compatCode },
 			JavaScriptException js => new ProjectionHandlerException(
 				js.Message,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
 				js.JavaScriptStackTrace,
 				js.Location.Start.Line > 0 ? js.Location.Start.Line : null,
 				js.Location.Start.Line > 0 ? js.Location.Start.Column : null,
-				js) { ProjectionSource = _source },
+				js) { ProjectionSource = _source, CompatCode = compatCode },
 			_ => new ProjectionHandlerException(
 				ex.Message,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
-				innerException: ex) { ProjectionSource = _source },
+				innerException: ex) { ProjectionSource = _source, CompatCode = compatCode },
 		};
+	}
+
+	/// <summary>
+	/// Walk the exception chain looking for a <c>GafferCompatCode</c> stashed
+	/// on <see cref="Exception.Data"/> by a bug-firing branch in the handler.
+	/// </summary>
+	private static string? ExtractCompatCode(Exception? ex) {
+		for (var cur = ex; cur != null; cur = cur.InnerException) {
+			if (cur.Data[JintProjectionHandler.CompatCodeDataKey] is string code)
+				return code;
+		}
+		return null;
 	}
 
 	/// <summary>Get the partition key that would be computed for an event.</summary>
@@ -411,7 +440,7 @@ public sealed class ProjectionSession : IDisposable {
 			throw new StateSerializationException(
 				ex.Description,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
-				ex.InnerException);
+				ex.InnerException) { CompatCode = ex.CompatCode };
 		} catch (Exception ex) when (ex is not ProjectionException) {
 			throw WrapHandlerException(ex, @event, partition);
 		}
@@ -466,6 +495,14 @@ public enum ProjectionVersion {
 public sealed class ProjectionSessionOptions {
 	/// <summary>Projection engine version. Required.</summary>
 	public required ProjectionVersion EngineVersion { get; init; }
+
+	/// <summary>
+	/// Target KurrentDB version. <c>null</c> (default) means "unversioned":
+	/// gaffer reproduces every known upstream bug and permits every feature,
+	/// matching prod warts and all. Set explicitly to opt out of bugs that
+	/// have been fixed upstream as of the given version.
+	/// </summary>
+	public KurrentDbVersion? DbVersion { get; init; }
 
 	/// <summary>Maximum time for JS compilation. Default: 5 seconds.</summary>
 	public TimeSpan CompilationTimeout { get; init; } = TimeSpan.FromSeconds(5);

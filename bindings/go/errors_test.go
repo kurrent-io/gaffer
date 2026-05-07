@@ -209,6 +209,55 @@ func TestError_ProjectionTransform(t *testing.T) {
 	assertContains(t, "message", e.Error(), "transform failed")
 }
 
+// -- dbVersion + CompatCode wire format --
+
+func TestSessionOptions_DbVersion_AcceptedAndUsed(t *testing.T) {
+	// Setting dbVersion to a recent version still works (the runtime treats
+	// unknown FixedIn the same way). The point of this test is the JSON
+	// passthrough: a malformed dbVersion would be rejected by the runtime.
+	opts := `{"engineVersion":2,"dbVersion":"26.1.0"}`
+	source := `fromAll().when({ $any: function (s, e) { return s; } })`
+	session, err := NewSession(source, &opts)
+	if err != nil {
+		t.Fatalf("NewSession failed with versioned options: %v", err)
+	}
+	defer session.Destroy()
+}
+
+func TestSessionOptions_DbVersion_RejectedWhenMalformed(t *testing.T) {
+	opts := `{"engineVersion":2,"dbVersion":"not-a-version"}`
+	_, err := NewSession("fromAll()", &opts)
+	if err == nil {
+		t.Fatal("expected NewSession to fail with malformed dbVersion")
+	}
+	var e *InvalidArgumentError
+	if !errors.As(err, &e) {
+		t.Fatalf("expected InvalidArgumentError, got %T", err)
+	}
+	assertEqual(t, "field", "dbVersion", e.Field)
+}
+
+func TestError_CompatCode_PropagatesFromCompatFiringPath(t *testing.T) {
+	// 3-arg linkStreamTo is the always-buggy path: throws and the runtime
+	// stamps the exception with KnownBugs.LinkStreamToOutOfBoundsParameters.Code.
+	source := `fromAll().when({ $any: function (s, e) { linkStreamTo("a", e.streamId, { reason: "x" }); return s; } })`
+	session, err := NewSession(source, &v2Opts)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
+	}
+	defer session.Destroy()
+
+	_, err = session.Feed(testEvent)
+	if err == nil {
+		t.Fatal("expected error from 3-arg linkStreamTo")
+	}
+	var ph *ProjectionHandlerError
+	if !errors.As(err, &ph) {
+		t.Fatalf("expected ProjectionHandlerError, got %T", err)
+	}
+	assertEqual(t, "compatCode", "compat.linkStreamTo.outOfBoundsParameters", ph.CompatCode)
+}
+
 // Test helpers
 
 func assertEqual(t *testing.T, field, expected, actual string) {

@@ -125,7 +125,7 @@ public sealed class ProjectionSession : IDisposable {
 			if (!_sources.AllEvents && _sources.Events != null)
 				_handledEventTypes = new HashSet<string>(_sources.Events, StringComparer.Ordinal);
 
-			_diagnostics = DiagnosticCollector.Scan(source, _dbVersion);
+			_diagnostics = DiagnosticCollector.Scan(source, _dbVersion, _version);
 		} catch {
 			_handler.Dispose();
 			throw;

@@ -76,7 +76,9 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(source, Options);
 
 		Assert.NotNull(session.Diagnostics);
-		Assert.Equal(2, session.Diagnostics!.Length);
+		var linkStreamToDiagnostics = session.Diagnostics!
+			.Where(d => d.Code == "deprecated.linkStreamTo").ToArray();
+		Assert.Equal(2, linkStreamToDiagnostics.Length);
 	}
 
 	[Fact]
@@ -96,7 +98,7 @@ public class DiagnosticsTests {
 		// Source Acornima rejects. The fallback path in Scan returns null
 		// so parser drift between Jint and Acornima doesn't break otherwise-
 		// valid sessions.
-		Assert.Null(DiagnosticCollector.Scan("this is not valid {{{{", dbVersion: null));
+		Assert.Null(DiagnosticCollector.Scan("this is not valid {{{{", dbVersion: null, engineVersion: ProjectionVersion.V2));
 	}
 
 	[Fact]
@@ -204,6 +206,101 @@ public class DiagnosticsTests {
 			Options);
 
 		// Single-arg log() is fine in upstream; no diagnostic.
+		Assert.Null(session.Diagnostics);
+	}
+
+	// -- compat.transforms.notApplied (V2) --
+
+	[Fact]
+	public void Transforms_TransformBy_InV2_EmitsWarning() {
+		var source = "fromAll().when({ $any: function (s, e) { return s; } }).transformBy(function (s) { return s; });";
+		using var session = new ProjectionSession(source,
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		Assert.NotNull(session.Diagnostics);
+		var d = Assert.Single(session.Diagnostics!);
+		Assert.Equal("compat.transforms.notApplied", d.Code);
+		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+		Assert.Contains("transformBy", d.Message);
+	}
+
+	[Fact]
+	public void Transforms_FilterBy_InV2_EmitsWarning() {
+		var source = "fromAll().when({ $any: function (s, e) { return s; } }).filterBy(function (s) { return true; });";
+		using var session = new ProjectionSession(source,
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		Assert.NotNull(session.Diagnostics);
+		var d = Assert.Single(session.Diagnostics!);
+		Assert.Equal("compat.transforms.notApplied", d.Code);
+		Assert.Contains("filterBy", d.Message);
+	}
+
+	[Fact]
+	public void Transforms_InV1_NoDiagnostic() {
+		var source = "fromAll().when({ $any: function (s, e) { return s; } }).transformBy(function (s) { return s; }).filterBy(function (s) { return true; });";
+		using var session = new ProjectionSession(source,
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V1 });
+
+		Assert.Null(session.Diagnostics);
+	}
+
+	[Fact]
+	public void Transforms_InV2_Unversioned_StillEmits() {
+		// engine_version is independent of db_version. The V2 diagnostic
+		// fires whenever the engine is V2, regardless of dbVersion.
+		var source = "fromAll().when({ $any: function (s, e) { return s; } }).transformBy(function (s) { return s; });";
+		using var session = new ProjectionSession(source,
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, DbVersion = null });
+
+		Assert.NotNull(session.Diagnostics);
+		Assert.Contains(session.Diagnostics!, d => d.Code == "compat.transforms.notApplied");
+	}
+
+	[Fact]
+	public void Transforms_TransformBy_Shadowed_NoDiagnostic() {
+		var source =
+			"var transformBy = function () {};\n" +
+			"fromAll().when({ $any: function (s, e) { return s; } }).transformBy(function (s) { return s; });";
+		using var session = new ProjectionSession(source,
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		// Shadowed identifier means the call doesn't reach the V2 builtin.
+		Assert.Null(session.Diagnostics);
+	}
+
+	// -- compat.outputState.implicit (V2) --
+
+	[Fact]
+	public void OutputState_InV2_EmitsHint() {
+		var source = "fromAll().when({ $any: function (s, e) { return s; } }).outputState();";
+		using var session = new ProjectionSession(source,
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		Assert.NotNull(session.Diagnostics);
+		var d = Assert.Single(session.Diagnostics!);
+		Assert.Equal("compat.outputState.implicit", d.Code);
+		Assert.Equal(DiagnosticSeverity.Hint, d.Severity);
+		Assert.Contains("outputState", d.Message);
+	}
+
+	[Fact]
+	public void OutputState_InV1_NoDiagnostic() {
+		var source = "fromAll().when({ $any: function (s, e) { return s; } }).outputState();";
+		using var session = new ProjectionSession(source,
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V1 });
+
+		Assert.Null(session.Diagnostics);
+	}
+
+	[Fact]
+	public void OutputState_Shadowed_NoDiagnostic() {
+		var source =
+			"var outputState = function () {};\n" +
+			"fromAll().when({ $any: function (s, e) { return s; } }).outputState();";
+		using var session = new ProjectionSession(source,
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
 		Assert.Null(session.Diagnostics);
 	}
 

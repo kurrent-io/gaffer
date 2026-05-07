@@ -1,4 +1,4 @@
-/// <reference path="../projections.d.ts" />
+/// <reference path="../src/projections.d.ts" />
 
 // --- log ---
 
@@ -50,11 +50,11 @@ copyTo("target-stream", "EventType");
 
 // Valid: all options
 options({
-  $includeLinks: true,
-  resultStreamName: "my-results",
-  reorderEvents: true,
-  processingLag: 500,
-  biState: true,
+	$includeLinks: true,
+	resultStreamName: "my-results",
+	reorderEvents: true,
+	processingLag: 500,
+	biState: true,
 });
 
 // Valid: empty options

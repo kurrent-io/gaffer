@@ -1,4 +1,4 @@
-/// <reference path="../projections.d.ts" />
+/// <reference path="../src/projections.d.ts" />
 
 type OrderState = { orders: string[]; count: number };
 
@@ -36,15 +36,18 @@ fromStreams(["a", "b"]).foreachStream();
 // @ts-expect-error when -> when (double when)
 fromAll().when({}).when({});
 
+// prettier-ignore
 // @ts-expect-error when -> partitionBy (not available after when)
 fromAll().when({}).partitionBy((_e) => "key");
 
 // @ts-expect-error when -> foreachStream (not available after when)
 fromAll().when({}).foreachStream();
 
+// prettier-ignore
 // @ts-expect-error partitionBy -> outputTo (only when is available)
 fromAll().partitionBy((_e) => "key").outputTo("x");
 
+// prettier-ignore
 // @ts-expect-error partitionBy -> outputState (only when is available)
 fromAll().partitionBy((_e) => "key").outputState();
 
@@ -54,6 +57,7 @@ fromAll().foreachStream().outputTo("x");
 // @ts-expect-error foreachStream -> foreachStream (only when is available)
 fromAll().foreachStream().foreachStream();
 
+// prettier-ignore
 // @ts-expect-error foreachStream -> partitionBy (only when is available)
 fromAll().foreachStream().partitionBy((_e) => "key");
 
@@ -61,70 +65,78 @@ fromAll().foreachStream().partitionBy((_e) => "key");
 
 // Valid: when -> transformBy -> outputTo
 fromAll<OrderState>()
-  .when({ $init: () => ({ orders: [], count: 0 }) })
-  .transformBy((s) => ({ summary: s.count }))
-  .outputTo("results");
+	.when({ $init: () => ({ orders: [], count: 0 }) })
+	.transformBy((s) => ({ summary: s.count }))
+	.outputTo("results");
 
 // Valid: when -> filterBy -> outputTo
 fromAll<OrderState>()
-  .when({ $init: () => ({ orders: [], count: 0 }) })
-  .filterBy((s) => s.count > 0)
-  .outputTo("results");
+	.when({ $init: () => ({ orders: [], count: 0 }) })
+	.filterBy((s) => s.count > 0)
+	.outputTo("results");
 
 // Valid: when -> outputState
 fromAll().when({}).outputState();
 
 // Valid: outputState -> transformBy -> outputTo
 fromAll<OrderState>()
-  .when({ $init: () => ({ orders: [], count: 0 }) })
-  .outputState()
-  .transformBy((s) => ({ doubled: s.count * 2 }))
-  .outputTo("results");
+	.when({ $init: () => ({ orders: [], count: 0 }) })
+	.outputState()
+	.transformBy((s) => ({ doubled: s.count * 2 }))
+	.outputTo("results");
 
 // --- Transform generic propagation ---
 
 // Valid: chained transforms - shape changes through each step
 fromAll<OrderState>()
-  .when({ $init: () => ({ orders: [], count: 0 }) })
-  .transformBy((s) => ({ count: s.orders.length }))
-  .transformBy((s) => ({ label: `${s.count} orders` }))
-  .outputTo("results");
+	.when({ $init: () => ({ orders: [], count: 0 }) })
+	.transformBy((s) => ({ count: s.orders.length }))
+	.transformBy((s) => ({ label: `${s.count} orders` }))
+	.outputTo("results");
 
 // transformBy changes the type - old properties no longer available
 fromAll<OrderState>()
-  .when({ $init: () => ({ orders: [], count: 0 }) })
-  .transformBy((s) => ({ total: s.count }))
-  .filterBy((s) => {
-    const _check: number = s.total;
-    return s.total > 0;
-  })
-  .outputTo("results");
+	.when({ $init: () => ({ orders: [], count: 0 }) })
+	.transformBy((s) => ({ total: s.count }))
+	.filterBy((s) => {
+		const _check: number = s.total;
+		return s.total > 0;
+	})
+	.outputTo("results");
 
 // filterBy preserves the type - subsequent transformBy still sees original shape
 fromAll<OrderState>()
-  .when({ $init: () => ({ orders: [], count: 0 }) })
-  .filterBy((s) => s.count > 0)
-  .transformBy((s) => {
-    const _check: string[] = s.orders;
-    return { summary: s.count };
-  })
-  .outputTo("results");
+	.when({ $init: () => ({ orders: [], count: 0 }) })
+	.filterBy((s) => s.count > 0)
+	.transformBy((s) => {
+		const _check: string[] = s.orders;
+		return { summary: s.count };
+	})
+	.outputTo("results");
 
 // Valid: transformBy -> outputState -> transformBy -> outputTo
 fromAll<OrderState>()
-  .when({ $init: () => ({ orders: [], count: 0 }) })
-  .transformBy((s) => ({ total: s.count }))
-  .outputState()
-  .transformBy((s) => ({ doubled: s.total * 2 }))
-  .outputTo("results");
+	.when({ $init: () => ({ orders: [], count: 0 }) })
+	.transformBy((s) => ({ total: s.count }))
+	.outputState()
+	.transformBy((s) => ({ doubled: s.total * 2 }))
+	.outputTo("results");
 
 // --- partitionBy ---
 
 // Valid: partitionBy returns string, number, null, or undefined
-fromAll().partitionBy((_e) => "key").when({});
-fromAll().partitionBy((_e) => 42).when({});
-fromAll().partitionBy((_e) => null).when({});
-fromAll().partitionBy((_e) => undefined).when({});
+fromAll()
+	.partitionBy((_e) => "key")
+	.when({});
+fromAll()
+	.partitionBy((_e) => 42)
+	.when({});
+fromAll()
+	.partitionBy((_e) => null)
+	.when({});
+fromAll()
+	.partitionBy((_e) => undefined)
+	.when({});
 
 // --- outputTo ---
 

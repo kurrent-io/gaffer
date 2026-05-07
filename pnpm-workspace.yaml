@@ -5,6 +5,7 @@ packages:
   - 'cli/native/*'
   - 'testing/js'
   - 'editors/vscode'
+  - 'types'
 
 onlyBuiltDependencies:
   - koffi

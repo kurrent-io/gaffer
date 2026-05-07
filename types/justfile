@@ -1,0 +1,27 @@
+default:
+    @just --list
+
+# Install dependencies
+init:
+    pnpm install --filter '@kurrent/projections-types'
+
+# Format check (lint pass).
+check:
+    pnpm exec prettier --check .
+
+# Format.
+fix:
+    pnpm exec prettier --write .
+
+# Type-check the source + the .test-d.ts files. Type-checking IS the
+# test for this package: there's no runtime, and the @ts-expect-error
+# directives in tests/ pin the expected-error cases.
+test:
+    pnpm exec tsc --noEmit
+
+# Nothing to build - consumed as source by the tsserver plugin.
+build:
+    @echo 'types: nothing to build (consumed as source by the tsserver plugin)'
+
+clean:
+    @echo 'types: nothing to clean'

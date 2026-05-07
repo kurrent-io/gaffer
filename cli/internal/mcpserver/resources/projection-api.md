@@ -277,7 +277,7 @@ Signature: `(state, event) => state | null | void`
 
 ```javascript
 $created(s, e) {
-    log('New partition:', e.partition);
+    log(`New partition: ${e.partition}`);
 }
 ```
 
@@ -341,28 +341,30 @@ linkTo('high-value-orders', e, e.metadata);
 - `event` - the full event object (not a string or ID)
 - `metadata` - optional metadata object
 
-### linkStreamTo(streamId, linkedStreamId, metadata?)
+### linkStreamTo (deprecated, buggy)
 
-Create a stream-level reference. Emits a `$@` event that references an entire
-stream rather than a single event.
+Emits a `$@` event referencing an entire stream rather than a single event.
+**Avoid in new projections.** Undocumented in KurrentDB and may be removed
+in a future version. The 3-argument metadata form crashes at runtime due
+to an upstream bug (see the `db-version-bugs` MCP resource for details).
+
+For single-event references prefer `linkTo`. There is no clean replacement
+for stream-level references; if you need one, document the constraint and
+guard the projection accordingly.
+
+### log(message)
+
+Log a single message string. Output goes to the projection log, visible
+in gaffer's output.
 
 ```javascript
-linkStreamTo('archived-orders', e.streamId);
+log(`Processing order: ${e.streamId} total: ${e.body.cents}`);
 ```
 
-- `streamId` - target stream (string)
-- `linkedStreamId` - the stream being referenced (string)
-- `metadata` - optional metadata object
-
-### log(...args)
-
-Log a message. Variadic - accepts any number of arguments, like `console.log`.
-
-```javascript
-log('Processing order:', e.streamId, 'total:', e.body.cents);
-```
-
-Output goes to the projection log, visible in gaffer's output.
+**Use one argument only.** Calling `log` with multiple arguments triggers
+an upstream bug that splits primitives across separate log lines and
+joins objects with a `' ,'` separator (see `db-version-bugs` resource).
+Build the string yourself with a template literal or concatenation.
 
 ## Event envelope
 

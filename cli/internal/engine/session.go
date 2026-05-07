@@ -19,6 +19,9 @@ type Projection struct {
 	Def           *config.Projection
 	Source        string
 	EngineVersion int
+	// DbVersion is the resolved target KurrentDB version (env > projection
+	// > config). Empty string means unversioned.
+	DbVersion string
 }
 
 func NewProjection(root string, cfg *config.Config, def *config.Projection, source string) *Projection {
@@ -28,6 +31,7 @@ func NewProjection(root string, cfg *config.Config, def *config.Projection, sour
 		Def:           def,
 		Source:        source,
 		EngineVersion: cfg.EffectiveEngineVersion(def),
+		DbVersion:     cfg.EffectiveDbVersion(def),
 	}
 }
 
@@ -58,6 +62,7 @@ func LoadProjection(name string) (*Projection, error) {
 		Def:           proj,
 		Source:        source,
 		EngineVersion: cfg.EffectiveEngineVersion(proj),
+		DbVersion:     cfg.EffectiveDbVersion(proj),
 	}, nil
 }
 
@@ -82,6 +87,10 @@ func CreateSession(proj *Projection, debug bool) (*gafferruntime.Session, gaffer
 func buildSessionOptions(cfg *config.Config, proj *config.Projection, debug bool) *string {
 	opts := map[string]any{
 		"engineVersion": cfg.EffectiveEngineVersion(proj),
+	}
+
+	if v := cfg.EffectiveDbVersion(proj); v != "" {
+		opts["dbVersion"] = v
 	}
 
 	if debug {

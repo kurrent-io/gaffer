@@ -41,7 +41,7 @@ func runInfo(cmd *cobra.Command, name string, asJSON bool) error {
 	}
 
 	tw := newTextWriter(os.Stdout, os.Stderr)
-	tw.WriteInfo(proj.Def.Name, info, proj.EngineVersion)
+	tw.WriteInfo(proj.Def.Name, info, proj.EngineVersion, proj.DbVersion)
 	return nil
 }
 
@@ -54,6 +54,9 @@ func writeInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) e
 		"source":          src["type"],
 		"biState":         info.BiState,
 		"producesResults": info.ProducesResults,
+	}
+	if proj.DbVersion != "" {
+		out["dbVersion"] = proj.DbVersion
 	}
 	if cats, ok := src["categories"]; ok {
 		out["categories"] = cats

@@ -64,7 +64,7 @@ func TestTextWriter_WriteInfo(t *testing.T) {
 		ByStreams:  true,
 		Events:     []string{"OrderPlaced", "OrderShipped"},
 	}
-	tw.WriteInfo("my-projection", info, 2)
+	tw.WriteInfo("my-projection", info, 2, "")
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "my-projection")
@@ -83,7 +83,7 @@ func TestTextWriter_WriteInfo_BiStateAndProducesResults(t *testing.T) {
 		BiState:         true,
 		ProducesResults: true,
 	}
-	tw.WriteInfo("bi-state-proj", info, 2)
+	tw.WriteInfo("bi-state-proj", info, 2, "")
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "BiState: yes")
@@ -106,7 +106,7 @@ func TestTextWriter_WriteInfo_RendersDiagnostics(t *testing.T) {
 			},
 		}},
 	}
-	tw.WriteInfo("p", info, 2)
+	tw.WriteInfo("p", info, 2, "")
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "[warning]")
@@ -127,13 +127,64 @@ func TestTextWriter_WriteInfo_DiagnosticWithoutRange(t *testing.T) {
 			Severity: gafferruntime.DiagnosticSeverityWarning,
 		}},
 	}
-	tw.WriteInfo("p", info, 2)
+	tw.WriteInfo("p", info, 2, "")
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "deprecated.something")
 	testutil.AssertContains(t, out, "no location available")
 	if strings.Contains(out, "(line ") {
 		t.Error("expected no line/column info when range is nil")
+	}
+}
+
+func TestTextWriter_WriteInfo_DbVersion_Set(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+
+	tw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "26.1.0")
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "DB version: 26.1.0")
+}
+
+func TestTextWriter_WriteInfo_DbVersion_Unversioned(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+
+	tw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "")
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "unversioned")
+	testutil.AssertContains(t, out, "matching all KurrentDB quirks")
+}
+
+func TestJSONWriter_WriteInfo_DbVersion_Set(t *testing.T) {
+	var buf bytes.Buffer
+	jw := newJSONWriter(&buf)
+
+	jw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "26.1.0")
+
+	var line map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	proj := line["projection"].(map[string]any)
+	testutil.AssertEqual(t, "dbVersion", "26.1.0", proj["dbVersion"])
+}
+
+func TestJSONWriter_WriteInfo_DbVersion_OmittedWhenUnset(t *testing.T) {
+	var buf bytes.Buffer
+	jw := newJSONWriter(&buf)
+
+	jw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "")
+
+	var line map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	proj := line["projection"].(map[string]any)
+	if _, ok := proj["dbVersion"]; ok {
+		t.Error("expected dbVersion to be omitted from JSON when empty")
 	}
 }
 
@@ -144,7 +195,7 @@ func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
 	info := gafferruntime.ProjectionInfo{
 		AllStreams: true,
 	}
-	tw.WriteInfo("simple-proj", info, 2)
+	tw.WriteInfo("simple-proj", info, 2, "")
 
 	out := buf.String()
 	if strings.Contains(out, "BiState") {
@@ -341,7 +392,7 @@ func TestJSONWriter_WriteInfo(t *testing.T) {
 		ByStreams:  true,
 		Events:     []string{"OrderPlaced"},
 	}
-	jw.WriteInfo("my-projection", info, 2)
+	jw.WriteInfo("my-projection", info, 2, "")
 
 	var line map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
@@ -381,7 +432,7 @@ func TestJSONWriter_WriteInfo_IncludesDiagnostics(t *testing.T) {
 			},
 		}},
 	}
-	jw.WriteInfo("p", info, 2)
+	jw.WriteInfo("p", info, 2, "")
 
 	var line map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
@@ -407,7 +458,7 @@ func TestJSONWriter_WriteInfo_OmitsEmptyDiagnostics(t *testing.T) {
 	var buf bytes.Buffer
 	jw := newJSONWriter(&buf)
 
-	jw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2)
+	jw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "")
 
 	var line map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {

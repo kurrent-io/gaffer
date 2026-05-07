@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 type Config struct {
 	Connection         string       `toml:"connection,omitempty"`
 	EngineVersion      int          `toml:"engine_version,omitempty"`
+	DbVersion          string       `toml:"db_version,omitempty"`
 	CompilationTimeout *int         `toml:"compilation_timeout,omitempty"`
 	ExecutionTimeout   *int         `toml:"execution_timeout,omitempty"`
 	Projection         []Projection `toml:"projection"`
@@ -27,6 +29,7 @@ type Projection struct {
 	Name             string            `toml:"name"`
 	Entry            string            `toml:"entry"`
 	EngineVersion    int               `toml:"engine_version,omitempty"`
+	DbVersion        string            `toml:"db_version,omitempty"`
 	Enabled          *bool             `toml:"enabled,omitempty"`
 	ExecutionTimeout *int              `toml:"execution_timeout,omitempty"`
 	Fixtures         map[string]string `toml:"fixtures,omitempty"`
@@ -57,6 +60,28 @@ func (c *Config) EffectiveEngineVersion(p *Projection) int {
 		return p.EngineVersion
 	}
 	return c.EngineVersion
+}
+
+// EffectiveDbVersion returns the effective KurrentDB target version for the
+// given projection. Resolution order: GAFFER_DB_VERSION env var > projection's
+// db_version > top-level db_version > "". Empty string means "unversioned":
+// gaffer matches every known KurrentDB quirk.
+func (c *Config) EffectiveDbVersion(p *Projection) string {
+	if v := os.Getenv("GAFFER_DB_VERSION"); v != "" {
+		return v
+	}
+	if p != nil && p.DbVersion != "" {
+		return p.DbVersion
+	}
+	return c.DbVersion
+}
+
+// dbVersionPattern matches MAJOR.MINOR.PATCH (e.g. "26.1.0"). Mirrors the
+// runtime's KurrentDbVersion.TryParse so we can fail-fast at config load.
+var dbVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+func validDbVersion(s string) bool {
+	return dbVersionPattern.MatchString(s)
 }
 
 // IsEnabled returns true if the projection is enabled (default true).
@@ -124,6 +149,9 @@ func (c *Config) validate() error {
 	if c.EngineVersion != 0 && c.EngineVersion != 1 && c.EngineVersion != 2 {
 		return fmt.Errorf("engine_version must be 1 or 2, got %d", c.EngineVersion)
 	}
+	if c.DbVersion != "" && !validDbVersion(c.DbVersion) {
+		return fmt.Errorf("db_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", c.DbVersion, "26.1.0")
+	}
 	seen := make(map[string]bool)
 	for _, p := range c.Projection {
 		// Shared with Describe via checkProjection - rule list and
@@ -137,6 +165,9 @@ func (c *Config) validate() error {
 		// (duplicate-name).
 		if p.EngineVersion != 0 && p.EngineVersion != 1 && p.EngineVersion != 2 {
 			return fmt.Errorf("projection %q engine_version must be 1 or 2, got %d", p.Name, p.EngineVersion)
+		}
+		if p.DbVersion != "" && !validDbVersion(p.DbVersion) {
+			return fmt.Errorf("projection %q db_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", p.Name, p.DbVersion, "26.1.0")
 		}
 		if c.EffectiveEngineVersion(&p) == 0 {
 			return fmt.Errorf("projection %q has no engine_version set (also missing top-level engine_version)", p.Name)

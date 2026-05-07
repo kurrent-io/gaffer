@@ -22,12 +22,15 @@ func (jw *jsonWriter) writeLine(v any) {
 	_ = jw.enc.Encode(v)
 }
 
-func (jw *jsonWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, engineVersion int) {
+func (jw *jsonWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, engineVersion int, dbVersion string) {
 	src := engine.DescribeSource(info)
 	proj := map[string]any{
 		"name":          name,
 		"source":        src["type"],
 		"engineVersion": engineVersion,
+	}
+	if dbVersion != "" {
+		proj["dbVersion"] = dbVersion
 	}
 	if cats, ok := src["categories"]; ok {
 		proj["categories"] = cats

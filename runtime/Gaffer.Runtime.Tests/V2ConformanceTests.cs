@@ -562,6 +562,26 @@ public class V2ConformanceTests {
 	}
 
 	[Fact]
+	public void V2_biState_nullPartitionSlot_returnsNull() {
+		// Upstream V2's PartitionProcessor skips emission when newState is
+		// null (`if (newState != null)` at PartitionProcessor.cs:147).
+		// Mirror that: a null partition slot must surface as C# null, not
+		// as the JSON literal "null".
+		using var session = new ProjectionSession("""
+            options({ biState: true });
+            fromAll().when({
+                $init: function() { return null; },
+                $initShared: function() { return {}; },
+                Ping: function(s, e) { return [null, s[1]]; }
+            })
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
+
+		Assert.Null(session.GetResult());
+	}
+
+	[Fact]
 	public void V2_defines_state_transform_without_transform_function() {
 		using var session = new ProjectionSession("""
             fromAll().when({

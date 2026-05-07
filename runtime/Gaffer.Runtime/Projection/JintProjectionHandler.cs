@@ -98,11 +98,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 		string source,
 		TimeSpan compilationTimeout,
 		TimeSpan executionTimeout,
+		ProjectionVersion engineVersion,
 		Action<string>? onLog = null,
 		Action<EmittedEvent>? onEmit = null,
 		bool debug = false,
-		KurrentDbVersion? dbVersion = null,
-		ProjectionVersion engineVersion = ProjectionVersion.V2) {
+		KurrentDbVersion? dbVersion = null) {
 		_onLog = onLog;
 		_onEmit = onEmit;
 		_debug = debug;
@@ -271,9 +271,14 @@ internal sealed class JintProjectionHandler : IDisposable {
 			// we mirror that here. See
 			// cli/internal/mcpserver/resources/v1-v2-differences.md.
 			if (_definitionBuilder.IsBiState && _state.IsArray()) {
-				return _state.AsArray().TryGetValue(0, out var partitionSlot)
-					? Serialize(partitionSlot)
-					: null;
+				if (!_state.AsArray().TryGetValue(0, out var partitionSlot))
+					return null;
+				// Match the non-bi-state filter and upstream PartitionProcessor's
+				// `if (newState != null)` guard - a null/undefined partition
+				// slot means "don't emit", not "emit JSON null".
+				if (partitionSlot == JsValue.Null || partitionSlot == JsValue.Undefined)
+					return null;
+				return Serialize(partitionSlot);
 			}
 			if (_state == JsValue.Null || _state == JsValue.Undefined)
 				return null;

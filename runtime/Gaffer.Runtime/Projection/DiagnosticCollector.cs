@@ -18,7 +18,7 @@ internal static class DiagnosticCollector {
 		new LinkStreamToOutOfBoundsParametersRule(),
 		new LogMultiParamRule(),
 		new TransformsNotAppliedInV2Rule(),
-		new OutputStateImplicitInV2Rule(),
+		new OutputStateUnconditionalInV2Rule(),
 	};
 
 	/// <summary>
@@ -178,10 +178,12 @@ internal static class DiagnosticCollector {
 	}
 
 	/// <summary>
-	/// Scans for chained method calls of a named property (e.g. <c>x.foo()</c>),
-	/// optionally suppressed when a top-level identifier of the same name is
-	/// declared. Used for transforms/outputState which are chain methods on
-	/// the projection runtime, not globals.
+	/// Scans for chained method calls of a named property (e.g. <c>x.foo()</c>).
+	/// Used for transforms/outputState which are chain methods on the
+	/// projection runtime, not globals - so shadow detection (which exists
+	/// for global identifiers in <see cref="IdentifierShadowScanner"/>)
+	/// doesn't apply: a property name on a chain object can't be shadowed
+	/// by a top-level <c>var</c>/<c>function</c>.
 	/// </summary>
 	private sealed class MemberCallScanner : AstVisitor {
 		private readonly string _name;
@@ -190,22 +192,7 @@ internal static class DiagnosticCollector {
 			_name = name;
 		}
 
-		public bool Shadowed { get; private set; }
 		public List<Acornima.SourceLocation> Calls { get; } = new();
-
-		protected override object? VisitVariableDeclarator(VariableDeclarator node) {
-			// Top-level local with the same name suggests the user is
-			// rebinding the global - suppress to avoid false positives.
-			if (node.Id is Identifier id && id.Name == _name)
-				Shadowed = true;
-			return base.VisitVariableDeclarator(node);
-		}
-
-		protected override object? VisitFunctionDeclaration(FunctionDeclaration node) {
-			if (node.Id is Identifier id && id.Name == _name)
-				Shadowed = true;
-			return base.VisitFunctionDeclaration(node);
-		}
 
 		protected override object? VisitCallExpression(CallExpression node) {
 			if (node.Callee is MemberExpression me &&
@@ -218,6 +205,10 @@ internal static class DiagnosticCollector {
 		}
 	}
 
+	// Predicate is `== V2` rather than `<= V2.x`: when V2 grows transforms
+	// in some future engine version, the rule should stop firing for that
+	// version, not start firing for *future* versions before they exist.
+	// Re-evaluate this gate when a third engine version lands.
 	private sealed class TransformsNotAppliedInV2Rule : IRule {
 		public void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
 			if (engineVersion != ProjectionVersion.V2)
@@ -235,12 +226,10 @@ internal static class DiagnosticCollector {
 		private static void ScanAndEmit(string name, Script ast, List<Diagnostic> diagnostics) {
 			var scanner = new MemberCallScanner(name);
 			scanner.Visit(ast);
-			if (scanner.Shadowed)
-				return;
 			foreach (var loc in scanner.Calls) {
 				diagnostics.Add(new Diagnostic {
-					Code = "compat.transforms.notApplied",
-					Message = $"{name}() is registered but never invoked under engine_version=2; result equals post-handler state. See v1-v2-differences.",
+					Code = "compat.transforms.notInvoked",
+					Message = $"{name}() is registered but never invoked under engine_version=2; result equals post-handler state. Set engine_version=1 for V1 transform behaviour. See v1-v2-differences.",
 					Severity = DiagnosticSeverity.Warning,
 					Range = ToSourceRange(loc),
 				});
@@ -248,7 +237,8 @@ internal static class DiagnosticCollector {
 		}
 	}
 
-	private sealed class OutputStateImplicitInV2Rule : IRule {
+	// See predicate-choice rationale on TransformsNotAppliedInV2Rule.
+	private sealed class OutputStateUnconditionalInV2Rule : IRule {
 		public void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
 			if (engineVersion != ProjectionVersion.V2)
 				return;
@@ -260,8 +250,6 @@ internal static class DiagnosticCollector {
 			// without making it look like an error.
 			var scanner = new MemberCallScanner("outputState");
 			scanner.Visit(ast);
-			if (scanner.Shadowed)
-				return;
 			foreach (var loc in scanner.Calls) {
 				diagnostics.Add(new Diagnostic {
 					Code = "compat.outputState.unconditional",

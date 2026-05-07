@@ -130,13 +130,13 @@ and unconditional - `outputState()` has no effect.
 get the post-handler state back instead. Likewise for `filterBy` exclusion
 predicates. `outputState()` is redundant - state is always emitted.
 
-Gaffer matches this behaviour by design and surfaces the gap as compile-time
+Set `engine_version = 1` on projections that depend on transform behaviour.
+
+Gaffer matches V2's behaviour by design and surfaces the gap as compile-time
 diagnostics so you find it before the result stream surprises you:
 
-* `compat.transforms.notApplied` (Warning) on `transformBy` / `filterBy`
+* `compat.transforms.notInvoked` (Warning) on `transformBy` / `filterBy`
   calls when `engine_version=2`.
 * `compat.outputState.unconditional` (Hint) on `outputState()` calls when
   `engine_version=2`.
-
-<!-- TODO: cite engine-v2.md once it lands on KurrentDB master. -->
 

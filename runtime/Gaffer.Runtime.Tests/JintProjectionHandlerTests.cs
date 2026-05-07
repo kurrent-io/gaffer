@@ -9,7 +9,7 @@ public class JintProjectionHandlerTests {
 		Action<EmittedEvent>? onEmit = null,
 		ProjectionVersion engineVersion = ProjectionVersion.V2) =>
 		new(source, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5),
-			onEmit: onEmit, engineVersion: engineVersion);
+			engineVersion, onEmit: onEmit);
 
 	[Fact]
 	public void Simple_count_projection() {
@@ -144,7 +144,7 @@ public class JintProjectionHandlerTests {
                     return state;
                 }
             })
-        """, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), onLog: msg => logs.Add(msg));
+        """, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), ProjectionVersion.V2, onLog: msg => logs.Add(msg));
 
 		handler.Initialize();
 		handler.ProcessEvent("", "", new ProjectionEvent {

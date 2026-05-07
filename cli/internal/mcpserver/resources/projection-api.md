@@ -162,7 +162,7 @@ by handlers - only the output representation. Can be chained multiple times.
 
 **V2:** Not invoked. The function is registered at definition time but never
 runs on events; the result stream receives post-handler state. Calls under
-`engine_version=2` emit `compat.transforms.notApplied` (Warning).
+`engine_version=2` emit `compat.transforms.notInvoked` (Warning).
 
 ```javascript
 .when({ ... })
@@ -183,7 +183,7 @@ result is suppressed (null is output instead).
 
 **V2:** Not invoked. The function is registered at definition time but never
 runs on events; the result stream receives post-handler state. Calls under
-`engine_version=2` emit `compat.transforms.notApplied` (Warning).
+`engine_version=2` emit `compat.transforms.notInvoked` (Warning).
 
 ```javascript
 .when({ ... })

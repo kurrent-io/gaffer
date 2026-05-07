@@ -127,8 +127,10 @@ func (s *Session) SetState(partition *string, stateJSON string) {
 	C.gaffer_session_set_state(s.handle, cp, cs, nil)
 }
 
-// GetResult returns the transformed result for a partition (applies
-// transformBy/filterBy). Returns nil for unknown partitions or filtered results.
+// GetResult returns the result for a partition. Under V1, applies any
+// registered transformBy/filterBy functions; under V2, returns the
+// post-handler state directly (V2 doesn't iterate transforms). Returns nil
+// for unknown partitions, or for V1 filtered-out results.
 func (s *Session) GetResult(partition *string) (*string, error) {
 	s.ensureAlive()
 	var cp *C.char

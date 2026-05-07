@@ -209,7 +209,7 @@ public class DiagnosticsTests {
 		Assert.Null(session.Diagnostics);
 	}
 
-	// -- compat.transforms.notApplied (V2) --
+	// -- compat.transforms.notInvoked (V2) --
 
 	[Fact]
 	public void Transforms_TransformBy_InV2_EmitsWarning() {
@@ -219,7 +219,7 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		var d = Assert.Single(session.Diagnostics!);
-		Assert.Equal("compat.transforms.notApplied", d.Code);
+		Assert.Equal("compat.transforms.notInvoked", d.Code);
 		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
 		Assert.Contains("transformBy", d.Message);
 	}
@@ -232,7 +232,7 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		var d = Assert.Single(session.Diagnostics!);
-		Assert.Equal("compat.transforms.notApplied", d.Code);
+		Assert.Equal("compat.transforms.notInvoked", d.Code);
 		Assert.Contains("filterBy", d.Message);
 	}
 
@@ -254,18 +254,73 @@ public class DiagnosticsTests {
 			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, DbVersion = null });
 
 		Assert.NotNull(session.Diagnostics);
-		Assert.Contains(session.Diagnostics!, d => d.Code == "compat.transforms.notApplied");
+		Assert.Contains(session.Diagnostics!, d => d.Code == "compat.transforms.notInvoked");
 	}
 
 	[Fact]
-	public void Transforms_TransformBy_Shadowed_NoDiagnostic() {
+	public void Transforms_TransformBy_TopLevelShadowDoesNotSuppress() {
+		// transformBy is a chain method, not a global. A top-level
+		// `var transformBy = ...` doesn't change what `.transformBy()`
+		// resolves to on the projection runtime, so the diagnostic still
+		// fires - distinct from the linkStreamTo/log rules where shadow
+		// suppression makes sense.
 		var source =
 			"var transformBy = function () {};\n" +
 			"fromAll().when({ $any: function (s, e) { return s; } }).transformBy(function (s) { return s; });";
 		using var session = new ProjectionSession(source,
 			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
-		// Shadowed identifier means the call doesn't reach the V2 builtin.
+		Assert.NotNull(session.Diagnostics);
+		Assert.Contains(session.Diagnostics!, d => d.Code == "compat.transforms.notInvoked");
+	}
+
+	[Fact]
+	public void Transforms_TransformBy_MultipleChained_BothReported() {
+		// Visitor walks every CallExpression; chained .transformBy(a).transformBy(b)
+		// must report twice, not collapse.
+		var source =
+			"fromAll().when({ $any: function (s, e) { return s; } })" +
+			".transformBy(function (s) { return s; })" +
+			".transformBy(function (s) { return s; });";
+		using var session = new ProjectionSession(source,
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		Assert.NotNull(session.Diagnostics);
+		var transformDiagnostics = session.Diagnostics!
+			.Where(d => d.Code == "compat.transforms.notInvoked").ToArray();
+		Assert.Equal(2, transformDiagnostics.Length);
+	}
+
+	[Fact]
+	public void Transforms_TransformBy_RangeAtPropertyIdentifier() {
+		// Range must point at the property identifier (`transformBy`), not
+		// the receiver or the whole call - so editor squiggles land on the
+		// method name.
+		var source = "fromAll().when({ $any: function (s, e) { return s; } }).transformBy(function (s) { return s; });";
+		var expectedCol = source.IndexOf(".transformBy", StringComparison.Ordinal) + 2; // +1 to skip dot, +1 for 1-based
+		using var session = new ProjectionSession(source,
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		Assert.NotNull(session.Diagnostics);
+		var d = Assert.Single(session.Diagnostics!);
+		Assert.NotNull(d.Range);
+		Assert.Equal(1, d.Range!.Start.Line);
+		Assert.Equal(expectedCol, d.Range.Start.Column);
+		Assert.Equal(expectedCol + "transformBy".Length, d.Range.End.Column);
+	}
+
+	[Fact]
+	public void Transforms_ComputedMemberAccess_NotDetected() {
+		// `obj["transformBy"](fn)` is a computed member access; the rule
+		// only matches static `.transformBy(fn)` to avoid false positives
+		// where the property name happens to equal a chain method.
+		var source =
+			"var obj = { transformBy: function (fn) {} };\n" +
+			"obj[\"transformBy\"](function (s) { return s; });\n" +
+			"fromAll().when({ $any: function (s, e) { return s; } });";
+		using var session = new ProjectionSession(source,
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
 		Assert.Null(session.Diagnostics);
 	}
 
@@ -294,14 +349,17 @@ public class DiagnosticsTests {
 	}
 
 	[Fact]
-	public void OutputState_Shadowed_NoDiagnostic() {
+	public void OutputState_TopLevelShadowDoesNotSuppress() {
+		// Same reason as transformBy: outputState is a chain method, so a
+		// top-level shadow doesn't change resolution.
 		var source =
 			"var outputState = function () {};\n" +
 			"fromAll().when({ $any: function (s, e) { return s; } }).outputState();";
 		using var session = new ProjectionSession(source,
 			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
-		Assert.Null(session.Diagnostics);
+		Assert.NotNull(session.Diagnostics);
+		Assert.Contains(session.Diagnostics!, d => d.Code == "compat.outputState.unconditional");
 	}
 
 }

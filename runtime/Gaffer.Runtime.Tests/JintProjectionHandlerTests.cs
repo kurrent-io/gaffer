@@ -4,8 +4,12 @@ using Gaffer.Runtime.Projection;
 namespace Gaffer.Runtime.Tests;
 
 public class JintProjectionHandlerTests {
-	private static JintProjectionHandler CreateHandler(string source, Action<EmittedEvent>? onEmit = null) =>
-		new(source, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), onEmit: onEmit);
+	private static JintProjectionHandler CreateHandler(
+		string source,
+		Action<EmittedEvent>? onEmit = null,
+		ProjectionVersion engineVersion = ProjectionVersion.V2) =>
+		new(source, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5),
+			onEmit: onEmit, engineVersion: engineVersion);
 
 	[Fact]
 	public void Simple_count_projection() {
@@ -208,6 +212,7 @@ public class JintProjectionHandlerTests {
 
 	[Fact]
 	public void TransformBy_transforms_result() {
+		// V1 only - V2 doesn't iterate _transforms; see V2ConformanceTests.
 		using var handler = CreateHandler("""
             fromAll().when({
                 $init: function() { return { count: 0 }; },
@@ -215,7 +220,7 @@ public class JintProjectionHandlerTests {
             }).transformBy(function(state) {
                 return { total: state.count };
             }).outputState()
-        """);
+        """, engineVersion: ProjectionVersion.V1);
 
 		handler.Initialize();
 		handler.ProcessEvent("", "", new ProjectionEvent {

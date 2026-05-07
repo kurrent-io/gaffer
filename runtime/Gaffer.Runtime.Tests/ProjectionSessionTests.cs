@@ -147,6 +147,7 @@ public class ProjectionSessionTests {
 
 	[Fact]
 	public void TransformBy_affects_result() {
+		// V1 only - V2 doesn't iterate transforms; see V2ConformanceTests.
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return { count: 0 }; },
@@ -154,7 +155,7 @@ public class ProjectionSessionTests {
             }).transformBy(function(s) {
                 return { total: s.count };
             }).outputState()
-        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V1 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 

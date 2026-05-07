@@ -36,6 +36,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private readonly bool _enableContentTypeValidation = true;
 	private readonly bool _debug;
 	private readonly KurrentDbVersion? _dbVersion;
+	private readonly ProjectionVersion _engineVersion;
 	private readonly TimeConstraint _timeConstraint;
 	private readonly BlockingCollection<DebugCommand> _debugCommands = new();
 	private readonly Dictionary<int, object> _variableStore = new();
@@ -100,11 +101,13 @@ internal sealed class JintProjectionHandler : IDisposable {
 		Action<string>? onLog = null,
 		Action<EmittedEvent>? onEmit = null,
 		bool debug = false,
-		KurrentDbVersion? dbVersion = null) {
+		KurrentDbVersion? dbVersion = null,
+		ProjectionVersion engineVersion = ProjectionVersion.V2) {
 		_onLog = onLog;
 		_onEmit = onEmit;
 		_debug = debug;
 		_dbVersion = dbVersion;
+		_engineVersion = engineVersion;
 		_definitionBuilder = new SourceDefinitionBuilder();
 		_definitionBuilder.NoWhen();
 		_definitionBuilder.AllEvents();
@@ -258,6 +261,24 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 	public string? TransformStateToResult() {
 		_engine.Constraints.Reset();
+		if (_engineVersion == ProjectionVersion.V2) {
+			// V2 doesn't apply transformBy/filterBy - state is the result.
+			// JS calls to those functions still register the transforms
+			// (matches upstream V2's silent acceptance), but the engine
+			// never iterates them. For bi-state, upstream V2 writes the
+			// partition slot only (PartitionProcessor writes `newState`
+			// from ProcessEvent, not the [partition, shared] array), so
+			// we mirror that here. See
+			// cli/internal/mcpserver/resources/v1-v2-differences.md.
+			if (_definitionBuilder.IsBiState && _state.IsArray()) {
+				return _state.AsArray().TryGetValue(0, out var partitionSlot)
+					? Serialize(partitionSlot)
+					: null;
+			}
+			if (_state == JsValue.Null || _state == JsValue.Undefined)
+				return null;
+			return Serialize(_state);
+		}
 		var result = _runtime.TransformStateToResult(_state);
 		if (result == JsValue.Null || result == JsValue.Undefined)
 			return null;

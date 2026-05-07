@@ -187,8 +187,9 @@ func TestError_StateSerialization_NaN(t *testing.T) {
 }
 
 func TestError_ProjectionTransform(t *testing.T) {
+	// V1 only - V2 doesn't iterate transforms, so the throw is dead code.
 	source := "fromAll().when({\n\t$init() { return {}; },\n\tTest(s, e) { return s; }\n}).transformBy(function(s) {\n\tthrow new Error(\"transform failed\");\n}).outputState()"
-	session, err := NewSession(source, &v2Opts)
+	session, err := NewSession(source, &v1Opts)
 	if err != nil {
 		t.Fatal(err)
 	}

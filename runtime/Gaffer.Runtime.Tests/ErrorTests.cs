@@ -145,8 +145,9 @@ public class ErrorTests {
 
 	[Fact]
 	public Task ProjectionTransformError() {
+		// V1 only - V2 doesn't iterate transforms, so the throwing JS body is dead code.
 		var source = "fromAll().when({\n\t$init: function() { return {}; },\n\tTest: function(s, e) { return s; }\n}).transformBy(function(s) {\n\tthrow new Error(\"transform failed\");\n}).outputState()";
-		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V1 });
 
 		var ex = Assert.Throws<ProjectionTransformException>(() => session.Feed(TestEvent));
 

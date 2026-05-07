@@ -85,7 +85,8 @@ public sealed class ProjectionSession : IDisposable {
 					OnEmit?.Invoke(emitted);
 				},
 				debug: opts.Debug,
-				dbVersion: _dbVersion);
+				dbVersion: _dbVersion,
+				engineVersion: _version);
 
 			_handler.OnBreak = info => OnBreak?.Invoke(info);
 		} catch (ScriptPreparationException ex) when (ex.InnerException is ParseErrorException parseError) {

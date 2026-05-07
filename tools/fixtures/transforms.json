@@ -1,6 +1,6 @@
 [
 	{
-		"name": "transformBy",
+		"name": "V1 transformBy applies",
 		"source": "fromAll().when({ $init() { return { count: 0 }; }, Ping(s, e) { s.count++; return s; } }).transformBy(function(s) { return { total: s.count * 2 }; }).outputState()",
 		"events": [
 			{
@@ -22,11 +22,11 @@
 			}
 		},
 		"options": {
-			"engineVersion": 2
+			"engineVersion": 1
 		}
 	},
 	{
-		"name": "filterBy includes",
+		"name": "V1 filterBy includes",
 		"source": "fromAll().when({ $init() { return { count: 0 }; }, Ping(s, e) { s.count++; return s; } }).filterBy(function(s) { return s.count > 0; }).outputState()",
 		"events": [
 			{
@@ -45,11 +45,11 @@
 			}
 		},
 		"options": {
-			"engineVersion": 2
+			"engineVersion": 1
 		}
 	},
 	{
-		"name": "filterBy excludes",
+		"name": "V1 filterBy excludes",
 		"source": "fromAll().when({ $init() { return { count: 0 }; }, Ping(s, e) { s.count++; return s; } }).filterBy(function(s) { return s.count > 5; }).outputState()",
 		"events": [
 			{
@@ -64,6 +64,58 @@
 		],
 		"expect": {
 			"result": null
+		},
+		"options": {
+			"engineVersion": 1
+		}
+	},
+	{
+		"name": "V2 transformBy not applied",
+		"source": "fromAll().when({ $init() { return { count: 0 }; }, Ping(s, e) { s.count++; return s; } }).transformBy(function(s) { return { total: s.count * 2 }; }).outputState()",
+		"events": [
+			{
+				"eventType": "Ping",
+				"streamId": "s-1",
+				"sequenceNumber": 0,
+				"data": "{}",
+				"isJson": true,
+				"eventId": "00000000-0000-0000-0000-000000000000",
+				"created": "2026-01-01T00:00:00Z"
+			}
+		],
+		"expect": {
+			"state": {
+				"count": 1
+			},
+			"result": {
+				"count": 1
+			}
+		},
+		"options": {
+			"engineVersion": 2
+		}
+	},
+	{
+		"name": "V2 filterBy not applied",
+		"source": "fromAll().when({ $init() { return { count: 0 }; }, Ping(s, e) { s.count++; return s; } }).filterBy(function(s) { return s.count > 5; }).outputState()",
+		"events": [
+			{
+				"eventType": "Ping",
+				"streamId": "s-1",
+				"sequenceNumber": 0,
+				"data": "{}",
+				"isJson": true,
+				"eventId": "00000000-0000-0000-0000-000000000000",
+				"created": "2026-01-01T00:00:00Z"
+			}
+		],
+		"expect": {
+			"state": {
+				"count": 1
+			},
+			"result": {
+				"count": 1
+			}
 		},
 		"options": {
 			"engineVersion": 2

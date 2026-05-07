@@ -85,7 +85,7 @@ public class AlternativeSyntaxTests {
             }).transformBy(function(s) {
                 return { total: s.total };
             }).outputState()
-        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V1 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
@@ -105,7 +105,7 @@ public class AlternativeSyntaxTests {
             }).filterBy(function(s) {
                 return s.count > 2;
             }).outputState()
-        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V1 });
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "low", Data = "{}" });
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "high", Data = "{}" });
@@ -132,7 +132,7 @@ public class AlternativeSyntaxTests {
             }).filterBy(function(s) {
                 return s.active;
             }).outputState()
-        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V1 });
 
 		// No events - count is 0, active is false, should be filtered
 		Assert.Null(session.GetResult());

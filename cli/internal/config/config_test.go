@@ -287,6 +287,29 @@ db_version = "26.1"
 	}
 }
 
+func TestLoadValidatesEnvDbVersion(t *testing.T) {
+	t.Setenv("GAFFER_DB_VERSION", "garbage")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+engine_version = 2
+
+[[projection]]
+name = "a"
+entry = "a.js"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected validation error for malformed GAFFER_DB_VERSION")
+	}
+	if !strings.Contains(err.Error(), "GAFFER_DB_VERSION") {
+		t.Errorf("expected error to mention GAFFER_DB_VERSION, got: %v", err)
+	}
+}
+
 func TestLoadGlobalTimeouts(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")

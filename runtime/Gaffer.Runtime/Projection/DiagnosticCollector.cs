@@ -58,11 +58,49 @@ internal static class DiagnosticCollector {
 		End = new SourcePosition { Line = loc.End.Line, Column = loc.End.Column + 1 },
 	};
 
+	/// <summary>
+	/// Scans for calls to a named global identifier, with shadow detection.
+	/// A top-level <c>var</c>/<c>function</c> declaration of the same name
+	/// flips <see cref="Shadowed"/>; rules that depend on the global then
+	/// suppress their diagnostics. <paramref name="matchCall"/> filters which
+	/// calls land in <see cref="Calls"/> (e.g. arity gate).
+	/// </summary>
+	private sealed class IdentifierShadowScanner : AstVisitor {
+		private readonly string _name;
+		private readonly Func<CallExpression, bool> _matchCall;
+
+		public IdentifierShadowScanner(string name, Func<CallExpression, bool> matchCall) {
+			_name = name;
+			_matchCall = matchCall;
+		}
+
+		public bool Shadowed { get; private set; }
+		public List<Acornima.SourceLocation> Calls { get; } = new();
+
+		protected override object? VisitVariableDeclarator(VariableDeclarator node) {
+			if (node.Id is Identifier id && id.Name == _name)
+				Shadowed = true;
+			return base.VisitVariableDeclarator(node);
+		}
+
+		protected override object? VisitFunctionDeclaration(FunctionDeclaration node) {
+			if (node.Id is Identifier id && id.Name == _name)
+				Shadowed = true;
+			return base.VisitFunctionDeclaration(node);
+		}
+
+		protected override object? VisitCallExpression(CallExpression node) {
+			if (node.Callee is Identifier callee && callee.Name == _name && _matchCall(node))
+				Calls.Add(callee.Location);
+			return base.VisitCallExpression(node);
+		}
+	}
+
 	private sealed class LinkStreamToDeprecationRule : IRule {
 		public void Run(Script ast, KurrentDbVersion? dbVersion, List<Diagnostic> diagnostics) {
 			// Deprecation is independent of dbVersion - linkStreamTo is
 			// undocumented at every released version we know about.
-			var scanner = new Scanner();
+			var scanner = new IdentifierShadowScanner("linkStreamTo", _ => true);
 			scanner.Visit(ast);
 			if (scanner.Shadowed)
 				return;
@@ -76,29 +114,6 @@ internal static class DiagnosticCollector {
 				});
 			}
 		}
-
-		private sealed class Scanner : AstVisitor {
-			public bool Shadowed;
-			public readonly List<Acornima.SourceLocation> Calls = new();
-
-			protected override object? VisitVariableDeclarator(VariableDeclarator node) {
-				if (node.Id is Identifier { Name: "linkStreamTo" })
-					Shadowed = true;
-				return base.VisitVariableDeclarator(node);
-			}
-
-			protected override object? VisitFunctionDeclaration(FunctionDeclaration node) {
-				if (node.Id is Identifier { Name: "linkStreamTo" })
-					Shadowed = true;
-				return base.VisitFunctionDeclaration(node);
-			}
-
-			protected override object? VisitCallExpression(CallExpression node) {
-				if (node.Callee is Identifier { Name: "linkStreamTo" } id)
-					Calls.Add(id.Location);
-				return base.VisitCallExpression(node);
-			}
-		}
 	}
 
 	private sealed class LinkStreamToOutOfBoundsParametersRule : IRule {
@@ -106,44 +121,21 @@ internal static class DiagnosticCollector {
 			if (!KnownBugs.LinkStreamToOutOfBoundsParameters.FiresAt(dbVersion))
 				return;
 
-			var scanner = new Scanner();
+			// 3+ args triggers the bug. 2-arg form is fine.
+			var scanner = new IdentifierShadowScanner("linkStreamTo", call => call.Arguments.Count >= 3);
 			scanner.Visit(ast);
 			// Shadowed local linkStreamTo masks the upstream bug entirely -
 			// the call goes to the user's function, not the buggy global.
 			if (scanner.Shadowed)
 				return;
 
-			foreach (var loc in scanner.ProblematicCalls) {
+			foreach (var loc in scanner.Calls) {
 				diagnostics.Add(new Diagnostic {
 					Code = KnownBugs.LinkStreamToOutOfBoundsParameters.Code,
 					Message = "linkStreamTo with metadata (3+ args) crashes due to an upstream parameter-indexing bug; metadata is never captured.",
 					Severity = DiagnosticSeverity.Warning,
 					Range = ToSourceRange(loc),
 				});
-			}
-		}
-
-		private sealed class Scanner : AstVisitor {
-			public bool Shadowed;
-			public readonly List<Acornima.SourceLocation> ProblematicCalls = new();
-
-			protected override object? VisitVariableDeclarator(VariableDeclarator node) {
-				if (node.Id is Identifier { Name: "linkStreamTo" })
-					Shadowed = true;
-				return base.VisitVariableDeclarator(node);
-			}
-
-			protected override object? VisitFunctionDeclaration(FunctionDeclaration node) {
-				if (node.Id is Identifier { Name: "linkStreamTo" })
-					Shadowed = true;
-				return base.VisitFunctionDeclaration(node);
-			}
-
-			protected override object? VisitCallExpression(CallExpression node) {
-				// 3+ args triggers the bug. 2-arg form is fine.
-				if (node.Callee is Identifier { Name: "linkStreamTo" } id && node.Arguments.Count >= 3)
-					ProblematicCalls.Add(id.Location);
-				return base.VisitCallExpression(node);
 			}
 		}
 	}

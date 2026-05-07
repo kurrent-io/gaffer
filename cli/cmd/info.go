@@ -54,9 +54,9 @@ func writeInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) e
 		"source":          src["type"],
 		"biState":         info.BiState,
 		"producesResults": info.ProducesResults,
-	}
-	if proj.DbVersion != "" {
-		out["dbVersion"] = proj.DbVersion
+		// Always emit dbVersion: null distinguishes unversioned (bugs on)
+		// from a real version. Consumers need this signal explicitly.
+		"dbVersion": nullableString(proj.DbVersion),
 	}
 	if cats, ok := src["categories"]; ok {
 		out["categories"] = cats

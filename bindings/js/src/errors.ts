@@ -62,8 +62,13 @@ export class CompilationTimeoutError extends ProjectionError {
 export class InvalidArgumentError extends ProjectionError {
 	readonly field: string;
 
-	constructor(description: string, field: string, cause?: unknown) {
-		super("invalid-argument", description, cause);
+	constructor(
+		description: string,
+		field: string,
+		cause?: unknown,
+		message?: string,
+	) {
+		super("invalid-argument", description, cause, message);
 		this.field = field;
 	}
 }
@@ -238,6 +243,8 @@ function constructError(err: ErrorJson, source: string): ProjectionError {
 			return new InvalidArgumentError(
 				err.description,
 				required(err.field, err.code, "field"),
+				undefined,
+				err.message,
 			);
 
 		case "handler-error":

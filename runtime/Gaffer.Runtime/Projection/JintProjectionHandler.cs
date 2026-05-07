@@ -57,6 +57,39 @@ internal sealed class JintProjectionHandler : IDisposable {
 	/// </summary>
 	internal const string CompatCodeDataKey = "GafferCompatCode";
 
+	/// <summary>
+	/// Run an upstream-bug-firing code block whose throw will be wrapped by
+	/// Jint into a <c>JavaScriptException</c>. On throw, stash the bug's
+	/// code on <see cref="Exception.Data"/> so
+	/// <see cref="ProjectionSession.WrapHandlerException"/> can plumb it
+	/// through to <see cref="ProjectionException.CompatCode"/>.
+	/// <para>
+	/// Use this only for the Jint-wrapped path - i.e. when our CLR code
+	/// throws inside a method Jint calls and the runtime sees
+	/// <c>JavaScriptException</c> with our throw as <c>InnerException</c>.
+	/// If the bug-firing branch throws a <see cref="ProjectionException"/>
+	/// directly (e.g. <c>StateSerializationException</c> for NaN/Infinity),
+	/// set <c>CompatCode</c> on the exception's object initializer instead.
+	/// </para>
+	/// </summary>
+	private static T RunBuggyPath<T>(Bug bug, Func<T> body) {
+		try {
+			return body();
+		} catch (Exception ex) {
+			ex.Data[CompatCodeDataKey] = bug.Code;
+			throw;
+		}
+	}
+
+	private static void RunBuggyPath(Bug bug, Action body) {
+		try {
+			body();
+		} catch (Exception ex) {
+			ex.Data[CompatCodeDataKey] = bug.Code;
+			throw;
+		}
+	}
+
 	/// <summary>Fired when execution pauses at a breakpoint or debugger statement. Informational only.</summary>
 	public Action<BreakInfo>? OnBreak { get; set; }
 
@@ -336,7 +369,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		Dictionary<string, string?>? metadata = null;
 		if (parameters.Length == 3) {
 			if (KnownBugs.LinkStreamToOutOfBoundsParameters.FiresAt(_dbVersion)) {
-				try {
+				RunBuggyPath(KnownBugs.LinkStreamToOutOfBoundsParameters, () => {
 					// Reproduce upstream's parameters.At(4) bug: index 4 is
 					// out of bounds for a 3-arg call, returns Undefined,
 					// AsObject() throws. Calling it here gives the byte-
@@ -345,10 +378,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 					metadata = new Dictionary<string, string?>();
 					foreach (var kvp in md.GetOwnProperties())
 						metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, false));
-				} catch (Exception ex) {
-					ex.Data[CompatCodeDataKey] = KnownBugs.LinkStreamToOutOfBoundsParameters.Code;
-					throw;
-				}
+				});
 			} else {
 				metadata = new Dictionary<string, string?>();
 				foreach (var kvp in parameters.At(2).AsObject().GetOwnProperties())
@@ -1503,16 +1533,13 @@ internal sealed class JintProjectionHandler : IDisposable {
 				SetOwnProperty("body", pd);
 				SetOwnProperty("data", pd);
 				if (KnownBugs.EventBodyCast.FiresAt(_parent._dbVersion)) {
-					try {
-						// Reproduce upstream: out parameter is typed
-						// ObjectInstance, forcing a cast that throws
-						// InvalidCastException when body is null, a number,
-						// a string, or a boolean.
-						objectInstance = (ObjectInstance)body;
-					} catch (Exception ex) {
-						ex.Data[CompatCodeDataKey] = KnownBugs.EventBodyCast.Code;
-						throw;
-					}
+					// Reproduce upstream: out parameter is typed
+					// ObjectInstance, forcing a cast that throws
+					// InvalidCastException when body is null, a number,
+					// a string, or a boolean.
+					objectInstance = RunBuggyPath<JsValue>(
+						KnownBugs.EventBodyCast,
+						() => (ObjectInstance)body);
 				} else {
 					objectInstance = body;
 				}

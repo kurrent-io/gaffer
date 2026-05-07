@@ -152,6 +152,12 @@ func (c *Config) validate() error {
 	if c.DbVersion != "" && !validDbVersion(c.DbVersion) {
 		return fmt.Errorf("db_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", c.DbVersion, "26.1.0")
 	}
+	// GAFFER_DB_VERSION overrides every db_version in the file, so an
+	// invalid value would silently invalidate the entire config without
+	// validation here. Fail fast at the same gate as the file values.
+	if v := os.Getenv("GAFFER_DB_VERSION"); v != "" && !validDbVersion(v) {
+		return fmt.Errorf("GAFFER_DB_VERSION %q must be MAJOR.MINOR.PATCH (e.g. %q)", v, "26.1.0")
+	}
 	seen := make(map[string]bool)
 	for _, p := range c.Projection {
 		// Shared with Describe via checkProjection - rule list and

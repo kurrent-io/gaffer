@@ -335,30 +335,29 @@ public sealed class ProjectionSession : IDisposable {
 
 	private ProjectionException WrapHandlerException(Exception ex, ProjectionEvent @event, string partition) {
 		var part = IsPartitioned ? partition : null;
-		ProjectionException result = ex switch {
+		var compatCode = ExtractCompatCode(ex);
+		return ex switch {
 			TimeConstraintException tc => new ExecutionTimeoutException(
 				$"Projection script took too long to execute ({tc.AllowedMs}ms limit)",
 				tc.ElapsedMs, tc.AllowedMs,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
-				tc),
+				tc) { CompatCode = compatCode },
 			MalformedEventDataException med => new MalformedEventException(
 				med.Message,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
-				med.InnerException),
+				med.InnerException) { CompatCode = compatCode },
 			JavaScriptException js => new ProjectionHandlerException(
 				js.Message,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
 				js.JavaScriptStackTrace,
 				js.Location.Start.Line > 0 ? js.Location.Start.Line : null,
 				js.Location.Start.Line > 0 ? js.Location.Start.Column : null,
-				js) { ProjectionSource = _source },
+				js) { ProjectionSource = _source, CompatCode = compatCode },
 			_ => new ProjectionHandlerException(
 				ex.Message,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
-				innerException: ex) { ProjectionSource = _source },
+				innerException: ex) { ProjectionSource = _source, CompatCode = compatCode },
 		};
-		result.CompatCode = ExtractCompatCode(ex);
-		return result;
 	}
 
 	/// <summary>

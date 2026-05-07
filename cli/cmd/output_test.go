@@ -172,7 +172,7 @@ func TestJSONWriter_WriteInfo_DbVersion_Set(t *testing.T) {
 	testutil.AssertEqual(t, "dbVersion", "26.1.0", proj["dbVersion"])
 }
 
-func TestJSONWriter_WriteInfo_DbVersion_OmittedWhenUnset(t *testing.T) {
+func TestJSONWriter_WriteInfo_DbVersion_NullWhenUnset(t *testing.T) {
 	var buf bytes.Buffer
 	jw := newJSONWriter(&buf)
 
@@ -183,8 +183,12 @@ func TestJSONWriter_WriteInfo_DbVersion_OmittedWhenUnset(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 	proj := line["projection"].(map[string]any)
-	if _, ok := proj["dbVersion"]; ok {
-		t.Error("expected dbVersion to be omitted from JSON when empty")
+	v, ok := proj["dbVersion"]
+	if !ok {
+		t.Fatal("expected dbVersion to be present (as null) when empty")
+	}
+	if v != nil {
+		t.Errorf("expected dbVersion null, got %v (%T)", v, v)
 	}
 }
 

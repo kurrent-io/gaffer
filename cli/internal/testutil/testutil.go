@@ -219,6 +219,38 @@ func CaptureStdout(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
+// CaptureStdio redirects both os.Stdout and os.Stderr for the duration
+// of fn and returns what was written to each.
+func CaptureStdio(t *testing.T, fn func()) (stdout, stderr string) {
+	t.Helper()
+	rOut, wOut, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rErr, wErr, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	origOut, origErr := os.Stdout, os.Stderr
+	os.Stdout = wOut
+	os.Stderr = wErr
+	defer func() {
+		os.Stdout = origOut
+		os.Stderr = origErr
+	}()
+
+	fn()
+
+	_ = wOut.Close()
+	_ = wErr.Close()
+
+	var outBuf, errBuf bytes.Buffer
+	_, _ = outBuf.ReadFrom(rOut)
+	_, _ = errBuf.ReadFrom(rErr)
+	return outBuf.String(), errBuf.String()
+}
+
 // SplitNDJSON parses newline-delimited JSON into a slice of maps.
 func SplitNDJSON(s string) []map[string]any {
 	var results []map[string]any

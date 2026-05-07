@@ -9,7 +9,7 @@ public abstract class ProjectionException : Exception {
 	/// this exception was thrown by an upstream-bug-compat code path. Lets
 	/// CLIs and editors annotate the error with "fixed in DB version X".
 	/// </summary>
-	public string? CompatCode { get; set; }
+	public string? CompatCode { get; init; }
 
 	protected ProjectionException(string description, Exception? innerException = null)
 		: base(description, innerException) {

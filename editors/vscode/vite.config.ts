@@ -73,7 +73,7 @@ export default defineConfig({
 	},
 	test: {
 		environment: "node",
-		include: ["src/**/*.test.ts"],
+		include: ["src/**/*.test.ts", "tsserver-plugin/src/**/*.test.ts"],
 		setupFiles: ["./test/setup.ts"],
 		// Aliases scoped to the test runner only - production
 		// builds must NOT pick up these stubs.

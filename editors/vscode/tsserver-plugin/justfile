@@ -17,11 +17,13 @@ check:
 fix:
     pnpm exec prettier --write .
 
-# No runtime tests for the plugin - typecheck IS the test, and the
-# integration is covered by the VS Code extension's e2e suite. Echo
-# so the parallel test target doesn't fail.
+# No-op: vitest runs from the parent extension package with an
+# include glob that picks up tsserver-plugin/src/**/*.test.ts, so
+# the parent's `just test` already covers this package. Recipe exists
+# so callers iterating across all subpackages don't need to special-
+# case it.
 test:
-    @echo 'tsserver-plugin: no runtime tests (covered via extension e2e)'
+    @echo 'tsserver-plugin: tests run from parent package'
 
 clean:
     rm -rf dist

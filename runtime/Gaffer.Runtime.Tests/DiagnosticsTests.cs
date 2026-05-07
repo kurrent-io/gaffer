@@ -1,6 +1,7 @@
 using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Projection;
 using Gaffer.Sdk.Diagnostics;
+using Gaffer.Sdk.Versioning;
 
 namespace Gaffer.Runtime.Tests;
 
@@ -95,7 +96,7 @@ public class DiagnosticsTests {
 		// Source Acornima rejects. The fallback path in Scan returns null
 		// so parser drift between Jint and Acornima doesn't break otherwise-
 		// valid sessions.
-		Assert.Null(DiagnosticCollector.Scan("this is not valid {{{{"));
+		Assert.Null(DiagnosticCollector.Scan("this is not valid {{{{", dbVersion: null));
 	}
 
 	[Fact]
@@ -144,4 +145,66 @@ public class DiagnosticsTests {
 
 		Assert.Null(session.Diagnostics);
 	}
+
+	// -- compat.linkStreamTo.outOfBoundsParameters --
+
+	[Fact]
+	public void LinkStreamTo_ThreeArgs_EmitsOutOfBoundsParametersWarning() {
+		using var session = new ProjectionSession(
+			"fromAll().when({ $any: function (s, e) { linkStreamTo('a', e.streamId, { reason: 'x' }); return s; } });",
+			Options);
+
+		Assert.NotNull(session.Diagnostics);
+		// Both the deprecation warning AND the compat warning should fire
+		// for a 3-arg linkStreamTo call.
+		Assert.Contains(session.Diagnostics!, d => d.Code == "deprecated.linkStreamTo");
+		Assert.Contains(session.Diagnostics!, d => d.Code == KnownBugs.LinkStreamToOutOfBoundsParameters.Code);
+	}
+
+	[Fact]
+	public void LinkStreamTo_TwoArgs_DoesNotEmitOutOfBoundsParametersWarning() {
+		using var session = new ProjectionSession(
+			"fromAll().when({ $any: function (s, e) { linkStreamTo('a', e.streamId); return s; } });",
+			Options);
+
+		Assert.NotNull(session.Diagnostics);
+		// Deprecation fires (any call); compat doesn't (2-arg form is fine in upstream).
+		Assert.Contains(session.Diagnostics!, d => d.Code == "deprecated.linkStreamTo");
+		Assert.DoesNotContain(session.Diagnostics!, d => d.Code == KnownBugs.LinkStreamToOutOfBoundsParameters.Code);
+	}
+
+	[Fact]
+	public void LinkStreamTo_ThreeArgs_SuppressedWhenShadowed() {
+		using var session = new ProjectionSession(
+			"function linkStreamTo() {}\n" +
+			"fromAll().when({ $any: function (s, e) { linkStreamTo('a', e.streamId, {}); return s; } });",
+			Options);
+
+		// User's local linkStreamTo masks the upstream bug entirely - no
+		// diagnostics at all (deprecation suppressed too).
+		Assert.Null(session.Diagnostics);
+	}
+
+	// -- compat.log.multiParam --
+
+	[Fact]
+	public void Log_MultipleArgs_EmitsMultiParamWarning() {
+		using var session = new ProjectionSession(
+			"fromAll().when({ $any: function (s, e) { log('a', 'b'); return s; } });",
+			Options);
+
+		Assert.NotNull(session.Diagnostics);
+		Assert.Contains(session.Diagnostics!, d => d.Code == KnownBugs.LogMultiParam.Code);
+	}
+
+	[Fact]
+	public void Log_SingleArg_DoesNotEmitMultiParamWarning() {
+		using var session = new ProjectionSession(
+			"fromAll().when({ $any: function (s, e) { log('hello'); return s; } });",
+			Options);
+
+		// Single-arg log() is fine in upstream; no diagnostic.
+		Assert.Null(session.Diagnostics);
+	}
+
 }

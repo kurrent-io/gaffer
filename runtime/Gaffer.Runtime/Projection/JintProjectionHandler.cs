@@ -50,6 +50,13 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private JsValue _sharedState;
 	private bool _faulted;
 
+	/// <summary>
+	/// Key under which bug-firing branches stash a <c>KnownBugs</c> code on
+	/// <see cref="Exception.Data"/> so <see cref="ProjectionSession"/> can
+	/// pluck it off when wrapping the exception.
+	/// </summary>
+	internal const string CompatCodeDataKey = "GafferCompatCode";
+
 	/// <summary>Fired when execution pauses at a breakpoint or debugger statement. Informational only.</summary>
 	public Action<BreakInfo>? OnBreak { get; set; }
 
@@ -329,14 +336,19 @@ internal sealed class JintProjectionHandler : IDisposable {
 		Dictionary<string, string?>? metadata = null;
 		if (parameters.Length == 3) {
 			if (KnownBugs.LinkStreamToOutOfBoundsParameters.FiresAt(_dbVersion)) {
-				// Reproduce upstream's parameters.At(4) bug: index 4 is out
-				// of bounds for a 3-arg call, returns Undefined, AsObject()
-				// throws. Calling it here gives the byte-identical exception
-				// the user would see in KurrentDB.
-				var md = parameters.At(4).AsObject();
-				metadata = new Dictionary<string, string?>();
-				foreach (var kvp in md.GetOwnProperties())
-					metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, false));
+				try {
+					// Reproduce upstream's parameters.At(4) bug: index 4 is
+					// out of bounds for a 3-arg call, returns Undefined,
+					// AsObject() throws. Calling it here gives the byte-
+					// identical exception the user would see in KurrentDB.
+					var md = parameters.At(4).AsObject();
+					metadata = new Dictionary<string, string?>();
+					foreach (var kvp in md.GetOwnProperties())
+						metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, false));
+				} catch (Exception ex) {
+					ex.Data[CompatCodeDataKey] = KnownBugs.LinkStreamToOutOfBoundsParameters.Code;
+					throw;
+				}
 			} else {
 				metadata = new Dictionary<string, string?>();
 				foreach (var kvp in parameters.At(2).AsObject().GetOwnProperties())
@@ -1491,11 +1503,16 @@ internal sealed class JintProjectionHandler : IDisposable {
 				SetOwnProperty("body", pd);
 				SetOwnProperty("data", pd);
 				if (KnownBugs.EventBodyCast.FiresAt(_parent._dbVersion)) {
-					// Reproduce upstream: out parameter is typed
-					// ObjectInstance, forcing a cast that throws
-					// InvalidCastException when body is null, a number, a
-					// string, or a boolean.
-					objectInstance = (ObjectInstance)body;
+					try {
+						// Reproduce upstream: out parameter is typed
+						// ObjectInstance, forcing a cast that throws
+						// InvalidCastException when body is null, a number,
+						// a string, or a boolean.
+						objectInstance = (ObjectInstance)body;
+					} catch (Exception ex) {
+						ex.Data[CompatCodeDataKey] = KnownBugs.EventBodyCast.Code;
+						throw;
+					}
 				} else {
 					objectInstance = body;
 				}
@@ -1778,10 +1795,13 @@ internal sealed class JintProjectionHandler : IDisposable {
 				case Types.Number:
 					var num = value.AsNumber();
 					if (double.IsNaN(num) || double.IsInfinity(num)) {
-						if (nonFiniteWritesNull)
+						if (nonFiniteWritesNull) {
 							writer.WriteNullValue();
-						else
-							throw new Errors.StateSerializationException($"{num} is not a valid JSON value", "", "", 0);
+						} else {
+							throw new Errors.StateSerializationException($"{num} is not a valid JSON value", "", "", 0) {
+								CompatCode = KnownBugs.SerializeNonFinite.Code,
+							};
+						}
 					} else {
 						writer.WriteNumberValue(num);
 					}

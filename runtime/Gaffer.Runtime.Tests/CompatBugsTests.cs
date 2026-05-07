@@ -82,6 +82,19 @@ public class CompatBugsTests {
 		Assert.Null(e.Metadata);
 	}
 
+	[Fact]
+	public void LinkStreamTo_ThreeArgs_ExceptionCarriesCompatCode() {
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				$any: function (s, e) { linkStreamTo("archive", e.streamId, { reason: "x" }); return s; }
+			});
+		""", Options());
+
+		var ex = Assert.Throws<ProjectionHandlerException>(() =>
+			session.Feed(new ProjectionEvent { EventType = "X", StreamId = "src-1", Data = "{}" }));
+		Assert.Equal(KnownBugs.LinkStreamToOutOfBoundsParameters.Code, ex.CompatCode);
+	}
+
 	// -- log multi-param --
 
 	[Fact]
@@ -187,6 +200,24 @@ public class CompatBugsTests {
 			}));
 	}
 
+	[Fact]
+	public void EventBody_NonObjectData_ExceptionCarriesCompatCode() {
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				Test: function(s, e) { return e.body; }
+			});
+		""", Options());
+
+		var ex = Assert.Throws<ProjectionHandlerException>(() =>
+			session.Feed(new ProjectionEvent {
+				EventType = "Test",
+				StreamId = "s-1",
+				Data = "null",
+				IsJson = true,
+			}));
+		Assert.Equal(KnownBugs.EventBodyCast.Code, ex.CompatCode);
+	}
+
 	// -- BiState PrepareOutput string slot --
 
 	[Fact]
@@ -212,6 +243,25 @@ public class CompatBugsTests {
 
 		// Buggy: JSON-quoted (matches upstream). Clean would emit raw "alice".
 		Assert.Equal("\"alice\"", session.GetState());
+	}
+
+	[Fact]
+	public void StateContainingNaN_ExceptionCarriesCompatCode() {
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				$init: function () { return { value: 0 }; },
+				Test: function (s, e) { s.value = NaN; return s; }
+			});
+		""", Options());
+
+		var ex = Assert.Throws<StateSerializationException>(() =>
+			session.Feed(new ProjectionEvent {
+				EventType = "Test",
+				StreamId = "s-1",
+				Data = "{}",
+				IsJson = true,
+			}));
+		Assert.Equal(KnownBugs.SerializeNonFinite.Code, ex.CompatCode);
 	}
 
 	// -- SerializePrimitive NaN/Infinity --

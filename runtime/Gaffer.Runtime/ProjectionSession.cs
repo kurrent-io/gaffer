@@ -122,7 +122,7 @@ public sealed class ProjectionSession : IDisposable {
 			if (!_sources.AllEvents && _sources.Events != null)
 				_handledEventTypes = new HashSet<string>(_sources.Events, StringComparer.Ordinal);
 
-			_diagnostics = DiagnosticCollector.Scan(source);
+			_diagnostics = DiagnosticCollector.Scan(source, _dbVersion);
 		} catch {
 			_handler.Dispose();
 			throw;
@@ -248,7 +248,7 @@ public sealed class ProjectionSession : IDisposable {
 			throw new StateSerializationException(
 				ex.Description,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
-				ex.InnerException);
+				ex.InnerException) { CompatCode = ex.CompatCode };
 		} catch (Exception ex) when (ex is not ProjectionException) {
 			throw WrapHandlerException(ex, @event, partition);
 		}
@@ -317,7 +317,7 @@ public sealed class ProjectionSession : IDisposable {
 			throw new ProjectionTransformException(
 				ex.Message,
 				ex.JavaScriptStackTrace, line, column,
-				ex) { ProjectionSource = _source };
+				ex) { ProjectionSource = _source, CompatCode = ExtractCompatCode(ex) };
 		} catch (TimeConstraintException ex) {
 			throw new ProjectionTransformException(
 				$"Projection transform took too long to execute ({ex.AllowedMs}ms limit)",
@@ -325,9 +325,9 @@ public sealed class ProjectionSession : IDisposable {
 		} catch (StateSerializationException ex) {
 			throw new ProjectionTransformException(
 				ex.Description,
-				innerException: ex) { ProjectionSource = _source };
+				innerException: ex) { ProjectionSource = _source, CompatCode = ex.CompatCode };
 		} catch (Exception ex) when (ex is not ProjectionException) {
-			throw new ProjectionTransformException(ex.Message, innerException: ex) { ProjectionSource = _source };
+			throw new ProjectionTransformException(ex.Message, innerException: ex) { ProjectionSource = _source, CompatCode = ExtractCompatCode(ex) };
 		}
 	}
 
@@ -335,7 +335,7 @@ public sealed class ProjectionSession : IDisposable {
 
 	private ProjectionException WrapHandlerException(Exception ex, ProjectionEvent @event, string partition) {
 		var part = IsPartitioned ? partition : null;
-		return ex switch {
+		ProjectionException result = ex switch {
 			TimeConstraintException tc => new ExecutionTimeoutException(
 				$"Projection script took too long to execute ({tc.AllowedMs}ms limit)",
 				tc.ElapsedMs, tc.AllowedMs,
@@ -357,6 +357,20 @@ public sealed class ProjectionSession : IDisposable {
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
 				innerException: ex) { ProjectionSource = _source },
 		};
+		result.CompatCode = ExtractCompatCode(ex);
+		return result;
+	}
+
+	/// <summary>
+	/// Walk the exception chain looking for a <c>GafferCompatCode</c> stashed
+	/// on <see cref="Exception.Data"/> by a bug-firing branch in the handler.
+	/// </summary>
+	private static string? ExtractCompatCode(Exception? ex) {
+		for (var cur = ex; cur != null; cur = cur.InnerException) {
+			if (cur.Data[JintProjectionHandler.CompatCodeDataKey] is string code)
+				return code;
+		}
+		return null;
 	}
 
 	/// <summary>Get the partition key that would be computed for an event.</summary>
@@ -425,7 +439,7 @@ public sealed class ProjectionSession : IDisposable {
 			throw new StateSerializationException(
 				ex.Description,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
-				ex.InnerException);
+				ex.InnerException) { CompatCode = ex.CompatCode };
 		} catch (Exception ex) when (ex is not ProjectionException) {
 			throw WrapHandlerException(ex, @event, partition);
 		}

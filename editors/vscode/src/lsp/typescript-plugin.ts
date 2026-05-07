@@ -75,35 +75,43 @@ export function registerTypeScriptPlugin(
 	// events (e.g. the activation push racing the user toggling
 	// injectProjectionTypes) can't both pass the lastConfig check
 	// before either assigns it. Same posture as the manifest reload
-	// chain in extension.ts.
+	// chain in extension.ts - body is try/caught so a transient
+	// failure (e.g. configurePlugin throwing) can't poison the chain
+	// and leave subsequent toggles stuck.
 	let pushChain: Promise<void> = Promise.resolve();
 	const push = (): Promise<void> => {
 		pushChain = pushChain.then(async () => {
-			if (!api) {
-				api = await getTypeScriptApi();
-				if (!api) return;
+			try {
+				if (!api) {
+					api = await getTypeScriptApi();
+					if (!api) return;
+				}
+				const enabled = vscode.workspace
+					.getConfiguration("gaffer")
+					.get<boolean>("injectProjectionTypes", true);
+				const config: PluginConfig = { typesEntryPath, enabled };
+				// Skip configurePlugin when the payload hasn't changed.
+				// configurePlugin triggers a tsserver project reload, which
+				// invalidates user-visible state (open diagnostics, hover,
+				// completions); pushing identical config would churn that
+				// for no reason.
+				if (
+					lastConfig &&
+					lastConfig.typesEntryPath === config.typesEntryPath &&
+					lastConfig.enabled === config.enabled
+				) {
+					return;
+				}
+				lastConfig = config;
+				api.configurePlugin(PLUGIN_ID, config);
+				log(
+					`ts-plugin: configurePlugin enabled=${config.enabled} typesEntryPath=${config.typesEntryPath}`,
+				);
+			} catch (err) {
+				log(
+					`ts-plugin: push failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
-			const enabled = vscode.workspace
-				.getConfiguration("gaffer")
-				.get<boolean>("injectProjectionTypes", true);
-			const config: PluginConfig = { typesEntryPath, enabled };
-			// Skip configurePlugin when the payload hasn't changed.
-			// configurePlugin triggers a tsserver project reload, which
-			// invalidates user-visible state (open diagnostics, hover,
-			// completions); pushing identical config would churn that
-			// for no reason.
-			if (
-				lastConfig &&
-				lastConfig.typesEntryPath === config.typesEntryPath &&
-				lastConfig.enabled === config.enabled
-			) {
-				return;
-			}
-			lastConfig = config;
-			api.configurePlugin(PLUGIN_ID, config);
-			log(
-				`ts-plugin: configurePlugin enabled=${config.enabled} typesEntryPath=${config.typesEntryPath}`,
-			);
 		});
 		return pushChain;
 	};

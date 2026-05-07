@@ -111,4 +111,29 @@ describe("registerTypeScriptPlugin", () => {
 		await flushAllMicrotasks();
 		expect(configurePlugin).not.toHaveBeenCalled();
 	});
+
+	it("recovers from a thrown configurePlugin so future pushes still run", async () => {
+		// Without the try/catch around the push body a single throw
+		// would reject pushChain and silently freeze every subsequent
+		// configuration-change push.
+		const configurePlugin = vi
+			.fn()
+			.mockImplementationOnce(() => {
+				throw new Error("boom");
+			})
+			.mockImplementation(() => {});
+		setExtension(TS_EXT_ID, { getAPI: () => ({ configurePlugin }) });
+		registerTypeScriptPlugin(makeContext());
+		await flushAllMicrotasks();
+		expect(configurePlugin).toHaveBeenCalledTimes(1);
+
+		setConfiguration("gaffer", "injectProjectionTypes", { value: false });
+		fireConfigurationChange(["gaffer.injectProjectionTypes"]);
+		await flushAllMicrotasks();
+		expect(configurePlugin).toHaveBeenCalledTimes(2);
+		expect(configurePlugin).toHaveBeenLastCalledWith(
+			"gaffer-tsserver-plugin",
+			expect.objectContaining({ enabled: false }),
+		);
+	});
 });

@@ -1498,7 +1498,7 @@ packages:
 
   gaffer-tsserver-plugin@file:editors/vscode/tsserver-plugin:
     resolution: {directory: editors/vscode/tsserver-plugin, type: directory}
-    engines: {node: '>=22'}
+    engines: {node: '>=18'}
     peerDependencies:
       typescript: '>=5'
 

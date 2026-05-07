@@ -272,22 +272,30 @@ public class FixtureTests {
 		}
 	}
 
-	// Strict diagnostic assertion: count must match, every expected entry
-	// must appear (matched by code, with optional severity check). Strict
-	// rather than contains so accidental new diagnostics don't slip in
-	// silently.
+	// Strict diagnostic assertion: count must match AND each expected entry
+	// must consume a distinct actual entry (one-to-one). Without the consume
+	// step, an expected `[A, A]` would match an actual `[A, B]` because both
+	// expected entries find the first A and B goes unchecked.
 	private static void AssertDiagnostics(Sdk.Diagnostics.Diagnostic[]? actual, JsonElement expected) {
 		var expectedList = expected.EnumerateArray().ToList();
-		var actualList = actual ?? Array.Empty<Sdk.Diagnostics.Diagnostic>();
-		Assert.Equal(expectedList.Count, actualList.Length);
+		var remaining = (actual ?? Array.Empty<Sdk.Diagnostics.Diagnostic>()).ToList();
+		Assert.Equal(expectedList.Count, remaining.Count);
 		foreach (var exp in expectedList) {
 			var code = exp.GetProperty("code").GetString()!;
-			var match = actualList.FirstOrDefault(d => d.Code == code);
-			Assert.NotNull(match);
-			if (exp.TryGetProperty("severity", out var sevEl)) {
-				var expectedSeverity = ParseSeverity(sevEl.GetString()!);
-				Assert.Equal(expectedSeverity, match!.Severity);
+			Sdk.Diagnostics.DiagnosticSeverity? expectedSeverity = null;
+			if (exp.TryGetProperty("severity", out var sevEl))
+				expectedSeverity = ParseSeverity(sevEl.GetString()!);
+
+			var matchIndex = remaining.FindIndex(d =>
+				d.Code == code &&
+				(expectedSeverity is null || d.Severity == expectedSeverity));
+			if (matchIndex < 0) {
+				Assert.Fail(
+					$"expected diagnostic with code {code}" +
+					(expectedSeverity is { } s ? $" / severity {s}" : "") +
+					$"; remaining: [{string.Join(", ", remaining.Select(d => d.Code))}]");
 			}
+			remaining.RemoveAt(matchIndex);
 		}
 	}
 

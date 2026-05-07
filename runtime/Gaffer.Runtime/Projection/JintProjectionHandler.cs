@@ -265,24 +265,12 @@ internal sealed class JintProjectionHandler : IDisposable {
 			// V2 doesn't apply transformBy/filterBy - state is the result.
 			// JS calls to those functions still register the transforms
 			// (matches upstream V2's silent acceptance), but the engine
-			// never iterates them. For bi-state, upstream V2 writes the
-			// partition slot only (PartitionProcessor writes `newState`
-			// from ProcessEvent, not the [partition, shared] array), so
-			// we mirror that here. See
-			// cli/internal/mcpserver/resources/v1-v2-differences.md.
-			if (_definitionBuilder.IsBiState && _state.IsArray()) {
-				if (!_state.AsArray().TryGetValue(0, out var partitionSlot))
-					return null;
-				// Match the non-bi-state filter and upstream PartitionProcessor's
-				// `if (newState != null)` guard - a null/undefined partition
-				// slot means "don't emit", not "emit JSON null".
-				if (partitionSlot == JsValue.Null || partitionSlot == JsValue.Undefined)
-					return null;
-				return Serialize(partitionSlot);
-			}
-			if (_state == JsValue.Null || _state == JsValue.Undefined)
-				return null;
-			return Serialize(_state);
+			// never iterates them. Reuse PrepareOutput's conversion logic
+			// (string passthrough, bi-state slot 0, BiStateStringSlot bug
+			// gating) so GetResult() returns exactly what GetState() does
+			// under V2. See cli/internal/mcpserver/resources/v1-v2-differences.md.
+			PrepareOutput(out var newState, out _);
+			return newState;
 		}
 		var result = _runtime.TransformStateToResult(_state);
 		if (result == JsValue.Null || result == JsValue.Undefined)

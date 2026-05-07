@@ -96,21 +96,30 @@ function runFixture(f: Fixture) {
 			}
 		}
 
-		// Check diagnostics: strict count match, every expected entry must
-		// appear (matched by code, with optional severity check).
+		// Check diagnostics: strict count match AND each expected entry
+		// must consume a distinct actual entry (one-to-one). Without the
+		// consume step, an expected [A, A] would match an actual [A, B]
+		// because both expected entries find the first A.
 		if (f.expect.diagnostics) {
-			const actual = session.getSources().diagnostics ?? [];
-			expect(actual.length).toBe(f.expect.diagnostics.length);
+			const remaining = [...(session.getSources().diagnostics ?? [])];
+			expect(remaining.length).toBe(f.expect.diagnostics.length);
 			for (const exp of f.expect.diagnostics) {
-				const match = actual.find((d) => d.code === exp.code);
-				if (!match) {
+				const expectedSeverity = exp.severity
+					? SEVERITY_BY_NAME[exp.severity]
+					: undefined;
+				const matchIndex = remaining.findIndex(
+					(d) =>
+						d.code === exp.code &&
+						(expectedSeverity === undefined || d.severity === expectedSeverity),
+				);
+				if (matchIndex < 0) {
 					expect.fail(
-						`expected diagnostic with code ${exp.code}, got: ${actual.map((d) => d.code).join(", ")}`,
+						`expected diagnostic with code ${exp.code}` +
+							(exp.severity ? ` / severity ${exp.severity}` : "") +
+							`; remaining: [${remaining.map((d) => d.code).join(", ")}]`,
 					);
 				}
-				if (exp.severity) {
-					expect(match.severity).toBe(SEVERITY_BY_NAME[exp.severity]);
-				}
+				remaining.splice(matchIndex, 1);
 			}
 		}
 

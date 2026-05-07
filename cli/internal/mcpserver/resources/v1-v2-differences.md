@@ -115,9 +115,28 @@ system projection dependencies can be removed.
 
 ## Transforms
 
-**V1:** `transformBy` and `filterBy` are applied to state before output.
+**V1:** `transformBy(fn)` and `filterBy(fn)` run after each handler. The result
+emitted to the result stream is the transformed/filtered value, not the raw
+state. `outputState()` opts the projection in to result-stream emission.
 
-**V2:** Not yet implemented in the V2 engine - transforms are never called.
-Gaffer calls them regardless of version (ahead of V2), so projections using
-transforms will work in gaffer but may not produce the expected output on a
-V2 KurrentDB server until this is implemented.
+**V2:** Transforms are never invoked. The post-handler state is written
+directly to the result stream by `PartitionProcessor`; there is no transform
+pipeline. `transformBy` / `filterBy` / `outputState` are still callable at
+definition time (the JS calls succeed silently), but the functions passed to
+them never run on events. State emission to the result stream is automatic
+and unconditional - `outputState()` has no effect.
+
+**Impact:** A V2 projection that calls `transformBy` to derive a result will
+get the post-handler state back instead. Likewise for `filterBy` exclusion
+predicates. `outputState()` is redundant - state is always emitted.
+
+Gaffer matches this behaviour by design and surfaces the gap as compile-time
+diagnostics so you find it before the result stream surprises you:
+
+* `compat.transforms.notApplied` (Warning) on `transformBy` / `filterBy`
+  calls when `engine_version=2`.
+* `compat.outputState.implicit` (Hint) on `outputState()` calls when
+  `engine_version=2`.
+
+<!-- TODO: cite engine-v2.md once it lands on KurrentDB master. -->
+

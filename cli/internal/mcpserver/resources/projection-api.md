@@ -140,8 +140,11 @@ Returns a chain with only `when`.
 
 ### .outputState()
 
-Write projection state to the result stream `$projections-{name}-result` after
-each event is processed. Without this, state is only held in memory.
+**V1:** Write projection state to the result stream `$projections-{name}-result`
+after each event is processed. Without this, state is only held in memory.
+
+**V2:** No effect - state is always written to the result stream regardless.
+Calls under `engine_version=2` emit `compat.outputState.implicit` (Hint).
 
 ```javascript
 fromCategory('order')
@@ -154,8 +157,12 @@ Returns a chain with: `transformBy`, `filterBy`, `outputTo`.
 
 ### .transformBy(fn)
 
-Transform the state before it is output. Does not affect the state seen by handlers -
-only the output representation. Can be chained multiple times.
+**V1:** Transform the state before it is output. Does not affect the state seen
+by handlers - only the output representation. Can be chained multiple times.
+
+**V2:** Not invoked. The function is registered at definition time but never
+runs on events; the result stream receives post-handler state. Calls under
+`engine_version=2` emit `compat.transforms.notApplied` (Warning).
 
 ```javascript
 .when({ ... })
@@ -171,8 +178,12 @@ The return type becomes the new output state type. Returns a chain with:
 
 ### .filterBy(fn)
 
-Filter output by a predicate. When the predicate returns false, the result is
-suppressed (null is output instead).
+**V1:** Filter output by a predicate. When the predicate returns false, the
+result is suppressed (null is output instead).
+
+**V2:** Not invoked. The function is registered at definition time but never
+runs on events; the result stream receives post-handler state. Calls under
+`engine_version=2` emit `compat.transforms.notApplied` (Warning).
 
 ```javascript
 .when({ ... })

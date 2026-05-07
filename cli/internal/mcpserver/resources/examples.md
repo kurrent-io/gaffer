@@ -184,11 +184,16 @@ fromCategory('order')
 })
 ```
 
-## Transform and filter
+## Transform and filter (V1 only)
 
 Compute a derived view from raw state using `transformBy`, then suppress results
-below a threshold with `filterBy`. Transforms don't affect handler state - only
-the output.
+below a threshold with `filterBy`. Transforms run after each handler and the
+result emitted to the result stream is the transformed value, not the raw state.
+
+**V2 doesn't apply transforms** - `transformBy` / `filterBy` calls are
+silently registered but never invoked. Set `engine_version = 1` for projections
+that depend on transform behaviour. Gaffer surfaces this as
+`compat.transforms.notApplied` (Warning) under V2 - see `v1-v2-differences`.
 
 ```javascript
 fromCategory('order')

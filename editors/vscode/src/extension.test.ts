@@ -124,6 +124,42 @@ describe("activate registrations", () => {
 			"gaffer.stopDebug",
 		]);
 	});
+
+	it("registers the gaffer MCP server definition provider", async () => {
+		await activateBare();
+		const ids = getState().mcpProviders.map((p) => p.id);
+		expect(ids).toEqual(["gaffer"]);
+	});
+
+	it("refreshes the MCP provider on workspace trust grant", async () => {
+		await activateBare();
+		const provider = getState().mcpProviders[0]?.provider;
+		if (!provider) throw new Error("no MCP provider registered");
+		const listener = vi.fn();
+		provider.onDidChangeMcpServerDefinitions?.(listener);
+		fireWorkspaceTrustGranted();
+		expect(listener).toHaveBeenCalled();
+	});
+
+	it("refreshes the MCP provider on workspace folder changes", async () => {
+		await activateBare();
+		const provider = getState().mcpProviders[0]?.provider;
+		if (!provider) throw new Error("no MCP provider registered");
+		const listener = vi.fn();
+		provider.onDidChangeMcpServerDefinitions?.(listener);
+		getState().workspaceFoldersChanged.fire({ added: [], removed: [] });
+		expect(listener).toHaveBeenCalled();
+	});
+
+	it("refreshes the MCP provider when gaffer.command changes", async () => {
+		await activateBare();
+		const provider = getState().mcpProviders[0]?.provider;
+		if (!provider) throw new Error("no MCP provider registered");
+		const listener = vi.fn();
+		provider.onDidChangeMcpServerDefinitions?.(listener);
+		fireConfigurationChange(["gaffer.command"]);
+		expect(listener).toHaveBeenCalled();
+	});
 });
 
 describe("createDebugAdapterDescriptor", () => {

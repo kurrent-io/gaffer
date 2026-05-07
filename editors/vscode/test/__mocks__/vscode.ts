@@ -628,6 +628,11 @@ export interface MockState {
 	configurationChanged: EventEmitter<vscode.ConfigurationChangeEvent>;
 	workspaceTrustGranted: EventEmitter<void>;
 	textDocumentChanged: EventEmitter<vscode.TextDocumentChangeEvent>;
+	workspaceFoldersChanged: EventEmitter<vscode.WorkspaceFoldersChangeEvent>;
+	mcpProviders: Array<{
+		id: string;
+		provider: vscode.McpServerDefinitionProvider;
+	}>;
 	registeredCodeActionProviders: Array<{
 		selector: unknown;
 		provider: unknown;
@@ -673,6 +678,8 @@ function createInitialState(): MockState {
 		configurationChanged: new EventEmitter(),
 		workspaceTrustGranted: new EventEmitter(),
 		textDocumentChanged: new EventEmitter(),
+		workspaceFoldersChanged: new EventEmitter(),
+		mcpProviders: [],
 		registeredCodeActionProviders: [],
 		debugStarted: new EventEmitter(),
 		debugTerminated: new EventEmitter(),
@@ -765,6 +772,7 @@ type WorkspaceShape = Pick<
 	| "onDidChangeConfiguration"
 	| "onDidGrantWorkspaceTrust"
 	| "onDidChangeTextDocument"
+	| "onDidChangeWorkspaceFolders"
 >;
 
 export const workspace: WorkspaceShape = {
@@ -838,6 +846,12 @@ export const workspace: WorkspaceShape = {
 			thisArgs,
 			disposables,
 		)) as typeof vscode.workspace.onDidChangeTextDocument,
+	onDidChangeWorkspaceFolders: ((listener, thisArgs, disposables) =>
+		state.workspaceFoldersChanged.event(
+			listener,
+			thisArgs,
+			disposables,
+		)) as typeof vscode.workspace.onDidChangeWorkspaceFolders,
 };
 
 // ---- window ---------------------------------------------------------------
@@ -1087,4 +1101,65 @@ type ExtensionsShape = Pick<typeof vscode.extensions, "getExtension">;
 export const extensions: ExtensionsShape = {
 	getExtension: ((id: string) =>
 		state.extensions.get(id)) as typeof vscode.extensions.getExtension,
+};
+
+// ---- lm + MCP -------------------------------------------------------------
+
+export class McpStdioServerDefinition
+	implements vscode.McpStdioServerDefinition
+{
+	readonly label: string;
+	command: string;
+	args: string[];
+	env: Record<string, string | number | null>;
+	cwd?: vscode.Uri;
+	version?: string;
+	constructor(
+		label: string,
+		command: string,
+		args: string[] = [],
+		env: Record<string, string | number | null> = {},
+		version?: string,
+	) {
+		this.label = label;
+		this.command = command;
+		this.args = args;
+		this.env = env;
+		if (version !== undefined) this.version = version;
+	}
+}
+
+export class McpHttpServerDefinition implements vscode.McpHttpServerDefinition {
+	readonly label: string;
+	uri: vscode.Uri;
+	headers: Record<string, string>;
+	version?: string;
+	constructor(
+		label: string,
+		uri: vscode.Uri,
+		headers: Record<string, string> = {},
+		version?: string,
+	) {
+		this.label = label;
+		this.uri = uri;
+		this.headers = headers;
+		if (version !== undefined) this.version = version;
+	}
+}
+
+type LmShape = Pick<typeof vscode.lm, "registerMcpServerDefinitionProvider">;
+
+export const lm: LmShape = {
+	registerMcpServerDefinitionProvider: ((
+		id: string,
+		provider: vscode.McpServerDefinitionProvider,
+	) => {
+		state.mcpProviders.push({ id, provider });
+		return {
+			dispose: () => {
+				const i = state.mcpProviders.findIndex((p) => p.provider === provider);
+				if (i >= 0) state.mcpProviders.splice(i, 1);
+			},
+		};
+	}) as typeof vscode.lm.registerMcpServerDefinitionProvider,
 };

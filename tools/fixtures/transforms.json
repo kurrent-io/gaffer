@@ -89,7 +89,11 @@
 			},
 			"result": {
 				"count": 1
-			}
+			},
+			"diagnostics": [
+				{ "code": "compat.transforms.notInvoked", "severity": "warning" },
+				{ "code": "compat.outputState.unconditional", "severity": "hint" }
+			]
 		},
 		"options": {
 			"engineVersion": 2
@@ -115,7 +119,11 @@
 			},
 			"result": {
 				"count": 1
-			}
+			},
+			"diagnostics": [
+				{ "code": "compat.transforms.notInvoked", "severity": "warning" },
+				{ "code": "compat.outputState.unconditional", "severity": "hint" }
+			]
 		},
 		"options": {
 			"engineVersion": 2
@@ -129,7 +137,10 @@
 			"sources": {
 				"producesResults": true,
 				"definesStateTransform": false
-			}
+			},
+			"diagnostics": [
+				{ "code": "compat.outputState.unconditional", "severity": "hint" }
+			]
 		},
 		"options": {
 			"engineVersion": 2
@@ -143,7 +154,11 @@
 			"sources": {
 				"definesStateTransform": true,
 				"producesResults": true
-			}
+			},
+			"diagnostics": [
+				{ "code": "compat.transforms.notInvoked", "severity": "warning" },
+				{ "code": "compat.outputState.unconditional", "severity": "hint" }
+			]
 		},
 		"options": {
 			"engineVersion": 2

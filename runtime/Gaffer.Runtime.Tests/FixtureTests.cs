@@ -72,6 +72,9 @@ public class FixtureTests {
 		if (expect.TryGetProperty("sources", out var sourcesEl))
 			AssertSources(session.Sources, sourcesEl);
 
+		if (expect.TryGetProperty("diagnostics", out var diagnosticsEl))
+			AssertDiagnostics(session.Diagnostics, diagnosticsEl);
+
 		if (fixture.TryGetProperty("setState", out var setStateEl)) {
 			var partition = setStateEl.GetProperty("partition");
 			var stateJson = setStateEl.GetProperty("state").GetString()!;
@@ -268,6 +271,33 @@ public class FixtureTests {
 			}
 		}
 	}
+
+	// Strict diagnostic assertion: count must match, every expected entry
+	// must appear (matched by code, with optional severity check). Strict
+	// rather than contains so accidental new diagnostics don't slip in
+	// silently.
+	private static void AssertDiagnostics(Sdk.Diagnostics.Diagnostic[]? actual, JsonElement expected) {
+		var expectedList = expected.EnumerateArray().ToList();
+		var actualList = actual ?? Array.Empty<Sdk.Diagnostics.Diagnostic>();
+		Assert.Equal(expectedList.Count, actualList.Length);
+		foreach (var exp in expectedList) {
+			var code = exp.GetProperty("code").GetString()!;
+			var match = actualList.FirstOrDefault(d => d.Code == code);
+			Assert.NotNull(match);
+			if (exp.TryGetProperty("severity", out var sevEl)) {
+				var expectedSeverity = ParseSeverity(sevEl.GetString()!);
+				Assert.Equal(expectedSeverity, match!.Severity);
+			}
+		}
+	}
+
+	private static Sdk.Diagnostics.DiagnosticSeverity ParseSeverity(string s) => s switch {
+		"error" => Sdk.Diagnostics.DiagnosticSeverity.Error,
+		"warning" => Sdk.Diagnostics.DiagnosticSeverity.Warning,
+		"information" => Sdk.Diagnostics.DiagnosticSeverity.Information,
+		"hint" => Sdk.Diagnostics.DiagnosticSeverity.Hint,
+		_ => throw new ArgumentException($"Unknown severity in fixture: {s} (expected error|warning|information|hint)"),
+	};
 
 	private static void AssertError(JsonElement expected, ProjectionException actual) {
 		if (expected.TryGetProperty("code", out var code))

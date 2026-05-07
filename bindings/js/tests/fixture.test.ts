@@ -11,6 +11,13 @@ interface FixtureError {
 
 import type { SessionOptions } from "../src/types.js";
 
+type DiagnosticSeverityName = "error" | "warning" | "information" | "hint";
+
+interface FixtureDiagnostic {
+	code: string;
+	severity?: DiagnosticSeverityName;
+}
+
 interface Fixture {
 	name: string;
 	source: string;
@@ -27,8 +34,16 @@ interface Fixture {
 		logs?: string[];
 		error?: FixtureError;
 		getResult?: boolean;
+		diagnostics?: FixtureDiagnostic[];
 	};
 }
+
+const SEVERITY_BY_NAME: Record<DiagnosticSeverityName, number> = {
+	error: 1,
+	warning: 2,
+	information: 3,
+	hint: 4,
+};
 
 function loadFixtures(filename: string): Fixture[] {
 	const path = join(__dirname, "..", "..", "..", "tools", "fixtures", filename);
@@ -78,6 +93,24 @@ function runFixture(f: Fixture) {
 				expect((sources as unknown as Record<string, unknown>)[key]).toEqual(
 					expected,
 				);
+			}
+		}
+
+		// Check diagnostics: strict count match, every expected entry must
+		// appear (matched by code, with optional severity check).
+		if (f.expect.diagnostics) {
+			const actual = session.getSources().diagnostics ?? [];
+			expect(actual.length).toBe(f.expect.diagnostics.length);
+			for (const exp of f.expect.diagnostics) {
+				const match = actual.find((d) => d.code === exp.code);
+				if (!match) {
+					expect.fail(
+						`expected diagnostic with code ${exp.code}, got: ${actual.map((d) => d.code).join(", ")}`,
+					);
+				}
+				if (exp.severity) {
+					expect(match.severity).toBe(SEVERITY_BY_NAME[exp.severity]);
+				}
 			}
 		}
 

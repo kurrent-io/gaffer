@@ -1,0 +1,19 @@
+{
+	"name": "@kurrent/projections-types",
+	"version": "0.1.0",
+	"description": "TypeScript declarations for KurrentDB projection globals (fromStream, when, emit, ...). Consumed by the gaffer VS Code tsserver plugin to provide autocomplete + hover in user-authored projection .js files.",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"check": "prettier --check .",
+		"test": "tsc --noEmit",
+		"fix": "prettier --write ."
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"devDependencies": {
+		"prettier": "^3.6.2",
+		"typescript": "^5.9.3"
+	}
+}

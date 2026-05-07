@@ -7,6 +7,7 @@ using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Events;
 using Gaffer.Runtime.Projection;
 using Gaffer.Sdk;
+using Gaffer.Sdk.Versioning;
 
 namespace Gaffer.Runtime;
 
@@ -45,6 +46,8 @@ internal static unsafe class NativeExports {
 		writer.WriteString("description", ex.Description);
 		if (ex.Message != ex.Description)
 			writer.WriteString("message", ex.Message);
+		if (ex.CompatCode != null)
+			writer.WriteString("compatCode", ex.CompatCode);
 
 		switch (ex) {
 			case InvalidProjectionException ip:
@@ -711,9 +714,44 @@ internal static unsafe class NativeExports {
 			NativeMemory.Free(ptr);
 	}
 
+	/// <summary>
+	/// Returns the registry of known bugs as a JSON array of
+	/// <c>{ code, description, fixedIn? }</c> objects. <c>fixedIn</c> is a
+	/// MAJOR.MINOR.PATCH string when set, omitted otherwise. Caller frees.
+	/// <para>
+	/// Infallible by construction - the registry is static data with no user
+	/// input. Returns <c>null</c> only on allocation failure.
+	/// </para>
+	/// </summary>
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_known_bugs")]
+	public static byte* KnownBugs() {
+		try {
+			return AllocUtf8(SerializeKnownBugs());
+		} catch {
+			return null;
+		}
+	}
+
+	internal static string SerializeKnownBugs() {
+		using var stream = new System.IO.MemoryStream();
+		using var writer = new Utf8JsonWriter(stream);
+		writer.WriteStartArray();
+		foreach (var bug in Sdk.Versioning.KnownBugs.All) {
+			writer.WriteStartObject();
+			writer.WriteString("code", bug.Code);
+			writer.WriteString("description", bug.Description);
+			if (bug.FixedIn != null)
+				writer.WriteString("fixedIn", bug.FixedIn.ToString());
+			writer.WriteEndObject();
+		}
+		writer.WriteEndArray();
+		writer.Flush();
+		return Encoding.UTF8.GetString(stream.ToArray());
+	}
+
 	// -- Helpers --
 
-	private static ProjectionSessionOptions ParseOptions(string? json) {
+	internal static ProjectionSessionOptions ParseOptions(string? json) {
 		if (string.IsNullOrEmpty(json))
 			throw new InvalidArgumentException(
 				"options are required. engineVersion must be set to 1 or 2.",
@@ -723,6 +761,7 @@ internal static unsafe class NativeExports {
 		var root = doc.RootElement;
 		return new ProjectionSessionOptions {
 			EngineVersion = ParseEngineVersion(root),
+			DbVersion = ParseDbVersion(root),
 			CompilationTimeout = TimeSpan.FromMilliseconds(
 				root.TryGetProperty("compilationTimeoutMs", out var ct) ? ct.GetInt32() : 5000),
 			ExecutionTimeout = TimeSpan.FromMilliseconds(
@@ -743,6 +782,23 @@ internal static unsafe class NativeExports {
 				$"Unknown engineVersion: {n}. Expected 1 or 2.",
 				"engineVersion"),
 		};
+	}
+
+	private static KurrentDbVersion? ParseDbVersion(JsonElement root) {
+		if (!root.TryGetProperty("dbVersion", out var v) || v.ValueKind == JsonValueKind.Null)
+			return null;
+		if (v.ValueKind != JsonValueKind.String)
+			throw new InvalidArgumentException(
+				"dbVersion must be a string in MAJOR.MINOR.PATCH form (e.g. \"26.1.0\").",
+				"dbVersion");
+		var s = v.GetString();
+		if (string.IsNullOrEmpty(s))
+			return null;
+		if (!KurrentDbVersion.TryParse(s, out var version))
+			throw new InvalidArgumentException(
+				$"Invalid dbVersion '{s}'. Expected MAJOR.MINOR.PATCH (e.g. 26.1.0).",
+				"dbVersion");
+		return version;
 	}
 
 	internal static ProjectionEvent ParseEvent(string json) {

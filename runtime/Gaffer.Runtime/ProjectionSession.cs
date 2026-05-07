@@ -4,6 +4,7 @@ using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Events;
 using Gaffer.Runtime.Projection;
 using Gaffer.Sdk.Diagnostics;
+using Gaffer.Sdk.Versioning;
 using Jint;
 using Jint.Runtime;
 
@@ -22,6 +23,7 @@ public sealed class ProjectionSession : IDisposable {
 	private readonly HashSet<string>? _handledEventTypes;
 	private string? _sharedState;
 	private readonly ProjectionVersion _version;
+	private readonly KurrentDbVersion? _dbVersion;
 	private bool _sharedStateInitialized;
 	private List<EmittedEvent> _pendingEmitted = new();
 	private List<string> _pendingLogs = new();
@@ -55,6 +57,17 @@ public sealed class ProjectionSession : IDisposable {
 		_source = source;
 		var opts = options;
 		_version = opts.EngineVersion;
+		_dbVersion = opts.DbVersion;
+
+		// V2 engine doesn't exist in DB versions before its introduction.
+		// Reject up-front so the user gets a clear error instead of mysterious
+		// downstream failures. Unversioned (null DbVersion) is permissive -
+		// matches the unversioned-defaults model.
+		if (_version == ProjectionVersion.V2 && !KnownFeatures.ProjectionsV2.AvailableAt(_dbVersion)) {
+			throw new InvalidArgumentException(
+				$"V2 engine requires KurrentDB {KnownFeatures.ProjectionsV2.IntroducedIn} or later; got {_dbVersion}.",
+				nameof(ProjectionSessionOptions.DbVersion));
+		}
 
 		try {
 			_handler = new JintProjectionHandler(
@@ -466,6 +479,14 @@ public enum ProjectionVersion {
 public sealed class ProjectionSessionOptions {
 	/// <summary>Projection engine version. Required.</summary>
 	public required ProjectionVersion EngineVersion { get; init; }
+
+	/// <summary>
+	/// Target KurrentDB version. <c>null</c> (default) means "unversioned":
+	/// gaffer reproduces every known upstream bug and permits every feature,
+	/// matching prod warts and all. Set explicitly to opt out of bugs that
+	/// have been fixed upstream as of the given version.
+	/// </summary>
+	public KurrentDbVersion? DbVersion { get; init; }
 
 	/// <summary>Maximum time for JS compilation. Default: 5 seconds.</summary>
 	public TimeSpan CompilationTimeout { get; init; } = TimeSpan.FromSeconds(5);

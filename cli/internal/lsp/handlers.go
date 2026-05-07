@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sort"
 	"strings"
 
 	"github.com/sourcegraph/jsonrpc2"
@@ -46,8 +45,6 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 		return s.handleDidChangeWatchedFiles(ctx, req)
 	case MethodProjectionDetails:
 		return s.handleProjectionDetails(req)
-	case MethodProjectionEntryPaths:
-		return s.handleProjectionEntryPaths()
 	default:
 		// $/-prefixed messages are optional per the LSP spec.
 		// Notifications must be silently ignored; requests get the
@@ -269,33 +266,6 @@ func (s *Server) handleProjectionDetails(req *jsonrpc2.Request) (interface{}, er
 		}, nil
 	}
 	return ProjectionDetailsResult{Fixtures: []string{}}, nil
-}
-
-// handleProjectionEntryPaths returns the absolute paths of every
-// valid projection's entry .js across the workspace. Powers the
-// VS Code tsserver plugin's projection-files allowlist.
-//
-// Deduplicated and alphabetically sorted so the client doesn't need
-// to canonicalise; identical entry paths declared in two tomls (which
-// would itself be a config error caught elsewhere) collapse into one.
-// Projections with a header-level diagnostic are skipped via
-// validProjections - their EntryAbsPath either isn't set or wouldn't
-// resolve safely.
-func (s *Server) handleProjectionEntryPaths() (interface{}, error) {
-	seen := make(map[string]struct{})
-	for parse, p := range validProjections(s.docs.AllParses()) {
-		_ = parse
-		if p.EntryAbsPath == "" {
-			continue
-		}
-		seen[p.EntryAbsPath] = struct{}{}
-	}
-	paths := make([]string, 0, len(seen))
-	for path := range seen {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
-	return ProjectionEntryPathsResult{Paths: paths}, nil
 }
 
 func (s *Server) handleShutdown() (interface{}, error) {

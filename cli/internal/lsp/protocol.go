@@ -40,13 +40,6 @@ const (
 	// to drive the Run Projection picker (live vs fixture). Editors
 	// without this knowledge (zed, neovim) just default to live.
 	MethodProjectionDetails = "gaffer/projectionDetails"
-
-	// MethodProjectionEntryPaths is a gaffer-specific extension.
-	// Returns the absolute filesystem paths of every valid
-	// projection entry .js across the workspace. The VS Code
-	// tsserver plugin uses this to scope projection-types injection
-	// to actual projection files.
-	MethodProjectionEntryPaths = "gaffer/projectionEntryPaths"
 )
 
 // LSP intent codes for code lenses. Per the LSP plan, the server
@@ -388,17 +381,6 @@ type ProjectionDetailsParams struct {
 type ProjectionDetailsResult struct {
 	Connection *string  `json:"connection"`
 	Fixtures   []string `json:"fixtures"`
-}
-
-// ProjectionEntryPathsResult is the response payload for the
-// gaffer/projectionEntryPaths request. Paths is a deduplicated,
-// alphabetically sorted list of absolute entry-script paths for every
-// valid projection across every cached gaffer.toml in the workspace.
-// Projections with a header-level diagnostic (missing name, escape,
-// duplicate name, etc.) are excluded - their entry path either doesn't
-// exist or wouldn't resolve safely.
-type ProjectionEntryPathsResult struct {
-	Paths []string `json:"paths"`
 }
 
 // FileSystemWatcher is one entry in

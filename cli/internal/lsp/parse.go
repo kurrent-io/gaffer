@@ -53,13 +53,21 @@ func (s *Server) parseAndPublish(ctx context.Context, uri string) {
 	if !applied {
 		return
 	}
-	s.publishDiagnostics(uri, emitDiagnostics(desc))
 	// A new parse may have changed which entry scripts are
 	// projection entries (or shifted projection metadata). Open
 	// .js buffers showing entry-script lenses derived from the
 	// old parse must refresh - publishDiagnostics on the toml
 	// only refreshes the toml's own lenses, not any .js URI's.
+	//
+	// Fired BEFORE publishDiagnostics: the refresh is a
+	// fire-and-forget goroutine spawn, but publishDiagnostics
+	// holds the conn write lock for its entire wire write. Under
+	// contention (concurrent server-side conn.Call or a slow
+	// client), publishDiagnostics can stall; ordering it after
+	// the refresh keeps the .js lens invalidation off that
+	// critical path.
 	s.requestCodeLensRefresh()
+	s.publishDiagnostics(uri, emitDiagnostics(desc))
 }
 
 // publishDiagnostics sends a textDocument/publishDiagnostics

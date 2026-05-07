@@ -178,15 +178,23 @@ func (s *Server) handleDidClose(req *jsonrpc2.Request) (interface{}, error) {
 		hadParse = true
 	}
 	s.docs.Close(params.TextDocument.URI)
-	// Clear any lingering diagnostics for this URI so the editor's
-	// Problems panel doesn't show squiggles for a file that's no
-	// longer open.
-	s.publishDiagnostics(params.TextDocument.URI, []lspDiagnostic{})
+	// Fire the refresh BEFORE publishDiagnostics. publishDiagnostics
+	// is a synchronous conn.Notify holding the conn write lock for
+	// the duration of the wire write; if it blocks (slow client, or
+	// a concurrent server-side conn.Call holding the lock),
+	// requestCodeLensRefresh would be gated on it. Refresh is
+	// fire-and-forget on a separate goroutine, so spawning it first
+	// keeps the .js entry-script lens invalidation off the
+	// publishDiagnostics critical path.
 	if hadParse {
 		// A cached parse just went away; any .js URI whose
 		// lenses depended on its projections is stale.
 		s.requestCodeLensRefresh()
 	}
+	// Clear any lingering diagnostics for this URI so the editor's
+	// Problems panel doesn't show squiggles for a file that's no
+	// longer open.
+	s.publishDiagnostics(params.TextDocument.URI, []lspDiagnostic{})
 	return nil, nil
 }
 

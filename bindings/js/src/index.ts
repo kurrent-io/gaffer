@@ -1,4 +1,6 @@
 export { ProjectionSession } from "./session.js";
+export { knownBugs } from "./knownBugs.js";
+export type { KnownBug } from "./knownBugs.js";
 export {
 	ProjectionError,
 	InvalidProjectionError,

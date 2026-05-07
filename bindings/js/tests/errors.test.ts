@@ -273,13 +273,14 @@ describe("Error types", () => {
 	});
 
 	it("ProjectionTransformError", () => {
+		// V1 only - V2 doesn't iterate transforms, so the throw is dead code.
 		const source = `fromAll().when({
 			$init() { return {}; },
 			Test(s, e) { return s; }
 		}).transformBy(function(s) {
 			throw new Error("transform failed");
 		}).outputState()`;
-		const session = new ProjectionSession(source, { engineVersion: 2 });
+		const session = new ProjectionSession(source, { engineVersion: 1 });
 		try {
 			session.feed(event);
 			session.getResult();

@@ -433,14 +433,19 @@ func TestBiStateSharedState(t *testing.T) {
 }
 
 func TestGetResultWithTransformBy(t *testing.T) {
-	session := mustCreateSession(t, `
+	// V1 only - V2 doesn't iterate transforms; result == post-handler state.
+	session, err := NewSession(`
 		fromAll().when({
 			$init() { return { count: 0 }; },
 			Ping(s, e) { s.count++; return s; }
 		}).transformBy(function(s) {
 			return { total: s.count * 2 };
 		}).outputState()
-	`)
+	`, &v1Opts)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
+	}
+	t.Cleanup(func() { session.Destroy() })
 
 	mustFeed(t, session, `{"eventType":"Ping","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 

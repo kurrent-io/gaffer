@@ -131,6 +131,7 @@ public class FeedResultTests {
 
 	[Fact]
 	public void Result_reflects_transformBy() {
+		// V1 only - V2 doesn't iterate transforms; see V2ConformanceTests.
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return { count: 0 }; },
@@ -138,7 +139,7 @@ public class FeedResultTests {
             }).transformBy(function(s) {
                 return { doubled: s.count * 2 };
             }).outputState()
-        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V1 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
@@ -148,6 +149,7 @@ public class FeedResultTests {
 
 	[Fact]
 	public void Result_null_when_filterBy_excludes() {
+		// V1 only - V2 doesn't iterate transforms; see V2ConformanceTests.
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return { count: 0 }; },
@@ -155,7 +157,7 @@ public class FeedResultTests {
             }).filterBy(function(s) {
                 return s.count >= 3;
             }).outputState()
-        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V1 });
 
 		var result = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 

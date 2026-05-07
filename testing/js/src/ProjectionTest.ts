@@ -36,7 +36,7 @@ export interface ProcessedStepResult<
 	status: "processed";
 	/** Projection state for the affected partition. */
 	state: TState;
-	/** Transformed result (after `transformBy`/`filterBy`), or state if no transform is defined. */
+	/** Result for the affected partition. V1: transformed state (after `transformBy`/`filterBy`), or state if no transform. V2: post-handler state (transforms aren't invoked). */
 	result: TResult;
 	/** Shared state for biState projections. */
 	sharedState: TSharedState;
@@ -161,7 +161,7 @@ export class ProjectionTest<
 		return this.#session.getSharedStateJson<TSharedState>() ?? null;
 	}
 
-	/** Get the transformed result (after `transformBy`/`filterBy`) for a partition, or state if no transform is defined. */
+	/** Get the result for a partition. V1: transformed state (after `transformBy`/`filterBy`), or state if no transform. V2: post-handler state (transforms aren't invoked). */
 	getResult(
 		/** Partition key. */
 		partition?: string,

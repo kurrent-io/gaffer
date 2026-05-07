@@ -72,6 +72,9 @@ public class FixtureTests {
 		if (expect.TryGetProperty("sources", out var sourcesEl))
 			AssertSources(session.Sources, sourcesEl);
 
+		if (expect.TryGetProperty("diagnostics", out var diagnosticsEl))
+			AssertDiagnostics(session.Diagnostics, diagnosticsEl);
+
 		if (fixture.TryGetProperty("setState", out var setStateEl)) {
 			var partition = setStateEl.GetProperty("partition");
 			var stateJson = setStateEl.GetProperty("state").GetString()!;
@@ -268,6 +271,41 @@ public class FixtureTests {
 			}
 		}
 	}
+
+	// Strict diagnostic assertion: count must match AND each expected entry
+	// must consume a distinct actual entry (one-to-one). Without the consume
+	// step, an expected `[A, A]` would match an actual `[A, B]` because both
+	// expected entries find the first A and B goes unchecked.
+	private static void AssertDiagnostics(Sdk.Diagnostics.Diagnostic[]? actual, JsonElement expected) {
+		var expectedList = expected.EnumerateArray().ToList();
+		var remaining = (actual ?? Array.Empty<Sdk.Diagnostics.Diagnostic>()).ToList();
+		Assert.Equal(expectedList.Count, remaining.Count);
+		foreach (var exp in expectedList) {
+			var code = exp.GetProperty("code").GetString()!;
+			Sdk.Diagnostics.DiagnosticSeverity? expectedSeverity = null;
+			if (exp.TryGetProperty("severity", out var sevEl))
+				expectedSeverity = ParseSeverity(sevEl.GetString()!);
+
+			var matchIndex = remaining.FindIndex(d =>
+				d.Code == code &&
+				(expectedSeverity is null || d.Severity == expectedSeverity));
+			if (matchIndex < 0) {
+				Assert.Fail(
+					$"expected diagnostic with code {code}" +
+					(expectedSeverity is { } s ? $" / severity {s}" : "") +
+					$"; remaining: [{string.Join(", ", remaining.Select(d => d.Code))}]");
+			}
+			remaining.RemoveAt(matchIndex);
+		}
+	}
+
+	private static Sdk.Diagnostics.DiagnosticSeverity ParseSeverity(string s) => s switch {
+		"error" => Sdk.Diagnostics.DiagnosticSeverity.Error,
+		"warning" => Sdk.Diagnostics.DiagnosticSeverity.Warning,
+		"information" => Sdk.Diagnostics.DiagnosticSeverity.Information,
+		"hint" => Sdk.Diagnostics.DiagnosticSeverity.Hint,
+		_ => throw new ArgumentException($"Unknown severity in fixture: {s} (expected error|warning|information|hint)"),
+	};
 
 	private static void AssertError(JsonElement expected, ProjectionException actual) {
 		if (expected.TryGetProperty("code", out var code))

@@ -265,6 +265,7 @@ describe("ProjectionTest", () => {
 	});
 
 	it("returns result with transformBy", () => {
+		// V1 only - V2 doesn't iterate transforms.
 		const test = new ProjectionTest<{ count: number }, { total: number }>(
 			`
 			fromAll().when({
@@ -274,7 +275,7 @@ describe("ProjectionTest", () => {
 				return { total: s.count * 2 };
 			}).outputState()
 		`,
-			{ engineVersion: 2 },
+			{ engineVersion: 1 },
 		);
 
 		const step = test.feed({

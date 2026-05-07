@@ -436,10 +436,16 @@ public class V2ConformanceTests {
 		Assert.Null(session.GetSharedState());
 	}
 
-	// -- transformBy / filterBy --
+	// -- transformBy / filterBy / outputState --
+	//
+	// V2 doesn't iterate _transforms; result == post-handler state. JS calls
+	// to transformBy / filterBy / outputState succeed silently (matches
+	// upstream V2's JintProjectionStateHandler which still registers them),
+	// but the engine never invokes them on events. See
+	// cli/internal/mcpserver/resources/v1-v2-differences.md.
 
 	[Fact]
-	public void V2_transformBy_affects_result() {
+	public void V2_transformBy_not_applied() {
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return { count: 0 }; },
@@ -452,16 +458,14 @@ public class V2ConformanceTests {
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
-		Assert.Contains("\"count\":2", session.GetState()!);
-
-		var result = session.GetResult();
-		Assert.NotNull(result);
-		Assert.Contains("\"total\":4", result);
-		Assert.DoesNotContain("count", result);
+		// State == result; transform never ran.
+		Assert.Equal(session.GetState(), session.GetResult());
+		Assert.Contains("\"count\":2", session.GetResult()!);
+		Assert.DoesNotContain("total", session.GetResult()!);
 	}
 
 	[Fact]
-	public void V2_filterBy_excludes_result() {
+	public void V2_filterBy_not_applied() {
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return { count: 0 }; },
@@ -471,20 +475,16 @@ public class V2ConformanceTests {
             }).outputState()
         """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
-		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
-		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
-
-		Assert.Null(session.GetResult());
-
+		// In V1 this would filter out the result until count >= 3. In V2 the
+		// filter never runs, so result == state from the very first event.
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
-		var result = session.GetResult();
-		Assert.NotNull(result);
-		Assert.Contains("\"count\":3", result);
+		Assert.Equal(session.GetState(), session.GetResult());
+		Assert.Contains("\"count\":1", session.GetResult()!);
 	}
 
 	[Fact]
-	public void V2_chained_transforms() {
+	public void V2_chained_transforms_not_applied() {
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return { count: 0 }; },
@@ -498,9 +498,27 @@ public class V2ConformanceTests {
 
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
-		var result = session.GetResult();
-		Assert.NotNull(result);
-		Assert.Contains("\"doubled\":2", result);
+		// Neither transform nor filter run; result is the post-handler state.
+		Assert.Equal(session.GetState(), session.GetResult());
+		Assert.Contains("\"count\":1", session.GetResult()!);
+	}
+
+	[Fact]
+	public void V2_transform_throw_never_surfaces() {
+		// In V1 this would surface as ProjectionTransformException. V2 never
+		// invokes the transform, so the buggy JS body is dead code.
+		using var session = new ProjectionSession("""
+            fromAll().when({
+                $init: function() { return {}; },
+                Ping: function(s, e) { return s; }
+            }).transformBy(function(s) {
+                throw new Error("transform failed");
+            }).outputState()
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
+
+		Assert.Equal(session.GetState(), session.GetResult());
 	}
 
 	[Fact]
@@ -515,6 +533,93 @@ public class V2ConformanceTests {
 		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
 		Assert.Equal(session.GetState(), session.GetResult());
+	}
+
+	[Fact]
+	public void V2_biState_result_is_partition_state_only() {
+		// V2's PartitionProcessor writes the partition slot to the result
+		// stream (not the [partition, shared] array). Result must equal
+		// the partition slot, matching what GetState() returns - even when
+		// transformBy is registered, since V2 never invokes it.
+		using var session = new ProjectionSession("""
+            options({ biState: true });
+            fromAll().when({
+                $init: function() { return { count: 0 }; },
+                $initShared: function() { return { total: 0 }; },
+                Ping: function(s, e) { s[0].count++; s[1].total++; return s; }
+            }).transformBy(function(s) {
+                return { wrong: true };
+            }).outputState()
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
+
+		// Result == partition state, not the array, not the transform output.
+		Assert.Equal(session.GetState(), session.GetResult());
+		Assert.Contains("\"count\":1", session.GetResult()!);
+		Assert.DoesNotContain("total", session.GetResult()!);
+		Assert.DoesNotContain("wrong", session.GetResult()!);
+	}
+
+	[Fact]
+	public void V2_stringState_feedResultStateEqualsResult() {
+		// V2 conformance promise: result == post-handler state. For string
+		// state the cache stores the raw string (PrepareOutput's IsString
+		// passthrough), so V2 result must do the same - no JSON-quoting.
+		// Asserted via FeedResult (in-memory state, doesn't go through the
+		// state-cache reload path which has a separate pre-existing
+		// limitation orthogonal to V2 transform semantics).
+		using var session = new ProjectionSession("""
+            fromAll().when({
+                $init: function() { return "alice"; },
+                Ping: function(s, e) { return s; }
+            })
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		var feedResult = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
+
+		Assert.Equal("alice", feedResult.State);
+		Assert.Equal(feedResult.State, feedResult.Result);
+	}
+
+	[Fact]
+	public void V2_biState_stringPartitionSlot_feedResultStateEqualsResult() {
+		// Same invariant under bi-state: the slot-0 conversion in
+		// PrepareOutput must be reflected in V2 result, including the
+		// BiStateStringSlot bug-gating that JSON-encodes strings under
+		// pre-fix dbVersion.
+		using var session = new ProjectionSession("""
+            options({ biState: true });
+            fromAll().when({
+                $init: function() { return "initial"; },
+                $initShared: function() { return {}; },
+                Ping: function(s, e) { return s; }
+            })
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		var feedResult = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
+
+		Assert.Equal(feedResult.State, feedResult.Result);
+	}
+
+	[Fact]
+	public void V2_biState_nullPartitionSlot_returnsNull() {
+		// Upstream V2's PartitionProcessor skips emission when newState is
+		// null (`if (newState != null)` at PartitionProcessor.cs:147).
+		// Mirror that: a null partition slot must surface as C# null, not
+		// as the JSON literal "null".
+		using var session = new ProjectionSession("""
+            options({ biState: true });
+            fromAll().when({
+                $init: function() { return null; },
+                $initShared: function() { return {}; },
+                Ping: function(s, e) { return [null, s[1]]; }
+            })
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
+
+		Assert.Null(session.GetResult());
 	}
 
 	[Fact]

@@ -11,7 +11,7 @@ public sealed class FeedResult {
 	/// <summary>Projection state for the affected partition after processing.</summary>
 	public string? State { get; init; }
 
-	/// <summary>Transformed result (after transformBy/filterBy), or state if no transform defined.</summary>
+	/// <summary>Result for the affected partition. V1: transformed state (after <c>transformBy</c>/<c>filterBy</c>), or state if no transform; null if a filter excludes it. V2: post-handler state (transforms aren't invoked).</summary>
 	public string? Result { get; init; }
 
 	/// <summary>Shared state for biState projections, or null.</summary>

@@ -131,7 +131,7 @@ test.feed({
 test.getState("cart-1"); // state for cart-1
 test.getState("cart-2"); // state for cart-2
 test.getSharedState(); // shared state (biState projections)
-test.getResult("cart-1"); // transformed result (transformBy/filterBy)
+test.getResult("cart-1"); // result for cart-1 (V1: post-transform; V2: post-handler state)
 ```
 
 ### `systemEvents`

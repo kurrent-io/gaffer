@@ -36,6 +36,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private readonly bool _enableContentTypeValidation = true;
 	private readonly bool _debug;
 	private readonly KurrentDbVersion? _dbVersion;
+	private readonly ProjectionVersion _engineVersion;
 	private readonly TimeConstraint _timeConstraint;
 	private readonly BlockingCollection<DebugCommand> _debugCommands = new();
 	private readonly Dictionary<int, object> _variableStore = new();
@@ -97,6 +98,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		string source,
 		TimeSpan compilationTimeout,
 		TimeSpan executionTimeout,
+		ProjectionVersion engineVersion,
 		Action<string>? onLog = null,
 		Action<EmittedEvent>? onEmit = null,
 		bool debug = false,
@@ -105,6 +107,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		_onEmit = onEmit;
 		_debug = debug;
 		_dbVersion = dbVersion;
+		_engineVersion = engineVersion;
 		_definitionBuilder = new SourceDefinitionBuilder();
 		_definitionBuilder.NoWhen();
 		_definitionBuilder.AllEvents();
@@ -258,6 +261,17 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 	public string? TransformStateToResult() {
 		_engine.Constraints.Reset();
+		if (_engineVersion == ProjectionVersion.V2) {
+			// V2 doesn't apply transformBy/filterBy - state is the result.
+			// JS calls to those functions still register the transforms
+			// (matches upstream V2's silent acceptance), but the engine
+			// never iterates them. Reuse PrepareOutput's conversion logic
+			// (string passthrough, bi-state slot 0, BiStateStringSlot bug
+			// gating) so GetResult() returns exactly what GetState() does
+			// under V2. See cli/internal/mcpserver/resources/v1-v2-differences.md.
+			PrepareOutput(out var newState, out _);
+			return newState;
+		}
 		var result = _runtime.TransformStateToResult(_state);
 		if (result == JsValue.Null || result == JsValue.Undefined)
 			return null;

@@ -92,3 +92,44 @@ describe("knownBugs()", () => {
 		expect(codes).toContain("compat.serialize.nonFinite");
 	});
 });
+
+describe("V2 transform diagnostics", () => {
+	it("emits compat.transforms.notInvoked for transformBy under V2", () => {
+		// Cross-binding regression test: a runtime regression that drops
+		// the diagnostic, or a serialization regression in the wire format,
+		// would only show up here.
+		const session = new ProjectionSession(
+			`fromAll().when({ $any: function (s, e) { return s; } }).transformBy(function (s) { return s; });`,
+			{ engineVersion: 2 },
+		);
+		try {
+			const diagnostics = session.getSources().diagnostics;
+			if (diagnostics === null) {
+				expect.fail("expected diagnostics, got null");
+			}
+			expect(
+				diagnostics.some((d) => d.code === "compat.transforms.notInvoked"),
+			).toBe(true);
+		} finally {
+			session.dispose();
+		}
+	});
+
+	it("emits compat.outputState.unconditional for outputState() under V2", () => {
+		const session = new ProjectionSession(
+			`fromAll().when({ $any: function (s, e) { return s; } }).outputState();`,
+			{ engineVersion: 2 },
+		);
+		try {
+			const diagnostics = session.getSources().diagnostics;
+			if (diagnostics === null) {
+				expect.fail("expected diagnostics, got null");
+			}
+			expect(
+				diagnostics.some((d) => d.code === "compat.outputState.unconditional"),
+			).toBe(true);
+		} finally {
+			session.dispose();
+		}
+	});
+});

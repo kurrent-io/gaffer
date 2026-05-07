@@ -471,6 +471,7 @@ describe("ProjectionSession", () => {
 	});
 
 	it("getResult with transformBy", () => {
+		// V1 only - V2 doesn't iterate transforms.
 		session = new ProjectionSession(
 			`
 			fromAll().when({
@@ -480,7 +481,7 @@ describe("ProjectionSession", () => {
 				return { total: s.count * 2 };
 			}).outputState()
 		`,
-			{ engineVersion: 2 },
+			{ engineVersion: 1 },
 		);
 
 		session.feed({

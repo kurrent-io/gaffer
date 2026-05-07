@@ -17,6 +17,8 @@ internal static class DiagnosticCollector {
 		new LinkStreamToDeprecationRule(),
 		new LinkStreamToOutOfBoundsParametersRule(),
 		new LogMultiParamRule(),
+		new TransformsNotAppliedInV2Rule(),
+		new OutputStateUnconditionalInV2Rule(),
 	};
 
 	/// <summary>
@@ -28,7 +30,7 @@ internal static class DiagnosticCollector {
 	/// an otherwise-valid projection. The user just doesn't get diagnostics.
 	/// </para>
 	/// </summary>
-	public static Diagnostic[]? Scan(string source, KurrentDbVersion? dbVersion) {
+	public static Diagnostic[]? Scan(string source, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion) {
 		Script ast;
 		try {
 			ast = new Parser().ParseScript(source, "projection.js");
@@ -38,7 +40,7 @@ internal static class DiagnosticCollector {
 		var diagnostics = new List<Diagnostic>();
 		foreach (var rule in Rules) {
 			try {
-				rule.Run(ast, dbVersion, diagnostics);
+				rule.Run(ast, dbVersion, engineVersion, diagnostics);
 			} catch {
 				// One rule failing doesn't taint the others.
 			}
@@ -47,7 +49,7 @@ internal static class DiagnosticCollector {
 	}
 
 	internal interface IRule {
-		void Run(Script ast, KurrentDbVersion? dbVersion, List<Diagnostic> diagnostics);
+		void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics);
 	}
 
 	// Acornima: line 1-based, column 0-based. Sdk: both 1-based.
@@ -97,7 +99,7 @@ internal static class DiagnosticCollector {
 	}
 
 	private sealed class LinkStreamToDeprecationRule : IRule {
-		public void Run(Script ast, KurrentDbVersion? dbVersion, List<Diagnostic> diagnostics) {
+		public void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
 			// Deprecation is independent of dbVersion - linkStreamTo is
 			// undocumented at every released version we know about.
 			var scanner = new IdentifierShadowScanner("linkStreamTo", _ => true);
@@ -117,7 +119,7 @@ internal static class DiagnosticCollector {
 	}
 
 	private sealed class LinkStreamToOutOfBoundsParametersRule : IRule {
-		public void Run(Script ast, KurrentDbVersion? dbVersion, List<Diagnostic> diagnostics) {
+		public void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
 			if (!KnownBugs.LinkStreamToOutOfBoundsParameters.FiresAt(dbVersion))
 				return;
 
@@ -141,7 +143,7 @@ internal static class DiagnosticCollector {
 	}
 
 	private sealed class LogMultiParamRule : IRule {
-		public void Run(Script ast, KurrentDbVersion? dbVersion, List<Diagnostic> diagnostics) {
+		public void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
 			if (!KnownBugs.LogMultiParam.FiresAt(dbVersion))
 				return;
 
@@ -171,6 +173,90 @@ internal static class DiagnosticCollector {
 				if (node.Callee is Identifier { Name: "log" } id && node.Arguments.Count >= 2)
 					ProblematicCalls.Add(id.Location);
 				return base.VisitCallExpression(node);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Scans for chained method calls of a named property (e.g. <c>x.foo()</c>).
+	/// Used for transforms/outputState which are chain methods on the
+	/// projection runtime, not globals - so shadow detection (which exists
+	/// for global identifiers in <see cref="IdentifierShadowScanner"/>)
+	/// doesn't apply: a property name on a chain object can't be shadowed
+	/// by a top-level <c>var</c>/<c>function</c>.
+	/// </summary>
+	private sealed class MemberCallScanner : AstVisitor {
+		private readonly string _name;
+
+		public MemberCallScanner(string name) {
+			_name = name;
+		}
+
+		public List<Acornima.SourceLocation> Calls { get; } = new();
+
+		protected override object? VisitCallExpression(CallExpression node) {
+			if (node.Callee is MemberExpression me &&
+				!me.Computed &&
+				me.Property is Identifier { Name: var propName } prop &&
+				propName == _name) {
+				Calls.Add(prop.Location);
+			}
+			return base.VisitCallExpression(node);
+		}
+	}
+
+	// Predicate is `== V2` rather than `<= V2.x`: when V2 grows transforms
+	// in some future engine version, the rule should stop firing for that
+	// version, not start firing for *future* versions before they exist.
+	// Re-evaluate this gate when a third engine version lands.
+	private sealed class TransformsNotAppliedInV2Rule : IRule {
+		public void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
+			if (engineVersion != ProjectionVersion.V2)
+				return;
+
+			// transformBy / filterBy: in V2 the engine never iterates
+			// _transforms, so any function passed here is registered but
+			// never invoked on events. Surface as a Warning so the user
+			// finds out before they wonder why their result stream is just
+			// the state.
+			ScanAndEmit("transformBy", ast, diagnostics);
+			ScanAndEmit("filterBy", ast, diagnostics);
+		}
+
+		private static void ScanAndEmit(string name, Script ast, List<Diagnostic> diagnostics) {
+			var scanner = new MemberCallScanner(name);
+			scanner.Visit(ast);
+			foreach (var loc in scanner.Calls) {
+				diagnostics.Add(new Diagnostic {
+					Code = "compat.transforms.notInvoked",
+					Message = $"{name}() is registered but never invoked under engine_version=2; result equals post-handler state. Set engine_version=1 for V1 transform behaviour. See v1-v2-differences.",
+					Severity = DiagnosticSeverity.Warning,
+					Range = ToSourceRange(loc),
+				});
+			}
+		}
+	}
+
+	// See predicate-choice rationale on TransformsNotAppliedInV2Rule.
+	private sealed class OutputStateUnconditionalInV2Rule : IRule {
+		public void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
+			if (engineVersion != ProjectionVersion.V2)
+				return;
+
+			// V2 always emits state to the result stream regardless of
+			// outputState() (PartitionProcessor writes newState
+			// unconditionally). The call succeeds but has no effect on
+			// emission - flag as a Hint so the user knows it's redundant
+			// without making it look like an error.
+			var scanner = new MemberCallScanner("outputState");
+			scanner.Visit(ast);
+			foreach (var loc in scanner.Calls) {
+				diagnostics.Add(new Diagnostic {
+					Code = "compat.outputState.unconditional",
+					Message = "outputState() has no effect under engine_version=2; state is always emitted to the result stream. See v1-v2-differences.",
+					Severity = DiagnosticSeverity.Hint,
+					Range = ToSourceRange(loc),
+				});
 			}
 		}
 	}

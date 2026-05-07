@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -10,7 +11,12 @@ import (
 
 func newTestSession(t *testing.T, source string) *gafferruntime.Session {
 	t.Helper()
-	opts := `{"engineVersion":2}`
+	return newTestSessionWithVersion(t, source, 2)
+}
+
+func newTestSessionWithVersion(t *testing.T, source string, engineVersion int) *gafferruntime.Session {
+	t.Helper()
+	opts := fmt.Sprintf(`{"engineVersion":%d}`, engineVersion)
 	session, err := gafferruntime.NewSession(source, &opts)
 	if err != nil {
 		t.Fatal(err)
@@ -89,10 +95,11 @@ func TestCollectState_Partitioned(t *testing.T) {
 }
 
 func TestCollectState_WithTransforms(t *testing.T) {
-	session := newTestSession(t, `fromAll().when({
+	// V1 only - V2 doesn't iterate transforms; result == post-handler state.
+	session := newTestSessionWithVersion(t, `fromAll().when({
 		$init() { return { count: 0 }; },
 		ItemAdded(s, e) { s.count++; return s; }
-	}).transformBy(function(s) { return { doubled: s.count * 2 }; })`)
+	}).transformBy(function(s) { return { doubled: s.count * 2 }; })`, 1)
 	info := session.GetSources()
 
 	if _, err := session.Feed(testutil.Event("ItemAdded", "s-1", 0)); err != nil {
@@ -118,10 +125,11 @@ func TestCollectState_WithTransforms(t *testing.T) {
 }
 
 func TestCollectState_PartitionedWithTransforms(t *testing.T) {
-	session := newTestSession(t, `fromAll().foreachStream().when({
+	// V1 only - V2 doesn't iterate transforms; result == post-handler state.
+	session := newTestSessionWithVersion(t, `fromAll().foreachStream().when({
 		$init() { return { count: 0 }; },
 		ItemAdded(s, e) { s.count++; return s; }
-	}).transformBy(function(s) { return { doubled: s.count * 2 }; })`)
+	}).transformBy(function(s) { return { doubled: s.count * 2 }; })`, 1)
 	info := session.GetSources()
 
 	if _, err := session.Feed(testutil.Event("ItemAdded", "s-1", 0)); err != nil {

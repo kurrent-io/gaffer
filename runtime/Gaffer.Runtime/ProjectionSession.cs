@@ -76,6 +76,7 @@ public sealed class ProjectionSession : IDisposable {
 				source,
 				opts.CompilationTimeout,
 				opts.ExecutionTimeout,
+				_version,
 				onLog: message => {
 					_pendingLogs.Add(message);
 					OnLog?.Invoke(message);
@@ -124,7 +125,7 @@ public sealed class ProjectionSession : IDisposable {
 			if (!_sources.AllEvents && _sources.Events != null)
 				_handledEventTypes = new HashSet<string>(_sources.Events, StringComparer.Ordinal);
 
-			_diagnostics = DiagnosticCollector.Scan(source, _dbVersion);
+			_diagnostics = DiagnosticCollector.Scan(source, _dbVersion, _version);
 		} catch {
 			_handler.Dispose();
 			throw;
@@ -296,10 +297,13 @@ public sealed class ProjectionSession : IDisposable {
 	}
 
 	/// <summary>
-	/// Get the transformed result for a partition (applies transformBy/filterBy).
-	/// Returns null for unknown partitions or filtered results.
+	/// Get the result for a partition. Under V1, applies any registered
+	/// <c>transformBy</c>/<c>filterBy</c> functions and returns the transformed
+	/// state (or null if a filter excludes it). Under V2, returns the
+	/// post-handler state directly - V2 doesn't iterate transforms. Returns
+	/// null for unknown partitions.
 	/// </summary>
-	/// <exception cref="ProjectionTransformException">Thrown if transformBy/filterBy throws.</exception>
+	/// <exception cref="ProjectionTransformException">V1 only - thrown if a registered <c>transformBy</c>/<c>filterBy</c> function throws. V2 doesn't invoke transforms, so this never fires under V2.</exception>
 	public string? GetResult(string? partition = null) {
 		var key = partition ?? "";
 		if (!_stateCache.ContainsKey(key))

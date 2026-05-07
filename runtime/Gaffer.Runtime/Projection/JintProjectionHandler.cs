@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Gaffer.Runtime.Events;
+using Gaffer.Sdk.Versioning;
 using Jint;
 using Jint.Native;
 using Jint.Native.Function;
@@ -34,6 +35,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	// behavior. We match that by always enabling it rather than exposing a toggle.
 	private readonly bool _enableContentTypeValidation = true;
 	private readonly bool _debug;
+	private readonly KurrentDbVersion? _dbVersion;
 	private readonly TimeConstraint _timeConstraint;
 	private readonly BlockingCollection<DebugCommand> _debugCommands = new();
 	private readonly Dictionary<int, object> _variableStore = new();
@@ -57,10 +59,12 @@ internal sealed class JintProjectionHandler : IDisposable {
 		TimeSpan executionTimeout,
 		Action<string>? onLog = null,
 		Action<EmittedEvent>? onEmit = null,
-		bool debug = false) {
+		bool debug = false,
+		KurrentDbVersion? dbVersion = null) {
 		_onLog = onLog;
 		_onEmit = onEmit;
 		_debug = debug;
+		_dbVersion = dbVersion;
 		_definitionBuilder = new SourceDefinitionBuilder();
 		_definitionBuilder.NoWhen();
 		_definitionBuilder.AllEvents();
@@ -313,9 +317,20 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 		Dictionary<string, string?>? metadata = null;
 		if (parameters.Length == 3) {
-			metadata = new Dictionary<string, string?>();
-			foreach (var kvp in parameters.At(2).AsObject().GetOwnProperties())
-				metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, false));
+			if (KnownBugs.LinkStreamToOutOfBoundsParameters.FiresAt(_dbVersion)) {
+				// Reproduce upstream's parameters.At(4) bug: index 4 is out
+				// of bounds for a 3-arg call, returns Undefined, AsObject()
+				// throws. Calling it here gives the byte-identical exception
+				// the user would see in KurrentDB.
+				var md = parameters.At(4).AsObject();
+				metadata = new Dictionary<string, string?>();
+				foreach (var kvp in md.GetOwnProperties())
+					metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, false));
+			} else {
+				metadata = new Dictionary<string, string?>();
+				foreach (var kvp in parameters.At(2).AsObject().GetOwnProperties())
+					metadata.Add(kvp.Key.AsString(), AsString(kvp.Value.Value, false));
+			}
 		}
 
 		var emitted = new EmittedEvent {
@@ -341,6 +356,29 @@ internal sealed class JintProjectionHandler : IDisposable {
 				SafeInvokeLog(p0.ToString());
 			else if (p0 is ObjectInstance oi)
 				SafeInvokeLog(Serialize(oi));
+			return JsValue.Undefined;
+		}
+
+		if (KnownBugs.LogMultiParam.FiresAt(_dbVersion)) {
+			// Reproduce upstream multi-param log() bugs:
+			// - Separator gate is i>1 (so first object has no leading separator).
+			// - Separator string is " ," (space-comma).
+			// - Primitives are logged as separate lines instead of appended.
+			// - The accumulated buffer is logged once at the end regardless.
+			// The two `if`s (not `if`/`else if`) mirror upstream's structure;
+			// in Jint primitives and ObjectInstance are disjoint so it makes
+			// no observable difference, but byte-fidelity is the goal.
+			var buggy = new StringBuilder();
+			for (var i = 0; i < parameters.Length; i++) {
+				if (i > 1)
+					buggy.Append(" ,");
+				var p = parameters.At(i);
+				if (p != null && p.IsPrimitive())
+					SafeInvokeLog(p.ToString());
+				if (p is ObjectInstance oi)
+					buggy.Append(Serialize(oi));
+			}
+			SafeInvokeLog(buggy.ToString());
 			return JsValue.Undefined;
 		}
 

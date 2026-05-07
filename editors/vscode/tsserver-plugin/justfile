@@ -1,0 +1,27 @@
+default:
+    @just --list
+
+# Install dependencies
+init:
+    pnpm install --filter 'gaffer-tsserver-plugin'
+
+# Compile to dist/ (CJS - tsserver loads via Node require)
+build:
+    pnpm exec tsc -p tsconfig.json
+
+# Format check
+check:
+    pnpm exec tsc --noEmit && pnpm exec prettier --check .
+
+# Format
+fix:
+    pnpm exec prettier --write .
+
+# No runtime tests for the plugin - typecheck IS the test, and the
+# integration is covered by the VS Code extension's e2e suite. Echo
+# so the parallel test target doesn't fail.
+test:
+    @echo 'tsserver-plugin: no runtime tests (covered via extension e2e)'
+
+clean:
+    rm -rf dist

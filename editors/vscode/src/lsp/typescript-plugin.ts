@@ -39,8 +39,15 @@ async function getTypeScriptApi(): Promise<TypeScriptApi | undefined> {
 		log("ts-plugin: typescript-language-features not installed");
 		return undefined;
 	}
-	if (!ext.isActive) {
-		await ext.activate();
+	try {
+		if (!ext.isActive) {
+			await ext.activate();
+		}
+	} catch (err) {
+		log(
+			`ts-plugin: typescript-language-features activate failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return undefined;
 	}
 	const api = ext.exports.getAPI(0);
 	if (!api) {

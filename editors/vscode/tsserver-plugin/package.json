@@ -11,7 +11,7 @@
 		"fix": "prettier --write ."
 	},
 	"engines": {
-		"node": ">=22"
+		"node": ">=18"
 	},
 	"devDependencies": {
 		"@types/node": "^22",

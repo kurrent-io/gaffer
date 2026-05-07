@@ -51,7 +51,7 @@
 		"test": "vitest run",
 		"check": "tsc --noEmit && eslint . && prettier --check .",
 		"fix": "eslint --fix . && prettier --write .",
-		"package": "vite build && vsce package --no-dependencies && ./scripts/inject-tsserver-plugin.sh"
+		"package": "pnpm --filter gaffer-tsserver-plugin run build && vite build && vsce package --no-dependencies && ./scripts/inject-tsserver-plugin.sh"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

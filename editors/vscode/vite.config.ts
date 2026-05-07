@@ -17,6 +17,18 @@ function vendorProjectionTypes(): Plugin {
 	const dest = path.resolve(here, "dist/types");
 	return {
 		name: "gaffer:vendor-projection-types",
+		// `apply: 'build'` keeps this off the vitest path - vitest
+		// otherwise picks the plugin up via its bundled vite, runs
+		// writeBundle on test setup, and copies into dist/ on every
+		// test invocation.
+		apply: "build",
+		buildStart() {
+			if (!fs.existsSync(src)) {
+				this.error(
+					`vendor-projection-types: source ${src} missing - has types/src/ moved?`,
+				);
+			}
+		},
 		writeBundle() {
 			fs.cpSync(src, dest, { recursive: true });
 		},

@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
+import type { PluginConfig } from "gaffer-tsserver-plugin/config";
 import { log } from "../output.js";
 
 interface TypeScriptApi {
@@ -8,11 +9,6 @@ interface TypeScriptApi {
 
 interface TypeScriptExports {
 	getAPI(version: number): TypeScriptApi | undefined;
-}
-
-interface PluginConfig {
-	typesEntryPath: string;
-	enabled: boolean;
 }
 
 const PLUGIN_ID = "gaffer-tsserver-plugin";
@@ -75,32 +71,41 @@ export function registerTypeScriptPlugin(
 	let api: TypeScriptApi | undefined;
 	let lastConfig: PluginConfig | undefined;
 
-	const push = async (): Promise<void> => {
-		if (!api) {
-			api = await getTypeScriptApi();
-			if (!api) return;
-		}
-		const enabled = vscode.workspace
-			.getConfiguration("gaffer")
-			.get<boolean>("injectProjectionTypes", true);
-		const config: PluginConfig = { typesEntryPath, enabled };
-		// Skip configurePlugin when the payload hasn't changed.
-		// configurePlugin triggers a tsserver project reload, which
-		// invalidates user-visible state (open diagnostics, hover,
-		// completions); pushing identical config would churn that
-		// for no reason.
-		if (
-			lastConfig &&
-			lastConfig.typesEntryPath === config.typesEntryPath &&
-			lastConfig.enabled === config.enabled
-		) {
-			return;
-		}
-		lastConfig = config;
-		api.configurePlugin(PLUGIN_ID, config);
-		log(
-			`ts-plugin: configurePlugin enabled=${config.enabled} typesEntryPath=${config.typesEntryPath}`,
-		);
+	// Serialise pushes on a promise chain so two rapid configuration
+	// events (e.g. the activation push racing the user toggling
+	// injectProjectionTypes) can't both pass the lastConfig check
+	// before either assigns it. Same posture as the manifest reload
+	// chain in extension.ts.
+	let pushChain: Promise<void> = Promise.resolve();
+	const push = (): Promise<void> => {
+		pushChain = pushChain.then(async () => {
+			if (!api) {
+				api = await getTypeScriptApi();
+				if (!api) return;
+			}
+			const enabled = vscode.workspace
+				.getConfiguration("gaffer")
+				.get<boolean>("injectProjectionTypes", true);
+			const config: PluginConfig = { typesEntryPath, enabled };
+			// Skip configurePlugin when the payload hasn't changed.
+			// configurePlugin triggers a tsserver project reload, which
+			// invalidates user-visible state (open diagnostics, hover,
+			// completions); pushing identical config would churn that
+			// for no reason.
+			if (
+				lastConfig &&
+				lastConfig.typesEntryPath === config.typesEntryPath &&
+				lastConfig.enabled === config.enabled
+			) {
+				return;
+			}
+			lastConfig = config;
+			api.configurePlugin(PLUGIN_ID, config);
+			log(
+				`ts-plugin: configurePlugin enabled=${config.enabled} typesEntryPath=${config.typesEntryPath}`,
+			);
+		});
+		return pushChain;
 	};
 
 	context.subscriptions.push(

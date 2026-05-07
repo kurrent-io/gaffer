@@ -18,14 +18,7 @@
 // workspaces where that's noisy.
 
 import type ts from "typescript/lib/tsserverlibrary.js";
-
-interface PluginConfig {
-	// Absolute path of the vendored projections.d.ts the extension
-	// shipped. When unset (or when the extension explicitly disables
-	// the plugin via `enabled: false`) the plugin no-ops.
-	typesEntryPath?: string;
-	enabled?: boolean;
-}
+import type { PluginConfig } from "./config.js";
 
 // Marker on a wrapped getScriptFileNames so repeated create() calls
 // against the same host don't stack wrappers (which would let the

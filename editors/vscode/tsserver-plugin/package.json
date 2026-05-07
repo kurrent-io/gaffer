@@ -4,7 +4,12 @@
 	"description": "tsserver plugin that injects gaffer projection types (fromStream, when, emit, ...) into projection .js files. Configured by the VS Code extension via configurePlugin; not consumed directly.",
 	"private": true,
 	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
+	"exports": {
+		".": "./dist/index.js",
+		"./config": {
+			"types": "./src/config.ts"
+		}
+	},
 	"scripts": {
 		"build": "tsc -p tsconfig.json",
 		"check": "tsc --noEmit && prettier --check .",

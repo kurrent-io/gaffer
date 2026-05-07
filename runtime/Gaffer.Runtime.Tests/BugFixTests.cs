@@ -5,7 +5,12 @@ namespace Gaffer.Runtime.Tests;
 
 public class BugFixTests {
 	[Fact]
-	public void BiState_string_partition_state_serialized_correctly() {
+	public void BiState_string_partition_state_matches_upstream_quoting() {
+		// Unversioned default = bugs on, matching upstream prod. The
+		// upstream BiState PrepareOutput bug always JSON-quotes raw string
+		// state in slot 0 (covered by KnownBugs.BiStateStringSlot). When
+		// PR #5610 ships and we set FixedIn, a sibling test should cover
+		// the clean (post-fix) path where the string passes through raw.
 		using var session = new ProjectionSession("""
             options({ biState: true });
             fromAll().when({
@@ -23,7 +28,7 @@ public class BugFixTests {
 
 		var state = session.GetState();
 		Assert.NotNull(state);
-		Assert.Equal("alice", state);
+		Assert.Equal("\"alice\"", state);
 	}
 
 	[Fact]

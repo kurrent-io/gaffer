@@ -140,6 +140,106 @@ public class CompatBugsTests {
 		Assert.Equal(new[] { "{\"a\":1}{\"b\":2} ,{\"c\":3}" }, logs);
 	}
 
+	// -- EnsureBody (event.body cast) --
+
+	[Fact]
+	public void EventBody_ObjectData_Works() {
+		// Object event bodies work in both buggy and clean paths - the cast
+		// succeeds because the parsed JSON is an object.
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				$init: function() { return { name: null }; },
+				Test: function(s, e) { s.name = e.body.name; return s; }
+			});
+		""", Options());
+
+		session.Feed(new ProjectionEvent {
+			EventType = "Test",
+			StreamId = "s-1",
+			Data = """{"name":"alice"}""",
+			IsJson = true,
+		});
+
+		Assert.Contains("alice", session.GetState());
+	}
+
+	[Theory]
+	[InlineData("null")]
+	[InlineData("42")]
+	[InlineData("\"hello\"")]
+	[InlineData("true")]
+	public void EventBody_NonObjectData_Throws_Unversioned(string data) {
+		// Upstream's EnsureBody casts the parsed body to ObjectInstance.
+		// Non-object JSON values (null, number, string, boolean) throw
+		// InvalidCastException. Bug always fires while FixedIn = null.
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				Test: function(s, e) { return e.body; }
+			});
+		""", Options());
+
+		Assert.Throws<ProjectionHandlerException>(() =>
+			session.Feed(new ProjectionEvent {
+				EventType = "Test",
+				StreamId = "s-1",
+				Data = data,
+				IsJson = true,
+			}));
+	}
+
+	// -- BiState PrepareOutput string slot --
+
+	[Fact]
+	public void BiState_StringInSlot0_QuotedWhenBuggy() {
+		// Upstream checks _state.IsString() (the array, always false) instead
+		// of state.IsString() (the slot-0 element). Every value goes through
+		// the JSON-serializer, so raw strings come out quoted.
+		using var session = new ProjectionSession("""
+			options({ biState: true });
+			fromAll().when({
+				$init: function () { return "initial"; },
+				$initShared: function () { return {}; },
+				SetName: function (s, e) { s[0] = e.data.name; return s; }
+			});
+		""", Options());
+
+		session.Feed(new ProjectionEvent {
+			EventType = "SetName",
+			StreamId = "s-1",
+			Data = """{"name":"alice"}""",
+			IsJson = true,
+		});
+
+		// Buggy: JSON-quoted (matches upstream). Clean would emit raw "alice".
+		Assert.Equal("\"alice\"", session.GetState());
+	}
+
+	// -- SerializePrimitive NaN/Infinity --
+
+	[Theory]
+	[InlineData("NaN")]
+	[InlineData("Infinity")]
+	[InlineData("-Infinity")]
+	public void StateContainingNonFinite_Throws_Unversioned(string jsLiteral) {
+		// Upstream's Utf8JsonWriter.WriteNumberValue throws on non-finite
+		// doubles. Bug always fires while FixedIn = null. Clean path writes
+		// JSON null instead.
+		using var session = new ProjectionSession($$"""
+			fromAll().when({
+				$init: function () { return { value: 0 }; },
+				Test: function (s, e) { s.value = {{jsLiteral}}; return s; }
+			});
+		""", Options());
+
+		Assert.Throws<StateSerializationException>(() =>
+			session.Feed(new ProjectionEvent {
+				EventType = "Test",
+				StreamId = "s-1",
+				Data = "{}",
+				IsJson = true,
+			}));
+	}
+
 	[Fact]
 	public void Log_MixedPrimitiveAndObjects_PrimitivesEmit_ObjectsAccumulate() {
 		// Mixed input shows the bug clearly: primitives emit immediately,

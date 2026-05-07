@@ -5,7 +5,7 @@ export default [
 	eslint.configs.recommended,
 	...tseslint.configs.recommended,
 	{
-		ignores: ["dist/"],
+		ignores: ["dist/", "tsserver-plugin/dist/"],
 	},
 	{
 		rules: {

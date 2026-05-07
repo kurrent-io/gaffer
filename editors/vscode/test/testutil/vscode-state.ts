@@ -9,8 +9,11 @@ import {
 	__clearShownMessages,
 	__getShownMessages,
 	__resetState,
+	setExtension as setExtensionImpl,
 	state,
 } from "../__mocks__/vscode.js";
+
+export const setExtension = setExtensionImpl;
 
 export function resetVscode(): void {
 	__resetState();

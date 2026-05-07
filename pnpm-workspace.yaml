@@ -5,6 +5,7 @@ packages:
   - 'cli/native/*'
   - 'testing/js'
   - 'editors/vscode'
+  - 'editors/vscode/tsserver-plugin'
   - 'types'
 
 onlyBuiltDependencies:

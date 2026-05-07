@@ -640,6 +640,7 @@ export interface MockState {
 		uri: vscode.Uri | string,
 		includeWorkspaceFolder?: boolean,
 	) => string;
+	extensions: Map<string, vscode.Extension<unknown>>;
 }
 
 export const state: MockState = createInitialState();
@@ -678,7 +679,34 @@ function createInitialState(): MockState {
 		debugCustomEvent: new EventEmitter(),
 		workspaceFolders: [],
 		asRelativePathImpl: (uri) => (typeof uri === "string" ? uri : uri.fsPath),
+		extensions: new Map(),
 	};
+}
+
+// setExtension registers a fake vscode.Extension for tests that need
+// vscode.extensions.getExtension to resolve. Pass `exports` to control
+// what the extension's API surface looks like; pass undefined for an
+// extension-not-installed scenario by simply not calling this helper.
+export function setExtension(
+	id: string,
+	exports: unknown,
+	options: { isActive?: boolean } = {},
+): vscode.Extension<unknown> {
+	const ext: vscode.Extension<unknown> = {
+		id,
+		extensionUri: { scheme: "file", fsPath: `/fake/${id}` } as vscode.Uri,
+		extensionPath: `/fake/${id}`,
+		isActive: options.isActive ?? true,
+		packageJSON: {},
+		extensionKind: 1 as vscode.ExtensionKind,
+		exports,
+		activate: async () => {
+			(ext as { isActive: boolean }).isActive = true;
+			return exports;
+		},
+	};
+	state.extensions.set(id, ext);
+	return ext;
 }
 
 // Wholesale state replacement; keeps the exported `state` reference
@@ -1052,4 +1080,11 @@ export const debug: DebugShape = {
 			thisArgs,
 			disposables,
 		)) as typeof vscode.debug.onDidReceiveDebugSessionCustomEvent,
+};
+
+type ExtensionsShape = Pick<typeof vscode.extensions, "getExtension">;
+
+export const extensions: ExtensionsShape = {
+	getExtension: ((id: string) =>
+		state.extensions.get(id)) as typeof vscode.extensions.getExtension,
 };

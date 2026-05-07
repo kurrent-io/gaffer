@@ -1,0 +1,29 @@
+default:
+    @just --list
+
+# Install dependencies
+init:
+    pnpm install --filter 'gaffer-tsserver-plugin'
+
+# Compile to dist/ (CJS - tsserver loads via Node require)
+build:
+    pnpm exec tsc -p tsconfig.json
+
+# Format check
+check:
+    pnpm exec tsc --noEmit && pnpm exec prettier --check .
+
+# Format
+fix:
+    pnpm exec prettier --write .
+
+# No-op: vitest runs from the parent extension package with an
+# include glob that picks up tsserver-plugin/src/**/*.test.ts, so
+# the parent's `just test` already covers this package. Recipe exists
+# so callers iterating across all subpackages don't need to special-
+# case it.
+test:
+    @echo 'tsserver-plugin: tests run from parent package'
+
+clean:
+    rm -rf dist

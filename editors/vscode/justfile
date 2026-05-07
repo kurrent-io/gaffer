@@ -1,34 +1,44 @@
 default:
     @just --list
 
-# Install dependencies
+# Install dependencies (extension + tsserver-plugin together via the
+# pnpm workspace).
 init:
     pnpm install
 
-# Build the extension
+# Build the extension AND the tsserver-plugin. Plugin must build
+# first so the vendoring step in `package` finds compiled output.
 build:
+    just plugin::build
     pnpm run build
 
 # Watch mode for development
 watch:
     pnpm run watch
 
-# Run tests
+# Run extension tests + plugin's typecheck-as-test.
 test:
     pnpm run test
+    just plugin::test
 
-# Type check, lint, and format check
+# Type check, lint, and format check across both packages.
 check:
     pnpm run check
+    just plugin::check
 
-# Format code and apply lint fixes
+# Format code and apply lint fixes across both packages.
 fix:
     pnpm run fix
+    just plugin::fix
 
 # Build and package as .vsix
 package:
+    just plugin::build
     pnpm run package
 
-# Remove built artifacts
+# Remove built artifacts across both packages.
 clean:
+    just plugin::clean
     rm -rf dist *.vsix
+
+mod plugin 'tsserver-plugin'

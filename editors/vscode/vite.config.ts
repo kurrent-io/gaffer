@@ -1,9 +1,39 @@
+import * as fs from "node:fs";
 import { builtinModules } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Plugin } from "vite";
 import { defineConfig } from "vitest/config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+// The tsserver plugin (gaffer-tsserver-plugin) expects an absolute
+// path to types/src/projections.d.ts at runtime so it can inject
+// projection types into projection JS files. The extension's
+// tsserver-plugin configurer reads this from disk under
+// dist/types/, so the build step copies the source tree there.
+function vendorProjectionTypes(): Plugin {
+	const src = path.resolve(here, "../../types/src");
+	const dest = path.resolve(here, "dist/types");
+	return {
+		name: "gaffer:vendor-projection-types",
+		// `apply: 'build'` keeps this off the vitest path - vitest
+		// otherwise picks the plugin up via its bundled vite, runs
+		// writeBundle on test setup, and copies into dist/ on every
+		// test invocation.
+		apply: "build",
+		buildStart() {
+			if (!fs.existsSync(src)) {
+				this.error(
+					`vendor-projection-types: source ${src} missing - has types/src/ moved?`,
+				);
+			}
+		},
+		writeBundle() {
+			fs.cpSync(src, dest, { recursive: true });
+		},
+	};
+}
 
 export default defineConfig({
 	build: {
@@ -27,6 +57,7 @@ export default defineConfig({
 			},
 		},
 	},
+	plugins: [vendorProjectionTypes()],
 	resolve: {
 		alias: {
 			vscode: path.resolve(here, "test/__mocks__/vscode.ts"),
@@ -42,7 +73,7 @@ export default defineConfig({
 	},
 	test: {
 		environment: "node",
-		include: ["src/**/*.test.ts"],
+		include: ["src/**/*.test.ts", "tsserver-plugin/src/**/*.test.ts"],
 		setupFiles: ["./test/setup.ts"],
 		// Aliases scoped to the test runner only - production
 		// builds must NOT pick up these stubs.

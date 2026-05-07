@@ -28,7 +28,10 @@ type outputWriter interface {
 // fatalError carries everything the editor / TTY needs to surface a fatal
 // projection failure: the runtime error code, a human description, the source
 // file the error points at, and (when the runtime can identify it) the JS
-// position. eventId is set for handler errors that fail mid-stream.
+// position. eventId is set for handler errors that fail mid-stream. CompatCode
+// is set when the throw was driven by an upstream-bug-compat code path; the
+// CLI looks it up against the runtime's known-bugs registry to render a
+// "Compat: <code>... Fixed in KurrentDB X" hint.
 type fatalError struct {
 	Code        string
 	Description string
@@ -37,6 +40,7 @@ type fatalError struct {
 	Column      *int
 	JsStack     string
 	EventID     string
+	CompatCode  string
 }
 
 func toFatalError(err error, sourcePath string) fatalError {
@@ -45,6 +49,7 @@ func toFatalError(err error, sourcePath string) fatalError {
 	case *gafferruntime.InvalidProjectionError:
 		fe.Code = e.ErrorCode()
 		fe.Description = e.ErrorDescription()
+		fe.CompatCode = e.CompatCode
 		if e.Location != nil {
 			fe.Line = &e.Location.Line
 			fe.Column = &e.Location.Column
@@ -54,6 +59,7 @@ func toFatalError(err error, sourcePath string) fatalError {
 		fe.Description = e.ErrorDescription()
 		fe.JsStack = e.JsStack
 		fe.EventID = formatEventID(e.Event)
+		fe.CompatCode = e.CompatCode
 		if e.Location != nil {
 			fe.Line = &e.Location.Line
 			fe.Column = &e.Location.Column
@@ -62,6 +68,7 @@ func toFatalError(err error, sourcePath string) fatalError {
 		fe.Code = e.ErrorCode()
 		fe.Description = e.ErrorDescription()
 		fe.JsStack = e.JsStack
+		fe.CompatCode = e.CompatCode
 		if e.Location != nil {
 			fe.Line = &e.Location.Line
 			fe.Column = &e.Location.Column
@@ -71,18 +78,26 @@ func toFatalError(err error, sourcePath string) fatalError {
 		fe.Description = fmt.Sprintf("%s (elapsed %dms, allowed %dms)",
 			e.ErrorDescription(), e.ElapsedMs, e.AllowedMs)
 		fe.EventID = formatEventID(e.Event)
+		fe.CompatCode = e.CompatCode
 	case *gafferruntime.CompilationTimeoutError:
 		fe.Code = e.ErrorCode()
 		fe.Description = fmt.Sprintf("%s (elapsed %dms, allowed %dms)",
 			e.ErrorDescription(), e.ElapsedMs, e.AllowedMs)
+		fe.CompatCode = e.CompatCode
 	case *gafferruntime.MalformedEventError:
 		fe.Code = e.ErrorCode()
 		fe.Description = e.ErrorDescription()
 		fe.EventID = formatEventID(e.Event)
+		fe.CompatCode = e.CompatCode
+	case *gafferruntime.InvalidArgumentError:
+		fe.Code = e.ErrorCode()
+		fe.Description = e.ErrorDescription()
+		fe.CompatCode = e.CompatCode
 	case *gafferruntime.StateSerializationError:
 		fe.Code = e.ErrorCode()
 		fe.Description = e.ErrorDescription()
 		fe.EventID = formatEventID(e.Event)
+		fe.CompatCode = e.CompatCode
 	case gafferruntime.ProjectionError:
 		fe.Code = e.ErrorCode()
 		fe.Description = e.ErrorDescription()

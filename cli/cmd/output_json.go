@@ -139,6 +139,9 @@ func (jw *jsonWriter) WriteFatalError(fe fatalError) {
 	if fe.EventID != "" {
 		line["eventId"] = fe.EventID
 	}
+	if fe.CompatCode != "" {
+		line["compatCode"] = fe.CompatCode
+	}
 	jw.writeLine(line)
 }
 

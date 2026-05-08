@@ -46,6 +46,9 @@ jobs:
       - name: Check formatting and linting
         run: just check
 
+      - name: Telemetry codegen determinism
+        run: just telemetry test
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -75,6 +78,9 @@ jobs:
 
       - name: Install module dependencies
         run: just init
+
+      - name: Telemetry codegen determinism
+        run: just telemetry test
 
       # Publish gaffer.so once. The public build/test/test-integration
       # targets each depend on _runtime; calling them sequentially would

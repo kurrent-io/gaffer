@@ -6,6 +6,7 @@ packages:
   - 'testing/js'
   - 'editors/vscode'
   - 'editors/vscode/tsserver-plugin'
+  - 'telemetry'
   - 'types'
 
 onlyBuiltDependencies:

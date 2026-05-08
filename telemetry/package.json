@@ -1,0 +1,10 @@
+{
+  "name": "@kurrent/gaffer-telemetry",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Telemetry schema and generated TypeScript types for gaffer",
+  "types": "generated/events.gen.ts",
+  "devDependencies": {
+    "json-schema-to-typescript": "^15.0.4"
+  }
+}

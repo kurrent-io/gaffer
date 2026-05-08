@@ -1,0 +1,74 @@
+default:
+    @just --list
+
+# Pinned tool versions. Bump in lockstep across local/CI by editing here.
+cue_version := "v0.14.2"
+go_jsonschema_version := "v0.21.0"
+
+# Install cue, go-jsonschema, and the JS codegen package. Idempotent.
+init:
+    @go install cuelang.org/go/cmd/cue@{{cue_version}}
+    @go install github.com/atombender/go-jsonschema@{{go_jsonschema_version}}
+    pnpm install --filter '@kurrent/gaffer-telemetry'
+
+# Generate all artifacts from schemas/. Order: cue produces the jsonschema,
+# then language-specific generators consume it.
+build: _gen-schema _gen-go _gen-ts
+
+# Format the CUE source.
+fix:
+    @cue fmt schemas/events.cue schemas/wire.cue
+
+# Verify the CUE source is formatted and well-formed.
+check:
+    @cue fmt --check schemas/events.cue schemas/wire.cue
+    @cue vet schemas/events.cue schemas/wire.cue
+
+# Determinism check: regenerate twice, fail if outputs differ. Catches
+# non-deterministic generator output (sort order, timestamps, ...).
+test: build
+    @cp generated/telemetry.schema.json /tmp/telemetry-determinism.json
+    @cp generated/events.gen.go /tmp/telemetry-determinism.go
+    @cp generated/events.gen.ts /tmp/telemetry-determinism.ts
+    @just clean
+    @just build
+    @diff /tmp/telemetry-determinism.json generated/telemetry.schema.json
+    @diff /tmp/telemetry-determinism.go generated/events.gen.go
+    @diff /tmp/telemetry-determinism.ts generated/events.gen.ts
+    @rm -f /tmp/telemetry-determinism.json /tmp/telemetry-determinism.go /tmp/telemetry-determinism.ts
+
+# Remove generated artifacts.
+clean:
+    @rm -f generated/telemetry.schema.json generated/events.gen.go generated/events.gen.ts
+
+# CUE -> JSON Schema.
+#
+# CUE's CLI exposes OpenAPI but not JSON Schema directly. They carry the same
+# shapes; we wrap components.schemas as `definitions` (Draft 7-style, the most
+# broadly supported across our consumers - go-jsonschema, json-schema-to-
+# typescript, Ajv) and rewrite $refs from #/components/schemas/ to
+# #/definitions/.
+#
+# Final jq pass hoists `required` arrays out of `allOf` to the top level on
+# each variant. CUE's `Base & {extra fields}` extension produces
+# `allOf: [..., {required: ["command"]}]`, which json-schema-to-typescript
+# does NOT walk to determine required-ness (it leaves `command` optional).
+# Hoisting fixes the TS output without changing the wire shape.
+[private]
+_gen-schema:
+    @mkdir -p generated
+    @cue def -o openapi:- schemas/events.cue schemas/wire.cue \
+        | jq '.components.schemas.Envelope + {"definitions": .components.schemas, "title": "Envelope"}' \
+        | sed 's|#/components/schemas/|#/definitions/|g' \
+        | jq '.definitions |= with_entries(.value |= (if (.allOf // []) | any(.required) then .required = ((.required // []) + ([.allOf[] | .required // empty] | flatten) | unique) | .allOf = [.allOf[] | select(.required == null)] | if (.allOf | length == 0) then del(.allOf) else . end else . end))' \
+        > generated/telemetry.schema.json
+
+# JSON Schema -> Go types.
+[private]
+_gen-go: _gen-schema
+    @go-jsonschema --package=generated --output=generated/events.gen.go generated/telemetry.schema.json
+
+# JSON Schema -> TypeScript types.
+[private]
+_gen-ts: _gen-schema
+    @pnpm exec json2ts generated/telemetry.schema.json -o generated/events.gen.ts

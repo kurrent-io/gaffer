@@ -104,7 +104,7 @@ describe("POST /v1/ingest", () => {
 		expect(init?.method).toBe("POST");
 		const body = JSON.parse(init?.body as string);
 		expect(body).toMatchObject({
-			api_key: expect.any(String),
+			api_key: "phc_test_fixture_key",
 			batch: [{ event: "command_invoked", distinct_id: validEnvelope.emitter_id }],
 		});
 	});

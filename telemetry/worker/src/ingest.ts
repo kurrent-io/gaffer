@@ -5,8 +5,9 @@ import { translateEnvelope } from "./translation";
 
 // Compiled once per isolate; reused across requests within the isolate's
 // lifetime. @cfworker/json-schema is interpreter-based (no eval), so this is
-// safe in the Cloudflare Workers runtime.
-const validator = new Validator(schema as never);
+// safe in the Cloudflare Workers runtime. Pin to JSON Schema draft 7 to match
+// what the codegen pipeline emits.
+const validator = new Validator(schema as never, "7");
 
 export async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 	// Read JSON. Drop on parse failure; never fail loudly on the request path.
@@ -25,7 +26,13 @@ export async function handleIngest(request: Request, env: Env, ctx: ExecutionCon
 
 	// Translate and forward fire-and-forget. PostHog ingest is best-effort;
 	// the worker always returns 200 so the client doesn't retry against us.
-	const payload = translateEnvelope(envelope, env.POSTHOG_API_KEY);
+	// Translation can throw on an unhandled variant; treat that as a drop too.
+	let payload;
+	try {
+		payload = translateEnvelope(envelope, env.POSTHOG_API_KEY);
+	} catch {
+		return ok();
+	}
 	ctx.waitUntil(forwardToPostHog(env.POSTHOG_HOST, payload));
 
 	return ok();

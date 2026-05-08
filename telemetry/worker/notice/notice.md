@@ -8,17 +8,17 @@ Gaffer telemetry only tracks non-Personally-Identifiable Information. Counts are
 
 What gaffer **does not** track:
 
-* Projection source code, in any form
-* Stream names, event names, category names, result-stream patterns
-* Function names, variable names, or any identifier from your code
-* Error messages produced by your projection code
-* File paths beyond basenames in scrubbed stack frames
-* KurrentDB connection strings, hostnames, or credentials
-* Environment variable names or values
-* User account or OS user information
-* IP addresses
+- Projection source code, in any form
+- Stream names, event names, category names, result-stream patterns
+- Function names, variable names, or any identifier from your code
+- Error messages produced by your projection code
+- File paths beyond basenames in scrubbed stack frames
+- KurrentDB connection strings, hostnames, or credentials
+- Environment variable names or values
+- User account or OS user information
+- IP addresses
 
-There are four event types. Each is wrapped in an envelope alongside shared install metadata (gaffer version, host OS, architecture, whether the run is in CI) before being sent.
+There are four event types. Each is wrapped in an envelope alongside shared install metadata (gaffer version, host OS, architecture, the runtime environment - `local` or `ci`) before being sent.
 
 ### `command_invoked`
 
@@ -29,34 +29,34 @@ Records which gaffer command ran, what its outcome was, and bucketed counts of w
 
 ```json
 {
-  "schema_version": "1",
-  "emitter_id": "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-  "run_id": "01938e7a-3c8d-7e2f-bac3-8d4e2f1c9a07",
-  "context": {
-    "emitter": "cli",
-    "lib_version": "0.4.2",
-    "os": "linux",
-    "arch": "x64",
-    "runtime_environment": "local"
-  },
-  "events": [
-    {
-      "name": "command_invoked",
-      "timestamp": "2026-05-08T12:34:56.000Z",
-      "properties": {
-        "command": "dev",
-        "duration_ms": 100,
-        "outcome": "user_interrupt",
-        "invoked_by": "direct",
-        "invoked_via": "terminal",
-        "manifest_features_used": ["projections", "fixtures"],
-        "projection_count": 10,
-        "fixture_count": 2,
-        "connected_to_db": true,
-        "db_version": "26.1"
-      }
-    }
-  ]
+	"schema_version": "1",
+	"emitter_id": "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
+	"run_id": "01938e7a-3c8d-7e2f-bac3-8d4e2f1c9a07",
+	"context": {
+		"emitter": "cli",
+		"lib_version": "0.4.2",
+		"os": "linux",
+		"arch": "x64",
+		"runtime_environment": "local"
+	},
+	"events": [
+		{
+			"name": "command_invoked",
+			"timestamp": "2026-05-08T12:34:56.000Z",
+			"properties": {
+				"command": "dev",
+				"duration_ms": 100,
+				"outcome": "user_interrupt",
+				"invoked_by": "direct",
+				"invoked_via": "terminal",
+				"manifest_features_used": ["projections", "fixtures"],
+				"projection_count": 10,
+				"fixture_count": 2,
+				"connected_to_db": true,
+				"db_version": "26.1"
+			}
+		}
+	]
 }
 ```
 
@@ -71,39 +71,39 @@ Records the source-mechanical shape of a projection file: which projection built
 
 ```json
 {
-  "schema_version": "1",
-  "emitter_id": "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-  "run_id": "01938e7a-3c8d-7e2f-bac3-8d4e2f1c9a07",
-  "context": {
-    "emitter": "cli",
-    "lib_version": "0.4.2",
-    "os": "linux",
-    "arch": "x64",
-    "runtime_environment": "local"
-  },
-  "events": [
-    {
-      "name": "projection_shape",
-      "timestamp": "2026-05-08T12:34:56.000Z",
-      "properties": {
-        "projection_id": "a1b2c3d4e5f6789a",
-        "parsable": true,
-        "file_size": 5120,
-        "handlers": {
-          "any": false,
-          "init": true,
-          "deleted": false,
-          "distinct_event_names": 10
-        },
-        "builtin_counts": {
-          "fromAll": 1,
-          "when": 10,
-          "partitionBy": 1,
-          "emit": 100
-        }
-      }
-    }
-  ]
+	"schema_version": "1",
+	"emitter_id": "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
+	"run_id": "01938e7a-3c8d-7e2f-bac3-8d4e2f1c9a07",
+	"context": {
+		"emitter": "cli",
+		"lib_version": "0.4.2",
+		"os": "linux",
+		"arch": "x64",
+		"runtime_environment": "local"
+	},
+	"events": [
+		{
+			"name": "projection_shape",
+			"timestamp": "2026-05-08T12:34:56.000Z",
+			"properties": {
+				"projection_id": "a1b2c3d4e5f6789a",
+				"parsable": true,
+				"file_size": 5120,
+				"handlers": {
+					"any": false,
+					"init": true,
+					"deleted": false,
+					"distinct_event_names": 10
+				},
+				"builtin_counts": {
+					"fromAll": 1,
+					"when": 10,
+					"partitionBy": 1,
+					"emit": 100
+				}
+			}
+		}
+	]
 }
 ```
 
@@ -118,29 +118,29 @@ Records whether the gaffer CLI binary is reachable on the user's `PATH` when the
 
 ```json
 {
-  "schema_version": "1",
-  "emitter_id": "0b51e34d-aac8-4cce-bce4-9d2c7c6e3b8a",
-  "run_id": "01938e7a-1b2c-7d4e-9faf-2a3b4c5d6e7f",
-  "context": {
-    "emitter": "extension",
-    "lib_version": "0.4.2",
-    "os": "darwin",
-    "arch": "arm64",
-    "runtime_environment": "local"
-  },
-  "events": [
-    {
-      "name": "extension_activated",
-      "timestamp": "2026-05-08T12:00:00.000Z",
-      "properties": {
-        "editor": "vscode",
-        "editor_version": "1.95.2",
-        "cli_reachable": true,
-        "cli_version": "0.4.2",
-        "activation_duration_ms": 100
-      }
-    }
-  ]
+	"schema_version": "1",
+	"emitter_id": "0b51e34d-aac8-4cce-bce4-9d2c7c6e3b8a",
+	"run_id": "01938e7a-1b2c-7d4e-9faf-2a3b4c5d6e7f",
+	"context": {
+		"emitter": "extension",
+		"lib_version": "0.4.2",
+		"os": "darwin",
+		"arch": "arm64",
+		"runtime_environment": "local"
+	},
+	"events": [
+		{
+			"name": "extension_activated",
+			"timestamp": "2026-05-08T12:00:00.000Z",
+			"properties": {
+				"editor": "vscode",
+				"editor_version": "1.95.2",
+				"cli_reachable": true,
+				"cli_version": "0.4",
+				"activation_duration_ms": 100
+			}
+		}
+	]
 }
 ```
 
@@ -155,44 +155,44 @@ Records crashes in gaffer's own code (Go panics in the CLI, unhandled JS errors 
 
 ```json
 {
-  "schema_version": "1",
-  "emitter_id": "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-  "run_id": "01938e7a-3c8d-7e2f-bac3-8d4e2f1c9a07",
-  "context": {
-    "emitter": "cli",
-    "lib_version": "0.4.2",
-    "os": "linux",
-    "arch": "x64",
-    "runtime_environment": "local"
-  },
-  "events": [
-    {
-      "name": "exception",
-      "timestamp": "2026-05-08T12:34:56.000Z",
-      "properties": {
-        "exceptions": [
-          {
-            "type": "RuntimeError",
-            "value": "failed to load runtime library",
-            "in_app": true,
-            "stacktrace": {
-              "type": "raw",
-              "frames": [
-                {
-                  "filename": "engine.go",
-                  "function": "Run",
-                  "lineno": 123,
-                  "in_app": true
-                }
-              ]
-            }
-          }
-        ],
-        "command": "dev",
-        "phase": "startup"
-      }
-    }
-  ]
+	"schema_version": "1",
+	"emitter_id": "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
+	"run_id": "01938e7a-3c8d-7e2f-bac3-8d4e2f1c9a07",
+	"context": {
+		"emitter": "cli",
+		"lib_version": "0.4.2",
+		"os": "linux",
+		"arch": "x64",
+		"runtime_environment": "local"
+	},
+	"events": [
+		{
+			"name": "exception",
+			"timestamp": "2026-05-08T12:34:56.000Z",
+			"properties": {
+				"exceptions": [
+					{
+						"type": "RuntimeError",
+						"value": "failed to load runtime library",
+						"in_app": true,
+						"stacktrace": {
+							"type": "raw",
+							"frames": [
+								{
+									"filename": "engine.go",
+									"function": "Run",
+									"lineno": 123,
+									"in_app": true
+								}
+							]
+						}
+					}
+				],
+				"command": "dev",
+				"phase": "startup"
+			}
+		}
+	]
 }
 ```
 
@@ -218,10 +218,10 @@ If telemetry collection has already been disabled (for example via `KURRENTDB_TE
 
 Gaffer emits events at the boundary of work, not on a periodic schedule:
 
-* `command_invoked` is sent once per CLI invocation, when the process exits.
-* `projection_shape` is sent the first time gaffer encounters a projection file in a process, and again only if the file's bucketed shape changes.
-* `extension_activated` is sent once when the VS Code extension activates.
-* `exception` is sent when gaffer's own code crashes.
+- `command_invoked` is sent once per CLI invocation, when the process exits.
+- `projection_shape` is sent the first time gaffer encounters a projection file in a process, and again only if the file's bucketed shape changes.
+- `extension_activated` is sent once when the VS Code extension activates.
+- `exception` is sent when gaffer's own code crashes.
 
 A gaffer process that does no work emits nothing. There is no periodic heartbeat.
 
@@ -229,10 +229,10 @@ A gaffer process that does no work emits nothing. There is no periodic heartbeat
 
 Telemetry transmission can be disabled by any one of the following:
 
-* Add `telemetry = false` at the top of `gaffer.toml`. Covers every gaffer invocation in that project, including CI.
-* Run `gaffer config telemetry off`. Covers every gaffer invocation by this user on this machine.
-* Set `GAFFER_TELEMETRY_OPTOUT`, `KURRENTDB_TELEMETRY_OPTOUT`, or `DO_NOT_TRACK` to a truthy value (`1`, `true`, `yes`, `on`).
-* Set VS Code's `telemetry.telemetryLevel` to anything other than `all`. The gaffer extension respects this setting.
+- Add `telemetry = false` at the top of `gaffer.toml`. Covers every gaffer invocation in that project, including CI.
+- Run `gaffer config telemetry off`. Covers every gaffer invocation by this user on this machine.
+- Set `GAFFER_TELEMETRY_OPTOUT`, `KURRENTDB_TELEMETRY_OPTOUT`, or `DO_NOT_TRACK` to a truthy value (`1`, `true`, `yes`, `on`).
+- Set VS Code's `telemetry.telemetryLevel` to anything other than `all`. The gaffer extension respects this setting.
 
 When opted out, gaffer does not collect telemetry. No envelope is constructed and no event is recorded locally.
 
@@ -246,5 +246,5 @@ Email `privacy@kurrent.io` with your `telemetry_id`. All events associated with 
 
 To find your id:
 
-* `gaffer config telemetry status` prints it while you are opted in.
-* `gaffer config telemetry off` prints it one last time before clearing local state.
+- `gaffer config telemetry status` prints it while you are opted in.
+- `gaffer config telemetry off` prints it one last time before clearing local state.

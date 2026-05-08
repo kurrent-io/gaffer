@@ -3,7 +3,6 @@
 	"name": "gaffer-telemetry",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-05-01",
-	"compatibility_flags": ["nodejs_compat"],
 
 	// Static assets binding serves /fonts/* and /favicons/* directly. The
 	// worker handles everything else (POST /v1/ingest, GET / for the notice).

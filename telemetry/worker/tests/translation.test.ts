@@ -194,6 +194,10 @@ describe("translateEnvelope", () => {
 		const result = translateEnvelope(env, "phc_test");
 		expect(result.batch[0]?.properties.saw_projection_user_throw).toBe(true);
 		expect(result.batch[0]?.properties.saw_projection_type_error).toBe(true);
+		expect(result.batch[0]?.properties.projection_errors_seen).toEqual([
+			"projection_user_throw",
+			"projection_type_error",
+		]);
 	});
 
 	it("flattens projection_shape handlers and builtin_counts", () => {
@@ -208,7 +212,14 @@ describe("translateEnvelope", () => {
 						parsable: true,
 						file_size: 5120,
 						handlers: { any: true, init: false, deleted: true, distinct_event_names: 10 },
-						builtin_counts: { fromAll: 1, when: 10, partitionBy: 1 },
+						builtin_counts: {
+							fromAll: 1,
+							when: 10,
+							partitionBy: 1,
+							// camelToSnake edge case: multiple capitals in a row.
+							linkStreamTo: 1,
+							chainHandlers: 1,
+						},
 					},
 				},
 			],
@@ -222,6 +233,8 @@ describe("translateEnvelope", () => {
 		expect(props.builtin_from_all_count).toBe(1);
 		expect(props.builtin_when_count).toBe(10);
 		expect(props.builtin_partition_by_count).toBe(1);
+		expect(props.builtin_link_stream_to_count).toBe(1);
+		expect(props.builtin_chain_handlers_count).toBe(1);
 		expect(props.handlers).toBeUndefined();
 		expect(props.builtin_counts).toBeUndefined();
 	});

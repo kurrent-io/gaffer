@@ -8,9 +8,9 @@
 	"scripts": {
 		"render-notice": "tsx scripts/render-notice.ts",
 		"gen-types": "wrangler types",
-		"check": "pnpm run gen-types && prettier --check . && tsc --noEmit",
-		"fix": "prettier --write .",
 		"build": "pnpm run render-notice && pnpm run gen-types",
+		"check": "pnpm run build && prettier --check . && tsc --noEmit",
+		"fix": "prettier --write .",
 		"test": "pnpm run build && vitest run",
 		"dev": "wrangler dev",
 		"deploy": "wrangler deploy"

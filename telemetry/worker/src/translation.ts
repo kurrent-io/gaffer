@@ -36,6 +36,9 @@ export function translateEnvelope(envelope: Envelope, apiKey: string): PostHogBa
 		const props: Record<string, unknown> = {
 			$lib,
 			$lib_version: context.lib_version,
+			// Suppress PostHog's IP-based geo-resolution. The worker's egress
+			// IP would otherwise be attached to every event.
+			$ip: null,
 			runtime_environment: context.runtime_environment,
 			run_id,
 			emitter: context.emitter,
@@ -82,6 +85,13 @@ function translateEventProperties(event: Event): Record<string, unknown> {
 			return { ...((event as ExtensionActivated).properties as Record<string, unknown>) };
 		case "exception":
 			return translateExceptionProperties((event as Exception).properties);
+		default: {
+			// Schema validation should reject unknown names before this runs, but
+			// guard defensively so a future event variant landing in CUE without
+			// updating this switch doesn't crash the worker.
+			const _exhaustive: never = event;
+			throw new Error(`unhandled event variant: ${JSON.stringify(_exhaustive)}`);
+		}
 	}
 }
 

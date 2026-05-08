@@ -1,12 +1,6 @@
 import { handleIngest } from "./ingest";
 import { handleNotice } from "./notice";
 
-export interface Env {
-	ASSETS: Fetcher;
-	POSTHOG_HOST: string;
-	POSTHOG_API_KEY: string;
-}
-
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		const url = new URL(request.url);

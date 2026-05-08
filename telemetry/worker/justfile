@@ -5,9 +5,10 @@ default:
 init:
     pnpm install --filter '@kurrent/gaffer-telemetry-worker'
 
-# Render the notice (notice.md -> src/notice.gen.ts).
+# Render the notice (notice.md -> src/notice.gen.ts) and generate
+# worker-configuration.d.ts from wrangler.jsonc.
 build:
-    pnpm run --filter '@kurrent/gaffer-telemetry-worker' render-notice
+    pnpm run --filter '@kurrent/gaffer-telemetry-worker' build
 
 # Format check + type check.
 check: build
@@ -31,4 +32,4 @@ deploy: build
 
 # Remove build artifacts.
 clean:
-    @rm -rf src/notice.gen.ts .wrangler dist
+    @rm -rf src/notice.gen.ts worker-configuration.d.ts .wrangler dist

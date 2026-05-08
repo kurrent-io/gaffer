@@ -7,10 +7,11 @@
 	"main": "src/index.ts",
 	"scripts": {
 		"render-notice": "tsx scripts/render-notice.ts",
-		"check": "prettier --check . && tsc --noEmit",
+		"gen-types": "wrangler types",
+		"check": "pnpm run gen-types && prettier --check . && tsc --noEmit",
 		"fix": "prettier --write .",
-		"build": "pnpm run render-notice",
-		"test": "vitest run",
+		"build": "pnpm run render-notice && pnpm run gen-types",
+		"test": "pnpm run build && vitest run",
 		"dev": "wrangler dev",
 		"deploy": "wrangler deploy"
 	},
@@ -18,15 +19,14 @@
 		"@cfworker/json-schema": "^4.1.1"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.6.0",
-		"@cloudflare/workers-types": "^4.20251104.0",
+		"@cloudflare/vitest-pool-workers": "^0.16.3",
 		"@kurrent/gaffer-telemetry": "workspace:*",
-		"@types/node": "^22.0.0",
-		"marked": "^15.0.0",
-		"prettier": "^3.6.2",
-		"tsx": "^4.19.0",
-		"typescript": "^5.9.3",
-		"vitest": "~2.1.9",
-		"wrangler": "^3.90.0"
+		"@types/node": "^25.6.0",
+		"marked": "^18.0.3",
+		"prettier": "^3.8.3",
+		"tsx": "^4.21.0",
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.5",
+		"wrangler": "^4.90.0"
 	}
 }

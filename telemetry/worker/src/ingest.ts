@@ -1,7 +1,6 @@
 import { Validator } from "@cfworker/json-schema";
 import type { Envelope } from "@kurrent/gaffer-telemetry";
 import schema from "../../generated/telemetry.schema.json" with { type: "json" };
-import type { Env } from "./index";
 import { translateEnvelope } from "./translation";
 
 // Compiled once per isolate; reused across requests within the isolate's

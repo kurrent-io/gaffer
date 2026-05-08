@@ -1,5 +1,5 @@
-import { fetchMock, SELF } from "cloudflare:test";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { exports } from "cloudflare:workers";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const validEnvelope = {
 	schema_version: "1",
@@ -27,73 +27,83 @@ const validEnvelope = {
 	],
 };
 
-beforeAll(() => {
-	fetchMock.activate();
-	fetchMock.disableNetConnect();
+const worker = exports.default;
+
+// Stub global fetch with a vitest mock so we can observe and control what the
+// worker tries to send to PostHog. Default behaviour is "PostHog accepted it";
+// individual tests override per-test.
+let fetchMock: ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+	fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
+	vi.stubGlobal("fetch", fetchMock);
 });
-afterAll(() => fetchMock.deactivate());
-beforeEach(() => fetchMock.assertNoPendingInterceptors());
+
+afterEach(() => {
+	vi.unstubAllGlobals();
+});
 
 describe("POST /v1/ingest", () => {
 	it("returns 200 for a valid envelope", async () => {
-		fetchMock.get("https://eu.i.posthog.com").intercept({ path: "/batch", method: "POST" }).reply(200, "ok");
-
-		const res = await SELF.fetch("https://example.com/v1/ingest", {
-			method: "POST",
-			body: JSON.stringify(validEnvelope),
-		});
+		const res = await worker.fetch(
+			new Request("https://example.com/v1/ingest", {
+				method: "POST",
+				body: JSON.stringify(validEnvelope),
+			}),
+		);
 		expect(res.status).toBe(200);
 	});
 
 	it("returns 200 (drops) for invalid JSON", async () => {
-		const res = await SELF.fetch("https://example.com/v1/ingest", {
-			method: "POST",
-			body: "{not json",
-		});
+		const res = await worker.fetch(
+			new Request("https://example.com/v1/ingest", {
+				method: "POST",
+				body: "{not json",
+			}),
+		);
 		expect(res.status).toBe(200);
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it("returns 200 (drops) for an envelope that fails schema validation", async () => {
 		const bad = { ...validEnvelope, emitter_id: "not-a-uuid" };
-		const res = await SELF.fetch("https://example.com/v1/ingest", {
-			method: "POST",
-			body: JSON.stringify(bad),
-		});
+		const res = await worker.fetch(
+			new Request("https://example.com/v1/ingest", {
+				method: "POST",
+				body: JSON.stringify(bad),
+			}),
+		);
 		expect(res.status).toBe(200);
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it("returns 200 even when PostHog is unreachable", async () => {
-		fetchMock
-			.get("https://eu.i.posthog.com")
-			.intercept({ path: "/batch", method: "POST" })
-			.replyWithError(new Error("network unreachable"));
-
-		const res = await SELF.fetch("https://example.com/v1/ingest", {
-			method: "POST",
-			body: JSON.stringify(validEnvelope),
-		});
+		fetchMock.mockRejectedValueOnce(new Error("network unreachable"));
+		const res = await worker.fetch(
+			new Request("https://example.com/v1/ingest", {
+				method: "POST",
+				body: JSON.stringify(validEnvelope),
+			}),
+		);
 		expect(res.status).toBe(200);
 	});
 
 	it("forwards to PostHog with the api_key in the body", async () => {
-		let receivedBody: unknown;
-		fetchMock
-			.get("https://eu.i.posthog.com")
-			.intercept({ path: "/batch", method: "POST" })
-			.reply((opts) => {
-				receivedBody = JSON.parse(opts.body as string);
-				return { statusCode: 200, data: "ok" };
-			});
-
-		await SELF.fetch("https://example.com/v1/ingest", {
-			method: "POST",
-			body: JSON.stringify(validEnvelope),
-		});
+		await worker.fetch(
+			new Request("https://example.com/v1/ingest", {
+				method: "POST",
+				body: JSON.stringify(validEnvelope),
+			}),
+		);
 
 		// Wait for the waitUntil-deferred PostHog call to actually fire.
-		await new Promise((r) => setTimeout(r, 50));
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
-		expect(receivedBody).toMatchObject({
+		const [url, init] = fetchMock.mock.calls[0]!;
+		expect(url).toBe("https://eu.i.posthog.com/batch");
+		expect(init?.method).toBe("POST");
+		const body = JSON.parse(init?.body as string);
+		expect(body).toMatchObject({
 			api_key: expect.any(String),
 			batch: [{ event: "command_invoked", distinct_id: validEnvelope.emitter_id }],
 		});
@@ -102,7 +112,7 @@ describe("POST /v1/ingest", () => {
 
 describe("GET /", () => {
 	it("returns the notice HTML", async () => {
-		const res = await SELF.fetch("https://example.com/");
+		const res = await worker.fetch(new Request("https://example.com/"));
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toContain("text/html");
 		const body = await res.text();
@@ -113,12 +123,12 @@ describe("GET /", () => {
 
 describe("unmatched routes", () => {
 	it("returns 404 for an unknown path", async () => {
-		const res = await SELF.fetch("https://example.com/unknown");
+		const res = await worker.fetch(new Request("https://example.com/unknown"));
 		expect(res.status).toBe(404);
 	});
 
 	it("returns 404 for GET /v1/ingest (POST only)", async () => {
-		const res = await SELF.fetch("https://example.com/v1/ingest");
+		const res = await worker.fetch(new Request("https://example.com/v1/ingest"));
 		expect(res.status).toBe(404);
 	});
 });

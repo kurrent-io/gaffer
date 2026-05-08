@@ -3,7 +3,7 @@
 		"target": "es2022",
 		"module": "esnext",
 		"moduleResolution": "bundler",
-		"types": ["@cloudflare/workers-types", "node", "@cloudflare/vitest-pool-workers"],
+		"types": ["node", "@cloudflare/vitest-pool-workers/types"],
 		"lib": ["es2022", "dom"],
 		"strict": true,
 		"noUnusedLocals": true,
@@ -17,5 +17,5 @@
 		"skipLibCheck": true,
 		"noEmit": true
 	},
-	"include": ["src/**/*", "tests/**/*", "scripts/**/*"]
+	"include": ["src/**/*", "tests/**/*", "scripts/**/*", "worker-configuration.d.ts"]
 }

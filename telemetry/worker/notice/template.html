@@ -11,23 +11,22 @@
 			:root {
 				color-scheme: light dark;
 
-				/* Trimmed slice of the Kurrent palette - only the colours this page uses. */
 				--kurrent-white: #ffffff;
 				--kurrent-black: #000000;
 				--kurrent-powder-black: #080b0d;
 				--kurrent-powder-blue: #9fbbc5;
 				--kurrent-plum: #631b3a;
 				--kurrent-pacific-blue: #479bff;
-				--kurrent-mint-green: #dbf9ee;
-				--kurrent-deep-violet: #462f63;
 
 				--color-background: light-dark(var(--kurrent-white), var(--kurrent-powder-black));
 				--color-foreground: light-dark(var(--kurrent-black), var(--kurrent-powder-blue));
 				--color-muted: color-mix(in lab, var(--color-foreground), var(--color-background) 30%);
 				--color-title: light-dark(var(--kurrent-plum), var(--kurrent-powder-blue));
-				--color-link: var(--kurrent-pacific-blue);
-				--color-code-bg: light-dark(var(--kurrent-mint-green), var(--kurrent-deep-violet));
-				--color-rule: color-mix(in lab, var(--color-foreground), var(--color-background) 70%);
+				--color-link: light-dark(var(--kurrent-pacific-blue), var(--kurrent-pacific-blue));
+				--color-shade-20: light-dark(#ecf1f3, #1e2528);
+
+				--code-fg: light-dark(#000000, #d1dce0);
+				--code-bg: light-dark(#ecf4fa, #282c34);
 			}
 
 			@font-face {
@@ -138,12 +137,14 @@
 				font-family: "Spline Sans Mono", monospace;
 				font-size: 0.9em;
 				padding: 0.1em 0.3em;
-				background-color: var(--color-code-bg);
+				color: var(--code-fg);
+				background-color: var(--code-bg);
 				border-radius: 3px;
 			}
 
 			pre {
-				background-color: var(--color-code-bg);
+				color: var(--code-fg);
+				background-color: var(--code-bg);
 				padding: 1rem;
 				border-radius: 6px;
 				overflow-x: auto;
@@ -157,7 +158,7 @@
 
 			hr {
 				border: none;
-				border-top: 1px solid var(--color-rule);
+				border-top: 1px solid var(--color-shade-20);
 				margin: 2.5rem 0;
 			}
 

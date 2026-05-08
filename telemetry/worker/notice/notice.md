@@ -1,115 +1,250 @@
-# Gaffer telemetry
+# Usage telemetry
 
-`gaffer` (the projection toolkit for KurrentDB) sends pseudonymous usage data and crash reports to help us improve the tool. This page describes exactly what we collect, how it travels, and how to turn it off.
+Gaffer collects anonymous usage statistics and sends them to Kurrent, Inc. when the tool is run. Telemetry data helps us refine and improve gaffer based on real usage patterns.
 
-This document changes when behaviour changes; updates are public commits to the [gaffer repository](https://github.com/kurrent-io/gaffer).
+## What is usage telemetry
 
-## TL;DR
+Gaffer telemetry only tracks non-Personally-Identifiable Information. Counts are bucketed (never exact) and properties are allowlisted (no free-form text), which limits how precisely the data can describe an individual install or project.
 
-- A per-install random identifier (no account, no email, no PII).
-- Counts of work done (bucketed: "100-999 events processed", not "847 events processed").
-- The shape of your projections (which builtins called, file size tier). Never names, paths, or contents.
-- Crash reports from gaffer's own code, with file paths and any user-JS frames removed by construction.
-- Stored in PostHog's EU data centre.
-- One line in `gaffer.toml`, one config command, or any of three environment variables silences it.
+What gaffer **does not** track:
 
-## How to disable
+* Projection source code, in any form
+* Stream names, event names, category names, result-stream patterns
+* Function names, variable names, or any identifier from your code
+* Error messages produced by your projection code
+* File paths beyond basenames in scrubbed stack frames
+* KurrentDB connection strings, hostnames, or credentials
+* Environment variable names or values
+* User account or OS user information
+* IP addresses
 
-Any one of these silences telemetry. They're checked in this order; the first hit wins.
-
-1. **Project-level**: add `telemetry = false` to the top of `gaffer.toml`. Covers every gaffer invocation in that repo, including CI.
-2. **User-level**: run `gaffer config telemetry off`. Persists across projects on this machine.
-3. **Environment variable**: set any of the following to a truthy value (`1`, `true`, `yes`, `on`):
-   - `GAFFER_TELEMETRY_OPTOUT`
-   - `KURRENTDB_TELEMETRY_OPTOUT` (already set by users who opted out of KurrentDB telemetry; covers gaffer for free)
-   - `DO_NOT_TRACK` (the open-source convention; see [consoledonottrack.com](https://consoledonottrack.com))
-4. **VS Code's `telemetry.telemetryLevel`**: the gaffer extension respects this VS Code setting in addition to the above.
-
-## What we collect
-
-Four event types, all carrying only the fields below. The full machine-readable schema lives in the [gaffer repository](https://github.com/kurrent-io/gaffer/tree/main/telemetry/schemas).
+There are four event types. Each is wrapped in an envelope alongside shared install metadata (gaffer version, host OS, architecture, whether the run is in CI) before being sent.
 
 ### `command_invoked`
 
-Fires once at the end of every `gaffer` CLI invocation. Records:
+Records which gaffer command ran, what its outcome was, and bucketed counts of work done. Counts are always bucketed into one of `none`, `1`, `2-9`, `10-99`, `100-999`, `1000+` - never exact.
 
-- **Which command ran** (`version`, `init`, `dev`, `mcp`, etc.).
-- **Wall-clock duration** of the invocation, bucketed (none / 1 / 2-9 / 10-99 / 100-999 / 1000+ ms).
-- **Outcome**: `success`, `user_interrupt`, `internal_error`, etc.
-- **Bucketed counts of work done** that depend on the command (number of projections in the manifest, tool calls during an MCP session, breakpoints set during a debug session, etc.). Always bucketed, never exact.
-- **How the run was triggered**: directly from a terminal, from VS Code, from an MCP client.
+<details>
+<summary>Example envelope</summary>
+
+```json
+{
+  "schema_version": "1",
+  "emitter_id": "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
+  "run_id": "01938e7a-3c8d-7e2f-bac3-8d4e2f1c9a07",
+  "context": {
+    "emitter": "cli",
+    "lib_version": "0.4.2",
+    "os": "linux",
+    "arch": "x64",
+    "runtime_environment": "local"
+  },
+  "events": [
+    {
+      "name": "command_invoked",
+      "timestamp": "2026-05-08T12:34:56.000Z",
+      "properties": {
+        "command": "dev",
+        "duration_ms": 100,
+        "outcome": "user_interrupt",
+        "invoked_by": "direct",
+        "invoked_via": "terminal",
+        "manifest_features_used": ["projections", "fixtures"],
+        "projection_count": 10,
+        "fixture_count": 2,
+        "connected_to_db": true,
+        "db_version": "26.1"
+      }
+    }
+  ]
+}
+```
+
+</details>
 
 ### `projection_shape`
 
-A snapshot of what one of your projection files looks like, structurally. Emitted when gaffer first encounters a projection and again only if its bucketed shape changes. Records:
+Records the source-mechanical shape of a projection file: which projection builtins are called (`fromAll`, `when`, `partitionBy`, etc.) with bucketed call counts, which handlers are registered, and a bucketed file size. The projection's identifier is a salted hash that's stable across runs but does not reveal the projection's path or contents.
 
-- **An opaque hashed identifier** (per-install, salted, non-reversible) for the projection file.
-- **Bucketed file size tier** (under 1KB, 1KB-5KB, etc.).
-- **Which gaffer builtins it calls** (`fromAll`, `when`, `partitionBy`, etc.) with bucketed call counts.
-- **Whether it registers `$any` / `$init` / `$deleted` handlers** and a bucketed count of how many distinct event-name handlers it has.
+<details>
+<summary>Example envelope</summary>
 
-The names of events it handles, the names of streams it reads or writes, the function names you've defined, the contents of any string, and the file path itself are all out of scope. The walker only sees gaffer-builtin call sites; everything else is invisible.
+```json
+{
+  "schema_version": "1",
+  "emitter_id": "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
+  "run_id": "01938e7a-3c8d-7e2f-bac3-8d4e2f1c9a07",
+  "context": {
+    "emitter": "cli",
+    "lib_version": "0.4.2",
+    "os": "linux",
+    "arch": "x64",
+    "runtime_environment": "local"
+  },
+  "events": [
+    {
+      "name": "projection_shape",
+      "timestamp": "2026-05-08T12:34:56.000Z",
+      "properties": {
+        "projection_id": "a1b2c3d4e5f6789a",
+        "parsable": true,
+        "file_size": 5120,
+        "handlers": {
+          "any": false,
+          "init": true,
+          "deleted": false,
+          "distinct_event_names": 10
+        },
+        "builtin_counts": {
+          "fromAll": 1,
+          "when": 10,
+          "partitionBy": 1,
+          "emit": 100
+        }
+      }
+    }
+  ]
+}
+```
+
+</details>
 
 ### `extension_activated`
 
-Fires once when the VS Code extension activates. Records:
+Records whether the gaffer CLI binary is reachable on the user's `PATH` when the VS Code extension activates - the "broken install" diagnostic - along with editor and CLI versions and a bucketed activation duration.
 
-- **Whether the gaffer CLI binary is reachable** (PATH-resolvable, spawnable, responds to `gaffer version` within a timeout). The "broken install" diagnostic.
-- **Editor and gaffer versions**.
-- **Bucketed activation duration**.
+<details>
+<summary>Example envelope</summary>
+
+```json
+{
+  "schema_version": "1",
+  "emitter_id": "0b51e34d-aac8-4cce-bce4-9d2c7c6e3b8a",
+  "run_id": "01938e7a-1b2c-7d4e-9faf-2a3b4c5d6e7f",
+  "context": {
+    "emitter": "extension",
+    "lib_version": "0.4.2",
+    "os": "darwin",
+    "arch": "arm64",
+    "runtime_environment": "local"
+  },
+  "events": [
+    {
+      "name": "extension_activated",
+      "timestamp": "2026-05-08T12:00:00.000Z",
+      "properties": {
+        "editor": "vscode",
+        "editor_version": "1.95.2",
+        "cli_reachable": true,
+        "cli_version": "0.4.2",
+        "activation_duration_ms": 100
+      }
+    }
+  ]
+}
+```
+
+</details>
 
 ### `exception`
 
-A crash in gaffer's own code (a Go panic in the CLI, an unhandled JS error in the extension host, a runtime exception in the projection engine). Records:
+Records crashes in gaffer's own code (Go panics in the CLI, unhandled JS errors in the extension host, runtime exceptions in the projection engine). Exception messages are always written by gaffer and never propagated from your projection code. Stack frames are scrubbed structurally: file basenames only, user-JS frames dropped entirely.
 
-- **Exception type and message** - always a message gaffer wrote, never a propagated message from your projection code.
-- **Stack frames** - file basenames only (never full paths), function names from gaffer's code only (user-JS frames are dropped entirely).
-- **Coarse lifecycle phase** the crash happened in.
+<details>
+<summary>Example envelope</summary>
 
-Errors thrown by your projection code (a `TypeError`, a `ReferenceError`, etc.) are not in scope here - they surface as a structural outcome on the relevant `command_invoked` event, with no message body or stack.
+```json
+{
+  "schema_version": "1",
+  "emitter_id": "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
+  "run_id": "01938e7a-3c8d-7e2f-bac3-8d4e2f1c9a07",
+  "context": {
+    "emitter": "cli",
+    "lib_version": "0.4.2",
+    "os": "linux",
+    "arch": "x64",
+    "runtime_environment": "local"
+  },
+  "events": [
+    {
+      "name": "exception",
+      "timestamp": "2026-05-08T12:34:56.000Z",
+      "properties": {
+        "exceptions": [
+          {
+            "type": "RuntimeError",
+            "value": "failed to load runtime library",
+            "in_app": true,
+            "stacktrace": {
+              "type": "raw",
+              "frames": [
+                {
+                  "filename": "engine.go",
+                  "function": "Run",
+                  "lineno": 123,
+                  "in_app": true
+                }
+              ]
+            }
+          }
+        ],
+        "command": "dev",
+        "phase": "startup"
+      }
+    }
+  ]
+}
+```
 
-## What we never collect
+</details>
 
-- Your projection source, in any form (contents, paths, hashes of contents).
-- Stream names, event names, category names, result-stream patterns.
-- Function names, variable names, or any identifier from your code.
-- File paths beyond the basename inside scrubbed stack frames.
-- KurrentDB connection strings, hostnames, or credentials.
-- Environment variable names or values (we read opt-out vars to drive behaviour, but they don't become telemetry).
-- User account or OS user information.
-- Hardware identifiers (MAC addresses, machine IDs, etc.).
-- IP addresses (Cloudflare sees them transiently; the worker doesn't forward them).
+## Disclosure
 
-## How it travels
+On the first invocation, gaffer prints a one-time message to the terminal, similar to:
 
-1. The CLI / extension constructs a JSON envelope, validates the shape locally, and POSTs it to `https://telemetry.gaffer.kurrent.io/v1/ingest`.
-2. A Cloudflare Worker (open source, in this repo) validates the envelope against the schema and translates it to the format PostHog expects.
-3. The worker forwards the translated batch to PostHog's EU data centre.
+```
+Telemetry
+---------
+Gaffer collects usage data in order to improve your experience. The data is anonymous and collected by Kurrent, Inc.
+You can opt out of sending telemetry by setting the GAFFER_TELEMETRY_OPTOUT environment variable to true.
+For more information visit https://telemetry.gaffer.kurrent.io.
+```
 
-The worker has no persistent storage on the request path beyond Cloudflare's standard transit logs (~30 days, includes IPs). Events are stored in PostHog EU.
+The VS Code extension shows an equivalent notification on first activation, with `[Disable]`, `[Learn more]`, and `[Dismiss]` buttons.
 
-## Identifiers we use
+If telemetry collection has already been disabled (for example via `KURRENTDB_TELEMETRY_OPTOUT` carried over from KurrentDB, or `DO_NOT_TRACK`), no disclosure is shown - the user has already declined.
 
-- `telemetry_id`: a UUID generated when you install gaffer. Per-install, persists across invocations until you opt out (which clears it). No relation to your account, email, or any other identifier.
-- `salt`: a per-install secret used to hash projection paths into opaque identifiers. Stays local; never sent on the wire.
-- `run_id`: a per-process UUID. Correlates events from a single CLI invocation or extension activation. Discarded when the process exits.
-- `session_id`: stamped by the worker (not the client). Groups events from your activity into "sessions" using a 30-minute inactivity window.
+## Reporting frequency
 
-## Right to be forgotten
+Gaffer emits events at the boundary of work, not on a periodic schedule:
 
-- **Email `privacy@kurrent.io`** with your `telemetry_id`. We'll delete all events associated with it from PostHog within 30 days (GDPR's standard timeframe).
-- **Capturing your id**: `gaffer config telemetry status` prints it while you're opted in. `gaffer config telemetry off` prints it one last time before clearing local state.
+* `command_invoked` is sent once per CLI invocation, when the process exits.
+* `projection_shape` is sent the first time gaffer encounters a projection file in a process, and again only if the file's bucketed shape changes.
+* `extension_activated` is sent once when the VS Code extension activates.
+* `exception` is sent when gaffer's own code crashes.
 
-Deletion scope:
+A gaffer process that does no work emits nothing. There is no periodic heartbeat.
 
-- **PostHog rows**: deleted via `$delete_person` on receipt.
-- **D1 session-stitching tables**: roll off naturally on a 30-minute / 25-hour TTL; nothing to delete.
-- **Cloudflare access logs**: roll off CF's standard ~30-day retention.
+## How to opt out
 
-## Why opt-out, not opt-in
+Telemetry transmission can be disabled by any one of the following:
 
-We're aware this is a defensible default rather than an obvious one. The data we collect is bucketed, allowlisted, and doesn't identify you or your projects - the safety isn't a scrubbing pass we hope catches everything, it's a property of the schema. Multiple opt-out channels (including ones you've already configured for other tools) silence it. The schema and worker are public; the disclosure (this page) is too. Legal frame is GDPR Article 6(1)(f) "legitimate interest" - the shape of the data is what makes that frame fit, not the other way around.
+* Add `telemetry = false` at the top of `gaffer.toml`. Covers every gaffer invocation in that project, including CI.
+* Run `gaffer config telemetry off`. Covers every gaffer invocation by this user on this machine.
+* Set `GAFFER_TELEMETRY_OPTOUT`, `KURRENTDB_TELEMETRY_OPTOUT`, or `DO_NOT_TRACK` to a truthy value (`1`, `true`, `yes`, `on`).
+* Set VS Code's `telemetry.telemetryLevel` to anything other than `all`. The gaffer extension respects this setting.
 
-## Questions, concerns, complaints
+When opted out, gaffer does not collect telemetry. No envelope is constructed and no event is recorded locally.
 
-Open an issue at [github.com/kurrent-io/gaffer](https://github.com/kurrent-io/gaffer/issues) or email `privacy@kurrent.io`.
+## Where data is stored
+
+Telemetry data is stored in PostHog's EU instance. Envelopes transit Cloudflare's edge network on the way there. Cloudflare's standard request logs include IP and are retained for around 30 days; gaffer does not forward IPs to PostHog. The worker that handles ingest is open source and lives in the [gaffer repository](https://github.com/kurrent-io/gaffer/tree/main/telemetry/worker), alongside the [machine-readable schema](https://github.com/kurrent-io/gaffer/tree/main/telemetry/schemas) for the events described above.
+
+## How to delete your data
+
+Email `privacy@kurrent.io` with your `telemetry_id`. All events associated with that id are deleted from PostHog within 30 days.
+
+To find your id:
+
+* `gaffer config telemetry status` prints it while you are opted in.
+* `gaffer config telemetry off` prints it one last time before clearing local state.

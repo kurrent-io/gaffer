@@ -1,0 +1,34 @@
+default:
+    @just --list
+
+# Install JS dependencies.
+init:
+    pnpm install --filter '@kurrent/gaffer-telemetry-worker'
+
+# Render the notice (notice.md -> src/notice.gen.ts).
+build:
+    pnpm run --filter '@kurrent/gaffer-telemetry-worker' render-notice
+
+# Format check + type check.
+check: build
+    pnpm run --filter '@kurrent/gaffer-telemetry-worker' check
+
+# Format.
+fix:
+    pnpm run --filter '@kurrent/gaffer-telemetry-worker' fix
+
+# Run tests (vitest in the Workers runtime via @cloudflare/vitest-pool-workers).
+test: build
+    pnpm run --filter '@kurrent/gaffer-telemetry-worker' test
+
+# Local dev server (wrangler dev).
+dev: build
+    pnpm run --filter '@kurrent/gaffer-telemetry-worker' dev
+
+# Deploy to Cloudflare. Requires CLOUDFLARE_API_TOKEN in env.
+deploy: build
+    pnpm run --filter '@kurrent/gaffer-telemetry-worker' deploy
+
+# Remove build artifacts.
+clean:
+    @rm -rf src/notice.gen.ts .wrangler dist

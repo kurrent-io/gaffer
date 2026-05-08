@@ -82,6 +82,9 @@ jobs:
       - name: Telemetry codegen determinism
         run: just telemetry test
 
+      - name: Telemetry worker tests
+        run: just telemetry worker test
+
       # Publish gaffer.so once. The public build/test/test-integration
       # targets each depend on _runtime; calling them sequentially would
       # let dotnet's incremental build skip work but still run noise. By

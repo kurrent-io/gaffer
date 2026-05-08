@@ -7,6 +7,7 @@ packages:
   - 'editors/vscode'
   - 'editors/vscode/tsserver-plugin'
   - 'telemetry'
+  - 'telemetry/worker'
   - 'types'
 
 onlyBuiltDependencies:

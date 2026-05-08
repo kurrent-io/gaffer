@@ -1,0 +1,4 @@
+# Worker build artifacts
+src/notice.gen.ts
+.wrangler/
+dist/

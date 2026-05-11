@@ -32,6 +32,8 @@ There are four event types. Each is wrapped in an envelope alongside shared inst
 
 The receiving worker stamps each event with its own deploy timestamp so we can correlate analytics against the server version that processed them.
 
+The precise wire format lives in [`telemetry/schemas/events.cue`](https://github.com/kurrent-io/gaffer/tree/main/telemetry/schemas/events.cue) (event shapes) and [`telemetry/schemas/wire.cue`](https://github.com/kurrent-io/gaffer/tree/main/telemetry/schemas/wire.cue) (envelope).
+
 ### `command_invoked`
 
 Records which gaffer command ran, what its outcome was, and bucketed counts of work done.

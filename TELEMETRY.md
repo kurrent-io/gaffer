@@ -220,7 +220,12 @@ On the first invocation, gaffer prints a one-time message to the terminal, simil
 Telemetry
 ---------
 Gaffer collects usage data in order to improve your experience. The data is anonymous and collected by Kurrent, Inc.
-You can opt out of sending telemetry by setting the GAFFER_TELEMETRY_OPTOUT environment variable to true.
+
+You can opt out by any of:
+  - Running `gaffer config telemetry off` (this machine)
+  - Adding `telemetry = false` to your project's gaffer.toml
+  - Setting GAFFER_TELEMETRY_OPTOUT, KURRENTDB_TELEMETRY_OPTOUT, or DO_NOT_TRACK to a truthy value
+
 For more information visit https://telemetry.gaffer.kurrent.io.
 ```
 

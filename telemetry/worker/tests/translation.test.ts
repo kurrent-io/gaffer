@@ -237,7 +237,6 @@ describe("translateEnvelope", () => {
 							fromAll: 1,
 							when: 10,
 							partitionBy: 1,
-							// camelToSnake edge case: multiple capitals in a row.
 							linkStreamTo: 1,
 							chainHandlers: 1,
 						},
@@ -251,11 +250,11 @@ describe("translateEnvelope", () => {
 		expect(props.init_handler).toBe(false);
 		expect(props.deleted_handler).toBe(true);
 		expect(props.distinct_event_handler_count).toBe(10);
-		expect(props.builtin_from_all_count).toBe(1);
+		expect(props.builtin_fromAll_count).toBe(1);
 		expect(props.builtin_when_count).toBe(10);
-		expect(props.builtin_partition_by_count).toBe(1);
-		expect(props.builtin_link_stream_to_count).toBe(1);
-		expect(props.builtin_chain_handlers_count).toBe(1);
+		expect(props.builtin_partitionBy_count).toBe(1);
+		expect(props.builtin_linkStreamTo_count).toBe(1);
+		expect(props.builtin_chainHandlers_count).toBe(1);
 		expect(props.handlers).toBeUndefined();
 		expect(props.builtin_counts).toBeUndefined();
 	});

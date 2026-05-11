@@ -132,8 +132,12 @@ function translateProjectionShapeProperties(props: ProjectionShape["properties"]
 	}
 
 	if (builtin_counts) {
+		// Preserve the API name verbatim - `partitionBy` is the actual JS
+		// projection builtin, not "partition by". Snake-casing here would
+		// rename external identifiers, breaking the 1:1 mapping between a
+		// PostHog property and a call site in a user's projection.
 		for (const [apiName, count] of Object.entries(builtin_counts as Record<string, number>)) {
-			out[`builtin_${camelToSnake(apiName)}_count`] = count;
+			out[`builtin_${apiName}_count`] = count;
 		}
 	}
 
@@ -143,8 +147,4 @@ function translateProjectionShapeProperties(props: ProjectionShape["properties"]
 function translateExceptionProperties(props: Exception["properties"]): Record<string, unknown> {
 	const { exceptions, ...rest } = props;
 	return { ...rest, $exception_list: exceptions };
-}
-
-function camelToSnake(s: string): string {
-	return s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 }

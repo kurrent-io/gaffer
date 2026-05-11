@@ -42,27 +42,36 @@ describe("stitchSession", () => {
 	});
 
 	it("resurrects a run whose session_by_user row has been overwritten", async () => {
-		// emitterA starts in session X via runA.
+		// emitterA starts in session X via runA, several hours ago.
 		const original = await stitchSession(emitterA, runA, env.DB);
 
-		// Simulate: the user-row's inactivity has lapsed AND another run on
-		// the same emitter has minted a new session. We force this state by
-		// pushing session_by_user's last_seen_at and session_started_at back
-		// far enough to fail both the inactivity-window and 24h-cap checks
-		// (so the next emitter event mints), then drive a new emitter event.
+		// Age both rows: push session_by_run AND session_by_user back 12h.
+		// session_by_user gets a further bump to put `last_seen_at` outside
+		// the 30 min inactivity window so the next emitter event mints fresh.
+		const twelveHoursAgo = Date.now() - 12 * 60 * 60 * 1000;
 		await env.DB.prepare(
 			`UPDATE session_by_user
 			 SET last_seen_at = ?1, session_started_at = ?1
 			 WHERE emitter_id = ?2`,
 		)
-			.bind(Date.now() - 36 * 60 * 60 * 1000, emitterA)
+			.bind(twelveHoursAgo, emitterA)
 			.run();
+		await env.DB.prepare(
+			`UPDATE session_by_run
+			 SET session_started_at = ?1
+			 WHERE run_id = ?2`,
+		)
+			.bind(twelveHoursAgo, runA)
+			.run();
+
+		// A different run on the same emitter mints a fresh session.
 		const after = await stitchSession(emitterA, runB, env.DB);
 		expect(after).not.toBe(original);
 
-		// Now a late event from the original run arrives. It should
-		// resurrect the original session via session_by_run, not adopt the
-		// new one.
+		// Now a late event from the original run arrives - 12h after the
+		// run was last seen, still within the 24h cap. session_by_run
+		// resurrects it into the original session rather than adopting the
+		// new one minted by runB.
 		const resurrected = await stitchSession(emitterA, runA, env.DB);
 		expect(resurrected).toBe(original);
 	});
@@ -110,6 +119,13 @@ describe("stitchSession", () => {
 		// Three concurrent stitches with the same emitter but distinct runs.
 		// SQLite's row-level write lock should serialise them at step 1, so
 		// all three land in the same session.
+		//
+		// Caveat: in a single isolate `Promise.all` may interleave at most
+		// at the await boundary - the underlying D1 calls happen serially in
+		// the test pool. This test confirms the same-session outcome rather
+		// than directly proving the row-lock claim under wire-level
+		// contention. A real concurrency stress test would need multiple
+		// isolates.
 		const [a, b, c] = await Promise.all([
 			stitchSession(emitterA, runA, env.DB),
 			stitchSession(emitterA, runB, env.DB),

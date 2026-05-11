@@ -21,6 +21,13 @@
 // daily cron that cleans the session tables.
 const MERGED_PAIR_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
+// Skip the per-event UPDATE that refreshes the pair's expires_at if the
+// existing expiry is still comfortably distant. A chatty CLI can emit
+// many envelopes carrying the same `invoker_id` per session; refreshing
+// expires_at on every one of them is wasted writes against D1's free-
+// tier limits and doesn't meaningfully change behaviour.
+const REFRESH_FLOOR_MS = 60 * 24 * 60 * 60 * 1000;
+
 export interface MergeFirer {
 	(emitterId: string, invokerId: string): Promise<boolean>;
 }
@@ -34,24 +41,27 @@ export async function maybeFireMerge(
 	const now = Date.now();
 	const expiry = now + MERGED_PAIR_TTL_MS;
 
-	const seen = await db
+	const seen = (await db
 		.prepare(
-			`SELECT 1 FROM merged_pairs
+			`SELECT expires_at FROM merged_pairs
 			 WHERE emitter_id = ?1 AND invoker_id = ?2 AND expires_at > ?3
 			 LIMIT 1`,
 		)
 		.bind(emitterId, invokerId, now)
-		.first();
+		.first()) as { expires_at: number } | null;
 
 	if (seen) {
-		// Already merged once; just refresh the TTL.
-		await db
-			.prepare(
-				`UPDATE merged_pairs SET expires_at = ?3
-				 WHERE emitter_id = ?1 AND invoker_id = ?2`,
-			)
-			.bind(emitterId, invokerId, expiry)
-			.run();
+		// Already merged. Refresh expires_at only if it's getting close to
+		// running out; skip the write otherwise.
+		if (seen.expires_at < now + REFRESH_FLOOR_MS) {
+			await db
+				.prepare(
+					`UPDATE merged_pairs SET expires_at = ?3
+					 WHERE emitter_id = ?1 AND invoker_id = ?2`,
+				)
+				.bind(emitterId, invokerId, expiry)
+				.run();
+		}
 		return;
 	}
 

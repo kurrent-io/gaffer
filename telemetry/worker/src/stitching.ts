@@ -33,12 +33,12 @@ export async function stitchSession(emitterId: string, runId: string, db: D1Data
 	const runExpiry = now + RUN_TTL_MS;
 	const proposedSessionId = crypto.randomUUID();
 
-	// D1 Sessions API: read-your-writes across colos. The session carries a
-	// commit token forward so reads observe at-least-as-new state as our
-	// prior writes from this isolate.
-	const session = db.withSession();
-
-	const result = await session.batch([
+	// D1's `batch()` runs the array as a single implicit transaction:
+	// statement 2's read sees statement 1's write, and SQLite's row-level
+	// write lock serialises concurrent batches for the same emitter_id.
+	// That's what makes the stitch atomic; we don't need the Sessions API
+	// here because we never thread a bookmark across multiple round-trips.
+	const result = await db.batch([
 		// 1. Resolve session_id and session_started_at via nested COALESCEs,
 		//    upsert session_by_user, RETURN it. Atomic within a single
 		//    statement; SQLite's row-level write lock serialises concurrent
@@ -48,7 +48,7 @@ export async function stitchSession(emitterId: string, runId: string, db: D1Data
 		//    D1 SQLite rejects `WITH ... INSERT ... SELECT FROM cte ... ON
 		//    CONFLICT DO UPDATE`. Inlining the candidate lookups as scalar
 		//    subqueries in the INSERT SELECT works around it.
-		session
+		db
 			.prepare(
 				`
 INSERT INTO session_by_user (emitter_id, session_id, session_started_at, last_seen_at, expires_at)
@@ -84,7 +84,7 @@ RETURNING session_id;
 		//    just-written session_by_user row (same transaction, same view
 		//    of data). Resurrection works because future stitches hit
 		//    session_by_run first via run_id.
-		session
+		db
 			.prepare(
 				`
 INSERT INTO session_by_run (run_id, session_id, session_started_at, expires_at)
@@ -102,10 +102,13 @@ ON CONFLICT (run_id) DO UPDATE SET
 
 	const row = result[0]?.results?.[0] as { session_id: string } | undefined;
 	if (!row) {
-		// Defensive: RETURNING should always yield a row for an INSERT ... ON
-		// CONFLICT DO UPDATE statement. If it doesn't, mint a fresh id rather
-		// than throw - the worker's job is to forward something useful.
-		return proposedSessionId;
+		// Should be unreachable: an INSERT ... ON CONFLICT DO UPDATE with a
+		// RETURNING clause always yields exactly one row. Throwing here is
+		// preferable to falling back to `proposedSessionId` - statement 1
+		// has already committed *some* session_id into D1, and returning a
+		// different one would leave this envelope orphaned from every
+		// future event on the same emitter.
+		throw new Error("stitchSession: RETURNING produced no row");
 	}
 	return row.session_id;
 }

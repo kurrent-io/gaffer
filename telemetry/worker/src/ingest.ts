@@ -26,9 +26,12 @@ export async function handleIngest(request: Request, env: Env, ctx: ExecutionCon
 		return ok();
 	}
 
-	// Stitch a session_id. Failure to stitch (D1 outage, schema drift) drops
-	// the envelope entirely - sending events to PostHog without a $session_id
-	// would land them in an undefined session and corrupt the cohort.
+	// Stitch a session_id. If stitching fails (D1 outage, schema drift)
+	// drop the envelope rather than forwarding it without `$session_id`.
+	// PostHog tolerates events that lack the property - they just don't
+	// appear in session funnels - but the worker's job is to produce
+	// session-stitched data, and a silent gap in coverage is worse than
+	// a deliberate drop we can see in counters.
 	let sessionId: string;
 	try {
 		sessionId = await stitchSession(envelope.emitter_id, envelope.run_id, env.DB);
@@ -37,14 +40,17 @@ export async function handleIngest(request: Request, env: Env, ctx: ExecutionCon
 	}
 
 	// Fire identity merge if the envelope carries `invoker_id` (an extension-
-	// spawned CLI invocation). Fire-and-forget; failure means the next event
-	// for the same pair retries.
+	// spawned CLI invocation). Fire-and-forget via waitUntil. The function
+	// can throw on D1 outage; wrap so the rejection doesn't disappear into
+	// the platform's unhandled-rejection handler unobserved.
 	const invokerId = envelope.context.invoker_id;
 	if (typeof invokerId === "string") {
 		ctx.waitUntil(
 			maybeFireMerge(envelope.emitter_id, invokerId, env.DB, (eId, iId) =>
 				fireMergeDangerously(env.POSTHOG_HOST, env.POSTHOG_API_KEY, eId, iId),
-			),
+			).catch((err) => {
+				console.error("maybeFireMerge failed:", err);
+			}),
 		);
 	}
 

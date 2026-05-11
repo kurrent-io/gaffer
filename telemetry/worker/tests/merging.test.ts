@@ -38,7 +38,7 @@ describe("maybeFireMerge", () => {
 		expect(fire).toHaveBeenCalledTimes(1);
 	});
 
-	it("refreshes TTL on repeat encounters", async () => {
+	it("skips the refresh write when expires_at is still comfortably distant", async () => {
 		const fire = vi.fn(async () => true);
 		await maybeFireMerge(emitterA, invokerA, env.DB, fire);
 
@@ -48,15 +48,38 @@ describe("maybeFireMerge", () => {
 			.bind(emitterA, invokerA)
 			.first()) as { expires_at: number };
 
-		// Advance time slightly so refresh is observable.
-		await new Promise((r) => setTimeout(r, 10));
+		// Fresh insert is a full 90d in the future; the refresh-floor is
+		// 60d, so a repeat right now shouldn't issue an UPDATE.
 		await maybeFireMerge(emitterA, invokerA, env.DB, fire);
 
 		const after = (await env.DB.prepare(`SELECT expires_at FROM merged_pairs WHERE emitter_id = ?1 AND invoker_id = ?2`)
 			.bind(emitterA, invokerA)
 			.first()) as { expires_at: number };
 
-		expect(after.expires_at).toBeGreaterThan(before.expires_at);
+		expect(after.expires_at).toBe(before.expires_at);
+	});
+
+	it("refreshes TTL when expires_at is within the refresh floor", async () => {
+		const fire = vi.fn(async () => true);
+		await maybeFireMerge(emitterA, invokerA, env.DB, fire);
+
+		// Force the existing expiry to a near-term value so the next call
+		// has to refresh it.
+		const nearTerm = Date.now() + 30 * 24 * 60 * 60 * 1000;
+		await env.DB.prepare(
+			`UPDATE merged_pairs SET expires_at = ?1
+			 WHERE emitter_id = ?2 AND invoker_id = ?3`,
+		)
+			.bind(nearTerm, emitterA, invokerA)
+			.run();
+
+		await maybeFireMerge(emitterA, invokerA, env.DB, fire);
+
+		const after = (await env.DB.prepare(`SELECT expires_at FROM merged_pairs WHERE emitter_id = ?1 AND invoker_id = ?2`)
+			.bind(emitterA, invokerA)
+			.first()) as { expires_at: number };
+
+		expect(after.expires_at).toBeGreaterThan(nearTerm);
 	});
 
 	it("does not persist when the fire returns false", async () => {

@@ -16,20 +16,57 @@
 // `$merge_dangerously` is idempotent for the same `(distinct_id, alias)`
 // pair, so a re-fire is safe.
 
-// Pair-persistence TTL. 90 days is long enough that a normal user won't
-// hit a refire from natural use; expired rows get pruned by the same
-// daily cron that cleans the session tables.
-const MERGED_PAIR_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+// Pair-persistence TTL. 30 days from last observation: the row is
+// refreshed on use, so an active install never refires the merge, and an
+// inactive install's row ages out 30 days after its final event. This
+// matches the deletion-runbook commitment in the public notice (a user
+// who emails to delete is by definition not emitting events anymore, so
+// their row will be gone within 30 days of their last activity).
+const MERGED_PAIR_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Skip the per-event UPDATE that refreshes the pair's expires_at if the
 // existing expiry is still comfortably distant. A chatty CLI can emit
 // many envelopes carrying the same `invoker_id` per session; refreshing
 // expires_at on every one of them is wasted writes against D1's free-
 // tier limits and doesn't meaningfully change behaviour.
-const REFRESH_FLOOR_MS = 60 * 24 * 60 * 60 * 1000;
+const REFRESH_FLOOR_MS = 20 * 24 * 60 * 60 * 1000;
 
 export interface MergeFirer {
 	(emitterId: string, invokerId: string): Promise<boolean>;
+}
+
+export async function fireMergeDangerously(
+	host: string,
+	apiKey: string,
+	emitterId: string,
+	invokerId: string,
+): Promise<boolean> {
+	try {
+		const res = await fetch(`${host}/batch`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				api_key: apiKey,
+				batch: [
+					{
+						event: "$merge_dangerously",
+						distinct_id: emitterId,
+						properties: { alias: invokerId },
+					},
+				],
+			}),
+			// Cap the outbound request so a hung PostHog doesn't sit on the
+			// isolate's waitUntil budget.
+			signal: AbortSignal.timeout(5000),
+		});
+		if (!res.ok) {
+			console.error("fireMergeDangerously non-2xx:", res.status);
+		}
+		return res.ok;
+	} catch (err) {
+		console.error("fireMergeDangerously fetch failed:", err);
+		return false;
+	}
 }
 
 export async function maybeFireMerge(

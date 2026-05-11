@@ -30,8 +30,11 @@ async function pruneTable(db: D1Database, table: string, now: number): Promise<v
 	);
 	for (let i = 0; i < MAX_CHUNKS_PER_RUN; i++) {
 		const result = await stmt.bind(now).run();
-		// `meta.changes` is the row count of the last write. SQLite/D1
-		// exposes it; if it's zero or undefined we've drained this table.
+		// `meta.changes` is the row count affected by the last write, capped
+		// at the LIMIT. A short batch (< LIMIT rows deleted) means there's
+		// nothing more to drain. This saves the extra "returned 0" round-trip
+		// we'd otherwise spend on the common case where the table has fewer
+		// than CHUNK_SIZE expired rows.
 		const changes = result.meta?.changes ?? 0;
 		if (changes < DELETE_CHUNK_SIZE) {
 			return;

@@ -46,12 +46,14 @@ describe("stitchSession", () => {
 		const original = await stitchSession(emitterA, runA, env.DB);
 
 		// Age both rows: push session_by_run AND session_by_user back 12h.
-		// session_by_user gets a further bump to put `last_seen_at` outside
-		// the 30 min inactivity window so the next emitter event mints fresh.
+		// session_by_user needs its expires_at aged too so it fails the
+		// active-continuation predicate (otherwise the user-arm reads a
+		// "still fresh" row whose last_seen_at no longer matches its
+		// expiry).
 		const twelveHoursAgo = Date.now() - 12 * 60 * 60 * 1000;
 		await env.DB.prepare(
 			`UPDATE session_by_user
-			 SET last_seen_at = ?1, session_started_at = ?1
+			 SET last_seen_at = ?1, session_started_at = ?1, expires_at = ?1
 			 WHERE emitter_id = ?2`,
 		)
 			.bind(twelveHoursAgo, emitterA)
@@ -115,10 +117,53 @@ describe("stitchSession", () => {
 		expect(next).not.toBe(first);
 	});
 
+	it("prefers run-based resurrection over active continuation when both match", async () => {
+		// Force a state where session_by_run and session_by_user disagree, so
+		// arms 1 and 2 of the candidate union both fire with different
+		// session_ids. Arm 1 (resurrection) must win.
+		const original = await stitchSession(emitterA, runA, env.DB);
+
+		// Rewrite session_by_user to point to a different session_id; leave
+		// session_by_run pointing at the original.
+		const otherSession = "11111111-1111-1111-1111-111111111111";
+		await env.DB.prepare(`UPDATE session_by_user SET session_id = ?1 WHERE emitter_id = ?2`)
+			.bind(otherSession, emitterA)
+			.run();
+
+		const resolved = await stitchSession(emitterA, runA, env.DB);
+		expect(resolved).toBe(original);
+		expect(resolved).not.toBe(otherSession);
+	});
+
+	it("rejects an active-continuation candidate that started exactly at the 24h cap", async () => {
+		// The cap predicate is `session_started_at > capThreshold` (strict).
+		// A session whose start time equals capThreshold must be rejected so
+		// the boundary doesn't silently keep a 24h-old session alive forever.
+		await stitchSession(emitterA, runA, env.DB);
+
+		const exactly24hAgo = Date.now() - 24 * 60 * 60 * 1000;
+		await env.DB.prepare(
+			`UPDATE session_by_user
+			 SET session_started_at = ?1, last_seen_at = ?1
+			 WHERE emitter_id = ?2`,
+		)
+			.bind(exactly24hAgo, emitterA)
+			.run();
+		// Clear session_by_run so only the user-side candidate is in play.
+		await env.DB.prepare(`DELETE FROM session_by_run WHERE run_id = ?1`).bind(runA).run();
+
+		const next = await stitchSession(emitterA, runB, env.DB);
+		// Should have minted fresh - the existing user row failed the cap.
+		const userRow = (await env.DB.prepare(`SELECT session_id FROM session_by_user WHERE emitter_id = ?1`)
+			.bind(emitterA)
+			.first()) as { session_id: string };
+		expect(userRow.session_id).toBe(next);
+	});
+
 	it("serialises concurrent stitches for the same emitter", async () => {
 		// Three concurrent stitches with the same emitter but distinct runs.
-		// SQLite's row-level write lock should serialise them at step 1, so
-		// all three land in the same session.
+		// SQLite's database-level write lock should serialise them at step 1,
+		// so all three land in the same session.
 		//
 		// Caveat: in a single isolate `Promise.all` may interleave at most
 		// at the await boundary - the underlying D1 calls happen serially in

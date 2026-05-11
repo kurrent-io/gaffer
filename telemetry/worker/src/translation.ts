@@ -15,23 +15,18 @@ import type {
 	ProjectionShape,
 } from "@kurrent/gaffer-telemetry";
 
-export interface PostHogBatchPayload {
-	api_key: string;
-	batch: PostHogEvent[];
-}
-
-interface PostHogEvent {
+export interface PostHogEvent {
 	event: string;
 	distinct_id: string;
 	timestamp: string;
 	properties: Record<string, unknown>;
 }
 
-export function translateEnvelope(envelope: Envelope, apiKey: string, sessionId: string): PostHogBatchPayload {
+export function translateEnvelope(envelope: Envelope, sessionId: string, workerDeployedAt: string): PostHogEvent[] {
 	const { emitter_id, run_id, context, events } = envelope;
 	const $lib = `gaffer-${context.emitter}`;
 
-	const batch: PostHogEvent[] = events.map((rawEvent, i) => {
+	return events.map((rawEvent, i) => {
 		const event = rawEvent as Event;
 		const props: Record<string, unknown> = {
 			$lib,
@@ -41,13 +36,17 @@ export function translateEnvelope(envelope: Envelope, apiKey: string, sessionId:
 			// Suppress PostHog's IP-based geo-resolution. The worker's egress
 			// IP would otherwise be attached to every event.
 			$ip: null,
+			// Deploy time of the running worker version. Lets dashboards
+			// filter / pivot on deploy generation.
+			worker_deployed_at: workerDeployedAt,
 			runtime_environment: context.runtime_environment,
 			run_id,
 			emitter: context.emitter,
 			...translateEventProperties(event),
 		};
 
-		// Person-property lifting on the first event of the batch.
+		// Lift identity properties onto the first event only; PostHog applies
+		// $set / $set_once to the person record, not the event.
 		if (i === 0) {
 			props.$set = { lib_version: context.lib_version };
 			const setOnce: Record<string, unknown> = {
@@ -68,8 +67,6 @@ export function translateEnvelope(envelope: Envelope, apiKey: string, sessionId:
 			properties: props,
 		};
 	});
-
-	return { api_key: apiKey, batch };
 }
 
 function translateEventName(name: string): string {
@@ -92,7 +89,8 @@ function translateEventProperties(event: Event): Record<string, unknown> {
 			// guard defensively so a future event variant landing in CUE without
 			// updating this switch doesn't crash the worker.
 			const _exhaustive: never = event;
-			throw new Error(`unhandled event variant: ${JSON.stringify(_exhaustive)}`);
+			void _exhaustive;
+			throw new Error(`unhandled event variant: ${JSON.stringify(event)}`);
 		}
 	}
 }

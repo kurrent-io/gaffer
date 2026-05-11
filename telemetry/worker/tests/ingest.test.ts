@@ -79,6 +79,30 @@ describe("POST /v1/ingest", () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
+	it("returns 200 (drops) for an oversized body, even without a Content-Length header", async () => {
+		// Pad an otherwise-valid envelope past MAX_BODY_BYTES (1 MiB). A stream
+		// passed as ReadableStream omits Content-Length, so this would slip
+		// through a header-only check.
+		const big = { ...validEnvelope, _pad: "x".repeat(1024 * 1024 + 1) };
+		const json = JSON.stringify(big);
+		const stream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(new TextEncoder().encode(json));
+				controller.close();
+			},
+		});
+		const res = await worker.fetch(
+			new Request("https://example.com/v1/ingest", {
+				method: "POST",
+				body: stream,
+				// @ts-expect-error duplex is required by fetch with a stream body
+				duplex: "half",
+			}),
+		);
+		expect(res.status).toBe(200);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it("returns 200 (drops) for an envelope that fails schema validation", async () => {
 		const bad = { ...validEnvelope, emitter_id: "not-a-uuid" };
 		const res = await worker.fetch(
@@ -182,7 +206,19 @@ describe("GET /", () => {
 		expect(res.headers.get("content-type")).toContain("text/html");
 		const body = await res.text();
 		expect(body.toLowerCase()).toContain("<!doctype html>");
-		expect(body).toContain("Gaffer telemetry");
+		// Assert against an `<h1>` to confirm the markdown rendered, not just
+		// that the title tag is present.
+		expect(body).toMatch(/<h1[^>]*>[^<]*Usage telemetry[^<]*<\/h1>/);
+	});
+
+	it("locks down the notice with a CSP", async () => {
+		const res = await worker.fetch(new Request("https://example.com/"));
+		const csp = res.headers.get("content-security-policy");
+		expect(csp).toContain("default-src 'none'");
+		// The notice has no scripts; if a future edit ever adds one, the
+		// browser should block it instead of silently running it.
+		expect(csp).toContain("script-src 'none'");
+		expect(csp).not.toContain("'unsafe-eval'");
 	});
 });
 
@@ -192,8 +228,9 @@ describe("unmatched routes", () => {
 		expect(res.status).toBe(404);
 	});
 
-	it("returns 404 for GET /v1/ingest (POST only)", async () => {
+	it("returns 405 for GET /v1/ingest (POST only)", async () => {
 		const res = await worker.fetch(new Request("https://example.com/v1/ingest"));
-		expect(res.status).toBe(404);
+		expect(res.status).toBe(405);
+		expect(res.headers.get("allow")).toBe("POST");
 	});
 });

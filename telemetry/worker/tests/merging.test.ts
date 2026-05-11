@@ -48,8 +48,8 @@ describe("maybeFireMerge", () => {
 			.bind(emitterA, invokerA)
 			.first()) as { expires_at: number };
 
-		// Fresh insert is a full 90d in the future; the refresh-floor is
-		// 60d, so a repeat right now shouldn't issue an UPDATE.
+		// Fresh insert is a full 30d in the future; the refresh-floor is
+		// 20d, so a repeat right now shouldn't issue an UPDATE.
 		await maybeFireMerge(emitterA, invokerA, env.DB, fire);
 
 		const after = (await env.DB.prepare(`SELECT expires_at FROM merged_pairs WHERE emitter_id = ?1 AND invoker_id = ?2`)
@@ -65,7 +65,7 @@ describe("maybeFireMerge", () => {
 
 		// Force the existing expiry to a near-term value so the next call
 		// has to refresh it.
-		const nearTerm = Date.now() + 30 * 24 * 60 * 60 * 1000;
+		const nearTerm = Date.now() + 10 * 24 * 60 * 60 * 1000;
 		await env.DB.prepare(
 			`UPDATE merged_pairs SET expires_at = ?1
 			 WHERE emitter_id = ?2 AND invoker_id = ?3`,

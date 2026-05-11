@@ -1,7 +1,7 @@
 import { Validator } from "@cfworker/json-schema";
 import type { Envelope } from "@kurrent/gaffer-telemetry";
 import schema from "../../generated/telemetry.schema.json" with { type: "json" };
-import { maybeFireMerge } from "./merging";
+import { fireMergeDangerously, maybeFireMerge } from "./merging";
 import { stitchSession } from "./stitching";
 import { translateEnvelope } from "./translation";
 
@@ -13,10 +13,9 @@ import { translateEnvelope } from "./translation";
 // and would reject base-inherited fields as "extras").
 const validator = new Validator(schema as never, "2019-09");
 
-// Cap the request body. A valid envelope with the schema's per-array
-// `maxItems: 100` and string `maxLength` caps comes nowhere near a
-// megabyte; anything larger is malformed or hostile. Reject before
-// `request.json()` runs so we don't spend CPU parsing it.
+// A valid envelope with the schema's per-array `maxItems: 100` and string
+// `maxLength` caps comes nowhere near a megabyte; anything larger is
+// malformed or hostile.
 const MAX_BODY_BYTES = 1024 * 1024;
 
 // PostHog host allowlist. The notice page promises EU storage; the worker
@@ -25,33 +24,35 @@ const MAX_BODY_BYTES = 1024 * 1024;
 const ALLOWED_POSTHOG_HOSTS = ["https://eu.i.posthog.com"];
 
 export async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-	// Reject oversized bodies before parsing.
+	// Fast-path reject on an oversized Content-Length. The streaming check
+	// below catches clients that omit or lie about the header.
 	const contentLength = request.headers.get("content-length");
 	if (contentLength !== null && Number.parseInt(contentLength, 10) > MAX_BODY_BYTES) {
 		return ok();
 	}
 
-	// Refuse to send to anything other than the allowlisted PostHog host.
-	// If config drift sneaks an alternate host in, we drop the envelope
-	// rather than leak the API key.
 	if (!ALLOWED_POSTHOG_HOSTS.includes(env.POSTHOG_HOST)) {
 		console.error("rejecting envelope: POSTHOG_HOST not allowlisted:", env.POSTHOG_HOST);
 		return ok();
 	}
 
-	// Read JSON. Drop on parse failure; never fail loudly on the request path.
-	let envelope: Envelope;
+	const bodyText = await readBodyCapped(request, MAX_BODY_BYTES);
+	if (bodyText === null) {
+		return ok();
+	}
+
+	let parsed: unknown;
 	try {
-		envelope = (await request.json()) as Envelope;
+		parsed = JSON.parse(bodyText);
 	} catch {
 		return ok();
 	}
 
-	// Validate against the wire schema.
-	const result = validator.validate(envelope);
+	const result = validator.validate(parsed);
 	if (!result.valid) {
 		return ok();
 	}
+	const envelope = parsed as Envelope;
 
 	// Stitch a session_id. If stitching fails (D1 outage, schema drift)
 	// drop the envelope rather than forwarding it without `$session_id`.
@@ -68,19 +69,18 @@ export async function handleIngest(request: Request, env: Env, ctx: ExecutionCon
 	}
 
 	// Translate up-front so the merge + forward can share a single
-	// waitUntil. Translation can throw on an unhandled variant; treat
-	// that as a drop too.
+	// waitUntil. Translation can throw on an unhandled variant; drop.
 	let payload;
 	try {
-		payload = translateEnvelope(envelope, env.POSTHOG_API_KEY, sessionId);
+		const batch = translateEnvelope(envelope, sessionId, env.CF_VERSION_METADATA.timestamp);
+		payload = { api_key: env.POSTHOG_API_KEY, batch };
 	} catch {
 		return ok();
 	}
 
-	// Compose merge-then-forward into one waitUntil. Two separate
-	// waitUntils would let isolate eviction land one POST but not the
-	// other; chaining keeps the causal order (merge person link before
-	// the stitched event arrives) and gives a single error site.
+	// Chain merge then forward in one waitUntil so isolate eviction can't
+	// land one POST without the other and the causal order (merge person
+	// link before the stitched event) is preserved.
 	const invokerId = envelope.context.invoker_id;
 	ctx.waitUntil(
 		(async () => {
@@ -102,42 +102,54 @@ export async function handleIngest(request: Request, env: Env, ctx: ExecutionCon
 
 async function forwardToPostHog(host: string, payload: unknown): Promise<void> {
 	try {
-		await fetch(`${host}/batch`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(payload),
-		});
-	} catch {
-		// Network failure or PostHog outage. Drop. We could add a Cloudflare
-		// Queue for replay later (out of scope per UI-1543).
-	}
-}
-
-async function fireMergeDangerously(
-	host: string,
-	apiKey: string,
-	emitterId: string,
-	invokerId: string,
-): Promise<boolean> {
-	try {
 		const res = await fetch(`${host}/batch`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				api_key: apiKey,
-				batch: [
-					{
-						event: "$merge_dangerously",
-						distinct_id: emitterId,
-						properties: { alias: invokerId },
-					},
-				],
-			}),
+			body: JSON.stringify(payload),
+			// Cap the outbound request so a hung PostHog doesn't sit on the
+			// isolate's waitUntil budget.
+			signal: AbortSignal.timeout(5000),
 		});
-		return res.ok;
-	} catch {
-		return false;
+		if (!res.ok) {
+			// With "always 200, drop on failure" up the stack, console.error
+			// is the only signal that envelopes are being rejected (bad API
+			// key, payload format change, project disabled).
+			console.error("forwardToPostHog non-2xx:", res.status);
+		}
+	} catch (err) {
+		console.error("forwardToPostHog fetch failed:", err);
 	}
+}
+
+// Read the body as a single string, aborting if total bytes exceed `max`.
+// Returns null on overflow or no body. We accumulate chunks and decode at
+// the end so a multi-byte UTF-8 character can't be split across two chunks.
+async function readBodyCapped(request: Request, max: number): Promise<string | null> {
+	const reader = request.body?.getReader();
+	if (!reader) return null;
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			total += value.byteLength;
+			if (total > max) {
+				await reader.cancel();
+				return null;
+			}
+			chunks.push(value);
+		}
+	} catch {
+		return null;
+	}
+	const buf = new Uint8Array(total);
+	let offset = 0;
+	for (const c of chunks) {
+		buf.set(c, offset);
+		offset += c.byteLength;
+	}
+	return new TextDecoder().decode(buf);
 }
 
 function ok(): Response {

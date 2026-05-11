@@ -18,6 +18,9 @@ const baseEnvelope: Envelope = {
 	events: [],
 };
 
+const testSessionId = "00000000-0000-0000-0000-0000000000aa";
+const testDeployedAt = "2026-05-11T00:00:00.000Z";
+
 describe("translateEnvelope", () => {
 	it("uses emitter_id as PostHog distinct_id", () => {
 		const env: Envelope = {
@@ -36,8 +39,29 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
-		expect(result.batch[0]?.distinct_id).toBe(env.emitter_id);
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.distinct_id).toBe(env.emitter_id);
+	});
+
+	it("stamps worker_deployed_at from CF_VERSION_METADATA", () => {
+		const env: Envelope = {
+			...baseEnvelope,
+			events: [
+				{
+					name: "command_invoked",
+					timestamp: "2026-05-08T12:00:00.000Z",
+					properties: {
+						command: "version",
+						duration_ms: 10,
+						outcome: "success",
+						invoked_by: "direct",
+						invoked_via: "terminal",
+					},
+				},
+			],
+		};
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.worker_deployed_at).toBe("2026-05-11T00:00:00.000Z");
 	});
 
 	it("derives $lib from emitter", () => {
@@ -57,8 +81,8 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
-		expect(result.batch[0]?.properties.$lib).toBe("gaffer-extension");
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.$lib).toBe("gaffer-extension");
 	});
 
 	it("renames `exception` event to `$exception` and `exceptions` to `$exception_list`", () => {
@@ -82,10 +106,10 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
-		expect(result.batch[0]?.event).toBe("$exception");
-		expect(result.batch[0]?.properties.$exception_list).toHaveLength(1);
-		expect(result.batch[0]?.properties.exceptions).toBeUndefined();
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.event).toBe("$exception");
+		expect(result[0]?.properties.$exception_list).toHaveLength(1);
+		expect(result[0]?.properties.exceptions).toBeUndefined();
 	});
 
 	it("lifts os/arch to $set_once on the first event of the batch only", () => {
@@ -116,10 +140,10 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
-		expect(result.batch[0]?.properties.$set_once).toMatchObject({ os: "linux", arch: "x64" });
-		expect(result.batch[1]?.properties.$set_once).toBeUndefined();
-		expect(result.batch[1]?.properties.$set).toBeUndefined();
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.$set_once).toMatchObject({ os: "linux", arch: "x64" });
+		expect(result[1]?.properties.$set_once).toBeUndefined();
+		expect(result[1]?.properties.$set).toBeUndefined();
 	});
 
 	it("includes install_date and first_seen_lib_version in $set_once when present", () => {
@@ -140,8 +164,8 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
-		expect(result.batch[0]?.properties.$set_once).toMatchObject({
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.$set_once).toMatchObject({
 			os: "linux",
 			arch: "x64",
 			install_date: "2026-05-08",
@@ -167,10 +191,10 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
-		expect(result.batch[0]?.properties.manifest_has_projections).toBe(true);
-		expect(result.batch[0]?.properties.manifest_has_fixtures).toBe(true);
-		expect(result.batch[0]?.properties.manifest_features_used).toEqual(["projections", "fixtures"]);
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.manifest_has_projections).toBe(true);
+		expect(result[0]?.properties.manifest_has_fixtures).toBe(true);
+		expect(result[0]?.properties.manifest_features_used).toEqual(["projections", "fixtures"]);
 	});
 
 	it("fans out projection_errors_seen into per-class booleans", () => {
@@ -191,13 +215,10 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
-		expect(result.batch[0]?.properties.saw_projection_user_throw).toBe(true);
-		expect(result.batch[0]?.properties.saw_projection_type_error).toBe(true);
-		expect(result.batch[0]?.properties.projection_errors_seen).toEqual([
-			"projection_user_throw",
-			"projection_type_error",
-		]);
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.saw_projection_user_throw).toBe(true);
+		expect(result[0]?.properties.saw_projection_type_error).toBe(true);
+		expect(result[0]?.properties.projection_errors_seen).toEqual(["projection_user_throw", "projection_type_error"]);
 	});
 
 	it("flattens projection_shape handlers and builtin_counts", () => {
@@ -224,8 +245,8 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
-		const props = result.batch[0]!.properties;
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		const props = result[0]!.properties;
 		expect(props.event_catchall_handler).toBe(true);
 		expect(props.init_handler).toBe(false);
 		expect(props.deleted_handler).toBe(true);
@@ -260,8 +281,8 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
-		expect(result.batch[0]?.properties.invoker_id).toBeUndefined();
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.invoker_id).toBeUndefined();
 	});
 
 	it("includes runtime_environment as a per-event property (not lifted)", () => {
@@ -282,8 +303,8 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
-		expect(result.batch[0]?.properties.runtime_environment).toBe("ci");
-		expect((result.batch[0]?.properties.$set_once as Record<string, unknown>).runtime_environment).toBeUndefined();
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.runtime_environment).toBe("ci");
+		expect((result[0]?.properties.$set_once as Record<string, unknown>).runtime_environment).toBeUndefined();
 	});
 });

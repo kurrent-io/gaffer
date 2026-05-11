@@ -146,33 +146,6 @@ describe("translateEnvelope", () => {
 		expect(result[1]?.properties.$set).toBeUndefined();
 	});
 
-	it("includes install_date and first_seen_lib_version in $set_once when present", () => {
-		const env: Envelope = {
-			...baseEnvelope,
-			context: { ...baseContext, install_date: "2026-05-08" },
-			events: [
-				{
-					name: "command_invoked",
-					timestamp: "2026-05-08T12:00:00.000Z",
-					properties: {
-						command: "version",
-						duration_ms: 10,
-						outcome: "success",
-						invoked_by: "direct",
-						invoked_via: "terminal",
-					},
-				},
-			],
-		};
-		const result = translateEnvelope(env, testSessionId, testDeployedAt);
-		expect(result[0]?.properties.$set_once).toMatchObject({
-			os: "linux",
-			arch: "x64",
-			install_date: "2026-05-08",
-			first_seen_lib_version: "0.4.2",
-		});
-	});
-
 	it("fans out manifest_features_used into per-section booleans", () => {
 		const env: Envelope = {
 			...baseEnvelope,

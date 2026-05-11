@@ -32,8 +32,12 @@ import "strings"
 }
 
 // CommandInvokedBaseProperties is the set of properties present on every
-// command_invoked event regardless of which command ran. The variants
-// narrow `command` to a specific literal.
+// command_invoked event regardless of which command ran. Variants embed this
+// (`{ #CommandInvokedBaseProperties, extra fields }`) rather than unifying
+// with `&`, because CUE definitions are recursively closed and `& { extras }`
+// would silently drop the additions. Embedding composes the shared fields
+// into each variant without inheriting the base's closedness in a way that
+// blocks per-variant additions.
 #CommandInvokedBaseProperties: {
 	// Which gaffer command ran. Variants narrow this to a specific literal.
 	command: #CommandName
@@ -48,35 +52,46 @@ import "strings"
 	outcome: #Outcome
 
 	// Who triggered the run.
-	invoked_by: "direct" | "vscode" | "mcp_client"
+	invoked_by: #InvokedBy
 
 	// Specific surface the invocation came through.
-	invoked_via: "terminal" | "code_lens" | "command_palette" | "mcp_provider" | "stdio"
+	invoked_via: #InvokedVia
 }
 
+// InvokedBy is who triggered a CLI run.
+#InvokedBy: "direct" | "vscode" | "mcp_client"
+
+// InvokedVia is the specific surface the invocation came through.
+#InvokedVia: "terminal" | "code_lens" | "command_palette" | "mcp_provider" | "stdio"
+
 // `gaffer version` - print version, exit. No command-specific properties.
-#VersionCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#VersionCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "version"
 }
 
 // `gaffer init` - scaffold a new project. No command-specific properties.
-#InitCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#InitCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "init"
 }
 
 // `gaffer scaffold` - generate boilerplate. No command-specific properties.
-#ScaffoldCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#ScaffoldCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "scaffold"
 }
 
 // `gaffer info` - print environment + manifest summary. No command-specific
 // properties.
-#InfoCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#InfoCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "info"
 }
 
 // `gaffer manifest` - parse and report manifest contents.
-#ManifestCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#ManifestCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "manifest"
 
 	// Top-level manifest section names present (e.g. ["projections",
@@ -92,7 +107,8 @@ import "strings"
 
 // `gaffer dev` - long-running development loop, optionally connected to a
 // live KurrentDB.
-#DevCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#DevCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "dev"
 
 	// Top-level manifest section names present.
@@ -118,7 +134,8 @@ import "strings"
 }
 
 // `gaffer mcp` - long-running Model Context Protocol server.
-#McpCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#McpCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "mcp"
 
 	// Top-level manifest section names present.
@@ -136,7 +153,8 @@ import "strings"
 }
 
 // `gaffer lsp` - language server.
-#LspCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#LspCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "lsp"
 
 	// Bucketed total code-lens requests served.
@@ -147,7 +165,8 @@ import "strings"
 }
 
 // `gaffer debug` - DAP server for projection debugging.
-#DebugCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#DebugCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "debug"
 
 	// Bucketed. Initial breakpoints set by the client.
@@ -178,9 +197,19 @@ import "strings"
 #Outcome:
 	"success" |
 	"user_interrupt" |
+	"user_error" |
+	"caught_up" |
 	"internal_error" |
-	"manifest_load_error" |
+	"manifest_not_found" |
+	"manifest_parse_error" |
+	"manifest_validation_error" |
 	"db_connect_error" |
+	"db_disconnect" |
+	"db_protocol_error" |
+	"dap_protocol_error" |
+	"lsp_protocol_error" |
+	"mcp_protocol_error" |
+	"fixture_exhausted" |
 	#ProjectionOutcome
 
 // The subset of #Outcome values that come from user-projection failure. Used
@@ -193,7 +222,10 @@ import "strings"
 	"projection_syntax_error" |
 	"projection_range_error" |
 	"projection_uri_error" |
-	"projection_eval_error"
+	"projection_eval_error" |
+	"projection_oom" |
+	"projection_stack_overflow" |
+	"projection_unknown_error"
 
 // ----------------------------------------------------------------------------
 // projection_shape
@@ -219,17 +251,7 @@ import "strings"
 	parsable: bool
 
 	// Bucketed file size on disk in bytes.
-	file_size:
-		// under 1KB
-		0 |
-		// 1KB-5KB
-		1024 |
-		// 5KB-20KB
-		5120 |
-		// 20KB-100KB
-		20480 |
-		// 100KB+
-		102400
+	file_size: #FileSizeBucket
 
 	// Which handlers the projection registers.
 	handlers: {
@@ -287,12 +309,7 @@ import "strings"
 }
 
 #ExtensionActivatedProperties: {
-	// Specific editor runtime detected at activation (from
-	// `vscode.env.uriScheme`). Distinguishes VS Code from its forks so we
-	// know which targets to test against; VSCodium / Cursor / Windsurf all
-	// have non-trivial adoption. Stable and insiders builds collapse to
-	// `"vscode"`; unknown forks map to `"other"`.
-	editor: "vscode" | "vscodium" | "cursor" | "windsurf" | "other"
+	editor: #Editor
 
 	// Editor version string (e.g. "1.95.2").
 	editor_version: string & strings.MaxRunes(32)
@@ -303,7 +320,7 @@ import "strings"
 	cli_reachable: bool
 
 	// Set when `cli_reachable = false`; absent otherwise.
-	cli_unreachable_reason?: "binary_not_found" | "binary_spawn_failed" | "timeout" | "unknown_error"
+	cli_unreachable_reason?: #CLIUnreachableReason
 
 	// Bucketed major.minor of the CLI binary's reported version. Present
 	// when `cli_reachable = true`.
@@ -312,6 +329,17 @@ import "strings"
 	// Time from extension activation to first event-emit decision.
 	activation_duration_ms: #BucketCount
 }
+
+// Editor is the specific editor runtime detected at activation (from
+// `vscode.env.uriScheme`). Distinguishes VS Code from its forks so we know
+// which targets to test against; VSCodium / Cursor / Windsurf all have
+// non-trivial adoption. Stable and insiders builds collapse to `"vscode"`;
+// unknown forks map to `"other"`.
+#Editor: "vscode" | "vscodium" | "cursor" | "windsurf" | "other"
+
+// CLIUnreachableReason narrows why the CLI couldn't be reached on extension
+// activation.
+#CLIUnreachableReason: "binary_not_found" | "binary_spawn_failed" | "timeout" | "unknown_error"
 
 // ----------------------------------------------------------------------------
 // exception
@@ -336,8 +364,11 @@ import "strings"
 	command?: #CommandName
 
 	// Coarse lifecycle bucket the crash happened in.
-	phase: "startup" | "projection_init" | "event_processing" | "shutdown"
+	phase: #ExceptionPhase
 }
+
+// ExceptionPhase is a coarse lifecycle bucket for where an exception fired.
+#ExceptionPhase: "startup" | "projection_init" | "event_processing" | "shutdown"
 
 // ExceptionEntry is one exception in the causal chain.
 #ExceptionEntry: {
@@ -395,3 +426,17 @@ import "strings"
 	100 |
 	// 1000+
 	1000
+
+// Bucketed file size on disk in bytes (lower-bound of the half-open
+// interval).
+#FileSizeBucket:
+	// under 1KB
+	0 |
+	// 1KB-5KB
+	1024 |
+	// 5KB-20KB
+	5120 |
+	// 20KB-100KB
+	20480 |
+	// 100KB+
+	102400

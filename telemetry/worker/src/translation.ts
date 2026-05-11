@@ -49,15 +49,10 @@ export function translateEnvelope(envelope: Envelope, sessionId: string, workerD
 		// $set / $set_once to the person record, not the event.
 		if (i === 0) {
 			props.$set = { lib_version: context.lib_version };
-			const setOnce: Record<string, unknown> = {
+			props.$set_once = {
 				os: context.os,
 				arch: context.arch,
 			};
-			if (context.install_date) {
-				setOnce.install_date = context.install_date;
-				setOnce.first_seen_lib_version = context.lib_version;
-			}
-			props.$set_once = setOnce;
 		}
 
 		return {

@@ -1,0 +1,1009 @@
+{
+  "description": "Envelope is the top-level shape POSTed to the worker. One envelope per HTTP\nrequest, carrying a batch of events that share the same emitter and run.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "emitter_id",
+    "run_id",
+    "context",
+    "events"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Bumped only for breaking wire changes; additive changes keep the\nsame version.",
+      "type": "string",
+      "enum": [
+        "1"
+      ]
+    },
+    "emitter_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "run_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "context": {
+      "$ref": "#/definitions/Context"
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Event"
+      },
+      "maxItems": 100
+    }
+  },
+  "definitions": {
+    "Arch": {
+      "description": "Host CPU architecture.",
+      "type": "string",
+      "enum": [
+        "x64",
+        "arm64",
+        "ia32"
+      ]
+    },
+    "BucketCount": {
+      "description": "Bucketed count.",
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2,
+        10,
+        100,
+        1000
+      ]
+    },
+    "CLIUnreachableReason": {
+      "description": "CLIUnreachableReason narrows why the CLI couldn't be reached on extension\nactivation.",
+      "type": "string",
+      "enum": [
+        "binary_not_found",
+        "binary_spawn_failed",
+        "timeout",
+        "unknown_error"
+      ]
+    },
+    "CommandInvoked": {
+      "description": "CommandInvoked fires once at the end of every CLI invocation - one-shot or\nlong-running. The `command` property identifies which command ran.",
+      "type": "object",
+      "required": [
+        "name",
+        "timestamp",
+        "properties"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": [
+            "command_invoked"
+          ]
+        },
+        "timestamp": {
+          "$ref": "#/definitions/Timestamp"
+        },
+        "properties": {
+          "type": "object",
+          "oneOf": [
+            {
+              "$ref": "#/definitions/VersionCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/InitCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/ScaffoldCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/InfoCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/ManifestCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/DevCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/McpCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/LspCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/DebugCommandInvokedProperties"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "CommandInvokedBaseProperties": {
+      "description": "CommandInvokedBaseProperties is the set of properties present on every\ncommand_invoked event regardless of which command ran. Variants embed this\n(`{ #CommandInvokedBaseProperties, extra fields }`) rather than unifying\nwith `&`, because CUE definitions are recursively closed and `& { extras }`\nwould silently drop the additions. Embedding composes the shared fields\ninto each variant without inheriting the base's closedness in a way that\nblocks per-variant additions.",
+      "type": "object",
+      "required": [
+        "command",
+        "duration_ms",
+        "outcome",
+        "invoked_by",
+        "invoked_via"
+      ],
+      "properties": {
+        "command": {
+          "$ref": "#/definitions/CommandName"
+        },
+        "duration_ms": {
+          "$ref": "#/definitions/BucketCount"
+        },
+        "outcome": {
+          "$ref": "#/definitions/Outcome"
+        },
+        "invoked_by": {
+          "$ref": "#/definitions/InvokedBy"
+        },
+        "invoked_via": {
+          "$ref": "#/definitions/InvokedVia"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "CommandName": {
+      "description": "The set of gaffer commands. Source of truth for the discriminator on\n`command_invoked` variants and the `command` field on `exception`.",
+      "type": "string",
+      "enum": [
+        "version",
+        "init",
+        "scaffold",
+        "manifest",
+        "info",
+        "dev",
+        "mcp",
+        "lsp",
+        "debug"
+      ]
+    },
+    "Context": {
+      "description": "Context is per-envelope metadata describing the emitting environment.\nIdentical for every event in a batch.",
+      "type": "object",
+      "required": [
+        "emitter",
+        "lib_version",
+        "os",
+        "arch",
+        "runtime_environment"
+      ],
+      "properties": {
+        "emitter": {
+          "$ref": "#/definitions/Emitter"
+        },
+        "lib_version": {
+          "description": "Gaffer release version (semver).",
+          "type": "string",
+          "maxLength": 32
+        },
+        "os": {
+          "$ref": "#/definitions/OS"
+        },
+        "arch": {
+          "$ref": "#/definitions/Arch"
+        },
+        "runtime_environment": {
+          "$ref": "#/definitions/RuntimeEnvironment"
+        },
+        "project_id": {
+          "description": "Salted hash of the project root absolute path -\nsha256(salt || abs-project-root)[:16]. Lets us distinguish one user\nwith five projects from five users with one project. The path itself\nnever leaves the machine. Absent for invocations that didn't run\ninside a project (e.g. `gaffer version`).",
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        },
+        "invoker_id": {
+          "$ref": "#/definitions/UUID"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "DebugCommandInvokedProperties": {
+      "description": "`gaffer debug` - DAP server for projection debugging.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "debug"
+          ]
+        },
+        "breakpoint_count": {
+          "$ref": "#/definitions/BucketCount"
+        },
+        "step_count": {
+          "$ref": "#/definitions/BucketCount"
+        },
+        "pause_count": {
+          "$ref": "#/definitions/BucketCount"
+        },
+        "restart_count": {
+          "$ref": "#/definitions/BucketCount"
+        },
+        "fixture_event_count": {
+          "$ref": "#/definitions/BucketCount"
+        },
+        "projection_errors_seen": {
+          "description": "Distinct, sorted set of `projection_*` outcome values seen during\nthe session. Empty when none.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ProjectionOutcome"
+          },
+          "maxItems": 100
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
+    "DevCommandInvokedProperties": {
+      "description": "`gaffer dev` - long-running development loop, optionally connected to a\nlive KurrentDB.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "dev"
+          ]
+        },
+        "manifest_features_used": {
+          "description": "Top-level manifest section names present.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "maxItems": 100
+        },
+        "projection_count": {
+          "$ref": "#/definitions/BucketCount"
+        },
+        "fixture_count": {
+          "$ref": "#/definitions/BucketCount"
+        },
+        "connected_to_db": {
+          "description": "Whether a live KurrentDB connection was requested.",
+          "type": "boolean"
+        },
+        "db_version": {
+          "description": "Major.minor of the connected server (e.g. \"26.1\", \"27.0\") truncated\nfrom the full server `/info` version string, or \"unknown\" if it was\nunparseable. Absent when not connected.",
+          "type": "string",
+          "maxLength": 32
+        },
+        "projection_errors_seen": {
+          "description": "Distinct, sorted set of `projection_*` outcome values seen during\nthe run. Empty when none.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ProjectionOutcome"
+          },
+          "maxItems": 100
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
+    "Editor": {
+      "description": "Editor is the specific editor runtime detected at activation (from\n`vscode.env.uriScheme`). Distinguishes VS Code from its forks so we know\nwhich targets to test against; VSCodium / Cursor / Windsurf all have\nnon-trivial adoption. Stable and insiders builds collapse to `\"vscode\"`;\nunknown forks map to `\"other\"`.",
+      "type": "string",
+      "enum": [
+        "vscode",
+        "vscodium",
+        "cursor",
+        "windsurf",
+        "other"
+      ]
+    },
+    "Emitter": {
+      "description": "Emitter is which gaffer surface emitted an envelope. Aligned with\n`invoked_by` on `command_invoked`: where the same surface appears in both\nfields it carries the same identifier. The asymmetry (`emitter` doesn't\ntake `direct` / `mcp_client` / `ci`; `invoked_by` doesn't take `mcp`) is\nload-bearing - `mcp` means \"gaffer's own MCP server emitted this\" whereas\n`invoked_by: \"mcp_client\"` means \"an external MCP host invoked us\".",
+      "type": "string",
+      "enum": [
+        "cli",
+        "mcp",
+        "vscode"
+      ]
+    },
+    "Envelope": {
+      "description": "Envelope is the top-level shape POSTed to the worker. One envelope per HTTP\nrequest, carrying a batch of events that share the same emitter and run.",
+      "type": "object",
+      "required": [
+        "schema_version",
+        "emitter_id",
+        "run_id",
+        "context",
+        "events"
+      ],
+      "properties": {
+        "schema_version": {
+          "description": "Bumped only for breaking wire changes; additive changes keep the\nsame version.",
+          "type": "string",
+          "enum": [
+            "1"
+          ]
+        },
+        "emitter_id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "run_id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "context": {
+          "$ref": "#/definitions/Context"
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Event"
+          },
+          "maxItems": 100
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "Event": {
+      "description": "The four events gaffer emits.",
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/definitions/CommandInvoked"
+        },
+        {
+          "$ref": "#/definitions/ProjectionShape"
+        },
+        {
+          "$ref": "#/definitions/ExtensionActivated"
+        },
+        {
+          "$ref": "#/definitions/Exception"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Exception": {
+      "description": "Exception captures gaffer-side crashes only - Go panics in the CLI / MCP,\nunhandled JS errors in the extension host, runtime exceptions in our own\n.NET code. Projection runtime errors are NOT in scope; they surface as\n`outcome` on the relevant `command_invoked` event.",
+      "type": "object",
+      "required": [
+        "name",
+        "timestamp",
+        "properties"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": [
+            "exception"
+          ]
+        },
+        "timestamp": {
+          "$ref": "#/definitions/Timestamp"
+        },
+        "properties": {
+          "$ref": "#/definitions/ExceptionProperties"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ExceptionEntry": {
+      "description": "ExceptionEntry is one exception in the causal chain.",
+      "type": "object",
+      "required": [
+        "type",
+        "value",
+        "in_app",
+        "stacktrace"
+      ],
+      "properties": {
+        "type": {
+          "description": "Exception type name (e.g. \"RuntimeError\", \"TypeError\").",
+          "type": "string",
+          "maxLength": 200
+        },
+        "value": {
+          "description": "Exception message. ONLY ever a message gaffer wrote - never a Jint\nor FFI-bubbled message that could embed user identifiers, source\nsnippets, or function names from user code.",
+          "type": "string",
+          "maxLength": 2000
+        },
+        "in_app": {
+          "description": "True for gaffer-owned code; false for stdlib / vendored deps.",
+          "type": "boolean"
+        },
+        "stacktrace": {
+          "description": "Stack frames. User-JS frames are dropped entirely; remaining\nframes carry basename + function + line.",
+          "type": "object",
+          "required": [
+            "type",
+            "frames"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "raw"
+              ]
+            },
+            "frames": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Frame"
+              },
+              "maxItems": 100
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ExceptionPhase": {
+      "description": "ExceptionPhase is a coarse lifecycle bucket for where an exception fired.",
+      "type": "string",
+      "enum": [
+        "startup",
+        "projection_init",
+        "event_processing",
+        "shutdown"
+      ]
+    },
+    "ExceptionProperties": {
+      "type": "object",
+      "required": [
+        "exceptions",
+        "phase"
+      ],
+      "properties": {
+        "exceptions": {
+          "description": "Causal chain of exceptions, outer wrapper first, root cause last.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ExceptionEntry"
+          },
+          "maxItems": 100
+        },
+        "command": {
+          "$ref": "#/definitions/CommandName"
+        },
+        "phase": {
+          "$ref": "#/definitions/ExceptionPhase"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ExtensionActivated": {
+      "description": "ExtensionActivated fires once on extension activation. The one event that\ncan fire when gaffer is otherwise unable to run, used to detect broken\ninstalls.",
+      "type": "object",
+      "required": [
+        "name",
+        "timestamp",
+        "properties"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": [
+            "extension_activated"
+          ]
+        },
+        "timestamp": {
+          "$ref": "#/definitions/Timestamp"
+        },
+        "properties": {
+          "$ref": "#/definitions/ExtensionActivatedProperties"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ExtensionActivatedProperties": {
+      "type": "object",
+      "required": [
+        "editor",
+        "editor_version",
+        "cli_reachable",
+        "activation_duration_ms"
+      ],
+      "properties": {
+        "editor": {
+          "$ref": "#/definitions/Editor"
+        },
+        "editor_version": {
+          "description": "Editor version string (e.g. \"1.95.2\").",
+          "type": "string",
+          "maxLength": 32
+        },
+        "cli_reachable": {
+          "description": "Whether the gaffer CLI binary was reachable on activation\n(PATH-resolvable + spawnable + responded to `gaffer version` within\ntimeout).",
+          "type": "boolean"
+        },
+        "cli_unreachable_reason": {
+          "$ref": "#/definitions/CLIUnreachableReason"
+        },
+        "cli_version": {
+          "description": "Bucketed major.minor of the CLI binary's reported version. Present\nwhen `cli_reachable = true`.",
+          "type": "string",
+          "maxLength": 32
+        },
+        "activation_duration_ms": {
+          "$ref": "#/definitions/BucketCount"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "FileSizeBucket": {
+      "description": "Bucketed file size on disk in bytes (lower-bound of the half-open\ninterval).",
+      "type": "integer",
+      "enum": [
+        0,
+        1024,
+        5120,
+        20480,
+        102400
+      ]
+    },
+    "Frame": {
+      "type": "object",
+      "required": [
+        "filename",
+        "in_app"
+      ],
+      "properties": {
+        "filename": {
+          "description": "File basename only (never full path).",
+          "type": "string",
+          "maxLength": 200
+        },
+        "function": {
+          "description": "Function name. May be absent for anonymous frames.",
+          "type": "string",
+          "maxLength": 200
+        },
+        "lineno": {
+          "description": "1-indexed line number in the source. May be absent if unknown.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "in_app": {
+          "description": "True for gaffer-owned code, false for stdlib / vendored deps.",
+          "type": "boolean"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "InfoCommandInvokedProperties": {
+      "description": "`gaffer info` - print environment + manifest summary. No command-specific\nproperties.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "info"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
+    "InitCommandInvokedProperties": {
+      "description": "`gaffer init` - scaffold a new project. No command-specific properties.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "init"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
+    "InvokedBy": {
+      "description": "InvokedBy is who triggered a CLI run.",
+      "type": "string",
+      "enum": [
+        "direct",
+        "vscode",
+        "mcp_client"
+      ]
+    },
+    "InvokedVia": {
+      "description": "InvokedVia is the specific surface the invocation came through.",
+      "type": "string",
+      "enum": [
+        "terminal",
+        "code_lens",
+        "command_palette",
+        "mcp_provider",
+        "stdio"
+      ]
+    },
+    "LspCommandInvokedProperties": {
+      "description": "`gaffer lsp` - language server.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "lsp"
+          ]
+        },
+        "code_lens_request_count": {
+          "$ref": "#/definitions/BucketCount"
+        },
+        "diagnostic_publish_count": {
+          "$ref": "#/definitions/BucketCount"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
+    "ManifestCommandInvokedProperties": {
+      "description": "`gaffer manifest` - parse and report manifest contents.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "manifest"
+          ]
+        },
+        "manifest_features_used": {
+          "description": "Top-level manifest section names present (e.g. [\"projections\",\n\"fixtures\"]). Section *presence* only, never contents.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "maxItems": 100
+        },
+        "projection_count": {
+          "$ref": "#/definitions/BucketCount"
+        },
+        "fixture_count": {
+          "$ref": "#/definitions/BucketCount"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
+    "McpCommandInvokedProperties": {
+      "description": "`gaffer mcp` - long-running Model Context Protocol server.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "mcp"
+          ]
+        },
+        "manifest_features_used": {
+          "description": "Top-level manifest section names present.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "maxItems": 100
+        },
+        "tool_call_count": {
+          "$ref": "#/definitions/BucketCount"
+        },
+        "resource_read_count": {
+          "$ref": "#/definitions/BucketCount"
+        },
+        "projection_errors_seen": {
+          "description": "Distinct, sorted set of `projection_*` outcome values seen during\nthe session. Empty when none.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ProjectionOutcome"
+          },
+          "maxItems": 100
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
+    "OS": {
+      "description": "Host OS.",
+      "type": "string",
+      "enum": [
+        "linux",
+        "darwin",
+        "windows"
+      ]
+    },
+    "Outcome": {
+      "description": "Outcome is the *final* outcome of a command invocation - whatever made it\nactually exit. Long-running sessions that hit transient errors and\nrecovered carry the recovered outcome (typically `user_interrupt`) here,\nwith the transient errors captured in `projection_errors_seen` for the\ncommands that have it.",
+      "type": "string",
+      "enum": [
+        "success",
+        "user_interrupt",
+        "user_error",
+        "caught_up",
+        "internal_error",
+        "manifest_not_found",
+        "manifest_parse_error",
+        "manifest_validation_error",
+        "db_connect_error",
+        "db_disconnect",
+        "db_protocol_error",
+        "dap_protocol_error",
+        "lsp_protocol_error",
+        "mcp_protocol_error",
+        "fixture_exhausted",
+        "projection_user_throw",
+        "projection_reference_error",
+        "projection_type_error",
+        "projection_parse_error",
+        "projection_syntax_error",
+        "projection_range_error",
+        "projection_uri_error",
+        "projection_eval_error",
+        "projection_oom",
+        "projection_stack_overflow",
+        "projection_unknown_error"
+      ]
+    },
+    "ProjectionOutcome": {
+      "description": "The subset of #Outcome values that come from user-projection failure. Used\nboth as final outcomes and as transient values in `projection_errors_seen`.",
+      "type": "string",
+      "enum": [
+        "projection_user_throw",
+        "projection_reference_error",
+        "projection_type_error",
+        "projection_parse_error",
+        "projection_syntax_error",
+        "projection_range_error",
+        "projection_uri_error",
+        "projection_eval_error",
+        "projection_oom",
+        "projection_stack_overflow",
+        "projection_unknown_error"
+      ]
+    },
+    "ProjectionShape": {
+      "description": "ProjectionShape carries a snapshot of what a projection's source looks\nlike, structurally. Emitted on first encounter and again whenever the\nbucketed shape drifts (whitespace / comment edits don't trigger re-emit).\nBooleans, enums, counts. Never names.",
+      "type": "object",
+      "required": [
+        "name",
+        "timestamp",
+        "properties"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": [
+            "projection_shape"
+          ]
+        },
+        "timestamp": {
+          "$ref": "#/definitions/Timestamp"
+        },
+        "properties": {
+          "$ref": "#/definitions/ProjectionShapeProperties"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ProjectionShapeProperties": {
+      "type": "object",
+      "required": [
+        "projection_id",
+        "parsable",
+        "file_size",
+        "handlers",
+        "builtin_counts"
+      ],
+      "properties": {
+        "projection_id": {
+          "description": "Per-install hashed id: sha256(salt || projection_relative_path)[:16].\nStable across processes for the same projection. 16 hex chars.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        },
+        "parsable": {
+          "description": "True when the AST parser succeeded. False = parser error; the\n`handlers` and `builtin_counts` data are best-effort partial.",
+          "type": "boolean"
+        },
+        "file_size": {
+          "$ref": "#/definitions/FileSizeBucket"
+        },
+        "handlers": {
+          "description": "Which handlers the projection registers.",
+          "type": "object",
+          "required": [
+            "any",
+            "init",
+            "deleted",
+            "distinct_event_names"
+          ],
+          "properties": {
+            "any": {
+              "description": "`$any` handler registered.",
+              "type": "boolean"
+            },
+            "init": {
+              "description": "`$init` or `$initShared` handler registered.",
+              "type": "boolean"
+            },
+            "deleted": {
+              "description": "`$deleted` handler registered.",
+              "type": "boolean"
+            },
+            "distinct_event_names": {
+              "$ref": "#/definitions/BucketCount"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "builtin_counts": {
+          "description": "Bucketed call counts per allowlisted projection builtin. Sparse -\na builtin not called is absent. Keys are the JS API names verbatim.\nAdding a new builtin to gaffer means adding it here, the AST\nwalker, and the deprecation-diagnostic visitor in the same PR.",
+          "type": "object",
+          "properties": {
+            "fromAll": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "fromStream": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "fromStreams": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "fromCategory": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "fromCategories": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "when": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "foreachStream": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "outputState": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "transformBy": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "partitionBy": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "emit": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "linkTo": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "copyTo": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "linkStreamTo": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "chainHandlers": {
+              "$ref": "#/definitions/BucketCount"
+            },
+            "updateOf": {
+              "$ref": "#/definitions/BucketCount"
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "RuntimeEnvironment": {
+      "description": "\"ci\" if any standard CI env var indicates an automated environment;\n\"local\" otherwise.",
+      "type": "string",
+      "enum": [
+        "ci",
+        "local"
+      ]
+    },
+    "ScaffoldCommandInvokedProperties": {
+      "description": "`gaffer scaffold` - generate boilerplate. No command-specific properties.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "scaffold"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
+    "Timestamp": {
+      "description": "RFC 3339 timestamp with millisecond precision.",
+      "type": "string",
+      "maxLength": 64
+    },
+    "UUID": {
+      "description": "Lowercase-hyphen UUID, no curly braces.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "VersionCommandInvokedProperties": {
+      "description": "`gaffer version` - print version, exit. No command-specific properties.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "version"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    }
+  },
+  "title": "Envelope",
+  "unevaluatedProperties": false,
+  "$schema": "https://json-schema.org/draft/2019-09/schema"
+}

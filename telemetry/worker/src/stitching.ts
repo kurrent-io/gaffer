@@ -33,11 +33,23 @@ export async function stitchSession(emitterId: string, runId: string, db: D1Data
 	const runExpiry = now + RUN_TTL_MS;
 	const proposedSessionId = crypto.randomUUID();
 
-	// D1's `batch()` runs the array as a single implicit transaction:
-	// statement 2's read sees statement 1's write, and SQLite's row-level
-	// write lock serialises concurrent batches for the same emitter_id.
-	// That's what makes the stitch atomic; we don't need the Sessions API
-	// here because we never thread a bookmark across multiple round-trips.
+	// D1's `batch()` is internally transactional: statement 2 sees
+	// statement 1's write, and SQLite's row-level write lock serialises
+	// concurrent batches for the same emitter_id. That's the atomicity we
+	// rely on.
+	//
+	// We deliberately do NOT use `db.withSession("first-primary")` to
+	// force primary reads. D1 replica lag (a few seconds across colos)
+	// can in theory cause session splits when events from one user land
+	// in different colos within the lag window. In practice that
+	// requires events to originate from different machines (different
+	// network egress -> different colo), and we don't try to stitch
+	// across machines anyway - the `emitter_id` is per-install on one
+	// host. Same-machine multi-surface activity (CLI + extension + MCP)
+	// shares a colo. If real traffic ever shows session splits, adding
+	// `withSession("first-primary")` is the fix; it costs one primary
+	// round-trip per ingest, paid by every event whether or not the
+	// race could happen.
 	const result = await db.batch([
 		// 1. Resolve session_id and session_started_at via nested COALESCEs,
 		//    upsert session_by_user, RETURN it. Atomic within a single

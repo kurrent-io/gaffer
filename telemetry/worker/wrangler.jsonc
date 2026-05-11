@@ -29,6 +29,13 @@
 		},
 	],
 
+	// Daily prune of expired rows. Reads filter on expires_at > now, so the
+	// cron is purely table-size maintenance - not load-bearing for
+	// correctness. 04:00 UTC is off-peak for both EU and US working hours.
+	"triggers": {
+		"crons": ["0 4 * * *"],
+	},
+
 	// Secrets (set via `wrangler secret put`):
 	//   POSTHOG_API_KEY  -  PostHog project API key for the gaffer project
 }

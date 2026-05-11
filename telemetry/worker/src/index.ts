@@ -1,3 +1,4 @@
+import { prune } from "./cron";
 import { handleIngest } from "./ingest";
 import { handleNotice } from "./notice";
 
@@ -18,5 +19,9 @@ export default {
 		}
 
 		return new Response("Not Found", { status: 404 });
+	},
+
+	async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+		ctx.waitUntil(prune(env.DB));
 	},
 } satisfies ExportedHandler<Env>;

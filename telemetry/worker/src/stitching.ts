@@ -60,6 +60,14 @@ export async function stitchSession(emitterId: string, runId: string, db: D1Data
 		//    D1 SQLite rejects `WITH ... INSERT ... SELECT FROM cte ... ON
 		//    CONFLICT DO UPDATE`. Inlining the candidate lookups as scalar
 		//    subqueries in the INSERT SELECT works around it.
+		//
+		//    LOAD-BEARING INVARIANT: the two COALESCE expressions below
+		//    MUST share identical predicates. The first picks `session_id`,
+		//    the second picks `session_started_at`. If the predicates ever
+		//    diverge, candidate A could supply session_id while candidate B
+		//    supplies session_started_at, leaving the row with a mismatched
+		//    pair (e.g. a fresh-mint id paired with the active row's start
+		//    time). Keep them in lockstep.
 		db
 			.prepare(
 				`

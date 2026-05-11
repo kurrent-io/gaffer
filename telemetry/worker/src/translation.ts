@@ -84,7 +84,7 @@ function translateEventProperties(event: Event): Record<string, unknown> {
 		case "projection_shape":
 			return translateProjectionShapeProperties((event as ProjectionShape).properties);
 		case "extension_activated":
-			return { ...((event as ExtensionActivated).properties as Record<string, unknown>) };
+			return { ...(event as ExtensionActivated).properties };
 		case "exception":
 			return translateExceptionProperties((event as Exception).properties);
 		default: {
@@ -98,7 +98,7 @@ function translateEventProperties(event: Event): Record<string, unknown> {
 }
 
 function translateCommandInvokedProperties(props: CommandInvoked["properties"]): Record<string, unknown> {
-	const { manifest_features_used, projection_errors_seen, ...rest } = props as Record<string, unknown> & {
+	const { manifest_features_used, projection_errors_seen, ...rest } = props as typeof props & {
 		manifest_features_used?: string[];
 		projection_errors_seen?: string[];
 	};
@@ -123,10 +123,7 @@ function translateCommandInvokedProperties(props: CommandInvoked["properties"]):
 }
 
 function translateProjectionShapeProperties(props: ProjectionShape["properties"]): Record<string, unknown> {
-	const { handlers, builtin_counts, ...rest } = props as Record<string, unknown> & {
-		handlers?: { any: boolean; init: boolean; deleted: boolean; distinct_event_names: number };
-		builtin_counts?: Record<string, number>;
-	};
+	const { handlers, builtin_counts, ...rest } = props;
 	const out: Record<string, unknown> = { ...rest };
 
 	if (handlers) {
@@ -137,7 +134,7 @@ function translateProjectionShapeProperties(props: ProjectionShape["properties"]
 	}
 
 	if (builtin_counts) {
-		for (const [apiName, count] of Object.entries(builtin_counts)) {
+		for (const [apiName, count] of Object.entries(builtin_counts as Record<string, number>)) {
 			out[`builtin_${camelToSnake(apiName)}_count`] = count;
 		}
 	}
@@ -146,7 +143,7 @@ function translateProjectionShapeProperties(props: ProjectionShape["properties"]
 }
 
 function translateExceptionProperties(props: Exception["properties"]): Record<string, unknown> {
-	const { exceptions, ...rest } = props as Record<string, unknown> & { exceptions: unknown[] };
+	const { exceptions, ...rest } = props;
 	return { ...rest, $exception_list: exceptions };
 }
 

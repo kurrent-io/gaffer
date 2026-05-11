@@ -1,6 +1,8 @@
 // Package telemetry, file events.cue: the event types gaffer emits.
 package telemetry
 
+import "strings"
+
 // The four events gaffer emits.
 #Event: #CommandInvoked | #ProjectionShape | #ExtensionActivated | #Exception
 
@@ -30,8 +32,12 @@ package telemetry
 }
 
 // CommandInvokedBaseProperties is the set of properties present on every
-// command_invoked event regardless of which command ran.
+// command_invoked event regardless of which command ran. The variants
+// narrow `command` to a specific literal.
 #CommandInvokedBaseProperties: {
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	command: #CommandName
+
 	// Wall-clock duration from process start to exit. For long-running
 	// commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation
 	// lifetime, not engagement time - includes idle stretches where the
@@ -46,8 +52,6 @@ package telemetry
 
 	// Specific surface the invocation came through.
 	invoked_via: "terminal" | "code_lens" | "command_palette" | "mcp_provider" | "stdio"
-
-	...
 }
 
 // `gaffer version` - print version, exit. No command-specific properties.
@@ -77,7 +81,7 @@ package telemetry
 
 	// Top-level manifest section names present (e.g. ["projections",
 	// "fixtures"]). Section *presence* only, never contents.
-	manifest_features_used?: [...string]
+	manifest_features_used?: [...string & strings.MaxRunes(64)]
 
 	// Bucketed count from manifest.
 	projection_count?: #BucketCount
@@ -92,7 +96,7 @@ package telemetry
 	command: "dev"
 
 	// Top-level manifest section names present.
-	manifest_features_used?: [...string]
+	manifest_features_used?: [...string & strings.MaxRunes(64)]
 
 	// Bucketed count from manifest.
 	projection_count?: #BucketCount
@@ -106,7 +110,7 @@ package telemetry
 	// Major.minor of the connected server (e.g. "26.1", "27.0") truncated
 	// from the full server `/info` version string, or "unknown" if it was
 	// unparseable. Absent when not connected.
-	db_version?: string
+	db_version?: string & strings.MaxRunes(32)
 
 	// Distinct, sorted set of `projection_*` outcome values seen during
 	// the run. Empty when none.
@@ -118,7 +122,7 @@ package telemetry
 	command: "mcp"
 
 	// Top-level manifest section names present.
-	manifest_features_used?: [...string]
+	manifest_features_used?: [...string & strings.MaxRunes(64)]
 
 	// Bucketed. Total tool invocations across the session.
 	tool_call_count?: #BucketCount
@@ -207,8 +211,8 @@ package telemetry
 
 #ProjectionShapeProperties: {
 	// Per-install hashed id: sha256(salt || projection_relative_path)[:16].
-	// Stable across processes for the same projection.
-	projection_id: string
+	// Stable across processes for the same projection. 16 hex chars.
+	projection_id: =~"^[0-9a-f]{16}$"
 
 	// True when the AST parser succeeded. False = parser error; the
 	// `handlers` and `builtin_counts` data are best-effort partial.
@@ -287,7 +291,7 @@ package telemetry
 	editor: "vscode"
 
 	// Editor version string (e.g. "1.95.2").
-	editor_version: string
+	editor_version: string & strings.MaxRunes(32)
 
 	// Whether the gaffer CLI binary was reachable on activation
 	// (PATH-resolvable + spawnable + responded to `gaffer version` within
@@ -299,7 +303,7 @@ package telemetry
 
 	// Bucketed major.minor of the CLI binary's reported version. Present
 	// when `cli_reachable = true`.
-	cli_version?: string
+	cli_version?: string & strings.MaxRunes(32)
 
 	// Time from extension activation to first event-emit decision.
 	activation_duration_ms: #BucketCount
@@ -334,12 +338,12 @@ package telemetry
 // ExceptionEntry is one exception in the causal chain.
 #ExceptionEntry: {
 	// Exception type name (e.g. "RuntimeError", "TypeError").
-	type: string
+	type: string & strings.MaxRunes(200)
 
 	// Exception message. ONLY ever a message gaffer wrote - never a Jint
 	// or FFI-bubbled message that could embed user identifiers, source
 	// snippets, or function names from user code.
-	value: string
+	value: string & strings.MaxRunes(2000)
 
 	// True for gaffer-owned code; false for stdlib / vendored deps.
 	in_app: bool
@@ -354,10 +358,10 @@ package telemetry
 
 #Frame: {
 	// File basename only (never full path).
-	filename: string
+	filename: string & strings.MaxRunes(200)
 
 	// Function name. May be absent for anonymous frames.
-	function?: string
+	function?: string & strings.MaxRunes(200)
 
 	// 1-indexed line number in the source. May be absent if unknown.
 	lineno?: int & >=1
@@ -371,7 +375,7 @@ package telemetry
 // ----------------------------------------------------------------------------
 
 // RFC 3339 timestamp with millisecond precision.
-#Timestamp: string
+#Timestamp: string & strings.MaxRunes(64)
 
 // Bucketed count.
 #BucketCount:

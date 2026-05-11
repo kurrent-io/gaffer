@@ -242,9 +242,11 @@ Telemetry data is stored in PostHog's EU instance. Envelopes transit Cloudflare'
 
 ## How to delete your data
 
-Email `privacy@kurrent.io` with your `telemetry_id`. All events associated with that id are deleted from PostHog within 30 days.
+Email `privacy@kurrent.io` with the identifier gaffer prints below. All events associated with that id are deleted from PostHog within 30 days.
 
 To find your id:
 
 - `gaffer config telemetry status` prints it while you are opted in.
 - `gaffer config telemetry off` prints it one last time before clearing local state.
+
+The same identifier is what every gaffer telemetry envelope carries on the wire and what PostHog stores as the person id.

@@ -2,6 +2,8 @@
 // to the telemetry worker.
 package telemetry
 
+import "strings"
+
 // Envelope is the top-level shape POSTed to the worker. One envelope per HTTP
 // request, carrying a batch of events that share the same emitter and run.
 #Envelope: {
@@ -27,7 +29,7 @@ package telemetry
 	emitter: "cli" | "mcp" | "extension"
 
 	// Gaffer release version (semver).
-	lib_version: string
+	lib_version: string & strings.MaxRunes(32)
 
 	// Host OS.
 	os: "linux" | "darwin" | "windows"
@@ -40,8 +42,8 @@ package telemetry
 	runtime_environment: "ci" | "local"
 
 	// "Hello, this is my first envelope" flag, set on the first envelope
-	// sent from a fresh install and absent thereafter.
-	install_date?: string
+	// sent from a fresh install and absent thereafter. ISO 8601 date.
+	install_date?: string & strings.MaxRunes(32)
 
 	// Spawn-time identity link. Set when an extension spawns a CLI
 	// process, populated with the spawning extension's emitter_id

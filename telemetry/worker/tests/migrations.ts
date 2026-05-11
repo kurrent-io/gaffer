@@ -6,6 +6,12 @@
 // applied via D1's prepared-statement API; D1.exec() does not reliably
 // support multi-statement SQL, but a sequence of prepared single
 // statements does.
+//
+// CAVEAT: the splitter is naive - it strips full-line `--` comments and
+// splits on `;`. It does NOT handle `;` inside string literals, `BEGIN
+// ... END` blocks (CREATE TRIGGER), or `/* ... */` block comments.
+// Future migrations that need any of those will need a real SQL parser
+// (or just keep migrations to plain CREATE / ALTER / INDEX statements).
 
 import initSql from "../migrations/0001_init.sql?raw";
 

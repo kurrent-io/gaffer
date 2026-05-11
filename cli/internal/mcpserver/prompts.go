@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
+	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -51,7 +51,7 @@ func (s *Server) handleWriteProjectionPrompt(_ context.Context, req *mcp.GetProm
 	sb.WriteString("6. Call `get_timeline` to scan results, `get_step` to inspect specific events\n")
 	sb.WriteString("7. Iterate until the output is correct\n\n")
 
-	if configData, err := os.ReadFile(filepath.Join(s.root, "gaffer.toml")); err == nil {
+	if configData, err := os.ReadFile(project.ConfigPath(s.root)); err == nil {
 		sb.WriteString("## Project config\n\n```toml\n")
 		sb.Write(configData)
 		sb.WriteString("```\n\n")

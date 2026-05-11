@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"sync"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
@@ -98,7 +97,7 @@ func NewFromProjectRoot() (*Server, error) {
 		return nil, project.ErrNotInProject
 	}
 
-	cfg, err := config.Load(filepath.Join(root, "gaffer.toml"))
+	cfg, err := config.Load(project.ConfigPath(root))
 	if err != nil {
 		return nil, err
 	}

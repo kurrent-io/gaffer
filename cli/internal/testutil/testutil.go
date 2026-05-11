@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/project"
 )
 
 var update = flag.Bool("update", false, "update golden files")
@@ -173,7 +174,7 @@ func (p *Project) AddNamedFixture(projection, fixtureName, content string) *Proj
 
 func (p *Project) Save() *Project {
 	p.t.Helper()
-	if err := config.Save(filepath.Join(p.Dir, "gaffer.toml"), p.Cfg); err != nil {
+	if err := config.Save(project.ConfigPath(p.Dir), p.Cfg); err != nil {
 		p.t.Fatal(err)
 	}
 	return p

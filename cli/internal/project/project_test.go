@@ -47,3 +47,4 @@ func TestFindRootFrom_NotFound(t *testing.T) {
 		t.Fatalf("expected empty string, got %s", root)
 	}
 }
+

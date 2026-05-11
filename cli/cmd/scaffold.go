@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
@@ -39,7 +38,7 @@ func runScaffold(name string, opts *scaffoldOpts) error {
 		return project.ErrNotInProject
 	}
 
-	cfg, err := config.Load(filepath.Join(root, "gaffer.toml"))
+	cfg, err := config.Load(project.ConfigPath(root))
 	if err != nil {
 		return err
 	}

@@ -41,7 +41,7 @@ func LoadProjection(name string) (*Projection, error) {
 		return nil, project.ErrNotInProject
 	}
 
-	cfg, err := config.Load(filepath.Join(root, "gaffer.toml"))
+	cfg, err := config.Load(project.ConfigPath(root))
 	if err != nil {
 		return nil, err
 	}

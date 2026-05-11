@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/project"
 )
 
 type Result struct {
@@ -44,7 +45,7 @@ func Scaffold(root string, cfg *config.Config, name, source, partition string, e
 		Entry: relPath,
 	})
 
-	configPath := filepath.Join(root, "gaffer.toml")
+	configPath := project.ConfigPath(root)
 	if err := config.Save(configPath, cfg); err != nil {
 		return nil, fmt.Errorf("updating gaffer.toml: %w", err)
 	}

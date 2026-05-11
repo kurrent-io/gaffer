@@ -5,11 +5,12 @@ import (
 	"embed"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/kurrent-io/gaffer/cli/internal/project"
 )
 
 //go:embed resources/*.md
@@ -18,7 +19,7 @@ var embeddedResources embed.FS
 func (s *Server) registerResources() {
 	s.mcp.AddResource(&mcp.Resource{
 		URI:         "gaffer://project/config",
-		Name:        "gaffer.toml",
+		Name:        project.ConfigFileName,
 		Description: "The project's gaffer.toml configuration file. Shows all projections, their entry points, and project settings.",
 		MIMEType:    "application/toml",
 	}, s.handleConfigResource)
@@ -104,7 +105,7 @@ func renderDbVersionBugsMarkdown(bugs []gafferruntime.KnownBug) string {
 }
 
 func (s *Server) handleConfigResource(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-	data, err := os.ReadFile(filepath.Join(s.root, "gaffer.toml"))
+	data, err := os.ReadFile(project.ConfigPath(s.root))
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}

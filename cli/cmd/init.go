@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +36,7 @@ func runInit(yes bool) error {
 		return err
 	}
 
-	configPath := filepath.Join(dir, "gaffer.toml")
+	configPath := project.ConfigPath(dir)
 	if _, err := os.Stat(configPath); err == nil {
 		return fmt.Errorf("gaffer.toml already exists in %s", dir)
 	}

@@ -62,6 +62,7 @@ _gen-schema:
         | jq '.components.schemas.Envelope + {"definitions": .components.schemas, "title": "Envelope"}' \
         | sed 's|#/components/schemas/|#/definitions/|g' \
         | jq '.definitions |= with_entries(.value |= (if (.allOf // []) | any(.required) then .required = ((.required // []) + ([.allOf[] | .required // empty] | flatten) | unique) | .allOf = [.allOf[] | select(.required == null)] | if (.allOf | length == 0) then del(.allOf) else . end else . end))' \
+        | jq 'walk(if type == "object" and .type == "object" and (.unevaluatedProperties == null) then . + {unevaluatedProperties: false} elif type == "object" and .type == "array" and (.maxItems == null) then . + {maxItems: 100} else . end) | . + {"$schema": "https://json-schema.org/draft/2019-09/schema"}' \
         > generated/telemetry.schema.json
 
 # JSON Schema -> Go types.

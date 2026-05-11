@@ -15,37 +15,38 @@ import type {
 	ProjectionShape,
 } from "@kurrent/gaffer-telemetry";
 
-export interface PostHogBatchPayload {
-	api_key: string;
-	batch: PostHogEvent[];
-}
-
-interface PostHogEvent {
+export interface PostHogEvent {
 	event: string;
 	distinct_id: string;
 	timestamp: string;
 	properties: Record<string, unknown>;
 }
 
-export function translateEnvelope(envelope: Envelope, apiKey: string): PostHogBatchPayload {
+export function translateEnvelope(envelope: Envelope, sessionId: string, workerDeployedAt: string): PostHogEvent[] {
 	const { emitter_id, run_id, context, events } = envelope;
 	const $lib = `gaffer-${context.emitter}`;
 
-	const batch: PostHogEvent[] = events.map((rawEvent, i) => {
+	return events.map((rawEvent, i) => {
 		const event = rawEvent as Event;
 		const props: Record<string, unknown> = {
 			$lib,
 			$lib_version: context.lib_version,
+			// Worker-stamped session id; not sent by the client.
+			$session_id: sessionId,
 			// Suppress PostHog's IP-based geo-resolution. The worker's egress
 			// IP would otherwise be attached to every event.
 			$ip: null,
+			// Deploy time of the running worker version. Lets dashboards
+			// filter / pivot on deploy generation.
+			worker_deployed_at: workerDeployedAt,
 			runtime_environment: context.runtime_environment,
 			run_id,
 			emitter: context.emitter,
 			...translateEventProperties(event),
 		};
 
-		// Person-property lifting on the first event of the batch.
+		// Lift identity properties onto the first event only; PostHog applies
+		// $set / $set_once to the person record, not the event.
 		if (i === 0) {
 			props.$set = { lib_version: context.lib_version };
 			const setOnce: Record<string, unknown> = {
@@ -66,8 +67,6 @@ export function translateEnvelope(envelope: Envelope, apiKey: string): PostHogBa
 			properties: props,
 		};
 	});
-
-	return { api_key: apiKey, batch };
 }
 
 function translateEventName(name: string): string {
@@ -82,7 +81,7 @@ function translateEventProperties(event: Event): Record<string, unknown> {
 		case "projection_shape":
 			return translateProjectionShapeProperties((event as ProjectionShape).properties);
 		case "extension_activated":
-			return { ...((event as ExtensionActivated).properties as Record<string, unknown>) };
+			return { ...(event as ExtensionActivated).properties };
 		case "exception":
 			return translateExceptionProperties((event as Exception).properties);
 		default: {
@@ -90,13 +89,14 @@ function translateEventProperties(event: Event): Record<string, unknown> {
 			// guard defensively so a future event variant landing in CUE without
 			// updating this switch doesn't crash the worker.
 			const _exhaustive: never = event;
-			throw new Error(`unhandled event variant: ${JSON.stringify(_exhaustive)}`);
+			void _exhaustive;
+			throw new Error(`unhandled event variant: ${JSON.stringify(event)}`);
 		}
 	}
 }
 
 function translateCommandInvokedProperties(props: CommandInvoked["properties"]): Record<string, unknown> {
-	const { manifest_features_used, projection_errors_seen, ...rest } = props as Record<string, unknown> & {
+	const { manifest_features_used, projection_errors_seen, ...rest } = props as typeof props & {
 		manifest_features_used?: string[];
 		projection_errors_seen?: string[];
 	};
@@ -121,10 +121,7 @@ function translateCommandInvokedProperties(props: CommandInvoked["properties"]):
 }
 
 function translateProjectionShapeProperties(props: ProjectionShape["properties"]): Record<string, unknown> {
-	const { handlers, builtin_counts, ...rest } = props as Record<string, unknown> & {
-		handlers?: { any: boolean; init: boolean; deleted: boolean; distinct_event_names: number };
-		builtin_counts?: Record<string, number>;
-	};
+	const { handlers, builtin_counts, ...rest } = props;
 	const out: Record<string, unknown> = { ...rest };
 
 	if (handlers) {
@@ -135,7 +132,7 @@ function translateProjectionShapeProperties(props: ProjectionShape["properties"]
 	}
 
 	if (builtin_counts) {
-		for (const [apiName, count] of Object.entries(builtin_counts)) {
+		for (const [apiName, count] of Object.entries(builtin_counts as Record<string, number>)) {
 			out[`builtin_${camelToSnake(apiName)}_count`] = count;
 		}
 	}
@@ -144,7 +141,7 @@ function translateProjectionShapeProperties(props: ProjectionShape["properties"]
 }
 
 function translateExceptionProperties(props: Exception["properties"]): Record<string, unknown> {
-	const { exceptions, ...rest } = props as Record<string, unknown> & { exceptions: unknown[] };
+	const { exceptions, ...rest } = props;
 	return { ...rest, $exception_list: exceptions };
 }
 

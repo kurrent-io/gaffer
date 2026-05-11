@@ -4,7 +4,17 @@ Gaffer collects anonymous usage statistics and sends them to Kurrent, Inc. when 
 
 ## What is usage telemetry
 
-Gaffer telemetry only tracks non-Personally-Identifiable Information. Counts are bucketed (never exact) and properties are allowlisted (no free-form text), which limits how precisely the data can describe an individual install or project.
+Gaffer telemetry only tracks non-Personally-Identifiable Information. Collected data does not allow Kurrent to fingerprint users by any of the collected data points.
+
+Examples of the telemetry data collected:
+
+- Gaffer version, host OS and architecture
+- Whether gaffer is running locally or in CI
+- Which gaffer command ran and how it finished
+- Bucketed counts of work done (`none`, `1`, `2-9`, `10-99`, `100-999`, `1000+`)
+- The structural shape of projection files (which builtins are called, with bucketed counts; which handlers are registered; bucketed file size)
+- Whether the gaffer CLI is reachable when the VS Code extension activates
+- Crashes in gaffer's own code (gaffer-authored error messages with scrubbed stack frames)
 
 What gaffer **does not** track:
 
@@ -18,11 +28,15 @@ What gaffer **does not** track:
 - User account or OS user information
 - IP addresses
 
-There are four event types. Each is wrapped in an envelope alongside shared install metadata (gaffer version, host OS, architecture, the runtime environment - `local` or `ci`) before being sent.
+There are four event types. Each is wrapped in an envelope alongside shared install metadata (gaffer version, host OS, architecture, the runtime environment - `local` or `ci`) before being sent. On a new install, the first envelope also includes the install date so we can group activity by cohort. When one gaffer process spawns another (typically the VS Code extension spawning the CLI), the spawned process additionally carries the parent's anonymous id so the two are recognised as one user.
+
+The receiving worker stamps each event with its own deploy timestamp so we can correlate analytics against the server version that processed them.
+
+The precise wire format lives in [`telemetry/schemas/events.cue`](https://github.com/kurrent-io/gaffer/tree/main/telemetry/schemas/events.cue) (event shapes) and [`telemetry/schemas/wire.cue`](https://github.com/kurrent-io/gaffer/tree/main/telemetry/schemas/wire.cue) (envelope).
 
 ### `command_invoked`
 
-Records which gaffer command ran, what its outcome was, and bucketed counts of work done. Counts are always bucketed into one of `none`, `1`, `2-9`, `10-99`, `100-999`, `1000+` - never exact.
+Records which gaffer command ran, what its outcome was, and bucketed counts of work done.
 
 <details>
 <summary>Example envelope</summary>
@@ -122,7 +136,7 @@ Records whether the gaffer CLI binary is reachable on the user's `PATH` when the
 	"emitter_id": "0b51e34d-aac8-4cce-bce4-9d2c7c6e3b8a",
 	"run_id": "01938e7a-1b2c-7d4e-9faf-2a3b4c5d6e7f",
 	"context": {
-		"emitter": "extension",
+		"emitter": "vscode",
 		"lib_version": "0.4.2",
 		"os": "darwin",
 		"arch": "arm64",
@@ -242,9 +256,11 @@ Telemetry data is stored in PostHog's EU instance. Envelopes transit Cloudflare'
 
 ## How to delete your data
 
-Email `privacy@kurrent.io` with your `telemetry_id`. All events associated with that id are deleted from PostHog within 30 days.
+Email `privacy@kurrent.io` with the identifier gaffer prints below. All events associated with that id are deleted from PostHog within 30 days. Session-stitching and identity-merge rows the worker holds for that id expire automatically within 25 hours and 30 days respectively.
 
 To find your id:
 
 - `gaffer config telemetry status` prints it while you are opted in.
 - `gaffer config telemetry off` prints it one last time before clearing local state.
+
+The same identifier is what every gaffer telemetry envelope carries on the wire and what PostHog stores as the person id.

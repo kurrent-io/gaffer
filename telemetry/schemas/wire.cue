@@ -2,6 +2,8 @@
 // to the telemetry worker.
 package telemetry
 
+import "strings"
+
 // Envelope is the top-level shape POSTed to the worker. One envelope per HTTP
 // request, carrying a batch of events that share the same emitter and run.
 #Envelope: {
@@ -23,11 +25,17 @@ package telemetry
 // Context is per-envelope metadata describing the emitting environment.
 // Identical for every event in a batch.
 #Context: {
-	// Which gaffer surface emitted this envelope.
-	emitter: "cli" | "mcp" | "extension"
+	// Which gaffer surface emitted this envelope. Aligned with `invoked_by`
+	// on `command_invoked`: where the same surface appears in both fields
+	// it carries the same identifier. The asymmetry (`emitter` doesn't take
+	// `direct` / `mcp_client` / `ci`; `invoked_by` doesn't take `mcp`) is
+	// load-bearing - `mcp` means "gaffer's own MCP server emitted this"
+	// whereas `invoked_by: "mcp_client"` means "an external MCP host
+	// invoked us".
+	emitter: "cli" | "mcp" | "vscode"
 
 	// Gaffer release version (semver).
-	lib_version: string
+	lib_version: string & strings.MaxRunes(32)
 
 	// Host OS.
 	os: "linux" | "darwin" | "windows"
@@ -40,8 +48,8 @@ package telemetry
 	runtime_environment: "ci" | "local"
 
 	// "Hello, this is my first envelope" flag, set on the first envelope
-	// sent from a fresh install and absent thereafter.
-	install_date?: string
+	// sent from a fresh install and absent thereafter. ISO 8601 date.
+	install_date?: string & strings.MaxRunes(32)
 
 	// Spawn-time identity link. Set when an extension spawns a CLI
 	// process, populated with the spawning extension's emitter_id

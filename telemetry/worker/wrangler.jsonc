@@ -4,6 +4,13 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2026-05-01",
 
+	// Retain logs for tail / Logpush. With "always 200, drop on failure"
+	// semantics across every error path, console.error is the only signal
+	// we'll have for D1 outages and PostHog 5xx.
+	"observability": {
+		"enabled": true,
+	},
+
 	// Static assets binding serves /fonts/* and /favicons/* directly. The
 	// worker handles everything else (POST /v1/ingest, GET / for the notice).
 	"assets": {
@@ -16,6 +23,32 @@
 	// instance for production; can be overridden per environment).
 	"vars": {
 		"POSTHOG_HOST": "https://eu.i.posthog.com",
+	},
+
+	// Version metadata binding. `env.CF_VERSION_METADATA.timestamp` is the
+	// ISO deploy time of the running version; we stamp it on every event
+	// forwarded to PostHog so dashboards can filter / pivot on deploy
+	// generation without needing to know anything about the worker.
+	"version_metadata": {
+		"binding": "CF_VERSION_METADATA",
+	},
+
+	// D1 database for session stitching and identity-merge bookkeeping.
+	// Migrations live in ./migrations; apply with `wrangler d1 migrations apply`.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "gaffer-telemetry",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "migrations",
+		},
+	],
+
+	// Daily prune of expired rows. Reads filter on expires_at > now, so the
+	// cron is purely table-size maintenance - not load-bearing for
+	// correctness. 04:00 UTC is off-peak for both EU and US working hours.
+	"triggers": {
+		"crons": ["0 4 * * *"],
 	},
 
 	// Secrets (set via `wrangler secret put`):

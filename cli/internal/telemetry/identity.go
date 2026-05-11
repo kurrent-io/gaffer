@@ -105,34 +105,37 @@ func IdentityFromConfig(s *userconfig.Store) (Identity, bool, error) {
 // persist; "Stage" rather than "Persist" because the change is
 // in-memory until then.
 //
-// Returns any error LoadTelemetry surfaced for the pre-existing
-// section (structural or per-field) so callers can warn. The write
-// proceeds regardless: a malformed Enabled in the file will be
-// dropped when WriteTelemetry round-trips through TelemetrySection.
-// That's intentional - StageIdentity runs in the first-mint flow
-// where the user hasn't engaged with the CLI yet, so preserving a
-// malformed user edit isn't a goal.
-func StageIdentity(s *userconfig.Store, id Identity) error {
-	t, loadErr := LoadTelemetry(s)
+// Does not return errors: the stage operation overwrites id/salt
+// into the in-memory section regardless of whether the pre-existing
+// section had partial parse problems (a malformed Enabled is
+// silently dropped by WriteTelemetry's round-trip; a structural
+// non-table value is replaced wholesale by SetSection). Callers
+// that want to know about pre-existing config issues call
+// LoadTelemetry or ResolveIdentity directly.
+func StageIdentity(s *userconfig.Store, id Identity) {
+	t, _ := LoadTelemetry(s)
 	t.ID = id.TelemetryID
 	t.Salt = id.Salt
 	WriteTelemetry(s, t)
-	return loadErr
 }
 
 // ClearIdentity removes TelemetryID and Salt from s's [telemetry]
-// section. Returns the cleared TelemetryID (so the caller can print
-// it one last time for RTBF disclosure: `gaffer config telemetry off`)
-// plus any error LoadTelemetry surfaced for the pre-existing section.
-// Enabled is preserved - the user explicitly opted out, the
+// section. Returns the cleared TelemetryID so the caller can print
+// it one last time for RTBF disclosure (`gaffer config telemetry
+// off`). Enabled is preserved - the user explicitly opted out, the
 // preference outlives the secret. Caller must call s.Save().
-func ClearIdentity(s *userconfig.Store) (string, error) {
-	t, loadErr := LoadTelemetry(s)
+//
+// Does not return errors for the same reason as StageIdentity: the
+// clear operation overwrites id/salt regardless of pre-existing
+// section state. Callers that need to surface parse warnings call
+// LoadTelemetry or ResolveIdentity directly.
+func ClearIdentity(s *userconfig.Store) string {
+	t, _ := LoadTelemetry(s)
 	cleared := t.ID
 	t.ID = ""
 	t.Salt = ""
 	WriteTelemetry(s, t)
-	return cleared, loadErr
+	return cleared
 }
 
 // deriveID is the shared HMAC-SHA256 primitive used by ProjectID and

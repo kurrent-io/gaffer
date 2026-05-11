@@ -102,9 +102,7 @@ func TestStageAndLoadIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MintIdentity: %v", err)
 	}
-	if err := StageIdentity(s, id); err != nil {
-		t.Fatalf("StageIdentity: %v", err)
-	}
+	StageIdentity(s, id)
 	if err := s.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -145,9 +143,7 @@ func TestStageIdentity_PreservesEnabledFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MintIdentity: %v", err)
 	}
-	if err := StageIdentity(s, id); err != nil {
-		t.Fatalf("StageIdentity: %v", err)
-	}
+	StageIdentity(s, id)
 	got, err := LoadTelemetry(s)
 	if err != nil {
 		t.Fatalf("LoadTelemetry: %v", err)
@@ -170,10 +166,7 @@ func TestClearIdentity_ReturnsPriorIDAndRemovesSecretsOnly(t *testing.T) {
 		Salt:    "00000000-0000-0000-0000-000000000def",
 	})
 
-	cleared, err := ClearIdentity(s)
-	if err != nil {
-		t.Fatalf("ClearIdentity: %v", err)
-	}
+	cleared := ClearIdentity(s)
 	if cleared != "00000000-0000-0000-0000-000000000abc" {
 		t.Errorf("cleared = %s, want the previous ID", cleared)
 	}
@@ -195,10 +188,7 @@ func TestClearIdentity_OnEmptyConfigReturnsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	cleared, err := ClearIdentity(s)
-	if err != nil {
-		t.Fatalf("ClearIdentity: %v", err)
-	}
+	cleared := ClearIdentity(s)
 	if cleared != "" {
 		t.Errorf("cleared = %q, want \"\" on empty config", cleared)
 	}
@@ -352,13 +342,9 @@ func TestStageIdentity_OverwritesExistingID(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	first := Identity{TelemetryID: "first-id", Salt: "first-salt"}
-	if err := StageIdentity(s, first); err != nil {
-		t.Fatalf("StageIdentity first: %v", err)
-	}
+	StageIdentity(s, first)
 	second := Identity{TelemetryID: "second-id", Salt: "second-salt"}
-	if err := StageIdentity(s, second); err != nil {
-		t.Fatalf("StageIdentity second: %v", err)
-	}
+	StageIdentity(s, second)
 	got, err := LoadTelemetry(s)
 	if err != nil {
 		t.Fatalf("LoadTelemetry: %v", err)
@@ -386,10 +372,7 @@ func TestClearIdentity_PreservesEnabledForReMint(t *testing.T) {
 		Salt:    "old-salt",
 	})
 
-	cleared, err := ClearIdentity(s)
-	if err != nil {
-		t.Fatalf("ClearIdentity: %v", err)
-	}
+	cleared := ClearIdentity(s)
 	if cleared != "old-id" {
 		t.Errorf("cleared = %q, want old-id", cleared)
 	}

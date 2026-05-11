@@ -27,7 +27,7 @@ interface PostHogEvent {
 	properties: Record<string, unknown>;
 }
 
-export function translateEnvelope(envelope: Envelope, apiKey: string): PostHogBatchPayload {
+export function translateEnvelope(envelope: Envelope, apiKey: string, sessionId: string): PostHogBatchPayload {
 	const { emitter_id, run_id, context, events } = envelope;
 	const $lib = `gaffer-${context.emitter}`;
 
@@ -36,6 +36,8 @@ export function translateEnvelope(envelope: Envelope, apiKey: string): PostHogBa
 		const props: Record<string, unknown> = {
 			$lib,
 			$lib_version: context.lib_version,
+			// Worker-stamped session id; not sent by the client.
+			$session_id: sessionId,
 			// Suppress PostHog's IP-based geo-resolution. The worker's egress
 			// IP would otherwise be attached to every event.
 			$ip: null,

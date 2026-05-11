@@ -6,3 +6,9 @@ declare namespace Cloudflare {
 		POSTHOG_API_KEY: string;
 	}
 }
+
+// Raw imports of .sql files for the test-time migration helper.
+declare module "*.sql?raw" {
+	const content: string;
+	export default content;
+}

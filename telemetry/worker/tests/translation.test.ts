@@ -36,7 +36,7 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test");
+		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
 		expect(result.batch[0]?.distinct_id).toBe(env.emitter_id);
 	});
 
@@ -57,7 +57,7 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test");
+		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
 		expect(result.batch[0]?.properties.$lib).toBe("gaffer-extension");
 	});
 
@@ -82,7 +82,7 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test");
+		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
 		expect(result.batch[0]?.event).toBe("$exception");
 		expect(result.batch[0]?.properties.$exception_list).toHaveLength(1);
 		expect(result.batch[0]?.properties.exceptions).toBeUndefined();
@@ -116,7 +116,7 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test");
+		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
 		expect(result.batch[0]?.properties.$set_once).toMatchObject({ os: "linux", arch: "x64" });
 		expect(result.batch[1]?.properties.$set_once).toBeUndefined();
 		expect(result.batch[1]?.properties.$set).toBeUndefined();
@@ -140,7 +140,7 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test");
+		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
 		expect(result.batch[0]?.properties.$set_once).toMatchObject({
 			os: "linux",
 			arch: "x64",
@@ -167,7 +167,7 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test");
+		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
 		expect(result.batch[0]?.properties.manifest_has_projections).toBe(true);
 		expect(result.batch[0]?.properties.manifest_has_fixtures).toBe(true);
 		expect(result.batch[0]?.properties.manifest_features_used).toEqual(["projections", "fixtures"]);
@@ -191,7 +191,7 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test");
+		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
 		expect(result.batch[0]?.properties.saw_projection_user_throw).toBe(true);
 		expect(result.batch[0]?.properties.saw_projection_type_error).toBe(true);
 		expect(result.batch[0]?.properties.projection_errors_seen).toEqual([
@@ -224,7 +224,7 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test");
+		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
 		const props = result.batch[0]!.properties;
 		expect(props.event_catchall_handler).toBe(true);
 		expect(props.init_handler).toBe(false);
@@ -260,7 +260,7 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test");
+		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
 		expect(result.batch[0]?.properties.invoker_id).toBeUndefined();
 	});
 
@@ -282,7 +282,7 @@ describe("translateEnvelope", () => {
 				},
 			],
 		};
-		const result = translateEnvelope(env, "phc_test");
+		const result = translateEnvelope(env, "phc_test", "00000000-0000-0000-0000-0000000000aa");
 		expect(result.batch[0]?.properties.runtime_environment).toBe("ci");
 		expect((result.batch[0]?.properties.$set_once as Record<string, unknown>).runtime_environment).toBeUndefined();
 	});

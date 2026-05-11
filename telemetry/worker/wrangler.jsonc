@@ -18,6 +18,17 @@
 		"POSTHOG_HOST": "https://eu.i.posthog.com",
 	},
 
+	// D1 database for session stitching and identity-merge bookkeeping.
+	// Migrations live in ./migrations; apply with `wrangler d1 migrations apply`.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "gaffer-telemetry",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "migrations",
+		},
+	],
+
 	// Secrets (set via `wrangler secret put`):
 	//   POSTHOG_API_KEY  -  PostHog project API key for the gaffer project
 }

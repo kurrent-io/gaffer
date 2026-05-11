@@ -48,7 +48,7 @@ import "strings"
 	outcome: #Outcome
 
 	// Who triggered the run.
-	invoked_by: "direct" | "vscode" | "mcp_client" | "ci"
+	invoked_by: "direct" | "vscode" | "mcp_client"
 
 	// Specific surface the invocation came through.
 	invoked_via: "terminal" | "code_lens" | "command_palette" | "mcp_provider" | "stdio"

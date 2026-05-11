@@ -1,0 +1,23 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "gaffer-telemetry",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-05-01",
+
+	// Static assets binding serves /fonts/* and /favicons/* directly. The
+	// worker handles everything else (POST /v1/ingest, GET / for the notice).
+	"assets": {
+		"directory": "./static",
+		"binding": "ASSETS",
+		"not_found_handling": "none",
+	},
+
+	// Vars are the public, non-secret config. PostHog ingest host (the EU
+	// instance for production; can be overridden per environment).
+	"vars": {
+		"POSTHOG_HOST": "https://eu.i.posthog.com",
+	},
+
+	// Secrets (set via `wrangler secret put`):
+	//   POSTHOG_API_KEY  -  PostHog project API key for the gaffer project
+}

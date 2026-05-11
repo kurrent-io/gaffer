@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>gaffer telemetry</title>
+		<link rel="icon" type="image/svg+xml" href="/favicons/favicon.svg" />
+		<link rel="icon" type="image/png" sizes="96x96" href="/favicons/favicon-96x96.png" />
+		<link rel="apple-touch-icon" href="/favicons/apple-touch-icon.png" />
+		<style>
+			:root {
+				color-scheme: light dark;
+
+				--kurrent-white: #ffffff;
+				--kurrent-black: #000000;
+				--kurrent-powder-black: #080b0d;
+				--kurrent-powder-blue: #9fbbc5;
+				--kurrent-plum: #631b3a;
+				--kurrent-pacific-blue: #479bff;
+
+				--color-background: light-dark(var(--kurrent-white), var(--kurrent-powder-black));
+				--color-foreground: light-dark(var(--kurrent-black), var(--kurrent-powder-blue));
+				--color-muted: color-mix(in lab, var(--color-foreground), var(--color-background) 30%);
+				--color-title: light-dark(var(--kurrent-plum), var(--kurrent-powder-blue));
+				--color-link: light-dark(var(--kurrent-pacific-blue), var(--kurrent-pacific-blue));
+				--color-shade-20: light-dark(#ecf1f3, #1e2528);
+
+				--code-fg: light-dark(#000000, #d1dce0);
+				--code-bg: light-dark(#ecf4fa, #282c34);
+			}
+
+			@font-face {
+				font-family: "Work Sans";
+				src: url("/fonts/WorkSans/WorkSans-Light.ttf") format("truetype");
+				font-weight: 300;
+				font-display: swap;
+			}
+			@font-face {
+				font-family: "Work Sans";
+				src: url("/fonts/WorkSans/WorkSans-Regular.ttf") format("truetype");
+				font-weight: 400;
+				font-display: swap;
+			}
+			@font-face {
+				font-family: "Work Sans";
+				src: url("/fonts/WorkSans/WorkSans-SemiBold.ttf") format("truetype");
+				font-weight: 600;
+				font-display: swap;
+			}
+			@font-face {
+				font-family: "Spline Sans Mono";
+				src: url("/fonts/SplineSansMono/SplineSansMono-Regular.ttf") format("truetype");
+				font-weight: 400;
+				font-display: swap;
+			}
+
+			*,
+			*::before,
+			*::after {
+				box-sizing: border-box;
+			}
+
+			body {
+				margin: 0;
+				font-family: "Work Sans", Arial, sans-serif;
+				font-weight: 400;
+				line-height: 1.5;
+				color: var(--color-foreground);
+				background-color: var(--color-background);
+				padding: 3rem 1.25rem;
+			}
+
+			main {
+				max-width: 720px;
+				margin: 0 auto;
+			}
+
+			h1,
+			h2,
+			h3,
+			h4 {
+				color: var(--color-title);
+				margin: 2rem 0 0.5rem 0;
+				line-height: 1.25;
+			}
+			h1 {
+				font-weight: 300;
+				font-size: 2.25rem;
+				margin-top: 0;
+			}
+			h2 {
+				font-weight: 400;
+				font-size: 1.75rem;
+				margin-top: 2.5rem;
+			}
+			h3 {
+				font-weight: 500;
+				font-size: 1.25rem;
+			}
+			h4 {
+				font-weight: 600;
+				font-size: 1rem;
+			}
+
+			p {
+				margin: 0 0 1rem 0;
+			}
+
+			ul,
+			ol {
+				margin: 0 0 1rem 0;
+				padding-left: 1.5rem;
+			}
+			ul {
+				list-style: disc;
+			}
+			ol {
+				list-style: decimal;
+			}
+			li {
+				margin-bottom: 0.25rem;
+			}
+			li > p {
+				margin-bottom: 0.25rem;
+			}
+
+			a {
+				color: var(--color-link);
+				text-decoration: none;
+			}
+			a:hover,
+			a:focus {
+				text-decoration: underline;
+			}
+
+			code {
+				font-family: "Spline Sans Mono", monospace;
+				font-size: 0.9em;
+				padding: 0.1em 0.3em;
+				color: var(--code-fg);
+				background-color: var(--code-bg);
+				border-radius: 3px;
+			}
+
+			pre {
+				color: var(--code-fg);
+				background-color: var(--code-bg);
+				padding: 1rem;
+				border-radius: 6px;
+				overflow-x: auto;
+				margin: 0 0 1rem 0;
+			}
+			pre code {
+				padding: 0;
+				background: transparent;
+				font-size: 0.875rem;
+			}
+
+			hr {
+				border: none;
+				border-top: 1px solid var(--color-shade-20);
+				margin: 2.5rem 0;
+			}
+
+			strong {
+				font-weight: 600;
+			}
+		</style>
+	</head>
+	<body>
+		<main>{{content}}</main>
+	</body>
+</html>

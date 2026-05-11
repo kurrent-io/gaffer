@@ -6,21 +6,22 @@ cue_version := "v0.14.2"
 go_jsonschema_version := "v0.21.0"
 
 # Install cue, go-jsonschema, and the JS codegen package. Idempotent.
-init:
+init: worker::init
     @go install cuelang.org/go/cmd/cue@{{cue_version}}
     @go install github.com/atombender/go-jsonschema@{{go_jsonschema_version}}
     pnpm install --filter '@kurrent/gaffer-telemetry'
 
-# Generate all artifacts from schemas/. Order: cue produces the jsonschema,
-# then language-specific generators consume it.
-build: _gen-schema _gen-go _gen-ts
+# Generate all artifacts from schemas/, then build the worker. Order: cue
+# produces the jsonschema, language-specific generators consume it, then the
+# worker's own build (notice render) runs.
+build: _gen-schema _gen-go _gen-ts worker::build
 
-# Format the CUE source.
-fix:
+# Format the CUE source and the worker's TS / config files.
+fix: worker::fix
     @cue fmt schemas/events.cue schemas/wire.cue
 
-# Verify the CUE source is formatted and well-formed.
-check:
+# Verify the CUE source is formatted and well-formed; check the worker too.
+check: worker::check
     @cue fmt --check schemas/events.cue schemas/wire.cue
     @cue vet schemas/events.cue schemas/wire.cue
 
@@ -38,7 +39,7 @@ test: build
     @rm -f /tmp/telemetry-determinism.json /tmp/telemetry-determinism.go /tmp/telemetry-determinism.ts
 
 # Remove generated artifacts.
-clean:
+clean: worker::clean
     @rm -f generated/telemetry.schema.json generated/events.gen.go generated/events.gen.ts
 
 # CUE -> JSON Schema.
@@ -72,3 +73,5 @@ _gen-go: _gen-schema
 [private]
 _gen-ts: _gen-schema
     @pnpm exec json2ts generated/telemetry.schema.json -o generated/events.gen.ts
+
+mod worker

@@ -1,0 +1,32 @@
+{
+	"name": "@kurrent/gaffer-telemetry-worker",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Cloudflare Worker that ingests gaffer telemetry envelopes, translates to PostHog's batch shape, and serves the public telemetry notice",
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"render-notice": "tsx scripts/render-notice.ts",
+		"gen-types": "wrangler types",
+		"build": "pnpm run render-notice && pnpm run gen-types",
+		"check": "pnpm run build && prettier --check . && tsc --noEmit",
+		"fix": "prettier --write .",
+		"test": "pnpm run build && vitest run",
+		"dev": "wrangler dev",
+		"deploy": "wrangler deploy"
+	},
+	"dependencies": {
+		"@cfworker/json-schema": "^4.1.1"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.16.3",
+		"@kurrent/gaffer-telemetry": "workspace:*",
+		"@types/node": "^25.6.0",
+		"marked": "^18.0.3",
+		"prettier": "^3.8.3",
+		"tsx": "^4.21.0",
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.5",
+		"wrangler": "^4.90.0"
+	}
+}

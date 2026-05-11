@@ -1,9 +1,18 @@
 package telemetry
 
 import (
+	"os"
 	"sync"
 	"time"
 )
+
+// EnvDebug is the env var that flips Client into transparency mode:
+// every envelope is written to stderr as JSON before forwarding to
+// the sink. Read once at New() so `export GAFFER_TELEMETRY_DEBUG=1`
+// mid-process has no effect; gaffer is a per-command CLI so this is
+// the natural read point. Matches the disclosure promised in
+// TELEMETRY.md.
+const EnvDebug = "GAFFER_TELEMETRY_DEBUG"
 
 // Client owns the sink and the goroutines in flight for a single CLI
 // process. main.go constructs one with telemetry.New(...) and stores it on
@@ -40,6 +49,9 @@ type Option func(*Client)
 
 // WithSink replaces the default httpSink with a caller-provided sink.
 // Primarily for tests and for wrapping the default sink in a decorator.
+//
+// The GAFFER_TELEMETRY_DEBUG=1 debug-tee still wraps a caller-injected
+// sink. Tests that want quiet output unset the env var (t.Setenv(EnvDebug, "")).
 func WithSink(s Sink) Option {
 	return func(c *Client) { c.sink = s }
 }
@@ -76,6 +88,11 @@ func WithErrorLogger(f func(error)) Option {
 
 // New constructs a Client. With no options it uses the production httpSink
 // pointed at DefaultWorkerURL with a 2-second per-send deadline.
+//
+// When GAFFER_TELEMETRY_DEBUG=1 is set in the process environment, the
+// configured sink is wrapped in a debug-tee that writes every envelope
+// to stderr as JSON before forwarding. Env var is checked once at
+// construction time.
 func New(opts ...Option) *Client {
 	c := &Client{
 		perSendTimeout: 2 * time.Second,
@@ -88,6 +105,9 @@ func New(opts ...Option) *Client {
 	}
 	if c.sink == nil {
 		c.sink = newHTTPSink(c.workerURL, c.userAgent)
+	}
+	if isTruthy(os.Getenv(EnvDebug)) {
+		c.sink = newDebugTeeSink(c.sink, os.Stderr, c.errLog)
 	}
 	return c
 }

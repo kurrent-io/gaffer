@@ -48,7 +48,7 @@ import "strings"
 	outcome: #Outcome
 
 	// Who triggered the run.
-	invoked_by: "direct" | "vscode" | "mcp_client"
+	invoked_by: "direct" | "vscode" | "mcp_client" | "ci"
 
 	// Specific surface the invocation came through.
 	invoked_via: "terminal" | "code_lens" | "command_palette" | "mcp_provider" | "stdio"
@@ -287,8 +287,12 @@ import "strings"
 }
 
 #ExtensionActivatedProperties: {
-	// Editor host identifier.
-	editor: "vscode"
+	// Specific editor runtime detected at activation (from
+	// `vscode.env.uriScheme`). Distinguishes VS Code from its forks so we
+	// know which targets to test against; VSCodium / Cursor / Windsurf all
+	// have non-trivial adoption. Stable and insiders builds collapse to
+	// `"vscode"`; unknown forks map to `"other"`.
+	editor: "vscode" | "vscodium" | "cursor" | "windsurf" | "other"
 
 	// Editor version string (e.g. "1.95.2").
 	editor_version: string & strings.MaxRunes(32)

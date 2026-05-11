@@ -25,8 +25,14 @@ import "strings"
 // Context is per-envelope metadata describing the emitting environment.
 // Identical for every event in a batch.
 #Context: {
-	// Which gaffer surface emitted this envelope.
-	emitter: "cli" | "mcp" | "extension"
+	// Which gaffer surface emitted this envelope. Aligned with `invoked_by`
+	// on `command_invoked`: where the same surface appears in both fields
+	// it carries the same identifier. The asymmetry (`emitter` doesn't take
+	// `direct` / `mcp_client` / `ci`; `invoked_by` doesn't take `mcp`) is
+	// load-bearing - `mcp` means "gaffer's own MCP server emitted this"
+	// whereas `invoked_by: "mcp_client"` means "an external MCP host
+	// invoked us".
+	emitter: "cli" | "mcp" | "vscode"
 
 	// Gaffer release version (semver).
 	lib_version: string & strings.MaxRunes(32)

@@ -67,7 +67,7 @@ describe("translateEnvelope", () => {
 	it("derives $lib from emitter", () => {
 		const env: Envelope = {
 			...baseEnvelope,
-			context: { ...baseContext, emitter: "extension" },
+			context: { ...baseContext, emitter: "vscode" },
 			events: [
 				{
 					name: "extension_activated",
@@ -82,7 +82,7 @@ describe("translateEnvelope", () => {
 			],
 		};
 		const result = translateEnvelope(env, testSessionId, testDeployedAt);
-		expect(result[0]?.properties.$lib).toBe("gaffer-extension");
+		expect(result[0]?.properties.$lib).toBe("gaffer-vscode");
 	});
 
 	it("renames `exception` event to `$exception` and `exceptions` to `$exception_list`", () => {

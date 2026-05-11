@@ -134,7 +134,7 @@ Records whether the gaffer CLI binary is reachable on the user's `PATH` when the
 	"emitter_id": "0b51e34d-aac8-4cce-bce4-9d2c7c6e3b8a",
 	"run_id": "01938e7a-1b2c-7d4e-9faf-2a3b4c5d6e7f",
 	"context": {
-		"emitter": "extension",
+		"emitter": "vscode",
 		"lib_version": "0.4.2",
 		"os": "darwin",
 		"arch": "arm64",

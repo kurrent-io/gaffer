@@ -44,34 +44,15 @@ func newDevCmd() *cobra.Command {
 		Short: "Run a projection locally",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// `defer tx.End(ctx)` must be direct (not wrapped in
-			// a closure) - recover() inside End only fires when
-			// End is the immediate deferred function. Wrapping in
-			// `defer func() { ...; tx.End(ctx) }()` would put
-			// recover() one frame too deep and silently drop body
-			// panics. See DevTx.End for the contract.
-			tx := telemetry.BeginDev(cmd.Context())
-			defer tx.End(cmd.Context())
-
-			// Typed setters fire at their natural call site so the
-			// value reflects what the body knows. --connection is
-			// known here from opts; deeper stats (db_version,
-			// projection counts, errors-seen) attach inside runDev
-			// once the engine surfaces a Stats() accessor.
-			tx.SetConnectedToDB(opts.Connection != "")
-
-			err := runDev(cmd, args[0], opts)
-			// Outcome cascade: explicit setter wins; else End picks
-			// (recovered panic > ctx.Err > success). retErr is a
-			// coarse fallback for unclassified errors - specific
-			// outcomes (manifest_not_found / db_disconnect /
-			// fixture_exhausted / projection_*) should SetOutcome
-			// at their error site so this branch is the safety
-			// net, not the primary path.
-			if err != nil {
-				tx.SetOutcome(telemetry.OutcomeUserError)
+			// `gaffer dev` (cobra) maps to two telemetry event
+			// variants: `dev` (single / fixture) and `debug` (DAP
+			// server attached). Branch on opts.Debug so each
+			// variant gets the right Tx + setters; both forms
+			// share runDev's flag validation + setup.
+			if opts.Debug {
+				return runDevWithDebugTx(cmd, args[0], opts)
 			}
-			return err
+			return runDevWithDevTx(cmd, args[0], opts)
 		},
 	}
 	cmd.Flags().StringVar(&opts.Events, "events", "", "Path to a JSON events file (ad-hoc fixture)")
@@ -104,7 +85,46 @@ func completeFixtures(_ *cobra.Command, args []string, _ string) ([]string, cobr
 	return proj.Def.FixtureNames(), cobra.ShellCompDirectiveNoFileComp
 }
 
-func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
+// runDevWithDevTx is the cobra wrapper for the non-debug path:
+// opens a DevTx, calls runDev, drains the dev-side setters that
+// are knowable here (currently just SetConnectedToDB). Defer-direct
+// per the Tx contract.
+func runDevWithDevTx(cmd *cobra.Command, name string, opts *devOpts) error {
+	tx := telemetry.BeginDev(cmd.Context())
+	defer tx.End(cmd.Context())
+
+	tx.SetConnectedToDB(opts.Connection != "")
+
+	err := runDev(cmd, name, opts, nil)
+	if err != nil {
+		tx.SetOutcome(telemetry.OutcomeUserError)
+	}
+	return err
+}
+
+// runDevWithDebugTx is the cobra wrapper for the debug path:
+// opens a DebugTx, calls runDev with a stats out-param the inner
+// runDevDebug populates from the DAP server before returning,
+// then drains the counters into typed setters. Defer-direct.
+func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
+	tx := telemetry.BeginDebug(cmd.Context())
+	defer tx.End(cmd.Context())
+
+	var dapStats dapserver.Stats
+	err := runDev(cmd, name, opts, &dapStats)
+
+	tx.SetBreakpointCount(dapStats.BreakpointCount)
+	tx.SetStepCount(dapStats.StepCount)
+	tx.SetPauseCount(dapStats.PauseCount)
+	tx.SetRestartCount(dapStats.RestartCount)
+
+	if err != nil {
+		tx.SetOutcome(telemetry.OutcomeUserError)
+	}
+	return err
+}
+
+func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.Stats) error {
 	if opts.StartPausedIfNoBreakpoints && !opts.Debug {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: --start-paused-if-no-breakpoints requires --debug; ignoring")
 	}
@@ -154,7 +174,7 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 	defer stop()
 
 	if opts.Debug {
-		return runDevDebug(ctx, stop, proj, sourcePath, writer, tw, opts)
+		return runDevDebug(ctx, stop, proj, sourcePath, writer, tw, opts, dapStats)
 	}
 	return runDevSingle(ctx, stop, proj, sourcePath, writer, tw, opts)
 }
@@ -225,6 +245,7 @@ func runDevDebug(
 	writer outputWriter,
 	tw *textWriter,
 	opts *devOpts,
+	dapStats *dapserver.Stats,
 ) error {
 	store, err := history.New()
 	if err != nil {
@@ -265,7 +286,25 @@ func runDevDebug(
 		}
 		return fmt.Errorf("starting debug server: %w", err)
 	}
-	defer func() { _ = srv.Close() }()
+	defer func() {
+		// Approximation note: this fires when the projection loop
+		// returns, which is typically AFTER Serve has already
+		// returned (Serve's exit triggers stop(), the main loop
+		// sees ctx.Done, returns). On the early-exit paths
+		// (fixture exhausted, source.Run error before disconnect)
+		// the Serve goroutine may still be processing in-flight
+		// DAP messages when we drain; those bumps are missed.
+		// The bound is "a handful of messages during shutdown"
+		// and the counters are atomic so this is a semantic
+		// approximation, not a data race. A deterministic fix
+		// requires dap.Server.Close to close the active conn and
+		// wait for readLoop to drain - tracked for follow-up
+		// alongside the dev/debug wrapper restructure.
+		if dapStats != nil {
+			*dapStats = srv.Stats()
+		}
+		_ = srv.Close()
+	}()
 	adapter.SetServer(srv)
 
 	// Report the actual bound port, not opts.DebugPort - the latter is

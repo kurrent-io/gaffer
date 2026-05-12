@@ -80,6 +80,7 @@ func (s *Server) parseAndPublish(ctx context.Context, uri string) {
 // used elsewhere for server-pushed messages
 // (registerCapability, codeLensRefresh).
 func (s *Server) publishDiagnostics(uri string, diags []lspDiagnostic) {
+	s.stats.diagnosticPublishes.Add(1)
 	conn, runCtx := s.snapshotRunState()
 	if conn == nil || runCtx == nil {
 		// Server not connected yet (or already disconnected).

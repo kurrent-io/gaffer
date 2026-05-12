@@ -19,6 +19,12 @@ import (
 // tx.End() time. Lives in mcpserver (not telemetry) so the server
 // stays free of any telemetry imports - the translation to typed
 // Tx setters happens at the cobra layer.
+//
+// Counters record attempts, not successes - the tracked wrappers
+// bump on dispatch entry, so failed tool calls (`tool_error`
+// results) and resource reads against missing files both count.
+// That's the right semantic: "the user asked for this" is usage
+// signal regardless of how gaffer answered.
 type Stats struct {
 	ToolCallCount     int
 	ResourceReadCount int

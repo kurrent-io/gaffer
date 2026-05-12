@@ -3,10 +3,33 @@ package lsp
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sourcegraph/jsonrpc2"
 )
+
+// Stats is the typed counter snapshot the cobra RunE drains at
+// tx.End() time. Lives in lsp (not telemetry) so the server stays
+// free of telemetry imports; the translation to typed Tx setters
+// happens at the cobra layer.
+//
+// Counters record attempts, not successes - handlers bump on
+// entry, so a codeLens request with nil params or a publish to
+// a disconnected client both count. The dataset reflects what
+// gaffer chose to do, not what bytes reached the editor.
+type Stats struct {
+	CodeLensRequestCount   int
+	DiagnosticPublishCount int
+}
+
+// serverStats holds the in-flight counters mutated by request
+// goroutines. Atomics so the request path stays lock-free; the
+// main goroutine reads via Stats() at Run-return time.
+type serverStats struct {
+	codeLensRequests    atomic.Int64
+	diagnosticPublishes atomic.Int64
+}
 
 // defaultDebounceWindow is the canonical LSP "pause to read"
 // interval - long enough that transient invalid states during a
@@ -81,6 +104,18 @@ type Server struct {
 	// publish, the initialized walk, watched-file event batches)
 	// so Run can wait for them to drain before returning.
 	wg sync.WaitGroup
+
+	stats serverStats
+}
+
+// Stats returns the current counter snapshot. Safe to call from
+// any goroutine; cobra's RunE calls this after Run has returned
+// so the values reflect the full session.
+func (s *Server) Stats() Stats {
+	return Stats{
+		CodeLensRequestCount:   int(s.stats.codeLensRequests.Load()),
+		DiagnosticPublishCount: int(s.stats.diagnosticPublishes.Load()),
+	}
 }
 
 // NewServer constructs a server with the given options. Doesn't

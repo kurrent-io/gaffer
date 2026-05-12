@@ -13,6 +13,36 @@ import (
 	godap "github.com/google/go-dap"
 )
 
+// Stats is the typed counter snapshot the cobra RunE drains at
+// tx.End() time. Lives in dap (not telemetry) so the server stays
+// free of telemetry imports; the translation to typed DebugTx
+// setters happens at the cobra layer.
+//
+// Counters record attempts (every dispatch of the corresponding
+// request type), not "user actions" - SetBreakpointsRequest
+// arrives once per editor breakpoint pane change, so the
+// BreakpointCount tracks editor activity, not the runtime
+// hit-counts. StepCount aggregates next + step-in + step-out
+// (the wire schema doesn't break them apart and editor UX
+// treats them as one category).
+type Stats struct {
+	BreakpointCount int
+	StepCount       int
+	PauseCount      int
+	RestartCount    int
+}
+
+// serverStats holds the in-flight counters bumped by the dispatch
+// loop before each handler invocation. Atomics for goroutine
+// safety; reads via Stats() see the final values after Serve
+// returns.
+type serverStats struct {
+	breakpoints atomic.Int64
+	steps       atomic.Int64
+	pauses      atomic.Int64
+	restarts    atomic.Int64
+}
+
 // Server is a DAP server that bridges editor debug requests to a gaffer session.
 type Server struct {
 	listener net.Listener
@@ -36,6 +66,20 @@ type Server struct {
 
 	linesStartAt1   bool
 	columnsStartAt1 bool
+
+	stats serverStats
+}
+
+// Stats returns the current counter snapshot. Safe to call from
+// any goroutine; the cobra RunE for `gaffer dev --debug` reads
+// this at tx.End() time after Serve has returned.
+func (s *Server) Stats() Stats {
+	return Stats{
+		BreakpointCount: int(s.stats.breakpoints.Load()),
+		StepCount:       int(s.stats.steps.Load()),
+		PauseCount:      int(s.stats.pauses.Load()),
+		RestartCount:    int(s.stats.restarts.Load()),
+	}
 }
 
 // Handler contains callbacks for each DAP request type.
@@ -237,6 +281,7 @@ func (s *Server) dispatch(msg godap.Message) {
 			s.Send(resp)
 		}
 	case *godap.SetBreakpointsRequest:
+		s.stats.breakpoints.Add(1)
 		if s.handler.OnSetBreakpoints != nil {
 			s.handler.OnSetBreakpoints(s, req)
 		} else {
@@ -257,30 +302,35 @@ func (s *Server) dispatch(msg godap.Message) {
 			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
 		}
 	case *godap.PauseRequest:
+		s.stats.pauses.Add(1)
 		if s.handler.OnPause != nil {
 			s.handler.OnPause(s, req)
 		} else {
 			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
 		}
 	case *godap.RestartRequest:
+		s.stats.restarts.Add(1)
 		if s.handler.OnRestart != nil {
 			s.handler.OnRestart(s, req)
 		} else {
 			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
 		}
 	case *godap.NextRequest:
+		s.stats.steps.Add(1)
 		if s.handler.OnNext != nil {
 			s.handler.OnNext(s, req)
 		} else {
 			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
 		}
 	case *godap.StepInRequest:
+		s.stats.steps.Add(1)
 		if s.handler.OnStepIn != nil {
 			s.handler.OnStepIn(s, req)
 		} else {
 			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
 		}
 	case *godap.StepOutRequest:
+		s.stats.steps.Add(1)
 		if s.handler.OnStepOut != nil {
 			s.handler.OnStepOut(s, req)
 		} else {

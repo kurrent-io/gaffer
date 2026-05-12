@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kurrent-io/gaffer/cli/internal/lsp"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 func newLSPCmd() *cobra.Command {
@@ -18,13 +19,31 @@ func newLSPCmd() *cobra.Command {
 			"speaking JSON-RPC over stdin/stdout. Editor extensions " +
 			"spawn this subcommand and connect to it as an LSP client.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// `defer tx.End(ctx)` must be direct - see DevTx.End
+			// for why a wrapping closure breaks recover().
+			tx := telemetry.BeginLSP(cmd.Context())
+			defer tx.End(cmd.Context())
+
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 			defer stop()
 
 			server := lsp.NewServer(lsp.ServerOptions{
 				Version: Version,
 			})
-			return server.Run(ctx, stdioStream{})
+			runErr := server.Run(ctx, stdioStream{})
+
+			// Drain after Run returns - request goroutines have
+			// finished by then so the atomic loads see final
+			// values. Single-goroutine Tx contract holds: setters
+			// fire on the main goroutine.
+			stats := server.Stats()
+			tx.SetCodeLensRequestCount(stats.CodeLensRequestCount)
+			tx.SetDiagnosticPublishCount(stats.DiagnosticPublishCount)
+
+			if runErr != nil {
+				tx.SetOutcome(telemetry.OutcomeLSPProtocolError)
+			}
+			return runErr
 		},
 	}
 	// vscode-languageclient unconditionally appends --stdio when the

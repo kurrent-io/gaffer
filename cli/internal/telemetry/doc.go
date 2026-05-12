@@ -20,9 +20,43 @@
 // One-shot events (Version, Init, Scaffold, Info, Manifest) use
 // `telemetry.Emit<X>(ctx, props)`. Long-running commands (Dev, MCP, LSP,
 // Debug) use `tx := telemetry.Begin<X>(ctx)` returning a *<X>Tx, with
-// `defer tx.End()` to emit on return. The Begin/End helpers and the
-// runtime that backs them are wired in subsequent commits; this file
-// documents the surface the call sites will use.
+// `defer tx.End(ctx)` to emit on return.
+//
+// # End contract (load-bearing)
+//
+// `tx.End(ctx)` MUST be deferred directly:
+//
+//	tx := telemetry.BeginDev(ctx)
+//	defer tx.End(ctx)
+//
+// Wrapping End in a closure (`defer func() { ...; tx.End(ctx) }()`)
+// silently breaks recover(): Go's recover() only fires when called from
+// the IMMEDIATE deferred function. The wrapping closure becomes the
+// deferred frame; End's recover() runs one frame too deep and returns
+// nil, so a body panic propagates unrecovered and the matching
+// command_invoked envelope never emits with outcome=internal_error.
+//
+// End's body also installs a deferred re-panic so the original panic
+// propagates even if stamping or fireCommandInvoked itself panics
+// synchronously - telemetry failure must not mask user panics.
+//
+// TestDevTx_EndMustBeDirectDeferShape pins this invariant against
+// future refactors.
+//
+// # Outcome cascade
+//
+// At End time, the Outcome field is filled (highest priority first):
+//   - explicit `tx.SetOutcome(...)` from the command body wins
+//   - recovered panic -> internal_error
+//   - ctx.Err() != nil -> user_interrupt
+//   - fallthrough -> success
+//
+// The cobra RunE wrappers also map non-nil retErr to a coarse default
+// (user_error for dev, protocol-specific errors for mcp/lsp) as a
+// safety net for unclassified errors. Specific outcomes
+// (manifest_not_found, db_disconnect, fixture_exhausted, projection_*)
+// belong inline at the error site so the wrapper fallback only fires
+// for genuinely-unclassified failures.
 //
 // # Best-effort transport
 //

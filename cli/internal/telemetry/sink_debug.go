@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 )
 
 // debugTeeSink wraps an inner Sink, writing every envelope as JSON to
@@ -25,9 +26,15 @@ import (
 // is essentially impossible for the generated Envelope shape (no
 // chan / func fields), so the duplication isn't a real cost.
 type debugTeeSink struct {
-	inner  Sink
-	w      io.Writer
-	errLog func(error)
+	inner Sink
+	// writeMu serialises writes to w. emit() spawns a goroutine per
+	// envelope, so multiple Send calls run concurrently; POSIX only
+	// guarantees writes <=PIPE_BUF (4KB) are atomic, and a
+	// projection_shape envelope easily exceeds that. Without the
+	// mutex, large envelopes could split and interleave on stderr.
+	writeMu sync.Mutex
+	w       io.Writer
+	errLog  func(error)
 }
 
 // newDebugTeeSink wraps inner. errLog may be nil; the constructor
@@ -44,8 +51,13 @@ func (d *debugTeeSink) Send(ctx context.Context, env *Envelope) error {
 	body, err := json.Marshal(env)
 	if err != nil {
 		d.errLog(fmt.Errorf("gaffer telemetry: debug-tee marshal: %w", err))
-	} else if _, werr := fmt.Fprintf(d.w, "gaffer-telemetry: %s\n", body); werr != nil {
-		d.errLog(fmt.Errorf("gaffer telemetry: debug-tee write: %w", werr))
+	} else {
+		d.writeMu.Lock()
+		_, werr := fmt.Fprintf(d.w, "gaffer-telemetry: %s\n", body)
+		d.writeMu.Unlock()
+		if werr != nil {
+			d.errLog(fmt.Errorf("gaffer telemetry: debug-tee write: %w", werr))
+		}
 	}
 	return d.inner.Send(ctx, env)
 }

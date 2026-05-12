@@ -116,6 +116,68 @@ func TestClientNew_NoTeeWhenEnvFalsy(t *testing.T) {
 	}
 }
 
+func TestDebugTeeSink_ConcurrentSendDoesNotInterleave(t *testing.T) {
+	// emit() spawns a goroutine per envelope. With many in-flight
+	// sends, the debug-tee's Fprintf calls race the shared writer;
+	// without writeMu, large envelopes (> PIPE_BUF) can split
+	// mid-write and interleave on stderr. Build a payload large
+	// enough to exceed POSIX's PIPE_BUF (4KB) so a non-atomic write
+	// would visibly tear.
+	var buf concurrentBuffer
+	d := newDebugTeeSink(newMockSink(), &buf, nil)
+
+	bigID := strings.Repeat("a", 8000)
+	env := &Envelope{SchemaVersion: SchemaVersion, EmitterID: bigID}
+
+	const n = 32
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			_ = d.Send(context.Background(), env)
+		}()
+	}
+	wg.Wait()
+
+	// Each Send writes one "gaffer-telemetry: ...\n" line. A torn
+	// write would land non-prefix bytes mid-line.
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	if len(lines) != n {
+		t.Fatalf("got %d lines, want %d", len(lines), n)
+	}
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "gaffer-telemetry: ") {
+			cut := len(line)
+			if cut > 64 {
+				cut = 64
+			}
+			t.Fatalf("line %d torn: %q", i, line[:cut])
+		}
+	}
+}
+
+// concurrentBuffer is a thread-safe sink for the race test above.
+// Production code's writeMu is what's actually under test; the
+// buffer needs its own lock so the test scaffold isn't the failing
+// race.
+type concurrentBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (c *concurrentBuffer) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.buf.Write(p)
+}
+
+func (c *concurrentBuffer) String() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.buf.String()
+}
+
 func TestClientNew_TeeWrapsInjectedSinkBehaviourally(t *testing.T) {
 	// Replaces the previous pointer-identity check: send an envelope
 	// through the client and verify it lands in the injected mock

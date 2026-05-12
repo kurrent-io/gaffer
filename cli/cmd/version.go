@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 // Version is the gaffer release string, set at build time via
@@ -16,8 +18,14 @@ func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print the gaffer version",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			defer func() {
+				telemetry.EmitVersion(cmd.Context(), telemetry.VersionCommandInvokedProperties{
+					Outcome: outcomeFor(retErr),
+				})
+			}()
 			fmt.Println(Version)
+			return nil
 		},
 	}
 }

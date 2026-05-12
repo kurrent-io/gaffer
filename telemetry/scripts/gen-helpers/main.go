@@ -577,7 +577,7 @@ func emitFile(w io.Writer, root cue.Value) error {
 			return fmt.Errorf("read %s: %w", cmd.DefName, err)
 		}
 		variant := filterBase(all, baseFields)
-		emitCommandVariant(w, cmd, variant)
+		emitCommandVariant(w, cmd, baseFields, variant)
 		if cmd.LongRun {
 			emitCommandTx(w, cmd, variant)
 		}
@@ -794,17 +794,17 @@ func emitCommandInvoked(w io.Writer, base []schemaField) {
 	fmt.Fprint(w, "}\n\n")
 	fmt.Fprint(w, "func (CommandInvoked) isEvent() {}\n\n")
 
-	emitDoc(w, "CommandInvokedProperties holds the base fields present on every variant\nof command_invoked. Per-command variants embed it.")
+	emitDoc(w, "CommandInvokedProperties holds the base fields present on every variant\nof command_invoked. Kept as a standalone type for documentation /\nshape reference; per-command variants inline these fields directly\nrather than embedding so call sites stay flat (no nested struct\nliteral required to set Outcome).")
 	fmt.Fprint(w, "type CommandInvokedProperties struct {\n")
 	emitFields(w, base)
 	fmt.Fprint(w, "}\n\n")
 }
 
-func emitCommandVariant(w io.Writer, cmd commandSpec, variant []schemaField) {
-	doc := fmt.Sprintf("%sCommandInvokedProperties carries the property set for `gaffer %s`.", cmd.GoName, cmd.CmdName)
+func emitCommandVariant(w io.Writer, cmd commandSpec, base, variant []schemaField) {
+	doc := fmt.Sprintf("%sCommandInvokedProperties carries the property set for `gaffer %s`.\nBase fields are inlined rather than embedded so callers can set\nOutcome (and future per-invocation overrides) at the top-level\nstruct literal without an extra nesting layer.", cmd.GoName, cmd.CmdName)
 	emitDoc(w, doc)
 	fmt.Fprintf(w, "type %sCommandInvokedProperties struct {\n", cmd.GoName)
-	fmt.Fprint(w, "\tCommandInvokedProperties\n")
+	emitFields(w, base)
 	emitFields(w, variant)
 	fmt.Fprint(w, "}\n\n")
 }

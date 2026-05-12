@@ -62,6 +62,7 @@ func buildClient(noticeOut io.Writer) *telemetry.Client {
 	home, _ := os.UserHomeDir()
 	return telemetry.StartupGate(store, cwd, home, noticeOut,
 		telemetry.WithUserAgent(userAgent()),
+		telemetry.WithLibVersion(cmd.Version),
 	)
 }
 

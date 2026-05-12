@@ -56,7 +56,5 @@ func StartupGate(store *userconfig.Store, cwd, homeDir string, noticeOut io.Writ
 		}
 		return nil
 	}
-	c := New(opts...)
-	c.identity = id
-	return c
+	return New(append(opts, WithIdentity(id))...)
 }

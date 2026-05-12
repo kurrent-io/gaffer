@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
-	"github.com/spf13/cobra"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 func newInfoCmd() *cobra.Command {
@@ -16,7 +18,12 @@ func newInfoCmd() *cobra.Command {
 		Use:   "info [projection]",
 		Short: "Show projection details",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			defer func() {
+				telemetry.EmitInfo(cmd.Context(), telemetry.InfoCommandInvokedProperties{
+					Outcome: outcomeFor(retErr),
+				})
+			}()
 			return runInfo(cmd, args[0], asJSON)
 		},
 	}

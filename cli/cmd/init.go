@@ -6,9 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
-	"github.com/spf13/cobra"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 func newInitCmd() *cobra.Command {
@@ -18,7 +20,12 @@ func newInitCmd() *cobra.Command {
 		Use:   "init",
 		Short: "Initialize a new gaffer project",
 		Long:  "Creates gaffer.toml, .gitignore, and .gaffer/ directory in the current directory.",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			defer func() {
+				telemetry.EmitInit(cmd.Context(), telemetry.InitCommandInvokedProperties{
+					Outcome: outcomeFor(retErr),
+				})
+			}()
 			return runInit(yes)
 		},
 	}

@@ -43,13 +43,24 @@ type Client struct {
 	workerURL string
 	userAgent string
 
+	// libVersion is the gaffer release semver stamped onto every
+	// envelope's Context.LibVersion. Distinct from userAgent which
+	// also embeds OS / arch / Go version; libVersion is just the
+	// gaffer-side version that release tooling sets via ldflags.
+	libVersion string
+
 	// identity is the resolved per-install identity stamped onto
-	// outgoing envelopes. Set once at construction via WithIdentity
-	// (typically from main's StartupGate) and read by per-event emit
-	// helpers. Zero value means "no identity available" - emit
-	// helpers should skip in that case rather than send anonymous
-	// envelopes the worker would reject.
+	// outgoing envelopes. Set by StartupGate at construction; the
+	// zero value means "no identity available" - emit helpers should
+	// skip in that case rather than send anonymous envelopes the
+	// worker would reject.
 	identity Identity
+
+	// startTime is captured at construction (process startup) and
+	// used to compute duration_ms on command_invoked envelopes. The
+	// RawCount bucket math (in events.gen.go) collapses sub-second
+	// runs to the 0/1 buckets, so clock skew is irrelevant.
+	startTime time.Time
 }
 
 // Option mutates a Client at construction.
@@ -94,6 +105,20 @@ func WithErrorLogger(f func(error)) Option {
 	return func(c *Client) { c.errLog = f }
 }
 
+// WithLibVersion stamps the gaffer release semver onto Context.LibVersion
+// of every emitted envelope. main.go passes cmd.Version; tests usually
+// don't set it (defaults to empty).
+func WithLibVersion(v string) Option {
+	return func(c *Client) { c.libVersion = v }
+}
+
+// WithIdentity stamps id onto the Client. Set by StartupGate in production;
+// integration tests in telemetrytest use it to inject a fixed identity
+// without going through the full mint flow.
+func WithIdentity(id Identity) Option {
+	return func(c *Client) { c.identity = id }
+}
+
 
 // New constructs a Client. With no options it uses the production httpSink
 // pointed at DefaultWorkerURL with a 2-second per-send deadline.
@@ -108,6 +133,7 @@ func New(opts ...Option) *Client {
 		errLog:         func(error) {}, // silent by default
 		workerURL:      DefaultWorkerURL,
 		userAgent:      defaultUserAgent,
+		startTime:      time.Now(),
 	}
 	for _, opt := range opts {
 		opt(c)

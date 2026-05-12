@@ -264,7 +264,10 @@ type CommandInvoked struct {
 func (CommandInvoked) isEvent() {}
 
 // CommandInvokedProperties holds the base fields present on every variant
-// of command_invoked. Per-command variants embed it.
+// of command_invoked. Kept as a standalone type for documentation /
+// shape reference; per-command variants inline these fields directly
+// rather than embedding so call sites stay flat (no nested struct
+// literal required to set Outcome).
 type CommandInvokedProperties struct {
 	// Which gaffer command ran. Variants narrow this to a specific literal.
 	Command CommandName `json:"command"`
@@ -279,28 +282,88 @@ type CommandInvokedProperties struct {
 }
 
 // VersionCommandInvokedProperties carries the property set for `gaffer version`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
 type VersionCommandInvokedProperties struct {
-	CommandInvokedProperties
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawCount `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through.
+	InvokedVia InvokedVia `json:"invoked_via"`
 }
 
 // InitCommandInvokedProperties carries the property set for `gaffer init`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
 type InitCommandInvokedProperties struct {
-	CommandInvokedProperties
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawCount `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through.
+	InvokedVia InvokedVia `json:"invoked_via"`
 }
 
 // ScaffoldCommandInvokedProperties carries the property set for `gaffer scaffold`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
 type ScaffoldCommandInvokedProperties struct {
-	CommandInvokedProperties
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawCount `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through.
+	InvokedVia InvokedVia `json:"invoked_via"`
 }
 
 // InfoCommandInvokedProperties carries the property set for `gaffer info`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
 type InfoCommandInvokedProperties struct {
-	CommandInvokedProperties
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawCount `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through.
+	InvokedVia InvokedVia `json:"invoked_via"`
 }
 
 // ManifestCommandInvokedProperties carries the property set for `gaffer manifest`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
 type ManifestCommandInvokedProperties struct {
-	CommandInvokedProperties
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawCount `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through.
+	InvokedVia InvokedVia `json:"invoked_via"`
 	// Top-level manifest section names present (e.g. ["projections", "fixtures"]). Section *presence* only, never contents.
 	ManifestFeaturesUsed []string `json:"manifest_features_used,omitempty"`
 	// Bucketed count from manifest.
@@ -310,8 +373,20 @@ type ManifestCommandInvokedProperties struct {
 }
 
 // DevCommandInvokedProperties carries the property set for `gaffer dev`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
 type DevCommandInvokedProperties struct {
-	CommandInvokedProperties
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawCount `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through.
+	InvokedVia InvokedVia `json:"invoked_via"`
 	// Top-level manifest section names present.
 	ManifestFeaturesUsed []string `json:"manifest_features_used,omitempty"`
 	// Bucketed count from manifest.
@@ -372,8 +447,20 @@ func (tx *DevTx) SetProjectionErrorsSeen(v []ProjectionOutcome) {
 }
 
 // MCPCommandInvokedProperties carries the property set for `gaffer mcp`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
 type MCPCommandInvokedProperties struct {
-	CommandInvokedProperties
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawCount `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through.
+	InvokedVia InvokedVia `json:"invoked_via"`
 	// Top-level manifest section names present.
 	ManifestFeaturesUsed []string `json:"manifest_features_used,omitempty"`
 	// Bucketed. Total tool invocations across the session.
@@ -420,8 +507,20 @@ func (tx *MCPTx) SetProjectionErrorsSeen(v []ProjectionOutcome) {
 }
 
 // LSPCommandInvokedProperties carries the property set for `gaffer lsp`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
 type LSPCommandInvokedProperties struct {
-	CommandInvokedProperties
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawCount `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through.
+	InvokedVia InvokedVia `json:"invoked_via"`
 	// Bucketed total code-lens requests served.
 	CodeLensRequestCount *RawCount `json:"code_lens_request_count,omitempty"`
 	// Bucketed total diagnostic publishes.
@@ -454,8 +553,20 @@ func (tx *LSPTx) SetDiagnosticPublishCount(n int) {
 }
 
 // DebugCommandInvokedProperties carries the property set for `gaffer debug`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
 type DebugCommandInvokedProperties struct {
-	CommandInvokedProperties
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawCount `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through.
+	InvokedVia InvokedVia `json:"invoked_via"`
 	// Bucketed. Initial breakpoints set by the client.
 	BreakpointCount *RawCount `json:"breakpoint_count,omitempty"`
 	// Bucketed. Total step requests served.

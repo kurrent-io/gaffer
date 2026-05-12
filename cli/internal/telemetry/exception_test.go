@@ -42,6 +42,41 @@ func triggerRuntimeError() (r any) {
 	return nil
 }
 
+func TestEmitException_StampsCurrentCommand(t *testing.T) {
+	ctx, c, mock := emitTestSetup(t)
+	// Simulate a Begin/Emit having fired before the panic.
+	c.setCurrentCommand(CommandNameDev)
+
+	EmitException(ctx, "boom", ExceptionPhaseEventProcessing)
+	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	envs := mock.Envelopes()
+	if len(envs) != 1 {
+		t.Fatalf("envelopes = %d, want 1", len(envs))
+	}
+	props := envs[0].Events[0].(Exception).Properties
+	if props.Command == nil {
+		t.Fatal("Command = nil, expected dev")
+	}
+	if *props.Command != CommandNameDev {
+		t.Errorf("Command = %q, want dev", *props.Command)
+	}
+}
+
+func TestEmitException_OmitsCommandWhenUnset(t *testing.T) {
+	ctx, c, mock := emitTestSetup(t)
+	// No Begin/Emit fired - panic happened before cobra dispatched.
+	EmitException(ctx, "early boom", ExceptionPhaseStartup)
+	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	props := mock.Envelopes()[0].Events[0].(Exception).Properties
+	if props.Command != nil {
+		t.Errorf("Command = %q, want nil when no command in flight", *props.Command)
+	}
+}
+
 func TestEmitException_RuntimeErrorGetsVerbatimMessage(t *testing.T) {
 	ctx, c, mock := emitTestSetup(t)
 	r := triggerRuntimeError()

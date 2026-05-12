@@ -1077,7 +1077,8 @@ func articleFor(goName string) string {
 func emitBegin(w io.Writer, cmd commandSpec) {
 	emitDoc(w, fmt.Sprintf("Begin%s opens %s %s command_invoked transaction. Stash the\nreturned Tx and `defer tx.End(ctx)` at the top of the cobra RunE.\nReturns nil when ctx carries no Client (opt-out or unreadable\nconfig); End is nil-safe so callers don't need to branch on the\nreturn.\n\nSee doc.go for the End() defer-direct contract.", cmd.GoName, articleFor(cmd.GoName), cmd.GoName))
 	fmt.Fprintf(w, "func Begin%s(ctx context.Context) *%sTx {\n", cmd.GoName, cmd.GoName)
-	fmt.Fprint(w, "\tif ClientFromContext(ctx) == nil {\n\t\treturn nil\n\t}\n")
+	fmt.Fprint(w, "\tc := ClientFromContext(ctx)\n\tif c == nil {\n\t\treturn nil\n\t}\n")
+	fmt.Fprintf(w, "\tc.setCurrentCommand(CommandName%s)\n", cmd.GoName)
 	fmt.Fprintf(w, "\treturn &%sTx{}\n", cmd.GoName)
 	fmt.Fprint(w, "}\n\n")
 }
@@ -1113,6 +1114,7 @@ func emitOneShotHelper(w io.Writer, cmd commandSpec) {
 	emitDoc(w, fmt.Sprintf("Emit%s fires command_invoked for `gaffer %s`. No-op when ctx\ncarries no Client (opt-out or unreadable config).\n\nCallers fill in Outcome (and any variant-specific optional\nfields). Command and DurationMs are stamped by the helper from\nClient state - any caller-set value is discarded.", cmd.GoName, cmd.CmdName))
 	fmt.Fprintf(w, "func Emit%s(ctx context.Context, p %sCommandInvokedProperties) {\n", cmd.GoName, cmd.GoName)
 	fmt.Fprint(w, "\tc := ClientFromContext(ctx)\n\tif c == nil {\n\t\treturn\n\t}\n")
+	fmt.Fprintf(w, "\tc.setCurrentCommand(CommandName%s)\n", cmd.GoName)
 	fmt.Fprintf(w, "\tc.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandName%s)\n", cmd.GoName)
 	fmt.Fprint(w, "\tc.fireCommandInvoked(p)\n")
 	fmt.Fprint(w, "}\n\n")

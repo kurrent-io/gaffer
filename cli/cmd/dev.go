@@ -100,7 +100,7 @@ func runDevWithDevTx(cmd *cobra.Command, name string, opts *devOpts) error {
 	tx.SetConnectedToDB(opts.Connection != "")
 
 	tracker := newProjErrTracker()
-	proj, err := runDev(cmd, name, opts, nil, tracker.Record)
+	proj, err := runDev(cmd, name, opts, nil, runObservers{onProjectionError: tracker.Record})
 	if proj != nil && proj.Config != nil {
 		tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(proj.Config))
 		tx.SetProjectionCount(proj.Config.ProjectionCount())
@@ -127,12 +127,19 @@ func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
 
 	var dapStats dapserver.Stats
 	tracker := newProjErrTracker()
-	_, err := runDev(cmd, name, opts, &dapStats, tracker.Record)
+	var fixtureEvents int
+	_, err := runDev(cmd, name, opts, &dapStats, runObservers{
+		onProjectionError: tracker.Record,
+		onFixtureEvent:    func() { fixtureEvents++ },
+	})
 
 	tx.SetBreakpointCount(dapStats.BreakpointCount)
 	tx.SetStepCount(dapStats.StepCount)
 	tx.SetPauseCount(dapStats.PauseCount)
 	tx.SetRestartCount(dapStats.RestartCount)
+	if fixtureEvents > 0 {
+		tx.SetFixtureEventCount(fixtureEvents)
+	}
 
 	if seen := tracker.Sorted(); len(seen) > 0 {
 		tx.SetProjectionErrorsSeen(seen)
@@ -145,16 +152,31 @@ func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
 	return err
 }
 
+// runObservers carries the per-iteration telemetry callbacks the
+// cobra wrappers feed into runDev. Zero-value (nil callbacks) means
+// "no observation" - non-debug callers pass an empty struct because
+// the DevTx schema doesn't carry the fields debug ones populate.
+//
+// Single-goroutine-owned: callbacks run synchronously on the cobra
+// goroutine driving source.Run, so the wrapper's tracker state needs
+// no locking.
+type runObservers struct {
+	// onProjectionError fires once per iteration when r.Faulted()
+	// is observed, with the runner's last error. Wrappers use this
+	// to accumulate projection_errors_seen across DAP restart
+	// iterations.
+	onProjectionError func(error)
+	// onFixtureEvent fires per fixture event processed (post
+	// r.ProcessOne, regardless of fault). Only invoked when the
+	// source is a fixture; live-mode events are not counted here.
+	onFixtureEvent func()
+}
+
 // runDev parses the dev flags, loads the projection, and dispatches
 // to runDevSingle or runDevDebug. Returns the loaded *engine.Projection
 // alongside the error so the cobra wrappers can drain telemetry
 // properties off it; nil when LoadProjection failed.
-//
-// onProjectionError, if non-nil, is invoked with the FFI error
-// whenever a projection iteration faults. The dev / debug wrappers
-// use this to accumulate projection_errors_seen across restarts; a
-// nil callback disables tracking.
-func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.Stats, onProjectionError func(error)) (*engine.Projection, error) {
+func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.Stats, obs runObservers) (*engine.Projection, error) {
 	if opts.StartPausedIfNoBreakpoints && !opts.Debug {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: --start-paused-if-no-breakpoints requires --debug; ignoring")
 	}
@@ -204,9 +226,9 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.
 	defer stop()
 
 	if opts.Debug {
-		return proj, runDevDebug(ctx, stop, proj, sourcePath, writer, tw, opts, dapStats, onProjectionError)
+		return proj, runDevDebug(ctx, stop, proj, sourcePath, writer, tw, opts, dapStats, obs)
 	}
-	return proj, runDevSingle(ctx, stop, proj, sourcePath, writer, tw, opts, onProjectionError)
+	return proj, runDevSingle(ctx, stop, proj, sourcePath, writer, tw, opts, obs)
 }
 
 // runDevSingle handles the non-debug path: one engine.Session, one
@@ -219,7 +241,7 @@ func runDevSingle(
 	writer outputWriter,
 	tw *textWriter,
 	opts *devOpts,
-	onProjectionError func(error),
+	obs runObservers,
 ) error {
 	// includeShape: walk the AST for projection_shape telemetry
 	// only when the Client is on ctx (i.e. telemetry isn't opted
@@ -265,7 +287,7 @@ func runDevSingle(
 		if lastErr := r.LastError(); lastErr != nil {
 			writer.WriteFatalError(toFatalError(lastErr, sourcePath))
 		}
-		recordProjectionFault(r, onProjectionError)
+		recordProjectionFault(r, obs.onProjectionError)
 		return silent(fmt.Errorf("projection faulted"))
 	}
 	return nil
@@ -285,7 +307,7 @@ func runDevDebug(
 	tw *textWriter,
 	opts *devOpts,
 	dapStats *dapserver.Stats,
-	onProjectionError func(error),
+	obs runObservers,
 ) error {
 	store, err := history.New()
 	if err != nil {
@@ -450,11 +472,18 @@ func runDevDebug(
 		}
 
 		var lastEmit time.Time
+		// fixture_event_count is only meaningful in fixture mode;
+		// live-mode events come from KurrentDB and are tracked
+		// elsewhere if needed.
+		countFixtureEvents := opts.Events != "" && obs.onFixtureEvent != nil
 		// Run on the source goroutine: ProjectionSession is not
 		// thread-safe, so concurrent Feed/state calls would corrupt
 		// internal projection state.
 		process := func(eventJSON string) bool {
 			stop := r.ProcessOne(eventJSON)
+			if countFixtureEvents {
+				obs.onFixtureEvent()
+			}
 			if time.Since(lastEmit) >= statsEmitInterval {
 				adapter.EmitStatsIfChanged()
 				adapter.EmitStateIfChanged()
@@ -498,7 +527,7 @@ func runDevDebug(
 			// restart-driven sessions silently drop the fault from
 			// projection_errors_seen. The teardown-path branch below
 			// has its own r.Faulted() check; this one matches it.
-			recordProjectionFault(r, onProjectionError)
+			recordProjectionFault(r, obs.onProjectionError)
 			session.Destroy()
 			session, info, err = engine.CreateSession(proj, true, includeShape)
 			if err != nil {
@@ -537,7 +566,7 @@ func runDevDebug(
 			lastErr := r.LastError()
 			if lastErr != nil {
 				writer.WriteFatalError(toFatalError(lastErr, sourcePath))
-				recordProjectionFault(r, onProjectionError)
+				recordProjectionFault(r, obs.onProjectionError)
 			}
 			return silent(fmt.Errorf("projection faulted"))
 		}

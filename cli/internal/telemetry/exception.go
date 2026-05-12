@@ -53,13 +53,17 @@ func EmitException(ctx context.Context, recovered any, phase ExceptionPhase) {
 		InApp:      true,
 		Stacktrace: ExceptionStacktrace{Type: "go", Frames: scrubFrames(frames)},
 	}
+	props := ExceptionProperties{
+		Exceptions: []ExceptionEntry{entry},
+		Phase:      phase,
+	}
+	if cmd := c.currentCommandName(); cmd != "" {
+		props.Command = &cmd
+	}
 	c.emit(c.buildEnvelope(Exception{
-		Name:      "exception",
-		Timestamp: nowTimestamp(),
-		Properties: ExceptionProperties{
-			Exceptions: []ExceptionEntry{entry},
-			Phase:      phase,
-		},
+		Name:       "exception",
+		Timestamp:  nowTimestamp(),
+		Properties: props,
 	}))
 }
 

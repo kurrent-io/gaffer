@@ -3,6 +3,7 @@ package telemetry
 import (
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -91,6 +92,16 @@ type Client struct {
 	shapeCache map[string][32]byte
 	shapeOrder []string
 
+	// currentCommand records which cobra command is in flight, set
+	// by Begin*/Emit* helpers at entry. EmitException reads it to
+	// stamp Exception.command so a panic envelope can be attributed
+	// to the command that triggered it. atomic.Value (rather than a
+	// mutex on the string) because reads happen from the main goroutine
+	// inside the panic-recover defer, while writes happen from the
+	// same goroutine slightly earlier; the atomic gives a clean
+	// happens-before for free and is overkill insurance.
+	currentCommand atomic.Value // holds CommandName
+
 	// startTime is captured at construction (process startup) and
 	// used to compute duration_ms on command_invoked envelopes. The
 	// RawCount bucket math (in events.gen.go) collapses sub-second
@@ -169,6 +180,24 @@ func WithInvocation(inv Invocation) Option {
 // Context.ProjectID.
 func WithProjectID(id string) Option {
 	return func(c *Client) { c.projectID = id }
+}
+
+// setCurrentCommand stashes the in-flight cobra command name. Called
+// by every Begin* / Emit* helper so a subsequent EmitException
+// (typically from main.go's global panic-recover) can attribute the
+// exception to the command that was running.
+func (c *Client) setCurrentCommand(name CommandName) {
+	c.currentCommand.Store(name)
+}
+
+// currentCommandName returns the stashed command, or empty if no
+// Begin*/Emit* has fired yet (panic before cobra dispatched a RunE).
+func (c *Client) currentCommandName() CommandName {
+	v := c.currentCommand.Load()
+	if v == nil {
+		return ""
+	}
+	return v.(CommandName)
 }
 
 // New constructs a Client. With no options it uses the production httpSink

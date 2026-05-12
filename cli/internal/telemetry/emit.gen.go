@@ -21,6 +21,7 @@ func EmitVersion(ctx context.Context, p VersionCommandInvokedProperties) {
 	if c == nil {
 		return
 	}
+	c.setCurrentCommand(CommandNameVersion)
 	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameVersion)
 	c.fireCommandInvoked(p)
 }
@@ -36,6 +37,7 @@ func EmitInit(ctx context.Context, p InitCommandInvokedProperties) {
 	if c == nil {
 		return
 	}
+	c.setCurrentCommand(CommandNameInit)
 	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameInit)
 	c.fireCommandInvoked(p)
 }
@@ -51,6 +53,7 @@ func EmitScaffold(ctx context.Context, p ScaffoldCommandInvokedProperties) {
 	if c == nil {
 		return
 	}
+	c.setCurrentCommand(CommandNameScaffold)
 	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameScaffold)
 	c.fireCommandInvoked(p)
 }
@@ -66,6 +69,7 @@ func EmitInfo(ctx context.Context, p InfoCommandInvokedProperties) {
 	if c == nil {
 		return
 	}
+	c.setCurrentCommand(CommandNameInfo)
 	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameInfo)
 	c.fireCommandInvoked(p)
 }
@@ -81,6 +85,7 @@ func EmitManifest(ctx context.Context, p ManifestCommandInvokedProperties) {
 	if c == nil {
 		return
 	}
+	c.setCurrentCommand(CommandNameManifest)
 	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameManifest)
 	c.fireCommandInvoked(p)
 }

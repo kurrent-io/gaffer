@@ -18,9 +18,11 @@ import "context"
 //
 // See doc.go for the End() defer-direct contract.
 func BeginDev(ctx context.Context) *DevTx {
-	if ClientFromContext(ctx) == nil {
+	c := ClientFromContext(ctx)
+	if c == nil {
 		return nil
 	}
+	c.setCurrentCommand(CommandNameDev)
 	return &DevTx{}
 }
 
@@ -57,9 +59,11 @@ func (tx *DevTx) End(ctx context.Context) {
 //
 // See doc.go for the End() defer-direct contract.
 func BeginMCP(ctx context.Context) *MCPTx {
-	if ClientFromContext(ctx) == nil {
+	c := ClientFromContext(ctx)
+	if c == nil {
 		return nil
 	}
+	c.setCurrentCommand(CommandNameMCP)
 	return &MCPTx{}
 }
 
@@ -96,9 +100,11 @@ func (tx *MCPTx) End(ctx context.Context) {
 //
 // See doc.go for the End() defer-direct contract.
 func BeginLSP(ctx context.Context) *LSPTx {
-	if ClientFromContext(ctx) == nil {
+	c := ClientFromContext(ctx)
+	if c == nil {
 		return nil
 	}
+	c.setCurrentCommand(CommandNameLSP)
 	return &LSPTx{}
 }
 
@@ -135,9 +141,11 @@ func (tx *LSPTx) End(ctx context.Context) {
 //
 // See doc.go for the End() defer-direct contract.
 func BeginDebug(ctx context.Context) *DebugTx {
-	if ClientFromContext(ctx) == nil {
+	c := ClientFromContext(ctx)
+	if c == nil {
 		return nil
 	}
+	c.setCurrentCommand(CommandNameDebug)
 	return &DebugTx{}
 }
 

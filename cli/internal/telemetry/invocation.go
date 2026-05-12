@@ -36,14 +36,29 @@ func (i Invocation) IsZero() bool {
 // parsed. `config` commands don't emit command_invoked of their
 // own, so skipping the Client costs nothing.
 //
-// Scanning is positional: returns true when "config" appears as a
-// non-flag token. Flag tokens (--invoker-id, etc.) are skipped
-// without consuming a value - that's a slight over-approximation
-// (a flag value that happens to equal "config" would trip the
-// check) but the gaffer root has no such flag, so it's safe.
+// Scanning is positional: returns true when "config" is the first
+// non-flag token. Bare forms of the value-taking root flags
+// (--invoker-id / --invoked-by / --invoked-via) consume the next
+// token so an argv like `--invoker-id config version` doesn't trip
+// the check on the flag's value. `--` ends flag scanning.
 func IsConfigCommand(args []string) bool {
-	for _, a := range args {
+	valueFlags := map[string]bool{
+		"--invoker-id":  true,
+		"--invoked-by":  true,
+		"--invoked-via": true,
+	}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			if i+1 < len(args) {
+				return args[i+1] == "config"
+			}
+			return false
+		}
 		if strings.HasPrefix(a, "-") {
+			if valueFlags[a] && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				i++
+			}
 			continue
 		}
 		return a == "config"

@@ -173,6 +173,26 @@ func TestStartupGate_LeavesProjectIDEmptyWhenRootEmpty(t *testing.T) {
 	}
 }
 
+func TestStartupGate_NormalizesProjectRootBeforeHashing(t *testing.T) {
+	// ProjectID's contract is "cleaned, absolute path". StartupGate
+	// honours it regardless of how main.go obtained the root, so an
+	// unclean variant (trailing slash, redundant ./) hashes to the
+	// same project_id as the clean form.
+	store, cwd, home := startupTest(t)
+
+	clean := StartupGate(store, cwd, home, cwd, &bytes.Buffer{}, Invocation{})
+	if clean == nil {
+		t.Fatal("StartupGate returned nil for clean root")
+	}
+	unclean := StartupGate(store, cwd, home, cwd+"/./", &bytes.Buffer{}, Invocation{})
+	if unclean == nil {
+		t.Fatal("StartupGate returned nil for unclean root")
+	}
+	if clean.projectID != unclean.projectID {
+		t.Errorf("projectID differs after normalisation: clean=%q unclean=%q", clean.projectID, unclean.projectID)
+	}
+}
+
 func TestStartupGate_SameRootProducesSameID(t *testing.T) {
 	// User-visible invariant: two CLI processes launched from
 	// different subdirectories of the same project must stamp the

@@ -3,6 +3,7 @@ package telemetry
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
@@ -81,9 +82,15 @@ func StartupGate(store *userconfig.Store, cwd, homeDir, projectRoot string, noti
 	}
 	// Hash the project root if main.go resolved one. Schema makes
 	// project_id optional; "absent" is the not-in-a-project signal.
+	// Normalise here to honour ProjectID's "cleaned absolute path"
+	// contract regardless of how main.go obtained the root.
 	var projectID string
 	if projectRoot != "" {
-		projectID = ProjectID(id.Salt, projectRoot)
+		abs, err := filepath.Abs(projectRoot)
+		if err == nil {
+			projectRoot = abs
+		}
+		projectID = ProjectID(id.Salt, filepath.Clean(projectRoot))
 	}
 	return New(append(opts,
 		WithIdentity(id),

@@ -2,12 +2,13 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
+
+	"github.com/spf13/cobra"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/scaffold"
-	"github.com/spf13/cobra"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 type scaffoldOpts struct {
@@ -23,7 +24,10 @@ func newScaffoldCmd() *cobra.Command {
 		Use:   "scaffold [name]",
 		Short: "Add a new projection to the project",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				telemetry.EmitScaffold(cmd.Context(), telemetry.ScaffoldCommandInvokedProperties{Outcome: o})
+			})
 			return runScaffold(args[0], opts)
 		},
 	}
@@ -39,7 +43,7 @@ func runScaffold(name string, opts *scaffoldOpts) error {
 		return project.ErrNotInProject
 	}
 
-	cfg, err := config.Load(filepath.Join(root, "gaffer.toml"))
+	cfg, err := config.Load(project.ConfigPath(root))
 	if err != nil {
 		return err
 	}

@@ -17,6 +17,14 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 	if sess.errorCh == nil {
 		sess.errorCh = make(chan error, 1)
 	}
+	// sess.done lets closeSession wait for the live goroutine to
+	// finish its post-Run bookkeeping (status update +
+	// recordProjectionError) before destroying the runner. Without
+	// this, the cobra wrapper can drain ProjectionErrors before
+	// the goroutine has appended, dropping the telemetry; worse,
+	// the goroutine's runner reads could race runner.Destroy().
+	done := make(chan struct{})
+	sess.done = done
 
 	source := engine.NewLiveSource(engine.LiveSourceConfig{
 		ConnStr:       s.cfg.Connection,
@@ -35,6 +43,7 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 	})
 
 	go func() {
+		defer close(done)
 		srcErr := source.Run(ctx, sess.runner.ProcessOne)
 
 		if ctx.Err() != nil {
@@ -43,10 +52,14 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 			sess.runner.SetStatus("error")
 		}
 
-		if sess.runner.Faulted() && sess.errorCh != nil {
-			select {
-			case sess.errorCh <- sess.runner.LastError():
-			default:
+		if sess.runner.Faulted() {
+			lastErr := sess.runner.LastError()
+			s.recordProjectionError(lastErr)
+			if sess.errorCh != nil {
+				select {
+				case sess.errorCh <- lastErr:
+				default:
+				}
 			}
 		}
 	}()

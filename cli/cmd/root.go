@@ -38,6 +38,8 @@ func NewRootCmd() *cobra.Command {
 		Long:  "Develop, test, debug, and deploy KurrentDB projections.",
 	}
 
+	registerHiddenInvocationFlags(root)
+
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newInitCmd())
 	root.AddCommand(newScaffoldCmd())
@@ -46,6 +48,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newInfoCmd())
 	root.AddCommand(newMCPCmd())
 	root.AddCommand(newLSPCmd())
+	root.AddCommand(newConfigCmd())
 
 	return root
 }
@@ -56,7 +59,36 @@ func ExecuteRoot(ctx context.Context, root *cobra.Command) error {
 	return fang.Execute(ctx, root, fang.WithoutVersion(), fang.WithErrorHandler(errorHandler))
 }
 
-// Execute runs the root command via fang for styled help and completions.
-func Execute() error {
-	return ExecuteRoot(context.Background(), NewRootCmd())
+// registerHiddenInvocationFlags declares --invoker-id / --invoked-by /
+// --invoked-via on root as hidden persistent flags. The values are
+// parsed pre-cobra by telemetry.PeekInvocationFlags so the Client can
+// stamp them at construction time (notice suppression needs to know
+// before identity mint runs); cobra still needs to know the flags
+// exist or it rejects them as unknown when a subcommand is invoked.
+// The bound vars are sinks - nothing reads them after parse.
+func registerHiddenInvocationFlags(root *cobra.Command) {
+	var invokerID, invokedBy, invokedVia string
+	flags := root.PersistentFlags()
+	flags.StringVar(&invokerID, "invoker-id", "", "")
+	flags.StringVar(&invokedBy, "invoked-by", "", "")
+	flags.StringVar(&invokedVia, "invoked-via", "", "")
+	// MarkHidden only errors if the named flag doesn't exist, which
+	// is a programmer bug here. Panic so a future rename gets caught
+	// loudly in tests rather than silently un-hiding the flag.
+	mustHide := func(name string) {
+		if err := flags.MarkHidden(name); err != nil {
+			panic(err)
+		}
+	}
+	mustHide("invoker-id")
+	mustHide("invoked-by")
+	mustHide("invoked-via")
+}
+
+// Execute runs the root command via fang for styled help and
+// completions. ctx is propagated to subcommands via cobra's
+// ExecuteContext; main passes a ctx that carries the per-process
+// telemetry Client.
+func Execute(ctx context.Context) error {
+	return ExecuteRoot(ctx, NewRootCmd())
 }

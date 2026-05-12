@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -35,7 +36,13 @@ func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input ru
 	sess, err := s.createSession(input.Name, debug)
 	if err != nil {
 		s.mu.Unlock()
-		if _, ok := err.(gafferruntime.ProjectionError); ok {
+		var projErr gafferruntime.ProjectionError
+		if errors.As(err, &projErr) {
+			// Compile-time projection failure (invalid source,
+			// compilation timeout). Feed projection_errors_seen
+			// alongside the tool response so the session's
+			// telemetry reflects user code didn't compile.
+			s.recordProjectionError(err)
 			return toolResult(map[string]any{
 				"lastError": classifyError(err),
 			}), nil, nil
@@ -133,6 +140,7 @@ func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string, bre
 			sess.runner.SetStatus("completed")
 		} else {
 			sess.runner.SetStatus("error")
+			s.recordProjectionError(sess.runner.LastError())
 		}
 	}()
 
@@ -156,6 +164,7 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 		sess.runner.SetStatus("completed")
 	} else {
 		sess.runner.SetStatus("error")
+		s.recordProjectionError(sess.runner.LastError())
 	}
 
 	summary := sess.runner.CollectState().ToMap()

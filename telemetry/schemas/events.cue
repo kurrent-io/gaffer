@@ -32,8 +32,12 @@ import "strings"
 }
 
 // CommandInvokedBaseProperties is the set of properties present on every
-// command_invoked event regardless of which command ran. The variants
-// narrow `command` to a specific literal.
+// command_invoked event regardless of which command ran. Variants embed this
+// (`{ #CommandInvokedBaseProperties, extra fields }`) rather than unifying
+// with `&`, because CUE definitions are recursively closed and `& { extras }`
+// would silently drop the additions. Embedding composes the shared fields
+// into each variant without inheriting the base's closedness in a way that
+// blocks per-variant additions.
 #CommandInvokedBaseProperties: {
 	// Which gaffer command ran. Variants narrow this to a specific literal.
 	command: #CommandName
@@ -42,45 +46,60 @@ import "strings"
 	// commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation
 	// lifetime, not engagement time - includes idle stretches where the
 	// editor was open but nobody was touching gaffer.
-	duration_ms: #BucketCount
+	duration_ms: #DurationBucket
 
 	// What ended the invocation.
 	outcome: #Outcome
 
 	// Who triggered the run.
-	invoked_by: "direct" | "vscode" | "mcp_client"
+	invoked_by: #InvokedBy
 
 	// Specific surface the invocation came through.
-	invoked_via: "terminal" | "code_lens" | "command_palette" | "mcp_provider" | "stdio"
+	invoked_via: #InvokedVia
 }
 
+// InvokedBy is who triggered a CLI run.
+#InvokedBy: "direct" | "vscode" | "mcp_client"
+
+// InvokedVia is the specific surface the invocation came through.
+#InvokedVia: "terminal" | "code_lens" | "command_palette" | "mcp_provider" | "stdio"
+
 // `gaffer version` - print version, exit. No command-specific properties.
-#VersionCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#VersionCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "version"
 }
 
 // `gaffer init` - scaffold a new project. No command-specific properties.
-#InitCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#InitCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "init"
 }
 
 // `gaffer scaffold` - generate boilerplate. No command-specific properties.
-#ScaffoldCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#ScaffoldCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "scaffold"
 }
 
 // `gaffer info` - print environment + manifest summary. No command-specific
 // properties.
-#InfoCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#InfoCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "info"
 }
 
 // `gaffer manifest` - parse and report manifest contents.
-#ManifestCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#ManifestCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "manifest"
 
-	// Top-level manifest section names present (e.g. ["projections",
-	// "fixtures"]). Section *presence* only, never contents.
+	// Canonical gaffer feature labels exercised by the manifest (e.g.
+	// ["projections", "fixtures", "connection"]). Labels are stable
+	// gaffer-side names rather than raw TOML keys, so a field rename
+	// in the TOML schema doesn't silently change wire output.
+	// Section *presence* only; never contents (no paths, names,
+	// versions).
 	manifest_features_used?: [...string & strings.MaxRunes(64)]
 
 	// Bucketed count from manifest.
@@ -92,10 +111,11 @@ import "strings"
 
 // `gaffer dev` - long-running development loop, optionally connected to a
 // live KurrentDB.
-#DevCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#DevCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "dev"
 
-	// Top-level manifest section names present.
+	// See ManifestCommandInvokedProperties.manifest_features_used.
 	manifest_features_used?: [...string & strings.MaxRunes(64)]
 
 	// Bucketed count from manifest.
@@ -118,10 +138,11 @@ import "strings"
 }
 
 // `gaffer mcp` - long-running Model Context Protocol server.
-#McpCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#McpCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "mcp"
 
-	// Top-level manifest section names present.
+	// See ManifestCommandInvokedProperties.manifest_features_used.
 	manifest_features_used?: [...string & strings.MaxRunes(64)]
 
 	// Bucketed. Total tool invocations across the session.
@@ -136,7 +157,8 @@ import "strings"
 }
 
 // `gaffer lsp` - language server.
-#LspCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#LspCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "lsp"
 
 	// Bucketed total code-lens requests served.
@@ -147,7 +169,8 @@ import "strings"
 }
 
 // `gaffer debug` - DAP server for projection debugging.
-#DebugCommandInvokedProperties: #CommandInvokedBaseProperties & {
+#DebugCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
 	command: "debug"
 
 	// Bucketed. Initial breakpoints set by the client.
@@ -175,25 +198,43 @@ import "strings"
 // recovered carry the recovered outcome (typically `user_interrupt`) here,
 // with the transient errors captured in `projection_errors_seen` for the
 // commands that have it.
+//
+// "Designed completion" paths (clean exit, --until-caught-up reaching
+// head, fixture file fully consumed) collapse to `success` - the user
+// wasn't surprised, nothing went wrong, distinguishing them adds
+// wire-shape without adding signal. Ctrl+C / SIGTERM stays distinct
+// as `user_interrupt` because on one-shot commands it signals
+// abandonment (user gave up mid-init/scaffold/etc.); on long-running
+// commands it's the normal end-of-session marker and reads the same.
 #Outcome:
 	"success" |
 	"user_interrupt" |
+	"user_error" |
 	"internal_error" |
-	"manifest_load_error" |
+	"manifest_not_found" |
+	"manifest_parse_error" |
+	"manifest_validation_error" |
 	"db_connect_error" |
+	"db_disconnect" |
+	"dap_protocol_error" |
+	"lsp_protocol_error" |
+	"mcp_protocol_error" |
 	#ProjectionOutcome
 
 // The subset of #Outcome values that come from user-projection failure. Used
 // both as final outcomes and as transient values in `projection_errors_seen`.
+//
+// Coarse on purpose: this is product analytics on "where do users hit
+// friction writing projections", not gaffer-side error tracking. JS
+// error type granularity (TypeError, ReferenceError, ...) belongs in
+// PostHog's Issues UI for errors *we* own; user code errors live as
+// outcome buckets here. Three buckets answer the analytic question
+// (compile vs runtime vs unknown) without the cost of a wider enum
+// we'd need runtime support to populate.
 #ProjectionOutcome:
 	"projection_user_throw" |
-	"projection_reference_error" |
-	"projection_type_error" |
-	"projection_parse_error" |
-	"projection_syntax_error" |
-	"projection_range_error" |
-	"projection_uri_error" |
-	"projection_eval_error"
+	"projection_compile_error" |
+	"projection_unknown_error"
 
 // ----------------------------------------------------------------------------
 // projection_shape
@@ -219,17 +260,7 @@ import "strings"
 	parsable: bool
 
 	// Bucketed file size on disk in bytes.
-	file_size:
-		// under 1KB
-		0 |
-		// 1KB-5KB
-		1024 |
-		// 5KB-20KB
-		5120 |
-		// 20KB-100KB
-		20480 |
-		// 100KB+
-		102400
+	file_size: #FileSizeBucket
 
 	// Which handlers the projection registers.
 	handlers: {
@@ -266,7 +297,7 @@ import "strings"
 		emit?:           #BucketCount
 		linkTo?:         #BucketCount
 		copyTo?:         #BucketCount
-		// linkStreamTo is deprecated; tracked because deprecated.
+		// deprecated.
 		linkStreamTo?:  #BucketCount
 		chainHandlers?: #BucketCount
 		updateOf?:      #BucketCount
@@ -287,12 +318,7 @@ import "strings"
 }
 
 #ExtensionActivatedProperties: {
-	// Specific editor runtime detected at activation (from
-	// `vscode.env.uriScheme`). Distinguishes VS Code from its forks so we
-	// know which targets to test against; VSCodium / Cursor / Windsurf all
-	// have non-trivial adoption. Stable and insiders builds collapse to
-	// `"vscode"`; unknown forks map to `"other"`.
-	editor: "vscode" | "vscodium" | "cursor" | "windsurf" | "other"
+	editor: #Editor
 
 	// Editor version string (e.g. "1.95.2").
 	editor_version: string & strings.MaxRunes(32)
@@ -303,15 +329,26 @@ import "strings"
 	cli_reachable: bool
 
 	// Set when `cli_reachable = false`; absent otherwise.
-	cli_unreachable_reason?: "binary_not_found" | "binary_spawn_failed" | "timeout" | "unknown_error"
+	cli_unreachable_reason?: #CLIUnreachableReason
 
 	// Bucketed major.minor of the CLI binary's reported version. Present
 	// when `cli_reachable = true`.
 	cli_version?: string & strings.MaxRunes(32)
 
 	// Time from extension activation to first event-emit decision.
-	activation_duration_ms: #BucketCount
+	activation_duration_ms: #DurationBucket
 }
+
+// Editor is the specific editor runtime detected at activation (from
+// `vscode.env.uriScheme`). Distinguishes VS Code from its forks so we know
+// which targets to test against; VSCodium / Cursor / Windsurf all have
+// non-trivial adoption. Stable and insiders builds collapse to `"vscode"`;
+// unknown forks map to `"other"`.
+#Editor: "vscode" | "vscodium" | "cursor" | "windsurf" | "other"
+
+// CLIUnreachableReason narrows why the CLI couldn't be reached on extension
+// activation.
+#CLIUnreachableReason: "binary_not_found" | "binary_spawn_failed" | "timeout" | "unknown_error"
 
 // ----------------------------------------------------------------------------
 // exception
@@ -336,8 +373,11 @@ import "strings"
 	command?: #CommandName
 
 	// Coarse lifecycle bucket the crash happened in.
-	phase: "startup" | "projection_init" | "event_processing" | "shutdown"
+	phase: #ExceptionPhase
 }
+
+// ExceptionPhase is a coarse lifecycle bucket for where an exception fired.
+#ExceptionPhase: "startup" | "projection_init" | "event_processing" | "shutdown"
 
 // ExceptionEntry is one exception in the causal chain.
 #ExceptionEntry: {
@@ -395,3 +435,35 @@ import "strings"
 	100 |
 	// 1000+
 	1000
+
+// Bucketed duration in milliseconds (lower-bound of the half-open
+// interval).
+#DurationBucket:
+	// under 10ms (instant - e.g. `gaffer version`)
+	0 |
+	// 10-99ms (short)
+	10 |
+	// 100ms-1s (noticeable)
+	100 |
+	// 1-10s (slow one-shot, brief long-running)
+	1000 |
+	// 10-60s
+	10000 |
+	// 1-10min
+	60000 |
+	// 10min+ (long-running sessions)
+	600000
+
+// Bucketed file size on disk in bytes (lower-bound of the half-open
+// interval).
+#FileSizeBucket:
+	// under 1KB
+	0 |
+	// 1KB-5KB
+	1024 |
+	// 5KB-20KB
+	5120 |
+	// 20KB-100KB
+	20480 |
+	// 100KB+
+	102400

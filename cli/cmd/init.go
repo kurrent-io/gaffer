@@ -6,8 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/spf13/cobra"
+
+	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/project"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 func newInitCmd() *cobra.Command {
@@ -17,7 +20,10 @@ func newInitCmd() *cobra.Command {
 		Use:   "init",
 		Short: "Initialize a new gaffer project",
 		Long:  "Creates gaffer.toml, .gitignore, and .gaffer/ directory in the current directory.",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				telemetry.EmitInit(cmd.Context(), telemetry.InitCommandInvokedProperties{Outcome: o})
+			})
 			return runInit(yes)
 		},
 	}
@@ -35,7 +41,7 @@ func runInit(yes bool) error {
 		return err
 	}
 
-	configPath := filepath.Join(dir, "gaffer.toml")
+	configPath := project.ConfigPath(dir)
 	if _, err := os.Stat(configPath); err == nil {
 		return fmt.Errorf("gaffer.toml already exists in %s", dir)
 	}

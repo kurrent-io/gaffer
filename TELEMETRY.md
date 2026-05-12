@@ -28,7 +28,7 @@ What gaffer **does not** track:
 - User account or OS user information
 - IP addresses
 
-There are four event types. Each is wrapped in an envelope alongside shared install metadata (gaffer version, host OS, architecture, the runtime environment - `local` or `ci`) before being sent. On a new install, the first envelope also includes the install date so we can group activity by cohort. When one gaffer process spawns another (typically the VS Code extension spawning the CLI), the spawned process additionally carries the parent's anonymous id so the two are recognised as one user.
+There are four event types. Each is wrapped in an envelope alongside shared install metadata (gaffer version, host OS, architecture, the runtime environment - `local` or `ci`) before being sent. When gaffer runs inside a project, the envelope also carries a salted hash of the project's root path (`project_id`) so we can distinguish one user with five projects from five users with one - the path itself never leaves your machine, only the hash. When one gaffer process spawns another (typically the VS Code extension spawning the CLI), the spawned process additionally carries the parent's anonymous id so the two are recognised as one user.
 
 The receiving worker stamps each event with its own deploy timestamp so we can correlate analytics against the server version that processed them.
 
@@ -254,6 +254,10 @@ Telemetry transmission can be disabled by any one of the following:
 - Set VS Code's `telemetry.telemetryLevel` to anything other than `all`. The gaffer extension respects this setting.
 
 When opted out, gaffer does not collect telemetry. No envelope is constructed and no event is recorded locally.
+
+## How to see what's being sent
+
+Set `GAFFER_TELEMETRY_DEBUG=1` (truthy values: `1`, `true`, `yes`, `on`) and gaffer prints every event to stderr as JSON before sending it. Independent of opt-out state - useful when you want to verify exactly what would be transmitted.
 
 ## Where data is stored
 

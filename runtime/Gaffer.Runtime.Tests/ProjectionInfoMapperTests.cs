@@ -137,4 +137,30 @@ public class ProjectionInfoMapperTests {
 		Assert.Equal(12, d.Range.End.Line);
 		Assert.Equal(18, d.Range.End.Column);
 	}
+
+	[Fact]
+	public void PassesShapeThrough() {
+		// New optional `shape` parameter passes through verbatim,
+		// mirroring the diagnostics passthrough. Without this test
+		// a future reorder / default-flip of the optional args
+		// could silently break the wire.
+		var shape = new Sdk.ProjectionShape {
+			Parsable = true,
+			FileSize = 256,
+			Handlers = new Sdk.ProjectionShapeHandlers { Any = true },
+		};
+
+		var info = ProjectionInfoMapper.ToProjectionInfo(new QuerySources(), diagnostics: null, shape: shape);
+
+		Assert.Same(shape, info.Shape);
+	}
+
+	[Fact]
+	public void ShapeDefaultsNull() {
+		// Backward-compat: callers that omit the new parameter
+		// still get Shape=null (LSP / non-telemetry path).
+		var info = ProjectionInfoMapper.ToProjectionInfo(new QuerySources());
+
+		Assert.Null(info.Shape);
+	}
 }

@@ -146,33 +146,6 @@ describe("translateEnvelope", () => {
 		expect(result[1]?.properties.$set).toBeUndefined();
 	});
 
-	it("includes install_date and first_seen_lib_version in $set_once when present", () => {
-		const env: Envelope = {
-			...baseEnvelope,
-			context: { ...baseContext, install_date: "2026-05-08" },
-			events: [
-				{
-					name: "command_invoked",
-					timestamp: "2026-05-08T12:00:00.000Z",
-					properties: {
-						command: "version",
-						duration_ms: 10,
-						outcome: "success",
-						invoked_by: "direct",
-						invoked_via: "terminal",
-					},
-				},
-			],
-		};
-		const result = translateEnvelope(env, testSessionId, testDeployedAt);
-		expect(result[0]?.properties.$set_once).toMatchObject({
-			os: "linux",
-			arch: "x64",
-			install_date: "2026-05-08",
-			first_seen_lib_version: "0.4.2",
-		});
-	});
-
 	it("fans out manifest_features_used into per-section booleans", () => {
 		const env: Envelope = {
 			...baseEnvelope,
@@ -210,15 +183,15 @@ describe("translateEnvelope", () => {
 						outcome: "user_interrupt",
 						invoked_by: "direct",
 						invoked_via: "terminal",
-						projection_errors_seen: ["projection_user_throw", "projection_type_error"],
+						projection_errors_seen: ["projection_compile_error", "projection_user_throw"],
 					},
 				},
 			],
 		};
 		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.saw_projection_compile_error).toBe(true);
 		expect(result[0]?.properties.saw_projection_user_throw).toBe(true);
-		expect(result[0]?.properties.saw_projection_type_error).toBe(true);
-		expect(result[0]?.properties.projection_errors_seen).toEqual(["projection_user_throw", "projection_type_error"]);
+		expect(result[0]?.properties.projection_errors_seen).toEqual(["projection_compile_error", "projection_user_throw"]);
 	});
 
 	it("flattens projection_shape handlers and builtin_counts", () => {
@@ -257,6 +230,70 @@ describe("translateEnvelope", () => {
 		expect(props.builtin_chainHandlers_count).toBe(1);
 		expect(props.handlers).toBeUndefined();
 		expect(props.builtin_counts).toBeUndefined();
+	});
+
+	it("forwards project_id as a per-event property on every event", () => {
+		// Project_id should land on every event in the batch, not
+		// just the first. Lifted-once identity properties ($set /
+		// $set_once) deliberately fire on event[0] only; project_id
+		// is per-event so dashboards can group / filter the
+		// projection_shape event alongside its command_invoked
+		// envelope-mate.
+		const env: Envelope = {
+			...baseEnvelope,
+			context: {
+				...baseContext,
+				project_id: "cd3c08fa1f4183d7",
+			},
+			events: [
+				{
+					name: "command_invoked",
+					timestamp: "2026-05-08T12:00:00.000Z",
+					properties: {
+						command: "dev",
+						duration_ms: 10,
+						outcome: "success",
+						invoked_by: "direct",
+						invoked_via: "terminal",
+					},
+				},
+				{
+					name: "projection_shape",
+					timestamp: "2026-05-08T12:00:01.000Z",
+					properties: {
+						projection_id: "abc123",
+						parsable: true,
+						file_size: 1024,
+						handlers: { any: false, init: false, deleted: false, distinct_event_names: 1 },
+						builtin_counts: {},
+					},
+				},
+			],
+		};
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.project_id).toBe("cd3c08fa1f4183d7");
+		expect(result[1]?.properties.project_id).toBe("cd3c08fa1f4183d7");
+	});
+
+	it("omits project_id when the producer wasn't in a project", () => {
+		const env: Envelope = {
+			...baseEnvelope,
+			events: [
+				{
+					name: "command_invoked",
+					timestamp: "2026-05-08T12:00:00.000Z",
+					properties: {
+						command: "version",
+						duration_ms: 10,
+						outcome: "success",
+						invoked_by: "direct",
+						invoked_via: "terminal",
+					},
+				},
+			],
+		};
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.project_id).toBeUndefined();
 	});
 
 	it("never forwards invoker_id even when present", () => {

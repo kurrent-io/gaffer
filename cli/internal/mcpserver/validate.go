@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
@@ -32,9 +33,15 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 	}
 
 	lp := engine.NewProjection(s.root, s.cfg, proj, source)
-	session, info, err := engine.CreateSession(lp, false)
+	session, info, err := engine.CreateSession(lp, false, false)
 	if err != nil {
-		if _, ok := err.(gafferruntime.ProjectionError); ok {
+		var projErr gafferruntime.ProjectionError
+		if errors.As(err, &projErr) {
+			// Same shape as handleRun: compile-time projection
+			// failures feed projection_errors_seen so the
+			// session's telemetry reflects user code didn't
+			// compile.
+			s.recordProjectionError(err)
 			return toolResult(map[string]any{
 				"valid":     false,
 				"lastError": classifyError(err),

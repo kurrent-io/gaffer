@@ -199,6 +199,7 @@ func (s *Server) handleDidClose(req *jsonrpc2.Request) (interface{}, error) {
 }
 
 func (s *Server) handleCodeLens(req *jsonrpc2.Request) (interface{}, error) {
+	s.stats.codeLensRequests.Add(1)
 	if req.Params == nil {
 		return []CodeLens{}, nil
 	}

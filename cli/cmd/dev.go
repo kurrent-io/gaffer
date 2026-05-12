@@ -13,12 +13,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	dapserver "github.com/kurrent-io/gaffer/cli/internal/dap"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
-	"github.com/spf13/cobra"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 const statsEmitInterval = 100 * time.Millisecond
@@ -42,7 +44,15 @@ func newDevCmd() *cobra.Command {
 		Short: "Run a projection locally",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDev(cmd, args[0], opts)
+			// `gaffer dev` (cobra) maps to two telemetry event
+			// variants: `dev` (single / fixture) and `debug` (DAP
+			// server attached). Branch on opts.Debug so each
+			// variant gets the right Tx + setters; both forms
+			// share runDev's flag validation + setup.
+			if opts.Debug {
+				return runDevWithDebugTx(cmd, args[0], opts)
+			}
+			return runDevWithDevTx(cmd, args[0], opts)
 		},
 	}
 	cmd.Flags().StringVar(&opts.Events, "events", "", "Path to a JSON events file (ad-hoc fixture)")
@@ -75,18 +85,127 @@ func completeFixtures(_ *cobra.Command, args []string, _ string) ([]string, cobr
 	return proj.Def.FixtureNames(), cobra.ShellCompDirectiveNoFileComp
 }
 
-func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
+// runDevWithDevTx is the cobra wrapper for the non-debug path:
+// opens a DevTx, calls runDev, drains the dev-side setters that
+// are knowable here. Defer-direct per the Tx contract.
+//
+// Manifest-derived props (features / counts) are populated post-hoc
+// from the loaded *engine.Projection. LoadProjection already parsed
+// gaffer.toml, so runDev returns the projection alongside the error
+// and the wrapper stamps from there.
+func runDevWithDevTx(cmd *cobra.Command, name string, opts *devOpts) error {
+	tx := telemetry.BeginDev(cmd.Context())
+	defer tx.End(cmd.Context())
+
+	tx.SetConnectedToDB(opts.Connection != "")
+
+	tracker := newProjErrTracker()
+	proj, err := runDev(cmd, name, opts, nil, runObservers{
+		onProjectionError: tracker.Record,
+		onConnected:       tx.SetDBVersion,
+	})
+	if proj != nil && proj.Config != nil {
+		tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(proj.Config))
+		tx.SetProjectionCount(proj.Config.ProjectionCount())
+		tx.SetFixtureCount(proj.Config.FixtureCount())
+	}
+	if seen := tracker.Sorted(); len(seen) > 0 {
+		tx.SetProjectionErrorsSeen(seen)
+	}
+	out, ok := classifyOutcome(outcomeInputs{err: err, tracker: tracker})
+	if !ok {
+		out = telemetry.OutcomeUserError
+	}
+	tx.SetOutcome(out)
+	return err
+}
+
+// runDevWithDebugTx is the cobra wrapper for the debug path:
+// opens a DebugTx, calls runDev with a stats out-param the inner
+// runDevDebug populates from the DAP server before returning,
+// then drains the counters into typed setters. Defer-direct.
+//
+// The debug variant's schema doesn't carry manifest-derived props,
+// so the returned *engine.Projection is ignored here - dev mode is
+// the only variant that surfaces them.
+func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
+	tx := telemetry.BeginDebug(cmd.Context())
+	defer tx.End(cmd.Context())
+
+	var dapStats dapserver.Stats
+	tracker := newProjErrTracker()
+	var fixtureEvents int
+	_, err := runDev(cmd, name, opts, &dapStats, runObservers{
+		onProjectionError: tracker.Record,
+		onFixtureEvent:    func() { fixtureEvents++ },
+	})
+
+	tx.SetBreakpointCount(dapStats.BreakpointCount)
+	tx.SetStepCount(dapStats.StepCount)
+	tx.SetPauseCount(dapStats.PauseCount)
+	tx.SetRestartCount(dapStats.RestartCount)
+	if fixtureEvents > 0 {
+		tx.SetFixtureEventCount(fixtureEvents)
+	}
+
+	if seen := tracker.Sorted(); len(seen) > 0 {
+		tx.SetProjectionErrorsSeen(seen)
+	}
+	out, ok := classifyOutcome(outcomeInputs{
+		err:            err,
+		tracker:        tracker,
+		dapProtocolErr: dapStats.ProtocolError,
+	})
+	if !ok {
+		out = telemetry.OutcomeUserError
+	}
+	tx.SetOutcome(out)
+	return err
+}
+
+// runObservers carries the per-iteration telemetry callbacks the
+// cobra wrappers feed into runDev. Zero-value (nil callbacks) means
+// "no observation" - non-debug callers pass an empty struct because
+// the DevTx schema doesn't carry the fields debug ones populate.
+//
+// Single-goroutine-owned: callbacks run synchronously on the cobra
+// goroutine driving source.Run, so the wrapper's tracker state needs
+// no locking.
+type runObservers struct {
+	// onProjectionError fires with an FFI projection error, either
+	// when a runner faults mid-iteration (recordProjectionFault) or
+	// when engine.CreateSession fails to compile/load the projection
+	// (recordCompileFault). Wrappers use it to accumulate
+	// projection_errors_seen across DAP restart iterations and
+	// across compile/runtime phases of a session.
+	onProjectionError func(error)
+	// onFixtureEvent fires per fixture event processed (post
+	// r.ProcessOne, regardless of fault). Only invoked when the
+	// source is a fixture; live-mode events are not counted here.
+	onFixtureEvent func()
+	// onConnected fires once when the live source's underlying
+	// kurrentdb client connects, with the server's reported
+	// major.minor version (or "unknown" when the probe fails).
+	// Only invoked in live mode; never fires for fixture runs.
+	onConnected func(dbVersion string)
+}
+
+// runDev parses the dev flags, loads the projection, and dispatches
+// to runDevSingle or runDevDebug. Returns the loaded *engine.Projection
+// alongside the error so the cobra wrappers can drain telemetry
+// properties off it; nil when LoadProjection failed.
+func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.Stats, obs runObservers) (*engine.Projection, error) {
 	if opts.StartPausedIfNoBreakpoints && !opts.Debug {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: --start-paused-if-no-breakpoints requires --debug; ignoring")
 	}
 
 	if opts.Events != "" && opts.Fixture != "" {
-		return fmt.Errorf("only one of --events or --fixture may be used at a time")
+		return nil, fmt.Errorf("only one of --events or --fixture may be used at a time")
 	}
 
 	proj, err := engine.LoadProjection(name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// --fixture is a layer on top of --events: resolve the named
@@ -99,9 +218,9 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 		if !ok {
 			names := proj.Def.FixtureNames()
 			if len(names) == 0 {
-				return fmt.Errorf("projection %q has no fixtures declared in gaffer.toml", name)
+				return proj, fmt.Errorf("projection %q has no fixtures declared in gaffer.toml", name)
 			}
-			return fmt.Errorf("projection %q has no fixture named %q (available: %s)", name, opts.Fixture, strings.Join(names, ", "))
+			return proj, fmt.Errorf("projection %q has no fixture named %q (available: %s)", name, opts.Fixture, strings.Join(names, ", "))
 		}
 		opts.Events = filepath.Join(proj.Root, path)
 	}
@@ -121,13 +240,13 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 		writer = tw
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
 
 	if opts.Debug {
-		return runDevDebug(ctx, stop, proj, sourcePath, writer, tw, opts)
+		return proj, runDevDebug(ctx, stop, proj, sourcePath, writer, tw, opts, dapStats, obs)
 	}
-	return runDevSingle(ctx, stop, proj, sourcePath, writer, tw, opts)
+	return proj, runDevSingle(ctx, stop, proj, sourcePath, writer, tw, opts, obs)
 }
 
 // runDevSingle handles the non-debug path: one engine.Session, one
@@ -140,13 +259,22 @@ func runDevSingle(
 	writer outputWriter,
 	tw *textWriter,
 	opts *devOpts,
+	obs runObservers,
 ) error {
-	session, info, err := engine.CreateSession(proj, false)
+	// includeShape: walk the AST for projection_shape telemetry
+	// only when the Client is on ctx (i.e. telemetry isn't opted
+	// out). EmitProjectionShape is nil-safe + dedup-aware so it's
+	// fine to invoke unconditionally after the session creation.
+	includeShape := telemetry.ShouldIncludeShape(ctx)
+	session, info, err := engine.CreateSession(proj, false, includeShape)
 	if err != nil {
 		writer.WriteFatalError(toFatalError(err, sourcePath))
+		recordCompileFault(err, obs.onProjectionError)
 		return silent(err)
 	}
 	defer session.Destroy()
+
+	telemetry.EmitProjectionShape(ctx, sourcePath, info)
 
 	if tw != nil {
 		tw.RegisterCallbacks(session)
@@ -162,7 +290,7 @@ func runDevSingle(
 	})
 
 	var caughtUp bool
-	source, err := buildSource(opts, proj, info, nil, stop, &caughtUp)
+	source, err := buildSource(opts, proj, info, nil, stop, &caughtUp, obs)
 	if err != nil {
 		return err
 	}
@@ -178,6 +306,7 @@ func runDevSingle(
 		if lastErr := r.LastError(); lastErr != nil {
 			writer.WriteFatalError(toFatalError(lastErr, sourcePath))
 		}
+		recordProjectionFault(r, obs.onProjectionError)
 		return silent(fmt.Errorf("projection faulted"))
 	}
 	return nil
@@ -196,6 +325,8 @@ func runDevDebug(
 	writer outputWriter,
 	tw *textWriter,
 	opts *devOpts,
+	dapStats *dapserver.Stats,
+	obs runObservers,
 ) error {
 	store, err := history.New()
 	if err != nil {
@@ -205,14 +336,20 @@ func runDevDebug(
 
 	absRoot, _ := filepath.Abs(proj.Root)
 
+	// See runDevSingle for the includeShape rationale.
+	includeShape := telemetry.ShouldIncludeShape(ctx)
+
 	// Bootstrap session for the first iteration. Provides the initial
 	// session ref to the adapter so OnLog/OnEmit wiring has something
 	// to bind to before the loop's first iteration explicitly rebinds.
-	session, info, err := engine.CreateSession(proj, true)
+	session, info, err := engine.CreateSession(proj, true, includeShape)
 	if err != nil {
 		writer.WriteFatalError(toFatalError(err, sourcePath))
+		recordCompileFault(err, obs.onProjectionError)
 		return silent(err)
 	}
+
+	telemetry.EmitProjectionShape(ctx, sourcePath, info)
 
 	writer.WriteInfo(proj.Def.Name, info, proj.EngineVersion, proj.DbVersion)
 
@@ -236,7 +373,25 @@ func runDevDebug(
 		}
 		return fmt.Errorf("starting debug server: %w", err)
 	}
-	defer func() { _ = srv.Close() }()
+	defer func() {
+		// Approximation note: this fires when the projection loop
+		// returns, which is typically AFTER Serve has already
+		// returned (Serve's exit triggers stop(), the main loop
+		// sees ctx.Done, returns). On the early-exit paths
+		// (fixture exhausted, source.Run error before disconnect)
+		// the Serve goroutine may still be processing in-flight
+		// DAP messages when we drain; those bumps are missed.
+		// The bound is "a handful of messages during shutdown"
+		// and the counters are atomic so this is a semantic
+		// approximation, not a data race. A deterministic fix
+		// requires dap.Server.Close to close the active conn and
+		// wait for readLoop to drain - tracked for follow-up
+		// alongside the dev/debug wrapper restructure.
+		if dapStats != nil {
+			*dapStats = srv.Stats()
+		}
+		_ = srv.Close()
+	}()
 	adapter.SetServer(srv)
 
 	// Report the actual bound port, not opts.DebugPort - the latter is
@@ -283,11 +438,17 @@ func runDevDebug(
 		case <-adapter.Ready():
 		case <-adapter.RestartRequested():
 			session.Destroy()
-			session, info, err = engine.CreateSession(proj, true)
+			session, info, err = engine.CreateSession(proj, true, includeShape)
 			if err != nil {
 				adapter.AckRestart()
+				recordCompileFault(err, obs.onProjectionError)
 				return silent(err)
 			}
+			// Re-emit on restart: the shape cache dedupes if
+			// nothing structurally drifted; if the user edited
+			// the source between iterations, the new hash
+			// triggers a fresh envelope.
+			telemetry.EmitProjectionShape(ctx, sourcePath, info)
 			adapter.ResetForRestart()
 			adapter.AckRestart()
 			continue
@@ -323,7 +484,7 @@ func runDevDebug(
 		}()
 
 		var caughtUp bool
-		source, err := buildSource(opts, proj, info, adapter, stop, &caughtUp)
+		source, err := buildSource(opts, proj, info, adapter, stop, &caughtUp, obs)
 		if err != nil {
 			innerCancel()
 			close(iterDone)
@@ -332,11 +493,18 @@ func runDevDebug(
 		}
 
 		var lastEmit time.Time
+		// fixture_event_count is only meaningful in fixture mode;
+		// live-mode events come from KurrentDB and are tracked
+		// elsewhere if needed.
+		countFixtureEvents := opts.Events != "" && obs.onFixtureEvent != nil
 		// Run on the source goroutine: ProjectionSession is not
 		// thread-safe, so concurrent Feed/state calls would corrupt
 		// internal projection state.
 		process := func(eventJSON string) bool {
 			stop := r.ProcessOne(eventJSON)
+			if countFixtureEvents {
+				obs.onFixtureEvent()
+			}
 			if time.Since(lastEmit) >= statsEmitInterval {
 				adapter.EmitStatsIfChanged()
 				adapter.EmitStateIfChanged()
@@ -374,12 +542,21 @@ func runDevDebug(
 		if restartRequested && ctx.Err() == nil {
 			// Genuine restart: tear down this iteration, stand up a
 			// fresh session, ack so handleRestart sends its response.
+			//
+			// Record the outgoing iteration's projection fault (if
+			// any) BEFORE we lose the runner - without this,
+			// restart-driven sessions silently drop the fault from
+			// projection_errors_seen. The teardown-path branch below
+			// has its own r.Faulted() check; this one matches it.
+			recordProjectionFault(r, obs.onProjectionError)
 			session.Destroy()
-			session, info, err = engine.CreateSession(proj, true)
+			session, info, err = engine.CreateSession(proj, true, includeShape)
 			if err != nil {
 				adapter.AckRestart()
+				recordCompileFault(err, obs.onProjectionError)
 				return silent(err)
 			}
+			telemetry.EmitProjectionShape(ctx, sourcePath, info)
 			adapter.ResetForRestart()
 			adapter.AckRestart()
 			if err := finalizeRun(ctx, caughtUp, srcErr, r, os.Stderr); err != nil {
@@ -408,8 +585,10 @@ func runDevDebug(
 		writer.WriteSummary(r.Stats(), summary)
 		session.Destroy()
 		if r.Faulted() {
-			if lastErr := r.LastError(); lastErr != nil {
+			lastErr := r.LastError()
+			if lastErr != nil {
 				writer.WriteFatalError(toFatalError(lastErr, sourcePath))
+				recordProjectionFault(r, obs.onProjectionError)
 			}
 			return silent(fmt.Errorf("projection faulted"))
 		}
@@ -417,10 +596,39 @@ func runDevDebug(
 	}
 }
 
+// recordProjectionFault forwards a runner's last error to the
+// projection-error callback if the runner faulted and the callback
+// is wired. Used at every "this iteration is done" exit point so
+// projection_errors_seen captures the fault before the runner goes
+// out of scope.
+func recordProjectionFault(r *engine.Runner, onProjectionError func(error)) {
+	if onProjectionError == nil || !r.Faulted() {
+		return
+	}
+	if lastErr := r.LastError(); lastErr != nil {
+		onProjectionError(lastErr)
+	}
+}
+
+// recordCompileFault forwards a CreateSession failure (always an FFI
+// projection error - InvalidProjection, CompilationTimeout,
+// InvalidArgument, ...) to the projection-error callback. Sibling of
+// recordProjectionFault for the pre-iteration compile path; lets the
+// dev wrapper feed projection_errors_seen + classifyOutcome so a
+// broken projection ships as projection_compile_error rather than
+// dropping to user_error.
+func recordCompileFault(err error, onProjectionError func(error)) {
+	if onProjectionError == nil || err == nil {
+		return
+	}
+	onProjectionError(err)
+}
+
 // buildSource constructs the event source for one iteration. The
 // caller owns `caughtUp`; buildSource just installs the OnCaughtUp
 // callback that flips it when --until-caught-up fires. adapter may be
-// nil for the non-debug single-run path.
+// nil for the non-debug single-run path. obs forwards the wrapper's
+// telemetry callbacks (currently onConnected) into the live source.
 func buildSource(
 	opts *devOpts,
 	proj *engine.Projection,
@@ -428,6 +636,7 @@ func buildSource(
 	adapter *dapserver.DebugAdapter,
 	stop context.CancelFunc,
 	caughtUp *bool,
+	obs runObservers,
 ) (engine.EventSource, error) {
 	if opts.Events != "" {
 		events, err := engine.LoadEvents(opts.Events)
@@ -460,6 +669,7 @@ func buildSource(
 			adapter.EmitFellBehind()
 		}
 	}
+	liveCfg.OnConnected = obs.onConnected
 	return engine.NewLiveSource(liveCfg), nil
 }
 

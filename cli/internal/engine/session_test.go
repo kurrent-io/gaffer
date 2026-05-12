@@ -111,7 +111,7 @@ func TestBuildSessionOptions_EngineVersionFromProjection(t *testing.T) {
 	def := &config.Projection{EngineVersion: 1}
 	proj := NewProjection("/tmp", cfg, def, "")
 
-	opts := buildSessionOptions(proj, false)
+	opts := buildSessionOptions(proj, false, false)
 	if opts == nil {
 		t.Fatal("expected options")
 	}
@@ -133,7 +133,7 @@ func TestBuildSessionOptions_ProjectionTimeoutOverridesGlobal(t *testing.T) {
 	def := &config.Projection{ExecutionTimeout: &projTimeout}
 	proj := NewProjection("/tmp", cfg, def, "")
 
-	opts := buildSessionOptions(proj, false)
+	opts := buildSessionOptions(proj, false, false)
 	if opts == nil {
 		t.Fatal("expected options")
 	}
@@ -154,7 +154,7 @@ func TestBuildSessionOptions_DbVersionPassedThroughWhenSet(t *testing.T) {
 	def := &config.Projection{Name: "p", Entry: "p.js"}
 	proj := NewProjection("/tmp", cfg, def, "")
 
-	opts := buildSessionOptions(proj, false)
+	opts := buildSessionOptions(proj, false, false)
 	if opts == nil {
 		t.Fatal("expected non-nil options")
 	}
@@ -173,7 +173,7 @@ func TestBuildSessionOptions_DbVersionOmittedWhenUnset(t *testing.T) {
 	def := &config.Projection{Name: "p", Entry: "p.js"}
 	proj := NewProjection("/tmp", cfg, def, "")
 
-	opts := buildSessionOptions(proj, false)
+	opts := buildSessionOptions(proj, false, false)
 	var m map[string]any
 	if err := json.Unmarshal([]byte(*opts), &m); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
@@ -188,7 +188,7 @@ func TestBuildSessionOptions_AlwaysIncludesEngineVersion(t *testing.T) {
 	def := &config.Projection{}
 	proj := NewProjection("/tmp", cfg, def, "")
 
-	opts := buildSessionOptions(proj, false)
+	opts := buildSessionOptions(proj, false, false)
 	if opts == nil {
 		t.Fatal("expected non-nil options - engineVersion is required")
 	}
@@ -213,7 +213,7 @@ func TestBuildSessionOptions_GlobalFallback(t *testing.T) {
 	def := &config.Projection{}
 	proj := NewProjection("/tmp", cfg, def, "")
 
-	opts := buildSessionOptions(proj, false)
+	opts := buildSessionOptions(proj, false, false)
 	if opts == nil {
 		t.Fatal("expected options")
 	}
@@ -295,7 +295,7 @@ func TestCreateSession_ValidSource(t *testing.T) {
 	def := &config.Projection{Name: "test", Entry: "test.js"}
 	proj := NewProjection("/tmp", cfg, def, `fromAll().when({$init() { return {}; }})`)
 
-	session, sources, err := CreateSession(proj, false)
+	session, sources, err := CreateSession(proj, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestCreateSession_InvalidSource(t *testing.T) {
 	def := &config.Projection{Name: "test", Entry: "test.js"}
 	proj := NewProjection("/tmp", cfg, def, "this is not valid javascript {{{")
 
-	_, _, err := CreateSession(proj, false)
+	_, _, err := CreateSession(proj, false, false)
 	if err == nil {
 		t.Fatal("expected error for invalid JS source")
 	}

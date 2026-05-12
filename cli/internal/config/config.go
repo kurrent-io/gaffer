@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -8,7 +9,20 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/kurrent-io/gaffer/cli/internal/project"
 )
+
+// ErrManifestParse wraps TOML-level parse failures from Load / Parse.
+// Callers use errors.Is to classify the outcome for telemetry without
+// pattern-matching on formatted error strings.
+var ErrManifestParse = errors.New("parse gaffer.toml")
+
+// ErrManifestValidate wraps validation failures from Load.validate()
+// (the file parsed but semantic checks rejected it). Callers use
+// errors.Is to distinguish "broken TOML" from "TOML the schema
+// rejected".
+var ErrManifestValidate = errors.New("validate gaffer.toml")
 
 // Config represents a gaffer.toml file.
 type Config struct {
@@ -53,6 +67,24 @@ func (p *Projection) FixtureNames() []string {
 	return names
 }
 
+// ProjectionCount returns the number of projections declared in the
+// manifest. Stamped on `dev` and `manifest` command_invoked events as
+// a raw count; the schema's bucketing happens at marshal time.
+func (c *Config) ProjectionCount() int {
+	return len(c.Projection)
+}
+
+// FixtureCount returns the total number of fixtures declared across
+// all projections in the manifest. Same telemetry path as
+// ProjectionCount.
+func (c *Config) FixtureCount() int {
+	total := 0
+	for _, p := range c.Projection {
+		total += len(p.Fixtures)
+	}
+	return total
+}
+
 // EffectiveEngineVersion returns the projection's engine_version, falling
 // back to the top-level engine_version. Returns 0 if neither is set.
 func (c *Config) EffectiveEngineVersion(p *Projection) int {
@@ -92,6 +124,19 @@ func (p Projection) IsEnabled() bool {
 	return *p.Enabled
 }
 
+// LoadFromCwd resolves the project root from the current working
+// directory via project.FindRoot and loads its gaffer.toml. Returns
+// project.ErrNotInProject when no project is found; other errors come
+// from Load (read or parse failure). Callers that want a best-effort
+// load can discard the error.
+func LoadFromCwd() (*Config, error) {
+	root := project.FindRoot()
+	if root == "" {
+		return nil, project.ErrNotInProject
+	}
+	return Load(project.ConfigPath(root))
+}
+
 // Load reads and parses a gaffer.toml file with strict validation.
 // The loose-validation counterpart used by the LSP server is
 // Describe, which shares this function's parse step via Parse.
@@ -105,7 +150,7 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	if err := cfg.validate(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %s", ErrManifestValidate, err)
 	}
 	return cfg, nil
 }
@@ -118,7 +163,7 @@ func Load(path string) (*Config, error) {
 func Parse(data []byte) (*Config, error) {
 	var cfg Config
 	if err := toml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing config: %w", err)
+		return nil, fmt.Errorf("%w: %s", ErrManifestParse, err)
 	}
 	return &cfg, nil
 }

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Gaffer.Sdk.Diagnostics;
 
 namespace Gaffer.Sdk;
@@ -24,4 +25,19 @@ public sealed class ProjectionInfo {
 	public bool ReorderEvents { get; init; }
 	public int? ProcessingLag { get; init; }
 	public Diagnostic[]? Diagnostics { get; init; }
+
+	/// <summary>
+	/// Structural snapshot of the projection's source. Populated when
+	/// the FFI caller passes <c>IncludeShape:true</c>; <c>null</c>
+	/// otherwise. Walking is gated by the flag because LSP and most
+	/// other consumers don't need the data and shouldn't pay the
+	/// extra AST pass.
+	/// </summary>
+	/// <remarks>
+	/// Omitted from the wire when null (rather than serialised as
+	/// <c>"shape": null</c>) so callers can distinguish "shape not
+	/// requested" from "shape requested but empty".
+	/// </remarks>
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+	public ProjectionShape? Shape { get; init; }
 }

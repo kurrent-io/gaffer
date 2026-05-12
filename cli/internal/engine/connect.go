@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -8,17 +9,29 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/dotenv"
 )
 
+// ErrDBConnect wraps every Connect failure (bad URL, dotenv read,
+// kurrentdb client construction). Callers use errors.Is to classify
+// the outcome for telemetry without pattern-matching on formatted
+// error strings.
+var ErrDBConnect = errors.New("connect to KurrentDB")
+
+// ErrDBDisconnect wraps subscription-drop errors from a previously
+// healthy connection. Surfaced by the live-source loop so callers can
+// distinguish "couldn't connect" from "connected then lost the link".
+var ErrDBDisconnect = errors.New("KurrentDB connection lost")
+
 func Connect(connStr, projectRoot string) (*kurrentdb.Client, error) {
 	if err := dotenv.Load(projectRoot, ""); err != nil {
-		return nil, fmt.Errorf("loading .env: %w", err)
+		return nil, fmt.Errorf("%w: loading .env: %s", ErrDBConnect, err)
 	}
 
 	redacted := RedactConnection(connStr)
 	dbConfig, err := kurrentdb.ParseConnectionString(connStr)
 	if err != nil {
-		// Drop the %w wrap: url.Parse errors echo the original input, which
-		// for malformed connection strings includes the password verbatim.
-		return nil, fmt.Errorf("invalid connection string %s: %s", redacted, scrubRaw(err.Error(), connStr, redacted))
+		// Don't %w the underlying error: url.Parse errors echo the
+		// original input, which for malformed connection strings
+		// includes the password verbatim.
+		return nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, scrubRaw(err.Error(), connStr, redacted))
 	}
 
 	username, password := dotenv.Credentials()
@@ -30,9 +43,37 @@ func Connect(connStr, projectRoot string) (*kurrentdb.Client, error) {
 
 	client, err := kurrentdb.NewClient(dbConfig)
 	if err != nil {
-		return nil, fmt.Errorf("connecting to KurrentDB: %s", scrubRaw(err.Error(), connStr, redacted))
+		return nil, fmt.Errorf("%w: %s", ErrDBConnect, scrubRaw(err.Error(), connStr, redacted))
 	}
 	return client, nil
+}
+
+// dbVersionUnknown is the value telemetry stamps on db_version when
+// the server probe returns an error or a zero version. Matches the
+// schema convention - the field is omitted when not connected and is
+// "unknown" when we couldn't parse what the server reported.
+const dbVersionUnknown = "unknown"
+
+// serverVersionProvider abstracts kurrentdb.Client's GetServerVersion
+// so ProbeServerVersion can be unit-tested without a live database.
+// *kurrentdb.Client satisfies it.
+type serverVersionProvider interface {
+	GetServerVersion() (*kurrentdb.ServerVersion, error)
+}
+
+// ProbeServerVersion asks the connected client for the server's
+// major.minor version. Returns "unknown" on probe failure or a zero
+// version, never an error: telemetry is best-effort and a missing
+// version shouldn't fail the run.
+//
+// The kurrentdb client caches the version internally after first
+// connection, so calling this is a cheap accessor.
+func ProbeServerVersion(client serverVersionProvider) string {
+	v, err := client.GetServerVersion()
+	if err != nil || v == nil || (v.Major == 0 && v.Minor == 0) {
+		return dbVersionUnknown
+	}
+	return fmt.Sprintf("%d.%d", v.Major, v.Minor)
 }
 
 // RedactConnection masks the password portion of a KurrentDB connection

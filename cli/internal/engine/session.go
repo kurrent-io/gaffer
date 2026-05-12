@@ -41,7 +41,7 @@ func LoadProjection(name string) (*Projection, error) {
 		return nil, project.ErrNotInProject
 	}
 
-	cfg, err := config.Load(filepath.Join(root, "gaffer.toml"))
+	cfg, err := config.Load(project.ConfigPath(root))
 	if err != nil {
 		return nil, err
 	}
@@ -74,8 +74,14 @@ func ReadSource(root, entry string) (string, error) {
 	return string(data), nil
 }
 
-func CreateSession(proj *Projection, debug bool) (*gafferruntime.Session, gafferruntime.ProjectionInfo, error) {
-	opts := buildSessionOptions(proj, debug)
+// CreateSession compiles the projection and returns a live session
+// plus the populated ProjectionInfo. includeShape gates whether the
+// runtime walks the AST a second time for projection_shape
+// telemetry; long-running telemetry-active paths (dev / mcp / lsp
+// when the Client is present on ctx) set it true, everything else
+// false so they pay zero walker cost.
+func CreateSession(proj *Projection, debug, includeShape bool) (*gafferruntime.Session, gafferruntime.ProjectionInfo, error) {
+	opts := buildSessionOptions(proj, debug, includeShape)
 	session, err := gafferruntime.NewSession(proj.Source, opts)
 	if err != nil {
 		return nil, gafferruntime.ProjectionInfo{}, err
@@ -89,7 +95,7 @@ func CreateSession(proj *Projection, debug bool) (*gafferruntime.Session, gaffer
 // cfg.EffectiveDbVersion here would risk diverging from the cached value
 // if GAFFER_DB_VERSION changed between Projection construction and this
 // call.
-func buildSessionOptions(proj *Projection, debug bool) *string {
+func buildSessionOptions(proj *Projection, debug, includeShape bool) *string {
 	opts := map[string]any{
 		"engineVersion": proj.EngineVersion,
 	}
@@ -100,6 +106,10 @@ func buildSessionOptions(proj *Projection, debug bool) *string {
 
 	if debug {
 		opts["debug"] = true
+	}
+
+	if includeShape {
+		opts["includeShape"] = true
 	}
 
 	if proj.Def.ExecutionTimeout != nil && *proj.Def.ExecutionTimeout > 0 {

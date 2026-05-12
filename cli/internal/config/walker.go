@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	gitignore "github.com/sabhiram/go-gitignore"
+
+	"github.com/kurrent-io/gaffer/cli/internal/project"
 )
 
 // Directories never descended into, regardless of .gitignore. Covers
@@ -23,10 +25,11 @@ var hardcodedSkipDirs = map[string]struct{}{
 	"vendor":       {},
 }
 
-// File basenames recognised as gaffer config. Hardcoded for V1; a
-// future jsonc/kdl format would add an entry here in lockstep with
+// File basenames recognised as gaffer config. Sourced from
+// project.ConfigFileName so the literal lives in one place; a future
+// jsonc/kdl format would add a second entry here in lockstep with
 // each editor's activation manifest.
-var configFileNames = []string{"gaffer.toml"}
+var configFileNames = []string{project.ConfigFileName}
 
 // WalkConfigs walks `root` looking for gaffer config files and
 // returns their absolute paths in lexicographic order. Honors a

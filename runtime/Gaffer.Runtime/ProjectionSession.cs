@@ -19,6 +19,7 @@ public sealed class ProjectionSession : IDisposable {
 	private readonly string _source;
 	private readonly QuerySources _sources;
 	private readonly Diagnostic[]? _diagnostics;
+	private readonly Gaffer.Sdk.ProjectionShape? _shape;
 	private readonly Dictionary<string, string?> _stateCache = new();
 	private readonly HashSet<string>? _handledEventTypes;
 	private string? _sharedState;
@@ -45,6 +46,14 @@ public sealed class ProjectionSession : IDisposable {
 
 	/// <summary>Compile-time diagnostics, or null if there are none.</summary>
 	public Diagnostic[]? Diagnostics => _diagnostics;
+
+	/// <summary>
+	/// Structural shape snapshot of the projection source. Populated
+	/// only when <see cref="ProjectionSessionOptions.IncludeShape"/>
+	/// was set at construction; null otherwise. Returned to the FFI
+	/// caller via <see cref="Gaffer.Sdk.ProjectionInfo.Shape"/>.
+	/// </summary>
+	public Gaffer.Sdk.ProjectionShape? Shape => _shape;
 
 	/// <summary>
 	/// Create a new projection session from JavaScript source code.
@@ -125,7 +134,11 @@ public sealed class ProjectionSession : IDisposable {
 			if (!_sources.AllEvents && _sources.Events != null)
 				_handledEventTypes = new HashSet<string>(_sources.Events, StringComparer.Ordinal);
 
-			_diagnostics = DiagnosticCollector.Scan(source, _dbVersion, _version);
+			// Combined scan: one parse, optional shape walk piggy-
+			// backs on the diagnostic pass. IncludeShape gates the
+			// shape walker without affecting diagnostic collection.
+			(_diagnostics, _shape) = DiagnosticCollector.ScanWithShape(
+				source, _dbVersion, _version, opts.IncludeShape);
 		} catch {
 			_handler.Dispose();
 			throw;
@@ -516,4 +529,14 @@ public sealed class ProjectionSessionOptions {
 
 	/// <summary>Enable Jint debug hooks for breakpoints and stepping. Has performance overhead.</summary>
 	public bool Debug { get; init; }
+
+	/// <summary>
+	/// Populate <see cref="ProjectionInfo.Shape"/> by walking the AST
+	/// with <see cref="Gaffer.Runtime.Projection.ShapeCollector"/>.
+	/// Off by default - only telemetry-emitting paths (CLI dev / mcp
+	/// commands when opt-out isn't active) set this. The LSP and
+	/// other ProjectionInfo consumers leave it off and pay zero
+	/// walker cost.
+	/// </summary>
+	public bool IncludeShape { get; init; }
 }

@@ -112,7 +112,11 @@ func runDevWithDevTx(cmd *cobra.Command, name string, opts *devOpts) error {
 	if seen := tracker.Sorted(); len(seen) > 0 {
 		tx.SetProjectionErrorsSeen(seen)
 	}
-	tx.SetOutcome(classifyOutcome(outcomeInputs{err: err, tracker: tracker}))
+	out, ok := classifyOutcome(outcomeInputs{err: err, tracker: tracker})
+	if !ok {
+		out = telemetry.OutcomeUserError
+	}
+	tx.SetOutcome(out)
 	return err
 }
 
@@ -147,11 +151,15 @@ func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
 	if seen := tracker.Sorted(); len(seen) > 0 {
 		tx.SetProjectionErrorsSeen(seen)
 	}
-	tx.SetOutcome(classifyOutcome(outcomeInputs{
+	out, ok := classifyOutcome(outcomeInputs{
 		err:            err,
 		tracker:        tracker,
 		dapProtocolErr: dapStats.ProtocolError,
-	}))
+	})
+	if !ok {
+		out = telemetry.OutcomeUserError
+	}
+	tx.SetOutcome(out)
 	return err
 }
 

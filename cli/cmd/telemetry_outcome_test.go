@@ -103,7 +103,10 @@ func TestClassifyOutcome_StructuralWinsOverProjection(t *testing.T) {
 	tr := newProjErrTracker()
 	tr.Record(&gafferruntime.ProjectionHandlerError{})
 
-	got := classifyOutcome(outcomeInputs{err: project.ErrNotInProject, tracker: tr})
+	got, ok := classifyOutcome(outcomeInputs{err: project.ErrNotInProject, tracker: tr})
+	if !ok {
+		t.Fatal("ok = false; expected structural match")
+	}
 	if got != telemetry.OutcomeManifestNotFound {
 		t.Errorf("structural+projection: got %q, want manifest_not_found", got)
 	}
@@ -113,16 +116,22 @@ func TestClassifyOutcome_ProjectionFault(t *testing.T) {
 	tr := newProjErrTracker()
 	tr.Record(&gafferruntime.ProjectionHandlerError{})
 
-	got := classifyOutcome(outcomeInputs{err: errors.New("projection faulted"), tracker: tr})
+	got, ok := classifyOutcome(outcomeInputs{err: errors.New("projection faulted"), tracker: tr})
+	if !ok {
+		t.Fatal("ok = false; expected projection match via tracker")
+	}
 	if got != telemetry.Outcome(telemetry.ProjectionOutcomeProjectionUserThrow) {
 		t.Errorf("projection fault: got %q, want projection_user_throw", got)
 	}
 }
 
 func TestClassifyOutcome_DAPProtocolErrorPlumbing(t *testing.T) {
-	got := classifyOutcome(outcomeInputs{
+	got, ok := classifyOutcome(outcomeInputs{
 		dapProtocolErr: errors.New("dap: read: unexpected EOF"),
 	})
+	if !ok {
+		t.Fatal("ok = false; expected dap match")
+	}
 	if got != telemetry.OutcomeDAPProtocolError {
 		t.Errorf("dap proto error only: got %q, want dap_protocol_error", got)
 	}
@@ -135,19 +144,36 @@ func TestClassifyOutcome_ProjectionFaultBeatsDAPProtocolError(t *testing.T) {
 	tr := newProjErrTracker()
 	tr.Record(&gafferruntime.ProjectionHandlerError{})
 
-	got := classifyOutcome(outcomeInputs{
+	got, ok := classifyOutcome(outcomeInputs{
 		err:            errors.New("projection faulted"),
 		tracker:        tr,
 		dapProtocolErr: errors.New("dap: read: closed"),
 	})
+	if !ok {
+		t.Fatal("ok = false; expected projection match")
+	}
 	if got != telemetry.Outcome(telemetry.ProjectionOutcomeProjectionUserThrow) {
 		t.Errorf("projection+dap: got %q, want projection_user_throw", got)
 	}
 }
 
-func TestClassifyOutcome_BothClean(t *testing.T) {
-	if got := classifyOutcome(outcomeInputs{}); got != telemetry.OutcomeSuccess {
+func TestClassifyOutcome_BothCleanReportsSuccess(t *testing.T) {
+	got, ok := classifyOutcome(outcomeInputs{})
+	if !ok {
+		t.Fatal("ok = false; nil signals should still match (success)")
+	}
+	if got != telemetry.OutcomeSuccess {
 		t.Errorf("clean exit: got %q, want success", got)
+	}
+}
+
+func TestClassifyOutcome_UnclassifiedNonNilErrorReportsNotOk(t *testing.T) {
+	// A non-nil err that doesn't match structural / projection /
+	// dap signals returns ok=false so the caller picks its fallback
+	// (user_error for dev, mcp_protocol_error for mcp).
+	got, ok := classifyOutcome(outcomeInputs{err: errors.New("some other failure")})
+	if ok {
+		t.Errorf("ok = true; got %q, want ok=false for unclassified err", got)
 	}
 }
 

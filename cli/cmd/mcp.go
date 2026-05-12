@@ -65,19 +65,14 @@ func newMCPCmd() *cobra.Command {
 
 // classifyMCPOutcome picks the command_invoked outcome for `gaffer
 // mcp`. Falls through classifyOutcome's structural / projection
-// ladder first; only if neither matches AND runErr is non-nil does
-// it map to mcp_protocol_error. Previously the wrapper unconditionally
-// stamped mcp_protocol_error on any non-nil runErr, which mis-classified
-// manifest / db errors that surfaced through the MCP server's startup
-// path as protocol failures.
+// ladder first; only if no signal matched and runErr is non-nil
+// does it map to mcp_protocol_error. Previously the wrapper
+// unconditionally stamped mcp_protocol_error on any non-nil runErr,
+// which mis-classified manifest / db errors that surfaced through
+// the MCP server's startup path as protocol failures.
 func classifyMCPOutcome(runErr error, tracker *projErrTracker) telemetry.Outcome {
-	out := classifyOutcome(outcomeInputs{err: runErr, tracker: tracker})
-	// Unclassified-but-non-nil: classifyOutcome falls back to
-	// user_error, which is the wrong bucket for an MCP session that
-	// died on framing rather than user input. Promote to
-	// mcp_protocol_error.
-	if runErr != nil && out == telemetry.OutcomeUserError {
-		return telemetry.OutcomeMCPProtocolError
+	if out, ok := classifyOutcome(outcomeInputs{err: runErr, tracker: tracker}); ok {
+		return out
 	}
-	return out
+	return telemetry.OutcomeMCPProtocolError
 }

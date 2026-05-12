@@ -30,13 +30,17 @@ type outcomeInputs struct {
 }
 
 // classifyOutcome decides the final Outcome for a command_invoked
-// event. Precedence (highest first):
+// event from the set of signals the wrapper hands it. Returns
+// (outcome, true) when a signal matched; (zero, false) when nothing
+// matched and the caller should pick a fallback (one-shots and dev
+// default to user_error; mcp to mcp_protocol_error).
+//
+// Precedence when signals are present:
 //
 //   - nil err + nil protocol err -> success
 //   - structural sentinel match  -> manifest_*, db_*, project
 //   - tracked projection fault   -> projection_*
 //   - dap protocol error         -> dap_protocol_error
-//   - generic non-nil err        -> user_error
 //
 // Structural beats projection because a manifest-load failure that
 // happened to trigger a projection-iteration fault on the way down
@@ -44,28 +48,38 @@ type outcomeInputs struct {
 // protocol error because a session that died because user code
 // threw is "user friction", not "our DAP layer is broken" - DAP
 // failures get their own observability via the exception event.
-func classifyOutcome(in outcomeInputs) telemetry.Outcome {
+//
+// Caller-picked fallback (rather than baking user_error in here) so
+// classifyMCPOutcome can promote unclassified errors to
+// mcp_protocol_error without inspecting a sentinel return value -
+// avoids the magic-value coupling where "got back user_error" had
+// to mean "no signal matched".
+func classifyOutcome(in outcomeInputs) (telemetry.Outcome, bool) {
 	if in.err == nil && in.dapProtocolErr == nil {
-		return telemetry.OutcomeSuccess
+		return telemetry.OutcomeSuccess, true
 	}
 	if in.err != nil {
 		if out, ok := classifyStructural(in.err); ok {
-			return out
+			return out, true
 		}
 		if last := in.tracker.last(); last != "" {
-			return telemetry.Outcome(last)
+			return telemetry.Outcome(last), true
 		}
 	}
 	if in.dapProtocolErr != nil {
-		return telemetry.OutcomeDAPProtocolError
+		return telemetry.OutcomeDAPProtocolError, true
 	}
-	return telemetry.OutcomeUserError
+	return "", false
 }
 
 // outcomeFor is the shorthand for one-shot commands that only have a
-// final err to classify. Equivalent to classifyOutcome{err: err}.
+// final err to classify. Falls back to user_error for unclassified
+// non-nil errors.
 func outcomeFor(err error) telemetry.Outcome {
-	return classifyOutcome(outcomeInputs{err: err})
+	if out, ok := classifyOutcome(outcomeInputs{err: err}); ok {
+		return out
+	}
+	return telemetry.OutcomeUserError
 }
 
 // classifyStructural maps known-shape errors to specific outcomes via

@@ -134,7 +134,7 @@
           "$ref": "#/definitions/CommandName"
         },
         "duration_ms": {
-          "$ref": "#/definitions/BucketCount"
+          "$ref": "#/definitions/DurationBucket"
         },
         "outcome": {
           "$ref": "#/definitions/Outcome"
@@ -298,6 +298,19 @@
         "command"
       ],
       "unevaluatedProperties": false
+    },
+    "DurationBucket": {
+      "description": "Bucketed duration in milliseconds (lower-bound of the half-open\ninterval).",
+      "type": "integer",
+      "enum": [
+        0,
+        10,
+        100,
+        1000,
+        10000,
+        60000,
+        600000
+      ]
     },
     "Editor": {
       "description": "Editor is the specific editor runtime detected at activation (from\n`vscode.env.uriScheme`). Distinguishes VS Code from its forks so we know\nwhich targets to test against; VSCodium / Cursor / Windsurf all have\nnon-trivial adoption. Stable and insiders builds collapse to `\"vscode\"`;\nunknown forks map to `\"other\"`.",
@@ -538,7 +551,7 @@
           "maxLength": 32
         },
         "activation_duration_ms": {
-          "$ref": "#/definitions/BucketCount"
+          "$ref": "#/definitions/DurationBucket"
         }
       },
       "unevaluatedProperties": false

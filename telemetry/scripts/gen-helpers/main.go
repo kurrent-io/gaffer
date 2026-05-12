@@ -129,6 +129,7 @@ const (
 	kindBool
 	kindInt
 	kindRawCount
+	kindRawDuration
 	kindUUID
 	kindTimestamp
 	kindEnum         // see Ref
@@ -432,11 +433,13 @@ func classify(name string, optional bool, v cue.Value) (schemaField, error) {
 	goName := snakeToCamel(name)
 
 	// Resolve through a single-ref level so we can spot #BucketCount /
-	// #UUID / #Timestamp / #FooEnum references.
+	// #DurationBucket / #UUID / #Timestamp / #FooEnum references.
 	if ref, ok := singleDefRef(v); ok {
 		switch ref {
 		case "BucketCount":
 			return schemaField{Wire: name, GoName: goName, Optional: optional, Kind: kindRawCount, Doc: doc}, nil
+		case "DurationBucket":
+			return schemaField{Wire: name, GoName: goName, Optional: optional, Kind: kindRawDuration, Doc: doc}, nil
 		case "UUID":
 			return schemaField{Wire: name, GoName: goName, Optional: optional, Kind: kindUUID, Doc: doc}, nil
 		case "Timestamp":
@@ -733,6 +736,36 @@ func (r RawCount) MarshalJSON() ([]byte, error) {
 
 var _ json.Marshaler = RawCount(0)
 
+// RawDuration is the duration counterpart to RawCount: unbucketed ms held by
+// producers, bucket-rounded at marshal time to one of {0, 10, 100, 1000,
+// 10000, 60000, 600000} per #DurationBucket in the schema.
+type RawDuration int
+
+// MarshalJSON applies the duration bucket lookup: 0 / 10 / 100 / 1000 /
+// 10000 / 60000 / 600000 for the half-open intervals (-inf, 10) / [10, 100)
+// / [100, 1000) / [1000, 10000) / [10000, 60000) / [60000, 600000) /
+// [600000, +inf). Negative values clamp to 0.
+func (r RawDuration) MarshalJSON() ([]byte, error) {
+	switch ms := int(r); {
+	case ms < 10:
+		return []byte("0"), nil
+	case ms < 100:
+		return []byte("10"), nil
+	case ms < 1000:
+		return []byte("100"), nil
+	case ms < 10000:
+		return []byte("1000"), nil
+	case ms < 60000:
+		return []byte("10000"), nil
+	case ms < 600000:
+		return []byte("60000"), nil
+	default:
+		return []byte("600000"), nil
+	}
+}
+
+var _ json.Marshaler = RawDuration(0)
+
 `
 
 func emitStringEnum(w io.Writer, name string, members []string) {
@@ -867,6 +900,8 @@ func emitTxSetter(w io.Writer, txName string, f schemaField) {
 	switch f.Kind {
 	case kindRawCount:
 		fmt.Fprintf(w, "func (tx *%sTx) Set%s(n int) {\n\tif tx == nil {\n\t\treturn\n\t}\n\tv := RawCount(n)\n\ttx.props.%s = &v\n}\n\n", txName, f.GoName, f.GoName)
+	case kindRawDuration:
+		fmt.Fprintf(w, "func (tx *%sTx) Set%s(ms int) {\n\tif tx == nil {\n\t\treturn\n\t}\n\tv := RawDuration(ms)\n\ttx.props.%s = &v\n}\n\n", txName, f.GoName, f.GoName)
 	case kindBool:
 		fmt.Fprintf(w, "func (tx *%sTx) Set%s(b bool) {\n\tif tx == nil {\n\t\treturn\n\t}\n\ttx.props.%s = &b\n}\n\n", txName, f.GoName, f.GoName)
 	case kindString:
@@ -913,6 +948,8 @@ func goTypeFor(f schemaField) string {
 		base = "int"
 	case kindRawCount:
 		base = "RawCount"
+	case kindRawDuration:
+		base = "RawDuration"
 	case kindEnum, kindIntEnum:
 		base = f.Ref
 	case kindStructRef:

@@ -60,6 +60,36 @@ func (r RawCount) MarshalJSON() ([]byte, error) {
 
 var _ json.Marshaler = RawCount(0)
 
+// RawDuration is the duration counterpart to RawCount: unbucketed ms held by
+// producers, bucket-rounded at marshal time to one of {0, 10, 100, 1000,
+// 10000, 60000, 600000} per #DurationBucket in the schema.
+type RawDuration int
+
+// MarshalJSON applies the duration bucket lookup: 0 / 10 / 100 / 1000 /
+// 10000 / 60000 / 600000 for the half-open intervals (-inf, 10) / [10, 100)
+// / [100, 1000) / [1000, 10000) / [10000, 60000) / [60000, 600000) /
+// [600000, +inf). Negative values clamp to 0.
+func (r RawDuration) MarshalJSON() ([]byte, error) {
+	switch ms := int(r); {
+	case ms < 10:
+		return []byte("0"), nil
+	case ms < 100:
+		return []byte("10"), nil
+	case ms < 1000:
+		return []byte("100"), nil
+	case ms < 10000:
+		return []byte("1000"), nil
+	case ms < 60000:
+		return []byte("10000"), nil
+	case ms < 600000:
+		return []byte("60000"), nil
+	default:
+		return []byte("600000"), nil
+	}
+}
+
+var _ json.Marshaler = RawDuration(0)
+
 // Emitter is a string enum mirroring the CUE definition.
 type Emitter string
 
@@ -254,7 +284,7 @@ type CommandInvokedProperties struct {
 	// Which gaffer command ran. Variants narrow this to a specific literal.
 	Command CommandName `json:"command"`
 	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
-	DurationMs RawCount `json:"duration_ms"`
+	DurationMs RawDuration `json:"duration_ms"`
 	// What ended the invocation.
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
@@ -271,7 +301,7 @@ type VersionCommandInvokedProperties struct {
 	// Which gaffer command ran. Variants narrow this to a specific literal.
 	Command CommandName `json:"command"`
 	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
-	DurationMs RawCount `json:"duration_ms"`
+	DurationMs RawDuration `json:"duration_ms"`
 	// What ended the invocation.
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
@@ -288,7 +318,7 @@ type InitCommandInvokedProperties struct {
 	// Which gaffer command ran. Variants narrow this to a specific literal.
 	Command CommandName `json:"command"`
 	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
-	DurationMs RawCount `json:"duration_ms"`
+	DurationMs RawDuration `json:"duration_ms"`
 	// What ended the invocation.
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
@@ -305,7 +335,7 @@ type ScaffoldCommandInvokedProperties struct {
 	// Which gaffer command ran. Variants narrow this to a specific literal.
 	Command CommandName `json:"command"`
 	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
-	DurationMs RawCount `json:"duration_ms"`
+	DurationMs RawDuration `json:"duration_ms"`
 	// What ended the invocation.
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
@@ -322,7 +352,7 @@ type InfoCommandInvokedProperties struct {
 	// Which gaffer command ran. Variants narrow this to a specific literal.
 	Command CommandName `json:"command"`
 	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
-	DurationMs RawCount `json:"duration_ms"`
+	DurationMs RawDuration `json:"duration_ms"`
 	// What ended the invocation.
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
@@ -339,7 +369,7 @@ type ManifestCommandInvokedProperties struct {
 	// Which gaffer command ran. Variants narrow this to a specific literal.
 	Command CommandName `json:"command"`
 	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
-	DurationMs RawCount `json:"duration_ms"`
+	DurationMs RawDuration `json:"duration_ms"`
 	// What ended the invocation.
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
@@ -362,7 +392,7 @@ type DevCommandInvokedProperties struct {
 	// Which gaffer command ran. Variants narrow this to a specific literal.
 	Command CommandName `json:"command"`
 	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
-	DurationMs RawCount `json:"duration_ms"`
+	DurationMs RawDuration `json:"duration_ms"`
 	// What ended the invocation.
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
@@ -460,7 +490,7 @@ type MCPCommandInvokedProperties struct {
 	// Which gaffer command ran. Variants narrow this to a specific literal.
 	Command CommandName `json:"command"`
 	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
-	DurationMs RawCount `json:"duration_ms"`
+	DurationMs RawDuration `json:"duration_ms"`
 	// What ended the invocation.
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
@@ -538,7 +568,7 @@ type LSPCommandInvokedProperties struct {
 	// Which gaffer command ran. Variants narrow this to a specific literal.
 	Command CommandName `json:"command"`
 	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
-	DurationMs RawCount `json:"duration_ms"`
+	DurationMs RawDuration `json:"duration_ms"`
 	// What ended the invocation.
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
@@ -596,7 +626,7 @@ type DebugCommandInvokedProperties struct {
 	// Which gaffer command ran. Variants narrow this to a specific literal.
 	Command CommandName `json:"command"`
 	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
-	DurationMs RawCount `json:"duration_ms"`
+	DurationMs RawDuration `json:"duration_ms"`
 	// What ended the invocation.
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
@@ -771,7 +801,7 @@ type ExtensionActivatedProperties struct {
 	// Bucketed major.minor of the CLI binary's reported version. Present when `cli_reachable = true`.
 	CLIVersion *string `json:"cli_version,omitempty"`
 	// Time from extension activation to first event-emit decision.
-	ActivationDurationMs RawCount `json:"activation_duration_ms"`
+	ActivationDurationMs RawDuration `json:"activation_duration_ms"`
 }
 
 // Exception captures gaffer-side crashes only - Go panics in the CLI / MCP,

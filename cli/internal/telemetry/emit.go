@@ -25,9 +25,9 @@ const timestampLayout = "2006-01-02T15:04:05.000Z"
 // The pointer-arg shape lets one body handle all five one-shot
 // variants without per-variant type plumbing; generated EmitX
 // helpers pass pointers into their own props fields.
-func (c *Client) stampInvocation(command *CommandName, duration *RawCount, invokedBy *InvokedBy, invokedVia *InvokedVia, name CommandName) {
+func (c *Client) stampInvocation(command *CommandName, duration *RawDuration, invokedBy *InvokedBy, invokedVia *InvokedVia, name CommandName) {
 	*command = name
-	*duration = RawCount(time.Since(c.startTime).Milliseconds())
+	*duration = RawDuration(time.Since(c.startTime).Milliseconds())
 	if *invokedBy == "" {
 		*invokedBy = c.defaultInvokedBy(name)
 	}

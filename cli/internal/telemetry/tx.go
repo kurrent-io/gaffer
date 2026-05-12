@@ -34,7 +34,7 @@ import (
 // See doc.go for the End() defer-direct contract.
 func (c *Client) stampInvocationBase(
 	command *CommandName,
-	durationMs *RawCount,
+	durationMs *RawDuration,
 	outcome *Outcome,
 	invokedBy *InvokedBy,
 	invokedVia *InvokedVia,
@@ -43,7 +43,7 @@ func (c *Client) stampInvocationBase(
 	recovered any,
 ) {
 	*command = name
-	*durationMs = RawCount(time.Since(c.startTime).Milliseconds())
+	*durationMs = RawDuration(time.Since(c.startTime).Milliseconds())
 	if *invokedBy == "" {
 		*invokedBy = c.defaultInvokedBy(name)
 	}

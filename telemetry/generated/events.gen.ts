@@ -52,9 +52,10 @@ export type VersionCommandInvokedProperties = CommandInvokedBaseProperties & {
  */
 export type CommandName = "version" | "init" | "scaffold" | "manifest" | "info" | "dev" | "mcp" | "lsp" | "debug";
 /**
- * Bucketed count.
+ * Bucketed duration in milliseconds (lower-bound of the half-open
+ * interval).
  */
-export type BucketCount = 0 | 1 | 2 | 10 | 100 | 1000;
+export type DurationBucket = 0 | 10 | 100 | 1000 | 10000 | 60000 | 600000;
 /**
  * Outcome is the *final* outcome of a command invocation - whatever made it
  * actually exit. Long-running sessions that hit transient errors and
@@ -136,6 +137,10 @@ export type ManifestCommandInvokedProperties = CommandInvokedBaseProperties & {
   fixture_count?: BucketCount;
   [k: string]: unknown;
 };
+/**
+ * Bucketed count.
+ */
+export type BucketCount = 0 | 1 | 2 | 10 | 100 | 1000;
 /**
  * `gaffer dev` - long-running development loop, optionally connected to a
  * live KurrentDB.
@@ -328,7 +333,7 @@ export interface CommandInvoked {
  */
 export interface CommandInvokedBaseProperties {
   command: CommandName;
-  duration_ms: BucketCount;
+  duration_ms: DurationBucket;
   outcome: Outcome;
   invoked_by: InvokedBy;
   invoked_via: InvokedVia;
@@ -433,7 +438,7 @@ export interface ExtensionActivatedProperties {
    * when `cli_reachable = true`.
    */
   cli_version?: string;
-  activation_duration_ms: BucketCount;
+  activation_duration_ms: DurationBucket;
   [k: string]: unknown;
 }
 /**

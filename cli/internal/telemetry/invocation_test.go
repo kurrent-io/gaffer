@@ -87,7 +87,7 @@ func TestStampInvocation_MCPDefaultsToMCPClientStdio(t *testing.T) {
 	c := New(WithSink(newMockSink()), WithIdentity(testIdentity))
 	var (
 		cmd        CommandName
-		dur        RawCount
+		dur        RawDuration
 		invokedBy  InvokedBy
 		invokedVia InvokedVia
 	)
@@ -104,7 +104,7 @@ func TestStampInvocationBase_MCPDefaults(t *testing.T) {
 	c := New(WithSink(newMockSink()), WithIdentity(testIdentity))
 	var (
 		cmd        CommandName
-		dur        RawCount
+		dur        RawDuration
 		outcome    Outcome
 		invokedBy  InvokedBy
 		invokedVia InvokedVia
@@ -122,7 +122,7 @@ func TestStampInvocationBase_NonMCPDefaultsToDirectTerminal(t *testing.T) {
 	c := New(WithSink(newMockSink()), WithIdentity(testIdentity))
 	var (
 		cmd        CommandName
-		dur        RawCount
+		dur        RawDuration
 		outcome    Outcome
 		invokedBy  InvokedBy
 		invokedVia InvokedVia
@@ -149,7 +149,7 @@ func TestStampInvocationBase_ExplicitFlagOverridesMCPDefault(t *testing.T) {
 	)
 	var (
 		cmd        CommandName
-		dur        RawCount
+		dur        RawDuration
 		outcome    Outcome
 		invokedBy  InvokedBy
 		invokedVia InvokedVia
@@ -178,7 +178,7 @@ func TestStampInvocation_FlagOverridesNonMCPDefault(t *testing.T) {
 	)
 	var (
 		cmd        CommandName
-		dur        RawCount
+		dur        RawDuration
 		invokedBy  InvokedBy
 		invokedVia InvokedVia
 	)

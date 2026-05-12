@@ -46,7 +46,7 @@ import "strings"
 	// commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation
 	// lifetime, not engagement time - includes idle stretches where the
 	// editor was open but nobody was touching gaffer.
-	duration_ms: #BucketCount
+	duration_ms: #DurationBucket
 
 	// What ended the invocation.
 	outcome: #Outcome
@@ -336,7 +336,7 @@ import "strings"
 	cli_version?: string & strings.MaxRunes(32)
 
 	// Time from extension activation to first event-emit decision.
-	activation_duration_ms: #BucketCount
+	activation_duration_ms: #DurationBucket
 }
 
 // Editor is the specific editor runtime detected at activation (from
@@ -435,6 +435,24 @@ import "strings"
 	100 |
 	// 1000+
 	1000
+
+// Bucketed duration in milliseconds (lower-bound of the half-open
+// interval).
+#DurationBucket:
+	// under 10ms (instant - e.g. `gaffer version`)
+	0 |
+	// 10-99ms (short)
+	10 |
+	// 100ms-1s (noticeable)
+	100 |
+	// 1-10s (slow one-shot, brief long-running)
+	1000 |
+	// 10-60s
+	10000 |
+	// 1-10min
+	60000 |
+	// 10min+ (long-running sessions)
+	600000
 
 // Bucketed file size on disk in bytes (lower-bound of the half-open
 // interval).

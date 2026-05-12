@@ -52,18 +52,20 @@ import (
 // telemetry.
 //
 // invocation carries the spawn-linkage values parsed from the hidden
-// root flags. When InvokerID is set, the first-mint disclosure notice
-// is suppressed (the spawning surface, typically the VS Code
-// extension's first-activation flow, has already disclosed and
-// printing to a non-TTY stderr inside an extension-spawned CLI would
-// be invisible anyway). The full Invocation is also stamped onto the
-// Client so emit-side defaults can read it.
+// root flags. Stamped onto the Client so emit-side defaults can read
+// it. Notice suppression is no longer keyed on these values - it's
+// keyed on the persisted [telemetry] disclosed flag instead, so
+// fresh spawners (CI scripts, IDE plugins) without their own
+// disclosure flow can't silence the notice just by passing a
+// spawn-link id. The VS Code extension is expected to call
+// `gaffer config telemetry on --quiet` after its own disclosure UI
+// to set the flag explicitly.
 func StartupGate(store *userconfig.Store, cwd, homeDir, projectRoot string, noticeOut io.Writer, invocation Invocation, opts ...Option) *Client {
 	optOut := CheckOptOut(store, cwd, homeDir)
 	if optOut.IsDisabled() {
 		return nil
 	}
-	id, err := EnsureIdentity(store, optOut, noticeOut, !invocation.IsZero())
+	id, err := EnsureIdentity(store, optOut, noticeOut)
 	if id.IsZero() {
 		// Hard failure: mint or persist couldn't produce a usable
 		// identity. Leave a one-line trail on noticeOut so users

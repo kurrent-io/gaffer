@@ -26,6 +26,31 @@ func (i Invocation) IsZero() bool {
 	return i.InvokerID == "" && i.InvokedBy == "" && i.InvokedVia == ""
 }
 
+// IsConfigCommand reports whether args looks like a `gaffer config
+// ...` invocation. main.go uses this to skip Client construction
+// for the whole `config` subtree: these are management commands
+// that own identity / opt-out lifecycle themselves (e.g.
+// `config telemetry on --quiet` writes the disclosed flag before
+// minting), and the pre-cobra StartupGate path would otherwise
+// fire the first-mint notice before the user-facing flag has been
+// parsed. `config` commands don't emit command_invoked of their
+// own, so skipping the Client costs nothing.
+//
+// Scanning is positional: returns true when "config" appears as a
+// non-flag token. Flag tokens (--invoker-id, etc.) are skipped
+// without consuming a value - that's a slight over-approximation
+// (a flag value that happens to equal "config" would trip the
+// check) but the gaffer root has no such flag, so it's safe.
+func IsConfigCommand(args []string) bool {
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		return a == "config"
+	}
+	return false
+}
+
 // PeekInvocationFlags scans args for --invoker-id / --invoked-by /
 // --invoked-via and returns whatever it finds. Used by main.go before
 // cobra parses, so the resolved values can be baked into the Client at

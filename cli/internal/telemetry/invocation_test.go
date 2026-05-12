@@ -65,6 +65,31 @@ func TestPeekInvocationFlags_BareFormRejectsFlagShapedValue(t *testing.T) {
 	}
 }
 
+func TestIsConfigCommand(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{"config telemetry on", []string{"config", "telemetry", "on"}, true},
+		{"config telemetry off", []string{"config", "telemetry", "off"}, true},
+		{"config telemetry status", []string{"config", "telemetry", "status"}, true},
+		{"config telemetry on --quiet", []string{"config", "telemetry", "on", "--quiet"}, true},
+		{"config alone", []string{"config"}, true},
+		{"with leading flag", []string{"--invoker-id=x", "config", "telemetry", "on"}, true},
+		{"unrelated subcommand", []string{"version"}, false},
+		{"dev", []string{"dev", "orders"}, false},
+		{"empty", []string{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsConfigCommand(tc.args); got != tc.want {
+				t.Errorf("IsConfigCommand(%v) = %v, want %v", tc.args, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPeekInvocationFlags_StopsAtDoubleDash(t *testing.T) {
 	// `--` is cobra's end-of-flags marker. Tokens after it are
 	// positional and must not be slurped by the peek.

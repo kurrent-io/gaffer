@@ -313,7 +313,7 @@ func TestMintAndPersist_RaceWinnerEmptySentinel(t *testing.T) {
 func TestEnsureIdentity_FreshMintWritesNotice(t *testing.T) {
 	store, _ := userconfig.Load(t.TempDir())
 	var buf bytes.Buffer
-	id, err := EnsureIdentity(store, Resolved{}, &buf, false)
+	id, err := EnsureIdentity(store, Resolved{}, &buf)
 	if err != nil {
 		t.Fatalf("EnsureIdentity: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestEnsureIdentity_OptOutSkipsEverything(t *testing.T) {
 	store, _ := userconfig.Load(t.TempDir())
 	var buf bytes.Buffer
 	r := Resolved{Env: Layer{State: LayerDisabled, Source: "env", EnvVar: "DO_NOT_TRACK", Value: "1"}}
-	id, err := EnsureIdentity(store, r, &buf, false)
+	id, err := EnsureIdentity(store, r, &buf)
 	if err != nil {
 		t.Fatalf("EnsureIdentity: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestEnsureIdentity_ExistingIdentitySkipsNotice(t *testing.T) {
 
 	store, _ := userconfig.Load(dir)
 	var buf bytes.Buffer
-	id, err := EnsureIdentity(store, Resolved{}, &buf, false)
+	id, err := EnsureIdentity(store, Resolved{}, &buf)
 	if err != nil {
 		t.Fatalf("EnsureIdentity: %v", err)
 	}
@@ -373,21 +373,49 @@ func TestEnsureIdentity_ExistingIdentitySkipsNotice(t *testing.T) {
 	}
 }
 
-func TestEnsureIdentity_SuppressNoticeStillMints(t *testing.T) {
+func TestEnsureIdentity_PreSetDisclosedFlagSuppressesNotice(t *testing.T) {
+	// Caller (e.g. `gaffer config telemetry on --quiet` invoked by
+	// the VS Code extension after its own disclosure UI) writes
+	// disclosed=true before EnsureIdentity runs. Mint still happens;
+	// notice doesn't fire.
 	store, _ := userconfig.Load(t.TempDir())
+	WriteTelemetry(store, TelemetrySection{Disclosed: true})
+	if err := store.Save(); err != nil {
+		t.Fatal(err)
+	}
+
 	var buf bytes.Buffer
-	id, err := EnsureIdentity(store, Resolved{}, &buf, true /* suppress */)
+	id, err := EnsureIdentity(store, Resolved{}, &buf)
 	if err != nil {
 		t.Fatalf("EnsureIdentity: %v", err)
 	}
 	if id.IsZero() {
-		t.Error("identity zero under suppress; should have minted")
+		t.Error("identity zero under pre-set disclosed; should have minted")
 	}
 	if buf.Len() != 0 {
-		t.Errorf("notice written under suppress: %q", buf.String())
+		t.Errorf("notice written under pre-set disclosed: %q", buf.String())
 	}
 	if _, ok, _ := IdentityFromConfig(store); !ok {
-		t.Error("identity not persisted under suppress")
+		t.Error("identity not persisted under pre-set disclosed")
+	}
+}
+
+func TestEnsureIdentity_FirstMintWritesNoticeAndPersistsDisclosed(t *testing.T) {
+	// Direct user mint: no disclosed flag yet, so notice fires AND
+	// the flag is set + saved so subsequent runs don't re-disclose.
+	store, _ := userconfig.Load(t.TempDir())
+	var buf bytes.Buffer
+	if _, err := EnsureIdentity(store, Resolved{}, &buf); err != nil {
+		t.Fatalf("EnsureIdentity: %v", err)
+	}
+	if buf.Len() == 0 {
+		t.Error("notice not written on fresh mint")
+	}
+	// Reload from disk and confirm disclosed=true persisted.
+	store2, _ := userconfig.Load(store.Dir())
+	t2, _ := LoadTelemetry(store2)
+	if !t2.Disclosed {
+		t.Error("disclosed flag not persisted after first-mint notice")
 	}
 }
 
@@ -397,14 +425,14 @@ func TestEnsureIdentity_RaceLostNoNotice(t *testing.T) {
 	b, _ := userconfig.Load(dir)
 
 	var bufA, bufB bytes.Buffer
-	idA, errA := EnsureIdentity(a, Resolved{}, &bufA, false)
+	idA, errA := EnsureIdentity(a, Resolved{}, &bufA)
 	if errA != nil {
 		t.Fatalf("A.EnsureIdentity: %v", errA)
 	}
 	if bufA.Len() == 0 {
 		t.Error("A.notice not written on fresh mint")
 	}
-	idB, errB := EnsureIdentity(b, Resolved{}, &bufB, false)
+	idB, errB := EnsureIdentity(b, Resolved{}, &bufB)
 	if errB != nil {
 		t.Fatalf("B.EnsureIdentity: %v", errB)
 	}
@@ -426,7 +454,7 @@ func TestEnsureIdentity_PartialPersistedErrorPropagates(t *testing.T) {
 	}
 	store, _ := userconfig.Load(dir)
 	var buf bytes.Buffer
-	id, err := EnsureIdentity(store, Resolved{}, &buf, false)
+	id, err := EnsureIdentity(store, Resolved{}, &buf)
 	if err == nil {
 		t.Error("err = nil, want partial-load warning surfaced")
 	}
@@ -440,7 +468,7 @@ func TestEnsureIdentity_PartialPersistedErrorPropagates(t *testing.T) {
 
 func TestEnsureIdentity_NoticeWriteFailureDoesNotFail(t *testing.T) {
 	store, _ := userconfig.Load(t.TempDir())
-	id, err := EnsureIdentity(store, Resolved{}, brokenWriter{}, false)
+	id, err := EnsureIdentity(store, Resolved{}, brokenWriter{})
 	if err != nil {
 		t.Fatalf("EnsureIdentity returned err on stderr fail: %v", err)
 	}

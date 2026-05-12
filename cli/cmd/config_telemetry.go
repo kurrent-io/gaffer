@@ -67,7 +67,8 @@ func newConfigTelemetryStatusCmd() *cobra.Command {
 }
 
 func newConfigTelemetryOnCmd() *cobra.Command {
-	return &cobra.Command{
+	var quiet bool
+	cmd := &cobra.Command{
 		Use:   "on",
 		Short: "Enable telemetry on this machine",
 		Long: "Set the user-level telemetry preference to enabled.\n" +
@@ -75,12 +76,19 @@ func newConfigTelemetryOnCmd() *cobra.Command {
 			"If telemetry isn't already in active use, this mints a fresh per-\n" +
 			"install id and prints a one-time disclosure notice. Existing\n" +
 			"environment-variable or workspace opt-outs still take precedence;\n" +
-			"the command surfaces them so you know what else to change.",
+			"the command surfaces them so you know what else to change.\n" +
+			"\n" +
+			"--quiet skips the disclosure notice and records that the caller\n" +
+			"has already shown a user-facing disclosure of its own. Intended\n" +
+			"for editor extensions (e.g. VS Code) that surface their own\n" +
+			"telemetry consent UI before enabling gaffer telemetry.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runConfigTelemetryOn(cmd.OutOrStdout(), cmd.ErrOrStderr())
+			return runConfigTelemetryOn(cmd.OutOrStdout(), cmd.ErrOrStderr(), quiet)
 		},
 	}
+	cmd.Flags().BoolVar(&quiet, "quiet", false, "Skip the disclosure notice (caller asserts it has already disclosed)")
+	return cmd
 }
 
 func newConfigTelemetryOffCmd() *cobra.Command {
@@ -176,7 +184,7 @@ func renderWorkspaceLayer(s telemetryStatusStyles, l telemetry.Layer) string {
 // is itself the recovery path for a broken config. We surface the
 // parse error as a warning and rewrite the section cleanly; any
 // unrecoverable prior id is replaced by a fresh mint downstream.
-func runConfigTelemetryOn(out, noticeOut io.Writer) error {
+func runConfigTelemetryOn(out, noticeOut io.Writer, quiet bool) error {
 	store, err := userconfig.Open()
 	if err != nil {
 		return err
@@ -188,6 +196,13 @@ func runConfigTelemetryOn(out, noticeOut io.Writer) error {
 	}
 	on := true
 	t.Enabled = &on
+	if quiet {
+		// Caller is asserting it has already shown its own user-
+		// facing disclosure (typically an editor extension's
+		// consent UI). EnsureIdentity below will see Disclosed=true
+		// and skip the stderr notice.
+		t.Disclosed = true
+	}
 	telemetry.WriteTelemetry(store, t)
 	if err := store.Save(); err != nil {
 		return fmt.Errorf("save user config: %w", err)
@@ -211,20 +226,24 @@ func runConfigTelemetryOn(out, noticeOut io.Writer) error {
 		return nil
 	}
 
-	// Not opted out. EnsureIdentity mints and prints the notice on
-	// first run. If we already had an identity, no notice is
-	// printed. suppressNotice=false: this is an explicit user opt-in
-	// at the terminal, so disclosure-via-stderr is exactly right.
-	if _, err := telemetry.EnsureIdentity(store, r, noticeOut, false); err != nil {
+	// Not opted out. EnsureIdentity mints on first run and prints
+	// the notice unless [telemetry] disclosed is already true. For
+	// a direct user opt-in (--quiet absent), disclosure-via-stderr
+	// is exactly right; --quiet pre-sets the flag above.
+	if _, err := telemetry.EnsureIdentity(store, r, noticeOut); err != nil {
 		// EnsureIdentity returned a partial-load warning alongside
 		// a usable identity (e.g. malformed enabled key in an
 		// otherwise-valid section). Preference is saved; surface
 		// the warning, don't exit non-zero.
-		_, _ = fmt.Fprintln(out, "Telemetry enabled.")
+		if !quiet {
+			_, _ = fmt.Fprintln(out, "Telemetry enabled.")
+		}
 		_, _ = fmt.Fprintf(out, "Warning: %v\n", err)
 		return nil
 	}
-	_, _ = fmt.Fprintln(out, "Telemetry enabled.")
+	if !quiet {
+		_, _ = fmt.Fprintln(out, "Telemetry enabled.")
+	}
 	return nil
 }
 

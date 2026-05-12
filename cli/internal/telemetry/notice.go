@@ -140,21 +140,25 @@ func MintAndPersist(store *userconfig.Store) (Identity, bool, error) {
 //   - existing usable identity: returns it (paired with fresh RunID),
 //     no mint, no notice. Any partial-load error from
 //     ResolveIdentity propagates to the caller.
-//   - no existing identity + not opted out: mints, persists, and
-//     (unless suppressNotice is true) writes noticeText to
-//     noticeOut.
+//   - no existing identity + not opted out + [telemetry] disclosed
+//     not yet true: mints, persists, writes noticeText to noticeOut,
+//     and records disclosed=true in the config so subsequent runs
+//     skip the notice.
+//   - no existing identity + not opted out + [telemetry] disclosed
+//     already true: mints, persists, no notice. Used by surfaces
+//     that ran their own disclosure flow (e.g. the VS Code
+//     extension calling `gaffer config telemetry on --quiet`).
 //   - race-lost during mint: adopts winner's id, does NOT write the
 //     notice (winner already did in their process).
 //
-// suppressNotice is set by the caller when --invoker-id was passed.
-// The spawning surface (typically the VS Code extension's
-// first-activation notification) has already disclosed; printing to
-// a non-TTY stderr inside an extension-spawned CLI would be
-// invisible anyway. See UI-1561 for the extension-side disclosure
-// gate.
+// Pre-this-design, --invoker-id was the suppress signal. That
+// silently silenced disclosure for any spawner (CI scripts, IDE
+// plugins, wrappers) regardless of whether the spawner had run its
+// own disclosure flow. Keying on config.Disclosed instead requires
+// an explicit ack, closing that gap.
 //
-// A WriteNotice failure (stderr broken) is silently dropped: the
-// mint succeeded and failing the whole run would be worse UX than a
+// A WriteNotice or Save failure is silently dropped: the mint
+// succeeded and failing the whole run would be worse UX than a
 // missed disclosure.
 //
 // Returns (id, err). Use id.IsZero() to gate emit; err may be
@@ -164,7 +168,6 @@ func EnsureIdentity(
 	store *userconfig.Store,
 	optOut Resolved,
 	noticeOut io.Writer,
-	suppressNotice bool,
 ) (Identity, error) {
 	if optOut.IsDisabled() {
 		return Identity{}, nil
@@ -176,10 +179,21 @@ func EnsureIdentity(
 	if err != nil {
 		return Identity{}, err
 	}
-	if didMint && !suppressNotice {
-		// Best-effort. See WriteNotice / MintAndPersist docs for the
-		// failure-policy rationale.
-		_ = WriteNotice(noticeOut)
+	if didMint {
+		// Re-read so we see any disclosure marker an upstream
+		// surface wrote ahead of us (e.g. `gaffer config telemetry
+		// on --quiet`). MintAndPersist may have Reloaded in the
+		// race-recovery path; either way the in-memory store is
+		// current.
+		t, _ := LoadTelemetry(store)
+		if !t.Disclosed {
+			// Best-effort. See WriteNotice / MintAndPersist docs
+			// for the failure-policy rationale.
+			_ = WriteNotice(noticeOut)
+			t.Disclosed = true
+			WriteTelemetry(store, t)
+			_ = store.Save()
+		}
 	}
 	return id, nil
 }

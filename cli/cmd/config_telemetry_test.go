@@ -216,6 +216,36 @@ func TestConfigTelemetryOn_FreshMintsAndNotifies(t *testing.T) {
 	}
 }
 
+func TestConfigTelemetryOn_QuietSuppressesNoticeAndStdout(t *testing.T) {
+	// --quiet is the flag editor extensions use after their own
+	// disclosure UI: mint + enable + record disclosed=true, no
+	// stderr notice, no stdout "Telemetry enabled." line. A future
+	// `gaffer dev` from the same install must also stay silent
+	// because EnsureIdentity sees disclosed=true.
+	setupTelemetryCmdTest(t)
+
+	stdout, stderr, err := runCmd(t, "config", "telemetry", "on", "--quiet")
+	if err != nil {
+		t.Fatalf("on --quiet: %v", err)
+	}
+	if stdout != "" {
+		t.Errorf("--quiet wrote to stdout: %q", stdout)
+	}
+	if stderr != "" {
+		t.Errorf("--quiet wrote to stderr: %q", stderr)
+	}
+
+	dir, _ := userconfig.DefaultDir()
+	store, _ := userconfig.Load(dir)
+	got, _ := telemetry.LoadTelemetry(store)
+	if got.Enabled == nil || !*got.Enabled {
+		t.Errorf("Enabled = %v, want &true", got.Enabled)
+	}
+	if !got.Disclosed {
+		t.Error("Disclosed = false, want true (--quiet asserts disclosure was shown)")
+	}
+}
+
 func TestConfigTelemetryOn_EnvOptOutBlocks(t *testing.T) {
 	setupTelemetryCmdTest(t)
 	t.Setenv("DO_NOT_TRACK", "1")

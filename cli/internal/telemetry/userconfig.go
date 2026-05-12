@@ -12,15 +12,24 @@ import (
 // userconfig.Store. *Enabled has three states - nil (no explicit choice
 // yet), true (opted in), false (opted out) - matching the three-layer
 // status output planned for `gaffer config telemetry status`.
+//
+// Disclosed records whether a user-facing disclosure has been shown
+// (either by gaffer's first-mint stderr notice, or by an upstream
+// surface like the VS Code extension that ran its own disclosure flow
+// and then called `gaffer config telemetry on --quiet`). Notice
+// suppression keys on this flag, not on the --invoker-id spawn-link
+// flag - so an unsupervised wrapper can't silence disclosure just by
+// passing a fake invoker id.
 type TelemetrySection struct {
-	Enabled *bool
-	ID      string
-	Salt    string
+	Enabled   *bool
+	ID        string
+	Salt      string
+	Disclosed bool
 }
 
 // IsZero reports whether the section carries no information.
 func (t TelemetrySection) IsZero() bool {
-	return t.Enabled == nil && t.ID == "" && t.Salt == ""
+	return t.Enabled == nil && t.ID == "" && t.Salt == "" && !t.Disclosed
 }
 
 // Status summarises the section for debug logging and the `gaffer
@@ -99,6 +108,14 @@ func LoadTelemetry(s *userconfig.Store) (TelemetrySection, error) {
 			errs = append(errs, fmt.Errorf("[telemetry] salt must be a string, got %T", raw))
 		}
 	}
+	if raw, ok := section["disclosed"]; ok {
+		b, isBool := raw.(bool)
+		if isBool {
+			t.Disclosed = b
+		} else {
+			errs = append(errs, fmt.Errorf("[telemetry] disclosed must be a boolean, got %T (%v)", raw, raw))
+		}
+	}
 	return t, errors.Join(errs...)
 }
 
@@ -119,6 +136,9 @@ func WriteTelemetry(s *userconfig.Store, t TelemetrySection) {
 	}
 	if t.Salt != "" {
 		section["salt"] = t.Salt
+	}
+	if t.Disclosed {
+		section["disclosed"] = true
 	}
 	s.SetSection("telemetry", section)
 }

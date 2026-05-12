@@ -192,7 +192,13 @@ func TestStartupGate_SameRootProducesSameID(t *testing.T) {
 	}
 }
 
-func TestStartupGate_InvokerIDSuppressesFirstMintNotice(t *testing.T) {
+func TestStartupGate_InvokerIDAloneDoesNotSuppressNotice(t *testing.T) {
+	// Privacy posture: an arbitrary spawner that passes --invoker-id
+	// without having shown its own disclosure must NOT silence the
+	// stderr notice on first mint. The suppress signal is the
+	// persisted [telemetry] disclosed flag, set either by gaffer's
+	// own notice or by an explicit `gaffer config telemetry on
+	// --quiet` from a surface that ran its own disclosure UI.
 	store, cwd, home := startupTest(t)
 
 	var notice bytes.Buffer
@@ -201,11 +207,30 @@ func TestStartupGate_InvokerIDSuppressesFirstMintNotice(t *testing.T) {
 	if c == nil {
 		t.Fatal("StartupGate returned nil despite mint succeeding")
 	}
-	if notice.Len() != 0 {
-		t.Errorf("notice written despite --invoker-id; got: %q", notice.String())
+	if notice.Len() == 0 {
+		t.Error("notice not written despite --invoker-id; first-mint privacy regression")
 	}
 	if c.invocation.InvokerID != inv.InvokerID {
 		t.Errorf("Client.invocation.InvokerID = %q, want %q", c.invocation.InvokerID, inv.InvokerID)
+	}
+}
+
+func TestStartupGate_PreSetDisclosedFlagSuppressesNotice(t *testing.T) {
+	// Companion to the above: when the upstream surface DID set
+	// disclosed=true (the `--quiet` flow), notice is suppressed.
+	store, cwd, home := startupTest(t)
+	WriteTelemetry(store, TelemetrySection{Disclosed: true})
+	if err := store.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	var notice bytes.Buffer
+	c := StartupGate(store, cwd, home, "", &notice, Invocation{})
+	if c == nil {
+		t.Fatal("StartupGate returned nil despite mint succeeding")
+	}
+	if notice.Len() != 0 {
+		t.Errorf("notice written despite pre-set disclosed=true: %q", notice.String())
 	}
 }
 

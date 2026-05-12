@@ -314,3 +314,27 @@ func TestOneShotDefer_NonNilErrorClassifies(t *testing.T) {
 		t.Errorf("outcome = %q, want manifest_not_found", seen)
 	}
 }
+
+func TestOneShotDefer_PanicBeatsNonNilError(t *testing.T) {
+	// Precedence rule: a recovered panic wins over any non-nil
+	// retErr - the panic is the bigger signal and would have left
+	// retErr stale anyway. Without this, a future refactor that
+	// swaps the if/else ordering would silently misclassify
+	// recovered panics as user_error.
+	var seen telemetry.Outcome
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic to propagate")
+		}
+		if seen != telemetry.OutcomeInternalError {
+			t.Errorf("outcome = %q, want internal_error (panic > retErr)", seen)
+		}
+	}()
+
+	func() {
+		retErr := project.ErrNotInProject
+		defer oneShotDefer(&retErr, func(o telemetry.Outcome) { seen = o })
+		panic("boom")
+	}()
+}

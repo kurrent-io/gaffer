@@ -12,8 +12,8 @@ import (
 
 // testIdentity is a fixed deterministic identity injected into Clients
 // built by cmd-package integration tests. Cobra tests don't go through
-// StartupGate, so they need WithIdentity (re-exported in commit 8 for
-// exactly this case) to stamp envelopes without minting.
+// StartupGate, so they use telemetry.WithIdentity to stamp envelopes
+// without minting.
 var testIdentity = telemetry.Identity{
 	TelemetryID: "11111111-1111-1111-1111-111111111111",
 	Salt:        "22222222-2222-2222-2222-222222222222",

@@ -37,9 +37,10 @@ func EmitProjectionShape(ctx context.Context, projectionPath string, info gaffer
 	// info.Shape == nil means the FFI didn't populate it - either
 	// the caller passed includeShape:false (one-shot / non-telemetry
 	// path) or telemetry was off at session-creation time. Distinct
-	// from the "parse failed" signal, which arrives as Shape{Parsable:
-	// false, ...} (the 10a-i sentinel). Both routes short-circuit
-	// here because there's nothing to emit either way.
+	// from the "parse failed" signal, which arrives as
+	// Shape{Parsable: false, ...} (the UnparsableShape sentinel in
+	// DiagnosticCollector). Both routes short-circuit here because
+	// there's nothing to emit either way.
 	if c == nil || info.Shape == nil {
 		return
 	}

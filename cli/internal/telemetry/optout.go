@@ -38,7 +38,7 @@ const (
 )
 
 // String renders the state as a status-line word ("unset" / "enabled" /
-// "disabled"). Used by `gaffer config telemetry status` (commit 6).
+// "disabled"). Used by `gaffer config telemetry status`.
 func (s LayerState) String() string {
 	switch s {
 	case LayerEnabled:

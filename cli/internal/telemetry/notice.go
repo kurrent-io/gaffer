@@ -63,8 +63,9 @@ func WriteNotice(w io.Writer) error {
 //   - (id, nil) - usable identity loaded cleanly.
 //   - (id, err) - usable identity loaded but the [telemetry] section
 //     had a partial parse error (e.g. malformed enabled key).
-//     Callers that just want to emit can ignore err; status display
-//     (commit 6) should surface it so the user can fix the file.
+//     Callers that just want to emit can ignore err; the
+//     `gaffer config telemetry status` path surfaces it so the user
+//     can fix the file.
 //   - (Identity{}, err) - load failed structurally. No usable
 //     identity; caller decides what to do.
 //

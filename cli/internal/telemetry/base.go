@@ -20,8 +20,8 @@ const maxStackFrames = 64
 //
 // Returns (nil, nil) when r is nil. When r is non-nil, returns
 // (r, structuredFrames) - frames are stdlib runtime.Frame so callers can
-// scrub paths / function names / decide in_app independently. The
-// exception-emit consumer (commit 11) maps these to the wire Frame type.
+// scrub paths / function names / decide in_app independently.
+// EmitException maps these to the wire Frame type via scrubFrames.
 //
 // Frames are captured before any re-panic so the snapshot doesn't get
 // polluted by frames added by the deferred caller.

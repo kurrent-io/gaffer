@@ -33,9 +33,9 @@ type Client struct {
 	closed bool
 	wg     sync.WaitGroup
 
-	// errLog receives in-flight transport / sink errors. Defaults to a
-	// no-op; tests and the GAFFER_TELEMETRY_DEBUG=1 path (commit 4)
-	// inject their own.
+	// errLog receives in-flight transport / sink errors. Defaults to
+	// a no-op; tests and the GAFFER_TELEMETRY_DEBUG=1 debug-tee
+	// path inject their own.
 	errLog func(error)
 
 	// httpSink construction inputs; only used when the caller did not
@@ -110,8 +110,8 @@ func WithPerSendTimeout(d time.Duration) Option {
 
 // WithErrorLogger overrides the no-op default destination for in-flight
 // transport / sink errors. The CLI never surfaces telemetry failures to
-// the user by default; this is for tests and for GAFFER_TELEMETRY_DEBUG=1
-// transparency mode (commit 4).
+// the user by default; this is for tests and for the
+// GAFFER_TELEMETRY_DEBUG=1 transparency-tee path.
 func WithErrorLogger(f func(error)) Option {
 	return func(c *Client) { c.errLog = f }
 }

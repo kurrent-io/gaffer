@@ -13,8 +13,7 @@ namespace Gaffer.Runtime.Projection;
 /// New rules plug in by adding to <see cref="Rules"/>.
 /// </summary>
 internal static class DiagnosticCollector {
-	// Add new rules here. Each owns its own AST walk; UI-1543 (telemetry-
-	// shaped rules) plug in alongside.
+	// Add new rules here. Each owns its own AST walk.
 	private static readonly IRule[] Rules = new IRule[] {
 		new LinkStreamToDeprecationRule(),
 		new LinkStreamToOutOfBoundsParametersRule(),

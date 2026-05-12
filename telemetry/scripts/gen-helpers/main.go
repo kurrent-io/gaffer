@@ -1096,7 +1096,8 @@ func emitEnd(w io.Writer, cmd commandSpec) {
 
 // emitEmitFile generates emit.gen.go: EmitX helpers for every one-shot
 // command. Each helper takes the gen'd XCommandInvokedProperties value
-// (commit 8's flat shape), stamps emit-side base fields, dispatches.
+// (the flat shape per emitCommandVariant), stamps emit-side base
+// fields, dispatches.
 func emitEmitFile(w io.Writer) error {
 	mustWrite(w, emitFileHeader)
 	for _, cmd := range commands {

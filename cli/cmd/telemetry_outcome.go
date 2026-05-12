@@ -82,6 +82,32 @@ func outcomeFor(err error) telemetry.Outcome {
 	return telemetry.OutcomeUserError
 }
 
+// classifyMCPOutcome picks the command_invoked outcome for `gaffer
+// mcp`. Falls through classifyOutcome's structural / projection
+// ladder first; only if no signal matched and runErr is non-nil
+// does it map to mcp_protocol_error. Previously the wrapper
+// unconditionally stamped mcp_protocol_error on any non-nil runErr,
+// which mis-classified manifest / db errors that surfaced through
+// the MCP server's startup path as protocol failures.
+func classifyMCPOutcome(runErr error, tracker *projErrTracker) telemetry.Outcome {
+	if out, ok := classifyOutcome(outcomeInputs{err: runErr, tracker: tracker}); ok {
+		return out
+	}
+	return telemetry.OutcomeMCPProtocolError
+}
+
+// classifyLSPOutcome is the LSP-side equivalent of classifyMCPOutcome:
+// route runErr through classifyOutcome (so manifest / db / user_interrupt
+// classify correctly), fall back to lsp_protocol_error only when no
+// signal matched. LSP has no projection-error tracker - the LSP server
+// doesn't run projections.
+func classifyLSPOutcome(runErr error) telemetry.Outcome {
+	if out, ok := classifyOutcome(outcomeInputs{err: runErr}); ok {
+		return out
+	}
+	return telemetry.OutcomeLSPProtocolError
+}
+
 // oneShotDefer is the panic-safe wrapper around the deferred emit on
 // every one-shot cobra command (version / init / scaffold / info /
 // manifest). Three jobs:

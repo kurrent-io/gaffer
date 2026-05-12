@@ -238,9 +238,17 @@ func (s *Store) Save() error {
 		if err != nil {
 			return fmt.Errorf("create %s: %w", s.path, err)
 		}
+		// Any failure from here on leaves a partial or unflushed file
+		// behind; the deferred cleanup removes it so a retry re-enters
+		// the first-write path (existedAtLoad stays false).
+		ok := false
+		defer func() {
+			if !ok {
+				_ = os.Remove(s.path)
+			}
+		}()
 		if _, writeErr := f.Write(buf.Bytes()); writeErr != nil {
 			_ = f.Close()
-			_ = os.Remove(s.path)
 			return fmt.Errorf("write %s: %w", s.path, writeErr)
 		}
 		if syncErr := f.Sync(); syncErr != nil {
@@ -253,6 +261,7 @@ func (s *Store) Save() error {
 		if err := fsyncDir(s.dir); err != nil {
 			return fmt.Errorf("fsync dir %s: %w", s.dir, err)
 		}
+		ok = true
 		s.existedAtLoad = true // subsequent Saves use the rename path
 		return nil
 	}

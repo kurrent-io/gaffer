@@ -48,6 +48,69 @@ func TestDevTx_EndMustBeDirectDeferShape(t *testing.T) {
 	}
 }
 
+// The remaining three long-running Tx variants share the same
+// generated End body and therefore the same direct-defer
+// requirement. These tests mirror TestDevTx_EndMustBeDirectDeferShape
+// so a future regen that drifts any one variant's recover-frame
+// shape fails CI rather than silently breaking the paired-events
+// invariant for that command.
+func TestMCPTx_EndMustBeDirectDeferShape(t *testing.T) {
+	ctx, c, mock := emitTestSetup(t)
+	defer func() { _ = recover() }()
+	func() {
+		tx := BeginMCP(ctx)
+		defer tx.End(ctx)
+		panic("force-panic")
+	}()
+	_ = c.Flush(timeoutCtx(t, time.Second))
+	envs := mock.Envelopes()
+	if len(envs) != 1 {
+		t.Fatalf("envelopes = %d, want 1", len(envs))
+	}
+	props := envs[0].Events[0].(CommandInvoked).Properties.(MCPCommandInvokedProperties)
+	if props.Outcome != OutcomeInternalError {
+		t.Errorf("direct-defer shape: Outcome = %q, want internal_error", props.Outcome)
+	}
+}
+
+func TestLSPTx_EndMustBeDirectDeferShape(t *testing.T) {
+	ctx, c, mock := emitTestSetup(t)
+	defer func() { _ = recover() }()
+	func() {
+		tx := BeginLSP(ctx)
+		defer tx.End(ctx)
+		panic("force-panic")
+	}()
+	_ = c.Flush(timeoutCtx(t, time.Second))
+	envs := mock.Envelopes()
+	if len(envs) != 1 {
+		t.Fatalf("envelopes = %d, want 1", len(envs))
+	}
+	props := envs[0].Events[0].(CommandInvoked).Properties.(LSPCommandInvokedProperties)
+	if props.Outcome != OutcomeInternalError {
+		t.Errorf("direct-defer shape: Outcome = %q, want internal_error", props.Outcome)
+	}
+}
+
+func TestDebugTx_EndMustBeDirectDeferShape(t *testing.T) {
+	ctx, c, mock := emitTestSetup(t)
+	defer func() { _ = recover() }()
+	func() {
+		tx := BeginDebug(ctx)
+		defer tx.End(ctx)
+		panic("force-panic")
+	}()
+	_ = c.Flush(timeoutCtx(t, time.Second))
+	envs := mock.Envelopes()
+	if len(envs) != 1 {
+		t.Fatalf("envelopes = %d, want 1", len(envs))
+	}
+	props := envs[0].Events[0].(CommandInvoked).Properties.(DebugCommandInvokedProperties)
+	if props.Outcome != OutcomeInternalError {
+		t.Errorf("direct-defer shape: Outcome = %q, want internal_error", props.Outcome)
+	}
+}
+
 func TestDevTx_EndRePanicsRecoveredValue(t *testing.T) {
 	defer func() {
 		r := recover()

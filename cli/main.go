@@ -26,21 +26,67 @@ import (
 const flushTimeout = 5 * time.Second
 
 func main() {
+	os.Exit(runMain())
+}
+
+// runMain owns the process lifecycle so the deferred Flush
+// always runs - os.Exit (called from main on a non-zero return)
+// would otherwise skip defers. Returns the exit code; panics
+// re-propagate through the outermost defer so users see Go's
+// default panic stack-trace + non-zero exit.
+func runMain() (exitCode int) {
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	client := buildClient(os.Stderr)
 	ctx := telemetry.WithClient(rootCtx, client)
 
-	err := cmd.Execute(ctx)
+	// Three-defer panic-recover chain. Registered first to last
+	// so they fire LAST to FIRST on a panic:
+	//
+	//   1. recover-and-emit: catches the cmd.Execute panic,
+	//      stashes it for re-panic, fires the exception
+	//      envelope. Pairs with each long-running cmd's inner
+	//      `defer tx.End(ctx)` which already emitted the
+	//      matching command_invoked with outcome=internal_error.
+	//   2. flush: drains both envelopes (command_invoked +
+	//      exception) before the panic propagates further.
+	//   3. re-panic: re-raises the stashed panic value so the
+	//      Go runtime prints the original stack and exits
+	//      non-zero. Without this re-raise the panic vanishes
+	//      and the user gets no crash output.
+	//
+	// On the happy path: emit-defer sees recover()=nil (no-op),
+	// flush-defer drains in-flight emits, re-panic-defer sees no
+	// stashed value (no-op), runMain returns the exit code.
+	var recoveredPanic any
+	defer func() {
+		if recoveredPanic != nil {
+			panic(recoveredPanic)
+		}
+	}()
+	defer func() {
+		flushCtx, cancel := context.WithTimeout(context.Background(), flushTimeout)
+		_ = client.Flush(flushCtx)
+		cancel()
+	}()
+	defer func() {
+		if r := recover(); r != nil {
+			// Phase: every Go-side panic-recover from inside
+			// cmd.Execute classifies as event_processing. The
+			// schema's other phases (startup / projection_init
+			// / shutdown) are projection-runtime concerns that
+			// surface via the .NET runtime's own exception path,
+			// not Go panics caught here.
+			telemetry.EmitException(ctx, r, telemetry.ExceptionPhaseEventProcessing)
+			recoveredPanic = r
+		}
+	}()
 
-	flushCtx, cancel := context.WithTimeout(context.Background(), flushTimeout)
-	_ = client.Flush(flushCtx)
-	cancel()
-
-	if err != nil {
-		os.Exit(1)
+	if err := cmd.Execute(ctx); err != nil {
+		return 1
 	}
+	return 0
 }
 
 // buildClient resolves opt-out and identity from the user's config

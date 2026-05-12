@@ -45,6 +45,17 @@ export function translateEnvelope(envelope: Envelope, sessionId: string, workerD
 			...translateEventProperties(event),
 		};
 
+		// Salted project_id is forwarded as a regular event property so
+		// dashboards can split by project. Absent when the producer
+		// wasn't running inside a gaffer project (e.g. `gaffer version`
+		// outside any project). invoker_id deliberately stays in the
+		// envelope context and never lands on event properties; merging
+		// logic upstream uses it via $merge_dangerously, but per-event
+		// queries shouldn't carry an extension identifier.
+		if (context.project_id !== undefined) {
+			props.project_id = context.project_id;
+		}
+
 		// Lift identity properties onto the first event only; PostHog applies
 		// $set / $set_once to the person record, not the event.
 		if (i === 0) {

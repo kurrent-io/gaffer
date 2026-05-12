@@ -232,6 +232,52 @@ describe("translateEnvelope", () => {
 		expect(props.builtin_counts).toBeUndefined();
 	});
 
+	it("forwards project_id as a per-event property when present", () => {
+		const env: Envelope = {
+			...baseEnvelope,
+			context: {
+				...baseContext,
+				project_id: "cd3c08fa1f4183d7",
+			},
+			events: [
+				{
+					name: "command_invoked",
+					timestamp: "2026-05-08T12:00:00.000Z",
+					properties: {
+						command: "dev",
+						duration_ms: 10,
+						outcome: "success",
+						invoked_by: "direct",
+						invoked_via: "terminal",
+					},
+				},
+			],
+		};
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.project_id).toBe("cd3c08fa1f4183d7");
+	});
+
+	it("omits project_id when the producer wasn't in a project", () => {
+		const env: Envelope = {
+			...baseEnvelope,
+			events: [
+				{
+					name: "command_invoked",
+					timestamp: "2026-05-08T12:00:00.000Z",
+					properties: {
+						command: "version",
+						duration_ms: 10,
+						outcome: "success",
+						invoked_by: "direct",
+						invoked_via: "terminal",
+					},
+				},
+			],
+		};
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.project_id).toBeUndefined();
+	});
+
 	it("never forwards invoker_id even when present", () => {
 		const env: Envelope = {
 			...baseEnvelope,

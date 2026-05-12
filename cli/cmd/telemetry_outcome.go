@@ -126,10 +126,18 @@ func projectionOutcomeFor(err error) (telemetry.ProjectionOutcome, bool) {
 }
 
 // projErrTracker records the distinct projection_* outcomes a
-// dev / debug session has seen. Backed by a map for dedupe and
-// drained as a sorted slice at End time. Single-goroutine-owned -
-// the cobra wrapper owns the Tx and the tracker; the inner runner
-// invokes Record synchronously via source.Run on the same goroutine.
+// dev / debug / mcp session has seen. Backed by a map for dedupe and
+// drained as a sorted slice at End time. Single-goroutine at Record
+// time:
+//
+//   - dev / debug: the inner runner invokes Record synchronously via
+//     source.Run on the cobra wrapper's goroutine.
+//   - mcp: tool-call goroutines append to mcpserver.Server's
+//     mutex-guarded slice; the cobra wrapper drains that slice in a
+//     for-loop and feeds each entry to Record on the wrapper's
+//     goroutine.
+//
+// Either way the tracker itself sees one goroutine, no locking.
 type projErrTracker struct {
 	seen map[telemetry.ProjectionOutcome]struct{}
 }

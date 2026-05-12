@@ -71,8 +71,13 @@ func newMCPCmd() *cobra.Command {
 // manifest / db errors that surfaced through the MCP server's startup
 // path as protocol failures.
 func classifyMCPOutcome(runErr error, tracker *projErrTracker) telemetry.Outcome {
-	if out := classifyOutcome(outcomeInputs{err: runErr, tracker: tracker}); out != telemetry.OutcomeUserError || runErr == nil {
-		return out
+	out := classifyOutcome(outcomeInputs{err: runErr, tracker: tracker})
+	// Unclassified-but-non-nil: classifyOutcome falls back to
+	// user_error, which is the wrong bucket for an MCP session that
+	// died on framing rather than user input. Promote to
+	// mcp_protocol_error.
+	if runErr != nil && out == telemetry.OutcomeUserError {
+		return telemetry.OutcomeMCPProtocolError
 	}
-	return telemetry.OutcomeMCPProtocolError
+	return out
 }

@@ -15,10 +15,14 @@ type LiveSourceConfig struct {
 	EngineVersion int
 	OnCaughtUp    func() // called when subscription reaches head of stream, nil = ignore, must not block
 	OnFellBehind  func() // called when subscription falls back behind the live tail. nil = ignore, must not block
-	// OnConnected fires once, right after Connect succeeds, with
-	// the server's reported major.minor version (or "unknown" when
-	// the probe fails). Used by the dev wrapper to stamp db_version
-	// on telemetry. Must not block. nil = ignore.
+	// OnConnected fires once, right after Connect returns
+	// successfully, with the server's reported major.minor version
+	// (or "unknown" when the probe fails). Fires BEFORE
+	// subscription.Subscribe, so a Subscribe failure leaves the
+	// callback already invoked - the dev wrapper treats that as
+	// connected_to_db=true with db_version set, plus a
+	// db_disconnect outcome. Used by the dev wrapper to stamp
+	// db_version on telemetry. Must not block. nil = ignore.
 	OnConnected func(dbVersion string)
 }
 

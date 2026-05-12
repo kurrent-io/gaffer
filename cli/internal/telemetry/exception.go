@@ -142,24 +142,10 @@ func scrubFrames(frames []runtime.Frame) []Frame {
 	for _, f := range frames {
 		out = append(out, Frame{
 			Filename: filepath.Base(f.File),
-			Function: optionalString(f.Function),
-			Lineno:   optionalInt(f.Line),
+			Function: optStrPtr(f.Function),
+			Lineno:   optIntPtr(f.Line),
 			InApp:    strings.HasPrefix(f.Function, gafferModulePrefix),
 		})
 	}
 	return out
-}
-
-func optionalString(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}
-
-func optionalInt(n int) *int {
-	if n == 0 {
-		return nil
-	}
-	return &n
 }

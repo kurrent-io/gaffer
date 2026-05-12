@@ -86,15 +86,25 @@ func emitterFor(name CommandName) Emitter {
 	return EmitterCLI
 }
 
-// optStrPtr returns &s when s is non-empty, nil otherwise. Used to
-// drive the schema's "absent if empty" convention on optional Context
-// fields (InvokerID, ProjectID) without repeating the same local-copy
-// dance at every site.
+// optStrPtr returns &s when s is non-empty, nil otherwise. Drives the
+// schema's "absent if empty" convention on optional string fields
+// (Context.InvokerID, Context.ProjectID, Frame.Function, ...) without
+// repeating the same local-copy dance at every site.
 func optStrPtr(s string) *string {
 	if s == "" {
 		return nil
 	}
 	return &s
+}
+
+// optIntPtr returns &n when n is non-zero, nil otherwise. Same shape
+// as optStrPtr for optional numeric fields (Frame.Lineno when the
+// line number isn't known).
+func optIntPtr(n int) *int {
+	if n == 0 {
+		return nil
+	}
+	return &n
 }
 
 // mapGoOS translates a runtime.GOOS string to the schema's OS enum.

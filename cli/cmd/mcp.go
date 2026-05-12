@@ -20,7 +20,10 @@ func newMCPCmd() *cobra.Command {
 
 			srv, err := mcpserver.NewFromProjectRoot()
 			if err != nil {
-				tx.SetOutcome(telemetry.OutcomeUserError)
+				// Classify the project-load failure (no project /
+				// parse / validation) so the outcome is specific
+				// rather than a generic user_error.
+				tx.SetOutcome(outcomeFor(err))
 				return err
 			}
 

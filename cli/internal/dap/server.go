@@ -30,6 +30,17 @@ type Stats struct {
 	StepCount       int
 	PauseCount      int
 	RestartCount    int
+	// ProtocolError is the non-EOF error from the read loop, or nil
+	// if the editor disconnected cleanly. Stats() copies it from the
+	// Server's stored value (set once by Serve on return); the cobra
+	// wrapper maps non-nil to outcome=dap_protocol_error.
+	//
+	// Sitting alongside the counters here rather than a separate
+	// accessor: the cobra wrapper drains everything at the same End
+	// time and threading two values out (Stats + ProtocolError) via
+	// independent out-params bloats the runDev signature more than
+	// this field's "errors aren't stats" smell costs.
+	ProtocolError error
 }
 
 // serverStats holds the in-flight counters bumped by the dispatch
@@ -68,17 +79,31 @@ type Server struct {
 	columnsStartAt1 bool
 
 	stats serverStats
+
+	// protocolErr captures the non-EOF error from readLoop. Set once
+	// by Serve, read by ProtocolError() at telemetry End time so the
+	// cobra wrapper can distinguish "editor disconnected normally"
+	// (EOF -> nil) from "protocol-level read or decode failure"
+	// (which maps to outcome=dap_protocol_error). atomic.Value lets
+	// the End-time read happen after Serve returned without an
+	// explicit happens-before from the writer.
+	protocolErr atomic.Value // holds error
 }
 
 // Stats returns the current counter snapshot. Safe to call from
 // any goroutine; the cobra RunE for `gaffer dev --debug` reads
 // this at tx.End() time after Serve has returned.
 func (s *Server) Stats() Stats {
+	var protoErr error
+	if v := s.protocolErr.Load(); v != nil {
+		protoErr = v.(error)
+	}
 	return Stats{
 		BreakpointCount: int(s.stats.breakpoints.Load()),
 		StepCount:       int(s.stats.steps.Load()),
 		PauseCount:      int(s.stats.pauses.Load()),
 		RestartCount:    int(s.stats.restarts.Load()),
+		ProtocolError:   protoErr,
 	}
 }
 
@@ -148,6 +173,9 @@ func (s *Server) Serve() error {
 	go s.writeLoop(conn)
 
 	err = s.readLoop(reader)
+	if err != nil {
+		s.protocolErr.Store(err)
+	}
 
 	// Mark closed before closing the channel so any racing Send sees
 	// !sendOpen and bails before attempting a panicking send.

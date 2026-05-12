@@ -61,33 +61,30 @@ export type BucketCount = 0 | 1 | 2 | 10 | 100 | 1000;
  * recovered carry the recovered outcome (typically `user_interrupt`) here,
  * with the transient errors captured in `projection_errors_seen` for the
  * commands that have it.
+ *
+ * "Designed completion" paths (clean exit, --until-caught-up reaching
+ * head, fixture file fully consumed) collapse to `success` - the user
+ * wasn't surprised, nothing went wrong, distinguishing them adds
+ * wire-shape without adding signal. Ctrl+C / SIGTERM stays distinct
+ * as `user_interrupt` because on one-shot commands it signals
+ * abandonment (user gave up mid-init/scaffold/etc.); on long-running
+ * commands it's the normal end-of-session marker and reads the same.
  */
 export type Outcome =
   | "success"
   | "user_interrupt"
   | "user_error"
-  | "caught_up"
   | "internal_error"
   | "manifest_not_found"
   | "manifest_parse_error"
   | "manifest_validation_error"
   | "db_connect_error"
   | "db_disconnect"
-  | "db_protocol_error"
   | "dap_protocol_error"
   | "lsp_protocol_error"
   | "mcp_protocol_error"
-  | "fixture_exhausted"
   | "projection_user_throw"
-  | "projection_reference_error"
-  | "projection_type_error"
-  | "projection_parse_error"
-  | "projection_syntax_error"
-  | "projection_range_error"
-  | "projection_uri_error"
-  | "projection_eval_error"
-  | "projection_oom"
-  | "projection_stack_overflow"
+  | "projection_compile_error"
   | "projection_unknown_error";
 /**
  * InvokedBy is who triggered a CLI run.
@@ -175,19 +172,16 @@ export type DevCommandInvokedProperties = CommandInvokedBaseProperties & {
 /**
  * The subset of #Outcome values that come from user-projection failure. Used
  * both as final outcomes and as transient values in `projection_errors_seen`.
+ *
+ * Coarse on purpose: this is product analytics on "where do users hit
+ * friction writing projections", not gaffer-side error tracking. JS
+ * error type granularity (TypeError, ReferenceError, ...) belongs in
+ * PostHog's Issues UI for errors *we* own; user code errors live as
+ * outcome buckets here. Three buckets answer the analytic question
+ * (compile vs runtime vs unknown) without the cost of a wider enum
+ * we'd need runtime support to populate.
  */
-export type ProjectionOutcome =
-  | "projection_user_throw"
-  | "projection_reference_error"
-  | "projection_type_error"
-  | "projection_parse_error"
-  | "projection_syntax_error"
-  | "projection_range_error"
-  | "projection_uri_error"
-  | "projection_eval_error"
-  | "projection_oom"
-  | "projection_stack_overflow"
-  | "projection_unknown_error";
+export type ProjectionOutcome = "projection_user_throw" | "projection_compile_error" | "projection_unknown_error";
 /**
  * `gaffer mcp` - long-running Model Context Protocol server.
  */

@@ -99,15 +99,17 @@ func runDevWithDevTx(cmd *cobra.Command, name string, opts *devOpts) error {
 
 	tx.SetConnectedToDB(opts.Connection != "")
 
-	proj, err := runDev(cmd, name, opts, nil)
+	tracker := newProjErrTracker()
+	proj, err := runDev(cmd, name, opts, nil, tracker.Record)
 	if proj != nil && proj.Config != nil {
 		tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(proj.Config))
 		tx.SetProjectionCount(proj.Config.ProjectionCount())
 		tx.SetFixtureCount(proj.Config.FixtureCount())
 	}
-	if err != nil {
-		tx.SetOutcome(telemetry.OutcomeUserError)
+	if seen := tracker.Sorted(); len(seen) > 0 {
+		tx.SetProjectionErrorsSeen(seen)
 	}
+	tx.SetOutcome(classifyOutcome(outcomeInputs{err: err, tracker: tracker}))
 	return err
 }
 
@@ -124,16 +126,22 @@ func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
 	defer tx.End(cmd.Context())
 
 	var dapStats dapserver.Stats
-	_, err := runDev(cmd, name, opts, &dapStats)
+	tracker := newProjErrTracker()
+	_, err := runDev(cmd, name, opts, &dapStats, tracker.Record)
 
 	tx.SetBreakpointCount(dapStats.BreakpointCount)
 	tx.SetStepCount(dapStats.StepCount)
 	tx.SetPauseCount(dapStats.PauseCount)
 	tx.SetRestartCount(dapStats.RestartCount)
 
-	if err != nil {
-		tx.SetOutcome(telemetry.OutcomeUserError)
+	if seen := tracker.Sorted(); len(seen) > 0 {
+		tx.SetProjectionErrorsSeen(seen)
 	}
+	tx.SetOutcome(classifyOutcome(outcomeInputs{
+		err:            err,
+		tracker:        tracker,
+		dapProtocolErr: dapStats.ProtocolError,
+	}))
 	return err
 }
 
@@ -141,7 +149,12 @@ func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
 // to runDevSingle or runDevDebug. Returns the loaded *engine.Projection
 // alongside the error so the cobra wrappers can drain telemetry
 // properties off it; nil when LoadProjection failed.
-func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.Stats) (*engine.Projection, error) {
+//
+// onProjectionError, if non-nil, is invoked with the FFI error
+// whenever a projection iteration faults. The dev / debug wrappers
+// use this to accumulate projection_errors_seen across restarts; a
+// nil callback disables tracking.
+func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.Stats, onProjectionError func(error)) (*engine.Projection, error) {
 	if opts.StartPausedIfNoBreakpoints && !opts.Debug {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: --start-paused-if-no-breakpoints requires --debug; ignoring")
 	}
@@ -191,9 +204,9 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.
 	defer stop()
 
 	if opts.Debug {
-		return proj, runDevDebug(ctx, stop, proj, sourcePath, writer, tw, opts, dapStats)
+		return proj, runDevDebug(ctx, stop, proj, sourcePath, writer, tw, opts, dapStats, onProjectionError)
 	}
-	return proj, runDevSingle(ctx, stop, proj, sourcePath, writer, tw, opts)
+	return proj, runDevSingle(ctx, stop, proj, sourcePath, writer, tw, opts, onProjectionError)
 }
 
 // runDevSingle handles the non-debug path: one engine.Session, one
@@ -206,6 +219,7 @@ func runDevSingle(
 	writer outputWriter,
 	tw *textWriter,
 	opts *devOpts,
+	onProjectionError func(error),
 ) error {
 	// includeShape: walk the AST for projection_shape telemetry
 	// only when the Client is on ctx (i.e. telemetry isn't opted
@@ -251,6 +265,7 @@ func runDevSingle(
 		if lastErr := r.LastError(); lastErr != nil {
 			writer.WriteFatalError(toFatalError(lastErr, sourcePath))
 		}
+		recordProjectionFault(r, onProjectionError)
 		return silent(fmt.Errorf("projection faulted"))
 	}
 	return nil
@@ -270,6 +285,7 @@ func runDevDebug(
 	tw *textWriter,
 	opts *devOpts,
 	dapStats *dapserver.Stats,
+	onProjectionError func(error),
 ) error {
 	store, err := history.New()
 	if err != nil {
@@ -476,6 +492,13 @@ func runDevDebug(
 		if restartRequested && ctx.Err() == nil {
 			// Genuine restart: tear down this iteration, stand up a
 			// fresh session, ack so handleRestart sends its response.
+			//
+			// Record the outgoing iteration's projection fault (if
+			// any) BEFORE we lose the runner - without this,
+			// restart-driven sessions silently drop the fault from
+			// projection_errors_seen. The teardown-path branch below
+			// has its own r.Faulted() check; this one matches it.
+			recordProjectionFault(r, onProjectionError)
 			session.Destroy()
 			session, info, err = engine.CreateSession(proj, true, includeShape)
 			if err != nil {
@@ -511,12 +534,28 @@ func runDevDebug(
 		writer.WriteSummary(r.Stats(), summary)
 		session.Destroy()
 		if r.Faulted() {
-			if lastErr := r.LastError(); lastErr != nil {
+			lastErr := r.LastError()
+			if lastErr != nil {
 				writer.WriteFatalError(toFatalError(lastErr, sourcePath))
+				recordProjectionFault(r, onProjectionError)
 			}
 			return silent(fmt.Errorf("projection faulted"))
 		}
 		return nil
+	}
+}
+
+// recordProjectionFault forwards a runner's last error to the
+// projection-error callback if the runner faulted and the callback
+// is wired. Used at every "this iteration is done" exit point so
+// projection_errors_seen captures the fault before the runner goes
+// out of scope.
+func recordProjectionFault(r *engine.Runner, onProjectionError func(error)) {
+	if onProjectionError == nil || !r.Faulted() {
+		return
+	}
+	if lastErr := r.LastError(); lastErr != nil {
+		onProjectionError(lastErr)
 	}
 }
 

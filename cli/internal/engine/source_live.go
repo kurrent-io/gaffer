@@ -34,7 +34,12 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 
 	sub, err := subscription.Subscribe(ctx, client, l.cfg.Info, l.cfg.EngineVersion)
 	if err != nil {
-		return fmt.Errorf("subscribing: %w", err)
+		// Subscribe runs after Connect succeeded; a failure here is
+		// the connection refusing to subscribe, not an initial
+		// connect problem. Tag as disconnect so the outcome
+		// distinguishes "couldn't reach the server" from "reached
+		// but couldn't keep using it".
+		return fmt.Errorf("%w: subscribing: %s", ErrDBDisconnect, err)
 	}
 	defer func() { _ = sub.Close() }()
 
@@ -45,7 +50,7 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 			if ctx.Err() != nil {
 				return nil
 			}
-			return fmt.Errorf("subscription dropped: %w", subEvent.SubscriptionDropped.Error)
+			return fmt.Errorf("%w: %s", ErrDBDisconnect, subEvent.SubscriptionDropped.Error)
 		}
 
 		if subEvent.CaughtUp != nil {

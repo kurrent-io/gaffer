@@ -114,49 +114,30 @@ const (
 type Outcome string
 
 const (
-	OutcomeCaughtUp                 Outcome = "caught_up"
-	OutcomeDAPProtocolError         Outcome = "dap_protocol_error"
-	OutcomeDBConnectError           Outcome = "db_connect_error"
-	OutcomeDBDisconnect             Outcome = "db_disconnect"
-	OutcomeDBProtocolError          Outcome = "db_protocol_error"
-	OutcomeFixtureExhausted         Outcome = "fixture_exhausted"
-	OutcomeInternalError            Outcome = "internal_error"
-	OutcomeLSPProtocolError         Outcome = "lsp_protocol_error"
-	OutcomeManifestNotFound         Outcome = "manifest_not_found"
-	OutcomeManifestParseError       Outcome = "manifest_parse_error"
-	OutcomeManifestValidationError  Outcome = "manifest_validation_error"
-	OutcomeMCPProtocolError         Outcome = "mcp_protocol_error"
-	OutcomeProjectionEvalError      Outcome = "projection_eval_error"
-	OutcomeProjectionOom            Outcome = "projection_oom"
-	OutcomeProjectionParseError     Outcome = "projection_parse_error"
-	OutcomeProjectionRangeError     Outcome = "projection_range_error"
-	OutcomeProjectionReferenceError Outcome = "projection_reference_error"
-	OutcomeProjectionStackOverflow  Outcome = "projection_stack_overflow"
-	OutcomeProjectionSyntaxError    Outcome = "projection_syntax_error"
-	OutcomeProjectionTypeError      Outcome = "projection_type_error"
-	OutcomeProjectionUnknownError   Outcome = "projection_unknown_error"
-	OutcomeProjectionURIError       Outcome = "projection_uri_error"
-	OutcomeProjectionUserThrow      Outcome = "projection_user_throw"
-	OutcomeSuccess                  Outcome = "success"
-	OutcomeUserError                Outcome = "user_error"
-	OutcomeUserInterrupt            Outcome = "user_interrupt"
+	OutcomeDAPProtocolError        Outcome = "dap_protocol_error"
+	OutcomeDBConnectError          Outcome = "db_connect_error"
+	OutcomeDBDisconnect            Outcome = "db_disconnect"
+	OutcomeInternalError           Outcome = "internal_error"
+	OutcomeLSPProtocolError        Outcome = "lsp_protocol_error"
+	OutcomeManifestNotFound        Outcome = "manifest_not_found"
+	OutcomeManifestParseError      Outcome = "manifest_parse_error"
+	OutcomeManifestValidationError Outcome = "manifest_validation_error"
+	OutcomeMCPProtocolError        Outcome = "mcp_protocol_error"
+	OutcomeProjectionCompileError  Outcome = "projection_compile_error"
+	OutcomeProjectionUnknownError  Outcome = "projection_unknown_error"
+	OutcomeProjectionUserThrow     Outcome = "projection_user_throw"
+	OutcomeSuccess                 Outcome = "success"
+	OutcomeUserError               Outcome = "user_error"
+	OutcomeUserInterrupt           Outcome = "user_interrupt"
 )
 
 // ProjectionOutcome is a string enum mirroring the CUE definition.
 type ProjectionOutcome string
 
 const (
-	ProjectionOutcomeProjectionEvalError      ProjectionOutcome = "projection_eval_error"
-	ProjectionOutcomeProjectionOom            ProjectionOutcome = "projection_oom"
-	ProjectionOutcomeProjectionParseError     ProjectionOutcome = "projection_parse_error"
-	ProjectionOutcomeProjectionRangeError     ProjectionOutcome = "projection_range_error"
-	ProjectionOutcomeProjectionReferenceError ProjectionOutcome = "projection_reference_error"
-	ProjectionOutcomeProjectionStackOverflow  ProjectionOutcome = "projection_stack_overflow"
-	ProjectionOutcomeProjectionSyntaxError    ProjectionOutcome = "projection_syntax_error"
-	ProjectionOutcomeProjectionTypeError      ProjectionOutcome = "projection_type_error"
-	ProjectionOutcomeProjectionUnknownError   ProjectionOutcome = "projection_unknown_error"
-	ProjectionOutcomeProjectionURIError       ProjectionOutcome = "projection_uri_error"
-	ProjectionOutcomeProjectionUserThrow      ProjectionOutcome = "projection_user_throw"
+	ProjectionOutcomeProjectionCompileError ProjectionOutcome = "projection_compile_error"
+	ProjectionOutcomeProjectionUnknownError ProjectionOutcome = "projection_unknown_error"
+	ProjectionOutcomeProjectionUserThrow    ProjectionOutcome = "projection_user_throw"
 )
 
 // InvokedBy is a string enum mirroring the CUE definition.

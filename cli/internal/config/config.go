@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -11,6 +12,17 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 )
+
+// ErrManifestParse wraps TOML-level parse failures from Load / Parse.
+// Callers use errors.Is to classify the outcome for telemetry without
+// pattern-matching on formatted error strings.
+var ErrManifestParse = errors.New("parse gaffer.toml")
+
+// ErrManifestValidate wraps validation failures from Load.validate()
+// (the file parsed but semantic checks rejected it). Callers use
+// errors.Is to distinguish "broken TOML" from "TOML the schema
+// rejected".
+var ErrManifestValidate = errors.New("validate gaffer.toml")
 
 // Config represents a gaffer.toml file.
 type Config struct {
@@ -138,7 +150,7 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	if err := cfg.validate(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %s", ErrManifestValidate, err)
 	}
 	return cfg, nil
 }
@@ -151,7 +163,7 @@ func Load(path string) (*Config, error) {
 func Parse(data []byte) (*Config, error) {
 	var cfg Config
 	if err := toml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing config: %w", err)
+		return nil, fmt.Errorf("%w: %s", ErrManifestParse, err)
 	}
 	return &cfg, nil
 }

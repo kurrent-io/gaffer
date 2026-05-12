@@ -51,12 +51,11 @@
 //   - ctx.Err() != nil -> user_interrupt
 //   - fallthrough -> success
 //
-// The cobra RunE wrappers also map non-nil retErr to a coarse default
-// (user_error for dev, protocol-specific errors for mcp/lsp) as a
-// safety net for unclassified errors. Specific outcomes
-// (manifest_not_found, db_disconnect, fixture_exhausted, projection_*)
-// belong inline at the error site so the wrapper fallback only fires
-// for genuinely-unclassified failures.
+// The cobra RunE wrappers route non-nil retErr through classifyOutcome
+// (cli/cmd/telemetry_outcome.go), which maps structural sentinels
+// (project.ErrNotInProject, config.Err*, engine.Err*) and tracked
+// projection-iteration faults to specific outcomes, falling back to
+// user_error for genuinely-unclassified errors.
 //
 // # Best-effort transport
 //

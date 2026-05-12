@@ -183,15 +183,15 @@ describe("translateEnvelope", () => {
 						outcome: "user_interrupt",
 						invoked_by: "direct",
 						invoked_via: "terminal",
-						projection_errors_seen: ["projection_user_throw", "projection_type_error"],
+						projection_errors_seen: ["projection_compile_error", "projection_user_throw"],
 					},
 				},
 			],
 		};
 		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.saw_projection_compile_error).toBe(true);
 		expect(result[0]?.properties.saw_projection_user_throw).toBe(true);
-		expect(result[0]?.properties.saw_projection_type_error).toBe(true);
-		expect(result[0]?.properties.projection_errors_seen).toEqual(["projection_user_throw", "projection_type_error"]);
+		expect(result[0]?.properties.projection_errors_seen).toEqual(["projection_compile_error", "projection_user_throw"]);
 	});
 
 	it("flattens projection_shape handlers and builtin_counts", () => {

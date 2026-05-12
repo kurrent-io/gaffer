@@ -430,7 +430,7 @@ internal static unsafe class NativeExports {
 			return null;
 		}
 		try {
-			var info = ProjectionInfoMapper.ToProjectionInfo(handle.Session.Sources, handle.Session.Diagnostics);
+			var info = ProjectionInfoMapper.ToProjectionInfo(handle.Session.Sources, handle.Session.Diagnostics, handle.Session.Shape);
 			return AllocUtf8(JsonSerializer.Serialize(info, SdkJsonContext.Default.ProjectionInfo));
 		} catch (Exception ex) {
 			WriteError(errorOut, ex);
@@ -767,6 +767,7 @@ internal static unsafe class NativeExports {
 			ExecutionTimeout = TimeSpan.FromMilliseconds(
 				root.TryGetProperty("executionTimeoutMs", out var et) ? et.GetInt32() : 5000),
 			Debug = root.TryGetProperty("debug", out var d) && d.GetBoolean(),
+			IncludeShape = root.TryGetProperty("includeShape", out var inc) && inc.GetBoolean(),
 		};
 	}
 

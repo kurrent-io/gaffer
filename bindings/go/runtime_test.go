@@ -572,3 +572,64 @@ func TestFeedResultPartition(t *testing.T) {
 		t.Fatalf("expected partition 'order-42', got %q", result.Partition)
 	}
 }
+
+// TestIncludeShape_PopulatesProjectionInfoShape exercises the
+// includeShape FFI option end-to-end: caller asks for shape, the
+// runtime walker runs alongside the diagnostic pass, and the
+// returned ProjectionInfo carries the result.
+func TestIncludeShape_PopulatesProjectionInfoShape(t *testing.T) {
+	opts := `{"engineVersion":2,"includeShape":true}`
+	session, err := NewSession(`
+		fromAll().when({
+			$init: function() { return { n: 0 }; },
+			$any: function(s, e) { s.n++; return s; },
+			Order: function(s, e) { return s; },
+			Refund: function(s, e) { return s; },
+		}).outputState();
+	`, &opts)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	t.Cleanup(func() { session.Destroy() })
+
+	info := session.GetSources()
+	if info.Shape == nil {
+		t.Fatal("Shape was nil; expected populated when includeShape=true")
+	}
+	if !info.Shape.Parsable {
+		t.Error("Parsable = false; expected true for a valid projection")
+	}
+	if info.Shape.FileSize == 0 {
+		t.Error("FileSize = 0; expected non-zero raw byte count")
+	}
+	if !info.Shape.Handlers.Any {
+		t.Error("Handlers.Any = false; expected true")
+	}
+	if !info.Shape.Handlers.Init {
+		t.Error("Handlers.Init = false; expected true")
+	}
+	if info.Shape.Handlers.DistinctEventNames != 2 {
+		t.Errorf("DistinctEventNames = %d, want 2 (Order + Refund)",
+			info.Shape.Handlers.DistinctEventNames)
+	}
+	if info.Shape.BuiltinCounts.FromAll == nil || *info.Shape.BuiltinCounts.FromAll != 1 {
+		t.Errorf("FromAll = %v, want &1", info.Shape.BuiltinCounts.FromAll)
+	}
+	if info.Shape.BuiltinCounts.When == nil || *info.Shape.BuiltinCounts.When != 1 {
+		t.Errorf("When = %v, want &1", info.Shape.BuiltinCounts.When)
+	}
+	if info.Shape.BuiltinCounts.OutputState == nil || *info.Shape.BuiltinCounts.OutputState != 1 {
+		t.Errorf("OutputState = %v, want &1", info.Shape.BuiltinCounts.OutputState)
+	}
+}
+
+// TestIncludeShape_DefaultsFalseShapeIsNil pins that omitting the
+// includeShape option leaves Shape nil. LSP and any other consumer
+// that doesn't ask for shape pays nothing for it.
+func TestIncludeShape_DefaultsFalseShapeIsNil(t *testing.T) {
+	session := mustCreateSession(t, "fromAll();")
+	info := session.GetSources()
+	if info.Shape != nil {
+		t.Errorf("Shape = %+v, want nil (includeShape not set)", info.Shape)
+	}
+}

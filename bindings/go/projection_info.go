@@ -72,10 +72,10 @@ type SourcePosition struct {
 // CLI's telemetry-wire ProjectionShape (which uses bucketed
 // RawCount fields). The CLI translates between the two.
 type ProjectionShape struct {
-	Parsable      bool                          `json:"parsable"`
-	FileSize      int                           `json:"fileSize"`
-	Handlers      ProjectionShapeHandlers       `json:"handlers"`
-	BuiltinCounts ProjectionShapeBuiltinCounts  `json:"builtinCounts"`
+	Parsable      bool                         `json:"parsable"`
+	FileSize      int                          `json:"fileSize"`
+	Handlers      ProjectionShapeHandlers      `json:"handlers"`
+	BuiltinCounts ProjectionShapeBuiltinCounts `json:"builtinCounts"`
 }
 
 // ProjectionShapeHandlers carries which handler kinds the
@@ -107,7 +107,7 @@ type ProjectionShapeBuiltinCounts struct {
 	LinkTo         *int `json:"linkTo,omitempty"`
 	CopyTo         *int `json:"copyTo,omitempty"`
 	// deprecated.
-	LinkStreamTo *int `json:"linkStreamTo,omitempty"`
+	LinkStreamTo  *int `json:"linkStreamTo,omitempty"`
 	ChainHandlers *int `json:"chainHandlers,omitempty"`
 	UpdateOf      *int `json:"updateOf,omitempty"`
 }

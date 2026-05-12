@@ -63,9 +63,9 @@ type Client struct {
 	// long LSP session across a monorepo doesn't grow it
 	// unbounded. Mutex-guarded because LSP / dev / MCP can call
 	// into EmitProjectionShape from request goroutines.
-	shapeMu     sync.Mutex
-	shapeCache  map[string][32]byte
-	shapeOrder  []string
+	shapeMu    sync.Mutex
+	shapeCache map[string][32]byte
+	shapeOrder []string
 
 	// startTime is captured at construction (process startup) and
 	// used to compute duration_ms on command_invoked envelopes. The
@@ -129,7 +129,6 @@ func WithLibVersion(v string) Option {
 func WithIdentity(id Identity) Option {
 	return func(c *Client) { c.identity = id }
 }
-
 
 // New constructs a Client. With no options it uses the production httpSink
 // pointed at DefaultWorkerURL with a 2-second per-send deadline.

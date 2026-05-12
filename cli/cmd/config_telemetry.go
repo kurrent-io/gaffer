@@ -121,16 +121,16 @@ func renderTelemetryStatus(out io.Writer, id telemetry.Identity, r telemetry.Res
 	if !id.IsZero() {
 		idLine = id.TelemetryID
 	}
-	fmt.Fprintf(out, "%s         %s\n", s.label.Render("id:"), idLine)
+	_, _ = fmt.Fprintf(out, "%s         %s\n", s.label.Render("id:"), idLine)
 
 	overall := s.enabled.Render("enabled")
 	if r.IsDisabled() {
 		overall = s.disabled.Render("disabled")
 	}
-	fmt.Fprintf(out, "%s  %s\n", s.label.Render("telemetry:"), overall)
-	fmt.Fprintf(out, "  %s       %s\n", s.label.Render("user:"), renderUserLayer(s, r.User))
-	fmt.Fprintf(out, "  %s        %s\n", s.label.Render("env:"), renderEnvLayer(s, r.Env))
-	fmt.Fprintf(out, "  %s  %s\n", s.label.Render("workspace:"), renderWorkspaceLayer(s, r.Workspace))
+	_, _ = fmt.Fprintf(out, "%s  %s\n", s.label.Render("telemetry:"), overall)
+	_, _ = fmt.Fprintf(out, "  %s       %s\n", s.label.Render("user:"), renderUserLayer(s, r.User))
+	_, _ = fmt.Fprintf(out, "  %s        %s\n", s.label.Render("env:"), renderEnvLayer(s, r.Env))
+	_, _ = fmt.Fprintf(out, "  %s  %s\n", s.label.Render("workspace:"), renderWorkspaceLayer(s, r.Workspace))
 }
 
 func renderUserLayer(s telemetryStatusStyles, l telemetry.Layer) string {
@@ -183,8 +183,8 @@ func runConfigTelemetryOn(out, noticeOut io.Writer) error {
 	}
 	t, loadErr := telemetry.LoadTelemetry(store)
 	if loadErr != nil {
-		fmt.Fprintf(noticeOut, "warning: prior telemetry config unreadable: %v\n", loadErr)
-		fmt.Fprintln(noticeOut, "rewriting [telemetry] section from scratch")
+		_, _ = fmt.Fprintf(noticeOut, "warning: prior telemetry config unreadable: %v\n", loadErr)
+		_, _ = fmt.Fprintln(noticeOut, "rewriting [telemetry] section from scratch")
 	}
 	on := true
 	t.Enabled = &on
@@ -200,13 +200,13 @@ func runConfigTelemetryOn(out, noticeOut io.Writer) error {
 	if r.IsDisabled() {
 		// User-level preference is now enabled, but another layer
 		// vetoes. Tell the user exactly what's still blocking.
-		fmt.Fprintln(out, "Telemetry enabled in user config.")
-		fmt.Fprintln(out, "However, telemetry is still disabled by:")
+		_, _ = fmt.Fprintln(out, "Telemetry enabled in user config.")
+		_, _ = fmt.Fprintln(out, "However, telemetry is still disabled by:")
 		if r.Env.State == telemetry.LayerDisabled {
-			fmt.Fprintf(out, "  - environment variable %s\n", r.Env.EnvVar)
+			_, _ = fmt.Fprintf(out, "  - environment variable %s\n", r.Env.EnvVar)
 		}
 		if r.Workspace.State == telemetry.LayerDisabled {
-			fmt.Fprintf(out, "  - workspace gaffer.toml: %s\n", r.Workspace.Path)
+			_, _ = fmt.Fprintf(out, "  - workspace gaffer.toml: %s\n", r.Workspace.Path)
 		}
 		return nil
 	}
@@ -220,11 +220,11 @@ func runConfigTelemetryOn(out, noticeOut io.Writer) error {
 		// a usable identity (e.g. malformed enabled key in an
 		// otherwise-valid section). Preference is saved; surface
 		// the warning, don't exit non-zero.
-		fmt.Fprintln(out, "Telemetry enabled.")
-		fmt.Fprintf(out, "Warning: %v\n", err)
+		_, _ = fmt.Fprintln(out, "Telemetry enabled.")
+		_, _ = fmt.Fprintf(out, "Warning: %v\n", err)
 		return nil
 	}
-	fmt.Fprintln(out, "Telemetry enabled.")
+	_, _ = fmt.Fprintln(out, "Telemetry enabled.")
 	return nil
 }
 
@@ -251,15 +251,14 @@ func runConfigTelemetryOff(out io.Writer) error {
 		return fmt.Errorf("save user config: %w", err)
 	}
 
-	fmt.Fprintln(out, "Telemetry disabled.")
+	_, _ = fmt.Fprintln(out, "Telemetry disabled.")
 	switch {
 	case !prev.IsZero():
-		fmt.Fprintf(out, "Your previous telemetry id was: %s\n", prev.TelemetryID)
-		fmt.Fprintln(out, "Email privacy@kurrent.io with that id to delete past events.")
+		_, _ = fmt.Fprintf(out, "Your previous telemetry id was: %s\n", prev.TelemetryID)
+		_, _ = fmt.Fprintln(out, "Email privacy@kurrent.io with that id to delete past events.")
 	case prevErr != nil:
-		fmt.Fprintf(out, "Your previous telemetry id couldn't be recovered (config parse error: %v).\n", prevErr)
-		fmt.Fprintln(out, "If you remember it, email privacy@kurrent.io to request deletion.")
+		_, _ = fmt.Fprintf(out, "Your previous telemetry id couldn't be recovered (config parse error: %v).\n", prevErr)
+		_, _ = fmt.Fprintln(out, "If you remember it, email privacy@kurrent.io to request deletion.")
 	}
 	return nil
 }
-

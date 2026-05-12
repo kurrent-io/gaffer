@@ -69,4 +69,3 @@ func (s *internalMockSink) Len() int {
 	defer s.mu.Unlock()
 	return len(s.envs)
 }
-

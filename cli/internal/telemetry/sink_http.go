@@ -59,7 +59,7 @@ func (s *httpSink) Send(ctx context.Context, env *Envelope) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// Worker may return diagnostic text on validation failures; read
 		// the first 256 bytes so the error is actionable rather than

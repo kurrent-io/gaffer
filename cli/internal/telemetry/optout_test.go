@@ -26,10 +26,22 @@ func TestIsTruthy(t *testing.T) {
 		in   string
 		want bool
 	}{
-		{"1", true}, {"true", true}, {"TRUE", true}, {"yes", true}, {"YES", true},
-		{"on", true}, {"ON", true}, {" 1 ", true}, {"True", true},
-		{"0", false}, {"false", false}, {"no", false}, {"off", false}, {"", false},
-		{"random", false}, {"2", false},
+		{"1", true},
+		{"true", true},
+		{"TRUE", true},
+		{"yes", true},
+		{"YES", true},
+		{"on", true},
+		{"ON", true},
+		{" 1 ", true},
+		{"True", true},
+		{"0", false},
+		{"false", false},
+		{"no", false},
+		{"off", false},
+		{"", false},
+		{"random", false},
+		{"2", false},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			if got := isTruthy(tc.in); got != tc.want {
@@ -392,7 +404,7 @@ func TestCheckOptOut_WorkspaceUnreadableTomlSurfacesError(t *testing.T) {
 	if err := os.WriteFile(gafferToml, []byte("telemetry = false\n"), 0o000); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Chmod(gafferToml, 0o600) // let t.TempDir cleanup succeed
+	defer func() { _ = os.Chmod(gafferToml, 0o600) }() // let t.TempDir cleanup succeed
 	store, _ := userconfig.Load(t.TempDir())
 	r := checkOptOutWithEnv(store, proj, home, emptyEnv)
 	if r.Workspace.State != LayerUnset {

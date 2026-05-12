@@ -305,7 +305,8 @@ public class ShapeCollectorTests {
 		AssertNoStringProperties(typeof(ProjectionShape), visited);
 
 		static void AssertNoStringProperties(Type t, HashSet<Type> visited) {
-			if (!visited.Add(t)) return;
+			if (!visited.Add(t))
+				return;
 			foreach (var prop in t.GetProperties(BindingFlags.Public | BindingFlags.Instance)) {
 				var pt = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
 				Assert.False(

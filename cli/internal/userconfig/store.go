@@ -79,9 +79,9 @@ const EnvConfigDirOverride = "GAFFER_CONFIG_DIR"
 // DefaultDir returns the gaffer config directory:
 //   - $GAFFER_CONFIG_DIR if set (used verbatim, no /gaffer appended)
 //   - else $UserConfigDir/gaffer, which is:
-//     - Linux:   $XDG_CONFIG_HOME/gaffer (default $HOME/.config/gaffer)
-//     - macOS:   $HOME/Library/Application Support/gaffer
-//     - Windows: %AppData%/gaffer
+//   - Linux:   $XDG_CONFIG_HOME/gaffer (default $HOME/.config/gaffer)
+//   - macOS:   $HOME/Library/Application Support/gaffer
+//   - Windows: %AppData%/gaffer
 func DefaultDir() (string, error) {
 	if v := os.Getenv(EnvConfigDirOverride); v != "" {
 		return v, nil
@@ -296,7 +296,7 @@ func fsyncDir(dir string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if err := f.Sync(); err != nil {
 		// Windows returns "Access denied" / ERROR_INVALID_HANDLE for
 		// dir Sync; the metadata-journaling FS makes the call moot

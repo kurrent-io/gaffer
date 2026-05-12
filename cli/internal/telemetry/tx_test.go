@@ -264,9 +264,9 @@ func TestTxSetters_NilReceiverIsNoop(t *testing.T) {
 	// regression that breaks one variant's nil-guard fails CI.
 	var dev *DevTx
 	dev.SetOutcome(OutcomeSuccess)
-	dev.SetProjectionCount(3) // kindRawCount
-	dev.SetConnectedToDB(true) // kindBool
-	dev.SetDBVersion("26.1")   // kindString
+	dev.SetProjectionCount(3)                            // kindRawCount
+	dev.SetConnectedToDB(true)                           // kindBool
+	dev.SetDBVersion("26.1")                             // kindString
 	dev.SetManifestFeaturesUsed([]string{"projections"}) // kindArrayOfString
 
 	var mcp *MCPTx

@@ -159,5 +159,3 @@ func optionalInt(n int) *int {
 	}
 	return &n
 }
-
-

@@ -297,14 +297,15 @@ func TestClient_RecoversFromPanickingSink(t *testing.T) {
 
 // closeCountingSink lets us assert Close is called from Flush.
 type closeCountingSink struct {
-	mock      *internalMockSink
-	closeCnt  atomic.Int32
-	closeErr  error
+	mock     *internalMockSink
+	closeCnt atomic.Int32
+	closeErr error
 }
 
 func (s *closeCountingSink) Send(ctx context.Context, env *Envelope) error {
 	return s.mock.Send(ctx, env)
 }
+
 func (s *closeCountingSink) Close(ctx context.Context) error {
 	s.closeCnt.Add(1)
 	return s.closeErr

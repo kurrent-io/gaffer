@@ -11,8 +11,10 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
 
-var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-var hexIDPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
+var (
+	uuidPattern  = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	hexIDPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
+)
 
 func TestMintIdentity_AllUUIDFormat(t *testing.T) {
 	id, err := MintIdentity()

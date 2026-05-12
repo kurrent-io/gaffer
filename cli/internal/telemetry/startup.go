@@ -52,7 +52,7 @@ func StartupGate(store *userconfig.Store, cwd, homeDir string, noticeOut io.Writ
 		// parse problem) - users see those via `config telemetry
 		// status` instead.
 		if err != nil {
-			fmt.Fprintf(noticeOut, "warning: telemetry identity unavailable: %v\n", err)
+			_, _ = fmt.Fprintf(noticeOut, "warning: telemetry identity unavailable: %v\n", err)
 		}
 		return nil
 	}

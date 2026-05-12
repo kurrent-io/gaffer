@@ -86,10 +86,14 @@ func TestFileSizeBucket_BoundaryRounding(t *testing.T) {
 }
 
 func TestShapeContentHash_Stability(t *testing.T) {
-	// Same input must produce the same hash across calls - the
-	// dedupe relies on this property.
-	props := translateShape(rawShape(), "id")
-	if shapeContentHash(props) != shapeContentHash(props) {
+	// Stable across calls AND across freshly-translated values
+	// from identical raw inputs. The two-call form satisfies
+	// staticcheck SA4000 (no `f(x) != f(x)`) and exercises a
+	// stronger property: same data, separately translated, hashes
+	// the same.
+	h1 := shapeContentHash(translateShape(rawShape(), "id"))
+	h2 := shapeContentHash(translateShape(rawShape(), "id"))
+	if h1 != h2 {
 		t.Error("hash unstable across calls on same input")
 	}
 }
@@ -114,11 +118,11 @@ func TestShapeContentHash_BucketCollapsesSubBucketChanges(t *testing.T) {
 	// bucket doesn't trigger a redundant emit. This is the whole
 	// reason translate happens before hash.
 	a := translateShape(&gafferruntime.ProjectionShape{
-		Parsable: true,
+		Parsable:      true,
 		BuiltinCounts: gafferruntime.ProjectionShapeBuiltinCounts{FromAll: intPtr(2)},
 	}, "x")
 	b := translateShape(&gafferruntime.ProjectionShape{
-		Parsable: true,
+		Parsable:      true,
 		BuiltinCounts: gafferruntime.ProjectionShapeBuiltinCounts{FromAll: intPtr(9)},
 	}, "x")
 	// Note: the test asserts the bucketed JSON wire form is

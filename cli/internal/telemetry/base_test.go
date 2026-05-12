@@ -151,6 +151,13 @@ func TestClient_FlushTimeoutWraps(t *testing.T) {
 	}
 }
 
+func TestClient_FlushNilReceiverIsNoop(t *testing.T) {
+	var c *Client
+	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
+		t.Errorf("Flush on nil = %v, want nil", err)
+	}
+}
+
 func TestClient_FlushIsIdempotent(t *testing.T) {
 	mock := newMockSink()
 	c := New(WithSink(mock))

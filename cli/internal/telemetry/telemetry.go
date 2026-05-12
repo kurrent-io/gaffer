@@ -42,6 +42,14 @@ type Client struct {
 	// supply their own Sink via WithSink.
 	workerURL string
 	userAgent string
+
+	// identity is the resolved per-install identity stamped onto
+	// outgoing envelopes. Set once at construction via WithIdentity
+	// (typically from main's StartupGate) and read by per-event emit
+	// helpers. Zero value means "no identity available" - emit
+	// helpers should skip in that case rather than send anonymous
+	// envelopes the worker would reject.
+	identity Identity
 }
 
 // Option mutates a Client at construction.
@@ -85,6 +93,7 @@ func WithPerSendTimeout(d time.Duration) Option {
 func WithErrorLogger(f func(error)) Option {
 	return func(c *Client) { c.errLog = f }
 }
+
 
 // New constructs a Client. With no options it uses the production httpSink
 // pointed at DefaultWorkerURL with a 2-second per-send deadline.

@@ -23,7 +23,7 @@ func newManifestCmd() *cobra.Command {
 		Short: "Print CLI capabilities as JSON",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			m := manifest{
-				Version:  version,
+				Version:  Version,
 				Commands: buildCommandManifest(cmd.Root()),
 			}
 

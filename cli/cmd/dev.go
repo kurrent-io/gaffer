@@ -121,7 +121,7 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts) error {
 		writer = tw
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
 
 	if opts.Debug {

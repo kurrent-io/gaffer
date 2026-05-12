@@ -101,7 +101,7 @@ func newConfigTelemetryOffCmd() *cobra.Command {
 // persisted telemetry id. Always exits 0; layer-level errors (parse
 // failures) are surfaced inline so the user sees what to fix.
 func runConfigTelemetryStatus(out io.Writer) error {
-	store, err := loadUserStore()
+	store, err := userconfig.Open()
 	if err != nil {
 		return err
 	}
@@ -177,7 +177,7 @@ func renderWorkspaceLayer(s telemetryStatusStyles, l telemetry.Layer) string {
 // parse error as a warning and rewrite the section cleanly; any
 // unrecoverable prior id is replaced by a fresh mint downstream.
 func runConfigTelemetryOn(out, noticeOut io.Writer) error {
-	store, err := loadUserStore()
+	store, err := userconfig.Open()
 	if err != nil {
 		return err
 	}
@@ -236,7 +236,7 @@ func runConfigTelemetryOn(out, noticeOut io.Writer) error {
 // recovery path) but tell the user we couldn't recover their id -
 // they'll need to remember it themselves for a deletion request.
 func runConfigTelemetryOff(out io.Writer) error {
-	store, err := loadUserStore()
+	store, err := userconfig.Open()
 	if err != nil {
 		return err
 	}
@@ -263,17 +263,3 @@ func runConfigTelemetryOff(out io.Writer) error {
 	return nil
 }
 
-// loadUserStore is the shared "open the user config" helper for
-// every config subcommand: DefaultDir + Load, with error wrapping
-// that names the path so users know where to look.
-func loadUserStore() (*userconfig.Store, error) {
-	dir, err := userconfig.DefaultDir()
-	if err != nil {
-		return nil, fmt.Errorf("locate user config dir: %w", err)
-	}
-	store, err := userconfig.Load(dir)
-	if err != nil {
-		return nil, fmt.Errorf("load user config: %w", err)
-	}
-	return store, nil
-}

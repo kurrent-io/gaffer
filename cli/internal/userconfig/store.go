@@ -119,6 +119,24 @@ func Load(dir string) (*Store, error) {
 	return s, nil
 }
 
+// Open is the convenience pairing of DefaultDir + Load: resolve the
+// per-platform config directory, then open the store inside it. The
+// returned errors name the path so users can see where to look.
+//
+// Use this from main.go's startup path and from CLI subcommands;
+// tests that need an explicit directory should use Load(dir) directly.
+func Open() (*Store, error) {
+	dir, err := DefaultDir()
+	if err != nil {
+		return nil, err
+	}
+	s, err := Load(dir)
+	if err != nil {
+		return nil, fmt.Errorf("load user config: %w", err)
+	}
+	return s, nil
+}
+
 // Reload re-reads the file from disk, discarding any in-memory changes.
 // Used in the first-write race recovery path: when Save returned
 // ErrRaceLost, Reload picks up the winner's content.

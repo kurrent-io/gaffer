@@ -22,7 +22,7 @@ func newLSPCmd() *cobra.Command {
 			defer stop()
 
 			server := lsp.NewServer(lsp.ServerOptions{
-				Version: version,
+				Version: Version,
 			})
 			return server.Run(ctx, stdioStream{})
 		},

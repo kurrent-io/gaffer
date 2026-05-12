@@ -57,7 +57,10 @@ func ExecuteRoot(ctx context.Context, root *cobra.Command) error {
 	return fang.Execute(ctx, root, fang.WithoutVersion(), fang.WithErrorHandler(errorHandler))
 }
 
-// Execute runs the root command via fang for styled help and completions.
-func Execute() error {
-	return ExecuteRoot(context.Background(), NewRootCmd())
+// Execute runs the root command via fang for styled help and
+// completions. ctx is propagated to subcommands via cobra's
+// ExecuteContext; main passes a ctx that carries the per-process
+// telemetry Client.
+func Execute(ctx context.Context) error {
+	return ExecuteRoot(ctx, NewRootCmd())
 }

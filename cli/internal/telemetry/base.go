@@ -110,6 +110,9 @@ func (c *Client) tryAddInflight() bool {
 // can't keep the process alive; a value at least as large as the per-send
 // timeout (default 2 seconds) lets the per-send budget actually elapse.
 func (c *Client) Flush(ctx context.Context) error {
+	if c == nil {
+		return nil
+	}
 	c.mu.Lock()
 	c.closed = true
 	c.mu.Unlock()

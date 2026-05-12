@@ -1,0 +1,159 @@
+package telemetry
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
+)
+
+// startupTest seeds a clean baseline: a real store in t.TempDir,
+// a cwd inside a fake home with no gaffer.toml, and all opt-out
+// env vars cleared so the test controls them explicitly.
+func startupTest(t *testing.T) (store *userconfig.Store, cwd, home string) {
+	t.Helper()
+
+	home = t.TempDir()
+	cwd = filepath.Join(home, "proj")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store, err := userconfig.Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"GAFFER_TELEMETRY_OPTOUT", "KURRENTDB_TELEMETRY_OPTOUT", "DO_NOT_TRACK", "GAFFER_TELEMETRY_DEBUG"} {
+		t.Setenv(k, "")
+		_ = os.Unsetenv(k)
+	}
+	return store, cwd, home
+}
+
+func TestStartupGate_OptedOutByUserReturnsNil(t *testing.T) {
+	store, cwd, home := startupTest(t)
+	off := false
+	WriteTelemetry(store, TelemetrySection{Enabled: &off})
+	if err := store.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	var notice bytes.Buffer
+	c := StartupGate(store, cwd, home, &notice)
+	if c != nil {
+		t.Errorf("StartupGate returned %v, want nil for user-disabled", c)
+	}
+	if notice.Len() != 0 {
+		t.Errorf("notice written despite opt-out: %q", notice.String())
+	}
+}
+
+func TestStartupGate_OptedOutByEnvReturnsNil(t *testing.T) {
+	store, cwd, home := startupTest(t)
+	t.Setenv("DO_NOT_TRACK", "1")
+
+	var notice bytes.Buffer
+	c := StartupGate(store, cwd, home, &notice)
+	if c != nil {
+		t.Errorf("StartupGate returned %v, want nil for env-disabled", c)
+	}
+	if notice.Len() != 0 {
+		t.Errorf("notice written despite env opt-out: %q", notice.String())
+	}
+}
+
+func TestStartupGate_OptedOutByWorkspaceReturnsNil(t *testing.T) {
+	store, cwd, home := startupTest(t)
+	if err := os.WriteFile(filepath.Join(cwd, "gaffer.toml"), []byte("telemetry = false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var notice bytes.Buffer
+	c := StartupGate(store, cwd, home, &notice)
+	if c != nil {
+		t.Errorf("StartupGate returned %v, want nil for workspace-disabled", c)
+	}
+	if notice.Len() != 0 {
+		t.Errorf("notice written despite workspace opt-out: %q", notice.String())
+	}
+}
+
+func TestStartupGate_FreshInstallMintsAndNotifies(t *testing.T) {
+	store, cwd, home := startupTest(t)
+
+	var notice bytes.Buffer
+	c := StartupGate(store, cwd, home, &notice)
+	if c == nil {
+		t.Fatal("StartupGate returned nil on fresh install")
+	}
+	if c.identity.IsZero() {
+		t.Errorf("Client identity is zero after StartupGate")
+	}
+	if !strings.Contains(notice.String(), "Gaffer collects usage data") {
+		t.Errorf("notice not written on fresh mint; got: %q", notice.String())
+	}
+}
+
+func TestStartupGate_ExistingIdentitySkipsNotice(t *testing.T) {
+	store, cwd, home := startupTest(t)
+	seed, _ := MintIdentity()
+	StageIdentity(store, seed)
+	if err := store.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	var notice bytes.Buffer
+	c := StartupGate(store, cwd, home, &notice)
+	if c == nil {
+		t.Fatal("StartupGate returned nil for existing-identity case")
+	}
+	if c.identity.TelemetryID != seed.TelemetryID {
+		t.Errorf("identity = %s, want seeded %s", c.identity.TelemetryID, seed.TelemetryID)
+	}
+	if notice.Len() != 0 {
+		t.Errorf("notice re-printed on existing identity: %q", notice.String())
+	}
+}
+
+func TestStartupGate_MintFailureSurfacesWarning(t *testing.T) {
+	// Read-only parent so Save fails inside MintAndPersist.
+	parent := t.TempDir()
+	if err := os.Chmod(parent, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
+
+	store, err := userconfig.Load(filepath.Join(parent, "child"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cwd := t.TempDir()
+	for _, k := range []string{"GAFFER_TELEMETRY_OPTOUT", "KURRENTDB_TELEMETRY_OPTOUT", "DO_NOT_TRACK", "GAFFER_TELEMETRY_DEBUG"} {
+		t.Setenv(k, "")
+		_ = os.Unsetenv(k)
+	}
+
+	var notice bytes.Buffer
+	c := StartupGate(store, cwd, t.TempDir(), &notice)
+	if c != nil {
+		t.Errorf("StartupGate returned %v, want nil on mint failure", c)
+	}
+	if !strings.Contains(notice.String(), "telemetry identity unavailable") {
+		t.Errorf("missing mint-failure warning; got: %q", notice.String())
+	}
+}
+
+func TestStartupGate_AppliesExtraOptions(t *testing.T) {
+	store, cwd, home := startupTest(t)
+	custom := "gaffer-cli/test-ua"
+
+	c := StartupGate(store, cwd, home, &bytes.Buffer{}, WithUserAgent(custom))
+	if c == nil {
+		t.Fatal("StartupGate returned nil")
+	}
+	if c.userAgent != custom {
+		t.Errorf("userAgent = %q, want %q", c.userAgent, custom)
+	}
+}

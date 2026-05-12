@@ -761,7 +761,7 @@ type ProjectionShapeBuiltinCounts struct {
 	Emit           *RawCount `json:"emit,omitempty"`
 	LinkTo         *RawCount `json:"linkTo,omitempty"`
 	CopyTo         *RawCount `json:"copyTo,omitempty"`
-	// linkStreamTo is deprecated; tracked because deprecated.
+	// deprecated.
 	LinkStreamTo  *RawCount `json:"linkStreamTo,omitempty"`
 	ChainHandlers *RawCount `json:"chainHandlers,omitempty"`
 	UpdateOf      *RawCount `json:"updateOf,omitempty"`

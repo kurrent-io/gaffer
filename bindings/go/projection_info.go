@@ -106,8 +106,8 @@ type ProjectionShapeBuiltinCounts struct {
 	Emit           *int `json:"emit,omitempty"`
 	LinkTo         *int `json:"linkTo,omitempty"`
 	CopyTo         *int `json:"copyTo,omitempty"`
-	// LinkStreamTo is deprecated; tracked because deprecated.
-	LinkStreamTo  *int `json:"linkStreamTo,omitempty"`
+	// deprecated.
+	LinkStreamTo *int `json:"linkStreamTo,omitempty"`
 	ChainHandlers *int `json:"chainHandlers,omitempty"`
 	UpdateOf      *int `json:"updateOf,omitempty"`
 }

@@ -288,7 +288,7 @@ import "strings"
 		emit?:           #BucketCount
 		linkTo?:         #BucketCount
 		copyTo?:         #BucketCount
-		// linkStreamTo is deprecated; tracked because deprecated.
+		// deprecated.
 		linkStreamTo?:  #BucketCount
 		chainHandlers?: #BucketCount
 		updateOf?:      #BucketCount

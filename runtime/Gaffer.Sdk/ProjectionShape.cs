@@ -74,7 +74,7 @@ public sealed class ProjectionShapeBuiltinCounts {
 	public int? LinkTo { get; init; }
 	public int? CopyTo { get; init; }
 
-	/// <summary>linkStreamTo is deprecated; tracked because deprecated.</summary>
+	/// <summary>deprecated.</summary>
 	public int? LinkStreamTo { get; init; }
 
 	public int? ChainHandlers { get; init; }

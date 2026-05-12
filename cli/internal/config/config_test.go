@@ -607,3 +607,27 @@ func TestSaveAndReload_Fixtures(t *testing.T) {
 		t.Errorf("full: got %q, want fixtures/orders-full.json", got["full"])
 	}
 }
+
+func TestFixtureCount_Totals(t *testing.T) {
+	cfg := &Config{
+		Projection: []Projection{
+			{Name: "a", Entry: "a.js", Fixtures: map[string]string{"x": "x", "y": "y"}},
+			{Name: "b", Entry: "b.js"},
+			{Name: "c", Entry: "c.js", Fixtures: map[string]string{"z": "z"}},
+		},
+	}
+	if got := cfg.FixtureCount(); got != 3 {
+		t.Errorf("FixtureCount() = %d, want 3", got)
+	}
+}
+
+func TestProjectionCount(t *testing.T) {
+	cfg := &Config{Projection: []Projection{{Name: "a", Entry: "a.js"}, {Name: "b", Entry: "b.js"}}}
+	if got := cfg.ProjectionCount(); got != 2 {
+		t.Errorf("ProjectionCount() = %d, want 2", got)
+	}
+	empty := &Config{}
+	if got := empty.ProjectionCount(); got != 0 {
+		t.Errorf("ProjectionCount() on empty = %d, want 0", got)
+	}
+}

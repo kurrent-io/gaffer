@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/kurrent-io/gaffer/cli/internal/project"
 )
 
 // Config represents a gaffer.toml file.
@@ -53,6 +55,24 @@ func (p *Projection) FixtureNames() []string {
 	return names
 }
 
+// ProjectionCount returns the number of projections declared in the
+// manifest. Stamped on `dev` and `manifest` command_invoked events as
+// a raw count; the schema's bucketing happens at marshal time.
+func (c *Config) ProjectionCount() int {
+	return len(c.Projection)
+}
+
+// FixtureCount returns the total number of fixtures declared across
+// all projections in the manifest. Same telemetry path as
+// ProjectionCount.
+func (c *Config) FixtureCount() int {
+	total := 0
+	for _, p := range c.Projection {
+		total += len(p.Fixtures)
+	}
+	return total
+}
+
 // EffectiveEngineVersion returns the projection's engine_version, falling
 // back to the top-level engine_version. Returns 0 if neither is set.
 func (c *Config) EffectiveEngineVersion(p *Projection) int {
@@ -90,6 +110,19 @@ func (p Projection) IsEnabled() bool {
 		return true
 	}
 	return *p.Enabled
+}
+
+// LoadFromCwd resolves the project root from the current working
+// directory via project.FindRoot and loads its gaffer.toml. Returns
+// project.ErrNotInProject when no project is found; other errors come
+// from Load (read or parse failure). Callers that want a best-effort
+// load can discard the error.
+func LoadFromCwd() (*Config, error) {
+	root := project.FindRoot()
+	if root == "" {
+		return nil, project.ErrNotInProject
+	}
+	return Load(project.ConfigPath(root))
 }
 
 // Load reads and parses a gaffer.toml file with strict validation.

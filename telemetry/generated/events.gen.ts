@@ -125,8 +125,12 @@ export type InfoCommandInvokedProperties = CommandInvokedBaseProperties & {
 export type ManifestCommandInvokedProperties = CommandInvokedBaseProperties & {
   command: "manifest";
   /**
-   * Top-level manifest section names present (e.g. ["projections",
-   * "fixtures"]). Section *presence* only, never contents.
+   * Canonical gaffer feature labels exercised by the manifest (e.g.
+   * ["projections", "fixtures", "connection"]). Labels are stable
+   * gaffer-side names rather than raw TOML keys, so a field rename
+   * in the TOML schema doesn't silently change wire output.
+   * Section *presence* only; never contents (no paths, names,
+   * versions).
    *
    * @maxItems 100
    */
@@ -142,7 +146,7 @@ export type ManifestCommandInvokedProperties = CommandInvokedBaseProperties & {
 export type DevCommandInvokedProperties = CommandInvokedBaseProperties & {
   command: "dev";
   /**
-   * Top-level manifest section names present.
+   * See ManifestCommandInvokedProperties.manifest_features_used.
    *
    * @maxItems 100
    */
@@ -190,7 +194,7 @@ export type ProjectionOutcome =
 export type McpCommandInvokedProperties = CommandInvokedBaseProperties & {
   command: "mcp";
   /**
-   * Top-level manifest section names present.
+   * See ManifestCommandInvokedProperties.manifest_features_used.
    *
    * @maxItems 100
    */

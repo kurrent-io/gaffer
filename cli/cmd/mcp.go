@@ -24,6 +24,14 @@ func newMCPCmd() *cobra.Command {
 				return err
 			}
 
+			// Stamp manifest-derived props before the long Run blocks,
+			// not at End time, so the values are recorded even if the
+			// session terminates unexpectedly. Schema gives mcp only
+			// features_used (no counts).
+			if cfg := srv.Config(); cfg != nil {
+				tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(cfg))
+			}
+
 			runErr := srv.Run(cmd.Context())
 
 			// Drain counters after Run returns - request goroutines

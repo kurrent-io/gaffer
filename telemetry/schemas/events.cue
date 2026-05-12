@@ -94,8 +94,12 @@ import "strings"
 	#CommandInvokedBaseProperties
 	command: "manifest"
 
-	// Top-level manifest section names present (e.g. ["projections",
-	// "fixtures"]). Section *presence* only, never contents.
+	// Canonical gaffer feature labels exercised by the manifest (e.g.
+	// ["projections", "fixtures", "connection"]). Labels are stable
+	// gaffer-side names rather than raw TOML keys, so a field rename
+	// in the TOML schema doesn't silently change wire output.
+	// Section *presence* only; never contents (no paths, names,
+	// versions).
 	manifest_features_used?: [...string & strings.MaxRunes(64)]
 
 	// Bucketed count from manifest.
@@ -111,7 +115,7 @@ import "strings"
 	#CommandInvokedBaseProperties
 	command: "dev"
 
-	// Top-level manifest section names present.
+	// See ManifestCommandInvokedProperties.manifest_features_used.
 	manifest_features_used?: [...string & strings.MaxRunes(64)]
 
 	// Bucketed count from manifest.
@@ -138,7 +142,7 @@ import "strings"
 	#CommandInvokedBaseProperties
 	command: "mcp"
 
-	// Top-level manifest section names present.
+	// See ManifestCommandInvokedProperties.manifest_features_used.
 	manifest_features_used?: [...string & strings.MaxRunes(64)]
 
 	// Bucketed. Total tool invocations across the session.

@@ -122,6 +122,101 @@ func TestManifest_EmitsCommandInvoked(t *testing.T) {
 	}
 }
 
+func TestManifest_StampsManifestPropsWhenInProject(t *testing.T) {
+	dir := setupIntegrationProject(t)
+	chdirTo(t, dir)
+
+	mock := telemetrytest.New()
+	if err := runCmdWithTelemetry(t, mock, "manifest"); err != nil {
+		t.Fatalf("manifest: %v", err)
+	}
+	envs := mock.Envelopes()
+	if len(envs) != 1 {
+		t.Fatalf("envelopes = %d, want 1", len(envs))
+	}
+	props := envs[0].Events[0].(telemetry.CommandInvoked).Properties.(telemetry.ManifestCommandInvokedProperties)
+	if len(props.ManifestFeaturesUsed) == 0 {
+		t.Error("ManifestFeaturesUsed empty; expected 'projections' / 'fixtures' from setupIntegrationProject")
+	}
+	if props.ProjectionCount == nil {
+		t.Error("ProjectionCount nil; expected non-nil when manifest loaded")
+	}
+	if props.FixtureCount == nil {
+		t.Error("FixtureCount nil; expected non-nil when manifest loaded")
+	}
+}
+
+func TestManifest_OmitsManifestPropsOutsideProject(t *testing.T) {
+	// Switching to a tempdir with no gaffer.toml exercises the
+	// best-effort load path: telemetry should still fire, manifest
+	// props should be absent.
+	chdirTo(t, t.TempDir())
+
+	mock := telemetrytest.New()
+	if err := runCmdWithTelemetry(t, mock, "manifest"); err != nil {
+		t.Fatalf("manifest: %v", err)
+	}
+	envs := mock.Envelopes()
+	if len(envs) != 1 {
+		t.Fatalf("envelopes = %d, want 1", len(envs))
+	}
+	props := envs[0].Events[0].(telemetry.CommandInvoked).Properties.(telemetry.ManifestCommandInvokedProperties)
+	if len(props.ManifestFeaturesUsed) != 0 {
+		t.Errorf("ManifestFeaturesUsed = %v, want empty outside project", props.ManifestFeaturesUsed)
+	}
+	if props.ProjectionCount != nil {
+		t.Errorf("ProjectionCount = %v, want nil outside project", *props.ProjectionCount)
+	}
+	if props.FixtureCount != nil {
+		t.Errorf("FixtureCount = %v, want nil outside project", *props.FixtureCount)
+	}
+}
+
+func TestDev_StampsManifestProps(t *testing.T) {
+	dir := setupIntegrationProject(t)
+	chdirTo(t, dir)
+
+	mock := telemetrytest.New()
+	if err := runCmdWithTelemetry(t, mock, "dev", "orders", "--events", "fixtures/orders.json", "--json"); err != nil {
+		t.Fatalf("dev: %v", err)
+	}
+	envs := mock.Envelopes()
+	if len(envs) == 0 {
+		t.Fatal("no envelopes")
+	}
+	// projection_shape may fire before command_invoked; find the
+	// command_invoked envelope (exactly one expected).
+	var props telemetry.DevCommandInvokedProperties
+	var found bool
+	for _, env := range envs {
+		ci, ok := env.Events[0].(telemetry.CommandInvoked)
+		if !ok {
+			continue
+		}
+		p, ok := ci.Properties.(telemetry.DevCommandInvokedProperties)
+		if !ok {
+			continue
+		}
+		if found {
+			t.Fatal("multiple DevCommandInvokedProperties envelopes; expected exactly one")
+		}
+		props = p
+		found = true
+	}
+	if !found {
+		t.Fatal("no DevCommandInvokedProperties envelope")
+	}
+	if len(props.ManifestFeaturesUsed) == 0 {
+		t.Error("ManifestFeaturesUsed empty; expected at least 'projections' / 'fixtures'")
+	}
+	if props.ProjectionCount == nil {
+		t.Error("ProjectionCount nil; expected non-nil")
+	}
+	if props.FixtureCount == nil {
+		t.Error("FixtureCount nil; expected non-nil")
+	}
+}
+
 func TestInit_EmitsUserErrorOnRunEFailure(t *testing.T) {
 	// `gaffer init` without --yes returns "interactive mode not
 	// yet supported, use --yes / -y" - the cleanest user_error

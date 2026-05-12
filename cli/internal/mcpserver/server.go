@@ -50,6 +50,13 @@ type Server struct {
 	stats serverStats
 }
 
+// Config returns the parsed gaffer.toml the server was constructed
+// with. Used by the cobra RunE to derive manifest-level telemetry
+// properties at End time without re-loading the file.
+func (s *Server) Config() *config.Config {
+	return s.cfg
+}
+
 // Stats returns the current counter snapshot. Safe to call from
 // any goroutine; the cobra RunE for `gaffer mcp` calls this at
 // tx.End time after the underlying mcp.Server.Run has returned.

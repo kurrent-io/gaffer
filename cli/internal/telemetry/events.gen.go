@@ -365,7 +365,7 @@ type ManifestCommandInvokedProperties struct {
 	InvokedBy InvokedBy `json:"invoked_by"`
 	// Specific surface the invocation came through.
 	InvokedVia InvokedVia `json:"invoked_via"`
-	// Top-level manifest section names present (e.g. ["projections", "fixtures"]). Section *presence* only, never contents.
+	// Canonical gaffer feature labels exercised by the manifest (e.g. ["projections", "fixtures", "connection"]). Labels are stable gaffer-side names rather than raw TOML keys, so a field rename in the TOML schema doesn't silently change wire output. Section *presence* only; never contents (no paths, names, versions).
 	ManifestFeaturesUsed []string `json:"manifest_features_used,omitempty"`
 	// Bucketed count from manifest.
 	ProjectionCount *RawCount `json:"projection_count,omitempty"`
@@ -388,7 +388,7 @@ type DevCommandInvokedProperties struct {
 	InvokedBy InvokedBy `json:"invoked_by"`
 	// Specific surface the invocation came through.
 	InvokedVia InvokedVia `json:"invoked_via"`
-	// Top-level manifest section names present.
+	// See ManifestCommandInvokedProperties.manifest_features_used.
 	ManifestFeaturesUsed []string `json:"manifest_features_used,omitempty"`
 	// Bucketed count from manifest.
 	ProjectionCount *RawCount `json:"projection_count,omitempty"`
@@ -421,7 +421,7 @@ func (tx *DevTx) SetOutcome(o Outcome) {
 	tx.props.Outcome = o
 }
 
-// SetManifestFeaturesUsed records manifest_features_used. Top-level manifest section names present. Nil-safe: silent no-op on a nil receiver.
+// SetManifestFeaturesUsed records manifest_features_used. See ManifestCommandInvokedProperties.manifest_features_used. Nil-safe: silent no-op on a nil receiver.
 func (tx *DevTx) SetManifestFeaturesUsed(v []string) {
 	if tx == nil {
 		return
@@ -486,7 +486,7 @@ type MCPCommandInvokedProperties struct {
 	InvokedBy InvokedBy `json:"invoked_by"`
 	// Specific surface the invocation came through.
 	InvokedVia InvokedVia `json:"invoked_via"`
-	// Top-level manifest section names present.
+	// See ManifestCommandInvokedProperties.manifest_features_used.
 	ManifestFeaturesUsed []string `json:"manifest_features_used,omitempty"`
 	// Bucketed. Total tool invocations across the session.
 	ToolCallCount *RawCount `json:"tool_call_count,omitempty"`
@@ -515,7 +515,7 @@ func (tx *MCPTx) SetOutcome(o Outcome) {
 	tx.props.Outcome = o
 }
 
-// SetManifestFeaturesUsed records manifest_features_used. Top-level manifest section names present. Nil-safe: silent no-op on a nil receiver.
+// SetManifestFeaturesUsed records manifest_features_used. See ManifestCommandInvokedProperties.manifest_features_used. Nil-safe: silent no-op on a nil receiver.
 func (tx *MCPTx) SetManifestFeaturesUsed(v []string) {
 	if tx == nil {
 		return

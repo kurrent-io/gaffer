@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
@@ -23,6 +24,12 @@ func newManifestCmd() *cobra.Command {
 		Use:   "manifest",
 		Short: "Print CLI capabilities as JSON",
 		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			// Best-effort load: failures (no project, parse error)
+			// are discarded - the user only asked for the CLI
+			// capability listing, so leaving the manifest-derived
+			// telemetry props absent is the right behaviour.
+			projectCfg, _ := config.LoadFromCwd()
+
 			defer func() {
 				// JSON encode failures are gaffer-side, not user-side -
 				// the only inputs are the cobra tree shape. Map non-nil
@@ -31,7 +38,15 @@ func newManifestCmd() *cobra.Command {
 				if retErr != nil {
 					outcome = telemetry.OutcomeInternalError
 				}
-				telemetry.EmitManifest(cmd.Context(), telemetry.ManifestCommandInvokedProperties{Outcome: outcome})
+				props := telemetry.ManifestCommandInvokedProperties{Outcome: outcome}
+				if projectCfg != nil {
+					props.ManifestFeaturesUsed = telemetry.ManifestFeaturesOf(projectCfg)
+					pc := telemetry.RawCount(projectCfg.ProjectionCount())
+					fc := telemetry.RawCount(projectCfg.FixtureCount())
+					props.ProjectionCount = &pc
+					props.FixtureCount = &fc
+				}
+				telemetry.EmitManifest(cmd.Context(), props)
 			}()
 
 			m := manifest{

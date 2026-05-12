@@ -87,15 +87,24 @@ func completeFixtures(_ *cobra.Command, args []string, _ string) ([]string, cobr
 
 // runDevWithDevTx is the cobra wrapper for the non-debug path:
 // opens a DevTx, calls runDev, drains the dev-side setters that
-// are knowable here (currently just SetConnectedToDB). Defer-direct
-// per the Tx contract.
+// are knowable here. Defer-direct per the Tx contract.
+//
+// Manifest-derived props (features / counts) are populated post-hoc
+// from the loaded *engine.Projection. LoadProjection already parsed
+// gaffer.toml, so runDev returns the projection alongside the error
+// and the wrapper stamps from there.
 func runDevWithDevTx(cmd *cobra.Command, name string, opts *devOpts) error {
 	tx := telemetry.BeginDev(cmd.Context())
 	defer tx.End(cmd.Context())
 
 	tx.SetConnectedToDB(opts.Connection != "")
 
-	err := runDev(cmd, name, opts, nil)
+	proj, err := runDev(cmd, name, opts, nil)
+	if proj != nil && proj.Config != nil {
+		tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(proj.Config))
+		tx.SetProjectionCount(proj.Config.ProjectionCount())
+		tx.SetFixtureCount(proj.Config.FixtureCount())
+	}
 	if err != nil {
 		tx.SetOutcome(telemetry.OutcomeUserError)
 	}
@@ -106,12 +115,16 @@ func runDevWithDevTx(cmd *cobra.Command, name string, opts *devOpts) error {
 // opens a DebugTx, calls runDev with a stats out-param the inner
 // runDevDebug populates from the DAP server before returning,
 // then drains the counters into typed setters. Defer-direct.
+//
+// The debug variant's schema doesn't carry manifest-derived props,
+// so the returned *engine.Projection is ignored here - dev mode is
+// the only variant that surfaces them.
 func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
 	tx := telemetry.BeginDebug(cmd.Context())
 	defer tx.End(cmd.Context())
 
 	var dapStats dapserver.Stats
-	err := runDev(cmd, name, opts, &dapStats)
+	_, err := runDev(cmd, name, opts, &dapStats)
 
 	tx.SetBreakpointCount(dapStats.BreakpointCount)
 	tx.SetStepCount(dapStats.StepCount)
@@ -124,18 +137,22 @@ func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
 	return err
 }
 
-func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.Stats) error {
+// runDev parses the dev flags, loads the projection, and dispatches
+// to runDevSingle or runDevDebug. Returns the loaded *engine.Projection
+// alongside the error so the cobra wrappers can drain telemetry
+// properties off it; nil when LoadProjection failed.
+func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.Stats) (*engine.Projection, error) {
 	if opts.StartPausedIfNoBreakpoints && !opts.Debug {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: --start-paused-if-no-breakpoints requires --debug; ignoring")
 	}
 
 	if opts.Events != "" && opts.Fixture != "" {
-		return fmt.Errorf("only one of --events or --fixture may be used at a time")
+		return nil, fmt.Errorf("only one of --events or --fixture may be used at a time")
 	}
 
 	proj, err := engine.LoadProjection(name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// --fixture is a layer on top of --events: resolve the named
@@ -148,9 +165,9 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.
 		if !ok {
 			names := proj.Def.FixtureNames()
 			if len(names) == 0 {
-				return fmt.Errorf("projection %q has no fixtures declared in gaffer.toml", name)
+				return proj, fmt.Errorf("projection %q has no fixtures declared in gaffer.toml", name)
 			}
-			return fmt.Errorf("projection %q has no fixture named %q (available: %s)", name, opts.Fixture, strings.Join(names, ", "))
+			return proj, fmt.Errorf("projection %q has no fixture named %q (available: %s)", name, opts.Fixture, strings.Join(names, ", "))
 		}
 		opts.Events = filepath.Join(proj.Root, path)
 	}
@@ -174,9 +191,9 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.
 	defer stop()
 
 	if opts.Debug {
-		return runDevDebug(ctx, stop, proj, sourcePath, writer, tw, opts, dapStats)
+		return proj, runDevDebug(ctx, stop, proj, sourcePath, writer, tw, opts, dapStats)
 	}
-	return runDevSingle(ctx, stop, proj, sourcePath, writer, tw, opts)
+	return proj, runDevSingle(ctx, stop, proj, sourcePath, writer, tw, opts)
 }
 
 // runDevSingle handles the non-debug path: one engine.Session, one

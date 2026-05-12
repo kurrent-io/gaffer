@@ -257,7 +257,7 @@
           ]
         },
         "manifest_features_used": {
-          "description": "Top-level manifest section names present.",
+          "description": "See ManifestCommandInvokedProperties.manifest_features_used.",
           "type": "array",
           "items": {
             "type": "string",
@@ -683,7 +683,7 @@
           ]
         },
         "manifest_features_used": {
-          "description": "Top-level manifest section names present (e.g. [\"projections\",\n\"fixtures\"]). Section *presence* only, never contents.",
+          "description": "Canonical gaffer feature labels exercised by the manifest (e.g.\n[\"projections\", \"fixtures\", \"connection\"]). Labels are stable\ngaffer-side names rather than raw TOML keys, so a field rename\nin the TOML schema doesn't silently change wire output.\nSection *presence* only; never contents (no paths, names,\nversions).",
           "type": "array",
           "items": {
             "type": "string",
@@ -719,7 +719,7 @@
           ]
         },
         "manifest_features_used": {
-          "description": "Top-level manifest section names present.",
+          "description": "See ManifestCommandInvokedProperties.manifest_features_used.",
           "type": "array",
           "items": {
             "type": "string",

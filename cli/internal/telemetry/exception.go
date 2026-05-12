@@ -51,7 +51,7 @@ func EmitException(ctx context.Context, recovered any, phase ExceptionPhase) {
 		Type:       exceptionTypeName(recovered),
 		Value:      exceptionValue(recovered),
 		InApp:      true,
-		Stacktrace: ExceptionStacktrace{Type: "go", Frames: scrubFrames(frames)},
+		Stacktrace: ExceptionStacktrace{Type: "raw", Frames: scrubFrames(frames)},
 	}
 	props := ExceptionProperties{
 		Exceptions: []ExceptionEntry{entry},

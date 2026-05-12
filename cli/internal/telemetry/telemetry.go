@@ -200,6 +200,21 @@ func (c *Client) currentCommandName() CommandName {
 	return v.(CommandName)
 }
 
+// CurrentCommand returns the in-flight cobra command name, or empty
+// if cobra hasn't dispatched a RunE yet (panic during flag parsing,
+// opt-out check, etc.). Exported for main.go's panic-recover defer
+// to pick the right ExceptionPhase: empty -> startup, set ->
+// event_processing.
+//
+// Nil-safe: returns empty when called on a nil receiver, matching
+// the rest of the package's "telemetry-off is silent" posture.
+func (c *Client) CurrentCommand() CommandName {
+	if c == nil {
+		return ""
+	}
+	return c.currentCommandName()
+}
+
 // New constructs a Client. With no options it uses the production httpSink
 // pointed at DefaultWorkerURL with a 2-second per-send deadline.
 //

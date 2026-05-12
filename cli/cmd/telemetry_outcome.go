@@ -82,6 +82,40 @@ func outcomeFor(err error) telemetry.Outcome {
 	return telemetry.OutcomeUserError
 }
 
+// oneShotDefer is the panic-safe wrapper around the deferred emit on
+// every one-shot cobra command (version / init / scaffold / info /
+// manifest). Three jobs:
+//
+//   - recover any panic from the cobra body so the deferred emit
+//     fires before the panic re-propagates (Go only writes named
+//     returns on explicit `return`; without this, a panic would leave
+//     retErr nil and the wrapper would ship outcome=success
+//     contradicting the exception envelope main.go later emits)
+//   - classify the outcome - recovered panic wins as
+//     internal_error; otherwise route retErr through outcomeFor
+//   - re-panic so main.go's global recover catches it, fires the
+//     exception envelope, and the process exits with the original
+//     panic stack
+//
+// MUST be called as `defer oneShotDefer(&retErr, ...)` directly -
+// the recover-frame contract is the same load-bearing one as the
+// long-running Tx.End() (see cli/internal/telemetry/doc.go).
+func oneShotDefer(retErr *error, emit func(telemetry.Outcome)) {
+	r := recover()
+	defer func() {
+		if r != nil {
+			panic(r)
+		}
+	}()
+	outcome := telemetry.OutcomeSuccess
+	if r != nil {
+		outcome = telemetry.OutcomeInternalError
+	} else if retErr != nil {
+		outcome = outcomeFor(*retErr)
+	}
+	emit(outcome)
+}
+
 // classifyStructural maps known-shape errors to specific outcomes via
 // errors.Is on package-level sentinels. Returns ok=false when none
 // match so callers can fall through to a more specific classifier

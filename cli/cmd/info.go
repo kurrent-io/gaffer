@@ -19,11 +19,9 @@ func newInfoCmd() *cobra.Command {
 		Short: "Show projection details",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
-			defer func() {
-				telemetry.EmitInfo(cmd.Context(), telemetry.InfoCommandInvokedProperties{
-					Outcome: outcomeFor(retErr),
-				})
-			}()
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				telemetry.EmitInfo(cmd.Context(), telemetry.InfoCommandInvokedProperties{Outcome: o})
+			})
 			return runInfo(cmd, args[0], asJSON)
 		},
 	}

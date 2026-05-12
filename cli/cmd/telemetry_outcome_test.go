@@ -271,3 +271,46 @@ func TestClassifyLSPOutcome_NilIsSuccess(t *testing.T) {
 		t.Errorf("got %q, want success", got)
 	}
 }
+
+func TestOneShotDefer_PanicEmitsInternalErrorAndRePanics(t *testing.T) {
+	var seen telemetry.Outcome
+	emit := func(o telemetry.Outcome) { seen = o }
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic to propagate; got nil")
+		}
+		if seen != telemetry.OutcomeInternalError {
+			t.Errorf("outcome = %q, want internal_error", seen)
+		}
+	}()
+
+	func() {
+		var retErr error
+		defer oneShotDefer(&retErr, emit)
+		panic("boom")
+	}()
+}
+
+func TestOneShotDefer_NilErrorEmitsSuccess(t *testing.T) {
+	var seen telemetry.Outcome
+	func() {
+		var retErr error
+		defer oneShotDefer(&retErr, func(o telemetry.Outcome) { seen = o })
+	}()
+	if seen != telemetry.OutcomeSuccess {
+		t.Errorf("outcome = %q, want success", seen)
+	}
+}
+
+func TestOneShotDefer_NonNilErrorClassifies(t *testing.T) {
+	var seen telemetry.Outcome
+	func() {
+		retErr := project.ErrNotInProject
+		defer oneShotDefer(&retErr, func(o telemetry.Outcome) { seen = o })
+	}()
+	if seen != telemetry.OutcomeManifestNotFound {
+		t.Errorf("outcome = %q, want manifest_not_found", seen)
+	}
+}

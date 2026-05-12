@@ -21,11 +21,9 @@ func newInitCmd() *cobra.Command {
 		Short: "Initialize a new gaffer project",
 		Long:  "Creates gaffer.toml, .gitignore, and .gaffer/ directory in the current directory.",
 		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
-			defer func() {
-				telemetry.EmitInit(cmd.Context(), telemetry.InitCommandInvokedProperties{
-					Outcome: outcomeFor(retErr),
-				})
-			}()
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				telemetry.EmitInit(cmd.Context(), telemetry.InitCommandInvokedProperties{Outcome: o})
+			})
 			return runInit(yes)
 		},
 	}

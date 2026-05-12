@@ -81,13 +81,19 @@ func runMain() (exitCode int) {
 	}()
 	defer func() {
 		if r := recover(); r != nil {
-			// Phase: every Go-side panic-recover from inside
-			// cmd.Execute classifies as event_processing. The
-			// schema's other phases (startup / projection_init
-			// / shutdown) are projection-runtime concerns that
-			// surface via the .NET runtime's own exception path,
-			// not Go panics caught here.
-			telemetry.EmitException(ctx, r, telemetry.ExceptionPhaseEventProcessing)
+			// Phase: a panic before cobra dispatched any RunE
+			// (flag parsing, opt-out check, identity mint) is
+			// startup; once Begin/Emit has fired and stashed a
+			// command on the Client, the panic happened during
+			// command execution. projection_init / shutdown are
+			// projection-runtime concerns that surface via the
+			// .NET runtime's own exception path, not Go panics
+			// caught here.
+			phase := telemetry.ExceptionPhaseEventProcessing
+			if client.CurrentCommand() == "" {
+				phase = telemetry.ExceptionPhaseStartup
+			}
+			telemetry.EmitException(ctx, r, phase)
 			recoveredPanic = r
 		}
 	}()

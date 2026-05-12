@@ -30,15 +30,14 @@ func newManifestCmd() *cobra.Command {
 			// telemetry props absent is the right behaviour.
 			projectCfg, _ := config.LoadFromCwd()
 
-			defer func() {
-				// JSON encode failures are gaffer-side, not user-side -
-				// the only inputs are the cobra tree shape. Map non-nil
-				// to internal_error so the dataset reflects that.
-				outcome := telemetry.OutcomeSuccess
-				if retErr != nil {
-					outcome = telemetry.OutcomeInternalError
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				// JSON encode failures are gaffer-side, not user-side;
+				// override the classifier's user_error to
+				// internal_error for that path.
+				if o == telemetry.OutcomeUserError {
+					o = telemetry.OutcomeInternalError
 				}
-				props := telemetry.ManifestCommandInvokedProperties{Outcome: outcome}
+				props := telemetry.ManifestCommandInvokedProperties{Outcome: o}
 				if projectCfg != nil {
 					props.ManifestFeaturesUsed = telemetry.ManifestFeaturesOf(projectCfg)
 					pc := telemetry.RawCount(projectCfg.ProjectionCount())
@@ -47,7 +46,7 @@ func newManifestCmd() *cobra.Command {
 					props.FixtureCount = &fc
 				}
 				telemetry.EmitManifest(cmd.Context(), props)
-			}()
+			})
 
 			m := manifest{
 				Version:  Version,

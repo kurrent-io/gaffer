@@ -19,11 +19,9 @@ func newVersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print the gaffer version",
 		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
-			defer func() {
-				telemetry.EmitVersion(cmd.Context(), telemetry.VersionCommandInvokedProperties{
-					Outcome: outcomeFor(retErr),
-				})
-			}()
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				telemetry.EmitVersion(cmd.Context(), telemetry.VersionCommandInvokedProperties{Outcome: o})
+			})
 			fmt.Println(Version)
 			return nil
 		},

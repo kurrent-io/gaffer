@@ -25,11 +25,9 @@ func newScaffoldCmd() *cobra.Command {
 		Short: "Add a new projection to the project",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
-			defer func() {
-				telemetry.EmitScaffold(cmd.Context(), telemetry.ScaffoldCommandInvokedProperties{
-					Outcome: outcomeFor(retErr),
-				})
-			}()
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				telemetry.EmitScaffold(cmd.Context(), telemetry.ScaffoldCommandInvokedProperties{Outcome: o})
+			})
 			return runScaffold(args[0], opts)
 		},
 	}

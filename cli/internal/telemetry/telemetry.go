@@ -56,6 +56,19 @@ type Client struct {
 	// worker would reject.
 	identity Identity
 
+	// invocation carries values parsed from the hidden root flags
+	// --invoker-id / --invoked-by / --invoked-via. Set at Client
+	// construction from main.go's pre-cobra argv peek (the flags
+	// drive notice suppression during identity mint, which needs to
+	// know before EnsureIdentity runs). Zero values mean the flag
+	// wasn't passed; stamp helpers fall through to command-aware
+	// defaults in that case.
+	//
+	// Treat as immutable post-construction. Reads happen from emit
+	// goroutines; the lack of mutex is safe only because no code
+	// path writes after New returns.
+	invocation Invocation
+
 	// shapeCache dedupes projection_shape envelopes: only emit when
 	// a projection is first seen or its content_hash drifts. Keyed
 	// by hashed projection_id, value is the last-observed content
@@ -128,6 +141,14 @@ func WithLibVersion(v string) Option {
 // without going through the full mint flow.
 func WithIdentity(id Identity) Option {
 	return func(c *Client) { c.identity = id }
+}
+
+// WithInvocation stamps the spawn-linkage values onto the Client. Wired
+// from main.go's argv peek of the hidden root flags --invoker-id /
+// --invoked-by / --invoked-via. Empty fields mean the flag wasn't
+// passed; the stamp helpers apply command-aware defaults at emit time.
+func WithInvocation(inv Invocation) Option {
+	return func(c *Client) { c.invocation = inv }
 }
 
 // New constructs a Client. With no options it uses the production httpSink

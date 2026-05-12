@@ -20,6 +20,11 @@ import (
 // without reflection or generics; each generated End passes
 // pointers into its own tx.props.
 //
+// InvokedBy / InvokedVia defaults route through the Client so the
+// command-aware rule (mcp -> mcp_client / stdio) and the explicit
+// --invoked-by / --invoked-via overrides apply uniformly across
+// one-shot Emit and long-running Tx paths.
+//
 // Outcome cascade (highest priority first):
 //   - explicit `*outcome != ""` from a prior tx.SetOutcome wins
 //   - recovered panic -> internal_error
@@ -27,24 +32,23 @@ import (
 //   - fallthrough -> success
 //
 // See doc.go for the End() defer-direct contract.
-func stampInvocationBase(
+func (c *Client) stampInvocationBase(
 	command *CommandName,
 	durationMs *RawCount,
 	outcome *Outcome,
 	invokedBy *InvokedBy,
 	invokedVia *InvokedVia,
-	startTime time.Time,
 	name CommandName,
 	ctx context.Context,
 	recovered any,
 ) {
 	*command = name
-	*durationMs = RawCount(time.Since(startTime).Milliseconds())
+	*durationMs = RawCount(time.Since(c.startTime).Milliseconds())
 	if *invokedBy == "" {
-		*invokedBy = InvokedByDirect
+		*invokedBy = c.defaultInvokedBy(name)
 	}
 	if *invokedVia == "" {
-		*invokedVia = InvokedViaTerminal
+		*invokedVia = c.defaultInvokedVia(name)
 	}
 	if *outcome == "" {
 		switch {

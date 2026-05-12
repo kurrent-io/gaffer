@@ -86,6 +86,24 @@ func TestVersion_EmitsCommandInvoked(t *testing.T) {
 	}
 }
 
+func TestRoot_AcceptsHiddenInvocationFlags(t *testing.T) {
+	// Cobra must accept --invoker-id / --invoked-by / --invoked-via on
+	// every subcommand without an "unknown flag" error. The values
+	// themselves are consumed by main.go's argv peek, not from cobra's
+	// bound vars, but the flags must be registered or cobra rejects
+	// the parse.
+	mock := telemetrytest.New()
+	err := runCmdWithTelemetry(t, mock,
+		"--invoker-id=abc",
+		"--invoked-by=vscode",
+		"--invoked-via=code_lens",
+		"version",
+	)
+	if err != nil {
+		t.Fatalf("version with hidden flags: %v", err)
+	}
+}
+
 func TestManifest_EmitsCommandInvoked(t *testing.T) {
 	mock := telemetrytest.New()
 	if err := runCmdWithTelemetry(t, mock, "manifest"); err != nil {

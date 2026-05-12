@@ -29,10 +29,10 @@ func (c *Client) stampInvocation(command *CommandName, duration *RawCount, invok
 	*command = name
 	*duration = RawCount(time.Since(c.startTime).Milliseconds())
 	if *invokedBy == "" {
-		*invokedBy = InvokedByDirect
+		*invokedBy = c.defaultInvokedBy(name)
 	}
 	if *invokedVia == "" {
-		*invokedVia = InvokedViaTerminal
+		*invokedVia = c.defaultInvokedVia(name)
 	}
 }
 
@@ -55,18 +55,23 @@ func (c *Client) fireCommandInvoked(props any) {
 // libVersion off the Client; reads OS / arch from runtime; detects
 // runtime_environment from CI env vars.
 func (c *Client) buildEnvelope(ev Event) *Envelope {
+	ctx := Context{
+		Emitter:            EmitterCLI,
+		LibVersion:         c.libVersion,
+		OS:                 mapGoOS(runtime.GOOS),
+		Arch:               mapGoArch(runtime.GOARCH),
+		RuntimeEnvironment: detectRuntimeEnv(),
+	}
+	if c.invocation.InvokerID != "" {
+		id := c.invocation.InvokerID
+		ctx.InvokerID = &id
+	}
 	return &Envelope{
 		SchemaVersion: SchemaVersion,
 		EmitterID:     c.identity.TelemetryID,
 		RunID:         c.identity.RunID,
-		Context: Context{
-			Emitter:            EmitterCLI,
-			LibVersion:         c.libVersion,
-			OS:                 mapGoOS(runtime.GOOS),
-			Arch:               mapGoArch(runtime.GOARCH),
-			RuntimeEnvironment: detectRuntimeEnv(),
-		},
-		Events: []Event{ev},
+		Context:       ctx,
+		Events:        []Event{ev},
 	}
 }
 

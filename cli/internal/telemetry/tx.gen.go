@@ -45,7 +45,7 @@ func (tx *DevTx) End(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	stampInvocationBase(&tx.props.Command, &tx.props.DurationMs, &tx.props.Outcome, &tx.props.InvokedBy, &tx.props.InvokedVia, c.startTime, CommandNameDev, ctx, r)
+	c.stampInvocationBase(&tx.props.Command, &tx.props.DurationMs, &tx.props.Outcome, &tx.props.InvokedBy, &tx.props.InvokedVia, CommandNameDev, ctx, r)
 	c.fireCommandInvoked(tx.props)
 }
 
@@ -84,7 +84,7 @@ func (tx *MCPTx) End(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	stampInvocationBase(&tx.props.Command, &tx.props.DurationMs, &tx.props.Outcome, &tx.props.InvokedBy, &tx.props.InvokedVia, c.startTime, CommandNameMCP, ctx, r)
+	c.stampInvocationBase(&tx.props.Command, &tx.props.DurationMs, &tx.props.Outcome, &tx.props.InvokedBy, &tx.props.InvokedVia, CommandNameMCP, ctx, r)
 	c.fireCommandInvoked(tx.props)
 }
 
@@ -123,7 +123,7 @@ func (tx *LSPTx) End(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	stampInvocationBase(&tx.props.Command, &tx.props.DurationMs, &tx.props.Outcome, &tx.props.InvokedBy, &tx.props.InvokedVia, c.startTime, CommandNameLSP, ctx, r)
+	c.stampInvocationBase(&tx.props.Command, &tx.props.DurationMs, &tx.props.Outcome, &tx.props.InvokedBy, &tx.props.InvokedVia, CommandNameLSP, ctx, r)
 	c.fireCommandInvoked(tx.props)
 }
 
@@ -162,6 +162,6 @@ func (tx *DebugTx) End(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	stampInvocationBase(&tx.props.Command, &tx.props.DurationMs, &tx.props.Outcome, &tx.props.InvokedBy, &tx.props.InvokedVia, c.startTime, CommandNameDebug, ctx, r)
+	c.stampInvocationBase(&tx.props.Command, &tx.props.DurationMs, &tx.props.Outcome, &tx.props.InvokedBy, &tx.props.InvokedVia, CommandNameDebug, ctx, r)
 	c.fireCommandInvoked(tx.props)
 }

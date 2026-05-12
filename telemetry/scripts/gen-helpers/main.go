@@ -1089,7 +1089,7 @@ func emitEnd(w io.Writer, cmd commandSpec) {
 	fmt.Fprint(w, "\tdefer func() {\n\t\tif r != nil {\n\t\t\tpanic(r)\n\t\t}\n\t}()\n")
 	fmt.Fprint(w, "\tif tx == nil {\n\t\treturn\n\t}\n")
 	fmt.Fprint(w, "\tc := ClientFromContext(ctx)\n\tif c == nil {\n\t\treturn\n\t}\n")
-	fmt.Fprintf(w, "\tstampInvocationBase(&tx.props.Command, &tx.props.DurationMs, &tx.props.Outcome, &tx.props.InvokedBy, &tx.props.InvokedVia, c.startTime, CommandName%s, ctx, r)\n", cmd.GoName)
+	fmt.Fprintf(w, "\tc.stampInvocationBase(&tx.props.Command, &tx.props.DurationMs, &tx.props.Outcome, &tx.props.InvokedBy, &tx.props.InvokedVia, CommandName%s, ctx, r)\n", cmd.GoName)
 	fmt.Fprint(w, "\tc.fireCommandInvoked(tx.props)\n")
 	fmt.Fprint(w, "}\n\n")
 }

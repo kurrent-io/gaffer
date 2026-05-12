@@ -41,7 +41,7 @@ func TestStartupGate_OptedOutByUserReturnsNil(t *testing.T) {
 	}
 
 	var notice bytes.Buffer
-	c := StartupGate(store, cwd, home, &notice)
+	c := StartupGate(store, cwd, home, &notice, Invocation{})
 	if c != nil {
 		t.Errorf("StartupGate returned %v, want nil for user-disabled", c)
 	}
@@ -55,7 +55,7 @@ func TestStartupGate_OptedOutByEnvReturnsNil(t *testing.T) {
 	t.Setenv("DO_NOT_TRACK", "1")
 
 	var notice bytes.Buffer
-	c := StartupGate(store, cwd, home, &notice)
+	c := StartupGate(store, cwd, home, &notice, Invocation{})
 	if c != nil {
 		t.Errorf("StartupGate returned %v, want nil for env-disabled", c)
 	}
@@ -71,7 +71,7 @@ func TestStartupGate_OptedOutByWorkspaceReturnsNil(t *testing.T) {
 	}
 
 	var notice bytes.Buffer
-	c := StartupGate(store, cwd, home, &notice)
+	c := StartupGate(store, cwd, home, &notice, Invocation{})
 	if c != nil {
 		t.Errorf("StartupGate returned %v, want nil for workspace-disabled", c)
 	}
@@ -84,7 +84,7 @@ func TestStartupGate_FreshInstallMintsAndNotifies(t *testing.T) {
 	store, cwd, home := startupTest(t)
 
 	var notice bytes.Buffer
-	c := StartupGate(store, cwd, home, &notice)
+	c := StartupGate(store, cwd, home, &notice, Invocation{})
 	if c == nil {
 		t.Fatal("StartupGate returned nil on fresh install")
 	}
@@ -105,7 +105,7 @@ func TestStartupGate_ExistingIdentitySkipsNotice(t *testing.T) {
 	}
 
 	var notice bytes.Buffer
-	c := StartupGate(store, cwd, home, &notice)
+	c := StartupGate(store, cwd, home, &notice, Invocation{})
 	if c == nil {
 		t.Fatal("StartupGate returned nil for existing-identity case")
 	}
@@ -136,7 +136,7 @@ func TestStartupGate_MintFailureSurfacesWarning(t *testing.T) {
 	}
 
 	var notice bytes.Buffer
-	c := StartupGate(store, cwd, t.TempDir(), &notice)
+	c := StartupGate(store, cwd, t.TempDir(), &notice, Invocation{})
 	if c != nil {
 		t.Errorf("StartupGate returned %v, want nil on mint failure", c)
 	}
@@ -145,11 +145,28 @@ func TestStartupGate_MintFailureSurfacesWarning(t *testing.T) {
 	}
 }
 
+func TestStartupGate_InvokerIDSuppressesFirstMintNotice(t *testing.T) {
+	store, cwd, home := startupTest(t)
+
+	var notice bytes.Buffer
+	inv := Invocation{InvokerID: "11111111-1111-4111-8111-111111111111"}
+	c := StartupGate(store, cwd, home, &notice, inv)
+	if c == nil {
+		t.Fatal("StartupGate returned nil despite mint succeeding")
+	}
+	if notice.Len() != 0 {
+		t.Errorf("notice written despite --invoker-id; got: %q", notice.String())
+	}
+	if c.invocation.InvokerID != inv.InvokerID {
+		t.Errorf("Client.invocation.InvokerID = %q, want %q", c.invocation.InvokerID, inv.InvokerID)
+	}
+}
+
 func TestStartupGate_AppliesExtraOptions(t *testing.T) {
 	store, cwd, home := startupTest(t)
 	custom := "gaffer-cli/test-ua"
 
-	c := StartupGate(store, cwd, home, &bytes.Buffer{}, WithUserAgent(custom))
+	c := StartupGate(store, cwd, home, &bytes.Buffer{}, Invocation{}, WithUserAgent(custom))
 	if c == nil {
 		t.Fatal("StartupGate returned nil")
 	}

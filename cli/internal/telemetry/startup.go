@@ -37,12 +37,20 @@ import (
 // cwd and homeDir are passed in (not read via os.Getwd / os.UserHomeDir
 // inside) so tests can drive the function deterministically. main.go
 // reads them once at startup and forwards.
-func StartupGate(store *userconfig.Store, cwd, homeDir string, noticeOut io.Writer, opts ...Option) *Client {
+//
+// invocation carries the spawn-linkage values parsed from the hidden
+// root flags. When InvokerID is set, the first-mint disclosure notice
+// is suppressed (the spawning surface, typically the VS Code
+// extension's first-activation flow, has already disclosed and
+// printing to a non-TTY stderr inside an extension-spawned CLI would
+// be invisible anyway). The full Invocation is also stamped onto the
+// Client so emit-side defaults can read it.
+func StartupGate(store *userconfig.Store, cwd, homeDir string, noticeOut io.Writer, invocation Invocation, opts ...Option) *Client {
 	optOut := CheckOptOut(store, cwd, homeDir)
 	if optOut.IsDisabled() {
 		return nil
 	}
-	id, err := EnsureIdentity(store, optOut, noticeOut, false)
+	id, err := EnsureIdentity(store, optOut, noticeOut, !invocation.IsZero())
 	if id.IsZero() {
 		// Hard failure: mint or persist couldn't produce a usable
 		// identity. Leave a one-line trail on noticeOut so users
@@ -56,5 +64,5 @@ func StartupGate(store *userconfig.Store, cwd, homeDir string, noticeOut io.Writ
 		}
 		return nil
 	}
-	return New(append(opts, WithIdentity(id))...)
+	return New(append(opts, WithIdentity(id), WithInvocation(invocation))...)
 }

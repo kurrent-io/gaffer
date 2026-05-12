@@ -38,7 +38,15 @@ func runMain() (exitCode int) {
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	client := buildClient(os.Stderr)
+	// Peek argv for the hidden root flags before cobra parses. Two
+	// readers need the values early: StartupGate (to suppress the
+	// first-mint notice when --invoker-id is set) and the Client
+	// itself (so every envelope can stamp invoker_id / invoked_by /
+	// invoked_via). Cobra also registers the flags as hidden
+	// persistent so the parser doesn't reject them later, but the
+	// values come from this peek.
+	invocation := telemetry.PeekInvocationFlags(os.Args[1:])
+	client := buildClient(os.Stderr, invocation)
 	ctx := telemetry.WithClient(rootCtx, client)
 
 	// Three-defer panic-recover chain. Registered first to last
@@ -99,14 +107,14 @@ func runMain() (exitCode int) {
 // surprising users with errors about a feature they haven't asked
 // for. Users who want to inspect the state run
 // `gaffer config telemetry status`.
-func buildClient(noticeOut io.Writer) *telemetry.Client {
+func buildClient(noticeOut io.Writer, invocation telemetry.Invocation) *telemetry.Client {
 	store, err := userconfig.Open()
 	if err != nil {
 		return nil
 	}
 	cwd, _ := os.Getwd()
 	home, _ := os.UserHomeDir()
-	return telemetry.StartupGate(store, cwd, home, noticeOut,
+	return telemetry.StartupGate(store, cwd, home, noticeOut, invocation,
 		telemetry.WithUserAgent(userAgent()),
 		telemetry.WithLibVersion(cmd.Version),
 	)

@@ -267,6 +267,13 @@ func runDevSingle(
 	session, info, err := engine.CreateSession(proj, false, includeShape)
 	if err != nil {
 		writer.WriteFatalError(toFatalError(err, sourcePath))
+		// CreateSession failures are FFI compile errors (invalid
+		// projection, compilation timeout). Feed the tracker so
+		// projection_errors_seen and the outcome both reflect the
+		// compile failure rather than dropping to user_error.
+		if obs.onProjectionError != nil {
+			obs.onProjectionError(err)
+		}
 		return silent(err)
 	}
 	defer session.Destroy()
@@ -342,6 +349,12 @@ func runDevDebug(
 	session, info, err := engine.CreateSession(proj, true, includeShape)
 	if err != nil {
 		writer.WriteFatalError(toFatalError(err, sourcePath))
+		// See runDevSingle: feed the compile error into the
+		// tracker so projection_errors_seen and outcome both
+		// reflect a compile_error rather than user_error.
+		if obs.onProjectionError != nil {
+			obs.onProjectionError(err)
+		}
 		return silent(err)
 	}
 
@@ -437,6 +450,9 @@ func runDevDebug(
 			session, info, err = engine.CreateSession(proj, true, includeShape)
 			if err != nil {
 				adapter.AckRestart()
+				if obs.onProjectionError != nil {
+					obs.onProjectionError(err)
+				}
 				return silent(err)
 			}
 			// Re-emit on restart: the shape cache dedupes if
@@ -548,6 +564,9 @@ func runDevDebug(
 			session, info, err = engine.CreateSession(proj, true, includeShape)
 			if err != nil {
 				adapter.AckRestart()
+				if obs.onProjectionError != nil {
+					obs.onProjectionError(err)
+				}
 				return silent(err)
 			}
 			telemetry.EmitProjectionShape(ctx, sourcePath, info)

@@ -36,6 +36,11 @@ func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input ru
 	if err != nil {
 		s.mu.Unlock()
 		if _, ok := err.(gafferruntime.ProjectionError); ok {
+			// Compile-time projection failure (invalid source,
+			// compilation timeout). Feed projection_errors_seen
+			// alongside the tool response so the session's
+			// telemetry reflects user code didn't compile.
+			s.recordProjectionError(err)
 			return toolResult(map[string]any{
 				"lastError": classifyError(err),
 			}), nil, nil

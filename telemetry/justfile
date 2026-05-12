@@ -26,22 +26,28 @@ check: worker::check
     @cue vet schemas/events.cue schemas/wire.cue
 
 # Determinism check: regenerate twice, fail if outputs differ. Catches
-# non-deterministic generator output (sort order, timestamps, ...).
+# non-deterministic generator output (sort order, timestamps, ...). All
+# three Go gen files plus the TS / JSON Schema outputs need stashing so
+# a non-determinism bug in any one of them fails CI.
 test: build
     @cp generated/telemetry.schema.json /tmp/telemetry-determinism.json
-    @cp ../cli/internal/telemetry/events.gen.go /tmp/telemetry-determinism.go
+    @cp ../cli/internal/telemetry/events.gen.go /tmp/telemetry-determinism-events.go
+    @cp ../cli/internal/telemetry/tx.gen.go /tmp/telemetry-determinism-tx.go
+    @cp ../cli/internal/telemetry/emit.gen.go /tmp/telemetry-determinism-emit.go
     @cp generated/events.gen.ts /tmp/telemetry-determinism.ts
     @just clean
     @just build
     @diff /tmp/telemetry-determinism.json generated/telemetry.schema.json
-    @diff /tmp/telemetry-determinism.go ../cli/internal/telemetry/events.gen.go
+    @diff /tmp/telemetry-determinism-events.go ../cli/internal/telemetry/events.gen.go
+    @diff /tmp/telemetry-determinism-tx.go ../cli/internal/telemetry/tx.gen.go
+    @diff /tmp/telemetry-determinism-emit.go ../cli/internal/telemetry/emit.gen.go
     @diff /tmp/telemetry-determinism.ts generated/events.gen.ts
-    @rm -f /tmp/telemetry-determinism.json /tmp/telemetry-determinism.go /tmp/telemetry-determinism.ts
+    @rm -f /tmp/telemetry-determinism.json /tmp/telemetry-determinism-events.go /tmp/telemetry-determinism-tx.go /tmp/telemetry-determinism-emit.go /tmp/telemetry-determinism.ts
     @GOWORK=off go -C scripts/gen-helpers test ./...
 
 # Remove generated artifacts.
 clean: worker::clean
-    @rm -f generated/telemetry.schema.json ../cli/internal/telemetry/events.gen.go generated/events.gen.ts
+    @rm -f generated/telemetry.schema.json ../cli/internal/telemetry/events.gen.go ../cli/internal/telemetry/tx.gen.go ../cli/internal/telemetry/emit.gen.go generated/events.gen.ts
 
 # CUE -> JSON Schema.
 #

@@ -1,11 +1,16 @@
 package telemetry
 
 import (
-	"context"
 	"os"
 	"runtime"
 	"time"
 )
+
+// Hand-written runtime that the generated emit.gen.go binds against.
+// EmitX helpers (one per one-shot command_invoked variant) are
+// generated; the Client-side shared pieces - envelope construction,
+// base-field stamping, OS/arch mapping, CI detection, timestamp
+// format - live here.
 
 // timestampLayout is the wire-format RFC 3339 millisecond layout used
 // for every envelope's `timestamp` field. UTC, fixed millisecond
@@ -13,72 +18,13 @@ import (
 // regexp at the worker boundary.
 const timestampLayout = "2006-01-02T15:04:05.000Z"
 
-// EmitVersion fires command_invoked for `gaffer version`. No-op when
-// ctx carries no Client (opt-out or unreadable config).
-//
-// Callers fill in Outcome (and, in the future, any per-invocation
-// overrides for InvokedBy / InvokedVia). Command, DurationMs are
-// stamped by the helper from Client state - any value the caller put
-// there is discarded.
-func EmitVersion(ctx context.Context, p VersionCommandInvokedProperties) {
-	c := ClientFromContext(ctx)
-	if c == nil {
-		return
-	}
-	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameVersion)
-	c.fireCommandInvoked(p)
-}
-
-// EmitInit fires command_invoked for `gaffer init`.
-func EmitInit(ctx context.Context, p InitCommandInvokedProperties) {
-	c := ClientFromContext(ctx)
-	if c == nil {
-		return
-	}
-	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameInit)
-	c.fireCommandInvoked(p)
-}
-
-// EmitScaffold fires command_invoked for `gaffer scaffold`.
-func EmitScaffold(ctx context.Context, p ScaffoldCommandInvokedProperties) {
-	c := ClientFromContext(ctx)
-	if c == nil {
-		return
-	}
-	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameScaffold)
-	c.fireCommandInvoked(p)
-}
-
-// EmitInfo fires command_invoked for `gaffer info`.
-func EmitInfo(ctx context.Context, p InfoCommandInvokedProperties) {
-	c := ClientFromContext(ctx)
-	if c == nil {
-		return
-	}
-	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameInfo)
-	c.fireCommandInvoked(p)
-}
-
-// EmitManifest fires command_invoked for `gaffer manifest`. Optional
-// per-variant fields (ManifestFeaturesUsed, ProjectionCount,
-// FixtureCount) stay absent on the wire when the caller leaves them
-// zero.
-func EmitManifest(ctx context.Context, p ManifestCommandInvokedProperties) {
-	c := ClientFromContext(ctx)
-	if c == nil {
-		return
-	}
-	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameManifest)
-	c.fireCommandInvoked(p)
-}
-
-// stampInvocation fills in the four base fields that the emit-side
-// owns: Command (literal per helper), DurationMs (time since Client
-// start), InvokedBy / InvokedVia (defaults if the caller didn't set
-// them via flags / overrides). The pointer-args shape lets us mutate
-// the variant struct in place without per-variant type plumbing
-// while keeping the call sites identical across all five EmitX
-// helpers - a property the generator can rely on.
+// stampInvocation fills in the four emit-side base fields on a
+// one-shot variant's properties: Command (literal per helper),
+// DurationMs (time since Client start), InvokedBy / InvokedVia
+// (defaults if the caller didn't set them via flags / overrides).
+// The pointer-arg shape lets one body handle all five one-shot
+// variants without per-variant type plumbing; generated EmitX
+// helpers pass pointers into their own props fields.
 func (c *Client) stampInvocation(command *CommandName, duration *RawCount, invokedBy *InvokedBy, invokedVia *InvokedVia, name CommandName) {
 	*command = name
 	*duration = RawCount(time.Since(c.startTime).Milliseconds())
@@ -94,8 +40,8 @@ func (c *Client) stampInvocation(command *CommandName, duration *RawCount, invok
 // event with the current timestamp and hands the envelope to the
 // Client's async sink. The `any` parameter is the single, contained
 // erasure point - the gen'd `CommandInvoked.Properties any` field
-// forces it, and each EmitX guarantees a concrete variant type at
-// the call site.
+// forces it, and each generated EmitX / End guarantees a concrete
+// variant type at the call site.
 func (c *Client) fireCommandInvoked(props any) {
 	c.emit(c.buildEnvelope(CommandInvoked{
 		Name:       "command_invoked",

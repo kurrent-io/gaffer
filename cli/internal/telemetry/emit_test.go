@@ -117,6 +117,42 @@ func TestEmitVersion_BuildsEnvelope(t *testing.T) {
 	}
 }
 
+func TestBuildEnvelope_EmitterIsMCPWhenMCPInFlight(t *testing.T) {
+	// wire.cue requires emitter=mcp when gaffer's own MCP server
+	// produced the envelope. emitterFor reads from currentCommand
+	// so any envelope (command_invoked, projection_shape, exception)
+	// emitted during an MCP session gets the right surface tag.
+	ctx, c, mock := emitTestSetup(t)
+	_ = ctx
+	c.setCurrentCommand(CommandNameMCP)
+	c.emit(c.buildEnvelope(CommandInvoked{Name: "command_invoked", Timestamp: nowTimestamp()}))
+	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	envs := mock.Envelopes()
+	if len(envs) != 1 {
+		t.Fatalf("envelopes = %d, want 1", len(envs))
+	}
+	if envs[0].Context.Emitter != EmitterMCP {
+		t.Errorf("Emitter = %q, want mcp", envs[0].Context.Emitter)
+	}
+}
+
+func TestBuildEnvelope_EmitterDefaultsToCLI(t *testing.T) {
+	// No Begin/Emit fired yet (or one of the non-mcp commands):
+	// emitter falls back to cli.
+	ctx, c, mock := emitTestSetup(t)
+	_ = ctx
+	c.setCurrentCommand(CommandNameDev)
+	c.emit(c.buildEnvelope(CommandInvoked{Name: "command_invoked", Timestamp: nowTimestamp()}))
+	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	if envs := mock.Envelopes(); envs[0].Context.Emitter != EmitterCLI {
+		t.Errorf("Emitter = %q, want cli", envs[0].Context.Emitter)
+	}
+}
+
 func TestEmit_VariantSelectsCorrectPropertiesType(t *testing.T) {
 	cases := []struct {
 		name string

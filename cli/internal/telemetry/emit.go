@@ -60,7 +60,7 @@ func (c *Client) buildEnvelope(ev Event) *Envelope {
 		EmitterID:     c.identity.TelemetryID,
 		RunID:         c.identity.RunID,
 		Context: Context{
-			Emitter:            EmitterCLI,
+			Emitter:            emitterFor(c.currentCommandName()),
 			LibVersion:         c.libVersion,
 			OS:                 mapGoOS(runtime.GOOS),
 			Arch:               mapGoArch(runtime.GOARCH),
@@ -70,6 +70,20 @@ func (c *Client) buildEnvelope(ev Event) *Envelope {
 		},
 		Events: []Event{ev},
 	}
+}
+
+// emitterFor picks the Emitter value for the in-flight command. The
+// schema (wire.cue) distinguishes "cli" from "mcp" - `gaffer mcp`
+// runs in-process but ships envelopes tagged as the MCP surface so
+// the worker can split CLI-user analytics from MCP-host analytics.
+// Empty command (panic before cobra dispatched, opt-out path) falls
+// back to cli; vscode is set by the extension's own emitter, never
+// by this process.
+func emitterFor(name CommandName) Emitter {
+	if name == CommandNameMCP {
+		return EmitterMCP
+	}
+	return EmitterCLI
 }
 
 // optStrPtr returns &s when s is non-empty, nil otherwise. Used to

@@ -37,6 +37,11 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 	lp := engine.NewProjection(s.root, s.cfg, proj, source)
 	session, info, err := engine.CreateSession(lp, false, false)
 	if err != nil {
+		// CreateSession only fails on FFI projection errors here
+		// (compile, invalid argument, ...). Feed
+		// projection_errors_seen so the session reflects that the
+		// projection didn't compile.
+		s.recordProjectionError(err)
 		return toolError("compiling projection: %v", err), nil, nil
 	}
 	defer session.Destroy()

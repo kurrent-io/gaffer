@@ -172,10 +172,12 @@ func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
 // goroutine driving source.Run, so the wrapper's tracker state needs
 // no locking.
 type runObservers struct {
-	// onProjectionError fires once per iteration when r.Faulted()
-	// is observed, with the runner's last error. Wrappers use this
-	// to accumulate projection_errors_seen across DAP restart
-	// iterations.
+	// onProjectionError fires with an FFI projection error, either
+	// when a runner faults mid-iteration (recordProjectionFault) or
+	// when engine.CreateSession fails to compile/load the projection
+	// (recordCompileFault). Wrappers use it to accumulate
+	// projection_errors_seen across DAP restart iterations and
+	// across compile/runtime phases of a session.
 	onProjectionError func(error)
 	// onFixtureEvent fires per fixture event processed (post
 	// r.ProcessOne, regardless of fault). Only invoked when the
@@ -267,13 +269,7 @@ func runDevSingle(
 	session, info, err := engine.CreateSession(proj, false, includeShape)
 	if err != nil {
 		writer.WriteFatalError(toFatalError(err, sourcePath))
-		// CreateSession failures are FFI compile errors (invalid
-		// projection, compilation timeout). Feed the tracker so
-		// projection_errors_seen and the outcome both reflect the
-		// compile failure rather than dropping to user_error.
-		if obs.onProjectionError != nil {
-			obs.onProjectionError(err)
-		}
+		recordCompileFault(err, obs.onProjectionError)
 		return silent(err)
 	}
 	defer session.Destroy()
@@ -349,12 +345,7 @@ func runDevDebug(
 	session, info, err := engine.CreateSession(proj, true, includeShape)
 	if err != nil {
 		writer.WriteFatalError(toFatalError(err, sourcePath))
-		// See runDevSingle: feed the compile error into the
-		// tracker so projection_errors_seen and outcome both
-		// reflect a compile_error rather than user_error.
-		if obs.onProjectionError != nil {
-			obs.onProjectionError(err)
-		}
+		recordCompileFault(err, obs.onProjectionError)
 		return silent(err)
 	}
 
@@ -450,9 +441,7 @@ func runDevDebug(
 			session, info, err = engine.CreateSession(proj, true, includeShape)
 			if err != nil {
 				adapter.AckRestart()
-				if obs.onProjectionError != nil {
-					obs.onProjectionError(err)
-				}
+				recordCompileFault(err, obs.onProjectionError)
 				return silent(err)
 			}
 			// Re-emit on restart: the shape cache dedupes if
@@ -564,9 +553,7 @@ func runDevDebug(
 			session, info, err = engine.CreateSession(proj, true, includeShape)
 			if err != nil {
 				adapter.AckRestart()
-				if obs.onProjectionError != nil {
-					obs.onProjectionError(err)
-				}
+				recordCompileFault(err, obs.onProjectionError)
 				return silent(err)
 			}
 			telemetry.EmitProjectionShape(ctx, sourcePath, info)
@@ -621,6 +608,20 @@ func recordProjectionFault(r *engine.Runner, onProjectionError func(error)) {
 	if lastErr := r.LastError(); lastErr != nil {
 		onProjectionError(lastErr)
 	}
+}
+
+// recordCompileFault forwards a CreateSession failure (always an FFI
+// projection error - InvalidProjection, CompilationTimeout,
+// InvalidArgument, ...) to the projection-error callback. Sibling of
+// recordProjectionFault for the pre-iteration compile path; lets the
+// dev wrapper feed projection_errors_seen + classifyOutcome so a
+// broken projection ships as projection_compile_error rather than
+// dropping to user_error.
+func recordCompileFault(err error, onProjectionError func(error)) {
+	if onProjectionError == nil || err == nil {
+		return
+	}
+	onProjectionError(err)
 }
 
 // buildSource constructs the event source for one iteration. The

@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -35,7 +36,8 @@ func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input ru
 	sess, err := s.createSession(input.Name, debug)
 	if err != nil {
 		s.mu.Unlock()
-		if _, ok := err.(gafferruntime.ProjectionError); ok {
+		var projErr gafferruntime.ProjectionError
+		if errors.As(err, &projErr) {
 			// Compile-time projection failure (invalid source,
 			// compilation timeout). Feed projection_errors_seen
 			// alongside the tool response so the session's

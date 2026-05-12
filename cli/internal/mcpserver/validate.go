@@ -32,7 +32,7 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 	}
 
 	lp := engine.NewProjection(s.root, s.cfg, proj, source)
-	session, info, err := engine.CreateSession(lp, false)
+	session, info, err := engine.CreateSession(lp, false, false)
 	if err != nil {
 		if _, ok := err.(gafferruntime.ProjectionError); ok {
 			return toolResult(map[string]any{

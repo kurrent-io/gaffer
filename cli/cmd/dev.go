@@ -190,12 +190,19 @@ func runDevSingle(
 	tw *textWriter,
 	opts *devOpts,
 ) error {
-	session, info, err := engine.CreateSession(proj, false)
+	// includeShape: walk the AST for projection_shape telemetry
+	// only when the Client is on ctx (i.e. telemetry isn't opted
+	// out). EmitProjectionShape is nil-safe + dedup-aware so it's
+	// fine to invoke unconditionally after the session creation.
+	includeShape := telemetry.ShouldIncludeShape(ctx)
+	session, info, err := engine.CreateSession(proj, false, includeShape)
 	if err != nil {
 		writer.WriteFatalError(toFatalError(err, sourcePath))
 		return silent(err)
 	}
 	defer session.Destroy()
+
+	telemetry.EmitProjectionShape(ctx, sourcePath, info)
 
 	if tw != nil {
 		tw.RegisterCallbacks(session)
@@ -255,14 +262,19 @@ func runDevDebug(
 
 	absRoot, _ := filepath.Abs(proj.Root)
 
+	// See runDevSingle for the includeShape rationale.
+	includeShape := telemetry.ShouldIncludeShape(ctx)
+
 	// Bootstrap session for the first iteration. Provides the initial
 	// session ref to the adapter so OnLog/OnEmit wiring has something
 	// to bind to before the loop's first iteration explicitly rebinds.
-	session, info, err := engine.CreateSession(proj, true)
+	session, info, err := engine.CreateSession(proj, true, includeShape)
 	if err != nil {
 		writer.WriteFatalError(toFatalError(err, sourcePath))
 		return silent(err)
 	}
+
+	telemetry.EmitProjectionShape(ctx, sourcePath, info)
 
 	writer.WriteInfo(proj.Def.Name, info, proj.EngineVersion, proj.DbVersion)
 
@@ -351,11 +363,16 @@ func runDevDebug(
 		case <-adapter.Ready():
 		case <-adapter.RestartRequested():
 			session.Destroy()
-			session, info, err = engine.CreateSession(proj, true)
+			session, info, err = engine.CreateSession(proj, true, includeShape)
 			if err != nil {
 				adapter.AckRestart()
 				return silent(err)
 			}
+			// Re-emit on restart: the shape cache dedupes if
+			// nothing structurally drifted; if the user edited
+			// the source between iterations, the new hash
+			// triggers a fresh envelope.
+			telemetry.EmitProjectionShape(ctx, sourcePath, info)
 			adapter.ResetForRestart()
 			adapter.AckRestart()
 			continue
@@ -443,11 +460,12 @@ func runDevDebug(
 			// Genuine restart: tear down this iteration, stand up a
 			// fresh session, ack so handleRestart sends its response.
 			session.Destroy()
-			session, info, err = engine.CreateSession(proj, true)
+			session, info, err = engine.CreateSession(proj, true, includeShape)
 			if err != nil {
 				adapter.AckRestart()
 				return silent(err)
 			}
+			telemetry.EmitProjectionShape(ctx, sourcePath, info)
 			adapter.ResetForRestart()
 			adapter.AckRestart()
 			if err := finalizeRun(ctx, caughtUp, srcErr, r, os.Stderr); err != nil {

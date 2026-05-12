@@ -56,6 +56,17 @@ type Client struct {
 	// worker would reject.
 	identity Identity
 
+	// shapeCache dedupes projection_shape envelopes: only emit when
+	// a projection is first seen or its content_hash drifts. Keyed
+	// by hashed projection_id, value is the last-observed content
+	// hash. Bounded to shapeCacheCap entries via FIFO eviction so a
+	// long LSP session across a monorepo doesn't grow it
+	// unbounded. Mutex-guarded because LSP / dev / MCP can call
+	// into EmitProjectionShape from request goroutines.
+	shapeMu     sync.Mutex
+	shapeCache  map[string][32]byte
+	shapeOrder  []string
+
 	// startTime is captured at construction (process startup) and
 	// used to compute duration_ms on command_invoked envelopes. The
 	// RawCount bucket math (in events.gen.go) collapses sub-second

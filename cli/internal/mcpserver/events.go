@@ -35,7 +35,7 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 	}
 
 	lp := engine.NewProjection(s.root, s.cfg, proj, source)
-	session, info, err := engine.CreateSession(lp, false)
+	session, info, err := engine.CreateSession(lp, false, false)
 	if err != nil {
 		return toolError("compiling projection: %v", err), nil, nil
 	}

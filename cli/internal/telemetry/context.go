@@ -28,3 +28,16 @@ func ClientFromContext(ctx context.Context) *Client {
 	c, _ := ctx.Value(clientCtxKey{}).(*Client)
 	return c
 }
+
+// ShouldIncludeShape is the canonical predicate for "should the
+// FFI walk the projection AST for shape telemetry?". Returns true
+// iff a Client is on ctx (i.e. telemetry isn't opted out). Long-
+// running commands that create a ProjectionSession (dev / mcp /
+// lsp) call this at each session-creation site and pass the
+// result to engine.CreateSession; one-shot or non-telemetry
+// commands pass false directly. Centralised so the predicate
+// stays in one place when it evolves (sampling, per-command
+// opt-out, etc).
+func ShouldIncludeShape(ctx context.Context) bool {
+	return ClientFromContext(ctx) != nil
+}

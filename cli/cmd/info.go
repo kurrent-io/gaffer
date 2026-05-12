@@ -37,7 +37,7 @@ func runInfo(cmd *cobra.Command, name string, asJSON bool) error {
 		return err
 	}
 
-	session, info, err := engine.CreateSession(proj, false)
+	session, info, err := engine.CreateSession(proj, false, false)
 	if err != nil {
 		return handleSessionError(cmd, err)
 	}

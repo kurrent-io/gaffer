@@ -192,7 +192,7 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 	}
 
 	lp := engine.NewProjection(s.root, s.cfg, proj, source)
-	runtime, info, err := engine.CreateSession(lp, debug)
+	runtime, info, err := engine.CreateSession(lp, debug, false)
 	if err != nil {
 		return nil, err
 	}

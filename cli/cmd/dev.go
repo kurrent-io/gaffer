@@ -100,7 +100,10 @@ func runDevWithDevTx(cmd *cobra.Command, name string, opts *devOpts) error {
 	tx.SetConnectedToDB(opts.Connection != "")
 
 	tracker := newProjErrTracker()
-	proj, err := runDev(cmd, name, opts, nil, runObservers{onProjectionError: tracker.Record})
+	proj, err := runDev(cmd, name, opts, nil, runObservers{
+		onProjectionError: tracker.Record,
+		onConnected:       tx.SetDBVersion,
+	})
 	if proj != nil && proj.Config != nil {
 		tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(proj.Config))
 		tx.SetProjectionCount(proj.Config.ProjectionCount())
@@ -170,6 +173,11 @@ type runObservers struct {
 	// r.ProcessOne, regardless of fault). Only invoked when the
 	// source is a fixture; live-mode events are not counted here.
 	onFixtureEvent func()
+	// onConnected fires once when the live source's underlying
+	// kurrentdb client connects, with the server's reported
+	// major.minor version (or "unknown" when the probe fails).
+	// Only invoked in live mode; never fires for fixture runs.
+	onConnected func(dbVersion string)
 }
 
 // runDev parses the dev flags, loads the projection, and dispatches
@@ -271,7 +279,7 @@ func runDevSingle(
 	})
 
 	var caughtUp bool
-	source, err := buildSource(opts, proj, info, nil, stop, &caughtUp)
+	source, err := buildSource(opts, proj, info, nil, stop, &caughtUp, obs)
 	if err != nil {
 		return err
 	}
@@ -463,7 +471,7 @@ func runDevDebug(
 		}()
 
 		var caughtUp bool
-		source, err := buildSource(opts, proj, info, adapter, stop, &caughtUp)
+		source, err := buildSource(opts, proj, info, adapter, stop, &caughtUp, obs)
 		if err != nil {
 			innerCancel()
 			close(iterDone)
@@ -591,7 +599,8 @@ func recordProjectionFault(r *engine.Runner, onProjectionError func(error)) {
 // buildSource constructs the event source for one iteration. The
 // caller owns `caughtUp`; buildSource just installs the OnCaughtUp
 // callback that flips it when --until-caught-up fires. adapter may be
-// nil for the non-debug single-run path.
+// nil for the non-debug single-run path. obs forwards the wrapper's
+// telemetry callbacks (currently onConnected) into the live source.
 func buildSource(
 	opts *devOpts,
 	proj *engine.Projection,
@@ -599,6 +608,7 @@ func buildSource(
 	adapter *dapserver.DebugAdapter,
 	stop context.CancelFunc,
 	caughtUp *bool,
+	obs runObservers,
 ) (engine.EventSource, error) {
 	if opts.Events != "" {
 		events, err := engine.LoadEvents(opts.Events)
@@ -631,6 +641,7 @@ func buildSource(
 			adapter.EmitFellBehind()
 		}
 	}
+	liveCfg.OnConnected = obs.onConnected
 	return engine.NewLiveSource(liveCfg), nil
 }
 

@@ -48,6 +48,34 @@ func Connect(connStr, projectRoot string) (*kurrentdb.Client, error) {
 	return client, nil
 }
 
+// dbVersionUnknown is the value telemetry stamps on db_version when
+// the server probe returns an error or a zero version. Matches the
+// schema convention - the field is omitted when not connected and is
+// "unknown" when we couldn't parse what the server reported.
+const dbVersionUnknown = "unknown"
+
+// serverVersionProvider abstracts kurrentdb.Client's GetServerVersion
+// so ProbeServerVersion can be unit-tested without a live database.
+// *kurrentdb.Client satisfies it.
+type serverVersionProvider interface {
+	GetServerVersion() (*kurrentdb.ServerVersion, error)
+}
+
+// ProbeServerVersion asks the connected client for the server's
+// major.minor version. Returns "unknown" on probe failure or a zero
+// version, never an error: telemetry is best-effort and a missing
+// version shouldn't fail the run.
+//
+// The kurrentdb client caches the version internally after first
+// connection, so calling this is a cheap accessor.
+func ProbeServerVersion(client serverVersionProvider) string {
+	v, err := client.GetServerVersion()
+	if err != nil || v == nil || (v.Major == 0 && v.Minor == 0) {
+		return dbVersionUnknown
+	}
+	return fmt.Sprintf("%d.%d", v.Major, v.Minor)
+}
+
 // RedactConnection masks the password portion of a KurrentDB connection
 // string, leaving the scheme, username, host, port, and path intact.
 //

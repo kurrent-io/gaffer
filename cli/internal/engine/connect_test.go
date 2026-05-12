@@ -1,8 +1,11 @@
 package engine
 
 import (
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 )
 
 func TestRedactConnection(t *testing.T) {
@@ -117,5 +120,37 @@ func TestConnect_MalformedConnStr_DoesNotLeakPassword(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "user:***@") {
 		t.Errorf("expected redacted form in error, got %q", err.Error())
+	}
+}
+
+type fakeVersionProvider struct {
+	v   *kurrentdb.ServerVersion
+	err error
+}
+
+func (f fakeVersionProvider) GetServerVersion() (*kurrentdb.ServerVersion, error) {
+	return f.v, f.err
+}
+
+func TestProbeServerVersion(t *testing.T) {
+	cases := []struct {
+		name string
+		v    *kurrentdb.ServerVersion
+		err  error
+		want string
+	}{
+		{"happy", &kurrentdb.ServerVersion{Major: 26, Minor: 1, Patch: 0}, nil, "26.1"},
+		{"major-only", &kurrentdb.ServerVersion{Major: 27, Minor: 0}, nil, "27.0"},
+		{"error", nil, errors.New("dial timeout"), "unknown"},
+		{"nil-version", nil, nil, "unknown"},
+		{"zero-version", &kurrentdb.ServerVersion{}, nil, "unknown"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ProbeServerVersion(fakeVersionProvider{v: tc.v, err: tc.err})
+			if got != tc.want {
+				t.Errorf("ProbeServerVersion = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

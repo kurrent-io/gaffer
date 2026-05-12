@@ -15,6 +15,11 @@ type LiveSourceConfig struct {
 	EngineVersion int
 	OnCaughtUp    func() // called when subscription reaches head of stream, nil = ignore, must not block
 	OnFellBehind  func() // called when subscription falls back behind the live tail. nil = ignore, must not block
+	// OnConnected fires once, right after Connect succeeds, with
+	// the server's reported major.minor version (or "unknown" when
+	// the probe fails). Used by the dev wrapper to stamp db_version
+	// on telemetry. Must not block. nil = ignore.
+	OnConnected func(dbVersion string)
 }
 
 type liveSource struct {
@@ -31,6 +36,10 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 		return err
 	}
 	defer func() { _ = client.Close() }()
+
+	if l.cfg.OnConnected != nil {
+		l.cfg.OnConnected(ProbeServerVersion(client))
+	}
 
 	sub, err := subscription.Subscribe(ctx, client, l.cfg.Info, l.cfg.EngineVersion)
 	if err != nil {

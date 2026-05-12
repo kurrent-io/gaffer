@@ -412,37 +412,61 @@ type DevTx struct {
 func (tx *DevTx) Properties() DevCommandInvokedProperties { return tx.props }
 
 // SetOutcome records the final outcome for the invocation.
-func (tx *DevTx) SetOutcome(o Outcome) { tx.props.Outcome = o }
+// Nil-safe: silent no-op on a nil receiver.
+func (tx *DevTx) SetOutcome(o Outcome) {
+	if tx == nil {
+		return
+	}
+	tx.props.Outcome = o
+}
 
-// SetManifestFeaturesUsed records manifest_features_used. Top-level manifest section names present.
+// SetManifestFeaturesUsed records manifest_features_used. Top-level manifest section names present. Nil-safe: silent no-op on a nil receiver.
 func (tx *DevTx) SetManifestFeaturesUsed(v []string) {
+	if tx == nil {
+		return
+	}
 	tx.props.ManifestFeaturesUsed = v
 }
 
-// SetProjectionCount records projection_count. Bucketed count from manifest.
+// SetProjectionCount records projection_count. Bucketed count from manifest. Nil-safe: silent no-op on a nil receiver.
 func (tx *DevTx) SetProjectionCount(n int) {
+	if tx == nil {
+		return
+	}
 	v := RawCount(n)
 	tx.props.ProjectionCount = &v
 }
 
-// SetFixtureCount records fixture_count. Bucketed count from manifest.
+// SetFixtureCount records fixture_count. Bucketed count from manifest. Nil-safe: silent no-op on a nil receiver.
 func (tx *DevTx) SetFixtureCount(n int) {
+	if tx == nil {
+		return
+	}
 	v := RawCount(n)
 	tx.props.FixtureCount = &v
 }
 
-// SetConnectedToDB records connected_to_db. Whether a live KurrentDB connection was requested.
+// SetConnectedToDB records connected_to_db. Whether a live KurrentDB connection was requested. Nil-safe: silent no-op on a nil receiver.
 func (tx *DevTx) SetConnectedToDB(b bool) {
+	if tx == nil {
+		return
+	}
 	tx.props.ConnectedToDB = &b
 }
 
-// SetDBVersion records db_version. Major.minor of the connected server (e.g. "26.1", "27.0") truncated from the full server `/info` version string, or "unknown" if it was unparseable. Absent when not connected.
+// SetDBVersion records db_version. Major.minor of the connected server (e.g. "26.1", "27.0") truncated from the full server `/info` version string, or "unknown" if it was unparseable. Absent when not connected. Nil-safe: silent no-op on a nil receiver.
 func (tx *DevTx) SetDBVersion(s string) {
+	if tx == nil {
+		return
+	}
 	tx.props.DBVersion = &s
 }
 
-// SetProjectionErrorsSeen records projection_errors_seen. Distinct, sorted set of `projection_*` outcome values seen during the run. Empty when none.
+// SetProjectionErrorsSeen records projection_errors_seen. Distinct, sorted set of `projection_*` outcome values seen during the run. Empty when none. Nil-safe: silent no-op on a nil receiver.
 func (tx *DevTx) SetProjectionErrorsSeen(v []ProjectionOutcome) {
+	if tx == nil {
+		return
+	}
 	tx.props.ProjectionErrorsSeen = v
 }
 
@@ -482,27 +506,45 @@ type MCPTx struct {
 func (tx *MCPTx) Properties() MCPCommandInvokedProperties { return tx.props }
 
 // SetOutcome records the final outcome for the invocation.
-func (tx *MCPTx) SetOutcome(o Outcome) { tx.props.Outcome = o }
+// Nil-safe: silent no-op on a nil receiver.
+func (tx *MCPTx) SetOutcome(o Outcome) {
+	if tx == nil {
+		return
+	}
+	tx.props.Outcome = o
+}
 
-// SetManifestFeaturesUsed records manifest_features_used. Top-level manifest section names present.
+// SetManifestFeaturesUsed records manifest_features_used. Top-level manifest section names present. Nil-safe: silent no-op on a nil receiver.
 func (tx *MCPTx) SetManifestFeaturesUsed(v []string) {
+	if tx == nil {
+		return
+	}
 	tx.props.ManifestFeaturesUsed = v
 }
 
-// SetToolCallCount records tool_call_count. Bucketed. Total tool invocations across the session.
+// SetToolCallCount records tool_call_count. Bucketed. Total tool invocations across the session. Nil-safe: silent no-op on a nil receiver.
 func (tx *MCPTx) SetToolCallCount(n int) {
+	if tx == nil {
+		return
+	}
 	v := RawCount(n)
 	tx.props.ToolCallCount = &v
 }
 
-// SetResourceReadCount records resource_read_count. Bucketed. Total resource reads across the session.
+// SetResourceReadCount records resource_read_count. Bucketed. Total resource reads across the session. Nil-safe: silent no-op on a nil receiver.
 func (tx *MCPTx) SetResourceReadCount(n int) {
+	if tx == nil {
+		return
+	}
 	v := RawCount(n)
 	tx.props.ResourceReadCount = &v
 }
 
-// SetProjectionErrorsSeen records projection_errors_seen. Distinct, sorted set of `projection_*` outcome values seen during the session. Empty when none.
+// SetProjectionErrorsSeen records projection_errors_seen. Distinct, sorted set of `projection_*` outcome values seen during the session. Empty when none. Nil-safe: silent no-op on a nil receiver.
 func (tx *MCPTx) SetProjectionErrorsSeen(v []ProjectionOutcome) {
+	if tx == nil {
+		return
+	}
 	tx.props.ProjectionErrorsSeen = v
 }
 
@@ -538,16 +580,28 @@ type LSPTx struct {
 func (tx *LSPTx) Properties() LSPCommandInvokedProperties { return tx.props }
 
 // SetOutcome records the final outcome for the invocation.
-func (tx *LSPTx) SetOutcome(o Outcome) { tx.props.Outcome = o }
+// Nil-safe: silent no-op on a nil receiver.
+func (tx *LSPTx) SetOutcome(o Outcome) {
+	if tx == nil {
+		return
+	}
+	tx.props.Outcome = o
+}
 
-// SetCodeLensRequestCount records code_lens_request_count. Bucketed total code-lens requests served.
+// SetCodeLensRequestCount records code_lens_request_count. Bucketed total code-lens requests served. Nil-safe: silent no-op on a nil receiver.
 func (tx *LSPTx) SetCodeLensRequestCount(n int) {
+	if tx == nil {
+		return
+	}
 	v := RawCount(n)
 	tx.props.CodeLensRequestCount = &v
 }
 
-// SetDiagnosticPublishCount records diagnostic_publish_count. Bucketed total diagnostic publishes.
+// SetDiagnosticPublishCount records diagnostic_publish_count. Bucketed total diagnostic publishes. Nil-safe: silent no-op on a nil receiver.
 func (tx *LSPTx) SetDiagnosticPublishCount(n int) {
+	if tx == nil {
+		return
+	}
 	v := RawCount(n)
 	tx.props.DiagnosticPublishCount = &v
 }
@@ -592,40 +646,64 @@ type DebugTx struct {
 func (tx *DebugTx) Properties() DebugCommandInvokedProperties { return tx.props }
 
 // SetOutcome records the final outcome for the invocation.
-func (tx *DebugTx) SetOutcome(o Outcome) { tx.props.Outcome = o }
+// Nil-safe: silent no-op on a nil receiver.
+func (tx *DebugTx) SetOutcome(o Outcome) {
+	if tx == nil {
+		return
+	}
+	tx.props.Outcome = o
+}
 
-// SetBreakpointCount records breakpoint_count. Bucketed. Initial breakpoints set by the client.
+// SetBreakpointCount records breakpoint_count. Bucketed. Initial breakpoints set by the client. Nil-safe: silent no-op on a nil receiver.
 func (tx *DebugTx) SetBreakpointCount(n int) {
+	if tx == nil {
+		return
+	}
 	v := RawCount(n)
 	tx.props.BreakpointCount = &v
 }
 
-// SetStepCount records step_count. Bucketed. Total step requests served.
+// SetStepCount records step_count. Bucketed. Total step requests served. Nil-safe: silent no-op on a nil receiver.
 func (tx *DebugTx) SetStepCount(n int) {
+	if tx == nil {
+		return
+	}
 	v := RawCount(n)
 	tx.props.StepCount = &v
 }
 
-// SetPauseCount records pause_count. Bucketed. Times the session paused (breakpoint or pause request).
+// SetPauseCount records pause_count. Bucketed. Times the session paused (breakpoint or pause request). Nil-safe: silent no-op on a nil receiver.
 func (tx *DebugTx) SetPauseCount(n int) {
+	if tx == nil {
+		return
+	}
 	v := RawCount(n)
 	tx.props.PauseCount = &v
 }
 
-// SetRestartCount records restart_count. Bucketed. DAP restarts.
+// SetRestartCount records restart_count. Bucketed. DAP restarts. Nil-safe: silent no-op on a nil receiver.
 func (tx *DebugTx) SetRestartCount(n int) {
+	if tx == nil {
+		return
+	}
 	v := RawCount(n)
 	tx.props.RestartCount = &v
 }
 
-// SetFixtureEventCount records fixture_event_count. Bucketed. Events fed from the fixture.
+// SetFixtureEventCount records fixture_event_count. Bucketed. Events fed from the fixture. Nil-safe: silent no-op on a nil receiver.
 func (tx *DebugTx) SetFixtureEventCount(n int) {
+	if tx == nil {
+		return
+	}
 	v := RawCount(n)
 	tx.props.FixtureEventCount = &v
 }
 
-// SetProjectionErrorsSeen records projection_errors_seen. Distinct, sorted set of `projection_*` outcome values seen during the session. Empty when none.
+// SetProjectionErrorsSeen records projection_errors_seen. Distinct, sorted set of `projection_*` outcome values seen during the session. Empty when none. Nil-safe: silent no-op on a nil receiver.
 func (tx *DebugTx) SetProjectionErrorsSeen(v []ProjectionOutcome) {
+	if tx == nil {
+		return
+	}
 	tx.props.ProjectionErrorsSeen = v
 }
 

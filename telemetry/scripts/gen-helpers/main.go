@@ -818,9 +818,12 @@ func emitCommandTx(w io.Writer, cmd commandSpec, variant []schemaField) {
 	fmt.Fprintf(w, "// Properties returns a snapshot of the accumulated properties for marshal.\n")
 	fmt.Fprintf(w, "func (tx *%sTx) Properties() %sCommandInvokedProperties { return tx.props }\n\n", cmd.GoName, cmd.GoName)
 
-	// Outcome setter on every Tx (uses the base field).
-	fmt.Fprintf(w, "// SetOutcome records the final outcome for the invocation.\n")
-	fmt.Fprintf(w, "func (tx *%sTx) SetOutcome(o Outcome) { tx.props.Outcome = o }\n\n", cmd.GoName)
+	// Outcome setter on every Tx (uses the base field). Nil-safe
+	// so the cobra RunE doesn't need a `if tx != nil` guard at each
+	// call site - matches the rest of the package's nil-tolerance
+	// pattern (Flush, ClientFromContext, End).
+	fmt.Fprintf(w, "// SetOutcome records the final outcome for the invocation.\n// Nil-safe: silent no-op on a nil receiver.\n")
+	fmt.Fprintf(w, "func (tx *%sTx) SetOutcome(o Outcome) {\n\tif tx == nil {\n\t\treturn\n\t}\n\ttx.props.Outcome = o\n}\n\n", cmd.GoName)
 
 	for _, f := range variant {
 		emitTxSetter(w, cmd.GoName, f)
@@ -840,20 +843,24 @@ func emitTxSetter(w io.Writer, txName string, f schemaField) {
 	} else {
 		doc = fmt.Sprintf("Set%s records %s. %s", f.GoName, f.Wire, doc)
 	}
-	emitDoc(w, doc)
+	// Doc gets a nil-safety hint appended; the body opens with a
+	// nil-receiver guard so the cobra RunE can call setters without
+	// branching on Begin's return (which is nil when telemetry is
+	// off).
+	emitDoc(w, doc+" Nil-safe: silent no-op on a nil receiver.")
 	switch f.Kind {
 	case kindRawCount:
-		fmt.Fprintf(w, "func (tx *%sTx) Set%s(n int) {\n\tv := RawCount(n)\n\ttx.props.%s = &v\n}\n\n", txName, f.GoName, f.GoName)
+		fmt.Fprintf(w, "func (tx *%sTx) Set%s(n int) {\n\tif tx == nil {\n\t\treturn\n\t}\n\tv := RawCount(n)\n\ttx.props.%s = &v\n}\n\n", txName, f.GoName, f.GoName)
 	case kindBool:
-		fmt.Fprintf(w, "func (tx *%sTx) Set%s(b bool) {\n\ttx.props.%s = &b\n}\n\n", txName, f.GoName, f.GoName)
+		fmt.Fprintf(w, "func (tx *%sTx) Set%s(b bool) {\n\tif tx == nil {\n\t\treturn\n\t}\n\ttx.props.%s = &b\n}\n\n", txName, f.GoName, f.GoName)
 	case kindString:
-		fmt.Fprintf(w, "func (tx *%sTx) Set%s(s string) {\n\ttx.props.%s = &s\n}\n\n", txName, f.GoName, f.GoName)
+		fmt.Fprintf(w, "func (tx *%sTx) Set%s(s string) {\n\tif tx == nil {\n\t\treturn\n\t}\n\ttx.props.%s = &s\n}\n\n", txName, f.GoName, f.GoName)
 	case kindArrayOfString:
-		fmt.Fprintf(w, "func (tx *%sTx) Set%s(v []string) {\n\ttx.props.%s = v\n}\n\n", txName, f.GoName, f.GoName)
+		fmt.Fprintf(w, "func (tx *%sTx) Set%s(v []string) {\n\tif tx == nil {\n\t\treturn\n\t}\n\ttx.props.%s = v\n}\n\n", txName, f.GoName, f.GoName)
 	case kindArrayOfEnum:
-		fmt.Fprintf(w, "func (tx *%sTx) Set%s(v []%s) {\n\ttx.props.%s = v\n}\n\n", txName, f.GoName, f.Ref, f.GoName)
+		fmt.Fprintf(w, "func (tx *%sTx) Set%s(v []%s) {\n\tif tx == nil {\n\t\treturn\n\t}\n\ttx.props.%s = v\n}\n\n", txName, f.GoName, f.Ref, f.GoName)
 	case kindEnum:
-		fmt.Fprintf(w, "func (tx *%sTx) Set%s(v %s) {\n\ttx.props.%s = &v\n}\n\n", txName, f.GoName, f.Ref, f.GoName)
+		fmt.Fprintf(w, "func (tx *%sTx) Set%s(v %s) {\n\tif tx == nil {\n\t\treturn\n\t}\n\ttx.props.%s = &v\n}\n\n", txName, f.GoName, f.Ref, f.GoName)
 	default:
 		log.Fatalf("emitTxSetter: unsupported field kind for setter on %s.Set%s (kind=%d). Extend emitTxSetter or remove the field from the variant.", txName, f.GoName, f.Kind)
 	}

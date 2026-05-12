@@ -13,12 +13,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	dapserver "github.com/kurrent-io/gaffer/cli/internal/dap"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
-	"github.com/spf13/cobra"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 const statsEmitInterval = 100 * time.Millisecond
@@ -42,7 +44,34 @@ func newDevCmd() *cobra.Command {
 		Short: "Run a projection locally",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDev(cmd, args[0], opts)
+			// `defer tx.End(ctx)` must be direct (not wrapped in
+			// a closure) - recover() inside End only fires when
+			// End is the immediate deferred function. Wrapping in
+			// `defer func() { ...; tx.End(ctx) }()` would put
+			// recover() one frame too deep and silently drop body
+			// panics. See DevTx.End for the contract.
+			tx := telemetry.BeginDev(cmd.Context())
+			defer tx.End(cmd.Context())
+
+			// Typed setters fire at their natural call site so the
+			// value reflects what the body knows. --connection is
+			// known here from opts; deeper stats (db_version,
+			// projection counts, errors-seen) attach inside runDev
+			// once the engine surfaces a Stats() accessor.
+			tx.SetConnectedToDB(opts.Connection != "")
+
+			err := runDev(cmd, args[0], opts)
+			// Outcome cascade: explicit setter wins; else End picks
+			// (recovered panic > ctx.Err > success). retErr is a
+			// coarse fallback for unclassified errors - specific
+			// outcomes (manifest_not_found / db_disconnect /
+			// fixture_exhausted / projection_*) should SetOutcome
+			// at their error site so this branch is the safety
+			// net, not the primary path.
+			if err != nil {
+				tx.SetOutcome(telemetry.OutcomeUserError)
+			}
+			return err
 		},
 	}
 	cmd.Flags().StringVar(&opts.Events, "events", "", "Path to a JSON events file (ad-hoc fixture)")

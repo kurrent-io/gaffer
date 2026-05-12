@@ -480,4 +480,21 @@ func TestEnsureIdentity_NoticeWriteFailureDoesNotFail(t *testing.T) {
 	}
 }
 
+func TestEnsureIdentity_NoticeWriteFailureLeavesDisclosedFalse(t *testing.T) {
+	// Privacy: if the notice write failed, the user never saw the
+	// disclosure. We must NOT latch Disclosed=true - otherwise the
+	// next run from a non-broken stderr would skip the notice and
+	// the user has been permanently silenced.
+	store, _ := userconfig.Load(t.TempDir())
+	if _, err := EnsureIdentity(store, Resolved{}, brokenWriter{}); err != nil {
+		t.Fatalf("EnsureIdentity: %v", err)
+	}
+	// Re-read from disk to confirm the on-disk state isn't latched.
+	store2, _ := userconfig.Load(store.Dir())
+	t2, _ := LoadTelemetry(store2)
+	if t2.Disclosed {
+		t.Error("Disclosed latched after WriteNotice failure; would silently silence future disclosure attempts")
+	}
+}
+
 // brokenWriter is defined in sink_debug_test.go and re-used here.

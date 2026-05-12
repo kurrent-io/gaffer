@@ -187,12 +187,19 @@ func EnsureIdentity(
 		// current.
 		t, _ := LoadTelemetry(store)
 		if !t.Disclosed {
-			// Best-effort. See WriteNotice / MintAndPersist docs
-			// for the failure-policy rationale.
-			_ = WriteNotice(noticeOut)
-			t.Disclosed = true
-			WriteTelemetry(store, t)
-			_ = store.Save()
+			// Only latch Disclosed=true on a SUCCESSFUL notice
+			// write. If stderr is broken (redirected /dev/null,
+			// captured-and-dropped wrapper, write returned an
+			// error mid-stream), the user never saw the
+			// disclosure - the next run from a non-broken
+			// surface will get another chance. Without this
+			// gating a single bad stderr permanently silences
+			// future disclosure attempts.
+			if err := WriteNotice(noticeOut); err == nil {
+				t.Disclosed = true
+				WriteTelemetry(store, t)
+				_ = store.Save()
+			}
 		}
 	}
 	return id, nil

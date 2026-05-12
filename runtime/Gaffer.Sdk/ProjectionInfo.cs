@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Gaffer.Sdk.Diagnostics;
 
 namespace Gaffer.Sdk;
@@ -32,5 +33,11 @@ public sealed class ProjectionInfo {
 	/// other consumers don't need the data and shouldn't pay the
 	/// extra AST pass.
 	/// </summary>
+	/// <remarks>
+	/// Omitted from the wire when null (rather than serialised as
+	/// <c>"shape": null</c>) so callers can distinguish "shape not
+	/// requested" from "shape requested but empty".
+	/// </remarks>
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public ProjectionShape? Shape { get; init; }
 }

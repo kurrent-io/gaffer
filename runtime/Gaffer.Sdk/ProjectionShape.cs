@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Gaffer.Sdk;
 
 /// <summary>
@@ -60,23 +62,52 @@ public sealed class ProjectionShapeHandlers {
 /// accumulated).
 /// </summary>
 public sealed class ProjectionShapeBuiltinCounts {
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? FromAll { get; init; }
+
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? FromStream { get; init; }
+
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? FromStreams { get; init; }
+
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? FromCategory { get; init; }
+
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? FromCategories { get; init; }
+
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? When { get; init; }
+
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? ForeachStream { get; init; }
+
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? OutputState { get; init; }
+
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? TransformBy { get; init; }
+
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? PartitionBy { get; init; }
+
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? Emit { get; init; }
+
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? LinkTo { get; init; }
+
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? CopyTo { get; init; }
 
 	/// <summary>deprecated.</summary>
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? LinkStreamTo { get; init; }
 
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? ChainHandlers { get; init; }
+
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 	public int? UpdateOf { get; init; }
 }

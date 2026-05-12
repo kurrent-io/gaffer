@@ -104,8 +104,8 @@ type Client struct {
 
 	// startTime is captured at construction (process startup) and
 	// used to compute duration_ms on command_invoked envelopes. The
-	// RawCount bucket math (in events.gen.go) collapses sub-second
-	// runs to the 0/1 buckets, so clock skew is irrelevant.
+	// RawDuration bucket math (in events.gen.go) collapses sub-10ms
+	// runs to the 0 bucket, so clock skew is irrelevant.
 	startTime time.Time
 }
 

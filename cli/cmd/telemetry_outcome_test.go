@@ -248,3 +248,26 @@ func TestClassifyMCPOutcome_NilIsSuccess(t *testing.T) {
 		t.Errorf("got %q, want success", got)
 	}
 }
+
+func TestClassifyLSPOutcome_StructuralBeatsProtocolError(t *testing.T) {
+	// Same regression class as MCP: manifest_not_found surfacing
+	// from the LSP startup path should stay manifest_not_found, not
+	// get mis-classified as lsp_protocol_error.
+	got := classifyLSPOutcome(project.ErrNotInProject)
+	if got != telemetry.OutcomeManifestNotFound {
+		t.Errorf("got %q, want manifest_not_found", got)
+	}
+}
+
+func TestClassifyLSPOutcome_FallbackIsProtocolError(t *testing.T) {
+	got := classifyLSPOutcome(fmt.Errorf("jsonrpc framing went wrong"))
+	if got != telemetry.OutcomeLSPProtocolError {
+		t.Errorf("got %q, want lsp_protocol_error", got)
+	}
+}
+
+func TestClassifyLSPOutcome_NilIsSuccess(t *testing.T) {
+	if got := classifyLSPOutcome(nil); got != telemetry.OutcomeSuccess {
+		t.Errorf("got %q, want success", got)
+	}
+}

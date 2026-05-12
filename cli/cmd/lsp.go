@@ -40,9 +40,7 @@ func newLSPCmd() *cobra.Command {
 			tx.SetCodeLensRequestCount(stats.CodeLensRequestCount)
 			tx.SetDiagnosticPublishCount(stats.DiagnosticPublishCount)
 
-			if runErr != nil {
-				tx.SetOutcome(telemetry.OutcomeLSPProtocolError)
-			}
+			tx.SetOutcome(classifyLSPOutcome(runErr))
 			return runErr
 		},
 	}

@@ -76,3 +76,15 @@ func classifyMCPOutcome(runErr error, tracker *projErrTracker) telemetry.Outcome
 	}
 	return telemetry.OutcomeMCPProtocolError
 }
+
+// classifyLSPOutcome is the LSP-side equivalent of classifyMCPOutcome:
+// route runErr through classifyOutcome (so manifest / db / user_interrupt
+// classify correctly), fall back to lsp_protocol_error only when no
+// signal matched. LSP has no projection-error tracker - the LSP server
+// doesn't run projections.
+func classifyLSPOutcome(runErr error) telemetry.Outcome {
+	if out, ok := classifyOutcome(outcomeInputs{err: runErr}); ok {
+		return out
+	}
+	return telemetry.OutcomeLSPProtocolError
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -14,6 +15,24 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// Stats is the typed counter snapshot the cobra RunE drains at
+// tx.End() time. Lives in mcpserver (not telemetry) so the server
+// stays free of any telemetry imports - the translation to typed
+// Tx setters happens at the cobra layer.
+type Stats struct {
+	ToolCallCount     int
+	ResourceReadCount int
+}
+
+// serverStats holds the in-flight counters mutated by tool /
+// resource dispatch on request goroutines. Atomics so the request
+// path stays lock-free; the main goroutine reads via Stats() at
+// shutdown which sees the final value via the release fence.
+type serverStats struct {
+	toolCalls     atomic.Int64
+	resourceReads atomic.Int64
+}
+
 type Server struct {
 	mcp  *mcp.Server
 	root string
@@ -21,6 +40,18 @@ type Server struct {
 
 	mu      sync.Mutex
 	session *activeSession
+
+	stats serverStats
+}
+
+// Stats returns the current counter snapshot. Safe to call from
+// any goroutine; the cobra RunE for `gaffer mcp` calls this at
+// tx.End time after the underlying mcp.Server.Run has returned.
+func (s *Server) Stats() Stats {
+	return Stats{
+		ToolCallCount:     int(s.stats.toolCalls.Load()),
+		ResourceReadCount: int(s.stats.resourceReads.Load()),
+	}
 }
 
 type activeSession struct {
@@ -70,21 +101,21 @@ func New(root string, cfg *config.Config) *Server {
 		},
 	)
 
-	mcp.AddTool(s.mcp, validateTool, s.handleValidate)
-	mcp.AddTool(s.mcp, runTool, s.handleRun)
-	mcp.AddTool(s.mcp, stopTool, s.handleStop)
-	mcp.AddTool(s.mcp, getStepTool, s.handleGetStep)
-	mcp.AddTool(s.mcp, getHistoryTool, s.handleGetHistory)
-	mcp.AddTool(s.mcp, getTimelineTool, s.handleGetTimeline)
-	mcp.AddTool(s.mcp, getStateTool, s.handleGetState)
-	mcp.AddTool(s.mcp, listProjectionsTool, s.handleListProjections)
-	mcp.AddTool(s.mcp, scaffoldTool, s.handleScaffold)
-	mcp.AddTool(s.mcp, evaluateTool, s.handleEvaluate)
-	mcp.AddTool(s.mcp, debugContinueTool, s.handleDebugContinue)
-	mcp.AddTool(s.mcp, stepOverTool, s.handleStepOver)
-	mcp.AddTool(s.mcp, stepIntoTool, s.handleStepInto)
-	mcp.AddTool(s.mcp, stepOutTool, s.handleStepOut)
-	mcp.AddTool(s.mcp, listEventsTool, s.handleListEvents)
+	mcp.AddTool(s.mcp, validateTool, trackedTool(s, s.handleValidate))
+	mcp.AddTool(s.mcp, runTool, trackedTool(s, s.handleRun))
+	mcp.AddTool(s.mcp, stopTool, trackedTool(s, s.handleStop))
+	mcp.AddTool(s.mcp, getStepTool, trackedTool(s, s.handleGetStep))
+	mcp.AddTool(s.mcp, getHistoryTool, trackedTool(s, s.handleGetHistory))
+	mcp.AddTool(s.mcp, getTimelineTool, trackedTool(s, s.handleGetTimeline))
+	mcp.AddTool(s.mcp, getStateTool, trackedTool(s, s.handleGetState))
+	mcp.AddTool(s.mcp, listProjectionsTool, trackedTool(s, s.handleListProjections))
+	mcp.AddTool(s.mcp, scaffoldTool, trackedTool(s, s.handleScaffold))
+	mcp.AddTool(s.mcp, evaluateTool, trackedTool(s, s.handleEvaluate))
+	mcp.AddTool(s.mcp, debugContinueTool, trackedTool(s, s.handleDebugContinue))
+	mcp.AddTool(s.mcp, stepOverTool, trackedTool(s, s.handleStepOver))
+	mcp.AddTool(s.mcp, stepIntoTool, trackedTool(s, s.handleStepInto))
+	mcp.AddTool(s.mcp, stepOutTool, trackedTool(s, s.handleStepOut))
+	mcp.AddTool(s.mcp, listEventsTool, trackedTool(s, s.handleListEvents))
 	s.registerResources()
 	s.registerPrompts()
 
@@ -203,4 +234,29 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 
 	s.session = sess
 	return sess, nil
+}
+
+// trackedTool wraps a typed tool handler with a tool-call counter
+// bump so the protocol-handler hot path stays free of telemetry
+// concerns. Package-level (rather than a method on *Server)
+// because Go disallows type parameters on methods - In/Out vary
+// per tool.
+func trackedTool[In, Out any](
+	s *Server,
+	fn func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error),
+) func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
+		s.stats.toolCalls.Add(1)
+		return fn(ctx, req, in)
+	}
+}
+
+// trackedResource wraps a resource handler with a read-count
+// bump. mcp.ResourceHandler is a concrete func type so this stays
+// a regular method.
+func (s *Server) trackedResource(handler mcp.ResourceHandler) mcp.ResourceHandler {
+	return func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		s.stats.resourceReads.Add(1)
+		return handler(ctx, req)
+	}
 }

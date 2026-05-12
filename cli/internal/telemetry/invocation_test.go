@@ -213,3 +213,26 @@ func TestBuildEnvelope_OmitsInvokerIDWhenUnset(t *testing.T) {
 		t.Errorf("Context.InvokerID = %q, want nil when unset", *env.Context.InvokerID)
 	}
 }
+
+func TestBuildEnvelope_StampsProjectID(t *testing.T) {
+	c := New(
+		WithSink(newMockSink()),
+		WithIdentity(testIdentity),
+		WithProjectID("deadbeefdeadbeef"),
+	)
+	env := c.buildEnvelope(CommandInvoked{Name: "command_invoked", Timestamp: nowTimestamp()})
+	if env.Context.ProjectID == nil {
+		t.Fatal("Context.ProjectID = nil, want non-nil")
+	}
+	if *env.Context.ProjectID != "deadbeefdeadbeef" {
+		t.Errorf("Context.ProjectID = %q, want deadbeefdeadbeef", *env.Context.ProjectID)
+	}
+}
+
+func TestBuildEnvelope_OmitsProjectIDWhenUnset(t *testing.T) {
+	c := New(WithSink(newMockSink()), WithIdentity(testIdentity))
+	env := c.buildEnvelope(CommandInvoked{Name: "command_invoked", Timestamp: nowTimestamp()})
+	if env.Context.ProjectID != nil {
+		t.Errorf("Context.ProjectID = %q, want nil when unset", *env.Context.ProjectID)
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kurrent-io/gaffer/cli/cmd"
+	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
@@ -114,7 +115,8 @@ func buildClient(noticeOut io.Writer, invocation telemetry.Invocation) *telemetr
 	}
 	cwd, _ := os.Getwd()
 	home, _ := os.UserHomeDir()
-	return telemetry.StartupGate(store, cwd, home, noticeOut, invocation,
+	projectRoot := project.FindRootFrom(cwd)
+	return telemetry.StartupGate(store, cwd, home, projectRoot, noticeOut, invocation,
 		telemetry.WithUserAgent(userAgent()),
 		telemetry.WithLibVersion(cmd.Version),
 	)

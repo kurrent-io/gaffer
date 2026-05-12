@@ -41,7 +41,7 @@ func TestStartupGate_OptedOutByUserReturnsNil(t *testing.T) {
 	}
 
 	var notice bytes.Buffer
-	c := StartupGate(store, cwd, home, &notice, Invocation{})
+	c := StartupGate(store, cwd, home, "", &notice, Invocation{})
 	if c != nil {
 		t.Errorf("StartupGate returned %v, want nil for user-disabled", c)
 	}
@@ -55,7 +55,7 @@ func TestStartupGate_OptedOutByEnvReturnsNil(t *testing.T) {
 	t.Setenv("DO_NOT_TRACK", "1")
 
 	var notice bytes.Buffer
-	c := StartupGate(store, cwd, home, &notice, Invocation{})
+	c := StartupGate(store, cwd, home, "", &notice, Invocation{})
 	if c != nil {
 		t.Errorf("StartupGate returned %v, want nil for env-disabled", c)
 	}
@@ -71,7 +71,7 @@ func TestStartupGate_OptedOutByWorkspaceReturnsNil(t *testing.T) {
 	}
 
 	var notice bytes.Buffer
-	c := StartupGate(store, cwd, home, &notice, Invocation{})
+	c := StartupGate(store, cwd, home, "", &notice, Invocation{})
 	if c != nil {
 		t.Errorf("StartupGate returned %v, want nil for workspace-disabled", c)
 	}
@@ -84,7 +84,7 @@ func TestStartupGate_FreshInstallMintsAndNotifies(t *testing.T) {
 	store, cwd, home := startupTest(t)
 
 	var notice bytes.Buffer
-	c := StartupGate(store, cwd, home, &notice, Invocation{})
+	c := StartupGate(store, cwd, home, "", &notice, Invocation{})
 	if c == nil {
 		t.Fatal("StartupGate returned nil on fresh install")
 	}
@@ -105,7 +105,7 @@ func TestStartupGate_ExistingIdentitySkipsNotice(t *testing.T) {
 	}
 
 	var notice bytes.Buffer
-	c := StartupGate(store, cwd, home, &notice, Invocation{})
+	c := StartupGate(store, cwd, home, "", &notice, Invocation{})
 	if c == nil {
 		t.Fatal("StartupGate returned nil for existing-identity case")
 	}
@@ -136,7 +136,7 @@ func TestStartupGate_MintFailureSurfacesWarning(t *testing.T) {
 	}
 
 	var notice bytes.Buffer
-	c := StartupGate(store, cwd, t.TempDir(), &notice, Invocation{})
+	c := StartupGate(store, cwd, t.TempDir(), "", &notice, Invocation{})
 	if c != nil {
 		t.Errorf("StartupGate returned %v, want nil on mint failure", c)
 	}
@@ -145,12 +145,59 @@ func TestStartupGate_MintFailureSurfacesWarning(t *testing.T) {
 	}
 }
 
+func TestStartupGate_HashesProjectRoot(t *testing.T) {
+	store, cwd, home := startupTest(t)
+
+	c := StartupGate(store, cwd, home, cwd, &bytes.Buffer{}, Invocation{})
+	if c == nil {
+		t.Fatal("StartupGate returned nil despite mint succeeding")
+	}
+	if c.projectID == "" {
+		t.Error("projectID is empty; expected hash of supplied projectRoot")
+	}
+	want := ProjectID(c.identity.Salt, cwd)
+	if c.projectID != want {
+		t.Errorf("projectID = %q, want %q (from ProjectID(salt, root))", c.projectID, want)
+	}
+}
+
+func TestStartupGate_LeavesProjectIDEmptyWhenRootEmpty(t *testing.T) {
+	store, cwd, home := startupTest(t)
+
+	c := StartupGate(store, cwd, home, "", &bytes.Buffer{}, Invocation{})
+	if c == nil {
+		t.Fatal("StartupGate returned nil despite mint succeeding")
+	}
+	if c.projectID != "" {
+		t.Errorf("projectID = %q, want empty when projectRoot is empty", c.projectID)
+	}
+}
+
+func TestStartupGate_SameRootProducesSameID(t *testing.T) {
+	// User-visible invariant: two CLI processes launched from
+	// different subdirectories of the same project must stamp the
+	// same project_id. Hash input is the resolved root, not the cwd,
+	// so this holds as long as main.go feeds the resolved root.
+	store, cwd, home := startupTest(t)
+	c1 := StartupGate(store, cwd, home, cwd, &bytes.Buffer{}, Invocation{})
+	if c1 == nil {
+		t.Fatal("first StartupGate returned nil")
+	}
+	c2 := StartupGate(store, cwd, home, cwd, &bytes.Buffer{}, Invocation{})
+	if c2 == nil {
+		t.Fatal("second StartupGate returned nil")
+	}
+	if c1.projectID != c2.projectID {
+		t.Errorf("projectID drifted across calls: %q != %q", c1.projectID, c2.projectID)
+	}
+}
+
 func TestStartupGate_InvokerIDSuppressesFirstMintNotice(t *testing.T) {
 	store, cwd, home := startupTest(t)
 
 	var notice bytes.Buffer
 	inv := Invocation{InvokerID: "11111111-1111-4111-8111-111111111111"}
-	c := StartupGate(store, cwd, home, &notice, inv)
+	c := StartupGate(store, cwd, home, "", &notice, inv)
 	if c == nil {
 		t.Fatal("StartupGate returned nil despite mint succeeding")
 	}
@@ -166,7 +213,7 @@ func TestStartupGate_AppliesExtraOptions(t *testing.T) {
 	store, cwd, home := startupTest(t)
 	custom := "gaffer-cli/test-ua"
 
-	c := StartupGate(store, cwd, home, &bytes.Buffer{}, Invocation{}, WithUserAgent(custom))
+	c := StartupGate(store, cwd, home, "", &bytes.Buffer{}, Invocation{}, WithUserAgent(custom))
 	if c == nil {
 		t.Fatal("StartupGate returned nil")
 	}

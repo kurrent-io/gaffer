@@ -56,6 +56,17 @@ type Client struct {
 	// worker would reject.
 	identity Identity
 
+	// projectID is the wire-format project_id stamped on every
+	// envelope's Context. Computed once in StartupGate from the
+	// identity salt + the project root that main.go resolved via
+	// project.FindRootFrom; empty when the process started outside a
+	// gaffer project, in which case buildEnvelope omits the field.
+	// Treated as immutable post-construction. Long-running surfaces
+	// (lsp, mcp) carry the launch-cwd's value for the whole session;
+	// per-request resolution is future work when those surfaces gain
+	// project-aware telemetry.
+	projectID string
+
 	// invocation carries values parsed from the hidden root flags
 	// --invoker-id / --invoked-by / --invoked-via. Set at Client
 	// construction from main.go's pre-cobra argv peek (the flags
@@ -149,6 +160,15 @@ func WithIdentity(id Identity) Option {
 // passed; the stamp helpers apply command-aware defaults at emit time.
 func WithInvocation(inv Invocation) Option {
 	return func(c *Client) { c.invocation = inv }
+}
+
+// WithProjectID stamps the salted project_id onto the Client.
+// StartupGate computes this from the resolved identity's salt and the
+// project root discovered via project.FindRootFrom(cwd); tests inject
+// directly. Empty value means "no project" and buildEnvelope omits
+// Context.ProjectID.
+func WithProjectID(id string) Option {
+	return func(c *Client) { c.projectID = id }
 }
 
 // New constructs a Client. With no options it uses the production httpSink

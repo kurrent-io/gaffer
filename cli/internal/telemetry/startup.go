@@ -38,6 +38,19 @@ import (
 // inside) so tests can drive the function deterministically. main.go
 // reads them once at startup and forwards.
 //
+// projectRoot is the absolute path to the gaffer project root for
+// this process (empty when launched outside a project). main.go
+// resolves it via project.FindRootFrom(cwd) and passes it in so
+// telemetry stays free of project-discovery imports - this layer
+// only knows how to hash. The result is stamped onto every envelope
+// via Context.ProjectID.
+//
+// Long-running surfaces (lsp, mcp) currently inherit the launch-cwd's
+// project_id for every event they emit, even if they serve requests
+// from other workspace roots. Acceptable today because those events
+// are command_invoked only; revisit when LSP/MCP gain per-request
+// telemetry.
+//
 // invocation carries the spawn-linkage values parsed from the hidden
 // root flags. When InvokerID is set, the first-mint disclosure notice
 // is suppressed (the spawning surface, typically the VS Code
@@ -45,7 +58,7 @@ import (
 // printing to a non-TTY stderr inside an extension-spawned CLI would
 // be invisible anyway). The full Invocation is also stamped onto the
 // Client so emit-side defaults can read it.
-func StartupGate(store *userconfig.Store, cwd, homeDir string, noticeOut io.Writer, invocation Invocation, opts ...Option) *Client {
+func StartupGate(store *userconfig.Store, cwd, homeDir, projectRoot string, noticeOut io.Writer, invocation Invocation, opts ...Option) *Client {
 	optOut := CheckOptOut(store, cwd, homeDir)
 	if optOut.IsDisabled() {
 		return nil
@@ -64,5 +77,15 @@ func StartupGate(store *userconfig.Store, cwd, homeDir string, noticeOut io.Writ
 		}
 		return nil
 	}
-	return New(append(opts, WithIdentity(id), WithInvocation(invocation))...)
+	// Hash the project root if main.go resolved one. Schema makes
+	// project_id optional; "absent" is the not-in-a-project signal.
+	var projectID string
+	if projectRoot != "" {
+		projectID = ProjectID(id.Salt, projectRoot)
+	}
+	return New(append(opts,
+		WithIdentity(id),
+		WithInvocation(invocation),
+		WithProjectID(projectID),
+	)...)
 }

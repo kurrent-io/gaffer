@@ -55,24 +55,32 @@ func (c *Client) fireCommandInvoked(props any) {
 // libVersion off the Client; reads OS / arch from runtime; detects
 // runtime_environment from CI env vars.
 func (c *Client) buildEnvelope(ev Event) *Envelope {
-	ctx := Context{
-		Emitter:            EmitterCLI,
-		LibVersion:         c.libVersion,
-		OS:                 mapGoOS(runtime.GOOS),
-		Arch:               mapGoArch(runtime.GOARCH),
-		RuntimeEnvironment: detectRuntimeEnv(),
-	}
-	if c.invocation.InvokerID != "" {
-		id := c.invocation.InvokerID
-		ctx.InvokerID = &id
-	}
 	return &Envelope{
 		SchemaVersion: SchemaVersion,
 		EmitterID:     c.identity.TelemetryID,
 		RunID:         c.identity.RunID,
-		Context:       ctx,
-		Events:        []Event{ev},
+		Context: Context{
+			Emitter:            EmitterCLI,
+			LibVersion:         c.libVersion,
+			OS:                 mapGoOS(runtime.GOOS),
+			Arch:               mapGoArch(runtime.GOARCH),
+			RuntimeEnvironment: detectRuntimeEnv(),
+			InvokerID:          optStrPtr(c.invocation.InvokerID),
+			ProjectID:          optStrPtr(c.projectID),
+		},
+		Events: []Event{ev},
 	}
+}
+
+// optStrPtr returns &s when s is non-empty, nil otherwise. Used to
+// drive the schema's "absent if empty" convention on optional Context
+// fields (InvokerID, ProjectID) without repeating the same local-copy
+// dance at every site.
+func optStrPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // mapGoOS translates a runtime.GOOS string to the schema's OS enum.

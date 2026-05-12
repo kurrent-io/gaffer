@@ -126,6 +126,7 @@ type fieldKind int
 
 const (
 	kindString fieldKind = iota
+	kindStringConst // single-literal string; see Ref for the literal value
 	kindBool
 	kindInt
 	kindRawCount
@@ -462,6 +463,16 @@ func classify(name string, optional bool, v cue.Value) (schemaField, error) {
 	case isBoolField(v):
 		return schemaField{Wire: name, GoName: goName, Optional: optional, Kind: kindBool, Doc: doc}, nil
 	case isStringField(v):
+		// A concrete single-literal string (`type: "raw"`) emits as
+		// a named typed const so producers can't accidentally
+		// stamp a divergent value - the compiler rejects "go"
+		// where ExceptionStacktraceTypeRaw is expected.
+		if v.IsConcrete() {
+			lit, err := v.String()
+			if err == nil {
+				return schemaField{Wire: name, GoName: goName, Optional: optional, Kind: kindStringConst, Ref: lit, Doc: doc}, nil
+			}
+		}
 		return schemaField{Wire: name, GoName: goName, Optional: optional, Kind: kindString, Doc: doc}, nil
 	case v.IncompleteKind() == cue.IntKind:
 		return schemaField{Wire: name, GoName: goName, Optional: optional, Kind: kindInt, Doc: doc}, nil
@@ -812,10 +823,38 @@ func fileSizeBucketConstName(typeName string, member int64) string {
 }
 
 func emitStruct(w io.Writer, name, doc string, fields []schemaField) {
+	// Per-field literal-const types ship before the struct so the
+	// struct field can reference them by name.
+	for _, f := range fields {
+		if f.Kind == kindStringConst {
+			emitStringConst(w, name, f)
+		}
+	}
 	emitDoc(w, doc)
 	fmt.Fprintf(w, "type %s struct {\n", name)
-	emitFields(w, fields)
+	emitFieldsWithParent(w, name, fields)
 	fmt.Fprint(w, "}\n\n")
+}
+
+// emitStringConst declares a single-value typed string and its sole
+// const for a kindStringConst field. The pair lives at package level
+// so the struct field can use the typed name and so the compiler
+// rejects any other string literal at producer call sites.
+//
+// Naming: <ParentStruct><GoField> for the type, <Type><Camel(value)>
+// for the const. Example: stacktrace.type: "raw" inside
+// ExceptionStacktrace becomes:
+//
+//	type ExceptionStacktraceType string
+//	const ExceptionStacktraceTypeRaw ExceptionStacktraceType = "raw"
+func emitStringConst(w io.Writer, parent string, f schemaField) {
+	typeName := parent + f.GoName
+	constName := typeName + snakeToCamel(f.Ref)
+	fmt.Fprintf(w, "// %s is the typed wrapper for the single-literal\n", typeName)
+	fmt.Fprintf(w, "// `%s.%s` field. Pinning the literal in the type system\n", parent, f.Wire)
+	fmt.Fprintf(w, "// prevents producer-side drift from the schema.\n")
+	fmt.Fprintf(w, "type %s string\n\n", typeName)
+	fmt.Fprintf(w, "const %s %s = %q\n\n", constName, typeName, f.Ref)
 }
 
 func emitEventStruct(w io.Writer, goName, wireName, doc string, propFields []schemaField) {
@@ -918,14 +957,29 @@ func emitTxSetter(w io.Writer, txName string, f schemaField) {
 }
 
 func emitFields(w io.Writer, fields []schemaField) {
+	emitFieldsWithParent(w, "", fields)
+}
+
+// emitFieldsWithParent renders struct fields. parent is the
+// enclosing struct's Go name; non-empty only when the caller has
+// declared per-field literal-const types (see emitStringConst) that
+// the field's type reference will name.
+func emitFieldsWithParent(w io.Writer, parent string, fields []schemaField) {
 	for _, f := range fields {
-		emitField(w, f)
+		emitFieldWithParent(w, parent, f)
 	}
 }
 
 func emitField(w io.Writer, f schemaField) {
+	emitFieldWithParent(w, "", f)
+}
+
+func emitFieldWithParent(w io.Writer, parent string, f schemaField) {
 	emitDoc(w, f.Doc)
 	goType := goTypeFor(f)
+	if f.Kind == kindStringConst && parent != "" {
+		goType = parent + f.GoName
+	}
 	tag := f.Wire
 	if f.Optional {
 		tag += ",omitempty"
@@ -936,7 +990,11 @@ func emitField(w io.Writer, f schemaField) {
 func goTypeFor(f schemaField) string {
 	var base string
 	switch f.Kind {
-	case kindString:
+	case kindString, kindStringConst:
+		// kindStringConst gets rewritten to <Parent><GoName> by
+		// emitFieldWithParent when emitted inside a struct; this
+		// fallback covers the rare contexts (e.g. setters on
+		// optional const fields) where parent isn't known.
 		base = "string"
 	case kindUUID:
 		base = "UUID"

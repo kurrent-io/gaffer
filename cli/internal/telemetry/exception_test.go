@@ -102,7 +102,7 @@ func TestEmitException_RuntimeErrorGetsVerbatimMessage(t *testing.T) {
 	if entry.Type != "RuntimeError" {
 		t.Errorf("Type = %q, want RuntimeError", entry.Type)
 	}
-	if entry.Stacktrace.Type != "raw" {
+	if entry.Stacktrace.Type != ExceptionStacktraceTypeRaw {
 		t.Errorf("Stacktrace.Type = %q, want raw (schema literal)", entry.Stacktrace.Type)
 	}
 	if entry.Value == unsanitizedExceptionValue {

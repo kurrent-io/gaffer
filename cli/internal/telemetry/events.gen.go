@@ -232,12 +232,19 @@ const (
 	FileSizeBucketOver100KB FileSizeBucket = 102400
 )
 
+// EnvelopeSchemaVersion is the typed wrapper for the single-literal
+// `Envelope.schema_version` field. Pinning the literal in the type system
+// prevents producer-side drift from the schema.
+type EnvelopeSchemaVersion string
+
+const EnvelopeSchemaVersion1 EnvelopeSchemaVersion = "1"
+
 // Envelope is the top-level shape POSTed to the telemetry worker. One
 // envelope per HTTP request, carrying a batch of events that share the same
 // emitter and run.
 type Envelope struct {
 	// Bumped only for breaking wire changes; additive changes keep the same version.
-	SchemaVersion string `json:"schema_version"`
+	SchemaVersion EnvelopeSchemaVersion `json:"schema_version"`
 	// Per-install random UUID identifying this gaffer installation.
 	EmitterID UUID `json:"emitter_id"`
 	// Per-process UUID identifying a single CLI invocation or extension activation. Correlates events emitted from the same process.
@@ -838,10 +845,17 @@ type ExceptionEntry struct {
 	Stacktrace ExceptionStacktrace `json:"stacktrace"`
 }
 
+// ExceptionStacktraceType is the typed wrapper for the single-literal
+// `ExceptionStacktrace.type` field. Pinning the literal in the type system
+// prevents producer-side drift from the schema.
+type ExceptionStacktraceType string
+
+const ExceptionStacktraceTypeRaw ExceptionStacktraceType = "raw"
+
 // ExceptionStacktrace is the structured stacktrace shape on every entry.
 type ExceptionStacktrace struct {
-	Type   string  `json:"type"`
-	Frames []Frame `json:"frames"`
+	Type   ExceptionStacktraceType `json:"type"`
+	Frames []Frame                 `json:"frames"`
 }
 
 // Frame is one stack frame after structural scrubbing.

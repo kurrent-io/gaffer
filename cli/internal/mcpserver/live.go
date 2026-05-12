@@ -43,10 +43,13 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 			sess.runner.SetStatus("error")
 		}
 
-		if sess.runner.Faulted() && sess.errorCh != nil {
-			select {
-			case sess.errorCh <- sess.runner.LastError():
-			default:
+		if sess.runner.Faulted() {
+			s.recordProjectionError(sess.runner.LastError())
+			if sess.errorCh != nil {
+				select {
+				case sess.errorCh <- sess.runner.LastError():
+				default:
+				}
 			}
 		}
 	}()

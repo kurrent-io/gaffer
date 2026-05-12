@@ -187,3 +187,38 @@ func TestProjectionOutcomeFor_HandlesWrappedErrors(t *testing.T) {
 		t.Errorf("got %q, want projection_user_throw", got)
 	}
 }
+
+func TestClassifyMCPOutcome_StructuralBeatsProtocolError(t *testing.T) {
+	// A manifest_not_found that surfaced through MCP startup should
+	// stay manifest_not_found, not get mis-classified as
+	// mcp_protocol_error - this was the regression the audit found.
+	got := classifyMCPOutcome(project.ErrNotInProject, newProjErrTracker())
+	if got != telemetry.OutcomeManifestNotFound {
+		t.Errorf("got %q, want manifest_not_found", got)
+	}
+}
+
+func TestClassifyMCPOutcome_ProjectionFaultBeatsProtocolError(t *testing.T) {
+	tr := newProjErrTracker()
+	tr.Record(&gafferruntime.ProjectionHandlerError{})
+
+	got := classifyMCPOutcome(fmt.Errorf("session ended"), tr)
+	if got != telemetry.Outcome(telemetry.ProjectionOutcomeProjectionUserThrow) {
+		t.Errorf("got %q, want projection_user_throw", got)
+	}
+}
+
+func TestClassifyMCPOutcome_FallbackIsProtocolError(t *testing.T) {
+	// Generic non-nil runErr with no structural / projection signal
+	// is the legitimate mcp_protocol_error case.
+	got := classifyMCPOutcome(fmt.Errorf("mcp framing went wrong"), newProjErrTracker())
+	if got != telemetry.OutcomeMCPProtocolError {
+		t.Errorf("got %q, want mcp_protocol_error", got)
+	}
+}
+
+func TestClassifyMCPOutcome_NilIsSuccess(t *testing.T) {
+	if got := classifyMCPOutcome(nil, newProjErrTracker()); got != telemetry.OutcomeSuccess {
+		t.Errorf("got %q, want success", got)
+	}
+}

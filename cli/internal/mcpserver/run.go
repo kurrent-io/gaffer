@@ -133,6 +133,7 @@ func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string, bre
 			sess.runner.SetStatus("completed")
 		} else {
 			sess.runner.SetStatus("error")
+			s.recordProjectionError(sess.runner.LastError())
 		}
 	}()
 
@@ -156,6 +157,7 @@ func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.Ca
 		sess.runner.SetStatus("completed")
 	} else {
 		sess.runner.SetStatus("error")
+		s.recordProjectionError(sess.runner.LastError())
 	}
 
 	summary := sess.runner.CollectState().ToMap()

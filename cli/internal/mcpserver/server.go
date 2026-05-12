@@ -48,6 +48,14 @@ type Server struct {
 	session *activeSession
 
 	stats serverStats
+
+	// projErrMu guards projErrs. Tool-call runners fault on
+	// background goroutines (live subscription, fixture loop);
+	// the cobra RunE reads the slice at End time after the MCP
+	// session has shut down. Mutex is simpler than channel-based
+	// coordination for an append-only collection drained once.
+	projErrMu sync.Mutex
+	projErrs  []error
 }
 
 // Config returns the parsed gaffer.toml the server was constructed
@@ -65,6 +73,35 @@ func (s *Server) Stats() Stats {
 		ToolCallCount:     int(s.stats.toolCalls.Load()),
 		ResourceReadCount: int(s.stats.resourceReads.Load()),
 	}
+}
+
+// ProjectionErrors returns the raw FFI errors captured across every
+// run-tool invocation in this session, in observation order. The
+// cobra wrapper classifies them at End time so the schema-specific
+// outcome mapping stays out of the server. Returns a copy; safe to
+// hold past further fault events.
+func (s *Server) ProjectionErrors() []error {
+	s.projErrMu.Lock()
+	defer s.projErrMu.Unlock()
+	if len(s.projErrs) == 0 {
+		return nil
+	}
+	out := make([]error, len(s.projErrs))
+	copy(out, s.projErrs)
+	return out
+}
+
+// recordProjectionError stashes a runner fault so the cobra wrapper
+// can drain it into projection_errors_seen. Called from the run-tool
+// background goroutines and from the live-mode subscription loop;
+// the mutex serialises the slice append across them.
+func (s *Server) recordProjectionError(err error) {
+	if err == nil {
+		return
+	}
+	s.projErrMu.Lock()
+	s.projErrs = append(s.projErrs, err)
+	s.projErrMu.Unlock()
 }
 
 type activeSession struct {

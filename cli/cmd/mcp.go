@@ -46,10 +46,33 @@ func newMCPCmd() *cobra.Command {
 			tx.SetToolCallCount(stats.ToolCallCount)
 			tx.SetResourceReadCount(stats.ResourceReadCount)
 
-			if runErr != nil {
-				tx.SetOutcome(telemetry.OutcomeMCPProtocolError)
+			// Drain projection faults observed across tool calls
+			// into projection_errors_seen. classifyOutcome handles
+			// the picking-a-final-bucket logic below.
+			tracker := newProjErrTracker()
+			for _, projErr := range srv.ProjectionErrors() {
+				tracker.Record(projErr)
 			}
+			if seen := tracker.Sorted(); len(seen) > 0 {
+				tx.SetProjectionErrorsSeen(seen)
+			}
+
+			tx.SetOutcome(classifyMCPOutcome(runErr, tracker))
 			return runErr
 		},
 	}
+}
+
+// classifyMCPOutcome picks the command_invoked outcome for `gaffer
+// mcp`. Falls through classifyOutcome's structural / projection
+// ladder first; only if neither matches AND runErr is non-nil does
+// it map to mcp_protocol_error. Previously the wrapper unconditionally
+// stamped mcp_protocol_error on any non-nil runErr, which mis-classified
+// manifest / db errors that surfaced through the MCP server's startup
+// path as protocol failures.
+func classifyMCPOutcome(runErr error, tracker *projErrTracker) telemetry.Outcome {
+	if out := classifyOutcome(outcomeInputs{err: runErr, tracker: tracker}); out != telemetry.OutcomeUserError || runErr == nil {
+		return out
+	}
+	return telemetry.OutcomeMCPProtocolError
 }

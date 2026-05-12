@@ -42,6 +42,27 @@ func triggerRuntimeError() (r any) {
 	return nil
 }
 
+func TestClient_ExceptionPhase(t *testing.T) {
+	c := New(WithSink(newMockSink()), WithIdentity(testIdentity))
+	if got := c.ExceptionPhase(); got != ExceptionPhaseStartup {
+		t.Errorf("fresh Client phase = %q, want startup", got)
+	}
+	c.setCurrentCommand(CommandNameDev)
+	if got := c.ExceptionPhase(); got != ExceptionPhaseEventProcessing {
+		t.Errorf("post-Begin phase = %q, want event_processing", got)
+	}
+}
+
+func TestClient_ExceptionPhaseNilReceiver(t *testing.T) {
+	// Opt-out path: main.go calls ExceptionPhase on a possibly-nil
+	// Client. Treat nil like "telemetry off, never dispatched" -
+	// startup is the conservative attribution.
+	var c *Client
+	if got := c.ExceptionPhase(); got != ExceptionPhaseStartup {
+		t.Errorf("nil-receiver phase = %q, want startup", got)
+	}
+}
+
 func TestEmitException_StampsCurrentCommand(t *testing.T) {
 	ctx, c, mock := emitTestSetup(t)
 	// Simulate a Begin/Emit having fired before the panic.

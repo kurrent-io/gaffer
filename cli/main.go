@@ -90,19 +90,13 @@ func runMain() (exitCode int) {
 	}()
 	defer func() {
 		if r := recover(); r != nil {
-			// Phase: a panic before cobra dispatched any RunE
-			// (flag parsing, opt-out check, identity mint) is
-			// startup; once Begin/Emit has fired and stashed a
-			// command on the Client, the panic happened during
-			// command execution. projection_init / shutdown are
-			// projection-runtime concerns that surface via the
-			// .NET runtime's own exception path, not Go panics
-			// caught here.
-			phase := telemetry.ExceptionPhaseEventProcessing
-			if client.CurrentCommand() == "" {
-				phase = telemetry.ExceptionPhaseStartup
-			}
-			telemetry.EmitException(ctx, r, phase)
+			// Client.ExceptionPhase() picks startup vs
+			// event_processing based on whether cobra has
+			// dispatched a RunE yet. projection_init / shutdown
+			// are projection-runtime concerns that surface via
+			// the .NET runtime's own exception path, not Go
+			// panics caught here.
+			telemetry.EmitException(ctx, r, client.ExceptionPhase())
 			recoveredPanic = r
 		}
 	}()

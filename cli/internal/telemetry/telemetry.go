@@ -200,19 +200,23 @@ func (c *Client) currentCommandName() CommandName {
 	return v.(CommandName)
 }
 
-// CurrentCommand returns the in-flight cobra command name, or empty
-// if cobra hasn't dispatched a RunE yet (panic during flag parsing,
-// opt-out check, etc.). Exported for main.go's panic-recover defer
-// to pick the right ExceptionPhase: empty -> startup, set ->
-// event_processing.
+// ExceptionPhase returns the right phase to stamp on an exception
+// envelope based on whether a cobra RunE has dispatched yet. Empty
+// currentCommand (panic during flag parsing, opt-out check, identity
+// mint) -> startup; populated (Begin/Emit fired, a RunE is in
+// flight) -> event_processing. main.go's panic-recover defer is
+// the sole caller.
 //
-// Nil-safe: returns empty when called on a nil receiver, matching
-// the rest of the package's "telemetry-off is silent" posture.
-func (c *Client) CurrentCommand() CommandName {
-	if c == nil {
-		return ""
+// Hides the empty-string convention inside the telemetry package so
+// the caller doesn't need to know how the in-flight command is
+// stashed. Nil-safe: returns startup on a nil receiver, matching
+// "telemetry-off treats every panic as startup-ish since we never
+// dispatched anything telemetry could attribute to a command".
+func (c *Client) ExceptionPhase() ExceptionPhase {
+	if c == nil || c.currentCommandName() == "" {
+		return ExceptionPhaseStartup
 	}
-	return c.currentCommandName()
+	return ExceptionPhaseEventProcessing
 }
 
 // New constructs a Client. With no options it uses the production httpSink

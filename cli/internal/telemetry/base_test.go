@@ -102,7 +102,7 @@ func TestClient_EmitSendsEnvelope(t *testing.T) {
 	mock := newMockSink()
 	c := New(WithSink(mock))
 	env := &Envelope{
-		SchemaVersion: SchemaVersion,
+		SchemaVersion: EnvelopeSchemaVersion1,
 		EmitterID:     "abc",
 		RunID:         "def",
 		Context: Context{
@@ -128,7 +128,7 @@ func TestClient_EmitMany(t *testing.T) {
 	c := New(WithSink(mock))
 	const n = 50
 	for i := 0; i < n; i++ {
-		c.emit(&Envelope{SchemaVersion: SchemaVersion, EmitterID: "y"})
+		c.emit(&Envelope{SchemaVersion: EnvelopeSchemaVersion1, EmitterID: "y"})
 	}
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("Flush: %v", err)
@@ -161,7 +161,7 @@ func TestClient_FlushNilReceiverIsNoop(t *testing.T) {
 func TestClient_FlushIsIdempotent(t *testing.T) {
 	mock := newMockSink()
 	c := New(WithSink(mock))
-	c.emit(&Envelope{SchemaVersion: SchemaVersion, EmitterID: "z"})
+	c.emit(&Envelope{SchemaVersion: EnvelopeSchemaVersion1, EmitterID: "z"})
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("Flush 1: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestClient_EmitAfterFlushIsDropped(t *testing.T) {
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
-	c.emit(&Envelope{SchemaVersion: SchemaVersion, EmitterID: "should-drop"})
+	c.emit(&Envelope{SchemaVersion: EnvelopeSchemaVersion1, EmitterID: "should-drop"})
 	time.Sleep(20 * time.Millisecond)
 	if got := mock.Len(); got != 0 {
 		t.Errorf("len = %d, want 0 (post-flush emits must drop silently)", got)

@@ -56,7 +56,7 @@ func (c *Client) fireCommandInvoked(props any) {
 // runtime_environment from CI env vars.
 func (c *Client) buildEnvelope(ev Event) *Envelope {
 	return &Envelope{
-		SchemaVersion: SchemaVersion,
+		SchemaVersion: EnvelopeSchemaVersion1,
 		EmitterID:     c.identity.TelemetryID,
 		RunID:         c.identity.RunID,
 		Context: Context{

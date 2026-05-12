@@ -706,10 +706,6 @@ type UUID = string
 // Timestamp is an RFC 3339 timestamp with millisecond precision.
 type Timestamp = string
 
-// SchemaVersion is the wire-schema version stamped on every envelope. Only
-// bumped for breaking wire changes; additive changes keep the same version.
-const SchemaVersion = "1"
-
 // Event is the marker interface for every event type the generator emits.
 // Implementations are closed by the unexported isEvent() method, so the
 // Envelope.Events slice can hold any mix of generated event types but

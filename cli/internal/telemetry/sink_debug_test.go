@@ -15,7 +15,7 @@ func TestDebugTeeSink_WritesAndForwards(t *testing.T) {
 	var buf bytes.Buffer
 	inner := newMockSink()
 	d := newDebugTeeSink(inner, &buf, nil)
-	env := &Envelope{SchemaVersion: SchemaVersion, EmitterID: "tee-test"}
+	env := &Envelope{SchemaVersion: EnvelopeSchemaVersion1, EmitterID: "tee-test"}
 	if err := d.Send(context.Background(), env); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestDebugTeeSink_ConcurrentSendDoesNotInterleave(t *testing.T) {
 	d := newDebugTeeSink(newMockSink(), &buf, nil)
 
 	bigID := strings.Repeat("a", 8000)
-	env := &Envelope{SchemaVersion: SchemaVersion, EmitterID: bigID}
+	env := &Envelope{SchemaVersion: EnvelopeSchemaVersion1, EmitterID: bigID}
 
 	const n = 32
 	var wg sync.WaitGroup
@@ -185,7 +185,7 @@ func TestClientNew_TeeWrapsInjectedSinkBehaviourally(t *testing.T) {
 	t.Setenv(EnvDebug, "1")
 	mock := newMockSink()
 	c := New(WithSink(mock))
-	env := &Envelope{SchemaVersion: SchemaVersion, EmitterID: "tee-behaviour"}
+	env := &Envelope{SchemaVersion: EnvelopeSchemaVersion1, EmitterID: "tee-behaviour"}
 	c.emit(env)
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("Flush: %v", err)

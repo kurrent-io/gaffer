@@ -68,8 +68,8 @@ func TestEmitVersion_BuildsEnvelope(t *testing.T) {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
 	env := envs[0]
-	if env.SchemaVersion != SchemaVersion {
-		t.Errorf("SchemaVersion = %q, want %q", env.SchemaVersion, SchemaVersion)
+	if env.SchemaVersion != EnvelopeSchemaVersion1 {
+		t.Errorf("SchemaVersion = %q, want %q", env.SchemaVersion, EnvelopeSchemaVersion1)
 	}
 	if env.EmitterID != testIdentity.TelemetryID {
 		t.Errorf("EmitterID = %q, want %q", env.EmitterID, testIdentity.TelemetryID)

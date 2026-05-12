@@ -14,7 +14,7 @@ import (
 
 func testEnvelope() *Envelope {
 	return &Envelope{
-		SchemaVersion: SchemaVersion,
+		SchemaVersion: EnvelopeSchemaVersion1,
 		EmitterID:     "00000000-0000-0000-0000-000000000001",
 		RunID:         "00000000-0000-0000-0000-000000000002",
 		Context: Context{

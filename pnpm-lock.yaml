@@ -211,8 +211,8 @@ importers:
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.3.0)
       '@kurrent/kurrentdb-client':
-        specifier: ^1.1.2
-        version: 1.1.2
+        specifier: ^1.2.0
+        version: 1.2.0
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
@@ -995,46 +995,46 @@ packages:
   '@jsdevtools/ono@7.1.3':
     resolution: {integrity: sha512-4JQNk+3mVzK3xh2rqd6RB4J46qUR19azEHBneZyTZM+c456qOrbbM/5xcR8huNCCcbVt7+UmizG6GuUvPvKUYg==}
 
-  '@kurrent/bridge-darwin-arm64@0.1.5':
-    resolution: {integrity: sha512-mH2MJRV0A/M7b7ceFp4OdYioCf/XeZBpsZ4+CdwYSaTxKNdUkKUgvp9yp4GGt/EzFh0eKlrNwYoAkjJSuBXkpA==}
+  '@kurrent/bridge-darwin-arm64@0.2.0':
+    resolution: {integrity: sha512-aq41apJbqHc40+QommlkbGm63r7GWyd5G8HX9oXCcV0HZpWs9/VH30AzYhmbJ2xyDi/nj8vFv2y117s/eL6PBQ==}
     cpu: [arm64]
     os: [darwin]
 
-  '@kurrent/bridge-darwin-x64@0.1.5':
-    resolution: {integrity: sha512-SEGUuuZ7nYvIdNiaWHjDSSP1AZwC55RnjBHkBgWgbgudj8tBnp5qm4X2uNRVjwqYSU3UwWP36nrBJ4F6td2EZw==}
+  '@kurrent/bridge-darwin-x64@0.2.0':
+    resolution: {integrity: sha512-g77nGh/WtMjJ07so3iDxjQERoFcZD8pYNEeOQAAv+OhOlnugxkrnuQikx2YhaieuGhpj9PMQTsKAFNIziFYGbg==}
     cpu: [x64]
     os: [darwin]
 
-  '@kurrent/bridge-linux-arm64-gnu@0.1.5':
-    resolution: {integrity: sha512-hMULqzGspFAYEZKDpp4az8+/LApjc3nFAJyc9fe2x3qSJBBm9k7QiK5b8etxubfCjES7jSH1YEJPWkwyPabDbA==}
+  '@kurrent/bridge-linux-arm64-gnu@0.2.0':
+    resolution: {integrity: sha512-r3/5nX/loqbIBhuxvnkJja0RmcISNf1BvqeDiSUL4LRXVrgj+Orma1ucxfQhRsYxWq1xgu8uNW9DhODl8/pSnQ==}
     cpu: [arm64]
     os: [linux]
 
-  '@kurrent/bridge-linux-arm64-musl@0.1.5':
-    resolution: {integrity: sha512-QSjqQEZ9x8t3WFWCj5F12+28ZQKriFDQYxpv94BlWXjCbkSFqKe6EW2AbAbIHJsxquUHPtIaT8W4/nndn170AA==}
+  '@kurrent/bridge-linux-arm64-musl@0.2.0':
+    resolution: {integrity: sha512-qH9KYcw5RcThzLLU69QDAcbRy1yltSZWXWOozkT/68DmHPY8Ye5nbuIRxTApaSi3Vr6ly9MX+STJoHnKw8PPhw==}
     cpu: [arm64]
     os: [linux]
 
-  '@kurrent/bridge-linux-x64-gnu@0.1.5':
-    resolution: {integrity: sha512-MFhi+Ooeq0yCgP6fLvnewZ6WM7ti4RhXZWS4SGZrTw3MBI8XEiE3qRycmB+4AjYRUTf8cnVZXxX5uGosA6VwxQ==}
+  '@kurrent/bridge-linux-x64-gnu@0.2.0':
+    resolution: {integrity: sha512-fxlCxqLY934hvJslf8idR9Z3GhSovNkrQKnKK7NSZncGacU9Wo95n5i+E9K5EaF2WRfZoT24SF2kSyTg8H7SjQ==}
     cpu: [x64]
     os: [linux]
 
-  '@kurrent/bridge-linux-x64-musl@0.1.5':
-    resolution: {integrity: sha512-vRVqPt5naYCbYXUrNWXi4nCJ6eEsL+JwESKGqO65Yu5lU/JS+BokS9ZNGHhekKX1EY/t/GTUBhk58Orx+NNKHQ==}
+  '@kurrent/bridge-linux-x64-musl@0.2.0':
+    resolution: {integrity: sha512-ylqBdofq7RVO2DKV21vowy6D6YtTouM9tSL0DQ2TABe3O2mxfT3VFijJMPW3IC8XXIJZhbeL9viuahwo99561g==}
     cpu: [x64]
     os: [linux]
 
-  '@kurrent/bridge-win32-x64-msvc@0.1.5':
-    resolution: {integrity: sha512-PS0dxL8BAD8EHF/P0efzG/xQ8K//8NkUmvktvzV/A/ui/G5qHDLtgi7dA5VSAWNw0R8fxk7xEGsag22F/M6NPQ==}
+  '@kurrent/bridge-win32-x64-msvc@0.2.0':
+    resolution: {integrity: sha512-aE/SBUg3rNVKkn/W2YPBF9byILPaOccslREP6iDBhmnHR4aCn7+WIsRPXXWL+vfU0+BQLyKY7sYQtBa2i06TPw==}
     cpu: [x64]
     os: [win32]
 
-  '@kurrent/bridge@0.1.5':
-    resolution: {integrity: sha512-1lmbe6RI5pqwYxpS1noHZvv0BjSwm3RFftZnPnhXmlN9HgV18bmimkiqpeXX/PPT85DcPZblpRYLCn1g+WhVQg==}
+  '@kurrent/bridge@0.2.0':
+    resolution: {integrity: sha512-CwVu4pyZxvX+g2r5HL6OAu2i97ksj/hL4cJqn4yHqO24QwQ360s+cpEfVbrrikFhXBGhZp0CLR6p9CerOOd8uw==}
 
-  '@kurrent/kurrentdb-client@1.1.2':
-    resolution: {integrity: sha512-mk59yFkNRyzBknhz5wFveJdlfbb//qyd2UU6d9Wmj9mYFJ3zi8b4y9sKWdKjyiteWB6dESmoF03AykNRNp3uRg==}
+  '@kurrent/kurrentdb-client@1.2.0':
+    resolution: {integrity: sha512-rP0bt+84/VZZ+G0Pc9/pKyH/dS5h69WFPzxphEKt6iLhAdsUMepwQ9Lse9Y0iv/zrbxhBN84OtdymTIO6x9jKQ==}
     engines: {node: '>=20'}
 
   '@manypkg/find-root@1.1.0':
@@ -1887,8 +1887,8 @@ packages:
   fast-levenshtein@2.0.6:
     resolution: {integrity: sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==}
 
-  fast-uri@3.1.0:
-    resolution: {integrity: sha512-iPeeDKJSWf4IEOasVVrknXpaBV0IApz/gp7S2bb7Z4Lljbl2MGJRqInZiUrQwV16cpzw/D3S5j5Julj/gT52AA==}
+  fast-uri@3.1.2:
+    resolution: {integrity: sha512-rVjf7ArG3LTk+FS6Yw81V1DLuZl1bRbNrev6Tmd/9RaroeeRRJhAt7jg/6YFxbvAQXUCavSoZhPPj6oOx+5KjQ==}
 
   fastq@1.20.1:
     resolution: {integrity: sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw==}
@@ -2969,10 +2969,6 @@ packages:
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
-  uuid@11.0.3:
-    resolution: {integrity: sha512-d0z310fCWv5dJwnX1Y/MncBAqGMKEzlBb1AOf7z9K8ALnd0utBX/msg/fA0+sbyN1ihbMsLhrBlnl1ak7Wa0rg==}
-    hasBin: true
-
   valibot@1.3.1:
     resolution: {integrity: sha512-sfdRir/QFM0JaF22hqTroPc5xy4DimuGQVKFrzF1YfGwaS1nJot3Y8VqMdLO2Lg27fMzat2yD3pY5PbAYO39Gg==}
     peerDependencies:
@@ -3838,50 +3834,49 @@ snapshots:
 
   '@jsdevtools/ono@7.1.3': {}
 
-  '@kurrent/bridge-darwin-arm64@0.1.5':
+  '@kurrent/bridge-darwin-arm64@0.2.0':
     optional: true
 
-  '@kurrent/bridge-darwin-x64@0.1.5':
+  '@kurrent/bridge-darwin-x64@0.2.0':
     optional: true
 
-  '@kurrent/bridge-linux-arm64-gnu@0.1.5':
+  '@kurrent/bridge-linux-arm64-gnu@0.2.0':
     optional: true
 
-  '@kurrent/bridge-linux-arm64-musl@0.1.5':
+  '@kurrent/bridge-linux-arm64-musl@0.2.0':
     optional: true
 
-  '@kurrent/bridge-linux-x64-gnu@0.1.5':
+  '@kurrent/bridge-linux-x64-gnu@0.2.0':
     optional: true
 
-  '@kurrent/bridge-linux-x64-musl@0.1.5':
+  '@kurrent/bridge-linux-x64-musl@0.2.0':
     optional: true
 
-  '@kurrent/bridge-win32-x64-msvc@0.1.5':
+  '@kurrent/bridge-win32-x64-msvc@0.2.0':
     optional: true
 
-  '@kurrent/bridge@0.1.5':
+  '@kurrent/bridge@0.2.0':
     dependencies:
       '@neon-rs/load': 0.1.82
     optionalDependencies:
-      '@kurrent/bridge-darwin-arm64': 0.1.5
-      '@kurrent/bridge-darwin-x64': 0.1.5
-      '@kurrent/bridge-linux-arm64-gnu': 0.1.5
-      '@kurrent/bridge-linux-arm64-musl': 0.1.5
-      '@kurrent/bridge-linux-x64-gnu': 0.1.5
-      '@kurrent/bridge-linux-x64-musl': 0.1.5
-      '@kurrent/bridge-win32-x64-msvc': 0.1.5
+      '@kurrent/bridge-darwin-arm64': 0.2.0
+      '@kurrent/bridge-darwin-x64': 0.2.0
+      '@kurrent/bridge-linux-arm64-gnu': 0.2.0
+      '@kurrent/bridge-linux-arm64-musl': 0.2.0
+      '@kurrent/bridge-linux-x64-gnu': 0.2.0
+      '@kurrent/bridge-linux-x64-musl': 0.2.0
+      '@kurrent/bridge-win32-x64-msvc': 0.2.0
 
-  '@kurrent/kurrentdb-client@1.1.2':
+  '@kurrent/kurrentdb-client@1.2.0':
     dependencies:
       '@grpc/grpc-js': 1.14.3
-      '@kurrent/bridge': 0.1.5
+      '@kurrent/bridge': 0.2.0
       '@types/debug': 4.1.13
       '@types/google-protobuf': 3.15.12
       '@types/node': 22.19.17
       debug: 4.4.3
       google-protobuf: 3.21.4
       semver: 7.7.4
-      uuid: 11.0.3
     transitivePeerDependencies:
       - supports-color
 
@@ -4398,7 +4393,7 @@ snapshots:
   ajv@8.20.0:
     dependencies:
       fast-deep-equal: 3.1.3
-      fast-uri: 3.1.0
+      fast-uri: 3.1.2
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
@@ -4847,7 +4842,7 @@ snapshots:
 
   fast-levenshtein@2.0.6: {}
 
-  fast-uri@3.1.0: {}
+  fast-uri@3.1.2: {}
 
   fastq@1.20.1:
     dependencies:
@@ -5953,8 +5948,6 @@ snapshots:
 
   util-deprecate@1.0.2:
     optional: true
-
-  uuid@11.0.3: {}
 
   valibot@1.3.1(typescript@6.0.3):
     optionalDependencies:

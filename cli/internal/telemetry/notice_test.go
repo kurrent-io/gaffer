@@ -367,12 +367,17 @@ func TestEnsureIdentity_OptOutSkipsEverything(t *testing.T) {
 	}
 }
 
-func TestEnsureIdentity_ExistingIdentitySkipsNotice(t *testing.T) {
+func TestEnsureIdentity_ExistingDisclosedIdentitySkipsNotice(t *testing.T) {
+	// Realistic shape of a disclosed install: id+salt persisted AND
+	// Disclosed=true latched on the first eligible run that printed
+	// the banner. Subsequent runs return the identity and never
+	// re-fire the notice.
 	pretendTTY(t)
 	dir := t.TempDir()
 	seed, _ := userconfig.Load(dir)
 	first, _ := MintIdentity()
 	StageIdentity(seed, first)
+	WriteTelemetry(seed, TelemetrySection{ID: first.TelemetryID, Salt: first.Salt, Disclosed: true})
 	if err := seed.Save(); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -390,7 +395,7 @@ func TestEnsureIdentity_ExistingIdentitySkipsNotice(t *testing.T) {
 		t.Error("RunID not refreshed")
 	}
 	if buf.Len() != 0 {
-		t.Errorf("notice written for existing identity: %q", buf.String())
+		t.Errorf("notice written despite Disclosed=true: %q", buf.String())
 	}
 }
 
@@ -472,6 +477,49 @@ func TestEnsureIdentity_NonTTYSuppressesNotice(t *testing.T) {
 	}
 }
 
+func TestEnsureIdentity_DeferredDisclosureFiresOnLaterEligibleRun(t *testing.T) {
+	// First run: identity mints under suppress conditions (non-TTY
+	// here, but the same holds for --invoker-id). Disclosed stays
+	// false because the user didn't see the banner.
+	dir := t.TempDir()
+	store, _ := userconfig.Load(dir)
+	pretendNonTTY(t)
+	var firstBuf bytes.Buffer
+	first, err := EnsureIdentity(store, Resolved{}, Invocation{}, &firstBuf)
+	if err != nil {
+		t.Fatalf("first EnsureIdentity: %v", err)
+	}
+	if first.IsZero() {
+		t.Fatal("first run produced zero identity; expected silent mint")
+	}
+	if firstBuf.Len() != 0 {
+		t.Errorf("first run wrote notice despite non-TTY: %q", firstBuf.String())
+	}
+	if t1, _ := LoadTelemetry(store); t1.Disclosed {
+		t.Fatal("first run latched Disclosed despite suppression; deferred-disclosure broken")
+	}
+
+	// Second run on the same store, now on a TTY with no invoker-id.
+	// The identity already exists; deferred disclosure must fire.
+	isTTY = func(io.Writer) bool { return true }
+	store2, _ := userconfig.Load(dir)
+	var secondBuf bytes.Buffer
+	second, err := EnsureIdentity(store2, Resolved{}, Invocation{}, &secondBuf)
+	if err != nil {
+		t.Fatalf("second EnsureIdentity: %v", err)
+	}
+	if second.TelemetryID != first.TelemetryID {
+		t.Errorf("second run identity drifted: got %s, want %s (no re-mint)", second.TelemetryID, first.TelemetryID)
+	}
+	if secondBuf.Len() == 0 {
+		t.Error("second run did not write deferred notice; user permanently silenced")
+	}
+	reloaded, _ := userconfig.Load(dir)
+	if tr, _ := LoadTelemetry(reloaded); !tr.Disclosed {
+		t.Error("Disclosed not latched after deferred-disclosure notice fired")
+	}
+}
+
 func TestEnsureIdentity_FirstMintWritesNoticeAndPersistsDisclosed(t *testing.T) {
 	// Direct user mint on a TTY with no spawner: notice fires AND
 	// Disclosed=true persists so subsequent runs don't re-disclose.
@@ -521,10 +569,11 @@ func TestEnsureIdentity_RaceLostNoNotice(t *testing.T) {
 func TestEnsureIdentity_PartialPersistedErrorPropagates(t *testing.T) {
 	// Existing identity loads with a partial err (malformed
 	// enabled). EnsureIdentity returns the id AND the err so the
-	// caller can warn.
+	// caller can warn. disclosed=true so the deferred-disclosure
+	// path doesn't fire for this disclosed install.
 	pretendTTY(t)
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte("[telemetry]\nenabled = 1\nid = \"abc\"\nsalt = \"def\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte("[telemetry]\nenabled = 1\nid = \"abc\"\nsalt = \"def\"\ndisclosed = true\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	store, _ := userconfig.Load(dir)
@@ -537,7 +586,7 @@ func TestEnsureIdentity_PartialPersistedErrorPropagates(t *testing.T) {
 		t.Errorf("id = %+v, want usable existing", id)
 	}
 	if buf.Len() != 0 {
-		t.Errorf("notice written for existing identity: %q", buf.String())
+		t.Errorf("notice written despite Disclosed=true: %q", buf.String())
 	}
 }
 

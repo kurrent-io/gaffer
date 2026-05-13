@@ -97,10 +97,14 @@ func TestStartupGate_FreshInstallMintsAndNotifies(t *testing.T) {
 	}
 }
 
-func TestStartupGate_ExistingIdentitySkipsNotice(t *testing.T) {
+func TestStartupGate_ExistingDisclosedIdentitySkipsNotice(t *testing.T) {
+	// Realistic disclosed install: id+salt persisted AND
+	// Disclosed=true latched. Subsequent runs return the identity
+	// and don't re-fire the banner.
 	store, cwd, home := startupTest(t)
 	seed, _ := MintIdentity()
 	StageIdentity(store, seed)
+	WriteTelemetry(store, TelemetrySection{ID: seed.TelemetryID, Salt: seed.Salt, Disclosed: true})
 	if err := store.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +118,7 @@ func TestStartupGate_ExistingIdentitySkipsNotice(t *testing.T) {
 		t.Errorf("identity = %s, want seeded %s", c.identity.TelemetryID, seed.TelemetryID)
 	}
 	if notice.Len() != 0 {
-		t.Errorf("notice re-printed on existing identity: %q", notice.String())
+		t.Errorf("notice re-printed despite Disclosed=true: %q", notice.String())
 	}
 }
 

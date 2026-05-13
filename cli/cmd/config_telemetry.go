@@ -78,8 +78,28 @@ func newConfigTelemetryOnCmd() *cobra.Command {
 			"the command surfaces them so you know what else to change.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runConfigTelemetryOn(cmd.OutOrStdout(), cmd.ErrOrStderr())
+			return runConfigTelemetryOn(cmd, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
+	}
+}
+
+// invocationFromCmd reads the persistent --invoker-id / --invoked-by /
+// --invoked-via flags off cobra after parse. Used by config-subtree
+// RunE bodies because main.go's pre-cobra PeekInvocationFlags
+// (which reads os.Args directly) is skipped for that subtree, and
+// the same path is exercised by cmd-package tests via runCmd /
+// SetArgs - which never touch os.Args.
+func invocationFromCmd(cmd *cobra.Command) telemetry.Invocation {
+	get := func(name string) string {
+		if f := cmd.Flag(name); f != nil {
+			return f.Value.String()
+		}
+		return ""
+	}
+	return telemetry.Invocation{
+		InvokerID:  telemetry.UUID(get("invoker-id")),
+		InvokedBy:  telemetry.InvokedBy(get("invoked-by")),
+		InvokedVia: telemetry.InvokedVia(get("invoked-via")),
 	}
 }
 
@@ -177,7 +197,7 @@ func renderWorkspaceLayer(s telemetryStatusStyles, l telemetry.Layer) string {
 // is itself the recovery path for a broken config. We surface the
 // parse error as a warning and rewrite the section cleanly; any
 // unrecoverable prior id is replaced by a fresh mint downstream.
-func runConfigTelemetryOn(out, noticeOut io.Writer) error {
+func runConfigTelemetryOn(cmd *cobra.Command, out, noticeOut io.Writer) error {
 	store, err := userconfig.Open()
 	if err != nil {
 		return err
@@ -213,11 +233,13 @@ func runConfigTelemetryOn(out, noticeOut io.Writer) error {
 	}
 
 	// Not opted out. EnsureIdentity mints on first run and prints
-	// the notice when the gating conditions allow. The user invoked
-	// this command directly, so we pass an empty Invocation -
-	// EnsureIdentity's own TTY check is the suppress signal if
-	// noticeOut isn't user-visible.
-	if _, err := telemetry.EnsureIdentity(store, r, telemetry.Invocation{}, noticeOut); err != nil {
+	// the notice when the gating conditions allow. The hidden root
+	// flags are inherited by every subcommand including this one;
+	// read them off cobra so a spawner that runs `gaffer config
+	// telemetry on --invoker-id=...` (e.g. an editor extension
+	// recovering from an earlier opt-out) gets the same notice-
+	// suppression contract as on any other subcommand.
+	if _, err := telemetry.EnsureIdentity(store, r, invocationFromCmd(cmd), noticeOut); err != nil {
 		// EnsureIdentity returned a partial-load warning alongside
 		// a usable identity (e.g. malformed enabled key in an
 		// otherwise-valid section). Preference is saved; surface

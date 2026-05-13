@@ -133,9 +133,14 @@ func MintAndPersist(store *userconfig.Store) (Identity, bool, error) {
 	return fresh, true, nil
 }
 
-// shouldShowFirstMintNotice decides whether to print the disclosure
-// banner to noticeOut on a fresh mint. Three suppress signals; any
-// one trips the no-print branch:
+// shouldShowDisclosureNotice decides whether to print the disclosure
+// banner to noticeOut for the in-flight run. The check runs on every
+// invocation that reaches identity-resolution (whether or not a mint
+// happened this run), so a first mint that wasn't an eligible
+// disclosure surface (non-TTY CI, extension spawn) gets caught up
+// by the next direct-terminal run while Disclosed is still false.
+//
+// Three suppress signals; any one trips the no-print branch:
 //
 //   - Disclosed already latched: a prior run on this machine showed
 //     the notice and recorded ack; don't repeat (the Disclosed flag
@@ -153,7 +158,7 @@ func MintAndPersist(store *userconfig.Store) (Identity, bool, error) {
 // persisted Disclosed flag: no caller-set "quiet" flag can suppress
 // disclosure, no caller-set state can latch Disclosed without
 // actually showing the notice.
-func shouldShowFirstMintNotice(store *userconfig.Store, inv Invocation, noticeOut io.Writer) bool {
+func shouldShowDisclosureNotice(store *userconfig.Store, inv Invocation, noticeOut io.Writer) bool {
 	if t, _ := LoadTelemetry(store); t.Disclosed {
 		return false
 	}
@@ -164,7 +169,7 @@ func shouldShowFirstMintNotice(store *userconfig.Store, inv Invocation, noticeOu
 }
 
 // IsTTYCheckForTesting overrides the TTY check used by
-// EnsureIdentity / shouldShowFirstMintNotice for the duration of
+// EnsureIdentity / shouldShowDisclosureNotice for the duration of
 // the returned restore func. Test-only export: cmd-package tests
 // run with stderr captured into a bytes.Buffer, which trips the
 // non-TTY suppress branch and hides the notice; tests that exercise
@@ -198,23 +203,23 @@ var isTTY = func(w io.Writer) bool {
 }
 
 // EnsureIdentity is the composition entry point: opt-out check,
-// existing-identity load, mint if needed, notice on fresh mint.
+// existing-identity load, mint if needed, deferred disclosure on
+// any eligible run.
 //
 // Behaviour:
 //   - opt-out active: returns zero Identity, no mint, no notice.
-//   - existing usable identity: returns it (paired with fresh RunID),
-//     no mint, no notice. Any partial-load error from
-//     ResolveIdentity propagates to the caller.
-//   - no existing identity + not opted out + shouldShowFirstMintNotice
-//     returns true: mints, persists, writes noticeText to noticeOut,
-//     and records Disclosed=true in the config on a successful write.
-//   - no existing identity + not opted out + shouldShowFirstMintNotice
-//     returns false: mints, persists, no notice, Disclosed unchanged.
-//     Subsequent runs that DO have a TTY and no invoker-id get a
-//     chance to disclose.
-//   - race-lost during mint: adopts winner's id, does NOT write the
-//     notice (winner already did in their process, if conditions
-//     allowed).
+//   - existing usable identity: returns it (paired with fresh RunID).
+//     Notice fires here if Disclosed is still false and conditions
+//     allow - catches up after a first mint that was suppressed
+//     (non-TTY CI, extension spawn). Partial-load errors from
+//     ResolveIdentity propagate to the caller.
+//   - no existing identity + not opted out: mints, persists, then
+//     attempts the notice on the same conditions as above.
+//
+// The notice attempt is the same code path whether the identity is
+// fresh or pre-existing - "first mint" is a misleading name for the
+// suppress signals, because the user's first eligible disclosure
+// surface may not be the same process that minted.
 //
 // inv carries the spawn-linkage parsed from --invoker-id /
 // --invoked-by / --invoked-via. Only InvokerID is consulted here
@@ -236,24 +241,34 @@ func EnsureIdentity(
 	if optOut.IsDisabled() {
 		return Identity{}, nil
 	}
-	if existing, err := ResolveIdentity(store); !existing.IsZero() {
-		return existing, err
-	}
-	id, didMint, err := MintAndPersist(store)
-	if err != nil {
-		return Identity{}, err
-	}
-	if didMint && shouldShowFirstMintNotice(store, inv, noticeOut) {
-		// Only latch Disclosed=true on a SUCCESSFUL notice write.
-		// A write error means the user never saw the banner -
-		// re-check on the next eligible run rather than silently
-		// silence future disclosure attempts.
-		if err := WriteNotice(noticeOut); err == nil {
-			t, _ := LoadTelemetry(store)
-			t.Disclosed = true
-			WriteTelemetry(store, t)
-			_ = store.Save()
+	id, loadErr := ResolveIdentity(store)
+	if id.IsZero() {
+		minted, _, mintErr := MintAndPersist(store)
+		if mintErr != nil {
+			return Identity{}, mintErr
 		}
+		id = minted
 	}
-	return id, nil
+	maybeShowDisclosure(store, inv, noticeOut)
+	return id, loadErr
+}
+
+// maybeShowDisclosure prints the notice and latches Disclosed=true
+// when shouldShowDisclosureNotice allows. Only latches on a
+// SUCCESSFUL write: if stderr is broken (redirected /dev/null mid-
+// stream, captured-and-dropped wrapper) the user never saw the
+// banner, so a later eligible run still gets a chance. Without this
+// gating a single bad stderr would permanently silence future
+// disclosure attempts.
+func maybeShowDisclosure(store *userconfig.Store, inv Invocation, noticeOut io.Writer) {
+	if !shouldShowDisclosureNotice(store, inv, noticeOut) {
+		return
+	}
+	if err := WriteNotice(noticeOut); err != nil {
+		return
+	}
+	t, _ := LoadTelemetry(store)
+	t.Disclosed = true
+	WriteTelemetry(store, t)
+	_ = store.Save()
 }

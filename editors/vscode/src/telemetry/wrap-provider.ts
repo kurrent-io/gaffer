@@ -12,64 +12,65 @@
 
 import type * as vscode from "vscode";
 
-import { type WrapContext, wrapAsync } from "./wrap.js";
+import type { Telemetry } from "./facade.js";
+import { wrapAsync } from "./wrap.js";
 
 function wrap<A extends unknown[], R>(
-	wrapCtx: WrapContext,
+	telemetry: Telemetry,
 	fn: (...args: A) => PromiseLike<R> | R,
 ): (...args: A) => Promise<R> {
-	return wrapAsync(wrapCtx, "event_processing", fn);
+	return wrapAsync(telemetry, "event_processing", fn);
 }
 
 export function wrapTreeDataProvider<T>(
 	p: vscode.TreeDataProvider<T>,
-	wrapCtx: WrapContext,
+	telemetry: Telemetry,
 ): vscode.TreeDataProvider<T> {
 	const out: vscode.TreeDataProvider<T> = {
-		getTreeItem: wrap(wrapCtx, p.getTreeItem.bind(p)),
-		getChildren: wrap(wrapCtx, p.getChildren.bind(p)),
+		getTreeItem: wrap(telemetry, p.getTreeItem.bind(p)),
+		getChildren: wrap(telemetry, p.getChildren.bind(p)),
 	};
 	if (p.onDidChangeTreeData) out.onDidChangeTreeData = p.onDidChangeTreeData;
-	if (p.getParent) out.getParent = wrap(wrapCtx, p.getParent.bind(p));
+	if (p.getParent) out.getParent = wrap(telemetry, p.getParent.bind(p));
 	if (p.resolveTreeItem) {
-		out.resolveTreeItem = wrap(wrapCtx, p.resolveTreeItem.bind(p));
+		out.resolveTreeItem = wrap(telemetry, p.resolveTreeItem.bind(p));
 	}
 	return out;
 }
 
 export function wrapWebviewViewProvider(
 	p: vscode.WebviewViewProvider,
-	wrapCtx: WrapContext,
+	telemetry: Telemetry,
 ): vscode.WebviewViewProvider {
 	return {
-		resolveWebviewView: wrap(wrapCtx, p.resolveWebviewView.bind(p)),
+		resolveWebviewView: wrap(telemetry, p.resolveWebviewView.bind(p)),
 	};
 }
 
 export function wrapCodeLensProvider(
 	p: vscode.CodeLensProvider,
-	wrapCtx: WrapContext,
+	telemetry: Telemetry,
 ): vscode.CodeLensProvider {
 	const out: vscode.CodeLensProvider = {
-		provideCodeLenses: wrap(wrapCtx, p.provideCodeLenses.bind(p)),
+		provideCodeLenses: wrap(telemetry, p.provideCodeLenses.bind(p)),
 	};
 	if (p.onDidChangeCodeLenses)
 		out.onDidChangeCodeLenses = p.onDidChangeCodeLenses;
 	if (p.resolveCodeLens) {
-		out.resolveCodeLens = wrap(wrapCtx, p.resolveCodeLens.bind(p));
+		out.resolveCodeLens = wrap(telemetry, p.resolveCodeLens.bind(p));
 	}
 	return out;
 }
 
 export function wrapCodeActionProvider(
 	p: vscode.CodeActionProvider,
-	wrapCtx: WrapContext,
+	telemetry: Telemetry,
 ): vscode.CodeActionProvider {
 	const out: vscode.CodeActionProvider = {
-		provideCodeActions: wrap(wrapCtx, p.provideCodeActions.bind(p)),
+		provideCodeActions: wrap(telemetry, p.provideCodeActions.bind(p)),
 	};
 	if (p.resolveCodeAction) {
-		out.resolveCodeAction = wrap(wrapCtx, p.resolveCodeAction.bind(p));
+		out.resolveCodeAction = wrap(telemetry, p.resolveCodeAction.bind(p));
 	}
 	return out;
 }
@@ -78,11 +79,11 @@ export function wrapMcpServerDefinitionProvider<
 	T extends vscode.McpServerDefinition,
 >(
 	p: vscode.McpServerDefinitionProvider<T>,
-	wrapCtx: WrapContext,
+	telemetry: Telemetry,
 ): vscode.McpServerDefinitionProvider<T> {
 	const out: vscode.McpServerDefinitionProvider<T> = {
 		provideMcpServerDefinitions: wrap(
-			wrapCtx,
+			telemetry,
 			p.provideMcpServerDefinitions.bind(p),
 		),
 		...(p.onDidChangeMcpServerDefinitions !== undefined && {
@@ -91,7 +92,7 @@ export function wrapMcpServerDefinitionProvider<
 	};
 	if (p.resolveMcpServerDefinition) {
 		out.resolveMcpServerDefinition = wrap(
-			wrapCtx,
+			telemetry,
 			p.resolveMcpServerDefinition.bind(p),
 		);
 	}

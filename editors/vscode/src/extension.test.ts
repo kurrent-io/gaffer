@@ -182,9 +182,14 @@ describe("activate registrations", () => {
 		);
 		const def = (defs as vscode.McpStdioServerDefinition[])[0];
 		if (!def) throw new Error("expected one definition");
-		expect(def.args).toContain("--invoked-via=mcp_provider");
-		expect(def.args.some((a) => a.startsWith("--invoker-id="))).toBe(true);
-		expect(def.args).toContain("--invoked-by=vscode");
+		// Position-sensitive: invoker-id and invoked-by always pair, and
+		// invoked-via sits adjacent in the linkage trio.
+		expect(def.args.slice(0, 3)).toEqual([
+			expect.stringMatching(/^--invoker-id=[0-9a-f-]{36}$/),
+			"--invoked-by=vscode",
+			"--invoked-via=mcp_provider",
+		]);
+		expect(def.args[3]).toBe("mcp");
 	});
 });
 

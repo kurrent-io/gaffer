@@ -1,20 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { Phase } from "./exception.js";
 import type { Telemetry } from "./facade.js";
-import {
-	reportException,
-	wrapAsync,
-	wrapSync,
-	type WrapContext,
-} from "./wrap.js";
+import { wrapAsync, wrapSync } from "./wrap.js";
 
 interface ReportCall {
 	phase: Phase;
 	err: unknown;
 }
 
-function makeCtx(): { ctx: WrapContext; reports: ReportCall[] } {
+function makeTelemetry(): { telemetry: Telemetry; reports: ReportCall[] } {
 	const reports: ReportCall[] = [];
 	const telemetry: Telemetry = {
 		emit: () => {},
@@ -25,21 +20,25 @@ function makeCtx(): { ctx: WrapContext; reports: ReportCall[] } {
 			reports.push({ phase, err });
 		},
 	};
-	return { ctx: { telemetry }, reports };
+	return { telemetry, reports };
 }
 
 describe("wrapAsync", () => {
 	it("returns the wrapped value on the happy path without reporting", async () => {
-		const { ctx, reports } = makeCtx();
-		const fn = wrapAsync(ctx, "event_processing", async (x: number) => x + 1);
+		const { telemetry, reports } = makeTelemetry();
+		const fn = wrapAsync(
+			telemetry,
+			"event_processing",
+			async (x: number) => x + 1,
+		);
 		expect(await fn(2)).toBe(3);
 		expect(reports).toEqual([]);
 	});
 
 	it("reports the exception and re-throws on rejection", async () => {
-		const { ctx, reports } = makeCtx();
+		const { telemetry, reports } = makeTelemetry();
 		const err = new Error("boom");
-		const fn = wrapAsync(ctx, "event_processing", async () => {
+		const fn = wrapAsync(telemetry, "event_processing", async () => {
 			throw err;
 		});
 		await expect(fn()).rejects.toThrow("boom");
@@ -48,8 +47,8 @@ describe("wrapAsync", () => {
 
 	it("preserves the original error identity on re-throw", async () => {
 		const original = new Error("identity");
-		const { ctx } = makeCtx();
-		const fn = wrapAsync(ctx, "event_processing", async () => {
+		const { telemetry } = makeTelemetry();
+		const fn = wrapAsync(telemetry, "event_processing", async () => {
 			throw original;
 		});
 		await fn().catch((err: unknown) => {
@@ -69,13 +68,9 @@ describe("wrapAsync", () => {
 				throw new Error("reporter exploded");
 			},
 		};
-		const fn = wrapAsync(
-			{ telemetry: exploding },
-			"event_processing",
-			async () => {
-				throw new Error("original");
-			},
-		);
+		const fn = wrapAsync(exploding, "event_processing", async () => {
+			throw new Error("original");
+		});
 		await expect(fn()).rejects.toThrow("reporter exploded");
 		// Note: an exploding reporter does replace the original error
 		// here. Production facade's reportException catches its own
@@ -85,30 +80,18 @@ describe("wrapAsync", () => {
 
 describe("wrapSync", () => {
 	it("returns the wrapped value on the happy path without reporting", () => {
-		const { ctx, reports } = makeCtx();
-		const fn = wrapSync(ctx, "event_processing", (x: number) => x + 1);
+		const { telemetry, reports } = makeTelemetry();
+		const fn = wrapSync(telemetry, "event_processing", (x: number) => x + 1);
 		expect(fn(2)).toBe(3);
 		expect(reports).toEqual([]);
 	});
 
 	it("reports and re-throws synchronously on a throw", () => {
-		const { ctx, reports } = makeCtx();
-		const fn = wrapSync(ctx, "event_processing", () => {
+		const { telemetry, reports } = makeTelemetry();
+		const fn = wrapSync(telemetry, "event_processing", () => {
 			throw new Error("sync boom");
 		});
 		expect(() => fn()).toThrow("sync boom");
 		expect(reports).toHaveLength(1);
 	});
 });
-
-describe("reportException (direct call)", () => {
-	it("delegates to telemetry.reportException", () => {
-		const { ctx, reports } = makeCtx();
-		const err = new Error("direct");
-		reportException(ctx, "startup", err);
-		expect(reports).toEqual([{ phase: "startup", err }]);
-	});
-});
-
-// Suppress unused-import warning in environments where vi isn't read.
-void vi;

@@ -162,7 +162,7 @@ export const showTelemetryDisclosure = (): Thenable<
 > =>
 	vscode.window
 		.showInformationMessage(
-			"Gaffer collects anonymous usage data, collected by Kurrent, Inc., to improve the tool. No projection code, stream names, or event content is sent. Click 'Learn more' to read the full notice and how to opt out.",
+			"Gaffer collects anonymous usage data, collected by Kurrent, Inc., to improve the tool. No projection code, stream names, or event content is sent. Click 'Dismiss' to accept, 'Disable telemetry' to opt out, or 'Learn more' for the full notice.",
 			BUTTON_DISMISS,
 			BUTTON_LEARN_MORE,
 			BUTTON_DISABLE,

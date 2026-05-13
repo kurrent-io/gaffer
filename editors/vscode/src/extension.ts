@@ -33,11 +33,7 @@ import { classifyManifestError } from "./telemetry/manifest-error.js";
 import { runFirstRunNotice } from "./telemetry/notice.js";
 import { checkOptOut } from "./telemetry/opt-out.js";
 import { readVscodeTelemetryLevel } from "./telemetry/vscode-config.js";
-import {
-	reportException,
-	wrapAsync,
-	type WrapContext,
-} from "./telemetry/wrap.js";
+import { wrapAsync } from "./telemetry/wrap.js";
 import {
 	wrapCodeActionProvider,
 	wrapCodeLensProvider,
@@ -83,7 +79,7 @@ export async function activate(
 	}
 
 	// Build the telemetry facade first so the manifest fetch can pass
-	// `--invoker-id` to its CLI spawn and so wrapCtx holds a direct
+	// `--invoker-id` to its CLI spawn and so telemetry holds a direct
 	// telemetry handle (no lazy module-level indirection). The facade
 	// itself is just identity-load + sink-construction; it emits
 	// nothing on its own.
@@ -97,7 +93,7 @@ export async function activate(
 			vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? [],
 		log,
 	});
-	const wrapCtx: WrapContext = { telemetry: activeTelemetry };
+	const telemetry = activeTelemetry;
 
 	// First-run telemetry disclosure. Fire-and-forget; we hold the
 	// promise so the facade can pick up a mid-session `[Disable]`
@@ -121,7 +117,7 @@ export async function activate(
 		}),
 		vscode.languages.registerCodeActionsProvider(
 			{ scheme: "file" },
-			wrapCodeActionProvider(new DismissDiagnosticActionProvider(), wrapCtx),
+			wrapCodeActionProvider(new DismissDiagnosticActionProvider(), telemetry),
 			{ providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] },
 		),
 	);
@@ -153,8 +149,7 @@ export async function activate(
 	try {
 		await activateAfterTelemetry({
 			context,
-			telemetry: activeTelemetry,
-			wrapCtx,
+			telemetry,
 			disclosurePromise,
 			initialManifest,
 			manifestErr,
@@ -166,7 +161,7 @@ export async function activate(
 		// throw during activate. Fire an exception envelope before
 		// propagating to VS Code's "extension failed to activate"
 		// surface.
-		reportException(wrapCtx, "startup", err);
+		telemetry.reportException("startup", err);
 		throw err;
 	}
 }
@@ -174,7 +169,6 @@ export async function activate(
 interface ActivateAfterTelemetryArgs {
 	context: vscode.ExtensionContext;
 	telemetry: Telemetry;
-	wrapCtx: WrapContext;
 	disclosurePromise: Promise<void>;
 	initialManifest: Manifest | null;
 	manifestErr: unknown;
@@ -188,13 +182,18 @@ async function activateAfterTelemetry(
 	const {
 		context,
 		telemetry,
-		wrapCtx,
 		disclosurePromise,
 		initialManifest,
 		manifestErr,
 		untrustedAtFetch,
 		activationStart,
 	} = args;
+	// extension_activated is emitted before disclosure resolves. If the
+	// user clicks `[Disable]` on the first-run notice while activation
+	// is in flight, this event still ships - it's the cost of having
+	// extension_activated reflect every activation rather than only
+	// the consenting ones. refreshOptOut (below) silences subsequent
+	// emits.
 	emitExtensionActivated(telemetry, {
 		manifest: initialManifest,
 		manifestErr,
@@ -235,8 +234,9 @@ async function activateAfterTelemetry(
 	// the spawn until both clear and reattempting via
 	// retryStartLanguageClient when the manifest reload chain
 	// publishes a non-null result.
-	const getInvokerId = (): string | null =>
-		activeTelemetry?.invokerId() ?? null;
+	// activateAfterTelemetry only runs once the facade is built;
+	// `telemetry` is the live handle.
+	const getInvokerId = (): string | null => telemetry.invokerId();
 	startLanguageClient(
 		context,
 		() => latestManifest !== null,
@@ -262,7 +262,7 @@ async function activateAfterTelemetry(
 		mcpProvider,
 		vscode.lm.registerMcpServerDefinitionProvider(
 			"gaffer",
-			wrapMcpServerDefinitionProvider(mcpProvider, wrapCtx),
+			wrapMcpServerDefinitionProvider(mcpProvider, telemetry),
 		),
 		vscode.workspace.onDidGrantWorkspaceTrust(() => mcpProvider.refresh()),
 		vscode.workspace.onDidChangeWorkspaceFolders(() => mcpProvider.refresh()),
@@ -323,15 +323,15 @@ async function activateAfterTelemetry(
 	context.subscriptions.push(
 		vscode.window.registerTreeDataProvider(
 			"gaffer.step",
-			wrapTreeDataProvider(stepProvider, wrapCtx),
+			wrapTreeDataProvider(stepProvider, telemetry),
 		),
 		vscode.window.registerTreeDataProvider(
 			"gaffer.state",
-			wrapTreeDataProvider(stateProvider, wrapCtx),
+			wrapTreeDataProvider(stateProvider, telemetry),
 		),
 		vscode.window.registerWebviewViewProvider(
 			"gaffer.status",
-			wrapWebviewViewProvider(statusProvider, wrapCtx),
+			wrapWebviewViewProvider(statusProvider, telemetry),
 			{ webviewOptions: { retainContextWhenHidden: true } },
 		),
 	);
@@ -374,7 +374,7 @@ async function activateAfterTelemetry(
 				{ scheme: "file", pattern: "**/gaffer.toml" },
 				{ scheme: "file", language: "javascript" },
 			],
-			wrapCodeLensProvider(lspCodeLens, wrapCtx),
+			wrapCodeLensProvider(lspCodeLens, telemetry),
 		),
 	);
 
@@ -407,7 +407,8 @@ async function activateAfterTelemetry(
 		controller.start(args, "command_palette");
 	const wrap = <A extends unknown[], R>(
 		fn: (...args: A) => Promise<R> | R,
-	): ((...args: A) => Promise<R>) => wrapAsync(wrapCtx, "event_processing", fn);
+	): ((...args: A) => Promise<R>) =>
+		wrapAsync(telemetry, "event_processing", fn);
 	context.subscriptions.push(
 		vscode.commands.registerCommand(
 			"gaffer.stopDebug",

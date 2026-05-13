@@ -143,15 +143,20 @@ describe("startLanguageClient dispose-during-start race", () => {
 			() => null,
 		);
 		await flushAllMicrotasks();
-		// spawnLanguageClient pushes the OutputChannel first, then the
-		// dispose-handle that flips `disposed=true`. Trigger that
-		// specific subscription.
-		const subs = ctx.subscriptions as unknown as Array<{
-			dispose: () => unknown;
-		}>;
-		const lspDispose = subs[1];
+		// The dispose-handle is the bare `{ dispose }` object
+		// spawnLanguageClient pushes; the other LSP-related subscriptions
+		// quack like OutputChannel or vscode disposables. Find by shape
+		// rather than position so a future push-order tweak doesn't
+		// silently exercise the wrong subscription.
+		const subs = ctx.subscriptions as unknown as Array<Record<string, unknown>>;
+		const lspDispose = subs.find(
+			(s) =>
+				typeof s.dispose === "function" &&
+				!("appendLine" in s) &&
+				!("event" in s),
+		);
 		if (!lspDispose) throw new Error("expected an LSP dispose subscription");
-		await lspDispose.dispose();
+		await (lspDispose.dispose as () => unknown)();
 		release();
 		await flushAllMicrotasks();
 		expect(getLanguageClient()).toBeUndefined();

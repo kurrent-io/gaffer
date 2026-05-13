@@ -129,3 +129,24 @@ async function quarantine(storageDir: string): Promise<void> {
 	const dst = join(storageDir, `${FILE_NAME}.corrupt-${ts}`);
 	await rename(src, dst);
 }
+
+/**
+ * Merge-on-write update. Re-reads the persisted config via loadSafe
+ * (so a corrupted file quarantines), shallow-merges the patch,
+ * writes.
+ *
+ * Two independent code paths persist different fields during the
+ * same activation (identity mint and the first-run notification's
+ * latch), and `save` overwrites the whole file. Re-reading inside
+ * editConfig means whoever writes last preserves the other's
+ * fields. In-process concurrent callers still race at the FS level
+ * (last writer wins on rename), but at least neither call drops
+ * fields written before it loaded.
+ */
+export async function editConfig(
+	storageDir: string,
+	patch: Partial<TelemetryConfig>,
+): Promise<void> {
+	const current = await loadSafe(storageDir);
+	await save(storageDir, { ...current, ...patch });
+}

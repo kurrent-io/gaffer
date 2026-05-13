@@ -119,6 +119,19 @@ fi
 		expect(onError).toHaveBeenCalledTimes(1);
 	});
 
+	it("preserves err.code on the rejected error (classifyManifestError contract)", async () => {
+		setConfiguration("gaffer", "command", {
+			globalValue: [path.join(tmpRoot, "nope")],
+		});
+		let captured: unknown;
+		await tryFetchManifest(undefined, (err) => {
+			captured = err;
+		});
+		expect(captured).toBeDefined();
+		// ENOENT is the load-bearing classification for binary_not_found.
+		expect((captured as { code?: string }).code).toBe("ENOENT");
+	});
+
 	it("calls onError and returns null when stdout is invalid JSON", async () => {
 		const stub = writeStub("gaffer", `#!/bin/sh\necho 'not json'\n`);
 		setConfiguration("gaffer", "command", { globalValue: [stub] });

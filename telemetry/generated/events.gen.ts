@@ -251,10 +251,18 @@ export type FileSizeBucket = 0 | 1024 | 5120 | 20480 | 102400;
  */
 export type Editor = "vscode" | "vscodium" | "cursor" | "windsurf" | "other";
 /**
- * CLIUnreachableReason narrows why the CLI couldn't be reached on extension
- * activation.
+ * CLIUnreachableReason narrows why the CLI couldn't be reached on
+ * extension activation. `workspace_untrusted` covers the case where
+ * the editor's workspace-trust gate blocks spawning the CLI at all
+ * (the common "fresh clone, not yet trusted" path) - distinct from
+ * a CLI that's actually missing or broken.
  */
-export type CLIUnreachableReason = "binary_not_found" | "binary_spawn_failed" | "timeout" | "unknown_error";
+export type CLIUnreachableReason =
+  | "binary_not_found"
+  | "binary_spawn_failed"
+  | "timeout"
+  | "workspace_untrusted"
+  | "unknown_error";
 /**
  * ExceptionPhase is a coarse lifecycle bucket for where an exception fired.
  */

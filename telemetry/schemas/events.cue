@@ -350,9 +350,12 @@ import "strings"
 // unknown forks map to `"other"`.
 #Editor: "vscode" | "vscodium" | "cursor" | "windsurf" | "other"
 
-// CLIUnreachableReason narrows why the CLI couldn't be reached on extension
-// activation.
-#CLIUnreachableReason: "binary_not_found" | "binary_spawn_failed" | "timeout" | "unknown_error"
+// CLIUnreachableReason narrows why the CLI couldn't be reached on
+// extension activation. `workspace_untrusted` covers the case where
+// the editor's workspace-trust gate blocks spawning the CLI at all
+// (the common "fresh clone, not yet trusted" path) - distinct from
+// a CLI that's actually missing or broken.
+#CLIUnreachableReason: "binary_not_found" | "binary_spawn_failed" | "timeout" | "workspace_untrusted" | "unknown_error"
 
 // ----------------------------------------------------------------------------
 // exception

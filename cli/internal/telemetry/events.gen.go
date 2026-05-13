@@ -201,10 +201,11 @@ const (
 type CLIUnreachableReason string
 
 const (
-	CLIUnreachableReasonBinaryNotFound    CLIUnreachableReason = "binary_not_found"
-	CLIUnreachableReasonBinarySpawnFailed CLIUnreachableReason = "binary_spawn_failed"
-	CLIUnreachableReasonTimeout           CLIUnreachableReason = "timeout"
-	CLIUnreachableReasonUnknownError      CLIUnreachableReason = "unknown_error"
+	CLIUnreachableReasonBinaryNotFound     CLIUnreachableReason = "binary_not_found"
+	CLIUnreachableReasonBinarySpawnFailed  CLIUnreachableReason = "binary_spawn_failed"
+	CLIUnreachableReasonTimeout            CLIUnreachableReason = "timeout"
+	CLIUnreachableReasonUnknownError       CLIUnreachableReason = "unknown_error"
+	CLIUnreachableReasonWorkspaceUntrusted CLIUnreachableReason = "workspace_untrusted"
 )
 
 // ExceptionPhase is a string enum mirroring the CUE definition.

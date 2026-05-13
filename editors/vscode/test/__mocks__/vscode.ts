@@ -984,6 +984,17 @@ export const commands: CommandsShape = {
 	}) as typeof vscode.commands.executeCommand,
 };
 
+// ---- env / version -------------------------------------------------------
+
+type EnvShape = Pick<typeof vscode.env, "appName" | "openExternal">;
+
+export const env: EnvShape = {
+	appName: "Visual Studio Code",
+	openExternal: (_uri: vscode.Uri): Thenable<boolean> => Promise.resolve(true),
+};
+
+export const version = "1.95.2";
+
 // ---- languages ------------------------------------------------------------
 
 type LanguagesShape = Pick<

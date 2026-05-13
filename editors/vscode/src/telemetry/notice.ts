@@ -12,7 +12,7 @@
 // injected, so the runner is a pure unit. The thin adapters that
 // thread vscode-specific bits live in src/notifications.ts.
 
-import { save, type TelemetryConfig } from "./config.js";
+import { editConfig, type TelemetryConfig } from "./config.js";
 
 /** Resolved button click. `undefined` from the caller's prompt() means
  * the user closed via the X without picking a button. */
@@ -68,8 +68,7 @@ export async function runFirstRunNotice(
 	}
 
 	const optedOutByChoice = choice === "disable";
-	await save(args.storageDir, {
-		...args.config,
+	await editConfig(args.storageDir, {
 		disclosed: true,
 		telemetry_enabled: !optedOutByChoice,
 	});

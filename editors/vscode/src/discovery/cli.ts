@@ -89,8 +89,12 @@ function execFileAsync(
 		if (options.cwd !== undefined) execOpts.cwd = options.cwd;
 		execFile(head, rest, execOpts, (err, stdout, stderr) => {
 			if (err) {
-				const stderrSuffix = stderr ? ` (stderr: ${stderr.trim()})` : "";
-				reject(new Error(`${err.message}${stderrSuffix}`));
+				// Augment in place to keep err.code / err.killed accessible
+				// to callers that need to classify the failure (e.g.
+				// telemetry's classifyManifestError). Wrapping in a fresh
+				// Error would lose those fields.
+				if (stderr) err.message = `${err.message} (stderr: ${stderr.trim()})`;
+				reject(err);
 			} else {
 				resolve(stdout);
 			}

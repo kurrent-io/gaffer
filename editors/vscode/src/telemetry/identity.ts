@@ -42,6 +42,33 @@ export function fromConfig(config: TelemetryConfig): Identity | null {
 }
 
 /**
+ * Resolve an identity for the current process: adopt the persisted
+ * one if present, otherwise mint a fresh pair and persist it via
+ * the `persistMint` callback. The callback is expected to merge the
+ * new fields into the on-disk config (see `editConfig` in config.ts)
+ * rather than overwrite it, so a concurrent disclosure-runner write
+ * doesn't drop the freshly-minted id/salt.
+ *
+ * Concurrent first-mints from two extension hosts on the same
+ * install still last-writer-wins on disk. The losing process emits
+ * one session's worth of envelopes under its own id; next activation
+ * reads the persisted winner and converges.
+ */
+export async function ensureIdentity(
+	config: TelemetryConfig,
+	persistMint: (patch: Partial<TelemetryConfig>) => Promise<void>,
+): Promise<Identity> {
+	const existing = fromConfig(config);
+	if (existing !== null) return existing;
+	const fresh = mint();
+	await persistMint({
+		telemetry_id: fresh.telemetryId,
+		salt: fresh.salt,
+	});
+	return fresh;
+}
+
+/**
  * Derive the wire-format `project_id` for the given absolute project
  * root. HMAC-SHA256(salt, absRoot), first 8 bytes hex - matches the
  * CLI's `deriveID` in `cli/internal/telemetry/identity.go`. Extension

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
@@ -540,7 +541,14 @@ func TestEnsureIdentity_FirstMintWritesNoticeAndPersistsDisclosed(t *testing.T) 
 	}
 }
 
-func TestEnsureIdentity_RaceLostNoNotice(t *testing.T) {
+func TestEnsureIdentity_RaceLoserAdoptsLatchedDisclosure(t *testing.T) {
+	// Sequential, not concurrent: A's EnsureIdentity completes
+	// fully (mint + notice + Disclosed=true latch) before B starts.
+	// B then sees the latched Disclosed via MintAndPersist's race-
+	// recovery Reload, adopts the same identity, and skips the
+	// banner. The concurrent variant where B's Reload happens
+	// between A's notice-Save and A's Disclosed-Save is exercised
+	// by TestEnsureIdentity_ConcurrentMintsConvergeOnLatchedDisclosure.
 	pretendTTY(t)
 	dir := t.TempDir()
 	a, _ := userconfig.Load(dir)
@@ -559,10 +567,73 @@ func TestEnsureIdentity_RaceLostNoNotice(t *testing.T) {
 		t.Fatalf("B.EnsureIdentity: %v", errB)
 	}
 	if bufB.Len() != 0 {
-		t.Errorf("B.notice written despite race-lost: %q", bufB.String())
+		t.Errorf("B.notice written despite Disclosed already latched: %q", bufB.String())
 	}
 	if idB.TelemetryID != idA.TelemetryID {
 		t.Errorf("B didn't adopt A's identity: B=%+v A=%+v", idB, idA)
+	}
+}
+
+func TestEnsureIdentity_ConcurrentMintsConvergeOnLatchedDisclosure(t *testing.T) {
+	// True concurrent first mint: two processes load an empty store
+	// at the same time, both reach maybeShowDisclosure. Because
+	// MintAndPersist serialises on O_EXCL, exactly one mints and
+	// one race-recovers; both then independently check Disclosed
+	// and may or may not print depending on timing of the latch
+	// write versus the loser's Reload.
+	//
+	// We don't assert a specific banner count - duplicate banner is
+	// accepted as the cost of avoiding a file-level lock around a
+	// single human-readable message. The invariants we DO lock in:
+	//   - both calls return the same identity (race winner adopted),
+	//   - at least one banner was written (the user wasn't silenced),
+	//   - on-disk Disclosed=true after both complete (no permanently-
+	//     pending state).
+	pretendTTY(t)
+	dir := t.TempDir()
+	a, _ := userconfig.Load(dir)
+	b, _ := userconfig.Load(dir)
+
+	start := make(chan struct{})
+	type result struct {
+		id  Identity
+		buf bytes.Buffer
+		err error
+	}
+	results := make([]result, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		id, err := EnsureIdentity(a, Resolved{}, Invocation{}, &results[0].buf)
+		results[0].id = id
+		results[0].err = err
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		id, err := EnsureIdentity(b, Resolved{}, Invocation{}, &results[1].buf)
+		results[1].id = id
+		results[1].err = err
+	}()
+	close(start)
+	wg.Wait()
+
+	for i, r := range results {
+		if r.err != nil {
+			t.Fatalf("goroutine %d: %v", i, r.err)
+		}
+	}
+	if results[0].id.TelemetryID != results[1].id.TelemetryID {
+		t.Errorf("concurrent mints diverged: %s vs %s", results[0].id.TelemetryID, results[1].id.TelemetryID)
+	}
+	if results[0].buf.Len() == 0 && results[1].buf.Len() == 0 {
+		t.Error("neither goroutine wrote the banner; user silenced under concurrent first run")
+	}
+	reloaded, _ := userconfig.Load(dir)
+	if t1, _ := LoadTelemetry(reloaded); !t1.Disclosed {
+		t.Error("Disclosed not latched on disk after concurrent first runs")
 	}
 }
 

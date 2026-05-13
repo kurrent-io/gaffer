@@ -15,20 +15,29 @@ import {
 function makeCtx(): { ctx: WrapContext; emitted: Event[] } {
 	const emitted: Event[] = [];
 	const telemetry: Telemetry = {
-		emit: (event) => {
-			emitted.push(event);
-		},
+		emit: () => {},
 		drain: async () => {},
 		refreshOptOut: async () => {},
 		invokerId: () => null,
+		reportException: (phase, err) => {
+			emitted.push({
+				name: "exception",
+				timestamp: "test",
+				properties: {
+					phase,
+					exceptions: [
+						{
+							type: err instanceof Error ? err.name : "Error",
+							value: err instanceof Error ? err.message : String(err),
+							in_app: true,
+							stacktrace: { type: "raw", frames: [] },
+						},
+					],
+				},
+			} as Event);
+		},
 	};
-	const ctx: WrapContext = {
-		getTelemetry: () => telemetry,
-		extensionPath: "/opt/gaffer",
-		getWorkspaceFolders: () => [],
-		log: () => {},
-	};
-	return { ctx, emitted };
+	return { ctx: { telemetry }, emitted };
 }
 
 function expectExceptionEmitted(emitted: Event[], message: string): void {

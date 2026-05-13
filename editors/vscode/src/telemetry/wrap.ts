@@ -1,28 +1,16 @@
 // Catch-emit-rethrow wrappers around the extension's outermost
-// surfaces (activate body, command handlers). Production code stays
-// `throw err;` shaped - the wrapper observes the exception, hands a
-// scrubbed payload to the telemetry sink, then re-throws so the
-// extension host's existing error handling (VS Code's "Extension
-// X crashed" toast, debug-tracker dispatch, etc.) is unchanged.
-//
-// The wrappers take a getTelemetry callback rather than a direct
-// Telemetry handle so they compose with the activation timeline:
-// command-handler wrappers are constructed during activate(),
-// before activeTelemetry has been assigned. The callback resolves
-// the live handle each time it's invoked.
+// surfaces (activate body, command handlers, view providers).
+// Production code stays `throw err;` shaped - the wrapper observes
+// the exception, hands a scrubbed payload to the telemetry facade,
+// then re-throws so the extension host's existing error handling
+// (VS Code's "Extension X crashed" toast, debug-tracker dispatch,
+// etc.) is unchanged.
 
 import type { Phase } from "./exception.js";
-import { buildException } from "./exception.js";
 import type { Telemetry } from "./facade.js";
 
 export interface WrapContext {
-	getTelemetry: () => Telemetry | null;
-	extensionPath: string;
-	/** Resolved at report time so mid-session workspace folder changes
-	 * are honoured. Snapshotting at activation drops user-code frames
-	 * from folders open then but not now (and vice versa). */
-	getWorkspaceFolders: () => readonly string[];
-	log: (line: string) => void;
+	telemetry: Telemetry;
 }
 
 /**
@@ -38,7 +26,7 @@ export function wrapAsync<A extends unknown[], R>(
 		try {
 			return await fn(...args);
 		} catch (err) {
-			reportException(ctx, phase, err);
+			ctx.telemetry.reportException(phase, err);
 			throw err;
 		}
 	};
@@ -57,41 +45,20 @@ export function wrapSync<A extends unknown[], R>(
 		try {
 			return fn(...args);
 		} catch (err) {
-			reportException(ctx, phase, err);
+			ctx.telemetry.reportException(phase, err);
 			throw err;
 		}
 	};
 }
 
 /**
- * Build + emit an exception envelope for `err`. Public so the
- * activate-body try/catch can call it directly without going
- * through the wrap helpers (those work by wrapping a function;
- * activate is too tangled to wrap as a unit).
- *
- * The report path must never replace the caller's original error -
- * a throw inside emit is suppressed and logged, the caller's catch
- * still sees the original `err` to re-throw.
+ * Direct exception report. Used by the activate-body try/catch that
+ * can't be expressed as a function wrap.
  */
 export function reportException(
 	ctx: WrapContext,
 	phase: Phase,
 	err: unknown,
 ): void {
-	const telemetry = ctx.getTelemetry();
-	if (telemetry === null) return;
-	try {
-		telemetry.emit(
-			buildException({
-				err,
-				phase,
-				extensionPath: ctx.extensionPath,
-				workspaceFolders: ctx.getWorkspaceFolders(),
-			}),
-		);
-	} catch (reportErr) {
-		ctx.log(
-			`telemetry: exception report failed: ${reportErr instanceof Error ? reportErr.message : String(reportErr)}`,
-		);
-	}
+	ctx.telemetry.reportException(phase, err);
 }

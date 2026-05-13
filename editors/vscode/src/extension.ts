@@ -28,11 +28,7 @@ import type { ExtensionActivatedProperties } from "@kurrent/gaffer-telemetry";
 import { bucketCliVersion, bucketDuration } from "./telemetry/buckets.js";
 import { loadSafe, save } from "./telemetry/config.js";
 import { detectEditor } from "./telemetry/editor.js";
-import {
-	createTelemetry,
-	peekInvokerId,
-	type Telemetry,
-} from "./telemetry/facade.js";
+import { createTelemetry, type Telemetry } from "./telemetry/facade.js";
 import { classifyManifestError } from "./telemetry/manifest-error.js";
 import { runFirstRunNotice } from "./telemetry/notice.js";
 import { checkOptOut } from "./telemetry/opt-out.js";
@@ -79,23 +75,33 @@ export async function activate(
 	initOutput(context);
 	initDiagnostics(context);
 
-	// wrapCtx is built up front so every provider/handler registration
-	// can wrap through it. activeTelemetry is captured lazily; the
-	// report path is a no-op until the facade is built.
-	const wrapCtx: WrapContext = {
-		getTelemetry: () => activeTelemetry,
+	const libVersion = context.extension.packageJSON.version;
+	if (typeof libVersion !== "string") {
+		throw new Error(
+			`extension package.json version must be a string, got ${typeof libVersion}`,
+		);
+	}
+
+	// Build the telemetry facade first so the manifest fetch can pass
+	// `--invoker-id` to its CLI spawn and so wrapCtx holds a direct
+	// telemetry handle (no lazy module-level indirection). The facade
+	// itself is just identity-load + sink-construction; it emits
+	// nothing on its own.
+	activeTelemetry = await createTelemetry({
+		storageDir: context.globalStorageUri.fsPath,
+		libVersion,
+		env: process.env,
+		vscodeTelemetryLevel: readVscodeTelemetryLevel(),
 		extensionPath: context.extensionPath,
 		getWorkspaceFolders: () =>
 			vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? [],
 		log,
-	};
+	});
+	const wrapCtx: WrapContext = { telemetry: activeTelemetry };
 
-	// First-run telemetry disclosure. Fired before any awaited work
-	// below so the user sees the notification at activation time, not
-	// after the manifest fetch. Fire-and-forget from the caller's
-	// view; we hold the promise so the facade can pick up a mid-
-	// session `[Disable]` click once disclosure resolves (see
-	// activeTelemetry.refreshOptOut wiring below).
+	// First-run telemetry disclosure. Fire-and-forget; we hold the
+	// promise so the facade can pick up a mid-session `[Disable]`
+	// click once disclosure resolves (see refreshOptOut wiring below).
 	const disclosurePromise = runTelemetryDisclosure(context);
 
 	// Stale-on-edit: any text change to a file with a runtime error
@@ -128,54 +134,21 @@ export async function activate(
 	// launch directory), not the workspace, so we must pass
 	// it explicitly.
 	//
-	// The onError callback both surfaces the failure to the user
-	// (existing behaviour) and captures the raw error for
-	// classifyManifestError, which feeds extension_activated's
-	// cli_unreachable_reason.
 	// Snapshot trust state at fetch time so the extension_activated
 	// emit can distinguish "we didn't probe, workspace was untrusted"
 	// from "we probed and the binary was missing" - tryFetchManifest
 	// silently returns null on untrusted without firing onError, so
 	// without this snapshot the two paths look identical downstream.
 	const untrustedAtFetch = !vscode.workspace.isTrusted;
-	// Peek the persisted invoker id so the manifest fetch can carry
-	// `--invoker-id`. The full Telemetry facade hasn't been built yet
-	// (it's constructed after the manifest fetch so extension_activated
-	// reflects the actual cli_reachable outcome) - on cold install
-	// peek returns null and the flag is omitted.
-	const initialInvokerId = await peekInvokerId({
-		storageDir: context.globalStorageUri.fsPath,
-		env: process.env,
-		vscodeTelemetryLevel: readVscodeTelemetryLevel(),
-	});
 	let manifestErr: unknown;
 	const initialManifest = await tryFetchManifest(
 		workspaceCwd(),
-		initialInvokerId,
+		activeTelemetry.invokerId(),
 		(err) => {
 			manifestErr = err;
 			return showManifestFailure(err);
 		},
 	);
-
-	const libVersion = context.extension.packageJSON.version;
-	if (typeof libVersion !== "string") {
-		throw new Error(
-			`extension package.json version must be a string, got ${typeof libVersion}`,
-		);
-	}
-
-	// Build the telemetry facade after the manifest fetch so the
-	// extension_activated emit reflects the actual cli_reachable
-	// outcome. Construction is async (config load, lazy identity
-	// mint on first install); subsequent activations are ~free.
-	activeTelemetry = await createTelemetry({
-		storageDir: context.globalStorageUri.fsPath,
-		libVersion,
-		env: process.env,
-		vscodeTelemetryLevel: readVscodeTelemetryLevel(),
-		log,
-	});
 
 	try {
 		await activateAfterTelemetry({
@@ -189,12 +162,10 @@ export async function activate(
 			activationStart,
 		});
 	} catch (err) {
-		// Any failure after the facade is built (provider wiring,
-		// command registration, deep imports) fires an exception
-		// envelope before propagating to VS Code's "extension failed
-		// to activate" handling. Pre-facade failures (config load,
-		// identity mint) intentionally aren't reported - we have no
-		// sink yet.
+		// Provider wiring / command registration / deep imports can
+		// throw during activate. Fire an exception envelope before
+		// propagating to VS Code's "extension failed to activate"
+		// surface.
 		reportException(wrapCtx, "startup", err);
 		throw err;
 	}

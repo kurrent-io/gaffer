@@ -246,6 +246,26 @@ describe("buildException", () => {
 		]);
 	});
 
+	it("decodes percent-escapes in file:// URLs before the scrub", () => {
+		// Uri.fsPath gives "/home/dev/My Proj"; V8 surfaces the same
+		// path as "file:///home/dev/My%20Proj/..." in ESM stacks. The
+		// fileURLToPath conversion must decode the escape so the
+		// workspace-folder prefix check matches.
+		const out = buildException({
+			err: makeError({
+				stack: `    at userCode (file:///home/dev/My%20Proj/src/secret.js:7:1)
+    at activate (${EXT_PATH}/dist/extension.js:42:13)`,
+			}),
+			phase: "event_processing",
+			extensionPath: EXT_PATH,
+			workspaceFolders: ["/home/dev/My Proj"],
+		});
+		const [entry] = out.properties.exceptions;
+		expect(entry?.stacktrace.frames.map((f) => f.filename)).toEqual([
+			"extension.js",
+		]);
+	});
+
 	it("doesn't drop a sibling directory that shares a prefix with a workspace folder", () => {
 		// /home/dev as the workspace must NOT match /home/development-project/...
 		// Plain startsWith would incorrectly drop the second frame; the

@@ -24,6 +24,10 @@ let client: LanguageClient | undefined;
 // "Gaffer LSP" entries in the user's Output dropdown.
 let lspChannel: vscode.OutputChannel | undefined;
 
+/** Bound on every `client.stop` call. VS Code's deactivate budget is
+ * ~5s; a stuck server can't be allowed to eat the whole budget. */
+const STOP_TIMEOUT_MS = 2000;
+
 // Latched by startLanguageClient and called from retryStartLanguageClient
 // after a successful manifest reload. Re-running startLanguageClient
 // instead would double-register the trust-grant listener.
@@ -175,11 +179,13 @@ async function spawnLanguageClient(
 	// dispose cancels cleanly. The dispose returns the stop()
 	// Promise so VS Code (which awaits disposables on
 	// extension teardown) waits for the child process to flush.
+	// Bounded by the same STOP_TIMEOUT_MS as the deactivate path so
+	// a stuck server can't hang teardown via either route.
 	let disposed = false;
 	context.subscriptions.push({
 		dispose: () => {
 			disposed = true;
-			return c.stop();
+			return c.stop(STOP_TIMEOUT_MS);
 		},
 	});
 	try {
@@ -293,9 +299,8 @@ export async function stopLanguageClient(): Promise<void> {
 		return;
 	}
 	try {
-		// Bounded so a stuck server can't eat the deactivate budget.
 		// vscode-languageclient force-kills on timeout.
-		await client.stop(2000);
+		await client.stop(STOP_TIMEOUT_MS);
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
 		log(`LSP client stop failed: ${msg}`);

@@ -6,6 +6,8 @@
 // The wrappers (telemetry/wrap.ts) catch + emit + re-throw; this
 // module is pure payload construction.
 
+import { fileURLToPath } from "node:url";
+
 import type {
 	Exception,
 	ExceptionEntry,
@@ -153,11 +155,16 @@ function classifyFrame(
 /** Convert `file:///home/user/foo.js` to `/home/user/foo.js`. Leaves
  * non-URL filenames (`node:internal/...`, `/abs/path`, `webpack:...`)
  * untouched. Without this the workspace-folder scrub would miss any
- * frame V8 emitted as a URL. */
+ * frame V8 emitted as a URL.
+ *
+ * Uses `fileURLToPath` rather than `URL.pathname` so percent-escapes
+ * decode (e.g. `%20` -> ` `) and Windows URLs produce native paths
+ * (`c:\...` not `/c:/...`). `Uri.fsPath` - the shape workspaceFolders
+ * arrive in - has the same convention. */
 function normaliseFilename(filename: string): string {
 	if (filename.startsWith("file://")) {
 		try {
-			return new URL(filename).pathname;
+			return fileURLToPath(filename);
 		} catch {
 			// Malformed URL - leave as-is rather than risk losing the
 			// scrub on a string that happened to start with file://.

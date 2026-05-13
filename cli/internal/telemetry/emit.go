@@ -18,21 +18,22 @@ import (
 // regexp at the worker boundary.
 const timestampLayout = "2006-01-02T15:04:05.000Z"
 
-// stampInvocation fills in the four emit-side base fields on a
-// one-shot variant's properties: Command (literal per helper),
-// DurationMs (time since Client start), InvokedBy / InvokedVia
-// (defaults if the caller didn't set them via flags / overrides).
-// The pointer-arg shape lets one body handle all five one-shot
-// variants without per-variant type plumbing; generated EmitX
-// helpers pass pointers into their own props fields.
-func (c *Client) stampInvocation(command *CommandName, duration *RawDuration, invokedBy *InvokedBy, invokedVia *InvokedVia, name CommandName) {
+// stampInvocation fills in the emit-side base fields on a one-shot
+// variant's properties: Command (literal per helper), DurationMs
+// (time since Client start), InvokedBy (command-aware default if
+// the caller didn't pass --invoked-by), InvokedVia (set only when
+// the caller passed --invoked-via; otherwise left nil so omitempty
+// drops it from the wire). The pointer-arg shape lets one body
+// handle all one-shot variants without per-variant type plumbing.
+func (c *Client) stampInvocation(command *CommandName, duration *RawDuration, invokedBy *InvokedBy, invokedVia **InvokedVia, name CommandName) {
 	*command = name
 	*duration = RawDuration(time.Since(c.startTime).Milliseconds())
 	if *invokedBy == "" {
 		*invokedBy = c.defaultInvokedBy(name)
 	}
-	if *invokedVia == "" {
-		*invokedVia = c.defaultInvokedVia(name)
+	if *invokedVia == nil && c.invocation.InvokedVia != "" {
+		v := c.invocation.InvokedVia
+		*invokedVia = &v
 	}
 }
 

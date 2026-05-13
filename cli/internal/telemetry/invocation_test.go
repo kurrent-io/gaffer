@@ -109,66 +109,67 @@ func TestPeekInvocationFlags_StopsAtDoubleDash(t *testing.T) {
 	}
 }
 
-func TestStampInvocation_MCPDefaultsToMCPClientStdio(t *testing.T) {
-	// mcp doesn't go through stampInvocation (it's a long-running
-	// command, served by stampInvocationBase). Cover the one-shot
-	// shape via the dev command's non-mcp default + the long-running
-	// path is exercised in TestStampInvocationBase_MCPDefaults.
+func TestStampInvocation_NoInvocationLeavesInvokedViaNil(t *testing.T) {
+	// One-shot path with no --invoked-via flag: the field stays nil
+	// so omitempty drops it from the wire. invoked_by still falls
+	// through to the command-aware default (direct for non-mcp).
 	c := New(WithSink(newMockSink()), WithIdentity(testIdentity))
 	var (
 		cmd        CommandName
 		dur        RawDuration
 		invokedBy  InvokedBy
-		invokedVia InvokedVia
+		invokedVia *InvokedVia
 	)
 	c.stampInvocation(&cmd, &dur, &invokedBy, &invokedVia, CommandNameVersion)
 	if invokedBy != InvokedByDirect {
 		t.Errorf("non-mcp default InvokedBy = %q, want direct", invokedBy)
 	}
-	if invokedVia != InvokedViaTerminal {
-		t.Errorf("non-mcp default InvokedVia = %q, want terminal", invokedVia)
+	if invokedVia != nil {
+		t.Errorf("InvokedVia = %v, want nil (no flag, no default)", *invokedVia)
 	}
 }
 
-func TestStampInvocationBase_MCPDefaults(t *testing.T) {
+func TestStampInvocationBase_MCPDefaultsToMCPClient(t *testing.T) {
+	// invoked_by has a command-aware default (mcp -> mcp_client).
+	// invoked_via no longer does; it stays nil unless a flag was passed.
 	c := New(WithSink(newMockSink()), WithIdentity(testIdentity))
 	var (
 		cmd        CommandName
 		dur        RawDuration
 		outcome    Outcome
 		invokedBy  InvokedBy
-		invokedVia InvokedVia
+		invokedVia *InvokedVia
 	)
 	c.stampInvocationBase(&cmd, &dur, &outcome, &invokedBy, &invokedVia, CommandNameMCP, context.Background(), nil)
 	if invokedBy != InvokedByMCPClient {
 		t.Errorf("mcp default InvokedBy = %q, want mcp_client", invokedBy)
 	}
-	if invokedVia != InvokedViaStdio {
-		t.Errorf("mcp default InvokedVia = %q, want stdio", invokedVia)
+	if invokedVia != nil {
+		t.Errorf("InvokedVia = %v, want nil (no flag, no default)", *invokedVia)
 	}
 }
 
-func TestStampInvocationBase_NonMCPDefaultsToDirectTerminal(t *testing.T) {
+func TestStampInvocationBase_NonMCPDefaultsToDirect(t *testing.T) {
 	c := New(WithSink(newMockSink()), WithIdentity(testIdentity))
 	var (
 		cmd        CommandName
 		dur        RawDuration
 		outcome    Outcome
 		invokedBy  InvokedBy
-		invokedVia InvokedVia
+		invokedVia *InvokedVia
 	)
 	c.stampInvocationBase(&cmd, &dur, &outcome, &invokedBy, &invokedVia, CommandNameDev, context.Background(), nil)
 	if invokedBy != InvokedByDirect {
 		t.Errorf("dev default InvokedBy = %q, want direct", invokedBy)
 	}
-	if invokedVia != InvokedViaTerminal {
-		t.Errorf("dev default InvokedVia = %q, want terminal", invokedVia)
+	if invokedVia != nil {
+		t.Errorf("InvokedVia = %v, want nil (no flag, no default)", *invokedVia)
 	}
 }
 
-func TestStampInvocationBase_ExplicitFlagOverridesMCPDefault(t *testing.T) {
-	// --invoked-by / --invoked-via take precedence over the
-	// command-aware default. Use mcp to prove the non-default path.
+func TestStampInvocationBase_ExplicitFlagSetsInvokedVia(t *testing.T) {
+	// --invoked-by / --invoked-via on the Client's Invocation are
+	// the only way invoked_via gets stamped now. Cover both fields.
 	c := New(
 		WithSink(newMockSink()),
 		WithIdentity(testIdentity),
@@ -182,22 +183,22 @@ func TestStampInvocationBase_ExplicitFlagOverridesMCPDefault(t *testing.T) {
 		dur        RawDuration
 		outcome    Outcome
 		invokedBy  InvokedBy
-		invokedVia InvokedVia
+		invokedVia *InvokedVia
 	)
 	c.stampInvocationBase(&cmd, &dur, &outcome, &invokedBy, &invokedVia, CommandNameMCP, context.Background(), nil)
 	if invokedBy != InvokedByVSCode {
 		t.Errorf("flag-override InvokedBy = %q, want vscode", invokedBy)
 	}
-	if invokedVia != InvokedViaCommandPalette {
-		t.Errorf("flag-override InvokedVia = %q, want command_palette", invokedVia)
+	if invokedVia == nil || *invokedVia != InvokedViaCommandPalette {
+		t.Errorf("InvokedVia = %v, want command_palette", invokedVia)
 	}
 }
 
-func TestStampInvocation_FlagOverridesNonMCPDefault(t *testing.T) {
+func TestStampInvocation_ExplicitFlagSetsInvokedVia(t *testing.T) {
 	// One-shot path: `gaffer init --invoked-by=vscode --invoked-via=code_lens`
 	// is the real cross-surface case (extension scaffolds a project
-	// via a code lens). Cover that stampInvocation honours the
-	// Client's invocation state for one-shot commands.
+	// via a code lens). Cover that stampInvocation reads
+	// c.invocation.InvokedVia onto the output pointer.
 	c := New(
 		WithSink(newMockSink()),
 		WithIdentity(testIdentity),
@@ -210,14 +211,14 @@ func TestStampInvocation_FlagOverridesNonMCPDefault(t *testing.T) {
 		cmd        CommandName
 		dur        RawDuration
 		invokedBy  InvokedBy
-		invokedVia InvokedVia
+		invokedVia *InvokedVia
 	)
 	c.stampInvocation(&cmd, &dur, &invokedBy, &invokedVia, CommandNameInit)
 	if invokedBy != InvokedByVSCode {
 		t.Errorf("flag-override InvokedBy = %q, want vscode", invokedBy)
 	}
-	if invokedVia != InvokedViaCodeLens {
-		t.Errorf("flag-override InvokedVia = %q, want code_lens", invokedVia)
+	if invokedVia == nil || *invokedVia != InvokedViaCodeLens {
+		t.Errorf("InvokedVia = %v, want code_lens", invokedVia)
 	}
 }
 

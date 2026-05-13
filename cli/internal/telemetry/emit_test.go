@@ -109,8 +109,8 @@ func TestEmitVersion_BuildsEnvelope(t *testing.T) {
 	if props.InvokedBy != InvokedByDirect {
 		t.Errorf("InvokedBy = %q, want direct", props.InvokedBy)
 	}
-	if props.InvokedVia != InvokedViaTerminal {
-		t.Errorf("InvokedVia = %q, want terminal", props.InvokedVia)
+	if props.InvokedVia != nil {
+		t.Errorf("InvokedVia = %v, want nil (no flag, no default)", *props.InvokedVia)
 	}
 	if props.DurationMs < 0 {
 		t.Errorf("DurationMs = %d, want non-negative", props.DurationMs)

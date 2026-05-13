@@ -336,7 +336,7 @@ export interface CommandInvokedBaseProperties {
   duration_ms: DurationBucket;
   outcome: Outcome;
   invoked_by: InvokedBy;
-  invoked_via: InvokedVia;
+  invoked_via?: InvokedVia;
   [k: string]: unknown;
 }
 /**

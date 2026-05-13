@@ -4,11 +4,11 @@ default:
 # Pinned tool versions. Bump in lockstep across local/CI by editing here.
 cue_version := "v0.14.2"
 
-# Install cue and the JS codegen package. The Go helper generator is in-tree
-# (telemetry/scripts/gen-helpers) so it doesn't need a separate install.
-init: worker::init
+# Install cue. JS deps install at workspace root via `just init`. The
+# Go helper generator is in-tree (telemetry/scripts/gen-helpers) so it
+# doesn't need a separate install.
+init:
     @go install cuelang.org/go/cmd/cue@{{cue_version}}
-    pnpm install --filter '@kurrent/gaffer-telemetry'
 
 # Generate all artifacts from schemas/, then build the worker. Order: cue
 # produces the jsonschema (consumed by the worker for runtime validation and

@@ -1,9 +1,9 @@
 default:
     @just --list
 
-# Install all binding dependencies
-[parallel]
-init: go::init js::init
+# Install Go binding tooling. JS bindings have no module-local install
+# step - pnpm runs once at the repo root via `just init`.
+init: go::init
 
 # Build platform packages and JS bindings (requires `just runtime publish` first)
 [parallel]

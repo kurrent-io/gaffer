@@ -1,11 +1,6 @@
 default:
     @just --list
 
-# Install dependencies (extension + tsserver-plugin together via the
-# pnpm workspace).
-init:
-    pnpm install
-
 # Build the extension AND the tsserver-plugin. Plugin must build
 # first so the vendoring step in `package` finds compiled output.
 build:

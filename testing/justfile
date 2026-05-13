@@ -1,9 +1,6 @@
 default:
     @just --list
 
-# Install dependencies
-init: js::init
-
 # Build TypeScript
 build: js::build
 

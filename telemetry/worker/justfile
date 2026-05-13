@@ -1,10 +1,6 @@
 default:
     @just --list
 
-# Install JS dependencies.
-init:
-    pnpm install --filter '@kurrent/gaffer-telemetry-worker'
-
 # Render the notice (TELEMETRY.md at repo root -> src/notice.gen.ts) and
 # generate worker-configuration.d.ts from wrangler.jsonc.
 build:

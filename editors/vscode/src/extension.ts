@@ -28,7 +28,11 @@ import type { ExtensionActivatedProperties } from "@kurrent/gaffer-telemetry";
 import { bucketCliVersion, bucketDuration } from "./telemetry/buckets.js";
 import { loadSafe } from "./telemetry/config.js";
 import { detectEditor } from "./telemetry/editor.js";
-import { createTelemetry, type Telemetry } from "./telemetry/facade.js";
+import {
+	createTelemetry,
+	peekInvokerId,
+	type Telemetry,
+} from "./telemetry/facade.js";
 import { classifyManifestError } from "./telemetry/manifest-error.js";
 import { runFirstRunNotice } from "./telemetry/notice.js";
 import { checkOptOut } from "./telemetry/opt-out.js";
@@ -116,11 +120,25 @@ export async function activate(
 	// silently returns null on untrusted without firing onError, so
 	// without this snapshot the two paths look identical downstream.
 	const untrustedAtFetch = !vscode.workspace.isTrusted;
-	let manifestErr: unknown;
-	const initialManifest = await tryFetchManifest(workspaceCwd(), (err) => {
-		manifestErr = err;
-		return showManifestFailure(err);
+	// Peek the persisted invoker id so the manifest fetch can carry
+	// `--invoker-id`. The full Telemetry facade hasn't been built yet
+	// (it's constructed after the manifest fetch so extension_activated
+	// reflects the actual cli_reachable outcome) - on cold install
+	// peek returns null and the flag is omitted.
+	const initialInvokerId = await peekInvokerId({
+		storageDir: context.globalStorageUri.fsPath,
+		env: process.env,
+		vscodeTelemetryLevel: readVscodeTelemetryLevel(),
 	});
+	let manifestErr: unknown;
+	const initialManifest = await tryFetchManifest(
+		workspaceCwd(),
+		initialInvokerId,
+		(err) => {
+			manifestErr = err;
+			return showManifestFailure(err);
+		},
+	);
 
 	const libVersion = context.extension.packageJSON.version;
 	if (typeof libVersion !== "string") {
@@ -234,9 +252,12 @@ async function activateAfterTelemetry(
 	// the spawn until both clear and reattempting via
 	// retryStartLanguageClient when the manifest reload chain
 	// publishes a non-null result.
+	const getInvokerId = (): string | null =>
+		activeTelemetry?.invokerId() ?? null;
 	startLanguageClient(
 		context,
 		() => latestManifest !== null,
+		getInvokerId,
 		(client) => {
 			lspCodeLens.setClient(client);
 		},
@@ -253,7 +274,7 @@ async function activateAfterTelemetry(
 	// it up automatically. Provider returns [] under untrusted
 	// workspaces; fires onDidChange on trust grant and on workspace
 	// folder changes so the picker tracks reality.
-	const mcpProvider = new GafferMcpProvider();
+	const mcpProvider = new GafferMcpProvider(getInvokerId);
 	context.subscriptions.push(
 		mcpProvider,
 		vscode.lm.registerMcpServerDefinitionProvider("gaffer", mcpProvider),
@@ -267,7 +288,8 @@ async function activateAfterTelemetry(
 	);
 
 	const controller = new SessionController({
-		buildArgv: buildGafferArgv,
+		buildArgv: (args, invokedVia) =>
+			buildGafferArgv(args, { invokerId: getInvokerId(), invokedVia }),
 		stepProvider,
 		stateProvider,
 		statusProvider,
@@ -291,7 +313,11 @@ async function activateAfterTelemetry(
 	const reloadManifest = (): Promise<void> => {
 		refreshChain = refreshChain.then(async () => {
 			try {
-				const m = await tryFetchManifest(workspaceCwd(), showManifestFailure);
+				const m = await tryFetchManifest(
+					workspaceCwd(),
+					getInvokerId(),
+					showManifestFailure,
+				);
 				latestManifest = m;
 				lspCodeLens.setManifest(m);
 				// Re-evaluate the LSP spawn gate. Idempotent if the
@@ -378,8 +404,13 @@ async function activateAfterTelemetry(
 	// Every handler runs through wrapAsync so a thrown error fires an
 	// `exception` envelope before VS Code's command-failure surface
 	// kicks in. The handlers stay otherwise unchanged.
-	const startSession = (args: DebugProjectionArgs): Promise<void> =>
-		controller.start(args);
+	//
+	// debugProjection* are CodeLens-only (package.json `when: false`);
+	// runProjection is the palette entry point.
+	const startSessionLens = (args: DebugProjectionArgs): Promise<void> =>
+		controller.start(args, "code_lens");
+	const startSessionPalette = (args: DebugProjectionArgs): Promise<void> =>
+		controller.start(args, "command_palette");
 	const wrap = <A extends unknown[], R>(
 		fn: (...args: A) => Promise<R> | R,
 	): ((...args: A) => Promise<R>) => wrapAsync(wrapCtx, "event_processing", fn);
@@ -390,15 +421,21 @@ async function activateAfterTelemetry(
 		),
 		vscode.commands.registerCommand(
 			"gaffer.debugProjection",
-			wrap((args: DebugProjectionArgs) => controller.start(args)),
+			wrap(startSessionLens),
 		),
 		vscode.commands.registerCommand(
 			"gaffer.debugProjectionPick",
-			wrap(debugProjectionPick({ start: startSession })),
+			wrap(debugProjectionPick({ start: startSessionLens })),
 		),
 		vscode.commands.registerCommand(
 			"gaffer.runProjection",
-			wrap(runProjection({ start: startSession, workspaceCwd })),
+			wrap(
+				runProjection({
+					start: startSessionPalette,
+					workspaceCwd,
+					getInvokerId,
+				}),
+			),
 		),
 		// Click target for the "Invalid fixture: <reason>" lens. The lens
 		// is informational; the user fixes the toml. CodeLens.command is

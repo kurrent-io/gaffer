@@ -38,6 +38,48 @@ describe("buildGafferArgv", () => {
 		setConfiguration("gaffer", "command", {});
 		expect(buildGafferArgv(["dev"])).toEqual(["gaffer", "dev"]);
 	});
+
+	it("inserts --invoker-id and --invoked-by before the subcommand args", () => {
+		expect(
+			buildGafferArgv(["lsp"], {
+				invokerId: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
+			}),
+		).toEqual([
+			"gaffer",
+			"--invoker-id=8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
+			"--invoked-by=vscode",
+			"lsp",
+		]);
+	});
+
+	it("inserts --invoked-via when invokedVia is set alongside invokerId", () => {
+		expect(
+			buildGafferArgv(["dev", "proj"], {
+				invokerId: "id-1",
+				invokedVia: "code_lens",
+			}),
+		).toEqual([
+			"gaffer",
+			"--invoker-id=id-1",
+			"--invoked-by=vscode",
+			"--invoked-via=code_lens",
+			"dev",
+			"proj",
+		]);
+	});
+
+	it("omits all linkage flags when invokerId is null", () => {
+		expect(
+			buildGafferArgv(["manifest"], {
+				invokerId: null,
+				invokedVia: "mcp_provider",
+			}),
+		).toEqual(["gaffer", "manifest"]);
+	});
+
+	it("omits linkage flags when no invocation is supplied", () => {
+		expect(buildGafferArgv(["lsp"])).toEqual(["gaffer", "lsp"]);
+	});
 });
 
 describe("hasCommand / hasFlag", () => {
@@ -67,7 +109,7 @@ describe("tryFetchManifest - trust gate", () => {
 	it("returns null without invoking the CLI when workspace is untrusted", async () => {
 		setTrusted(false);
 		const onError = vi.fn();
-		const result = await tryFetchManifest(undefined, onError);
+		const result = await tryFetchManifest(undefined, null, onError);
 		expect(result).toBeNull();
 		expect(onError).not.toHaveBeenCalled();
 	});
@@ -104,7 +146,7 @@ fi
 		);
 		setConfiguration("gaffer", "command", { globalValue: [stub] });
 
-		const m = await tryFetchManifest(undefined);
+		const m = await tryFetchManifest(undefined, null);
 		expect(m?.version).toBe("1.0.0");
 		expect(m?.commands.dev?.flags).toEqual(["debug"]);
 	});
@@ -114,7 +156,7 @@ fi
 			globalValue: [path.join(tmpRoot, "nope")],
 		});
 		const onError = vi.fn();
-		const result = await tryFetchManifest(undefined, onError);
+		const result = await tryFetchManifest(undefined, null, onError);
 		expect(result).toBeNull();
 		expect(onError).toHaveBeenCalledTimes(1);
 	});
@@ -124,7 +166,7 @@ fi
 			globalValue: [path.join(tmpRoot, "nope")],
 		});
 		let captured: unknown;
-		await tryFetchManifest(undefined, (err) => {
+		await tryFetchManifest(undefined, null, (err) => {
 			captured = err;
 		});
 		expect(captured).toBeDefined();
@@ -136,7 +178,7 @@ fi
 		const stub = writeStub("gaffer", `#!/bin/sh\necho 'not json'\n`);
 		setConfiguration("gaffer", "command", { globalValue: [stub] });
 		const onError = vi.fn();
-		const result = await tryFetchManifest(undefined, onError);
+		const result = await tryFetchManifest(undefined, null, onError);
 		expect(result).toBeNull();
 		expect(onError).toHaveBeenCalledTimes(1);
 	});
@@ -145,7 +187,7 @@ fi
 		const stub = writeStub("gaffer", `#!/bin/sh\necho '{"oops": true}'\n`);
 		setConfiguration("gaffer", "command", { globalValue: [stub] });
 		const onError = vi.fn();
-		const result = await tryFetchManifest(undefined, onError);
+		const result = await tryFetchManifest(undefined, null, onError);
 		expect(result).toBeNull();
 		expect(onError).toHaveBeenCalledTimes(1);
 		const err = onError.mock.calls[0]?.[0];
@@ -156,6 +198,29 @@ fi
 		setConfiguration("gaffer", "command", {
 			globalValue: [path.join(tmpRoot, "missing")],
 		});
-		await expect(tryFetchManifest(undefined)).resolves.toBeNull();
+		await expect(tryFetchManifest(undefined, null)).resolves.toBeNull();
+	});
+
+	it("forwards invokerId through to the spawned CLI argv", async () => {
+		// Stub dumps its argv into a sibling file we can read back, then
+		// emits a minimal valid manifest. Round-trip proves --invoker-id
+		// is appended verbatim.
+		const argvLog = path.join(tmpRoot, "argv.log");
+		const stub = writeStub(
+			"gaffer",
+			`#!/bin/sh
+echo "$@" > "${argvLog}"
+echo '{"version":"1.0.0","commands":{}}'
+`,
+		);
+		setConfiguration("gaffer", "command", { globalValue: [stub] });
+		const m = await tryFetchManifest(undefined, "abc-id");
+		expect(m?.version).toBe("1.0.0");
+		const args = fs.readFileSync(argvLog, "utf8").trim().split(" ");
+		expect(args).toEqual([
+			"--invoker-id=abc-id",
+			"--invoked-by=vscode",
+			"manifest",
+		]);
 	});
 });

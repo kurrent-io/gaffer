@@ -20,6 +20,7 @@ function makeCtx(overrides: Partial<WrapContext> = {}): {
 		},
 		drain: async () => {},
 		refreshOptOut: async () => {},
+		invokerId: () => null,
 	};
 	const ctx: WrapContext = {
 		getTelemetry: () => telemetry,
@@ -86,6 +87,7 @@ describe("wrapAsync", () => {
 			},
 			drain: async () => {},
 			refreshOptOut: async () => {},
+			invokerId: () => null,
 		};
 		const ctx: WrapContext = {
 			getTelemetry: () => exploding,

@@ -13,6 +13,7 @@
 //   status: starting -> idle (never reached running), otherwise ended.
 
 import * as vscode from "vscode";
+import type { InvokedVia } from "../discovery/cli.js";
 import {
 	createGafferSession,
 	type CreateSession,
@@ -46,7 +47,9 @@ export interface DebugProjectionArgs {
 }
 
 export interface SessionControllerDeps {
-	buildArgv: (args: string[]) => string[];
+	/** Builds the full CLI argv. `invokedVia` is appended via
+	 * `--invoked-via=...` for telemetry-stitching at the CLI side. */
+	buildArgv: (args: string[], invokedVia: InvokedVia) => string[];
 	stepProvider: StepProvider;
 	stateProvider: StateProvider;
 	statusProvider: StatusViewProvider;
@@ -68,7 +71,7 @@ export interface SessionControllerDeps {
 }
 
 export class SessionController implements vscode.Disposable {
-	readonly #buildArgv: (args: string[]) => string[];
+	readonly #buildArgv: (args: string[], invokedVia: InvokedVia) => string[];
 	readonly #stepProvider: StepProvider;
 	readonly #stateProvider: StateProvider;
 	readonly #statusProvider: StatusViewProvider;
@@ -165,7 +168,10 @@ export class SessionController implements vscode.Disposable {
 		this.#activeDebugSession = null;
 	}
 
-	async start(args: DebugProjectionArgs): Promise<void> {
+	async start(
+		args: DebugProjectionArgs,
+		invokedVia: InvokedVia,
+	): Promise<void> {
 		if (!vscode.workspace.isTrusted) {
 			void showTrustWarning();
 			return;
@@ -221,20 +227,23 @@ export class SessionController implements vscode.Disposable {
 		// readDebugPort returns -1 when unset; we omit the flag in that
 		// case and let the CLI auto-pick a free port.
 		const requestedPort = this.#readDebugPort();
-		const argv = this.#buildArgv([
-			"dev",
-			name,
-			"--json",
-			"--debug",
-			...(requestedPort >= 0 ? ["--debug-port", String(requestedPort)] : []),
-			...(fixture ? ["--fixture", fixture] : []),
-			// Start-paused is the extension's default UX: clicking Debug
-			// lands the user in `inspecting` immediately so the State view
-			// is populated and the user can explore before processing
-			// begins. With breakpoints set the CLI runs to the first hit
-			// instead.
-			"--start-paused-if-no-breakpoints",
-		]);
+		const argv = this.#buildArgv(
+			[
+				"dev",
+				name,
+				"--json",
+				"--debug",
+				...(requestedPort >= 0 ? ["--debug-port", String(requestedPort)] : []),
+				...(fixture ? ["--fixture", fixture] : []),
+				// Start-paused is the extension's default UX: clicking Debug
+				// lands the user in `inspecting` immediately so the State view
+				// is populated and the user can explore before processing
+				// begins. With breakpoints set the CLI runs to the first hit
+				// instead.
+				"--start-paused-if-no-breakpoints",
+			],
+			invokedVia,
+		);
 
 		await this.#setStatus(name, "starting");
 		log(`Starting: ${name}`);

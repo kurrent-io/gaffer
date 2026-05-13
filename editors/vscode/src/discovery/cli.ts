@@ -6,14 +6,32 @@ import { ManifestSchema, type Manifest } from "./schemas.js";
 
 const DEFAULT_COMMAND: readonly string[] = ["gaffer"];
 
+/** Spawn surfaces the extension drives the CLI from. Maps 1:1 to the
+ * wire `#InvokedVia` enum's editor-relevant variants. */
+export type InvokedVia = "code_lens" | "command_palette" | "mcp_provider";
+
+export interface Invocation {
+	/** Per-install extension emitter_id, or null when opted out. */
+	invokerId: string | null;
+	/** Surface enum; omitted for extension-internal spawns (manifest, LSP). */
+	invokedVia?: InvokedVia;
+}
+
 /**
  * Build the argv to invoke gaffer with the given subcommand args.
  *
  * Reads `gaffer.command` only from User scope - workspace and folder scope
  * are ignored as a defense against hostile workspaces overriding the
  * binary path. Falls back to `["gaffer"]` (resolved from PATH).
+ *
+ * Linkage flags are inserted between the binary prefix and the
+ * subcommand args (root-level position) so a future passthrough-style
+ * subcommand can't swallow them.
  */
-export function buildGafferArgv(args: string[]): string[] {
+export function buildGafferArgv(
+	args: string[],
+	invocation?: Invocation,
+): string[] {
 	const inspected = vscode.workspace
 		.getConfiguration("gaffer")
 		.inspect<string[]>("command");
@@ -22,7 +40,14 @@ export function buildGafferArgv(args: string[]): string[] {
 		Array.isArray(userValue) && userValue.length > 0
 			? userValue
 			: [...DEFAULT_COMMAND];
-	return [...prefix, ...args];
+	const flags: string[] = [];
+	if (invocation && invocation.invokerId !== null) {
+		flags.push(`--invoker-id=${invocation.invokerId}`, "--invoked-by=vscode");
+		if (invocation.invokedVia !== undefined) {
+			flags.push(`--invoked-via=${invocation.invokedVia}`);
+		}
+	}
+	return [...prefix, ...flags, ...args];
 }
 
 /**
@@ -32,16 +57,20 @@ export function buildGafferArgv(args: string[]): string[] {
  * extension is built to handle a null manifest. `onError` fires for
  * actual fetch failures (CLI missing, parse errors); trust-skip is
  * silent.
+ *
+ * `invokerId` is appended as `--invoker-id` when non-null;
+ * `--invoked-via` is never sent for the manifest fetch.
  */
 export async function tryFetchManifest(
 	cwd: string | undefined,
+	invokerId: string | null,
 	onError?: (err: unknown) => void,
 ): Promise<Manifest | null> {
 	if (!vscode.workspace.isTrusted) {
 		log("workspace untrusted, skipping manifest fetch");
 		return null;
 	}
-	const argv = buildGafferArgv(["manifest"]);
+	const argv = buildGafferArgv(["manifest"], { invokerId });
 	try {
 		const opts: { cwd?: string } = {};
 		if (cwd !== undefined) opts.cwd = cwd;

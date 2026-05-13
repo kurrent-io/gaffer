@@ -61,6 +61,10 @@ export interface Telemetry {
 	 * Call after the first-run notification's write so a `[Disable]`
 	 * click silences emits that haven't fired yet. */
 	refreshOptOut(): Promise<void>;
+	/** Per-install `emitter_id` to pass to spawned CLI processes as
+	 * `--invoker-id`. Returns `null` when opt-out is active (we have
+	 * no identity to share) or when the facade fell back to no-op. */
+	invokerId(): string | null;
 }
 
 export async function createTelemetry(
@@ -100,7 +104,9 @@ async function createTelemetryImpl(
 	// (user clicks `[Disable]` in the first-run notification);
 	// transitions in the other direction need a fresh activation
 	// anyway because env-var and VS Code-level signals are read at
-	// construction.
+	// construction. The latch only affects future spawns; CLI
+	// children already running carry the linkage flags they were
+	// started with until they exit naturally.
 	let disabled = false;
 
 	return {
@@ -125,7 +131,42 @@ async function createTelemetryImpl(
 			const fresh = await loadSafe(opts.storageDir);
 			if (currentOptOut(opts, fresh).disabled) disabled = true;
 		},
+		invokerId(): string | null {
+			return disabled ? null : identity.telemetryId;
+		},
 	};
+}
+
+/**
+ * Read the persisted invoker id (extension emitter_id) without building
+ * the full facade. Used by the pre-facade manifest fetch so its CLI
+ * spawn carries `--invoker-id` from the second activation onwards.
+ *
+ * Returns null when opted out, when no identity is on disk yet (cold
+ * install), or on any I/O failure - the caller treats all three as
+ * "omit the flag".
+ *
+ * The peek is a snapshot. createTelemetry re-reads the same file moments
+ * later and is the source of truth for the rest of the session; the two
+ * can diverge by one cold-install mint, which is intentional.
+ */
+export async function peekInvokerId(opts: {
+	storageDir: string;
+	env: NodeJS.ProcessEnv;
+	vscodeTelemetryLevel: string | undefined;
+}): Promise<string | null> {
+	try {
+		const config = await loadSafe(opts.storageDir);
+		const optOut = checkOptOut({
+			config,
+			env: opts.env,
+			vscodeTelemetryLevel: opts.vscodeTelemetryLevel,
+		});
+		if (optOut.disabled) return null;
+		return config.telemetry_id ?? null;
+	} catch {
+		return null;
+	}
 }
 
 function noopTelemetry(): Telemetry {
@@ -133,6 +174,7 @@ function noopTelemetry(): Telemetry {
 		emit: () => {},
 		drain: async () => {},
 		refreshOptOut: async () => {},
+		invokerId: () => null,
 	};
 }
 

@@ -10,6 +10,17 @@
 
 import * as vscode from "vscode";
 import { showOutputPanel } from "./output.js";
+import type { FirstRunChoice } from "./telemetry/notice.js";
+
+const TELEMETRY_DISCLOSURE_URL = "https://telemetry.gaffer.kurrent.io/";
+
+// Disclosure-button labels in the message order they appear. Mapped
+// back to the FirstRunChoice union below so the notice runner stays
+// vscode-free. Renaming a label is a wire change for the runtime
+// mapping but a no-op for the runner.
+const BUTTON_DISABLE = "Disable telemetry";
+const BUTTON_LEARN_MORE = "Learn more";
+const BUTTON_DISMISS = "Dismiss";
 
 export const showManifestFailure = (err: unknown): Thenable<unknown> => {
 	const raw = err instanceof Error ? err.message : String(err);
@@ -129,3 +140,31 @@ export const showPortInUse = (description: string): Thenable<unknown> =>
 				);
 			}
 		});
+
+// One-shot first-run telemetry disclosure. Mapped to the runner's
+// FirstRunChoice union so notice.ts doesn't have to know about vscode.
+export const showTelemetryDisclosure = (): Thenable<
+	FirstRunChoice | undefined
+> =>
+	vscode.window
+		.showInformationMessage(
+			"Gaffer collects anonymous usage data to help improve the tool. You can change this anytime.",
+			BUTTON_DISABLE,
+			BUTTON_LEARN_MORE,
+			BUTTON_DISMISS,
+		)
+		.then((label) => {
+			switch (label) {
+				case BUTTON_DISABLE:
+					return "disable";
+				case BUTTON_LEARN_MORE:
+					return "learn-more";
+				case BUTTON_DISMISS:
+					return "dismiss";
+				default:
+					return undefined;
+			}
+		});
+
+export const openTelemetryDisclosurePage = (): Thenable<unknown> =>
+	vscode.env.openExternal(vscode.Uri.parse(TELEMETRY_DISCLOSURE_URL));

@@ -56,12 +56,13 @@
       ]
     },
     "CLIUnreachableReason": {
-      "description": "CLIUnreachableReason narrows why the CLI couldn't be reached on extension\nactivation.",
+      "description": "CLIUnreachableReason narrows why the CLI couldn't be reached on\nextension activation. `workspace_untrusted` covers the case where\nthe editor's workspace-trust gate blocks spawning the CLI at all\n(the common \"fresh clone, not yet trusted\" path) - distinct from\na CLI that's actually missing or broken.",
       "type": "string",
       "enum": [
         "binary_not_found",
         "binary_spawn_failed",
         "timeout",
+        "workspace_untrusted",
         "unknown_error"
       ]
     },

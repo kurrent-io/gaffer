@@ -3,7 +3,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { load, loadSafe, save, type TelemetryConfig } from "./config.js";
+import {
+	editConfig,
+	load,
+	loadSafe,
+	save,
+	type TelemetryConfig,
+} from "./config.js";
 
 describe("config.load", () => {
 	let dir: string;
@@ -188,4 +194,65 @@ describe("config.loadSafe", () => {
 			}
 		},
 	);
+});
+
+describe("config.editConfig", () => {
+	let dir: string;
+
+	beforeEach(() => {
+		dir = fs.mkdtempSync(path.join(os.tmpdir(), "gaffer-telemetry-config-"));
+	});
+	afterEach(() => {
+		fs.rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("creates the file when none exists", async () => {
+		await editConfig(dir, { telemetry_enabled: true });
+		expect(await load(dir)).toEqual({ telemetry_enabled: true });
+	});
+
+	it("merges the patch into the existing config (preserves other fields)", async () => {
+		await save(dir, { telemetry_id: "preserved-id", salt: "preserved-salt" });
+		await editConfig(dir, { disclosed: true, telemetry_enabled: false });
+		expect(await load(dir)).toEqual({
+			telemetry_id: "preserved-id",
+			salt: "preserved-salt",
+			disclosed: true,
+			telemetry_enabled: false,
+		});
+	});
+
+	it("re-reads fresh on every call (interleaved writers don't lose fields)", async () => {
+		// Simulate the interleave the review flagged: writer A loads,
+		// then writer B writes id+salt, then writer A patches disclosed.
+		// Without merge-on-write, A would clobber id+salt. With it, the
+		// re-read inside editConfig picks up B's write.
+		await editConfig(dir, { telemetry_enabled: false }); // unrelated, ensures file exists
+		await save(dir, {
+			telemetry_enabled: false,
+			telemetry_id: "minted-late",
+			salt: "minted-late-salt",
+		});
+		await editConfig(dir, { disclosed: true });
+		expect(await load(dir)).toEqual({
+			telemetry_enabled: false,
+			telemetry_id: "minted-late",
+			salt: "minted-late-salt",
+			disclosed: true,
+		});
+	});
+
+	it("overwrites a patched field, preserves unrelated fields", async () => {
+		await save(dir, {
+			telemetry_id: "stay",
+			telemetry_enabled: true,
+			disclosed: true,
+		});
+		await editConfig(dir, { telemetry_enabled: false });
+		expect(await load(dir)).toEqual({
+			telemetry_id: "stay",
+			telemetry_enabled: false,
+			disclosed: true,
+		});
+	});
 });

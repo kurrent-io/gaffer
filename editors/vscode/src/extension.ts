@@ -24,7 +24,12 @@ import {
 	showManifestFailure,
 	showTelemetryDisclosure,
 } from "./notifications.js";
+import type { ExtensionActivatedProperties } from "@kurrent/gaffer-telemetry";
+import { bucketCliVersion, bucketDuration } from "./telemetry/buckets.js";
 import { loadSafe } from "./telemetry/config.js";
+import { detectEditor } from "./telemetry/editor.js";
+import { createTelemetry, type Telemetry } from "./telemetry/facade.js";
+import { classifyManifestError } from "./telemetry/manifest-error.js";
 import { runFirstRunNotice } from "./telemetry/notice.js";
 import { checkOptOut } from "./telemetry/opt-out.js";
 import { readVscodeTelemetryLevel } from "./telemetry/vscode-config.js";
@@ -46,19 +51,24 @@ function workspaceCwd(): string | undefined {
 	return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 
+// Module-level telemetry handle so deactivate() can drain in-flight
+// envelopes before VS Code kills the extension host. Set during
+// activation; never reassigned after.
+let activeTelemetry: Telemetry | null = null;
+
 export async function activate(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
+	const activationStart = performance.now();
 	initOutput(context);
 	initDiagnostics(context);
 
 	// First-run telemetry disclosure. Fired before any awaited work
 	// below so the user sees the notification at activation time, not
-	// after the manifest fetch (which can take several seconds on a
-	// cold CLI). Fire-and-forget: we don't gate any downstream
-	// activation on the user's choice - if they pick "Disable" while
-	// the manifest fetch is in flight, the next emit (slice 4+) will
-	// see the persisted opt-out.
+	// after the manifest fetch. Fire-and-forget: the user's choice
+	// writes to the extension's own telemetry.json and applies on the
+	// next activation. This session's emit pipeline reads a snapshot
+	// of opt-out state from disk before the disclosure resolves.
 	void runTelemetryDisclosure(context);
 
 	// Stale-on-edit: any text change to a file with a runtime error
@@ -90,10 +100,47 @@ export async function activate(
 	// node's execFile defaults to process.cwd() (the editor's
 	// launch directory), not the workspace, so we must pass
 	// it explicitly.
-	const initialManifest = await tryFetchManifest(
-		workspaceCwd(),
-		showManifestFailure,
-	);
+	//
+	// The onError callback both surfaces the failure to the user
+	// (existing behaviour) and captures the raw error for
+	// classifyManifestError, which feeds extension_activated's
+	// cli_unreachable_reason.
+	// Snapshot trust state at fetch time so the extension_activated
+	// emit can distinguish "we didn't probe, workspace was untrusted"
+	// from "we probed and the binary was missing" - tryFetchManifest
+	// silently returns null on untrusted without firing onError, so
+	// without this snapshot the two paths look identical downstream.
+	const untrustedAtFetch = !vscode.workspace.isTrusted;
+	let manifestErr: unknown;
+	const initialManifest = await tryFetchManifest(workspaceCwd(), (err) => {
+		manifestErr = err;
+		return showManifestFailure(err);
+	});
+
+	const libVersion = context.extension.packageJSON.version;
+	if (typeof libVersion !== "string") {
+		throw new Error(
+			`extension package.json version must be a string, got ${typeof libVersion}`,
+		);
+	}
+
+	// Build the telemetry facade after the manifest fetch so the
+	// extension_activated emit reflects the actual cli_reachable
+	// outcome. Construction is async (config load, lazy identity
+	// mint on first install); subsequent activations are ~free.
+	activeTelemetry = await createTelemetry({
+		storageDir: context.globalStorageUri.fsPath,
+		libVersion,
+		env: process.env,
+		vscodeTelemetryLevel: readVscodeTelemetryLevel(),
+		log,
+	});
+	emitExtensionActivated(activeTelemetry, {
+		manifest: initialManifest,
+		manifestErr,
+		untrustedAtFetch,
+		activationStart,
+	});
 
 	const stepProvider = new StepProvider();
 	const stateProvider = new StateProvider();
@@ -300,6 +347,48 @@ export async function activate(
 	);
 }
 
+function emitExtensionActivated(
+	telemetry: Telemetry,
+	args: {
+		manifest: Manifest | null;
+		manifestErr: unknown;
+		untrustedAtFetch: boolean;
+		activationStart: number;
+	},
+): void {
+	const cliReachable = args.manifest !== null;
+	const properties: ExtensionActivatedProperties = {
+		editor: detectEditor(vscode.env.appName),
+		editor_version: vscode.version,
+		cli_reachable: cliReachable,
+		activation_duration_ms: bucketDuration(
+			performance.now() - args.activationStart,
+		),
+	};
+	if (args.manifest !== null && args.manifest.version) {
+		properties.cli_version = bucketCliVersion(args.manifest.version);
+	}
+	if (!cliReachable) {
+		// Trust gate wins over execFile classification: an untrusted
+		// workspace never spawned the binary, so cataloguing the
+		// failure as "binary_not_found" would mislead dashboards.
+		if (args.untrustedAtFetch) {
+			properties.cli_unreachable_reason = "workspace_untrusted";
+		} else if (args.manifestErr !== undefined) {
+			properties.cli_unreachable_reason = classifyManifestError(
+				args.manifestErr,
+			);
+		} else {
+			properties.cli_unreachable_reason = "unknown_error";
+		}
+	}
+	telemetry.emit({
+		name: "extension_activated",
+		timestamp: new Date().toISOString(),
+		properties,
+	});
+}
+
 // runTelemetryDisclosure reads the persisted extension telemetry
 // state + opt-out cascade, and fires the first-run notification
 // when both (a) we haven't already disclosed on this install and
@@ -334,5 +423,18 @@ async function runTelemetryDisclosure(
 }
 
 export async function deactivate(): Promise<void> {
-	await stopLanguageClient();
+	// VS Code's deactivate budget is ~5s. Run telemetry drain and
+	// LSP stop concurrently under a single deadline so a slow LSP
+	// shutdown can't push the total wall-clock past the host's
+	// tolerance, and so a slow drain doesn't delay LSP cleanup.
+	const tasks: Promise<unknown>[] = [stopLanguageClient()];
+	if (activeTelemetry !== null) {
+		tasks.push(activeTelemetry.drain(4500));
+	}
+	await Promise.race([
+		Promise.allSettled(tasks),
+		new Promise<void>((resolve) => {
+			setTimeout(resolve, 4500);
+		}),
+	]);
 }

@@ -1,0 +1,284 @@
+import type { Event } from "@kurrent/gaffer-telemetry";
+import * as vscode from "vscode";
+import { describe, expect, it } from "vitest";
+
+import type { Telemetry } from "./facade.js";
+import type { WrapContext } from "./wrap.js";
+import {
+	wrapCodeActionProvider,
+	wrapCodeLensProvider,
+	wrapMcpServerDefinitionProvider,
+	wrapTreeDataProvider,
+	wrapWebviewViewProvider,
+} from "./wrap-provider.js";
+
+function makeCtx(): { ctx: WrapContext; emitted: Event[] } {
+	const emitted: Event[] = [];
+	const telemetry: Telemetry = {
+		emit: (event) => {
+			emitted.push(event);
+		},
+		drain: async () => {},
+		refreshOptOut: async () => {},
+		invokerId: () => null,
+	};
+	const ctx: WrapContext = {
+		getTelemetry: () => telemetry,
+		extensionPath: "/opt/gaffer",
+		getWorkspaceFolders: () => [],
+		log: () => {},
+	};
+	return { ctx, emitted };
+}
+
+function expectExceptionEmitted(emitted: Event[], message: string): void {
+	expect(emitted).toHaveLength(1);
+	const ev = emitted[0];
+	if (ev?.name !== "exception") throw new Error("expected exception event");
+	expect(ev.properties.phase).toBe("event_processing");
+	expect(ev.properties.exceptions[0]?.value).toBe(message);
+}
+
+describe("wrapTreeDataProvider", () => {
+	it("forwards getChildren and getTreeItem on the happy path", async () => {
+		const { ctx, emitted } = makeCtx();
+		const inner: vscode.TreeDataProvider<string> = {
+			getTreeItem: (s) => new vscode.TreeItem(s),
+			getChildren: () => ["a", "b"],
+		};
+		const wrapped = wrapTreeDataProvider(inner, ctx);
+		expect(await wrapped.getChildren()).toEqual(["a", "b"]);
+		expect((await wrapped.getTreeItem("x")).label).toBe("x");
+		expect(emitted).toEqual([]);
+	});
+
+	it("emits an exception when getChildren throws and re-throws", async () => {
+		const { ctx, emitted } = makeCtx();
+		const wrapped = wrapTreeDataProvider<string>(
+			{
+				getTreeItem: (s) => new vscode.TreeItem(s),
+				getChildren: () => {
+					throw new Error("getChildren boom");
+				},
+			},
+			ctx,
+		);
+		await expect(wrapped.getChildren()).rejects.toThrow("getChildren boom");
+		expectExceptionEmitted(emitted, "getChildren boom");
+	});
+
+	it("preserves onDidChangeTreeData passthrough", () => {
+		const { ctx } = makeCtx();
+		const emitter = new vscode.EventEmitter<string | undefined>();
+		const wrapped = wrapTreeDataProvider<string>(
+			{
+				onDidChangeTreeData: emitter.event,
+				getTreeItem: (s) => new vscode.TreeItem(s),
+				getChildren: () => [],
+			},
+			ctx,
+		);
+		expect(wrapped.onDidChangeTreeData).toBe(emitter.event);
+	});
+
+	it("wraps optional getParent and resolveTreeItem when present", async () => {
+		const { ctx, emitted } = makeCtx();
+		const wrapped = wrapTreeDataProvider<string>(
+			{
+				getTreeItem: (s) => new vscode.TreeItem(s),
+				getChildren: () => [],
+				getParent: () => {
+					throw new Error("getParent boom");
+				},
+				resolveTreeItem: () => {
+					throw new Error("resolveTreeItem boom");
+				},
+			},
+			ctx,
+		);
+		await expect(wrapped.getParent?.("x")).rejects.toThrow("getParent boom");
+		await expect(
+			wrapped.resolveTreeItem?.(
+				new vscode.TreeItem("x"),
+				"x",
+				{} as vscode.CancellationToken,
+			),
+		).rejects.toThrow("resolveTreeItem boom");
+		expect(emitted).toHaveLength(2);
+	});
+
+	it("omits optional methods when the inner provider doesn't supply them", () => {
+		const { ctx } = makeCtx();
+		const wrapped = wrapTreeDataProvider<string>(
+			{
+				getTreeItem: (s) => new vscode.TreeItem(s),
+				getChildren: () => [],
+			},
+			ctx,
+		);
+		expect(wrapped.getParent).toBeUndefined();
+		expect(wrapped.resolveTreeItem).toBeUndefined();
+	});
+});
+
+describe("wrapWebviewViewProvider", () => {
+	it("emits an exception when resolveWebviewView throws", async () => {
+		const { ctx, emitted } = makeCtx();
+		const wrapped = wrapWebviewViewProvider(
+			{
+				resolveWebviewView: () => {
+					throw new Error("resolve boom");
+				},
+			},
+			ctx,
+		);
+		await expect(
+			wrapped.resolveWebviewView(
+				{} as vscode.WebviewView,
+				{} as vscode.WebviewViewResolveContext,
+				{} as vscode.CancellationToken,
+			),
+		).rejects.toThrow("resolve boom");
+		expectExceptionEmitted(emitted, "resolve boom");
+	});
+});
+
+describe("wrapCodeLensProvider", () => {
+	it("emits an exception when provideCodeLenses throws", async () => {
+		const { ctx, emitted } = makeCtx();
+		const wrapped = wrapCodeLensProvider(
+			{
+				provideCodeLenses: () => {
+					throw new Error("lens boom");
+				},
+			},
+			ctx,
+		);
+		await expect(
+			wrapped.provideCodeLenses(
+				{} as vscode.TextDocument,
+				{} as vscode.CancellationToken,
+			),
+		).rejects.toThrow("lens boom");
+		expectExceptionEmitted(emitted, "lens boom");
+	});
+
+	it("preserves onDidChangeCodeLenses passthrough", () => {
+		const { ctx } = makeCtx();
+		const emitter = new vscode.EventEmitter<void>();
+		const wrapped = wrapCodeLensProvider(
+			{
+				onDidChangeCodeLenses: emitter.event,
+				provideCodeLenses: () => [],
+			},
+			ctx,
+		);
+		expect(wrapped.onDidChangeCodeLenses).toBe(emitter.event);
+	});
+
+	it("wraps optional resolveCodeLens when present", async () => {
+		const { ctx, emitted } = makeCtx();
+		const wrapped = wrapCodeLensProvider(
+			{
+				provideCodeLenses: () => [],
+				resolveCodeLens: () => {
+					throw new Error("resolveCodeLens boom");
+				},
+			},
+			ctx,
+		);
+		await expect(
+			wrapped.resolveCodeLens?.(
+				{} as vscode.CodeLens,
+				{} as vscode.CancellationToken,
+			),
+		).rejects.toThrow("resolveCodeLens boom");
+		expect(emitted).toHaveLength(1);
+	});
+});
+
+describe("wrapCodeActionProvider", () => {
+	it("emits an exception when provideCodeActions throws", async () => {
+		const { ctx, emitted } = makeCtx();
+		const wrapped = wrapCodeActionProvider(
+			{
+				provideCodeActions: () => {
+					throw new Error("action boom");
+				},
+			},
+			ctx,
+		);
+		await expect(
+			wrapped.provideCodeActions(
+				{} as vscode.TextDocument,
+				{} as vscode.Range,
+				{} as vscode.CodeActionContext,
+				{} as vscode.CancellationToken,
+			),
+		).rejects.toThrow("action boom");
+		expectExceptionEmitted(emitted, "action boom");
+	});
+
+	it("wraps optional resolveCodeAction when present", async () => {
+		const { ctx, emitted } = makeCtx();
+		const wrapped = wrapCodeActionProvider(
+			{
+				provideCodeActions: () => [],
+				resolveCodeAction: () => {
+					throw new Error("resolveCodeAction boom");
+				},
+			},
+			ctx,
+		);
+		await expect(
+			wrapped.resolveCodeAction?.(
+				{} as vscode.CodeAction,
+				{} as vscode.CancellationToken,
+			),
+		).rejects.toThrow("resolveCodeAction boom");
+		expect(emitted).toHaveLength(1);
+	});
+});
+
+describe("wrapMcpServerDefinitionProvider", () => {
+	it("emits an exception when provideMcpServerDefinitions throws", async () => {
+		const { ctx, emitted } = makeCtx();
+		const wrapped =
+			wrapMcpServerDefinitionProvider<vscode.McpStdioServerDefinition>(
+				{
+					provideMcpServerDefinitions: () => {
+						throw new Error("mcp boom");
+					},
+				},
+				ctx,
+			);
+		await expect(
+			wrapped.provideMcpServerDefinitions({} as vscode.CancellationToken),
+		).rejects.toThrow("mcp boom");
+		expectExceptionEmitted(emitted, "mcp boom");
+	});
+
+	it("preserves onDidChangeMcpServerDefinitions passthrough", () => {
+		const { ctx } = makeCtx();
+		const emitter = new vscode.EventEmitter<void>();
+		const wrapped =
+			wrapMcpServerDefinitionProvider<vscode.McpStdioServerDefinition>(
+				{
+					onDidChangeMcpServerDefinitions: emitter.event,
+					provideMcpServerDefinitions: () => [],
+				},
+				ctx,
+			);
+		expect(wrapped.onDidChangeMcpServerDefinitions).toBe(emitter.event);
+	});
+
+	it("omits onDidChangeMcpServerDefinitions when the inner provider doesn't set it", () => {
+		const { ctx } = makeCtx();
+		const wrapped =
+			wrapMcpServerDefinitionProvider<vscode.McpStdioServerDefinition>(
+				{ provideMcpServerDefinitions: () => [] },
+				ctx,
+			);
+		expect(wrapped.onDidChangeMcpServerDefinitions).toBeUndefined();
+	});
+});

@@ -32,7 +32,7 @@ export interface WrapContext {
 export function wrapAsync<A extends unknown[], R>(
 	ctx: WrapContext,
 	phase: Phase,
-	fn: (...args: A) => Promise<R> | R,
+	fn: (...args: A) => PromiseLike<R> | R,
 ): (...args: A) => Promise<R> {
 	return async (...args: A): Promise<R> => {
 		try {

@@ -43,6 +43,13 @@ import {
 	type WrapContext,
 } from "./telemetry/wrap.js";
 import {
+	wrapCodeActionProvider,
+	wrapCodeLensProvider,
+	wrapMcpServerDefinitionProvider,
+	wrapTreeDataProvider,
+	wrapWebviewViewProvider,
+} from "./telemetry/wrap-provider.js";
+import {
 	retryStartLanguageClient,
 	startLanguageClient,
 	stopLanguageClient,
@@ -72,6 +79,17 @@ export async function activate(
 	initOutput(context);
 	initDiagnostics(context);
 
+	// wrapCtx is built up front so every provider/handler registration
+	// can wrap through it. activeTelemetry is captured lazily; the
+	// report path is a no-op until the facade is built.
+	const wrapCtx: WrapContext = {
+		getTelemetry: () => activeTelemetry,
+		extensionPath: context.extensionPath,
+		getWorkspaceFolders: () =>
+			vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? [],
+		log,
+	};
+
 	// First-run telemetry disclosure. Fired before any awaited work
 	// below so the user sees the notification at activation time, not
 	// after the manifest fetch. Fire-and-forget from the caller's
@@ -97,7 +115,7 @@ export async function activate(
 		}),
 		vscode.languages.registerCodeActionsProvider(
 			{ scheme: "file" },
-			new DismissDiagnosticActionProvider(),
+			wrapCodeActionProvider(new DismissDiagnosticActionProvider(), wrapCtx),
 			{ providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] },
 		),
 	);
@@ -158,13 +176,6 @@ export async function activate(
 		vscodeTelemetryLevel: readVscodeTelemetryLevel(),
 		log,
 	});
-	const wrapCtx: WrapContext = {
-		getTelemetry: () => activeTelemetry,
-		extensionPath: context.extensionPath,
-		getWorkspaceFolders: () =>
-			vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? [],
-		log,
-	};
 
 	try {
 		await activateAfterTelemetry({
@@ -277,7 +288,10 @@ async function activateAfterTelemetry(
 	const mcpProvider = new GafferMcpProvider(getInvokerId);
 	context.subscriptions.push(
 		mcpProvider,
-		vscode.lm.registerMcpServerDefinitionProvider("gaffer", mcpProvider),
+		vscode.lm.registerMcpServerDefinitionProvider(
+			"gaffer",
+			wrapMcpServerDefinitionProvider(mcpProvider, wrapCtx),
+		),
 		vscode.workspace.onDidGrantWorkspaceTrust(() => mcpProvider.refresh()),
 		vscode.workspace.onDidChangeWorkspaceFolders(() => mcpProvider.refresh()),
 		vscode.workspace.onDidChangeConfiguration((e) => {
@@ -335,11 +349,19 @@ async function activateAfterTelemetry(
 	};
 
 	context.subscriptions.push(
-		vscode.window.registerTreeDataProvider("gaffer.step", stepProvider),
-		vscode.window.registerTreeDataProvider("gaffer.state", stateProvider),
-		vscode.window.registerWebviewViewProvider("gaffer.status", statusProvider, {
-			webviewOptions: { retainContextWhenHidden: true },
-		}),
+		vscode.window.registerTreeDataProvider(
+			"gaffer.step",
+			wrapTreeDataProvider(stepProvider, wrapCtx),
+		),
+		vscode.window.registerTreeDataProvider(
+			"gaffer.state",
+			wrapTreeDataProvider(stateProvider, wrapCtx),
+		),
+		vscode.window.registerWebviewViewProvider(
+			"gaffer.status",
+			wrapWebviewViewProvider(statusProvider, wrapCtx),
+			{ webviewOptions: { retainContextWhenHidden: true } },
+		),
 	);
 
 	context.subscriptions.push(
@@ -380,7 +402,7 @@ async function activateAfterTelemetry(
 				{ scheme: "file", pattern: "**/gaffer.toml" },
 				{ scheme: "file", language: "javascript" },
 			],
-			lspCodeLens,
+			wrapCodeLensProvider(lspCodeLens, wrapCtx),
 		),
 	);
 

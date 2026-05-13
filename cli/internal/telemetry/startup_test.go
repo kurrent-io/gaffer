@@ -29,6 +29,7 @@ func startupTest(t *testing.T) (store *userconfig.Store, cwd, home string) {
 		t.Setenv(k, "")
 		_ = os.Unsetenv(k)
 	}
+	pretendTTY(t)
 	return store, cwd, home
 }
 
@@ -96,10 +97,14 @@ func TestStartupGate_FreshInstallMintsAndNotifies(t *testing.T) {
 	}
 }
 
-func TestStartupGate_ExistingIdentitySkipsNotice(t *testing.T) {
+func TestStartupGate_ExistingDisclosedIdentitySkipsNotice(t *testing.T) {
+	// Realistic disclosed install: id+salt persisted AND
+	// Disclosed=true latched. Subsequent runs return the identity
+	// and don't re-fire the banner.
 	store, cwd, home := startupTest(t)
 	seed, _ := MintIdentity()
 	StageIdentity(store, seed)
+	WriteTelemetry(store, TelemetrySection{ID: seed.TelemetryID, Salt: seed.Salt, Disclosed: true})
 	if err := store.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +118,7 @@ func TestStartupGate_ExistingIdentitySkipsNotice(t *testing.T) {
 		t.Errorf("identity = %s, want seeded %s", c.identity.TelemetryID, seed.TelemetryID)
 	}
 	if notice.Len() != 0 {
-		t.Errorf("notice re-printed on existing identity: %q", notice.String())
+		t.Errorf("notice re-printed despite Disclosed=true: %q", notice.String())
 	}
 }
 
@@ -212,13 +217,11 @@ func TestStartupGate_SameRootProducesSameID(t *testing.T) {
 	}
 }
 
-func TestStartupGate_InvokerIDAloneDoesNotSuppressNotice(t *testing.T) {
-	// Privacy posture: an arbitrary spawner that passes --invoker-id
-	// without having shown its own disclosure must NOT silence the
-	// stderr notice on first mint. The suppress signal is the
-	// persisted [telemetry] disclosed flag, set either by gaffer's
-	// own notice or by an explicit `gaffer config telemetry on
-	// --quiet` from a surface that ran its own disclosure UI.
+func TestStartupGate_InvokerIDSuppressesNotice(t *testing.T) {
+	// A spawner identifying itself via --invoker-id is expected to
+	// have shown its own disclosure (the VS Code extension surfaces
+	// a first-activation notification). Re-printing the CLI banner
+	// inside the spawn would be invisible or duplicative.
 	store, cwd, home := startupTest(t)
 
 	var notice bytes.Buffer
@@ -227,8 +230,8 @@ func TestStartupGate_InvokerIDAloneDoesNotSuppressNotice(t *testing.T) {
 	if c == nil {
 		t.Fatal("StartupGate returned nil despite mint succeeding")
 	}
-	if notice.Len() == 0 {
-		t.Error("notice not written despite --invoker-id; first-mint privacy regression")
+	if notice.Len() != 0 {
+		t.Errorf("notice written despite --invoker-id: %q", notice.String())
 	}
 	if c.invocation.InvokerID != inv.InvokerID {
 		t.Errorf("Client.invocation.InvokerID = %q, want %q", c.invocation.InvokerID, inv.InvokerID)
@@ -236,8 +239,8 @@ func TestStartupGate_InvokerIDAloneDoesNotSuppressNotice(t *testing.T) {
 }
 
 func TestStartupGate_PreSetDisclosedFlagSuppressesNotice(t *testing.T) {
-	// Companion to the above: when the upstream surface DID set
-	// disclosed=true (the `--quiet` flow), notice is suppressed.
+	// Disclosed=true persists across `config telemetry off` -> `on`
+	// round-trips. A subsequent mint must not re-show the banner.
 	store, cwd, home := startupTest(t)
 	WriteTelemetry(store, TelemetrySection{Disclosed: true})
 	if err := store.Save(); err != nil {

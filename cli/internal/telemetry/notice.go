@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
@@ -132,30 +133,97 @@ func MintAndPersist(store *userconfig.Store) (Identity, bool, error) {
 	return fresh, true, nil
 }
 
+// shouldShowDisclosureNotice decides whether to print the disclosure
+// banner to noticeOut for the in-flight run. The check runs on every
+// invocation that reaches identity-resolution (whether or not a mint
+// happened this run), so a first mint that wasn't an eligible
+// disclosure surface (non-TTY CI, extension spawn) gets caught up
+// by the next direct-terminal run while Disclosed is still false.
+//
+// Three suppress signals; any one trips the no-print branch:
+//
+//   - Disclosed already latched: a prior run on this machine showed
+//     the notice and recorded ack; don't repeat (the Disclosed flag
+//     survives `config telemetry off` -> `on` round-trips, by design).
+//   - inv.InvokerID set: a parent process is identifying itself as
+//     the spawner. The spawner is expected to surface its own
+//     telemetry disclosure (the VS Code extension does this on first
+//     activation). Re-printing on stderr inside the spawn would be
+//     invisible or duplicative anyway.
+//   - noticeOut isn't a TTY: a captured / redirected / piped stderr
+//     would swallow the banner. Re-checking on the next direct-
+//     terminal run gives the user a real chance to see it.
+//
+// The decision is intentionally stateless beyond reading the
+// persisted Disclosed flag: no caller-set "quiet" flag can suppress
+// disclosure, no caller-set state can latch Disclosed without
+// actually showing the notice.
+func shouldShowDisclosureNotice(store *userconfig.Store, inv Invocation, noticeOut io.Writer) bool {
+	if t, _ := LoadTelemetry(store); t.Disclosed {
+		return false
+	}
+	if inv.InvokerID != "" {
+		return false
+	}
+	return isTTY(noticeOut)
+}
+
+// IsTTYCheckForTesting overrides the TTY check used by
+// EnsureIdentity / shouldShowDisclosureNotice for the duration of
+// the returned restore func. Test-only export: cmd-package tests
+// run with stderr captured into a bytes.Buffer, which trips the
+// non-TTY suppress branch and hides the notice; tests that exercise
+// the notice path replace the check. Do NOT call from production.
+func IsTTYCheckForTesting(fn func(io.Writer) bool) (restore func()) {
+	prev := isTTY
+	isTTY = fn
+	return func() { isTTY = prev }
+}
+
+// isTTY reports whether w is backed by a terminal. Returns false for
+// any non-*os.File (bytes.Buffer in tests, io.MultiWriter, etc.) and
+// for *os.File pointing at a pipe, regular file, or /dev/null. Uses
+// the char-device bit on the file's Mode - matches `git`,
+// `kubectl`, and most CLIs' "am I piped?" check; portable across
+// Linux / macOS / Windows console handles without a TTY-detection
+// dependency.
+//
+// Package-level var so tests can override (test stderr is a
+// bytes.Buffer that'd never trip the char-device check otherwise).
+var isTTY = func(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	stat, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return stat.Mode()&os.ModeCharDevice != 0
+}
+
 // EnsureIdentity is the composition entry point: opt-out check,
-// existing-identity load, mint if needed, notice on fresh mint.
+// existing-identity load, mint if needed, deferred disclosure on
+// any eligible run.
 //
 // Behaviour:
 //   - opt-out active: returns zero Identity, no mint, no notice.
-//   - existing usable identity: returns it (paired with fresh RunID),
-//     no mint, no notice. Any partial-load error from
-//     ResolveIdentity propagates to the caller.
-//   - no existing identity + not opted out + [telemetry] disclosed
-//     not yet true: mints, persists, writes noticeText to noticeOut,
-//     and records disclosed=true in the config so subsequent runs
-//     skip the notice.
-//   - no existing identity + not opted out + [telemetry] disclosed
-//     already true: mints, persists, no notice. Used by surfaces
-//     that ran their own disclosure flow (e.g. the VS Code
-//     extension calling `gaffer config telemetry on --quiet`).
-//   - race-lost during mint: adopts winner's id, does NOT write the
-//     notice (winner already did in their process).
+//   - existing usable identity: returns it (paired with fresh RunID).
+//     Notice fires here if Disclosed is still false and conditions
+//     allow - catches up after a first mint that was suppressed
+//     (non-TTY CI, extension spawn). Partial-load errors from
+//     ResolveIdentity propagate to the caller.
+//   - no existing identity + not opted out: mints, persists, then
+//     attempts the notice on the same conditions as above.
 //
-// Pre-this-design, --invoker-id was the suppress signal. That
-// silently silenced disclosure for any spawner (CI scripts, IDE
-// plugins, wrappers) regardless of whether the spawner had run its
-// own disclosure flow. Keying on config.Disclosed instead requires
-// an explicit ack, closing that gap.
+// The notice attempt is the same code path whether the identity is
+// fresh or pre-existing - "first mint" is a misleading name for the
+// suppress signals, because the user's first eligible disclosure
+// surface may not be the same process that minted.
+//
+// inv carries the spawn-linkage parsed from --invoker-id /
+// --invoked-by / --invoked-via. Only InvokerID is consulted here
+// (presence => suppress); the other two affect emit-side stamping.
 //
 // A WriteNotice or Save failure is silently dropped: the mint
 // succeeded and failing the whole run would be worse UX than a
@@ -167,40 +235,54 @@ func MintAndPersist(store *userconfig.Store) (Identity, bool, error) {
 func EnsureIdentity(
 	store *userconfig.Store,
 	optOut Resolved,
+	inv Invocation,
 	noticeOut io.Writer,
 ) (Identity, error) {
 	if optOut.IsDisabled() {
 		return Identity{}, nil
 	}
-	if existing, err := ResolveIdentity(store); !existing.IsZero() {
-		return existing, err
-	}
-	id, didMint, err := MintAndPersist(store)
-	if err != nil {
-		return Identity{}, err
-	}
-	if didMint {
-		// Re-read so we see any disclosure marker an upstream
-		// surface wrote ahead of us (e.g. `gaffer config telemetry
-		// on --quiet`). MintAndPersist may have Reloaded in the
-		// race-recovery path; either way the in-memory store is
-		// current.
-		t, _ := LoadTelemetry(store)
-		if !t.Disclosed {
-			// Only latch Disclosed=true on a SUCCESSFUL notice
-			// write. If stderr is broken (redirected /dev/null,
-			// captured-and-dropped wrapper, write returned an
-			// error mid-stream), the user never saw the
-			// disclosure - the next run from a non-broken
-			// surface will get another chance. Without this
-			// gating a single bad stderr permanently silences
-			// future disclosure attempts.
-			if err := WriteNotice(noticeOut); err == nil {
-				t.Disclosed = true
-				WriteTelemetry(store, t)
-				_ = store.Save()
-			}
+	id, loadErr := ResolveIdentity(store)
+	if id.IsZero() {
+		minted, _, mintErr := MintAndPersist(store)
+		if mintErr != nil {
+			return Identity{}, mintErr
 		}
+		id = minted
 	}
-	return id, nil
+	maybeShowDisclosure(store, inv, noticeOut)
+	return id, loadErr
+}
+
+// maybeShowDisclosure prints the notice and latches Disclosed=true
+// when shouldShowDisclosureNotice allows. Only latches on a
+// SUCCESSFUL write: if stderr is broken (redirected /dev/null mid-
+// stream, captured-and-dropped wrapper) the user never saw the
+// banner, so a later eligible run still gets a chance. Without this
+// gating a single bad stderr would permanently silence future
+// disclosure attempts.
+//
+// Read-modify-write of [telemetry] is in-memory (LoadTelemetry
+// reparses the store's already-loaded section, not disk). Relies on
+// the invariant that only EnsureIdentity / MintAndPersist mutate
+// [telemetry] within a process - no other field is read here, no
+// other code path writes Disclosed.
+//
+// Concurrent disclosure attempts (two CLI processes with identity
+// already persisted but Disclosed still false, hitting the deferred-
+// disclosure branch at the same time) may both print the banner.
+// The temp+rename Save makes the on-disk Disclosed=true write
+// last-writer-wins safe; duplicate banner is accepted as the cost
+// of avoiding a file-level lock around a single human-readable
+// message. See TestEnsureIdentity_ConcurrentDeferredDisclosureConvergesOnLatch.
+func maybeShowDisclosure(store *userconfig.Store, inv Invocation, noticeOut io.Writer) {
+	if !shouldShowDisclosureNotice(store, inv, noticeOut) {
+		return
+	}
+	if err := WriteNotice(noticeOut); err != nil {
+		return
+	}
+	t, _ := LoadTelemetry(store)
+	t.Disclosed = true
+	WriteTelemetry(store, t)
+	_ = store.Save()
 }

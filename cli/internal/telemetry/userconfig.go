@@ -13,13 +13,12 @@ import (
 // yet), true (opted in), false (opted out) - matching the three-layer
 // status output planned for `gaffer config telemetry status`.
 //
-// Disclosed records whether a user-facing disclosure has been shown
-// (either by gaffer's first-mint stderr notice, or by an upstream
-// surface like the VS Code extension that ran its own disclosure flow
-// and then called `gaffer config telemetry on --quiet`). Notice
-// suppression keys on this flag, not on the --invoker-id spawn-link
-// flag - so an unsupervised wrapper can't silence disclosure just by
-// passing a fake invoker id.
+// Disclosed records whether gaffer's first-mint stderr notice has
+// been shown to the user on this machine. Latches once on a
+// successful WriteNotice and persists across `config telemetry off`
+// -> `on` round-trips so direct-terminal users don't get re-disclosed
+// after toggling. Set only by EnsureIdentity on a successful banner
+// write; not writable from outside the package.
 type TelemetrySection struct {
 	Enabled   *bool
 	ID        string

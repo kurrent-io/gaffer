@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,10 @@ func setupTelemetryCmdTest(t *testing.T) (home string) {
 		t.Setenv(k, "")
 		_ = os.Unsetenv(k)
 	}
+
+	// Default to TTY=true so tests exercise the realistic interactive
+	// path; tests that need the captured-stderr branch override.
+	t.Cleanup(telemetry.IsTTYCheckForTesting(func(io.Writer) bool { return true }))
 
 	return home
 }
@@ -216,33 +221,30 @@ func TestConfigTelemetryOn_FreshMintsAndNotifies(t *testing.T) {
 	}
 }
 
-func TestConfigTelemetryOn_QuietSuppressesNoticeAndStdout(t *testing.T) {
-	// --quiet is the flag editor extensions use after their own
-	// disclosure UI: mint + enable + record disclosed=true, no
-	// stderr notice, no stdout "Telemetry enabled." line. A future
-	// `gaffer dev` from the same install must also stay silent
-	// because EnsureIdentity sees disclosed=true.
+func TestConfigTelemetryOn_InvokerIDSuppressesNotice(t *testing.T) {
+	// A spawner running `gaffer config telemetry on --invoker-id=...`
+	// (e.g. an editor extension re-enabling after the user toggled
+	// off and the extension wants to re-enable on their behalf) must
+	// not print the CLI banner inside the spawn. The persistent
+	// --invoker-id flag is inherited by the subcommand; the run path
+	// peeks argv so the suppression contract holds even though
+	// main.go's StartupGate is skipped for the `config` subtree.
 	setupTelemetryCmdTest(t)
 
-	stdout, stderr, err := runCmd(t, "config", "telemetry", "on", "--quiet")
+	_, stderr, err := runCmd(t, "config", "telemetry", "on",
+		"--invoker-id=11111111-1111-4111-8111-111111111111")
 	if err != nil {
-		t.Fatalf("on --quiet: %v", err)
+		t.Fatalf("on --invoker-id: %v", err)
 	}
-	if stdout != "" {
-		t.Errorf("--quiet wrote to stdout: %q", stdout)
+	if strings.Contains(stderr, "Gaffer collects usage data") {
+		t.Errorf("notice written despite --invoker-id; stderr:\n%s", stderr)
 	}
-	if stderr != "" {
-		t.Errorf("--quiet wrote to stderr: %q", stderr)
-	}
-
+	// Disclosed must NOT latch under invoker-id suppression.
 	dir, _ := userconfig.DefaultDir()
 	store, _ := userconfig.Load(dir)
 	got, _ := telemetry.LoadTelemetry(store)
-	if got.Enabled == nil || !*got.Enabled {
-		t.Errorf("Enabled = %v, want &true", got.Enabled)
-	}
-	if !got.Disclosed {
-		t.Error("Disclosed = false, want true (--quiet asserts disclosure was shown)")
+	if got.Disclosed {
+		t.Error("Disclosed latched under --invoker-id; direct-terminal user permanently silenced")
 	}
 }
 
@@ -275,12 +277,20 @@ func TestConfigTelemetryOn_EnvOptOutBlocks(t *testing.T) {
 	}
 }
 
-func TestConfigTelemetryOn_ExistingIdentitySkipsNotice(t *testing.T) {
+func TestConfigTelemetryOn_ExistingDisclosedIdentitySkipsNotice(t *testing.T) {
+	// Realistic shape of a disclosed install: id+salt persisted AND
+	// Disclosed=true latched. `gaffer config telemetry on` returns
+	// the identity and never re-fires the banner.
 	setupTelemetryCmdTest(t)
 	dir, _ := userconfig.DefaultDir()
 	store, _ := userconfig.Load(dir)
 	prev, _ := telemetry.MintIdentity()
 	telemetry.StageIdentity(store, prev)
+	telemetry.WriteTelemetry(store, telemetry.TelemetrySection{
+		ID:        prev.TelemetryID,
+		Salt:      prev.Salt,
+		Disclosed: true,
+	})
 	if err := store.Save(); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -293,7 +303,7 @@ func TestConfigTelemetryOn_ExistingIdentitySkipsNotice(t *testing.T) {
 		t.Errorf("stdout missing confirmation; got:\n%s", stdout)
 	}
 	if strings.Contains(stderr, "Gaffer collects usage data") {
-		t.Errorf("notice written for existing identity; stderr:\n%s", stderr)
+		t.Errorf("notice written despite Disclosed=true; stderr:\n%s", stderr)
 	}
 	// Identity preserved.
 	store2, _ := userconfig.Load(dir)

@@ -29,12 +29,11 @@ func (i Invocation) IsZero() bool {
 // IsConfigCommand reports whether args looks like a `gaffer config
 // ...` invocation. main.go uses this to skip Client construction
 // for the whole `config` subtree: these are management commands
-// that own identity / opt-out lifecycle themselves (e.g.
-// `config telemetry on --quiet` writes the disclosed flag before
-// minting), and the pre-cobra StartupGate path would otherwise
-// fire the first-mint notice before the user-facing flag has been
-// parsed. `config` commands don't emit command_invoked of their
-// own, so skipping the Client costs nothing.
+// that own identity / opt-out lifecycle themselves, and the
+// pre-cobra StartupGate path would otherwise fire the first-mint
+// notice before the user-facing flag has been parsed. `config`
+// commands don't emit command_invoked of their own, so skipping
+// the Client costs nothing.
 //
 // Scanning is positional: returns true when "config" is the first
 // non-flag token. Bare forms of the value-taking root flags

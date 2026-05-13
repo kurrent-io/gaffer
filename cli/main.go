@@ -47,12 +47,11 @@ func runMain() (exitCode int) {
 	invocation := telemetry.PeekInvocationFlags(os.Args[1:])
 	// `gaffer config ...` commands own identity / opt-out lifecycle
 	// (mint, disclose, opt out) themselves. Skip the pre-cobra
-	// StartupGate path for the whole subtree - otherwise
-	// `config telemetry on --quiet` (which records disclosed=true
-	// after parsing) is racing the first-mint notice that
-	// StartupGate would already have printed. Config commands
-	// don't emit command_invoked of their own, so skipping the
-	// Client here costs nothing.
+	// StartupGate path for the whole subtree so the config
+	// subcommands' own EnsureIdentity calls aren't racing one that
+	// StartupGate would have fired first. Config commands don't emit
+	// command_invoked of their own, so skipping the Client here
+	// costs nothing.
 	var client *telemetry.Client
 	if !telemetry.IsConfigCommand(os.Args[1:]) {
 		client = buildClient(os.Stderr, invocation)

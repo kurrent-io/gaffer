@@ -12,7 +12,7 @@ import (
 // w before forwarding to the inner sink. Wired in when
 // GAFFER_TELEMETRY_DEBUG=1 is set so users can audit exactly what
 // would be sent (critical for the "show me what you collect" trust
-// posture promised in TELEMETRY.md).
+// posture promised in cli/TELEMETRY.md).
 //
 // Failed writes to the debug writer are reported via errLog so a
 // caller test or future structured-log consumer can observe them; we

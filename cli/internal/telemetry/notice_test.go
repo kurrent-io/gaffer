@@ -41,10 +41,10 @@ func TestNoticeText_ListsEveryOptOutEnvVar(t *testing.T) {
 }
 
 func TestNoticeText_SyncedWithTelemetryMd(t *testing.T) {
-	path := findRepoRootFile(t, "TELEMETRY.md")
+	path := findRepoRootFile(t, "cli/TELEMETRY.md")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read TELEMETRY.md: %v", err)
+		t.Fatalf("read cli/TELEMETRY.md: %v", err)
 	}
 	got := string(data)
 	for _, want := range []string{
@@ -56,7 +56,7 @@ func TestNoticeText_SyncedWithTelemetryMd(t *testing.T) {
 		"https://telemetry.gaffer.kurrent.io",
 	} {
 		if !strings.Contains(got, want) {
-			t.Errorf("TELEMETRY.md missing %q (out of sync with noticeText)", want)
+			t.Errorf("cli/TELEMETRY.md missing %q (out of sync with noticeText)", want)
 		}
 	}
 }

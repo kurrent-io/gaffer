@@ -1,7 +1,7 @@
 gaffer
 
 # Build-time copies of canonical files. internal/mcpserver/resources/
-# telemetry-info.gen.md is `cp ../TELEMETRY.md` produced by the
+# telemetry-info.gen.md is `cp TELEMETRY.md` produced by the
 # `_resources` recipe so the MCP resource always matches what the
-# worker serves at https://telemetry.gaffer.kurrent.io/.
+# worker serves at https://telemetry.gaffer.kurrent.io/cli.
 internal/mcpserver/resources/*.gen.md

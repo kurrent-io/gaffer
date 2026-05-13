@@ -59,7 +59,7 @@ func (s *Server) registerResources() {
 		MIMEType:    "text/markdown",
 	}, s.trackedResource(dbVersionBugsResource))
 
-	// The repo-root TELEMETRY.md is the public telemetry contract;
+	// cli/TELEMETRY.md is the public telemetry contract for the CLI;
 	// `just cli _resources` copies it to telemetry-info.gen.md (gitignored)
 	// before any go build/test/lint, so the embedded copy is always a
 	// build-step replica of the canonical file rather than a tracked

@@ -2,12 +2,12 @@ default:
     @just --list
 
 # Copy canonical files into the embed tree before go build/test sees
-# them. Today this is just the repo-root TELEMETRY.md, served by the
-# MCP server at gaffer://telemetry/info; the copy is gitignored so
-# there's a single tracked source of truth.
+# them. Today this is just cli/TELEMETRY.md, served by the MCP server
+# at gaffer://telemetry/info; the copy is gitignored so there's a
+# single tracked source of truth.
 [private]
 _resources:
-    cp ../TELEMETRY.md internal/mcpserver/resources/telemetry-info.gen.md
+    cp TELEMETRY.md internal/mcpserver/resources/telemetry-info.gen.md
 
 # Build the CLI binary
 build: _resources

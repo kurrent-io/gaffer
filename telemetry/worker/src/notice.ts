@@ -1,4 +1,4 @@
-import { noticeHtml } from "./notice.gen";
+import { cliHtml, introHtml, vscodeHtml } from "./notice.gen";
 
 // Locked-down CSP for a script-free static page. `default-src 'none'`
 // denies everything, then we re-allow only what the template uses:
@@ -18,21 +18,36 @@ const CSP = [
 	"frame-ancestors 'none'",
 ].join("; ");
 
-export function handleNotice(): Response {
-	return new Response(noticeHtml, {
-		headers: {
-			"content-type": "text/html; charset=utf-8",
-			"content-security-policy": CSP,
-			// Belt-and-braces hardening for the static page. CSP already
-			// blocks script execution; these stop browsers from sniffing
-			// past the declared content-type and from leaking referrer
-			// info on the one outbound link in the notice body.
-			"x-content-type-options": "nosniff",
-			"referrer-policy": "no-referrer",
-			// The notice is static between deploys; cache aggressively but
-			// allow revalidation so a redeploy invalidates browsers' caches
-			// when content actually changes.
-			"cache-control": "public, max-age=300, must-revalidate",
-		},
-	});
+const HEADERS = {
+	"content-type": "text/html; charset=utf-8",
+	"content-security-policy": CSP,
+	// Belt-and-braces hardening for the static pages. CSP already
+	// blocks script execution; these stop browsers from sniffing past
+	// the declared content-type and from leaking referrer info on the
+	// outbound links in the notice bodies.
+	"x-content-type-options": "nosniff",
+	"referrer-policy": "no-referrer",
+	// The notices are static between deploys; cache aggressively but
+	// allow revalidation so a redeploy invalidates browsers' caches
+	// when content actually changes.
+	"cache-control": "public, max-age=300, must-revalidate",
+};
+
+const pages: Record<string, string> = {
+	"/": introHtml,
+	"/cli": cliHtml,
+	"/vscode": vscodeHtml,
+};
+
+/**
+ * Returns the notice Response for `pathname`, or null if the path is
+ * not a notice route. Trailing slashes on non-root paths are stripped
+ * so `/cli` and `/cli/` resolve to the same page. The caller is
+ * responsible for HEAD vs GET and method-not-allowed handling.
+ */
+export function handleNotice(pathname: string): Response | null {
+	const normalized = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+	const html = pages[normalized];
+	if (html === undefined) return null;
+	return new Response(html, { headers: HEADERS });
 }

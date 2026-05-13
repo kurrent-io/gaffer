@@ -13,17 +13,17 @@ export default {
 			return handleIngest(request, env, ctx);
 		}
 
-		if (url.pathname === "/") {
+		const noticeResponse = handleNotice(url.pathname);
+		if (noticeResponse !== null) {
 			if (request.method !== "GET" && request.method !== "HEAD") {
 				return new Response(null, { status: 405, headers: { allow: "GET, HEAD" } });
 			}
-			const response = handleNotice();
 			// HTTP HEAD must return the same headers/status as GET but with
 			// no body. Workers doesn't auto-strip; do it explicitly.
 			if (request.method === "HEAD") {
-				return new Response(null, { status: response.status, headers: response.headers });
+				return new Response(null, { status: noticeResponse.status, headers: noticeResponse.headers });
 			}
-			return response;
+			return noticeResponse;
 		}
 
 		if (url.pathname.startsWith("/fonts/") || url.pathname.startsWith("/favicons/")) {

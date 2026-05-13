@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { load, save } from "./config.js";
-import { createTelemetry, peekInvokerId } from "./facade.js";
+import { createTelemetry } from "./facade.js";
 
 const activatedEvent: ExtensionActivated = {
 	name: "extension_activated",
@@ -62,10 +62,9 @@ describe("createTelemetry", () => {
 		telemetry.emit(activatedEvent);
 		await telemetry.drain(1000);
 		// telemetry.json may not exist; if it does, it must not contain
-		// the freshly-minted identity fields.
+		// a freshly-minted telemetry_id.
 		const persisted = await load(dir);
 		expect(persisted.telemetry_id).toBeUndefined();
-		expect(persisted.salt).toBeUndefined();
 	});
 
 	it("on opt-out via VS Code telemetry.telemetryLevel: emit is a no-op", async () => {
@@ -98,13 +97,11 @@ describe("createTelemetry", () => {
 
 		const persisted = await load(dir);
 		expect(persisted.telemetry_id).toMatch(/^[0-9a-f-]{36}$/);
-		expect(persisted.salt).toMatch(/^[0-9a-f-]{36}$/);
 	});
 
 	it("invokerId() returns the per-install telemetry_id on a live handle", async () => {
 		const seeded = {
 			telemetry_id: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-			salt: "11111111-2222-3333-4444-555555555555",
 		};
 		await save(dir, seeded);
 		const telemetry = await createTelemetry(permissiveOpts());
@@ -131,7 +128,6 @@ describe("createTelemetry", () => {
 	it("reuses a persisted identity on subsequent activations", async () => {
 		const seeded = {
 			telemetry_id: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-			salt: "11111111-2222-3333-4444-555555555555",
 		};
 		await save(dir, seeded);
 
@@ -252,58 +248,39 @@ describe("createTelemetry", () => {
 	});
 });
 
-describe("peekInvokerId", () => {
-	const noEnv = {} as NodeJS.ProcessEnv;
+describe("Telemetry.reportException", () => {
+	it("builds an exception envelope and ships it through the sink", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () => new Response(""));
+		const telemetry = await createTelemetry({
+			...permissiveOpts({ fetchImpl }),
+			extensionPath: "/opt/gaffer",
+			getWorkspaceFolders: () => [],
+		});
+		const err = new Error("kaboom");
+		err.stack =
+			"Error: kaboom\n    at activate (/opt/gaffer/dist/extension.js:42:13)";
+		telemetry.reportException("startup", err);
+		await telemetry.drain(1000);
 
-	it("returns the persisted telemetry_id when not opted out", async () => {
-		await save(dir, {
-			telemetry_id: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-			salt: "11111111-2222-3333-4444-555555555555",
-		});
-		const got = await peekInvokerId({
-			storageDir: dir,
-			env: noEnv,
-			vscodeTelemetryLevel: "all",
-		});
-		expect(got).toBe("8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02");
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+		const call = fetchImpl.mock.calls[0];
+		if (call === undefined) throw new Error("expected a fetch call");
+		const body = JSON.parse(call[1]?.body as string) as Envelope;
+		expect(body.events[0]?.name).toBe("exception");
 	});
 
-	it("returns null when opted out via env (no identity shared)", async () => {
-		await save(dir, {
-			telemetry_id: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-			salt: "11111111-2222-3333-4444-555555555555",
+	it("is a no-op after refreshOptOut latches disabled", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () => new Response(""));
+		const telemetry = await createTelemetry({
+			...permissiveOpts({ fetchImpl }),
+			extensionPath: "/opt/gaffer",
+			getWorkspaceFolders: () => [],
 		});
-		const got = await peekInvokerId({
-			storageDir: dir,
-			env: { DO_NOT_TRACK: "1" } as NodeJS.ProcessEnv,
-			vscodeTelemetryLevel: "all",
-		});
-		expect(got).toBeNull();
-	});
-
-	it("returns null when no identity is on disk yet (cold install)", async () => {
-		const got = await peekInvokerId({
-			storageDir: dir,
-			env: noEnv,
-			vscodeTelemetryLevel: "all",
-		});
-		expect(got).toBeNull();
-	});
-
-	it("returns null on I/O failure (unreadable telemetry.json)", async () => {
-		if (process.platform === "win32" || process.getuid?.() === 0) return;
-		const file = path.join(dir, "telemetry.json");
-		fs.writeFileSync(file, "{}");
-		fs.chmodSync(file, 0o000);
-		try {
-			const got = await peekInvokerId({
-				storageDir: dir,
-				env: noEnv,
-				vscodeTelemetryLevel: "all",
-			});
-			expect(got).toBeNull();
-		} finally {
-			fs.chmodSync(file, 0o600);
-		}
+		const cur = await load(dir);
+		await save(dir, { ...cur, telemetry_enabled: false, disclosed: true });
+		await telemetry.refreshOptOut();
+		telemetry.reportException("startup", new Error("ignored"));
+		await telemetry.drain(1000);
+		expect(fetchImpl).not.toHaveBeenCalled();
 	});
 });

@@ -125,7 +125,7 @@ Records the source-mechanical shape of a projection file: which projection built
 
 ### `extension_activated`
 
-Records whether the gaffer CLI binary is reachable on the user's `PATH` when the VS Code extension activates - the "broken install" diagnostic - along with editor and CLI versions and a bucketed activation duration.
+Records whether the gaffer CLI binary is reachable on the user's `PATH` when the VS Code extension activates - the "broken install" diagnostic - along with editor and CLI versions and a bucketed activation duration. When the CLI is unreachable, the event also carries a categorical reason: `binary_not_found`, `binary_spawn_failed`, `timeout`, `workspace_untrusted`, or `unknown_error`. No paths or error messages from the failed spawn are attached.
 
 <details>
 <summary>Example envelope</summary>
@@ -229,7 +229,7 @@ You can opt out by any of:
 For more information visit https://telemetry.gaffer.kurrent.io.
 ```
 
-The VS Code extension shows an equivalent notification on first activation, with `[Disable]`, `[Learn more]`, and `[Dismiss]` buttons.
+The VS Code extension shows an equivalent notification on first activation, with `[Dismiss]`, `[Learn more]`, and `[Disable telemetry]` buttons. Closing the notification with the X is treated the same as `[Dismiss]` (telemetry stays on). `[Learn more]` opens this page without changing your choice - the notification will re-appear on next activation until you pick `[Dismiss]` or `[Disable telemetry]`.
 
 If telemetry collection has already been disabled (for example via `KURRENTDB_TELEMETRY_OPTOUT` carried over from KurrentDB, or `DO_NOT_TRACK`), no disclosure is shown - the user has already declined.
 
@@ -255,9 +255,11 @@ Telemetry transmission can be disabled by any one of the following:
 
 When opted out, gaffer does not collect telemetry. No envelope is constructed and no event is recorded locally.
 
+Opting out mid-session in the VS Code extension takes effect for future spawns. CLI processes the extension has already started (the LSP server, an in-progress `gaffer dev` session, an MCP server) keep running until they exit naturally; their own opt-out check happens at their next start.
+
 ## How to see what's being sent
 
-Set `GAFFER_TELEMETRY_DEBUG=1` (truthy values: `1`, `true`, `yes`, `on`) and gaffer prints every event to stderr as JSON before sending it. Independent of opt-out state - useful when you want to verify exactly what would be transmitted.
+Set `GAFFER_TELEMETRY_DEBUG=1` (truthy values: `1`, `true`, `yes`, `on`) and gaffer prints every event as JSON before sending it (CLI: stderr; VS Code extension: the Gaffer output channel). When opted out, no envelopes are constructed and nothing is printed - opting out is the stronger guarantee.
 
 ## Where data is stored
 

@@ -18,6 +18,16 @@ import { showLspCrashed, showLspFailedToStart } from "../notifications.js";
 
 let client: LanguageClient | undefined;
 
+// Single OutputChannel for the LSP server's lifetime. Created on the
+// first spawn, reused across restarts (including the give-up-then-retry
+// path). Creating it inside spawnLanguageClient would stack duplicate
+// "Gaffer LSP" entries in the user's Output dropdown.
+let lspChannel: vscode.OutputChannel | undefined;
+
+/** Bound on every `client.stop` call. VS Code's deactivate budget is
+ * ~5s; a stuck server can't be allowed to eat the whole budget. */
+const STOP_TIMEOUT_MS = 2000;
+
 // Latched by startLanguageClient and called from retryStartLanguageClient
 // after a successful manifest reload. Re-running startLanguageClient
 // instead would double-register the trust-grant listener.
@@ -112,8 +122,11 @@ async function spawnLanguageClient(
 		}
 		return Promise.resolve(spawn(command, argv.slice(1)));
 	};
-	const channel = vscode.window.createOutputChannel("Gaffer LSP");
-	context.subscriptions.push(channel);
+	if (lspChannel === undefined) {
+		lspChannel = vscode.window.createOutputChannel("Gaffer LSP");
+		context.subscriptions.push(lspChannel);
+	}
+	const channel = lspChannel;
 	const clientOptions: LanguageClientOptions = {
 		documentSelector: [
 			{ scheme: "file", pattern: "**/gaffer.toml" },
@@ -166,11 +179,13 @@ async function spawnLanguageClient(
 	// dispose cancels cleanly. The dispose returns the stop()
 	// Promise so VS Code (which awaits disposables on
 	// extension teardown) waits for the child process to flush.
+	// Bounded by the same STOP_TIMEOUT_MS as the deactivate path so
+	// a stuck server can't hang teardown via either route.
 	let disposed = false;
 	context.subscriptions.push({
 		dispose: () => {
 			disposed = true;
-			return c.stop();
+			return c.stop(STOP_TIMEOUT_MS);
 		},
 	});
 	try {
@@ -279,12 +294,17 @@ export function makeErrorHandler(channel: vscode.OutputChannel): ErrorHandler {
  * give the server a chance to flush before the host exits.
  */
 export async function stopLanguageClient(): Promise<void> {
-	if (!client) return;
+	if (!client) {
+		lspChannel = undefined;
+		return;
+	}
 	try {
-		await client.stop();
+		// vscode-languageclient force-kills on timeout.
+		await client.stop(STOP_TIMEOUT_MS);
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
 		log(`LSP client stop failed: ${msg}`);
 	}
 	client = undefined;
+	lspChannel = undefined;
 }

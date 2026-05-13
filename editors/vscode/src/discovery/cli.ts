@@ -122,7 +122,17 @@ function execFileAsync(
 				// to callers that need to classify the failure (e.g.
 				// telemetry's classifyManifestError). Wrapping in a fresh
 				// Error would lose those fields.
-				if (stderr) err.message = `${err.message} (stderr: ${stderr.trim()})`;
+				//
+				// Stderr goes onto err.cause as a structured field rather
+				// than being appended to err.message. The telemetry
+				// pipeline ships err.message verbatim; CLI stderr can name
+				// local paths, so keeping it off message is defence-in-
+				// depth against a future caller routing this error into
+				// reportException. User-facing surfaces (e.g.
+				// showManifestFailure) read err.cause.stderr.
+				if (stderr) {
+					(err as { cause?: unknown }).cause = { stderr: stderr.trim() };
+				}
 				reject(err);
 			} else {
 				resolve(stdout);

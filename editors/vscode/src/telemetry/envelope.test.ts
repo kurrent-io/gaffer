@@ -6,7 +6,6 @@ import type { Identity } from "./identity.js";
 
 const id: Identity = {
 	telemetryId: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-	salt: "11111111-2222-3333-4444-555555555555",
 	runId: "33333333-3333-3333-3333-333333333333",
 };
 
@@ -105,25 +104,6 @@ describe("buildEnvelope", () => {
 				env: {},
 			}).context.runtime_environment,
 		).toBe("local");
-	});
-
-	it("includes project_id when supplied, omits when not", () => {
-		const withProject = buildEnvelope({
-			identity: id,
-			libVersion: "0.4.2",
-			events: [activated],
-			env: {},
-			projectId: "a1b2c3d4e5f6789a",
-		});
-		expect(withProject.context.project_id).toBe("a1b2c3d4e5f6789a");
-
-		const without = buildEnvelope({
-			identity: id,
-			libVersion: "0.4.2",
-			events: [activated],
-			env: {},
-		});
-		expect(without.context.project_id).toBeUndefined();
 	});
 
 	it("includes invoker_id when supplied, omits when not", () => {

@@ -6,6 +6,8 @@
 // The wrappers (telemetry/wrap.ts) catch + emit + re-throw; this
 // module is pure payload construction.
 
+import { fileURLToPath } from "node:url";
+
 import type {
 	Exception,
 	ExceptionEntry,
@@ -102,6 +104,7 @@ function parseStack(stack: string): RawFrame[] {
 			const file = withFunc[2];
 			const ln = withFunc[3];
 			if (fn === undefined || file === undefined || ln === undefined) continue;
+			if (!isPathLike(file)) continue;
 			out.push({ function: fn, filename: file, lineno: Number(ln) });
 			continue;
 		}
@@ -110,6 +113,7 @@ function parseStack(stack: string): RawFrame[] {
 			const file = noFunc[1];
 			const ln = noFunc[2];
 			if (file === undefined || ln === undefined) continue;
+			if (!isPathLike(file)) continue;
 			out.push({ filename: file, lineno: Number(ln) });
 			continue;
 		}
@@ -117,22 +121,57 @@ function parseStack(stack: string): RawFrame[] {
 	return out;
 }
 
+/** Eval-frame shapes ("eval at <anonymous> (foo:1:1), <anonymous>:1:1")
+ * back-reference into the line until the regex finally matches with a
+ * "filename" full of parens and angle brackets. Real source paths never
+ * contain those, so reject them - the eval frame has no usable file to
+ * basename anyway. */
+function isPathLike(file: string): boolean {
+	return !/[()<>]/.test(file);
+}
+
 function classifyFrame(
 	raw: RawFrame,
 	args: { extensionPath: string; workspaceFolders: readonly string[] },
 ): Frame | null {
+	// Normalise `file://` URL filenames (V8 emits these for ESM and
+	// import.meta.url-derived call sites) so the path-prefix scrub
+	// below catches them on either side of the URL/path divide.
+	const file = normaliseFilename(raw.filename);
 	// User code: drop entirely. The projection file (or any workspace
 	// JS the extension somehow ended up running) is the user's
 	// content; we never put it on the wire.
 	for (const folder of args.workspaceFolders) {
-		if (folder !== "" && isUnderDir(raw.filename, folder)) return null;
+		if (folder !== "" && isUnderDir(file, folder)) return null;
 	}
-	const inApp = isUnderDir(raw.filename, args.extensionPath);
-	const filename = basename(raw.filename);
+	const inApp = isUnderDir(file, args.extensionPath);
+	const filename = basename(file);
 	const frame: Frame = { filename, in_app: inApp };
 	if (raw.function !== undefined) frame.function = raw.function;
 	if (raw.lineno !== undefined) frame.lineno = raw.lineno;
 	return frame;
+}
+
+/** Convert `file:///home/user/foo.js` to `/home/user/foo.js`. Leaves
+ * non-URL filenames (`node:internal/...`, `/abs/path`, `webpack:...`)
+ * untouched. Without this the workspace-folder scrub would miss any
+ * frame V8 emitted as a URL.
+ *
+ * Uses `fileURLToPath` rather than `URL.pathname` so percent-escapes
+ * decode (e.g. `%20` -> ` `) and Windows URLs produce native paths
+ * (`c:\...` not `/c:/...`). `Uri.fsPath` - the shape workspaceFolders
+ * arrive in - has the same convention. */
+function normaliseFilename(filename: string): string {
+	if (filename.startsWith("file://")) {
+		try {
+			return fileURLToPath(filename);
+		} catch {
+			// Malformed URL - leave as-is rather than risk losing the
+			// scrub on a string that happened to start with file://.
+			return filename;
+		}
+	}
+	return filename;
 }
 
 /** True when `file` is the directory `dir` or any descendant. Plain

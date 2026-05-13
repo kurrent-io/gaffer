@@ -83,13 +83,12 @@ describe("runFirstRunNotice", () => {
 	});
 
 	it("preserves on-disk identity fields when latching disclosed (merge-on-write)", async () => {
-		// Identity-mint may have written id+salt to telemetry.json
+		// Identity-mint may have written telemetry_id to telemetry.json
 		// before the disclosure runner gets a chance to write. The
 		// runner must read the fresh state and only patch its own
 		// fields, not clobber the identity.
 		const seed: TelemetryConfig = {
 			telemetry_id: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-			salt: "11111111-2222-3333-4444-555555555555",
 		};
 		await save(dir, seed);
 		await runFirstRunNotice(buildArgs({ prompt: async () => "dismiss" }));

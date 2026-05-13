@@ -4,6 +4,8 @@ import {
 	CloseAction,
 	ErrorAction,
 	LanguageClient,
+	holdLspStart,
+	resetLspMock,
 } from "../../test/__mocks__/vscode-languageclient-node.js";
 import {
 	makeErrorHandler,
@@ -46,6 +48,7 @@ describe("startLanguageClient invokerId wiring", () => {
 	afterEach(async () => {
 		await stopLanguageClient();
 		resetVscode();
+		resetLspMock();
 		spawnMock.mockReset();
 	});
 
@@ -90,11 +93,12 @@ describe("startLanguageClient invokerId wiring", () => {
 		expect(args).toEqual(["lsp"]);
 	});
 
-	it("re-evaluates getInvokerId on every (re)spawn (auto-restart safe)", async () => {
-		// Simulates vscode-languageclient's CloseAction.Restart path:
-		// it calls the ServerOptions factory again. A mid-session
-		// opt-out flips invokerId between the two calls, and the
-		// second spawn must omit the flag.
+	it("re-evaluates getInvokerId when vscode-languageclient restarts the server", async () => {
+		// Drives the same code path vscode-languageclient hits when the
+		// error-handler returns CloseAction.Restart: it re-invokes
+		// ServerOptions. A mid-session opt-out flips invokerId between
+		// the two factory calls, and the second spawn must omit the
+		// flag.
 		setTrusted(true);
 		spawnMock.mockImplementation(() => fakeChild());
 		let current: string | null = "id-1";
@@ -104,13 +108,58 @@ describe("startLanguageClient invokerId wiring", () => {
 			() => current,
 		);
 		await flushAllMicrotasks();
-		await runFactory();
+		const c = getLanguageClient() as unknown as LanguageClient;
+		await (c.serverOptions as () => Promise<unknown>)(); // initial start
 		current = null;
-		await runFactory();
+		await c.simulateRestart(); // simulates CloseAction.Restart re-entry
+
 		const firstArgs = spawnMock.mock.calls[0]?.[1] as string[];
 		const secondArgs = spawnMock.mock.calls[1]?.[1] as string[];
 		expect(firstArgs).toContain("--invoker-id=id-1");
 		expect(secondArgs).toEqual(["lsp"]);
+	});
+});
+
+describe("startLanguageClient dispose-during-start race", () => {
+	afterEach(async () => {
+		await stopLanguageClient();
+		resetVscode();
+		resetLspMock();
+		spawnMock.mockReset();
+	});
+
+	it("does not promote the client to module-level when disposed mid-start", async () => {
+		// Holds `LanguageClient.start()` open so we can fire the
+		// subscription's dispose between push-disposable and resume.
+		// Production guard: spawnLanguageClient sets `disposed=true`
+		// from the dispose callback and skips `client = c` on resume.
+		setTrusted(true);
+		spawnMock.mockImplementation(() => new EventEmitter());
+		const release = holdLspStart();
+		const ctx = makeContext();
+		startLanguageClient(
+			ctx,
+			() => true,
+			() => null,
+		);
+		await flushAllMicrotasks();
+		// The dispose-handle is the bare `{ dispose }` object
+		// spawnLanguageClient pushes; the other LSP-related subscriptions
+		// quack like OutputChannel or vscode disposables. Find by shape
+		// rather than position so a future push-order tweak doesn't
+		// silently exercise the wrong subscription.
+		const subs = ctx.subscriptions as unknown as Array<Record<string, unknown>>;
+		const lspDispose = subs.find(
+			(s) =>
+				typeof s.dispose === "function" &&
+				!("appendLine" in s) &&
+				!("event" in s),
+		);
+		if (!lspDispose) throw new Error("expected an LSP dispose subscription");
+		await (lspDispose.dispose as () => unknown)();
+		release();
+		await flushAllMicrotasks();
+		expect(getLanguageClient()).toBeUndefined();
 	});
 });
 

@@ -26,6 +26,7 @@ import type { Event } from "@kurrent/gaffer-telemetry";
 
 import { editConfig, loadSafe, type TelemetryConfig } from "./config.js";
 import { buildEnvelope } from "./envelope.js";
+import { buildException, type Phase } from "./exception.js";
 import { ensureIdentity } from "./identity.js";
 import { checkOptOut } from "./opt-out.js";
 import { createSink, INGEST_URL } from "./sink.js";
@@ -41,11 +42,15 @@ export interface TelemetryFacadeOptions {
 	vscodeTelemetryLevel: string | undefined;
 	/** Output sink for the debug-mode envelope print. */
 	log: (line: string) => void;
-	/** Salted project_id when the extension is in a workspace. */
-	projectId?: string;
 	/** Spawner identity for cross-surface stitching (not used in v0 - no
 	 * one spawns the extension; here for symmetry with the CLI). */
 	invokerId?: string;
+	/** Resolves workspace folder paths at report-time so exception
+	 * scrubbing reflects mid-session workspace changes. */
+	getWorkspaceFolders?: () => readonly string[];
+	/** Absolute path of the extension bundle root, for exception
+	 * frame in_app classification. */
+	extensionPath?: string;
 	/** Override sink URL for tests / staging. Defaults to INGEST_URL. */
 	sinkUrl?: string;
 	/** Override fetch implementation (tests). */
@@ -65,6 +70,10 @@ export interface Telemetry {
 	 * `--invoker-id`. Returns `null` when opt-out is active (we have
 	 * no identity to share) or when the facade fell back to no-op. */
 	invokerId(): string | null;
+	/** Build + emit an exception envelope for `err`. No-op when opt-out
+	 * is active; never throws (any failure inside the report path is
+	 * swallowed so the caller's original error always propagates). */
+	reportException(phase: Phase, err: unknown): void;
 }
 
 export async function createTelemetry(
@@ -109,20 +118,21 @@ async function createTelemetryImpl(
 	// started with until they exit naturally.
 	let disabled = false;
 
+	const emit = (event: Event): void => {
+		if (disabled) return;
+		sink.send(
+			buildEnvelope({
+				identity,
+				libVersion: opts.libVersion,
+				events: [event],
+				env: opts.env,
+				...(opts.invokerId !== undefined && { invokerId: opts.invokerId }),
+			}),
+		);
+	};
+
 	return {
-		emit(event: Event): void {
-			if (disabled) return;
-			sink.send(
-				buildEnvelope({
-					identity,
-					libVersion: opts.libVersion,
-					events: [event],
-					env: opts.env,
-					...(opts.projectId !== undefined && { projectId: opts.projectId }),
-					...(opts.invokerId !== undefined && { invokerId: opts.invokerId }),
-				}),
-			);
-		},
+		emit,
 		drain(timeoutMs: number): Promise<void> {
 			return sink.drain(timeoutMs);
 		},
@@ -134,39 +144,24 @@ async function createTelemetryImpl(
 		invokerId(): string | null {
 			return disabled ? null : identity.telemetryId;
 		},
+		reportException(phase: Phase, err: unknown): void {
+			if (disabled) return;
+			try {
+				emit(
+					buildException({
+						err,
+						phase,
+						extensionPath: opts.extensionPath ?? "",
+						workspaceFolders: opts.getWorkspaceFolders?.() ?? [],
+					}),
+				);
+			} catch (reportErr) {
+				opts.log(
+					`telemetry: exception report failed: ${reportErr instanceof Error ? reportErr.message : String(reportErr)}`,
+				);
+			}
+		},
 	};
-}
-
-/**
- * Read the persisted invoker id (extension emitter_id) without building
- * the full facade. Used by the pre-facade manifest fetch so its CLI
- * spawn carries `--invoker-id` from the second activation onwards.
- *
- * Returns null when opted out, when no identity is on disk yet (cold
- * install), or on any I/O failure - the caller treats all three as
- * "omit the flag".
- *
- * The peek is a snapshot. createTelemetry re-reads the same file moments
- * later and is the source of truth for the rest of the session; the two
- * can diverge by one cold-install mint, which is intentional.
- */
-export async function peekInvokerId(opts: {
-	storageDir: string;
-	env: NodeJS.ProcessEnv;
-	vscodeTelemetryLevel: string | undefined;
-}): Promise<string | null> {
-	try {
-		const config = await loadSafe(opts.storageDir);
-		const optOut = checkOptOut({
-			config,
-			env: opts.env,
-			vscodeTelemetryLevel: opts.vscodeTelemetryLevel,
-		});
-		if (optOut.disabled) return null;
-		return config.telemetry_id ?? null;
-	} catch {
-		return null;
-	}
 }
 
 function noopTelemetry(): Telemetry {
@@ -175,6 +170,7 @@ function noopTelemetry(): Telemetry {
 		drain: async () => {},
 		refreshOptOut: async () => {},
 		invokerId: () => null,
+		reportException: () => {},
 	};
 }
 

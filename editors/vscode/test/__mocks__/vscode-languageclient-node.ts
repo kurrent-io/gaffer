@@ -6,8 +6,9 @@
 //
 // Tests that drive activate() trigger startLanguageClient,
 // which constructs a LanguageClient from this stub. The stub
-// resolves start() and stop() trivially so activate() doesn't
-// hang.
+// resolves start() and stop() trivially by default; tests that
+// need to exercise the dispose-during-start race or the
+// auto-restart path install hooks via the helpers below.
 
 export const TransportKind = {
 	stdio: 0,
@@ -54,6 +55,34 @@ export function clearLspRequestHandlers(): void {
 	requestHandlers.clear();
 }
 
+// Optional async gate held by `start()`. Tests install a resolver
+// to exercise the dispose-during-start race in spawnLanguageClient.
+let startGate: Promise<void> | null = null;
+let startGateResolve: (() => void) | null = null;
+export function holdLspStart(): () => void {
+	startGate = new Promise<void>((r) => {
+		startGateResolve = r;
+	});
+	return () => {
+		const resolve = startGateResolve;
+		startGate = null;
+		startGateResolve = null;
+		if (resolve) resolve();
+	};
+}
+
+// Tracks every LanguageClient ever constructed under the mock.
+// Lets tests drive restarts by re-invoking ServerOptions like the
+// real `vscode-languageclient` does on `CloseAction.Restart`.
+export const constructedClients: LanguageClient[] = [];
+
+export function resetLspMock(): void {
+	requestHandlers.clear();
+	constructedClients.length = 0;
+	startGate = null;
+	startGateResolve = null;
+}
+
 export class LanguageClient {
 	id: string;
 	name: string;
@@ -69,13 +98,14 @@ export class LanguageClient {
 		this.name = name;
 		this.serverOptions = serverOptions;
 		this.clientOptions = clientOptions;
+		constructedClients.push(this);
 	}
 
 	async start(): Promise<void> {
-		return;
+		if (startGate) await startGate;
 	}
 
-	async stop(): Promise<void> {
+	async stop(_timeout?: number): Promise<void> {
 		return;
 	}
 
@@ -85,6 +115,21 @@ export class LanguageClient {
 			return null as T;
 		}
 		return handler(params) as T;
+	}
+
+	/** Simulates `vscode-languageclient`'s internal restart path: when
+	 * the error-handler returns `CloseAction.Restart`, the library calls
+	 * `serverOptions()` again. Tests use this to assert that the
+	 * factory re-evaluates dynamic inputs (e.g. `--invoker-id` on a
+	 * mid-session opt-out flip). */
+	async simulateRestart(): Promise<unknown> {
+		if (typeof this.serverOptions !== "function") {
+			throw new Error(
+				"serverOptions is not a factory; cannot simulate restart",
+			);
+		}
+		const factory = this.serverOptions as () => Promise<unknown>;
+		return factory();
 	}
 }
 

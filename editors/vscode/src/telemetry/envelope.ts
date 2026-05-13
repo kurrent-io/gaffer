@@ -24,7 +24,6 @@ export interface EnvelopeInput {
 	libVersion: string;
 	events: Event[];
 	env: NodeJS.ProcessEnv;
-	projectId?: string;
 	invokerId?: string;
 }
 
@@ -36,7 +35,6 @@ export function buildEnvelope(input: EnvelopeInput): Envelope {
 		arch: detectArch(),
 		runtime_environment: detectRuntimeEnvironment(input.env),
 	};
-	if (input.projectId !== undefined) context.project_id = input.projectId;
 	if (input.invokerId !== undefined) context.invoker_id = input.invokerId;
 	return {
 		schema_version: "1",

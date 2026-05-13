@@ -15,8 +15,6 @@ import { join } from "node:path";
 export interface TelemetryConfig {
 	/** Per-install random UUID stamped on every envelope as `emitter_id`. */
 	telemetry_id?: string;
-	/** Per-install random UUID; HMAC key for project_id derivation. Never sent. */
-	salt?: string;
 	/** Explicit user choice. `undefined` means "no decision yet" (default permissive). */
 	telemetry_enabled?: boolean;
 	/** Latches `true` on a successful first-run notification ack. */
@@ -48,7 +46,6 @@ export async function load(storageDir: string): Promise<TelemetryConfig> {
 	const out: TelemetryConfig = {};
 	const obj = parsed as Record<string, unknown>;
 	if (typeof obj.telemetry_id === "string") out.telemetry_id = obj.telemetry_id;
-	if (typeof obj.salt === "string") out.salt = obj.salt;
 	if (typeof obj.telemetry_enabled === "boolean") {
 		out.telemetry_enabled = obj.telemetry_enabled;
 	}

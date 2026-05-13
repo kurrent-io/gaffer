@@ -28,7 +28,6 @@ describe("config.load", () => {
 	it("round-trips a fully-populated config", async () => {
 		const original: TelemetryConfig = {
 			telemetry_id: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-			salt: "11111111-2222-3333-4444-555555555555",
 			telemetry_enabled: true,
 			disclosed: true,
 		};
@@ -48,13 +47,12 @@ describe("config.load", () => {
 		fs.writeFileSync(
 			path.join(dir, "telemetry.json"),
 			JSON.stringify({
-				telemetry_id: "abc",
-				salt: 42, // wrong type
+				telemetry_id: 42, // wrong type
 				telemetry_enabled: "yes", // wrong type
 				disclosed: true,
 			}),
 		);
-		expect(await load(dir)).toEqual({ telemetry_id: "abc", disclosed: true });
+		expect(await load(dir)).toEqual({ disclosed: true });
 	});
 
 	it("throws on a non-object top level", async () => {
@@ -110,11 +108,9 @@ describe("config.save", () => {
 	it("removes the .tmp file when rename fails (no identity leak)", async () => {
 		// Force the rename to fail by making the final path a directory:
 		// rename(file, existing-dir) fails with EISDIR/EPERM, and the
-		// .tmp would otherwise survive containing telemetry_id + salt.
+		// .tmp would otherwise survive containing telemetry_id.
 		fs.mkdirSync(path.join(dir, "telemetry.json"));
-		await expect(
-			save(dir, { telemetry_id: "leaked", salt: "leaked" }),
-		).rejects.toThrow();
+		await expect(save(dir, { telemetry_id: "leaked" })).rejects.toThrow();
 		const stragglers = fs.readdirSync(dir).filter((f) => f.endsWith(".tmp"));
 		expect(stragglers).toEqual([]);
 	});
@@ -212,11 +208,10 @@ describe("config.editConfig", () => {
 	});
 
 	it("merges the patch into the existing config (preserves other fields)", async () => {
-		await save(dir, { telemetry_id: "preserved-id", salt: "preserved-salt" });
+		await save(dir, { telemetry_id: "preserved-id" });
 		await editConfig(dir, { disclosed: true, telemetry_enabled: false });
 		expect(await load(dir)).toEqual({
 			telemetry_id: "preserved-id",
-			salt: "preserved-salt",
 			disclosed: true,
 			telemetry_enabled: false,
 		});
@@ -224,20 +219,18 @@ describe("config.editConfig", () => {
 
 	it("re-reads fresh on every call (interleaved writers don't lose fields)", async () => {
 		// Simulate the interleave the review flagged: writer A loads,
-		// then writer B writes id+salt, then writer A patches disclosed.
-		// Without merge-on-write, A would clobber id+salt. With it, the
-		// re-read inside editConfig picks up B's write.
+		// then writer B writes the mint, then writer A patches disclosed.
+		// Without merge-on-write, A would clobber telemetry_id. With it,
+		// the re-read inside editConfig picks up B's write.
 		await editConfig(dir, { telemetry_enabled: false }); // unrelated, ensures file exists
 		await save(dir, {
 			telemetry_enabled: false,
 			telemetry_id: "minted-late",
-			salt: "minted-late-salt",
 		});
 		await editConfig(dir, { disclosed: true });
 		expect(await load(dir)).toEqual({
 			telemetry_enabled: false,
 			telemetry_id: "minted-late",
-			salt: "minted-late-salt",
 			disclosed: true,
 		});
 	});

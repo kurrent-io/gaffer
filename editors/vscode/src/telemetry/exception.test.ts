@@ -118,6 +118,24 @@ describe("buildException", () => {
 		expect(entry?.stacktrace.frames).toHaveLength(1);
 	});
 
+	it("silently drops V8 eval frames (no usable filename)", () => {
+		// V8 surfaces eval origins as nested `eval at ...` strings that
+		// fall through both regexes. They have no usable filename, so
+		// dropping is the right thing - assert one real frame survives.
+		const out = buildException({
+			err: makeError({
+				stack: `    at eval (eval at <anonymous> (${EXT_PATH}/dist/extension.js:1:1), <anonymous>:1:1)
+    at activate (${EXT_PATH}/dist/extension.js:42:13)`,
+			}),
+			phase: "startup",
+			extensionPath: EXT_PATH,
+			workspaceFolders: [],
+		});
+		const [entry] = out.properties.exceptions;
+		expect(entry?.stacktrace.frames).toHaveLength(1);
+		expect(entry?.stacktrace.frames[0]?.function).toBe("activate");
+	});
+
 	it("walks err.cause to build the causal chain (outer first, root last)", () => {
 		const root = makeError({
 			name: "ENOENT",
@@ -208,6 +226,44 @@ describe("buildException", () => {
 		});
 		const [entry] = out.properties.exceptions;
 		expect(entry?.stacktrace.frames[0]?.in_app).toBe(false);
+	});
+
+	it("drops file:// URL frames that resolve under a workspace folder", () => {
+		// V8 emits `file:///abs/path/foo.js` for ESM frames; without
+		// URL normalisation the path-prefix scrub would miss them.
+		const out = buildException({
+			err: makeError({
+				stack: `    at userCode (file:///home/dev/proj/src/secret.js:7:1)
+    at activate (${EXT_PATH}/dist/extension.js:42:13)`,
+			}),
+			phase: "event_processing",
+			extensionPath: EXT_PATH,
+			workspaceFolders: ["/home/dev/proj"],
+		});
+		const [entry] = out.properties.exceptions;
+		expect(entry?.stacktrace.frames.map((f) => f.filename)).toEqual([
+			"extension.js",
+		]);
+	});
+
+	it("decodes percent-escapes in file:// URLs before the scrub", () => {
+		// Uri.fsPath gives "/home/dev/My Proj"; V8 surfaces the same
+		// path as "file:///home/dev/My%20Proj/..." in ESM stacks. The
+		// fileURLToPath conversion must decode the escape so the
+		// workspace-folder prefix check matches.
+		const out = buildException({
+			err: makeError({
+				stack: `    at userCode (file:///home/dev/My%20Proj/src/secret.js:7:1)
+    at activate (${EXT_PATH}/dist/extension.js:42:13)`,
+			}),
+			phase: "event_processing",
+			extensionPath: EXT_PATH,
+			workspaceFolders: ["/home/dev/My Proj"],
+		});
+		const [entry] = out.properties.exceptions;
+		expect(entry?.stacktrace.frames.map((f) => f.filename)).toEqual([
+			"extension.js",
+		]);
 	});
 
 	it("doesn't drop a sibling directory that shares a prefix with a workspace folder", () => {

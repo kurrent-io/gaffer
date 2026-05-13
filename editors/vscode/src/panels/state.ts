@@ -30,7 +30,9 @@ function withTimeout<T>(promise: Thenable<T>, ms: number): Promise<T> {
 	});
 }
 
-export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildren> {
+export class StateProvider
+	implements vscode.TreeDataProvider<TreeItemWithChildren>, vscode.Disposable
+{
 	readonly #onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChangeTreeData = this.#onDidChange.event;
 
@@ -47,6 +49,14 @@ export class StateProvider implements vscode.TreeDataProvider<TreeItemWithChildr
 	// surprise the user with post-stop changes or resurrect a dead
 	// session reference.
 	#ended = false;
+
+	dispose(): void {
+		if (this.#refreshTimer) {
+			clearTimeout(this.#refreshTimer);
+			this.#refreshTimer = null;
+		}
+		this.#onDidChange.dispose();
+	}
 
 	clear(): void {
 		this.#state = null;

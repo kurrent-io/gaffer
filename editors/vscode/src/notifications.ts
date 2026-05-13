@@ -24,7 +24,16 @@ const BUTTON_DISMISS = "Dismiss";
 
 export const showManifestFailure = (err: unknown): Thenable<unknown> => {
 	const raw = err instanceof Error ? err.message : String(err);
-	const truncated = raw.length > 200 ? `${raw.slice(0, 200)}…` : raw;
+	// execFileAsync stashes stderr on err.cause.stderr (kept off
+	// err.message so telemetry never accidentally ships local paths).
+	const cause =
+		err instanceof Error && typeof err.cause === "object" ? err.cause : null;
+	const stderr =
+		cause !== null && typeof (cause as { stderr?: unknown }).stderr === "string"
+			? (cause as { stderr: string }).stderr
+			: "";
+	const detail = stderr ? `${raw} (stderr: ${stderr})` : raw;
+	const truncated = detail.length > 200 ? `${detail.slice(0, 200)}…` : detail;
 	return vscode.window
 		.showErrorMessage(
 			`Gaffer CLI failed: ${truncated}`,
@@ -143,15 +152,20 @@ export const showPortInUse = (description: string): Thenable<unknown> =>
 
 // One-shot first-run telemetry disclosure. Mapped to the runner's
 // FirstRunChoice union so notice.ts doesn't have to know about vscode.
+//
+// Button order is leftmost-is-affirmative per VS Code convention; the
+// disable action sits on the right so a reflexive click doesn't opt
+// the user out by accident. Dismissing the toast (X) is also treated
+// as "accept" - same as the explicit Dismiss button.
 export const showTelemetryDisclosure = (): Thenable<
 	FirstRunChoice | undefined
 > =>
 	vscode.window
 		.showInformationMessage(
-			"Gaffer collects anonymous usage data to help improve the tool. You can change this anytime.",
-			BUTTON_DISABLE,
-			BUTTON_LEARN_MORE,
+			"Gaffer collects anonymous usage data, collected by Kurrent, Inc., to improve the tool. No projection code, stream names, or event content is sent. Click 'Dismiss' to accept, 'Disable telemetry' to opt out, or 'Learn more' for the full notice.",
 			BUTTON_DISMISS,
+			BUTTON_LEARN_MORE,
+			BUTTON_DISABLE,
 		)
 		.then((label) => {
 			switch (label) {

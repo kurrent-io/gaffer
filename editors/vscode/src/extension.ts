@@ -1,5 +1,9 @@
 import * as vscode from "vscode";
-import { buildGafferArgv, tryFetchManifest } from "./discovery/cli.js";
+import {
+	buildGafferArgv,
+	gafferSpawnEnv,
+	tryFetchManifest,
+} from "./discovery/cli.js";
 import type { Manifest } from "./discovery/schemas.js";
 import { LspCodeLensProvider } from "./lsp/lens-provider.js";
 import { StepProvider } from "./panels/step.js";
@@ -139,7 +143,7 @@ export async function activate(
 	let manifestErr: unknown;
 	const initialManifest = await tryFetchManifest(
 		workspaceCwd(),
-		activeTelemetry.invokerId(),
+		activeTelemetry,
 		(err) => {
 			manifestErr = err;
 			return showManifestFailure(err);
@@ -234,13 +238,10 @@ async function activateAfterTelemetry(
 	// the spawn until both clear and reattempting via
 	// retryStartLanguageClient when the manifest reload chain
 	// publishes a non-null result.
-	// activateAfterTelemetry only runs once the facade is built;
-	// `telemetry` is the live handle.
-	const getInvokerId = (): string | null => telemetry.invokerId();
 	startLanguageClient(
 		context,
 		() => latestManifest !== null,
-		getInvokerId,
+		telemetry,
 		(client) => {
 			lspCodeLens.setClient(client);
 		},
@@ -257,7 +258,7 @@ async function activateAfterTelemetry(
 	// it up automatically. Provider returns [] under untrusted
 	// workspaces; fires onDidChange on trust grant and on workspace
 	// folder changes so the picker tracks reality.
-	const mcpProvider = new GafferMcpProvider(getInvokerId);
+	const mcpProvider = new GafferMcpProvider(telemetry);
 	context.subscriptions.push(
 		mcpProvider,
 		vscode.lm.registerMcpServerDefinitionProvider(
@@ -275,7 +276,11 @@ async function activateAfterTelemetry(
 
 	const controller = new SessionController({
 		buildArgv: (args, invokedVia) =>
-			buildGafferArgv(args, { invokerId: getInvokerId(), invokedVia }),
+			buildGafferArgv(args, {
+				invokerId: telemetry.invokerId(),
+				invokedVia,
+			}),
+		getSpawnEnv: () => gafferSpawnEnv(telemetry.isOptedOut()),
 		stepProvider,
 		stateProvider,
 		statusProvider,
@@ -301,7 +306,7 @@ async function activateAfterTelemetry(
 			try {
 				const m = await tryFetchManifest(
 					workspaceCwd(),
-					getInvokerId(),
+					telemetry,
 					showManifestFailure,
 				);
 				latestManifest = m;
@@ -428,7 +433,7 @@ async function activateAfterTelemetry(
 				runProjection({
 					start: startSessionPalette,
 					workspaceCwd,
-					getInvokerId,
+					telemetry,
 				}),
 			),
 		),

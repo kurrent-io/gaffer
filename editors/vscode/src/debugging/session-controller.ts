@@ -50,6 +50,10 @@ export interface SessionControllerDeps {
 	/** Builds the full CLI argv. `invokedVia` is appended via
 	 * `--invoked-via=...` for telemetry-stitching at the CLI side. */
 	buildArgv: (args: string[], invokedVia: InvokedVia) => string[];
+	/** Env to hand to the spawned CLI, or `undefined` to inherit the
+	 * extension host's `process.env`. Resolved at spawn time so a
+	 * mid-session opt-out is honoured by the next `gaffer dev`/`debug`. */
+	getSpawnEnv: () => NodeJS.ProcessEnv | undefined;
 	stepProvider: StepProvider;
 	stateProvider: StateProvider;
 	statusProvider: StatusViewProvider;
@@ -72,6 +76,7 @@ export interface SessionControllerDeps {
 
 export class SessionController implements vscode.Disposable {
 	readonly #buildArgv: (args: string[], invokedVia: InvokedVia) => string[];
+	readonly #getSpawnEnv: () => NodeJS.ProcessEnv | undefined;
 	readonly #stepProvider: StepProvider;
 	readonly #stateProvider: StateProvider;
 	readonly #statusProvider: StatusViewProvider;
@@ -115,6 +120,7 @@ export class SessionController implements vscode.Disposable {
 
 	constructor(deps: SessionControllerDeps) {
 		this.#buildArgv = deps.buildArgv;
+		this.#getSpawnEnv = deps.getSpawnEnv;
 		this.#stepProvider = deps.stepProvider;
 		this.#stateProvider = deps.stateProvider;
 		this.#statusProvider = deps.statusProvider;
@@ -264,7 +270,11 @@ export class SessionController implements vscode.Disposable {
 		const ready = createDeferred<void>();
 		this.#startedReady = ready;
 
-		const session = this.#createSession(name, argv, { cwd: tomlDir });
+		const env = this.#getSpawnEnv();
+		const session = this.#createSession(name, argv, {
+			cwd: tomlDir,
+			...(env !== undefined && { env }),
+		});
 		this.#activeSession = session;
 
 		session.on("exit", async (msg) => {

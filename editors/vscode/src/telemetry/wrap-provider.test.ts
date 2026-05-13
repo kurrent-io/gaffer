@@ -18,6 +18,7 @@ function makeTelemetry(): { telemetry: Telemetry; emitted: Event[] } {
 		drain: async () => {},
 		refreshOptOut: async () => {},
 		invokerId: () => null,
+		isOptedOut: () => false,
 		reportException: (phase, err) => {
 			emitted.push({
 				name: "exception",

@@ -70,6 +70,13 @@ export interface Telemetry {
 	 * `--invoker-id`. Returns `null` when opt-out is active (we have
 	 * no identity to share) or when the facade fell back to no-op. */
 	invokerId(): string | null;
+	/** True iff the user has explicitly opted out (env-var cascade,
+	 * VS Code-level setting, or the first-run `[Disable]` click).
+	 * Distinct from `invokerId() === null`: a noop facade returned
+	 * because telemetry init failed (I/O glitch on globalStorageUri)
+	 * has no identity to share but the user hasn't opted out either,
+	 * so this returns false in that case. */
+	isOptedOut(): boolean;
 	/** Build + emit an exception envelope for `err`. No-op when opt-out
 	 * is active; never throws (any failure inside the report path is
 	 * swallowed so the caller's original error always propagates). */
@@ -85,7 +92,7 @@ export async function createTelemetry(
 		opts.log(
 			`telemetry: init failed, falling back to no-op: ${err instanceof Error ? err.message : String(err)}`,
 		);
-		return noopTelemetry();
+		return noopTelemetry(false);
 	}
 }
 
@@ -94,7 +101,7 @@ async function createTelemetryImpl(
 ): Promise<Telemetry> {
 	const initialConfig = await loadSafe(opts.storageDir);
 	if (currentOptOut(opts, initialConfig).disabled) {
-		return noopTelemetry();
+		return noopTelemetry(true);
 	}
 
 	const identity = await ensureIdentity(initialConfig, (patch) =>
@@ -144,6 +151,9 @@ async function createTelemetryImpl(
 		invokerId(): string | null {
 			return disabled ? null : identity.telemetryId;
 		},
+		isOptedOut(): boolean {
+			return disabled;
+		},
 		reportException(phase: Phase, err: unknown): void {
 			if (disabled) return;
 			try {
@@ -164,12 +174,13 @@ async function createTelemetryImpl(
 	};
 }
 
-function noopTelemetry(): Telemetry {
+function noopTelemetry(optedOut: boolean): Telemetry {
 	return {
 		emit: () => {},
 		drain: async () => {},
 		refreshOptOut: async () => {},
 		invokerId: () => null,
+		isOptedOut: () => optedOut,
 		reportException: () => {},
 	};
 }

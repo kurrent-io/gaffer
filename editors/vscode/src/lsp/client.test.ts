@@ -66,11 +66,10 @@ describe("startLanguageClient invokerId wiring", () => {
 	it("invokes spawn with --invoker-id when getInvokerId returns an id", async () => {
 		setTrusted(true);
 		spawnMock.mockImplementation(() => fakeChild());
-		startLanguageClient(
-			makeContext(),
-			() => true,
-			() => "abc-id",
-		);
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => "abc-id",
+			isOptedOut: () => false,
+		});
 		await flushAllMicrotasks();
 		await runFactory();
 		expect(spawnMock).toHaveBeenCalledTimes(1);
@@ -82,15 +81,48 @@ describe("startLanguageClient invokerId wiring", () => {
 	it("omits linkage flags when getInvokerId returns null (opt-out)", async () => {
 		setTrusted(true);
 		spawnMock.mockImplementation(() => fakeChild());
-		startLanguageClient(
-			makeContext(),
-			() => true,
-			() => null,
-		);
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => null,
+			isOptedOut: () => true,
+		});
 		await flushAllMicrotasks();
 		await runFactory();
 		const [, args] = spawnMock.mock.calls[0] ?? [];
 		expect(args).toEqual(["lsp"]);
+	});
+
+	it("injects GAFFER_TELEMETRY_OPTOUT=1 in the spawn env when opted out", async () => {
+		setTrusted(true);
+		spawnMock.mockImplementation(() => fakeChild());
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => null,
+			isOptedOut: () => true,
+		});
+		await flushAllMicrotasks();
+		await runFactory();
+		const opts = spawnMock.mock.calls[0]?.[2] as
+			| { env?: NodeJS.ProcessEnv }
+			| undefined;
+		expect(opts?.env?.GAFFER_TELEMETRY_OPTOUT).toBe("1");
+		// Inheritance: a representative parent-env key passes through so
+		// the child still sees PATH etc. Catches a regression that
+		// builds env from scratch and drops the process.env spread.
+		expect(opts?.env?.PATH).toBe(process.env.PATH);
+	});
+
+	it("omits the spawn env when the extension has a live identity (child inherits)", async () => {
+		setTrusted(true);
+		spawnMock.mockImplementation(() => fakeChild());
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => "abc-id",
+			isOptedOut: () => false,
+		});
+		await flushAllMicrotasks();
+		await runFactory();
+		const opts = spawnMock.mock.calls[0]?.[2] as
+			| { env?: NodeJS.ProcessEnv }
+			| undefined;
+		expect(opts?.env).toBeUndefined();
 	});
 
 	it("re-evaluates getInvokerId when vscode-languageclient restarts the server", async () => {
@@ -102,11 +134,10 @@ describe("startLanguageClient invokerId wiring", () => {
 		setTrusted(true);
 		spawnMock.mockImplementation(() => fakeChild());
 		let current: string | null = "id-1";
-		startLanguageClient(
-			makeContext(),
-			() => true,
-			() => current,
-		);
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => current,
+			isOptedOut: () => current === null,
+		});
 		await flushAllMicrotasks();
 		const c = getLanguageClient() as unknown as LanguageClient;
 		await (c.serverOptions as () => Promise<unknown>)(); // initial start
@@ -137,11 +168,10 @@ describe("startLanguageClient dispose-during-start race", () => {
 		spawnMock.mockImplementation(() => new EventEmitter());
 		const release = holdLspStart();
 		const ctx = makeContext();
-		startLanguageClient(
-			ctx,
-			() => true,
-			() => null,
-		);
+		startLanguageClient(ctx, () => true, {
+			invokerId: () => null,
+			isOptedOut: () => true,
+		});
 		await flushAllMicrotasks();
 		// The dispose-handle is the bare `{ dispose }` object
 		// spawnLanguageClient pushes; the other LSP-related subscriptions

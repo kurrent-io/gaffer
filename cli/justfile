@@ -1,33 +1,42 @@
 default:
     @just --list
 
+# Copy canonical files into the embed tree before go build/test sees
+# them. Today this is just the repo-root TELEMETRY.md, served by the
+# MCP server at gaffer://telemetry/info; the copy is gitignored so
+# there's a single tracked source of truth.
+[private]
+_resources:
+    cp ../TELEMETRY.md internal/mcpserver/resources/telemetry-info.gen.md
+
 # Build the CLI binary
-build:
+build: _resources
     CGO_ENABLED=1 go build -o gaffer .
 
 # Run tests
-test:
+test: _resources
     go test ./...
 
 # Run integration tests (requires KurrentDB)
-test-integration:
+test-integration: _resources
     go test -tags integration ./...
 
 # Run the CLI
-run *args:
+run *args: _resources
     CGO_ENABLED=1 go run . {{args}}
 
 # Format code and apply lint fixes
-fix:
+fix: _resources
     golangci-lint fmt
 
 # Run linter
-check:
+check: _resources
     golangci-lint run --allow-parallel-runners
 
 # Remove build artifacts
 clean: linux-x64::clean linux-arm64::clean darwin-x64::clean darwin-arm64::clean win32-x64::clean
     rm -f gaffer gaffer.exe
+    rm -f internal/mcpserver/resources/*.gen.md
 
 mod linux-x64 'native/linux-x64'
 mod linux-arm64 'native/linux-arm64'

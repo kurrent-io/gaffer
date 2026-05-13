@@ -58,6 +58,18 @@ func (s *Server) registerResources() {
 		Description: "Catalogue of KurrentDB upstream bugs gaffer reproduces for fidelity. Look here when a fatal error reports a compat.* code, or to see what bugs would fire for a given db_version.",
 		MIMEType:    "text/markdown",
 	}, s.trackedResource(dbVersionBugsResource))
+
+	// The repo-root TELEMETRY.md is the public telemetry contract;
+	// `just cli _resources` copies it to telemetry-info.gen.md (gitignored)
+	// before any go build/test/lint, so the embedded copy is always a
+	// build-step replica of the canonical file rather than a tracked
+	// duplicate that can drift.
+	s.mcp.AddResource(&mcp.Resource{
+		URI:         "gaffer://telemetry/info",
+		Name:        "telemetry-info",
+		Description: "Public telemetry notice. What gaffer collects, what it does not, how to opt out, and how to request data deletion. Read before answering a user's telemetry question.",
+		MIMEType:    "text/markdown",
+	}, s.trackedResource(staticResource("resources/telemetry-info.gen.md")))
 }
 
 // dbVersionBugsResource auto-generates a markdown reference from the runtime's

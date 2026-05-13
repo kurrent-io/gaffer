@@ -600,6 +600,31 @@ func TestResourceDbVersionBugs(t *testing.T) {
 	}
 }
 
+func TestResourceTelemetryInfo(t *testing.T) {
+	// telemetry-info.gen.md is produced by `just cli _resources` from
+	// repo-root TELEMETRY.md before any go build/test; if this test
+	// fails with "file not found" the recipe didn't run.
+	handler := staticResource("resources/telemetry-info.gen.md")
+	result, err := handler(context.Background(), &mcp.ReadResourceRequest{
+		Params: &mcp.ReadResourceParams{URI: "gaffer://telemetry/info"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Contents) != 1 {
+		t.Fatal("expected 1 resource content")
+	}
+	if got := result.Contents[0].MIMEType; got != "text/markdown" {
+		t.Errorf("expected text/markdown, got %q", got)
+	}
+	text := result.Contents[0].Text
+	for _, want := range []string{"Usage telemetry", "How to opt out", "How to delete your data", "privacy@kurrent.io"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("telemetry-info resource missing %q", want)
+		}
+	}
+}
+
 func TestRenderDbVersionBugsMarkdown_FixedInRendering(t *testing.T) {
 	// The "Fixed in: KurrentDB X" branch is dead at the registry level
 	// today. Test it directly.

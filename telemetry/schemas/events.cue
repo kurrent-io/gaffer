@@ -54,8 +54,12 @@ import "strings"
 	// Who triggered the run.
 	invoked_by: #InvokedBy
 
-	// Specific surface the invocation came through.
-	invoked_via: #InvokedVia
+	// Specific surface the invocation came through. Optional; when
+	// absent the spawner either didn't pass `--invoked-via` or no
+	// surface mapping was meaningful (e.g. an extension-internal
+	// `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on
+	// `invoked_by` first; `invoked_via` is the sub-breakdown.
+	invoked_via?: #InvokedVia
 }
 
 // InvokedBy is who triggered a CLI run.

@@ -20,10 +20,11 @@ import (
 // without reflection or generics; each generated End passes
 // pointers into its own tx.props.
 //
-// InvokedBy / InvokedVia defaults route through the Client so the
-// command-aware rule (mcp -> mcp_client / stdio) and the explicit
-// --invoked-by / --invoked-via overrides apply uniformly across
-// one-shot Emit and long-running Tx paths.
+// InvokedBy defaults route through the Client so the command-aware
+// rule (mcp -> mcp_client) and the explicit --invoked-by override
+// apply uniformly across one-shot Emit and long-running Tx paths.
+// InvokedVia is stamped only when the caller passed --invoked-via;
+// left nil otherwise so omitempty drops it from the wire.
 //
 // Outcome cascade (highest priority first):
 //   - explicit `*outcome != ""` from a prior tx.SetOutcome wins
@@ -37,7 +38,7 @@ func (c *Client) stampInvocationBase(
 	durationMs *RawDuration,
 	outcome *Outcome,
 	invokedBy *InvokedBy,
-	invokedVia *InvokedVia,
+	invokedVia **InvokedVia,
 	name CommandName,
 	ctx context.Context,
 	recovered any,
@@ -47,8 +48,9 @@ func (c *Client) stampInvocationBase(
 	if *invokedBy == "" {
 		*invokedBy = c.defaultInvokedBy(name)
 	}
-	if *invokedVia == "" {
-		*invokedVia = c.defaultInvokedVia(name)
+	if *invokedVia == nil && c.invocation.InvokedVia != "" {
+		v := c.invocation.InvokedVia
+		*invokedVia = &v
 	}
 	if *outcome == "" {
 		switch {

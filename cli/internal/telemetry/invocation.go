@@ -138,15 +138,3 @@ func (c *Client) defaultInvokedBy(name CommandName) InvokedBy {
 	}
 	return InvokedByDirect
 }
-
-// defaultInvokedVia mirrors defaultInvokedBy: explicit flag wins,
-// else mcp -> stdio, else terminal.
-func (c *Client) defaultInvokedVia(name CommandName) InvokedVia {
-	if c.invocation.InvokedVia != "" {
-		return c.invocation.InvokedVia
-	}
-	if name == CommandNameMCP {
-		return InvokedViaStdio
-	}
-	return InvokedViaTerminal
-}

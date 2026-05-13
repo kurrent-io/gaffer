@@ -292,8 +292,8 @@ type CommandInvokedProperties struct {
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
 	InvokedBy InvokedBy `json:"invoked_by"`
-	// Specific surface the invocation came through.
-	InvokedVia InvokedVia `json:"invoked_via"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
 }
 
 // VersionCommandInvokedProperties carries the property set for `gaffer version`.
@@ -309,8 +309,8 @@ type VersionCommandInvokedProperties struct {
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
 	InvokedBy InvokedBy `json:"invoked_by"`
-	// Specific surface the invocation came through.
-	InvokedVia InvokedVia `json:"invoked_via"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
 }
 
 // InitCommandInvokedProperties carries the property set for `gaffer init`.
@@ -326,8 +326,8 @@ type InitCommandInvokedProperties struct {
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
 	InvokedBy InvokedBy `json:"invoked_by"`
-	// Specific surface the invocation came through.
-	InvokedVia InvokedVia `json:"invoked_via"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
 }
 
 // ScaffoldCommandInvokedProperties carries the property set for `gaffer scaffold`.
@@ -343,8 +343,8 @@ type ScaffoldCommandInvokedProperties struct {
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
 	InvokedBy InvokedBy `json:"invoked_by"`
-	// Specific surface the invocation came through.
-	InvokedVia InvokedVia `json:"invoked_via"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
 }
 
 // InfoCommandInvokedProperties carries the property set for `gaffer info`.
@@ -360,8 +360,8 @@ type InfoCommandInvokedProperties struct {
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
 	InvokedBy InvokedBy `json:"invoked_by"`
-	// Specific surface the invocation came through.
-	InvokedVia InvokedVia `json:"invoked_via"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
 }
 
 // ManifestCommandInvokedProperties carries the property set for `gaffer manifest`.
@@ -377,8 +377,8 @@ type ManifestCommandInvokedProperties struct {
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
 	InvokedBy InvokedBy `json:"invoked_by"`
-	// Specific surface the invocation came through.
-	InvokedVia InvokedVia `json:"invoked_via"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
 	// Canonical gaffer feature labels exercised by the manifest (e.g. ["projections", "fixtures", "connection"]). Labels are stable gaffer-side names rather than raw TOML keys, so a field rename in the TOML schema doesn't silently change wire output. Section *presence* only; never contents (no paths, names, versions).
 	ManifestFeaturesUsed []string `json:"manifest_features_used,omitempty"`
 	// Bucketed count from manifest.
@@ -400,8 +400,8 @@ type DevCommandInvokedProperties struct {
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
 	InvokedBy InvokedBy `json:"invoked_by"`
-	// Specific surface the invocation came through.
-	InvokedVia InvokedVia `json:"invoked_via"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
 	// See ManifestCommandInvokedProperties.manifest_features_used.
 	ManifestFeaturesUsed []string `json:"manifest_features_used,omitempty"`
 	// Bucketed count from manifest.
@@ -498,8 +498,8 @@ type MCPCommandInvokedProperties struct {
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
 	InvokedBy InvokedBy `json:"invoked_by"`
-	// Specific surface the invocation came through.
-	InvokedVia InvokedVia `json:"invoked_via"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
 	// See ManifestCommandInvokedProperties.manifest_features_used.
 	ManifestFeaturesUsed []string `json:"manifest_features_used,omitempty"`
 	// Bucketed. Total tool invocations across the session.
@@ -576,8 +576,8 @@ type LSPCommandInvokedProperties struct {
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
 	InvokedBy InvokedBy `json:"invoked_by"`
-	// Specific surface the invocation came through.
-	InvokedVia InvokedVia `json:"invoked_via"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
 	// Bucketed total code-lens requests served.
 	CodeLensRequestCount *RawCount `json:"code_lens_request_count,omitempty"`
 	// Bucketed total diagnostic publishes.
@@ -634,8 +634,8 @@ type DebugCommandInvokedProperties struct {
 	Outcome Outcome `json:"outcome"`
 	// Who triggered the run.
 	InvokedBy InvokedBy `json:"invoked_by"`
-	// Specific surface the invocation came through.
-	InvokedVia InvokedVia `json:"invoked_via"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
 	// Bucketed. Initial breakpoints set by the client.
 	BreakpointCount *RawCount `json:"breakpoint_count,omitempty"`
 	// Bucketed. Total step requests served.

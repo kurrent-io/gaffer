@@ -153,8 +153,8 @@ func TestDevTx_EndStampsBaseAndEmitsOnHappyPath(t *testing.T) {
 	if props.InvokedBy != InvokedByDirect {
 		t.Errorf("InvokedBy = %q, want direct", props.InvokedBy)
 	}
-	if props.InvokedVia != InvokedViaTerminal {
-		t.Errorf("InvokedVia = %q, want terminal", props.InvokedVia)
+	if props.InvokedVia != nil {
+		t.Errorf("InvokedVia = %v, want nil (no flag, no default)", *props.InvokedVia)
 	}
 }
 

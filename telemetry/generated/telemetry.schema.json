@@ -126,8 +126,7 @@
         "command",
         "duration_ms",
         "outcome",
-        "invoked_by",
-        "invoked_via"
+        "invoked_by"
       ],
       "properties": {
         "command": {

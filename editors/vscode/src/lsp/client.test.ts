@@ -1,13 +1,29 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	CloseAction,
 	ErrorAction,
+	LanguageClient,
 } from "../../test/__mocks__/vscode-languageclient-node.js";
-import { makeErrorHandler } from "./client.js";
+import {
+	makeErrorHandler,
+	getLanguageClient,
+	startLanguageClient,
+	stopLanguageClient,
+} from "./client.js";
+import { flushAllMicrotasks } from "../../test/testutil/promise.js";
+import { makeContext } from "../../test/testutil/fake-context.js";
 import {
 	getShownMessages,
 	resetVscode,
+	setTrusted,
 } from "../../test/testutil/vscode-state.js";
+
+// Stub child_process.spawn so the LSP factory doesn't try to fork a
+// real `gaffer` binary in tests. Returns a no-op EventEmitter shaped
+// like ChildProcess; tests inspect `spawn.mock.calls` for argv.
+const spawnMock = vi.hoisted(() => vi.fn());
+vi.mock("node:child_process", () => ({ spawn: spawnMock }));
 
 afterEach(() => {
 	resetVscode();
@@ -25,6 +41,78 @@ const stubChannel = {
 	show: () => {},
 	dispose: () => {},
 } as unknown as Parameters<typeof makeErrorHandler>[0];
+
+describe("startLanguageClient invokerId wiring", () => {
+	afterEach(async () => {
+		await stopLanguageClient();
+		resetVscode();
+		spawnMock.mockReset();
+	});
+
+	function fakeChild(): EventEmitter {
+		return new EventEmitter();
+	}
+
+	async function runFactory(): Promise<void> {
+		const c = getLanguageClient() as LanguageClient | undefined;
+		if (!c) throw new Error("expected a LanguageClient");
+		const factory = c.serverOptions as () => Promise<unknown>;
+		await factory();
+	}
+
+	it("invokes spawn with --invoker-id when getInvokerId returns an id", async () => {
+		setTrusted(true);
+		spawnMock.mockImplementation(() => fakeChild());
+		startLanguageClient(
+			makeContext(),
+			() => true,
+			() => "abc-id",
+		);
+		await flushAllMicrotasks();
+		await runFactory();
+		expect(spawnMock).toHaveBeenCalledTimes(1);
+		const [cmd, args] = spawnMock.mock.calls[0] ?? [];
+		expect(cmd).toBe("gaffer");
+		expect(args).toEqual(["--invoker-id=abc-id", "--invoked-by=vscode", "lsp"]);
+	});
+
+	it("omits linkage flags when getInvokerId returns null (opt-out)", async () => {
+		setTrusted(true);
+		spawnMock.mockImplementation(() => fakeChild());
+		startLanguageClient(
+			makeContext(),
+			() => true,
+			() => null,
+		);
+		await flushAllMicrotasks();
+		await runFactory();
+		const [, args] = spawnMock.mock.calls[0] ?? [];
+		expect(args).toEqual(["lsp"]);
+	});
+
+	it("re-evaluates getInvokerId on every (re)spawn (auto-restart safe)", async () => {
+		// Simulates vscode-languageclient's CloseAction.Restart path:
+		// it calls the ServerOptions factory again. A mid-session
+		// opt-out flips invokerId between the two calls, and the
+		// second spawn must omit the flag.
+		setTrusted(true);
+		spawnMock.mockImplementation(() => fakeChild());
+		let current: string | null = "id-1";
+		startLanguageClient(
+			makeContext(),
+			() => true,
+			() => current,
+		);
+		await flushAllMicrotasks();
+		await runFactory();
+		current = null;
+		await runFactory();
+		const firstArgs = spawnMock.mock.calls[0]?.[1] as string[];
+		const secondArgs = spawnMock.mock.calls[1]?.[1] as string[];
+		expect(firstArgs).toContain("--invoker-id=id-1");
+		expect(secondArgs).toEqual(["lsp"]);
+	});
+});
 
 describe("makeErrorHandler.closed restart budget", () => {
 	it("returns Restart for the first 4 closes within the window", async () => {

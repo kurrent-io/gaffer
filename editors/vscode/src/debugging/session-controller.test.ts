@@ -92,7 +92,11 @@ function makeHarness(): Harness {
 		return undefined;
 	});
 	const controller = new SessionController({
-		buildArgv: (args) => ["gaffer", ...args],
+		buildArgv: (args, invokedVia) => [
+			"gaffer",
+			...args,
+			`--invoked-via=${invokedVia}`,
+		],
 		stepProvider: providers.step,
 		stateProvider: providers.state,
 		statusProvider: providers.status,
@@ -129,10 +133,13 @@ async function startUntilWaitForDebug(
 	h: Harness,
 	argsOverride: Partial<DebugProjectionArgs> = {},
 ): Promise<{ startPromise: Promise<void>; session: FakeSession }> {
-	const startPromise = h.controller.start({
-		...projectionArgs,
-		...argsOverride,
-	});
+	const startPromise = h.controller.start(
+		{
+			...projectionArgs,
+			...argsOverride,
+		},
+		"code_lens",
+	);
 	await flushAllMicrotasks();
 	const session = h.getActiveSession();
 	if (!session) throw new Error("expected createSession to have been called");
@@ -314,7 +321,7 @@ describe("SessionController.start - guards", () => {
 	it("does not create a session when workspace is untrusted; shows trust warning", async () => {
 		setTrusted(false);
 		const h = makeHarness();
-		await h.controller.start(projectionArgs);
+		await h.controller.start(projectionArgs, "code_lens");
 		expect(h.getActiveSession()).toBeNull();
 		expect(h.pushed).toEqual([]);
 	});
@@ -329,7 +336,7 @@ describe("SessionController.start - guards", () => {
 			name: "other",
 			tomlUri: vscode.Uri.file("/p/other/gaffer.toml"),
 		};
-		const secondPromise = h.controller.start(otherArgs);
+		const secondPromise = h.controller.start(otherArgs, "code_lens");
 		// Let stop() interrupt the in-flight first start by rejecting its
 		// pending waitForDebug, so the first start can unwind.
 		first.session.rejectDebug(new Error("aborted by restart"));
@@ -355,7 +362,7 @@ describe("SessionController.start - guards", () => {
 			name: "other",
 			tomlUri: vscode.Uri.file("/p/other/gaffer.toml"),
 		};
-		const secondPromise = h.controller.start(otherArgs);
+		const secondPromise = h.controller.start(otherArgs, "code_lens");
 		await flushAllMicrotasks();
 		const newSession = h.getActiveSession();
 		expect(newSession).not.toBe(first);
@@ -373,10 +380,13 @@ describe("SessionController.start - guards", () => {
 		// launches with --fixture happy.
 		const h = makeHarness();
 		const { session: first } = await startToRunning(h);
-		const secondPromise = h.controller.start({
-			...projectionArgs,
-			fixture: "happy",
-		});
+		const secondPromise = h.controller.start(
+			{
+				...projectionArgs,
+				fixture: "happy",
+			},
+			"code_lens",
+		);
 		await flushAllMicrotasks();
 		const newSession = h.getActiveSession();
 		expect(newSession).not.toBe(first);

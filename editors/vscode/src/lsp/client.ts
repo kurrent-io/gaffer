@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 import {
 	CloseAction,
@@ -10,7 +11,6 @@ import {
 	type Message,
 	RevealOutputChannelOn,
 	type ServerOptions,
-	TransportKind,
 } from "vscode-languageclient/node";
 import { buildGafferArgv } from "../discovery/cli.js";
 import { log } from "../output.js";
@@ -53,6 +53,7 @@ let trySpawn: () => void = () => {};
 export function startLanguageClient(
 	context: vscode.ExtensionContext,
 	isManifestAvailable: () => boolean,
+	getInvokerId: () => string | null,
 	onReady?: (client: LanguageClient) => void,
 ): void {
 	trySpawn = (): void => {
@@ -65,7 +66,7 @@ export function startLanguageClient(
 			log("LSP client: manifest unavailable, deferring spawn");
 			return;
 		}
-		void spawnLanguageClient(context, onReady);
+		void spawnLanguageClient(context, getInvokerId, onReady);
 	};
 	trySpawn();
 	context.subscriptions.push(
@@ -88,18 +89,28 @@ export function retryStartLanguageClient(): void {
 
 async function spawnLanguageClient(
 	context: vscode.ExtensionContext,
+	getInvokerId: () => string | null,
 	onReady?: (client: LanguageClient) => void,
 ): Promise<void> {
-	const argv = buildGafferArgv(["lsp"]);
-	const command = argv[0];
-	if (command === undefined) {
+	// Bail before construction when gaffer.command is empty so we
+	// don't sit with a never-startable LanguageClient.
+	if (
+		buildGafferArgv(["lsp"], { invokerId: getInvokerId() })[0] === undefined
+	) {
 		log("LSP client: empty gaffer.command, skipping spawn");
 		return;
 	}
-	const args = argv.slice(1);
-	const serverOptions: ServerOptions = {
-		run: { command, args, transport: TransportKind.stdio },
-		debug: { command, args, transport: TransportKind.stdio },
+	// Factory-form ServerOptions: vscode-languageclient invokes it on
+	// every start AND on every CloseAction.Restart, so a mid-session
+	// opt-out (or a gaffer.command change) is picked up by auto-
+	// restarts without our intervention.
+	const serverOptions: ServerOptions = () => {
+		const argv = buildGafferArgv(["lsp"], { invokerId: getInvokerId() });
+		const command = argv[0];
+		if (command === undefined) {
+			throw new Error("LSP client: empty gaffer.command");
+		}
+		return Promise.resolve(spawn(command, argv.slice(1)));
 	};
 	const channel = vscode.window.createOutputChannel("Gaffer LSP");
 	context.subscriptions.push(channel);

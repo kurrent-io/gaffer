@@ -29,6 +29,9 @@ export interface RunProjectionDeps {
 	// First workspace folder's fsPath for the manifest fetch's cwd.
 	// Returns undefined for single-buffer sessions.
 	workspaceCwd: () => string | undefined;
+	// Per-install extension emitter_id for the manifest fetch's
+	// --invoker-id; null when opted out.
+	getInvokerId: () => string | null;
 }
 
 export function runProjection(deps: RunProjectionDeps): () => Promise<void> {
@@ -67,6 +70,7 @@ export function runProjection(deps: RunProjectionDeps): () => Promise<void> {
 		if (fixture === undefined) return;
 		const manifest = await tryFetchManifest(
 			deps.workspaceCwd(),
+			deps.getInvokerId(),
 			showManifestFailure,
 		);
 		if (!manifest) return;

@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { load, save } from "./config.js";
-import { createTelemetry } from "./facade.js";
+import { createTelemetry, peekInvokerId } from "./facade.js";
 
 const activatedEvent: ExtensionActivated = {
 	name: "extension_activated",
@@ -99,6 +99,33 @@ describe("createTelemetry", () => {
 		const persisted = await load(dir);
 		expect(persisted.telemetry_id).toMatch(/^[0-9a-f-]{36}$/);
 		expect(persisted.salt).toMatch(/^[0-9a-f-]{36}$/);
+	});
+
+	it("invokerId() returns the per-install telemetry_id on a live handle", async () => {
+		const seeded = {
+			telemetry_id: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
+			salt: "11111111-2222-3333-4444-555555555555",
+		};
+		await save(dir, seeded);
+		const telemetry = await createTelemetry(permissiveOpts());
+		expect(telemetry.invokerId()).toBe(seeded.telemetry_id);
+	});
+
+	it("invokerId() returns null when opted out (no identity to share)", async () => {
+		const telemetry = await createTelemetry({
+			...permissiveOpts(),
+			env: { DO_NOT_TRACK: "1" } as NodeJS.ProcessEnv,
+		});
+		expect(telemetry.invokerId()).toBeNull();
+	});
+
+	it("invokerId() returns null after a mid-session refreshOptOut latches disabled", async () => {
+		const telemetry = await createTelemetry(permissiveOpts());
+		expect(telemetry.invokerId()).not.toBeNull();
+		const cur = await load(dir);
+		await save(dir, { ...cur, telemetry_enabled: false, disclosed: true });
+		await telemetry.refreshOptOut();
+		expect(telemetry.invokerId()).toBeNull();
 	});
 
 	it("reuses a persisted identity on subsequent activations", async () => {
@@ -222,5 +249,61 @@ describe("createTelemetry", () => {
 		release();
 		await drainPromise;
 		expect(settled).toBe(true);
+	});
+});
+
+describe("peekInvokerId", () => {
+	const noEnv = {} as NodeJS.ProcessEnv;
+
+	it("returns the persisted telemetry_id when not opted out", async () => {
+		await save(dir, {
+			telemetry_id: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
+			salt: "11111111-2222-3333-4444-555555555555",
+		});
+		const got = await peekInvokerId({
+			storageDir: dir,
+			env: noEnv,
+			vscodeTelemetryLevel: "all",
+		});
+		expect(got).toBe("8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02");
+	});
+
+	it("returns null when opted out via env (no identity shared)", async () => {
+		await save(dir, {
+			telemetry_id: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
+			salt: "11111111-2222-3333-4444-555555555555",
+		});
+		const got = await peekInvokerId({
+			storageDir: dir,
+			env: { DO_NOT_TRACK: "1" } as NodeJS.ProcessEnv,
+			vscodeTelemetryLevel: "all",
+		});
+		expect(got).toBeNull();
+	});
+
+	it("returns null when no identity is on disk yet (cold install)", async () => {
+		const got = await peekInvokerId({
+			storageDir: dir,
+			env: noEnv,
+			vscodeTelemetryLevel: "all",
+		});
+		expect(got).toBeNull();
+	});
+
+	it("returns null on I/O failure (unreadable telemetry.json)", async () => {
+		if (process.platform === "win32" || process.getuid?.() === 0) return;
+		const file = path.join(dir, "telemetry.json");
+		fs.writeFileSync(file, "{}");
+		fs.chmodSync(file, 0o000);
+		try {
+			const got = await peekInvokerId({
+				storageDir: dir,
+				env: noEnv,
+				vscodeTelemetryLevel: "all",
+			});
+			expect(got).toBeNull();
+		} finally {
+			fs.chmodSync(file, 0o600);
+		}
 	});
 });

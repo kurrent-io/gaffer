@@ -36,39 +36,39 @@ describe("GafferMcpProvider", () => {
 
 	it("returns [] when the workspace is untrusted", () => {
 		setTrusted(false);
-		const provider = new GafferMcpProvider();
+		const provider = new GafferMcpProvider(() => null);
 		expect(provider.provideMcpServerDefinitions(token)).toEqual([]);
 	});
 
 	it("returns [] when no workspace folders are open", () => {
 		setWorkspaceFolders([]);
-		const provider = new GafferMcpProvider();
+		const provider = new GafferMcpProvider(() => null);
 		expect(provider.provideMcpServerDefinitions(token)).toEqual([]);
 	});
 
 	it("returns one definition per workspace folder", () => {
 		setWorkspaceFolders([makeFolder("a", "/ws/a"), makeFolder("b", "/ws/b")]);
-		const provider = new GafferMcpProvider();
+		const provider = new GafferMcpProvider(() => null);
 		const defs = provider.provideMcpServerDefinitions(token);
 		expect(defs).toHaveLength(2);
 	});
 
 	it("uses the folder uri as cwd", () => {
-		const provider = new GafferMcpProvider();
+		const provider = new GafferMcpProvider(() => null);
 		const defs = provider.provideMcpServerDefinitions(token);
 		expect(defs[0]?.cwd).toBeInstanceOf(vscode.Uri);
 		expect(defs[0]?.cwd?.fsPath).toBe("/ws/proj");
 	});
 
 	it("constructs definitions with empty env and undefined version", () => {
-		const provider = new GafferMcpProvider();
+		const provider = new GafferMcpProvider(() => null);
 		const defs = provider.provideMcpServerDefinitions(token);
 		expect(defs[0]?.env).toEqual({});
 		expect(defs[0]?.version).toBeUndefined();
 	});
 
 	it("labels single-folder workspaces 'Gaffer'", () => {
-		const provider = new GafferMcpProvider();
+		const provider = new GafferMcpProvider(() => null);
 		const defs = provider.provideMcpServerDefinitions(token);
 		expect(defs[0]?.label).toBe("Gaffer");
 	});
@@ -78,7 +78,7 @@ describe("GafferMcpProvider", () => {
 			makeFolder("alpha", "/ws/a"),
 			makeFolder("beta", "/ws/b"),
 		]);
-		const provider = new GafferMcpProvider();
+		const provider = new GafferMcpProvider(() => null);
 		const defs = provider.provideMcpServerDefinitions(token);
 		expect(defs.map((d) => d.label)).toEqual([
 			"Gaffer (alpha)",
@@ -90,14 +90,45 @@ describe("GafferMcpProvider", () => {
 		setConfiguration("gaffer", "command", {
 			globalValue: ["/usr/local/bin/gaffer", "--quiet"],
 		});
-		const provider = new GafferMcpProvider();
+		const provider = new GafferMcpProvider(() => null);
 		const defs = provider.provideMcpServerDefinitions(token);
 		expect(defs[0]?.command).toBe("/usr/local/bin/gaffer");
 		expect(defs[0]?.args).toEqual(["--quiet", "mcp"]);
 	});
 
+	it("threads --invoker-id and --invoked-via=mcp_provider when invokerId is set", () => {
+		const provider = new GafferMcpProvider(() => "abc-id");
+		const defs = provider.provideMcpServerDefinitions(token);
+		expect(defs[0]?.args).toEqual([
+			"--invoker-id=abc-id",
+			"--invoked-by=vscode",
+			"--invoked-via=mcp_provider",
+			"mcp",
+		]);
+	});
+
+	it("omits linkage flags when invokerId resolves to null (opt-out)", () => {
+		const provider = new GafferMcpProvider(() => null);
+		const defs = provider.provideMcpServerDefinitions(token);
+		expect(defs[0]?.args).toEqual(["mcp"]);
+	});
+
+	it("re-reads invokerId on every provideMcpServerDefinitions call", () => {
+		// Reflects mid-session [Disable] click: invokerId flips from
+		// id-1 to null and the next definition omits the flags.
+		let current: string | null = "id-1";
+		const provider = new GafferMcpProvider(() => current);
+		expect(provider.provideMcpServerDefinitions(token)[0]?.args).toContain(
+			"--invoker-id=id-1",
+		);
+		current = null;
+		expect(provider.provideMcpServerDefinitions(token)[0]?.args).toEqual([
+			"mcp",
+		]);
+	});
+
 	it("fires onDidChangeMcpServerDefinitions on refresh()", () => {
-		const provider = new GafferMcpProvider();
+		const provider = new GafferMcpProvider(() => null);
 		const listener = vi.fn();
 		provider.onDidChangeMcpServerDefinitions(listener);
 		provider.refresh();
@@ -105,7 +136,7 @@ describe("GafferMcpProvider", () => {
 	});
 
 	it("stops firing after the listener-disposable is disposed", () => {
-		const provider = new GafferMcpProvider();
+		const provider = new GafferMcpProvider(() => null);
 		const listener = vi.fn();
 		const disp = provider.onDidChangeMcpServerDefinitions(listener);
 		disp.dispose();
@@ -114,7 +145,7 @@ describe("GafferMcpProvider", () => {
 	});
 
 	it("stops firing after dispose()", () => {
-		const provider = new GafferMcpProvider();
+		const provider = new GafferMcpProvider(() => null);
 		const listener = vi.fn();
 		provider.onDidChangeMcpServerDefinitions(listener);
 		provider.dispose();

@@ -11,6 +11,11 @@ import { buildGafferArgv } from "../discovery/cli.js";
 export class GafferMcpProvider implements vscode.McpServerDefinitionProvider<vscode.McpStdioServerDefinition> {
 	readonly #onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChangeMcpServerDefinitions = this.#onDidChange.event;
+	readonly #getInvokerId: () => string | null;
+
+	constructor(getInvokerId: () => string | null) {
+		this.#getInvokerId = getInvokerId;
+	}
 
 	dispose(): void {
 		this.#onDidChange.dispose();
@@ -34,7 +39,10 @@ export class GafferMcpProvider implements vscode.McpServerDefinitionProvider<vsc
 		// argv[0] is unreachable-undefined (buildGafferArgv falls back to
 		// ["gaffer"] when User scope is empty), but noUncheckedIndexedAccess
 		// requires the narrow.
-		const argv = buildGafferArgv(["mcp"]);
+		const argv = buildGafferArgv(["mcp"], {
+			invokerId: this.#getInvokerId(),
+			invokedVia: "mcp_provider",
+		});
 		const command = argv[0];
 		if (command === undefined) return [];
 		const args = argv.slice(1);

@@ -26,7 +26,7 @@ import {
 } from "./notifications.js";
 import type { ExtensionActivatedProperties } from "@kurrent/gaffer-telemetry";
 import { bucketCliVersion, bucketDuration } from "./telemetry/buckets.js";
-import { loadSafe, save } from "./telemetry/config.js";
+import { loadSafe } from "./telemetry/config.js";
 import { detectEditor } from "./telemetry/editor.js";
 import { createTelemetry, type Telemetry } from "./telemetry/facade.js";
 import { classifyManifestError } from "./telemetry/manifest-error.js";
@@ -441,10 +441,6 @@ async function activateAfterTelemetry(
 			"gaffer.dismissDiagnostic",
 			wrap((uri: vscode.Uri) => clearDiagnosticsForUri(uri)),
 		),
-		vscode.commands.registerCommand(
-			"gaffer.resetTelemetryId",
-			wrap(() => resetTelemetryId(context.globalStorageUri.fsPath)),
-		),
 	);
 
 	context.subscriptions.push(
@@ -452,6 +448,20 @@ async function activateAfterTelemetry(
 			if (e.affectsConfiguration("gaffer.command")) {
 				log("gaffer.command setting changed");
 				await reloadManifest();
+			}
+			if (e.affectsConfiguration("telemetry.telemetryLevel")) {
+				// The user can flip the global telemetry level mid-session
+				// without a reload. refreshOptOut re-reads the cascade and
+				// flips the facade's one-way latch if the new level is no
+				// longer "all". (Re-enabling needs a fresh activation -
+				// the latch is one-way.)
+				await telemetry
+					.refreshOptOut()
+					.catch((err: unknown) =>
+						log(
+							`telemetry: refreshOptOut failed: ${err instanceof Error ? err.message : String(err)}`,
+						),
+					);
 			}
 		}),
 		vscode.workspace.onDidGrantWorkspaceTrust(async () => {
@@ -533,40 +543,6 @@ async function runTelemetryDisclosure(
 	} catch (err) {
 		log(
 			`telemetry disclosure failed: ${err instanceof Error ? err.message : String(err)}`,
-		);
-	}
-}
-
-// User-facing reset of the per-install `telemetry_id`. Confirms first
-// (destructive: dashboards stop stitching past activity to future
-// runs), then drops the id from the persisted config. The next
-// activation reads the (now-missing) id and mints a fresh one. The
-// in-process facade keeps using the old id until VS Code reloads -
-// telling the user to reload the window is more honest than silently
-// re-minting under their feet.
-async function resetTelemetryId(storageDir: string): Promise<void> {
-	const RESET = "Reset";
-	const choice = await vscode.window.showWarningMessage(
-		"Reset gaffer telemetry id? Future activations will mint a fresh id; past activity stays associated with the current id on the server.",
-		{ modal: true },
-		RESET,
-	);
-	if (choice !== RESET) return;
-	try {
-		const current = await loadSafe(storageDir);
-		const { telemetry_id: _, ...rest } = current;
-		void _;
-		// Rewrite without the id field. Use save directly (not editConfig)
-		// to clear rather than merge.
-		await save(storageDir, rest);
-		await vscode.window.showInformationMessage(
-			"Telemetry id reset. Reload the window for the new id to take effect.",
-		);
-	} catch (err) {
-		const msg = err instanceof Error ? err.message : String(err);
-		log(`telemetry id reset failed: ${msg}`);
-		await vscode.window.showErrorMessage(
-			`Failed to reset telemetry id: ${msg}`,
 		);
 	}
 }

@@ -24,7 +24,16 @@ const BUTTON_DISMISS = "Dismiss";
 
 export const showManifestFailure = (err: unknown): Thenable<unknown> => {
 	const raw = err instanceof Error ? err.message : String(err);
-	const truncated = raw.length > 200 ? `${raw.slice(0, 200)}…` : raw;
+	// execFileAsync stashes stderr on err.cause.stderr (kept off
+	// err.message so telemetry never accidentally ships local paths).
+	const cause =
+		err instanceof Error && typeof err.cause === "object" ? err.cause : null;
+	const stderr =
+		cause !== null && typeof (cause as { stderr?: unknown }).stderr === "string"
+			? (cause as { stderr: string }).stderr
+			: "";
+	const detail = stderr ? `${raw} (stderr: ${stderr})` : raw;
+	const truncated = detail.length > 200 ? `${detail.slice(0, 200)}…` : detail;
 	return vscode.window
 		.showErrorMessage(
 			`Gaffer CLI failed: ${truncated}`,

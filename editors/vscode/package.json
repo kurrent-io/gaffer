@@ -112,10 +112,6 @@
 			{
 				"command": "gaffer.stopDebug",
 				"title": "Gaffer: Stop Projection"
-			},
-			{
-				"command": "gaffer.resetTelemetryId",
-				"title": "Gaffer: Reset Telemetry Id"
 			}
 		],
 		"debuggers": [

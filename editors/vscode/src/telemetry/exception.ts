@@ -132,18 +132,39 @@ function classifyFrame(
 	raw: RawFrame,
 	args: { extensionPath: string; workspaceFolders: readonly string[] },
 ): Frame | null {
+	// Normalise `file://` URL filenames (V8 emits these for ESM and
+	// import.meta.url-derived call sites) so the path-prefix scrub
+	// below catches them on either side of the URL/path divide.
+	const file = normaliseFilename(raw.filename);
 	// User code: drop entirely. The projection file (or any workspace
 	// JS the extension somehow ended up running) is the user's
 	// content; we never put it on the wire.
 	for (const folder of args.workspaceFolders) {
-		if (folder !== "" && isUnderDir(raw.filename, folder)) return null;
+		if (folder !== "" && isUnderDir(file, folder)) return null;
 	}
-	const inApp = isUnderDir(raw.filename, args.extensionPath);
-	const filename = basename(raw.filename);
+	const inApp = isUnderDir(file, args.extensionPath);
+	const filename = basename(file);
 	const frame: Frame = { filename, in_app: inApp };
 	if (raw.function !== undefined) frame.function = raw.function;
 	if (raw.lineno !== undefined) frame.lineno = raw.lineno;
 	return frame;
+}
+
+/** Convert `file:///home/user/foo.js` to `/home/user/foo.js`. Leaves
+ * non-URL filenames (`node:internal/...`, `/abs/path`, `webpack:...`)
+ * untouched. Without this the workspace-folder scrub would miss any
+ * frame V8 emitted as a URL. */
+function normaliseFilename(filename: string): string {
+	if (filename.startsWith("file://")) {
+		try {
+			return new URL(filename).pathname;
+		} catch {
+			// Malformed URL - leave as-is rather than risk losing the
+			// scrub on a string that happened to start with file://.
+			return filename;
+		}
+	}
+	return filename;
 }
 
 /** True when `file` is the directory `dir` or any descendant. Plain

@@ -121,7 +121,6 @@ describe("activate registrations", () => {
 			"gaffer.debugProjectionPick",
 			"gaffer.dismissDiagnostic",
 			"gaffer.noop",
-			"gaffer.resetTelemetryId",
 			"gaffer.runProjection",
 			"gaffer.stopDebug",
 		]);

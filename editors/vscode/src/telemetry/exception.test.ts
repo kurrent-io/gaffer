@@ -228,6 +228,24 @@ describe("buildException", () => {
 		expect(entry?.stacktrace.frames[0]?.in_app).toBe(false);
 	});
 
+	it("drops file:// URL frames that resolve under a workspace folder", () => {
+		// V8 emits `file:///abs/path/foo.js` for ESM frames; without
+		// URL normalisation the path-prefix scrub would miss them.
+		const out = buildException({
+			err: makeError({
+				stack: `    at userCode (file:///home/dev/proj/src/secret.js:7:1)
+    at activate (${EXT_PATH}/dist/extension.js:42:13)`,
+			}),
+			phase: "event_processing",
+			extensionPath: EXT_PATH,
+			workspaceFolders: ["/home/dev/proj"],
+		});
+		const [entry] = out.properties.exceptions;
+		expect(entry?.stacktrace.frames.map((f) => f.filename)).toEqual([
+			"extension.js",
+		]);
+	});
+
 	it("doesn't drop a sibling directory that shares a prefix with a workspace folder", () => {
 		// /home/dev as the workspace must NOT match /home/development-project/...
 		// Plain startsWith would incorrectly drop the second frame; the

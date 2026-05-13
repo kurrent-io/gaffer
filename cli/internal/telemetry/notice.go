@@ -267,14 +267,13 @@ func EnsureIdentity(
 // [telemetry] within a process - no other field is read here, no
 // other code path writes Disclosed.
 //
-// Concurrent first runs (two CLI processes on a fresh install in
-// parallel) may both print the banner: the loser's race-recovery
-// Reload inside MintAndPersist captures the disk state before the
-// winner has latched Disclosed, so both call WriteNotice. The
-// O_EXCL + temp+rename Save makes the on-disk Disclosed=true write
+// Concurrent disclosure attempts (two CLI processes with identity
+// already persisted but Disclosed still false, hitting the deferred-
+// disclosure branch at the same time) may both print the banner.
+// The temp+rename Save makes the on-disk Disclosed=true write
 // last-writer-wins safe; duplicate banner is accepted as the cost
 // of avoiding a file-level lock around a single human-readable
-// message. See TestEnsureIdentity_ConcurrentMintsConvergeOnLatchedDisclosure.
+// message. See TestEnsureIdentity_ConcurrentDeferredDisclosureConvergesOnLatch.
 func maybeShowDisclosure(store *userconfig.Store, inv Invocation, noticeOut io.Writer) {
 	if !shouldShowDisclosureNotice(store, inv, noticeOut) {
 		return

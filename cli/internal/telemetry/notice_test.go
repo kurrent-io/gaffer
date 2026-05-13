@@ -574,23 +574,36 @@ func TestEnsureIdentity_RaceLoserAdoptsLatchedDisclosure(t *testing.T) {
 	}
 }
 
-func TestEnsureIdentity_ConcurrentMintsConvergeOnLatchedDisclosure(t *testing.T) {
-	// True concurrent first mint: two processes load an empty store
-	// at the same time, both reach maybeShowDisclosure. Because
-	// MintAndPersist serialises on O_EXCL, exactly one mints and
-	// one race-recovers; both then independently check Disclosed
-	// and may or may not print depending on timing of the latch
-	// write versus the loser's Reload.
+func TestEnsureIdentity_ConcurrentDeferredDisclosureConvergesOnLatch(t *testing.T) {
+	// Pre-seed identity without Disclosed so the deferred-disclosure
+	// path is what's under contention here, not MintAndPersist. (Two
+	// truly-concurrent fresh mints would also exercise an unrelated
+	// race in MintAndPersist's Reload window between O_EXCL succeeding
+	// and the winner's content reaching disk.) Both goroutines call
+	// EnsureIdentity through a barrier so they reach
+	// maybeShowDisclosure as close to simultaneously as the runtime
+	// allows.
 	//
-	// We don't assert a specific banner count - duplicate banner is
-	// accepted as the cost of avoiding a file-level lock around a
-	// single human-readable message. The invariants we DO lock in:
-	//   - both calls return the same identity (race winner adopted),
-	//   - at least one banner was written (the user wasn't silenced),
+	// Invariants:
+	//   - both calls return the same identity (the pre-seeded one),
+	//   - at least one banner was written (the user is not silenced),
 	//   - on-disk Disclosed=true after both complete (no permanently-
 	//     pending state).
+	//
+	// We deliberately do NOT assert a specific banner count -
+	// duplicate banner is accepted as the cost of avoiding a file-
+	// level lock around a single human-readable message.
 	pretendTTY(t)
 	dir := t.TempDir()
+	seed, _ := userconfig.Load(dir)
+	id, _ := MintIdentity()
+	StageIdentity(seed, id)
+	// Identity but no Disclosed: simulates a prior suppressed mint
+	// (non-TTY CI, extension spawn) that's now owed disclosure.
+	if err := seed.Save(); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
 	a, _ := userconfig.Load(dir)
 	b, _ := userconfig.Load(dir)
 
@@ -606,15 +619,15 @@ func TestEnsureIdentity_ConcurrentMintsConvergeOnLatchedDisclosure(t *testing.T)
 	go func() {
 		defer wg.Done()
 		<-start
-		id, err := EnsureIdentity(a, Resolved{}, Invocation{}, &results[0].buf)
-		results[0].id = id
+		rid, err := EnsureIdentity(a, Resolved{}, Invocation{}, &results[0].buf)
+		results[0].id = rid
 		results[0].err = err
 	}()
 	go func() {
 		defer wg.Done()
 		<-start
-		id, err := EnsureIdentity(b, Resolved{}, Invocation{}, &results[1].buf)
-		results[1].id = id
+		rid, err := EnsureIdentity(b, Resolved{}, Invocation{}, &results[1].buf)
+		results[1].id = rid
 		results[1].err = err
 	}()
 	close(start)
@@ -624,16 +637,16 @@ func TestEnsureIdentity_ConcurrentMintsConvergeOnLatchedDisclosure(t *testing.T)
 		if r.err != nil {
 			t.Fatalf("goroutine %d: %v", i, r.err)
 		}
-	}
-	if results[0].id.TelemetryID != results[1].id.TelemetryID {
-		t.Errorf("concurrent mints diverged: %s vs %s", results[0].id.TelemetryID, results[1].id.TelemetryID)
+		if r.id.TelemetryID != id.TelemetryID {
+			t.Errorf("goroutine %d returned %s, want pre-seeded %s", i, r.id.TelemetryID, id.TelemetryID)
+		}
 	}
 	if results[0].buf.Len() == 0 && results[1].buf.Len() == 0 {
-		t.Error("neither goroutine wrote the banner; user silenced under concurrent first run")
+		t.Error("neither goroutine wrote the banner; user silenced under concurrent deferred disclosure")
 	}
 	reloaded, _ := userconfig.Load(dir)
 	if t1, _ := LoadTelemetry(reloaded); !t1.Disclosed {
-		t.Error("Disclosed not latched on disk after concurrent first runs")
+		t.Error("Disclosed not latched on disk after concurrent deferred-disclosure runs")
 	}
 }
 

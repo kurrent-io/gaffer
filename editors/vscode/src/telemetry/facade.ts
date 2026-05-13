@@ -5,12 +5,14 @@
 //   const telemetry = await createTelemetry({...});
 //   telemetry.emit(extensionActivatedEvent);
 //   ...
+//   void disclosurePromise.then(() => telemetry.refreshOptOut());
+//   ...
 //   await telemetry.drain(4500);  // on deactivate
 //
-// Opt-out is evaluated once at construction from a snapshot of the
-// persisted config. A `[Disable]` click in the first-run
-// notification after construction applies to the next activation,
-// not this one.
+// Opt-out is snapshotted at construction. The caller calls
+// refreshOptOut() after any persisted state change (notably the
+// first-run notification's write) so a late-firing exception emit
+// honours a mid-session `[Disable]` click.
 //
 // Identity persist + disclosure write happen on independent
 // activation paths and both touch telemetry.json. Both writers go
@@ -22,7 +24,7 @@
 
 import type { Event } from "@kurrent/gaffer-telemetry";
 
-import { editConfig, loadSafe } from "./config.js";
+import { editConfig, loadSafe, type TelemetryConfig } from "./config.js";
 import { buildEnvelope } from "./envelope.js";
 import { ensureIdentity } from "./identity.js";
 import { checkOptOut } from "./opt-out.js";
@@ -55,6 +57,10 @@ export interface Telemetry {
 	emit(event: Event): void;
 	/** Wait for in-flight sends to settle, bounded by timeout. */
 	drain(timeoutMs: number): Promise<void>;
+	/** Re-read the persisted config and update the opt-out snapshot.
+	 * Call after the first-run notification's write so a `[Disable]`
+	 * click silences emits that haven't fired yet. */
+	refreshOptOut(): Promise<void>;
 }
 
 export async function createTelemetry(
@@ -63,11 +69,6 @@ export async function createTelemetry(
 	try {
 		return await createTelemetryImpl(opts);
 	} catch (err) {
-		// Telemetry must never abort activation. Permissions glitches
-		// on globalStorageUri (EACCES on read, rename failure on
-		// save) are recoverable on the next run; bubbling them out of
-		// activate would make telemetry a hard dependency for the
-		// whole extension.
 		opts.log(
 			`telemetry: init failed, falling back to no-op: ${err instanceof Error ? err.message : String(err)}`,
 		);
@@ -78,17 +79,12 @@ export async function createTelemetry(
 async function createTelemetryImpl(
 	opts: TelemetryFacadeOptions,
 ): Promise<Telemetry> {
-	const config = await loadSafe(opts.storageDir);
-	const optOut = checkOptOut({
-		config,
-		env: opts.env,
-		vscodeTelemetryLevel: opts.vscodeTelemetryLevel,
-	});
-	if (optOut.disabled) {
+	const initialConfig = await loadSafe(opts.storageDir);
+	if (currentOptOut(opts, initialConfig).disabled) {
 		return noopTelemetry();
 	}
 
-	const identity = await ensureIdentity(config, (patch) =>
+	const identity = await ensureIdentity(initialConfig, (patch) =>
 		editConfig(opts.storageDir, patch),
 	);
 
@@ -99,8 +95,17 @@ async function createTelemetryImpl(
 		...(opts.fetchImpl !== undefined && { fetchImpl: opts.fetchImpl }),
 	});
 
+	// One-way latch: once disabled mid-session, stays disabled. The
+	// only realistic mid-session transition is permissive -> disabled
+	// (user clicks `[Disable]` in the first-run notification);
+	// transitions in the other direction need a fresh activation
+	// anyway because env-var and VS Code-level signals are read at
+	// construction.
+	let disabled = false;
+
 	return {
 		emit(event: Event): void {
+			if (disabled) return;
 			sink.send(
 				buildEnvelope({
 					identity,
@@ -115,6 +120,11 @@ async function createTelemetryImpl(
 		drain(timeoutMs: number): Promise<void> {
 			return sink.drain(timeoutMs);
 		},
+		async refreshOptOut(): Promise<void> {
+			if (disabled) return;
+			const fresh = await loadSafe(opts.storageDir);
+			if (currentOptOut(opts, fresh).disabled) disabled = true;
+		},
 	};
 }
 
@@ -122,7 +132,19 @@ function noopTelemetry(): Telemetry {
 	return {
 		emit: () => {},
 		drain: async () => {},
+		refreshOptOut: async () => {},
 	};
+}
+
+function currentOptOut(
+	opts: TelemetryFacadeOptions,
+	config: TelemetryConfig,
+): { disabled: boolean } {
+	return checkOptOut({
+		config,
+		env: opts.env,
+		vscodeTelemetryLevel: opts.vscodeTelemetryLevel,
+	});
 }
 
 /** Same env-var contract as the CLI's GAFFER_TELEMETRY_DEBUG. */

@@ -157,15 +157,49 @@ describe("createTelemetry", () => {
 				...permissiveOpts({ fetchImpl }),
 				log,
 			});
-			// No throw from createTelemetry; emit/drain are safe no-ops.
 			expect(() => telemetry.emit(activatedEvent)).not.toThrow();
 			await telemetry.drain(1000);
 			expect(fetchImpl).not.toHaveBeenCalled();
-			// Caller got told what went wrong.
 			expect(log).toHaveBeenCalled();
 		} finally {
 			fs.chmodSync(file, 0o600);
 		}
+	});
+
+	it("refreshOptOut: late `[Disable]` write silences subsequent emits", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () => new Response(""));
+		const telemetry = await createTelemetry(permissiveOpts({ fetchImpl }));
+		telemetry.emit(activatedEvent);
+		await telemetry.drain(1000);
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+		// User clicks `[Disable]`; runFirstRunNotice writes false.
+		const cur = await load(dir);
+		await save(dir, {
+			...cur,
+			telemetry_enabled: false,
+			disclosed: true,
+		});
+		await telemetry.refreshOptOut();
+
+		telemetry.emit(activatedEvent);
+		await telemetry.drain(1000);
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+	});
+
+	it("refreshOptOut is one-way: re-enabling mid-session stays disabled", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () => new Response(""));
+		const telemetry = await createTelemetry(permissiveOpts({ fetchImpl }));
+		const cur = await load(dir);
+		await save(dir, { ...cur, telemetry_enabled: false, disclosed: true });
+		await telemetry.refreshOptOut();
+		// Flip back to true on disk - latch should ignore.
+		await save(dir, { ...cur, telemetry_enabled: true, disclosed: true });
+		await telemetry.refreshOptOut();
+
+		telemetry.emit(activatedEvent);
+		await telemetry.drain(1000);
+		expect(fetchImpl).not.toHaveBeenCalled();
 	});
 
 	it("drains in-flight sends on demand", async () => {

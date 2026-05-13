@@ -34,6 +34,11 @@ import { runFirstRunNotice } from "./telemetry/notice.js";
 import { checkOptOut } from "./telemetry/opt-out.js";
 import { readVscodeTelemetryLevel } from "./telemetry/vscode-config.js";
 import {
+	reportException,
+	wrapAsync,
+	type WrapContext,
+} from "./telemetry/wrap.js";
+import {
 	retryStartLanguageClient,
 	startLanguageClient,
 	stopLanguageClient,
@@ -65,11 +70,11 @@ export async function activate(
 
 	// First-run telemetry disclosure. Fired before any awaited work
 	// below so the user sees the notification at activation time, not
-	// after the manifest fetch. Fire-and-forget: the user's choice
-	// writes to the extension's own telemetry.json and applies on the
-	// next activation. This session's emit pipeline reads a snapshot
-	// of opt-out state from disk before the disclosure resolves.
-	void runTelemetryDisclosure(context);
+	// after the manifest fetch. Fire-and-forget from the caller's
+	// view; we hold the promise so the facade can pick up a mid-
+	// session `[Disable]` click once disclosure resolves (see
+	// activeTelemetry.refreshOptOut wiring below).
+	const disclosurePromise = runTelemetryDisclosure(context);
 
 	// Stale-on-edit: any text change to a file with a runtime error
 	// invalidates that error (the in-memory content no longer matches
@@ -135,12 +140,79 @@ export async function activate(
 		vscodeTelemetryLevel: readVscodeTelemetryLevel(),
 		log,
 	});
-	emitExtensionActivated(activeTelemetry, {
+	const wrapCtx: WrapContext = {
+		getTelemetry: () => activeTelemetry,
+		extensionPath: context.extensionPath,
+		getWorkspaceFolders: () =>
+			vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? [],
+		log,
+	};
+
+	try {
+		await activateAfterTelemetry({
+			context,
+			telemetry: activeTelemetry,
+			wrapCtx,
+			disclosurePromise,
+			initialManifest,
+			manifestErr,
+			untrustedAtFetch,
+			activationStart,
+		});
+	} catch (err) {
+		// Any failure after the facade is built (provider wiring,
+		// command registration, deep imports) fires an exception
+		// envelope before propagating to VS Code's "extension failed
+		// to activate" handling. Pre-facade failures (config load,
+		// identity mint) intentionally aren't reported - we have no
+		// sink yet.
+		reportException(wrapCtx, "startup", err);
+		throw err;
+	}
+}
+
+interface ActivateAfterTelemetryArgs {
+	context: vscode.ExtensionContext;
+	telemetry: Telemetry;
+	wrapCtx: WrapContext;
+	disclosurePromise: Promise<void>;
+	initialManifest: Manifest | null;
+	manifestErr: unknown;
+	untrustedAtFetch: boolean;
+	activationStart: number;
+}
+
+async function activateAfterTelemetry(
+	args: ActivateAfterTelemetryArgs,
+): Promise<void> {
+	const {
+		context,
+		telemetry,
+		wrapCtx,
+		disclosurePromise,
+		initialManifest,
+		manifestErr,
+		untrustedAtFetch,
+		activationStart,
+	} = args;
+	emitExtensionActivated(telemetry, {
 		manifest: initialManifest,
 		manifestErr,
 		untrustedAtFetch,
 		activationStart,
 	});
+
+	// When the disclosure finishes, re-read opt-out so an exception
+	// fired after a `[Disable]` click is silenced.
+	void disclosurePromise.then(() =>
+		telemetry
+			.refreshOptOut()
+			.catch((err: unknown) =>
+				log(
+					`telemetry: refreshOptOut failed: ${err instanceof Error ? err.message : String(err)}`,
+				),
+			),
+	);
 
 	const stepProvider = new StepProvider();
 	const stateProvider = new StateProvider();
@@ -302,23 +374,31 @@ export async function activate(
 	// SessionController.start binding (and workspace cwd resolver for
 	// runProjection's manifest fetch); the command bodies own their
 	// own UX flows.
+	//
+	// Every handler runs through wrapAsync so a thrown error fires an
+	// `exception` envelope before VS Code's command-failure surface
+	// kicks in. The handlers stay otherwise unchanged.
 	const startSession = (args: DebugProjectionArgs): Promise<void> =>
 		controller.start(args);
+	const wrap = <A extends unknown[], R>(
+		fn: (...args: A) => Promise<R> | R,
+	): ((...args: A) => Promise<R>) => wrapAsync(wrapCtx, "event_processing", fn);
 	context.subscriptions.push(
-		vscode.commands.registerCommand("gaffer.stopDebug", () =>
-			controller.stop(),
+		vscode.commands.registerCommand(
+			"gaffer.stopDebug",
+			wrap(() => controller.stop()),
 		),
 		vscode.commands.registerCommand(
 			"gaffer.debugProjection",
-			(args: DebugProjectionArgs) => controller.start(args),
+			wrap((args: DebugProjectionArgs) => controller.start(args)),
 		),
 		vscode.commands.registerCommand(
 			"gaffer.debugProjectionPick",
-			debugProjectionPick({ start: startSession }),
+			wrap(debugProjectionPick({ start: startSession })),
 		),
 		vscode.commands.registerCommand(
 			"gaffer.runProjection",
-			runProjection({ start: startSession, workspaceCwd }),
+			wrap(runProjection({ start: startSession, workspaceCwd })),
 		),
 		// Click target for the "Invalid fixture: <reason>" lens. The lens
 		// is informational; the user fixes the toml. CodeLens.command is
@@ -328,7 +408,7 @@ export async function activate(
 		// Clears the diagnostic for the file without requiring an edit.
 		vscode.commands.registerCommand(
 			"gaffer.dismissDiagnostic",
-			(uri: vscode.Uri) => clearDiagnosticsForUri(uri),
+			wrap((uri: vscode.Uri) => clearDiagnosticsForUri(uri)),
 		),
 	);
 

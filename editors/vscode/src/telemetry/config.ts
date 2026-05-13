@@ -87,3 +87,45 @@ export async function save(
 		throw err;
 	}
 }
+
+/**
+ * Activation-friendly wrapper around `load`: on a parse-class error,
+ * rename the bad file aside (`telemetry.json.corrupt-<ISO timestamp>`)
+ * and return an empty config so the extension continues as a fresh
+ * install. The quarantined file stays in place for a curious user to
+ * inspect; the next `save` writes a clean replacement.
+ *
+ * Quarantine is narrow on purpose. We only re-mint when the file is
+ * structurally broken (malformed JSON, non-object top level) - those
+ * are the cases where the persisted identity is unreachable anyway.
+ * I/O errors (EACCES, EPERM, EIO) propagate so the caller logs them;
+ * silently quarantining on a permissions glitch would destroy a
+ * real identity that's just temporarily unreadable.
+ */
+export async function loadSafe(storageDir: string): Promise<TelemetryConfig> {
+	try {
+		return await load(storageDir);
+	} catch (err) {
+		if (!isParseClassError(err)) throw err;
+		await quarantine(storageDir).catch(() => {});
+		return {};
+	}
+}
+
+/** True for the error shapes that mean "file contents are unparseable":
+ * JSON.parse's SyntaxError, or the validation throw from `load`. Note
+ * other shapes (filesystem I/O) deliberately fall through. */
+function isParseClassError(err: unknown): boolean {
+	if (err instanceof SyntaxError) return true;
+	if (err instanceof Error && err.message.startsWith(`${FILE_NAME}:`)) {
+		return true;
+	}
+	return false;
+}
+
+async function quarantine(storageDir: string): Promise<void> {
+	const ts = new Date().toISOString().replace(/[:.]/g, "-");
+	const src = join(storageDir, FILE_NAME);
+	const dst = join(storageDir, `${FILE_NAME}.corrupt-${ts}`);
+	await rename(src, dst);
+}

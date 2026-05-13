@@ -19,7 +19,15 @@ import {
 	clearDiagnosticsForUri,
 	initDiagnostics,
 } from "./diagnostics.js";
-import { showManifestFailure } from "./notifications.js";
+import {
+	openTelemetryDisclosurePage,
+	showManifestFailure,
+	showTelemetryDisclosure,
+} from "./notifications.js";
+import { loadSafe } from "./telemetry/config.js";
+import { runFirstRunNotice } from "./telemetry/notice.js";
+import { checkOptOut } from "./telemetry/opt-out.js";
+import { readVscodeTelemetryLevel } from "./telemetry/vscode-config.js";
 import {
 	retryStartLanguageClient,
 	startLanguageClient,
@@ -43,6 +51,15 @@ export async function activate(
 ): Promise<void> {
 	initOutput(context);
 	initDiagnostics(context);
+
+	// First-run telemetry disclosure. Fired before any awaited work
+	// below so the user sees the notification at activation time, not
+	// after the manifest fetch (which can take several seconds on a
+	// cold CLI). Fire-and-forget: we don't gate any downstream
+	// activation on the user's choice - if they pick "Disable" while
+	// the manifest fetch is in flight, the next emit (slice 4+) will
+	// see the persisted opt-out.
+	void runTelemetryDisclosure(context);
 
 	// Stale-on-edit: any text change to a file with a runtime error
 	// invalidates that error (the in-memory content no longer matches
@@ -281,6 +298,39 @@ export async function activate(
 			await reloadManifest();
 		}),
 	);
+}
+
+// runTelemetryDisclosure reads the persisted extension telemetry
+// state + opt-out cascade, and fires the first-run notification
+// when both (a) we haven't already disclosed on this install and
+// (b) no other opt-out signal is in effect. Errors are logged but
+// not surfaced - failing to disclose is preferable to crashing
+// activation.
+async function runTelemetryDisclosure(
+	context: vscode.ExtensionContext,
+): Promise<void> {
+	try {
+		const storageDir = context.globalStorageUri.fsPath;
+		const config = await loadSafe(storageDir);
+		const optOut = checkOptOut({
+			config,
+			env: process.env,
+			vscodeTelemetryLevel: readVscodeTelemetryLevel(),
+		});
+		await runFirstRunNotice({
+			storageDir,
+			config,
+			optedOut: optOut.disabled,
+			prompt: showTelemetryDisclosure,
+			openLearnMore: async () => {
+				await openTelemetryDisclosurePage();
+			},
+		});
+	} catch (err) {
+		log(
+			`telemetry disclosure failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
 }
 
 export async function deactivate(): Promise<void> {

@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { load, save, type TelemetryConfig } from "./config.js";
+import { load, loadSafe, save, type TelemetryConfig } from "./config.js";
 
 describe("config.load", () => {
 	let dir: string;
@@ -112,4 +112,80 @@ describe("config.save", () => {
 		const stragglers = fs.readdirSync(dir).filter((f) => f.endsWith(".tmp"));
 		expect(stragglers).toEqual([]);
 	});
+});
+
+describe("config.loadSafe", () => {
+	let dir: string;
+
+	beforeEach(() => {
+		dir = fs.mkdtempSync(path.join(os.tmpdir(), "gaffer-telemetry-config-"));
+	});
+	afterEach(() => {
+		fs.rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("returns empty for a fresh install (no file)", async () => {
+		expect(await loadSafe(dir)).toEqual({});
+	});
+
+	it("returns the parsed config when the file is well-formed", async () => {
+		const expected: TelemetryConfig = { telemetry_id: "abc", disclosed: true };
+		await save(dir, expected);
+		expect(await loadSafe(dir)).toEqual(expected);
+	});
+
+	it("quarantines a malformed file and returns empty", async () => {
+		fs.writeFileSync(path.join(dir, "telemetry.json"), "{not json");
+		const result = await loadSafe(dir);
+		expect(result).toEqual({});
+
+		// Original is gone; a sibling .corrupt-<ts> survives with the
+		// original bytes for forensics.
+		expect(fs.existsSync(path.join(dir, "telemetry.json"))).toBe(false);
+		const quarantined = fs
+			.readdirSync(dir)
+			.filter((f) => f.startsWith("telemetry.json.corrupt-"));
+		expect(quarantined.length).toBe(1);
+		const first = quarantined[0];
+		if (first === undefined) throw new Error("expected a quarantined file");
+		expect(fs.readFileSync(path.join(dir, first), "utf8")).toBe("{not json");
+	});
+
+	it("quarantines a non-object top level (validation error from load)", async () => {
+		fs.writeFileSync(
+			path.join(dir, "telemetry.json"),
+			JSON.stringify(["nope"]),
+		);
+		expect(await loadSafe(dir)).toEqual({});
+		expect(
+			fs.readdirSync(dir).filter((f) => f.startsWith("telemetry.json.corrupt-"))
+				.length,
+		).toBe(1);
+	});
+
+	it.skipIf(
+		process.platform === "win32" ||
+			process.getuid === undefined ||
+			process.getuid() === 0,
+	)(
+		"propagates I/O errors instead of quarantining (don't destroy a valid identity)",
+		async () => {
+			// EACCES on read should NOT trigger quarantine - a transient
+			// permission glitch with a real identity on disk would
+			// otherwise rename the file aside and re-mint. Force EACCES
+			// via chmod(0o000); the skip-if above keeps this off Windows
+			// (no POSIX permission bits) and off root (which bypasses
+			// the check).
+			const file = path.join(dir, "telemetry.json");
+			fs.writeFileSync(file, JSON.stringify({ telemetry_id: "important" }));
+			fs.chmodSync(file, 0o000);
+			try {
+				await expect(loadSafe(dir)).rejects.toThrow();
+				// File is still there - not quarantined.
+				expect(fs.existsSync(file)).toBe(true);
+			} finally {
+				fs.chmodSync(file, 0o600);
+			}
+		},
+	);
 });

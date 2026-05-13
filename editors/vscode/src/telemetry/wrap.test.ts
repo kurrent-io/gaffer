@@ -16,6 +16,7 @@ function makeTelemetry(): { telemetry: Telemetry; reports: ReportCall[] } {
 		drain: async () => {},
 		refreshOptOut: async () => {},
 		invokerId: () => null,
+		isOptedOut: () => false,
 		reportException: (phase, err) => {
 			reports.push({ phase, err });
 		},
@@ -64,6 +65,7 @@ describe("wrapAsync", () => {
 			drain: async () => {},
 			refreshOptOut: async () => {},
 			invokerId: () => null,
+			isOptedOut: () => false,
 			reportException: () => {
 				throw new Error("reporter exploded");
 			},

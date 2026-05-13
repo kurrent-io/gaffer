@@ -12,7 +12,11 @@ import {
 	RevealOutputChannelOn,
 	type ServerOptions,
 } from "vscode-languageclient/node";
-import { buildGafferArgv } from "../discovery/cli.js";
+import {
+	buildGafferArgv,
+	gafferSpawnEnv,
+	type SpawnTelemetry,
+} from "../discovery/cli.js";
 import { log } from "../output.js";
 import { showLspCrashed, showLspFailedToStart } from "../notifications.js";
 
@@ -63,7 +67,7 @@ let trySpawn: () => void = () => {};
 export function startLanguageClient(
 	context: vscode.ExtensionContext,
 	isManifestAvailable: () => boolean,
-	getInvokerId: () => string | null,
+	telemetry: SpawnTelemetry,
 	onReady?: (client: LanguageClient) => void,
 ): void {
 	trySpawn = (): void => {
@@ -76,7 +80,7 @@ export function startLanguageClient(
 			log("LSP client: manifest unavailable, deferring spawn");
 			return;
 		}
-		void spawnLanguageClient(context, getInvokerId, onReady);
+		void spawnLanguageClient(context, telemetry, onReady);
 	};
 	trySpawn();
 	context.subscriptions.push(
@@ -99,13 +103,14 @@ export function retryStartLanguageClient(): void {
 
 async function spawnLanguageClient(
 	context: vscode.ExtensionContext,
-	getInvokerId: () => string | null,
+	telemetry: SpawnTelemetry,
 	onReady?: (client: LanguageClient) => void,
 ): Promise<void> {
 	// Bail before construction when gaffer.command is empty so we
 	// don't sit with a never-startable LanguageClient.
 	if (
-		buildGafferArgv(["lsp"], { invokerId: getInvokerId() })[0] === undefined
+		buildGafferArgv(["lsp"], { invokerId: telemetry.invokerId() })[0] ===
+		undefined
 	) {
 		log("LSP client: empty gaffer.command, skipping spawn");
 		return;
@@ -115,12 +120,17 @@ async function spawnLanguageClient(
 	// opt-out (or a gaffer.command change) is picked up by auto-
 	// restarts without our intervention.
 	const serverOptions: ServerOptions = () => {
-		const argv = buildGafferArgv(["lsp"], { invokerId: getInvokerId() });
+		const argv = buildGafferArgv(["lsp"], {
+			invokerId: telemetry.invokerId(),
+		});
 		const command = argv[0];
 		if (command === undefined) {
 			throw new Error("LSP client: empty gaffer.command");
 		}
-		return Promise.resolve(spawn(command, argv.slice(1)));
+		const env = gafferSpawnEnv(telemetry.isOptedOut());
+		return Promise.resolve(
+			spawn(command, argv.slice(1), env !== undefined ? { env } : undefined),
+		);
 	};
 	if (lspChannel === undefined) {
 		lspChannel = vscode.window.createOutputChannel("Gaffer LSP");

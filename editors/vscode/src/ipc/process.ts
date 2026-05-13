@@ -11,6 +11,7 @@ import {
 
 export interface ProcessOptions {
 	cwd?: string;
+	env?: NodeJS.ProcessEnv;
 }
 
 type LineHandler = (msg: CliMessage) => void;
@@ -19,6 +20,7 @@ type ExitHandler = (code: number | null) => void;
 export class GafferProcess {
 	readonly #argv: string[];
 	readonly #cwd: string | undefined;
+	readonly #env: NodeJS.ProcessEnv | undefined;
 	#proc: ChildProcess | null = null;
 	#onLine: LineHandler = () => {};
 	#onExit: ExitHandler = () => {};
@@ -27,6 +29,7 @@ export class GafferProcess {
 		if (argv.length === 0) throw new Error("argv must not be empty");
 		this.#argv = argv;
 		this.#cwd = options.cwd;
+		this.#env = options.env;
 	}
 
 	start(): this {
@@ -42,6 +45,7 @@ export class GafferProcess {
 		const proc = spawn(head, rest, {
 			stdio: ["ignore", "pipe", "pipe"],
 			cwd: this.#cwd,
+			...(this.#env !== undefined && { env: this.#env }),
 			shell: false,
 			// POSIX: become group leader so kill(-pid) takes the whole tree.
 			// Windows ignores this; tree-kill uses taskkill /T instead.

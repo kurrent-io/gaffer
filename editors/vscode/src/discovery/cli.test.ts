@@ -82,6 +82,34 @@ describe("buildGafferArgv", () => {
 	});
 });
 
+describe("gafferSpawnEnv", () => {
+	it("returns undefined when the extension is not opted out (child inherits parent env)", async () => {
+		const { gafferSpawnEnv } = await import("./cli.js");
+		expect(gafferSpawnEnv(false)).toBeUndefined();
+	});
+
+	it("injects GAFFER_TELEMETRY_OPTOUT=1 alongside process.env when opted out", async () => {
+		const { gafferSpawnEnv } = await import("./cli.js");
+		const env = gafferSpawnEnv(true);
+		if (env === undefined) throw new Error("expected an env override");
+		expect(env.GAFFER_TELEMETRY_OPTOUT).toBe("1");
+		// process.env keys are still present so the child gets PATH etc.
+		expect(env.PATH).toBe(process.env.PATH);
+	});
+});
+
+describe("gafferMcpEnv", () => {
+	it("returns empty when not opted out", async () => {
+		const { gafferMcpEnv } = await import("./cli.js");
+		expect(gafferMcpEnv(false)).toEqual({});
+	});
+
+	it("returns the opt-out override when opted out", async () => {
+		const { gafferMcpEnv } = await import("./cli.js");
+		expect(gafferMcpEnv(true)).toEqual({ GAFFER_TELEMETRY_OPTOUT: "1" });
+	});
+});
+
 describe("hasCommand / hasFlag", () => {
 	const m: Manifest = {
 		version: "1.0.0",
@@ -109,7 +137,11 @@ describe("tryFetchManifest - trust gate", () => {
 	it("returns null without invoking the CLI when workspace is untrusted", async () => {
 		setTrusted(false);
 		const onError = vi.fn();
-		const result = await tryFetchManifest(undefined, null, onError);
+		const result = await tryFetchManifest(
+			undefined,
+			{ invokerId: () => null, isOptedOut: () => false },
+			onError,
+		);
 		expect(result).toBeNull();
 		expect(onError).not.toHaveBeenCalled();
 	});
@@ -146,7 +178,10 @@ fi
 		);
 		setConfiguration("gaffer", "command", { globalValue: [stub] });
 
-		const m = await tryFetchManifest(undefined, null);
+		const m = await tryFetchManifest(undefined, {
+			invokerId: () => null,
+			isOptedOut: () => false,
+		});
 		expect(m?.version).toBe("1.0.0");
 		expect(m?.commands.dev?.flags).toEqual(["debug"]);
 	});
@@ -156,7 +191,11 @@ fi
 			globalValue: [path.join(tmpRoot, "nope")],
 		});
 		const onError = vi.fn();
-		const result = await tryFetchManifest(undefined, null, onError);
+		const result = await tryFetchManifest(
+			undefined,
+			{ invokerId: () => null, isOptedOut: () => false },
+			onError,
+		);
 		expect(result).toBeNull();
 		expect(onError).toHaveBeenCalledTimes(1);
 	});
@@ -166,9 +205,13 @@ fi
 			globalValue: [path.join(tmpRoot, "nope")],
 		});
 		let captured: unknown;
-		await tryFetchManifest(undefined, null, (err) => {
-			captured = err;
-		});
+		await tryFetchManifest(
+			undefined,
+			{ invokerId: () => null, isOptedOut: () => false },
+			(err) => {
+				captured = err;
+			},
+		);
 		expect(captured).toBeDefined();
 		// ENOENT is the load-bearing classification for binary_not_found.
 		expect((captured as { code?: string }).code).toBe("ENOENT");
@@ -178,7 +221,11 @@ fi
 		const stub = writeStub("gaffer", `#!/bin/sh\necho 'not json'\n`);
 		setConfiguration("gaffer", "command", { globalValue: [stub] });
 		const onError = vi.fn();
-		const result = await tryFetchManifest(undefined, null, onError);
+		const result = await tryFetchManifest(
+			undefined,
+			{ invokerId: () => null, isOptedOut: () => false },
+			onError,
+		);
 		expect(result).toBeNull();
 		expect(onError).toHaveBeenCalledTimes(1);
 	});
@@ -187,7 +234,11 @@ fi
 		const stub = writeStub("gaffer", `#!/bin/sh\necho '{"oops": true}'\n`);
 		setConfiguration("gaffer", "command", { globalValue: [stub] });
 		const onError = vi.fn();
-		const result = await tryFetchManifest(undefined, null, onError);
+		const result = await tryFetchManifest(
+			undefined,
+			{ invokerId: () => null, isOptedOut: () => false },
+			onError,
+		);
 		expect(result).toBeNull();
 		expect(onError).toHaveBeenCalledTimes(1);
 		const err = onError.mock.calls[0]?.[0];
@@ -198,7 +249,12 @@ fi
 		setConfiguration("gaffer", "command", {
 			globalValue: [path.join(tmpRoot, "missing")],
 		});
-		await expect(tryFetchManifest(undefined, null)).resolves.toBeNull();
+		await expect(
+			tryFetchManifest(undefined, {
+				invokerId: () => null,
+				isOptedOut: () => false,
+			}),
+		).resolves.toBeNull();
 	});
 
 	it("forwards invokerId through to the spawned CLI argv", async () => {
@@ -214,7 +270,10 @@ echo '{"version":"1.0.0","commands":{}}'
 `,
 		);
 		setConfiguration("gaffer", "command", { globalValue: [stub] });
-		const m = await tryFetchManifest(undefined, "abc-id");
+		const m = await tryFetchManifest(undefined, {
+			invokerId: () => "abc-id",
+			isOptedOut: () => false,
+		});
 		expect(m?.version).toBe("1.0.0");
 		const args = fs.readFileSync(argvLog, "utf8").trim().split(" ");
 		expect(args).toEqual([

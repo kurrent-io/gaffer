@@ -116,6 +116,28 @@ describe("createTelemetry", () => {
 		expect(telemetry.invokerId()).toBeNull();
 	});
 
+	it("isOptedOut() is true when opted out at construction", async () => {
+		const telemetry = await createTelemetry({
+			...permissiveOpts(),
+			env: { DO_NOT_TRACK: "1" } as NodeJS.ProcessEnv,
+		});
+		expect(telemetry.isOptedOut()).toBe(true);
+	});
+
+	it("isOptedOut() is false on a live, consenting handle", async () => {
+		const telemetry = await createTelemetry(permissiveOpts());
+		expect(telemetry.isOptedOut()).toBe(false);
+	});
+
+	it("isOptedOut() flips true after refreshOptOut latches disabled", async () => {
+		const telemetry = await createTelemetry(permissiveOpts());
+		expect(telemetry.isOptedOut()).toBe(false);
+		const cur = await load(dir);
+		await save(dir, { ...cur, telemetry_enabled: false, disclosed: true });
+		await telemetry.refreshOptOut();
+		expect(telemetry.isOptedOut()).toBe(true);
+	});
+
 	it("invokerId() returns null after a mid-session refreshOptOut latches disabled", async () => {
 		const telemetry = await createTelemetry(permissiveOpts());
 		expect(telemetry.invokerId()).not.toBeNull();
@@ -184,6 +206,11 @@ describe("createTelemetry", () => {
 			await telemetry.drain(1000);
 			expect(fetchImpl).not.toHaveBeenCalled();
 			expect(log).toHaveBeenCalled();
+			// Init failure is not the same as opt-out: the user hasn't
+			// chosen to opt out, so spawn-side propagation MUST NOT
+			// silence the CLI on this path.
+			expect(telemetry.isOptedOut()).toBe(false);
+			expect(telemetry.invokerId()).toBeNull();
 		} finally {
 			fs.chmodSync(file, 0o600);
 		}

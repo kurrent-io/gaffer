@@ -5,7 +5,12 @@
 // job is wire-up, not interactive flows.
 
 import * as vscode from "vscode";
-import { hasCommand, hasFlag, tryFetchManifest } from "../discovery/cli.js";
+import {
+	hasCommand,
+	hasFlag,
+	tryFetchManifest,
+	type SpawnTelemetry,
+} from "../discovery/cli.js";
 import {
 	fetchProjectionDetails,
 	fetchProjections,
@@ -29,9 +34,8 @@ export interface RunProjectionDeps {
 	// First workspace folder's fsPath for the manifest fetch's cwd.
 	// Returns undefined for single-buffer sessions.
 	workspaceCwd: () => string | undefined;
-	// Per-install extension emitter_id for the manifest fetch's
-	// --invoker-id; null when opted out.
-	getInvokerId: () => string | null;
+	// Spawn-time identity + opt-out signal for the manifest fetch.
+	telemetry: SpawnTelemetry;
 }
 
 export function runProjection(deps: RunProjectionDeps): () => Promise<void> {
@@ -70,7 +74,7 @@ export function runProjection(deps: RunProjectionDeps): () => Promise<void> {
 		if (fixture === undefined) return;
 		const manifest = await tryFetchManifest(
 			deps.workspaceCwd(),
-			deps.getInvokerId(),
+			deps.telemetry,
 			showManifestFailure,
 		);
 		if (!manifest) return;

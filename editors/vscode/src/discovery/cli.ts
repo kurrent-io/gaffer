@@ -6,6 +6,15 @@ import { ManifestSchema, type Manifest } from "./schemas.js";
 
 const DEFAULT_COMMAND: readonly string[] = ["gaffer"];
 
+/** Subset of the telemetry facade the spawn sites need: identity for
+ * the `--invoker-id` flag, and the opt-out signal for the env
+ * override. Structural so tests can pass `{ invokerId: () => ...,
+ * isOptedOut: () => ... }` without building a full facade. */
+export interface SpawnTelemetry {
+	invokerId(): string | null;
+	isOptedOut(): boolean;
+}
+
 /** Spawn surfaces the extension drives the CLI from. Maps 1:1 to the
  * wire `#InvokedVia` enum's editor-relevant variants. */
 export type InvokedVia = "code_lens" | "command_palette" | "mcp_provider";
@@ -15,6 +24,33 @@ export interface Invocation {
 	invokerId: string | null;
 	/** Surface enum; omitted for extension-internal spawns (manifest, LSP). */
 	invokedVia?: InvokedVia;
+}
+
+/**
+ * Env to hand to a spawned gaffer process. Returns `undefined` (no
+ * override; child inherits the extension host's `process.env`
+ * unchanged) when the extension is consenting. When the extension is
+ * opted out, returns a copy of `process.env` with
+ * `GAFFER_TELEMETRY_OPTOUT=1` injected so the CLI's own opt-out
+ * cascade silences it - opt-out in the extension propagates to its
+ * spawned children.
+ *
+ * Gated on explicit opt-out, not on the absence of an `invokerId`:
+ * the latter is also null when telemetry init fails (noop fallback),
+ * where the user hasn't actually chosen to opt out.
+ */
+export function gafferSpawnEnv(
+	optedOut: boolean,
+): NodeJS.ProcessEnv | undefined {
+	if (!optedOut) return undefined;
+	return { ...process.env, GAFFER_TELEMETRY_OPTOUT: "1" };
+}
+
+/** Same intent as `gafferSpawnEnv` but in the additive shape VS Code's
+ * `McpStdioServerDefinition.env` expects: keys merged onto the parent
+ * env at spawn time. */
+export function gafferMcpEnv(optedOut: boolean): Record<string, string> {
+	return optedOut ? { GAFFER_TELEMETRY_OPTOUT: "1" } : {};
 }
 
 /**
@@ -63,17 +99,21 @@ export function buildGafferArgv(
  */
 export async function tryFetchManifest(
 	cwd: string | undefined,
-	invokerId: string | null,
+	telemetry: SpawnTelemetry,
 	onError?: (err: unknown) => void,
 ): Promise<Manifest | null> {
 	if (!vscode.workspace.isTrusted) {
 		log("workspace untrusted, skipping manifest fetch");
 		return null;
 	}
-	const argv = buildGafferArgv(["manifest"], { invokerId });
+	const argv = buildGafferArgv(["manifest"], {
+		invokerId: telemetry.invokerId(),
+	});
 	try {
-		const opts: { cwd?: string } = {};
+		const opts: ExecOpts = {};
 		if (cwd !== undefined) opts.cwd = cwd;
+		const env = gafferSpawnEnv(telemetry.isOptedOut());
+		if (env !== undefined) opts.env = env;
 		const output = await execFileAsync(argv, opts);
 		const raw: unknown = JSON.parse(output);
 		const parsed = v.safeParse(ManifestSchema, raw);
@@ -101,9 +141,14 @@ export const hasFlag = (
 	flag: string,
 ): boolean => m?.commands?.[command]?.flags?.includes(flag) ?? false;
 
+interface ExecOpts {
+	cwd?: string;
+	env?: NodeJS.ProcessEnv;
+}
+
 function execFileAsync(
 	argv: string[],
-	options: { cwd?: string } = {},
+	options: ExecOpts = {},
 ): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const [head, ...rest] = argv;
@@ -111,11 +156,11 @@ function execFileAsync(
 			reject(new Error("argv must not be empty"));
 			return;
 		}
-		const execOpts: { cwd?: string; timeout: number; shell: false } = {
+		const execOpts = {
 			timeout: 10_000,
-			shell: false,
+			shell: false as const,
+			...options,
 		};
-		if (options.cwd !== undefined) execOpts.cwd = options.cwd;
 		execFile(head, rest, execOpts, (err, stdout, stderr) => {
 			if (err) {
 				// Augment in place to keep err.code / err.killed accessible

@@ -5,6 +5,7 @@ import type { CliMessage } from "./schemas.js";
 
 export interface SessionOptions {
 	cwd?: string;
+	env?: NodeJS.ProcessEnv;
 }
 
 type CliMessageType = CliMessage["type"];
@@ -41,6 +42,7 @@ export class GafferSession implements SessionLike {
 	readonly #name: string;
 	readonly #argv: string[];
 	readonly #cwd: string | undefined;
+	readonly #env: NodeJS.ProcessEnv | undefined;
 	readonly #listeners = new Map<CliMessageType | "*", AnyListener[]>();
 	#proc: GafferProcess | null = null;
 
@@ -48,6 +50,7 @@ export class GafferSession implements SessionLike {
 		this.#name = name;
 		this.#argv = argv;
 		this.#cwd = options.cwd;
+		this.#env = options.env;
 		// Channel is a module-level singleton (output.ts), reused across
 		// sessions. Clear on construction and write the session header so
 		// subsequent renderCliMessage calls land under it.
@@ -74,6 +77,7 @@ export class GafferSession implements SessionLike {
 	start(): this {
 		const opts: ProcessOptions = {};
 		if (this.#cwd !== undefined) opts.cwd = this.#cwd;
+		if (this.#env !== undefined) opts.env = this.#env;
 		const proc = new GafferProcess(this.#argv, opts);
 		this.#proc = proc;
 

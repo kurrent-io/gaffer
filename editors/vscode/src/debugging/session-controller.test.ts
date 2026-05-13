@@ -97,6 +97,7 @@ function makeHarness(): Harness {
 			...args,
 			`--invoked-via=${invokedVia}`,
 		],
+		getSpawnEnv: () => undefined,
 		stepProvider: providers.step,
 		stateProvider: providers.state,
 		statusProvider: providers.status,

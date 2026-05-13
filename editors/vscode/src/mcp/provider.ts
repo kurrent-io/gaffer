@@ -1,5 +1,9 @@
 import * as vscode from "vscode";
-import { buildGafferArgv } from "../discovery/cli.js";
+import {
+	buildGafferArgv,
+	gafferMcpEnv,
+	type SpawnTelemetry,
+} from "../discovery/cli.js";
 
 /**
  * Provides one MCP server definition per workspace folder, invoking
@@ -11,10 +15,10 @@ import { buildGafferArgv } from "../discovery/cli.js";
 export class GafferMcpProvider implements vscode.McpServerDefinitionProvider<vscode.McpStdioServerDefinition> {
 	readonly #onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChangeMcpServerDefinitions = this.#onDidChange.event;
-	readonly #getInvokerId: () => string | null;
+	readonly #telemetry: SpawnTelemetry;
 
-	constructor(getInvokerId: () => string | null) {
-		this.#getInvokerId = getInvokerId;
+	constructor(telemetry: SpawnTelemetry) {
+		this.#telemetry = telemetry;
 	}
 
 	dispose(): void {
@@ -40,17 +44,23 @@ export class GafferMcpProvider implements vscode.McpServerDefinitionProvider<vsc
 		// ["gaffer"] when User scope is empty), but noUncheckedIndexedAccess
 		// requires the narrow.
 		const argv = buildGafferArgv(["mcp"], {
-			invokerId: this.#getInvokerId(),
+			invokerId: this.#telemetry.invokerId(),
 			invokedVia: "mcp_provider",
 		});
 		const command = argv[0];
 		if (command === undefined) return [];
 		const args = argv.slice(1);
+		const env = gafferMcpEnv(this.#telemetry.isOptedOut());
 
 		const multi = folders.length > 1;
 		return folders.map((folder) => {
 			const label = multi ? `Gaffer (${folder.name})` : "Gaffer";
-			const def = new vscode.McpStdioServerDefinition(label, command, args, {});
+			const def = new vscode.McpStdioServerDefinition(
+				label,
+				command,
+				args,
+				env,
+			);
 			def.cwd = folder.uri;
 			return def;
 		});

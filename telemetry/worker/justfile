@@ -1,8 +1,9 @@
 default:
     @just --list
 
-# Render the notice (TELEMETRY.md at repo root -> src/notice.gen.ts) and
-# generate worker-configuration.d.ts from wrangler.jsonc.
+# Render the notice (cli/TELEMETRY.md + editors/vscode/TELEMETRY.md ->
+# src/notice.gen.ts) and generate worker-configuration.d.ts from
+# wrangler.jsonc.
 build:
     pnpm run --filter '@kurrent/gaffer-telemetry-worker' build
 

@@ -13,7 +13,6 @@ Examples of the telemetry data collected:
 - Which gaffer command ran and how it finished
 - Bucketed counts of work done (`none`, `1`, `2-9`, `10-99`, `100-999`, `1000+`)
 - The structural shape of projection files (which builtins are called, with bucketed counts; which handlers are registered; bucketed file size)
-- Whether the gaffer CLI is reachable when the VS Code extension activates
 - Crashes in gaffer's own code (gaffer-authored error messages with scrubbed stack frames)
 
 What gaffer **does not** track:
@@ -28,9 +27,9 @@ What gaffer **does not** track:
 - User account or OS user information
 - IP addresses
 
-There are four event types. Each is wrapped in an envelope alongside shared install metadata (gaffer version, host OS, architecture, the runtime environment - `local` or `ci`) before being sent. When gaffer runs inside a project, the envelope also carries a salted hash of the project's root path (`project_id`) so we can distinguish one user with five projects from five users with one - the path itself never leaves your machine, only the hash. When one gaffer process spawns another (typically the VS Code extension spawning the CLI), the spawned process additionally carries the parent's anonymous id so the two are recognised as one user.
+There are three event types. Each is wrapped in an envelope alongside shared install metadata (gaffer version, host OS, architecture, the runtime environment - `local` or `ci`) before being sent. When gaffer runs inside a project, the envelope also carries a salted hash of the project's root path (`project_id`). The path itself never leaves your machine, only the hash. When the gaffer CLI is launched by another gaffer process (typically the VS Code extension), the spawned CLI additionally carries the parent's anonymous id.
 
-The receiving worker stamps each event with its own deploy timestamp so we can correlate analytics against the server version that processed them.
+The receiving worker stamps each event with its own deploy timestamp.
 
 The precise wire format lives in [`telemetry/schemas/events.cue`](https://github.com/kurrent-io/gaffer/tree/main/telemetry/schemas/events.cue) (event shapes) and [`telemetry/schemas/wire.cue`](https://github.com/kurrent-io/gaffer/tree/main/telemetry/schemas/wire.cue) (envelope).
 
@@ -78,7 +77,7 @@ Records which gaffer command ran, what its outcome was, and bucketed counts of w
 
 ### `projection_shape`
 
-Records the source-mechanical shape of a projection file: which projection builtins are called (`fromAll`, `when`, `partitionBy`, etc.) with bucketed call counts, which handlers are registered, and a bucketed file size. The projection's identifier is a salted hash that's stable across runs but does not reveal the projection's path or contents.
+Records the shape of a projection file: which projection builtins are called (`fromAll`, `when`, `partitionBy`, etc.) with bucketed call counts, which handlers are registered, and a bucketed file size. The projection's identifier is a salted hash that's stable across runs but does not reveal the projection's path or contents.
 
 <details>
 <summary>Example envelope</summary>
@@ -123,46 +122,9 @@ Records the source-mechanical shape of a projection file: which projection built
 
 </details>
 
-### `extension_activated`
-
-Records whether the gaffer CLI binary is reachable on the user's `PATH` when the VS Code extension activates - the "broken install" diagnostic - along with editor and CLI versions and a bucketed activation duration. When the CLI is unreachable, the event also carries a categorical reason: `binary_not_found`, `binary_spawn_failed`, `timeout`, `workspace_untrusted`, or `unknown_error`. No paths or error messages from the failed spawn are attached.
-
-<details>
-<summary>Example envelope</summary>
-
-```json
-{
-	"schema_version": "1",
-	"emitter_id": "0b51e34d-aac8-4cce-bce4-9d2c7c6e3b8a",
-	"run_id": "01938e7a-1b2c-7d4e-9faf-2a3b4c5d6e7f",
-	"context": {
-		"emitter": "vscode",
-		"lib_version": "0.4.2",
-		"os": "darwin",
-		"arch": "arm64",
-		"runtime_environment": "local"
-	},
-	"events": [
-		{
-			"name": "extension_activated",
-			"timestamp": "2026-05-08T12:00:00.000Z",
-			"properties": {
-				"editor": "vscode",
-				"editor_version": "1.95.2",
-				"cli_reachable": true,
-				"cli_version": "0.4",
-				"activation_duration_ms": 100
-			}
-		}
-	]
-}
-```
-
-</details>
-
 ### `exception`
 
-Records crashes in gaffer's own code (Go panics in the CLI, unhandled JS errors in the extension host, runtime exceptions in the projection engine). Exception messages are always written by gaffer and never propagated from your projection code. Stack frames are scrubbed structurally: file basenames only, user-JS frames dropped entirely.
+Records crashes in gaffer's own code (Go panics in the CLI, runtime exceptions in the projection engine). Exception messages are always written by gaffer and never propagated from your projection code. Stack frames are scrubbed: file basenames only, user-JS frames dropped entirely.
 
 <details>
 <summary>Example envelope</summary>
@@ -229,9 +191,7 @@ You can opt out by any of:
 For more information visit https://telemetry.gaffer.kurrent.io.
 ```
 
-The VS Code extension shows an equivalent notification on first activation, with `[Dismiss]`, `[Learn more]`, and `[Disable telemetry]` buttons. Closing the notification with the X is treated the same as `[Dismiss]` (telemetry stays on). `[Learn more]` opens this page without changing your choice - the notification will re-appear on next activation until you pick `[Dismiss]` or `[Disable telemetry]`.
-
-If telemetry collection has already been disabled (for example via `KURRENTDB_TELEMETRY_OPTOUT` carried over from KurrentDB, or `DO_NOT_TRACK`), no disclosure is shown - the user has already declined.
+If telemetry collection has already been disabled (for example via `KURRENTDB_TELEMETRY_OPTOUT` carried over from KurrentDB, or `DO_NOT_TRACK`), no disclosure is shown.
 
 ## Reporting frequency
 
@@ -239,7 +199,6 @@ Gaffer emits events at the boundary of work, not on a periodic schedule:
 
 - `command_invoked` is sent once per CLI invocation, when the process exits.
 - `projection_shape` is sent the first time gaffer encounters a projection file in a process, and again only if the file's bucketed shape changes.
-- `extension_activated` is sent once when the VS Code extension activates.
 - `exception` is sent when gaffer's own code crashes.
 
 A gaffer process that does no work emits nothing. There is no periodic heartbeat.
@@ -251,15 +210,12 @@ Telemetry transmission can be disabled by any one of the following:
 - Add `telemetry = false` at the top of `gaffer.toml`. Covers every gaffer invocation in that project, including CI.
 - Run `gaffer config telemetry off`. Covers every gaffer invocation by this user on this machine.
 - Set `GAFFER_TELEMETRY_OPTOUT`, `KURRENTDB_TELEMETRY_OPTOUT`, or `DO_NOT_TRACK` to a truthy value (`1`, `true`, `yes`, `on`).
-- Set VS Code's `telemetry.telemetryLevel` to anything other than `all`. The gaffer extension respects this setting.
 
 When opted out, gaffer does not collect telemetry. No envelope is constructed and no event is recorded locally.
 
-Opting out mid-session in the VS Code extension takes effect for future spawns. CLI processes the extension has already started (the LSP server, an in-progress `gaffer dev` session, an MCP server) keep running until they exit naturally; their own opt-out check happens at their next start.
-
 ## How to see what's being sent
 
-Set `GAFFER_TELEMETRY_DEBUG=1` (truthy values: `1`, `true`, `yes`, `on`) and gaffer prints every event as JSON before sending it (CLI: stderr; VS Code extension: the Gaffer output channel). When opted out, no envelopes are constructed and nothing is printed - opting out is the stronger guarantee.
+Set `GAFFER_TELEMETRY_DEBUG=1` (truthy values: `1`, `true`, `yes`, `on`) and gaffer prints every event as JSON to stderr before sending it. When opted out, no envelopes are constructed and nothing is printed.
 
 ## Where data is stored
 

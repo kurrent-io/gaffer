@@ -41,8 +41,8 @@ func newConfigTelemetryCmd() *cobra.Command {
 		Short: "Show or change telemetry settings",
 		Long: "Telemetry is anonymous usage data gaffer sends to Kurrent so we can\n" +
 			"understand which features people use. It is opt-out: enabled by\n" +
-			"default. See TELEMETRY.md (and `gaffer config telemetry status`) for\n" +
-			"exactly what is collected and how to turn it off.",
+			"default. See https://telemetry.gaffer.kurrent.io (and `gaffer config\n" +
+			"telemetry status`) for exactly what is collected and how to turn it off.",
 	}
 	cmd.AddCommand(newConfigTelemetryStatusCmd())
 	cmd.AddCommand(newConfigTelemetryOnCmd())

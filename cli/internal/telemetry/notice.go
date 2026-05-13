@@ -11,7 +11,7 @@ import (
 
 // noticeText is the canonical first-mint disclosure printed to stderr
 // when telemetry starts emitting for the first time. The same wording
-// appears in TELEMETRY.md's Disclosure section; a sync canary in the
+// appears in cli/TELEMETRY.md's Disclosure section; a sync canary in the
 // test suite asserts the key phrases appear in both, so this constant
 // and the doc stay in lockstep.
 //

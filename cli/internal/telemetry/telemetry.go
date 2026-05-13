@@ -12,7 +12,7 @@ import (
 // the sink. Read once at New() so `export GAFFER_TELEMETRY_DEBUG=1`
 // mid-process has no effect; gaffer is a per-command CLI so this is
 // the natural read point. Matches the disclosure promised in
-// TELEMETRY.md.
+// cli/TELEMETRY.md.
 const EnvDebug = "GAFFER_TELEMETRY_DEBUG"
 
 // Client owns the sink and the goroutines in flight for a single CLI

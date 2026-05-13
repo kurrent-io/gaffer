@@ -18,6 +18,12 @@ import { showLspCrashed, showLspFailedToStart } from "../notifications.js";
 
 let client: LanguageClient | undefined;
 
+// Single OutputChannel for the LSP server's lifetime. Created on the
+// first spawn, reused across restarts (including the give-up-then-retry
+// path). Creating it inside spawnLanguageClient would stack duplicate
+// "Gaffer LSP" entries in the user's Output dropdown.
+let lspChannel: vscode.OutputChannel | undefined;
+
 // Latched by startLanguageClient and called from retryStartLanguageClient
 // after a successful manifest reload. Re-running startLanguageClient
 // instead would double-register the trust-grant listener.
@@ -112,8 +118,11 @@ async function spawnLanguageClient(
 		}
 		return Promise.resolve(spawn(command, argv.slice(1)));
 	};
-	const channel = vscode.window.createOutputChannel("Gaffer LSP");
-	context.subscriptions.push(channel);
+	if (lspChannel === undefined) {
+		lspChannel = vscode.window.createOutputChannel("Gaffer LSP");
+		context.subscriptions.push(lspChannel);
+	}
+	const channel = lspChannel;
 	const clientOptions: LanguageClientOptions = {
 		documentSelector: [
 			{ scheme: "file", pattern: "**/gaffer.toml" },
@@ -281,7 +290,9 @@ export function makeErrorHandler(channel: vscode.OutputChannel): ErrorHandler {
 export async function stopLanguageClient(): Promise<void> {
 	if (!client) return;
 	try {
-		await client.stop();
+		// Bounded so a stuck server can't eat the deactivate budget.
+		// vscode-languageclient force-kills on timeout.
+		await client.stop(2000);
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
 		log(`LSP client stop failed: ${msg}`);

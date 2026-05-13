@@ -105,13 +105,19 @@ function parseConfigURI(uri: string): vscode.Uri | null {
  * each of which fires onDidChangeCodeLenses so VS Code re-calls
  * provideCodeLenses with the new context.
  */
-export class LspCodeLensProvider implements vscode.CodeLensProvider {
+export class LspCodeLensProvider
+	implements vscode.CodeLensProvider, vscode.Disposable
+{
 	readonly #onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChangeCodeLenses = this.#onDidChange.event;
 
 	#client: LanguageClient | undefined;
 	#manifest: Manifest | null = null;
 	#debugState: DebugState = { name: null, status: "idle" };
+
+	dispose(): void {
+		this.#onDidChange.dispose();
+	}
 
 	setClient(client: LanguageClient | undefined): void {
 		this.#client = client;

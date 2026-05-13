@@ -2,12 +2,22 @@ import * as vscode from "vscode";
 import { jsonToTreeItems, type TreeItemWithChildren } from "./json-tree.js";
 import type { EmittedEvent, InputEvent, StepResult } from "../ipc/schemas.js";
 
-export class StepProvider implements vscode.TreeDataProvider<TreeItemWithChildren> {
+export class StepProvider
+	implements vscode.TreeDataProvider<TreeItemWithChildren>, vscode.Disposable
+{
 	readonly #onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChangeTreeData = this.#onDidChange.event;
 
 	#items: TreeItemWithChildren[] = [];
 	#refreshTimer: NodeJS.Timeout | null = null;
+
+	dispose(): void {
+		if (this.#refreshTimer) {
+			clearTimeout(this.#refreshTimer);
+			this.#refreshTimer = null;
+		}
+		this.#onDidChange.dispose();
+	}
 
 	clear(): void {
 		this.#items = [];

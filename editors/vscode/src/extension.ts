@@ -251,6 +251,7 @@ async function activateAfterTelemetry(
 	);
 	const lspCodeLens = new LspCodeLensProvider();
 	lspCodeLens.setManifest(initialManifest);
+	context.subscriptions.push(stepProvider, stateProvider, lspCodeLens);
 
 	// Single source of truth for the latest manifest. The LSP spawn
 	// gate reads it via predicate; the reload chain updates it.
@@ -570,10 +571,13 @@ export async function deactivate(): Promise<void> {
 	if (activeTelemetry !== null) {
 		tasks.push(activeTelemetry.drain(4500));
 	}
-	await Promise.race([
-		Promise.allSettled(tasks),
-		new Promise<void>((resolve) => {
-			setTimeout(resolve, 4500);
-		}),
-	]);
+	let timer: NodeJS.Timeout | undefined;
+	const deadline = new Promise<void>((resolve) => {
+		timer = setTimeout(resolve, 4500);
+	});
+	try {
+		await Promise.race([Promise.allSettled(tasks), deadline]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
+	}
 }

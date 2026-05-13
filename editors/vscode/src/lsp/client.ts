@@ -288,7 +288,10 @@ export function makeErrorHandler(channel: vscode.OutputChannel): ErrorHandler {
  * give the server a chance to flush before the host exits.
  */
 export async function stopLanguageClient(): Promise<void> {
-	if (!client) return;
+	if (!client) {
+		lspChannel = undefined;
+		return;
+	}
 	try {
 		// Bounded so a stuck server can't eat the deactivate budget.
 		// vscode-languageclient force-kills on timeout.
@@ -298,4 +301,5 @@ export async function stopLanguageClient(): Promise<void> {
 		log(`LSP client stop failed: ${msg}`);
 	}
 	client = undefined;
+	lspChannel = undefined;
 }

@@ -102,6 +102,7 @@ function parseStack(stack: string): RawFrame[] {
 			const file = withFunc[2];
 			const ln = withFunc[3];
 			if (fn === undefined || file === undefined || ln === undefined) continue;
+			if (!isPathLike(file)) continue;
 			out.push({ function: fn, filename: file, lineno: Number(ln) });
 			continue;
 		}
@@ -110,11 +111,21 @@ function parseStack(stack: string): RawFrame[] {
 			const file = noFunc[1];
 			const ln = noFunc[2];
 			if (file === undefined || ln === undefined) continue;
+			if (!isPathLike(file)) continue;
 			out.push({ filename: file, lineno: Number(ln) });
 			continue;
 		}
 	}
 	return out;
+}
+
+/** Eval-frame shapes ("eval at <anonymous> (foo:1:1), <anonymous>:1:1")
+ * back-reference into the line until the regex finally matches with a
+ * "filename" full of parens and angle brackets. Real source paths never
+ * contain those, so reject them - the eval frame has no usable file to
+ * basename anyway. */
+function isPathLike(file: string): boolean {
+	return !/[()<>]/.test(file);
 }
 
 function classifyFrame(

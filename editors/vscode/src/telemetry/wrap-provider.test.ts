@@ -281,4 +281,35 @@ describe("wrapMcpServerDefinitionProvider", () => {
 			);
 		expect(wrapped.onDidChangeMcpServerDefinitions).toBeUndefined();
 	});
+
+	it("wraps optional resolveMcpServerDefinition when present", async () => {
+		const { ctx, emitted } = makeCtx();
+		const wrapped =
+			wrapMcpServerDefinitionProvider<vscode.McpStdioServerDefinition>(
+				{
+					provideMcpServerDefinitions: () => [],
+					resolveMcpServerDefinition: () => {
+						throw new Error("resolveMcp boom");
+					},
+				},
+				ctx,
+			);
+		await expect(
+			wrapped.resolveMcpServerDefinition?.(
+				{} as vscode.McpStdioServerDefinition,
+				{} as vscode.CancellationToken,
+			),
+		).rejects.toThrow("resolveMcp boom");
+		expect(emitted).toHaveLength(1);
+	});
+
+	it("omits optional resolveMcpServerDefinition when the inner provider doesn't supply it", () => {
+		const { ctx } = makeCtx();
+		const wrapped =
+			wrapMcpServerDefinitionProvider<vscode.McpStdioServerDefinition>(
+				{ provideMcpServerDefinitions: () => [] },
+				ctx,
+			);
+		expect(wrapped.resolveMcpServerDefinition).toBeUndefined();
+	});
 });

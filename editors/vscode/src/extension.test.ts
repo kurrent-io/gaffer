@@ -26,6 +26,7 @@ import {
 	queueQuickPick,
 	setConfiguration,
 	setTrusted,
+	setWorkspaceFolders,
 } from "../test/testutil/vscode-state.js";
 import {
 	clearLspRequestHandlers,
@@ -159,6 +160,31 @@ describe("activate registrations", () => {
 		provider.onDidChangeMcpServerDefinitions?.(listener);
 		fireConfigurationChange(["gaffer.command"]);
 		expect(listener).toHaveBeenCalled();
+	});
+
+	it("MCP definitions carry --invoked-via=mcp_provider once trusted + id minted", async () => {
+		// activateBare keeps trust=false (MCP returns []); flip trust on
+		// + ensure the facade has minted an invoker id, then ask the
+		// provider for its definitions.
+		await activateBare();
+		setTrusted(true);
+		setWorkspaceFolders([
+			{
+				uri: vscode.Uri.file("/ws/a"),
+				name: "a",
+				index: 0,
+			} as vscode.WorkspaceFolder,
+		]);
+		const provider = getState().mcpProviders[0]?.provider;
+		if (!provider) throw new Error("no MCP provider registered");
+		const defs = await Promise.resolve(
+			provider.provideMcpServerDefinitions({} as vscode.CancellationToken),
+		);
+		const def = (defs as vscode.McpStdioServerDefinition[])[0];
+		if (!def) throw new Error("expected one definition");
+		expect(def.args).toContain("--invoked-via=mcp_provider");
+		expect(def.args.some((a) => a.startsWith("--invoker-id="))).toBe(true);
+		expect(def.args).toContain("--invoked-by=vscode");
 	});
 });
 

@@ -118,6 +118,24 @@ describe("buildException", () => {
 		expect(entry?.stacktrace.frames).toHaveLength(1);
 	});
 
+	it("silently drops V8 eval frames (no usable filename)", () => {
+		// V8 surfaces eval origins as nested `eval at ...` strings that
+		// fall through both regexes. They have no usable filename, so
+		// dropping is the right thing - assert one real frame survives.
+		const out = buildException({
+			err: makeError({
+				stack: `    at eval (eval at <anonymous> (${EXT_PATH}/dist/extension.js:1:1), <anonymous>:1:1)
+    at activate (${EXT_PATH}/dist/extension.js:42:13)`,
+			}),
+			phase: "startup",
+			extensionPath: EXT_PATH,
+			workspaceFolders: [],
+		});
+		const [entry] = out.properties.exceptions;
+		expect(entry?.stacktrace.frames).toHaveLength(1);
+		expect(entry?.stacktrace.frames[0]?.function).toBe("activate");
+	});
+
 	it("walks err.cause to build the causal chain (outer first, root last)", () => {
 		const root = makeError({
 			name: "ENOENT",

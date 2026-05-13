@@ -41,8 +41,6 @@ export interface TelemetryFacadeOptions {
 	vscodeTelemetryLevel: string | undefined;
 	/** Output sink for the debug-mode envelope print. */
 	log: (line: string) => void;
-	/** Salted project_id when the extension is in a workspace. */
-	projectId?: string;
 	/** Spawner identity for cross-surface stitching (not used in v0 - no
 	 * one spawns the extension; here for symmetry with the CLI). */
 	invokerId?: string;
@@ -118,7 +116,6 @@ async function createTelemetryImpl(
 					libVersion: opts.libVersion,
 					events: [event],
 					env: opts.env,
-					...(opts.projectId !== undefined && { projectId: opts.projectId }),
 					...(opts.invokerId !== undefined && { invokerId: opts.invokerId }),
 				}),
 			);

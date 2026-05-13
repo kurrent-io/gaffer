@@ -62,10 +62,9 @@ describe("createTelemetry", () => {
 		telemetry.emit(activatedEvent);
 		await telemetry.drain(1000);
 		// telemetry.json may not exist; if it does, it must not contain
-		// the freshly-minted identity fields.
+		// a freshly-minted telemetry_id.
 		const persisted = await load(dir);
 		expect(persisted.telemetry_id).toBeUndefined();
-		expect(persisted.salt).toBeUndefined();
 	});
 
 	it("on opt-out via VS Code telemetry.telemetryLevel: emit is a no-op", async () => {
@@ -98,13 +97,11 @@ describe("createTelemetry", () => {
 
 		const persisted = await load(dir);
 		expect(persisted.telemetry_id).toMatch(/^[0-9a-f-]{36}$/);
-		expect(persisted.salt).toMatch(/^[0-9a-f-]{36}$/);
 	});
 
 	it("invokerId() returns the per-install telemetry_id on a live handle", async () => {
 		const seeded = {
 			telemetry_id: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-			salt: "11111111-2222-3333-4444-555555555555",
 		};
 		await save(dir, seeded);
 		const telemetry = await createTelemetry(permissiveOpts());
@@ -131,7 +128,6 @@ describe("createTelemetry", () => {
 	it("reuses a persisted identity on subsequent activations", async () => {
 		const seeded = {
 			telemetry_id: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-			salt: "11111111-2222-3333-4444-555555555555",
 		};
 		await save(dir, seeded);
 
@@ -258,7 +254,6 @@ describe("peekInvokerId", () => {
 	it("returns the persisted telemetry_id when not opted out", async () => {
 		await save(dir, {
 			telemetry_id: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-			salt: "11111111-2222-3333-4444-555555555555",
 		});
 		const got = await peekInvokerId({
 			storageDir: dir,
@@ -271,7 +266,6 @@ describe("peekInvokerId", () => {
 	it("returns null when opted out via env (no identity shared)", async () => {
 		await save(dir, {
 			telemetry_id: "8f2b1a4c-9e7d-4a3e-b5f2-7c8a9d4e1f02",
-			salt: "11111111-2222-3333-4444-555555555555",
 		});
 		const got = await peekInvokerId({
 			storageDir: dir,

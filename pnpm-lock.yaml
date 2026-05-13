@@ -109,6 +109,9 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.3.0)
+      '@kurrent/gaffer-telemetry':
+        specifier: workspace:*
+        version: link:../../telemetry
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0

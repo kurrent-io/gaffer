@@ -227,10 +227,13 @@ export class SessionController implements vscode.Disposable {
 		// readDebugPort returns -1 when unset; we omit the flag in that
 		// case and let the CLI auto-pick a free port.
 		const requestedPort = this.#readDebugPort();
+		// `--` terminates flag parsing before the positional projection
+		// name; without it a hostile-toml projection named `--something`
+		// would be parsed as a flag by the CLI. Flags go first, name
+		// last after the separator.
 		const argv = this.#buildArgv(
 			[
 				"dev",
-				name,
 				"--json",
 				"--debug",
 				...(requestedPort >= 0 ? ["--debug-port", String(requestedPort)] : []),
@@ -241,6 +244,8 @@ export class SessionController implements vscode.Disposable {
 				// begins. With breakpoints set the CLI runs to the first hit
 				// instead.
 				"--start-paused-if-no-breakpoints",
+				"--",
+				name,
 			],
 			invokedVia,
 		);

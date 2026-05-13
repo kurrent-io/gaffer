@@ -122,6 +122,13 @@ function execFileAsync(
 				// to callers that need to classify the failure (e.g.
 				// telemetry's classifyManifestError). Wrapping in a fresh
 				// Error would lose those fields.
+				//
+				// Stderr is appended into err.message as a free-form string
+				// the user sees in a toast. Callers that re-throw this
+				// error from a wrapped handler MUST strip the stderr before
+				// it reaches reportException - the telemetry pipeline ships
+				// err.message verbatim and the CLI's stderr can name local
+				// paths.
 				if (stderr) err.message = `${err.message} (stderr: ${stderr.trim()})`;
 				reject(err);
 			} else {

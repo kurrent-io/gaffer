@@ -143,15 +143,20 @@ export const showPortInUse = (description: string): Thenable<unknown> =>
 
 // One-shot first-run telemetry disclosure. Mapped to the runner's
 // FirstRunChoice union so notice.ts doesn't have to know about vscode.
+//
+// Button order is leftmost-is-affirmative per VS Code convention; the
+// disable action sits on the right so a reflexive click doesn't opt
+// the user out by accident. Dismissing the toast (X) is also treated
+// as "accept" - same as the explicit Dismiss button.
 export const showTelemetryDisclosure = (): Thenable<
 	FirstRunChoice | undefined
 > =>
 	vscode.window
 		.showInformationMessage(
-			"Gaffer collects anonymous usage data to help improve the tool. You can change this anytime.",
-			BUTTON_DISABLE,
-			BUTTON_LEARN_MORE,
+			"Gaffer collects anonymous usage data, collected by Kurrent, Inc., to improve the tool. No projection code, stream names, or event content is sent. Click 'Learn more' to read the full notice and how to opt out.",
 			BUTTON_DISMISS,
+			BUTTON_LEARN_MORE,
+			BUTTON_DISABLE,
 		)
 		.then((label) => {
 			switch (label) {

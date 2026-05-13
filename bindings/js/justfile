@@ -1,10 +1,6 @@
 default:
     @just --list
 
-# Install dependencies
-init:
-    pnpm install
-
 # Build TypeScript
 build:
     pnpm run build

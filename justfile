@@ -4,21 +4,32 @@
 default:
     @just --list
 
-# Root-level tool setup
+# Root-level tool setup: corepack first, then pnpm. Both must precede the
+# per-module non-pnpm init step that follows.
 [private]
-[parallel]
 _init-root:
     corepack enable
     corepack install
 
-# Install all module dependencies in parallel
+# Workspace-wide pnpm install. Runs once at the repo root - pnpm 10.x's
+# workspace handles every package in pnpm-workspace.yaml in a single pass.
+# Splitting this across modules used to race on `mkdir` under .pnpm/
+# because pnpm doesn't lock its content-addressed store across concurrent
+# processes; one install eliminates the contention.
+[private]
+_init-pnpm:
+    pnpm install
+
+# Install per-module dev tools that don't share the pnpm store: dotnet
+# restore (runtime), golangci-lint (Go bindings), cue (telemetry). Safe
+# to run in parallel because these touch independent caches.
 [private]
 [parallel]
-_init-modules: runtime::init bindings::init testing::init editors::init types::init telemetry::init
+_init-modules: runtime::init bindings::init telemetry::init
 
 # Install all dependencies and tools, then generate telemetry types so IDEs
 # resolve them on first open.
-init: _init-root _init-modules telemetry::build
+init: _init-root _init-pnpm _init-modules telemetry::build
 
 # Ensure runtime .so is built (sequential: build then publish)
 [private]

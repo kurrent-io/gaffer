@@ -67,8 +67,7 @@ func newConfigTelemetryStatusCmd() *cobra.Command {
 }
 
 func newConfigTelemetryOnCmd() *cobra.Command {
-	var quiet bool
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "on",
 		Short: "Enable telemetry on this machine",
 		Long: "Set the user-level telemetry preference to enabled.\n" +
@@ -76,19 +75,12 @@ func newConfigTelemetryOnCmd() *cobra.Command {
 			"If telemetry isn't already in active use, this mints a fresh per-\n" +
 			"install id and prints a one-time disclosure notice. Existing\n" +
 			"environment-variable or workspace opt-outs still take precedence;\n" +
-			"the command surfaces them so you know what else to change.\n" +
-			"\n" +
-			"--quiet skips the disclosure notice and records that the caller\n" +
-			"has already shown a user-facing disclosure of its own. Intended\n" +
-			"for editor extensions (e.g. VS Code) that surface their own\n" +
-			"telemetry consent UI before enabling gaffer telemetry.",
+			"the command surfaces them so you know what else to change.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runConfigTelemetryOn(cmd.OutOrStdout(), cmd.ErrOrStderr(), quiet)
+			return runConfigTelemetryOn(cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
-	cmd.Flags().BoolVar(&quiet, "quiet", false, "Skip the disclosure notice (caller asserts it has already disclosed)")
-	return cmd
 }
 
 func newConfigTelemetryOffCmd() *cobra.Command {
@@ -178,13 +170,14 @@ func renderWorkspaceLayer(s telemetryStatusStyles, l telemetry.Layer) string {
 
 // runConfigTelemetryOn sets user-level enabled=true. If no other
 // layer is opting out, this is also when first-mint fires - the
-// notice goes to noticeOut (typically stderr).
+// notice goes to noticeOut (typically stderr) when the standard
+// gating conditions allow (see shouldShowFirstMintNotice).
 //
 // A malformed [telemetry] section is not a hard error here: `on`
 // is itself the recovery path for a broken config. We surface the
 // parse error as a warning and rewrite the section cleanly; any
 // unrecoverable prior id is replaced by a fresh mint downstream.
-func runConfigTelemetryOn(out, noticeOut io.Writer, quiet bool) error {
+func runConfigTelemetryOn(out, noticeOut io.Writer) error {
 	store, err := userconfig.Open()
 	if err != nil {
 		return err
@@ -196,13 +189,6 @@ func runConfigTelemetryOn(out, noticeOut io.Writer, quiet bool) error {
 	}
 	on := true
 	t.Enabled = &on
-	if quiet {
-		// Caller is asserting it has already shown its own user-
-		// facing disclosure (typically an editor extension's
-		// consent UI). EnsureIdentity below will see Disclosed=true
-		// and skip the stderr notice.
-		t.Disclosed = true
-	}
 	telemetry.WriteTelemetry(store, t)
 	if err := store.Save(); err != nil {
 		return fmt.Errorf("save user config: %w", err)
@@ -227,23 +213,20 @@ func runConfigTelemetryOn(out, noticeOut io.Writer, quiet bool) error {
 	}
 
 	// Not opted out. EnsureIdentity mints on first run and prints
-	// the notice unless [telemetry] disclosed is already true. For
-	// a direct user opt-in (--quiet absent), disclosure-via-stderr
-	// is exactly right; --quiet pre-sets the flag above.
-	if _, err := telemetry.EnsureIdentity(store, r, noticeOut); err != nil {
+	// the notice when the gating conditions allow. The user invoked
+	// this command directly, so we pass an empty Invocation -
+	// EnsureIdentity's own TTY check is the suppress signal if
+	// noticeOut isn't user-visible.
+	if _, err := telemetry.EnsureIdentity(store, r, telemetry.Invocation{}, noticeOut); err != nil {
 		// EnsureIdentity returned a partial-load warning alongside
 		// a usable identity (e.g. malformed enabled key in an
 		// otherwise-valid section). Preference is saved; surface
 		// the warning, don't exit non-zero.
-		if !quiet {
-			_, _ = fmt.Fprintln(out, "Telemetry enabled.")
-		}
+		_, _ = fmt.Fprintln(out, "Telemetry enabled.")
 		_, _ = fmt.Fprintf(out, "Warning: %v\n", err)
 		return nil
 	}
-	if !quiet {
-		_, _ = fmt.Fprintln(out, "Telemetry enabled.")
-	}
+	_, _ = fmt.Fprintln(out, "Telemetry enabled.")
 	return nil
 }
 

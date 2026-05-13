@@ -3,6 +3,7 @@ package telemetry
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -310,10 +311,28 @@ func TestMintAndPersist_RaceWinnerEmptySentinel(t *testing.T) {
 // EnsureIdentity composition tests
 // ----------------------------------------------------------------
 
+// pretendTTY swaps the package's isTTY check to return true for the
+// duration of the test, so a bytes.Buffer noticeOut behaves like a
+// real terminal. Tests that need TTY=false call pretendNonTTY.
+func pretendTTY(t *testing.T) {
+	t.Helper()
+	prev := isTTY
+	isTTY = func(io.Writer) bool { return true }
+	t.Cleanup(func() { isTTY = prev })
+}
+
+func pretendNonTTY(t *testing.T) {
+	t.Helper()
+	prev := isTTY
+	isTTY = func(io.Writer) bool { return false }
+	t.Cleanup(func() { isTTY = prev })
+}
+
 func TestEnsureIdentity_FreshMintWritesNotice(t *testing.T) {
+	pretendTTY(t)
 	store, _ := userconfig.Load(t.TempDir())
 	var buf bytes.Buffer
-	id, err := EnsureIdentity(store, Resolved{}, &buf)
+	id, err := EnsureIdentity(store, Resolved{}, Invocation{}, &buf)
 	if err != nil {
 		t.Fatalf("EnsureIdentity: %v", err)
 	}
@@ -326,10 +345,11 @@ func TestEnsureIdentity_FreshMintWritesNotice(t *testing.T) {
 }
 
 func TestEnsureIdentity_OptOutSkipsEverything(t *testing.T) {
+	pretendTTY(t)
 	store, _ := userconfig.Load(t.TempDir())
 	var buf bytes.Buffer
 	r := Resolved{Env: Layer{State: LayerDisabled, Source: "env", EnvVar: "DO_NOT_TRACK", Value: "1"}}
-	id, err := EnsureIdentity(store, r, &buf)
+	id, err := EnsureIdentity(store, r, Invocation{}, &buf)
 	if err != nil {
 		t.Fatalf("EnsureIdentity: %v", err)
 	}
@@ -348,6 +368,7 @@ func TestEnsureIdentity_OptOutSkipsEverything(t *testing.T) {
 }
 
 func TestEnsureIdentity_ExistingIdentitySkipsNotice(t *testing.T) {
+	pretendTTY(t)
 	dir := t.TempDir()
 	seed, _ := userconfig.Load(dir)
 	first, _ := MintIdentity()
@@ -358,7 +379,7 @@ func TestEnsureIdentity_ExistingIdentitySkipsNotice(t *testing.T) {
 
 	store, _ := userconfig.Load(dir)
 	var buf bytes.Buffer
-	id, err := EnsureIdentity(store, Resolved{}, &buf)
+	id, err := EnsureIdentity(store, Resolved{}, Invocation{}, &buf)
 	if err != nil {
 		t.Fatalf("EnsureIdentity: %v", err)
 	}
@@ -373,11 +394,11 @@ func TestEnsureIdentity_ExistingIdentitySkipsNotice(t *testing.T) {
 	}
 }
 
-func TestEnsureIdentity_PreSetDisclosedFlagSuppressesNotice(t *testing.T) {
-	// Caller (e.g. `gaffer config telemetry on --quiet` invoked by
-	// the VS Code extension after its own disclosure UI) writes
-	// disclosed=true before EnsureIdentity runs. Mint still happens;
-	// notice doesn't fire.
+func TestEnsureIdentity_DisclosedAlreadyLatchedSuppressesNotice(t *testing.T) {
+	// A prior direct-terminal run set Disclosed=true. A subsequent
+	// mint (after `config telemetry off` -> `on`, which clears
+	// id/salt but leaves Disclosed) must NOT re-show the banner.
+	pretendTTY(t)
 	store, _ := userconfig.Load(t.TempDir())
 	WriteTelemetry(store, TelemetrySection{Disclosed: true})
 	if err := store.Save(); err != nil {
@@ -385,7 +406,7 @@ func TestEnsureIdentity_PreSetDisclosedFlagSuppressesNotice(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	id, err := EnsureIdentity(store, Resolved{}, &buf)
+	id, err := EnsureIdentity(store, Resolved{}, Invocation{}, &buf)
 	if err != nil {
 		t.Fatalf("EnsureIdentity: %v", err)
 	}
@@ -400,12 +421,64 @@ func TestEnsureIdentity_PreSetDisclosedFlagSuppressesNotice(t *testing.T) {
 	}
 }
 
-func TestEnsureIdentity_FirstMintWritesNoticeAndPersistsDisclosed(t *testing.T) {
-	// Direct user mint: no disclosed flag yet, so notice fires AND
-	// the flag is set + saved so subsequent runs don't re-disclose.
+func TestEnsureIdentity_InvokerIDSuppressesNotice(t *testing.T) {
+	// A spawner identifying itself via --invoker-id is expected to
+	// have its own disclosure UI (e.g. the VS Code extension's
+	// first-activation notification). EnsureIdentity must not also
+	// print the CLI banner inside the spawn.
+	pretendTTY(t) // even on a TTY, the invoker-id check wins
 	store, _ := userconfig.Load(t.TempDir())
 	var buf bytes.Buffer
-	if _, err := EnsureIdentity(store, Resolved{}, &buf); err != nil {
+	id, err := EnsureIdentity(store, Resolved{}, Invocation{InvokerID: "00000000-0000-0000-0000-000000000000"}, &buf)
+	if err != nil {
+		t.Fatalf("EnsureIdentity: %v", err)
+	}
+	if id.IsZero() {
+		t.Error("identity zero under invoker-id spawn; mint should still happen")
+	}
+	if buf.Len() != 0 {
+		t.Errorf("notice written despite --invoker-id: %q", buf.String())
+	}
+	// Disclosed must NOT latch - the gaffer-direct-terminal user
+	// still deserves a chance to see the notice on their next run.
+	store2, _ := userconfig.Load(store.Dir())
+	t2, _ := LoadTelemetry(store2)
+	if t2.Disclosed {
+		t.Error("Disclosed latched on invoker-id-suppressed mint; would silence direct-terminal disclosure")
+	}
+}
+
+func TestEnsureIdentity_NonTTYSuppressesNotice(t *testing.T) {
+	// stderr captured (CI pipe, log redirect, `2>file`): the banner
+	// would be invisible. Suppress and leave Disclosed unset so the
+	// next direct-terminal run gets a real chance.
+	pretendNonTTY(t)
+	store, _ := userconfig.Load(t.TempDir())
+	var buf bytes.Buffer
+	id, err := EnsureIdentity(store, Resolved{}, Invocation{}, &buf)
+	if err != nil {
+		t.Fatalf("EnsureIdentity: %v", err)
+	}
+	if id.IsZero() {
+		t.Error("identity zero on non-TTY; mint should still happen")
+	}
+	if buf.Len() != 0 {
+		t.Errorf("notice written on non-TTY noticeOut: %q", buf.String())
+	}
+	store2, _ := userconfig.Load(store.Dir())
+	t2, _ := LoadTelemetry(store2)
+	if t2.Disclosed {
+		t.Error("Disclosed latched on non-TTY; next direct-terminal run would be silently silenced")
+	}
+}
+
+func TestEnsureIdentity_FirstMintWritesNoticeAndPersistsDisclosed(t *testing.T) {
+	// Direct user mint on a TTY with no spawner: notice fires AND
+	// Disclosed=true persists so subsequent runs don't re-disclose.
+	pretendTTY(t)
+	store, _ := userconfig.Load(t.TempDir())
+	var buf bytes.Buffer
+	if _, err := EnsureIdentity(store, Resolved{}, Invocation{}, &buf); err != nil {
 		t.Fatalf("EnsureIdentity: %v", err)
 	}
 	if buf.Len() == 0 {
@@ -420,19 +493,20 @@ func TestEnsureIdentity_FirstMintWritesNoticeAndPersistsDisclosed(t *testing.T) 
 }
 
 func TestEnsureIdentity_RaceLostNoNotice(t *testing.T) {
+	pretendTTY(t)
 	dir := t.TempDir()
 	a, _ := userconfig.Load(dir)
 	b, _ := userconfig.Load(dir)
 
 	var bufA, bufB bytes.Buffer
-	idA, errA := EnsureIdentity(a, Resolved{}, &bufA)
+	idA, errA := EnsureIdentity(a, Resolved{}, Invocation{}, &bufA)
 	if errA != nil {
 		t.Fatalf("A.EnsureIdentity: %v", errA)
 	}
 	if bufA.Len() == 0 {
 		t.Error("A.notice not written on fresh mint")
 	}
-	idB, errB := EnsureIdentity(b, Resolved{}, &bufB)
+	idB, errB := EnsureIdentity(b, Resolved{}, Invocation{}, &bufB)
 	if errB != nil {
 		t.Fatalf("B.EnsureIdentity: %v", errB)
 	}
@@ -448,13 +522,14 @@ func TestEnsureIdentity_PartialPersistedErrorPropagates(t *testing.T) {
 	// Existing identity loads with a partial err (malformed
 	// enabled). EnsureIdentity returns the id AND the err so the
 	// caller can warn.
+	pretendTTY(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte("[telemetry]\nenabled = 1\nid = \"abc\"\nsalt = \"def\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	store, _ := userconfig.Load(dir)
 	var buf bytes.Buffer
-	id, err := EnsureIdentity(store, Resolved{}, &buf)
+	id, err := EnsureIdentity(store, Resolved{}, Invocation{}, &buf)
 	if err == nil {
 		t.Error("err = nil, want partial-load warning surfaced")
 	}
@@ -467,8 +542,9 @@ func TestEnsureIdentity_PartialPersistedErrorPropagates(t *testing.T) {
 }
 
 func TestEnsureIdentity_NoticeWriteFailureDoesNotFail(t *testing.T) {
+	pretendTTY(t)
 	store, _ := userconfig.Load(t.TempDir())
-	id, err := EnsureIdentity(store, Resolved{}, brokenWriter{})
+	id, err := EnsureIdentity(store, Resolved{}, Invocation{}, brokenWriter{})
 	if err != nil {
 		t.Fatalf("EnsureIdentity returned err on stderr fail: %v", err)
 	}
@@ -485,8 +561,9 @@ func TestEnsureIdentity_NoticeWriteFailureLeavesDisclosedFalse(t *testing.T) {
 	// disclosure. We must NOT latch Disclosed=true - otherwise the
 	// next run from a non-broken stderr would skip the notice and
 	// the user has been permanently silenced.
+	pretendTTY(t)
 	store, _ := userconfig.Load(t.TempDir())
-	if _, err := EnsureIdentity(store, Resolved{}, brokenWriter{}); err != nil {
+	if _, err := EnsureIdentity(store, Resolved{}, Invocation{}, brokenWriter{}); err != nil {
 		t.Fatalf("EnsureIdentity: %v", err)
 	}
 	// Re-read from disk to confirm the on-disk state isn't latched.

@@ -74,7 +74,7 @@ func TestIsConfigCommand(t *testing.T) {
 		{"config telemetry on", []string{"config", "telemetry", "on"}, true},
 		{"config telemetry off", []string{"config", "telemetry", "off"}, true},
 		{"config telemetry status", []string{"config", "telemetry", "status"}, true},
-		{"config telemetry on --quiet", []string{"config", "telemetry", "on", "--quiet"}, true},
+		{"config telemetry on with extra flag", []string{"config", "telemetry", "on", "--unknown"}, true},
 		{"config alone", []string{"config"}, true},
 		{"with leading flag", []string{"--invoker-id=x", "config", "telemetry", "on"}, true},
 		{"invoker-id value equals config", []string{"--invoker-id", "config", "version"}, false},

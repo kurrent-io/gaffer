@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,10 @@ func setupTelemetryCmdTest(t *testing.T) (home string) {
 		t.Setenv(k, "")
 		_ = os.Unsetenv(k)
 	}
+
+	// Default to TTY=true so tests exercise the realistic interactive
+	// path; tests that need the captured-stderr branch override.
+	t.Cleanup(telemetry.IsTTYCheckForTesting(func(io.Writer) bool { return true }))
 
 	return home
 }
@@ -213,36 +218,6 @@ func TestConfigTelemetryOn_FreshMintsAndNotifies(t *testing.T) {
 	got, _ := telemetry.LoadTelemetry(store)
 	if got.Enabled == nil || *got.Enabled != true {
 		t.Errorf("Enabled = %v, want &true", got.Enabled)
-	}
-}
-
-func TestConfigTelemetryOn_QuietSuppressesNoticeAndStdout(t *testing.T) {
-	// --quiet is the flag editor extensions use after their own
-	// disclosure UI: mint + enable + record disclosed=true, no
-	// stderr notice, no stdout "Telemetry enabled." line. A future
-	// `gaffer dev` from the same install must also stay silent
-	// because EnsureIdentity sees disclosed=true.
-	setupTelemetryCmdTest(t)
-
-	stdout, stderr, err := runCmd(t, "config", "telemetry", "on", "--quiet")
-	if err != nil {
-		t.Fatalf("on --quiet: %v", err)
-	}
-	if stdout != "" {
-		t.Errorf("--quiet wrote to stdout: %q", stdout)
-	}
-	if stderr != "" {
-		t.Errorf("--quiet wrote to stderr: %q", stderr)
-	}
-
-	dir, _ := userconfig.DefaultDir()
-	store, _ := userconfig.Load(dir)
-	got, _ := telemetry.LoadTelemetry(store)
-	if got.Enabled == nil || !*got.Enabled {
-		t.Errorf("Enabled = %v, want &true", got.Enabled)
-	}
-	if !got.Disclosed {
-		t.Error("Disclosed = false, want true (--quiet asserts disclosure was shown)")
 	}
 }
 

@@ -1,4 +1,4 @@
-import { beforeEach } from "vitest";
+import { beforeEach, vi } from "vitest";
 import { __resetForTest as resetDiagnostics } from "../src/diagnostics.js";
 import { __resetForTest as resetOutput } from "../src/output.js";
 import { resetVscode } from "./testutil/vscode-state.js";
@@ -11,4 +11,13 @@ beforeEach(() => {
 	// channel and disappear from the new state.outputChannels[].
 	resetOutput();
 	resetDiagnostics();
+	// Default-stub globalThis.fetch so tests that exercise activate()
+	// (or any other path that builds a real Telemetry facade) don't
+	// fire envelopes to the staging worker. The facade's `fetchImpl`
+	// option is the explicit override for tests that want to assert on
+	// outgoing requests; this guard is for everything else.
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async () => new Response("", { status: 200 })),
+	);
 });

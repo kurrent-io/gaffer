@@ -33,9 +33,11 @@ export function translateEnvelope(envelope: Envelope, sessionId: string, workerD
 			$lib_version: context.lib_version,
 			// Worker-stamped session id; not sent by the client.
 			$session_id: sessionId,
-			// Suppress PostHog's IP-based geo-resolution. The worker's egress
-			// IP would otherwise be attached to every event.
+			// Suppress PostHog GeoIP enrichment. $ip: null alone isn't
+			// enough; the plugin still resolves $geoip_* from the source
+			// request IP unless $geoip_disable is set.
 			$ip: null,
+			$geoip_disable: true,
 			// Deploy time of the running worker version. Lets dashboards
 			// filter / pivot on deploy generation.
 			worker_deployed_at: workerDeployedAt,

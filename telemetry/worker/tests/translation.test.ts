@@ -107,6 +107,58 @@ describe("translateEnvelope", () => {
 		expect(result[0]?.properties.$lib).toBe("gaffer-vscode");
 	});
 
+	it("sets platform=node on $exception from the vscode emitter", () => {
+		const env: Envelope = {
+			...baseEnvelope,
+			context: { ...baseContext, emitter: "vscode" },
+			events: [
+				{
+					name: "exception",
+					timestamp: "2026-05-08T12:00:00.000Z",
+					properties: {
+						exceptions: [
+							{
+								type: "RuntimeError",
+								value: "x",
+								in_app: true,
+								stacktrace: { type: "raw", frames: [] },
+							},
+						],
+						phase: "startup",
+					},
+				},
+			],
+		};
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.platform).toBe("node");
+	});
+
+	it("sets platform=go on $exception from the cli emitter", () => {
+		const env: Envelope = {
+			...baseEnvelope,
+			context: { ...baseContext, emitter: "cli" },
+			events: [
+				{
+					name: "exception",
+					timestamp: "2026-05-08T12:00:00.000Z",
+					properties: {
+						exceptions: [
+							{
+								type: "RuntimeError",
+								value: "x",
+								in_app: true,
+								stacktrace: { type: "raw", frames: [] },
+							},
+						],
+						phase: "event_processing",
+					},
+				},
+			],
+		};
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.platform).toBe("go");
+	});
+
 	it("renames `exception` event to `$exception` and `exceptions` to `$exception_list`", () => {
 		const env: Envelope = {
 			...baseEnvelope,

@@ -51,7 +51,13 @@ export async function fireMergeDangerously(
 					{
 						event: "$merge_dangerously",
 						distinct_id: emitterId,
-						properties: { alias: invokerId },
+						properties: {
+							alias: invokerId,
+							// Suppress PostHog GeoIP enrichment (same as
+							// translateEnvelope; see translation.ts).
+							$ip: null,
+							$geoip_disable: true,
+						},
 					},
 				],
 			}),

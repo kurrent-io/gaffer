@@ -47,6 +47,13 @@ export function translateEnvelope(envelope: Envelope, sessionId: string, workerD
 			...translateEventProperties(event),
 		};
 
+		// PostHog requires `platform` on $exception events. Derived from
+		// the envelope emitter so CLI / MCP exceptions report `go` and
+		// extension exceptions report `node`.
+		if (event.name === "exception") {
+			props.platform = platformFor(context.emitter);
+		}
+
 		// Salted project_id is forwarded as a regular event property so
 		// dashboards can split by project. Absent when the producer
 		// wasn't running inside a gaffer project (e.g. `gaffer version`
@@ -155,4 +162,13 @@ function translateProjectionShapeProperties(props: ProjectionShape["properties"]
 function translateExceptionProperties(props: Exception["properties"]): Record<string, unknown> {
 	const { exceptions, ...rest } = props;
 	return { ...rest, $exception_list: exceptions };
+}
+
+// PostHog's exception ingestion requires `platform` on `$exception` events
+// to identify the emitting runtime (used for grouping + symbolication). The
+// gaffer surfaces map to different runtimes: CLI / MCP are Go, the VS Code
+// extension is Node.
+function platformFor(emitter: Envelope["context"]["emitter"]): string {
+	if (emitter === "vscode") return "node";
+	return "go";
 }

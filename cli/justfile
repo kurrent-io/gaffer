@@ -9,9 +9,20 @@ default:
 _resources:
     cp TELEMETRY.md internal/mcpserver/resources/telemetry-info.gen.md
 
-# Build the CLI binary
+# Build the CLI binary. Default builds point at the staging telemetry
+# worker; use `build-release` to bake the prod URL + version in for
+# shippable artefacts.
 build: _resources
     CGO_ENABLED=1 go build -o gaffer .
+
+# Build the CLI for release: stamps the version and switches the
+# telemetry sink to production. Invoked by the publish pipeline; the
+# version argument comes from changesets/action's published packages.
+# The prod ingest URL is also hard-coded in editors/vscode/vite.config.ts
+# (as `PRODUCTION_INGEST_URL`); keep them in lockstep if the worker URL
+# ever moves.
+build-release version: _resources
+    CGO_ENABLED=1 go build -ldflags '-X github.com/kurrent-io/gaffer/cli/cmd.Version={{version}} -X github.com/kurrent-io/gaffer/cli/internal/telemetry.DefaultWorkerURL=https://telemetry.gaffer.kurrent.io/v1/ingest' -o gaffer .
 
 # Run tests
 test: _resources

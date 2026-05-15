@@ -219,8 +219,10 @@ func (c *Client) ExceptionPhase() ExceptionPhase {
 	return ExceptionPhaseEventProcessing
 }
 
-// New constructs a Client. With no options it uses the production httpSink
-// pointed at DefaultWorkerURL with a 2-second per-send deadline.
+// New constructs a Client. With no options it uses an httpSink pointed at
+// DefaultWorkerURL with a 2-second per-send deadline. DefaultWorkerURL is
+// the staging worker by default; release builds inject the production URL
+// via ldflags (see cli/justfile#build-release).
 //
 // When GAFFER_TELEMETRY_DEBUG=1 is set in the process environment, the
 // configured sink is wrapped in a debug-tee that writes every envelope

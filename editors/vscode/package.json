@@ -46,12 +46,12 @@
 		}
 	},
 	"scripts": {
-		"build": "vite build",
-		"watch": "vite build --watch",
+		"build": "vite build --mode development",
+		"watch": "vite build --watch --mode development",
 		"test": "vitest run",
 		"check": "tsc --noEmit && eslint . && prettier --check .",
 		"fix": "eslint --fix . && prettier --write .",
-		"package": "pnpm --filter gaffer-tsserver-plugin run build && vite build && vsce package --no-dependencies && ./scripts/inject-tsserver-plugin.sh"
+		"package": "pnpm --filter gaffer-tsserver-plugin run build && vite build --mode production && vsce package --no-dependencies && ./scripts/inject-tsserver-plugin.sh"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

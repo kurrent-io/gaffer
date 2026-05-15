@@ -7,13 +7,14 @@
 	"main": "src/index.ts",
 	"scripts": {
 		"render-notice": "tsx scripts/render-notice.ts",
-		"gen-types": "wrangler types",
+		"gen-types": "wrangler types --env staging",
 		"build": "pnpm run render-notice && pnpm run gen-types",
 		"check": "pnpm run build && prettier --check . && tsc --noEmit",
 		"fix": "prettier --write .",
 		"test": "pnpm run build && vitest run",
-		"dev": "wrangler dev",
-		"deploy": "wrangler deploy"
+		"dev": "wrangler dev --env staging",
+		"deploy:staging": "wrangler deploy --env staging",
+		"deploy:production": "wrangler deploy --env production"
 	},
 	"dependencies": {
 		"@cfworker/json-schema": "^4.1.1"

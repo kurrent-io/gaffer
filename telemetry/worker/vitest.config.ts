@@ -9,11 +9,14 @@ export default defineConfig({
 			// the worker. The pool runs the entrypoint in the same isolate as
 			// the tests, so this also makes module imports cohere.
 			main: "src/index.ts",
-			wrangler: { configPath: "./wrangler.jsonc" },
+			// Tests run against the staging env config so bindings (DB,
+			// ASSETS, CF_VERSION_METADATA, POSTHOG_HOST) resolve. Staging
+			// and production have the same binding shape; either would work.
+			wrangler: { configPath: "./wrangler.jsonc", environment: "staging" },
 			miniflare: {
 				// Tests don't have access to the deploy-time secret, so set a
-				// fixture value here. Production sets POSTHOG_API_KEY via
-				// `wrangler secret put`.
+				// fixture value here. Real envs set POSTHOG_API_KEY via
+				// `wrangler secret put POSTHOG_API_KEY --env <staging|production>`.
 				bindings: {
 					POSTHOG_API_KEY: "phc_test_fixture_key",
 				},

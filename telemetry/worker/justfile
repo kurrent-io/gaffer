@@ -23,9 +23,16 @@ test: build
 dev: build
     pnpm run --filter '@kurrent/gaffer-telemetry-worker' dev
 
-# Deploy to Cloudflare. Requires CLOUDFLARE_API_TOKEN in env.
-deploy: build
-    pnpm run --filter '@kurrent/gaffer-telemetry-worker' deploy
+# Deploy to staging. Requires CLOUDFLARE_API_TOKEN in env. CI uses this
+# path on every main push; manual invocation is fine too.
+deploy-staging: build
+    pnpm run --filter '@kurrent/gaffer-telemetry-worker' deploy:staging
+
+# Deploy to production. Requires CLOUDFLARE_API_TOKEN in env. CI handles
+# this from release.yml on the Version Packages PR merge; manual
+# invocation is an escape hatch.
+deploy-production: build
+    pnpm run --filter '@kurrent/gaffer-telemetry-worker' deploy:production
 
 # Remove build artifacts.
 clean:

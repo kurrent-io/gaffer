@@ -31,6 +31,11 @@ package:
     just plugin::build
     pnpm run package
 
+# Build and package as .vsix with dev settings
+dev:
+    just plugin::build
+    pnpm run dev
+
 # Remove built artifacts across both packages.
 clean:
     just plugin::clean

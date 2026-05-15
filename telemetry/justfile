@@ -62,6 +62,13 @@ clean: worker::clean
 # json-schema-to-typescript does NOT walk to determine required-ness (it
 # leaves narrowed fields optional). Hoisting fixes the TS output without
 # changing the wire shape.
+#
+# A final pass strips `unevaluatedProperties` from any definition that's
+# referenced via `allOf` in another definition (i.e. the "base" partials).
+# `unevaluatedProperties: false` on a base + `allOf` extension is broken in
+# practice: the base's closedness check fires against its own `properties`
+# only, rejecting variant-specific additions. Variants keep their own
+# `unevaluatedProperties: false` to catch truly-extraneous fields.
 [private]
 _gen-schema:
     @mkdir -p generated
@@ -70,6 +77,7 @@ _gen-schema:
         | sed 's|#/components/schemas/|#/definitions/|g' \
         | jq '.definitions |= with_entries(.value |= (if (.allOf // []) | any(.required) then .required = ((.required // []) + ([.allOf[] | .required // empty] | flatten) | unique) | .allOf = [.allOf[] | select(.required == null)] | if (.allOf | length == 0) then del(.allOf) else . end else . end))' \
         | jq 'walk(if type == "object" and .type == "object" and (.unevaluatedProperties == null) then . + {unevaluatedProperties: false} elif type == "object" and .type == "array" and (.maxItems == null) then . + {maxItems: 100} else . end) | . + {"$schema": "https://json-schema.org/draft/2019-09/schema"}' \
+        | jq '(.definitions | to_entries | map(.value.allOf // [] | map(.["$ref"]? // empty | sub("^#/definitions/"; ""))) | flatten | unique) as $bases | .definitions |= with_entries(if (.key as $k | $bases | any(. == $k)) then .value |= del(.unevaluatedProperties) else . end)' \
         > generated/telemetry.schema.json
 
 # CUE -> Go helper types (Envelope, Context, enums, RawCount, per-event

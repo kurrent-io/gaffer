@@ -145,8 +145,7 @@
         "invoked_via": {
           "$ref": "#/definitions/InvokedVia"
         }
-      },
-      "unevaluatedProperties": false
+      }
     },
     "CommandName": {
       "description": "The set of gaffer commands. Source of truth for the discriminator on\n`command_invoked` variants and the `command` field on `exception`.",

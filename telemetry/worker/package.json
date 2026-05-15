@@ -11,7 +11,7 @@
 		"build": "pnpm run render-notice && pnpm run gen-types",
 		"check": "pnpm run build && prettier --check . && tsc --noEmit",
 		"fix": "prettier --write .",
-		"test": "pnpm run build && vitest run",
+		"test": "pnpm run build && vitest run && wrangler deploy --env staging --dry-run --outdir=.wrangler/dryrun",
 		"dev": "wrangler dev --env staging",
 		"deploy:staging": "wrangler deploy --env staging",
 		"deploy:production": "wrangler deploy --env production"

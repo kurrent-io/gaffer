@@ -28,28 +28,39 @@ export async function handleIngest(request: Request, env: Env, ctx: ExecutionCon
 	// below catches clients that omit or lie about the header.
 	const contentLength = request.headers.get("content-length");
 	if (contentLength !== null && Number.parseInt(contentLength, 10) > MAX_BODY_BYTES) {
+		console.error("drop: content-length over cap:", contentLength);
 		return ok();
 	}
 
 	if (!ALLOWED_POSTHOG_HOSTS.includes(env.POSTHOG_HOST)) {
-		console.error("rejecting envelope: POSTHOG_HOST not allowlisted:", env.POSTHOG_HOST);
+		console.error("drop: POSTHOG_HOST not allowlisted:", env.POSTHOG_HOST);
 		return ok();
 	}
 
 	const bodyText = await readBodyCapped(request, MAX_BODY_BYTES);
 	if (bodyText === null) {
+		console.error("drop: body unreadable or exceeded streaming cap");
 		return ok();
 	}
 
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(bodyText);
-	} catch {
+	} catch (err) {
+		// Log the parser error (includes position) and the body size, but
+		// not the body content. /v1/ingest is public; logging raw payload
+		// snippets would violate the worker's no-content-collection posture
+		// when probes / misconfigured clients hit the endpoint.
+		console.error("drop: JSON parse:", err, `(body=${bodyText.length}B)`);
 		return ok();
 	}
 
 	const result = validator.validate(parsed);
 	if (!result.valid) {
+		// Log so client/schema drift surfaces in `wrangler tail` instead
+		// of vanishing into "always 200, drop on failure". Truncated to
+		// keep noisy bot-probe payloads from blowing the log budget.
+		console.error("drop: schema invalid:", JSON.stringify(result.errors).slice(0, 500));
 		return ok();
 	}
 	const envelope = parsed as Envelope;
@@ -74,7 +85,9 @@ export async function handleIngest(request: Request, env: Env, ctx: ExecutionCon
 	try {
 		const batch = translateEnvelope(envelope, sessionId, env.CF_VERSION_METADATA.timestamp);
 		payload = { api_key: env.POSTHOG_API_KEY, batch };
-	} catch {
+	} catch (err) {
+		// Unhandled event variant or property-shape regression.
+		console.error("drop: translation threw:", err);
 		return ok();
 	}
 
@@ -113,8 +126,10 @@ async function forwardToPostHog(host: string, payload: unknown): Promise<void> {
 		if (!res.ok) {
 			// With "always 200, drop on failure" up the stack, console.error
 			// is the only signal that envelopes are being rejected (bad API
-			// key, payload format change, project disabled).
-			console.error("forwardToPostHog non-2xx:", res.status);
+			// key, payload format change, project disabled). PostHog's error
+			// bodies are small JSON; log the first 500 chars as-is.
+			const body = await res.text();
+			console.error("forwardToPostHog non-2xx:", res.status, body.slice(0, 500));
 		}
 	} catch (err) {
 		console.error("forwardToPostHog fetch failed:", err);

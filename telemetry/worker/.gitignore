@@ -3,3 +3,6 @@ src/notice.gen.ts
 worker-configuration.d.ts
 .wrangler/
 dist/
+
+# Local dev secrets (POSTHOG_API_KEY etc). Pairs with `wrangler dev`.
+.dev.vars

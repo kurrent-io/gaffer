@@ -11,8 +11,13 @@
 
 import type { Envelope } from "@kurrent/gaffer-telemetry";
 
-/** Production ingest endpoint. */
-export const INGEST_URL = "https://telemetry.gaffer.kurrent.io/v1/ingest";
+/**
+ * Ingest endpoint. Substituted at build time by Vite (`define`) - dev
+ * builds get the staging worker, `vite build --mode production` flips
+ * to the prod worker. See vite.config.ts.
+ */
+declare const __INGEST_URL__: string;
+export const INGEST_URL = __INGEST_URL__;
 
 /** Per-request abort after this many ms - matches CLI's net timeout. */
 const REQUEST_TIMEOUT_MS = 5000;

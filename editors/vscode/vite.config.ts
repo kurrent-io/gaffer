@@ -35,7 +35,26 @@ function vendorProjectionTypes(): Plugin {
 	};
 }
 
-export default defineConfig({
+// Telemetry ingest URLs substituted at build time via `define`. Dev
+// builds (`vite build`, `vite build --watch`, vitest) default to the
+// staging worker so unreleased VSIX traffic doesn't pollute the prod
+// PostHog project. The marketplace publish recipe runs with
+// `--mode production` to flip to the prod URL.
+//
+// Both URLs are also hard-coded on the Go side: staging in
+// cli/internal/telemetry/sink_http.go (`DefaultWorkerURL`), prod in
+// cli/justfile (`build-release` ldflags). Keep them in lockstep if the
+// worker URL ever moves.
+const STAGING_INGEST_URL =
+	"https://gaffer-telemetry-staging.kurrent.workers.dev/v1/ingest";
+const PRODUCTION_INGEST_URL = "https://telemetry.gaffer.kurrent.io/v1/ingest";
+
+export default defineConfig(({ mode }) => ({
+	define: {
+		__INGEST_URL__: JSON.stringify(
+			mode === "production" ? PRODUCTION_INGEST_URL : STAGING_INGEST_URL,
+		),
+	},
 	build: {
 		target: "node18",
 		outDir: "dist",
@@ -84,4 +103,4 @@ export default defineConfig({
 			),
 		},
 	},
-});
+}));

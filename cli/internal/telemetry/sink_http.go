@@ -10,11 +10,22 @@ import (
 	"time"
 )
 
-// DefaultWorkerURL is where the production Cloudflare worker ingests
-// envelopes. Versioned in the URL path so additive schema changes don't
-// require a new URL; breaking changes get /v2/ingest and run alongside
-// during a deprecation window.
-const DefaultWorkerURL = "https://telemetry.gaffer.kurrent.io/v1/ingest"
+// DefaultWorkerURL is where the Cloudflare worker ingests envelopes.
+// Default is the staging worker so unreleased builds (run from source,
+// `go run`, locally-built binaries, CI test artefacts) don't pollute
+// the production PostHog project. Release tooling injects the prod URL
+// via ldflags (see cli/justfile#build-release):
+//
+//	go build -ldflags "-X github.com/kurrent-io/gaffer/cli/internal/telemetry.DefaultWorkerURL=https://telemetry.gaffer.kurrent.io/v1/ingest"
+//
+// The staging URL is also hard-coded in editors/vscode/vite.config.ts
+// (as `STAGING_INGEST_URL`); keep them in lockstep if the worker URL
+// ever moves.
+//
+// Versioned in the URL path so additive schema changes don't require a
+// new URL; breaking changes get /v2/ingest and run alongside during a
+// deprecation window.
+var DefaultWorkerURL = "https://gaffer-telemetry-staging.kurrent.workers.dev/v1/ingest"
 
 // defaultUserAgent is the User-Agent when the caller doesn't set one.
 // Real builds override it via WithUserAgent so the worker can attribute

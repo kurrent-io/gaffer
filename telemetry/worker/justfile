@@ -15,7 +15,9 @@ check: build
 fix:
     pnpm run --filter '@kurrent/gaffer-telemetry-worker' fix
 
-# Run tests (vitest in the Workers runtime via @cloudflare/vitest-pool-workers).
+# Run tests (vitest in the Workers runtime via @cloudflare/vitest-pool-workers)
+# followed by `wrangler deploy --dry-run`, which validates that the worker
+# builds into a deployable bundle without needing Cloudflare credentials.
 test: build
     pnpm run --filter '@kurrent/gaffer-telemetry-worker' test
 
@@ -23,9 +25,18 @@ test: build
 dev: build
     pnpm run --filter '@kurrent/gaffer-telemetry-worker' dev
 
-# Deploy to Cloudflare. Requires CLOUDFLARE_API_TOKEN in env.
-deploy: build
-    pnpm run --filter '@kurrent/gaffer-telemetry-worker' deploy
+# Deploy to staging. Requires CLOUDFLARE_API_TOKEN in env. CI uses this
+# path on every push-to-main that touches worker files; manual invocation
+# is fine too.
+deploy-staging: build
+    pnpm run --filter '@kurrent/gaffer-telemetry-worker' deploy:staging
+
+# Deploy to production. Requires CLOUDFLARE_API_TOKEN in env. CI handles
+# this from release.yml on the Version Packages PR merge. This is also
+# the only way to force a prod redeploy between releases, so run locally
+# for hotfixes.
+deploy-production: build
+    pnpm run --filter '@kurrent/gaffer-telemetry-worker' deploy:production
 
 # Remove build artifacts.
 clean:

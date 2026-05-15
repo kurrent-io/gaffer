@@ -33,11 +33,21 @@ Picking either parent in the changeset prompt bumps the whole cluster to the sam
    - Bumps `version` fields in the affected `package.json` files
    - Generates / updates per-package `CHANGELOG.md`
    - Deletes the consumed changeset markdown files
-4. Each package's publish workflow takes over from there. Until the publish tickets land, the publish jobs in [`release.yml`](.github/workflows/release.yml) are stubs gated to `workflow_dispatch`, so nothing actually publishes yet. Owners:
+4. The merge commit lands with no remaining changesets, so the next workflow run on `main` falls through to the `publish:` script in [`release.yml`](.github/workflows/release.yml) (`changesets/action` runs the publish script whenever it doesn't find changesets to consume). That script is a placeholder today; each owning ticket wires its package into it (or adds its own `needs: changesets` job inspecting the action's `publishedPackages` output). Owners:
    - `@kurrent/gaffer` and its CLI native packages - owned by UI-1530.
    - `@kurrent/gaffer-runtime` and its runtime native packages - owned by UI-1536.
    - `@kurrent/projections-testing` - owned by UI-1537.
    - `gaffer` (VS Code extension) - owned by UI-1532; publishes via `vsce` to the Marketplace, not npm. Marked `private: true` in its `package.json` so npm publish skips it.
+
+## Telemetry worker deploys
+
+The telemetry worker isn't a published package, but its deploys ride the same workflow:
+
+- **Staging** - redeployed on every push to `main` that touches `telemetry/worker/`, `telemetry/generated/`, `telemetry/schemas/`, or `release.yml`.
+- **Production** - redeployed on every publish run (Version Packages PR merge), regardless of whether worker files changed. Coarse but idempotent.
+- **Manual hotfix** - run `just telemetry worker deploy-production` locally with `CLOUDFLARE_API_TOKEN` set.
+
+PR validation happens through the worker's own `test` script (`pnpm --filter @kurrent/gaffer-telemetry-worker test`), which now ends with `wrangler deploy --dry-run`. Cloudflare creds aren't needed for the dry-run, so it runs in normal PR CI.
 
 ## Cadence
 

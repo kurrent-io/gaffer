@@ -1,56 +1,68 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "gaffer-telemetry",
+
+	// `--env <name>` is required. The top-level `name` is a placeholder so
+	// a missing `--env` produces an obviously-wrong worker name in CF
+	// rather than a real deploy. Real targets live in the `env` block.
+	"name": "gaffer-telemetry-no-env",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-05-01",
 
-	// Retain logs for tail / Logpush. With "always 200, drop on failure"
-	// semantics across every error path, console.error is the only signal
-	// we'll have for D1 outages and PostHog 5xx.
+	// observability + triggers inherit into envs. vars, assets,
+	// version_metadata, and bindings don't, so each env redeclares them.
+	// Secrets (POSTHOG_API_KEY) are set per env via `wrangler secret put
+	// <NAME> --env <env>` and persist across deploys.
 	"observability": {
 		"enabled": true,
 	},
-
-	// Static assets binding serves /fonts/* and /favicons/* directly. The
-	// worker handles everything else (POST /v1/ingest, GET / for the notice).
-	"assets": {
-		"directory": "./static",
-		"binding": "ASSETS",
-		"not_found_handling": "none",
-	},
-
-	// Vars are the public, non-secret config. PostHog ingest host (the EU
-	// instance for production; can be overridden per environment).
-	"vars": {
-		"POSTHOG_HOST": "https://eu.i.posthog.com",
-	},
-
-	// Version metadata binding. `env.CF_VERSION_METADATA.timestamp` is the
-	// ISO deploy time of the running version; we stamp it on every event
-	// forwarded to PostHog so dashboards can filter / pivot on deploy
-	// generation without needing to know anything about the worker.
-	"version_metadata": {
-		"binding": "CF_VERSION_METADATA",
-	},
-
-	// D1 database for session stitching and identity-merge bookkeeping.
-	// Migrations live in ./migrations; apply with `wrangler d1 migrations apply`.
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "gaffer-telemetry",
-			"database_id": "00000000-0000-0000-0000-000000000000",
-			"migrations_dir": "migrations",
-		},
-	],
-
-	// Daily prune of expired rows. Reads filter on expires_at > now, so the
-	// cron is purely table-size maintenance - not load-bearing for
-	// correctness. 04:00 UTC is off-peak for both EU and US working hours.
 	"triggers": {
 		"crons": ["0 4 * * *"],
 	},
 
-	// Secrets (set via `wrangler secret put`):
-	//   POSTHOG_API_KEY  -  PostHog project API key for the gaffer project
+	"env": {
+		"staging": {
+			"name": "gaffer-telemetry-staging",
+			"assets": {
+				"directory": "./static",
+				"binding": "ASSETS",
+				"not_found_handling": "none",
+			},
+			"vars": {
+				"POSTHOG_HOST": "https://eu.i.posthog.com",
+			},
+			"version_metadata": {
+				"binding": "CF_VERSION_METADATA",
+			},
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "gaffer-telemetry-staging",
+					"database_id": "d1c61704-93af-46ff-8f18-1981a19be486",
+					"migrations_dir": "migrations",
+				},
+			],
+		},
+		"production": {
+			"name": "gaffer-telemetry",
+			"assets": {
+				"directory": "./static",
+				"binding": "ASSETS",
+				"not_found_handling": "none",
+			},
+			"vars": {
+				"POSTHOG_HOST": "https://eu.i.posthog.com",
+			},
+			"version_metadata": {
+				"binding": "CF_VERSION_METADATA",
+			},
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "gaffer-telemetry",
+					"database_id": "517beb34-01af-4f4a-907a-780554eaa12f",
+					"migrations_dir": "migrations",
+				},
+			],
+		},
+	},
 }

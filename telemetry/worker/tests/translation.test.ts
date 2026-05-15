@@ -64,6 +64,28 @@ describe("translateEnvelope", () => {
 		expect(result[0]?.properties.worker_deployed_at).toBe("2026-05-11T00:00:00.000Z");
 	});
 
+	it("suppresses PostHog GeoIP enrichment via $ip null and $geoip_disable", () => {
+		const env: Envelope = {
+			...baseEnvelope,
+			events: [
+				{
+					name: "command_invoked",
+					timestamp: "2026-05-08T12:00:00.000Z",
+					properties: {
+						command: "version",
+						duration_ms: 10,
+						outcome: "success",
+						invoked_by: "direct",
+						invoked_via: "terminal",
+					},
+				},
+			],
+		};
+		const result = translateEnvelope(env, testSessionId, testDeployedAt);
+		expect(result[0]?.properties.$ip).toBeNull();
+		expect(result[0]?.properties.$geoip_disable).toBe(true);
+	});
+
 	it("derives $lib from emitter", () => {
 		const env: Envelope = {
 			...baseEnvelope,

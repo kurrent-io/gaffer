@@ -74,7 +74,7 @@ jobs:
         id: changesets
         with:
           version: pnpm bump-versions
-          publish: echo "publish script: filled in by UI-1530 / UI-1532 / UI-1536 / UI-1537"
+          publish: 'echo "publish script: filled in by UI-1530 / UI-1532 / UI-1536 / UI-1537"'
           commit: "chore(release): version packages"
           title: "Version Packages"
         env:

@@ -1,6 +1,6 @@
-# @kurrent/gaffer
+<img src="../docs/assets/banner-gaffer.svg" alt="Gaffer" width="100%">
 
-The command-line toolkit for [KurrentDB](https://www.kurrent.io) projections. Scaffold, run, debug, and deploy projections from your terminal.
+Develop, test, debug, and deploy [KurrentDB](https://kurrent.io) projections.
 
 KurrentDB projections are server-side JavaScript that derive new streams and state from existing events. Gaffer runs them locally against the same JavaScript engine KurrentDB uses, so a projection that passes here passes in production.
 

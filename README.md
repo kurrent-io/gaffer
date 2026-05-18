@@ -1,4 +1,4 @@
-# Gaffer
+<img src="docs/assets/banner-gaffer.svg" alt="Gaffer" width="100%">
 
 Develop, test, debug, and deploy [KurrentDB](https://kurrent.io) projections.
 

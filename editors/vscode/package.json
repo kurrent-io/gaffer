@@ -38,7 +38,8 @@
 	"files": [
 		"dist",
 		"LICENSE",
-		"TELEMETRY.md"
+		"TELEMETRY.md",
+		"media"
 	],
 	"capabilities": {
 		"untrustedWorkspaces": {

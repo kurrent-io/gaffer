@@ -1,10 +1,13 @@
 default:
     @just --list
 
-# Copy the CLI binary into this package (requires cli build for win32-x64)
+# Co-locate the CLI binary and the runtime DLL in the package. Windows
+# resolves DLLs from the executable's directory by default, so no
+# rpath is needed.
 build:
     cp ../../gaffer.exe gaffer.exe
+    cp ../../../runtime/Gaffer.Runtime/bin/Release/net10.0/win-x64/publish/Gaffer.Runtime.dll Gaffer.Runtime.dll
 
 # Remove build artifacts
 clean:
-    rm -f gaffer.exe
+    rm -f gaffer.exe Gaffer.Runtime.dll

@@ -19,6 +19,7 @@
 		"x64"
 	],
 	"files": [
-		"gaffer"
+		"gaffer",
+		"Gaffer.Runtime.so"
 	]
 }

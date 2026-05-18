@@ -46,8 +46,11 @@ jobs:
       - name: Install module dependencies
         run: just init
 
-      - name: Build runtime, telemetry, and CLI
-        run: just build
+      - name: Publish runtime
+        run: just runtime publish
+
+      - name: Build CLI
+        run: just cli build
 
       - name: Add gaffer CLI to PATH
         run: echo "$GITHUB_WORKSPACE/cli" >> "$GITHUB_PATH"

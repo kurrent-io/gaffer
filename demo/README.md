@@ -41,4 +41,4 @@ just cli build
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE) in this directory.
+[Apache License 2.0](LICENSE)

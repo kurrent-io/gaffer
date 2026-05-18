@@ -67,4 +67,4 @@ Bugs go to [GitHub Issues](https://github.com/kurrent-io/gaffer/issues). Questio
 
 ## License
 
-[Kurrent License v1](https://github.com/kurrent-io/gaffer/blob/main/LICENSE.md). See [LICENSE](LICENSE) in this directory.
+[Kurrent License v1](LICENSE)

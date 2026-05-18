@@ -12,8 +12,6 @@ name: Release publish
 #   * `release.yml`'s changesets job (`gh workflow run release-publish.yml`)
 #     immediately after the Version Packages PR merges.
 #   * Manual UI dispatch (with optional `dry_run: true` for a smoke test).
-#   * Pull requests touching publish-relevant paths - runs the build
-#     matrix only, to catch cross-platform compile breaks during review.
 #
 # Per-package publish jobs (VS Code) are owned by their tickets
 # (UI-1532) and add their own jobs here.
@@ -37,17 +35,10 @@ on:
         description: "Run npm publish --dry-run instead of publishing"
         type: boolean
         default: false
-  pull_request:
-    paths:
-      - "runtime/**"
-      - "bindings/**"
-      - "cli/**"
-      - "testing/js/**"
-      - ".github/workflows/release-publish.yml"
 
 concurrency:
   group: release-publish-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -105,7 +96,6 @@ jobs:
 
   publish-runtime:
     name: Publish @kurrent/gaffer-runtime
-    if: github.event_name == 'workflow_dispatch'
     needs: build-runtime-matrix
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -214,7 +204,6 @@ jobs:
 
   publish-cli:
     name: Publish @kurrent/gaffer
-    if: github.event_name == 'workflow_dispatch'
     needs: build-cli-matrix
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -261,7 +250,6 @@ jobs:
 
   publish-testing:
     name: Publish @kurrent/projections-testing
-    if: github.event_name == 'workflow_dispatch'
     # Wait for runtime so the consumer's `npm install` resolves
     # @kurrent/gaffer-runtime - testing's dep on it would otherwise
     # resolve to an unpublished version on a fast-following install.
@@ -296,10 +284,7 @@ jobs:
 
   deploy-worker-prod:
     name: Deploy telemetry worker to production
-    # Skip on PR validation runs and on dry-run dispatches. PR events
-    # have inputs.dry_run unset, so the event_name guard does the work
-    # there.
-    if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

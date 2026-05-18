@@ -1,6 +1,6 @@
 {
 	"name": "gaffer",
-	"displayName": "Gaffer",
+	"displayName": "KurrentDB Projections",
 	"description": "KurrentDB projection toolkit",
 	"version": "0.1.0",
 	"license": "LicenseRef-KurrentLicenseV1",
@@ -42,7 +42,7 @@
 	"capabilities": {
 		"untrustedWorkspaces": {
 			"supported": "limited",
-			"description": "Gaffer spawns the gaffer CLI as a child process to debug projections. Workspace settings cannot override `gaffer.command`; debugging is disabled until the workspace is trusted."
+			"description": "The extension spawns the gaffer CLI as a child process to debug projections. Workspace settings cannot override `gaffer.command`; debugging is disabled until the workspace is trusted."
 		}
 	},
 	"scripts": {
@@ -72,7 +72,7 @@
 	},
 	"contributes": {
 		"configuration": {
-			"title": "Gaffer",
+			"title": "KurrentDB Projections",
 			"properties": {
 				"gaffer.command": {
 					"type": "array",
@@ -100,25 +100,25 @@
 		"commands": [
 			{
 				"command": "gaffer.runProjection",
-				"title": "Gaffer: Run Projection"
+				"title": "KurrentDB Projections: Run"
 			},
 			{
 				"command": "gaffer.debugProjection",
-				"title": "Gaffer: Debug Projection"
+				"title": "KurrentDB Projections: Debug"
 			},
 			{
 				"command": "gaffer.debugProjectionPick",
-				"title": "Gaffer: Debug Projection from Fixture"
+				"title": "KurrentDB Projections: Debug from Fixture"
 			},
 			{
 				"command": "gaffer.stopDebug",
-				"title": "Gaffer: Stop Projection"
+				"title": "KurrentDB Projections: Stop"
 			}
 		],
 		"debuggers": [
 			{
 				"type": "gaffer",
-				"label": "Gaffer",
+				"label": "KurrentDB Projections",
 				"languages": [
 					"javascript"
 				],
@@ -137,7 +137,7 @@
 					{
 						"type": "gaffer",
 						"request": "attach",
-						"name": "Gaffer Debug",
+						"name": "KurrentDB Projections: Attach",
 						"port": 4711
 					}
 				]
@@ -163,7 +163,7 @@
 			"panel": [
 				{
 					"id": "gaffer",
-					"title": "Gaffer",
+					"title": "KurrentDB Projections",
 					"icon": "$(activate-breakpoints)"
 				}
 			]
@@ -205,7 +205,7 @@
 		"mcpServerDefinitionProviders": [
 			{
 				"id": "gaffer",
-				"label": "Gaffer"
+				"label": "KurrentDB Projections"
 			}
 		]
 	},

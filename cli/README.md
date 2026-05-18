@@ -70,7 +70,7 @@ User-level settings (telemetry opt-out, identity) live in `~/.config/gaffer/conf
 
 Gaffer ships with Language Server Protocol and Debug Adapter Protocol servers, plus a VS Code extension that wires them up automatically.
 
-- **VS Code** - install the [Gaffer extension](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer) for inline diagnostics, run/debug codelens above `gaffer.toml` projections, and breakpoint debugging.
+- **VS Code** - install the [KurrentDB Projections extension](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer) for inline diagnostics, run/debug codelens above `gaffer.toml` projections, and breakpoint debugging.
 - **Other editors** - run `gaffer lsp` over stdio for LSP integration. See the [editor setup guide](https://docs.kurrent.io/gaffer/getting-started/editor-setup) for examples.
 
 ## AI agent integration
@@ -81,10 +81,10 @@ See the [MCP integration guide](https://docs.kurrent.io/gaffer/mcp/) for client 
 
 ## Related packages
 
-| Package                                                                                      | What it is                                                                           |
-| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| [`@kurrent/projections-testing`](https://www.npmjs.com/package/@kurrent/projections-testing) | Library for testing projections from your existing test runner (vitest, jest, mocha) |
-| [Gaffer for VS Code](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer)  | Editor integration with debugger, codelens, and MCP server                           |
+| Package                                                                                                    | What it is                                                                           |
+| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [`@kurrent/projections-testing`](https://www.npmjs.com/package/@kurrent/projections-testing)               | Library for testing projections from your existing test runner (vitest, jest, mocha) |
+| [KurrentDB Projections for VS Code](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer) | Editor integration with debugger, codelens, and MCP server                           |
 
 ## Telemetry
 

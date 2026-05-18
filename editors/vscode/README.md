@@ -1,7 +1,5 @@
 <img src="../docs/assets/banner-kurrentdb-projections.svg" alt="KurrentDB Projections" width="100%">
 
-# KurrentDB Projections
-
 Projection debugger and CodeLens companion for [KurrentDB](https://www.kurrent.io). Run and debug projections from `gaffer.toml`, step through handlers with full state inspection, and get type-aware autocomplete for projection builtins.
 
 Powered by the [gaffer](https://www.npmjs.com/package/@kurrent/gaffer) toolkit.

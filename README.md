@@ -1,7 +1,5 @@
 <img src="docs/assets/banner-gaffer.svg" alt="Gaffer" width="100%">
 
-# Gaffer
-
 Develop, test, debug, and deploy [KurrentDB](https://kurrent.io) projections.
 
 KurrentDB projections are server-side JavaScript that derive new streams and state from existing events. Gaffer uses the same JS engine as KurrentDB itself, so what you debug locally behaves like what runs in production.

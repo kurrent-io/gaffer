@@ -142,13 +142,10 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            pnpm publish -r --filter "@kurrent/gaffer-runtime" --filter "@kurrent/gaffer-runtime-*" \
-              --access public --no-git-checks --dry-run
-          else
-            pnpm publish -r --filter "@kurrent/gaffer-runtime" --filter "@kurrent/gaffer-runtime-*" \
-              --access public --no-git-checks
-          fi
+          pnpm publish -r \
+            --filter "@kurrent/gaffer-runtime" \
+            --filter "@kurrent/gaffer-runtime-*" \
+            --access public --no-git-checks ${{ inputs.dry_run && '--dry-run' || '' }}
 
   build-cli-matrix:
     name: Build CLI (${{ matrix.platform }})
@@ -249,29 +246,18 @@ jobs:
       - name: Publish CLI packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Filter enumerates each CLI cluster package explicitly.
+        # `@kurrent/gaffer-*` would also match `@kurrent/gaffer-runtime*`,
+        # which the runtime job already publishes.
         run: |
-          # Filter enumerates each CLI cluster package explicitly.
-          # `@kurrent/gaffer-*` would also match `@kurrent/gaffer-runtime*`,
-          # which the runtime job already publishes.
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            pnpm publish -r \
-              --filter "@kurrent/gaffer" \
-              --filter "@kurrent/gaffer-linux-x64" \
-              --filter "@kurrent/gaffer-linux-arm64" \
-              --filter "@kurrent/gaffer-darwin-x64" \
-              --filter "@kurrent/gaffer-darwin-arm64" \
-              --filter "@kurrent/gaffer-win32-x64" \
-              --access public --no-git-checks --dry-run
-          else
-            pnpm publish -r \
-              --filter "@kurrent/gaffer" \
-              --filter "@kurrent/gaffer-linux-x64" \
-              --filter "@kurrent/gaffer-linux-arm64" \
-              --filter "@kurrent/gaffer-darwin-x64" \
-              --filter "@kurrent/gaffer-darwin-arm64" \
-              --filter "@kurrent/gaffer-win32-x64" \
-              --access public --no-git-checks
-          fi
+          pnpm publish -r \
+            --filter "@kurrent/gaffer" \
+            --filter "@kurrent/gaffer-linux-x64" \
+            --filter "@kurrent/gaffer-linux-arm64" \
+            --filter "@kurrent/gaffer-darwin-x64" \
+            --filter "@kurrent/gaffer-darwin-arm64" \
+            --filter "@kurrent/gaffer-win32-x64" \
+            --access public --no-git-checks ${{ inputs.dry_run && '--dry-run' || '' }}
 
   publish-testing:
     name: Publish @kurrent/projections-testing
@@ -305,13 +291,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            pnpm publish --filter "@kurrent/projections-testing" \
-              --access public --no-git-checks --dry-run
-          else
-            pnpm publish --filter "@kurrent/projections-testing" \
-              --access public --no-git-checks
-          fi
+          pnpm publish --filter "@kurrent/projections-testing" \
+            --access public --no-git-checks ${{ inputs.dry_run && '--dry-run' || '' }}
 
   deploy-worker-prod:
     name: Deploy telemetry worker to production
@@ -321,6 +302,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -333,22 +317,14 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - uses: extractions/setup-just@v3
+
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Build worker bundle
-        run: pnpm --filter "@kurrent/gaffer-telemetry-worker" run build
-
       - name: Apply D1 migrations
         working-directory: telemetry/worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: pnpm wrangler d1 migrations apply DB --env production --remote
 
-      - name: Deploy
-        working-directory: telemetry/worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: pnpm wrangler deploy --env production
+      - name: Build and deploy
+        run: just telemetry worker deploy-production

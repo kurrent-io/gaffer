@@ -254,7 +254,7 @@ describe("SessionController.start - happy path", () => {
 		// visible Terminal-then-Gaffer flicker because VS Code's
 		// panel-show happened before the listener fired. Now we also
 		// pre-focus gaffer.state before startDebugging so the panel
-		// container's last-active tab IS Gaffer:State at the moment
+		// container's last-active tab IS the State view at the moment
 		// VS Code surfaces the panel, eliminating the flicker. The
 		// post-listener focus stays as the final source of truth.
 		const h = makeHarness();
@@ -493,13 +493,13 @@ describe("SessionController.start - failures", () => {
 		await startPromise;
 		const messages = getShownMessages();
 		// Positive: showProjectionFailed fired from fatal_error handler.
-		expect(messages.some((m) => m.message.includes("projection failed"))).toBe(
+		expect(messages.some((m) => m.message.includes("Projection failed"))).toBe(
 			true,
 		);
 		// Negative: showStartFailure suppressed because fatalErrorSeen.
-		expect(
-			messages.some((m) => m.message.startsWith("Gaffer: CLI exited")),
-		).toBe(false);
+		expect(messages.some((m) => m.message.startsWith("CLI exited"))).toBe(
+			false,
+		);
 	});
 
 	it("suppresses showProjectionFault when fatal_error preceded a non-zero exit", async () => {
@@ -516,10 +516,10 @@ describe("SessionController.start - failures", () => {
 		session.fire({ type: "exit", code: 99 });
 		await flushAllMicrotasks();
 		const messages = getShownMessages();
-		expect(messages.some((m) => m.message.includes("projection failed"))).toBe(
+		expect(messages.some((m) => m.message.includes("Projection failed"))).toBe(
 			true,
 		);
-		expect(messages.some((m) => m.message.includes("projection faulted"))).toBe(
+		expect(messages.some((m) => m.message.includes("Projection faulted"))).toBe(
 			false,
 		);
 	});
@@ -531,7 +531,7 @@ describe("SessionController.start - failures", () => {
 		session.fire({ type: "exit", code: 99 });
 		await flushAllMicrotasks();
 		const messages = getShownMessages();
-		expect(messages.some((m) => m.message.includes("projection faulted"))).toBe(
+		expect(messages.some((m) => m.message.includes("Projection faulted"))).toBe(
 			true,
 		);
 	});
@@ -830,7 +830,7 @@ describe("SessionController onDidStartDebugSession capture guard", () => {
 		const stale = {
 			id: "stale",
 			type: "gaffer",
-			name: "Gaffer: stale",
+			name: "stale",
 			configuration: { type: "gaffer" },
 			customRequest: () => Promise.resolve(undefined),
 		} as unknown as vscode.DebugSession;

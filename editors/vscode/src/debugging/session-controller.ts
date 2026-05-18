@@ -350,9 +350,10 @@ export class SessionController implements vscode.Disposable {
 		// during starting/running/inspecting/ended) so it's already
 		// mounted by the time we get here. By picking it as the panel
 		// container's active tab now, we win the upcoming panel-show
-		// race - VS Code surfaces the panel area with Gaffer:State
-		// already active, no Terminal flash. The listener fires
-		// setStatus + focus afterwards as the final source of truth.
+		// race - VS Code surfaces the panel area with KurrentDB
+		// Projections: State already active, no Terminal flash. The
+		// listener fires setStatus + focus afterwards as the final
+		// source of truth.
 		await vscode.commands.executeCommand("gaffer.state.focus");
 
 		const started = await vscode.debug.startDebugging(
@@ -360,7 +361,7 @@ export class SessionController implements vscode.Disposable {
 			{
 				type: "gaffer",
 				request: "attach",
-				name: `Gaffer: ${name}`,
+				name,
 				port: debugPort,
 				localRoot: tomlDir,
 				internalConsoleOptions: "neverOpen",

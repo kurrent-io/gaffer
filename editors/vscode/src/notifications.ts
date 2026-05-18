@@ -55,7 +55,7 @@ export const showManifestFailure = (err: unknown): Thenable<unknown> => {
 export const showTrustWarning = (): Thenable<unknown> =>
 	vscode.window
 		.showWarningMessage(
-			"Trust this workspace to enable Gaffer debugging.",
+			"Trust this workspace to enable projection debugging.",
 			"Manage Trust",
 		)
 		.then((choice) => {
@@ -66,18 +66,18 @@ export const showTrustWarning = (): Thenable<unknown> =>
 
 export const showNoProjections = (): Thenable<unknown> =>
 	vscode.window.showInformationMessage(
-		"Gaffer: no projections found in this workspace.",
+		"No projections found in this workspace.",
 	);
 
 export const showLspNotReady = (): Thenable<unknown> =>
 	vscode.window.showInformationMessage(
-		"Gaffer is still starting up. Try again in a moment.",
+		"KurrentDB Projections is still starting up. Try again in a moment.",
 	);
 
 export const showLspError = (): Thenable<unknown> =>
 	vscode.window
 		.showErrorMessage(
-			"Gaffer: failed to fetch projections from the LSP server.",
+			"Failed to fetch projections from the LSP server.",
 			"View Output",
 		)
 		.then((choice) => {
@@ -88,12 +88,12 @@ export const showLspError = (): Thenable<unknown> =>
 
 export const showDebugUnsupported = (): Thenable<unknown> =>
 	vscode.window.showErrorMessage(
-		"Gaffer: this gaffer version doesn't support `dev --debug`. Update gaffer or set gaffer.command to a newer build.",
+		"This gaffer version doesn't support `dev --debug`. Update gaffer or set gaffer.command to a newer build.",
 	);
 
 // Shared shape for any "LSP isn't running" surface: error toast
 // with a "View Output" button that opens the LSP channel (NOT
-// our generic Gaffer channel - the LSP one carries the
+// our generic extension channel - the LSP one carries the
 // actionable detail). Used by both the initial-start failure
 // path (c.start() threw) and the give-up-after-restarts path.
 const showLspBroken = (
@@ -110,35 +110,31 @@ export const showLspFailedToStart = (
 	detail: string,
 	channel: vscode.OutputChannel,
 ): Thenable<unknown> =>
-	showLspBroken(`Gaffer LSP failed to start: ${detail}`, channel);
+	showLspBroken(`Language server failed to start: ${detail}`, channel);
 
 export const showLspCrashed = (
 	channel: vscode.OutputChannel,
 ): Thenable<unknown> =>
 	showLspBroken(
-		"Gaffer LSP keeps crashing - features that depend on it (lenses, projection list) are unavailable.",
+		"Language server keeps crashing - features that depend on it (lenses, projection list) are unavailable.",
 		channel,
 	);
 
 export const showProjectionFault = (
 	exitCode: number | null,
 ): Thenable<unknown> =>
-	vscode.window.showErrorMessage(
-		`Gaffer: projection faulted (exit code ${exitCode})`,
-	);
+	vscode.window.showErrorMessage(`Projection faulted (exit code ${exitCode})`);
 
 export const showStartFailure = (message: string): Thenable<unknown> =>
-	vscode.window.showErrorMessage(`Gaffer: ${message}`);
+	vscode.window.showErrorMessage(message);
 
 export const showProjectionFailed = (): Thenable<unknown> =>
-	vscode.window.showErrorMessage(
-		"Gaffer: projection failed - see Problems panel",
-	);
+	vscode.window.showErrorMessage("Projection failed - see Problems panel");
 
 export const showPortInUse = (description: string): Thenable<unknown> =>
 	vscode.window
 		.showErrorMessage(
-			`Gaffer: ${description}. Change gaffer.debugPort or set it to -1 to let the OS pick a free port.`,
+			`${description}. Change gaffer.debugPort or set it to -1 to let the OS pick a free port.`,
 			"Open Settings",
 		)
 		.then((choice) => {
@@ -162,7 +158,7 @@ export const showTelemetryDisclosure = (): Thenable<
 > =>
 	vscode.window
 		.showInformationMessage(
-			"Gaffer collects anonymous usage data, collected by Kurrent, Inc., to improve the tool. No projection code, stream names, or event content is sent. Click 'Dismiss' to accept, 'Disable telemetry' to opt out, or 'Learn more' for the full notice.",
+			"KurrentDB Projections collects anonymous usage data, collected by Kurrent, Inc., to improve the tool. No projection code, stream names, or event content is sent. Click 'Dismiss' to accept, 'Disable telemetry' to opt out, or 'Learn more' for the full notice.",
 			BUTTON_DISMISS,
 			BUTTON_LEARN_MORE,
 			BUTTON_DISABLE,

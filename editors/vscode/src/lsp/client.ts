@@ -25,7 +25,7 @@ let client: LanguageClient | undefined;
 // Single OutputChannel for the LSP server's lifetime. Created on the
 // first spawn, reused across restarts (including the give-up-then-retry
 // path). Creating it inside spawnLanguageClient would stack duplicate
-// "Gaffer LSP" entries in the user's Output dropdown.
+// "KurrentDB Projections (LSP)" entries in the user's Output dropdown.
 let lspChannel: vscode.OutputChannel | undefined;
 
 /** Bound on every `client.stop` call. VS Code's deactivate budget is
@@ -133,7 +133,9 @@ async function spawnLanguageClient(
 		);
 	};
 	if (lspChannel === undefined) {
-		lspChannel = vscode.window.createOutputChannel("Gaffer LSP");
+		lspChannel = vscode.window.createOutputChannel(
+			"KurrentDB Projections (LSP)",
+		);
 		context.subscriptions.push(lspChannel);
 	}
 	const channel = lspChannel;
@@ -181,7 +183,7 @@ async function spawnLanguageClient(
 	};
 	const c = new LanguageClient(
 		"gaffer-lsp",
-		"Gaffer LSP",
+		"KurrentDB Projections (LSP)",
 		serverOptions,
 		clientOptions,
 	);

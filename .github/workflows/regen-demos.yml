@@ -56,9 +56,12 @@ jobs:
         run: echo "$GITHUB_WORKSPACE/cli" >> "$GITHUB_PATH"
 
       # vhs-action@v2's built-in ffmpeg installer is unreliable
-      # (Failed to install ffmpeg, run 26033450846). Install the stack
-      # ourselves instead - ubuntu-latest already has ffmpeg, ttyd ships
-      # a linux-x64 binary, and vhs is a Go install.
+      # ("Failed to install ffmpeg", run 26033450846). Install the
+      # stack ourselves: ffmpeg from apt, ttyd from its release binary,
+      # vhs from go install.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Install ttyd
         run: |
           curl -fsSL https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.x86_64 -o /tmp/ttyd

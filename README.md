@@ -12,7 +12,7 @@ CLI:
 npm i -g @kurrent/gaffer
 ```
 
-VS Code extension - debug-on-click and `gaffer.toml` config support. (Marketplace listing landing soon as part of v0; for now build from source - see [editors/vscode/](editors/vscode/).)
+VS Code extension - install [KurrentDB Projections](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer) from the marketplace for run/debug from `gaffer.toml`, breakpoint debugging, and an auto-registered MCP server.
 
 Test library:
 
@@ -27,6 +27,8 @@ Run a projection from the CLI:
 ```sh
 gaffer dev order-count --fixture happy
 ```
+
+![gaffer dev replaying the order-count projection against the happy fixture](docs/assets/demo-dev.gif)
 
 Or test it from your existing test suite:
 
@@ -49,15 +51,15 @@ See the [demo project](demo/) for a complete example with fixtures, errors, part
 
 ## Packages
 
-| Component | Package | License |
-|---|---|---|
-| CLI | `@kurrent/gaffer` | [Kurrent License v1](LICENSE.md) |
-| VS Code extension | (Marketplace) | [Kurrent License v1](LICENSE.md) |
-| Test library | `@kurrent/projections-testing` | [Apache 2.0](testing/js/LICENSE) |
-| JS bindings | `@kurrent/gaffer-runtime` | [Kurrent License v1](LICENSE.md) |
-| Go bindings | `github.com/kurrent-io/gaffer/bindings/go` | [Kurrent License v1](LICENSE.md) |
+| Component         | Package                                                                                      | License                          |
+| ----------------- | -------------------------------------------------------------------------------------------- | -------------------------------- |
+| CLI               | `@kurrent/gaffer`                                                                            | [Kurrent License v1](LICENSE.md) |
+| VS Code extension | [`kurrent-io.gaffer`](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer) | [Kurrent License v1](LICENSE.md) |
+| Test library      | `@kurrent/projections-testing`                                                               | [Apache 2.0](testing/js/LICENSE) |
+| JS bindings       | `@kurrent/gaffer-runtime`                                                                    | [Kurrent License v1](LICENSE.md) |
+| Go bindings       | `github.com/kurrent-io/gaffer/bindings/go`                                                   | [Kurrent License v1](LICENSE.md) |
 
-Per-component `LICENSE` files live in each directory. See [LICENSE_CONTRIBUTIONS.md](LICENSE_CONTRIBUTIONS.md) for the licence map and [NOTICE.md](NOTICE.md) for third-party attribution.
+Per-component `LICENSE` files live in each directory. See [LICENSE_CONTRIBUTIONS.md](LICENSE_CONTRIBUTIONS.md) for the license map and [NOTICE.md](NOTICE.md) for third-party attribution.
 
 ## Communities
 

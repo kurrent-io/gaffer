@@ -6,4 +6,4 @@ This package is pulled in automatically as an optional dependency when you insta
 
 ## License
 
-[Kurrent License v1](https://github.com/kurrent-io/gaffer/blob/main/LICENSE.md). See [LICENSE](LICENSE) in this directory.
+[Kurrent License v1](LICENSE)

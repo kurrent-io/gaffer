@@ -47,4 +47,4 @@ just runtime clean         # remove build artifacts
 
 ## License
 
-[Kurrent License v1](../LICENSE.md). See [LICENSE](LICENSE) in this directory.
+[Kurrent License v1](LICENSE)

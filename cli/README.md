@@ -1,3 +1,5 @@
+![Gaffer](../docs/assets/banner-gaffer.svg)
+
 # @kurrent/gaffer
 
 The command-line toolkit for [KurrentDB](https://www.kurrent.io) projections. Scaffold, run, debug, and deploy projections from your terminal.

@@ -55,10 +55,21 @@ jobs:
       - name: Add gaffer CLI to PATH
         run: echo "$GITHUB_WORKSPACE/cli" >> "$GITHUB_PATH"
 
+      # vhs-action@v2's built-in ffmpeg installer is unreliable
+      # (Failed to install ffmpeg, run 26033450846). Install the stack
+      # ourselves instead - ubuntu-latest already has ffmpeg, ttyd ships
+      # a linux-x64 binary, and vhs is a Go install.
+      - name: Install ttyd
+        run: |
+          curl -fsSL https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.x86_64 -o /tmp/ttyd
+          chmod +x /tmp/ttyd
+          sudo mv /tmp/ttyd /usr/local/bin/ttyd
+
+      - name: Install VHS
+        run: go install github.com/charmbracelet/vhs@latest
+
       - name: Regenerate demo recordings
-        uses: charmbracelet/vhs-action@v2
-        with:
-          path: docs/assets/demo-dev.tape
+        run: vhs docs/assets/demo-dev.tape
 
       - name: Open PR with updated recordings
         uses: peter-evans/create-pull-request@v6

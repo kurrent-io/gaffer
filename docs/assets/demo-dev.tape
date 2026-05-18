@@ -13,12 +13,15 @@ Set FontSize 14
 Set Width 1200
 Set Height 700
 Set Padding 20
-Set TypingSpeed 80ms
+Set TypingSpeed 50ms
 Set Theme "Catppuccin Mocha"
 
+# Set the working directory off-screen so the recording opens
+# straight into the demo project.
+Hide
 Type "cd demo"
 Enter
-Sleep 500ms
+Show
 
 Type "gaffer info order-count"
 Enter

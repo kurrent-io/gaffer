@@ -52,7 +52,6 @@ import {
 } from "./lsp/client.js";
 import { registerTypeScriptPlugin } from "./lsp/typescript-plugin.js";
 import { GafferMcpProvider } from "./mcp/provider.js";
-import { runProjection } from "./commands/run-projection.js";
 import { debugProjectionPick } from "./commands/debug-projection-pick.js";
 
 // workspaceCwd returns the first workspace folder's filesystem
@@ -396,20 +395,16 @@ async function activateAfterTelemetry(
 	);
 
 	// Command handlers live in src/commands/. activate() injects the
-	// SessionController.start binding (and workspace cwd resolver for
-	// runProjection's manifest fetch); the command bodies own their
+	// SessionController.start binding; the command bodies own their
 	// own UX flows.
 	//
 	// Every handler runs through wrapAsync so a thrown error fires an
 	// `exception` envelope before VS Code's command-failure surface
-	// kicks in. The handlers stay otherwise unchanged.
+	// kicks in.
 	//
-	// debugProjection* are CodeLens-only (package.json `when: false`);
-	// runProjection is the palette entry point.
+	// debugProjection* are CodeLens-only (package.json `when: false`).
 	const startSessionLens = (args: DebugProjectionArgs): Promise<void> =>
 		controller.start(args, "code_lens");
-	const startSessionPalette = (args: DebugProjectionArgs): Promise<void> =>
-		controller.start(args, "command_palette");
 	const wrap = <A extends unknown[], R>(
 		fn: (...args: A) => Promise<R> | R,
 	): ((...args: A) => Promise<R>) =>
@@ -426,16 +421,6 @@ async function activateAfterTelemetry(
 		vscode.commands.registerCommand(
 			"gaffer.debugProjectionPick",
 			wrap(debugProjectionPick({ start: startSessionLens })),
-		),
-		vscode.commands.registerCommand(
-			"gaffer.runProjection",
-			wrap(
-				runProjection({
-					start: startSessionPalette,
-					workspaceCwd,
-					telemetry,
-				}),
-			),
 		),
 		// Click target for the "Invalid fixture: <reason>" lens. The lens
 		// is informational; the user fixes the toml. CodeLens.command is

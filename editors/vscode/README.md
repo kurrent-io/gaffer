@@ -6,7 +6,7 @@ Powered by the [gaffer](https://www.npmjs.com/package/@kurrent/gaffer) toolkit.
 
 ## Features
 
-**Run and debug projections from `gaffer.toml`.** CodeLens above each projection and fixture block. Click Run or Debug to launch a session locally without leaving the editor.
+**Debug projections from `gaffer.toml`.** CodeLens above each projection and fixture block. Click Debug to launch a session locally - set breakpoints to pause for inspection, or let it run through.
 
 **Step through handlers.** Set breakpoints in your projection JS. Step over, into, and out of handlers. Watch state evolve event by event in the dedicated panel.
 
@@ -20,7 +20,7 @@ Powered by the [gaffer](https://www.npmjs.com/package/@kurrent/gaffer) toolkit.
 
 1. Install the extension.
 2. Open a workspace containing a `gaffer.toml` file.
-3. Click Run or Debug above any projection in `gaffer.toml`, or run `KurrentDB Projections: Run` from the command palette.
+3. Click Debug above any projection in `gaffer.toml`.
 
 The extension spawns the [`@kurrent/gaffer` CLI](https://www.npmjs.com/package/@kurrent/gaffer) for LSP, MCP, and debug sessions, and will offer to install it on first use if it isn't already on PATH.
 
@@ -34,12 +34,11 @@ The extension spawns the [`@kurrent/gaffer` CLI](https://www.npmjs.com/package/@
 
 ## Commands
 
-| Command                                     | What it does                                                  |
-| ------------------------------------------- | ------------------------------------------------------------- |
-| `KurrentDB Projections: Run`                | Run the projection at the cursor against its declared fixture |
-| `KurrentDB Projections: Debug`              | Run with the debugger attached                                |
-| `KurrentDB Projections: Debug from Fixture` | Pick a fixture to debug                                       |
-| `KurrentDB Projections: Stop`               | Stop the running session                                      |
+| Command                                     | Invoked via                 | What it does                                      |
+| ------------------------------------------- | --------------------------- | ------------------------------------------------- |
+| `KurrentDB Projections: Debug`              | CodeLens                    | Launch the projection with the debugger attached  |
+| `KurrentDB Projections: Debug from Fixture` | CodeLens                    | Pick a fixture, launch with the debugger attached |
+| `KurrentDB Projections: Stop`               | CodeLens or command palette | Stop the running session                          |
 
 ## Telemetry
 

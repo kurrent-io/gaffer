@@ -100,10 +100,6 @@
 		},
 		"commands": [
 			{
-				"command": "gaffer.runProjection",
-				"title": "KurrentDB Projections: Run"
-			},
-			{
 				"command": "gaffer.debugProjection",
 				"title": "KurrentDB Projections: Debug"
 			},

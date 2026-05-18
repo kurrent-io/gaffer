@@ -101,7 +101,7 @@
 		"commands": [
 			{
 				"command": "gaffer.runProjection",
-				"title": "KurrentDB Projections: Run"
+				"title": "KurrentDB Projections: Debug"
 			},
 			{
 				"command": "gaffer.debugProjection",

@@ -49,7 +49,7 @@ See the [demo project](demo/) for a complete example with fixtures, errors, part
 
 ## Packages
 
-| Component | Package | Licence |
+| Component | Package | License |
 |---|---|---|
 | CLI | `@kurrent/gaffer` | [Kurrent License v1](LICENSE.md) |
 | VS Code extension | (Marketplace) | [Kurrent License v1](LICENSE.md) |

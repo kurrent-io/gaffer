@@ -97,6 +97,6 @@ Full documentation at <https://docs.kurrent.io/gaffer/>.
 
 Bugs go to [GitHub Issues](https://github.com/kurrent-io/gaffer/issues). Questions and feature requests to [Discussions](https://github.com/kurrent-io/gaffer/discussions).
 
-## Licence
+## License
 
 [Kurrent License v1](https://github.com/kurrent-io/gaffer/blob/main/LICENSE.md). Sibling packages have their own licences (see each package's LICENSE file).

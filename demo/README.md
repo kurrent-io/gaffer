@@ -39,6 +39,6 @@ just cli build
 ../cli/gaffer dev order-count --fixture happy
 ```
 
-## Licence
+## License
 
 Apache License 2.0. See [LICENSE](LICENSE) in this directory.

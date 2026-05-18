@@ -1,0 +1,150 @@
+name: Release publish
+
+# Drives the actual publish work that happens after the Version Packages PR
+# from `release.yml` merges. Two reasons this lives in its own file:
+#   1. `changesets/action`'s `publish:` script runs inline on a single
+#      Ubuntu runner. We need cross-OS matrix builds for native binaries,
+#      which only a separate workflow can host.
+#   2. Manual UI dispatch is occasionally useful for dry-runs or recovery,
+#      and `workflow_dispatch` gives that for free.
+#
+# Triggered by:
+#   * `release.yml`'s changesets job (`gh workflow run release-publish.yml`)
+#     immediately after the Version Packages PR merges.
+#   * Manual UI dispatch (with optional `dry_run: true` for a smoke test).
+#   * Pull requests touching publish-relevant paths - runs the build
+#     matrix only, to catch cross-platform compile breaks during review.
+#
+# Per-package publish jobs (CLI, testing, VS Code) are owned by their
+# tickets (UI-1530, UI-1532, UI-1537) and add their own jobs here.
+#
+# Prereqs set out-of-band:
+#   * Repo-level secret: NPM_TOKEN (Phase 1 - replaced by OIDC trusted
+#     publishing immediately after 0.1.0 ships).
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run npm publish --dry-run instead of publishing"
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - "runtime/**"
+      - "bindings/js/**"
+      - "bindings/justfile"
+      - ".github/workflows/release-publish.yml"
+
+concurrency:
+  group: release-publish-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build-runtime-matrix:
+    name: Build runtime (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            rid: linux-x64
+            runner: ubuntu-latest
+            ext: so
+          - platform: linux-arm64
+            rid: linux-arm64
+            runner: ubuntu-24.04-arm
+            ext: so
+          - platform: darwin-x64
+            rid: osx-x64
+            runner: macos-15-intel
+            ext: dylib
+          - platform: darwin-arm64
+            rid: osx-arm64
+            runner: macos-15
+            ext: dylib
+          - platform: win32-x64
+            rid: win-x64
+            runner: windows-latest
+            ext: dll
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - uses: extractions/setup-just@v3
+
+      - name: Publish runtime (NativeAOT, ${{ matrix.rid }})
+        run: just runtime publish ${{ matrix.rid }}
+
+      - name: Copy binary into native package
+        run: just bindings js-${{ matrix.platform }}::build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-native-${{ matrix.platform }}
+          path: bindings/js/native/${{ matrix.platform }}/gaffer.${{ matrix.ext }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-runtime:
+    name: Publish @kurrent/gaffer-runtime
+    if: github.event_name == 'workflow_dispatch'
+    needs: build-runtime-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Download runtime native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: runtime-native-*
+          merge-multiple: false
+          path: artifacts
+
+      - name: Stage native binaries into packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          for platform in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64; do
+            src="artifacts/runtime-native-${platform}"
+            dst="bindings/js/native/${platform}"
+            mkdir -p "$dst"
+            cp "$src"/gaffer.* "$dst"/
+          done
+
+      - name: Build wrapper (tsc)
+        run: pnpm --filter "@kurrent/gaffer-runtime" build
+
+      - name: Publish runtime packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            pnpm publish -r --filter "@kurrent/gaffer-runtime" --filter "@kurrent/gaffer-runtime-*" \
+              --access public --no-git-checks --dry-run
+          else
+            pnpm publish -r --filter "@kurrent/gaffer-runtime" --filter "@kurrent/gaffer-runtime-*" \
+              --access public --no-git-checks
+          fi

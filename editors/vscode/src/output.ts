@@ -1,17 +1,17 @@
-// The Gaffer output channel and its primitive write/show operations.
+// The extension's output channel and its primitive write/show operations.
 //
-// Module-level singleton: VS Code only ever has one Gaffer output channel
-// for the lifetime of the extension, and treating it as ambient
-// infrastructure (rather than a value passed through every constructor)
-// matches that reality. Init must happen once at activation; until then
-// the writes are silently no-ops (with console mirror for `log`).
+// Module-level singleton: VS Code only ever has one channel for the
+// lifetime of the extension, and treating it as ambient infrastructure
+// (rather than a value passed through every constructor) matches that
+// reality. Init must happen once at activation; until then the writes
+// are silently no-ops (with console mirror for `log`).
 
 import * as vscode from "vscode";
 
 let channel: vscode.OutputChannel | null = null;
 
 export function initOutput(context: vscode.ExtensionContext): void {
-	channel = vscode.window.createOutputChannel("Gaffer", "log");
+	channel = vscode.window.createOutputChannel("KurrentDB Projections", "log");
 	context.subscriptions.push(channel);
 }
 
@@ -19,7 +19,7 @@ export function initOutput(context: vscode.ExtensionContext): void {
 // extension-host debugging.
 export const log = (msg: string): void => {
 	channel?.appendLine(msg);
-	console.log(`Gaffer: ${msg}`);
+	console.log(`KurrentDB Projections: ${msg}`);
 };
 
 // Append a streamed line to the channel. Used by renderCliMessage to

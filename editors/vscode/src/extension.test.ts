@@ -275,7 +275,7 @@ describe("runProjection bail-early paths", () => {
 		setLspRequestHandler("workspace/symbol", () => []);
 		await runProjection();
 		const msgs = getShownMessages();
-		expect(msgs.some((m) => /no projections found/.test(m.message))).toBe(true);
+		expect(msgs.some((m) => /No projections found/.test(m.message))).toBe(true);
 		expect(getState().quickPickCalls).toEqual([]);
 	});
 

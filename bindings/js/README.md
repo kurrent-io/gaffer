@@ -22,7 +22,7 @@ const session = new ProjectionSession(
      $init: () => ({ count: 0 }),
      OrderPlaced: (s) => ({ count: s.count + 1 }),
    })`,
-	{ engineVersion: "v2" },
+	{ engineVersion: 2 },
 );
 
 session.feed({
@@ -30,6 +30,8 @@ session.feed({
 	streamId: "order-1",
 	sequenceNumber: 0,
 	isJson: true,
+	eventId: "00000000-0000-0000-0000-000000000001",
+	created: "2026-01-01T00:00:00Z",
 	data: "{}",
 });
 

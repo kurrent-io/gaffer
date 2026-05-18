@@ -1,4 +1,4 @@
-![Gaffer](../docs/assets/banner-gaffer.svg)
+<img src="../docs/assets/banner-gaffer.svg" alt="Gaffer" width="100%">
 
 # @kurrent/gaffer
 

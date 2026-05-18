@@ -1,4 +1,4 @@
-![KurrentDB Projections](../docs/assets/banner-kurrentdb-projections.svg)
+<img src="../docs/assets/banner-kurrentdb-projections.svg" alt="KurrentDB Projections" width="100%">
 
 # KurrentDB Projections
 

@@ -36,7 +36,7 @@ Console.WriteLine(session.GetState()); // {"count":1}
 
 ## Building
 
-```
+```sh
 just runtime build         # build
 just runtime test          # run tests
 just runtime publish       # NativeAOT shared library
@@ -44,3 +44,7 @@ just runtime check         # verify formatting
 just runtime fix           # auto-fix formatting
 just runtime clean         # remove build artifacts
 ```
+
+## License
+
+[Kurrent License v1](LICENSE)

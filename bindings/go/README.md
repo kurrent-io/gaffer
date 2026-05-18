@@ -1,12 +1,12 @@
 # Gaffer Runtime - Go Bindings
 
-Go bindings for the Gaffer projection runtime. Wraps the NativeAOT shared library via cgo.
+Go bindings for the gaffer projection runtime. Wraps the NativeAOT shared library via cgo.
 
 ## Prerequisites
 
 Build the runtime shared library first:
 
-```
+```sh
 just runtime publish
 ```
 
@@ -31,7 +31,7 @@ fmt.Println(*state) // {"count":1}
 
 ## Building
 
-```
+```sh
 just bindings go test      # run tests
 just bindings go check     # run linter
 just bindings go fix       # format code and apply lint fixes
@@ -39,5 +39,4 @@ just bindings go fix       # format code and apply lint fixes
 
 ## License
 
-Kurrent License v1. See [LICENSE](LICENSE) in this directory or
-[LICENSE.md](../../LICENSE.md) at the repo root.
+[Kurrent License v1](LICENSE)

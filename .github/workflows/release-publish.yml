@@ -15,8 +15,8 @@ name: Release publish
 #   * Pull requests touching publish-relevant paths - runs the build
 #     matrix only, to catch cross-platform compile breaks during review.
 #
-# Per-package publish jobs (testing, VS Code) are owned by their
-# tickets (UI-1532, UI-1537) and add their own jobs here.
+# Per-package publish jobs (VS Code) are owned by their tickets
+# (UI-1532) and add their own jobs here.
 #
 # Prereqs set out-of-band:
 #   * Repo-level secret: NPM_TOKEN (Phase 1 - replaced by OIDC trusted
@@ -34,6 +34,7 @@ on:
       - "runtime/**"
       - "bindings/**"
       - "cli/**"
+      - "testing/js/**"
       - ".github/workflows/release-publish.yml"
 
 concurrency:
@@ -261,5 +262,45 @@ jobs:
               --filter "@kurrent/gaffer-darwin-x64" \
               --filter "@kurrent/gaffer-darwin-arm64" \
               --filter "@kurrent/gaffer-win32-x64" \
+              --access public --no-git-checks
+          fi
+
+  publish-testing:
+    name: Publish @kurrent/projections-testing
+    if: github.event_name == 'workflow_dispatch'
+    # Wait for runtime so the consumer's `npm install` resolves
+    # @kurrent/gaffer-runtime - testing's dep on it would otherwise
+    # resolve to an unpublished version on a fast-following install.
+    needs: publish-runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (tsc)
+        run: pnpm --filter "@kurrent/projections-testing" build
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            pnpm publish --filter "@kurrent/projections-testing" \
+              --access public --no-git-checks --dry-run
+          else
+            pnpm publish --filter "@kurrent/projections-testing" \
               --access public --no-git-checks
           fi

@@ -205,6 +205,6 @@ Full documentation at <https://docs.kurrent.io/gaffer/testing/>.
 
 Bugs go to [GitHub Issues](https://github.com/kurrent-io/gaffer/issues). Questions and feature requests to [Discussions](https://github.com/kurrent-io/gaffer/discussions).
 
-## Licence
+## License
 
 [Apache License 2.0](LICENSE). Depends on `@kurrent/gaffer-runtime`, which is distributed under the [Kurrent License v1](https://github.com/kurrent-io/gaffer/blob/main/LICENSE.md).

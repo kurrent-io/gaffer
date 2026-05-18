@@ -1,8 +1,9 @@
 # Demo recording for cli/README.md.
-# Regenerate with `vhs docs/assets/demo-dev.tape` locally,
+# Regenerate from the demo/ directory with
+#   vhs ../docs/assets/demo-dev.tape
 # or via the "Regenerate demo recordings" workflow on GitHub.
 
-Output docs/assets/demo-dev.gif
+Output ../docs/assets/demo-dev.gif
 
 # Suppress the first-run telemetry disclosure banner so it doesn't
 # appear in the recording. CI runs in a fresh environment each time,
@@ -15,13 +16,6 @@ Set Height 700
 Set Padding 20
 Set TypingSpeed 50ms
 Set Theme "Catppuccin Mocha"
-
-# Set the working directory off-screen so the recording opens
-# straight into the demo project.
-Hide
-Type "cd demo"
-Enter
-Show
 
 Type "gaffer info order-count"
 Enter

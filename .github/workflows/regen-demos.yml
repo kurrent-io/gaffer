@@ -71,8 +71,12 @@ jobs:
       - name: Install VHS
         run: go install github.com/charmbracelet/vhs@latest
 
+      # Run vhs from the demo/ directory so the recorded shell starts
+      # there. Avoids a visible `cd demo` step in the recording (Hide
+      # / Show in the tape file didn't suppress the prompt + command).
       - name: Regenerate demo recordings
-        run: vhs docs/assets/demo-dev.tape
+        working-directory: demo
+        run: vhs ../docs/assets/demo-dev.tape
 
       - name: Open PR with updated recordings
         uses: peter-evans/create-pull-request@v6

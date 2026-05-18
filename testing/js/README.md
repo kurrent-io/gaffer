@@ -1,18 +1,20 @@
 # @kurrent/projections-testing
 
-Test KurrentDB projections locally with any test runner (vitest, jest, mocha).
+Test [KurrentDB](https://www.kurrent.io) projections locally with any test runner (vitest, jest, mocha).
 
-Wraps the [Gaffer runtime](../../runtime/) to execute projections against test events with the same behaviour as a real KurrentDB instance.
+Wraps the [gaffer runtime](../../runtime/) to execute projections against test events with the same behaviour as a real KurrentDB instance.
 
 ## Install
 
-```bash
-npm install @kurrent/projections-testing
+```sh
+npm install --save-dev @kurrent/projections-testing
 ```
 
-Requires `@kurrent/kurrentdb-client` as a peer dependency.
+Requires Node.js 22 or later. `@kurrent/kurrentdb-client` is a peer dependency.
 
 ## Quick start
+
+Run a projection over an array of events:
 
 ```typescript
 import { createProjection } from "@kurrent/projections-testing";
@@ -21,7 +23,6 @@ import { readFile } from "fs/promises";
 const source = await readFile("./projections/cart.js", "utf8");
 const projection = createProjection<{ count: number }>(source);
 
-// Run over an array of events
 for (const { state } of projection.run([
 	{
 		eventType: "ItemAdded",
@@ -191,9 +192,19 @@ try {
 }
 ```
 
+## Related packages
+
+| Package                                                                                     | What it is                                                 |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [`@kurrent/gaffer`](https://www.npmjs.com/package/@kurrent/gaffer)                          | CLI to scaffold, run, debug, and deploy projections        |
+| [Gaffer for VS Code](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer) | Editor integration with debugger, codelens, and MCP server |
+
+## Documentation
+
+Full documentation at <https://docs.kurrent.io/gaffer/testing/>.
+
+Bugs go to [GitHub Issues](https://github.com/kurrent-io/gaffer/issues). Questions and feature requests to [Discussions](https://github.com/kurrent-io/gaffer/discussions).
+
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE) in this directory.
-
-This package depends on `@kurrent/gaffer-runtime`, which is distributed
-under the Kurrent License v1.
+[Apache License 2.0](LICENSE). Depends on `@kurrent/gaffer-runtime`, which is distributed under the [Kurrent License v1](https://github.com/kurrent-io/gaffer/blob/main/LICENSE.md).

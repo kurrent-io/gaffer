@@ -37,7 +37,8 @@
 	"main": "./dist/extension.js",
 	"files": [
 		"dist",
-		"LICENSE"
+		"LICENSE",
+		"TELEMETRY.md"
 	],
 	"capabilities": {
 		"untrustedWorkspaces": {

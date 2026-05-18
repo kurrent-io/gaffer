@@ -1,0 +1,76 @@
+name: Regenerate demo recordings
+
+# Manually regenerates the VHS demo recordings under docs/assets/ and
+# opens a PR with the updated GIFs. Run from the Actions tab when the
+# CLI output a recording depends on has changed.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: regen-demos
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regen:
+    name: Regenerate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache-dependency-path: cli/go.sum
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: extractions/setup-just@v3
+
+      - name: Install module dependencies
+        run: just init
+
+      - name: Publish runtime
+        run: just runtime publish
+
+      - name: Build CLI
+        run: just cli build
+
+      - name: Add gaffer CLI to PATH
+        run: echo "$GITHUB_WORKSPACE/cli" >> "$GITHUB_PATH"
+
+      - name: Regenerate demo recordings
+        uses: charmbracelet/vhs-action@v2
+        with:
+          path: docs/assets/demo-dev.tape
+
+      - name: Open PR with updated recordings
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: Regenerate demo recordings
+          title: Regenerate demo recordings
+          body: |
+            Regenerated demo recordings under `docs/assets/` via the
+            [Regenerate demo recordings](https://github.com/${{ github.repository }}/actions/workflows/regen-demos.yml)
+            workflow.
+
+            Review the rendered GIFs (not the binary diffs) before merging.
+          branch: regen-demos
+          add-paths: docs/assets/*.gif
+          labels: documentation

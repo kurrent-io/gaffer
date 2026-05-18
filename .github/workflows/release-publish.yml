@@ -18,9 +18,17 @@ name: Release publish
 # Per-package publish jobs (VS Code) are owned by their tickets
 # (UI-1532) and add their own jobs here.
 #
+# `deploy-worker-prod` lives here too - it shares the release trigger
+# with the package publishes. Worker deploy doesn't depend on package
+# publish success (versions are already bumped on main if publishes
+# fail; that's an alarm-and-fix scenario), so it runs in parallel.
+#
 # Prereqs set out-of-band:
-#   * Repo-level secret: NPM_TOKEN (Phase 1 - replaced by OIDC trusted
-#     publishing immediately after 0.1.0 ships).
+#   * Repo-level secrets: NPM_TOKEN (Phase 1 - replaced by OIDC trusted
+#     publishing immediately after 0.1.0 ships),
+#     CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
+#   * Worker secrets via `wrangler secret put --env production`:
+#     POSTHOG_API_KEY.
 
 on:
   workflow_dispatch:
@@ -304,3 +312,43 @@ jobs:
             pnpm publish --filter "@kurrent/projections-testing" \
               --access public --no-git-checks
           fi
+
+  deploy-worker-prod:
+    name: Deploy telemetry worker to production
+    # Skip on PR validation runs and on dry-run dispatches. PR events
+    # have inputs.dry_run unset, so the event_name guard does the work
+    # there.
+    if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build worker bundle
+        run: pnpm --filter "@kurrent/gaffer-telemetry-worker" run build
+
+      - name: Apply D1 migrations
+        working-directory: telemetry/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm wrangler d1 migrations apply DB --env production --remote
+
+      - name: Deploy
+        working-directory: telemetry/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm wrangler deploy --env production

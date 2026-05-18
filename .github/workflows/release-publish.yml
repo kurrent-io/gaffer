@@ -94,7 +94,7 @@ jobs:
         run: just runtime publish ${{ matrix.rid }}
 
       - name: Copy binary into native package
-        run: just bindings js-${{ matrix.platform }}::build
+        run: just bindings::js-${{ matrix.platform }}::build
 
       - uses: actions/upload-artifact@v4
         with:

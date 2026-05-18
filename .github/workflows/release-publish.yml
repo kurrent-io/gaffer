@@ -15,8 +15,8 @@ name: Release publish
 #   * Pull requests touching publish-relevant paths - runs the build
 #     matrix only, to catch cross-platform compile breaks during review.
 #
-# Per-package publish jobs (CLI, testing, VS Code) are owned by their
-# tickets (UI-1530, UI-1532, UI-1537) and add their own jobs here.
+# Per-package publish jobs (testing, VS Code) are owned by their
+# tickets (UI-1532, UI-1537) and add their own jobs here.
 #
 # Prereqs set out-of-band:
 #   * Repo-level secret: NPM_TOKEN (Phase 1 - replaced by OIDC trusted
@@ -32,8 +32,8 @@ on:
   pull_request:
     paths:
       - "runtime/**"
-      - "bindings/js/**"
-      - "bindings/justfile"
+      - "bindings/**"
+      - "cli/**"
       - ".github/workflows/release-publish.yml"
 
 concurrency:
@@ -117,22 +117,14 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download runtime native artifacts
+        # merge-multiple: true preserves each artifact's internal path
+        # (bindings/js/native/<platform>/gaffer.<ext>) and drops the
+        # artifact-name parent dir, landing files exactly where the
+        # wrapper expects them.
         uses: actions/download-artifact@v4
         with:
           pattern: runtime-native-*
-          merge-multiple: false
-          path: artifacts
-
-      - name: Stage native binaries into packages
-        shell: bash
-        run: |
-          set -euo pipefail
-          for platform in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64; do
-            src="artifacts/runtime-native-${platform}"
-            dst="bindings/js/native/${platform}"
-            mkdir -p "$dst"
-            cp "$src"/gaffer.* "$dst"/
-          done
+          merge-multiple: true
 
       - name: Build wrapper (tsc)
         run: pnpm --filter "@kurrent/gaffer-runtime" build
@@ -146,5 +138,128 @@ jobs:
               --access public --no-git-checks --dry-run
           else
             pnpm publish -r --filter "@kurrent/gaffer-runtime" --filter "@kurrent/gaffer-runtime-*" \
+              --access public --no-git-checks
+          fi
+
+  build-cli-matrix:
+    name: Build CLI (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            rid: linux-x64
+            runner: ubuntu-latest
+            cli-bin: gaffer
+          - platform: linux-arm64
+            rid: linux-arm64
+            runner: ubuntu-24.04-arm
+            cli-bin: gaffer
+          - platform: darwin-x64
+            rid: osx-x64
+            runner: macos-15-intel
+            cli-bin: gaffer
+          - platform: darwin-arm64
+            rid: osx-arm64
+            runner: macos-15
+            cli-bin: gaffer
+          - platform: win32-x64
+            rid: win-x64
+            runner: windows-latest
+            cli-bin: gaffer.exe
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache-dependency-path: cli/go.sum
+
+      - uses: extractions/setup-just@v3
+
+      - name: Publish runtime (NativeAOT, ${{ matrix.rid }})
+        run: just runtime publish ${{ matrix.rid }}
+
+      - name: Resolve CLI version
+        id: version
+        shell: bash
+        run: echo "value=$(node -p "require('./cli/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Build CLI binary
+        run: just cli build-release ${{ steps.version.outputs.value }}
+
+      - name: Stage CLI + runtime into native package
+        run: just cli::${{ matrix.platform }}::build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-native-${{ matrix.platform }}
+          path: |
+            cli/native/${{ matrix.platform }}/${{ matrix.cli-bin }}
+            cli/native/${{ matrix.platform }}/Gaffer.Runtime.*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-cli:
+    name: Publish @kurrent/gaffer
+    if: github.event_name == 'workflow_dispatch'
+    needs: build-cli-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Download CLI native artifacts
+        # merge-multiple: true preserves each artifact's internal path
+        # (cli/native/<platform>/gaffer + Gaffer.Runtime.*) and drops
+        # the artifact-name parent dir.
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cli-native-*
+          merge-multiple: true
+
+      - name: Publish CLI packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # Filter enumerates each CLI cluster package explicitly.
+          # `@kurrent/gaffer-*` would also match `@kurrent/gaffer-runtime*`,
+          # which the runtime job already publishes.
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            pnpm publish -r \
+              --filter "@kurrent/gaffer" \
+              --filter "@kurrent/gaffer-linux-x64" \
+              --filter "@kurrent/gaffer-linux-arm64" \
+              --filter "@kurrent/gaffer-darwin-x64" \
+              --filter "@kurrent/gaffer-darwin-arm64" \
+              --filter "@kurrent/gaffer-win32-x64" \
+              --access public --no-git-checks --dry-run
+          else
+            pnpm publish -r \
+              --filter "@kurrent/gaffer" \
+              --filter "@kurrent/gaffer-linux-x64" \
+              --filter "@kurrent/gaffer-linux-arm64" \
+              --filter "@kurrent/gaffer-darwin-x64" \
+              --filter "@kurrent/gaffer-darwin-arm64" \
+              --filter "@kurrent/gaffer-win32-x64" \
               --access public --no-git-checks
           fi

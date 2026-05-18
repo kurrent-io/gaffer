@@ -1,10 +1,13 @@
 default:
     @just --list
 
-# Copy the CLI binary into this package (requires cli build for linux-x64)
+# Co-locate the CLI binary and the runtime shared library in the
+# package. The cgo build sets RPATH=$ORIGIN, so the runtime resolves
+# from the package directory at load time.
 build:
     cp ../../gaffer gaffer
+    cp ../../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-x64/publish/Gaffer.Runtime.so Gaffer.Runtime.so
 
 # Remove build artifacts
 clean:
-    rm -f gaffer
+    rm -f gaffer Gaffer.Runtime.so

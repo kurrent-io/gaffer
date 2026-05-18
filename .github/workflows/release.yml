@@ -2,33 +2,29 @@ name: Release
 
 # Release flow:
 #   * changesets - opens or updates the "Version Packages" PR while
-#     changesets are present, then runs the publish script when that PR
-#     merges and consumes them. The action reports `published` and
-#     `publishedPackages` for downstream jobs.
+#     changesets are present. When that PR merges and no changesets
+#     remain, the action runs its `publish:` command, which dispatches
+#     `release-publish.yml` (the multi-OS matrix can't fit in
+#     changesets/action's single-runner `publish:` slot).
 #   * detect-changes - paths-filter gate. Lives in its own job so the
 #     deploy-worker-staging check skips cleanly when nothing relevant
 #     changed (top-level workflow `paths:` would also gate the changesets
 #     job, which has to react to every main push).
 #   * deploy-worker-staging - redeploys the worker to staging when the
 #     gate reports worker-relevant changes.
-#   * deploy-worker-prod - redeploys the worker to production on every
-#     publish run, regardless of whether worker files changed. The worker
-#     isn't a published npm package so it doesn't appear in
-#     `publishedPackages`; the coarse trigger is fine because the deploy
-#     is idempotent and fast.
+#
+# Production deploys of the worker live in `release-publish.yml`
+# alongside the package publish jobs - they fire from the same trigger,
+# so co-locating keeps the "what happens at release time" surface in one
+# file.
 #
 # Manual prod deploys aren't exposed here. If a hotfix is needed before
 # the next release, run `just telemetry worker deploy-production` locally
 # with CLOUDFLARE_API_TOKEN set.
 #
-# Per-package publish jobs (CLI, runtime, testing, VS Code) are owned by
-# their tickets (UI-1530, UI-1532, UI-1536, UI-1537). They wire into the
-# `publish:` script below (one `changeset publish` covers npm-published
-# ones) or add their own `needs: changesets` job inspecting
-# `publishedPackages`.
-#
 # Prereqs set out-of-band:
-#   * Repo-level secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
+#   * Repo-level secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
+#     NPM_TOKEN.
 #   * Worker secrets via `wrangler secret put --env <env>`: POSTHOG_API_KEY.
 
 on:
@@ -50,9 +46,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    outputs:
-      published: ${{ steps.changesets.outputs.published }}
-      publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
+      actions: write   # to dispatch release-publish.yml from publish:
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,11 +68,16 @@ jobs:
         id: changesets
         with:
           version: pnpm bump-versions
-          publish: 'echo "publish script: filled in by UI-1530 / UI-1532 / UI-1536 / UI-1537"'
+          # Runs only when no pending changesets remain - the moment
+          # right after the Version Packages PR merges. Dispatches
+          # release-publish.yml; package publish + worker prod deploy
+          # happen there.
+          publish: gh workflow run release-publish.yml -f dry_run=false
           commit: "chore(release): version packages"
           title: "Version Packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   detect-changes:
     name: Detect changes
@@ -104,6 +103,9 @@ jobs:
     if: needs.detect-changes.outputs.worker == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -116,60 +118,14 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - uses: extractions/setup-just@v3
+
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Build worker bundle
-        run: pnpm --filter "@kurrent/gaffer-telemetry-worker" run build
-
       - name: Apply D1 migrations
         working-directory: telemetry/worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: pnpm wrangler d1 migrations apply DB --env staging --remote
 
-      - name: Deploy
-        working-directory: telemetry/worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: pnpm wrangler deploy --env staging
-
-  deploy-worker-prod:
-    name: Deploy telemetry worker to production
-    needs: changesets
-    if: needs.changesets.outputs.published == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.32.1
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      - name: Build worker bundle
-        run: pnpm --filter "@kurrent/gaffer-telemetry-worker" run build
-
-      - name: Apply D1 migrations
-        working-directory: telemetry/worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: pnpm wrangler d1 migrations apply DB --env production --remote
-
-      - name: Deploy
-        working-directory: telemetry/worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: pnpm wrangler deploy --env production
+      - name: Build and deploy
+        run: just telemetry worker deploy-staging

@@ -1,0 +1,315 @@
+name: Release publish
+
+# Drives the actual publish work that happens after the Version Packages PR
+# from `release.yml` merges. Two reasons this lives in its own file:
+#   1. `changesets/action`'s `publish:` script runs inline on a single
+#      Ubuntu runner. We need cross-OS matrix builds for native binaries,
+#      which only a separate workflow can host.
+#   2. Manual UI dispatch is occasionally useful for dry-runs or recovery,
+#      and `workflow_dispatch` gives that for free.
+#
+# Triggered by:
+#   * `release.yml`'s changesets job (`gh workflow run release-publish.yml`)
+#     immediately after the Version Packages PR merges.
+#   * Manual UI dispatch (with optional `dry_run: true` for a smoke test).
+#
+# Per-package publish jobs (VS Code) are owned by their tickets
+# (UI-1532) and add their own jobs here.
+#
+# `deploy-worker-prod` lives here too - it shares the release trigger
+# with the package publishes. Worker deploy doesn't depend on package
+# publish success (versions are already bumped on main if publishes
+# fail; that's an alarm-and-fix scenario), so it runs in parallel.
+#
+# Prereqs set out-of-band:
+#   * Repo-level secrets: NPM_TOKEN (Phase 1 - replaced by OIDC trusted
+#     publishing immediately after 0.1.0 ships),
+#     CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
+#   * Worker secrets via `wrangler secret put --env production`:
+#     POSTHOG_API_KEY.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run npm publish --dry-run instead of publishing"
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-runtime-matrix:
+    name: Build runtime (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            rid: linux-x64
+            runner: ubuntu-latest
+            ext: so
+          - platform: linux-arm64
+            rid: linux-arm64
+            runner: ubuntu-24.04-arm
+            ext: so
+          - platform: darwin-x64
+            rid: osx-x64
+            runner: macos-15-intel
+            ext: dylib
+          - platform: darwin-arm64
+            rid: osx-arm64
+            runner: macos-15
+            ext: dylib
+          - platform: win32-x64
+            rid: win-x64
+            runner: windows-latest
+            ext: dll
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - uses: extractions/setup-just@v3
+
+      - name: Publish runtime (NativeAOT, ${{ matrix.rid }})
+        run: just runtime publish ${{ matrix.rid }}
+
+      - name: Copy binary into native package
+        run: just bindings::js-${{ matrix.platform }}::build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-native-${{ matrix.platform }}
+          path: bindings/js/native/${{ matrix.platform }}/gaffer.${{ matrix.ext }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-runtime:
+    name: Publish @kurrent/gaffer-runtime
+    needs: build-runtime-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Download runtime native artifacts
+        # merge-multiple: true preserves each artifact's internal path
+        # (bindings/js/native/<platform>/gaffer.<ext>) and drops the
+        # artifact-name parent dir, landing files exactly where the
+        # wrapper expects them.
+        uses: actions/download-artifact@v4
+        with:
+          pattern: runtime-native-*
+          merge-multiple: true
+
+      - name: Build wrapper (tsc)
+        run: pnpm --filter "@kurrent/gaffer-runtime" build
+
+      - name: Publish runtime packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          pnpm publish -r \
+            --filter "@kurrent/gaffer-runtime" \
+            --filter "@kurrent/gaffer-runtime-*" \
+            --access public --no-git-checks ${{ inputs.dry_run && '--dry-run' || '' }}
+
+  build-cli-matrix:
+    name: Build CLI (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            rid: linux-x64
+            runner: ubuntu-latest
+            cli-bin: gaffer
+          - platform: linux-arm64
+            rid: linux-arm64
+            runner: ubuntu-24.04-arm
+            cli-bin: gaffer
+          - platform: darwin-x64
+            rid: osx-x64
+            runner: macos-15-intel
+            cli-bin: gaffer
+          - platform: darwin-arm64
+            rid: osx-arm64
+            runner: macos-15
+            cli-bin: gaffer
+          - platform: win32-x64
+            rid: win-x64
+            runner: windows-latest
+            cli-bin: gaffer.exe
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache-dependency-path: cli/go.sum
+
+      - uses: extractions/setup-just@v3
+
+      - name: Publish runtime (NativeAOT, ${{ matrix.rid }})
+        run: just runtime publish ${{ matrix.rid }}
+
+      - name: Resolve CLI version
+        id: version
+        shell: bash
+        run: echo "value=$(node -p "require('./cli/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Build CLI binary
+        run: just cli build-release ${{ steps.version.outputs.value }}
+
+      - name: Stage CLI + runtime into native package
+        run: just cli::${{ matrix.platform }}::build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-native-${{ matrix.platform }}
+          path: |
+            cli/native/${{ matrix.platform }}/${{ matrix.cli-bin }}
+            cli/native/${{ matrix.platform }}/Gaffer.Runtime.*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-cli:
+    name: Publish @kurrent/gaffer
+    needs: build-cli-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Download CLI native artifacts
+        # merge-multiple: true preserves each artifact's internal path
+        # (cli/native/<platform>/gaffer + Gaffer.Runtime.*) and drops
+        # the artifact-name parent dir.
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cli-native-*
+          merge-multiple: true
+
+      - name: Publish CLI packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Filter enumerates each CLI cluster package explicitly.
+        # `@kurrent/gaffer-*` would also match `@kurrent/gaffer-runtime*`,
+        # which the runtime job already publishes.
+        run: |
+          pnpm publish -r \
+            --filter "@kurrent/gaffer" \
+            --filter "@kurrent/gaffer-linux-x64" \
+            --filter "@kurrent/gaffer-linux-arm64" \
+            --filter "@kurrent/gaffer-darwin-x64" \
+            --filter "@kurrent/gaffer-darwin-arm64" \
+            --filter "@kurrent/gaffer-win32-x64" \
+            --access public --no-git-checks ${{ inputs.dry_run && '--dry-run' || '' }}
+
+  publish-testing:
+    name: Publish @kurrent/projections-testing
+    # Wait for runtime so the consumer's `npm install` resolves
+    # @kurrent/gaffer-runtime - testing's dep on it would otherwise
+    # resolve to an unpublished version on a fast-following install.
+    needs: publish-runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (tsc)
+        run: pnpm --filter "@kurrent/projections-testing" build
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          pnpm publish --filter "@kurrent/projections-testing" \
+            --access public --no-git-checks ${{ inputs.dry_run && '--dry-run' || '' }}
+
+  deploy-worker-prod:
+    name: Deploy telemetry worker to production
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: extractions/setup-just@v3
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply D1 migrations
+        working-directory: telemetry/worker
+        run: pnpm wrangler d1 migrations apply DB --env production --remote
+
+      - name: Build and deploy
+        run: just telemetry worker deploy-production

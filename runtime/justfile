@@ -21,9 +21,22 @@ fix:
 check:
     dotnet format --verify-no-changes
 
-# Publish NativeAOT shared library
-publish:
-    dotnet publish Gaffer.Runtime -c Release -r linux-x64
+# .NET runtime identifier for the current host. CI overrides this by
+# passing an explicit RID to `publish`.
+host-rid := if os() == "macos" {
+        if arch() == "aarch64" { "osx-arm64" } else { "osx-x64" }
+    } else if os() == "windows" {
+        "win-x64"
+    } else if arch() == "aarch64" {
+        "linux-arm64"
+    } else {
+        "linux-x64"
+    }
+
+# Publish NativeAOT shared library. Defaults to host RID; pass an explicit
+# RID (linux-x64, linux-arm64, osx-x64, osx-arm64, win-x64) for cross builds.
+publish rid=host-rid:
+    dotnet publish Gaffer.Runtime -c Release -r {{rid}}
 
 # Remove build artifacts
 clean:

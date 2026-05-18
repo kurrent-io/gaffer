@@ -19,6 +19,7 @@
 		"x64"
 	],
 	"files": [
-		"gaffer.exe"
+		"gaffer.exe",
+		"Gaffer.Runtime.dll"
 	]
 }

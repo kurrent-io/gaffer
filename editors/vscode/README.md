@@ -1,3 +1,5 @@
+![KurrentDB Projections](../docs/assets/banner-kurrentdb-projections.svg)
+
 # KurrentDB Projections
 
 Projection debugger and CodeLens companion for [KurrentDB](https://www.kurrent.io). Run and debug projections from `gaffer.toml`, step through handlers with full state inspection, and get type-aware autocomplete for projection builtins.

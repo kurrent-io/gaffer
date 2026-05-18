@@ -1,3 +1,5 @@
+![Gaffer](docs/assets/banner-gaffer.svg)
+
 # Gaffer
 
 Develop, test, debug, and deploy [KurrentDB](https://kurrent.io) projections.

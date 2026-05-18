@@ -13,7 +13,7 @@ schemas/
   wire.cue     - the envelope and identifier types used to ship events to
                  the worker. "How do I construct a request?"
 
-generated/     - gitignored. Outputs of `just telemetry build`:
+generated/     - outputs of `just telemetry build` (runs as part of `just init`):
   telemetry.schema.json   (Draft-07 JSON Schema, the worker validates against this)
   events.gen.go           (Go types, package `generated`)
   events.gen.ts           (TypeScript types)
@@ -29,7 +29,7 @@ The CUE is self-documenting at the field level (descriptions survive export to j
 
 ## Consumer notes
 
-**Run `just telemetry build` (or `just init` from the repo root) before `pnpm install` or any Go build.** The generated TS / Go files are gitignored; downstream packages that import from `@kurrent/gaffer-telemetry` or `github.com/kurrent-io/gaffer/telemetry/generated` rely on them existing.
+**Run `just telemetry build` (or `just init` from the repo root) before `pnpm install` or any Go build.** Downstream packages that import from `@kurrent/gaffer-telemetry` or `github.com/kurrent-io/gaffer/telemetry/generated` rely on the generated outputs existing.
 
 **Go discriminated unions are map-typed.** `go-jsonschema` doesn't synthesise tagged union types from JSON Schema `oneOf`, so `Event` and `CommandInvokedProperties` in `generated/` are `map[string]interface{}`. The per-variant structs (`DevCommandInvokedProperties`, `ProjectionShape`, etc.) are properly typed - emit code is expected to construct one of them, marshal to a map, and assign. The CLI's telemetry helpers wrap this so call sites stay typed.
 

@@ -24,8 +24,7 @@ gaffer dev order-count --fixture happy
 
 The CLI replays the events declared as `fixtures.happy` in [`demo/gaffer.toml`](https://github.com/kurrent-io/gaffer/tree/main/demo) through the `order-count` projection and prints the resulting state. No running KurrentDB instance is needed.
 
-<!-- TODO: replace with final asset path once recorded -->
-![gaffer dev replaying the order-count projection against the happy fixture](https://raw.githubusercontent.com/kurrent-io/gaffer/main/docs/assets/demo-dev.gif)
+![gaffer dev replaying the order-count projection against the happy fixture](../docs/assets/demo-dev.gif)
 
 Or start a new project from scratch:
 

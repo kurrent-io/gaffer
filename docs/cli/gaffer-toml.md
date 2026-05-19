@@ -71,9 +71,9 @@ Per-projection overrides via `execution_timeout` inside `[[projection]]`.
 telemetry = false
 ```
 
-Project-level telemetry opt-out. Setting `false` disables telemetry for any gaffer command run inside this project.
+Project-level telemetry opt-out. Setting `false` disables telemetry for any gaffer command run inside this project, regardless of the user's own opt-out state.
 
-This is the strongest project-level opt-out. User-level opt-outs (`gaffer config telemetry off`, `GAFFER_TELEMETRY_OPTOUT`, `KURRENTDB_TELEMETRY_OPTOUT`, `DO_NOT_TRACK`) and VS Code's `telemetry.telemetryLevel` also apply.
+User-level opt-outs that apply across all projects: `gaffer config telemetry off`, `GAFFER_TELEMETRY_OPTOUT`, `KURRENTDB_TELEMETRY_OPTOUT`, `DO_NOT_TRACK`, and VS Code's `telemetry.telemetryLevel`.
 
 Optional. Telemetry is on by default.
 

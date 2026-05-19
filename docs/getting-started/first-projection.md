@@ -70,7 +70,7 @@ fromAll().when({
 
 ## Add some test events
 
-Create `fixtures/orders.json`:
+Save <a href="../assets/orders.json" download>orders.json</a> to `fixtures/orders.json` in your project, or copy the contents below:
 
 ```json
 [

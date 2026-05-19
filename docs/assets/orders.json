@@ -1,0 +1,17 @@
+[
+  {
+    "eventType": "OrderPlaced",
+    "streamId": "order-1",
+    "data": "{\"cents\": 2999, \"item\": \"Widget\"}"
+  },
+  {
+    "eventType": "OrderPlaced",
+    "streamId": "order-2",
+    "data": "{\"cents\": 4999, \"item\": \"Gadget\"}"
+  },
+  {
+    "eventType": "OrderShipped",
+    "streamId": "order-1",
+    "data": "{\"trackingId\": \"TRK-001\"}"
+  }
+]

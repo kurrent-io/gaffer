@@ -1,5 +1,11 @@
 # @kurrent/gaffer
 
+## 0.1.3
+
+### Patch Changes
+
+- aeed2b2: Mark the CLI binary as executable in published tarballs.
+
 ## 0.1.2
 
 ### Patch Changes

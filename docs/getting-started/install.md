@@ -18,7 +18,7 @@ Verify:
 gaffer version
 ```
 
-## Optional add-ons
+## Integrations
 
 - **VS Code extension**: run/debug lenses on `gaffer.toml`, breakpoint debugging, and projection-API autocomplete. See [the extension](../extension/).
 - **AI assistants** (Claude Code, Cursor, Continue, Copilot): point them at `gaffer mcp` for scaffolding, debugging, and the projection API. See [MCP](../mcp/).

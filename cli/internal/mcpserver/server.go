@@ -130,7 +130,7 @@ func (s *Server) requireSession() (*activeSession, *mcp.CallToolResult) {
 	return s.session, nil
 }
 
-func New(root string, cfg *config.Config) *Server {
+func New(root string, cfg *config.Config, version string) *Server {
 	s := &Server{
 		root: root,
 		cfg:  cfg,
@@ -139,7 +139,7 @@ func New(root string, cfg *config.Config) *Server {
 	s.mcp = mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "gaffer",
-			Version: "0.1.0",
+			Version: version,
 		},
 		&mcp.ServerOptions{
 			Instructions: "Gaffer is a projection toolkit for KurrentDB. " +
@@ -172,7 +172,7 @@ func New(root string, cfg *config.Config) *Server {
 	return s
 }
 
-func NewFromProjectRoot() (*Server, error) {
+func NewFromProjectRoot(version string) (*Server, error) {
 	root := project.FindRoot()
 	if root == "" {
 		return nil, project.ErrNotInProject
@@ -183,7 +183,7 @@ func NewFromProjectRoot() (*Server, error) {
 		return nil, err
 	}
 
-	return New(root, cfg), nil
+	return New(root, cfg, version), nil
 }
 
 func (s *Server) Run(ctx context.Context) error {

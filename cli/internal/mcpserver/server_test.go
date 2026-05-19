@@ -92,7 +92,7 @@ func setupTestProject(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 
-	s = New(dir, cfg)
+	s = New(dir, cfg, "test")
 	return s
 }
 

@@ -189,11 +189,12 @@ jobs:
 
       - name: Build CLI binary
         # Go's cgo security blocklist rejects `@` in -Wl,-rpath values by
-        # default. Allow the two macOS rpath tokens the binding uses;
-        # Linux $ORIGIN and Windows (no rpath) are already on the
-        # default allow-list.
+        # default. Allow only the two macOS rpath tokens our binding
+        # uses, anchored and with no comma in the optional subpath - a
+        # trailing comma would let gcc split off extra `-Wl,` args.
+        # Linux $ORIGIN and Windows (no rpath) are already allowed.
         env:
-          CGO_LDFLAGS_ALLOW: '-Wl,-rpath,@(loader_path|executable_path).*'
+          CGO_LDFLAGS_ALLOW: '^-Wl,-rpath,@(loader_path|executable_path)(/[^,]*)?$'
         run: just cli build-release ${{ steps.version.outputs.value }}
 
       - name: Stage CLI + runtime into native package

@@ -10,7 +10,7 @@ The [KurrentDB Projections](https://marketplace.visualstudio.com/items?itemName=
 
 Install the extension from the marketplace.
 
-The extension needs the `gaffer` CLI on PATH; see [Install gaffer](../getting-started/install.md).
+The extension needs the `gaffer` CLI on PATH. See [Install gaffer](../getting-started/install.md).
 
 ## Run and debug projections
 

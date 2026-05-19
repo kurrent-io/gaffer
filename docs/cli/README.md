@@ -10,7 +10,7 @@ The `gaffer` CLI scaffolds projections, runs them locally against fixtures or li
 
 | Command                  | What it does                                                                                                                  |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `gaffer init`            | Create `gaffer.toml`, `.gitignore`, and an empty `.gaffer/` directory.                                                        |
+| `gaffer init -y`         | Create `gaffer.toml`, `.gitignore`, and an empty `.gaffer/` directory.                                                        |
 | `gaffer scaffold <name>` | Add a projection JS file and register it in `gaffer.toml`.                                                                    |
 | `gaffer dev <name>`      | Run a projection against fixtures (`--fixture <name>` or `--events <path>`) or live KurrentDB.                                |
 | `gaffer info <name>`     | Print the projection's details: source, partitioning, declared fixtures, engine version, matched events, and any diagnostics. |
@@ -26,7 +26,7 @@ Run `gaffer <command> --help` for the full flag set.
 Each gaffer project has a `gaffer.toml` at its root, created by `gaffer init`. It declares the projections in the project, their entry files, and any named fixtures:
 
 ```toml
-connection = "kurrentdb+discover://localhost:2113"
+connection = "kurrentdb://localhost:2113?tls=false"
 engine_version = 2
 
 [[projection]]
@@ -39,7 +39,7 @@ fixtures.full = "fixtures/orders-full.json"
 Top-level keys:
 
 - **`connection`**: KurrentDB connection string. Optional; only required when running a projection against a live event stream.
-- **`engine_version`**: `1` or `2`. V2 is the current default; V1 is for legacy compatibility. Can be overridden per-projection inside `[[projection]]`.
+- **`engine_version`**: `1` or `2`. `gaffer init` writes `2`. V1 is for legacy compatibility. Can be overridden per-projection inside `[[projection]]`.
 
 Per-projection (`[[projection]]`):
 

@@ -44,7 +44,7 @@ See [MCP](../mcp/) for the tools and resources gaffer exposes, and for connectin
 
 | Setting                        | Default      | What it does                                                                                                             |
 | ------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `gaffer.command`               | `["gaffer"]` | Argv used to invoke gaffer. User scope only; workspace settings are ignored as defense against hostile workspaces.       |
+| `gaffer.command`               | `["gaffer"]` | Argv used to invoke gaffer. User scope only. Workspace settings are ignored as defense against hostile workspaces.       |
 | `gaffer.debugPort`             | `-1` (auto)  | DAP server port (loopback only). `-1` lets the OS pick a free port and the editor reads it back from the CLI on connect. |
 | `gaffer.injectProjectionTypes` | `true`       | Inject projection-runtime types via the tsserver plugin. Disable to keep non-projection JS clean.                        |
 

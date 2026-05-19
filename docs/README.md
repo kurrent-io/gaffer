@@ -1,0 +1,24 @@
+---
+title: Gaffer
+description: Develop, test, debug, and deploy KurrentDB projections with the gaffer toolkit.
+---
+
+Gaffer is a toolkit for working with [KurrentDB](https://www.kurrent.io) projections: a CLI to scaffold and run them, a VS Code extension to debug them inline, a Node.js library to drive them from your test suite, and an MCP server so AI assistants can do all of the above.
+
+## Get started
+
+Install:
+
+```sh
+npm install -g @kurrent/gaffer
+```
+
+Then [write your first projection](./getting-started/first-projection.md).
+
+## Sections
+
+- **[Getting started](./getting-started/install.md)** - install, write your first projection, debug it.
+- **[CLI](./cli/)** - command reference and `gaffer.toml` schema.
+- **[VS Code extension](./extension/)** - inline run/debug, state inspection, projection-API autocomplete.
+- **[Testing](./testing/)** - drive projections from vitest, jest, or mocha with `@kurrent/projections-testing`.
+- **[MCP](./mcp/)** - connect Claude Code, Cursor, Continue, Claude Desktop, or any MCP-aware AI assistant.

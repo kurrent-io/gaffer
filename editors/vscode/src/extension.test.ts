@@ -120,6 +120,7 @@ describe("activate registrations", () => {
 			"gaffer.debugProjection",
 			"gaffer.debugProjectionPick",
 			"gaffer.dismissDiagnostic",
+			"gaffer.init",
 			"gaffer.noop",
 			"gaffer.runProjection",
 			"gaffer.stopDebug",

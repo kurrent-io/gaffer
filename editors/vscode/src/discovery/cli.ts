@@ -132,6 +132,53 @@ export async function tryFetchManifest(
 	}
 }
 
+/**
+ * Run a one-shot gaffer subcommand whose output isn't JSON we parse.
+ * Returns the CLI's stdout on success, or the rejection (with stderr
+ * attached on err.cause.stderr, same shape as tryFetchManifest's
+ * failure path) so each caller can shape its own error UX.
+ *
+ * Precondition: workspace must be trusted. Callers run the trust gate
+ * themselves so they can pair it with the right user-facing toast
+ * (`showTrustWarning` for command surfaces, silent skip for activation
+ * paths). This helper does not re-check - it would either duplicate
+ * the upstream message or fabricate an "init failed: workspace not
+ * trusted" error that misclassifies the cause.
+ *
+ * Forwards --invoker-id / --invoked-by / --invoked-via to the CLI so
+ * its own telemetry event for the subcommand links to the extension
+ * identity. The linkage flags are omitted when `telemetry.invokerId()`
+ * is null - the user is opted out (or telemetry init failed); in either
+ * case there's no identity to link, and `buildGafferArgv` drops the
+ * flags rather than emit a null-id placeholder. `invokedVia` is still
+ * required by the type signature even though it has no effect in the
+ * opted-out path: commands that bubble through this helper are always
+ * user-driven (unlike the manifest fetch, which is extension-internal).
+ */
+export async function runGafferCommand(
+	args: string[],
+	cwd: string,
+	telemetry: SpawnTelemetry,
+	invokedVia: InvokedVia,
+): Promise<{ ok: true; stdout: string } | { ok: false; err: unknown }> {
+	const argv = buildGafferArgv(args, {
+		invokerId: telemetry.invokerId(),
+		invokedVia,
+	});
+	try {
+		const env = gafferSpawnEnv(telemetry.isOptedOut());
+		const opts: ExecOpts = { cwd };
+		if (env !== undefined) opts.env = env;
+		const stdout = await execFileAsync(argv, opts);
+		log(`gaffer ${args[0] ?? ""} succeeded in ${cwd}`);
+		return { ok: true, stdout };
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		log(`gaffer ${args[0] ?? ""} failed: ${msg}`);
+		return { ok: false, err };
+	}
+}
+
 export const hasCommand = (m: Manifest | null, name: string): boolean =>
 	m?.commands?.[name] != null;
 

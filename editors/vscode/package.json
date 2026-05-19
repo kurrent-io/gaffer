@@ -44,7 +44,7 @@
 	"capabilities": {
 		"untrustedWorkspaces": {
 			"supported": "limited",
-			"description": "The extension spawns the gaffer CLI as a child process to debug projections. Workspace settings cannot override `gaffer.command`; debugging is disabled until the workspace is trusted."
+			"description": "The extension spawns the gaffer CLI as a child process. Workspace settings cannot override `gaffer.command`; CLI-driven actions (init, debugging, LSP, MCP) are disabled until the workspace is trusted."
 		}
 	},
 	"scripts": {
@@ -115,6 +115,10 @@
 			{
 				"command": "gaffer.stopDebug",
 				"title": "KurrentDB Projections: Stop"
+			},
+			{
+				"command": "gaffer.init",
+				"title": "KurrentDB Projections: Init"
 			}
 		],
 		"debuggers": [

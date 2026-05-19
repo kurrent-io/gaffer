@@ -19,7 +19,7 @@ Powered by the [gaffer](https://www.npmjs.com/package/@kurrent/gaffer) toolkit.
 ## Quick start
 
 1. Install the extension.
-2. Open a workspace containing a `gaffer.toml` file.
+2. Open a folder. If it has no `gaffer.toml` yet, run `KurrentDB Projections: Init` from the command palette to bootstrap one.
 3. Click Debug above any projection in `gaffer.toml`, or run `KurrentDB Projections: Debug` from the command palette.
 
 The extension spawns the [`@kurrent/gaffer` CLI](https://www.npmjs.com/package/@kurrent/gaffer) for LSP, MCP, and debug sessions, and will offer to install it on first use if it isn't already on PATH.
@@ -34,10 +34,12 @@ The extension spawns the [`@kurrent/gaffer` CLI](https://www.npmjs.com/package/@
 
 ## Commands
 
-| Command                        | What it does                                                    |
-| ------------------------------ | --------------------------------------------------------------- |
-| `KurrentDB Projections: Debug` | Pick a projection from the workspace and launch a debug session |
-| `KurrentDB Projections: Stop`  | Stop the running session                                        |
+| Command                                     | What it does                                                                  |
+| ------------------------------------------- | ----------------------------------------------------------------------------- |
+| `KurrentDB Projections: Init`               | Create a `gaffer.toml` in the current folder                                  |
+| `KurrentDB Projections: Debug`              | Pick a projection from the workspace and launch a debug session               |
+| `KurrentDB Projections: Debug from Fixture` | Codelens-triggered Debug session bound to a specific fixture in `gaffer.toml` |
+| `KurrentDB Projections: Stop`               | Stop the running session                                                      |
 
 ## Telemetry
 

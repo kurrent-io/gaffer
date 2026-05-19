@@ -1,6 +1,6 @@
 {
 	"name": "@kurrent/projections-testing",
-	"version": "0.1.0",
+	"version": "0.0.0",
 	"description": "Test library for KurrentDB projections",
 	"license": "Apache-2.0",
 	"repository": {
@@ -16,6 +16,7 @@
 	"main": "dist/src/index.js",
 	"types": "dist/src/index.d.ts",
 	"files": [
+		"CHANGELOG.md",
 		"dist"
 	],
 	"scripts": {

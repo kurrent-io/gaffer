@@ -21,9 +21,11 @@ import { createProjection } from "@kurrent/projections-testing";
 import { readFile } from "fs/promises";
 
 const source = await readFile("./projections/cart.js", "utf8");
-const projection = createProjection<{ count: number }>(source);
+const projection = createProjection<{ count: number }>(source, {
+	engineVersion: 2,
+});
 
-for (const { state } of projection.run([
+for (const result of projection.run([
 	{
 		eventType: "ItemAdded",
 		streamId: "cart-1",
@@ -39,19 +41,21 @@ for (const { state } of projection.run([
 		data: { id: 2 },
 	},
 ])) {
-	console.log(state); // { count: 1 }, { count: 2 }
+	if (result.status !== "processed") continue;
+	console.log(result.state); // { count: 1 }, { count: 2 }
 }
 ```
 
 ## API
 
-### `createProjection<TState>(source, options?)`
+### `createProjection<TState>(source, options)`
 
 Create a projection from JavaScript source. Does not compile until `validate`, `run`, or `test` is called.
 
 Options:
 
-- `version` - `"v1"` or `"v2"` (default `"v2"`)
+- `engineVersion` - `1` or `2`. Required.
+- `dbVersion` - target KurrentDB version (`"MAJOR.MINOR.PATCH"`, e.g. `"26.1.0"`). Unset matches every known engine quirk; set to a specific version to opt out of bugs that have been fixed upstream as of that version.
 - `config` - per-projection settings
   - `executionTimeoutMs` - max handler execution time per event in ms (default 5000)
 - `databaseConfig` - database-wide settings
@@ -76,15 +80,31 @@ Run the projection over events, yielding a `StepResult` after each one. Accepts:
 - `AsyncIterable<EventInput>` - async generators, client streams
 - `KurrentDBClient` - subscribes to the appropriate streams based on the projection's source definition
 
+`StepResult` is a discriminated union on `status`. Both shapes carry `event` and `status`. The `processed` shape adds `state`, `result`, `sharedState`, `emitted`, and `logs`. The `skipped` shape adds `reason` explaining why (`unhandled`, `non-json`, `link`, `no-partition`, `no-delete-handler`). Guard before destructuring:
+
 ```typescript
-// Sync
-for (const { state, emitted, logs } of projection.run(events)) { ... }
+for (const result of projection.run(events)) {
+	if (result.status !== "processed") continue;
+	// result.state, result.emitted, result.logs
+}
+```
 
+Async and live-client paths look the same:
+
+```typescript
 // Async
-for await (const { state } of projection.run(asyncEvents)) { ... }
+for await (const result of projection.run(asyncEvents)) {
+	if (result.status === "processed") {
+		/* ... */
+	}
+}
 
-// KurrentDB client
-for await (const { state } of projection.run(client)) { ... }
+// KurrentDB client (unbounded subscription; break out when done)
+for await (const result of projection.run(client)) {
+	if (result.status === "processed") {
+		/* ... */
+	}
+}
 ```
 
 ### `projection.test()`
@@ -101,6 +121,10 @@ const step = test.feed({
 	isJson: true,
 	data: { id: 1 },
 });
+
+if (step.status !== "processed") {
+	throw new Error(`expected processed, got ${step.status}: ${step.reason}`);
+}
 
 expect(step.state).toEqual({ count: 1 });
 expect(step.emitted).toHaveLength(0);

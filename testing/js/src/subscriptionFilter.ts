@@ -7,7 +7,7 @@ import type { ProjectionInfo } from "./ProjectionInfo.js";
 
 // Read-window defaults for filtered subscriptions. The TS client's
 // own defaults (maxSearchWindow=32, checkpointInterval=1) make
-// CaughtUp effectively never fire on a busy store - see docs/specs/
+// CaughtUp effectively never fire on a busy store - see specs/
 // subscription.md "Subscription read parameters".
 const READ_WINDOW = {
 	maxSearchWindow: 10000,
@@ -17,7 +17,7 @@ const READ_WINDOW = {
 /**
  * Build a subscription filter from a projection's source definition.
  *
- * Matches the subscription spec at docs/specs/subscription.md.
+ * Matches the subscription spec at specs/subscription.md.
  */
 export function buildSubscriptionFilter(
 	info: ProjectionInfo,

@@ -54,7 +54,7 @@ describe("buildSubscriptionFilter", () => {
 	it("sets maxSearchWindow and checkpointInterval on filtered subscriptions", () => {
 		// Client defaults (32 / 1) make CaughtUp effectively never
 		// fire on a busy store. Every filter we build should override
-		// them - see docs/specs/subscription.md.
+		// them - see specs/subscription.md.
 		const cases: ProjectionInfo[] = [
 			makeInfo({ events: ["OrderPlaced"] }),
 			makeInfo({ source: { type: "streams", streams: ["orders"] } }),

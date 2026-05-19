@@ -25,9 +25,9 @@ editors/
   vscode/                  # VS Code extension - debug adapter, status panels, LSP client, gaffer.toml support
 telemetry/                 # Cross-cutting analytics: CUE schemas, generated types, Cloudflare Worker
 demo/                      # Example gaffer project with fixtures
-docs/
-  assets/                  # Banners, demo GIFs
-  specs/                   # Internal protocol / behaviour specifications
+docs/                      # User-facing markdown imported into docs.kurrent.io/gaffer/
+  assets/                  # Banners, demo GIFs, doc images
+specs/                     # Internal protocol / behaviour specifications
 tools/
   fixtures/                # Shared JSON test fixtures (sources, state, callbacks, etc.)
   kurrentdb/               # Docker compose for integration tests

@@ -8,7 +8,7 @@ A projection is server-side JavaScript that KurrentDB runs over a stream of even
 
 ## Before you start
 
-You need [`@kurrent/gaffer`](https://www.npmjs.com/package/@kurrent/gaffer) on your PATH and Node.js 22 or later. See [Install](./install.md) if you don't have it yet.
+You need [`@kurrent/gaffer`](https://www.npmjs.com/package/@kurrent/gaffer) on your PATH and Node.js 22 or later. See [Install](./#install-the-cli) if you don't have it yet.
 
 ## Initialise a project
 

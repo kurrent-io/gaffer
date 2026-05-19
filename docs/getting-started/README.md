@@ -1,8 +1,10 @@
 ---
-title: Install
-description: Install the gaffer CLI for local projection development.
+title: Getting started
+description: Install gaffer, write your first projection, and step through it with the debugger.
 order: 1
 ---
+
+Gaffer runs KurrentDB projections locally so you can develop, test, and debug them without standing up a database. This section installs the CLI, walks through writing a first projection end-to-end, and shows how to attach a debugger.
 
 ## Install the CLI
 

@@ -19,7 +19,7 @@ Then [write your first projection](./getting-started/first-projection.md).
 
 ## Sections
 
-- **[Getting started](./getting-started/install.md)** - install, write your first projection, debug it.
+- **[Getting started](./getting-started/)** - install, write your first projection, debug it.
 - **[CLI](./cli/)** - command reference and `gaffer.toml` schema.
 - **[VS Code extension](./extension/)** - inline run/debug, state inspection, projection-API autocomplete.
 - **[Testing](./testing/)** - drive projections from vitest, jest, or mocha with `@kurrent/projections-testing`.

@@ -80,7 +80,7 @@ Run the projection over events, yielding a `StepResult` after each one. Accepts:
 - `AsyncIterable<EventInput>` - async generators, client streams
 - `KurrentDBClient` - subscribes to the appropriate streams based on the projection's source definition
 
-`StepResult` is a discriminated union on `status`. The `processed` shape carries `state`, `emitted`, and `logs`; the `skipped` shape only carries `reason`. Guard before destructuring:
+`StepResult` is a discriminated union on `status`. Both shapes carry `event` and `status`. The `processed` shape adds `state`, `result`, `sharedState`, `emitted`, and `logs`. The `skipped` shape adds `reason` explaining why (`unhandled`, `non-json`, `link`, `no-partition`, `no-delete-handler`). Guard before destructuring:
 
 ```typescript
 for (const result of projection.run(events)) {
@@ -122,11 +122,13 @@ const step = test.feed({
 	data: { id: 1 },
 });
 
-if (step.status === "processed") {
-	expect(step.state).toEqual({ count: 1 });
-	expect(step.emitted).toHaveLength(0);
-	expect(step.logs).toEqual([]);
+if (step.status !== "processed") {
+	throw new Error(`expected processed, got ${step.status}: ${step.reason}`);
 }
+
+expect(step.state).toEqual({ count: 1 });
+expect(step.emitted).toHaveLength(0);
+expect(step.logs).toEqual([]);
 
 test.dispose(); // or use `using test = projection.test()`
 ```

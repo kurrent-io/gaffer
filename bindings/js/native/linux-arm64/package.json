@@ -1,6 +1,6 @@
 {
 	"name": "@kurrent/gaffer-runtime-linux-arm64",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"description": "Gaffer projection runtime native binary for Linux arm64",
 	"license": "LicenseRef-KurrentLicenseV1",
 	"repository": {

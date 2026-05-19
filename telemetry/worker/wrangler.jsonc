@@ -44,6 +44,16 @@
 		},
 		"production": {
 			"name": "gaffer-telemetry",
+			// Custom domain - matches the production ingest URL baked
+			// into the CLI's `-ldflags` and the VS Code extension's
+			// PRODUCTION_INGEST_URL. Requires the kurrent.io zone to be
+			// active in this Cloudflare account.
+			"routes": [
+				{
+					"pattern": "telemetry.gaffer.kurrent.io",
+					"custom_domain": true,
+				},
+			],
 			"assets": {
 				"directory": "./static",
 				"binding": "ASSETS",

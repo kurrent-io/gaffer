@@ -173,25 +173,6 @@ func TestFindProjection(t *testing.T) {
 	}
 }
 
-func TestIsEnabled(t *testing.T) {
-	p := Projection{Name: "a", Entry: "a.js"}
-	if !p.IsEnabled() {
-		t.Fatal("expected enabled by default")
-	}
-
-	enabled := true
-	p.Enabled = &enabled
-	if !p.IsEnabled() {
-		t.Fatal("expected enabled when set to true")
-	}
-
-	disabled := false
-	p.Enabled = &disabled
-	if p.IsEnabled() {
-		t.Fatal("expected disabled when set to false")
-	}
-}
-
 func TestEffectiveEngineVersion(t *testing.T) {
 	cfg := &Config{EngineVersion: 2}
 	p := Projection{Name: "a", Entry: "a.js"}

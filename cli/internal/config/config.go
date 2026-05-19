@@ -44,7 +44,6 @@ type Projection struct {
 	Entry            string            `toml:"entry"`
 	EngineVersion    int               `toml:"engine_version,omitempty"`
 	DbVersion        string            `toml:"db_version,omitempty"`
-	Enabled          *bool             `toml:"enabled,omitempty"`
 	ExecutionTimeout *int              `toml:"execution_timeout,omitempty"`
 	Fixtures         map[string]string `toml:"fixtures,omitempty"`
 }
@@ -114,14 +113,6 @@ var dbVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 func validDbVersion(s string) bool {
 	return dbVersionPattern.MatchString(s)
-}
-
-// IsEnabled returns true if the projection is enabled (default true).
-func (p Projection) IsEnabled() bool {
-	if p.Enabled == nil {
-		return true
-	}
-	return *p.Enabled
 }
 
 // LoadFromCwd resolves the project root from the current working

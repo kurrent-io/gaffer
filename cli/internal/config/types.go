@@ -62,10 +62,10 @@ type Description struct {
 // per-fixture details, plus an optional projection-level diagnostic
 // (missing name, escaping entry path, duplicate name).
 //
-// Strict-only fields on Projection (Enabled, ExecutionTimeout,
-// CompilationTimeout, EngineVersion overrides) are intentionally
-// absent here - they don't drive any V1 lens or diagnostic. Add
-// when hover-on-projection or similar UX surfaces them.
+// Strict-only fields on Projection (ExecutionTimeout, EngineVersion
+// overrides) are intentionally absent here - they don't drive any V1
+// lens or diagnostic. Add when hover-on-projection or similar UX
+// surfaces them.
 type ProjectionDescription struct {
 	Name         string               `json:"name"`
 	Entry        string               `json:"entry"`

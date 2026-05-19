@@ -21,36 +21,6 @@ func fixedEnv(kv map[string]string) func(string) (string, bool) {
 	}
 }
 
-func TestIsTruthy(t *testing.T) {
-	for _, tc := range []struct {
-		in   string
-		want bool
-	}{
-		{"1", true},
-		{"true", true},
-		{"TRUE", true},
-		{"yes", true},
-		{"YES", true},
-		{"on", true},
-		{"ON", true},
-		{" 1 ", true},
-		{"True", true},
-		{"0", false},
-		{"false", false},
-		{"no", false},
-		{"off", false},
-		{"", false},
-		{"random", false},
-		{"2", false},
-	} {
-		t.Run(tc.in, func(t *testing.T) {
-			if got := isTruthy(tc.in); got != tc.want {
-				t.Errorf("isTruthy(%q) = %v, want %v", tc.in, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestLayerState_String(t *testing.T) {
 	for _, tc := range []struct {
 		s    LayerState

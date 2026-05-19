@@ -5,35 +5,64 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
+	"github.com/kurrent-io/gaffer/cli/internal/styledbox"
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
 
-// noticeText is the canonical first-mint disclosure printed to stderr
-// when telemetry starts emitting for the first time. The same wording
-// appears in cli/TELEMETRY.md's Disclosure section; a sync canary in the
-// test suite asserts the key phrases appear in both, so this constant
-// and the doc stay in lockstep.
-//
-// Terse on purpose: one banner the user can scan at a glance, listing
-// the three opt-out paths the CLI supports. (VS Code's
-// `telemetry.telemetryLevel` is honoured by the extension too but is
-// the extension's UI concern; documenting it here would only confuse
-// a terminal-only user.)
-//
-// Unexported: callers go through WriteNotice or EnsureIdentity - the
-// raw string isn't part of the package's API surface.
-const noticeText = `Telemetry
----------
-Gaffer collects usage data in order to improve your experience. The data is anonymous and collected by Kurrent, Inc.
+// noticeLead is the first sentence of the first-mint disclosure. It
+// names the use cases (feature prioritisation + bug fixing) so a
+// user who reads only the first line still understands why we
+// collect and what they get out of consenting.
+const noticeLead = "Gaffer sends anonymous usage data and error reports\nto help us prioritise features and fix bugs faster."
 
-You can opt out by any of:
-  - Running ` + "`gaffer config telemetry off`" + ` (this machine)
-  - Adding ` + "`telemetry = false`" + ` to your project's gaffer.toml
-  - Setting GAFFER_TELEMETRY_OPTOUT, KURRENTDB_TELEMETRY_OPTOUT, or DO_NOT_TRACK to 1 / true / yes / on
+// noticeFooterURL is the long-form docs link. The literal must stay
+// in lockstep with the same URL in cli/TELEMETRY.md and elsewhere -
+// a sync canary in notice_test.go asserts both files mention it.
+const noticeFooterURL = "https://telemetry.gaffer.kurrent.io"
 
-For more information visit https://telemetry.gaffer.kurrent.io.
-`
+// renderNotice builds the first-mint banner as a fang-codeblock-
+// style card. The same visual vocabulary as `gaffer --help` and the
+// update-available notice (UI-1548). lipgloss.NewRenderer detects
+// TTY-ness from w, so a *bytes.Buffer receives plain ASCII (which
+// is what test substring assertions rely on).
+//
+// The opt-out list deliberately advertises only the primary env
+// var. `KURRENTDB_TELEMETRY_OPTOUT` and `DO_NOT_TRACK` are still
+// honoured by the optOutEnvVars list - users who set them already
+// expect silent honouring, and cli/TELEMETRY.md documents the full
+// set.
+func renderNotice(w io.Writer) string {
+	s := styledbox.New(w)
+
+	// Three opt-out lines share an aligned scope-label column. The
+	// shapes diverge enough that hand-writing each line is clearer
+	// than a templated loop - the project bullet has the snippet-
+	// then-filename structure the others lack.
+	const labelMachine = " This machine: "
+	const labelProject = " This project: "
+	const labelEnvVar = " Env var:      "
+
+	var b strings.Builder
+	b.WriteString(s.BG.Render(noticeLead))
+	b.WriteString("\n\n")
+	b.WriteString(s.BG.Render("To opt out"))
+	b.WriteString("\n")
+	b.WriteString(s.BG.Render(labelMachine) +
+		s.Highlight.Render("gaffer config telemetry off"))
+	b.WriteString("\n")
+	b.WriteString(s.BG.Render(labelProject) +
+		s.Highlight.Render("telemetry = false") +
+		s.BG.Render(" in gaffer.toml"))
+	b.WriteString("\n")
+	b.WriteString(s.BG.Render(labelEnvVar) +
+		s.Highlight.Render("GAFFER_TELEMETRY_OPTOUT=1"))
+	b.WriteString("\n\n")
+	b.WriteString(s.BG.Render("Details: ") + s.Command.Render(noticeFooterURL))
+
+	return s.Box.Render(b.String())
+}
 
 // ErrRaceWinnerEmpty is returned by MintAndPersist when a concurrent
 // process wrote a [telemetry] section without populating an id/salt
@@ -48,7 +77,7 @@ var ErrRaceWinnerEmpty = errors.New("telemetry: race recovery: winner persisted 
 // (typical CLI use ignores it: a stderr that's broken has bigger
 // problems than a missed telemetry notice).
 func WriteNotice(w io.Writer) error {
-	_, err := io.WriteString(w, noticeText)
+	_, err := fmt.Fprintln(w, renderNotice(w))
 	return err
 }
 

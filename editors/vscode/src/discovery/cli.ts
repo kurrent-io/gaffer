@@ -145,11 +145,15 @@ export async function tryFetchManifest(
  * the upstream message or fabricate an "init failed: workspace not
  * trusted" error that misclassifies the cause.
  *
- * Always passes --invoker-id / --invoked-by / --invoked-via so the
- * CLI's own telemetry event for the subcommand links to the extension
- * identity. `invokedVia` is required (unlike the manifest fetch, which
- * is extension-internal): commands that bubble through this helper
- * are always user-driven.
+ * Forwards --invoker-id / --invoked-by / --invoked-via to the CLI so
+ * its own telemetry event for the subcommand links to the extension
+ * identity. The linkage flags are omitted when `telemetry.invokerId()`
+ * is null - the user is opted out (or telemetry init failed); in either
+ * case there's no identity to link, and `buildGafferArgv` drops the
+ * flags rather than emit a null-id placeholder. `invokedVia` is still
+ * required by the type signature even though it has no effect in the
+ * opted-out path: commands that bubble through this helper are always
+ * user-driven (unlike the manifest fetch, which is extension-internal).
  */
 export async function runGafferCommand(
 	args: string[],

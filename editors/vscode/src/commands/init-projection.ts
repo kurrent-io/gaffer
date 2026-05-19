@@ -72,12 +72,18 @@ export async function resolveTargetFolder(): Promise<vscode.Uri | undefined> {
 	return picked?.folder.uri;
 }
 
+// Narrowed to ENOENT so a permission / IO error doesn't get
+// misclassified as "no toml here" - that path would silently run init
+// and let the CLI hit the same fs error one step later, surfacing a
+// less actionable message. Rethrowing lets wrapAsync route the error
+// to its exception envelope.
 async function fileExists(path: string): Promise<boolean> {
 	try {
 		await fs.stat(path);
 		return true;
-	} catch {
-		return false;
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw err;
 	}
 }
 

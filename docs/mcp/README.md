@@ -10,25 +10,27 @@ order: 4
 
 **Tools** for the projection lifecycle:
 
-- `scaffold` - create a new projection in the project
-- `validate` - check a projection for compile errors and runtime gotchas
-- `run` / `stop` - run a projection against a fixture or live stream
-- `get_state` / `get_step` / `get_history` / `get_timeline` - inspect projection state at any point
-- `list_projections` / `list_events` - workspace navigation
-- `debug_continue` / `debug_step` / `evaluate` - drive the DAP debugger from natural language
+- **`scaffold`**: create a new projection in the project.
+- **`validate`**: check a projection for compile errors and runtime gotchas.
+- **`run`** / **`stop`**: run a projection against a fixture or live stream, and stop a running session.
+- **`get_state`** / **`get_step`** / **`get_history`** / **`get_timeline`**: inspect projection state at any point.
+- **`list_projections`** / **`list_events`**: workspace navigation.
+- **`debug_continue`** / **`debug_step_over`** / **`debug_step_into`** / **`debug_step_out`** / **`evaluate`**: drive the DAP debugger from natural language.
 
-**Resources** for the projection API:
+**Resources**:
 
-- The full projection API reference
-- Worked examples (counters, partitioned state, emit, biState)
-- Common gotchas (handler return values, partitioning, system handlers)
-- V1 vs V2 engine differences
-- Known engine bugs by KurrentDB version
+- The full projection API reference.
+- Worked examples covering counters, partitioned state, `emit`, biState, and the rest.
+- Common gotchas across the projection API.
+- V1 vs V2 engine differences.
+- Known engine bugs by KurrentDB version.
+- The current `gaffer.toml`, exposed so the assistant can reason about projection registration without re-reading the file.
+- Telemetry disclosure, so the assistant can answer questions about what gaffer collects.
 
 **Prompts** for the two most common workflows:
 
-- `write-projection` - draft a projection from a natural-language description
-- `fix-projection` - diagnose and rewrite a broken projection
+- **`write-projection`**: draft a projection from a natural-language description.
+- **`fix-projection`**: diagnose and rewrite a broken projection.
 
 ## Connect your client
 
@@ -43,7 +45,7 @@ The [KurrentDB Projections](https://marketplace.visualstudio.com/items?itemName=
 ### Claude Code
 
 ```sh
-claude mcp add gaffer gaffer mcp
+claude mcp add gaffer -- gaffer mcp
 ```
 
 Then `/mcp` inside Claude Code to confirm gaffer is connected.
@@ -93,7 +95,7 @@ Any MCP-aware client that supports stdio servers works. Point it at:
 - Args: `["mcp"]`
 - Working directory: a gaffer project (the directory with `gaffer.toml`)
 
-Most clients accept a JSON entry shaped like Cursor's above; consult your client's MCP setup docs.
+Most clients accept a JSON entry shaped like Cursor's above. Consult your client's MCP setup docs.
 
 ## Example prompts
 

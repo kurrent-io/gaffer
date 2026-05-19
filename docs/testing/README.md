@@ -4,7 +4,7 @@ description: Drive KurrentDB projections from your test suite with @kurrent/proj
 order: 5
 ---
 
-`@kurrent/projections-testing` runs projections from inside your existing test suite. Same engine as gaffer and KurrentDB; works with vitest, jest, mocha, or any node test runner.
+`@kurrent/projections-testing` runs projections from inside your existing test suite. Same engine as gaffer and KurrentDB. Works with vitest, jest, mocha, or any node test runner.
 
 ## Install
 
@@ -23,9 +23,10 @@ import { readFile } from "fs/promises";
 const source = await readFile("./projections/order-count.js", "utf8");
 const projection = createProjection<{ count: number; totalCents: number }>(
   source,
+  { engineVersion: 2 },
 );
 
-for (const { state } of projection.run([
+for (const result of projection.run([
   {
     eventType: "OrderPlaced",
     streamId: "order-1",
@@ -41,24 +42,26 @@ for (const { state } of projection.run([
     data: { cents: 4999 },
   },
 ])) {
-  console.log(state); // { count: 1, totalCents: 2999 }, { count: 2, totalCents: 7998 }
+  if (result.status !== "processed") continue;
+  console.log(result.state); // { count: 1, totalCents: 2999 }, { count: 2, totalCents: 7998 }
 }
 ```
 
 ## API
 
-### `createProjection<TState>(source, options?)`
+### `createProjection<TState>(source, options)`
 
 Create a projection from JavaScript source. The projection compiles lazily on first `validate()`, `run()`, or `test()` call.
 
 Options:
 
-- **`version`**: `"v1"` or `"v2"` (default `"v2"`).
+- **`engineVersion`**: `1` or `2`. Required.
+- **`dbVersion`**: target KurrentDB version (`"MAJOR.MINOR.PATCH"`, e.g. `"26.1.0"`). Unset matches every known engine quirk. Set to a specific version to opt out of bugs that have been fixed upstream as of that version.
 - **`config`**: per-projection settings.
-  - `executionTimeoutMs` - max handler execution time per event in ms (default 5000).
+  - `executionTimeoutMs`: max handler execution time per event in ms (default 5000).
 - **`databaseConfig`**: database-wide settings.
-  - `compilationTimeoutMs` - max compile time in ms (default 5000).
-  - `executionTimeoutMs` - default max handler execution time in ms (default 5000).
+  - `compilationTimeoutMs`: max compile time in ms (default 5000).
+  - `executionTimeoutMs`: default max handler execution time in ms (default 5000).
 
 ### `projection.validate()`
 
@@ -66,7 +69,7 @@ Compile the projection and return its source definition. Throws if the source is
 
 ```typescript
 const info = projection.validate();
-console.log(info.source); // { type: "all" } or { type: "category", value: "order" }
+console.log(info.source); // { type: "all" } or { type: "categories", categories: ["order"] }
 console.log(info.events); // ["OrderPlaced"] or "all"
 ```
 
@@ -78,15 +81,23 @@ Run the projection over events, yielding a `StepResult` after each one. Accepts:
 - `AsyncIterable<EventInput>` - async generators, client streams.
 - `KurrentDBClient` - subscribes to the appropriate streams based on the projection's declared source.
 
-```typescript
-// Sync
-for (const { state, emitted, logs } of projection.run(events)) {
-  expect(state.count).toBe(2);
-}
+`StepResult` is a discriminated union on `status`. The `processed` shape carries `state`, `emitted`, and `logs`; the `skipped` shape only carries `reason` (no handler matched, partition was filtered, etc.). Guard before destructuring:
 
+```typescript
+for (const result of projection.run(events)) {
+  if (result.status !== "processed") continue;
+  expect(result.state.count).toBe(2);
+}
+```
+
+Async and live-client paths look the same:
+
+```typescript
 // Async
-for await (const { state } of projection.run(asyncEvents)) {
-  /* ... */
+for await (const result of projection.run(asyncEvents)) {
+  if (result.status === "processed") {
+    /* ... */
+  }
 }
 ```
 
@@ -112,12 +123,14 @@ await client.appendToStream("order-1", [
 const source = await readFile("./projections/order-count.js", "utf8");
 const projection = createProjection<{ count: number; totalCents: number }>(
   source,
+  { engineVersion: 2 },
 );
 
 let final;
-for await (const { state } of projection.run(client)) {
-  final = state;
-  if (state.count >= 2) break;
+for await (const result of projection.run(client)) {
+  if (result.status !== "processed") continue;
+  final = result.state;
+  if (final.count >= 2) break;
 }
 
 expect(final).toEqual({ count: 2, totalCents: 7998 });
@@ -142,9 +155,11 @@ const step = test.feed({
   data: { cents: 2999 },
 });
 
-expect(step.state).toEqual({ count: 1, totalCents: 2999 });
-expect(step.emitted).toHaveLength(0);
-expect(step.logs).toEqual([]);
+if (step.status === "processed") {
+  expect(step.state).toEqual({ count: 1, totalCents: 2999 });
+  expect(step.emitted).toHaveLength(0);
+  expect(step.logs).toEqual([]);
+}
 
 test.dispose(); // or `using test = projection.test()` for auto-cleanup
 ```

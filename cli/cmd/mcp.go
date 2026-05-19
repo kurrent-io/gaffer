@@ -18,7 +18,7 @@ func newMCPCmd() *cobra.Command {
 			tx := telemetry.BeginMCP(cmd.Context())
 			defer tx.End(cmd.Context())
 
-			srv, err := mcpserver.NewFromProjectRoot()
+			srv, err := mcpserver.NewFromProjectRoot(Version)
 			if err != nil {
 				// Classify the project-load failure (no project /
 				// parse / validation) so the outcome is specific

@@ -21,4 +21,17 @@
     <ProjectReference Include="..\Gaffer.Sdk\Gaffer.Sdk.csproj" />
   </ItemGroup>
 
+  <!--
+    macOS dyld queries the embedded `install_name` of a dylib before
+    walking the consumer's rpath list. NativeAOT defaults it to the
+    output file's absolute build path, which means a consumer that
+    co-locates the dylib next to itself and expects @loader_path /
+    @rpath resolution would fail. Override to `@rpath/Gaffer.Runtime.dylib`
+    so dyld uses the consumer's rpath - the CLI binary sets that to
+    `@loader_path`. No-op on Linux / Windows.
+  -->
+  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('osx-'))">
+    <LinkerArg Include="-Wl,-install_name,@rpath/Gaffer.Runtime.dylib" />
+  </ItemGroup>
+
 </Project>

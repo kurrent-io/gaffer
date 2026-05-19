@@ -1,6 +1,10 @@
 default:
     @just --list
 
+# Executable file extension for the current host. `go build -o NAME`
+# preserves NAME verbatim, so we explicitly append .exe on Windows.
+exe-suffix := if os() == "windows" { ".exe" } else { "" }
+
 # Copy canonical files into the embed tree before go build/test sees
 # them. Today this is just cli/TELEMETRY.md, served by the MCP server
 # at gaffer://telemetry/info; the copy is gitignored so there's a
@@ -13,7 +17,7 @@ _resources:
 # worker; use `build-release` to bake the prod URL + version in for
 # shippable artefacts.
 build: _resources
-    CGO_ENABLED=1 go build -o gaffer .
+    CGO_ENABLED=1 go build -o gaffer{{exe-suffix}} .
 
 # Build the CLI for release: stamps the version and switches the
 # telemetry sink to production. Invoked by the publish pipeline; the
@@ -22,7 +26,7 @@ build: _resources
 # (as `PRODUCTION_INGEST_URL`); keep them in lockstep if the worker URL
 # ever moves.
 build-release version: _resources
-    CGO_ENABLED=1 go build -ldflags '-X github.com/kurrent-io/gaffer/cli/cmd.Version={{version}} -X github.com/kurrent-io/gaffer/cli/internal/telemetry.DefaultWorkerURL=https://telemetry.gaffer.kurrent.io/v1/ingest' -o gaffer .
+    CGO_ENABLED=1 go build -ldflags '-X github.com/kurrent-io/gaffer/cli/cmd.Version={{version}} -X github.com/kurrent-io/gaffer/cli/internal/telemetry.DefaultWorkerURL=https://telemetry.gaffer.kurrent.io/v1/ingest' -o gaffer{{exe-suffix}} .
 
 # Run tests
 test: _resources

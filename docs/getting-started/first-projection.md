@@ -137,9 +137,27 @@ State: { "count": 2, "totalCents": 7998, "shipped": 1 }
 
 The fixture didn't change, but the new handler ran against the existing `OrderShipped` event in it. Gaffer reruns the projection from scratch each time, so iteration is fast and deterministic.
 
+## Name the fixture
+
+Typing the events path each run gets old. Declare the fixture once in `gaffer.toml`, alongside the projection scaffold added:
+
+```toml
+[[projection]]
+name = "order-count"
+entry = "projections/order-count.js"
+fixtures.happy = "fixtures/orders.json"
+```
+
+Then drop `--events` for `--fixture`:
+
+```sh
+gaffer dev order-count --fixture happy
+```
+
+Use named fixtures for scenarios you'll re-run (happy path, edge cases). `--events` stays for one-off paths.
+
 ## What's next
 
-- **Named fixtures**: declare reusable event sets in `gaffer.toml` (`fixtures.happy = "fixtures/orders.json"`) and switch with `--fixture happy` instead of typing the path.
 - **Step through with the debugger**: see [Debugging projections](./debugging.md) for the VS Code extension setup and other editor wireups.
 - **Test from your test suite**: drive projections directly from vitest, jest, or mocha with [`@kurrent/projections-testing`](../testing/).
 - **Use an AI assistant**: point Claude Code, Cursor, Continue, or Copilot at `gaffer mcp` for scaffolding, validation, and debugging tools - see [MCP](../mcp/).

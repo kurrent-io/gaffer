@@ -48,7 +48,7 @@ A projection that doesn't set its own `engine_version` inherits this one. Loadin
 db_version = "26.1.0"
 ```
 
-Target KurrentDB version (`MAJOR.MINOR.PATCH`). Gaffer uses this to opt out of engine quirks that have been fixed in the named version or later. Unset means "match every known KurrentDB quirk".
+Target KurrentDB version (`MAJOR.MINOR.PATCH`). Gaffer uses this to opt out of engine quirks that have been fixed in the named version or later. Unset means gaffer matches every known KurrentDB quirk.
 
 The `GAFFER_DB_VERSION` environment variable overrides every `db_version` in the file. Useful for CI matrices.
 
@@ -61,7 +61,7 @@ compilation_timeout = 5000
 execution_timeout = 5000
 ```
 
-Time limits in milliseconds. `compilation_timeout` bounds projection compilation; `execution_timeout` bounds each handler invocation. Defaults are 5000ms each.
+Time limits in milliseconds. `compilation_timeout` bounds projection compilation. `execution_timeout` bounds each handler invocation. The runtime applies a 5000ms default for both when omitted.
 
 Per-projection overrides via `execution_timeout` inside `[[projection]]`.
 
@@ -73,7 +73,7 @@ telemetry = false
 
 Project-level telemetry opt-out. Setting `false` disables telemetry for any gaffer command run inside this project.
 
-This is the strongest project-level opt-out. User-level opt-outs (`gaffer config telemetry off`, `GAFFER_TELEMETRY_OPTOUT`, `DO_NOT_TRACK`) and VS Code's `telemetry.telemetryLevel` also apply.
+This is the strongest project-level opt-out. User-level opt-outs (`gaffer config telemetry off`, `GAFFER_TELEMETRY_OPTOUT`, `KURRENTDB_TELEMETRY_OPTOUT`, `DO_NOT_TRACK`) and VS Code's `telemetry.telemetryLevel` also apply.
 
 Optional. Telemetry is on by default.
 
@@ -152,7 +152,9 @@ entry = "projections/wip.js"
 enabled = false
 ```
 
-Skip this projection during `gaffer dev`, `gaffer info`, and the VS Code lens. Useful for projections that aren't ready to run. Default `true`.
+Hides the projection from MCP's `list_projections` tool. Useful for marking work-in-progress projections that you don't want AI assistants discovering and running. Default `true`.
+
+Note: `gaffer dev`, `gaffer info`, and the VS Code lens currently ignore this field and run the projection regardless. Use it as an MCP-visibility flag for now.
 
 Optional.
 

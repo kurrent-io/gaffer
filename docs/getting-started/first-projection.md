@@ -1,0 +1,146 @@
+---
+title: Your first projection
+description: Write, run, and iterate on a KurrentDB projection locally with gaffer, no running database needed.
+order: 2
+---
+
+A projection is server-side JavaScript that KurrentDB runs over a stream of events to derive new streams or aggregated state. Gaffer runs the same JavaScript engine KurrentDB uses, so the projection you write here is the projection that ships.
+
+## Before you start
+
+You need [`@kurrent/gaffer`](https://www.npmjs.com/package/@kurrent/gaffer) on your PATH and Node.js 22 or later. See [Install](./install.md) if you don't have it yet.
+
+## Initialise a project
+
+In an empty directory:
+
+```sh
+gaffer init
+```
+
+This creates `gaffer.toml`, `.gitignore`, and an empty `.gaffer/` directory.
+
+## Scaffold a projection
+
+```sh
+gaffer scaffold order-count
+```
+
+This adds `projections/order-count.js` and registers it in `gaffer.toml`. The scaffolded file is a working skeleton with no logic yet:
+
+```js
+fromAll().when({
+  $init() {
+    return {};
+  },
+  // Add your event handlers here
+  // EventType(state, event) {
+  //   return state;
+  // }
+});
+```
+
+Two pieces to know:
+
+- **`fromAll()`**: selects every event in the database. Other selectors (`fromStream`, `fromCategory`) target a specific stream or category.
+- **`.when({...})`**: the handler map. `$init` returns the projection's initial state. Every other key is an event-type handler that receives the current state and the incoming event, and returns the new state.
+
+::: tip
+Handlers must return state. If a handler returns `undefined`, state becomes `undefined` on the next call and the projection silently breaks. The runtime treats `return null` as an explicit reset.
+:::
+
+## Make it count
+
+Replace the body with a counter for `OrderPlaced` events:
+
+```js
+fromAll().when({
+  $init() {
+    return { count: 0, totalCents: 0 };
+  },
+  OrderPlaced(state, event) {
+    state.count += 1;
+    state.totalCents += event.body.cents;
+    return state;
+  },
+});
+```
+
+`event.body` is the parsed JSON body of the event. Handlers run once per matching event in stream order. State persists across calls within the same projection run.
+
+## Add some test events
+
+Create `fixtures/orders.json`:
+
+```json
+[
+  {
+    "eventType": "OrderPlaced",
+    "streamId": "order-1",
+    "data": "{\"cents\": 2999, \"item\": \"Widget\"}"
+  },
+  {
+    "eventType": "OrderPlaced",
+    "streamId": "order-2",
+    "data": "{\"cents\": 4999, \"item\": \"Gadget\"}"
+  },
+  {
+    "eventType": "OrderShipped",
+    "streamId": "order-1",
+    "data": "{\"trackingId\": \"TRK-001\"}"
+  }
+]
+```
+
+Three events: two orders, one `OrderShipped`. The projection should ignore the third because there's no handler for that event type.
+
+## Run it
+
+```sh
+gaffer dev order-count --events fixtures/orders.json
+```
+
+Gaffer replays each event through the projection and prints the resulting state along the way. After the last event, the summary shows the final state:
+
+```
+State: { "count": 2, "totalCents": 7998 }
+```
+
+The `OrderShipped` event flowed through and was skipped - no handler, no state change.
+
+## Iterate
+
+Add a second handler for `OrderShipped` that tracks shipment status:
+
+```js
+fromAll().when({
+  $init() {
+    return { count: 0, totalCents: 0, shipped: 0 };
+  },
+  OrderPlaced(state, event) {
+    state.count += 1;
+    state.totalCents += event.body.cents;
+    return state;
+  },
+  OrderShipped(state) {
+    state.shipped += 1;
+    return state;
+  },
+});
+```
+
+Re-run the same command. The final state is now:
+
+```
+State: { "count": 2, "totalCents": 7998, "shipped": 1 }
+```
+
+The fixture didn't change, but the new handler ran against the existing `OrderShipped` event in it. Gaffer reruns the projection from scratch each time, so iteration is fast and deterministic.
+
+## What's next
+
+- **Named fixtures**: declare reusable event sets in `gaffer.toml` (`fixtures.happy = "fixtures/orders.json"`) and switch with `--fixture happy` instead of typing the path.
+- **Step through with the debugger**: install the [KurrentDB Projections extension](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer) for VS Code, then click **Debug** above the projection in `gaffer.toml`. Set breakpoints in the JS, step through handlers, inspect state as it evolves.
+- **Partition state per stream**: `foreachStream()` between `fromAll()` and `.when()` gives each stream its own state slice. Useful when you're aggregating per-entity instead of globally.
+- **Emit derived events**: `emit('stream-name', 'EventType', { ...data })` from inside a handler writes a new event to a target stream. The basis for read-model projections and continuous queries.
+- **The full projection API**: `partitionBy`, `outputState`, `transformBy`, `filterBy`, `linkTo`, and the `$init`/`$any`/`$deleted`/`$created` system handlers. See the [projection API reference](https://docs.kurrent.io/server/v26.1/features/projections/custom).

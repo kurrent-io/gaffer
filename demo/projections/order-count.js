@@ -6,7 +6,7 @@ fromCategory("order")
     },
     OrderPlaced(state, event) {
       state.count++;
-      state.totalCents += event.data.cents;
+      state.totalCents += event.body.cents;
       return state;
     },
     OrderShipped(state, event) {

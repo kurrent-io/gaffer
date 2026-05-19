@@ -88,12 +88,44 @@ for (const { state, emitted, logs } of projection.run(events)) {
 for await (const { state } of projection.run(asyncEvents)) {
   /* ... */
 }
-
-// Live KurrentDB
-for await (const { state } of projection.run(client)) {
-  /* ... */
-}
 ```
+
+#### Against live KurrentDB
+
+Pass a `KurrentDBClient` and the projection subscribes to the streams its source declares (`fromAll`, `fromCategory("order")`, etc.). The subscription is unbounded - break out of the loop when an assertion holds or a fixed number of events have flowed through.
+
+```typescript
+import { KurrentDBClient, jsonEvent } from "@kurrent/kurrentdb-client";
+import { createProjection } from "@kurrent/projections-testing";
+import { readFile } from "fs/promises";
+
+const client = KurrentDBClient.connectionString(
+  "kurrentdb://localhost:2113?tls=false",
+);
+
+// Seed some events
+await client.appendToStream("order-1", [
+  jsonEvent({ type: "OrderPlaced", data: { cents: 2999 } }),
+  jsonEvent({ type: "OrderPlaced", data: { cents: 4999 } }),
+]);
+
+const source = await readFile("./projections/order-count.js", "utf8");
+const projection = createProjection<{ count: number; totalCents: number }>(
+  source,
+);
+
+let final;
+for await (const { state } of projection.run(client)) {
+  final = state;
+  if (state.count >= 2) break;
+}
+
+expect(final).toEqual({ count: 2, totalCents: 7998 });
+
+await client.dispose();
+```
+
+Breaking out of the loop disposes the subscription cleanly.
 
 ### `projection.test()`
 

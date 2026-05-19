@@ -101,9 +101,9 @@ Once connected, you can drive gaffer from natural language:
 
 - "Scaffold a projection that counts OrderPlaced events per stream."
 - "Run order-count against the happy fixture and show me the final state."
+- "Update order-count to also track OrderShipped events."
 - "Why isn't my projection handling OrderShipped events?"
 - "Set a breakpoint on the OrderPlaced handler, step through the next event, and tell me what the state looks like."
-- "Fix this projection: \<paste code\>."
 
 The `write-projection` and `fix-projection` prompts wrap the most common flows. Most clients surface registered prompts as slash commands or a prompt picker.
 

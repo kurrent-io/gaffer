@@ -143,21 +143,6 @@ execution_timeout = 30000
 
 Per-projection override of the top-level `execution_timeout`. Use for projections with long-running handlers (large reductions, heavy regex work). Optional.
 
-### `enabled`
-
-```toml
-[[projection]]
-name = "wip"
-entry = "projections/wip.js"
-enabled = false
-```
-
-Hides the projection from MCP's `list_projections` tool. Useful for marking work-in-progress projections that you don't want AI assistants discovering and running. Default `true`.
-
-Note: `gaffer dev`, `gaffer info`, and the VS Code lens currently ignore this field and run the projection regardless. Use it as an MCP-visibility flag for now.
-
-Optional.
-
 ## Resolution order
 
 Settings that exist at both top-level and per-projection resolve from most-specific to least:

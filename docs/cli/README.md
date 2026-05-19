@@ -8,18 +8,18 @@ The `gaffer` CLI scaffolds projections, runs them locally against fixtures or li
 
 ## Commands
 
-| Command                  | What it does                                                                                                                  |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `gaffer init -y`         | Create `gaffer.toml`, `.gitignore`, and an empty `.gaffer/` directory.                                                        |
-| `gaffer scaffold <name>` | Add a projection JS file and register it in `gaffer.toml`.                                                                    |
-| `gaffer dev <name>`      | Run a projection against fixtures (`--fixture <name>` or `--events <path>`) or live KurrentDB.                                |
-| `gaffer info <name>`     | Print the projection's details: source, partitioning, declared fixtures, engine version, matched events, and any diagnostics. |
-| `gaffer mcp`             | Start the gaffer MCP server over stdio. See [MCP](../mcp/).                                                                   |
-| `gaffer lsp`             | Start the gaffer LSP server over stdio. Used by the [VS Code extension](../extension/).                                       |
-| `gaffer config`          | Manage user-level configuration (telemetry opt-out, anonymous identity).                                                      |
-| `gaffer version`         | Print the gaffer version.                                                                                                     |
+| Command                                              | What it does                                                                                                                  |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| [`gaffer init -y`](./commands.md#gaffer-init)        | Create `gaffer.toml`, `.gitignore`, and an empty `.gaffer/` directory.                                                        |
+| [`gaffer scaffold <name>`](./commands.md#gaffer-scaffold) | Add a projection JS file and register it in `gaffer.toml`.                                                                    |
+| [`gaffer dev <name>`](./commands.md#gaffer-dev)      | Run a projection against fixtures (`--fixture <name>` or `--events <path>`) or live KurrentDB.                                |
+| [`gaffer info <name>`](./commands.md#gaffer-info)    | Print the projection's details: source, partitioning, declared fixtures, engine version, matched events, and any diagnostics. |
+| [`gaffer mcp`](./commands.md#gaffer-mcp)             | Start the gaffer MCP server over stdio. See [MCP](../mcp/).                                                                   |
+| [`gaffer lsp`](./commands.md#gaffer-lsp)             | Start the gaffer LSP server over stdio. Used by the [VS Code extension](../extension/).                                       |
+| [`gaffer config`](./commands.md#gaffer-config)       | Manage user-level configuration (telemetry opt-out, anonymous identity).                                                      |
+| [`gaffer version`](./commands.md#gaffer-version)     | Print the gaffer version.                                                                                                     |
 
-Run `gaffer <command> --help` for the full flag set.
+See [the full command reference](./commands.md) for every subcommand and flag, or run `gaffer <command> --help`.
 
 ## Project configuration
 
@@ -76,4 +76,14 @@ Project-level telemetry is opted out by setting `telemetry = false` at the top o
 
 ## Telemetry
 
-The CLI emits anonymous usage telemetry by default. See the [telemetry notice](https://telemetry.gaffer.kurrent.io/) for the full list of what's collected, and `gaffer config telemetry off` (or `GAFFER_TELEMETRY_OPTOUT=1`) to disable.
+The CLI emits anonymous usage telemetry by default. See the [telemetry notice](https://telemetry.gaffer.kurrent.io/) for the full list of what's collected.
+
+Opt out at the user level via any of:
+
+- `gaffer config telemetry off` (persists to the user config file).
+- `GAFFER_TELEMETRY_OPTOUT=1` in the environment.
+- `KURRENTDB_TELEMETRY_OPTOUT=1` in the environment.
+- `DO_NOT_TRACK=1` in the environment.
+- VS Code's `telemetry.telemetryLevel` set to `off` (the extension and CLI both respect it).
+
+Opt out at the project level by setting `telemetry = false` in [`gaffer.toml`](./gaffer-toml.md#telemetry).

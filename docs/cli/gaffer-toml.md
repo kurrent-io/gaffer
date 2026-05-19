@@ -73,7 +73,7 @@ telemetry = false
 
 Project-level telemetry opt-out. Setting `false` disables telemetry for any gaffer command run inside this project, regardless of the user's own opt-out state.
 
-User-level opt-outs that apply across all projects: `gaffer config telemetry off`, `GAFFER_TELEMETRY_OPTOUT`, `KURRENTDB_TELEMETRY_OPTOUT`, `DO_NOT_TRACK`, and VS Code's `telemetry.telemetryLevel`.
+For user-level opt-outs that apply across every project, see [Telemetry](./README.md#telemetry).
 
 Optional. Telemetry is on by default.
 

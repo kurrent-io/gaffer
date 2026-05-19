@@ -200,7 +200,7 @@ func TestConfigTelemetryOn_FreshMintsAndNotifies(t *testing.T) {
 		t.Errorf("stdout missing confirmation; got:\n%s", stdout)
 	}
 	// Notice on stderr.
-	if !strings.Contains(stderr, "Gaffer collects usage data") {
+	if !strings.Contains(stderr, "telemetry.gaffer.kurrent.io") {
 		t.Errorf("stderr missing notice; got:\n%s", stderr)
 	}
 
@@ -236,7 +236,7 @@ func TestConfigTelemetryOn_InvokerIDSuppressesNotice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("on --invoker-id: %v", err)
 	}
-	if strings.Contains(stderr, "Gaffer collects usage data") {
+	if strings.Contains(stderr, "telemetry.gaffer.kurrent.io") {
 		t.Errorf("notice written despite --invoker-id; stderr:\n%s", stderr)
 	}
 	// Disclosed must NOT latch under invoker-id suppression.
@@ -266,7 +266,7 @@ func TestConfigTelemetryOn_EnvOptOutBlocks(t *testing.T) {
 		}
 	}
 	// No notice when blocked by env.
-	if strings.Contains(stderr, "Gaffer collects usage data") {
+	if strings.Contains(stderr, "telemetry.gaffer.kurrent.io") {
 		t.Errorf("notice written despite env opt-out; stderr:\n%s", stderr)
 	}
 	// And no identity minted.
@@ -302,7 +302,7 @@ func TestConfigTelemetryOn_ExistingDisclosedIdentitySkipsNotice(t *testing.T) {
 	if !strings.Contains(stdout, "Telemetry enabled.") {
 		t.Errorf("stdout missing confirmation; got:\n%s", stdout)
 	}
-	if strings.Contains(stderr, "Gaffer collects usage data") {
+	if strings.Contains(stderr, "telemetry.gaffer.kurrent.io") {
 		t.Errorf("notice written despite Disclosed=true; stderr:\n%s", stderr)
 	}
 	// Identity preserved.
@@ -381,7 +381,7 @@ func TestConfigTelemetryOn_OnThenOnNoDoubleNotice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first on: %v", err)
 	}
-	if !strings.Contains(stderr1, "Gaffer collects usage data") {
+	if !strings.Contains(stderr1, "telemetry.gaffer.kurrent.io") {
 		t.Fatalf("first on missing notice; stderr:\n%s", stderr1)
 	}
 
@@ -394,7 +394,7 @@ func TestConfigTelemetryOn_OnThenOnNoDoubleNotice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second on: %v", err)
 	}
-	if strings.Contains(stderr2, "Gaffer collects usage data") {
+	if strings.Contains(stderr2, "telemetry.gaffer.kurrent.io") {
 		t.Errorf("second on re-printed notice; stderr:\n%s", stderr2)
 	}
 

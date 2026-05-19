@@ -179,19 +179,18 @@ Records crashes in gaffer's own code (Go panics in the CLI, runtime exceptions i
 On the first invocation, gaffer prints a one-time message to the terminal, similar to:
 
 ```
-Telemetry
----------
-Gaffer collects usage data in order to improve your experience. The data is anonymous and collected by Kurrent, Inc.
+Gaffer sends anonymous usage data and error reports
+to help us prioritise features and fix bugs faster.
 
-You can opt out by any of:
-  - Running `gaffer config telemetry off` (this machine)
-  - Adding `telemetry = false` to your project's gaffer.toml
-  - Setting GAFFER_TELEMETRY_OPTOUT, KURRENTDB_TELEMETRY_OPTOUT, or DO_NOT_TRACK to a truthy value
+To opt out
+ This machine: gaffer config telemetry off
+ This project: telemetry = false in gaffer.toml
+ Env var:      GAFFER_TELEMETRY_OPTOUT=1
 
-For more information visit https://telemetry.gaffer.kurrent.io.
+Details: https://telemetry.gaffer.kurrent.io
 ```
 
-If telemetry collection has already been disabled (for example via `KURRENTDB_TELEMETRY_OPTOUT` carried over from KurrentDB, or `DO_NOT_TRACK`), no disclosure is shown.
+`KURRENTDB_TELEMETRY_OPTOUT` (carried over from KurrentDB) and `DO_NOT_TRACK` (industry convention) are also honoured silently - users who set them in another context get the same effect without needing to know gaffer reads them. If telemetry has already been disabled by any of these signals, the disclosure is not shown.
 
 ## Reporting frequency
 

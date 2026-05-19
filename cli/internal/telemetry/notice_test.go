@@ -13,30 +13,69 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
 
+// renderedNotice returns the plain-text rendering of the notice
+// (styledbox emits ASCII when the writer isn't a TTY). Tests treat
+// this string as the canonical content for phrase / sync canaries.
+func renderedNotice(t *testing.T) string {
+	t.Helper()
+	return renderNotice(&bytes.Buffer{})
+}
+
 func TestNoticeText_KeyPhrasesPresent(t *testing.T) {
+	notice := renderedNotice(t)
 	for _, want := range []string{
-		"Telemetry",
-		"anonymous",
-		"Kurrent, Inc.",
+		"anonymous usage data and error reports",
+		"prioritise features and fix bugs",
+		"This machine",
 		"gaffer config telemetry off",
-		"telemetry = false",
-		"1 / true / yes / on",
+		"This project",
+		"telemetry = false in gaffer.toml",
+		"Env var",
+		"GAFFER_TELEMETRY_OPTOUT=1",
 		"https://telemetry.gaffer.kurrent.io",
 	} {
-		if !strings.Contains(noticeText, want) {
-			t.Errorf("noticeText missing %q", want)
+		if !strings.Contains(notice, want) {
+			t.Errorf("notice missing %q", want)
 		}
 	}
 }
 
-// TestNoticeText_ListsEveryOptOutEnvVar is the canary that catches
-// the more likely drift: NoticeText says "set var X to opt out" but
-// optout.go forgot to add X (or vice versa).
-func TestNoticeText_ListsEveryOptOutEnvVar(t *testing.T) {
-	for _, name := range optOutEnvVars {
-		if !strings.Contains(noticeText, name) {
-			t.Errorf("noticeText missing env var %q (declared in optOutEnvVars but not advertised in the user banner)", name)
-		}
+// TestNoticeText_AdvertisesPrimaryEnvVar guards the contract that
+// the banner names GAFFER_TELEMETRY_OPTOUT. The other entries in
+// optOutEnvVars (KURRENTDB_TELEMETRY_OPTOUT, DO_NOT_TRACK) are
+// deliberately not advertised - users who set them already expect
+// silent honouring - but cli/TELEMETRY.md documents the full list.
+func TestNoticeText_AdvertisesPrimaryEnvVar(t *testing.T) {
+	notice := renderedNotice(t)
+	if !strings.Contains(notice, "GAFFER_TELEMETRY_OPTOUT") {
+		t.Error("notice missing GAFFER_TELEMETRY_OPTOUT (the primary opt-out env var must be advertised)")
+	}
+}
+
+// TestNoticeText_OptOutBlockShape asserts the rendered opt-out list
+// keeps its word order and within-line column alignment. Substring
+// checks above would happily pass a notice where "telemetry = false"
+// and "gaffer.toml" were swapped, or where Env var's padding drifted
+// out of alignment with the two This labels. This test fails fast
+// on either.
+//
+// The cross-line indent (box padding + margin) is stripped before
+// comparing so the assertion survives a box-layout tweak; only the
+// content shape inside the card is locked.
+func TestNoticeText_OptOutBlockShape(t *testing.T) {
+	rendered := renderedNotice(t)
+	var trimmed strings.Builder
+	for _, line := range strings.Split(rendered, "\n") {
+		trimmed.WriteString(strings.TrimLeft(strings.TrimRight(line, " "), " "))
+		trimmed.WriteByte('\n')
+	}
+	got := trimmed.String()
+	const want = `To opt out
+This machine: gaffer config telemetry off
+This project: telemetry = false in gaffer.toml
+Env var:      GAFFER_TELEMETRY_OPTOUT=1`
+	if !strings.Contains(got, want) {
+		t.Errorf("opt-out block shape drift.\nwant block to contain:\n%s\n\ngot rendered notice:\n%s", want, got)
 	}
 }
 
@@ -56,7 +95,7 @@ func TestNoticeText_SyncedWithTelemetryMd(t *testing.T) {
 		"https://telemetry.gaffer.kurrent.io",
 	} {
 		if !strings.Contains(got, want) {
-			t.Errorf("cli/TELEMETRY.md missing %q (out of sync with noticeText)", want)
+			t.Errorf("cli/TELEMETRY.md missing %q (out of sync with the notice)", want)
 		}
 	}
 }
@@ -86,13 +125,19 @@ func findRepoRootFile(t *testing.T, name string) string {
 	return ""
 }
 
-func TestWriteNotice_WritesNoticeText(t *testing.T) {
+func TestWriteNotice_WritesNotice(t *testing.T) {
 	var buf bytes.Buffer
 	if err := WriteNotice(&buf); err != nil {
 		t.Fatalf("WriteNotice: %v", err)
 	}
-	if buf.String() != noticeText {
-		t.Errorf("written != noticeText")
+	got := buf.String()
+	// Substring rather than byte-exact: WriteNotice renders through
+	// styledbox which adds margins and (on a TTY) ANSI escapes. The
+	// content phrases are the stable contract.
+	for _, want := range []string{"anonymous", "gaffer config telemetry off", "https://telemetry.gaffer.kurrent.io"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("WriteNotice output missing %q", want)
+		}
 	}
 }
 
@@ -340,7 +385,7 @@ func TestEnsureIdentity_FreshMintWritesNotice(t *testing.T) {
 	if id.IsZero() {
 		t.Error("id zero on fresh mint")
 	}
-	if buf.String() != noticeText {
+	if !strings.Contains(buf.String(), "GAFFER_TELEMETRY_OPTOUT") {
 		t.Errorf("notice not written; got %q", buf.String())
 	}
 }

@@ -1,6 +1,6 @@
 {
 	"name": "@kurrent/gaffer",
-	"version": "0.1.0",
+	"version": "0.0.0",
 	"description": "Develop, test, debug, and deploy KurrentDB projections from the command line",
 	"license": "LicenseRef-KurrentLicenseV1",
 	"repository": {
@@ -16,6 +16,7 @@
 		"gaffer": "bin/gaffer.js"
 	},
 	"files": [
+		"CHANGELOG.md",
 		"bin"
 	],
 	"engines": {

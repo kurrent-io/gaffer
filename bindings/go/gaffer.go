@@ -17,8 +17,12 @@ package gafferruntime
 
 #cgo linux,amd64 LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-x64/publish -l:Gaffer.Runtime.so -Wl,-rpath,\$ORIGIN -Wl,-rpath,${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-x64/publish
 #cgo linux,arm64 LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-arm64/publish -l:Gaffer.Runtime.so -Wl,-rpath,\$ORIGIN -Wl,-rpath,${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-arm64/publish
-#cgo darwin,amd64 LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-x64/publish -l:Gaffer.Runtime.dylib -Wl,-rpath,@loader_path -Wl,-rpath,${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-x64/publish
-#cgo darwin,arm64 LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-arm64/publish -l:Gaffer.Runtime.dylib -Wl,-rpath,@loader_path -Wl,-rpath,${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-arm64/publish
+// Apple's ld doesn't accept the `-l:filename` extension that GNU ld
+// supports, and NativeAOT outputs `Gaffer.Runtime.dylib` without the
+// `lib` prefix that `-lname` would expect. Pass the dylib by absolute
+// path instead. Both rpaths still apply at runtime.
+#cgo darwin,amd64 LDFLAGS: ${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-x64/publish/Gaffer.Runtime.dylib -Wl,-rpath,@loader_path -Wl,-rpath,${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-x64/publish
+#cgo darwin,arm64 LDFLAGS: ${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-arm64/publish/Gaffer.Runtime.dylib -Wl,-rpath,@loader_path -Wl,-rpath,${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-arm64/publish
 #cgo windows,amd64 LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/win-x64/publish -l:Gaffer.Runtime.dll
 
 #include "gaffer.h"

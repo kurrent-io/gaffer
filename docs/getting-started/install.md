@@ -4,8 +4,6 @@ description: Install the gaffer CLI for local projection development.
 order: 1
 ---
 
-Install the gaffer CLI for local projection development.
-
 ## Install the CLI
 
 ```sh
@@ -20,11 +18,11 @@ Verify:
 gaffer version
 ```
 
-## Next
-
-Write [your first projection](./first-projection.md).
-
 ## Optional add-ons
 
-- **VS Code extension** - run/debug lenses on `gaffer.toml`, breakpoint debugging, and projection-API autocomplete. See [the extension](../extension/).
-- **AI assistants** (Claude Code, Cursor, Continue, Copilot) - point them at `gaffer mcp` for scaffolding, debugging, and the projection API. See [MCP](../mcp/).
+- **VS Code extension**: run/debug lenses on `gaffer.toml`, breakpoint debugging, and projection-API autocomplete. See [the extension](../extension/).
+- **AI assistants** (Claude Code, Cursor, Continue, Copilot): point them at `gaffer mcp` for scaffolding, debugging, and the projection API. See [MCP](../mcp/).
+
+## What's next
+
+Write [your first projection](./first-projection.md).

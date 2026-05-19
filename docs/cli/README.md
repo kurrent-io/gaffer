@@ -4,20 +4,20 @@ description: Reference for the gaffer command-line interface and gaffer.toml sch
 order: 2
 ---
 
-The `gaffer` CLI manages a gaffer project end to end: scaffold projections, run them locally against fixtures or a live KurrentDB, drive the debugger, and host the LSP and MCP servers.
+The `gaffer` CLI scaffolds projections, runs them locally against fixtures or live KurrentDB, drives the debugger, and hosts the LSP and MCP servers.
 
 ## Commands
 
-| Command                  | What it does                                                                                   |
-| ------------------------ | ---------------------------------------------------------------------------------------------- |
-| `gaffer init`            | Create `gaffer.toml`, `.gitignore`, and an empty `.gaffer/` directory.                         |
-| `gaffer scaffold <name>` | Add a projection JS file and register it in `gaffer.toml`.                                     |
-| `gaffer dev <name>`      | Run a projection against fixtures (`--fixture <name>` or `--events <path>`) or live KurrentDB. |
-| `gaffer info <name>`     | Print the projection's source, partitioning, declared fixtures, and matched events.            |
-| `gaffer mcp`             | Start the gaffer MCP server over stdio. See [MCP](../mcp/).                                    |
-| `gaffer lsp`             | Start the gaffer LSP server over stdio. Used by the [VS Code extension](../extension/).        |
-| `gaffer config`          | Manage user-level configuration (telemetry opt-out, anonymous identity).                       |
-| `gaffer version`         | Print the gaffer version.                                                                      |
+| Command                  | What it does                                                                                                                  |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `gaffer init`            | Create `gaffer.toml`, `.gitignore`, and an empty `.gaffer/` directory.                                                        |
+| `gaffer scaffold <name>` | Add a projection JS file and register it in `gaffer.toml`.                                                                    |
+| `gaffer dev <name>`      | Run a projection against fixtures (`--fixture <name>` or `--events <path>`) or live KurrentDB.                                |
+| `gaffer info <name>`     | Print the projection's details: source, partitioning, declared fixtures, engine version, matched events, and any diagnostics. |
+| `gaffer mcp`             | Start the gaffer MCP server over stdio. See [MCP](../mcp/).                                                                   |
+| `gaffer lsp`             | Start the gaffer LSP server over stdio. Used by the [VS Code extension](../extension/).                                       |
+| `gaffer config`          | Manage user-level configuration (telemetry opt-out, anonymous identity).                                                      |
+| `gaffer version`         | Print the gaffer version.                                                                                                     |
 
 Run `gaffer <command> --help` for the full flag set.
 
@@ -49,12 +49,20 @@ Per-projection (`[[projection]]`):
 
 ## User configuration
 
-User-level settings (telemetry opt-out, anonymous identity used to stitch telemetry across projects) live in `~/.config/gaffer/config.toml` and are managed with `gaffer config`:
+User-level settings (telemetry opt-out and a per-install anonymous identity) live in a platform-specific config directory:
+
+- Linux: `$XDG_CONFIG_HOME/gaffer/config.toml` (default `~/.config/gaffer/config.toml`).
+- macOS: `~/Library/Application Support/gaffer/config.toml`.
+- Windows: `%AppData%\gaffer\config.toml`.
+
+Set `GAFFER_CONFIG_DIR` to override.
+
+Manage with `gaffer config`:
 
 ```sh
-gaffer config telemetry off    # opt out of telemetry
-gaffer config telemetry on     # opt back in
-gaffer config identity         # show the anonymous identity
+gaffer config telemetry status   # show current opt-in state and identity
+gaffer config telemetry off      # opt out of telemetry
+gaffer config telemetry on       # opt back in
 ```
 
 Project-level telemetry is opted out by setting `telemetry = false` at the top of `gaffer.toml`.

@@ -43,4 +43,4 @@ The workflow:
 3. Set breakpoints in the projection JS.
 4. Step through handlers as gaffer feeds events.
 
-Per-editor setup varies; consult your DAP client's docs for attach-config syntax. Common clients: [nvim-dap](https://github.com/mfussenegger/nvim-dap), Helix's built-in DAP support, and Emacs [dap-mode](https://emacs-lsp.github.io/dap-mode/).
+Per-editor setup varies. Consult your DAP client's docs for attach-config syntax. Common clients: [nvim-dap](https://github.com/mfussenegger/nvim-dap), Helix's built-in DAP support, and Emacs [dap-mode](https://emacs-lsp.github.io/dap-mode/).

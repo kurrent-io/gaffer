@@ -28,16 +28,18 @@ gaffer scaffold order-count
 
 This adds `projections/order-count.js` and registers it in `gaffer.toml`. The scaffolded file is a working skeleton with no logic yet:
 
+<!-- prettier-ignore -->
 ```js
-fromAll().when({
-  $init() {
-    return {};
-  },
-  // Add your event handlers here
-  // EventType(state, event) {
-  //   return state;
-  // }
-});
+fromAll()
+  .when({
+    $init() {
+      return {};
+    },
+    // Add your event handlers here
+    // EventType(state, event) {
+    //   return state;
+    // }
+  })
 ```
 
 Two pieces to know:
@@ -139,7 +141,7 @@ The fixture didn't change, but the new handler ran against the existing `OrderSh
 
 ## Name the fixture
 
-Typing the events path each run gets old. Declare the fixture once in `gaffer.toml`, alongside the projection scaffold added:
+Typing the events path each run gets old. Declare the fixture once in `gaffer.toml`, alongside the projection block `gaffer scaffold` added earlier:
 
 ```toml
 [[projection]]

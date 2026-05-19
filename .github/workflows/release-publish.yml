@@ -116,14 +116,26 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download runtime native artifacts
-        # merge-multiple: true preserves each artifact's internal path
-        # (bindings/js/native/<platform>/gaffer.<ext>) and drops the
-        # artifact-name parent dir, landing files exactly where the
-        # wrapper expects them.
+        # Each artifact extracts to artifacts/<artifact-name>/ - the
+        # upload step uses a single-file path which v4 strips down to
+        # just the basename, so we can't rely on the directory
+        # structure inside the artifact (that's the 0.1.0 publish bug).
         uses: actions/download-artifact@v4
         with:
           pattern: runtime-native-*
-          merge-multiple: true
+          path: artifacts
+
+      - name: Stage native binaries into packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          for platform in linux-x64 linux-arm64; do
+            cp "artifacts/runtime-native-${platform}/gaffer.so" "bindings/js/native/${platform}/gaffer.so"
+          done
+          for platform in darwin-x64 darwin-arm64; do
+            cp "artifacts/runtime-native-${platform}/gaffer.dylib" "bindings/js/native/${platform}/gaffer.dylib"
+          done
+          cp "artifacts/runtime-native-win32-x64/gaffer.dll" "bindings/js/native/win32-x64/gaffer.dll"
 
       - name: Build wrapper (tsc)
         run: pnpm --filter "@kurrent/gaffer-runtime" build
@@ -231,13 +243,22 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download CLI native artifacts
-        # merge-multiple: true preserves each artifact's internal path
-        # (cli/native/<platform>/gaffer + Gaffer.Runtime.*) and drops
-        # the artifact-name parent dir.
+        # Each artifact extracts to artifacts/<artifact-name>/ - the
+        # upload step's multi-line path is stripped by v4 to the
+        # common parent, so files inside each artifact are flat
+        # (gaffer + Gaffer.Runtime.<ext>, no directory).
         uses: actions/download-artifact@v4
         with:
           pattern: cli-native-*
-          merge-multiple: true
+          path: artifacts
+
+      - name: Stage CLI binaries into packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          for platform in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64; do
+            cp -v "artifacts/cli-native-${platform}"/* "cli/native/${platform}/"
+          done
 
       - name: Publish CLI packages
         env:

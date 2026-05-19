@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 
 	"github.com/charmbracelet/fang"
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
+
+	"github.com/kurrent-io/gaffer/cli/internal/updatecheck"
 )
 
 // silentError wraps an error that has already been printed to stderr by the
@@ -32,11 +36,24 @@ func errorHandler(w io.Writer, styles fang.Styles, err error) {
 // Production code uses Execute(); tests construct a fresh tree per test for
 // isolation.
 func NewRootCmd() *cobra.Command {
+	var noUpdateCheck bool
+
 	root := &cobra.Command{
 		Use:   "gaffer",
 		Short: "Projection toolkit for KurrentDB",
 		Long:  "Develop, test, debug, and deploy KurrentDB projections.",
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			// Update-check is best-effort: skip when stderr isn't a
+			// TTY (extension-spawned lsp/mcp, piped stderr, CI runs).
+			// Start is nil-safe when no Client was stashed on ctx -
+			// the cmd test harness exercises that branch.
+			updatecheck.FromCtx(cmd.Context()).Start(noUpdateCheck || !isatty.IsTerminal(os.Stderr.Fd()))
+			return nil
+		},
 	}
+
+	root.PersistentFlags().BoolVar(&noUpdateCheck, "no-update-check", false,
+		"Skip the once-per-day check for a newer gaffer release")
 
 	registerHiddenInvocationFlags(root)
 

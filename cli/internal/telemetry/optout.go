@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/kurrent-io/gaffer/cli/internal/envvar"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
@@ -178,7 +178,7 @@ func resolveEnvLayer(lookup func(string) (string, bool)) Layer {
 		if !ok {
 			continue
 		}
-		if isTruthy(v) {
+		if envvar.IsTruthy(v) {
 			return Layer{State: LayerDisabled, Source: "env", EnvVar: name, Value: v}
 		}
 	}
@@ -268,18 +268,4 @@ func findProjectRootBounded(start, stopAt string) string {
 		}
 		dir = parent
 	}
-}
-
-// isTruthy parses an env-var value with the same permissive rules
-// gaffer applies elsewhere: "1", "true", "yes", "on" (case-
-// insensitive, whitespace-trimmed). Anything else is false, including
-// empty string and "0" / "false" / "no" / "off". Matches the value
-// set KurrentDB's CLI uses for KURRENTDB_TELEMETRY_OPTOUT so cross-
-// product opt-out behaves uniformly.
-func isTruthy(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "1", "true", "yes", "on":
-		return true
-	}
-	return false
 }

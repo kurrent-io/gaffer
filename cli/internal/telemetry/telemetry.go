@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/kurrent-io/gaffer/cli/internal/envvar"
 )
 
 // EnvDebug is the env var that flips Client into transparency mode:
@@ -242,7 +244,7 @@ func New(opts ...Option) *Client {
 	if c.sink == nil {
 		c.sink = newHTTPSink(c.workerURL, c.userAgent)
 	}
-	if isTruthy(os.Getenv(EnvDebug)) {
+	if envvar.IsTruthy(os.Getenv(EnvDebug)) {
 		c.sink = newDebugTeeSink(c.sink, os.Stderr, c.errLog)
 	}
 	return c

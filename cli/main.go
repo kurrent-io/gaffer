@@ -13,6 +13,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/cmd"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
+	"github.com/kurrent-io/gaffer/cli/internal/updatecheck"
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
 
@@ -24,7 +25,18 @@ import (
 //
 // In-flight emits are concurrent goroutines (one per envelope) so
 // many can drain inside this window in parallel.
+//
+// The updatecheck Flush runs from a separate defer ahead of this one
+// in the LIFO chain (see runMain), so worst-case exit wait is
+// flushTimeout + updateCheckFlushTimeout, not max. Typical case is
+// near-instant for both because their WaitGroups are usually empty.
 const flushTimeout = 5 * time.Second
+
+// updateCheckFlushTimeout bounds the wait for the once-per-day npm
+// registry refresh goroutine. Shorter than telemetry's budget
+// because update-check is strictly best-effort: a refresh that
+// doesn't finish is just deferred until the next invocation.
+const updateCheckFlushTimeout = 2 * time.Second
 
 func main() {
 	os.Exit(runMain())
@@ -58,6 +70,22 @@ func runMain() (exitCode int) {
 	}
 	ctx := telemetry.WithClient(rootCtx, client)
 
+	// updatecheck.Client lives on ctx alongside the telemetry one.
+	// PersistentPreRunE on the cobra root reads it via FromCtx and
+	// invokes Start; main.runMain's deferred Flush bounds how long
+	// process exit waits for the background refresh goroutine.
+	//
+	// No IsConfigCommand carve-out here: `gaffer config ...` runs in a
+	// terminal too, and a config user is exactly as well served by a
+	// "newer release available" hint as anyone else. The carve-out
+	// above is specifically about telemetry identity-mint racing with
+	// `gaffer config telemetry`, which has no analogue here.
+	updateClient := updatecheck.New(updatecheck.Options{
+		Current: cmd.Version,
+		Fetcher: updatecheck.NpmFetcher{UserAgent: userAgent()},
+	})
+	ctx = updatecheck.WithClient(ctx, updateClient)
+
 	// Three-defer panic-recover chain. Registered first to last
 	// so they fire LAST to FIRST on a panic:
 	//
@@ -85,6 +113,11 @@ func runMain() (exitCode int) {
 	defer func() {
 		flushCtx, cancel := context.WithTimeout(context.Background(), flushTimeout)
 		_ = client.Flush(flushCtx)
+		cancel()
+	}()
+	defer func() {
+		flushCtx, cancel := context.WithTimeout(context.Background(), updateCheckFlushTimeout)
+		_ = updateClient.Flush(flushCtx)
 		cancel()
 	}()
 	defer func() {

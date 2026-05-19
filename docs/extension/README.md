@@ -1,0 +1,65 @@
+---
+title: VS Code extension
+description: Install the KurrentDB Projections VS Code extension for inline run/debug, breakpoints, state inspection, and projection-API autocomplete.
+order: 3
+---
+
+The [KurrentDB Projections](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer) extension wires gaffer's debugger, language server, MCP server, and tsserver plugin into VS Code. Run and debug projections from `gaffer.toml`, step through handlers, inspect state as it evolves, and get type-aware autocomplete for projection builtins.
+
+## Install
+
+Install [KurrentDB Projections](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer) from the marketplace.
+
+The extension needs the `gaffer` CLI on PATH (see [Install gaffer](../getting-started/install.md)). If the CLI is missing, the extension prompts to install it on first use.
+
+## Run and debug projections
+
+Open a workspace containing a `gaffer.toml`. The extension adds a **Debug** CodeLens above each projection block in the toml, and a **Debug from Fixture** lens above each fixture entry.
+
+Clicking **Debug** launches a debug session for that projection against its first declared fixture. **Debug from Fixture** prompts you to pick which fixture, then launches.
+
+Set breakpoints in the projection JS file. Standard VS Code debug controls work: step over, into, out, continue. The call stack and scopes views populate with the projection's JS frames and variables.
+
+`KurrentDB Projections: Debug` is also available from the command palette - it opens a quickpick listing every projection in the workspace.
+
+## State inspection
+
+A dedicated **KurrentDB Projections** panel opens at the bottom of the editor when a session starts. It has three views:
+
+- **Status**: session phase (starting / running / inspecting / ended), current event count, last event processed, current breakpoint location.
+- **Step**: the event that triggered the current pause, plus a diff of state before and after the handler runs. Only visible while paused at a breakpoint.
+- **State**: partitioned state, shared state (for biState projections), and the result stream (V1 transformed state, V2 post-handler state). Always visible during the session.
+
+For partitioned projections, click into a partition in the State view to drill into its slice.
+
+## Autocomplete for projection builtins
+
+A bundled TypeScript server plugin injects projection-runtime types into any `.js` file that shares a workspace root with a registered projection. You get autocomplete and inline docs for `fromAll`, `fromStream`, `fromCategory`, `when`, `emit`, `linkTo`, `partitionBy`, `foreachStream`, and the rest of the API.
+
+The plugin doesn't add a `.d.ts` to your project - the types apply at the tsserver-project level. Disable via `gaffer.injectProjectionTypes` if you don't want it touching loose JS files in projection workspaces.
+
+## MCP integration
+
+The extension auto-registers gaffer's MCP server with VS Code's MCP framework. AI assistants that consume VS Code's MCP providers (GitHub Copilot Chat, others) pick up gaffer's scaffolding / validation / debugging tools without any manual config.
+
+See [MCP](../mcp/) for the tools and resources gaffer exposes, and for connecting non-VS-Code clients.
+
+## Configuration
+
+| Setting                        | Default      | What it does                                                                                                             |
+| ------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `gaffer.command`               | `["gaffer"]` | Argv used to invoke gaffer. User scope only; workspace settings are ignored as defense against hostile workspaces.       |
+| `gaffer.debugPort`             | `-1` (auto)  | DAP server port (loopback only). `-1` lets the OS pick a free port and the editor reads it back from the CLI on connect. |
+| `gaffer.injectProjectionTypes` | `true`       | Inject projection-runtime types via the tsserver plugin. Disable to keep non-projection JS clean.                        |
+
+## Commands
+
+| Command                                     | Invoked via                 | What it does                                                                                                       |
+| ------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `KurrentDB Projections: Debug`              | CodeLens or command palette | Launch the projection with the debugger attached. Lens uses the projection at the cursor; palette prompts for one. |
+| `KurrentDB Projections: Debug from Fixture` | CodeLens                    | Pick a fixture, launch with the debugger attached.                                                                 |
+| `KurrentDB Projections: Stop`               | CodeLens or command palette | Stop the running session.                                                                                          |
+
+## Telemetry
+
+The extension collects anonymous usage telemetry by default and respects VS Code's `telemetry.telemetryLevel` setting. See the [telemetry notice](https://telemetry.gaffer.kurrent.io/) for what's collected. Setting `gaffer.telemetry.enabled` to `false` opts out at the extension level.

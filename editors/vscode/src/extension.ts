@@ -54,6 +54,7 @@ import { registerTypeScriptPlugin } from "./lsp/typescript-plugin.js";
 import { GafferMcpProvider } from "./mcp/provider.js";
 import { runProjection } from "./commands/run-projection.js";
 import { debugProjectionPick } from "./commands/debug-projection-pick.js";
+import { initProjection } from "./commands/init-projection.js";
 
 // workspaceCwd returns the first workspace folder's filesystem
 // path so child processes (e.g. gaffer manifest) spawn relative
@@ -436,6 +437,10 @@ async function activateAfterTelemetry(
 					telemetry,
 				}),
 			),
+		),
+		vscode.commands.registerCommand(
+			"gaffer.init",
+			wrap(initProjection({ telemetry })),
 		),
 		// Click target for the "Invalid fixture: <reason>" lens. The lens
 		// is informational; the user fixes the toml. CodeLens.command is

@@ -64,6 +64,44 @@ export const showTrustWarning = (): Thenable<unknown> =>
 			}
 		});
 
+export const showNoWorkspace = (): Thenable<unknown> =>
+	vscode.window.showWarningMessage(
+		"Open a folder first to initialize a KurrentDB projection.",
+	);
+
+// gaffer.toml is already present in the target folder. Offer to open
+// the existing file rather than running init and surfacing the CLI's
+// "already exists" error. Returns true if the user picked Open existing.
+export const showTomlExists = (folderName: string): Thenable<boolean> =>
+	vscode.window
+		.showWarningMessage(
+			`gaffer.toml already exists in ${folderName}.`,
+			"Open existing",
+		)
+		.then((choice) => choice === "Open existing");
+
+// Surface for any non-toml-exists failure from `gaffer init`. Mirrors
+// showManifestFailure's stderr-on-cause handling so the user sees the
+// CLI's actual complaint, not the wrapper "execFile failed" message.
+export const showInitFailure = (err: unknown): Thenable<unknown> => {
+	const raw = err instanceof Error ? err.message : String(err);
+	const cause =
+		err instanceof Error && typeof err.cause === "object" ? err.cause : null;
+	const stderr =
+		cause !== null && typeof (cause as { stderr?: unknown }).stderr === "string"
+			? (cause as { stderr: string }).stderr
+			: "";
+	const detail = stderr || raw;
+	const truncated = detail.length > 200 ? `${detail.slice(0, 200)}…` : detail;
+	return vscode.window
+		.showErrorMessage(`gaffer init failed: ${truncated}`, "View Output")
+		.then((choice) => {
+			if (choice === "View Output") {
+				showOutputPanel();
+			}
+		});
+};
+
 export const showNoProjections = (): Thenable<unknown> =>
 	vscode.window.showInformationMessage(
 		"No projections found in this workspace.",

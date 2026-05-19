@@ -259,6 +259,17 @@ jobs:
           for platform in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64; do
             cp -v "artifacts/cli-native-${platform}"/* "cli/native/${platform}/"
           done
+          # Restore +x on the CLI binaries - upload-artifact v4 stores
+          # artifacts as zip, which doesn't preserve unix permission
+          # bits. Windows resolves executability by .exe extension, so
+          # only the linux / darwin binaries need chmod. The runtime
+          # shared libraries (.so / .dylib / .dll) load via dlopen and
+          # don't need the +x bit.
+          chmod +x \
+            cli/native/linux-x64/gaffer \
+            cli/native/linux-arm64/gaffer \
+            cli/native/darwin-x64/gaffer \
+            cli/native/darwin-arm64/gaffer
 
       - name: Publish CLI packages
         env:

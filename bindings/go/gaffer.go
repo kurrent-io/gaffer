@@ -8,18 +8,21 @@ package gafferruntime
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../runtime/include
 
-// Each platform points -L at its NativeAOT publish dir and adds two
-// rpaths: $ORIGIN / @loader_path first (where the runtime binary lives
-// next to the CLI in shipped packages), then the build dir (so locally
-// built binaries can find the runtime without copying it around).
-// Windows resolves co-located DLLs from the executable's directory by
-// default, so no rpath is needed there.
+// Link the runtime AOT into the binary and set the runtime rpath to
+// where it lives in shipped packages (next to the executable).
+//   Linux:   $ORIGIN
+//   macOS:   @loader_path (Apple's ld doesn't accept GNU ld's
+//            `-l:filename` extension; pass the dylib by absolute path)
+//   Windows: resolves co-located DLLs from the executable's directory
+//            by default, so no rpath is needed
+// Local dev usually doesn't have the runtime co-located - opt into a
+// build-dir rpath via `go build -tags dev` (see gaffer_dev.go).
 
-#cgo linux,amd64 LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-x64/publish -l:Gaffer.Runtime.so -Wl,-rpath,\$ORIGIN -Wl,-rpath,${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-x64/publish
-#cgo linux,arm64 LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-arm64/publish -l:Gaffer.Runtime.so -Wl,-rpath,\$ORIGIN -Wl,-rpath,${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-arm64/publish
-#cgo darwin,amd64 LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-x64/publish -l:Gaffer.Runtime.dylib -Wl,-rpath,@loader_path -Wl,-rpath,${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-x64/publish
-#cgo darwin,arm64 LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-arm64/publish -l:Gaffer.Runtime.dylib -Wl,-rpath,@loader_path -Wl,-rpath,${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-arm64/publish
-#cgo windows,amd64 LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/win-x64/publish -l:Gaffer.Runtime.dll
+#cgo linux,amd64   LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-x64/publish   -l:Gaffer.Runtime.so    -Wl,-rpath,\$ORIGIN
+#cgo linux,arm64   LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/linux-arm64/publish -l:Gaffer.Runtime.so    -Wl,-rpath,\$ORIGIN
+#cgo darwin,amd64  LDFLAGS: ${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-x64/publish/Gaffer.Runtime.dylib          -Wl,-rpath,@loader_path
+#cgo darwin,arm64  LDFLAGS: ${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/osx-arm64/publish/Gaffer.Runtime.dylib        -Wl,-rpath,@loader_path
+#cgo windows,amd64 LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/win-x64/publish    -l:Gaffer.Runtime.dll
 
 #include "gaffer.h"
 #include <stdlib.h>

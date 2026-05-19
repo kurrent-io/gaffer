@@ -218,15 +218,19 @@ func TestDev_StampsManifestProps(t *testing.T) {
 }
 
 func TestInit_EmitsUserErrorOnRunEFailure(t *testing.T) {
-	// `gaffer init` without --yes returns "interactive mode not
-	// yet supported, use --yes / -y" - the cleanest user_error
-	// path through the cmd-level defer + outcomeFor wiring. Covers
-	// the failure branch that TestVersion/Manifest's success-only
-	// paths don't exercise.
+	// `gaffer init` against a directory that already has a
+	// gaffer.toml returns "gaffer.toml already exists in <dir>" -
+	// the cleanest user_error path through the cmd-level defer +
+	// outcomeFor wiring. Covers the failure branch that TestVersion
+	// / Manifest's success-only paths don't exercise.
+	t.Chdir(t.TempDir())
+	if err := os.WriteFile("gaffer.toml", []byte("engine_version = 2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	mock := telemetrytest.New()
 	err := runCmdWithTelemetry(t, mock, "init")
 	if err == nil {
-		t.Fatal("init without --yes: expected error, got nil")
+		t.Fatal("init with existing toml: expected error, got nil")
 	}
 	envs := mock.Envelopes()
 	if len(envs) != 1 {

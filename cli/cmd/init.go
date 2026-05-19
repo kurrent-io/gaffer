@@ -14,8 +14,6 @@ import (
 )
 
 func newInitCmd() *cobra.Command {
-	var yes bool
-
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize a new gaffer project",
@@ -24,18 +22,19 @@ func newInitCmd() *cobra.Command {
 			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
 				telemetry.EmitInit(cmd.Context(), telemetry.InitCommandInvokedProperties{Outcome: o})
 			})
-			return runInit(yes)
+			return runInit()
 		},
 	}
-	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Accept all defaults, no prompts")
+	// `-y` is parsed but unused today: bare `gaffer init` already
+	// runs non-interactively. The flag is kept so users / scripts
+	// that already pass it don't break, and so it's available as the
+	// explicit "skip prompts" switch once UI-1461 (Bubbletea forms)
+	// makes bare invocation interactive.
+	cmd.Flags().BoolP("yes", "y", false, "Accept all defaults, no prompts (currently the only mode)")
 	return cmd
 }
 
-func runInit(yes bool) error {
-	if !yes {
-		return fmt.Errorf("interactive mode not yet supported, use --yes / -y")
-	}
-
+func runInit() error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return err

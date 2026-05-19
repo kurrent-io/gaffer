@@ -22,5 +22,10 @@
 		"CHANGELOG.md",
 		"gaffer",
 		"Gaffer.Runtime.so"
-	]
+	],
+	"publishConfig": {
+		"executableFiles": [
+			"gaffer"
+		]
+	}
 }

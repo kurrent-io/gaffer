@@ -19,7 +19,7 @@ gaffer init [flags]
 Flags:
 
 ```
-  -y, --yes   Accept all defaults, no prompts
+  -y, --yes   Accept all defaults, no prompts (currently the only mode)
 ```
 
 ## gaffer scaffold

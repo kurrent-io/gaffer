@@ -15,10 +15,10 @@ You need [`@kurrent/gaffer`](https://www.npmjs.com/package/@kurrent/gaffer) on y
 In an empty directory:
 
 ```sh
-gaffer init -y
+gaffer init
 ```
 
-This creates `gaffer.toml`, `.gitignore`, and an empty `.gaffer/` directory. `-y` accepts the defaults non-interactively.
+This creates `gaffer.toml`, `.gitignore`, and an empty `.gaffer/` directory.
 
 ## Scaffold a projection
 

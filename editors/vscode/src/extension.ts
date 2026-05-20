@@ -32,6 +32,7 @@ import {
 } from "./notifications/install-prompt.js";
 import {
 	isCliUpdatePromptSuppressed,
+	isNewerVersion,
 	runNpmUpdate,
 	showCliUpdatePrompt,
 } from "./notifications/update-prompt.js";
@@ -334,7 +335,15 @@ async function activateAfterTelemetry(
 		if (manifest !== null) {
 			void clearInstallPromptDismissed(context);
 			const latest = manifest.updateAvailable;
-			if (latest != null && !isCliUpdatePromptSuppressed(context, latest)) {
+			// isNewerVersion guard is belt-and-braces against a future
+			// CLI shipping a stale updateAvailable equal to its own
+			// version. The CLI is the authority on "is there an
+			// upgrade"; this check just keeps the toast wording honest.
+			if (
+				latest != null &&
+				isNewerVersion(latest, manifest.version) &&
+				!isCliUpdatePromptSuppressed(context, latest)
+			) {
 				void showCliUpdatePrompt({
 					context,
 					current: manifest.version,

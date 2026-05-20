@@ -97,6 +97,11 @@
 					"type": "boolean",
 					"default": true,
 					"description": "Inject projection-runtime types (`fromStream`, `when`, `emit`, etc.) into JavaScript files via the gaffer tsserver plugin. Types apply at the tsserver-project level - any loose .js sharing a workspace root with a registered projection sees them. Disable to keep non-projection JS clean."
+				},
+				"gaffer.cliUpdateNotifications": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show a toast when a newer gaffer CLI is available on npm. The 'Never ask' button on the toast flips this to false."
 				}
 			}
 		},

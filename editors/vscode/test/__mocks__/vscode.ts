@@ -605,7 +605,15 @@ type InspectResult<T> = {
 };
 
 function makeConfiguration(section: string): vscode.WorkspaceConfiguration {
-	const sec = state.configurations.get(section) ?? new Map();
+	// Materialise the section map onto state on first access so both
+	// reads and writes through this configuration object see the same
+	// store. Without this, an update would write to a different map
+	// than subsequent reads.
+	let sec = state.configurations.get(section);
+	if (!sec) {
+		sec = new Map();
+		state.configurations.set(section, sec);
+	}
 	const config: vscode.WorkspaceConfiguration = {
 		get<T>(key: string, defaultValue?: T): T | undefined {
 			const e = sec.get(key);
@@ -620,8 +628,13 @@ function makeConfiguration(section: string): vscode.WorkspaceConfiguration {
 			if (!e?.inspect) return undefined;
 			return { key, ...(e.inspect as Omit<InspectResult<T>, "key">) };
 		},
-		update(): Thenable<void> {
-			throw NOT_IMPLEMENTED("WorkspaceConfiguration.update");
+		update(key: string, value: unknown): Thenable<void> {
+			// ConfigurationTarget is ignored - the mock collapses
+			// global/workspace/folder into one bucket. Tests that
+			// need to distinguish scope use setConfiguration's
+			// inspect map directly.
+			sec.set(key, { value });
+			return Promise.resolve();
 		},
 	};
 	return config;
@@ -781,6 +794,16 @@ export const Disposable = {
 		};
 	},
 };
+
+// Mirror vscode.ConfigurationTarget so calls like
+// `getConfiguration().update(key, value, ConfigurationTarget.Global)`
+// don't deref undefined under the mock. The numeric values match the
+// real enum so a future need to inspect target by value still works.
+export const ConfigurationTarget = {
+	Global: 1,
+	Workspace: 2,
+	WorkspaceFolder: 3,
+} as const;
 
 // ---- workspace ------------------------------------------------------------
 //

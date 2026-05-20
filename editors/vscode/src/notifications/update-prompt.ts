@@ -5,13 +5,16 @@ import { NPM_PACKAGE, runNpmTerminal } from "./npm.js";
 
 // Surfaced when `gaffer manifest` reports an `updateAvailable` newer
 // than the running CLI. Offers an npm upgrade bootstrap, a per-version
-// skip, and a perma-suppress. Both dismissal flags live on
+// skip, and a perma-suppress. The skipped-version key lives on
 // globalState rather than workspaceState because the install is
-// global - dismissing 1.2.3 in workspace A and being re-prompted in
-// workspace B would be the same nag in different clothes.
+// global: dismissing 1.2.3 in workspace A and being re-prompted in
+// workspace B would be the same nag in different clothes. The
+// perma-suppress is a user setting (gaffer.cliUpdateNotifications)
+// rather than a hidden globalState flag so the user can re-enable
+// from the settings UI without us having to ship a separate command.
 
 const DISMISSED_VERSION_KEY = "gaffer.cliUpdate.dismissedVersion";
-const NEVER_ASK_KEY = "gaffer.cliUpdate.neverAsk";
+const NOTIFICATIONS_SETTING = "cliUpdateNotifications";
 
 const TERMINAL_NAME = "KurrentDB Projections: Update CLI";
 
@@ -27,14 +30,11 @@ export interface UpdatePromptDeps {
 	onUpdated: () => Promise<void> | void;
 }
 
-// True when the prompt should NOT fire for `latest`: either the user
-// chose Never ask, or they previously skipped an equal-or-newer
-// version (semver-compared so dismissed=1.2.3 doesn't suppress 1.2.4).
 export function isCliUpdatePromptSuppressed(
 	context: vscode.ExtensionContext,
 	latest: string,
 ): boolean {
-	if (context.globalState.get<boolean>(NEVER_ASK_KEY) === true) return true;
+	if (!notificationsEnabled()) return true;
 	const dismissed = context.globalState.get<string>(DISMISSED_VERSION_KEY);
 	if (dismissed !== undefined && !isNewerVersion(latest, dismissed)) {
 		return true;
@@ -42,17 +42,36 @@ export function isCliUpdatePromptSuppressed(
 	return false;
 }
 
-// Module-level dedupe so back-to-back manifest reloads can't stack
-// concurrent prompts. Cleared in `finally` so the next manifest
-// reporting an update after the user acts can prompt again.
+function notificationsEnabled(): boolean {
+	return vscode.workspace
+		.getConfiguration("gaffer")
+		.get<boolean>(NOTIFICATIONS_SETTING, true);
+}
+
+// activePrompt collapses concurrent calls onto one in-flight toast.
+// lastPromptedVersion stops a closed-without-acting toast (X / focus
+// loss) re-firing on the next manifest reload within the same
+// session: the prompt is one-per-session-per-version, and the next
+// session (or a newer version) re-prompts.
 let activePrompt: Promise<void> | null = null;
+let lastPromptedVersion: string | null = null;
 
 export function showCliUpdatePrompt(deps: UpdatePromptDeps): Promise<void> {
 	if (activePrompt !== null) return activePrompt;
+	if (lastPromptedVersion === deps.latest) return Promise.resolve();
+	lastPromptedVersion = deps.latest;
 	activePrompt = runPrompt(deps).finally(() => {
 		activePrompt = null;
 	});
 	return activePrompt;
+}
+
+// Test-only: reset module state between tests. Module-level guards
+// (activePrompt, lastPromptedVersion) would otherwise leak between
+// it() blocks since vitest doesn't re-import the module per test.
+export function __resetUpdatePromptStateForTests(): void {
+	activePrompt = null;
+	lastPromptedVersion = null;
 }
 
 async function runPrompt(deps: UpdatePromptDeps): Promise<void> {
@@ -72,7 +91,15 @@ async function runPrompt(deps: UpdatePromptDeps): Promise<void> {
 					`update bootstrap failed: ${err instanceof Error ? err.message : String(err)}`,
 				);
 			}
-			if (ok) await deps.onUpdated();
+			if (ok) {
+				await deps.onUpdated();
+			} else {
+				// Failed click: clear the session guard so the user can
+				// retry the same version after fixing whatever broke npm.
+				// Skip and Never are deliberate dismissals and keep
+				// their own persistent state, so they don't reset here.
+				lastPromptedVersion = null;
+			}
 			return;
 		}
 		if (choice === BUTTON_SKIP) {
@@ -80,7 +107,13 @@ async function runPrompt(deps: UpdatePromptDeps): Promise<void> {
 			return;
 		}
 		if (choice === BUTTON_NEVER) {
-			await deps.context.globalState.update(NEVER_ASK_KEY, true);
+			await vscode.workspace
+				.getConfiguration("gaffer")
+				.update(
+					NOTIFICATIONS_SETTING,
+					false,
+					vscode.ConfigurationTarget.Global,
+				);
 		}
 	} catch (err) {
 		// Same fire-and-forget posture as the install prompt: catch
@@ -99,10 +132,8 @@ export function runNpmUpdate(): Promise<{ ok: boolean }> {
 	});
 }
 
-// Wraps node-semver's gt so a malformed manifest version (the CLI
-// could ship one some day) can't throw out of the activation path.
-// Falls back to "not newer" - the toast suppresses rather than fires
-// on bad data.
+// Wraps semver.gt so a malformed manifest version can't throw out of
+// the activation path. Falls back to "not newer" on bad input.
 export function isNewerVersion(latest: string, current: string): boolean {
 	try {
 		return gt(latest, current);

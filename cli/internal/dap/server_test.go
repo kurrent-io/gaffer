@@ -10,6 +10,19 @@ import (
 	godap "github.com/google/go-dap"
 )
 
+// dapTestDeadline is the per-operation timeout applied by sendRequest /
+// readMessage / readCustomEvent. A hung server should fail the test fast
+// with a useful error pointing at the wait line, not run out the full
+// `go test` 10m timeout and crash CI with an unhelpful goroutine dump.
+const dapTestDeadline = 30 * time.Second
+
+func setDeadline(t *testing.T, conn net.Conn) {
+	t.Helper()
+	if err := conn.SetDeadline(time.Now().Add(dapTestDeadline)); err != nil {
+		t.Fatalf("failed to set conn deadline: %v", err)
+	}
+}
+
 func mustStartServer(t *testing.T, handler Handler) (*Server, net.Conn) {
 	t.Helper()
 	srv, err := NewServer("127.0.0.1:0", handler)
@@ -42,6 +55,7 @@ func mustStartServer(t *testing.T, handler Handler) (*Server, net.Conn) {
 
 func sendRequest(t *testing.T, conn net.Conn, msg godap.Message) {
 	t.Helper()
+	setDeadline(t, conn)
 	if err := godap.WriteProtocolMessage(conn, msg); err != nil {
 		t.Fatalf("failed to send request: %v", err)
 	}
@@ -56,6 +70,7 @@ var testCodec = func() *godap.Codec {
 func readMessage(t *testing.T, conn net.Conn, reader *bufio.Reader) godap.Message {
 	t.Helper()
 	for {
+		setDeadline(t, conn)
 		data, err := godap.ReadBaseMessage(reader)
 		if err != nil {
 			t.Fatalf("failed to read message: %v", err)
@@ -74,6 +89,7 @@ func readMessage(t *testing.T, conn net.Conn, reader *bufio.Reader) godap.Messag
 // the JSON envelope directly.
 func readCustomEvent(t *testing.T, conn net.Conn, reader *bufio.Reader, expected string) map[string]any {
 	t.Helper()
+	setDeadline(t, conn)
 	data, err := godap.ReadBaseMessage(reader)
 	if err != nil {
 		t.Fatalf("failed to read message: %v", err)

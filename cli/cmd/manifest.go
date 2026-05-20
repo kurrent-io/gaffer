@@ -4,11 +4,20 @@ import (
 	"encoding/json"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
-	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
+
+type manifest struct {
+	Version  string                     `json:"version"`
+	Commands map[string]manifestCommand `json:"commands"`
+}
+
+type manifestCommand struct {
+	Flags []string `json:"flags"`
+}
 
 func newManifestCmd() *cobra.Command {
 	return &cobra.Command{
@@ -41,7 +50,27 @@ func newManifestCmd() *cobra.Command {
 
 			enc := json.NewEncoder(cmd.OutOrStdout())
 			enc.SetIndent("", "  ")
-			return enc.Encode(cliout.BuildManifest(cmd.Root(), Version))
+			return enc.Encode(buildManifest(cmd.Root(), Version))
 		},
 	}
+}
+
+func buildManifest(root *cobra.Command, version string) manifest {
+	commands := map[string]manifestCommand{}
+
+	for _, child := range root.Commands() {
+		name := child.Name()
+		if name == "manifest" || name == "help" || name == "version" || name == "completion" || name == "man" {
+			continue
+		}
+
+		flags := []string{}
+		child.Flags().VisitAll(func(f *pflag.Flag) {
+			flags = append(flags, f.Name)
+		})
+
+		commands[name] = manifestCommand{Flags: flags}
+	}
+
+	return manifest{Version: version, Commands: commands}
 }

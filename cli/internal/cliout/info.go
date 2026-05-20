@@ -1,6 +1,7 @@
-// Package cliout owns JSON shapes adopted by both the CLI and the MCP
-// server: the `info` / get_projection_info envelope, the `manifest` /
-// get_manifest envelope, and the small formatting helpers they share.
+// Package cliout owns JSON shapes adopted by more than one gaffer
+// surface: the `info` envelope (used by `gaffer info --json`, the MCP
+// `get_projection_info` tool, and the `gaffer dev --json` stream via
+// BuildInfoCore), plus the small formatting helpers they share.
 // Surfaces that opt in get drift protection for free.
 package cliout
 

@@ -44,7 +44,7 @@ func setupLiveTestProject(t *testing.T, suffix string) (*Server, *kurrentdb.Clie
 		AddProjection("counter", projSource).
 		Save()
 
-	s := New(p.Dir, p.Cfg, "test", testManifest())
+	s := New(p.Dir, p.Cfg, "test")
 	t.Cleanup(func() {
 		s.mu.Lock()
 		s.closeSession()

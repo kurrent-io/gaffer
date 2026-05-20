@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
-	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -93,20 +92,8 @@ func setupTestProject(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 
-	s = New(dir, cfg, "test", testManifest())
+	s = New(dir, cfg, "test")
 	return s
-}
-
-// testManifest returns a stand-in manifest the test server returns from
-// the manifest tool. Keeps tests self-contained without depending on the
-// cmd package's cobra tree (which would create an import cycle).
-func testManifest() cliout.Manifest {
-	return cliout.Manifest{
-		Version: "test",
-		Commands: map[string]cliout.ManifestCommand{
-			"info": {Flags: []string{"json"}},
-		},
-	}
 }
 
 func callTool[In, Out any](t *testing.T, s *Server, tool *mcp.Tool, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error), input In) map[string]any {
@@ -956,24 +943,6 @@ func TestInfo_DefaultsWhenSingleProjection(t *testing.T) {
 	result := callTool(t, s, infoTool, s.handleInfo, infoInput{})
 	if result["name"] != "order-count" {
 		t.Errorf("expected default to order-count, got %v", result["name"])
-	}
-}
-
-// --- Manifest ---
-
-func TestManifest(t *testing.T) {
-	s := setupTestProject(t)
-	result := callTool(t, s, manifestTool, s.handleManifest, manifestInput{})
-
-	if result["version"] != "test" {
-		t.Errorf("expected version=test, got %v", result["version"])
-	}
-	commands, ok := result["commands"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected commands map, got %T", result["commands"])
-	}
-	if _, ok := commands["info"]; !ok {
-		t.Error("expected info command in manifest")
 	}
 }
 

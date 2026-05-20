@@ -3,16 +3,14 @@ package cmd
 import (
 	"encoding/json"
 	"testing"
-
-	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 )
 
-func manifestCommands(t *testing.T) map[string]cliout.ManifestCommand {
+func manifestCommands(t *testing.T) map[string]manifestCommand {
 	t.Helper()
-	return cliout.BuildManifest(NewRootCmd(), "test").Commands
+	return buildManifest(NewRootCmd(), "test").Commands
 }
 
-func commandFlags(t *testing.T, commands map[string]cliout.ManifestCommand, name string) map[string]bool {
+func commandFlags(t *testing.T, commands map[string]manifestCommand, name string) map[string]bool {
 	t.Helper()
 	cmd, ok := commands[name]
 	if !ok {
@@ -80,14 +78,14 @@ func TestBuildManifest_InfoFlags(t *testing.T) {
 }
 
 func TestBuildManifest_JSONShape(t *testing.T) {
-	m := cliout.BuildManifest(NewRootCmd(), "1.0.0")
+	m := buildManifest(NewRootCmd(), "1.0.0")
 
 	data, err := json.Marshal(m)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var parsed cliout.Manifest
+	var parsed manifest
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatal(err)
 	}

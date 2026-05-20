@@ -8,7 +8,6 @@ import (
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
-	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
@@ -41,11 +40,10 @@ type serverStats struct {
 }
 
 type Server struct {
-	mcp      *mcp.Server
-	root     string
-	cfg      *config.Config
-	version  string
-	manifest cliout.Manifest
+	mcp     *mcp.Server
+	root    string
+	cfg     *config.Config
+	version string
 
 	mu      sync.Mutex
 	session *activeSession
@@ -133,12 +131,11 @@ func (s *Server) requireSession() (*activeSession, *mcp.CallToolResult) {
 	return s.session, nil
 }
 
-func New(root string, cfg *config.Config, version string, manifest cliout.Manifest) *Server {
+func New(root string, cfg *config.Config, version string) *Server {
 	s := &Server{
-		root:     root,
-		cfg:      cfg,
-		version:  version,
-		manifest: manifest,
+		root:    root,
+		cfg:     cfg,
+		version: version,
 	}
 
 	s.mcp = mcp.NewServer(
@@ -172,7 +169,6 @@ func New(root string, cfg *config.Config, version string, manifest cliout.Manife
 	mcp.AddTool(s.mcp, stepOutTool, trackedTool(s, s.handleStepOut))
 	mcp.AddTool(s.mcp, listEventsTool, trackedTool(s, s.handleListEvents))
 	mcp.AddTool(s.mcp, infoTool, trackedTool(s, s.handleInfo))
-	mcp.AddTool(s.mcp, manifestTool, trackedTool(s, s.handleManifest))
 	mcp.AddTool(s.mcp, versionTool, trackedTool(s, s.handleVersion))
 	s.registerResources()
 	s.registerPrompts()
@@ -180,7 +176,7 @@ func New(root string, cfg *config.Config, version string, manifest cliout.Manife
 	return s
 }
 
-func NewFromProjectRoot(version string, manifest cliout.Manifest) (*Server, error) {
+func NewFromProjectRoot(version string) (*Server, error) {
 	root := project.FindRoot()
 	if root == "" {
 		return nil, project.ErrNotInProject
@@ -191,7 +187,7 @@ func NewFromProjectRoot(version string, manifest cliout.Manifest) (*Server, erro
 		return nil, err
 	}
 
-	return New(root, cfg, version, manifest), nil
+	return New(root, cfg, version), nil
 }
 
 func (s *Server) Run(ctx context.Context) error {

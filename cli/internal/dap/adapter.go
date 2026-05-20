@@ -461,10 +461,12 @@ func (a *DebugAdapter) handleEvaluate(s *Server, req *godap.EvaluateRequest) {
 }
 
 func (a *DebugAdapter) handleConfigurationDone(s *Server, req *godap.ConfigurationDoneRequest) {
-	resp := &godap.ConfigurationDoneResponse{}
-	resp.Response = NewResponse(req.Seq, req.Command)
-	s.Send(resp)
-
+	// Arm the entry pause before sending the response. The editor can
+	// drive the next event into the runner as soon as it sees the
+	// response; if we Send first and the writeLoop flushes before this
+	// goroutine reaches Pause(), the engine processes the event without
+	// breaking and the editor waits indefinitely for a StoppedEvent
+	// that will never arrive. (UI-1583)
 	a.mu.Lock()
 	pauseAtEntry := a.startPausedIfNoBreakpoints && a.breakpointCount == 0
 	if pauseAtEntry {
@@ -474,6 +476,10 @@ func (a *DebugAdapter) handleConfigurationDone(s *Server, req *godap.Configurati
 	if pauseAtEntry {
 		a.session.Pause()
 	}
+
+	resp := &godap.ConfigurationDoneResponse{}
+	resp.Response = NewResponse(req.Seq, req.Command)
+	s.Send(resp)
 
 	a.mu.Lock()
 	a.readyOnce.Do(func() { close(a.readyCh) })

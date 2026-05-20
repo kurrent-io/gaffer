@@ -6,11 +6,9 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import { runGafferCommand, type SpawnTelemetry } from "../discovery/cli.js";
-import {
-	showCliCommandFailure,
-	showTomlExists,
-	showTrustWarning,
-} from "../notifications.js";
+import { showCliCommandFailure } from "../notifications/cli.js";
+import { showTomlExists } from "../notifications/workspace.js";
+import { showTrustWarning } from "../notifications/trust.js";
 import {
 	fileExists,
 	folderDisplayName,

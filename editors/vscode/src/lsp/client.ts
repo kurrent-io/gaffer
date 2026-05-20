@@ -18,7 +18,7 @@ import {
 	type SpawnTelemetry,
 } from "../discovery/cli.js";
 import { log } from "../output.js";
-import { showLspCrashed, showLspFailedToStart } from "../notifications.js";
+import { showLspCrashed, showLspFailedToStart } from "../notifications/lsp.js";
 
 let client: LanguageClient | undefined;
 

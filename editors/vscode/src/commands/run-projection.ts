@@ -16,14 +16,11 @@ import {
 	fetchProjections,
 	type ProjectionDetails,
 } from "../lsp/symbols.js";
-import {
-	showDebugUnsupported,
-	showLspError,
-	showLspNotReady,
-	showManifestFailure,
-	showNoProjections,
-	showTrustWarning,
-} from "../notifications.js";
+import { showManifestFailure } from "../notifications/cli.js";
+import { showDebugUnsupported } from "../notifications/debug.js";
+import { showLspError, showLspNotReady } from "../notifications/lsp.js";
+import { showTrustWarning } from "../notifications/trust.js";
+import { showNoProjections } from "../notifications/workspace.js";
 import type { DebugProjectionArgs } from "../debugging/session-controller.js";
 
 export interface RunProjectionDeps {

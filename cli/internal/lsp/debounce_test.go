@@ -39,7 +39,7 @@ fixtures.happy = "fixtures/happy.json"
 	// only the didChange publishes after this point.
 	waitFor(t, func() bool {
 		return findPublishDiagnostics(n.snapshot(), uri) != nil
-	}, time.Second)
+	}, waitForTimeout)
 	baseline := countPublishDiagnostics(n.snapshot(), uri)
 
 	// Five rapid changes well inside one debounce window. Each
@@ -67,7 +67,7 @@ entry = "p.js"`,
 	// could be satisfied by the didOpen publish itself.
 	waitFor(t, func() bool {
 		return countPublishDiagnostics(n.snapshot(), uri)-baseline >= 1
-	}, time.Second)
+	}, waitForTimeout)
 
 	// Exactly one new publish should have arrived since baseline -
 	// the intermediate transient states must not have surfaced.
@@ -107,7 +107,7 @@ func TestServer_DidCloseClearsPendingDebounce(t *testing.T) {
 	// post-close count.
 	waitFor(t, func() bool {
 		return findPublishDiagnostics(n.snapshot(), uri) != nil
-	}, time.Second)
+	}, waitForTimeout)
 
 	// didChange to invalid content; didClose immediately (well
 	// under the debounce window).
@@ -176,7 +176,7 @@ func TestServer_ShutdownDrainsPendingDebounce(t *testing.T) {
 	})
 	waitFor(t, func() bool {
 		return findPublishDiagnostics(n.snapshot(), uri) != nil
-	}, time.Second)
+	}, waitForTimeout)
 	baseline := countPublishDiagnostics(n.snapshot(), uri)
 
 	_ = conn.Notify(ctx, MethodDidChange, &DidChangeTextDocumentParams{
@@ -233,7 +233,7 @@ fixtures.happy = "fixtures/happy.json"
 	waitFor(t, func() bool {
 		state, ok := server.docs.Get(uri)
 		return ok && state.Source == sourceMemory
-	}, time.Second)
+	}, waitForTimeout)
 
 	// Arm a debounce that will eventually parse the buffer.
 	_ = conn.Notify(ctx, MethodDidChange, &DidChangeTextDocumentParams{
@@ -296,7 +296,7 @@ func TestServer_DidChangeDebounceIsPerURI(t *testing.T) {
 	waitFor(t, func() bool {
 		return findPublishDiagnostics(n.snapshot(), uriA) != nil &&
 			findPublishDiagnostics(n.snapshot(), uriB) != nil
-	}, time.Second)
+	}, waitForTimeout)
 	baselineA := countPublishDiagnostics(n.snapshot(), uriA)
 	baselineB := countPublishDiagnostics(n.snapshot(), uriB)
 
@@ -318,7 +318,7 @@ func TestServer_DidChangeDebounceIsPerURI(t *testing.T) {
 	waitFor(t, func() bool {
 		return countPublishDiagnostics(n.snapshot(), uriA)-baselineA >= 1 &&
 			countPublishDiagnostics(n.snapshot(), uriB)-baselineB >= 1
-	}, time.Second)
+	}, waitForTimeout)
 
 	// Each URI should have produced exactly one debounced publish.
 	if got := countPublishDiagnostics(n.snapshot(), uriA) - baselineA; got != 1 {

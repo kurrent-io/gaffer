@@ -40,7 +40,7 @@ entry = "beta.js"
 		_, okA := server.docs.GetParse(uriA)
 		_, okB := server.docs.GetParse(uriB)
 		return okA && okB
-	}, time.Second)
+	}, waitForTimeout)
 
 	var symbols []SymbolInformation
 	if err := conn.Call(ctx, MethodWorkspaceSymbol, WorkspaceSymbolParams{}, &symbols); err != nil {
@@ -98,7 +98,7 @@ entry = "missing-name.js"
 	waitFor(t, func() bool {
 		_, ok := server.docs.GetParse(tomlURI)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	var symbols []SymbolInformation
 	if err := conn.Call(ctx, MethodWorkspaceSymbol, WorkspaceSymbolParams{}, &symbols); err != nil {

@@ -16,15 +16,11 @@ type listProjectionsInput struct{}
 func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest, _ listProjectionsInput) (*mcp.CallToolResult, any, error) {
 	projections := []map[string]any{}
 	for _, proj := range s.cfg.Projection {
-		entry := map[string]any{
+		projections = append(projections, map[string]any{
 			"name":          proj.Name,
 			"entry":         proj.Entry,
 			"engineVersion": s.cfg.EffectiveEngineVersion(&proj),
-		}
-		if proj.Enabled != nil && !*proj.Enabled {
-			entry["enabled"] = false
-		}
-		projections = append(projections, entry)
+		})
 	}
 
 	return toolResult(map[string]any{

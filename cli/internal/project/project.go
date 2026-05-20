@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+
+	"github.com/kurrent-io/gaffer/cli/internal/pathutil"
 )
 
 var ErrNotInProject = errors.New("not in a gaffer project (no gaffer.toml found)")
@@ -35,15 +37,5 @@ func FindRoot() string {
 // FindRootFrom walks up from the given directory looking for gaffer.toml.
 // Returns the directory containing it, or empty string if not found.
 func FindRootFrom(dir string) string {
-	for {
-		if _, err := os.Stat(filepath.Join(dir, ConfigFileName)); err == nil {
-			return dir
-		}
-
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return ""
-		}
-		dir = parent
-	}
+	return pathutil.WalkUpFor(dir, ConfigFileName, "")
 }

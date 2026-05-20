@@ -77,6 +77,58 @@ func ResolveAncestorSymlinks(p string) (string, error) {
 	}
 }
 
+// WalkUpFor walks up from start looking for a directory containing
+// `marker` (a filename like "gaffer.toml"). Returns the directory
+// holding the marker, or empty string if not found.
+//
+// `stopAt`, if non-empty, bounds the walk: WalkUpFor returns "" once
+// `dir == stopAt` BEFORE checking that directory. Useful for policy
+// walks that must not cross into a parent tree (e.g. a workspace
+// gaffer.toml shouldn't be picked up by a CWD search rooted in $HOME).
+// Pass "" for an unbounded walk.
+//
+// Empty `start` returns "" without touching the filesystem - silently
+// falling back to cwd would surprise. Both `start` and `stopAt` are
+// filepath.Clean'd at entry so trailing-slash mismatches don't make
+// the bound miss.
+//
+// Symlinks aren't resolved; callers wanting symlink-correct bounds
+// must EvalSymlinks both arguments first.
+func WalkUpFor(start, marker, stopAt string) string {
+	if start == "" {
+		return ""
+	}
+	dir := filepath.Clean(start)
+	if stopAt != "" {
+		stopAt = filepath.Clean(stopAt)
+	}
+	for {
+		if stopAt != "" && dir == stopAt {
+			return ""
+		}
+		if _, err := os.Stat(filepath.Join(dir, marker)); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+// AnchorUnder returns the absolute, cleaned form of p. If p is
+// already absolute, p is returned cleaned; otherwise p is joined to
+// root and cleaned. Used by every caller that takes a "relative or
+// absolute" path argument and needs to resolve it against a known
+// root before reading from disk.
+func AnchorUnder(root, p string) string {
+	if filepath.IsAbs(p) {
+		return filepath.Clean(p)
+	}
+	return filepath.Clean(filepath.Join(root, p))
+}
+
 // IsInsideRoot reports whether abs (an absolute filesystem path)
 // resolves to a location inside root, following any symlinks on
 // either side. Used as a defence against in-tree symlinks pointing

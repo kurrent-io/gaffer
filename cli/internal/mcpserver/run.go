@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
+	"github.com/kurrent-io/gaffer/cli/internal/pathutil"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -113,9 +113,7 @@ func (s *Server) startLiveMode(sess *activeSession, breakAt int64) error {
 }
 
 func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string, breakAt int64) error {
-	if !filepath.IsAbs(eventsPath) {
-		eventsPath = filepath.Join(s.root, eventsPath)
-	}
+	eventsPath = pathutil.AnchorUnder(s.root, eventsPath)
 
 	events, err := engine.LoadEvents(eventsPath)
 	if err != nil {
@@ -148,9 +146,7 @@ func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string, bre
 }
 
 func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.CallToolResult, any, error) {
-	if !filepath.IsAbs(eventsPath) {
-		eventsPath = filepath.Join(s.root, eventsPath)
-	}
+	eventsPath = pathutil.AnchorUnder(s.root, eventsPath)
 
 	events, err := engine.LoadEvents(eventsPath)
 	if err != nil {

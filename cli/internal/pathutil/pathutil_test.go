@@ -174,6 +174,79 @@ func TestIsInsideRoot_SymlinkEscape(t *testing.T) {
 	}
 }
 
+func TestWalkUpFor_FindsMarkerAtStart(t *testing.T) {
+	dir := t.TempDir()
+	marker := "gaffer.toml"
+	if err := os.WriteFile(filepath.Join(dir, marker), []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := WalkUpFor(dir, marker, ""); !sameDir(t, got, dir) {
+		t.Errorf("got %q, want same as %q", got, dir)
+	}
+}
+
+func TestWalkUpFor_WalksUpToFindMarker(t *testing.T) {
+	root := t.TempDir()
+	marker := "gaffer.toml"
+	if err := os.WriteFile(filepath.Join(root, marker), []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(root, "a", "b", "c")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := WalkUpFor(nested, marker, ""); !sameDir(t, got, root) {
+		t.Errorf("got %q, want %q", got, root)
+	}
+}
+
+func TestWalkUpFor_ReturnsEmptyWhenMarkerNotFound(t *testing.T) {
+	dir := t.TempDir()
+	if got := WalkUpFor(dir, "gaffer.toml", ""); got != "" {
+		t.Errorf("got %q, want \"\"", got)
+	}
+}
+
+func TestWalkUpFor_StopsAtBound(t *testing.T) {
+	// Marker exists at the bound; the walk must NOT see it.
+	bound := t.TempDir()
+	marker := "gaffer.toml"
+	if err := os.WriteFile(filepath.Join(bound, marker), []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(bound, "child")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := WalkUpFor(nested, marker, bound); got != "" {
+		t.Errorf("expected bound to prevent finding marker, got %q", got)
+	}
+}
+
+func TestWalkUpFor_EmptyStartReturnsEmpty(t *testing.T) {
+	if got := WalkUpFor("", "gaffer.toml", ""); got != "" {
+		t.Errorf("got %q, want \"\"", got)
+	}
+}
+
+func TestAnchorUnder(t *testing.T) {
+	cases := []struct {
+		name, root, p, want string
+	}{
+		{"relative anchors under root", "/proj", "events.json", "/proj/events.json"},
+		{"absolute returns as-is", "/proj", "/etc/events.json", "/etc/events.json"},
+		{"cleans extra separators", "/proj", "sub//file.json", "/proj/sub/file.json"},
+		{"cleans dot segments", "/proj", "sub/./file.json", "/proj/sub/file.json"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := AnchorUnder(tc.root, tc.p); got != tc.want {
+				t.Errorf("AnchorUnder(%q, %q) = %q, want %q", tc.root, tc.p, got, tc.want)
+			}
+		})
+	}
+}
+
 // sameDir checks whether two paths refer to the same directory on
 // disk, tolerating /var <-> /private/var-style symlinks the host OS
 // may introduce.

@@ -24,23 +24,13 @@ func (jw *jsonWriter) writeLine(v any) {
 }
 
 func (jw *jsonWriter) WriteInfo(proj *engine.Projection, info gafferruntime.ProjectionInfo) {
-	// Stream a trimmed cliout.BuildInfoJSON. The dev stream omits
-	// `entry` (the consumer already knows the file path it invoked)
-	// and `fixtures` (irrelevant in live mode); biState and
-	// producesResults stay off to preserve the existing wire format
-	// for `gaffer dev --json` consumers. Re-using BuildInfoJSON keeps
-	// the source / categories / streams / partitioning / dbVersion
-	// keys identical to `gaffer info --json` so an agent moving
-	// between surfaces doesn't have to translate.
-	body := cliout.BuildInfoJSON(proj, info)
-	delete(body, "entry")
-	delete(body, "fixtures")
-	delete(body, "biState")
-	delete(body, "producesResults")
-
+	// BuildInfoCore gives the dev stream the same source / categories /
+	// streams / events / partitioning / dbVersion shape as `info --json`
+	// without the configuration-time fields (entry, fixtures, biState,
+	// producesResults) the stream deliberately omits.
 	jw.writeLine(map[string]any{
 		"type":       "info",
-		"projection": body,
+		"projection": cliout.BuildInfoCore(proj, info),
 	})
 }
 

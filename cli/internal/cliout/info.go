@@ -1,9 +1,7 @@
 // Package cliout owns JSON shapes adopted by both the CLI and the MCP
 // server: the `info` / get_projection_info envelope, the `manifest` /
 // get_manifest envelope, and the small formatting helpers they share.
-// Surfaces that opt in get drift protection for free; surfaces that
-// don't (e.g. the streaming `dev --json` writer) still build their own
-// shapes inline.
+// Surfaces that opt in get drift protection for free.
 package cliout
 
 import (
@@ -11,25 +9,20 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
-// BuildInfoJSON returns the flat JSON-ready map that `gaffer info --json`
-// emits. Used by both the CLI command and the MCP get_projection_info
-// tool so the two surfaces stay shape-identical.
-//
-// Returns map[string]any (not a typed struct) because the output is a
-// conditional union: seven fields are present only when the projection
-// declares them (categories, streams, events, partitioning,
-// diagnostics, fixtures) and would each need a typed omitempty tag.
-// A map keeps the conditional shape readable; readers that need a
-// typed view can decode the result downstream.
-func BuildInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) map[string]any {
+// BuildInfoCore returns the subset of projection-info keys that every
+// "this is projection X" surface emits: name, source, dbVersion,
+// engineVersion, and the conditional event-/category-/stream-/
+// partitioning-/diagnostics-shaped fields. The streaming
+// `gaffer dev --json` writer uses this directly so its info envelope
+// stays in step with `info --json`'s body without inheriting the
+// configuration-time fields (entry, fixtures, biState, producesResults)
+// that the stream form omits.
+func BuildInfoCore(proj *engine.Projection, info gafferruntime.ProjectionInfo) map[string]any {
 	src := engine.DescribeSource(info)
 	out := map[string]any{
-		"name":            proj.Def.Name,
-		"entry":           proj.Def.Entry,
-		"engineVersion":   proj.EngineVersion,
-		"source":          src["type"],
-		"biState":         info.BiState,
-		"producesResults": info.ProducesResults,
+		"name":          proj.Def.Name,
+		"engineVersion": proj.EngineVersion,
+		"source":        src["type"],
 		// Always emit dbVersion: null distinguishes unversioned (bugs on)
 		// from a real version. Consumers need this signal explicitly.
 		"dbVersion": NullableString(proj.DbVersion),
@@ -49,6 +42,26 @@ func BuildInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) m
 	if len(info.Diagnostics) > 0 {
 		out["diagnostics"] = info.Diagnostics
 	}
+	return out
+}
+
+// BuildInfoJSON returns the flat JSON-ready map that `gaffer info --json`
+// emits, and that the MCP get_projection_info tool returns. Built by
+// taking the shared BuildInfoCore subset and adding the configuration-
+// time fields (entry, biState, producesResults, fixtures) that callers
+// inspecting a configured projection want to see.
+//
+// Returns map[string]any (not a typed struct) because the output is a
+// conditional union: six fields are present only when the projection
+// declares them (categories, streams, events, partitioning,
+// diagnostics, fixtures) and would each need a typed omitempty tag.
+// A map keeps the conditional shape readable; readers that need a
+// typed view can decode the result downstream.
+func BuildInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) map[string]any {
+	out := BuildInfoCore(proj, info)
+	out["entry"] = proj.Def.Entry
+	out["biState"] = info.BiState
+	out["producesResults"] = info.ProducesResults
 	if len(proj.Def.Fixtures) > 0 {
 		names := proj.Def.FixtureNames()
 		fixtures := make([]map[string]any, len(names))

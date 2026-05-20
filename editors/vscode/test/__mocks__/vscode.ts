@@ -471,6 +471,45 @@ function makeDiagnosticCollection(name: string): FakeDiagnosticCollection {
 	return collection;
 }
 
+// ---- StatusBarItem -------------------------------------------------------
+
+export interface FakeStatusBarItem extends vscode.StatusBarItem {
+	showCount: number;
+	hideCount: number;
+	disposed: boolean;
+}
+
+function makeFakeStatusBarItem(
+	alignment: vscode.StatusBarAlignment,
+	priority: number | undefined,
+): FakeStatusBarItem {
+	const item: FakeStatusBarItem = {
+		id: "",
+		name: undefined,
+		alignment,
+		priority,
+		text: "",
+		tooltip: undefined,
+		color: undefined,
+		backgroundColor: undefined,
+		command: undefined,
+		accessibilityInformation: undefined,
+		showCount: 0,
+		hideCount: 0,
+		disposed: false,
+		show(): void {
+			item.showCount++;
+		},
+		hide(): void {
+			item.hideCount++;
+		},
+		dispose(): void {
+			item.disposed = true;
+		},
+	};
+	return item;
+}
+
 // ---- Terminal -------------------------------------------------------------
 
 export interface FakeTerminal extends vscode.Terminal {
@@ -693,6 +732,7 @@ export interface MockState {
 	extensions: Map<string, vscode.Extension<unknown>>;
 	terminals: FakeTerminal[];
 	terminalClosed: EventEmitter<vscode.Terminal>;
+	statusBarItems: FakeStatusBarItem[];
 }
 
 export const state: MockState = createInitialState();
@@ -736,6 +776,7 @@ function createInitialState(): MockState {
 		extensions: new Map(),
 		terminals: [],
 		terminalClosed: new EventEmitter(),
+		statusBarItems: [],
 	};
 }
 
@@ -803,6 +844,11 @@ export const ConfigurationTarget = {
 	Global: 1,
 	Workspace: 2,
 	WorkspaceFolder: 3,
+} as const;
+
+export const StatusBarAlignment = {
+	Left: 1,
+	Right: 2,
 } as const;
 
 // ---- workspace ------------------------------------------------------------
@@ -950,6 +996,7 @@ type WindowShape = Pick<
 	| "registerTreeDataProvider"
 	| "registerWebviewViewProvider"
 	| "createTerminal"
+	| "createStatusBarItem"
 	| "onDidCloseTerminal"
 > & {
 	createOutputChannel(name: string, languageId?: string): vscode.OutputChannel;
@@ -1029,6 +1076,25 @@ export const window: WindowShape = {
 			thisArgs,
 			disposables,
 		)) as typeof vscode.window.onDidCloseTerminal,
+	createStatusBarItem: ((
+		alignmentOrId?: vscode.StatusBarAlignment | string,
+		priorityOrAlignment?: number | vscode.StatusBarAlignment,
+		_priority?: number,
+	): vscode.StatusBarItem => {
+		// Real API overloads: (alignment?, priority?) or (id, alignment?, priority?).
+		// Tests only ever call the (alignment, priority) form, so cover that.
+		const alignment =
+			typeof alignmentOrId === "number"
+				? alignmentOrId
+				: ((priorityOrAlignment as vscode.StatusBarAlignment) ?? 1);
+		const priority =
+			typeof alignmentOrId === "number"
+				? (priorityOrAlignment as number | undefined)
+				: _priority;
+		const item = makeFakeStatusBarItem(alignment, priority);
+		state.statusBarItems.push(item);
+		return item;
+	}) as typeof vscode.window.createStatusBarItem,
 };
 
 // ---- commands -------------------------------------------------------------

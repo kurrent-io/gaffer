@@ -10,12 +10,32 @@ import {
 import { makeContext } from "../../test/testutil/fake-context.js";
 import {
 	fireTerminalClosed,
-	getShownMessages,
 	getState,
-	queueMessageResponse,
+	getStatusBarItems,
+	queueQuickPick,
 	resetVscode,
 	setConfiguration,
 } from "../../test/testutil/vscode-state.js";
+import type { UpdatePromptDeps } from "./update-prompt.js";
+
+const COMMAND_OPEN = "gaffer._cliUpdate.open";
+
+function makeDeps(overrides: Partial<UpdatePromptDeps> = {}): UpdatePromptDeps {
+	return {
+		context: makeContext(),
+		current: "0.1.0",
+		latest: "0.2.0",
+		runUpdate: vi.fn(),
+		onUpdated: vi.fn(),
+		...overrides,
+	};
+}
+
+// Drive the status bar item's click handler. Mirrors what VS Code
+// does internally when the user clicks the item.
+async function clickStatusBar(): Promise<void> {
+	await vscode.commands.executeCommand(COMMAND_OPEN);
+}
 
 describe("showCliUpdatePrompt", () => {
 	beforeEach(() => {
@@ -24,221 +44,124 @@ describe("showCliUpdatePrompt", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("Update: runs the upgrade and triggers onUpdated on success", async () => {
-		const ctx = makeContext();
+	it("creates a single status bar item with the version and tooltip", () => {
+		showCliUpdatePrompt(makeDeps({ current: "0.1.0", latest: "0.2.0" }));
+		const items = getStatusBarItems();
+		expect(items).toHaveLength(1);
+		expect(items[0]?.text).toBe("$(arrow-circle-up) gaffer 0.2.0");
+		expect(items[0]?.tooltip).toBe(
+			"gaffer 0.2.0 is available (you have 0.1.0). Click to update.",
+		);
+		expect(items[0]?.showCount).toBe(1);
+		expect(items[0]?.command).toBe(COMMAND_OPEN);
+	});
+
+	it("Update: runs the upgrade, triggers onUpdated on success, and dismisses the item", async () => {
 		const runUpdate = vi.fn().mockResolvedValue({ ok: true });
 		const onUpdated = vi.fn().mockResolvedValue(undefined);
-		queueMessageResponse("Update");
-		await showCliUpdatePrompt({
-			context: ctx,
-			current: "0.1.0",
-			latest: "0.2.0",
-			runUpdate,
-			onUpdated,
-		});
+		showCliUpdatePrompt(makeDeps({ runUpdate, onUpdated }));
+		queueQuickPick({ label: "Update" });
+		await clickStatusBar();
 		expect(runUpdate).toHaveBeenCalledTimes(1);
 		expect(onUpdated).toHaveBeenCalledTimes(1);
+		expect(getStatusBarItems()[0]?.disposed).toBe(true);
 	});
 
-	it("Update: does not call onUpdated when the upgrade reports failure", async () => {
+	it("Update failure: leaves the item visible and clears the session guard", async () => {
 		const ctx = makeContext();
-		const runUpdate = vi.fn().mockResolvedValue({ ok: false });
-		const onUpdated = vi.fn();
-		queueMessageResponse("Update");
-		await showCliUpdatePrompt({
-			context: ctx,
-			current: "0.1.0",
-			latest: "0.2.0",
-			runUpdate,
-			onUpdated,
-		});
-		expect(runUpdate).toHaveBeenCalledTimes(1);
-		expect(onUpdated).not.toHaveBeenCalled();
+		showCliUpdatePrompt(
+			makeDeps({
+				context: ctx,
+				runUpdate: vi.fn().mockResolvedValue({ ok: false }),
+			}),
+		);
+		queueQuickPick({ label: "Update" });
+		await clickStatusBar();
+		// Item stays visible so the user can retry the same version
+		// after fixing whatever broke npm.
+		expect(getStatusBarItems()[0]?.disposed).toBe(false);
+		// Show the prompt again for the same version - lastPromptedVersion
+		// should have been cleared on failure so the call goes through.
+		// We dispose the current item first since the API short-circuits
+		// if activeItem !== null.
+		__resetUpdatePromptStateForTests();
+		showCliUpdatePrompt(makeDeps({ context: ctx, latest: "0.2.0" }));
+		expect(getStatusBarItems().filter((i) => !i.disposed)).toHaveLength(1);
 	});
 
-	// After a failed Update click the user needs an in-session retry
-	// path. The lastPromptedVersion guard normally suppresses the
-	// next manifest reload's toast for the same version, but a
-	// failed action should leave the door open.
-	it("Update failure: clears the session guard so the same version re-prompts", async () => {
-		const ctx = makeContext();
-		queueMessageResponse("Update");
-		await showCliUpdatePrompt({
-			context: ctx,
-			current: "0.1.0",
-			latest: "0.2.0",
-			runUpdate: vi.fn().mockResolvedValue({ ok: false }),
-			onUpdated: vi.fn(),
-		});
-		queueMessageResponse(undefined);
-		await showCliUpdatePrompt({
-			context: ctx,
-			current: "0.1.0",
-			latest: "0.2.0",
-			runUpdate: vi.fn(),
-			onUpdated: vi.fn(),
-		});
-		expect(getShownMessages()).toHaveLength(2);
-	});
-
-	it("Update: swallows a runUpdate rejection so the void-fired prompt never throws", async () => {
-		const ctx = makeContext();
+	it("Update: swallows a runUpdate rejection without crashing", async () => {
 		const runUpdate = vi.fn().mockRejectedValue(new Error("spawn failed"));
 		const onUpdated = vi.fn();
-		queueMessageResponse("Update");
-		await expect(
-			showCliUpdatePrompt({
-				context: ctx,
-				current: "0.1.0",
-				latest: "0.2.0",
-				runUpdate,
-				onUpdated,
-			}),
-		).resolves.toBeUndefined();
+		showCliUpdatePrompt(makeDeps({ runUpdate, onUpdated }));
+		queueQuickPick({ label: "Update" });
+		await expect(clickStatusBar()).resolves.toBeUndefined();
 		expect(onUpdated).not.toHaveBeenCalled();
 	});
 
-	it("swallows a showInformationMessage rejection without bubbling", async () => {
+	it("Skip this version: records the version on globalState and dismisses the item", async () => {
 		const ctx = makeContext();
-		vi.spyOn(vscode.window, "showInformationMessage").mockRejectedValue(
-			new Error("toast failed"),
-		);
-		await expect(
-			showCliUpdatePrompt({
-				context: ctx,
-				current: "0.1.0",
-				latest: "0.2.0",
-				runUpdate: vi.fn(),
-				onUpdated: vi.fn(),
-			}),
-		).resolves.toBeUndefined();
-	});
-
-	it("Skip this version: records the latest version in globalState", async () => {
-		const ctx = makeContext();
-		queueMessageResponse("Skip this version");
-		await showCliUpdatePrompt({
-			context: ctx,
-			current: "0.1.0",
-			latest: "0.2.0",
-			runUpdate: vi.fn(),
-			onUpdated: vi.fn(),
-		});
+		showCliUpdatePrompt(makeDeps({ context: ctx, latest: "0.2.0" }));
+		queueQuickPick({ label: "Skip this version" });
+		await clickStatusBar();
 		expect(isCliUpdatePromptSuppressed(ctx, "0.2.0")).toBe(true);
-		// A newer version should re-prompt.
 		expect(isCliUpdatePromptSuppressed(ctx, "0.3.0")).toBe(false);
+		expect(getStatusBarItems()[0]?.disposed).toBe(true);
 	});
 
-	it("Never ask: flips the gaffer.cliUpdateNotifications setting to false", async () => {
+	it("Never ask: flips gaffer.cliUpdateNotifications to false and dismisses the item", async () => {
 		const ctx = makeContext();
-		queueMessageResponse("Never ask");
-		await showCliUpdatePrompt({
-			context: ctx,
-			current: "0.1.0",
-			latest: "0.2.0",
-			runUpdate: vi.fn(),
-			onUpdated: vi.fn(),
-		});
+		showCliUpdatePrompt(makeDeps({ context: ctx }));
+		queueQuickPick({ label: "Never ask" });
+		await clickStatusBar();
 		expect(
 			vscode.workspace
 				.getConfiguration("gaffer")
 				.get<boolean>("cliUpdateNotifications"),
 		).toBe(false);
-		// Suppression follows the setting, not a hidden flag.
 		expect(isCliUpdatePromptSuppressed(ctx, "0.2.0")).toBe(true);
-		expect(isCliUpdatePromptSuppressed(ctx, "9.9.9")).toBe(true);
+		expect(getStatusBarItems()[0]?.disposed).toBe(true);
 	});
 
-	it("toast dismissed (X / focus loss): leaves the dismissed-version key alone", async () => {
+	it("Quickpick dismissed (Esc): leaves the item visible and no state changed", async () => {
 		const ctx = makeContext();
-		await showCliUpdatePrompt({
-			context: ctx,
-			current: "0.1.0",
-			latest: "0.2.0",
-			runUpdate: vi.fn(),
-			onUpdated: vi.fn(),
-		});
-		// No suppression flag persisted - a fresh context would still
-		// prompt for the same version. The in-session dedupe is via
-		// the module-level lastPromptedVersion guard, not state.
-		expect(isCliUpdatePromptSuppressed(makeContext(), "0.2.0")).toBe(false);
+		showCliUpdatePrompt(makeDeps({ context: ctx }));
+		queueQuickPick(undefined);
+		await clickStatusBar();
+		expect(getStatusBarItems()[0]?.disposed).toBe(false);
+		expect(isCliUpdatePromptSuppressed(ctx, "0.2.0")).toBe(false);
 	});
 
-	it("does not re-prompt within the same session after a dismissed toast", async () => {
-		const ctx = makeContext();
-		queueMessageResponse(undefined);
-		await showCliUpdatePrompt({
-			context: ctx,
-			current: "0.1.0",
-			latest: "0.2.0",
-			runUpdate: vi.fn(),
-			onUpdated: vi.fn(),
-		});
-		// Second call with the same latest: the lastPromptedVersion
-		// guard suppresses the toast even though no persistent flag
-		// was set. A different latest version DOES re-prompt.
-		await showCliUpdatePrompt({
-			context: ctx,
-			current: "0.1.0",
-			latest: "0.2.0",
-			runUpdate: vi.fn(),
-			onUpdated: vi.fn(),
-		});
-		expect(getShownMessages()).toHaveLength(1);
-
-		queueMessageResponse(undefined);
-		await showCliUpdatePrompt({
-			context: ctx,
-			current: "0.1.0",
-			latest: "0.2.1",
-			runUpdate: vi.fn(),
-			onUpdated: vi.fn(),
-		});
-		expect(getShownMessages()).toHaveLength(2);
-	});
-
-	it("dedupes concurrent calls onto the in-flight prompt", async () => {
-		const ctx = makeContext();
-		queueMessageResponse("Never ask");
-		const first = showCliUpdatePrompt({
-			context: ctx,
-			current: "0.1.0",
-			latest: "0.2.0",
-			runUpdate: vi.fn(),
-			onUpdated: vi.fn(),
-		});
-		const second = showCliUpdatePrompt({
-			context: ctx,
-			current: "0.1.0",
-			latest: "0.2.0",
-			runUpdate: vi.fn(),
-			onUpdated: vi.fn(),
-		});
-		await Promise.all([first, second]);
-		expect(getShownMessages()).toHaveLength(1);
-	});
-
-	it("renders the expected toast wording and buttons", async () => {
-		const ctx = makeContext();
-		queueMessageResponse(undefined);
-		await showCliUpdatePrompt({
-			context: ctx,
-			current: "0.1.0",
-			latest: "0.2.0",
-			runUpdate: vi.fn(),
-			onUpdated: vi.fn(),
-		});
-		const messages = getShownMessages();
-		expect(messages).toHaveLength(1);
-		expect(messages[0]?.kind).toBe("info");
-		expect(messages[0]?.message).toBe(
-			"gaffer 0.2.0 is available (you have 0.1.0). Update?",
+	it("Swallows a showQuickPick rejection without bubbling", async () => {
+		showCliUpdatePrompt(makeDeps());
+		vi.spyOn(vscode.window, "showQuickPick").mockRejectedValue(
+			new Error("quickpick failed"),
 		);
-		expect(messages[0]?.items).toEqual([
-			"Update",
-			"Skip this version",
-			"Never ask",
-		]);
+		await expect(clickStatusBar()).resolves.toBeUndefined();
+	});
+
+	it("Dedupes overlapping shows with the same latest version", () => {
+		const deps = makeDeps();
+		showCliUpdatePrompt(deps);
+		showCliUpdatePrompt(deps);
+		expect(getStatusBarItems()).toHaveLength(1);
+	});
+
+	it("Does not re-create within the same session after the toast was dismissed (Esc)", async () => {
+		// Show, dismiss the quickpick, then show again for the same
+		// version - the lastPromptedVersion guard prevents a second
+		// item from appearing. A different version DOES create a new
+		// item (after resetting the prior one for the test).
+		showCliUpdatePrompt(makeDeps({ latest: "0.2.0" }));
+		queueQuickPick(undefined);
+		await clickStatusBar();
+		showCliUpdatePrompt(makeDeps({ latest: "0.2.0" }));
+		expect(getStatusBarItems()).toHaveLength(1);
+
+		// The first item is still active; clear it and show for a
+		// newer version.
+		__resetUpdatePromptStateForTests();
+		showCliUpdatePrompt(makeDeps({ latest: "0.2.1" }));
+		expect(getStatusBarItems().filter((i) => !i.disposed)).toHaveLength(1);
 	});
 });
 

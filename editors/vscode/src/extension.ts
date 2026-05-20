@@ -25,6 +25,12 @@ import {
 } from "./diagnostics.js";
 import { showManifestFailure } from "./notifications/cli.js";
 import {
+	clearInstallPromptDismissed,
+	isInstallPromptDismissed,
+	runNpmInstall,
+	showCliNotFoundPrompt,
+} from "./notifications/install-prompt.js";
+import {
 	openTelemetryDisclosurePage,
 	showTelemetryDisclosure,
 } from "./notifications/telemetry.js";
@@ -147,12 +153,14 @@ export async function activate(
 	// without this snapshot the two paths look identical downstream.
 	const untrustedAtFetch = !vscode.workspace.isTrusted;
 	let manifestErr: unknown;
+	// The error is just captured here; the user-facing toast (generic
+	// CLI-failure or the install prompt for ENOENT) fires from
+	// activateAfterTelemetry below, once reloadManifest is in scope.
 	const initialManifest = await tryFetchManifest(
 		workspaceCwd(),
 		activeTelemetry,
 		(err) => {
 			manifestErr = err;
-			return showManifestFailure(err);
 		},
 	);
 
@@ -230,12 +238,12 @@ async function activateAfterTelemetry(
 		statusProvider.setPhase(phase),
 	);
 	const lspCodeLens = new LspCodeLensProvider();
-	lspCodeLens.setManifest(initialManifest);
 	context.subscriptions.push(stepProvider, stateProvider, lspCodeLens);
 
 	// Single source of truth for the latest manifest. The LSP spawn
-	// gate reads it via predicate; the reload chain updates it.
-	let latestManifest: Manifest | null = initialManifest;
+	// gate reads it via predicate; reloadManifest + handleManifestOutcome
+	// update it.
+	let latestManifest: Manifest | null = null;
 
 	// Spawn the LSP server. The lens provider activates once
 	// the client is ready; until then provideCodeLenses returns
@@ -299,6 +307,45 @@ async function activateAfterTelemetry(
 	});
 	controller.register(context);
 
+	// Single sink for every manifest result, initial and reload alike.
+	// Owns: latestManifest write-through, lens-provider notify, dismiss-
+	// flag clear, and the toast / install-prompt routing for failures.
+	// ENOENT goes to the install bootstrap unless the user dismissed it
+	// for this workspace; the dismissal silences the fallback generic
+	// toast too, since both share the same "binary missing" cause.
+	// Other failures (parse, EACCES, timeout) always toast.
+	const handleManifestOutcome = (
+		manifest: Manifest | null,
+		err: unknown,
+		opts: { trustedAtFetch: boolean },
+	): void => {
+		latestManifest = manifest;
+		lspCodeLens.setManifest(manifest);
+		// Kick the LSP gate after every outcome so a manifest that
+		// just transitioned from null to a value spawns the deferred
+		// client. Idempotent if the client is already up or if any
+		// gate still fails.
+		retryStartLanguageClient();
+		if (manifest !== null) {
+			void clearInstallPromptDismissed(context);
+			return;
+		}
+		if (err === undefined) return;
+		if (!opts.trustedAtFetch) return;
+		const reason = classifyManifestError(err);
+		if (reason === "binary_not_found") {
+			if (!isInstallPromptDismissed(context)) {
+				void showCliNotFoundPrompt({
+					context,
+					runInstall: runNpmInstall,
+					onInstalled: reloadManifest,
+				});
+			}
+			return;
+		}
+		void showManifestFailure(err);
+	};
+
 	// Async orchestrator, serialised on a promise chain so
 	// overlapping events (config change + trust grant in quick
 	// succession) can't interleave setters out of order. Body is
@@ -310,18 +357,12 @@ async function activateAfterTelemetry(
 	const reloadManifest = (): Promise<void> => {
 		refreshChain = refreshChain.then(async () => {
 			try {
-				const m = await tryFetchManifest(
-					workspaceCwd(),
-					telemetry,
-					showManifestFailure,
-				);
-				latestManifest = m;
-				lspCodeLens.setManifest(m);
-				// Re-evaluate the LSP spawn gate. Idempotent if the
-				// client is already running; kicks the spawn if the
-				// manifest just transitioned from null to a value
-				// (e.g. user fixed gaffer.command after a failed init).
-				retryStartLanguageClient();
+				let reloadErr: unknown;
+				const trustedAtFetch = vscode.workspace.isTrusted;
+				const m = await tryFetchManifest(workspaceCwd(), telemetry, (e) => {
+					reloadErr = e;
+				});
+				handleManifestOutcome(m, reloadErr, { trustedAtFetch });
 			} catch (err) {
 				log(
 					`Manifest reload failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -330,6 +371,14 @@ async function activateAfterTelemetry(
 		});
 		return refreshChain;
 	};
+
+	// Initial outcome routed through the same sink. The error was
+	// captured during activate()'s tryFetchManifest call; we surface
+	// it here because the install-prompt's Install action needs
+	// reloadManifest in scope.
+	handleManifestOutcome(initialManifest, manifestErr, {
+		trustedAtFetch: !untrustedAtFetch,
+	});
 
 	context.subscriptions.push(
 		vscode.window.registerTreeDataProvider(

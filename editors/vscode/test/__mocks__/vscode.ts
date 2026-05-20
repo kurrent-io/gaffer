@@ -471,6 +471,38 @@ function makeDiagnosticCollection(name: string): FakeDiagnosticCollection {
 	return collection;
 }
 
+// ---- Terminal -------------------------------------------------------------
+
+export interface FakeTerminal extends vscode.Terminal {
+	readonly options: vscode.TerminalOptions;
+	readonly sentText: string[];
+	showCount: number;
+	exitStatus: vscode.TerminalExitStatus | undefined;
+}
+
+function makeFakeTerminal(options: vscode.TerminalOptions): FakeTerminal {
+	const terminal: FakeTerminal = {
+		name: options.name ?? "terminal",
+		processId: Promise.resolve(undefined),
+		creationOptions: options,
+		exitStatus: undefined,
+		state: { isInteractedWith: false } as vscode.TerminalState,
+		shellIntegration: undefined,
+		options,
+		sentText: [],
+		showCount: 0,
+		sendText(text: string, _addNewLine?: boolean): void {
+			terminal.sentText.push(text);
+		},
+		show(_preserveFocus?: boolean): void {
+			terminal.showCount++;
+		},
+		hide(): void {},
+		dispose(): void {},
+	};
+	return terminal;
+}
+
 // ---- Webview / View providers ---------------------------------------------
 
 export interface FakeWebview extends vscode.Webview {
@@ -646,6 +678,8 @@ export interface MockState {
 		includeWorkspaceFolder?: boolean,
 	) => string;
 	extensions: Map<string, vscode.Extension<unknown>>;
+	terminals: FakeTerminal[];
+	terminalClosed: EventEmitter<vscode.Terminal>;
 }
 
 export const state: MockState = createInitialState();
@@ -687,6 +721,8 @@ function createInitialState(): MockState {
 		workspaceFolders: [],
 		asRelativePathImpl: (uri) => (typeof uri === "string" ? uri : uri.fsPath),
 		extensions: new Map(),
+		terminals: [],
+		terminalClosed: new EventEmitter(),
 	};
 }
 
@@ -890,6 +926,8 @@ type WindowShape = Pick<
 	| "showQuickPick"
 	| "registerTreeDataProvider"
 	| "registerWebviewViewProvider"
+	| "createTerminal"
+	| "onDidCloseTerminal"
 > & {
 	createOutputChannel(name: string, languageId?: string): vscode.OutputChannel;
 };
@@ -949,6 +987,25 @@ export const window: WindowShape = {
 		state.registeredWebviewProviders.push({ id: viewId, provider });
 		return { dispose: () => {} };
 	},
+	createTerminal: ((
+		nameOrOptions?: string | vscode.TerminalOptions,
+		_shellPath?: string,
+		_shellArgs?: string[] | string,
+	) => {
+		const options: vscode.TerminalOptions =
+			typeof nameOrOptions === "object" && nameOrOptions !== null
+				? nameOrOptions
+				: { name: nameOrOptions ?? "terminal" };
+		const terminal = makeFakeTerminal(options);
+		state.terminals.push(terminal);
+		return terminal;
+	}) as typeof vscode.window.createTerminal,
+	onDidCloseTerminal: ((listener, thisArgs, disposables) =>
+		state.terminalClosed.event(
+			listener,
+			thisArgs,
+			disposables,
+		)) as typeof vscode.window.onDidCloseTerminal,
 };
 
 // ---- commands -------------------------------------------------------------

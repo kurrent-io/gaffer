@@ -398,6 +398,118 @@ describe("runtime fatal-error dismissal", () => {
 	});
 });
 
+describe("manifest outcome routing", () => {
+	const DISMISSED_KEY = "gaffer.cliMissingNotificationDismissed";
+
+	function stubManifestEnoent(): void {
+		vi.spyOn(cliModule, "tryFetchManifest").mockImplementation(
+			async (_cwd, _telemetry, onError) => {
+				const err: NodeJS.ErrnoException = new Error("spawn ENOENT");
+				err.code = "ENOENT";
+				onError?.(err);
+				return null;
+			},
+		);
+	}
+
+	it("ENOENT on activation shows the install prompt (not the generic toast)", async () => {
+		stubManifestEnoent();
+		setTrusted(true);
+		queueFindFiles([]);
+		await activate(makeContext());
+		const msgs = getShownMessages();
+		const installPrompt = msgs.find(
+			(m) => m.kind === "warning" && /gaffer CLI not found/i.test(m.message),
+		);
+		const genericToast = msgs.find((m) => /Gaffer CLI failed/.test(m.message));
+		expect(installPrompt).toBeDefined();
+		expect(installPrompt?.items).toContain("Install");
+		expect(genericToast).toBeUndefined();
+	});
+
+	it("ENOENT on activation respects a prior workspace dismissal", async () => {
+		stubManifestEnoent();
+		setTrusted(true);
+		queueFindFiles([]);
+		const ctx = makeContext();
+		await ctx.workspaceState.update(DISMISSED_KEY, true);
+		await activate(ctx);
+		const msgs = getShownMessages();
+		expect(
+			msgs.find((m) => /gaffer CLI not found/i.test(m.message)),
+		).toBeUndefined();
+		expect(
+			msgs.find((m) => /Gaffer CLI failed/.test(m.message)),
+		).toBeUndefined();
+		// Dismissal isn't cleared by a still-failing fetch.
+		expect(ctx.workspaceState.get(DISMISSED_KEY)).toBe(true);
+	});
+
+	it("non-ENOENT activation failure shows the generic toast", async () => {
+		vi.spyOn(cliModule, "tryFetchManifest").mockImplementation(
+			async (_cwd, _telemetry, onError) => {
+				const err: NodeJS.ErrnoException = new Error("permission denied");
+				err.code = "EACCES";
+				onError?.(err);
+				return null;
+			},
+		);
+		setTrusted(true);
+		queueFindFiles([]);
+		await activate(makeContext());
+		const msgs = getShownMessages();
+		expect(
+			msgs.find((m) => /gaffer CLI not found/i.test(m.message)),
+		).toBeUndefined();
+		expect(msgs.find((m) => /Gaffer CLI failed/.test(m.message))).toBeDefined();
+	});
+
+	it("successful initial manifest clears a prior dismissal", async () => {
+		stubManifestFetch();
+		setTrusted(true);
+		queueFindFiles([]);
+		const ctx = makeContext();
+		await ctx.workspaceState.update(DISMISSED_KEY, true);
+		await activate(ctx);
+		expect(ctx.workspaceState.get(DISMISSED_KEY)).toBeUndefined();
+	});
+
+	it("LSP spawns when workspace is already trusted at activate", async () => {
+		// Regression: handleManifestOutcome populates latestManifest
+		// after startLanguageClient has already evaluated its gate
+		// predicate. Without retryStartLanguageClient after the
+		// initial outcome, the deferred spawn never re-fires on the
+		// already-trusted-at-activate happy path because the trust-
+		// grant listener only triggers on a transition.
+		stubManifestFetch();
+		setTrusted(true);
+		queueFindFiles([]);
+		await activate(makeContext());
+		await waitForLspClient();
+	});
+
+	it("successful reload clears a prior dismissal", async () => {
+		// First activate with ENOENT + a pre-set dismissal so the flag
+		// survives the initial outcome; then flip the stub to a success
+		// and fire a config-change reload. The reload's success path
+		// must clear the flag.
+		stubManifestEnoent();
+		setTrusted(true);
+		queueFindFiles([]);
+		const ctx = makeContext();
+		await ctx.workspaceState.update(DISMISSED_KEY, true);
+		await activate(ctx);
+		expect(ctx.workspaceState.get(DISMISSED_KEY)).toBe(true);
+		vi.mocked(cliModule.tryFetchManifest).mockResolvedValue({
+			version: "test",
+			commands: { dev: { flags: ["debug"] } },
+		});
+		fireConfigurationChange(["gaffer.command"]);
+		await flushAllMicrotasks();
+		expect(ctx.workspaceState.get(DISMISSED_KEY)).toBeUndefined();
+	});
+});
+
 describe("configuration change filter", () => {
 	it("triggers reloadLensState when gaffer.command changes", async () => {
 		const setManifest = vi.spyOn(LspCodeLensProvider.prototype, "setManifest");

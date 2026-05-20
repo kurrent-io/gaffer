@@ -8,11 +8,19 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
+	"github.com/kurrent-io/gaffer/cli/internal/updatecheck"
 )
 
+// manifest is the JSON emitted by `gaffer manifest`. Editor wrappers
+// (e.g. the VS Code extension) consume the shape, so renaming or
+// removing fields is a breaking change.
 type manifest struct {
-	Version  string                     `json:"version"`
-	Commands map[string]manifestCommand `json:"commands"`
+	Version string `json:"version"`
+	// UpdateAvailable is the cached newer version from the existing
+	// once-per-day registry check, or null when no upgrade is known.
+	// Manifest never triggers a fresh fetch.
+	UpdateAvailable *string                    `json:"updateAvailable"`
+	Commands        map[string]manifestCommand `json:"commands"`
 }
 
 type manifestCommand struct {
@@ -54,15 +62,20 @@ func newManifestCmd() *cobra.Command {
 
 			enc := json.NewEncoder(cmd.OutOrStdout())
 			enc.SetIndent("", "  ")
-			return enc.Encode(buildManifest(cmd.Root(), Version))
+			updateAvailable := updatecheck.FromCtx(cmd.Context()).UpdateAvailable()
+			return enc.Encode(buildManifest(cmd.Root(), Version, updateAvailable))
 		},
 	}
 }
 
-func buildManifest(root *cobra.Command, version string) manifest {
+func buildManifest(root *cobra.Command, version, updateAvailable string) manifest {
 	commands := map[string]manifestCommand{}
 	collectCommands(root, "", commands)
-	return manifest{Version: version, Commands: commands}
+	var upd *string
+	if updateAvailable != "" {
+		upd = &updateAvailable
+	}
+	return manifest{Version: version, UpdateAvailable: upd, Commands: commands}
 }
 
 // collectCommands walks the cobra tree and emits one entry per runnable

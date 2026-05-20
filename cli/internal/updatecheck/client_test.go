@@ -374,6 +374,68 @@ func TestFromCtx_Missing(t *testing.T) {
 	}
 }
 
+func TestUpdateAvailable_CachedNewer_ReturnsVersion(t *testing.T) {
+	c, _ := newTestClient(t, "0.1.3", &stubFetcher{})
+	if err := SaveCache(c.cacheDir, Cache{
+		CheckedAt:          c.now().Add(-time.Hour),
+		CheckedWithVersion: "0.1.3",
+		LatestVersion:      "0.2.0",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if got := c.UpdateAvailable(); got != "0.2.0" {
+		t.Errorf("UpdateAvailable = %q, want 0.2.0", got)
+	}
+}
+
+func TestUpdateAvailable_CachedSameOrOlder_ReturnsEmpty(t *testing.T) {
+	c, _ := newTestClient(t, "0.2.0", &stubFetcher{})
+	if err := SaveCache(c.cacheDir, Cache{
+		CheckedAt:          c.now().Add(-time.Hour),
+		CheckedWithVersion: "0.2.0",
+		LatestVersion:      "0.1.9",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if got := c.UpdateAvailable(); got != "" {
+		t.Errorf("UpdateAvailable with older cache = %q, want empty", got)
+	}
+}
+
+func TestUpdateAvailable_NoCache_ReturnsEmpty(t *testing.T) {
+	c, _ := newTestClient(t, "0.1.3", &stubFetcher{})
+	if got := c.UpdateAvailable(); got != "" {
+		t.Errorf("UpdateAvailable with no cache = %q, want empty", got)
+	}
+}
+
+func TestUpdateAvailable_NilReceiver(t *testing.T) {
+	var c *Client
+	if got := c.UpdateAvailable(); got != "" {
+		t.Errorf("UpdateAvailable on nil Client = %q, want empty", got)
+	}
+}
+
+// The notice-suppression knobs (--no-update-check, GAFFER_NO_UPDATE_CHECK)
+// deliberately don't gate UpdateAvailable: they suppress the printed
+// notice and the registry refresh, not the consumption of an already-
+// cached signal. Manifest must still surface it so editor wrappers can
+// branch on it.
+func TestUpdateAvailable_EnvDisable_StillReportsCachedValue(t *testing.T) {
+	t.Setenv(EnvDisable, "1")
+	c, _ := newTestClient(t, "0.1.3", &stubFetcher{})
+	if err := SaveCache(c.cacheDir, Cache{
+		CheckedAt:          c.now().Add(-time.Hour),
+		CheckedWithVersion: "0.1.3",
+		LatestVersion:      "0.2.0",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if got := c.UpdateAvailable(); got != "0.2.0" {
+		t.Errorf("UpdateAvailable with env-disable = %q, want 0.2.0", got)
+	}
+}
+
 // flushOrFail runs Flush with a bounded ctx; the test fails on
 // non-nil result. Used by tests that expect no in-flight work or a
 // fast refresh.

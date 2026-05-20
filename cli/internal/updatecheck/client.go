@@ -255,6 +255,30 @@ func (c *Client) Flush(ctx context.Context) error {
 	}
 }
 
+// UpdateAvailable returns the cached latest version if it is strictly
+// newer than Current. Returns "" otherwise (no cache, cache not newer,
+// no current baseline, or cache dir unresolved). Disk read only - never
+// triggers a network fetch, even when the cache is stale. Background
+// refresh is the job of Start.
+//
+// Used by `gaffer manifest` to expose the update signal to editor
+// wrappers without re-checking the registry. The --no-update-check
+// flag and GAFFER_NO_UPDATE_CHECK env var deliberately do NOT gate
+// this: they suppress the printed notice and the network refresh, not
+// the consumption of an already-collected signal.
+//
+// Nil-safe: returns "" on a nil receiver.
+func (c *Client) UpdateAvailable() string {
+	if c == nil || c.current == "" || c.cacheDirErr != nil {
+		return ""
+	}
+	cache, _ := LoadCache(c.cacheDir)
+	if cache.LatestVersion != "" && IsNewer(cache.LatestVersion, c.current) {
+		return cache.LatestVersion
+	}
+	return ""
+}
+
 // ctxKey scopes the context lookup so callers can't collide.
 type ctxKey struct{}
 

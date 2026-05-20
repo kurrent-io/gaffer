@@ -123,6 +123,8 @@ describe("activate registrations", () => {
 			"gaffer.init",
 			"gaffer.noop",
 			"gaffer.runProjection",
+			"gaffer.scaffold",
+			"gaffer.scaffoldHere",
 			"gaffer.stopDebug",
 		]);
 	});

@@ -55,6 +55,11 @@ import { GafferMcpProvider } from "./mcp/provider.js";
 import { runProjection } from "./commands/run-projection.js";
 import { debugProjectionPick } from "./commands/debug-projection-pick.js";
 import { initProjection } from "./commands/init-projection.js";
+import {
+	createVscodeWizardSteps,
+	runScaffoldWizard,
+	scaffoldProjection,
+} from "./commands/scaffold-projection.js";
 
 // workspaceCwd returns the first workspace folder's filesystem
 // path so child processes (e.g. gaffer manifest) spawn relative
@@ -438,10 +443,25 @@ async function activateAfterTelemetry(
 				}),
 			),
 		),
-		vscode.commands.registerCommand(
-			"gaffer.init",
-			wrap(initProjection({ telemetry })),
-		),
+		(() => {
+			const init = wrap(initProjection({ telemetry }));
+			const scaffold = wrap(
+				scaffoldProjection({
+					telemetry,
+					wizard: (flavor) =>
+						runScaffoldWizard(createVscodeWizardSteps(flavor)),
+				}),
+			);
+			// gaffer.scaffold is the palette entry; gaffer.scaffoldHere
+			// is the explorer/context-menu entry (URI arg = clicked
+			// folder). Two IDs so the menu can show a folder-specific
+			// label - VS Code menu items can't override command titles.
+			return vscode.Disposable.from(
+				vscode.commands.registerCommand("gaffer.init", init),
+				vscode.commands.registerCommand("gaffer.scaffold", scaffold),
+				vscode.commands.registerCommand("gaffer.scaffoldHere", scaffold),
+			);
+		})(),
 		// Click target for the "Invalid fixture: <reason>" lens. The lens
 		// is informational; the user fixes the toml. CodeLens.command is
 		// required by VS Code, so we route to a registered no-op.

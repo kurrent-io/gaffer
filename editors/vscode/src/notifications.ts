@@ -55,7 +55,7 @@ export const showManifestFailure = (err: unknown): Thenable<unknown> => {
 export const showTrustWarning = (): Thenable<unknown> =>
 	vscode.window
 		.showWarningMessage(
-			"Trust this workspace to enable projection debugging.",
+			"Trust this workspace to use KurrentDB Projections commands.",
 			"Manage Trust",
 		)
 		.then((choice) => {
@@ -66,7 +66,24 @@ export const showTrustWarning = (): Thenable<unknown> =>
 
 export const showNoWorkspace = (): Thenable<unknown> =>
 	vscode.window.showWarningMessage(
-		"Open a folder first to initialize a KurrentDB projection.",
+		"Open a folder first to use KurrentDB Projections.",
+	);
+
+// Fired when a command was invoked against a URI that isn't part of
+// any workspace folder (e.g. a folder added via "Reveal in Explorer"
+// from outside the workspace). Distinct from showNoWorkspace -
+// there IS a workspace open, the target just isn't in it.
+export const showTargetOutsideWorkspace = (): Thenable<unknown> =>
+	vscode.window.showWarningMessage(
+		"That folder isn't part of an open workspace. Add it to the workspace first.",
+	);
+
+// Brief info toast after scaffold's silent auto-init succeeds. Gives
+// the user a visible trace of the side effect (gaffer.toml,
+// .gitignore, .gaffer/) without blocking.
+export const showAutoInitDone = (folderName: string): Thenable<unknown> =>
+	vscode.window.showInformationMessage(
+		`Initialized gaffer project in ${folderName}.`,
 	);
 
 // gaffer.toml is already present in the target folder. Offer to open
@@ -80,10 +97,13 @@ export const showTomlExists = (folderName: string): Thenable<boolean> =>
 		)
 		.then((choice) => choice === "Open existing");
 
-// Surface for any non-toml-exists failure from `gaffer init`. Mirrors
+// Surface for a `gaffer <command>` spawn failure. Mirrors
 // showManifestFailure's stderr-on-cause handling so the user sees the
 // CLI's actual complaint, not the wrapper "execFile failed" message.
-export const showInitFailure = (err: unknown): Thenable<unknown> => {
+export const showCliCommandFailure = (
+	command: string,
+	err: unknown,
+): Thenable<unknown> => {
 	const raw = err instanceof Error ? err.message : String(err);
 	const cause =
 		err instanceof Error && typeof err.cause === "object" ? err.cause : null;
@@ -94,7 +114,7 @@ export const showInitFailure = (err: unknown): Thenable<unknown> => {
 	const detail = stderr || raw;
 	const truncated = detail.length > 200 ? `${detail.slice(0, 200)}…` : detail;
 	return vscode.window
-		.showErrorMessage(`gaffer init failed: ${truncated}`, "View Output")
+		.showErrorMessage(`gaffer ${command} failed: ${truncated}`, "View Output")
 		.then((choice) => {
 			if (choice === "View Output") {
 				showOutputPanel();

@@ -1,7 +1,9 @@
-// Package cliout owns JSON shapes that span the CLI and MCP surfaces:
-// `gaffer info --json` / get_projection_info, `gaffer manifest` /
-// get_manifest, and the small helpers they share. Keeping a single home
-// for these contracts prevents the surfaces from drifting.
+// Package cliout owns JSON shapes adopted by both the CLI and the MCP
+// server: the `info` / get_projection_info envelope, the `manifest` /
+// get_manifest envelope, and the small formatting helpers they share.
+// Surfaces that opt in get drift protection for free; surfaces that
+// don't (e.g. the streaming `dev --json` writer) still build their own
+// shapes inline.
 package cliout
 
 import (
@@ -12,6 +14,13 @@ import (
 // BuildInfoJSON returns the flat JSON-ready map that `gaffer info --json`
 // emits. Used by both the CLI command and the MCP get_projection_info
 // tool so the two surfaces stay shape-identical.
+//
+// Returns map[string]any (not a typed struct) because the output is a
+// conditional union: seven fields are present only when the projection
+// declares them (categories, streams, events, partitioning,
+// diagnostics, fixtures) and would each need a typed omitempty tag.
+// A map keeps the conditional shape readable; readers that need a
+// typed view can decode the result downstream.
 func BuildInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) map[string]any {
 	src := engine.DescribeSource(info)
 	out := map[string]any{

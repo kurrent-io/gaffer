@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/pathutil"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/scaffold"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
@@ -79,14 +80,14 @@ func runScaffold(pathArg string, opts *scaffoldOpts) error {
 }
 
 // resolveScaffoldRelPath converts a cwd-relative or absolute path
-// arg into a project-root-relative form. Both root and abs are
-// resolved through symlinks (via scaffold.ResolveAncestorSymlinks,
-// which handles the case where the leaf doesn't exist yet) so a
-// symlinked checkout doesn't lexically appear "outside" when it's
-// the same project on disk. If the resolved input still lands
-// outside root, error with the user's original argument echoed -
-// the downstream scaffold validator would otherwise complain about
-// the derived "../..." string the user never typed.
+// arg into a project-root-relative form. Both sides are resolved
+// through symlinks (via pathutil.ResolveAncestorSymlinks, which
+// handles the case where the leaf doesn't exist yet) so a symlinked
+// checkout doesn't lexically appear "outside" when it's the same
+// project on disk. If the resolved input still lands outside root,
+// error with the user's original argument echoed - the downstream
+// scaffold validator would otherwise complain about the derived
+// "../..." string the user never typed.
 func resolveScaffoldRelPath(pathArg, root string) (string, error) {
 	abs := pathArg
 	if !filepath.IsAbs(abs) {
@@ -98,11 +99,11 @@ func resolveScaffoldRelPath(pathArg, root string) (string, error) {
 	}
 	abs = filepath.Clean(abs)
 
-	resolvedRoot, err := scaffold.ResolveAncestorSymlinks(root)
+	resolvedRoot, err := pathutil.ResolveAncestorSymlinks(root)
 	if err != nil {
 		return "", fmt.Errorf("resolving project root: %w", err)
 	}
-	resolvedAbs, err := scaffold.ResolveAncestorSymlinks(abs)
+	resolvedAbs, err := pathutil.ResolveAncestorSymlinks(abs)
 	if err != nil {
 		return "", fmt.Errorf("resolving %q: %w", pathArg, err)
 	}

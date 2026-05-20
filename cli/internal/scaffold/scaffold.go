@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/pathutil"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 )
 
@@ -118,19 +119,17 @@ func validateRelPath(userInput string) (string, error) {
 	if strings.TrimSpace(userInput) == "" {
 		return "", fmt.Errorf("projection path is required")
 	}
-	// Reject Windows drive-letter forms (`C:\foo.js`, `C:foo.js`,
-	// `C:/foo.js`) explicitly. On non-Windows hosts filepath.IsAbs
-	// doesn't recognise them, and after backslash normalisation
-	// path.IsAbs doesn't either - so without this guard an LLM
-	// trained on Windows paths could scaffold into `<root>/C:/...`
-	// on a Linux server.
-	if hasWindowsDrivePrefix(userInput) {
+	// Reject Windows drive-letter forms before any normalisation.
+	// On non-Windows hosts filepath.IsAbs doesn't recognise them,
+	// and after backslash normalisation path.IsAbs doesn't either,
+	// so an LLM-supplied "C:\..." could otherwise scaffold into
+	// `<root>/C:/...` on a Linux server.
+	if pathutil.HasWindowsDrivePrefix(userInput) {
 		return "", fmt.Errorf(
 			"projection path %q must be relative to the project root",
 			userInput,
 		)
 	}
-	// filepath.IsAbs is platform-aware on whatever we're running on.
 	if filepath.IsAbs(userInput) {
 		return "", fmt.Errorf(
 			"projection path %q must be relative to the project root",
@@ -144,10 +143,10 @@ func validateRelPath(userInput string) (string, error) {
 			userInput,
 		)
 	}
-	cleaned := path.Clean(normalised)
-	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+	if pathutil.EscapesRoot(normalised) {
 		return "", fmt.Errorf("projection path %q is outside the project root", userInput)
 	}
+	cleaned := path.Clean(normalised)
 	ext := path.Ext(cleaned)
 	if !IsSupported(ext) {
 		return "", fmt.Errorf(
@@ -165,76 +164,19 @@ func validateRelPath(userInput string) (string, error) {
 	return cleaned, nil
 }
 
-// assertUnderRoot resolves any symlinks on the parent path and
-// verifies the resolved location is still inside root. Used after
-// lexical validation so an in-tree symlink can't smuggle the write
-// outside the project.
+// assertUnderRoot verifies the resolved parent of absPath is still
+// inside root, using pathutil's symlink-aware containment check so
+// an in-tree symlink can't smuggle the write past the lexical
+// no-escape check upstream.
 func assertUnderRoot(root, absPath, userInput string) error {
-	resolvedDir, err := ResolveAncestorSymlinks(filepath.Dir(absPath))
+	inside, err := pathutil.IsInsideRoot(root, filepath.Dir(absPath))
 	if err != nil {
 		return fmt.Errorf("resolving %s: %w", userInput, err)
 	}
-	resolvedRoot, err := ResolveAncestorSymlinks(root)
-	if err != nil {
-		return fmt.Errorf("resolving project root: %w", err)
-	}
-	rel, err := filepath.Rel(resolvedRoot, resolvedDir)
-	if err != nil {
-		return fmt.Errorf("projection path %q is outside the project root", userInput)
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if !inside {
 		return fmt.Errorf("projection path %q is outside the project root", userInput)
 	}
 	return nil
-}
-
-// hasWindowsDrivePrefix matches `C:...` and `C:\...` / `C:/...`
-// regardless of host OS. Covers `C:foo.js` (drive-relative) too -
-// nothing about it should appear in a project-relative path.
-func hasWindowsDrivePrefix(s string) bool {
-	if len(s) < 2 {
-		return false
-	}
-	c := s[0]
-	if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') {
-		return false
-	}
-	return s[1] == ':'
-}
-
-// ResolveAncestorSymlinks walks up to the deepest existing ancestor,
-// resolves its symlinks with filepath.EvalSymlinks, then rejoins the
-// missing-suffix portion. This catches escape via a symlink anywhere
-// on the path - including when the immediate parent doesn't exist
-// yet (scaffold creates it). A plain EvalSymlinks on a not-yet-
-// existing dir returns ENOENT and would force a lexical-only
-// fallback that misses the escape.
-func ResolveAncestorSymlinks(p string) (string, error) {
-	p = filepath.Clean(p)
-	suffix := ""
-	for {
-		if _, err := os.Stat(p); err == nil {
-			resolved, err := filepath.EvalSymlinks(p)
-			if err != nil {
-				return "", err
-			}
-			if suffix == "" {
-				return resolved, nil
-			}
-			return filepath.Join(resolved, suffix), nil
-		} else if !os.IsNotExist(err) {
-			return "", err
-		}
-		parent := filepath.Dir(p)
-		if parent == p {
-			// Hit filesystem root without finding any existing
-			// ancestor - return the lexical clean. (No symlink can
-			// possibly be hiding here.)
-			return filepath.Join(p, suffix), nil
-		}
-		suffix = filepath.Join(filepath.Base(p), suffix)
-		p = parent
-	}
 }
 
 func GenerateSource(source, partition string, emit bool) (string, error) {

@@ -2,8 +2,8 @@ package config
 
 import (
 	"fmt"
-	"path"
-	"strings"
+
+	"github.com/kurrent-io/gaffer/cli/internal/pathutil"
 )
 
 // Shared validation predicates for the strict (Load) and loose
@@ -31,7 +31,7 @@ func checkProjection(p Projection) (rule, message string, ok bool) {
 			fmt.Sprintf("projection %q missing required field: entry", p.Name),
 			true
 	}
-	if escapesRoot(p.Entry) {
+	if pathutil.EscapesRoot(p.Entry) {
 		return RuleProjectionEntryEscapesRoot,
 			fmt.Sprintf("projection %q entry must not escape project root: %s", p.Name, p.Entry),
 			true
@@ -54,25 +54,10 @@ func checkFixture(projection, name, fixturePath string) (rule, message string, o
 			fmt.Sprintf("projection %q fixture %q has empty path", projection, name),
 			true
 	}
-	if escapesRoot(fixturePath) {
+	if pathutil.EscapesRoot(fixturePath) {
 		return RuleFixturePathEscapesRoot,
 			fmt.Sprintf("projection %q fixture %q path must not escape project root: %s", projection, name, fixturePath),
 			true
 	}
 	return "", "", false
-}
-
-// escapesRoot reports whether a slash-form relative path resolves
-// outside the project. Toml entries are stored slash-form by
-// scaffold; using path.Clean (always-slash) here keeps the check
-// platform-stable. Matches scaffold.validateRelPath's rule so a
-// successful scaffold can never produce a toml that later fails
-// Load.
-//
-// Critically, only proper traversal counts as escape - a literal
-// filename like "..hidden.js" stays inside the project and must
-// not be rejected.
-func escapesRoot(rel string) bool {
-	cleaned := path.Clean(strings.ReplaceAll(rel, "\\", "/"))
-	return cleaned == ".." || strings.HasPrefix(cleaned, "../")
 }

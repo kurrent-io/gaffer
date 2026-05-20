@@ -7,8 +7,12 @@ import (
 )
 
 var versionTool = &mcp.Tool{
-	Name:        "version",
+	Name:        "get_version",
 	Description: "Return the gaffer CLI version string. Mirrors `gaffer version`.",
+	Annotations: &mcp.ToolAnnotations{
+		ReadOnlyHint:   true,
+		IdempotentHint: true,
+	},
 }
 
 type versionInput struct{}

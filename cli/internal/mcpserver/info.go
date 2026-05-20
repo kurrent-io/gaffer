@@ -8,11 +8,16 @@ import (
 )
 
 var infoTool = &mcp.Tool{
-	Name: "info",
+	Name: "get_projection_info",
 	Description: "Show details for a projection: parsed structure, sources, " +
 		"partition mode, emit declarations, effective engine version. " +
 		"Mirrors `gaffer info <name> --json`. When the project has a single " +
-		"configured projection, `name` may be omitted.",
+		"configured projection, `name` may be omitted; call list_projections " +
+		"to discover names otherwise.",
+	Annotations: &mcp.ToolAnnotations{
+		ReadOnlyHint:   true,
+		IdempotentHint: true,
+	},
 }
 
 type infoInput struct {

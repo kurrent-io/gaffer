@@ -7,9 +7,13 @@ import (
 )
 
 var manifestTool = &mcp.Tool{
-	Name: "manifest",
+	Name: "get_manifest",
 	Description: "Show which CLI subcommands and flags this gaffer build " +
 		"supports. Mirrors `gaffer manifest`.",
+	Annotations: &mcp.ToolAnnotations{
+		ReadOnlyHint:   true,
+		IdempotentHint: true,
+	},
 }
 
 type manifestInput struct{}

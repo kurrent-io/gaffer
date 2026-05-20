@@ -148,7 +148,7 @@ func New(root string, cfg *config.Config, version string, manifest map[string]an
 		&mcp.ServerOptions{
 			Instructions: "Gaffer is a projection toolkit for KurrentDB. " +
 				"Read the projection-api and gotchas resources before writing projections. " +
-				"Workflow: list_projections to see what exists, info <name> to inspect a single one, " +
+				"Workflow: list_projections to see what exists, get_projection_info to inspect a single one, " +
 				"scaffold to create new ones, run with fixture events to test, " +
 				"get_timeline/get_step to inspect results, debug with break_at to pause and " +
 				"evaluate expressions. Each run replaces the previous session.",

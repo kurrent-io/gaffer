@@ -17,6 +17,11 @@ var versionTool = &mcp.Tool{
 
 type versionInput struct{}
 
-func (s *Server) handleVersion(_ context.Context, _ *mcp.CallToolRequest, _ versionInput) (*mcp.CallToolResult, any, error) {
-	return toolResult(map[string]any{"version": s.version}), nil, nil
+type versionOutput struct {
+	Version string `json:"version"`
+}
+
+func (s *Server) handleVersion(_ context.Context, _ *mcp.CallToolRequest, _ versionInput) (*mcp.CallToolResult, versionOutput, error) {
+	out := versionOutput{Version: s.version}
+	return toolResult(out), out, nil
 }

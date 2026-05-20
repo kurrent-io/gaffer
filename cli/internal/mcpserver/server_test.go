@@ -108,7 +108,7 @@ func testManifest() map[string]any {
 	}
 }
 
-func callTool[In any](t *testing.T, s *Server, tool *mcp.Tool, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error), input In) map[string]any {
+func callTool[In, Out any](t *testing.T, s *Server, tool *mcp.Tool, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error), input In) map[string]any {
 	t.Helper()
 	result, _, err := handler(context.Background(), nil, input)
 	if err != nil {
@@ -125,7 +125,7 @@ func callTool[In any](t *testing.T, s *Server, tool *mcp.Tool, handler func(cont
 	return data
 }
 
-func callToolExpectError[In any](t *testing.T, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error), input In) string {
+func callToolExpectError[In, Out any](t *testing.T, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error), input In) string {
 	t.Helper()
 	result, _, err := handler(context.Background(), nil, input)
 	if err != nil {

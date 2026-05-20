@@ -18,7 +18,7 @@ func BuildInfoJSON(proj *Projection, info gafferruntime.ProjectionInfo) map[stri
 		"producesResults": info.ProducesResults,
 		// Always emit dbVersion: null distinguishes unversioned (bugs on)
 		// from a real version. Consumers need this signal explicitly.
-		"dbVersion": nullable(proj.DbVersion),
+		"dbVersion": nullableString(proj.DbVersion),
 	}
 	if cats, ok := src["categories"]; ok {
 		out["categories"] = cats
@@ -49,7 +49,10 @@ func BuildInfoJSON(proj *Projection, info gafferruntime.ProjectionInfo) map[stri
 	return out
 }
 
-func nullable(s string) any {
+// nullableString returns the string when non-empty or nil otherwise, so
+// JSON output distinguishes "unset" from explicitly-empty. Duplicated
+// from cmd/output.go because engine can't import cmd.
+func nullableString(s string) any {
 	if s == "" {
 		return nil
 	}

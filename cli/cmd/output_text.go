@@ -161,8 +161,8 @@ func (tw *textWriter) writeEmittedCb(streamID, eventType, data, metadata string,
 	}
 }
 
-func (tw *textWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, engineVersion int, dbVersion string) {
-	tw.heading(name)
+func (tw *textWriter) WriteInfo(proj *engine.Projection, info gafferruntime.ProjectionInfo) {
+	tw.heading(proj.Def.Name)
 
 	if info.AllStreams {
 		tw.detail("Source", "$all")
@@ -189,12 +189,12 @@ func (tw *textWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, 
 		tw.detail("Produces results", "yes")
 	}
 
-	if engineVersion != 0 {
-		tw.detail("Engine", fmt.Sprintf("v%d", engineVersion))
+	if proj.EngineVersion != 0 {
+		tw.detail("Engine", fmt.Sprintf("v%d", proj.EngineVersion))
 	}
 
-	if dbVersion != "" {
-		tw.detail("DB version", dbVersion)
+	if proj.DbVersion != "" {
+		tw.detail("DB version", proj.DbVersion)
 	} else {
 		tw.detail("DB version", "unversioned (matching all KurrentDB quirks)")
 	}

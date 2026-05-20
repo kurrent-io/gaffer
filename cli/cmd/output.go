@@ -16,7 +16,7 @@ func parseEventInfo(eventJSON string) eventInfo {
 }
 
 type outputWriter interface {
-	WriteInfo(name string, info gafferruntime.ProjectionInfo, engineVersion int, dbVersion string)
+	WriteInfo(proj *engine.Projection, info gafferruntime.ProjectionInfo)
 	WriteDebugListening(addr string, port int)
 	WriteEvent(event eventInfo)
 	WriteResult(eventID string, result *gafferruntime.FeedResult)

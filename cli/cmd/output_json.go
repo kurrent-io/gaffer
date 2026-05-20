@@ -23,37 +23,24 @@ func (jw *jsonWriter) writeLine(v any) {
 	_ = jw.enc.Encode(v)
 }
 
-func (jw *jsonWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, engineVersion int, dbVersion string) {
-	src := engine.DescribeSource(info)
-	proj := map[string]any{
-		"name":          name,
-		"source":        src["type"],
-		"engineVersion": engineVersion,
-		// Always emit dbVersion: null distinguishes unversioned (bugs on)
-		// from a real version. Consumers (LSP, tooling) need this signal
-		// since the field's absence wouldn't tell them whether they're
-		// in compat mode or whether a future schema dropped the field.
-		"dbVersion": cliout.NullableString(dbVersion),
-	}
-	if cats, ok := src["categories"]; ok {
-		proj["categories"] = cats
-	}
-	if streams, ok := src["streams"]; ok {
-		proj["streams"] = streams
-	}
-	if len(info.Events) > 0 {
-		proj["events"] = info.Events
-	}
-	if p := engine.DescribePartitioning(info); p != "none" {
-		proj["partitioning"] = p
-	}
-	if len(info.Diagnostics) > 0 {
-		proj["diagnostics"] = info.Diagnostics
-	}
+func (jw *jsonWriter) WriteInfo(proj *engine.Projection, info gafferruntime.ProjectionInfo) {
+	// Stream a trimmed cliout.BuildInfoJSON. The dev stream omits
+	// `entry` (the consumer already knows the file path it invoked)
+	// and `fixtures` (irrelevant in live mode); biState and
+	// producesResults stay off to preserve the existing wire format
+	// for `gaffer dev --json` consumers. Re-using BuildInfoJSON keeps
+	// the source / categories / streams / partitioning / dbVersion
+	// keys identical to `gaffer info --json` so an agent moving
+	// between surfaces doesn't have to translate.
+	body := cliout.BuildInfoJSON(proj, info)
+	delete(body, "entry")
+	delete(body, "fixtures")
+	delete(body, "biState")
+	delete(body, "producesResults")
 
 	jw.writeLine(map[string]any{
 		"type":       "info",
-		"projection": proj,
+		"projection": body,
 	})
 }
 

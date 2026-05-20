@@ -47,7 +47,7 @@ func runInfo(cmd *cobra.Command, name string, asJSON bool) error {
 	}
 
 	tw := newTextWriter(os.Stdout, os.Stderr)
-	tw.WriteInfo(proj.Def.Name, info, proj.EngineVersion, proj.DbVersion)
+	tw.WriteInfo(proj, info)
 	return nil
 }
 

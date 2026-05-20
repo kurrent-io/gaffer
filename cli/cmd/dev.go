@@ -280,7 +280,7 @@ func runDevSingle(
 		tw.RegisterCallbacks(session)
 	}
 
-	writer.WriteInfo(proj.Def.Name, info, proj.EngineVersion, proj.DbVersion)
+	writer.WriteInfo(proj, info)
 
 	r := engine.NewRunner(engine.RunnerConfig{
 		Feed:    engine.FeedFn(session.Feed),
@@ -351,7 +351,7 @@ func runDevDebug(
 
 	telemetry.EmitProjectionShape(ctx, sourcePath, info)
 
-	writer.WriteInfo(proj.Def.Name, info, proj.EngineVersion, proj.DbVersion)
+	writer.WriteInfo(proj, info)
 
 	adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot)
 	adapter.SetStartPausedIfNoBreakpoints(opts.StartPausedIfNoBreakpoints)

@@ -390,7 +390,7 @@ func TestEndToEnd_InitScaffoldDev(t *testing.T) {
 
 	// 2. scaffold
 	scaffoldRoot := NewRootCmd()
-	scaffoldRoot.SetArgs([]string{"scaffold", "counter"})
+	scaffoldRoot.SetArgs([]string{"scaffold", "projections/counter.js"})
 	scaffoldRoot.SetErr(&bytes.Buffer{})
 	testutil.CaptureStdout(t, func() {
 		if err := ExecuteRoot(context.Background(), scaffoldRoot); err != nil {

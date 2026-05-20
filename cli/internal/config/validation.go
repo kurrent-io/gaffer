@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"path/filepath"
+	"path"
 	"strings"
 )
 
@@ -31,7 +31,7 @@ func checkProjection(p Projection) (rule, message string, ok bool) {
 			fmt.Sprintf("projection %q missing required field: entry", p.Name),
 			true
 	}
-	if strings.HasPrefix(filepath.Clean(p.Entry), "..") {
+	if escapesRoot(p.Entry) {
 		return RuleProjectionEntryEscapesRoot,
 			fmt.Sprintf("projection %q entry must not escape project root: %s", p.Name, p.Entry),
 			true
@@ -43,21 +43,36 @@ func checkProjection(p Projection) (rule, message string, ok bool) {
 // priority order: empty name, empty path, path escapes root.
 // `projection` is for message formatting only - rules don't depend
 // on which projection owns the fixture.
-func checkFixture(projection, name, path string) (rule, message string, ok bool) {
+func checkFixture(projection, name, fixturePath string) (rule, message string, ok bool) {
 	if name == "" {
 		return RuleFixtureEmptyName,
 			fmt.Sprintf("projection %q has a fixture with an empty name", projection),
 			true
 	}
-	if path == "" {
+	if fixturePath == "" {
 		return RuleFixtureEmptyPath,
 			fmt.Sprintf("projection %q fixture %q has empty path", projection, name),
 			true
 	}
-	if strings.HasPrefix(filepath.Clean(path), "..") {
+	if escapesRoot(fixturePath) {
 		return RuleFixturePathEscapesRoot,
-			fmt.Sprintf("projection %q fixture %q path must not escape project root: %s", projection, name, path),
+			fmt.Sprintf("projection %q fixture %q path must not escape project root: %s", projection, name, fixturePath),
 			true
 	}
 	return "", "", false
+}
+
+// escapesRoot reports whether a slash-form relative path resolves
+// outside the project. Toml entries are stored slash-form by
+// scaffold; using path.Clean (always-slash) here keeps the check
+// platform-stable. Matches scaffold.validateRelPath's rule so a
+// successful scaffold can never produce a toml that later fails
+// Load.
+//
+// Critically, only proper traversal counts as escape - a literal
+// filename like "..hidden.js" stays inside the project and must
+// not be rejected.
+func escapesRoot(rel string) bool {
+	cleaned := path.Clean(strings.ReplaceAll(rel, "\\", "/"))
+	return cleaned == ".." || strings.HasPrefix(cleaned, "../")
 }

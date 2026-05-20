@@ -56,7 +56,7 @@ func TestBuildCommandManifest_ScaffoldFlags(t *testing.T) {
 		t.Fatal("expected scaffold command")
 	}
 
-	expected := []string{"source", "partition", "emit"}
+	expected := []string{"name", "source", "partition", "emit"}
 	flagSet := make(map[string]bool)
 	for _, f := range scaffold.Flags {
 		flagSet[f] = true

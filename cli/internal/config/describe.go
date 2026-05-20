@@ -8,6 +8,8 @@ import (
 	"sort"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/kurrent-io/gaffer/cli/internal/pathutil"
 )
 
 // rangeForLine builds a single-line SourceRange covering an entire
@@ -176,7 +178,7 @@ func describeProjection(
 		Range: headerRange,
 	}
 	if p.Entry != "" {
-		entry.EntryAbsPath = filepath.Clean(filepath.Join(tomlDir, p.Entry))
+		entry.EntryAbsPath = pathutil.AnchorUnder(tomlDir, p.Entry)
 	}
 
 	// Shared with strict validate() via checkProjection - first
@@ -257,6 +259,6 @@ func describeFixture(
 		}
 		return fx
 	}
-	fx.AbsPath = filepath.Clean(filepath.Join(tomlDir, path))
+	fx.AbsPath = pathutil.AnchorUnder(tomlDir, path)
 	return fx
 }

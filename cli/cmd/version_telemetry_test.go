@@ -259,7 +259,7 @@ func TestCmdWithoutClient_DoesNotPanic(t *testing.T) {
 		{"version"},
 		{"manifest"},
 		{"init", "--yes"},
-		{"scaffold", "Foo"},
+		{"scaffold", "Foo.js"},
 		{"info", "Foo"},
 	} {
 		t.Run(args[0], func(t *testing.T) {

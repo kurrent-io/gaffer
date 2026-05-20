@@ -8,6 +8,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/kurrent-io/gaffer/cli/internal/envvar"
+	"github.com/kurrent-io/gaffer/cli/internal/pathutil"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
@@ -225,47 +226,17 @@ func resolveWorkspaceLayer(cwd, homeDir string) Layer {
 }
 
 // findProjectRootBounded walks up from start looking for gaffer.toml,
-// stopping before it inspects stopAt. Both paths are filepath.Clean'd
-// at entry so trailing-slash mismatches don't cause the bound to miss.
+// stopping before it inspects stopAt. Wraps pathutil.WalkUpFor with
+// the project-config filename baked in.
 //
-// Empty start returns "" - callers must supply an absolute start. We
-// don't fall back to filepath.Clean("") which would walk cwd; that's
-// a programmer error and silent cwd-fallback would surprise.
+// Bound is required for opt-out policy ("don't apply a stray
+// ~/gaffer.toml"); callers pass os.UserHomeDir()'s result. Tests
+// that don't care about the bound pass an empty stopAt.
 //
-// Empty stopAt walks all the way to the filesystem root. This is
-// unsafe for opt-out policy (which specifically wants the bound), so
-// resolveWorkspaceLayer's callers should pass os.UserHomeDir()'s
-// result. Tests that don't care about the bound pass an empty
-// stopAt deliberately.
-//
-// This walker is telemetry-local rather than living in the project
-// package: the bound is opt-out policy ("don't apply a stray
-// ~/gaffer.toml"), not project semantics. project.FindRoot stays
-// unbounded for build / dev / etc.
-//
-// Symlinks aren't resolved - callers wanting symlink-correct bounds
-// must filepath.EvalSymlinks both arguments first. In practice cwd
-// from os.Getwd and homeDir from os.UserHomeDir come back in matching
-// resolved form on the same process.
+// Symlinks aren't resolved by the walk - callers wanting symlink-
+// correct bounds must EvalSymlinks both arguments first. In practice
+// cwd from os.Getwd and homeDir from os.UserHomeDir come back in
+// matching resolved form on the same process.
 func findProjectRootBounded(start, stopAt string) string {
-	if start == "" {
-		return ""
-	}
-	dir := filepath.Clean(start)
-	if stopAt != "" {
-		stopAt = filepath.Clean(stopAt)
-	}
-	for {
-		if stopAt != "" && dir == stopAt {
-			return ""
-		}
-		if _, err := os.Stat(filepath.Join(dir, project.ConfigFileName)); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return ""
-		}
-		dir = parent
-	}
+	return pathutil.WalkUpFor(start, project.ConfigFileName, stopAt)
 }

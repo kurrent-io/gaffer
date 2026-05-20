@@ -313,7 +313,9 @@ func TestGetState(t *testing.T) {
 
 func TestScaffold(t *testing.T) {
 	s := setupTestProject(t)
-	result := callTool(t, s, scaffoldTool, s.handleScaffold, scaffoldInput{Name: "new-proj"})
+	result := callTool(t, s, scaffoldTool, s.handleScaffold, scaffoldInput{
+		Path: "projections/new-proj.js",
+	})
 
 	if result["name"] != "new-proj" {
 		t.Errorf("expected name=new-proj, got %v", result["name"])
@@ -331,14 +333,66 @@ func TestScaffold(t *testing.T) {
 	}
 }
 
+func TestScaffold_ExplicitName(t *testing.T) {
+	// Caller picks a file name distinct from the gaffer.toml key.
+	s := setupTestProject(t)
+	result := callTool(t, s, scaffoldTool, s.handleScaffold, scaffoldInput{
+		Path: "projections/totals.js",
+		Name: "order-totals",
+	})
+
+	if result["name"] != "order-totals" {
+		t.Errorf("expected name=order-totals, got %v", result["name"])
+	}
+	if s.cfg.FindProjection("order-totals") == nil {
+		t.Error("expected order-totals in config")
+	}
+}
+
 func TestScaffold_Duplicate(t *testing.T) {
 	s := setupTestProject(t)
-	callToolExpectError(t, s.handleScaffold, scaffoldInput{Name: "order-count"})
+	callToolExpectError(t, s.handleScaffold, scaffoldInput{
+		Path: "projections/order-count.js",
+	})
 }
 
 func TestScaffold_PathTraversal(t *testing.T) {
 	s := setupTestProject(t)
-	callToolExpectError(t, s.handleScaffold, scaffoldInput{Name: "../escape"})
+	callToolExpectError(t, s.handleScaffold, scaffoldInput{Path: "../escape.js"})
+}
+
+func TestScaffold_AbsolutePath(t *testing.T) {
+	// MCP doesn't have the CLI's cwd-resolution wrapper; the
+	// validator is the only line of defence against absolute paths.
+	s := setupTestProject(t)
+	callToolExpectError(t, s.handleScaffold, scaffoldInput{Path: "/etc/escape.js"})
+}
+
+func TestScaffold_WindowsDrivePath(t *testing.T) {
+	// LLMs trained on Windows paths can hit a Linux-hosted MCP
+	// server. The drive-letter prefix has to be rejected regardless
+	// of host OS - filepath.IsAbs on Linux won't catch it.
+	s := setupTestProject(t)
+	callToolExpectError(t, s.handleScaffold, scaffoldInput{Path: "C:\\tmp\\counter.js"})
+}
+
+func TestScaffold_MissingPath(t *testing.T) {
+	// scaffold.Scaffold's validator owns the "path is required"
+	// error; the MCP handler is a passthrough.
+	s := setupTestProject(t)
+	callToolExpectError(t, s.handleScaffold, scaffoldInput{Name: "no-path"})
+}
+
+func TestScaffold_BackslashPath(t *testing.T) {
+	// LLM trained on Windows paths sends a backslashed path; the
+	// validator normalises it to slash-form before storing.
+	s := setupTestProject(t)
+	result := callTool(t, s, scaffoldTool, s.handleScaffold, scaffoldInput{
+		Path: "projections\\winproj.js",
+	})
+	if result["created"] != "projections/winproj.js" {
+		t.Errorf("created: got %v, want projections/winproj.js", result["created"])
+	}
 }
 
 // --- Debug (break_at via run) ---

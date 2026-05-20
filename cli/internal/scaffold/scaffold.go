@@ -3,28 +3,84 @@ package scaffold
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/pathutil"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 )
+
+var supportedExtensions = []string{".js"}
+
+// ListExtensions returns a copy of the allowlist for help-text rendering.
+func ListExtensions() []string {
+	out := make([]string, len(supportedExtensions))
+	copy(out, supportedExtensions)
+	return out
+}
+
+// IsSupported reports whether ext is in the allowlist.
+func IsSupported(ext string) bool {
+	for _, e := range supportedExtensions {
+		if ext == e {
+			return true
+		}
+	}
+	return false
+}
 
 type Result struct {
 	RelPath string
 	Name    string
 }
 
-func Scaffold(root string, cfg *config.Config, name, source, partition string, emit bool) (*Result, error) {
+// Scaffold creates a projection file at relPath (interpreted relative
+// to root) and registers it in gaffer.toml. The single point of
+// validation: extension allowlist, no escape past root including via
+// symlinks, no separator-flavour bypass.
+//
+// relPath may use `/` or `\` separators; the toml entry is stored
+// slash-form regardless. If name is empty, it defaults to the file's
+// basename without extension - kept here so the rule stays consistent
+// across the CLI and MCP surfaces.
+func Scaffold(
+	root string,
+	cfg *config.Config,
+	name, relPath, source, partition string,
+	emit bool,
+) (*Result, error) {
+	cleanRel, err := validateRelPath(relPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if name == "" {
+		name = strings.TrimSuffix(path.Base(cleanRel), path.Ext(cleanRel))
+	}
+	if strings.TrimSpace(name) == "" {
+		return nil, fmt.Errorf("projection name is required")
+	}
 	if cfg.FindProjection(name) != nil {
 		return nil, fmt.Errorf("projection %q already exists in gaffer.toml", name)
 	}
 
-	relPath := filepath.Join("projections", name+".js")
-	absPath := filepath.Join(root, relPath)
+	absPath := filepath.Join(root, filepath.FromSlash(cleanRel))
+
+	// Resolve symlinks anywhere on the parent path so an in-tree
+	// symlink pointing outside (e.g. `bad -> /etc`) can't smuggle
+	// the write past the lexical no-escape check. There's a small
+	// TOCTOU window between this check and MkdirAll/WriteFile - an
+	// attacker with project-tree write access could swap a directory
+	// for a symlink in between. In our threat model the attacker
+	// already has write access, so the residual risk is acceptable.
+	if err := assertUnderRoot(root, absPath, relPath); err != nil {
+		return nil, err
+	}
 
 	if _, err := os.Stat(absPath); err == nil {
-		return nil, fmt.Errorf("file already exists: %s", relPath)
+		return nil, fmt.Errorf("file already exists: %s", cleanRel)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
@@ -42,7 +98,7 @@ func Scaffold(root string, cfg *config.Config, name, source, partition string, e
 
 	cfg.Projection = append(cfg.Projection, config.Projection{
 		Name:  name,
-		Entry: relPath,
+		Entry: cleanRel,
 	})
 
 	configPath := project.ConfigPath(root)
@@ -50,7 +106,77 @@ func Scaffold(root string, cfg *config.Config, name, source, partition string, e
 		return nil, fmt.Errorf("updating gaffer.toml: %w", err)
 	}
 
-	return &Result{RelPath: relPath, Name: name}, nil
+	return &Result{RelPath: cleanRel, Name: name}, nil
+}
+
+// validateRelPath enforces relative, supported-extension,
+// non-escaping, non-empty-stem. Normalises `\` to `/` so Windows
+// users can type either separator and the result is always
+// slash-form (the canonical form stored in gaffer.toml). The
+// `userInput` argument flows into error messages so the user sees
+// what they actually typed, not the normalised form.
+func validateRelPath(userInput string) (string, error) {
+	if strings.TrimSpace(userInput) == "" {
+		return "", fmt.Errorf("projection path is required")
+	}
+	// Reject Windows drive-letter forms before any normalisation.
+	// On non-Windows hosts filepath.IsAbs doesn't recognise them,
+	// and after backslash normalisation path.IsAbs doesn't either,
+	// so an LLM-supplied "C:\..." could otherwise scaffold into
+	// `<root>/C:/...` on a Linux server.
+	if pathutil.HasWindowsDrivePrefix(userInput) {
+		return "", fmt.Errorf(
+			"projection path %q must be relative to the project root",
+			userInput,
+		)
+	}
+	if filepath.IsAbs(userInput) {
+		return "", fmt.Errorf(
+			"projection path %q must be relative to the project root",
+			userInput,
+		)
+	}
+	normalised := strings.ReplaceAll(userInput, "\\", "/")
+	if path.IsAbs(normalised) {
+		return "", fmt.Errorf(
+			"projection path %q must be relative to the project root",
+			userInput,
+		)
+	}
+	if pathutil.EscapesRoot(normalised) {
+		return "", fmt.Errorf("projection path %q is outside the project root", userInput)
+	}
+	cleaned := path.Clean(normalised)
+	ext := path.Ext(cleaned)
+	if !IsSupported(ext) {
+		return "", fmt.Errorf(
+			"projection path %q must end in one of %s",
+			userInput,
+			strings.Join(supportedExtensions, ", "),
+		)
+	}
+	// Reject paths whose basename is only the extension (e.g. ".js"
+	// or "foo/.js") - the toml key derivation would yield empty and
+	// the user would see a confusing "name is required" downstream.
+	if strings.TrimSuffix(path.Base(cleaned), ext) == "" {
+		return "", fmt.Errorf("projection path %q is missing a file name", userInput)
+	}
+	return cleaned, nil
+}
+
+// assertUnderRoot verifies the resolved parent of absPath is still
+// inside root, using pathutil's symlink-aware containment check so
+// an in-tree symlink can't smuggle the write past the lexical
+// no-escape check upstream.
+func assertUnderRoot(root, absPath, userInput string) error {
+	inside, err := pathutil.IsInsideRoot(root, filepath.Dir(absPath))
+	if err != nil {
+		return fmt.Errorf("resolving %s: %w", userInput, err)
+	}
+	if !inside {
+		return fmt.Errorf("projection path %q is outside the project root", userInput)
+	}
+	return nil
 }
 
 func GenerateSource(source, partition string, emit bool) (string, error) {

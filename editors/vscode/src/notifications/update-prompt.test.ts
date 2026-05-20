@@ -213,31 +213,12 @@ describe("isCliUpdatePromptSuppressed", () => {
 	});
 });
 
+// Only the safety wrapper around semver.gt is ours; trust semver for
+// actual version comparison.
 describe("isNewerVersion", () => {
-	it.each([
-		["0.2.0", "0.1.0", true],
-		["1.0.0", "0.99.99", true],
-		["0.1.1", "0.1.0", true],
-		["0.1.0", "0.1.0", false],
-		["0.1.0", "0.1.1", false],
-		["0.0.1", "0.1.0", false],
-		["v1.2.3", "1.2.2", true], // v-prefix tolerated
-		["1.2.3", "v1.2.3", false],
-	])("isNewerVersion(%s, %s) === %s", (latest, current, want) => {
-		expect(isNewerVersion(latest, current)).toBe(want);
-	});
-
-	// Pre-release suffixes are stripped before comparison: a user who
-	// dismissed 1.2.3-rc.1 won't be re-prompted when 1.2.3 stable ships.
-	it("strips pre-release suffix on both sides before comparing", () => {
-		expect(isNewerVersion("1.2.3", "1.2.3-rc.1")).toBe(false);
-		expect(isNewerVersion("1.2.3-rc.1", "1.2.3")).toBe(false);
-		expect(isNewerVersion("1.2.4", "1.2.3-rc.1")).toBe(true);
-	});
-
 	it("returns false on garbage input rather than throwing", () => {
 		expect(isNewerVersion("not-a-version", "1.2.3")).toBe(false);
-		expect(isNewerVersion("1.2.3", "also-not-a-version")).toBe(true);
+		expect(isNewerVersion("1.2.3", "also-not-a-version")).toBe(false);
 	});
 });
 

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import gt from "semver/functions/gt.js";
 import { log } from "../output.js";
 import { NPM_PACKAGE, runNpmTerminal } from "./npm.js";
 
@@ -98,23 +99,14 @@ export function runNpmUpdate(): Promise<{ ok: boolean }> {
 	});
 }
 
-// Strict numeric X.Y.Z compare with v-prefix and pre-release suffix
-// tolerated. Pre-release is stripped before compare, so dismissing
-// 1.2.3-rc.1 also suppresses the matching 1.2.3 stable - acceptable
-// because the alternative is re-prompting users who already opted
-// out of that version line.
+// Wraps node-semver's gt so a malformed manifest version (the CLI
+// could ship one some day) can't throw out of the activation path.
+// Falls back to "not newer" - the toast suppresses rather than fires
+// on bad data.
 export function isNewerVersion(latest: string, current: string): boolean {
-	const parse = (v: string): number[] =>
-		(v.replace(/^v/, "").split("-")[0] ?? "")
-			.split(".")
-			.map((n) => parseInt(n, 10) || 0);
-	const l = parse(latest);
-	const c = parse(current);
-	for (let i = 0; i < 3; i++) {
-		const ln = l[i] ?? 0;
-		const cn = c[i] ?? 0;
-		if (ln > cn) return true;
-		if (ln < cn) return false;
+	try {
+		return gt(latest, current);
+	} catch {
+		return false;
 	}
-	return false;
 }

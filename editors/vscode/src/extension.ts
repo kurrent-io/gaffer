@@ -31,6 +31,11 @@ import {
 	showCliNotFoundPrompt,
 } from "./notifications/install-prompt.js";
 import {
+	isCliUpdatePromptSuppressed,
+	runNpmUpdate,
+	showCliUpdatePrompt,
+} from "./notifications/update-prompt.js";
+import {
 	openTelemetryDisclosurePage,
 	showTelemetryDisclosure,
 } from "./notifications/telemetry.js";
@@ -328,6 +333,16 @@ async function activateAfterTelemetry(
 		retryStartLanguageClient();
 		if (manifest !== null) {
 			void clearInstallPromptDismissed(context);
+			const latest = manifest.updateAvailable;
+			if (latest != null && !isCliUpdatePromptSuppressed(context, latest)) {
+				void showCliUpdatePrompt({
+					context,
+					current: manifest.version,
+					latest,
+					runUpdate: runNpmUpdate,
+					onUpdated: reloadManifest,
+				});
+			}
 			return;
 		}
 		if (err === undefined) return;

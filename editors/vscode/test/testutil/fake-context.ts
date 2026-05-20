@@ -27,6 +27,7 @@ export function makeContext(): vscode.ExtensionContext {
 		extensionPath: "/fake/extension",
 		globalStorageUri,
 		workspaceState: makeMemento(),
+		globalState: makeMemento(),
 		extension: {
 			packageJSON: { version: "0.0.0-test" },
 		},

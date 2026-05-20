@@ -113,7 +113,7 @@ fixtures.evil = "../escape.json"
 	waitFor(t, func() bool {
 		got := findPublishDiagnostics(stub.notifSnapshot(), uri)
 		return got != nil && len(got.Diagnostics) == 1
-	}, time.Second)
+	}, waitForTimeout)
 
 	got := findPublishDiagnostics(stub.notifSnapshot(), uri)
 	if got == nil || got.Diagnostics[0].Code != "fixture.path-escapes-root" {
@@ -150,7 +150,7 @@ func TestServer_InitializedRegistersFileWatcher(t *testing.T) {
 			}
 		}
 		return false
-	}, time.Second)
+	}, waitForTimeout)
 
 	var foundPattern string
 	for _, r := range stub.requestSnapshot() {
@@ -228,7 +228,7 @@ fixtures.evil = "../escape.json"
 	waitFor(t, func() bool {
 		state, ok := server.docs.Get(uri)
 		return ok && state.Source == sourceMemory
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
 	// Wait for the decoy's diagnostics - by then the walk has
@@ -236,7 +236,7 @@ fixtures.evil = "../escape.json"
 	waitFor(t, func() bool {
 		got := findPublishDiagnostics(stub.notifSnapshot(), decoyURI)
 		return got != nil
-	}, time.Second)
+	}, waitForTimeout)
 
 	state, ok := server.docs.Get(uri)
 	if !ok {
@@ -281,7 +281,7 @@ fixtures.evil = "../escape.json"
 	waitFor(t, func() bool {
 		got := findPublishDiagnostics(stub.notifSnapshot(), uri)
 		return got != nil && len(got.Diagnostics) == 1
-	}, time.Second)
+	}, waitForTimeout)
 
 	// Now repair the file on disk and tell the server it changed.
 	if err := os.WriteFile(cfg, []byte(`[[projection]]
@@ -297,7 +297,7 @@ fixtures.happy = "fixtures/happy.json"
 	waitFor(t, func() bool {
 		got := findPublishDiagnostics(stub.notifSnapshot(), uri)
 		return got != nil && len(got.Diagnostics) == 0
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
@@ -331,7 +331,7 @@ fixtures.evil = "../escape.json"
 	waitFor(t, func() bool {
 		_, ok := server.docs.Get(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
 		Changes: []FileEvent{{URI: uri, Type: FileChangeDeleted}},
@@ -343,7 +343,7 @@ fixtures.evil = "../escape.json"
 		// gone from the store.
 		_, ok := server.docs.Get(uri)
 		return got != nil && len(got.Diagnostics) == 0 && !ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
@@ -377,7 +377,7 @@ func TestServer_DidChangeWatchedFiles_CreatedSeedsAndPublishes(t *testing.T) {
 			}
 		}
 		return false
-	}, time.Second)
+	}, waitForTimeout)
 
 	// Drop a fresh file and tell the server.
 	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[[projection]]
@@ -393,7 +393,7 @@ fixtures.evil = "../escape.json"
 	waitFor(t, func() bool {
 		got := findPublishDiagnostics(stub.notifSnapshot(), uri)
 		return got != nil && len(got.Diagnostics) == 1
-	}, time.Second)
+	}, waitForTimeout)
 	if _, ok := server.docs.Get(uri); !ok {
 		t.Fatal("expected URI in store after Created event")
 	}
@@ -440,7 +440,7 @@ fixtures.happy = "fixtures/happy.json"
 	waitFor(t, func() bool {
 		state, ok := server.docs.Get(uri)
 		return ok && state.Source == sourceMemory && state.Content == memContent
-	}, time.Second)
+	}, waitForTimeout)
 
 	// Disk-side change + watcher event.
 	if err := os.WriteFile(cfg, []byte("CORRUPT-DISK-CONTENT"), 0o644); err != nil {
@@ -539,7 +539,7 @@ fixtures.happy = "fixtures/happy.json"
 	waitFor(t, func() bool {
 		_, ok := server.docs.GetParse(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	// No didOpen was sent; lenses must come from the walk-seeded
 	// parse alone.
@@ -594,7 +594,7 @@ fixtures.evil = "../escape.json"
 	waitFor(t, func() bool {
 		_, ok := server.docs.Get(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	// One batch, two events: Changed then Deleted.
 	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
@@ -608,7 +608,7 @@ fixtures.evil = "../escape.json"
 	waitFor(t, func() bool {
 		got := findPublishDiagnostics(stub.notifSnapshot(), uri)
 		return got != nil && len(got.Diagnostics) == 0
-	}, time.Second)
+	}, waitForTimeout)
 	// Sleep past any spurious late Changed publish from a
 	// parallelised implementation. If parsing was kicked off
 	// async, its publish would land here.
@@ -657,7 +657,7 @@ entry = "alpha.js"
 	waitFor(t, func() bool {
 		_, ok := server.docs.GetParse(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	// One batch with [Deleted, Created]. Sequential processing
 	// must apply Deleted first, then Created.
@@ -673,7 +673,7 @@ entry = "alpha.js"
 	waitFor(t, func() bool {
 		_, ok := server.docs.GetParse(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
@@ -713,7 +713,7 @@ entry = "beta.js"
 		_, okA := server.docs.GetParse(uriA)
 		_, okB := server.docs.GetParse(uriB)
 		return okA && okB
-	}, time.Second)
+	}, waitForTimeout)
 
 	// Delete A, change B - in one batch. Both must apply.
 	_ = conn.Notify(ctx, MethodDidChangeWatchedFiles, &DidChangeWatchedFilesParams{
@@ -727,7 +727,7 @@ entry = "beta.js"
 		_, hasA := server.docs.GetParse(uriA)
 		_, hasB := server.docs.GetParse(uriB)
 		return !hasA && hasB
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)

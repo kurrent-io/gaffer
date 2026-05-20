@@ -40,7 +40,7 @@ fixtures.sad = "fixtures/sad.json"
 	waitFor(t, func() bool {
 		_, ok := server.docs.GetParse(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	var result ProjectionDetailsResult
 	if err := conn.Call(ctx, MethodProjectionDetails, ProjectionDetailsParams{
@@ -93,7 +93,7 @@ fixtures.happy = "fixtures/happy.json"
 	waitFor(t, func() bool {
 		_, ok := server.docs.GetParse(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	var result ProjectionDetailsResult
 	if err := conn.Call(ctx, MethodProjectionDetails, ProjectionDetailsParams{
@@ -147,7 +147,7 @@ fixtures.broken = ""
 	waitFor(t, func() bool {
 		_, ok := server.docs.GetParse(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	var result ProjectionDetailsResult
 	if err := conn.Call(ctx, MethodProjectionDetails, ProjectionDetailsParams{
@@ -226,7 +226,7 @@ entry = "real.js"
 	waitFor(t, func() bool {
 		_, ok := server.docs.GetParse(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	var result ProjectionDetailsResult
 	if err := conn.Call(ctx, MethodProjectionDetails, ProjectionDetailsParams{

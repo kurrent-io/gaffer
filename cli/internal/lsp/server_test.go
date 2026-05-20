@@ -122,7 +122,7 @@ func TestServer_ExitDrivesDisconnect(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected clean shutdown, got %v", err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(waitForTimeout):
 		t.Fatal("server.Run hung after exit notification")
 	}
 }
@@ -145,7 +145,7 @@ func TestServer_ContextCancellationStopsRun(t *testing.T) {
 	cancel()
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(waitForTimeout):
 		t.Fatal("server.Run hung after ctx cancellation")
 	}
 }
@@ -304,7 +304,7 @@ func TestServer_DidOpenStoresTheBuffer(t *testing.T) {
 	waitFor(t, func() bool {
 		state, ok := server.docs.Get(uri)
 		return ok && state.Source == sourceMemory && state.Content == "engine_version = 2"
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
@@ -334,7 +334,7 @@ func TestServer_DidChangeUpdatesContent(t *testing.T) {
 	waitFor(t, func() bool {
 		state, ok := server.docs.Get(uri)
 		return ok && state.Content == "second"
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
@@ -372,7 +372,7 @@ func TestServer_DidChangeMultipleEventsTakesLast(t *testing.T) {
 	waitFor(t, func() bool {
 		state, ok := server.docs.Get(uri)
 		return ok && state.Content == "final"
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
@@ -399,14 +399,14 @@ func TestServer_DidCloseRemovesFromStore(t *testing.T) {
 	waitFor(t, func() bool {
 		_, ok := server.docs.Get(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 	_ = conn.Notify(ctx, MethodDidClose, &DidCloseTextDocumentParams{
 		TextDocument: TextDocumentIdentifier{URI: uri},
 	})
 	waitFor(t, func() bool {
 		_, ok := server.docs.Get(uri)
 		return !ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
@@ -437,7 +437,7 @@ func TestServer_DidSaveIsAccepted(t *testing.T) {
 	waitFor(t, func() bool {
 		_, ok := server.docs.Get(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 	if err := conn.Notify(ctx, MethodDidSave, &DidSaveTextDocumentParams{
 		TextDocument: TextDocumentIdentifier{URI: uri},
 	}); err != nil {
@@ -452,6 +452,14 @@ func TestServer_DidSaveIsAccepted(t *testing.T) {
 	_ = conn.Notify(ctx, MethodExit, nil)
 	<-done
 }
+
+// waitForTimeout is the canonical "wait for an async server effect"
+// budget. The happy-path latency for these helpers is milliseconds
+// (one pipe roundtrip plus a goroutine schedule); the slack is for
+// GitHub-runner CPU contention. Tests that intentionally bound a
+// shorter window (e.g. "no second publish within 500ms") pass the
+// value to waitFor explicitly.
+const waitForTimeout = 5 * time.Second
 
 // waitFor polls cond until it returns true or `timeout` elapses,
 // failing the test if the latter. Used to bridge the async gap
@@ -584,14 +592,14 @@ func TestServer_DidOpenSameURITwiceOverwritesBuffer(t *testing.T) {
 	waitFor(t, func() bool {
 		state, ok := server.docs.Get(uri)
 		return ok && state.Content == "first"
-	}, time.Second)
+	}, waitForTimeout)
 	_ = conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
 		TextDocument: TextDocumentItem{URI: uri, Text: "second"},
 	})
 	waitFor(t, func() bool {
 		state, ok := server.docs.Get(uri)
 		return ok && state.Content == "second"
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)

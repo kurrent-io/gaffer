@@ -136,7 +136,7 @@ fixtures.evil = "../escape.json"
 
 	waitFor(t, func() bool {
 		return findPublishDiagnostics(n.snapshot(), uri) != nil
-	}, time.Second)
+	}, waitForTimeout)
 
 	got := findPublishDiagnostics(n.snapshot(), uri)
 	if got == nil {
@@ -183,7 +183,7 @@ func TestServer_DidOpenForNonGafferFileSkipsParse(t *testing.T) {
 	waitFor(t, func() bool {
 		_, ok := server.docs.Get(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 	// Sleep a touch to allow any spurious parse goroutine to
 	// publish; if the gate is right, no notification arrives.
 	time.Sleep(100 * time.Millisecond)
@@ -228,7 +228,7 @@ fixtures.happy = "fixtures/happy.json"
 	waitFor(t, func() bool {
 		got := findPublishDiagnostics(n.snapshot(), uri)
 		return got != nil && len(got.Diagnostics) == 1
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Notify(ctx, MethodDidChange, &DidChangeTextDocumentParams{
 		TextDocument:   VersionedTextDocumentIdentifier{URI: uri},
@@ -237,7 +237,7 @@ fixtures.happy = "fixtures/happy.json"
 	waitFor(t, func() bool {
 		got := findPublishDiagnostics(n.snapshot(), uri)
 		return got != nil && len(got.Diagnostics) == 0
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
@@ -269,7 +269,7 @@ fixtures.evil = "../escape.json"
 	waitFor(t, func() bool {
 		got := findPublishDiagnostics(n.snapshot(), uri)
 		return got != nil && len(got.Diagnostics) == 1
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Notify(ctx, MethodDidClose, &DidCloseTextDocumentParams{
 		TextDocument: TextDocumentIdentifier{URI: uri},
@@ -277,7 +277,7 @@ fixtures.evil = "../escape.json"
 	waitFor(t, func() bool {
 		got := findPublishDiagnostics(n.snapshot(), uri)
 		return got != nil && len(got.Diagnostics) == 0
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
@@ -310,7 +310,7 @@ fixtures.happy = "fixtures/happy.json"
 	waitFor(t, func() bool {
 		_, ok := server.docs.GetParse(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	var lenses []CodeLens
 	if err := conn.Call(ctx, MethodCodeLens, CodeLensParams{
@@ -412,7 +412,7 @@ fixtures.happy = "fixtures/happy.json"
 	waitFor(t, func() bool {
 		got := findPublishDiagnostics(n.snapshot(), uri)
 		return got != nil && len(got.Diagnostics) == 1
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Notify(ctx, MethodDidClose, &DidCloseTextDocumentParams{
 		TextDocument: TextDocumentIdentifier{URI: uri},
@@ -423,7 +423,7 @@ fixtures.happy = "fixtures/happy.json"
 	waitFor(t, func() bool {
 		_, ok := server.docs.GetParse(uri)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	// The cached parse must reflect the reopened (good) content -
 	// no diagnostics, even though the prior open had one.

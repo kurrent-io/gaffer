@@ -39,7 +39,7 @@ fixtures.happy = "fixtures/happy.json"
 	waitFor(t, func() bool {
 		_, ok := server.docs.GetParse(tomlURI)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	var lenses []CodeLens
 	if err := conn.Call(ctx, MethodCodeLens, CodeLensParams{
@@ -107,7 +107,7 @@ entry = "checkout.js"
 	waitFor(t, func() bool {
 		_, ok := server.docs.GetParse(tomlURI)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	var lenses []CodeLens
 	if err := conn.Call(ctx, MethodCodeLens, CodeLensParams{
@@ -160,7 +160,7 @@ entry = "p.js"
 			}
 		}
 		return false
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
@@ -194,7 +194,7 @@ entry = "p.js"
 	// know the parseAndPublish goroutine completed.
 	waitFor(t, func() bool {
 		return findPublishDiagnostics(stub.notifSnapshot(), uri) != nil
-	}, time.Second)
+	}, waitForTimeout)
 	// Sleep briefly for any errant refresh to fire (it shouldn't).
 	time.Sleep(100 * time.Millisecond)
 
@@ -312,7 +312,7 @@ entry = "shared.js"
 	waitFor(t, func() bool {
 		_, ok := server.docs.GetParse(tomlURI)
 		return ok
-	}, time.Second)
+	}, waitForTimeout)
 
 	var lenses []CodeLens
 	if err := conn.Call(ctx, MethodCodeLens, CodeLensParams{
@@ -375,7 +375,7 @@ entry = "p.js"
 			}
 		}
 		return c >= 1
-	}, time.Second)
+	}, waitForTimeout)
 	preCloseCount := 0
 	for _, r := range stub.requestSnapshot() {
 		if r.Method == MethodCodeLensRefresh {
@@ -394,7 +394,7 @@ entry = "p.js"
 			}
 		}
 		return c > preCloseCount
-	}, time.Second)
+	}, waitForTimeout)
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)

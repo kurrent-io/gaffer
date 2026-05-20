@@ -1,5 +1,5 @@
 ---
-"@kurrent/gaffer": minor
+"@kurrent/gaffer": patch
 ---
 
 Notify when a newer gaffer release is available. On interactive runs the CLI now prints a one-line stderr hint when the cached `latest` version on npm is ahead of the running binary, e.g.

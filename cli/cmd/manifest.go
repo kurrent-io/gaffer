@@ -10,15 +10,6 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
-type manifest struct {
-	Version  string                     `json:"version"`
-	Commands map[string]manifestCommand `json:"commands"`
-}
-
-type manifestCommand struct {
-	Flags []string `json:"flags"`
-}
-
 func newManifestCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "manifest",
@@ -48,20 +39,18 @@ func newManifestCmd() *cobra.Command {
 				telemetry.EmitManifest(cmd.Context(), props)
 			})
 
-			m := manifest{
-				Version:  Version,
-				Commands: buildCommandManifest(cmd.Root()),
-			}
-
 			enc := json.NewEncoder(cmd.OutOrStdout())
 			enc.SetIndent("", "  ")
-			return enc.Encode(m)
+			return enc.Encode(BuildManifest(cmd.Root(), Version))
 		},
 	}
 }
 
-func buildCommandManifest(root *cobra.Command) map[string]manifestCommand {
-	commands := map[string]manifestCommand{}
+// BuildManifest produces the JSON-ready map that `gaffer manifest` emits.
+// Exported so callers outside cobra (the MCP server) can return the same
+// shape without re-implementing the cobra walk.
+func BuildManifest(root *cobra.Command, version string) map[string]any {
+	commands := map[string]map[string]any{}
 
 	for _, child := range root.Commands() {
 		name := child.Name()
@@ -74,8 +63,11 @@ func buildCommandManifest(root *cobra.Command) map[string]manifestCommand {
 			flags = append(flags, f.Name)
 		})
 
-		commands[name] = manifestCommand{Flags: flags}
+		commands[name] = map[string]any{"flags": flags}
 	}
 
-	return commands
+	return map[string]any{
+		"version":  version,
+		"commands": commands,
+	}
 }

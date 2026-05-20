@@ -5,8 +5,35 @@ import (
 	"testing"
 )
 
-func TestBuildCommandManifest_IncludesExpectedCommands(t *testing.T) {
-	commands := buildCommandManifest(NewRootCmd())
+func manifestCommands(t *testing.T) map[string]map[string]any {
+	t.Helper()
+	m := BuildManifest(NewRootCmd(), "test")
+	commands, ok := m["commands"].(map[string]map[string]any)
+	if !ok {
+		t.Fatalf("manifest commands has unexpected type %T", m["commands"])
+	}
+	return commands
+}
+
+func commandFlags(t *testing.T, commands map[string]map[string]any, name string) map[string]bool {
+	t.Helper()
+	cmd, ok := commands[name]
+	if !ok {
+		t.Fatalf("expected command %q", name)
+	}
+	flags, ok := cmd["flags"].([]string)
+	if !ok {
+		t.Fatalf("flags for %q has unexpected type %T", name, cmd["flags"])
+	}
+	flagSet := make(map[string]bool, len(flags))
+	for _, f := range flags {
+		flagSet[f] = true
+	}
+	return flagSet
+}
+
+func TestBuildManifest_IncludesExpectedCommands(t *testing.T) {
+	commands := manifestCommands(t)
 
 	expected := []string{"init", "scaffold", "dev", "info", "mcp"}
 	for _, name := range expected {
@@ -16,8 +43,8 @@ func TestBuildCommandManifest_IncludesExpectedCommands(t *testing.T) {
 	}
 }
 
-func TestBuildCommandManifest_ExcludesInternalCommands(t *testing.T) {
-	commands := buildCommandManifest(NewRootCmd())
+func TestBuildManifest_ExcludesInternalCommands(t *testing.T) {
+	commands := manifestCommands(t)
 
 	excluded := []string{"manifest", "help", "version", "completion"}
 	for _, name := range excluded {
@@ -27,96 +54,53 @@ func TestBuildCommandManifest_ExcludesInternalCommands(t *testing.T) {
 	}
 }
 
-func TestBuildCommandManifest_DevFlags(t *testing.T) {
-	commands := buildCommandManifest(NewRootCmd())
-
-	dev, ok := commands["dev"]
-	if !ok {
-		t.Fatal("expected dev command")
-	}
-
-	expected := []string{"events", "json", "connection", "debug", "debug-port"}
-	flagSet := make(map[string]bool)
-	for _, f := range dev.Flags {
-		flagSet[f] = true
-	}
-
-	for _, name := range expected {
-		if !flagSet[name] {
+func TestBuildManifest_DevFlags(t *testing.T) {
+	flags := commandFlags(t, manifestCommands(t), "dev")
+	for _, name := range []string{"events", "json", "connection", "debug", "debug-port"} {
+		if !flags[name] {
 			t.Errorf("expected flag %q on dev command", name)
 		}
 	}
 }
 
-func TestBuildCommandManifest_ScaffoldFlags(t *testing.T) {
-	commands := buildCommandManifest(NewRootCmd())
-
-	scaffold, ok := commands["scaffold"]
-	if !ok {
-		t.Fatal("expected scaffold command")
-	}
-
-	expected := []string{"name", "source", "partition", "emit"}
-	flagSet := make(map[string]bool)
-	for _, f := range scaffold.Flags {
-		flagSet[f] = true
-	}
-
-	for _, name := range expected {
-		if !flagSet[name] {
+func TestBuildManifest_ScaffoldFlags(t *testing.T) {
+	flags := commandFlags(t, manifestCommands(t), "scaffold")
+	for _, name := range []string{"name", "source", "partition", "emit"} {
+		if !flags[name] {
 			t.Errorf("expected flag %q on scaffold command", name)
 		}
 	}
 }
 
-func TestBuildCommandManifest_InitFlags(t *testing.T) {
-	commands := buildCommandManifest(NewRootCmd())
-
-	init, ok := commands["init"]
-	if !ok {
-		t.Fatal("expected init command")
-	}
-
-	flagSet := make(map[string]bool)
-	for _, f := range init.Flags {
-		flagSet[f] = true
-	}
-
-	if !flagSet["yes"] {
+func TestBuildManifest_InitFlags(t *testing.T) {
+	flags := commandFlags(t, manifestCommands(t), "init")
+	if !flags["yes"] {
 		t.Error("expected flag \"yes\" on init command")
 	}
 }
 
-func TestBuildCommandManifest_InfoFlags(t *testing.T) {
-	commands := buildCommandManifest(NewRootCmd())
-
-	info, ok := commands["info"]
-	if !ok {
-		t.Fatal("expected info command")
-	}
-
-	flagSet := make(map[string]bool)
-	for _, f := range info.Flags {
-		flagSet[f] = true
-	}
-
-	if !flagSet["json"] {
+func TestBuildManifest_InfoFlags(t *testing.T) {
+	flags := commandFlags(t, manifestCommands(t), "info")
+	if !flags["json"] {
 		t.Error("expected flag \"json\" on info command")
 	}
 }
 
-func TestManifestJSON(t *testing.T) {
-	m := manifest{
-		Version:  "1.0.0",
-		Commands: buildCommandManifest(NewRootCmd()),
-	}
+func TestBuildManifest_JSONShape(t *testing.T) {
+	m := BuildManifest(NewRootCmd(), "1.0.0")
 
 	data, err := json.Marshal(m)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var parsed manifest
+	type parsedCommand struct {
+		Flags []string `json:"flags"`
+	}
+	var parsed struct {
+		Version  string                   `json:"version"`
+		Commands map[string]parsedCommand `json:"commands"`
+	}
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +108,6 @@ func TestManifestJSON(t *testing.T) {
 	if parsed.Version != "1.0.0" {
 		t.Errorf("expected version 1.0.0, got %s", parsed.Version)
 	}
-
 	if len(parsed.Commands) == 0 {
 		t.Error("expected commands in manifest")
 	}

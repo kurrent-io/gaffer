@@ -92,8 +92,20 @@ func setupTestProject(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 
-	s = New(dir, cfg, "test")
+	s = New(dir, cfg, "test", testManifest())
 	return s
+}
+
+// testManifest returns a stand-in manifest the test server returns from
+// the manifest tool. Keeps tests self-contained without depending on the
+// cmd package's cobra tree.
+func testManifest() map[string]any {
+	return map[string]any{
+		"version": "test",
+		"commands": map[string]map[string]any{
+			"info": {"flags": []string{"json"}},
+		},
+	}
 }
 
 func callTool[In any](t *testing.T, s *Server, tool *mcp.Tool, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error), input In) map[string]any {
@@ -890,5 +902,86 @@ func TestResolveRange(t *testing.T) {
 					tt.from, tt.to, gotFrom, gotTo, tt.wantFrom, tt.wantTo)
 			}
 		})
+	}
+}
+
+// --- Info ---
+
+func TestInfo_ExplicitName(t *testing.T) {
+	s := setupTestProject(t)
+	result := callTool(t, s, infoTool, s.handleInfo, infoInput{Name: "order-count"})
+
+	if result["name"] != "order-count" {
+		t.Errorf("expected name=order-count, got %v", result["name"])
+	}
+	if result["entry"] != "projections/order-count.js" {
+		t.Errorf("expected entry=projections/order-count.js, got %v", result["entry"])
+	}
+	if result["partitioning"] != "byStream" {
+		t.Errorf("expected partitioning=byStream, got %v", result["partitioning"])
+	}
+}
+
+func TestInfo_NotFound(t *testing.T) {
+	s := setupTestProject(t)
+	msg := callToolExpectError(t, s.handleInfo, infoInput{Name: "nonexistent"})
+	if !strings.Contains(msg, "not found") {
+		t.Errorf("expected 'not found' in error, got %q", msg)
+	}
+}
+
+func TestInfo_RequiresNameWhenMultiple(t *testing.T) {
+	s := setupTestProject(t)
+	msg := callToolExpectError(t, s.handleInfo, infoInput{})
+	if !strings.Contains(msg, "name required") {
+		t.Errorf("expected 'name required' in error, got %q", msg)
+	}
+}
+
+func TestInfo_ErrorsWhenNoProjections(t *testing.T) {
+	s := setupTestProject(t)
+	s.cfg.Projection = nil
+
+	msg := callToolExpectError(t, s.handleInfo, infoInput{})
+	if !strings.Contains(msg, "no projections configured") {
+		t.Errorf("expected 'no projections configured' in error, got %q", msg)
+	}
+}
+
+func TestInfo_DefaultsWhenSingleProjection(t *testing.T) {
+	s := setupTestProject(t)
+	s.cfg.Projection = s.cfg.Projection[:1]
+
+	result := callTool(t, s, infoTool, s.handleInfo, infoInput{})
+	if result["name"] != "order-count" {
+		t.Errorf("expected default to order-count, got %v", result["name"])
+	}
+}
+
+// --- Manifest ---
+
+func TestManifest(t *testing.T) {
+	s := setupTestProject(t)
+	result := callTool(t, s, manifestTool, s.handleManifest, manifestInput{})
+
+	if result["version"] != "test" {
+		t.Errorf("expected version=test, got %v", result["version"])
+	}
+	commands, ok := result["commands"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected commands map, got %T", result["commands"])
+	}
+	if _, ok := commands["info"]; !ok {
+		t.Error("expected info command in manifest")
+	}
+}
+
+// --- Version ---
+
+func TestVersion(t *testing.T) {
+	s := setupTestProject(t)
+	result := callTool(t, s, versionTool, s.handleVersion, versionInput{})
+	if result["version"] != "test" {
+		t.Errorf("expected version=test, got %v", result["version"])
 	}
 }

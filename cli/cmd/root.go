@@ -44,10 +44,16 @@ func NewRootCmd() *cobra.Command {
 		Long:  "Develop, test, debug, and deploy KurrentDB projections.",
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			// Update-check is best-effort: skip when stderr isn't a
-			// TTY (extension-spawned lsp/mcp, piped stderr, CI runs).
-			// Start is nil-safe when no Client was stashed on ctx -
-			// the cmd test harness exercises that branch.
-			updatecheck.FromCtx(cmd.Context()).Start(noUpdateCheck || !isatty.IsTerminal(os.Stderr.Fd()))
+			// TTY (extension-spawned lsp/mcp, piped stderr, CI runs)
+			// or when the command emits machine-readable output. A
+			// human-readable card on the structured-output channels'
+			// sibling stream is noise for the consumer to filter even
+			// if stderr happens to be a TTY (e.g. `gaffer manifest |
+			// jq` in a terminal). Start is nil-safe when no Client was
+			// stashed on ctx - the cmd test harness exercises that
+			// branch.
+			notTTY := !isatty.IsTerminal(os.Stderr.Fd())
+			updatecheck.FromCtx(cmd.Context()).Start(noUpdateCheck || notTTY || emitsStructuredOutput(cmd))
 			return nil
 		},
 	}
@@ -74,6 +80,27 @@ func NewRootCmd() *cobra.Command {
 // Execute() and tests so they share the same execution path.
 func ExecuteRoot(ctx context.Context, root *cobra.Command) error {
 	return fang.Execute(ctx, root, fang.WithoutVersion(), fang.WithErrorHandler(errorHandler))
+}
+
+// emitsStructuredOutput reports whether cmd's invocation produces
+// machine-readable output - either because the command always does
+// (manifest, lsp, mcp speak JSON / JSON-RPC) or because the user
+// asked for it via --json. The update-check stderr notice is
+// suppressed for these so wrappers and pipes see only the bytes they
+// asked for and don't have to filter human-readable noise.
+//
+// New structured-output commands must be added to the name switch.
+// The flag branch covers commands that flip between human and
+// machine output via --json (info, dev).
+func emitsStructuredOutput(cmd *cobra.Command) bool {
+	switch cmd.Name() {
+	case "manifest", "lsp", "mcp":
+		return true
+	}
+	if v, err := cmd.Flags().GetBool("json"); err == nil && v {
+		return true
+	}
+	return false
 }
 
 // registerHiddenInvocationFlags declares --invoker-id / --invoked-by /

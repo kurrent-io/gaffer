@@ -125,6 +125,19 @@ export function setWorkspaceFolders(folders: vscode.WorkspaceFolder[]): void {
 	state.workspaceFolders = folders;
 }
 
+// Stamps exitStatus then fires onDidCloseTerminal. Mirrors VS Code's
+// real ordering: by the time a close listener runs, terminal.exitStatus
+// is populated.
+export function fireTerminalClosed(
+	terminal: vscode.Terminal,
+	exitCode: number,
+): void {
+	(
+		terminal as { exitStatus: vscode.TerminalExitStatus | undefined }
+	).exitStatus = { code: exitCode, reason: 0 as vscode.TerminalExitReason };
+	state.terminalClosed.fire(terminal);
+}
+
 export const getState = (): typeof state => state;
 export const getShownMessages = __getShownMessages;
 

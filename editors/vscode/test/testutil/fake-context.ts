@@ -1,7 +1,8 @@
 // Minimal ExtensionContext stand-in for tests. Only exposes the
 // fields production code reads (subscriptions, extensionPath,
-// globalStorageUri, extension.packageJSON). Cast through unknown
-// since the real ExtensionContext has 16 fields we don't fake.
+// globalStorageUri, workspaceState, extension.packageJSON). Cast
+// through unknown since the real ExtensionContext has 16 fields we
+// don't fake.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -25,8 +26,28 @@ export function makeContext(): vscode.ExtensionContext {
 		subscriptions: [],
 		extensionPath: "/fake/extension",
 		globalStorageUri,
+		workspaceState: makeMemento(),
 		extension: {
 			packageJSON: { version: "0.0.0-test" },
 		},
 	} as unknown as vscode.ExtensionContext;
+}
+
+// In-memory Memento for tests. Mirrors vscode.Memento for the keys
+// production code touches; `undefined` updates delete the key, matching
+// the real contract.
+function makeMemento(): vscode.Memento {
+	const store = new Map<string, unknown>();
+	return {
+		keys: () => [...store.keys()],
+		get: <T>(key: string, defaultValue?: T): T | undefined => {
+			if (!store.has(key)) return defaultValue;
+			return store.get(key) as T;
+		},
+		update: (key: string, value: unknown): Thenable<void> => {
+			if (value === undefined) store.delete(key);
+			else store.set(key, value);
+			return Promise.resolve();
+		},
+	} as vscode.Memento;
 }

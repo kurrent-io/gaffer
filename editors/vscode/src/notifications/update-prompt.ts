@@ -2,16 +2,14 @@ import * as vscode from "vscode";
 import gt from "semver/functions/gt.js";
 import { log } from "../output.js";
 import { NPM_PACKAGE, runNpmTerminal } from "./npm.js";
+import { createStatusBarPrompt } from "./status-prompt.js";
 
 // Surfaced when `gaffer manifest` reports an `updateAvailable` newer
-// than the running CLI. Drops a status bar item rather than a toast
-// because VS Code auto-dismisses third-party message toasts after a
-// few seconds (sticky is reserved for built-in extensions per the
-// upstream source); a status bar item stays put until the user acts.
-// Click opens a quickpick with Update / Skip this version / Never
-// ask. Skipped-version key on globalState so it follows the user
-// across workspaces (the install is global). Never-ask is a user
-// setting (gaffer.cliUpdateNotifications) so it's discoverable and
+// than the running CLI. Drops a status bar item; click opens a
+// quickpick with Update / Skip this version / Never ask. Skipped-
+// version key on globalState so it follows the user across
+// workspaces (the install is global). Never-ask is a user setting
+// (gaffer.cliUpdateNotifications) so it's discoverable and
 // reversible from the settings UI.
 
 const DISMISSED_VERSION_KEY = "gaffer.cliUpdate.dismissedVersion";
@@ -50,39 +48,24 @@ function notificationsEnabled(): boolean {
 		.get<boolean>(NOTIFICATIONS_SETTING, true);
 }
 
-// Module-level state: at most one status bar item lives at a time.
+const prompt = createStatusBarPrompt({
+	commandId: COMMAND_OPEN,
+	onClick: runChoice,
+});
+
 // activeDeps captures the click handler's working set since
-// registerCommand takes a parameterless callback. lastPromptedVersion
-// stops a freshly-dismissed item re-creating on the next manifest
-// reload within the same session - the next session (or a newer
-// version) re-creates.
-let activeItem: vscode.StatusBarItem | null = null;
-let activeDisposables: vscode.Disposable[] = [];
+// registerCommand takes a parameterless callback. Cleared in lockstep
+// with prompt.dismiss.
 let activeDeps: UpdatePromptDeps | null = null;
-let lastPromptedVersion: string | null = null;
 
 export function showCliUpdatePrompt(deps: UpdatePromptDeps): void {
-	if (activeItem !== null) return;
-	if (lastPromptedVersion === deps.latest) return;
-	lastPromptedVersion = deps.latest;
-
+	if (prompt.active) return;
 	activeDeps = deps;
-	const item = vscode.window.createStatusBarItem(
-		vscode.StatusBarAlignment.Right,
-		100,
-	);
-	item.text = `$(arrow-circle-up) gaffer ${deps.latest}`;
-	item.tooltip = `gaffer ${deps.latest} is available (you have ${deps.current}). Click to update.`;
-	item.backgroundColor = new vscode.ThemeColor(
-		"statusBarItem.warningBackground",
-	);
-	item.command = COMMAND_OPEN;
-	activeDisposables.push(
-		vscode.commands.registerCommand(COMMAND_OPEN, runChoice),
-	);
-	item.show();
-	activeItem = item;
-	deps.context.subscriptions.push(item);
+	prompt.show({
+		text: `$(arrow-circle-up) gaffer ${deps.latest}`,
+		tooltip: `gaffer ${deps.latest} is available (you have ${deps.current}). Click to update.`,
+		backgroundColor: new vscode.ThemeColor("statusBarItem.warningBackground"),
+	});
 }
 
 async function runChoice(): Promise<void> {
@@ -121,17 +104,15 @@ async function runChoice(): Promise<void> {
 			}
 			if (ok) {
 				await deps.onUpdated();
-				dismissActiveItem();
-			} else {
-				// Failed click: clear the session guard so the user
-				// can retry the same version after fixing npm.
-				lastPromptedVersion = null;
+				dismiss();
 			}
+			// On failure the item stays visible so the user can retry
+			// by clicking it again after fixing whatever broke npm.
 			return;
 		}
 		if (choice.label === BUTTON_SKIP) {
 			await deps.context.globalState.update(DISMISSED_VERSION_KEY, deps.latest);
-			dismissActiveItem();
+			dismiss();
 			return;
 		}
 		if (choice.label === BUTTON_NEVER) {
@@ -142,7 +123,7 @@ async function runChoice(): Promise<void> {
 					false,
 					vscode.ConfigurationTarget.Global,
 				);
-			dismissActiveItem();
+			dismiss();
 		}
 	} catch (err) {
 		// Same fire-and-forget posture as the install prompt: catch
@@ -154,21 +135,14 @@ async function runChoice(): Promise<void> {
 	}
 }
 
-function dismissActiveItem(): void {
-	activeItem?.dispose();
-	for (const d of activeDisposables) d.dispose();
-	activeItem = null;
-	activeDisposables = [];
+function dismiss(): void {
+	prompt.dismiss();
 	activeDeps = null;
 }
 
-// Test-only: reset module state between tests. Module-level guards
-// (activeItem, lastPromptedVersion, ...) would otherwise leak
-// between it() blocks since vitest doesn't re-import the module per
-// test.
 export function __resetUpdatePromptStateForTests(): void {
-	dismissActiveItem();
-	lastPromptedVersion = null;
+	prompt.__resetForTests();
+	activeDeps = null;
 }
 
 export function runNpmUpdate(): Promise<{ ok: boolean }> {

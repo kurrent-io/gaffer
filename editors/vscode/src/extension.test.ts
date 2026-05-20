@@ -21,6 +21,7 @@ import {
 	fireWorkspaceTrustGranted,
 	getShownMessages,
 	getState,
+	getStatusBarItems,
 	queueFindFiles,
 	queueMessageResponse,
 	queueQuickPick,
@@ -417,13 +418,15 @@ describe("manifest outcome routing", () => {
 		setTrusted(true);
 		queueFindFiles([]);
 		await activate(makeContext());
-		const msgs = getShownMessages();
-		const installPrompt = msgs.find(
-			(m) => m.kind === "warning" && /gaffer CLI not found/i.test(m.message),
+		// Install prompt is now a status bar item, not a toast.
+		const installItem = getStatusBarItems().find((i) =>
+			i.text.includes("gaffer not installed"),
 		);
-		const genericToast = msgs.find((m) => /Gaffer CLI failed/.test(m.message));
-		expect(installPrompt).toBeDefined();
-		expect(installPrompt?.items).toContain("Install");
+		const genericToast = getShownMessages().find((m) =>
+			/Gaffer CLI failed/.test(m.message),
+		);
+		expect(installItem).toBeDefined();
+		expect(installItem?.disposed).toBe(false);
 		expect(genericToast).toBeUndefined();
 	});
 
@@ -436,7 +439,7 @@ describe("manifest outcome routing", () => {
 		await activate(ctx);
 		const msgs = getShownMessages();
 		expect(
-			msgs.find((m) => /gaffer CLI not found/i.test(m.message)),
+			getStatusBarItems().find((i) => i.text.includes("gaffer not installed")),
 		).toBeUndefined();
 		expect(
 			msgs.find((m) => /Gaffer CLI failed/.test(m.message)),

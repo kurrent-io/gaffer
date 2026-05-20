@@ -67,7 +67,7 @@ describe("showCliUpdatePrompt", () => {
 		expect(getStatusBarItems()[0]?.disposed).toBe(true);
 	});
 
-	it("Update failure: leaves the item visible and clears the session guard", async () => {
+	it("Update failure: leaves the item visible so the user can retry", async () => {
 		const ctx = makeContext();
 		showCliUpdatePrompt(
 			makeDeps({
@@ -77,16 +77,12 @@ describe("showCliUpdatePrompt", () => {
 		);
 		queueQuickPick({ label: "Update" });
 		await clickStatusBar();
-		// Item stays visible so the user can retry the same version
-		// after fixing whatever broke npm.
+		// Item stays visible; user can re-click to retry.
 		expect(getStatusBarItems()[0]?.disposed).toBe(false);
-		// Show the prompt again for the same version - lastPromptedVersion
-		// should have been cleared on failure so the call goes through.
-		// We dispose the current item first since the API short-circuits
-		// if activeItem !== null.
-		__resetUpdatePromptStateForTests();
-		showCliUpdatePrompt(makeDeps({ context: ctx, latest: "0.2.0" }));
-		expect(getStatusBarItems().filter((i) => !i.disposed)).toHaveLength(1);
+		// A second click reopens the quickpick rather than no-opping.
+		queueQuickPick(undefined);
+		await clickStatusBar();
+		expect(getStatusBarItems()[0]?.disposed).toBe(false);
 	});
 
 	it("Update: swallows a runUpdate rejection without crashing", async () => {
@@ -139,29 +135,16 @@ describe("showCliUpdatePrompt", () => {
 		await expect(clickStatusBar()).resolves.toBeUndefined();
 	});
 
-	it("Dedupes overlapping shows with the same latest version", () => {
-		const deps = makeDeps();
-		showCliUpdatePrompt(deps);
-		showCliUpdatePrompt(deps);
-		expect(getStatusBarItems()).toHaveLength(1);
-	});
-
-	it("Does not re-create within the same session after the toast was dismissed (Esc)", async () => {
-		// Show, dismiss the quickpick, then show again for the same
-		// version - the lastPromptedVersion guard prevents a second
-		// item from appearing. A different version DOES create a new
-		// item (after resetting the prior one for the test).
-		showCliUpdatePrompt(makeDeps({ latest: "0.2.0" }));
-		queueQuickPick(undefined);
-		await clickStatusBar();
-		showCliUpdatePrompt(makeDeps({ latest: "0.2.0" }));
-		expect(getStatusBarItems()).toHaveLength(1);
-
-		// The first item is still active; clear it and show for a
-		// newer version.
-		__resetUpdatePromptStateForTests();
+	it("Does not stack a second item while one is already visible", () => {
+		showCliUpdatePrompt(makeDeps());
 		showCliUpdatePrompt(makeDeps({ latest: "0.2.1" }));
-		expect(getStatusBarItems().filter((i) => !i.disposed)).toHaveLength(1);
+		// Subsequent shows no-op while the first item is visible.
+		// The original (0.2.0) remains; a newer version doesn't
+		// stack on top.
+		expect(getStatusBarItems()).toHaveLength(1);
+		expect(getStatusBarItems()[0]?.text).toBe(
+			"$(arrow-circle-up) gaffer 0.2.0",
+		);
 	});
 });
 

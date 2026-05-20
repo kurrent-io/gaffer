@@ -19,7 +19,7 @@ Powered by the [gaffer](https://www.npmjs.com/package/@kurrent/gaffer) toolkit.
 ## Quick start
 
 1. Install the extension.
-2. Open a folder. If it has no `gaffer.toml` yet, run `KurrentDB Projections: Init` from the command palette to bootstrap one.
+2. Open a folder and add projections via `KurrentDB Projections: Scaffold` (palette) or right-click a folder and pick `Scaffold Projection Here`. A fresh folder gets a `gaffer.toml` created for it automatically as part of the first scaffold; run `KurrentDB Projections: Init` from the palette if you'd rather create the toml without scaffolding.
 3. Click Debug above any projection in `gaffer.toml`, or run `KurrentDB Projections: Debug` from the command palette.
 
 The extension spawns the [`@kurrent/gaffer` CLI](https://www.npmjs.com/package/@kurrent/gaffer) for LSP, MCP, and debug sessions, and will offer to install it on first use if it isn't already on PATH.
@@ -34,12 +34,13 @@ The extension spawns the [`@kurrent/gaffer` CLI](https://www.npmjs.com/package/@
 
 ## Commands
 
-| Command                                     | What it does                                                                  |
-| ------------------------------------------- | ----------------------------------------------------------------------------- |
-| `KurrentDB Projections: Init`               | Create a `gaffer.toml` in the current folder                                  |
-| `KurrentDB Projections: Debug`              | Pick a projection from the workspace and launch a debug session               |
-| `KurrentDB Projections: Debug from Fixture` | Codelens-triggered Debug session bound to a specific fixture in `gaffer.toml` |
-| `KurrentDB Projections: Stop`               | Stop the running session                                                      |
+| Command                                     | What it does                                                                                              |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `KurrentDB Projections: Init`               | Create a `gaffer.toml` in the current folder                                                              |
+| `KurrentDB Projections: Scaffold`           | Add a new projection to the project via a multi-step picker. Right-clicking a folder runs it scoped there |
+| `KurrentDB Projections: Debug`              | Pick a projection from the workspace and launch a debug session                                           |
+| `KurrentDB Projections: Debug from Fixture` | Codelens-triggered Debug session bound to a specific fixture in `gaffer.toml`                             |
+| `KurrentDB Projections: Stop`               | Stop the running session                                                                                  |
 
 ## Telemetry
 

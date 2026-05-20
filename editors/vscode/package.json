@@ -119,6 +119,15 @@
 			{
 				"command": "gaffer.init",
 				"title": "KurrentDB Projections: Init"
+			},
+			{
+				"command": "gaffer.scaffold",
+				"title": "KurrentDB Projections: Scaffold"
+			},
+			{
+				"command": "gaffer.scaffoldHere",
+				"title": "Scaffold Projection Here",
+				"category": "KurrentDB Projections"
 			}
 		],
 		"debuggers": [
@@ -162,6 +171,17 @@
 				{
 					"command": "gaffer.stopDebug",
 					"when": "gaffer.mode == 'running' || gaffer.mode == 'inspecting'"
+				},
+				{
+					"command": "gaffer.scaffoldHere",
+					"when": "false"
+				}
+			],
+			"explorer/context": [
+				{
+					"command": "gaffer.scaffoldHere",
+					"when": "explorerResourceIsFolder",
+					"group": "navigation@99"
 				}
 			]
 		},

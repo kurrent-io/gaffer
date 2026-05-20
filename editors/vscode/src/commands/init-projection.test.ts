@@ -3,12 +3,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { initProjection, resolveTargetFolder } from "./init-projection.js";
+import { initProjection } from "./init-projection.js";
 import {
 	getShownMessages,
 	getState,
 	queueMessageResponse,
-	queueQuickPick,
 	resetVscode,
 	setConfiguration,
 	setTrusted,
@@ -93,43 +92,6 @@ describe("initProjection - toml-exists handling", () => {
 		expect(
 			getState().executeCommandCalls.find((c) => c.name === "vscode.open"),
 		).toBeUndefined();
-	});
-});
-
-describe("resolveTargetFolder", () => {
-	beforeEach(() => {
-		resetVscode();
-		setTrusted(true);
-	});
-
-	it("returns the single workspace folder without prompting", async () => {
-		setWorkspaceFolders([makeFolder("solo", "/ws/solo")]);
-		const resolved = await resolveTargetFolder();
-		expect(resolved?.fsPath).toBe("/ws/solo");
-		expect(getState().quickPickCalls).toEqual([]);
-	});
-
-	it("prompts a quick-pick when multiple workspace folders are open", async () => {
-		setWorkspaceFolders([makeFolder("a", "/ws/a"), makeFolder("b", "/ws/b")]);
-		queueQuickPick({
-			label: "b",
-			description: "/ws/b",
-			folder: makeFolder("b", "/ws/b"),
-		});
-		const resolved = await resolveTargetFolder();
-		expect(resolved?.fsPath).toBe("/ws/b");
-		const lastCall = getState().quickPickCalls.at(-1);
-		const labels = (lastCall?.items as ReadonlyArray<{ label: string }>).map(
-			(i) => i.label,
-		);
-		expect(labels).toEqual(["a", "b"]);
-	});
-
-	it("returns undefined when the user dismisses the multi-root picker", async () => {
-		setWorkspaceFolders([makeFolder("a", "/ws/a"), makeFolder("b", "/ws/b")]);
-		// No queued resolution -> dismissed.
-		const resolved = await resolveTargetFolder();
-		expect(resolved).toBeUndefined();
 	});
 });
 

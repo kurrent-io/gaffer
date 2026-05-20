@@ -7,6 +7,9 @@ import * as v from "valibot";
 
 export const ManifestSchema = v.object({
 	version: v.string(),
+	// Optional rather than nullable-only: older gaffer binaries
+	// predate the field and omit the key entirely.
+	updateAvailable: v.optional(v.nullable(v.string())),
 	commands: v.record(
 		v.string(),
 		v.object({

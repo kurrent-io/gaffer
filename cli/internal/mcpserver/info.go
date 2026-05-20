@@ -2,7 +2,9 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 
+	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -53,6 +55,10 @@ func (s *Server) handleInfo(_ context.Context, _ *mcp.CallToolRequest, in infoIn
 	lp := engine.NewProjection(s.root, s.cfg, proj, source)
 	session, info, err := engine.CreateSession(lp, false, false)
 	if err != nil {
+		var projErr gafferruntime.ProjectionError
+		if errors.As(err, &projErr) {
+			s.recordProjectionError(err)
+		}
 		return toolError("%v", err), nil, nil
 	}
 	defer session.Destroy()

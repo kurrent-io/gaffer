@@ -23,10 +23,10 @@ This creates `gaffer.toml`, `.gitignore`, and an empty `.gaffer/` directory.
 ## Scaffold a projection
 
 ```sh
-gaffer scaffold order-count
+gaffer scaffold projections/order-count.js
 ```
 
-This adds `projections/order-count.js` and registers it in `gaffer.toml`. The scaffolded file is a working skeleton with no logic yet:
+This creates the file at the path you gave and registers it in `gaffer.toml` under the basename (`order-count`). The scaffolded file is a working skeleton with no logic yet:
 
 <!-- prettier-ignore -->
 ```js

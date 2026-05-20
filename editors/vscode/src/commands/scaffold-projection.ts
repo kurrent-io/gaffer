@@ -10,12 +10,12 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import { runGafferCommand, type SpawnTelemetry } from "../discovery/cli.js";
+import { showCliCommandFailure } from "../notifications/cli.js";
+import { showTrustWarning } from "../notifications/trust.js";
 import {
 	showAutoInitDone,
-	showCliCommandFailure,
 	showTargetOutsideWorkspace,
-	showTrustWarning,
-} from "../notifications.js";
+} from "../notifications/workspace.js";
 import {
 	findProjectRoot,
 	folderDisplayName,

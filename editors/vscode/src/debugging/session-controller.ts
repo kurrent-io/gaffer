@@ -26,8 +26,8 @@ import {
 	showProjectionFailed,
 	showProjectionFault,
 	showStartFailure,
-	showTrustWarning,
-} from "../notifications.js";
+} from "../notifications/debug.js";
+import { showTrustWarning } from "../notifications/trust.js";
 import type { StepProvider } from "../panels/step.js";
 import type { StateProvider } from "../panels/state.js";
 import type { StatusViewProvider } from "../panels/status.js";

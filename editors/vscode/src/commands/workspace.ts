@@ -5,7 +5,7 @@
 import * as vscode from "vscode";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
-import { showNoWorkspace } from "../notifications.js";
+import { showNoWorkspace } from "../notifications/workspace.js";
 
 // Bundles the "explorer-context URI wins; else multi-root picker;
 // else warn no-workspace" branch that every command-palette flow

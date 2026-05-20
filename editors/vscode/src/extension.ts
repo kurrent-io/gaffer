@@ -23,11 +23,11 @@ import {
 	clearDiagnosticsForUri,
 	initDiagnostics,
 } from "./diagnostics.js";
+import { showManifestFailure } from "./notifications/cli.js";
 import {
 	openTelemetryDisclosurePage,
-	showManifestFailure,
 	showTelemetryDisclosure,
-} from "./notifications.js";
+} from "./notifications/telemetry.js";
 import type { ExtensionActivatedProperties } from "@kurrent/gaffer-telemetry";
 import { bucketCliVersion, bucketDuration } from "./telemetry/buckets.js";
 import { loadSafe } from "./telemetry/config.js";

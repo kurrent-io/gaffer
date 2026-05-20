@@ -26,14 +26,17 @@ Flags:
 
 Add a new projection to the project.
 
+Create a projection at <path>. The path is resolved relative to the current directory and must end in a supported extension (.js). The projection's gaffer.toml key defaults to the file's basename; pass --name to override.
+
 ```
-gaffer scaffold [name] [flags]
+gaffer scaffold <path> [flags]
 ```
 
 Flags:
 
 ```
       --emit               Enable emit/linkTo
+      --name string        Projection name in gaffer.toml (defaults to the file's basename)
       --partition string   Partitioning (none, per-stream) (default "none")
       --source string      Event source (all, stream:name, category:name) (default "all")
 ```

@@ -45,6 +45,40 @@ func TestBuildManifest_ExcludesInternalCommands(t *testing.T) {
 	}
 }
 
+func TestBuildManifest_IncludesNestedCommands(t *testing.T) {
+	commands := manifestCommands(t)
+
+	expected := []string{
+		"config telemetry status",
+		"config telemetry on",
+		"config telemetry off",
+	}
+	for _, name := range expected {
+		if _, ok := commands[name]; !ok {
+			t.Errorf("expected nested command %q in manifest", name)
+		}
+	}
+}
+
+// Group commands like `config` and `config telemetry` are navigation
+// nodes - not directly invocable - so the manifest, which lists
+// invocable commands, must not include them as bare entries.
+func TestBuildManifest_ExcludesNonRunnableGroups(t *testing.T) {
+	commands := manifestCommands(t)
+
+	for _, name := range []string{"config", "config telemetry"} {
+		if _, ok := commands[name]; ok {
+			t.Errorf("group %q should not be in manifest", name)
+		}
+	}
+}
+
+func TestManifestCmd_Hidden(t *testing.T) {
+	if !newManifestCmd().Hidden {
+		t.Error("manifest command should be Hidden")
+	}
+}
+
 func TestBuildManifest_DevFlags(t *testing.T) {
 	flags := commandFlags(t, manifestCommands(t), "dev")
 	for _, name := range []string{"events", "json", "connection", "debug", "debug-port"} {

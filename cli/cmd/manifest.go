@@ -23,6 +23,10 @@ func newManifestCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "manifest",
 		Short: "Print CLI capabilities as JSON",
+		// Hidden from `gaffer --help` because the audience is editor
+		// extensions and other wrappers feature-gating their UI
+		// against a specific gaffer build, not interactive users.
+		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
 			// Best-effort load: failures (no project, parse error)
 			// are discarded - the user only asked for the CLI
@@ -57,20 +61,34 @@ func newManifestCmd() *cobra.Command {
 
 func buildManifest(root *cobra.Command, version string) manifest {
 	commands := map[string]manifestCommand{}
+	collectCommands(root, "", commands)
+	return manifest{Version: version, Commands: commands}
+}
 
-	for _, child := range root.Commands() {
+// collectCommands walks the cobra tree and emits one entry per runnable
+// command, keyed by its full path ("config telemetry status"). Non-runnable
+// group commands (e.g. `config`, `config telemetry`) are traversed but not
+// emitted - the manifest lists invocable commands, not navigation nodes.
+func collectCommands(parent *cobra.Command, prefix string, out map[string]manifestCommand) {
+	for _, child := range parent.Commands() {
 		name := child.Name()
 		if name == "manifest" || name == "help" || name == "version" || name == "completion" || name == "man" {
 			continue
 		}
 
-		flags := []string{}
-		child.Flags().VisitAll(func(f *pflag.Flag) {
-			flags = append(flags, f.Name)
-		})
+		key := name
+		if prefix != "" {
+			key = prefix + " " + name
+		}
 
-		commands[name] = manifestCommand{Flags: flags}
+		if child.Runnable() {
+			flags := []string{}
+			child.Flags().VisitAll(func(f *pflag.Flag) {
+				flags = append(flags, f.Name)
+			})
+			out[key] = manifestCommand{Flags: flags}
+		}
+
+		collectCommands(child, key, out)
 	}
-
-	return manifest{Version: version, Commands: commands}
 }

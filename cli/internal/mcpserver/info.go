@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -63,5 +64,5 @@ func (s *Server) handleInfo(_ context.Context, _ *mcp.CallToolRequest, in infoIn
 	}
 	defer session.Destroy()
 
-	return toolResult(engine.BuildInfoJSON(lp, info)), nil, nil
+	return toolResult(cliout.BuildInfoJSON(lp, info)), nil, nil
 }

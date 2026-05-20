@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -18,6 +19,6 @@ var manifestTool = &mcp.Tool{
 
 type manifestInput struct{}
 
-func (s *Server) handleManifest(_ context.Context, _ *mcp.CallToolRequest, _ manifestInput) (*mcp.CallToolResult, any, error) {
-	return toolResult(s.manifest), nil, nil
+func (s *Server) handleManifest(_ context.Context, _ *mcp.CallToolRequest, _ manifestInput) (*mcp.CallToolResult, cliout.Manifest, error) {
+	return toolResult(s.manifest), s.manifest, nil
 }

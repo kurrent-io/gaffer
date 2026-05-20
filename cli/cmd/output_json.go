@@ -5,6 +5,7 @@ import (
 	"io"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
@@ -32,7 +33,7 @@ func (jw *jsonWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, 
 		// from a real version. Consumers (LSP, tooling) need this signal
 		// since the field's absence wouldn't tell them whether they're
 		// in compat mode or whether a future schema dropped the field.
-		"dbVersion": nullableString(dbVersion),
+		"dbVersion": cliout.NullableString(dbVersion),
 	}
 	if cats, ok := src["categories"]; ok {
 		proj["categories"] = cats

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -98,12 +99,12 @@ func setupTestProject(t *testing.T) *Server {
 
 // testManifest returns a stand-in manifest the test server returns from
 // the manifest tool. Keeps tests self-contained without depending on the
-// cmd package's cobra tree.
-func testManifest() map[string]any {
-	return map[string]any{
-		"version": "test",
-		"commands": map[string]map[string]any{
-			"info": {"flags": []string{"json"}},
+// cmd package's cobra tree (which would create an import cycle).
+func testManifest() cliout.Manifest {
+	return cliout.Manifest{
+		Version: "test",
+		Commands: map[string]cliout.ManifestCommand{
+			"info": {Flags: []string{"json"}},
 		},
 	}
 }

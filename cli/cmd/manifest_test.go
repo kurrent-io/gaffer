@@ -3,30 +3,23 @@ package cmd
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 )
 
-func manifestCommands(t *testing.T) map[string]map[string]any {
+func manifestCommands(t *testing.T) map[string]cliout.ManifestCommand {
 	t.Helper()
-	m := BuildManifest(NewRootCmd(), "test")
-	commands, ok := m["commands"].(map[string]map[string]any)
-	if !ok {
-		t.Fatalf("manifest commands has unexpected type %T", m["commands"])
-	}
-	return commands
+	return cliout.BuildManifest(NewRootCmd(), "test").Commands
 }
 
-func commandFlags(t *testing.T, commands map[string]map[string]any, name string) map[string]bool {
+func commandFlags(t *testing.T, commands map[string]cliout.ManifestCommand, name string) map[string]bool {
 	t.Helper()
 	cmd, ok := commands[name]
 	if !ok {
 		t.Fatalf("expected command %q", name)
 	}
-	flags, ok := cmd["flags"].([]string)
-	if !ok {
-		t.Fatalf("flags for %q has unexpected type %T", name, cmd["flags"])
-	}
-	flagSet := make(map[string]bool, len(flags))
-	for _, f := range flags {
+	flagSet := make(map[string]bool, len(cmd.Flags))
+	for _, f := range cmd.Flags {
 		flagSet[f] = true
 	}
 	return flagSet
@@ -87,20 +80,14 @@ func TestBuildManifest_InfoFlags(t *testing.T) {
 }
 
 func TestBuildManifest_JSONShape(t *testing.T) {
-	m := BuildManifest(NewRootCmd(), "1.0.0")
+	m := cliout.BuildManifest(NewRootCmd(), "1.0.0")
 
 	data, err := json.Marshal(m)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	type parsedCommand struct {
-		Flags []string `json:"flags"`
-	}
-	var parsed struct {
-		Version  string                   `json:"version"`
-		Commands map[string]parsedCommand `json:"commands"`
-	}
+	var parsed cliout.Manifest
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatal(err)
 	}

@@ -3,6 +3,7 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/mcpserver"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
@@ -18,7 +19,7 @@ func newMCPCmd() *cobra.Command {
 			tx := telemetry.BeginMCP(cmd.Context())
 			defer tx.End(cmd.Context())
 
-			srv, err := mcpserver.NewFromProjectRoot(Version, BuildManifest(cmd.Root(), Version))
+			srv, err := mcpserver.NewFromProjectRoot(Version, cliout.BuildManifest(cmd.Root(), Version))
 			if err != nil {
 				// Classify the project-load failure (no project /
 				// parse / validation) so the outcome is specific

@@ -1,14 +1,19 @@
-package engine
+// Package cliout owns JSON shapes that span the CLI and MCP surfaces:
+// `gaffer info --json` / get_projection_info, `gaffer manifest` /
+// get_manifest, and the small helpers they share. Keeping a single home
+// for these contracts prevents the surfaces from drifting.
+package cliout
 
 import (
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
 // BuildInfoJSON returns the flat JSON-ready map that `gaffer info --json`
-// emits. Shared between the CLI command and the MCP `info` tool so both
-// surfaces stay shape-identical.
-func BuildInfoJSON(proj *Projection, info gafferruntime.ProjectionInfo) map[string]any {
-	src := DescribeSource(info)
+// emits. Used by both the CLI command and the MCP get_projection_info
+// tool so the two surfaces stay shape-identical.
+func BuildInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) map[string]any {
+	src := engine.DescribeSource(info)
 	out := map[string]any{
 		"name":            proj.Def.Name,
 		"entry":           proj.Def.Entry,
@@ -18,7 +23,7 @@ func BuildInfoJSON(proj *Projection, info gafferruntime.ProjectionInfo) map[stri
 		"producesResults": info.ProducesResults,
 		// Always emit dbVersion: null distinguishes unversioned (bugs on)
 		// from a real version. Consumers need this signal explicitly.
-		"dbVersion": nullableString(proj.DbVersion),
+		"dbVersion": NullableString(proj.DbVersion),
 	}
 	if cats, ok := src["categories"]; ok {
 		out["categories"] = cats
@@ -29,7 +34,7 @@ func BuildInfoJSON(proj *Projection, info gafferruntime.ProjectionInfo) map[stri
 	if len(info.Events) > 0 {
 		out["events"] = info.Events
 	}
-	if p := DescribePartitioning(info); p != "none" {
+	if p := engine.DescribePartitioning(info); p != "none" {
 		out["partitioning"] = p
 	}
 	if len(info.Diagnostics) > 0 {
@@ -49,10 +54,9 @@ func BuildInfoJSON(proj *Projection, info gafferruntime.ProjectionInfo) map[stri
 	return out
 }
 
-// nullableString returns the string when non-empty or nil otherwise, so
-// JSON output distinguishes "unset" from explicitly-empty. Duplicated
-// from cmd/output.go because engine can't import cmd.
-func nullableString(s string) any {
+// NullableString returns s when non-empty or nil otherwise, so JSON
+// output distinguishes "unset" from explicitly-empty.
+func NullableString(s string) any {
 	if s == "" {
 		return nil
 	}

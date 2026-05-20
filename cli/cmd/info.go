@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
@@ -53,5 +54,5 @@ func runInfo(cmd *cobra.Command, name string, asJSON bool) error {
 func writeInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	return enc.Encode(engine.BuildInfoJSON(proj, info))
+	return enc.Encode(cliout.BuildInfoJSON(proj, info))
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
@@ -44,7 +45,7 @@ type Server struct {
 	root     string
 	cfg      *config.Config
 	version  string
-	manifest map[string]any
+	manifest cliout.Manifest
 
 	mu      sync.Mutex
 	session *activeSession
@@ -132,7 +133,7 @@ func (s *Server) requireSession() (*activeSession, *mcp.CallToolResult) {
 	return s.session, nil
 }
 
-func New(root string, cfg *config.Config, version string, manifest map[string]any) *Server {
+func New(root string, cfg *config.Config, version string, manifest cliout.Manifest) *Server {
 	s := &Server{
 		root:     root,
 		cfg:      cfg,
@@ -179,7 +180,7 @@ func New(root string, cfg *config.Config, version string, manifest map[string]an
 	return s
 }
 
-func NewFromProjectRoot(version string, manifest map[string]any) (*Server, error) {
+func NewFromProjectRoot(version string, manifest cliout.Manifest) (*Server, error) {
 	root := project.FindRoot()
 	if root == "" {
 		return nil, project.ErrNotInProject

@@ -19,6 +19,7 @@ import {
 describe("showCliNotFoundPrompt", () => {
 	beforeEach(() => {
 		resetVscode();
+		vi.restoreAllMocks();
 	});
 
 	it("Install: runs the installer and triggers onInstalled on success", async () => {
@@ -57,6 +58,87 @@ describe("showCliNotFoundPrompt", () => {
 		).resolves.toBeUndefined();
 		expect(runInstall).toHaveBeenCalledTimes(1);
 		expect(onInstalled).not.toHaveBeenCalled();
+	});
+
+	it("swallows a showWarningMessage rejection without bubbling", async () => {
+		const ctx = makeContext();
+		vi.spyOn(vscode.window, "showWarningMessage").mockRejectedValue(
+			new Error("toast failed"),
+		);
+		await expect(
+			showCliNotFoundPrompt({
+				context: ctx,
+				runInstall: vi.fn(),
+				onInstalled: vi.fn(),
+			}),
+		).resolves.toBeUndefined();
+	});
+
+	it("swallows an openExternal rejection without bubbling", async () => {
+		const ctx = makeContext();
+		vi.spyOn(vscode.env, "openExternal").mockRejectedValue(
+			new Error("no handler"),
+		);
+		queueMessageResponse("Install guide");
+		await expect(
+			showCliNotFoundPrompt({
+				context: ctx,
+				runInstall: vi.fn(),
+				onInstalled: vi.fn(),
+			}),
+		).resolves.toBeUndefined();
+	});
+
+	it("swallows an onInstalled rejection without bubbling", async () => {
+		const ctx = makeContext();
+		queueMessageResponse("Install");
+		await expect(
+			showCliNotFoundPrompt({
+				context: ctx,
+				runInstall: vi.fn().mockResolvedValue({ ok: true }),
+				onInstalled: vi.fn().mockRejectedValue(new Error("reload failed")),
+			}),
+		).resolves.toBeUndefined();
+	});
+
+	it("dedupes concurrent calls onto the in-flight prompt", async () => {
+		const ctx = makeContext();
+		// Only one toast is queued; if a second toast were shown the
+		// mock would return undefined for the second one and the
+		// second invocation would resolve independently. Asserting on
+		// the message count is the cleaner observation.
+		queueMessageResponse("Dismiss");
+		const first = showCliNotFoundPrompt({
+			context: ctx,
+			runInstall: vi.fn(),
+			onInstalled: vi.fn(),
+		});
+		const second = showCliNotFoundPrompt({
+			context: ctx,
+			runInstall: vi.fn(),
+			onInstalled: vi.fn(),
+		});
+		await Promise.all([first, second]);
+		expect(getShownMessages()).toHaveLength(1);
+		// Both callers see the same outcome.
+		expect(isInstallPromptDismissed(ctx)).toBe(true);
+	});
+
+	it("can prompt again after the previous one resolves", async () => {
+		const ctx = makeContext();
+		queueMessageResponse(undefined);
+		await showCliNotFoundPrompt({
+			context: ctx,
+			runInstall: vi.fn(),
+			onInstalled: vi.fn(),
+		});
+		queueMessageResponse("Dismiss");
+		await showCliNotFoundPrompt({
+			context: ctx,
+			runInstall: vi.fn(),
+			onInstalled: vi.fn(),
+		});
+		expect(getShownMessages()).toHaveLength(2);
 	});
 
 	it("Install guide: opens the docs URL via openExternal", async () => {
@@ -122,6 +204,7 @@ describe("showCliNotFoundPrompt", () => {
 describe("clearInstallPromptDismissed", () => {
 	beforeEach(() => {
 		resetVscode();
+		vi.restoreAllMocks();
 	});
 
 	it("removes a previously set dismissal flag", async () => {
@@ -147,6 +230,7 @@ describe("clearInstallPromptDismissed", () => {
 describe("runNpmInstall", () => {
 	beforeEach(() => {
 		resetVscode();
+		vi.restoreAllMocks();
 	});
 
 	it("spawns a terminal running npm install -g @kurrent/gaffer", async () => {
@@ -178,6 +262,28 @@ describe("runNpmInstall", () => {
 		if (!terminal) throw new Error("no terminal spawned");
 		fireTerminalClosed(terminal, 1);
 		await expect(promise).resolves.toEqual({ ok: false });
+	});
+
+	it("resolves immediately when the terminal closes synchronously inside createTerminal", async () => {
+		// Reproduces the qodo-flagged race: VS Code fires the close
+		// event while createTerminal is still on the stack, so the
+		// listener sees `terminal === null` and drops the event.
+		// runNpmInstall must still resolve by reading exitStatus after
+		// createTerminal returns.
+		const realCreate = vscode.window.createTerminal;
+		vi.spyOn(vscode.window, "createTerminal").mockImplementation(((
+			options: vscode.TerminalOptions,
+		) => {
+			const t = realCreate(options) as vscode.Terminal & {
+				exitStatus: vscode.TerminalExitStatus | undefined;
+			};
+			t.exitStatus = {
+				code: 127,
+				reason: 0 as vscode.TerminalExitReason,
+			};
+			return t;
+		}) as typeof vscode.window.createTerminal);
+		await expect(runNpmInstall()).resolves.toEqual({ ok: false });
 	});
 
 	it("ignores close events from unrelated terminals", async () => {

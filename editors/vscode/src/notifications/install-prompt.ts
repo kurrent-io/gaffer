@@ -45,37 +45,56 @@ export function clearInstallPromptDismissed(
 	return context.workspaceState.update(DISMISSED_KEY, undefined);
 }
 
-export async function showCliNotFoundPrompt(
-	deps: InstallPromptDeps,
-): Promise<void> {
-	const choice = await vscode.window.showWarningMessage(
-		"gaffer CLI not found on PATH. Install globally with npm?",
-		BUTTON_INSTALL,
-		BUTTON_DOCS,
-		BUTTON_DISMISS,
-	);
-	if (choice === BUTTON_INSTALL) {
-		// Swallowed so a rejecting runInstall can't bubble out of this
-		// void-fired prompt as an unhandled rejection. The user sees
-		// the install failure in the terminal; we just decline to
-		// retry the manifest.
-		let ok = false;
-		try {
-			({ ok } = await deps.runInstall());
-		} catch (err) {
-			log(
-				`install bootstrap failed: ${err instanceof Error ? err.message : String(err)}`,
-			);
+// Module-level dedupe so back-to-back ENOENT outcomes (e.g. multiple
+// config-change reloads while the toast is open) don't stack
+// concurrent prompts. Second caller piggybacks on the in-flight
+// promise; cleared in `finally` so the next ENOENT after the user
+// acts can prompt again.
+let activePrompt: Promise<void> | null = null;
+
+export function showCliNotFoundPrompt(deps: InstallPromptDeps): Promise<void> {
+	if (activePrompt !== null) return activePrompt;
+	activePrompt = runPrompt(deps).finally(() => {
+		activePrompt = null;
+	});
+	return activePrompt;
+}
+
+async function runPrompt(deps: InstallPromptDeps): Promise<void> {
+	try {
+		const choice = await vscode.window.showWarningMessage(
+			"gaffer CLI not found on PATH. Install globally with npm?",
+			BUTTON_INSTALL,
+			BUTTON_DOCS,
+			BUTTON_DISMISS,
+		);
+		if (choice === BUTTON_INSTALL) {
+			let ok = false;
+			try {
+				({ ok } = await deps.runInstall());
+			} catch (err) {
+				log(
+					`install bootstrap failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+			if (ok) await deps.onInstalled();
+			return;
 		}
-		if (ok) await deps.onInstalled();
-		return;
-	}
-	if (choice === BUTTON_DOCS) {
-		await vscode.env.openExternal(vscode.Uri.parse(INSTALL_DOCS_URL));
-		return;
-	}
-	if (choice === BUTTON_DISMISS) {
-		await deps.context.workspaceState.update(DISMISSED_KEY, true);
+		if (choice === BUTTON_DOCS) {
+			await vscode.env.openExternal(vscode.Uri.parse(INSTALL_DOCS_URL));
+			return;
+		}
+		if (choice === BUTTON_DISMISS) {
+			await deps.context.workspaceState.update(DISMISSED_KEY, true);
+		}
+	} catch (err) {
+		// The prompt is fire-and-forget from the activation path. Catch
+		// here so a rejecting Thenable (openExternal, workspaceState
+		// update, onInstalled, or showWarningMessage) can't surface as
+		// an unhandled rejection in the extension host.
+		log(
+			`install prompt failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 }
 
@@ -85,14 +104,22 @@ export async function showCliNotFoundPrompt(
 export function runNpmInstall(): Promise<{ ok: boolean }> {
 	return new Promise((resolve) => {
 		let terminal: vscode.Terminal | null = null;
-		// Subscribe before createTerminal so a synchronous close (e.g.
-		// shellPath not on PATH) can't fire before the listener attaches.
-		const sub = vscode.window.onDidCloseTerminal((closed) => {
-			if (closed !== terminal) return;
+		let done = false;
+		const finish = (code: number): void => {
+			if (done) return;
+			done = true;
 			sub.dispose();
-			const code = closed.exitStatus?.code ?? 1;
 			log(`npm install -g ${NPM_PACKAGE} exited with code ${code}`);
 			resolve({ ok: code === 0 });
+		};
+		// Subscribe before createTerminal so a close fired before the
+		// assignment below isn't lost from missing listener. If the
+		// event arrives while `terminal` is still null (re-entrant
+		// close), the identity filter drops it - the post-create
+		// exitStatus check below picks up the dropped case.
+		const sub = vscode.window.onDidCloseTerminal((closed) => {
+			if (closed !== terminal) return;
+			finish(closed.exitStatus?.code ?? 1);
 		});
 		// npm.cmd on Windows: VS Code's createTerminal shellPath
 		// doesn't auto-resolve the .cmd shim that ships with the Node
@@ -103,6 +130,14 @@ export function runNpmInstall(): Promise<{ ok: boolean }> {
 			shellPath,
 			shellArgs: ["install", "-g", NPM_PACKAGE],
 		});
+		// Belt-and-braces: if VS Code fired the close synchronously
+		// inside createTerminal, our listener saw it while `terminal`
+		// was still null and dropped it. exitStatus is populated by
+		// then, so we replay the resolution here.
+		if (terminal.exitStatus !== undefined) {
+			finish(terminal.exitStatus.code ?? 1);
+			return;
+		}
 		terminal.show();
 	});
 }

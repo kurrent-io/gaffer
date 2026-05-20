@@ -384,8 +384,10 @@ func TestEndToEnd_InitScaffoldDev(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "gaffer.toml")); err != nil {
 		t.Fatal("expected gaffer.toml after init")
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); err != nil {
-		t.Fatal("expected .gitignore after init")
+	for _, name := range []string{".gitignore", ".gaffer"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("init should not create %s", name)
+		}
 	}
 
 	// 2. scaffold

@@ -252,9 +252,8 @@ func TestCmdWithoutClient_DoesNotPanic(t *testing.T) {
 	// fail their Args validation before RunE, which is fine; what
 	// matters is the helper's nil-check holds when RunE does fire.
 	//
-	// t.Chdir per subtest so `init --yes` (which writes gaffer.toml
-	// + .gitignore + .gaffer/) doesn't pollute the package's
-	// working directory.
+	// t.Chdir per subtest so `init --yes` (which writes gaffer.toml)
+	// doesn't pollute the package's working directory.
 	for _, args := range [][]string{
 		{"version"},
 		{"manifest"},

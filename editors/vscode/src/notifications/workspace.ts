@@ -15,8 +15,8 @@ export const showTargetOutsideWorkspace = (): Thenable<unknown> =>
 	);
 
 // Brief info toast after scaffold's silent auto-init succeeds. Gives
-// the user a visible trace of the side effect (gaffer.toml,
-// .gitignore, .gaffer/) without blocking.
+// the user a visible trace of the side effect (gaffer.toml) without
+// blocking.
 export const showAutoInitDone = (folderName: string): Thenable<unknown> =>
 	vscode.window.showInformationMessage(
 		`Initialized gaffer project in ${folderName}.`,

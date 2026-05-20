@@ -29,7 +29,7 @@ The CLI replays the events declared as `fixtures.happy` in [`demo/gaffer.toml`](
 Or start a new project from scratch:
 
 ```sh
-gaffer init                  # create gaffer.toml and .gaffer/
+gaffer init                  # create gaffer.toml
 gaffer scaffold order-count  # add projections/order-count.js
 ```
 
@@ -39,7 +39,7 @@ See the [getting started guide](https://docs.kurrent.io/gaffer/getting-started/)
 
 | Command                    | What it does                                                                |
 | -------------------------- | --------------------------------------------------------------------------- |
-| `gaffer init`              | Create `gaffer.toml`, `.gitignore`, and `.gaffer/` in the current directory |
+| `gaffer init`              | Create `gaffer.toml` in the current directory                               |
 | `gaffer scaffold <name>`   | Add a new projection to the project                                         |
 | `gaffer dev <projection>`  | Run a projection against fixtures, an events file, or a live KurrentDB      |
 | `gaffer info <projection>` | Show projection details                                                     |

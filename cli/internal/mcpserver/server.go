@@ -40,9 +40,10 @@ type serverStats struct {
 }
 
 type Server struct {
-	mcp  *mcp.Server
-	root string
-	cfg  *config.Config
+	mcp     *mcp.Server
+	root    string
+	cfg     *config.Config
+	version string
 
 	mu      sync.Mutex
 	session *activeSession
@@ -132,8 +133,9 @@ func (s *Server) requireSession() (*activeSession, *mcp.CallToolResult) {
 
 func New(root string, cfg *config.Config, version string) *Server {
 	s := &Server{
-		root: root,
-		cfg:  cfg,
+		root:    root,
+		cfg:     cfg,
+		version: version,
 	}
 
 	s.mcp = mcp.NewServer(
@@ -144,10 +146,10 @@ func New(root string, cfg *config.Config, version string) *Server {
 		&mcp.ServerOptions{
 			Instructions: "Gaffer is a projection toolkit for KurrentDB. " +
 				"Read the projection-api and gotchas resources before writing projections. " +
-				"Workflow: list_projections to see what exists, scaffold to create new ones, " +
-				"run with fixture events to test, get_timeline/get_step to inspect results, " +
-				"debug with break_at to pause and evaluate expressions. " +
-				"Each run replaces the previous session.",
+				"Workflow: list_projections to see what exists, get_projection_info to inspect a single one, " +
+				"scaffold to create new ones, run with fixture events to test, " +
+				"get_timeline/get_step to inspect results, debug with break_at to pause and " +
+				"evaluate expressions. Each run replaces the previous session.",
 		},
 	)
 
@@ -166,6 +168,8 @@ func New(root string, cfg *config.Config, version string) *Server {
 	mcp.AddTool(s.mcp, stepIntoTool, trackedTool(s, s.handleStepInto))
 	mcp.AddTool(s.mcp, stepOutTool, trackedTool(s, s.handleStepOut))
 	mcp.AddTool(s.mcp, listEventsTool, trackedTool(s, s.handleListEvents))
+	mcp.AddTool(s.mcp, infoTool, trackedTool(s, s.handleInfo))
+	mcp.AddTool(s.mcp, versionTool, trackedTool(s, s.handleVersion))
 	s.registerResources()
 	s.registerPrompts()
 

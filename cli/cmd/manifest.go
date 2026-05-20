@@ -48,19 +48,14 @@ func newManifestCmd() *cobra.Command {
 				telemetry.EmitManifest(cmd.Context(), props)
 			})
 
-			m := manifest{
-				Version:  Version,
-				Commands: buildCommandManifest(cmd.Root()),
-			}
-
 			enc := json.NewEncoder(cmd.OutOrStdout())
 			enc.SetIndent("", "  ")
-			return enc.Encode(m)
+			return enc.Encode(buildManifest(cmd.Root(), Version))
 		},
 	}
 }
 
-func buildCommandManifest(root *cobra.Command) map[string]manifestCommand {
+func buildManifest(root *cobra.Command, version string) manifest {
 	commands := map[string]manifestCommand{}
 
 	for _, child := range root.Commands() {
@@ -77,5 +72,5 @@ func buildCommandManifest(root *cobra.Command) map[string]manifestCommand {
 		commands[name] = manifestCommand{Flags: flags}
 	}
 
-	return commands
+	return manifest{Version: version, Commands: commands}
 }

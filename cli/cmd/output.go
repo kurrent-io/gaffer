@@ -16,7 +16,7 @@ func parseEventInfo(eventJSON string) eventInfo {
 }
 
 type outputWriter interface {
-	WriteInfo(name string, info gafferruntime.ProjectionInfo, engineVersion int, dbVersion string)
+	WriteInfo(proj *engine.Projection, info gafferruntime.ProjectionInfo)
 	WriteDebugListening(addr string, port int)
 	WriteEvent(event eventInfo)
 	WriteResult(eventID string, result *gafferruntime.FeedResult)
@@ -135,16 +135,6 @@ func displayJSON(raw json.RawMessage) string {
 		}
 	}
 	return string(raw)
-}
-
-// nullableString returns the string when non-empty or nil otherwise. Used
-// in JSON envelopes where an empty value should serialise as JSON null,
-// not "" - lets consumers distinguish unset from explicitly-empty.
-func nullableString(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
 }
 
 func formatNumber(n int) string {

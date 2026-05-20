@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
@@ -46,51 +47,12 @@ func runInfo(cmd *cobra.Command, name string, asJSON bool) error {
 	}
 
 	tw := newTextWriter(os.Stdout, os.Stderr)
-	tw.WriteInfo(proj.Def.Name, info, proj.EngineVersion, proj.DbVersion)
+	tw.WriteInfo(proj, info)
 	return nil
 }
 
 func writeInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) error {
-	src := engine.DescribeSource(info)
-	out := map[string]any{
-		"name":            proj.Def.Name,
-		"entry":           proj.Def.Entry,
-		"engineVersion":   proj.EngineVersion,
-		"source":          src["type"],
-		"biState":         info.BiState,
-		"producesResults": info.ProducesResults,
-		// Always emit dbVersion: null distinguishes unversioned (bugs on)
-		// from a real version. Consumers need this signal explicitly.
-		"dbVersion": nullableString(proj.DbVersion),
-	}
-	if cats, ok := src["categories"]; ok {
-		out["categories"] = cats
-	}
-	if streams, ok := src["streams"]; ok {
-		out["streams"] = streams
-	}
-	if len(info.Events) > 0 {
-		out["events"] = info.Events
-	}
-	if p := engine.DescribePartitioning(info); p != "none" {
-		out["partitioning"] = p
-	}
-	if len(info.Diagnostics) > 0 {
-		out["diagnostics"] = info.Diagnostics
-	}
-	if len(proj.Def.Fixtures) > 0 {
-		names := proj.Def.FixtureNames()
-		fixtures := make([]map[string]any, len(names))
-		for i, name := range names {
-			fixtures[i] = map[string]any{
-				"name": name,
-				"path": proj.Def.Fixtures[name],
-			}
-		}
-		out["fixtures"] = fixtures
-	}
-
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	return enc.Encode(out)
+	return enc.Encode(cliout.BuildInfoJSON(proj, info))
 }

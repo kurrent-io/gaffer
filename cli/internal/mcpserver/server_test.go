@@ -96,7 +96,7 @@ func setupTestProject(t *testing.T) *Server {
 	return s
 }
 
-func callTool[In any](t *testing.T, s *Server, tool *mcp.Tool, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error), input In) map[string]any {
+func callTool[In, Out any](t *testing.T, s *Server, tool *mcp.Tool, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error), input In) map[string]any {
 	t.Helper()
 	result, _, err := handler(context.Background(), nil, input)
 	if err != nil {
@@ -113,7 +113,7 @@ func callTool[In any](t *testing.T, s *Server, tool *mcp.Tool, handler func(cont
 	return data
 }
 
-func callToolExpectError[In any](t *testing.T, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error), input In) string {
+func callToolExpectError[In, Out any](t *testing.T, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error), input In) string {
 	t.Helper()
 	result, _, err := handler(context.Background(), nil, input)
 	if err != nil {
@@ -890,5 +890,68 @@ func TestResolveRange(t *testing.T) {
 					tt.from, tt.to, gotFrom, gotTo, tt.wantFrom, tt.wantTo)
 			}
 		})
+	}
+}
+
+// --- Info ---
+
+func TestInfo_ExplicitName(t *testing.T) {
+	s := setupTestProject(t)
+	result := callTool(t, s, infoTool, s.handleInfo, infoInput{Name: "order-count"})
+
+	if result["name"] != "order-count" {
+		t.Errorf("expected name=order-count, got %v", result["name"])
+	}
+	if result["entry"] != "projections/order-count.js" {
+		t.Errorf("expected entry=projections/order-count.js, got %v", result["entry"])
+	}
+	if result["partitioning"] != "byStream" {
+		t.Errorf("expected partitioning=byStream, got %v", result["partitioning"])
+	}
+}
+
+func TestInfo_NotFound(t *testing.T) {
+	s := setupTestProject(t)
+	msg := callToolExpectError(t, s.handleInfo, infoInput{Name: "nonexistent"})
+	if !strings.Contains(msg, "not found") {
+		t.Errorf("expected 'not found' in error, got %q", msg)
+	}
+}
+
+func TestInfo_RequiresNameWhenMultiple(t *testing.T) {
+	s := setupTestProject(t)
+	msg := callToolExpectError(t, s.handleInfo, infoInput{})
+	if !strings.Contains(msg, "name required") {
+		t.Errorf("expected 'name required' in error, got %q", msg)
+	}
+}
+
+func TestInfo_ErrorsWhenNoProjections(t *testing.T) {
+	s := setupTestProject(t)
+	s.cfg.Projection = nil
+
+	msg := callToolExpectError(t, s.handleInfo, infoInput{})
+	if !strings.Contains(msg, "no projections configured") {
+		t.Errorf("expected 'no projections configured' in error, got %q", msg)
+	}
+}
+
+func TestInfo_DefaultsWhenSingleProjection(t *testing.T) {
+	s := setupTestProject(t)
+	s.cfg.Projection = s.cfg.Projection[:1]
+
+	result := callTool(t, s, infoTool, s.handleInfo, infoInput{})
+	if result["name"] != "order-count" {
+		t.Errorf("expected default to order-count, got %v", result["name"])
+	}
+}
+
+// --- Version ---
+
+func TestVersion(t *testing.T) {
+	s := setupTestProject(t)
+	result := callTool(t, s, versionTool, s.handleVersion, versionInput{})
+	if result["version"] != "test" {
+		t.Errorf("expected version=test, got %v", result["version"])
 	}
 }

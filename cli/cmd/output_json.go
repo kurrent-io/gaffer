@@ -5,6 +5,7 @@ import (
 	"io"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
@@ -22,37 +23,14 @@ func (jw *jsonWriter) writeLine(v any) {
 	_ = jw.enc.Encode(v)
 }
 
-func (jw *jsonWriter) WriteInfo(name string, info gafferruntime.ProjectionInfo, engineVersion int, dbVersion string) {
-	src := engine.DescribeSource(info)
-	proj := map[string]any{
-		"name":          name,
-		"source":        src["type"],
-		"engineVersion": engineVersion,
-		// Always emit dbVersion: null distinguishes unversioned (bugs on)
-		// from a real version. Consumers (LSP, tooling) need this signal
-		// since the field's absence wouldn't tell them whether they're
-		// in compat mode or whether a future schema dropped the field.
-		"dbVersion": nullableString(dbVersion),
-	}
-	if cats, ok := src["categories"]; ok {
-		proj["categories"] = cats
-	}
-	if streams, ok := src["streams"]; ok {
-		proj["streams"] = streams
-	}
-	if len(info.Events) > 0 {
-		proj["events"] = info.Events
-	}
-	if p := engine.DescribePartitioning(info); p != "none" {
-		proj["partitioning"] = p
-	}
-	if len(info.Diagnostics) > 0 {
-		proj["diagnostics"] = info.Diagnostics
-	}
-
+func (jw *jsonWriter) WriteInfo(proj *engine.Projection, info gafferruntime.ProjectionInfo) {
+	// BuildInfoCore gives the dev stream the same source / categories /
+	// streams / events / partitioning / dbVersion shape as `info --json`
+	// without the configuration-time fields (entry, fixtures, biState,
+	// producesResults) the stream deliberately omits.
 	jw.writeLine(map[string]any{
 		"type":       "info",
-		"projection": proj,
+		"projection": cliout.BuildInfoCore(proj, info),
 	})
 }
 

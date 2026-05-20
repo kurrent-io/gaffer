@@ -8,9 +8,20 @@ import (
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
+
+// stubProjection builds a synthetic *engine.Projection for output writer
+// tests that previously took (name, engineVersion, dbVersion) directly.
+func stubProjection(name string, engineVersion int, dbVersion string) *engine.Projection {
+	return &engine.Projection{
+		Def:           &config.Projection{Name: name},
+		EngineVersion: engineVersion,
+		DbVersion:     dbVersion,
+	}
+}
 
 func TestFormatNumber(t *testing.T) {
 	tests := []struct {
@@ -64,7 +75,7 @@ func TestTextWriter_WriteInfo(t *testing.T) {
 		ByStreams:  true,
 		Events:     []string{"OrderPlaced", "OrderShipped"},
 	}
-	tw.WriteInfo("my-projection", info, 2, "")
+	tw.WriteInfo(stubProjection("my-projection", 2, ""), info)
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "my-projection")
@@ -83,7 +94,7 @@ func TestTextWriter_WriteInfo_BiStateAndProducesResults(t *testing.T) {
 		BiState:         true,
 		ProducesResults: true,
 	}
-	tw.WriteInfo("bi-state-proj", info, 2, "")
+	tw.WriteInfo(stubProjection("bi-state-proj", 2, ""), info)
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "BiState: yes")
@@ -106,7 +117,7 @@ func TestTextWriter_WriteInfo_RendersDiagnostics(t *testing.T) {
 			},
 		}},
 	}
-	tw.WriteInfo("p", info, 2, "")
+	tw.WriteInfo(stubProjection("p", 2, ""), info)
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "[warning]")
@@ -127,7 +138,7 @@ func TestTextWriter_WriteInfo_DiagnosticWithoutRange(t *testing.T) {
 			Severity: gafferruntime.DiagnosticSeverityWarning,
 		}},
 	}
-	tw.WriteInfo("p", info, 2, "")
+	tw.WriteInfo(stubProjection("p", 2, ""), info)
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "deprecated.something")
@@ -141,7 +152,7 @@ func TestTextWriter_WriteInfo_DbVersion_Set(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
 
-	tw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "26.1.0")
+	tw.WriteInfo(stubProjection("p", 2, "26.1.0"), gafferruntime.ProjectionInfo{AllStreams: true})
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "DB version: 26.1.0")
@@ -151,7 +162,7 @@ func TestTextWriter_WriteInfo_DbVersion_Unversioned(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
 
-	tw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "")
+	tw.WriteInfo(stubProjection("p", 2, ""), gafferruntime.ProjectionInfo{AllStreams: true})
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "unversioned")
@@ -162,7 +173,7 @@ func TestJSONWriter_WriteInfo_DbVersion_Set(t *testing.T) {
 	var buf bytes.Buffer
 	jw := newJSONWriter(&buf)
 
-	jw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "26.1.0")
+	jw.WriteInfo(stubProjection("p", 2, "26.1.0"), gafferruntime.ProjectionInfo{AllStreams: true})
 
 	var line map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
@@ -176,7 +187,7 @@ func TestJSONWriter_WriteInfo_DbVersion_NullWhenUnset(t *testing.T) {
 	var buf bytes.Buffer
 	jw := newJSONWriter(&buf)
 
-	jw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "")
+	jw.WriteInfo(stubProjection("p", 2, ""), gafferruntime.ProjectionInfo{AllStreams: true})
 
 	var line map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
@@ -318,7 +329,7 @@ func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
 	info := gafferruntime.ProjectionInfo{
 		AllStreams: true,
 	}
-	tw.WriteInfo("simple-proj", info, 2, "")
+	tw.WriteInfo(stubProjection("simple-proj", 2, ""), info)
 
 	out := buf.String()
 	if strings.Contains(out, "BiState") {
@@ -515,7 +526,7 @@ func TestJSONWriter_WriteInfo(t *testing.T) {
 		ByStreams:  true,
 		Events:     []string{"OrderPlaced"},
 	}
-	jw.WriteInfo("my-projection", info, 2, "")
+	jw.WriteInfo(stubProjection("my-projection", 2, ""), info)
 
 	var line map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
@@ -555,7 +566,7 @@ func TestJSONWriter_WriteInfo_IncludesDiagnostics(t *testing.T) {
 			},
 		}},
 	}
-	jw.WriteInfo("p", info, 2, "")
+	jw.WriteInfo(stubProjection("p", 2, ""), info)
 
 	var line map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
@@ -581,7 +592,7 @@ func TestJSONWriter_WriteInfo_OmitsEmptyDiagnostics(t *testing.T) {
 	var buf bytes.Buffer
 	jw := newJSONWriter(&buf)
 
-	jw.WriteInfo("p", gafferruntime.ProjectionInfo{AllStreams: true}, 2, "")
+	jw.WriteInfo(stubProjection("p", 2, ""), gafferruntime.ProjectionInfo{AllStreams: true})
 
 	var line map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {

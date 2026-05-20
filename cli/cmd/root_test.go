@@ -1,57 +1,88 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 )
 
-func TestEmitsStructuredOutput_AlwaysStructured(t *testing.T) {
+// findLeaf resolves the leaf cobra.Command for args under root and
+// parses the remaining flags so f.Changed reflects what the user
+// typed. Mirrors the lifecycle a real invocation goes through up to
+// PersistentPreRunE, which is exactly when emitsStructuredOutput
+// is consulted.
+func findLeaf(t *testing.T, root *cobra.Command, args []string) *cobra.Command {
+	t.Helper()
+	leaf, rest, err := root.Find(args)
+	if err != nil {
+		t.Fatalf("Find(%v): %v", args, err)
+	}
+	if err := leaf.ParseFlags(rest); err != nil {
+		t.Fatalf("ParseFlags(%v): %v", rest, err)
+	}
+	return leaf
+}
+
+// TestEmitsStructuredOutput drives the real root command tree so the
+// --json flag check exercises cobra's actual flag inheritance, not a
+// hand-rolled cobra.Command stub. A test running against a fresh
+// `&cobra.Command{}` would silently pass even if the structured
+// commands forgot their annotation.
+func TestEmitsStructuredOutput(t *testing.T) {
+	cases := []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"manifest"}, true},
+		{[]string{"lsp"}, true},
+		{[]string{"mcp"}, true},
+		{[]string{"init"}, false},
+		{[]string{"scaffold"}, false},
+		{[]string{"info", "foo"}, false},
+		{[]string{"info", "foo", "--json"}, true},
+		{[]string{"dev"}, false},
+		{[]string{"dev", "--json"}, true},
+		{[]string{"version"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			leaf := findLeaf(t, NewRootCmd(), tc.args)
+			if got := emitsStructuredOutput(leaf); got != tc.want {
+				t.Errorf("emitsStructuredOutput(%q) = %v, want %v", tc.args, got, tc.want)
+			}
+		})
+	}
+}
+
+// The structured-output annotation is a contract between commands
+// and the PreRunE update-check gate. A future command rename that
+// drops the annotation must fail loudly here rather than silently
+// breaking the notice-suppression for editor-spawned invocations.
+func TestStructuredCommands_DeclareAnnotation(t *testing.T) {
 	for _, name := range []string{"manifest", "lsp", "mcp"} {
 		t.Run(name, func(t *testing.T) {
-			cmd := &cobra.Command{Use: name}
-			if !emitsStructuredOutput(cmd) {
-				t.Errorf("%s should be classified as structured", name)
+			leaf := findLeaf(t, NewRootCmd(), []string{name})
+			if leaf.Annotations[AnnotationOutput] != OutputStructured {
+				t.Errorf("%s missing %s=%s annotation", name, AnnotationOutput, OutputStructured)
 			}
 		})
 	}
 }
 
-func TestEmitsStructuredOutput_HumanCommands(t *testing.T) {
-	for _, name := range []string{"init", "scaffold", "version", "config"} {
-		t.Run(name, func(t *testing.T) {
-			cmd := &cobra.Command{Use: name}
-			if emitsStructuredOutput(cmd) {
-				t.Errorf("%s should not be classified as structured", name)
-			}
-		})
+// A parent-only annotation should cover every runnable child. Today
+// none of our structured commands have subcommands, but the walk
+// guarantees a single tag on a group node propagates rather than
+// requiring each leaf to re-declare.
+func TestEmitsStructuredOutput_InheritsFromParent(t *testing.T) {
+	parent := &cobra.Command{
+		Use:         "structuredgroup",
+		Annotations: map[string]string{AnnotationOutput: OutputStructured},
 	}
-}
+	child := &cobra.Command{Use: "child", Run: func(*cobra.Command, []string) {}}
+	parent.AddCommand(child)
 
-// info / dev expose --json; suppression flips with that flag so the
-// notice prints on the default (human) path and stays out of the
-// JSON-piped path.
-func TestEmitsStructuredOutput_JSONFlag(t *testing.T) {
-	cmd := &cobra.Command{Use: "info"}
-	cmd.Flags().Bool("json", false, "")
-
-	if emitsStructuredOutput(cmd) {
-		t.Error("info without --json should not be structured")
-	}
-
-	if err := cmd.Flags().Set("json", "true"); err != nil {
-		t.Fatalf("set --json: %v", err)
-	}
-	if !emitsStructuredOutput(cmd) {
-		t.Error("info --json should be structured")
-	}
-}
-
-// Commands without a --json flag are unaffected by the json-flag
-// branch; the helper must not error or panic looking it up.
-func TestEmitsStructuredOutput_NoJSONFlag(t *testing.T) {
-	cmd := &cobra.Command{Use: "init"}
-	if emitsStructuredOutput(cmd) {
-		t.Error("command without --json flag should not be structured")
+	if !emitsStructuredOutput(child) {
+		t.Error("child of an annotated parent should be classified as structured")
 	}
 }

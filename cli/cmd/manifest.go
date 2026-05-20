@@ -12,8 +12,7 @@ import (
 )
 
 // manifest is the JSON emitted by `gaffer manifest`. Editor wrappers
-// (e.g. the VS Code extension) consume the shape, so renaming or
-// removing fields is a breaking change.
+// (e.g. the VS Code extension) consume this shape.
 type manifest struct {
 	Version string `json:"version"`
 	// UpdateAvailable is the cached newer version from the existing
@@ -34,7 +33,8 @@ func newManifestCmd() *cobra.Command {
 		// Hidden from `gaffer --help` because the audience is editor
 		// extensions and other wrappers feature-gating their UI
 		// against a specific gaffer build, not interactive users.
-		Hidden: true,
+		Hidden:      true,
+		Annotations: map[string]string{AnnotationOutput: OutputStructured},
 		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
 			// Best-effort load: failures (no project, parse error)
 			// are discarded - the user only asked for the CLI

@@ -144,7 +144,7 @@ describe("showCliNotFoundPrompt", () => {
 		expect(isInstallPromptDismissed(ctx)).toBe(false);
 	});
 
-	it("Does not stack a second item while one is already visible", () => {
+	it("Reuses the existing item across repeated shows", () => {
 		showCliNotFoundPrompt(makeDeps());
 		showCliNotFoundPrompt(makeDeps());
 		expect(getStatusBarItems()).toHaveLength(1);

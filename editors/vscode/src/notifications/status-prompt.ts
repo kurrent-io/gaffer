@@ -43,26 +43,35 @@ export function createStatusBarPrompt(setup: {
 		get active() {
 			return item !== null;
 		},
+		// Create-or-update. When the item already exists, mutate its
+		// text/tooltip/colour in place rather than no-opping so the
+		// caller's "fresh info wins" semantic holds (e.g. user changes
+		// gaffer.command from typo1 to typo2 - the tooltip should now
+		// show typo2). VS Code's StatusBarItem fields are live, so
+		// updates take effect immediately.
 		show(opts) {
-			if (item !== null) return;
-			if (commandDisposable === null) {
-				commandDisposable = vscode.commands.registerCommand(
-					setup.commandId,
-					setup.onClick,
+			let current = item;
+			const isNew = current === null;
+			if (current === null) {
+				if (commandDisposable === null) {
+					commandDisposable = vscode.commands.registerCommand(
+						setup.commandId,
+						setup.onClick,
+					);
+				}
+				current = vscode.window.createStatusBarItem(
+					vscode.StatusBarAlignment.Right,
+					100,
 				);
+				current.command = setup.commandId;
+				item = current;
 			}
-			const created = vscode.window.createStatusBarItem(
-				vscode.StatusBarAlignment.Right,
-				100,
-			);
-			created.text = opts.text;
-			created.tooltip = opts.tooltip;
+			current.text = opts.text;
+			current.tooltip = opts.tooltip;
 			if (opts.backgroundColor !== undefined) {
-				created.backgroundColor = opts.backgroundColor;
+				current.backgroundColor = opts.backgroundColor;
 			}
-			created.command = setup.commandId;
-			created.show();
-			item = created;
+			if (isNew) current.show();
 		},
 		dismiss() {
 			item?.dispose();

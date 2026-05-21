@@ -135,15 +135,14 @@ describe("showCliUpdatePrompt", () => {
 		await expect(clickStatusBar()).resolves.toBeUndefined();
 	});
 
-	it("Does not stack a second item while one is already visible", () => {
-		showCliUpdatePrompt(makeDeps());
+	it("Reuses the existing item when called again with new deps", () => {
+		showCliUpdatePrompt(makeDeps({ latest: "0.2.0" }));
 		showCliUpdatePrompt(makeDeps({ latest: "0.2.1" }));
-		// Subsequent shows no-op while the first item is visible.
-		// The original (0.2.0) remains; a newer version doesn't
-		// stack on top.
+		// No second item; the existing one's text and tooltip
+		// update in place so the user sees the freshest version.
 		expect(getStatusBarItems()).toHaveLength(1);
 		expect(getStatusBarItems()[0]?.text).toBe(
-			"$(arrow-circle-up) gaffer 0.2.0",
+			"$(arrow-circle-up) gaffer 0.2.1",
 		);
 	});
 });

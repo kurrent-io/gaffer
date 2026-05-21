@@ -59,7 +59,6 @@ const prompt = createStatusBarPrompt({
 let activeDeps: UpdatePromptDeps | null = null;
 
 export function showCliUpdatePrompt(deps: UpdatePromptDeps): void {
-	if (prompt.active) return;
 	activeDeps = deps;
 	prompt.show({
 		text: `$(arrow-circle-up) gaffer ${deps.latest}`,
@@ -138,6 +137,14 @@ async function runChoice(): Promise<void> {
 function dismiss(): void {
 	prompt.dismiss();
 	activeDeps = null;
+}
+
+// Called from handleManifestOutcome on outcomes that invalidate
+// the cached updateAvailable (manifest error, missing binary, or a
+// success where no upgrade is reported). The user-flow dismissals
+// (Update / Skip / Never) go through the click handler directly.
+export function dismissCliUpdatePrompt(): void {
+	dismiss();
 }
 
 export function __resetUpdatePromptStateForTests(): void {

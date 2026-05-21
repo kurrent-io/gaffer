@@ -58,7 +58,6 @@ const prompt = createStatusBarPrompt({
 let activeDeps: InstallPromptDeps | null = null;
 
 export function showCliNotFoundPrompt(deps: InstallPromptDeps): void {
-	if (prompt.active) return;
 	if (isInstallPromptDismissed(deps.context)) return;
 	activeDeps = deps;
 	prompt.show({
@@ -132,6 +131,13 @@ async function runChoice(): Promise<void> {
 function dismiss(): void {
 	prompt.dismiss();
 	activeDeps = null;
+}
+
+// Called from handleManifestOutcome when a manifest fetch succeeds
+// so the item disappears if the user fixed the install via a
+// separate terminal rather than the prompt's own Install button.
+export function dismissCliNotFoundPrompt(): void {
+	dismiss();
 }
 
 export function __resetInstallPromptStateForTests(): void {

@@ -26,15 +26,24 @@ import {
 import { showManifestFailure } from "./notifications/cli.js";
 import {
 	clearInstallPromptDismissed,
+	dismissCliNotFoundPrompt,
+	type InstallPromptDeps,
 	isInstallPromptDismissed,
 	runNpmInstall,
 	showCliNotFoundPrompt,
 } from "./notifications/install-prompt.js";
 import {
+	type CommandUnresolvedPromptDeps,
+	dismissCommandUnresolvedPrompt,
+	showCommandUnresolvedPrompt,
+} from "./notifications/command-unresolved-prompt.js";
+import {
+	dismissCliUpdatePrompt,
 	isCliUpdatePromptSuppressed,
 	isNewerVersion,
 	runNpmUpdate,
 	showCliUpdatePrompt,
+	type UpdatePromptDeps,
 } from "./notifications/update-prompt.js";
 import {
 	openTelemetryDisclosurePage,
@@ -79,6 +88,19 @@ import {
 // undefined for single-buffer sessions with no workspace.
 function workspaceCwd(): string | undefined {
 	return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
+// Returns the user-scope override for gaffer.command, or null when
+// the setting is at its default. Used to distinguish "CLI not
+// installed" from "user pointed gaffer.command at a missing
+// binary" - the recovery paths differ. Only User scope is honoured
+// to match buildGafferArgv's defence against hostile workspaces.
+function gafferCommandCustomValue(): string[] | null {
+	const inspect = vscode.workspace
+		.getConfiguration("gaffer")
+		.inspect<string[]>("command");
+	const val = inspect?.globalValue;
+	return Array.isArray(val) && val.length > 0 ? val : null;
 }
 
 // Module-level telemetry handle so deactivate() can drain in-flight
@@ -313,13 +335,39 @@ async function activateAfterTelemetry(
 	});
 	controller.register(context);
 
+	// Discriminated union of the manifest-outcome prompts. Exactly
+	// one (or none) is visible at a time; reconcileOutcomePrompts
+	// enforces that by dismissing the other two before showing the
+	// chosen kind.
+	type OutcomePrompt =
+		| { kind: "none" }
+		| { kind: "install"; deps: InstallPromptDeps }
+		| { kind: "unresolved"; deps: CommandUnresolvedPromptDeps }
+		| { kind: "update"; deps: UpdatePromptDeps };
+
+	const reconcileOutcomePrompts = (show: OutcomePrompt): void => {
+		if (show.kind !== "install") dismissCliNotFoundPrompt();
+		if (show.kind !== "unresolved") dismissCommandUnresolvedPrompt();
+		if (show.kind !== "update") dismissCliUpdatePrompt();
+		switch (show.kind) {
+			case "install":
+				showCliNotFoundPrompt(show.deps);
+				break;
+			case "unresolved":
+				showCommandUnresolvedPrompt(show.deps);
+				break;
+			case "update":
+				showCliUpdatePrompt(show.deps);
+				break;
+			case "none":
+				break;
+		}
+	};
+
 	// Single sink for every manifest result, initial and reload alike.
-	// Owns: latestManifest write-through, lens-provider notify, dismiss-
-	// flag clear, and the toast / install-prompt routing for failures.
-	// ENOENT goes to the install bootstrap unless the user dismissed it
-	// for this workspace; the dismissal silences the fallback generic
-	// toast too, since both share the same "binary missing" cause.
-	// Other failures (parse, EACCES, timeout) always toast.
+	// Owns: latestManifest write-through, lens-provider notify,
+	// dismiss-flag clear, and routing to the right outcome prompt or
+	// the generic toast for non-actionable errors.
 	const handleManifestOutcome = (
 		manifest: Manifest | null,
 		err: unknown,
@@ -344,29 +392,54 @@ async function activateAfterTelemetry(
 				isNewerVersion(latest, manifest.version) &&
 				!isCliUpdatePromptSuppressed(context, latest)
 			) {
-				void showCliUpdatePrompt({
-					context,
-					current: manifest.version,
-					latest,
-					runUpdate: runNpmUpdate,
-					onUpdated: reloadManifest,
+				reconcileOutcomePrompts({
+					kind: "update",
+					deps: {
+						context,
+						current: manifest.version,
+						latest,
+						runUpdate: runNpmUpdate,
+						onUpdated: reloadManifest,
+					},
 				});
+			} else {
+				reconcileOutcomePrompts({ kind: "none" });
 			}
 			return;
 		}
+		// Trust-skip and untrusted-at-fetch paths: we didn't probe, so
+		// the prior prompt state is still our best information. Don't
+		// touch any prompts.
 		if (err === undefined) return;
 		if (!opts.trustedAtFetch) return;
 		const reason = classifyManifestError(err);
 		if (reason === "binary_not_found") {
-			if (!isInstallPromptDismissed(context)) {
-				void showCliNotFoundPrompt({
+			// Branch on whether the user has customised gaffer.command.
+			// If they have, a reinstall via npm won't fix a typo in
+			// their configured argv - route them to settings instead.
+			const customCommand = gafferCommandCustomValue();
+			if (customCommand !== null) {
+				reconcileOutcomePrompts({
+					kind: "unresolved",
+					deps: { configured: customCommand },
+				});
+				return;
+			}
+			if (isInstallPromptDismissed(context)) {
+				reconcileOutcomePrompts({ kind: "none" });
+				return;
+			}
+			reconcileOutcomePrompts({
+				kind: "install",
+				deps: {
 					context,
 					runInstall: runNpmInstall,
 					onInstalled: reloadManifest,
-				});
-			}
+				},
+			});
 			return;
 		}
+		reconcileOutcomePrompts({ kind: "none" });
 		void showManifestFailure(err);
 	};
 

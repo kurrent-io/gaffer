@@ -448,6 +448,29 @@ describe("manifest outcome routing", () => {
 		expect(ctx.workspaceState.get(DISMISSED_KEY)).toBe(true);
 	});
 
+	it("ENOENT with gaffer.command explicitly set to its default shows the install prompt", async () => {
+		// User explicitly set the setting to ["gaffer"] (same as the
+		// contributed default). Reset to default wouldn't change
+		// anything, so the unresolved prompt is the wrong recovery -
+		// route to install instead.
+		setConfiguration("gaffer", "command", {
+			value: ["gaffer"],
+			globalValue: ["gaffer"],
+			defaultValue: ["gaffer"],
+		});
+		stubManifestEnoent();
+		setTrusted(true);
+		queueFindFiles([]);
+		await activate(makeContext());
+		const items = getStatusBarItems();
+		expect(
+			items.find((i) => i.text.includes("gaffer not installed")),
+		).toBeDefined();
+		expect(
+			items.find((i) => i.text.includes("gaffer.command unresolved")),
+		).toBeUndefined();
+	});
+
 	it("ENOENT with customised gaffer.command shows the unresolved prompt, not the install prompt", async () => {
 		// User typo'd or otherwise pointed gaffer.command at a missing
 		// binary. Reinstalling via npm wouldn't help, so we surface

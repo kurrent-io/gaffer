@@ -90,17 +90,25 @@ function workspaceCwd(): string | undefined {
 	return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 
-// Returns the user-scope override for gaffer.command, or null when
-// the setting is at its default. Used to distinguish "CLI not
-// installed" from "user pointed gaffer.command at a missing
-// binary" - the recovery paths differ. Only User scope is honoured
-// to match buildGafferArgv's defence against hostile workspaces.
+// Returns the user-scope override for gaffer.command when it differs
+// from the contributed default, or null otherwise. Used to
+// distinguish "CLI not installed" from "user pointed gaffer.command
+// at a missing binary" - the recovery paths differ. An explicit
+// override equal to the default routes to the install prompt
+// because Reset to default wouldn't change anything for that user.
+// Only User scope is honoured to match buildGafferArgv's defence
+// against hostile workspaces.
 function gafferCommandCustomValue(): string[] | null {
 	const inspect = vscode.workspace
 		.getConfiguration("gaffer")
 		.inspect<string[]>("command");
 	const val = inspect?.globalValue;
-	return Array.isArray(val) && val.length > 0 ? val : null;
+	if (!Array.isArray(val) || val.length === 0) return null;
+	const def = inspect?.defaultValue;
+	if (Array.isArray(def) && JSON.stringify(val) === JSON.stringify(def)) {
+		return null;
+	}
+	return val;
 }
 
 // Module-level telemetry handle so deactivate() can drain in-flight

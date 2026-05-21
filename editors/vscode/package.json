@@ -105,6 +105,7 @@
 					"order": 4,
 					"type": "boolean",
 					"default": true,
+					"scope": "application",
 					"description": "Surface a status bar prompt when a newer gaffer CLI is available on npm. The 'Never ask' option on the prompt flips this to false."
 				}
 			}

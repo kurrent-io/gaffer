@@ -9,6 +9,7 @@ import {
 	__clearShownMessages,
 	__getShownMessages,
 	__resetState,
+	type FakeStatusBarItem,
 	setExtension as setExtensionImpl,
 	state,
 } from "../__mocks__/vscode.js";
@@ -136,6 +137,10 @@ export function fireTerminalClosed(
 		terminal as { exitStatus: vscode.TerminalExitStatus | undefined }
 	).exitStatus = { code: exitCode, reason: 0 as vscode.TerminalExitReason };
 	state.terminalClosed.fire(terminal);
+}
+
+export function getStatusBarItems(): readonly FakeStatusBarItem[] {
+	return state.statusBarItems;
 }
 
 export const getState = (): typeof state => state;

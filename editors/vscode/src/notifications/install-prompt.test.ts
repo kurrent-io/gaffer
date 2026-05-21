@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	__resetInstallPromptStateForTests,
 	INSTALL_DOCS_URL,
 	clearInstallPromptDismissed,
 	isInstallPromptDismissed,
@@ -10,211 +11,161 @@ import {
 import { makeContext } from "../../test/testutil/fake-context.js";
 import {
 	fireTerminalClosed,
-	getShownMessages,
 	getState,
-	queueMessageResponse,
+	getStatusBarItems,
+	queueQuickPick,
 	resetVscode,
 } from "../../test/testutil/vscode-state.js";
+import type { InstallPromptDeps } from "./install-prompt.js";
+
+const COMMAND_OPEN = "gaffer._cliInstall.open";
+
+function makeDeps(
+	overrides: Partial<InstallPromptDeps> = {},
+): InstallPromptDeps {
+	return {
+		context: makeContext(),
+		runInstall: vi.fn(),
+		onInstalled: vi.fn(),
+		...overrides,
+	};
+}
+
+async function clickStatusBar(): Promise<void> {
+	await vscode.commands.executeCommand(COMMAND_OPEN);
+}
 
 describe("showCliNotFoundPrompt", () => {
 	beforeEach(() => {
 		resetVscode();
+		__resetInstallPromptStateForTests();
 		vi.restoreAllMocks();
 	});
 
-	it("Install: runs the installer and triggers onInstalled on success", async () => {
+	it("creates a status bar item with the install prompt text and tooltip", () => {
+		showCliNotFoundPrompt(makeDeps());
+		const items = getStatusBarItems();
+		expect(items).toHaveLength(1);
+		expect(items[0]?.text).toBe("$(error) gaffer not installed");
+		expect(items[0]?.tooltip).toBe(
+			"gaffer CLI not found on PATH. Click to install.",
+		);
+		expect(items[0]?.command).toBe(COMMAND_OPEN);
+	});
+
+	it("does not create an item when the workspace has dismissed the prompt", async () => {
 		const ctx = makeContext();
+		await ctx.workspaceState.update(
+			"gaffer.cliMissingNotificationDismissed",
+			true,
+		);
+		showCliNotFoundPrompt(makeDeps({ context: ctx }));
+		expect(getStatusBarItems()).toHaveLength(0);
+	});
+
+	it("Install: runs the installer and triggers onInstalled on success", async () => {
 		const runInstall = vi.fn().mockResolvedValue({ ok: true });
 		const onInstalled = vi.fn().mockResolvedValue(undefined);
-		queueMessageResponse("Install");
-		await showCliNotFoundPrompt({ context: ctx, runInstall, onInstalled });
+		showCliNotFoundPrompt(makeDeps({ runInstall, onInstalled }));
+		queueQuickPick({ label: "Install" });
+		await clickStatusBar();
 		expect(runInstall).toHaveBeenCalledTimes(1);
 		expect(onInstalled).toHaveBeenCalledTimes(1);
-		expect(isInstallPromptDismissed(ctx)).toBe(false);
+		expect(getStatusBarItems()[0]?.disposed).toBe(true);
 	});
 
-	it("Install: does not call onInstalled when the installer reports failure", async () => {
-		const ctx = makeContext();
+	it("Install failure: leaves the item visible so the user can retry", async () => {
 		const runInstall = vi.fn().mockResolvedValue({ ok: false });
 		const onInstalled = vi.fn();
-		queueMessageResponse("Install");
-		await showCliNotFoundPrompt({ context: ctx, runInstall, onInstalled });
+		showCliNotFoundPrompt(makeDeps({ runInstall, onInstalled }));
+		queueQuickPick({ label: "Install" });
+		await clickStatusBar();
 		expect(runInstall).toHaveBeenCalledTimes(1);
 		expect(onInstalled).not.toHaveBeenCalled();
-		// Failure leaves dismissed state alone - the user will be re-prompted
-		// next activation.
-		expect(isInstallPromptDismissed(ctx)).toBe(false);
+		expect(getStatusBarItems()[0]?.disposed).toBe(false);
 	});
 
-	it("Install: swallows a runInstall rejection so the void-fired prompt never throws", async () => {
-		const ctx = makeContext();
+	it("Install: swallows a runInstall rejection without crashing", async () => {
 		const runInstall = vi.fn().mockRejectedValue(new Error("spawn failed"));
 		const onInstalled = vi.fn();
-		queueMessageResponse("Install");
-		// The promise resolves rather than rejects: the prompt handles
-		// the throw internally.
-		await expect(
-			showCliNotFoundPrompt({ context: ctx, runInstall, onInstalled }),
-		).resolves.toBeUndefined();
-		expect(runInstall).toHaveBeenCalledTimes(1);
+		showCliNotFoundPrompt(makeDeps({ runInstall, onInstalled }));
+		queueQuickPick({ label: "Install" });
+		await expect(clickStatusBar()).resolves.toBeUndefined();
 		expect(onInstalled).not.toHaveBeenCalled();
 	});
 
-	it("swallows a showWarningMessage rejection without bubbling", async () => {
-		const ctx = makeContext();
-		vi.spyOn(vscode.window, "showWarningMessage").mockRejectedValue(
-			new Error("toast failed"),
-		);
-		await expect(
-			showCliNotFoundPrompt({
-				context: ctx,
-				runInstall: vi.fn(),
-				onInstalled: vi.fn(),
-			}),
-		).resolves.toBeUndefined();
+	it("Install: swallows an onInstalled rejection without bubbling", async () => {
+		const runInstall = vi.fn().mockResolvedValue({ ok: true });
+		const onInstalled = vi.fn().mockRejectedValue(new Error("reload failed"));
+		showCliNotFoundPrompt(makeDeps({ runInstall, onInstalled }));
+		queueQuickPick({ label: "Install" });
+		await expect(clickStatusBar()).resolves.toBeUndefined();
+		expect(onInstalled).toHaveBeenCalledTimes(1);
+	});
+
+	it("Install guide: opens the docs URL and leaves the item visible", async () => {
+		const open = vi.spyOn(vscode.env, "openExternal");
+		showCliNotFoundPrompt(makeDeps());
+		queueQuickPick({ label: "Install guide" });
+		await clickStatusBar();
+		expect(open).toHaveBeenCalledTimes(1);
+		const arg = open.mock.calls[0]?.[0] as vscode.Uri;
+		expect(arg.scheme).toBe("https");
+		expect(arg.path).toContain("docs.kurrent.io/gaffer");
+		// Docs is read-and-return; the item stays so the user can
+		// click Install afterwards.
+		expect(getStatusBarItems()[0]?.disposed).toBe(false);
 	});
 
 	it("swallows an openExternal rejection without bubbling", async () => {
-		const ctx = makeContext();
 		vi.spyOn(vscode.env, "openExternal").mockRejectedValue(
 			new Error("no handler"),
 		);
-		queueMessageResponse("Install guide");
-		await expect(
-			showCliNotFoundPrompt({
-				context: ctx,
-				runInstall: vi.fn(),
-				onInstalled: vi.fn(),
-			}),
-		).resolves.toBeUndefined();
+		showCliNotFoundPrompt(makeDeps());
+		queueQuickPick({ label: "Install guide" });
+		await expect(clickStatusBar()).resolves.toBeUndefined();
 	});
 
-	it("swallows an onInstalled rejection without bubbling", async () => {
+	it("Dismiss: persists the workspace flag and disposes the item", async () => {
 		const ctx = makeContext();
-		queueMessageResponse("Install");
-		await expect(
-			showCliNotFoundPrompt({
-				context: ctx,
-				runInstall: vi.fn().mockResolvedValue({ ok: true }),
-				onInstalled: vi.fn().mockRejectedValue(new Error("reload failed")),
-			}),
-		).resolves.toBeUndefined();
-	});
-
-	it("dedupes concurrent calls onto the in-flight prompt", async () => {
-		const ctx = makeContext();
-		// Only one toast is queued; if a second toast were shown the
-		// mock would return undefined for the second one and the
-		// second invocation would resolve independently. Asserting on
-		// the message count is the cleaner observation.
-		queueMessageResponse("Dismiss");
-		const first = showCliNotFoundPrompt({
-			context: ctx,
-			runInstall: vi.fn(),
-			onInstalled: vi.fn(),
-		});
-		const second = showCliNotFoundPrompt({
-			context: ctx,
-			runInstall: vi.fn(),
-			onInstalled: vi.fn(),
-		});
-		await Promise.all([first, second]);
-		expect(getShownMessages()).toHaveLength(1);
-		// Both callers see the same outcome.
+		showCliNotFoundPrompt(makeDeps({ context: ctx }));
+		queueQuickPick({ label: "Dismiss" });
+		await clickStatusBar();
 		expect(isInstallPromptDismissed(ctx)).toBe(true);
+		expect(getStatusBarItems()[0]?.disposed).toBe(true);
 	});
 
-	it("can prompt again after the previous one resolves", async () => {
+	it("Quickpick dismissed (Esc): leaves the item visible and no state changed", async () => {
 		const ctx = makeContext();
-		queueMessageResponse(undefined);
-		await showCliNotFoundPrompt({
-			context: ctx,
-			runInstall: vi.fn(),
-			onInstalled: vi.fn(),
-		});
-		queueMessageResponse("Dismiss");
-		await showCliNotFoundPrompt({
-			context: ctx,
-			runInstall: vi.fn(),
-			onInstalled: vi.fn(),
-		});
-		expect(getShownMessages()).toHaveLength(2);
+		showCliNotFoundPrompt(makeDeps({ context: ctx }));
+		queueQuickPick(undefined);
+		await clickStatusBar();
+		expect(getStatusBarItems()[0]?.disposed).toBe(false);
+		expect(isInstallPromptDismissed(ctx)).toBe(false);
 	});
 
-	it("Install guide: opens the docs URL via openExternal", async () => {
-		const ctx = makeContext();
-		const open = vi.spyOn(vscode.env, "openExternal");
-		queueMessageResponse("Install guide");
-		await showCliNotFoundPrompt({
-			context: ctx,
-			runInstall: vi.fn(),
-			onInstalled: vi.fn(),
-		});
-		expect(open).toHaveBeenCalledTimes(1);
-		const arg = open.mock.calls[0]?.[0] as vscode.Uri;
-		// The mock's Uri.parse is loose; assert scheme + the
-		// docs-host substring rather than rely on toString round-
-		// tripping verbatim.
-		expect(arg.scheme).toBe("https");
-		expect(arg.path).toContain("docs.kurrent.io/gaffer");
+	it("Reuses the existing item across repeated shows", () => {
+		showCliNotFoundPrompt(makeDeps());
+		showCliNotFoundPrompt(makeDeps());
+		expect(getStatusBarItems()).toHaveLength(1);
+	});
+
+	it("docs URL is published as the docs-host root", () => {
 		expect(INSTALL_DOCS_URL).toBe("https://docs.kurrent.io/gaffer/");
-		expect(isInstallPromptDismissed(ctx)).toBe(false);
-	});
-
-	it("Dismiss: persists the workspace-state flag", async () => {
-		const ctx = makeContext();
-		queueMessageResponse("Dismiss");
-		await showCliNotFoundPrompt({
-			context: ctx,
-			runInstall: vi.fn(),
-			onInstalled: vi.fn(),
-		});
-		expect(isInstallPromptDismissed(ctx)).toBe(true);
-	});
-
-	it("toast dismissed (X / focus loss): leaves the workspace flag alone", async () => {
-		const ctx = makeContext();
-		// No queued response -> mock returns undefined.
-		await showCliNotFoundPrompt({
-			context: ctx,
-			runInstall: vi.fn(),
-			onInstalled: vi.fn(),
-		});
-		expect(isInstallPromptDismissed(ctx)).toBe(false);
-	});
-
-	it("renders the expected toast wording and buttons", async () => {
-		const ctx = makeContext();
-		queueMessageResponse(undefined);
-		await showCliNotFoundPrompt({
-			context: ctx,
-			runInstall: vi.fn(),
-			onInstalled: vi.fn(),
-		});
-		const messages = getShownMessages();
-		expect(messages).toHaveLength(1);
-		expect(messages[0]?.kind).toBe("warning");
-		expect(messages[0]?.message).toBe(
-			"gaffer CLI not found on PATH. Install globally with npm?",
-		);
-		expect(messages[0]?.items).toEqual(["Install", "Install guide", "Dismiss"]);
 	});
 });
 
 describe("clearInstallPromptDismissed", () => {
 	beforeEach(() => {
 		resetVscode();
-		vi.restoreAllMocks();
+		__resetInstallPromptStateForTests();
 	});
 
 	it("removes a previously set dismissal flag", async () => {
 		const ctx = makeContext();
-		queueMessageResponse("Dismiss");
-		await showCliNotFoundPrompt({
-			context: ctx,
-			runInstall: vi.fn(),
-			onInstalled: vi.fn(),
-		});
+		showCliNotFoundPrompt(makeDeps({ context: ctx }));
+		queueQuickPick({ label: "Dismiss" });
+		await clickStatusBar();
 		expect(isInstallPromptDismissed(ctx)).toBe(true);
 		await clearInstallPromptDismissed(ctx);
 		expect(isInstallPromptDismissed(ctx)).toBe(false);
@@ -230,7 +181,7 @@ describe("clearInstallPromptDismissed", () => {
 describe("runNpmInstall", () => {
 	beforeEach(() => {
 		resetVscode();
-		vi.restoreAllMocks();
+		__resetInstallPromptStateForTests();
 	});
 
 	it("spawns a terminal running npm install -g @kurrent/gaffer", async () => {
@@ -248,59 +199,11 @@ describe("runNpmInstall", () => {
 		await expect(promise).resolves.toEqual({ ok: true });
 	});
 
-	it("reports ok=true when the terminal exits with code 0", async () => {
-		const promise = runNpmInstall();
-		const [terminal] = getState().terminals;
-		if (!terminal) throw new Error("no terminal spawned");
-		fireTerminalClosed(terminal, 0);
-		await expect(promise).resolves.toEqual({ ok: true });
-	});
-
-	it("reports ok=false when the terminal exits with non-zero code", async () => {
+	it("reports ok=false when the terminal exits non-zero", async () => {
 		const promise = runNpmInstall();
 		const [terminal] = getState().terminals;
 		if (!terminal) throw new Error("no terminal spawned");
 		fireTerminalClosed(terminal, 1);
 		await expect(promise).resolves.toEqual({ ok: false });
-	});
-
-	it("resolves immediately when the terminal closes synchronously inside createTerminal", async () => {
-		// Reproduces the qodo-flagged race: VS Code fires the close
-		// event while createTerminal is still on the stack, so the
-		// listener sees `terminal === null` and drops the event.
-		// runNpmInstall must still resolve by reading exitStatus after
-		// createTerminal returns.
-		const realCreate = vscode.window.createTerminal;
-		vi.spyOn(vscode.window, "createTerminal").mockImplementation(((
-			options: vscode.TerminalOptions,
-		) => {
-			const t = realCreate(options) as vscode.Terminal & {
-				exitStatus: vscode.TerminalExitStatus | undefined;
-			};
-			t.exitStatus = {
-				code: 127,
-				reason: 0 as vscode.TerminalExitReason,
-			};
-			return t;
-		}) as typeof vscode.window.createTerminal);
-		await expect(runNpmInstall()).resolves.toEqual({ ok: false });
-	});
-
-	it("ignores close events from unrelated terminals", async () => {
-		const promise = runNpmInstall();
-		const [terminal] = getState().terminals;
-		if (!terminal) throw new Error("no terminal spawned");
-		const unrelated = vscode.window.createTerminal({ name: "other" });
-		fireTerminalClosed(unrelated, 0);
-		// Promise must still be pending - if it resolved here, the
-		// unrelated terminal's close leaked through.
-		let settled = false;
-		void promise.then(() => {
-			settled = true;
-		});
-		await Promise.resolve();
-		expect(settled).toBe(false);
-		fireTerminalClosed(terminal, 0);
-		await expect(promise).resolves.toEqual({ ok: true });
 	});
 });

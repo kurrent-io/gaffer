@@ -136,23 +136,29 @@ func New(opts Options) *Client {
 }
 
 // Start prints the notice from cache if applicable and spawns the
-// background refresh if the cache is stale. disableFlag wires
+// background refresh if the cache is stale. disable wires
 // --no-update-check; the GAFFER_NO_UPDATE_CHECK env var is read
-// here. TTY gating is the caller's responsibility - by the time
-// Start runs, the caller has already decided this is an interactive
-// invocation worth notifying.
+// here. Both shut the whole pipeline off (no print, no fetch).
+//
+// quiet suppresses only the stderr notice while still letting the
+// background refresh run when the cache is stale. Used by
+// non-interactive callers - extension-spawned lsp/mcp, piped stderr,
+// structured-output paths (manifest, --json) - where the human-
+// readable card is noise but a fresh cache still matters: the VS
+// Code extension reads `updateAvailable` from `gaffer manifest`, and
+// that signal only stays useful if some invocation keeps refreshing.
 //
 // Nil-safe: Start on a nil Client is a no-op so callers don't need
 // to guard. Matches telemetry.Client's nil receiver convention.
-func (c *Client) Start(disableFlag bool) {
+func (c *Client) Start(disable, quiet bool) {
 	if c == nil {
 		return
 	}
-	c.started.Do(func() { c.startOnce(disableFlag) })
+	c.started.Do(func() { c.startOnce(disable, quiet) })
 }
 
-func (c *Client) startOnce(disableFlag bool) {
-	if disableFlag || envvar.IsTruthy(os.Getenv(EnvDisable)) {
+func (c *Client) startOnce(disable, quiet bool) {
+	if disable || envvar.IsTruthy(os.Getenv(EnvDisable)) {
 		return
 	}
 	if c.current == "" || c.cacheDirErr != nil {
@@ -161,7 +167,7 @@ func (c *Client) startOnce(disableFlag bool) {
 		return
 	}
 	cache, _ := LoadCache(c.cacheDir)
-	if cache.LatestVersion != "" && IsNewer(cache.LatestVersion, c.current) {
+	if !quiet && cache.LatestVersion != "" && IsNewer(cache.LatestVersion, c.current) {
 		_, _ = fmt.Fprintln(c.stderr, renderNotice(c.stderr, c.current, cache.LatestVersion))
 	}
 	if cache.IsStale(c.now(), c.current, c.ttl) {
@@ -253,6 +259,30 @@ func (c *Client) Flush(ctx context.Context) error {
 	case <-ctx.Done():
 		return fmt.Errorf("updatecheck flush: %w", ctx.Err())
 	}
+}
+
+// UpdateAvailable returns the cached latest version if it is strictly
+// newer than Current. Returns "" otherwise (no cache, cache not newer,
+// no current baseline, or cache dir unresolved). Disk read only - never
+// triggers a network fetch, even when the cache is stale. Background
+// refresh is the job of Start.
+//
+// Used by `gaffer manifest` to expose the update signal to editor
+// wrappers without re-checking the registry. The --no-update-check
+// flag and GAFFER_NO_UPDATE_CHECK env var deliberately do NOT gate
+// this: they suppress the printed notice and the network refresh, not
+// the consumption of an already-collected signal.
+//
+// Nil-safe: returns "" on a nil receiver.
+func (c *Client) UpdateAvailable() string {
+	if c == nil || c.current == "" || c.cacheDirErr != nil {
+		return ""
+	}
+	cache, _ := LoadCache(c.cacheDir)
+	if cache.LatestVersion != "" && IsNewer(cache.LatestVersion, c.current) {
+		return cache.LatestVersion
+	}
+	return ""
 }
 
 // ctxKey scopes the context lookup so callers can't collide.

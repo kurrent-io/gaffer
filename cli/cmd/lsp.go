@@ -18,6 +18,7 @@ func newLSPCmd() *cobra.Command {
 		Long: "Run the gaffer Language Server Protocol server, " +
 			"speaking JSON-RPC over stdin/stdout. Editor extensions " +
 			"spawn this subcommand and connect to it as an LSP client.",
+		Annotations: map[string]string{AnnotationOutput: OutputStructured},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// `defer tx.End(ctx)` must be direct - see DevTx.End
 			// for why a wrapping closure breaks recover().

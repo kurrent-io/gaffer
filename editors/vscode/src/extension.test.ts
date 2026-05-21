@@ -21,6 +21,7 @@ import {
 	fireWorkspaceTrustGranted,
 	getShownMessages,
 	getState,
+	getStatusBarItems,
 	queueFindFiles,
 	queueMessageResponse,
 	queueQuickPick,
@@ -417,13 +418,15 @@ describe("manifest outcome routing", () => {
 		setTrusted(true);
 		queueFindFiles([]);
 		await activate(makeContext());
-		const msgs = getShownMessages();
-		const installPrompt = msgs.find(
-			(m) => m.kind === "warning" && /gaffer CLI not found/i.test(m.message),
+		// Install prompt is now a status bar item, not a toast.
+		const installItem = getStatusBarItems().find((i) =>
+			i.text.includes("gaffer not installed"),
 		);
-		const genericToast = msgs.find((m) => /Gaffer CLI failed/.test(m.message));
-		expect(installPrompt).toBeDefined();
-		expect(installPrompt?.items).toContain("Install");
+		const genericToast = getShownMessages().find((m) =>
+			/Gaffer CLI failed/.test(m.message),
+		);
+		expect(installItem).toBeDefined();
+		expect(installItem?.disposed).toBe(false);
 		expect(genericToast).toBeUndefined();
 	});
 
@@ -436,13 +439,57 @@ describe("manifest outcome routing", () => {
 		await activate(ctx);
 		const msgs = getShownMessages();
 		expect(
-			msgs.find((m) => /gaffer CLI not found/i.test(m.message)),
+			getStatusBarItems().find((i) => i.text.includes("gaffer not installed")),
 		).toBeUndefined();
 		expect(
 			msgs.find((m) => /Gaffer CLI failed/.test(m.message)),
 		).toBeUndefined();
 		// Dismissal isn't cleared by a still-failing fetch.
 		expect(ctx.workspaceState.get(DISMISSED_KEY)).toBe(true);
+	});
+
+	it("ENOENT with gaffer.command explicitly set to its default shows the install prompt", async () => {
+		// User explicitly set the setting to ["gaffer"] (same as the
+		// contributed default). Reset to default wouldn't change
+		// anything, so the unresolved prompt is the wrong recovery -
+		// route to install instead.
+		setConfiguration("gaffer", "command", {
+			value: ["gaffer"],
+			globalValue: ["gaffer"],
+			defaultValue: ["gaffer"],
+		});
+		stubManifestEnoent();
+		setTrusted(true);
+		queueFindFiles([]);
+		await activate(makeContext());
+		const items = getStatusBarItems();
+		expect(
+			items.find((i) => i.text.includes("gaffer not installed")),
+		).toBeDefined();
+		expect(
+			items.find((i) => i.text.includes("gaffer.command unresolved")),
+		).toBeUndefined();
+	});
+
+	it("ENOENT with customised gaffer.command shows the unresolved prompt, not the install prompt", async () => {
+		// User typo'd or otherwise pointed gaffer.command at a missing
+		// binary. Reinstalling via npm wouldn't help, so we surface
+		// the unresolved-command status bar item instead.
+		setConfiguration("gaffer", "command", {
+			value: ["gwaffer"],
+			globalValue: ["gwaffer"],
+		});
+		stubManifestEnoent();
+		setTrusted(true);
+		queueFindFiles([]);
+		await activate(makeContext());
+		const items = getStatusBarItems();
+		expect(
+			items.find((i) => i.text.includes("gaffer.command unresolved")),
+		).toBeDefined();
+		expect(
+			items.find((i) => i.text.includes("gaffer not installed")),
+		).toBeUndefined();
 	});
 
 	it("non-ENOENT activation failure shows the generic toast", async () => {
@@ -486,6 +533,99 @@ describe("manifest outcome routing", () => {
 		queueFindFiles([]);
 		await activate(makeContext());
 		await waitForLspClient();
+	});
+
+	it("a subsequent failed reload clears a prior update prompt", async () => {
+		// First activate succeeds with updateAvailable set, so the
+		// update prompt fires. Then a config-change reload fails with
+		// ENOENT - the update prompt must dismiss because the cached
+		// updateAvailable info doesn't apply to the new (broken) state.
+		vi.spyOn(cliModule, "tryFetchManifest").mockResolvedValueOnce({
+			version: "0.1.0",
+			updateAvailable: "0.2.0",
+			commands: { dev: { flags: ["debug"] } },
+		});
+		setTrusted(true);
+		queueFindFiles([]);
+		await activate(makeContext());
+		expect(
+			getStatusBarItems().find((i) => i.text.includes("gaffer 0.2.0")),
+		).toBeDefined();
+
+		// Now flip the stub to an ENOENT and reload.
+		vi.mocked(cliModule.tryFetchManifest).mockImplementation(
+			async (_cwd, _telemetry, onError) => {
+				const err: NodeJS.ErrnoException = new Error("ENOENT");
+				err.code = "ENOENT";
+				onError?.(err);
+				return null;
+			},
+		);
+		fireConfigurationChange(["gaffer.command"]);
+		await flushAllMicrotasks();
+
+		const updateItem = getStatusBarItems().find((i) =>
+			i.text.includes("gaffer 0.2.0"),
+		);
+		expect(updateItem?.disposed).toBe(true);
+	});
+
+	it("a subsequent successful reload clears a prior unresolved prompt", async () => {
+		// First activate fails with ENOENT and a customised
+		// gaffer.command -> unresolved prompt visible. Then the user
+		// fixes the setting in a separate terminal; the next reload
+		// succeeds. The unresolved prompt must dismiss.
+		setConfiguration("gaffer", "command", {
+			value: ["gwaffer"],
+			globalValue: ["gwaffer"],
+		});
+		stubManifestEnoent();
+		setTrusted(true);
+		queueFindFiles([]);
+		await activate(makeContext());
+		expect(
+			getStatusBarItems().find((i) =>
+				i.text.includes("gaffer.command unresolved"),
+			),
+		).toBeDefined();
+
+		vi.mocked(cliModule.tryFetchManifest).mockResolvedValue({
+			version: "test",
+			commands: { dev: { flags: ["debug"] } },
+		});
+		fireConfigurationChange(["gaffer.command"]);
+		await flushAllMicrotasks();
+
+		const unresolvedItem = getStatusBarItems().find((i) =>
+			i.text.includes("gaffer.command unresolved"),
+		);
+		expect(unresolvedItem?.disposed).toBe(true);
+	});
+
+	it("a subsequent successful reload clears a prior install prompt", async () => {
+		// First activate fails with ENOENT -> install prompt visible.
+		// Then a config-change reload succeeds. Install prompt must
+		// dismiss even though no Install button was clicked (e.g. the
+		// user fixed things in a separate terminal).
+		stubManifestEnoent();
+		setTrusted(true);
+		queueFindFiles([]);
+		await activate(makeContext());
+		expect(
+			getStatusBarItems().find((i) => i.text.includes("gaffer not installed")),
+		).toBeDefined();
+
+		vi.mocked(cliModule.tryFetchManifest).mockResolvedValue({
+			version: "test",
+			commands: { dev: { flags: ["debug"] } },
+		});
+		fireConfigurationChange(["gaffer.command"]);
+		await flushAllMicrotasks();
+
+		const installItem = getStatusBarItems().find((i) =>
+			i.text.includes("gaffer not installed"),
+		);
+		expect(installItem?.disposed).toBe(true);
 	});
 
 	it("successful reload clears a prior dismissal", async () => {

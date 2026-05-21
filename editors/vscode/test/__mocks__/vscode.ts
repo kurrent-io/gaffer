@@ -471,6 +471,45 @@ function makeDiagnosticCollection(name: string): FakeDiagnosticCollection {
 	return collection;
 }
 
+// ---- StatusBarItem -------------------------------------------------------
+
+export interface FakeStatusBarItem extends vscode.StatusBarItem {
+	showCount: number;
+	hideCount: number;
+	disposed: boolean;
+}
+
+function makeFakeStatusBarItem(
+	alignment: vscode.StatusBarAlignment,
+	priority: number | undefined,
+): FakeStatusBarItem {
+	const item: FakeStatusBarItem = {
+		id: "",
+		name: undefined,
+		alignment,
+		priority,
+		text: "",
+		tooltip: undefined,
+		color: undefined,
+		backgroundColor: undefined,
+		command: undefined,
+		accessibilityInformation: undefined,
+		showCount: 0,
+		hideCount: 0,
+		disposed: false,
+		show(): void {
+			item.showCount++;
+		},
+		hide(): void {
+			item.hideCount++;
+		},
+		dispose(): void {
+			item.disposed = true;
+		},
+	};
+	return item;
+}
+
 // ---- Terminal -------------------------------------------------------------
 
 export interface FakeTerminal extends vscode.Terminal {
@@ -605,7 +644,15 @@ type InspectResult<T> = {
 };
 
 function makeConfiguration(section: string): vscode.WorkspaceConfiguration {
-	const sec = state.configurations.get(section) ?? new Map();
+	// Materialise the section map onto state on first access so both
+	// reads and writes through this configuration object see the same
+	// store. Without this, an update would write to a different map
+	// than subsequent reads.
+	let sec = state.configurations.get(section);
+	if (!sec) {
+		sec = new Map();
+		state.configurations.set(section, sec);
+	}
 	const config: vscode.WorkspaceConfiguration = {
 		get<T>(key: string, defaultValue?: T): T | undefined {
 			const e = sec.get(key);
@@ -620,8 +667,13 @@ function makeConfiguration(section: string): vscode.WorkspaceConfiguration {
 			if (!e?.inspect) return undefined;
 			return { key, ...(e.inspect as Omit<InspectResult<T>, "key">) };
 		},
-		update(): Thenable<void> {
-			throw NOT_IMPLEMENTED("WorkspaceConfiguration.update");
+		update(key: string, value: unknown): Thenable<void> {
+			// ConfigurationTarget is ignored - the mock collapses
+			// global/workspace/folder into one bucket. Tests that
+			// need to distinguish scope use setConfiguration's
+			// inspect map directly.
+			sec.set(key, { value });
+			return Promise.resolve();
 		},
 	};
 	return config;
@@ -680,6 +732,7 @@ export interface MockState {
 	extensions: Map<string, vscode.Extension<unknown>>;
 	terminals: FakeTerminal[];
 	terminalClosed: EventEmitter<vscode.Terminal>;
+	statusBarItems: FakeStatusBarItem[];
 }
 
 export const state: MockState = createInitialState();
@@ -723,6 +776,7 @@ function createInitialState(): MockState {
 		extensions: new Map(),
 		terminals: [],
 		terminalClosed: new EventEmitter(),
+		statusBarItems: [],
 	};
 }
 
@@ -781,6 +835,21 @@ export const Disposable = {
 		};
 	},
 };
+
+// Mirror vscode.ConfigurationTarget so calls like
+// `getConfiguration().update(key, value, ConfigurationTarget.Global)`
+// don't deref undefined under the mock. The numeric values match the
+// real enum so a future need to inspect target by value still works.
+export const ConfigurationTarget = {
+	Global: 1,
+	Workspace: 2,
+	WorkspaceFolder: 3,
+} as const;
+
+export const StatusBarAlignment = {
+	Left: 1,
+	Right: 2,
+} as const;
 
 // ---- workspace ------------------------------------------------------------
 //
@@ -927,6 +996,7 @@ type WindowShape = Pick<
 	| "registerTreeDataProvider"
 	| "registerWebviewViewProvider"
 	| "createTerminal"
+	| "createStatusBarItem"
 	| "onDidCloseTerminal"
 > & {
 	createOutputChannel(name: string, languageId?: string): vscode.OutputChannel;
@@ -1006,6 +1076,25 @@ export const window: WindowShape = {
 			thisArgs,
 			disposables,
 		)) as typeof vscode.window.onDidCloseTerminal,
+	createStatusBarItem: ((
+		alignmentOrId?: vscode.StatusBarAlignment | string,
+		priorityOrAlignment?: number | vscode.StatusBarAlignment,
+		_priority?: number,
+	): vscode.StatusBarItem => {
+		// Real API overloads: (alignment?, priority?) or (id, alignment?, priority?).
+		// Tests only ever call the (alignment, priority) form, so cover that.
+		const alignment =
+			typeof alignmentOrId === "number"
+				? alignmentOrId
+				: ((priorityOrAlignment as vscode.StatusBarAlignment) ?? 1);
+		const priority =
+			typeof alignmentOrId === "number"
+				? (priorityOrAlignment as number | undefined)
+				: _priority;
+		const item = makeFakeStatusBarItem(alignment, priority);
+		state.statusBarItems.push(item);
+		return item;
+	}) as typeof vscode.window.createStatusBarItem,
 };
 
 // ---- commands -------------------------------------------------------------

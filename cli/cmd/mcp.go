@@ -9,8 +9,9 @@ import (
 
 func newMCPCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "mcp",
-		Short: "Start an MCP server for AI agent integration",
+		Use:         "mcp",
+		Short:       "Start an MCP server for AI agent integration",
+		Annotations: map[string]string{AnnotationOutput: OutputStructured},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// `defer tx.End(ctx)` must be direct - see DevTx.End
 			// for why recover() under a wrapping closure silently

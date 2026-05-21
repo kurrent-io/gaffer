@@ -2,12 +2,13 @@ package cmd
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
 func manifestCommands(t *testing.T) map[string]manifestCommand {
 	t.Helper()
-	return buildManifest(NewRootCmd(), "test").Commands
+	return buildManifest(NewRootCmd(), "test", "").Commands
 }
 
 func commandFlags(t *testing.T, commands map[string]manifestCommand, name string) map[string]bool {
@@ -112,7 +113,7 @@ func TestBuildManifest_InfoFlags(t *testing.T) {
 }
 
 func TestBuildManifest_JSONShape(t *testing.T) {
-	m := buildManifest(NewRootCmd(), "1.0.0")
+	m := buildManifest(NewRootCmd(), "1.0.0", "")
 
 	data, err := json.Marshal(m)
 	if err != nil {
@@ -129,5 +130,41 @@ func TestBuildManifest_JSONShape(t *testing.T) {
 	}
 	if len(parsed.Commands) == 0 {
 		t.Error("expected commands in manifest")
+	}
+}
+
+// updateAvailable is emitted as JSON null when no upgrade is known
+// (rather than omitted) so VS Code-side consumers can branch on the
+// field unconditionally rather than checking for presence.
+func TestBuildManifest_UpdateAvailable_NullWhenEmpty(t *testing.T) {
+	m := buildManifest(NewRootCmd(), "1.0.0", "")
+	if m.UpdateAvailable != nil {
+		t.Errorf("expected nil UpdateAvailable, got %q", *m.UpdateAvailable)
+	}
+
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(data); !strings.Contains(got, `"updateAvailable":null`) {
+		t.Errorf("expected updateAvailable:null in JSON, got %s", got)
+	}
+}
+
+func TestBuildManifest_UpdateAvailable_SetWhenProvided(t *testing.T) {
+	m := buildManifest(NewRootCmd(), "1.0.0", "1.2.3")
+	if m.UpdateAvailable == nil {
+		t.Fatal("expected UpdateAvailable to be set")
+	}
+	if got := *m.UpdateAvailable; got != "1.2.3" {
+		t.Errorf("expected UpdateAvailable=1.2.3, got %q", got)
+	}
+
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(data); !strings.Contains(got, `"updateAvailable":"1.2.3"`) {
+		t.Errorf("expected updateAvailable:\"1.2.3\" in JSON, got %s", got)
 	}
 }

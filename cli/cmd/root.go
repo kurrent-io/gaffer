@@ -43,11 +43,19 @@ func NewRootCmd() *cobra.Command {
 		Short: "Projection toolkit for KurrentDB",
 		Long:  "Develop, test, debug, and deploy KurrentDB projections.",
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			// Update-check is best-effort: skip when stderr isn't a
-			// TTY (extension-spawned lsp/mcp, piped stderr, CI runs).
-			// Start is nil-safe when no Client was stashed on ctx -
-			// the cmd test harness exercises that branch.
-			updatecheck.FromCtx(cmd.Context()).Start(noUpdateCheck || !isatty.IsTerminal(os.Stderr.Fd()))
+			// Update-check has two gates: disable shuts everything
+			// off (--no-update-check); quiet suppresses just the
+			// stderr notice while still refreshing the cache. We go
+			// quiet on non-interactive paths (no TTY) and structured
+			// output (manifest, lsp, mcp, --json) because the human-
+			// readable card is noise there, but the cache still needs
+			// refreshing so `gaffer manifest`'s updateAvailable field
+			// stays useful for editor wrappers that only ever invoke
+			// gaffer non-interactively. Start is nil-safe when no
+			// Client was stashed on ctx - the cmd test harness
+			// exercises that branch.
+			quiet := !isatty.IsTerminal(os.Stderr.Fd()) || emitsStructuredOutput(cmd)
+			updatecheck.FromCtx(cmd.Context()).Start(noUpdateCheck, quiet)
 			return nil
 		},
 	}
@@ -74,6 +82,41 @@ func NewRootCmd() *cobra.Command {
 // Execute() and tests so they share the same execution path.
 func ExecuteRoot(ctx context.Context, root *cobra.Command) error {
 	return fang.Execute(ctx, root, fang.WithoutVersion(), fang.WithErrorHandler(errorHandler))
+}
+
+// AnnotationOutput tags a cobra.Command with the kind of output it
+// emits. Commands tagged OutputStructured always speak machine-
+// readable bytes (manifest's JSON, lsp/mcp's JSON-RPC); commands
+// that flip via a --json flag are detected at runtime by
+// emitsStructuredOutput.
+const AnnotationOutput = "gaffer.output"
+
+// OutputStructured is the AnnotationOutput value declaring that a
+// command always emits machine-readable output.
+const OutputStructured = "structured"
+
+// emitsStructuredOutput reports whether cmd's invocation produces
+// machine-readable output - either because the command (or any of
+// its parents) declared AnnotationOutput=OutputStructured at
+// construction time or because the user passed --json. The update-
+// check stderr notice is suppressed for these so wrappers and pipes
+// see only the bytes they asked for.
+//
+// Parent walk: cobra doesn't inherit annotations, so a structured
+// command that ever grows runnable subcommands would silently leak
+// the notice unless every leaf re-declares the tag. Walking the
+// parent chain means a single declaration on the group covers the
+// whole subtree.
+func emitsStructuredOutput(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Annotations[AnnotationOutput] == OutputStructured {
+			return true
+		}
+	}
+	if v, err := cmd.Flags().GetBool("json"); err == nil && v {
+		return true
+	}
+	return false
 }
 
 // registerHiddenInvocationFlags declares --invoker-id / --invoked-by /

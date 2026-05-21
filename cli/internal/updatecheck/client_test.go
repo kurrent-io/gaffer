@@ -71,7 +71,7 @@ func TestStart_EnvDisable_NoPrintNoFetch(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed cache: %v", err)
 	}
-	c.Start(false)
+	c.Start(false, false)
 	flushOrFail(t, c, time.Second)
 	if buf.Len() != 0 {
 		t.Errorf("env-disabled printed: %q", buf.String())
@@ -91,7 +91,7 @@ func TestStart_FlagDisable_NoPrintNoFetch(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed cache: %v", err)
 	}
-	c.Start(true)
+	c.Start(true, false)
 	flushOrFail(t, c, time.Second)
 	if buf.Len() != 0 {
 		t.Errorf("flag-disabled printed: %q", buf.String())
@@ -101,10 +101,63 @@ func TestStart_FlagDisable_NoPrintNoFetch(t *testing.T) {
 	}
 }
 
+// TestStart_Quiet_RefreshesButDoesNotPrint asserts that the
+// notice-suppression path (non-TTY, structured output) still drives
+// the background refresh. The VS Code extension relies on `gaffer
+// manifest`'s updateAvailable field being kept fresh by some
+// invocation, and manifest itself runs in quiet mode - so a quiet
+// run that didn't refresh would mean the cache never updates for
+// users who only ever invoke gaffer through the extension.
+func TestStart_Quiet_RefreshesButDoesNotPrint(t *testing.T) {
+	fetcher := &stubFetcher{latest: "0.3.0"}
+	c, buf := newTestClient(t, "0.1.3", fetcher)
+	if err := SaveCache(c.cacheDir, Cache{
+		CheckedAt:          c.now().Add(-48 * time.Hour),
+		CheckedWithVersion: "0.1.3",
+		LatestVersion:      "0.2.0",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	c.Start(false, true)
+	flushOrFail(t, c, time.Second)
+	if buf.Len() != 0 {
+		t.Errorf("quiet printed: %q", buf.String())
+	}
+	if fetcher.callCount() != 1 {
+		t.Errorf("quiet should still refresh, got %d calls", fetcher.callCount())
+	}
+	cache, _ := LoadCache(c.cacheDir)
+	if cache.LatestVersion != "0.3.0" {
+		t.Errorf("cache after quiet refresh = %q, want 0.3.0", cache.LatestVersion)
+	}
+}
+
+// Disable wins over quiet: an opted-out user (--no-update-check)
+// gets no notice AND no refresh, regardless of quiet.
+func TestStart_DisableOverridesQuiet_NoFetch(t *testing.T) {
+	fetcher := &stubFetcher{latest: "0.3.0"}
+	c, buf := newTestClient(t, "0.1.3", fetcher)
+	if err := SaveCache(c.cacheDir, Cache{
+		CheckedAt:          c.now().Add(-48 * time.Hour),
+		CheckedWithVersion: "0.1.3",
+		LatestVersion:      "0.2.0",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	c.Start(true, true)
+	flushOrFail(t, c, time.Second)
+	if buf.Len() != 0 {
+		t.Errorf("disabled printed: %q", buf.String())
+	}
+	if fetcher.callCount() != 0 {
+		t.Errorf("disabled fetched %d times, want 0", fetcher.callCount())
+	}
+}
+
 func TestStart_EmptyCache_NoPrintButFetches(t *testing.T) {
 	fetcher := &stubFetcher{latest: "0.2.0"}
 	c, buf := newTestClient(t, "0.1.3", fetcher)
-	c.Start(false)
+	c.Start(false, false)
 	flushOrFail(t, c, time.Second)
 	if buf.Len() != 0 {
 		t.Errorf("fresh-install printed when cache was empty: %q", buf.String())
@@ -132,7 +185,7 @@ func TestStart_FreshCacheWithNewerVersion_PrintsAndSkipsFetch(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	c.Start(false)
+	c.Start(false, false)
 	flushOrFail(t, c, time.Second)
 	if !strings.Contains(buf.String(), "gaffer 0.2.0 available") {
 		t.Errorf("missing notice in stderr: %q", buf.String())
@@ -158,7 +211,7 @@ func TestStart_FreshCacheWithSameVersion_NoPrint(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	c.Start(false)
+	c.Start(false, false)
 	flushOrFail(t, c, time.Second)
 	if buf.Len() != 0 {
 		t.Errorf("up-to-date printed: %q", buf.String())
@@ -179,7 +232,7 @@ func TestStart_StaleCache_PrintsCachedValueThenRefetches(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	c.Start(false)
+	c.Start(false, false)
 	flushOrFail(t, c, time.Second)
 	if !strings.Contains(buf.String(), "0.2.0 available") {
 		t.Errorf("notice should print the cached value at startup time, got %q", buf.String())
@@ -208,7 +261,7 @@ func TestStart_VersionDriftStale_Refetches(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	c.Start(false)
+	c.Start(false, false)
 	flushOrFail(t, c, time.Second)
 	if !strings.Contains(buf.String(), "0.2.0 available") {
 		t.Errorf("missing notice: %q", buf.String())
@@ -221,7 +274,7 @@ func TestStart_VersionDriftStale_Refetches(t *testing.T) {
 func TestStart_EmptyCurrent_NoOp(t *testing.T) {
 	fetcher := &stubFetcher{latest: "0.2.0"}
 	c, buf := newTestClient(t, "", fetcher)
-	c.Start(false)
+	c.Start(false, false)
 	flushOrFail(t, c, time.Second)
 	if buf.Len() != 0 {
 		t.Errorf("empty current printed: %q", buf.String())
@@ -247,7 +300,7 @@ func TestStart_FetchErrorPreservesPriorCache(t *testing.T) {
 	if err := SaveCache(c.cacheDir, prior); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	c.Start(false)
+	c.Start(false, false)
 	flushOrFail(t, c, time.Second)
 	// The print path used the cached "0.2.0" - allowed.
 	if !strings.Contains(buf.String(), "0.2.0 available") {
@@ -271,7 +324,7 @@ func (panicFetcher) Latest(context.Context) (string, error) {
 
 func TestStart_PanicInFetcherDoesNotCrash(t *testing.T) {
 	c, _ := newTestClient(t, "0.1.3", panicFetcher{})
-	c.Start(false)
+	c.Start(false, false)
 	// If the panic escaped the goroutine, Flush would either deadlock
 	// or the test process would have already exited. Bounded wait
 	// gives us a clean assertion.
@@ -289,7 +342,7 @@ func TestStart_PanicInFetcherDoesNotCrash(t *testing.T) {
 func TestStart_RepeatedCalls_RunOnce(t *testing.T) {
 	fetcher := &stubFetcher{latest: "0.2.0"}
 	c, _ := newTestClient(t, "0.1.3", fetcher)
-	c.Start(false)
+	c.Start(false, false)
 	flushOrFail(t, c, time.Second)
 	if fetcher.callCount() != 1 {
 		t.Fatalf("first Start fetched %d times, want 1", fetcher.callCount())
@@ -297,7 +350,7 @@ func TestStart_RepeatedCalls_RunOnce(t *testing.T) {
 	// Wipe the cache file. If startOnce ran again it'd find an empty
 	// cache and refetch; sync.Once prevents that.
 	c.cacheDir = t.TempDir()
-	c.Start(false)
+	c.Start(false, false)
 	if err := c.Flush(ctxTimeout(t, time.Second)); err != nil {
 		t.Fatalf("second Flush: %v", err)
 	}
@@ -313,7 +366,7 @@ func TestStart_RepeatedCalls_RunOnce(t *testing.T) {
 func TestStart_FetcherReceivesUsableContext(t *testing.T) {
 	fetcher := &stubFetcher{latest: "0.2.0"}
 	c, _ := newTestClient(t, "0.1.3", fetcher)
-	c.Start(false)
+	c.Start(false, false)
 	flushOrFail(t, c, time.Second)
 	fetcher.mu.Lock()
 	defer fetcher.mu.Unlock()
@@ -335,13 +388,13 @@ func TestFlush_NilClient(t *testing.T) {
 func TestStart_NilClient(t *testing.T) {
 	var c *Client
 	// Must not panic.
-	c.Start(false)
+	c.Start(false, false)
 }
 
 func TestFlush_TimeoutOnSlowFetcher(t *testing.T) {
 	fetcher := &stubFetcher{latest: "0.2.0", delay: 500 * time.Millisecond}
 	c, _ := newTestClient(t, "0.1.3", fetcher)
-	c.Start(false)
+	c.Start(false, false)
 	err := c.Flush(ctxTimeout(t, 50*time.Millisecond))
 	if err == nil {
 		t.Error("Flush returned nil error on timeout")
@@ -351,7 +404,7 @@ func TestFlush_TimeoutOnSlowFetcher(t *testing.T) {
 func TestFlush_AfterCloseSecondCallReturnsImmediately(t *testing.T) {
 	fetcher := &stubFetcher{latest: "0.2.0"}
 	c, _ := newTestClient(t, "0.1.3", fetcher)
-	c.Start(false)
+	c.Start(false, false)
 	if err := c.Flush(ctxTimeout(t, time.Second)); err != nil {
 		t.Fatalf("first Flush: %v", err)
 	}
@@ -371,6 +424,68 @@ func TestWithClient_RoundTrip(t *testing.T) {
 func TestFromCtx_Missing(t *testing.T) {
 	if got := FromCtx(context.Background()); got != nil {
 		t.Errorf("FromCtx on bare context = %v, want nil", got)
+	}
+}
+
+func TestUpdateAvailable_CachedNewer_ReturnsVersion(t *testing.T) {
+	c, _ := newTestClient(t, "0.1.3", &stubFetcher{})
+	if err := SaveCache(c.cacheDir, Cache{
+		CheckedAt:          c.now().Add(-time.Hour),
+		CheckedWithVersion: "0.1.3",
+		LatestVersion:      "0.2.0",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if got := c.UpdateAvailable(); got != "0.2.0" {
+		t.Errorf("UpdateAvailable = %q, want 0.2.0", got)
+	}
+}
+
+func TestUpdateAvailable_CachedSameOrOlder_ReturnsEmpty(t *testing.T) {
+	c, _ := newTestClient(t, "0.2.0", &stubFetcher{})
+	if err := SaveCache(c.cacheDir, Cache{
+		CheckedAt:          c.now().Add(-time.Hour),
+		CheckedWithVersion: "0.2.0",
+		LatestVersion:      "0.1.9",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if got := c.UpdateAvailable(); got != "" {
+		t.Errorf("UpdateAvailable with older cache = %q, want empty", got)
+	}
+}
+
+func TestUpdateAvailable_NoCache_ReturnsEmpty(t *testing.T) {
+	c, _ := newTestClient(t, "0.1.3", &stubFetcher{})
+	if got := c.UpdateAvailable(); got != "" {
+		t.Errorf("UpdateAvailable with no cache = %q, want empty", got)
+	}
+}
+
+func TestUpdateAvailable_NilReceiver(t *testing.T) {
+	var c *Client
+	if got := c.UpdateAvailable(); got != "" {
+		t.Errorf("UpdateAvailable on nil Client = %q, want empty", got)
+	}
+}
+
+// The notice-suppression knobs (--no-update-check, GAFFER_NO_UPDATE_CHECK)
+// deliberately don't gate UpdateAvailable: they suppress the printed
+// notice and the registry refresh, not the consumption of an already-
+// cached signal. Manifest must still surface it so editor wrappers can
+// branch on it.
+func TestUpdateAvailable_EnvDisable_StillReportsCachedValue(t *testing.T) {
+	t.Setenv(EnvDisable, "1")
+	c, _ := newTestClient(t, "0.1.3", &stubFetcher{})
+	if err := SaveCache(c.cacheDir, Cache{
+		CheckedAt:          c.now().Add(-time.Hour),
+		CheckedWithVersion: "0.1.3",
+		LatestVersion:      "0.2.0",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if got := c.UpdateAvailable(); got != "0.2.0" {
+		t.Errorf("UpdateAvailable with env-disable = %q, want 0.2.0", got)
 	}
 }
 

@@ -3,7 +3,7 @@ title: Node.js
 description: Drive KurrentDB projections from your test suite with @kurrent/projections-testing.
 ---
 
-`@kurrent/projections-testing` runs projections from inside your existing test suite. Same engine as gaffer and KurrentDB. Works with vitest, jest, mocha, or any node test runner.
+`@kurrent/projections-testing` runs projections from inside your existing test suite on the same engine as gaffer and KurrentDB. Works with vitest, jest, mocha, or any node test runner.
 
 ## Install
 

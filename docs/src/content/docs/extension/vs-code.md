@@ -51,7 +51,7 @@ See [MCP](../cli/mcp.md) for the tools and resources gaffer exposes, and for con
 
 | Setting                         | Default      | What it does                                                                                                             |
 | ------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `gaffer.command`                | `["gaffer"]` | Argv used to invoke gaffer. User scope only. Workspace settings are ignored as defense against hostile workspaces.       |
+| `gaffer.command`                | `["gaffer"]` | Argv used to invoke gaffer. User scope only. Workspace settings are ignored as defence against hostile workspaces.       |
 | `gaffer.debugPort`              | `-1` (auto)  | DAP server port (loopback only). `-1` lets the OS pick a free port and the editor reads it back from the CLI on connect. |
 | `gaffer.injectProjectionTypes`  | `true`       | Inject projection-runtime types via the tsserver plugin. Disable to keep non-projection JS clean.                        |
 | `gaffer.cliUpdateNotifications` | `true`       | Surface a status bar prompt when a newer gaffer CLI is on npm. The **Never ask** option on the prompt flips this to false. |

@@ -10,7 +10,7 @@ The [KurrentDB Projections](https://marketplace.visualstudio.com/items?itemName=
 
 Install the extension from the marketplace.
 
-The extension needs the `gaffer` CLI on PATH. See [Install gaffer](../getting-started/#install-the-cli).
+The extension needs the `gaffer` CLI on PATH. See [Install gaffer](../getting-started/#install-the-cli). If the CLI isn't installed, the extension surfaces a status bar prompt that can run the install for you. If you've customised `gaffer.command` and it points at a binary that no longer exists, a separate prompt offers to open the setting or reset it to the default.
 
 ## Bootstrap a project
 
@@ -50,11 +50,12 @@ See [MCP](../mcp/) for the tools and resources gaffer exposes, and for connectin
 
 ## Configuration
 
-| Setting                        | Default      | What it does                                                                                                             |
-| ------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `gaffer.command`               | `["gaffer"]` | Argv used to invoke gaffer. User scope only. Workspace settings are ignored as defense against hostile workspaces.       |
-| `gaffer.debugPort`             | `-1` (auto)  | DAP server port (loopback only). `-1` lets the OS pick a free port and the editor reads it back from the CLI on connect. |
-| `gaffer.injectProjectionTypes` | `true`       | Inject projection-runtime types via the tsserver plugin. Disable to keep non-projection JS clean.                        |
+| Setting                         | Default      | What it does                                                                                                             |
+| ------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `gaffer.command`                | `["gaffer"]` | Argv used to invoke gaffer. User scope only. Workspace settings are ignored as defense against hostile workspaces.       |
+| `gaffer.debugPort`              | `-1` (auto)  | DAP server port (loopback only). `-1` lets the OS pick a free port and the editor reads it back from the CLI on connect. |
+| `gaffer.injectProjectionTypes`  | `true`       | Inject projection-runtime types via the tsserver plugin. Disable to keep non-projection JS clean.                        |
+| `gaffer.cliUpdateNotifications` | `true`       | Surface a status bar prompt when a newer gaffer CLI is on npm. The **Never ask** option on the prompt flips this to false. |
 
 ## Commands
 

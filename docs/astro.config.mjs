@@ -32,19 +32,25 @@ export default defineConfig({
         { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '96x96', href: '/favicons/favicon-96x96.png' } },
         { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/favicons/apple-touch-icon.png' } },
       ],
-      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/kurrent-io/gaffer' }],
+      social: [
+        { icon: 'npm', label: 'npm', href: 'https://www.npmjs.com/package/@kurrent/gaffer' },
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/kurrent-io/gaffer' },
+      ],
       sidebar: [
         {
           label: 'Getting started',
-          items: ['getting-started', 'getting-started/first-projection', 'getting-started/debugging'],
+          items: [
+            'getting-started/install',
+            'getting-started/first-projection',
+            'getting-started/debugging',
+          ],
         },
         {
-          label: 'CLI',
-          items: ['cli', 'cli/commands', 'cli/gaffer-toml'],
+          label: 'Gaffer CLI',
+          items: ['cli', 'cli/mcp', 'cli/commands', 'cli/gaffer-toml'],
         },
-        { label: 'VS Code extension', items: ['extension'] },
-        { label: 'Testing', items: ['testing'] },
-        { label: 'MCP', items: ['mcp'] },
+        { label: 'Editor extensions', items: ['extension/vs-code', 'extension/other-editors'] },
+        { label: 'Testing', items: ['testing/nodejs'] },
       ],
     }),
   ],

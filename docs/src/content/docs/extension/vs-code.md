@@ -1,5 +1,5 @@
 ---
-title: VS Code extension
+title: VS Code
 description: Install the KurrentDB Projections VS Code extension for inline run/debug, breakpoints, state inspection, and projection-API autocomplete.
 ---
 
@@ -9,7 +9,7 @@ The [KurrentDB Projections](https://marketplace.visualstudio.com/items?itemName=
 
 Install the extension from the marketplace.
 
-The extension needs the `gaffer` CLI on PATH. See [Install gaffer](../getting-started/#install-the-cli). If the CLI isn't installed, the extension surfaces a status bar prompt that can run the install for you. If you've customised `gaffer.command` and it points at a binary that no longer exists, a separate prompt offers to open the setting or reset it to the default.
+The extension needs the `gaffer` CLI on PATH. See [Install gaffer](../getting-started/install.md#install-the-cli). If the CLI isn't installed, the extension surfaces a status bar prompt that can run the install for you. If you've customised `gaffer.command` and it points at a binary that no longer exists, a separate prompt offers to open the setting or reset it to the default.
 
 ## Bootstrap a project
 
@@ -45,7 +45,7 @@ The plugin doesn't add a `.d.ts` to your project. Types apply at the tsserver-pr
 
 The extension auto-registers gaffer's MCP server with VS Code's MCP framework. AI assistants that consume VS Code's MCP providers (GitHub Copilot Chat, others) pick up gaffer's scaffolding / validation / debugging tools without any manual config.
 
-See [MCP](../mcp/) for the tools and resources gaffer exposes, and for connecting non-VS-Code clients.
+See [MCP](../cli/mcp.md) for the tools and resources gaffer exposes, and for connecting non-VS-Code clients.
 
 ## Configuration
 

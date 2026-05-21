@@ -13,8 +13,8 @@ The `gaffer` CLI scaffolds projections, runs them locally against fixtures or li
 | [`gaffer scaffold <path>`](./commands.md#gaffer-scaffold) | Create a projection file at `<path>` and register it in `gaffer.toml`.                                                        |
 | [`gaffer dev <name>`](./commands.md#gaffer-dev)      | Run a projection against fixtures (`--fixture <name>` or `--events <path>`) or live KurrentDB.                                |
 | [`gaffer info <name>`](./commands.md#gaffer-info)    | Print the projection's details: source, partitioning, declared fixtures, engine version, matched events, and any diagnostics. |
-| [`gaffer mcp`](./commands.md#gaffer-mcp)             | Start the gaffer MCP server over stdio. See [MCP](../mcp/).                                                                   |
-| [`gaffer lsp`](./commands.md#gaffer-lsp)             | Start the gaffer LSP server over stdio. Used by the [VS Code extension](../extension/).                                       |
+| [`gaffer mcp`](./commands.md#gaffer-mcp)             | Start the gaffer MCP server over stdio. See [MCP](./mcp.md).                                                                  |
+| [`gaffer lsp`](./commands.md#gaffer-lsp)             | Start the gaffer LSP server over stdio. Used by the [VS Code extension](../extension/vs-code.md).                             |
 | [`gaffer config`](./commands.md#gaffer-config)       | Manage user-level configuration (telemetry opt-out, anonymous identity).                                                      |
 | [`gaffer version`](./commands.md#gaffer-version)     | Print the gaffer version.                                                                                                     |
 

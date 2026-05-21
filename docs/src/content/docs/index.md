@@ -19,8 +19,9 @@ Then [write your first projection](./getting-started/first-projection.md).
 
 ## Sections
 
-- **[Getting started](./getting-started/)** - install, write your first projection, debug it.
-- **[CLI](./cli/)** - command reference and `gaffer.toml` schema.
-- **[VS Code extension](./extension/)** - inline run/debug, state inspection, projection-API autocomplete.
-- **[Testing](./testing/)** - drive projections from vitest, jest, or mocha with `@kurrent/projections-testing`.
-- **[MCP](./mcp/)** - connect Claude Code, Cursor, Continue, Claude Desktop, or any MCP-aware AI assistant.
+- **[Getting started](./getting-started/install.md)** - install, write your first projection, debug it.
+- **[CLI](./cli/index.md)** - command reference and `gaffer.toml` schema.
+- **[VS Code extension](./extension/vs-code.md)** - inline run/debug, state inspection, projection-API autocomplete.
+- **[Other editors](./extension/other-editors.md)** - attach Neovim, Helix, or Emacs to gaffer's DAP server.
+- **[Testing](./testing/nodejs.md)** - drive projections from vitest, jest, or mocha with `@kurrent/projections-testing`.
+- **[MCP](./cli/mcp.md)** - connect Claude Code, Cursor, Continue, Claude Desktop, or any MCP-aware AI assistant.

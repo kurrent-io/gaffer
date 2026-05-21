@@ -1,5 +1,5 @@
 ---
-title: Testing
+title: Node.js
 description: Drive KurrentDB projections from your test suite with @kurrent/projections-testing.
 ---
 
@@ -237,5 +237,5 @@ The full error hierarchy: `InvalidProjectionError`, `CompilationTimeoutError`, `
 ## See also
 
 - [Your first projection](../getting-started/first-projection.md) - write a projection with gaffer if you haven't yet.
-- [CLI](../cli/) - run projections without a test framework.
+- [CLI](../cli/index.md) - run projections without a test framework.
 - [Debugging projections](../getting-started/debugging.md) - step through handlers, inspect state.

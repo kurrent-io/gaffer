@@ -19,7 +19,7 @@
 	--sl-color-bg-inline-code: var(--color-shade-10);
 
 	--sl-color-text: var(--color-foreground);
-	--sl-color-text-accent: var(--color-highlight);
+	--sl-color-text-accent: var(--color-link);
 	--sl-color-text-invert: var(--color-background);
 
 	--sl-color-white: var(--color-foreground);
@@ -77,6 +77,10 @@
 }
 .sidebar-content a[aria-current='page']:hover {
 	background-color: var(--color-accent-30);
+}
+
+.social-icons a {
+	color: var(--color-foreground);
 }
 
 /* Trim the prev/next pagination cards: drop Starlight's --sl-text-2xl

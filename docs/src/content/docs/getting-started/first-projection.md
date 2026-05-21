@@ -7,7 +7,7 @@ A projection is server-side JavaScript that KurrentDB runs over a stream of even
 
 ## Before you start
 
-You need [`@kurrent/gaffer`](https://www.npmjs.com/package/@kurrent/gaffer) on your PATH and Node.js 22 or later. See [Install](../#install-the-cli) if you don't have it yet.
+You need [`@kurrent/gaffer`](https://www.npmjs.com/package/@kurrent/gaffer) on your PATH and Node.js 22 or later. See [Install](./install.md#install-the-cli) if you don't have it yet.
 
 ## Initialise a project
 
@@ -157,11 +157,11 @@ gaffer dev order-count --fixture happy
 
 Use named fixtures for scenarios you'll re-run (happy path, edge cases). `--events` stays for one-off paths.
 
-## What's next
+## See also
 
 - **Step through with the debugger**: see [Debugging projections](./debugging.md) for the VS Code extension setup and other editor wireups.
-- **Test from your test suite**: drive projections directly from vitest, jest, or mocha with [`@kurrent/projections-testing`](../testing/).
-- **Use an AI assistant**: point Claude Code, Cursor, Continue, or Copilot at `gaffer mcp` for scaffolding, validation, and debugging tools - see [MCP](../mcp/).
+- **Test from your test suite**: drive projections directly from vitest, jest, or mocha with [`@kurrent/projections-testing`](../testing/nodejs.md).
+- **Use an AI assistant**: point Claude Code, Cursor, Continue, or Copilot at `gaffer mcp` for scaffolding, validation, and debugging tools - see [MCP](../cli/mcp.md).
 - **Partition state per stream**: `foreachStream()` between `fromAll()` and `.when()` gives each stream its own state slice. Useful when you're aggregating per-entity instead of globally.
 - **Emit derived events**: `emit('stream-name', 'EventType', { ...data })` from inside a handler writes a new event to a target stream. The basis for read-model projections and continuous queries.
 - **The full projection API**: `partitionBy`, `outputState`, `transformBy`, `filterBy`, `linkTo`, and the `$init`/`$any`/`$deleted`/`$created` system handlers. See the [projection API reference](https://docs.kurrent.io/server/v26.1/features/projections/custom).

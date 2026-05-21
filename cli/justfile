@@ -44,6 +44,12 @@ test-integration: _resources
 run *args: _resources
     CGO_ENABLED=1 go run -tags dev . {{args}}
 
+# Generate the single Markdown CLI command reference from the cobra
+# command tree. Run after touching any command, flag, or description
+# so the published reference stays in step with the binary.
+gen-docs out-file="../docs/cli/commands.md": _resources
+    CGO_ENABLED=1 go run -tags dev ./cmd/docgen {{out-file}}
+
 # Format code and apply lint fixes
 fix: _resources
     golangci-lint fmt

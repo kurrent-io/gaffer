@@ -126,7 +126,7 @@ func TestLinkResolution(t *testing.T) {
 func TestBuildSubscribeOptions_ReadWindow(t *testing.T) {
 	// Client defaults (32 / 1) make CaughtUp effectively never fire on
 	// a busy store. Every Subscribe should override them - see
-	// docs/specs/subscription.md "Subscription read parameters".
+	// specs/subscription.md "Subscription read parameters".
 	cases := []struct {
 		name string
 		info gafferruntime.ProjectionInfo

@@ -10,7 +10,7 @@ Full reference for every gaffer subcommand. Generated from the CLI source; run `
 
 Initialize a new gaffer project.
 
-Creates gaffer.toml, .gitignore, and .gaffer/ directory in the current directory.
+Creates gaffer.toml in the current directory.
 
 ```
 gaffer init [flags]

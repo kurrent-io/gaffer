@@ -18,7 +18,7 @@ In an empty directory:
 gaffer init
 ```
 
-This creates `gaffer.toml`, `.gitignore`, and an empty `.gaffer/` directory.
+This creates `gaffer.toml` in the current directory.
 
 ## Scaffold a projection
 

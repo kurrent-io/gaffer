@@ -10,7 +10,7 @@ The `gaffer` CLI scaffolds projections, runs them locally against fixtures or li
 
 | Command                                              | What it does                                                                                                                  |
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| [`gaffer init`](./commands.md#gaffer-init)           | Create `gaffer.toml`, `.gitignore`, and an empty `.gaffer/` directory.                                                        |
+| [`gaffer init`](./commands.md#gaffer-init)           | Create `gaffer.toml` in the current directory.                                                                                |
 | [`gaffer scaffold <path>`](./commands.md#gaffer-scaffold) | Create a projection file at `<path>` and register it in `gaffer.toml`.                                                        |
 | [`gaffer dev <name>`](./commands.md#gaffer-dev)      | Run a projection against fixtures (`--fixture <name>` or `--events <path>`) or live KurrentDB.                                |
 | [`gaffer info <name>`](./commands.md#gaffer-info)    | Print the projection's details: source, partitioning, declared fixtures, engine version, matched events, and any diagnostics. |

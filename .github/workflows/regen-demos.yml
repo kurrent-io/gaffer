@@ -1,8 +1,8 @@
 name: Regenerate demo recordings
 
-# Manually regenerates the VHS demo recordings under docs/assets/ and
-# opens a PR with the updated GIFs. Run from the Actions tab when the
-# CLI output a recording depends on has changed.
+# Manually regenerates the VHS demo recordings under assets/ and opens
+# a PR with the updated GIFs. Run from the Actions tab when the CLI
+# output a recording depends on has changed.
 
 on:
   workflow_dispatch:
@@ -76,7 +76,7 @@ jobs:
       # / Show in the tape file didn't suppress the prompt + command).
       - name: Regenerate demo recordings
         working-directory: demo
-        run: vhs ../docs/assets/demo-dev.tape
+        run: vhs ../tools/vhs/demo-dev.tape
 
       - name: Open PR with updated recordings
         uses: peter-evans/create-pull-request@v6
@@ -84,11 +84,11 @@ jobs:
           commit-message: Regenerate demo recordings
           title: Regenerate demo recordings
           body: |
-            Regenerated demo recordings under `docs/assets/` via the
+            Regenerated demo recordings under `assets/` via the
             [Regenerate demo recordings](https://github.com/${{ github.repository }}/actions/workflows/regen-demos.yml)
             workflow.
 
             Review the rendered GIFs (not the binary diffs) before merging.
           branch: regen-demos
-          add-paths: docs/assets/*.gif
+          add-paths: assets/*.gif
           labels: documentation

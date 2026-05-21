@@ -1,4 +1,4 @@
-<img src="docs/assets/banner-gaffer.svg" alt="Gaffer" width="100%">
+<img src="assets/banner-gaffer.svg" alt="Gaffer" width="100%">
 
 Develop, test, debug, and deploy [KurrentDB](https://kurrent.io) projections.
 
@@ -28,7 +28,7 @@ Run a projection from the CLI:
 gaffer dev order-count --fixture happy
 ```
 
-![gaffer dev replaying the order-count projection against the happy fixture](docs/assets/demo-dev.gif)
+![gaffer dev replaying the order-count projection against the happy fixture](assets/demo-dev.gif)
 
 Or test it from your existing test suite:
 

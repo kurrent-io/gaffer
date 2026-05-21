@@ -1,0 +1,153 @@
+/* Bridge between the Kurrent design tokens (colors.css) and Starlight's
+   own `--sl-*` custom properties. Starlight components and themes read
+   the `--sl-*` vars; mapping them here re-skins the whole site in one
+   place. */
+
+:root {
+	color-scheme: light dark;
+
+	--font-family-sans: 'Work Sans', Arial, sans-serif;
+	--font-family-monospace: 'Spline Sans Mono', monospace;
+
+	--sl-font: var(--font-family-sans);
+	--sl-font-system: var(--font-family-sans);
+	--sl-font-system-mono: var(--font-family-monospace);
+
+	--sl-color-bg: var(--color-background);
+	--sl-color-bg-nav: var(--color-background);
+	--sl-color-bg-sidebar: var(--color-shade-00);
+	--sl-color-bg-inline-code: var(--color-shade-10);
+
+	--sl-color-text: var(--color-foreground);
+	--sl-color-text-accent: var(--color-link);
+	--sl-color-text-invert: var(--color-background);
+
+	--sl-color-white: var(--color-foreground);
+	--sl-color-gray-1: var(--color-foreground);
+	--sl-color-gray-2: var(--color-muted);
+	--sl-color-gray-3: var(--color-muted);
+	--sl-color-gray-4: var(--color-shade-60);
+	--sl-color-gray-5: var(--color-shade-30);
+	--sl-color-gray-6: var(--color-shade-20);
+	--sl-color-gray-7: var(--color-shade-10);
+	--sl-color-black: var(--color-background);
+
+	--sl-color-accent-low: var(--color-shade-10);
+	--sl-color-accent: var(--color-link);
+	--sl-color-accent-high: var(--color-foreground);
+
+	/* Shrink Starlight's heading scale to match the kit's Prose:
+	   h1 2rem, h2 1.5rem, h3 1.25rem, h4 1.125rem, h5 1rem. Starlight
+	   re-declares h1-h4 at min-width:50em so the same overrides repeat
+	   inside that breakpoint below. */
+	--sl-text-h1: 2rem;
+	--sl-text-h2: 1.5rem;
+	--sl-text-h3: 1.25rem;
+	--sl-text-h4: 1.125rem;
+	--sl-text-h5: 1rem;
+}
+
+@media (min-width: 50em) {
+	:root {
+		--sl-text-h1: 2rem;
+		--sl-text-h2: 1.5rem;
+		--sl-text-h3: 1.25rem;
+		--sl-text-h4: 1.125rem;
+	}
+}
+
+/* Sidebar link colours track the kit's NavLink: subtle electric-lilac
+   tints for hover/active instead of Starlight's bold accent fill. */
+.sidebar-content a {
+	transition:
+		color 500ms,
+		background-color 500ms;
+}
+.sidebar-content a:hover,
+.sidebar-content a:focus {
+	background-color: var(--color-accent-10);
+	color: var(--color-foreground);
+}
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+	color: var(--color-foreground);
+	background-color: var(--color-accent-20);
+	font-weight: 600;
+}
+.sidebar-content a[aria-current='page']:hover {
+	background-color: var(--color-accent-30);
+}
+
+.social-icons a {
+	color: var(--color-foreground);
+}
+
+/* Trim the prev/next pagination cards: drop Starlight's --sl-text-2xl
+   title size to body size and kill the box-shadow so they don't dominate
+   the page footer. */
+.pagination-links .link-title {
+	font-size: var(--sl-text-base);
+}
+.pagination-links a {
+	box-shadow: none;
+}
+
+/* Kit's Prose weights: h1 light, h2 medium, h3-h6 stay at Starlight's
+   semibold default. */
+.sl-markdown-content h1 {
+	font-weight: 300;
+}
+.sl-markdown-content h2 {
+	font-weight: 500;
+}
+
+/* Kit's Prose heading rhythm: 2rem top margin (fixed) instead of
+   Starlight's 1.5em (which scales with heading size). Bottom spacing
+   keeps Starlight's --sl-content-gap-y of 1rem between blocks - matches
+   kit's spacing-2. */
+.sl-markdown-content
+	:not(h1, h2, h3, h4, h5, h6, .sl-heading-wrapper)
+	+ :is(.sl-heading-wrapper) {
+	margin-top: 2rem;
+}
+.sl-markdown-content
+	:not(h1, h2, h3, h4, h5, h6)
+	+ :is(h1, h2, h3, h4, h5, h6):not(:where(.not-content *)) {
+	margin-top: 2rem;
+}
+
+/* Starlight switches themes by toggling `data-theme` on the root element.
+   Forward that to the CSS `color-scheme` so the `light-dark()` calls in
+   colors.css pick the right value. */
+:root[data-theme='light'] {
+	color-scheme: light;
+}
+:root[data-theme='dark'] {
+	color-scheme: dark;
+}
+
+/* Match the kit's chrome - 2px shade-20 separators on the header and left
+   nav, no hairline under the H1 or alongside the right TOC. */
+header.header {
+	border-bottom: 2px solid var(--color-shade-20);
+}
+.sidebar-pane {
+	border-inline-end: 2px solid var(--color-shade-20);
+}
+.right-sidebar {
+	border-inline-start: none;
+}
+.content-panel + .content-panel {
+	border-top: none;
+}
+
+/* Starlight wraps the H1 and the markdown body in separate `.content-panel`
+   blocks, each with 1.5rem block padding. Stacked that's 3rem between the
+   H1 and the first paragraph - way more than the kit's spacing-2 (1rem)
+   between an H1 and its body. Halve the block padding so the gap sums to
+   1rem. */
+.content-panel {
+	padding-block: 0.5rem;
+}
+

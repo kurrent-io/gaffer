@@ -1,0 +1,69 @@
+@font-face {
+	font-family: "Work Sans";
+	src: url("/fonts/WorkSans/WorkSans-Light.ttf") format("opentype");
+	font-weight: 300;
+	font-style: normal;
+}
+
+@font-face {
+	font-family: "Work Sans";
+	src: url("/fonts/WorkSans/WorkSans-LightItalic.ttf") format("opentype");
+	font-weight: 300;
+	font-style: italic;
+}
+
+@font-face {
+	font-family: "Work Sans";
+	src: url("/fonts/WorkSans/WorkSans-Regular.ttf") format("opentype");
+	font-weight: 400;
+	font-style: normal;
+}
+
+@font-face {
+	font-family: "Work Sans";
+	src: url("/fonts/WorkSans/WorkSans-Italic.ttf") format("opentype");
+	font-weight: 400;
+	font-style: italic;
+}
+
+@font-face {
+	font-family: "Work Sans";
+	src: url("/fonts/WorkSans/WorkSans-Medium.ttf") format("opentype");
+	font-weight: 500;
+	font-style: normal;
+}
+
+@font-face {
+	font-family: "Work Sans";
+	src: url("/fonts/WorkSans/WorkSans-MediumItalic.ttf") format("opentype");
+	font-weight: 500;
+	font-style: italic;
+}
+
+@font-face {
+	font-family: "Work Sans";
+	src: url("/fonts/WorkSans/WorkSans-SemiBold.ttf") format("opentype");
+	font-weight: 600;
+	font-style: normal;
+}
+
+@font-face {
+	font-family: "Work Sans";
+	src: url("/fonts/WorkSans/WorkSans-SemiBoldItalic.ttf") format("opentype");
+	font-weight: 600;
+	font-style: italic;
+}
+
+@font-face {
+	font-family: "Work Sans";
+	src: url("/fonts/WorkSans/WorkSans-Bold.ttf") format("opentype");
+	font-weight: 700;
+	font-style: normal;
+}
+
+@font-face {
+	font-family: "Work Sans";
+	src: url("/fonts/WorkSans/WorkSans-BoldItalic.ttf") format("opentype");
+	font-weight: 700;
+	font-style: italic;
+}

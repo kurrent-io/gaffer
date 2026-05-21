@@ -1,8 +1,6 @@
 ---
 title: Your first projection
 description: Write, run, and iterate on a KurrentDB projection locally with gaffer, no running database needed.
-sidebar:
-  order: 1
 ---
 
 A projection is server-side JavaScript that KurrentDB runs over a stream of events to derive new streams or aggregated state. Gaffer runs the same JavaScript engine KurrentDB uses, so the projection you write here is the projection that ships.

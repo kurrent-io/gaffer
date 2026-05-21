@@ -1,8 +1,6 @@
 ---
 title: Debugging projections
 description: Set breakpoints, step through handlers, and inspect state with gaffer's DAP debug server.
-sidebar:
-  order: 2
 ---
 
 Gaffer's debug server speaks the Debug Adapter Protocol over TCP, so any DAP-aware editor can drive breakpoint debugging, step-through, and state inspection against a running projection.

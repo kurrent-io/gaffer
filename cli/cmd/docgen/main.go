@@ -39,8 +39,6 @@ var topLevelOrder = []string{
 const frontmatter = `---
 title: Commands
 description: Full reference for every gaffer subcommand and its flags.
-sidebar:
-  order: 1
 ---
 
 Full reference for every gaffer subcommand. Generated from the CLI source; run ` + "`just gen-docs`" + ` to refresh after touching a command.

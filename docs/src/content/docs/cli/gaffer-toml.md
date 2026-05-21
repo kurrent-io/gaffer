@@ -1,8 +1,6 @@
 ---
 title: gaffer.toml
 description: Full reference for the gaffer.toml project configuration file.
-sidebar:
-  order: 2
 ---
 
 `gaffer.toml` lives at the root of a gaffer project and declares its projections, connection settings, and engine version. `gaffer init` writes the initial file.

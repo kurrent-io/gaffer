@@ -43,7 +43,7 @@ _telemetry: telemetry::build
 # Build all projects that can build in parallel (after runtime + telemetry)
 [private]
 [parallel]
-_build: cli::build bindings::build testing::build editors::build types::build
+_build: cli::build bindings::build testing::build editors::build types::build docs::build
 
 # Build everything
 build: _runtime _telemetry _build
@@ -74,15 +74,15 @@ test-integration: _runtime _telemetry _test-integration
 
 # Format all code and apply lint fixes
 [parallel]
-fix: runtime::fix bindings::fix cli::fix testing::fix editors::fix types::fix telemetry::fix
+fix: runtime::fix bindings::fix cli::fix testing::fix editors::fix types::fix telemetry::fix docs::fix
 
 # Check formatting and linting across all projects
 [parallel]
-check: runtime::check bindings::check cli::check testing::check editors::check types::check telemetry::check
+check: runtime::check bindings::check cli::check testing::check editors::check types::check telemetry::check docs::check
 
 # Remove build artifacts across all projects
 [parallel]
-clean: runtime::clean bindings::clean cli::clean testing::clean editors::clean types::clean telemetry::clean
+clean: runtime::clean bindings::clean cli::clean testing::clean editors::clean types::clean telemetry::clean docs::clean
 
 mod runtime
 mod bindings
@@ -91,3 +91,4 @@ mod testing
 mod editors 'editors/vscode'
 mod types
 mod telemetry
+mod docs

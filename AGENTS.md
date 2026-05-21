@@ -25,12 +25,15 @@ editors/
   vscode/                  # VS Code extension - debug adapter, status panels, LSP client, gaffer.toml support
 telemetry/                 # Cross-cutting analytics: CUE schemas, generated types, Cloudflare Worker
 demo/                      # Example gaffer project with fixtures
-docs/                      # User-facing markdown imported into docs.kurrent.io/gaffer/
-  assets/                  # Banners, demo GIFs, doc images
+docs/                      # Astro + Starlight site published to gaffer.kurrent.io
+  src/content/docs/        # User-facing markdown (one file per page)
+  public/                  # Static assets served at the site root (downloadable fixtures, favicons, fonts)
 specs/                     # Internal protocol / behaviour specifications
+assets/                    # Banners and demo GIFs referenced from repo / package READMEs
 tools/
   fixtures/                # Shared JSON test fixtures (sources, state, callbacks, etc.)
   kurrentdb/               # Docker compose for integration tests
+  vhs/                     # VHS tape scripts for regenerating recordings under assets/
 ```
 
 ## Build

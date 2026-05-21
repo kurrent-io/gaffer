@@ -3,6 +3,7 @@ packages:
   - 'bindings/js/native/*'
   - 'cli'
   - 'cli/native/*'
+  - 'docs'
   - 'testing/js'
   - 'editors/vscode'
   - 'editors/vscode/tsserver-plugin'

@@ -47,7 +47,7 @@ run *args: _resources
 # Generate the single Markdown CLI command reference from the cobra
 # command tree. Run after touching any command, flag, or description
 # so the published reference stays in step with the binary.
-gen-docs out-file="../docs/cli/commands.md": _resources
+gen-docs out-file="../docs/src/content/docs/cli/commands.md": _resources
     CGO_ENABLED=1 go run -tags dev ./cmd/docgen {{out-file}}
 
 # Format code and apply lint fixes

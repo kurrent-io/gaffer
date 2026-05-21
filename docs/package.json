@@ -1,0 +1,23 @@
+{
+  "name": "@kurrent/gaffer-docs",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.4",
+    "@astrojs/cloudflare": "^13.5.3",
+    "@astrojs/starlight": "^0.39.2",
+    "astro": "^6.3.6",
+    "astro-rehype-relative-markdown-links": "^0.19.0",
+    "sharp": "^0.34.5",
+    "typescript": "^6.0.3"
+  }
+}

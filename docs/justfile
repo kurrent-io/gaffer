@@ -1,0 +1,27 @@
+default:
+    @just --list
+
+# Run the Astro dev server.
+dev:
+    pnpm run dev
+
+# Build the production site.
+build:
+    pnpm run build
+
+# Preview the built site locally.
+preview:
+    pnpm run preview
+
+# Type check the Astro project.
+check:
+    pnpm run check
+
+# Astro has no built-in lint fixer; surface a no-op so the root
+# `just fix` parallel doesn't fall over when this module is included.
+fix:
+    @echo "docs: no fix step"
+
+# Remove build artifacts.
+clean:
+    rm -rf dist .astro

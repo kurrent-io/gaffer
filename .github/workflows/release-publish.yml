@@ -22,9 +22,13 @@ name: Release publish
 # fail; that's an alarm-and-fix scenario), so it runs in parallel.
 #
 # Prereqs set out-of-band:
-#   * Repo-level secrets: NPM_TOKEN (Phase 1 - replaced by OIDC trusted
-#     publishing immediately after 0.1.0 ships),
-#     CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
+#   * npm trusted publisher configured on npmjs.com for each published
+#     package (`@kurrent/gaffer`, `@kurrent/gaffer-runtime`,
+#     `@kurrent/projections-testing`, and the per-platform native
+#     sub-packages) pointing at this repo + workflow. The publish jobs
+#     request an OIDC token via `id-token: write` and pnpm 11 swaps it
+#     for a short-lived npm token at publish time.
+#   * Repo-level secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
 #   * Worker secrets via `wrangler secret put --env production`:
 #     POSTHOG_API_KEY.
 
@@ -99,6 +103,9 @@ jobs:
     needs: build-runtime-matrix
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -141,8 +148,6 @@ jobs:
         run: pnpm --filter "@kurrent/gaffer-runtime" build
 
       - name: Publish runtime packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           pnpm publish -r \
             --filter "@kurrent/gaffer-runtime" \
@@ -226,6 +231,9 @@ jobs:
     needs: build-cli-matrix
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -261,8 +269,6 @@ jobs:
           done
 
       - name: Publish CLI packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         # Filter enumerates each CLI cluster package explicitly.
         # `@kurrent/gaffer-*` would also match `@kurrent/gaffer-runtime*`,
         # which the runtime job already publishes.
@@ -284,6 +290,9 @@ jobs:
     needs: publish-runtime
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -304,8 +313,6 @@ jobs:
         run: pnpm --filter "@kurrent/projections-testing" build
 
       - name: Publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           pnpm publish --filter "@kurrent/projections-testing" \
             --access public --no-git-checks ${{ inputs.dry_run && '--dry-run' || '' }}

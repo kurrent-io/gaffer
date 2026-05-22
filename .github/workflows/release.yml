@@ -7,20 +7,22 @@ name: Release
 #     `release-publish.yml` (the multi-OS matrix can't fit in
 #     changesets/action's single-runner `publish:` slot).
 #   * detect-changes - paths-filter gate. Lives in its own job so the
-#     deploy-worker-staging check skips cleanly when nothing relevant
+#     deploy-*-staging checks skip cleanly when nothing relevant
 #     changed (top-level workflow `paths:` would also gate the changesets
 #     job, which has to react to every main push).
-#   * deploy-worker-staging - redeploys the worker to staging when the
-#     gate reports worker-relevant changes.
+#   * deploy-worker-staging - redeploys the telemetry worker to staging
+#     when the gate reports worker-relevant changes.
+#   * deploy-docs-staging - redeploys the docs site to staging when the
+#     gate reports docs-relevant changes.
 #
-# Production deploys of the worker live in `release-publish.yml`
-# alongside the package publish jobs - they fire from the same trigger,
-# so co-locating keeps the "what happens at release time" surface in one
-# file.
+# Production deploys live in `release-publish.yml` alongside the package
+# publish jobs - they fire from the same trigger, so co-locating keeps
+# the "what happens at release time" surface in one file.
 #
 # Manual prod deploys aren't exposed here. If a hotfix is needed before
-# the next release, run `just telemetry worker deploy-production` locally
-# with CLOUDFLARE_API_TOKEN set.
+# the next release, run `just telemetry worker deploy-production`
+# (CLOUDFLARE_API_TOKEN env) or `just docs deploy-production`
+# (interactive `wrangler login`) locally.
 #
 # Prereqs set out-of-band:
 #   * Repo-level secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
@@ -85,6 +87,7 @@ jobs:
     timeout-minutes: 2
     outputs:
       worker: ${{ steps.changes.outputs.worker }}
+      docs: ${{ steps.changes.outputs.docs }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -95,6 +98,10 @@ jobs:
               - 'telemetry/worker/**'
               - 'telemetry/generated/**'
               - 'telemetry/schemas/**'
+              - '.github/workflows/release.yml'
+            docs:
+              - 'docs/**'
+              - 'assets/**'
               - '.github/workflows/release.yml'
 
   deploy-worker-staging:
@@ -129,3 +136,32 @@ jobs:
 
       - name: Build and deploy
         run: just telemetry worker deploy-staging
+
+  deploy-docs-staging:
+    name: Deploy docs site to staging
+    needs: detect-changes
+    if: needs.detect-changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: extractions/setup-just@v3
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and deploy
+        run: just docs deploy-staging

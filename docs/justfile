@@ -22,6 +22,17 @@ check:
 fix:
     @echo "docs: no fix step"
 
+# Build + deploy to staging. CI fires on docs-touching main pushes.
+deploy-staging:
+    CLOUDFLARE_ENV=staging pnpm run build
+    pnpm exec wrangler deploy --env staging
+
+# Build + deploy to production. CI fires at release. Hotfix escape
+# hatch when run locally after `pnpm exec wrangler login`.
+deploy-production:
+    CLOUDFLARE_ENV=production pnpm run build
+    pnpm exec wrangler deploy --env production
+
 # Remove build artifacts.
 clean:
-    rm -rf dist .astro
+    rm -rf dist .astro .wrangler

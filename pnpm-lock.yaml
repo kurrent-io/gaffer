@@ -120,6 +120,10 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+    devDependencies:
+      wrangler:
+        specifier: ^4.93.0
+        version: 4.93.0
 
   editors/vscode:
     dependencies:

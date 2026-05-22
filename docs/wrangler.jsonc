@@ -1,0 +1,62 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+
+	// `--env <name>` is required. The top-level `name` is a placeholder so
+	// a missing `--env` produces an obviously-wrong worker name in CF
+	// rather than a real deploy. Real targets live in the `env` block.
+	// Mirrors the pattern in telemetry/worker/wrangler.jsonc.
+	"name": "gaffer-docs-no-env",
+	// The Astro adapter exports its server entrypoint as a package
+	// import so wrangler config validation succeeds at build time
+	// (`dist/server/entry.mjs` doesn't exist yet during the build that
+	// produces it). The adapter wires it to the real built entry.
+	"main": "@astrojs/cloudflare/entrypoints/server",
+	"compatibility_date": "2026-05-01",
+	// `@astrojs/cloudflare` middleware uses `node:async_hooks` via
+	// AsyncLocalStorage. The current compat date enables most node
+	// builtins by default, but pinning the flag is the safe contract.
+	"compatibility_flags": ["nodejs_compat"],
+
+	// observability inherits into envs. assets and bindings don't, so each
+	// env redeclares them. SESSION is the KV binding `@astrojs/cloudflare`
+	// requires for its built-in session store; Cloudflare auto-provisions
+	// the namespace on first deploy when no `id` is supplied.
+	"observability": {
+		"enabled": true,
+	},
+
+	"rules": [
+		{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] },
+	],
+
+	"env": {
+		"staging": {
+			"name": "gaffer-docs-staging",
+			"assets": {
+				"binding": "ASSETS",
+				"directory": "./dist/client",
+			},
+			"kv_namespaces": [
+				{ "binding": "SESSION" },
+			],
+		},
+		"production": {
+			"name": "gaffer-docs",
+			// Custom domain - wrangler provisions the DNS record in the
+			// kurrent.io zone automatically on deploy.
+			"routes": [
+				{
+					"pattern": "gaffer.kurrent.io",
+					"custom_domain": true,
+				},
+			],
+			"assets": {
+				"binding": "ASSETS",
+				"directory": "./dist/client",
+			},
+			"kv_namespaces": [
+				{ "binding": "SESSION" },
+			],
+		},
+	},
+}

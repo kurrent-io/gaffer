@@ -23,9 +23,9 @@ name: Release
 # with CLOUDFLARE_API_TOKEN set.
 #
 # Prereqs set out-of-band:
-#   * Repo-level secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
-#     NPM_TOKEN.
+#   * Repo-level secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
 #   * Worker secrets via `wrangler secret put --env <env>`: POSTHOG_API_KEY.
+#   * npm trusted publishing - see `release-publish.yml` for details.
 
 on:
   push:

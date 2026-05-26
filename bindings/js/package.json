@@ -1,6 +1,6 @@
 {
 	"name": "@kurrent/gaffer-runtime",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Node.js bindings for the Gaffer projection runtime",
 	"license": "LicenseRef-KurrentLicenseV1",
 	"repository": {

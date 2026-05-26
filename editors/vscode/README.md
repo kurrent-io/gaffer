@@ -22,7 +22,7 @@ Powered by the [gaffer](https://www.npmjs.com/package/@kurrent/gaffer) toolkit.
 2. Open a folder and add projections via `KurrentDB Projections: Scaffold` (palette) or right-click a folder and pick `Scaffold Projection Here`. A fresh folder gets a `gaffer.toml` created for it automatically as part of the first scaffold; run `KurrentDB Projections: Init` from the palette if you'd rather create the toml without scaffolding.
 3. Click Debug above any projection in `gaffer.toml`, or run `KurrentDB Projections: Debug` from the command palette.
 
-The extension spawns the [`@kurrent/gaffer` CLI](https://www.npmjs.com/package/@kurrent/gaffer) for LSP, MCP, and debug sessions, and will offer to install it on first use if it isn't already on PATH.
+The extension spawns the [`@kurrent/gaffer` CLI](https://www.npmjs.com/package/@kurrent/gaffer) for LSP, MCP, and debug sessions. It will offer to install the CLI on first use if it isn't already on `PATH`. Requires `@kurrent/gaffer` 0.1.0 or later.
 
 ## Configuration
 

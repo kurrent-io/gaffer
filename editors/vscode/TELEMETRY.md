@@ -164,10 +164,10 @@ Telemetry data is stored in PostHog's EU instance. Envelopes transit Cloudflare'
 
 Email `privacy@kurrent.io` with the identifier the extension stores below. All events associated with that id are deleted from PostHog within 30 days. Session-stitching and identity-merge rows the worker holds for that id expire automatically within 25 hours and 30 days respectively.
 
-The extension persists its telemetry id in `telemetry.json` inside VS Code's global storage directory for the gaffer extension (`kurrent-io.gaffer`). The full path depends on your OS and editor variant:
+The extension persists its telemetry id in `telemetry.json` inside VS Code's global storage directory for the gaffer extension (`kurrent-io.gaffer-vscode`). The full path depends on your OS and editor variant:
 
-- Linux: `~/.config/Code/User/globalStorage/kurrent-io.gaffer/telemetry.json`
-- macOS: `~/Library/Application Support/Code/User/globalStorage/kurrent-io.gaffer/telemetry.json`
-- Windows: `%APPDATA%\Code\User\globalStorage\kurrent-io.gaffer\telemetry.json`
+- Linux: `~/.config/Code/User/globalStorage/kurrent-io.gaffer-vscode/telemetry.json`
+- macOS: `~/Library/Application Support/Code/User/globalStorage/kurrent-io.gaffer-vscode/telemetry.json`
+- Windows: `%APPDATA%\Code\User\globalStorage\kurrent-io.gaffer-vscode\telemetry.json`
 
 Replace `Code` with `Code - Insiders`, `Cursor`, etc. for other editor variants. The `telemetry_id` field is your id, identical to what every envelope carries as `emitter_id` and what PostHog stores as the person id.

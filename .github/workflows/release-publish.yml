@@ -13,14 +13,16 @@ name: Release publish
 #     immediately after the Version Packages PR merges.
 #   * Manual UI dispatch (with optional `dry_run: true` for a smoke test).
 #
-# Per-package publish jobs (VS Code) are owned by their tickets
-# (UI-1532) and add their own jobs here.
+# `deploy-worker-prod`, `deploy-docs-prod`, and
+# `publish-vscode-extension` live here too - they share the release
+# trigger with the npm publishes. None of them depends on package
+# publish success (versions are already bumped on main if publishes
+# fail; that's an alarm-and-fix scenario), so they run in parallel.
 #
-# `deploy-worker-prod` and `deploy-docs-prod` live here too - they
-# share the release trigger with the package publishes. Neither
-# deploy depends on package publish success (versions are already
-# bumped on main if publishes fail; that's an alarm-and-fix scenario),
-# so they run in parallel.
+# The VS Code extension publish is a no-op when
+# `editors/vscode/package.json`'s version already exists on the
+# marketplace (`skipDuplicate: true`). Bump the version manually in
+# that file when you want a marketplace release.
 #
 # Prereqs set out-of-band:
 #   * npm trusted publisher configured on npmjs.com for each published
@@ -29,7 +31,8 @@ name: Release publish
 #     (plus their five `*-<platform>-<arch>` native sub-packages each)
 #     and `@kurrent/projections-testing`. Don't add `environment:` to
 #     any publish job without reconfiguring trust to match.
-#   * Repo-level secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
+#   * Repo-level secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
+#     OPEN_VSX_TOKEN, VS_MARKETPLACE_TOKEN.
 #   * Worker secrets via `wrangler secret put --env production`:
 #     POSTHOG_API_KEY.
 
@@ -377,3 +380,73 @@ jobs:
 
       - name: Build and deploy
         run: just docs deploy-production
+
+  publish-vscode-extension:
+    name: Publish VS Code extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build .vsix
+        working-directory: editors/vscode
+        run: pnpm run package
+
+      # Derive the .vsix path from package.json rather than globbing -
+      # `ls | head` fails open when the glob misses, and would silently
+      # pass an empty path to the publish steps.
+      - name: Resolve .vsix path
+        id: vsix
+        shell: bash
+        run: |
+          name=$(node -p "require('./editors/vscode/package.json').name")
+          version=$(node -p "require('./editors/vscode/package.json').version")
+          path="editors/vscode/${name}-${version}.vsix"
+          if [[ ! -f "$path" ]]; then
+            echo "expected .vsix at $path but file is missing" >&2
+            exit 1
+          fi
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+
+      - name: Upload .vsix artifact (dry-run validation)
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gaffer-vscode-extension
+          path: ${{ steps.vsix.outputs.path }}
+          if-no-files-found: error
+
+      # HaaLeo/publish-vscode-extension@v2 with `skipDuplicate: true`
+      # fails silently when the marketplace already has this version,
+      # so re-firing this workflow without a version bump in
+      # `editors/vscode/package.json` is a no-op rather than an error.
+      - name: Publish to Open VSX
+        if: ${{ !inputs.dry_run }}
+        uses: HaaLeo/publish-vscode-extension@v2
+        with:
+          pat: ${{ secrets.OPEN_VSX_TOKEN }}
+          extensionFile: ${{ steps.vsix.outputs.path }}
+          skipDuplicate: true
+
+      - name: Publish to Visual Studio Marketplace
+        if: ${{ !inputs.dry_run }}
+        uses: HaaLeo/publish-vscode-extension@v2
+        with:
+          pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
+          registryUrl: https://marketplace.visualstudio.com
+          extensionFile: ${{ steps.vsix.outputs.path }}
+          skipDuplicate: true

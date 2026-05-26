@@ -218,10 +218,10 @@ try {
 
 ## Related packages
 
-| Package                                                                                                    | What it is                                                 |
-| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| [`@kurrent/gaffer`](https://www.npmjs.com/package/@kurrent/gaffer)                                         | CLI to scaffold, run, debug, and deploy projections        |
-| [KurrentDB Projections for VS Code](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer) | Editor integration with debugger, codelens, and MCP server |
+| Package                                                                                                           | What it is                                                 |
+| ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [`@kurrent/gaffer`](https://www.npmjs.com/package/@kurrent/gaffer)                                                | CLI to scaffold, run, debug, and deploy projections        |
+| [KurrentDB Projections for VS Code](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer-vscode) | Editor integration with debugger, codelens, and MCP server |
 
 ## Documentation
 

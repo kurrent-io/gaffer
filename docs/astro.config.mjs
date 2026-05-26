@@ -4,8 +4,17 @@ import starlight from '@astrojs/starlight';
 import cloudflare from '@astrojs/cloudflare';
 import rehypeAstroRelativeMarkdownLinks from 'astro-rehype-relative-markdown-links';
 
+// Canonical URLs, sitemap, and og:url use `site`. Staging deploys
+// emit their own absolute URLs so an indexed staging page doesn't
+// point at production. Defaults to prod for local builds and CI
+// production deploys.
+const site =
+  process.env.CLOUDFLARE_ENV === 'staging'
+    ? 'https://gaffer-docs-staging.kurrent.workers.dev'
+    : 'https://gaffer.kurrent.io';
+
 export default defineConfig({
-  site: 'https://gaffer.kurrent.io',
+  site,
   adapter: cloudflare({
     imageService: 'compile',
     prerenderEnvironment: 'node',

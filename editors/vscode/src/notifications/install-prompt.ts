@@ -14,11 +14,8 @@ import { createStatusBarPrompt } from "./status-prompt.js";
 const DISMISSED_KEY = "gaffer.cliMissingNotificationDismissed";
 const COMMAND_OPEN = "gaffer._cliInstall.open";
 
-// Docs root rather than a pinned anchor: the install + nvm/fnm
-// section lives under this URL but the exact anchor is in flight.
-// UI-1591 tracks pointing every docs link at canonical anchors
-// before the extension publishes.
-export const INSTALL_DOCS_URL = "https://docs.kurrent.io/gaffer/";
+export const INSTALL_DOCS_URL =
+	"https://gaffer.kurrent.io/getting-started/install/";
 
 const TERMINAL_NAME = "KurrentDB Projections: Install CLI";
 

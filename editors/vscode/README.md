@@ -48,7 +48,7 @@ The extension collects anonymous usage telemetry by default and respects VS Code
 
 ## Documentation
 
-Full documentation at <https://docs.kurrent.io/gaffer/>.
+Full documentation at <https://gaffer.kurrent.io/>.
 
 Bugs go to [GitHub Issues](https://github.com/kurrent-io/gaffer/issues). Questions and feature requests to [Discussions](https://github.com/kurrent-io/gaffer/discussions).
 

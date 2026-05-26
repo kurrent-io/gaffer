@@ -111,7 +111,7 @@ describe("showCliNotFoundPrompt", () => {
 		expect(open).toHaveBeenCalledTimes(1);
 		const arg = open.mock.calls[0]?.[0] as vscode.Uri;
 		expect(arg.scheme).toBe("https");
-		expect(arg.path).toContain("docs.kurrent.io/gaffer");
+		expect(arg.path).toContain("gaffer.kurrent.io/getting-started/install/");
 		// Docs is read-and-return; the item stays so the user can
 		// click Install afterwards.
 		expect(getStatusBarItems()[0]?.disposed).toBe(false);
@@ -150,8 +150,10 @@ describe("showCliNotFoundPrompt", () => {
 		expect(getStatusBarItems()).toHaveLength(1);
 	});
 
-	it("docs URL is published as the docs-host root", () => {
-		expect(INSTALL_DOCS_URL).toBe("https://docs.kurrent.io/gaffer/");
+	it("docs URL points at the gaffer install page", () => {
+		expect(INSTALL_DOCS_URL).toBe(
+			"https://gaffer.kurrent.io/getting-started/install/",
+		);
 	});
 });
 

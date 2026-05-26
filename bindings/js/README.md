@@ -61,7 +61,7 @@ The TypeScript declarations are the source of truth for the surface; see [`src/i
 
 ## Documentation
 
-Full documentation at <https://docs.kurrent.io/gaffer/>.
+Full documentation at <https://gaffer.kurrent.io/>.
 
 Bugs go to [GitHub Issues](https://github.com/kurrent-io/gaffer/issues). Questions and feature requests to [Discussions](https://github.com/kurrent-io/gaffer/discussions).
 

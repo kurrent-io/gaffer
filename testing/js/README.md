@@ -225,7 +225,7 @@ try {
 
 ## Documentation
 
-Full documentation at <https://docs.kurrent.io/gaffer/testing/>.
+Full documentation at <https://gaffer.kurrent.io/testing/nodejs/>.
 
 Bugs go to [GitHub Issues](https://github.com/kurrent-io/gaffer/issues). Questions and feature requests to [Discussions](https://github.com/kurrent-io/gaffer/discussions).
 

@@ -33,7 +33,7 @@ gaffer init                  # create gaffer.toml
 gaffer scaffold order-count  # add projections/order-count.js
 ```
 
-See the [getting started guide](https://docs.kurrent.io/gaffer/getting-started/) for a full walkthrough including fixtures, editor setup, and the dev loop.
+See the [getting started guide](https://gaffer.kurrent.io/getting-started/install/) for a full walkthrough including fixtures, editor setup, and the dev loop.
 
 ## Commands
 
@@ -48,7 +48,7 @@ See the [getting started guide](https://docs.kurrent.io/gaffer/getting-started/)
 | `gaffer config`            | Manage user-level configuration (telemetry, identity)                       |
 | `gaffer version`           | Print the gaffer version                                                    |
 
-Run `gaffer <command> --help` for flags and options, or see the [full command reference](https://docs.kurrent.io/gaffer/cli/).
+Run `gaffer <command> --help` for flags and options, or see the [full command reference](https://gaffer.kurrent.io/cli/).
 
 ## Configuration
 
@@ -64,20 +64,20 @@ entry = "projections/order-count.js"
 fixtures.happy = "fixtures/orders.json"
 ```
 
-User-level settings (telemetry opt-out, identity) live in `~/.config/gaffer/config.toml` and are managed with `gaffer config`. See the [configuration reference](https://docs.kurrent.io/gaffer/cli/gaffer-toml) for every option.
+User-level settings (telemetry opt-out, identity) live in `~/.config/gaffer/config.toml` and are managed with `gaffer config`. See the [configuration reference](https://gaffer.kurrent.io/cli/gaffer-toml/) for every option.
 
 ## Editor integration
 
 Gaffer ships with Language Server Protocol and Debug Adapter Protocol servers, plus a VS Code extension that wires them up automatically.
 
 - **VS Code** - install the [KurrentDB Projections extension](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer) for inline diagnostics, run/debug codelens above `gaffer.toml` projections, and breakpoint debugging.
-- **Other editors** - run `gaffer lsp` over stdio for LSP integration. See the [editor setup guide](https://docs.kurrent.io/gaffer/getting-started/editor-setup) for examples.
+- **Other editors** - run `gaffer lsp` over stdio for LSP integration. See the [other editors guide](https://gaffer.kurrent.io/extension/other-editors/) for examples.
 
 ## AI agent integration
 
 `gaffer mcp` exposes scaffolding, validation, debugging, and the projection API as Model Context Protocol tools and resources. Compatible with Claude Code, Cursor, Continue, GitHub Copilot, and any other MCP client.
 
-See the [MCP integration guide](https://docs.kurrent.io/gaffer/mcp/) for client setup.
+See the [MCP integration guide](https://gaffer.kurrent.io/cli/mcp/) for client setup.
 
 ## Related packages
 
@@ -92,7 +92,7 @@ Gaffer collects anonymous usage telemetry by default. See [TELEMETRY.md](https:/
 
 ## Documentation
 
-Full documentation at <https://docs.kurrent.io/gaffer/>.
+Full documentation at <https://gaffer.kurrent.io/>.
 
 Bugs go to [GitHub Issues](https://github.com/kurrent-io/gaffer/issues). Questions and feature requests to [Discussions](https://github.com/kurrent-io/gaffer/discussions).
 

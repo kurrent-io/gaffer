@@ -1,12 +1,13 @@
 {
-	"name": "gaffer",
+	"name": "gaffer-vscode",
 	"displayName": "KurrentDB Projections",
 	"description": "KurrentDB projection toolkit",
-	"version": "0.1.0",
+	"version": "0.0.0",
 	"license": "LicenseRef-KurrentLicenseV1",
 	"private": true,
 	"publisher": "kurrent-io",
 	"preview": true,
+	"icon": "media/icon.png",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/kurrent-io/gaffer.git",

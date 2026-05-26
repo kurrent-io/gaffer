@@ -41,7 +41,7 @@ The generic connection shape is `command: gaffer, args: [mcp]`. Client-specific 
 
 ### VS Code
 
-The [KurrentDB Projections](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer) extension auto-registers gaffer's MCP server with VS Code's MCP framework. Install the extension and Copilot Chat (or any MCP-aware VS Code client) picks it up.
+The [KurrentDB Projections](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer-vscode) extension auto-registers gaffer's MCP server with VS Code's MCP framework. Install the extension and Copilot Chat (or any MCP-aware VS Code client) picks it up.
 
 ### Claude Code
 

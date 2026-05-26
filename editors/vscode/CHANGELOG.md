@@ -1,5 +1,11 @@
 # gaffer-vscode
 
+## 0.1.2
+
+### Patch Changes
+
+- 824d6b9: Fix broken banner image on the marketplace listing.
+
 ## 0.1.1
 
 ### Patch Changes

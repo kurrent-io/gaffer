@@ -6,9 +6,11 @@
 # it. So we package without it and zip it in here.
 #
 # Note: appending to the .vsix doesn't refresh extension.vsixmanifest
-# or [Content_Types].xml. VS Code installs accept this; marketplace
-# signing would not. If we ever ship via the marketplace, sign AFTER
-# this step.
+# or [Content_Types].xml. VS Code installs and the Visual Studio
+# Marketplace accept this - the manifest carries extension metadata
+# (id, version, contributes), not a file list, and the marketplace
+# doesn't enforce strict zip metadata. If we ever sign the .vsix
+# (`vsce sign`), do it AFTER this step.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."

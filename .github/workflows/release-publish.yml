@@ -413,11 +413,12 @@ jobs:
         id: vsix
         shell: bash
         run: |
+          set -euo pipefail
           name=$(node -p "require('./editors/vscode/package.json').name")
           version=$(node -p "require('./editors/vscode/package.json').version")
           path="editors/vscode/${name}-${version}.vsix"
           if [[ ! -f "$path" ]]; then
-            echo "expected .vsix at $path but file is missing" >&2
+            echo "expected .vsix at $path (name=$name, version=$version) but file is missing" >&2
             exit 1
           fi
           echo "path=$path" >> "$GITHUB_OUTPUT"

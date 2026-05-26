@@ -1,6 +1,5 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-
 	// `--env <name>` is required. The top-level `name` is a placeholder so
 	// a missing `--env` produces an obviously-wrong worker name in CF
 	// rather than a real deploy. Real targets live in the `env` block.
@@ -15,20 +14,17 @@
 	// `@astrojs/cloudflare` middleware uses `node:async_hooks` via
 	// AsyncLocalStorage. The current compat date enables most node
 	// builtins by default, but pinning the flag is the safe contract.
-	"compatibility_flags": ["nodejs_compat"],
-
-	// observability inherits into envs. assets and bindings don't, so each
-	// env redeclares them. SESSION is the KV binding `@astrojs/cloudflare`
-	// requires for its built-in session store; Cloudflare auto-provisions
-	// the namespace on first deploy when no `id` is supplied.
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	// observability inherits into envs. assets and bindings don't, so
+	// each env redeclares them. SESSION is the KV binding the
+	// `@astrojs/cloudflare` session store requires; namespaces are
+	// auto-provisioned on first deploy and then pinned here so
+	// subsequent deploys bind back to the same one.
 	"observability": {
 		"enabled": true,
 	},
-
-	"rules": [
-		{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] },
-	],
-
 	"env": {
 		"staging": {
 			"name": "gaffer-docs-staging",
@@ -37,7 +33,10 @@
 				"directory": "./dist/client",
 			},
 			"kv_namespaces": [
-				{ "binding": "SESSION" },
+				{
+					"binding": "SESSION",
+					"id": "2cc52ee58def4b7c80194e7059de309b",
+				},
 			],
 		},
 		"production": {
@@ -55,7 +54,10 @@
 				"directory": "./dist/client",
 			},
 			"kv_namespaces": [
-				{ "binding": "SESSION" },
+				{
+					"binding": "SESSION",
+					"id": "b20cb6acb87540a8997f6c3b4c9767ca",
+				},
 			],
 		},
 	},

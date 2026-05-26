@@ -17,11 +17,8 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
-	// observability inherits into envs. assets and bindings don't, so
-	// each env redeclares them. SESSION is the KV binding the
-	// `@astrojs/cloudflare` session store requires; namespaces are
-	// auto-provisioned on first deploy and then pinned here so
-	// subsequent deploys bind back to the same one.
+	// observability inherits into envs. assets bindings don't, so
+	// each env redeclares them.
 	"observability": {
 		"enabled": true,
 	},
@@ -32,12 +29,6 @@
 				"binding": "ASSETS",
 				"directory": "./dist/client",
 			},
-			"kv_namespaces": [
-				{
-					"binding": "SESSION",
-					"id": "2cc52ee58def4b7c80194e7059de309b",
-				},
-			],
 		},
 		"production": {
 			"name": "gaffer-docs",
@@ -53,12 +44,6 @@
 				"binding": "ASSETS",
 				"directory": "./dist/client",
 			},
-			"kv_namespaces": [
-				{
-					"binding": "SESSION",
-					"id": "b20cb6acb87540a8997f6c3b4c9767ca",
-				},
-			],
 		},
 	},
 }

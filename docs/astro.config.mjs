@@ -1,5 +1,5 @@
 // @ts-check
-import { defineConfig } from 'astro/config';
+import { defineConfig, sessionDrivers } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import cloudflare from '@astrojs/cloudflare';
 import rehypeAstroRelativeMarkdownLinks from 'astro-rehype-relative-markdown-links';
@@ -15,6 +15,11 @@ const site =
 
 export default defineConfig({
   site,
+  // The site is fully static, so sessions are never used. Pin the
+  // driver to an in-memory LRU so @astrojs/cloudflare doesn't fall
+  // back to its KV session binding, which would make Wrangler try
+  // to auto-provision a SESSION KV namespace at deploy time.
+  session: { driver: sessionDrivers.lruCache() },
   adapter: cloudflare({
     imageService: 'compile',
     prerenderEnvironment: 'node',

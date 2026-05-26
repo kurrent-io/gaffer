@@ -20,5 +20,10 @@ allowBuilds:
   sharp: true
   workerd: true
 
+minimumReleaseAgeExclude:
+  - yaml@2.8.3
+  - qs@6.15.2
+
 overrides:
   "ws@>=8.0.0 <8.20.1": ">=8.20.1"
+  "yaml@>=2.0.0 <2.8.3": ">=2.8.3"

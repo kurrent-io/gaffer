@@ -15,6 +15,7 @@ const site =
 
 export default defineConfig({
   site,
+  output: 'static',
   // The site is fully static, so sessions are never used. Pin the
   // driver to an in-memory LRU so @astrojs/cloudflare doesn't fall
   // back to its KV session binding, which would make Wrangler try

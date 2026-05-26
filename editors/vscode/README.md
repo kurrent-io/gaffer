@@ -1,4 +1,4 @@
-<img src="media/banner.png" alt="KurrentDB Projections" width="100%">
+<img src="https://raw.githubusercontent.com/kurrent-io/gaffer/main/editors/vscode/media/banner.png" alt="KurrentDB Projections" width="100%">
 
 Projection debugger and CodeLens companion for [KurrentDB](https://www.kurrent.io). Run and debug projections from `gaffer.toml`, step through handlers with full state inspection, and get type-aware autocomplete for projection builtins.
 

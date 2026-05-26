@@ -51,5 +51,8 @@ cp "$PLUGIN_DIST_SRC/package.json" "$DEST/package.json"
 # Resolve via cd/pwd rather than realpath - macOS ships realpath only
 # in recent versions and we want this script portable.
 VSIX_ABS="$(cd "$(dirname "$VSIX")" && pwd)/$(basename "$VSIX")"
-( cd "$STAGE" && zip -qr "$VSIX_ABS" extension/node_modules )
+# -X strips Unix extra fields (uid/gid/timestamps). Open VSX's
+# publisher rejects zip entries that carry them: "extension file
+# contains zip entries with potentially harmful extra fields".
+( cd "$STAGE" && zip -qrX "$VSIX_ABS" extension/node_modules )
 echo "inject-tsserver-plugin: added $PLUGIN_RUNTIME_PATH to $VSIX"

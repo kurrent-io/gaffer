@@ -1,5 +1,11 @@
 # @kurrent/gaffer-runtime
 
+## 0.1.2
+
+### Patch Changes
+
+- 3b5392c: Documentation links in the README now point at `gaffer.kurrent.io` rather than the `docs.kurrent.io/gaffer/` placeholder.
+
 ## 0.1.1
 
 ### Patch Changes

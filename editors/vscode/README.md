@@ -6,7 +6,7 @@ Powered by the [gaffer](https://www.npmjs.com/package/@kurrent/gaffer) toolkit.
 
 ## Features
 
-**Debug projections from `gaffer.toml`.** CodeLens above each projection and fixture block. Click Debug to launch a session locally - set breakpoints to pause for inspection, or let it run through.
+**Debug projections from `gaffer.toml`.** CodeLens above each projection and fixture block. Click Debug to launch a session locally. Set breakpoints to pause for inspection, or let it run through.
 
 **Step through handlers.** Set breakpoints in your projection JS. Step over, into, and out of handlers. Watch state evolve event by event in the dedicated panel.
 

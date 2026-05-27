@@ -57,7 +57,7 @@ The TypeScript declarations are the source of truth for the surface; see [`src/i
 | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | [`@kurrent/projections-testing`](https://www.npmjs.com/package/@kurrent/projections-testing)                      | Higher-level test API built on this package. Vitest/Jest/Mocha-friendly. |
 | [`@kurrent/gaffer`](https://www.npmjs.com/package/@kurrent/gaffer)                                                | CLI to scaffold, run, debug, and deploy projections                      |
-| [KurrentDB Projections for VS Code](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer-vscode) | Editor integration with debugger, codelens, and MCP server               |
+| KurrentDB Projections for VS Code on the [Marketplace](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer-vscode) and [Open VSX](https://open-vsx.org/extension/kurrent-io/gaffer-vscode) | Editor integration with debugger, codelens, and MCP server               |
 
 ## Documentation
 

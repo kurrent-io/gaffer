@@ -3,11 +3,11 @@ title: VS Code
 description: Install the KurrentDB Projections VS Code extension for inline run/debug, breakpoints, state inspection, and projection-API autocomplete.
 ---
 
-The [KurrentDB Projections](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer-vscode) extension wires gaffer's debugger, language server, MCP server, and tsserver plugin into VS Code. Run and debug projections from `gaffer.toml`, step through handlers, inspect state as it evolves, and get type-aware autocomplete for projection builtins.
+The **KurrentDB Projections** extension wires gaffer's debugger, language server, MCP server, and tsserver plugin into VS Code. Run and debug projections from `gaffer.toml`, step through handlers, inspect state as it evolves, and get type-aware autocomplete for projection builtins.
 
 ## Install
 
-Install the extension from the marketplace.
+Install the extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer-vscode) or [Open VSX](https://open-vsx.org/extension/kurrent-io/gaffer-vscode).
 
 The extension needs the `gaffer` CLI on PATH. See [Install gaffer](../getting-started/install.md#install-the-cli). If the CLI isn't installed, the extension surfaces a status bar prompt that can run the install for you. If you've customised `gaffer.command` and it points at a binary that no longer exists, a separate prompt offers to open the setting or reset it to the default.
 

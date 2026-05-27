@@ -221,7 +221,7 @@ try {
 | Package                                                                                                           | What it is                                                 |
 | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | [`@kurrent/gaffer`](https://www.npmjs.com/package/@kurrent/gaffer)                                                | CLI to scaffold, run, debug, and deploy projections        |
-| KurrentDB Projections for VS Code on the [Marketplace](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer-vscode) and [Open VSX](https://open-vsx.org/extension/kurrent-io/gaffer-vscode) | Editor integration with debugger, codelens, and MCP server |
+| [KurrentDB Projections for VS Code](https://gaffer.kurrent.io/extension/vs-code/)                                 | Editor integration with debugger, codelens, and MCP server |
 
 ## Documentation
 

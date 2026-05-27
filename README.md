@@ -12,7 +12,7 @@ CLI:
 npm i -g @kurrent/gaffer
 ```
 
-VS Code extension - install KurrentDB Projections from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer-vscode) or [Open VSX](https://open-vsx.org/extension/kurrent-io/gaffer-vscode) for run/debug from `gaffer.toml`, breakpoint debugging, and an auto-registered MCP server.
+VS Code extension - install [KurrentDB Projections](https://gaffer.kurrent.io/extension/vs-code/) for run/debug from `gaffer.toml`, breakpoint debugging, and an auto-registered MCP server.
 
 Test library:
 
@@ -54,7 +54,7 @@ See the [demo project](demo/) for a complete example with fixtures, errors, part
 | Component         | Package                                                                                      | License                          |
 | ----------------- | -------------------------------------------------------------------------------------------- | -------------------------------- |
 | CLI               | `@kurrent/gaffer`                                                                            | [Kurrent License v1](LICENSE.md) |
-| VS Code extension | `kurrent-io.gaffer-vscode` on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer-vscode) and [Open VSX](https://open-vsx.org/extension/kurrent-io/gaffer-vscode)                       | [Kurrent License v1](LICENSE.md) |
+| VS Code extension | [`kurrent-io.gaffer-vscode`](https://gaffer.kurrent.io/extension/vs-code/)                                 | [Kurrent License v1](LICENSE.md) |
 | Test library      | `@kurrent/projections-testing`                                                               | [Apache 2.0](testing/js/LICENSE) |
 | JS bindings       | `@kurrent/gaffer-runtime`                                                                    | [Kurrent License v1](LICENSE.md) |
 | Go bindings       | `github.com/kurrent-io/gaffer/bindings/go`                                                   | [Kurrent License v1](LICENSE.md) |

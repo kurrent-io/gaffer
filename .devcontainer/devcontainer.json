@@ -1,6 +1,9 @@
 {
   "name": "gaffer",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "cacheFrom": "ghcr.io/kurrent-io/gaffer-devcontainer:latest"
+  },
   "features": {
     "ghcr.io/devcontainers/features/dotnet:2": {
       "version": "10.0"

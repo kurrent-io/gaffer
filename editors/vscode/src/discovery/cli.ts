@@ -243,7 +243,6 @@ function execFileAsync(
 		const stdoutChunks: Buffer[] = [];
 		const stderrChunks: Buffer[] = [];
 		let settled = false;
-		let timer: ReturnType<typeof setTimeout> | undefined;
 
 		const attachStderr = (err: Error): void => {
 			const stderr = Buffer.concat(stderrChunks).toString().trim();
@@ -254,14 +253,14 @@ function execFileAsync(
 		const settle = (fn: () => void): void => {
 			if (settled) return;
 			settled = true;
-			if (timer !== undefined) clearTimeout(timer);
+			clearTimeout(timer);
 			fn();
 		};
 
 		child.stdout?.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
 		child.stderr?.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
 
-		timer = setTimeout(() => {
+		const timer = setTimeout(() => {
 			settle(() => {
 				child.kill();
 				const err = new Error(

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { execFile } from "node:child_process";
+import crossSpawn from "cross-spawn";
 import * as v from "valibot";
 import { log } from "../output.js";
 import { ManifestSchema, type Manifest } from "./schemas.js";
@@ -193,6 +193,36 @@ interface ExecOpts {
 	env?: NodeJS.ProcessEnv;
 }
 
+const SPAWN_TIMEOUT_MS = 10_000;
+
+// Routed through cross-spawn so the Windows PATHEXT lookup works:
+// `npm install -g @kurrent/gaffer` drops a `gaffer.cmd` shim into
+// `%APPDATA%\npm`, and Node's own `child_process.execFile("gaffer", ...,
+// { shell: false })` won't find it (shell: false skips PATHEXT).
+// cross-spawn re-routes .cmd/.bat through cmd.exe with proper arg
+// quoting so we keep `shell: false`-style safety without the
+// injection surface that `shell: true` opens up.
+//
+// Error shape preserved from the previous execFile-based impl so
+// telemetry's classifyManifestError stays accurate:
+//   - spawn failure (binary not on PATH, EACCES, etc.) ⇒ err.code
+//     is the OS error string (e.g. "ENOENT") and err.killed is unset
+//   - timeout ⇒ err.killed === true and err.code is undefined
+//   - non-zero exit ⇒ err.code is the numeric exit code
+//   - any stderr is attached as err.cause.stderr (kept off
+//     err.message so telemetry never accidentally ships local paths)
+//
+// Settles on whichever of `error`, the timeout timer, or `close`
+// fires first, guarded by a single-settle flag. The standard Node
+// guarantee is that `close` follows `error`, but a kill on Windows
+// is best-effort and `close` can be slow to land, so we don't rely
+// on `close` being the only settle path.
+//
+// Error messages never embed the argv: gaffer.command may be an
+// absolute path and scaffold subcommands pass user-supplied paths
+// as args; the telemetry exception builder ships err.message
+// verbatim. The argv is reachable via the call-site log lines if
+// it's needed for debugging.
 function execFileAsync(
 	argv: string[],
 	options: ExecOpts = {},
@@ -203,32 +233,68 @@ function execFileAsync(
 			reject(new Error("argv must not be empty"));
 			return;
 		}
-		const execOpts = {
-			timeout: 10_000,
-			shell: false as const,
-			...options,
-		};
-		execFile(head, rest, execOpts, (err, stdout, stderr) => {
-			if (err) {
-				// Augment in place to keep err.code / err.killed accessible
-				// to callers that need to classify the failure (e.g.
-				// telemetry's classifyManifestError). Wrapping in a fresh
-				// Error would lose those fields.
-				//
-				// Stderr goes onto err.cause as a structured field rather
-				// than being appended to err.message. The telemetry
-				// pipeline ships err.message verbatim; CLI stderr can name
-				// local paths, so keeping it off message is defence-in-
-				// depth against a future caller routing this error into
-				// reportException. User-facing surfaces (e.g.
-				// showManifestFailure) read err.cause.stderr.
-				if (stderr) {
-					(err as { cause?: unknown }).cause = { stderr: stderr.trim() };
-				}
-				reject(err);
-			} else {
-				resolve(stdout);
+		const child = crossSpawn(head, rest, {
+			cwd: options.cwd,
+			env: options.env,
+			shell: false,
+			windowsHide: true,
+		});
+
+		const stdoutChunks: Buffer[] = [];
+		const stderrChunks: Buffer[] = [];
+		let settled = false;
+
+		const attachStderr = (err: Error): void => {
+			const stderr = Buffer.concat(stderrChunks).toString().trim();
+			if (stderr) {
+				(err as { cause?: unknown }).cause = { stderr };
 			}
+		};
+		const settle = (fn: () => void): void => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			fn();
+		};
+
+		child.stdout?.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
+		child.stderr?.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+
+		const timer = setTimeout(() => {
+			settle(() => {
+				child.kill();
+				const err = new Error(
+					`Command timed out after ${SPAWN_TIMEOUT_MS}ms`,
+				) as NodeJS.ErrnoException & { killed?: boolean };
+				err.killed = true;
+				attachStderr(err);
+				reject(err);
+			});
+		}, SPAWN_TIMEOUT_MS);
+
+		child.once("error", (err) => {
+			settle(() => {
+				attachStderr(err);
+				reject(err);
+			});
+		});
+
+		child.on("close", (code) => {
+			settle(() => {
+				if (code === 0) {
+					resolve(Buffer.concat(stdoutChunks).toString());
+					return;
+				}
+				const err = new Error("Command failed");
+				if (code !== null) {
+					// execFile's error.code carries the numeric exit code on
+					// non-zero exit; preserve that shape for callers that
+					// classify failures (telemetry's classifyManifestError).
+					(err as { code?: number }).code = code;
+				}
+				attachStderr(err);
+				reject(err);
+			});
 		});
 	});
 }

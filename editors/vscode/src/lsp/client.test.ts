@@ -21,11 +21,11 @@ import {
 	setTrusted,
 } from "../../test/testutil/vscode-state.js";
 
-// Stub child_process.spawn so the LSP factory doesn't try to fork a
-// real `gaffer` binary in tests. Returns a no-op EventEmitter shaped
+// Stub cross-spawn so the LSP factory doesn't try to fork a real
+// `gaffer` binary in tests. Returns a no-op EventEmitter shaped
 // like ChildProcess; tests inspect `spawn.mock.calls` for argv.
 const spawnMock = vi.hoisted(() => vi.fn());
-vi.mock("node:child_process", () => ({ spawn: spawnMock }));
+vi.mock("cross-spawn", () => ({ default: spawnMock }));
 
 afterEach(() => {
 	resetVscode();

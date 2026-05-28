@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import crossSpawn from "cross-spawn";
 import * as vscode from "vscode";
 import {
 	CloseAction,
@@ -128,8 +128,17 @@ async function spawnLanguageClient(
 			throw new Error("LSP client: empty gaffer.command");
 		}
 		const env = gafferSpawnEnv(telemetry.isOptedOut());
+		// Routed through cross-spawn so the Windows PATHEXT lookup
+		// works: an npm-installed `gaffer` resolves to a `gaffer.cmd`
+		// shim, which Node's bare `spawn(...)` (shell: false) won't
+		// find. cross-spawn re-routes .cmd/.bat through cmd.exe with
+		// proper arg quoting.
 		return Promise.resolve(
-			spawn(command, argv.slice(1), env !== undefined ? { env } : undefined),
+			crossSpawn(
+				command,
+				argv.slice(1),
+				env !== undefined ? { env } : undefined,
+			),
 		);
 	};
 	if (lspChannel === undefined) {

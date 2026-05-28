@@ -211,6 +211,18 @@ const SPAWN_TIMEOUT_MS = 10_000;
 //   - non-zero exit ⇒ err.code is the numeric exit code
 //   - any stderr is attached as err.cause.stderr (kept off
 //     err.message so telemetry never accidentally ships local paths)
+//
+// Settles on whichever of `error`, the timeout timer, or `close`
+// fires first, guarded by a single-settle flag. The standard Node
+// guarantee is that `close` follows `error`, but a kill on Windows
+// is best-effort and `close` can be slow to land, so we don't rely
+// on `close` being the only settle path.
+//
+// Error messages never embed the argv: gaffer.command may be an
+// absolute path and scaffold subcommands pass user-supplied paths
+// as args; the telemetry exception builder ships err.message
+// verbatim. The argv is reachable via the call-site log lines if
+// it's needed for debugging.
 function execFileAsync(
 	argv: string[],
 	options: ExecOpts = {},
@@ -230,51 +242,51 @@ function execFileAsync(
 
 		const stdoutChunks: Buffer[] = [];
 		const stderrChunks: Buffer[] = [];
-		let spawnError: NodeJS.ErrnoException | null = null;
-		let timedOut = false;
+		let settled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+
+		const attachStderr = (err: Error): void => {
+			const stderr = Buffer.concat(stderrChunks).toString().trim();
+			if (stderr) {
+				(err as { cause?: unknown }).cause = { stderr };
+			}
+		};
+		const settle = (fn: () => void): void => {
+			if (settled) return;
+			settled = true;
+			if (timer !== undefined) clearTimeout(timer);
+			fn();
+		};
 
 		child.stdout?.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
 		child.stderr?.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
 
-		const timer = setTimeout(() => {
-			timedOut = true;
-			child.kill();
-		}, SPAWN_TIMEOUT_MS);
-
-		child.on("error", (err) => {
-			spawnError = err as NodeJS.ErrnoException;
-		});
-
-		child.on("close", (code) => {
-			clearTimeout(timer);
-			const stdout = Buffer.concat(stdoutChunks).toString();
-			const stderr = Buffer.concat(stderrChunks).toString();
-			const attachStderr = (err: Error): void => {
-				if (stderr) {
-					(err as { cause?: unknown }).cause = { stderr: stderr.trim() };
-				}
-			};
-
-			if (spawnError !== null) {
-				attachStderr(spawnError);
-				reject(spawnError);
-				return;
-			}
-
-			if (timedOut) {
+		timer = setTimeout(() => {
+			settle(() => {
+				child.kill();
 				const err = new Error(
-					`Command timed out after ${SPAWN_TIMEOUT_MS}ms: ${[head, ...rest].join(" ")}`,
+					`Command timed out after ${SPAWN_TIMEOUT_MS}ms`,
 				) as NodeJS.ErrnoException & { killed?: boolean };
 				err.killed = true;
 				attachStderr(err);
 				reject(err);
-				return;
-			}
+			});
+		}, SPAWN_TIMEOUT_MS);
 
-			if (code !== 0) {
-				const err = new Error(
-					`Command failed with exit code ${code}: ${[head, ...rest].join(" ")}`,
-				);
+		child.once("error", (err) => {
+			settle(() => {
+				attachStderr(err);
+				reject(err);
+			});
+		});
+
+		child.on("close", (code) => {
+			settle(() => {
+				if (code === 0) {
+					resolve(Buffer.concat(stdoutChunks).toString());
+					return;
+				}
+				const err = new Error("Command failed");
 				if (code !== null) {
 					// execFile's error.code carries the numeric exit code on
 					// non-zero exit; preserve that shape for callers that
@@ -283,10 +295,7 @@ function execFileAsync(
 				}
 				attachStderr(err);
 				reject(err);
-				return;
-			}
-
-			resolve(stdout);
+			});
 		});
 	});
 }

@@ -80,7 +80,7 @@ Run the projection over events, yielding a `StepResult` after each one. Accepts:
 - `AsyncIterable<EventInput>` - async generators, client streams.
 - `KurrentDBClient` - subscribes to the appropriate streams based on the projection's declared source.
 
-`StepResult` is a discriminated union on `status`. Both shapes carry `event` and `status`. The `processed` shape adds `state`, `result`, `sharedState`, `emitted`, and `logs`. The `skipped` shape adds `reason` explaining why (`unhandled`, `non-json`, `link`, `no-partition`, `no-delete-handler`). Guard before destructuring:
+`StepResult` is a discriminated union on `status`. Both shapes carry `event` and `status`. The `processed` shape adds `state`, `result`, `sharedState`, `emitted`, and `logs`. The `skipped` shape adds `reason` explaining why (`unhandled`, `non-json`, `link`, `no-partition`, `no-delete-handler`, `wrong-stream`). Guard before destructuring:
 
 ```typescript
 for (const result of projection.run(events)) {
@@ -204,6 +204,8 @@ Three event shapes are accepted:
 `data` and `metadata` accept objects (auto-stringified to JSON) or strings (passed through).
 
 For manual test events, `eventType` and `streamId` must be non-empty and `sequenceNumber` must be a non-negative integer, matching what KurrentDB can actually deliver to a handler.
+
+Events are matched against the projection's declared source: a `fromStream("a")` / `fromStreams` / `fromCategory` projection only processes events on streams it subscribes to, and others are skipped with `reason: "wrong-stream"` (mirroring KurrentDB delivery). `fromAll()` accepts every stream.'d events by the projection's declared source)
 
 ## Errors
 

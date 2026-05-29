@@ -24,3 +24,8 @@ entry = "projections/broken.js"
 [[projection]]
 name = "bistate-counter"
 entry = "projections/bistate-counter.js"
+
+[[projection]]
+name = "quirks"
+entry = "projections/quirks.js"
+fixtures.ticks = "fixtures/quirks-ticks.json"

@@ -193,6 +193,13 @@ export type ProjectionOutcome = "projection_user_throw" | "projection_compile_er
 export type McpCommandInvokedProperties = CommandInvokedBaseProperties & {
   command: "mcp";
   /**
+   * Whether the server found a gaffer project at startup. False means it
+   * launched outside a project (e.g. a globally-registered server) and
+   * started project-less, with the projection tools unavailable until a
+   * project is found or created. Set once at startup.
+   */
+  started_in_project?: boolean;
+  /**
    * See ManifestCommandInvokedProperties.manifest_features_used.
    *
    * @maxItems 100

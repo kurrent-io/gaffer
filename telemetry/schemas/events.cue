@@ -146,6 +146,12 @@ import "strings"
 	#CommandInvokedBaseProperties
 	command: "mcp"
 
+	// Whether the server found a gaffer project at startup. False means it
+	// launched outside a project (e.g. a globally-registered server) and
+	// started project-less, with the projection tools unavailable until a
+	// project is found or created. Set once at startup.
+	started_in_project?: bool
+
 	// See ManifestCommandInvokedProperties.manifest_features_used.
 	manifest_features_used?: [...string & strings.MaxRunes(64)]
 

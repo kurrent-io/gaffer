@@ -501,6 +501,8 @@ type MCPCommandInvokedProperties struct {
 	InvokedBy InvokedBy `json:"invoked_by"`
 	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
 	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
+	// Whether the server found a gaffer project at startup. False means it launched outside a project (e.g. a globally-registered server) and started project-less, with the projection tools unavailable until a project is found or created. Set once at startup.
+	StartedInProject *bool `json:"started_in_project,omitempty"`
 	// See ManifestCommandInvokedProperties.manifest_features_used.
 	ManifestFeaturesUsed []string `json:"manifest_features_used,omitempty"`
 	// Bucketed. Total tool invocations across the session.
@@ -528,6 +530,14 @@ func (tx *MCPTx) SetOutcome(o Outcome) {
 		return
 	}
 	tx.props.Outcome = o
+}
+
+// SetStartedInProject records started_in_project. Whether the server found a gaffer project at startup. False means it launched outside a project (e.g. a globally-registered server) and started project-less, with the projection tools unavailable until a project is found or created. Set once at startup. Nil-safe: silent no-op on a nil receiver.
+func (tx *MCPTx) SetStartedInProject(b bool) {
+	if tx == nil {
+		return
+	}
+	tx.props.StartedInProject = &b
 }
 
 // SetManifestFeaturesUsed records manifest_features_used. See ManifestCommandInvokedProperties.manifest_features_used. Nil-safe: silent no-op on a nil receiver.

@@ -1261,3 +1261,48 @@ func TestInitToolTargetsOverride(t *testing.T) {
 		t.Errorf("expected gaffer.toml at the override dir: %v", err)
 	}
 }
+
+// --- started_in_project telemetry ---
+
+func TestStartedInProject(t *testing.T) {
+	if New("", nil, "test").StartedInProject() {
+		t.Error("project-less construction should report StartedInProject() == false")
+	}
+	if !New(t.TempDir(), &config.Config{EngineVersion: 2}, "test").StartedInProject() {
+		t.Error("in-project construction should report StartedInProject() == true")
+	}
+
+	t.Chdir(t.TempDir()) // no gaffer.toml
+	projectless, err := NewFromProjectRoot("test", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projectless.StartedInProject() {
+		t.Error("NewFromProjectRoot with no project should report false")
+	}
+
+	proj := t.TempDir()
+	writeProject(t, proj)
+	inProject, err := NewFromProjectRoot("test", proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !inProject.StartedInProject() {
+		t.Error("NewFromProjectRoot with a project should report true")
+	}
+}
+
+// StartedInProject reflects startup state only - a project resolved
+// lazily mid-session must not flip it.
+func TestStartedInProjectStableAcrossLazyResolve(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	s := New("", nil, "test")
+
+	writeProject(t, dir)
+	_ = callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
+
+	if s.StartedInProject() {
+		t.Error("StartedInProject() must stay false after a lazy resolve")
+	}
+}

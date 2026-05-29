@@ -33,29 +33,37 @@ func newMCPCmd() *cobra.Command {
 			}
 
 			srv, err := mcpserver.NewFromProjectRoot(Version, projectOverride)
+
+			// Stamp started_in_project up front so it's recorded on the
+			// startup-error path too (the deferred tx.End still emits there).
+			// NewFromProjectRoot only errors after finding a project root and
+			// failing to load its gaffer.toml, so a non-nil err means a
+			// project was in scope; the short-circuit avoids the nil srv.
+			tx.SetStartedInProject(err != nil || srv.StartedInProject())
+
 			if err != nil {
-				// Classify the project-load failure (no project /
-				// parse / validation) so the outcome is specific
-				// rather than a generic user_error.
+				// Classify the manifest parse / validation failure so the
+				// outcome is specific rather than a generic user_error.
 				tx.SetOutcome(outcomeFor(err))
 				return err
 			}
 
 			// Stamp manifest-derived props before the long Run blocks,
 			// not at End time, so the values are recorded even if the
-			// session terminates unexpectedly. Schema gives mcp only
-			// features_used (no counts).
-			//
-			// A server started project-less resolves its project lazily
-			// on first tool use, so Config() is nil here and manifest
-			// features go unstamped for that session. Folded into the
-			// project-less telemetry work in UI-1616 rather than
-			// re-reading Config() after Run.
+			// session terminates unexpectedly.
 			if cfg := srv.Config(); cfg != nil {
 				tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(cfg))
 			}
 
 			runErr := srv.Run(cmd.Context())
+
+			// A server that started project-less resolves its project
+			// lazily on first tool use, so Config() was nil above. Re-stamp
+			// after Run (handlers have finished) to capture manifest
+			// features for those sessions. Idempotent for in-project starts.
+			if cfg := srv.Config(); cfg != nil {
+				tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(cfg))
+			}
 
 			// Drain counters after Run returns - request goroutines
 			// have finished mutating stats by then, so the Load

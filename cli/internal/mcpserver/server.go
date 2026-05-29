@@ -53,6 +53,11 @@ type Server struct {
 	// before any handler goroutine, so it needs no lock.
 	projectOverride string
 
+	// startedInProject records whether a project was in scope at
+	// construction (cfg != nil), for the started_in_project telemetry
+	// property. Immutable; lazy resolution doesn't change it.
+	startedInProject bool
+
 	mu      sync.Mutex
 	session *activeSession
 
@@ -82,6 +87,13 @@ type Server struct {
 // properties at End time without re-loading the file.
 func (s *Server) Config() *config.Config {
 	return s.cfg
+}
+
+// StartedInProject reports whether a gaffer project was in scope when
+// the server was constructed. False means it started project-less
+// (launched outside a project). Drives the started_in_project telemetry.
+func (s *Server) StartedInProject() bool {
+	return s.startedInProject
 }
 
 // Stats returns the current counter snapshot. Safe to call from
@@ -151,9 +163,10 @@ func (s *Server) requireSession() (*activeSession, *mcp.CallToolResult) {
 
 func New(root string, cfg *config.Config, version string) *Server {
 	s := &Server{
-		root:    root,
-		cfg:     cfg,
-		version: version,
+		root:             root,
+		cfg:              cfg,
+		version:          version,
+		startedInProject: cfg != nil,
 	}
 
 	s.mcp = mcp.NewServer(

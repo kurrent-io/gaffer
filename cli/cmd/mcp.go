@@ -33,17 +33,20 @@ func newMCPCmd() *cobra.Command {
 			}
 
 			srv, err := mcpserver.NewFromProjectRoot(Version, projectOverride)
+
+			// Stamp started_in_project up front so it's recorded on the
+			// startup-error path too (the deferred tx.End still emits there).
+			// NewFromProjectRoot only errors after finding a project root and
+			// failing to load its gaffer.toml, so a non-nil err means a
+			// project was in scope; the short-circuit avoids the nil srv.
+			tx.SetStartedInProject(err != nil || srv.StartedInProject())
+
 			if err != nil {
-				// Classify the project-load failure (no project /
-				// parse / validation) so the outcome is specific
-				// rather than a generic user_error.
+				// Classify the manifest parse / validation failure so the
+				// outcome is specific rather than a generic user_error.
 				tx.SetOutcome(outcomeFor(err))
 				return err
 			}
-
-			// Whether the server launched inside a project. Known at
-			// construction and immutable, so stamp it now.
-			tx.SetStartedInProject(srv.StartedInProject())
 
 			// Stamp manifest-derived props before the long Run blocks,
 			// not at End time, so the values are recorded even if the

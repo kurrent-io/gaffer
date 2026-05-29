@@ -252,12 +252,12 @@ func TestFormatStep_PromotesDiagnostics(t *testing.T) {
 		EventType:  "Tick",
 		Status:     "processed",
 	}
-	diags, ok := formatStep(withDiag)["diagnostics"].([]json.RawMessage)
+	diags, ok := formatStep(withDiag)["diagnostics"].([]any)
 	if !ok || len(diags) != 1 {
 		t.Fatalf("expected 1 promoted diagnostic, got %v", formatStep(withDiag)["diagnostics"])
 	}
-	if !strings.Contains(string(diags[0]), "compat.biState.stringSlot") {
-		t.Errorf("promoted diagnostic missing code: %s", diags[0])
+	if code := diags[0].(map[string]any)["code"]; code != "compat.biState.stringSlot" {
+		t.Errorf("promoted diagnostic code = %v, want compat.biState.stringSlot", code)
 	}
 
 	noDiag := &history.Step{Index: 1, ResultJSON: `{"status":"processed","diagnostics":[]}`}

@@ -83,6 +83,8 @@ export const StatsBodySchema = v.object({
 	errors: v.number(),
 	skipped: v.optional(NonNegativeInt),
 	skippedByReason: v.optional(v.record(v.string(), NonNegativeInt)),
+	// Distinct runtime-quirk codes seen so far; omitted when none have fired.
+	quirks: v.optional(NonNegativeInt),
 });
 export type StatsBody = v.InferOutput<typeof StatsBodySchema>;
 

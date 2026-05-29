@@ -62,15 +62,15 @@ function fakeState(): { provider: StateProvider; calls: RecordedState } {
 }
 
 interface RecordedStatus {
-	setStats: Array<{ processed: number; errors: number }>;
+	setStats: Array<{ processed: number; errors: number; quirks: number }>;
 	setSkipped: Array<{ count: number; byReason: Record<string, number> }>;
 }
 
 function fakeStatus(): { provider: StatusViewProvider; calls: RecordedStatus } {
 	const calls: RecordedStatus = { setStats: [], setSkipped: [] };
 	const provider = {
-		setStats: (processed: number, errors: number) =>
-			calls.setStats.push({ processed, errors }),
+		setStats: (processed: number, errors: number, quirks = 0) =>
+			calls.setStats.push({ processed, errors, quirks }),
 		setSkipped: (count: number, byReason: Record<string, number>) =>
 			calls.setSkipped.push({ count, byReason }),
 	} as unknown as StatusViewProvider;
@@ -284,7 +284,20 @@ describe("dispatchDapEvent - happy paths", () => {
 			event("gaffer/stats", { handled: 12, errors: 1 }),
 			handlers({ status: status.provider }),
 		);
-		expect(status.calls.setStats).toEqual([{ processed: 12, errors: 1 }]);
+		expect(status.calls.setStats).toEqual([
+			{ processed: 12, errors: 1, quirks: 0 },
+		]);
+	});
+
+	it("routes gaffer/stats quirks count to setStats", async () => {
+		const status = fakeStatus();
+		await dispatchDapEvent(
+			event("gaffer/stats", { handled: 5, errors: 0, quirks: 2 }),
+			handlers({ status: status.provider }),
+		);
+		expect(status.calls.setStats).toEqual([
+			{ processed: 5, errors: 0, quirks: 2 },
+		]);
 	});
 
 	it("routes gaffer/stats with skipped fields to setSkipped", async () => {

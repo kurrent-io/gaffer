@@ -36,6 +36,12 @@ type DebugAdapter struct {
 	fixtureMode   bool
 	lastStats     engine.EventStats
 	lastStateJSON string
+	// quirkCodes is the distinct set of runtime-quirk codes seen this
+	// session, accumulated from the OnDiagnostic stream; its size rides
+	// on gaffer/stats so the editor's Status view can tally quirks.
+	// lastQuirks is the count at the previous emit, for change detection.
+	quirkCodes map[string]bool
+	lastQuirks int
 
 	readyOnce      sync.Once
 	readyCh        chan struct{}
@@ -189,6 +195,10 @@ func (a *DebugAdapter) wireSessionCallbacks() {
 		// gaffer/stepError (fatal).
 		a.mu.Lock()
 		inspect := a.inspect
+		if a.quirkCodes == nil {
+			a.quirkCodes = map[string]bool{}
+		}
+		a.quirkCodes[d.Code] = true
 		a.mu.Unlock()
 		a.bufferOrSend(NewCustomEvent("gaffer/stepWarning", map[string]any{
 			"step":     a.runner.Step(),
@@ -560,6 +570,8 @@ func (a *DebugAdapter) ResetForRestart() {
 	a.inspect = false
 	a.entryPausePending = false
 	a.lastStats = engine.EventStats{}
+	a.lastQuirks = 0
+	a.quirkCodes = nil
 	a.lastStateJSON = ""
 	a.stepBuffer = nil
 	a.breakpointCount = 0
@@ -676,7 +688,10 @@ func (a *DebugAdapter) EmitStatsIfChanged() {
 	cur := a.runner.Stats()
 	a.mu.Lock()
 	fixtureMode := a.fixtureMode
-	unchanged := cur.Handled == a.lastStats.Handled && cur.Errors == a.lastStats.Errors
+	quirks := len(a.quirkCodes)
+	unchanged := cur.Handled == a.lastStats.Handled &&
+		cur.Errors == a.lastStats.Errors &&
+		quirks == a.lastQuirks
 	if fixtureMode {
 		unchanged = unchanged && cur.Skipped == a.lastStats.Skipped
 	}
@@ -685,11 +700,15 @@ func (a *DebugAdapter) EmitStatsIfChanged() {
 		return
 	}
 	a.lastStats = cur
+	a.lastQuirks = quirks
 	a.mu.Unlock()
 
 	body := map[string]any{
 		"handled": cur.Handled,
 		"errors":  cur.Errors,
+	}
+	if quirks > 0 {
+		body["quirks"] = quirks
 	}
 	if fixtureMode {
 		body["skipped"] = cur.Skipped

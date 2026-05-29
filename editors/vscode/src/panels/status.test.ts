@@ -133,6 +133,17 @@ describe("StatusViewProvider", () => {
 		expect(lastUpdate(view).stats).toEqual(["1 events processed", "1 errors"]);
 	});
 
+	it("includes a quirks line when quirks fired, singular at 1", () => {
+		const provider = new StatusViewProvider();
+		const view = makeFakeWebviewView();
+		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+		provider.reset("checkout");
+		provider.setStats(3, 0, 1);
+		expect(lastUpdate(view).stats).toEqual(["3 events processed", "1 quirk"]);
+		provider.setStats(3, 0, 2);
+		expect(lastUpdate(view).stats).toEqual(["3 events processed", "2 quirks"]);
+	});
+
 	it("setSkipped surfaces a skipped line with the by-reason breakdown", () => {
 		const provider = new StatusViewProvider();
 		const view = makeFakeWebviewView();

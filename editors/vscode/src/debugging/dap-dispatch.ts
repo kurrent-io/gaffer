@@ -105,7 +105,11 @@ export async function dispatchDapEvent(
 		case "gaffer/stats": {
 			const body = parseDapBody(StatsBodySchema, e);
 			if (body) {
-				handlers.statusProvider.setStats(body.handled, body.errors);
+				handlers.statusProvider.setStats(
+					body.handled,
+					body.errors,
+					body.quirks ?? 0,
+				);
 				// Live mode omits both fields entirely; only forward when
 				// the CLI is in fixture mode (a previously-set count clears
 				// via reset() at session start, not mid-stream).

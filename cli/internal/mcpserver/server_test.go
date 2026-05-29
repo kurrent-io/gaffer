@@ -1123,3 +1123,78 @@ func TestConfigResourceReadsInvalidManifest(t *testing.T) {
 		t.Errorf("expected raw manifest content, got %v", result.Contents)
 	}
 }
+
+// --- Project override (--project / GAFFER_PROJECT) ---
+
+func writeProject(t *testing.T, dir string) {
+	t.Helper()
+	cfg := &config.Config{
+		EngineVersion: 2,
+		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
+	}
+	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNormalizeOverride(t *testing.T) {
+	if got := normalizeOverride(""); got != "" {
+		t.Errorf("empty override should stay empty, got %q", got)
+	}
+	if got := normalizeOverride("relative/dir"); !filepath.IsAbs(got) {
+		t.Errorf("expected absolute path, got %q", got)
+	}
+}
+
+func TestProjectOverrideResolvesOutsideCwd(t *testing.T) {
+	projDir := t.TempDir()
+	writeProject(t, projDir)
+	t.Chdir(t.TempDir()) // cwd has no gaffer.toml
+
+	s, err := NewFromProjectRoot("test", projDir)
+	if err != nil {
+		t.Fatalf("NewFromProjectRoot with override: %v", err)
+	}
+	if s.Config() == nil {
+		t.Fatal("expected eager project load via --project override")
+	}
+	result := callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
+	if projs, ok := result["projections"].([]any); !ok || len(projs) != 1 {
+		t.Fatalf("expected 1 projection via override, got %v", result["projections"])
+	}
+}
+
+func TestProjectOverrideWalksUpFromSubdir(t *testing.T) {
+	projDir := t.TempDir()
+	writeProject(t, projDir)
+	sub := filepath.Join(projDir, "nested", "deep")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(t.TempDir())
+
+	s, err := NewFromProjectRoot("test", sub)
+	if err != nil {
+		t.Fatalf("NewFromProjectRoot with subdir override: %v", err)
+	}
+	if s.Config() == nil {
+		t.Fatal("expected override to walk up from a subdirectory to the project root")
+	}
+}
+
+func TestProjectOverrideMissingNamesPathInError(t *testing.T) {
+	override := t.TempDir() // exists, no gaffer.toml above it
+	t.Chdir(t.TempDir())
+
+	s, err := NewFromProjectRoot("test", override)
+	if err != nil {
+		t.Fatalf("NewFromProjectRoot: %v", err)
+	}
+	if s.Config() != nil {
+		t.Fatal("expected project-less server for an override without gaffer.toml")
+	}
+	msg := callToolExpectError(t, s.handleListProjections, listProjectionsInput{})
+	if !strings.Contains(msg, override) || !strings.Contains(msg, "GAFFER_PROJECT") {
+		t.Errorf("expected error to name the override path and env var, got %q", msg)
+	}
+}

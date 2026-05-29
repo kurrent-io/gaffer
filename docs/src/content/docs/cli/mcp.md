@@ -39,6 +39,8 @@ description: Connect gaffer's MCP server to Claude Code, Cursor, Continue, Claud
 
 The server starts whether or not its working directory is a gaffer project, so it is safe to register globally. Without a project, the documentation resources and `get_version` are available immediately, and the projection tools return an error telling you to run `gaffer init`. They start working as soon as a `gaffer.toml` exists in the working directory or a parent - no restart needed.
 
+When the launch directory is not your project (common for a globally registered server), pass `--project <dir>` or set `GAFFER_PROJECT`. The flag takes precedence over the variable, and both override the working-directory search.
+
 The generic connection shape is `command: gaffer, args: [mcp]`. Client-specific configs:
 
 ### VS Code
@@ -51,7 +53,7 @@ The [KurrentDB Projections](../extension/vs-code.md) extension auto-registers ga
 claude mcp add gaffer -- gaffer mcp
 ```
 
-Then `/mcp` inside Claude Code to confirm gaffer is connected.
+Then `/mcp` inside Claude Code to confirm gaffer is connected. When registering from outside your project, pin it with `claude mcp add gaffer -- gaffer mcp --project /path/to/project`.
 
 ### Cursor
 
@@ -95,8 +97,8 @@ Restart Claude Desktop. Look for the slider icon in the chat input to confirm to
 Any MCP-aware client that supports stdio servers works. Point it at:
 
 - Command: `gaffer`
-- Args: `["mcp"]`
-- Working directory: any directory. The projection tools need a `gaffer.toml` in the working directory or a parent; the documentation resources and `get_version` work anywhere.
+- Args: `["mcp"]` (add `["mcp", "--project", "/path/to/project"]`, or set `GAFFER_PROJECT`, when the launch directory is not your project)
+- Working directory: any directory. The projection tools need a `gaffer.toml` in the working directory or a parent, or a `--project` / `GAFFER_PROJECT` override; the documentation resources and `get_version` work anywhere.
 
 Most clients accept a JSON entry shaped like Cursor's above. Consult your client's MCP setup docs.
 

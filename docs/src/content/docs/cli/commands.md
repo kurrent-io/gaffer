@@ -80,7 +80,13 @@ Flags:
 Start an MCP server for AI agent integration.
 
 ```
-gaffer mcp
+gaffer mcp [flags]
+```
+
+Flags:
+
+```
+      --project string   Project directory to use instead of searching from the working directory (also set via GAFFER_PROJECT)
 ```
 
 ## gaffer lsp

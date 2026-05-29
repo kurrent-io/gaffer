@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 
@@ -45,6 +46,12 @@ type Server struct {
 	root    string
 	cfg     *config.Config
 	version string
+
+	// projectOverride pins project resolution to a directory instead
+	// of walking up from the cwd (the --project flag / GAFFER_PROJECT
+	// env). Empty means cwd-based resolution. Set once at construction,
+	// before any handler goroutine, so it needs no lock.
+	projectOverride string
 
 	mu      sync.Mutex
 	session *activeSession
@@ -204,18 +211,35 @@ func instructionsFor(cfg *config.Config) string {
 		"evaluate expressions. Each run replaces the previous session."
 }
 
+// resolveRoot finds the project root. With an override it walks up from
+// that directory (so --project may point at the root or a subdirectory);
+// otherwise it walks up from the cwd. Empty means no project found.
+func resolveRoot(override string) string {
+	if override != "" {
+		return project.FindRootFrom(override)
+	}
+	return project.FindRoot()
+}
+
 // NewFromProjectRoot builds the server for `gaffer mcp`. When no
-// gaffer.toml is found walking up from the cwd, it starts project-less
-// (cfg==nil) rather than failing, so the server stays launchable from
-// anywhere - the docs resources and get_version still work, and
-// project-dependent tools resolve the project lazily on first use (see
-// project()). A gaffer.toml that exists but fails to parse/validate
-// still surfaces as a startup error: that's a real problem the user
-// wants to see, not a missing project.
-func NewFromProjectRoot(version string) (*Server, error) {
-	root := project.FindRoot()
+// gaffer.toml is found, it starts project-less (cfg==nil) rather than
+// failing, so the server stays launchable from anywhere - the docs
+// resources and get_version still work, and project-dependent tools
+// resolve the project lazily on first use (see project()). A
+// gaffer.toml that exists but fails to parse/validate still surfaces as
+// a startup error: that's a real problem the user wants to see, not a
+// missing project.
+//
+// projectOverride (from --project / GAFFER_PROJECT) pins resolution to a
+// directory instead of the cwd; empty restores the cwd walk.
+func NewFromProjectRoot(version, projectOverride string) (*Server, error) {
+	override := normalizeOverride(projectOverride)
+
+	root := resolveRoot(override)
 	if root == "" {
-		return New("", nil, version), nil
+		s := New("", nil, version)
+		s.projectOverride = override
+		return s, nil
 	}
 
 	cfg, err := config.Load(project.ConfigPath(root))
@@ -223,7 +247,22 @@ func NewFromProjectRoot(version string) (*Server, error) {
 		return nil, err
 	}
 
-	return New(root, cfg, version), nil
+	s := New(root, cfg, version)
+	s.projectOverride = override
+	return s, nil
+}
+
+// normalizeOverride makes the override absolute so the resolved root and
+// the no-project message are stable regardless of later cwd changes. A
+// path that can't be resolved is passed through unchanged.
+func normalizeOverride(override string) string {
+	if override == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(override); err == nil {
+		return abs
+	}
+	return override
 }
 
 // project resolves and caches the project config, returning it with
@@ -240,7 +279,7 @@ func (s *Server) project() (*config.Config, string, error) {
 		return s.cfg, s.root, nil
 	}
 
-	root := project.FindRoot()
+	root := resolveRoot(s.projectOverride)
 	if root == "" {
 		return nil, "", nil
 	}
@@ -264,7 +303,7 @@ func (s *Server) projectRoot() string {
 	if root != "" {
 		return root
 	}
-	return project.FindRoot()
+	return resolveRoot(s.projectOverride)
 }
 
 // requireProject is the tool-handler gate for project-dependent tools.
@@ -278,14 +317,27 @@ func (s *Server) requireProject() *mcp.CallToolResult {
 		return toolError("loading gaffer.toml: %v", err)
 	}
 	if cfg == nil {
-		cwd, err := os.Getwd()
-		if err != nil {
-			cwd = "the working directory"
-		}
-		return toolError("no gaffer project found (searched upward from %s). "+
-			"Run `gaffer init` there, or restart gaffer mcp from a directory containing gaffer.toml.", cwd)
+		return toolError("%s", s.noProjectMessage())
 	}
 	return nil
+}
+
+// noProjectMessage explains that no project was found and how to point
+// the server at one. It names the actual search origin - the --project /
+// GAFFER_PROJECT override when set, otherwise the cwd - so the user can
+// see where gaffer looked.
+func (s *Server) noProjectMessage() string {
+	if s.projectOverride != "" {
+		return fmt.Sprintf("no gaffer project found under %s (from --project / GAFFER_PROJECT). "+
+			"Point it at a directory containing gaffer.toml, or run `gaffer init` there.", s.projectOverride)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "the working directory"
+	}
+	return fmt.Sprintf("no gaffer project found (searched upward from %s). "+
+		"Run `gaffer init` there, restart gaffer mcp from a directory containing gaffer.toml, "+
+		"or pass --project / set GAFFER_PROJECT.", cwd)
 }
 
 func (s *Server) Run(ctx context.Context) error {

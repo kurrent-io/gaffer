@@ -9,6 +9,7 @@ description: Connect gaffer's MCP server to Claude Code, Cursor, Continue, Claud
 
 **Tools** for the projection lifecycle:
 
+- **`init`**: create a `gaffer.toml` to start a new project when there isn't one yet.
 - **`scaffold`**: create a new projection at an explicit path and register it in `gaffer.toml`.
 - **`validate`**: check a projection for compile errors and runtime gotchas.
 - **`run`** / **`stop`**: run a projection against a fixture or live stream, and stop a running session.
@@ -37,7 +38,7 @@ description: Connect gaffer's MCP server to Claude Code, Cursor, Continue, Claud
 
 `gaffer mcp` is a local stdio server. No auth, no remote endpoint - your MCP client launches it as a subprocess and talks to it over stdin/stdout.
 
-The server starts whether or not its working directory is a gaffer project, so it is safe to register globally. Without a project, the documentation resources and `get_version` are available immediately, and the projection tools return an error telling you to run `gaffer init`. They start working as soon as a `gaffer.toml` exists in the working directory or a parent - no restart needed.
+The server starts whether or not its working directory is a gaffer project, so it is safe to register globally. Without a project, the documentation resources and `get_version` are available immediately, and the projection tools return an error pointing you at the `init` tool. They start working as soon as a `gaffer.toml` exists, whether created by `init`, created by `gaffer init`, or already present in the working directory or a parent. No restart needed.
 
 When the launch directory is not your project (common for a globally registered server), pass `--project <dir>` or set `GAFFER_PROJECT`. The flag takes precedence over the variable, and both override the working-directory search.
 

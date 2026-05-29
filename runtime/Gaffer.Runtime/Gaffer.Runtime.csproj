@@ -12,8 +12,9 @@
       invariant culture so framework strings (e.g. the JSON serializer's
       "NaN is not a valid JSON value") stay English regardless of the
       host machine's locale, and drop the ICU dependency from the native
-      binary. Gaffer's own code already formats and parses with
-      CultureInfo.InvariantCulture, so this only changes framework text.
+      binary. Gaffer's own number and date handling is culture-independent
+      already (explicit CultureInfo.InvariantCulture, or integer parsing /
+      formatting that never localizes), so this only changes framework text.
     -->
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>

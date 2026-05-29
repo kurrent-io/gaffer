@@ -182,6 +182,7 @@ func New(root string, cfg *config.Config, version string) *Server {
 	mcp.AddTool(s.mcp, stepOutTool, trackedTool(s, s.handleStepOut))
 	mcp.AddTool(s.mcp, listEventsTool, trackedTool(s, s.handleListEvents))
 	mcp.AddTool(s.mcp, infoTool, trackedTool(s, s.handleInfo))
+	mcp.AddTool(s.mcp, initTool, trackedTool(s, s.handleInit))
 	mcp.AddTool(s.mcp, versionTool, trackedTool(s, s.handleVersion))
 	s.registerResources()
 	s.registerPrompts()
@@ -200,8 +201,8 @@ func instructionsFor(cfg *config.Config) string {
 			"in the working directory, so the projection tools (list_projections, run, " +
 			"scaffold, debug, ...) are unavailable until one exists. The documentation is " +
 			"available now as resources: read projection-api, gotchas, examples, and quirks " +
-			"to learn the API. To work with projections, run `gaffer init` in the working " +
-			"directory or a parent; the server picks it up on the next tool call, no restart needed."
+			"to learn the API. To create a project, call the `init` tool; the projection " +
+			"tools then work on the next call, no restart needed."
 	}
 	return "Gaffer is a projection toolkit for KurrentDB. " +
 		"Read the projection-api and gotchas resources before writing projections. " +
@@ -329,14 +330,14 @@ func (s *Server) requireProject() *mcp.CallToolResult {
 func (s *Server) noProjectMessage() string {
 	if s.projectOverride != "" {
 		return fmt.Sprintf("no gaffer project found under %s (from --project / GAFFER_PROJECT). "+
-			"Point it at a directory containing gaffer.toml, or run `gaffer init` there.", s.projectOverride)
+			"Call the `init` tool to create one there, or point it at a directory containing gaffer.toml.", s.projectOverride)
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		cwd = "the working directory"
 	}
 	return fmt.Sprintf("no gaffer project found (searched upward from %s). "+
-		"Run `gaffer init` there, restart gaffer mcp from a directory containing gaffer.toml, "+
+		"Call the `init` tool to create one, restart gaffer mcp from a directory containing gaffer.toml, "+
 		"or pass --project / set GAFFER_PROJECT.", cwd)
 }
 

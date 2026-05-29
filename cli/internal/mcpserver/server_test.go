@@ -1198,3 +1198,66 @@ func TestProjectOverrideMissingNamesPathInError(t *testing.T) {
 		t.Errorf("expected error to name the override path and env var, got %q", msg)
 	}
 }
+
+// --- init tool ---
+
+func TestInitToolCreatesProjectInCwd(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	s := New("", nil, "test")
+
+	result := callTool(t, s, initTool, s.handleInit, initInput{})
+	if want := filepath.Join(dir, "gaffer.toml"); result["created"] != want {
+		t.Errorf("created = %v, want %s", result["created"], want)
+	}
+
+	// Lazy resolution picks up the freshly-created project on the next call.
+	listed := callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
+	if projs, ok := listed["projections"].([]any); !ok || len(projs) != 0 {
+		t.Fatalf("expected an empty projection list after init, got %v", listed["projections"])
+	}
+}
+
+func TestInitToolRefusesExistingProject(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	writeProject(t, dir)
+	s := New("", nil, "test")
+
+	if msg := callToolExpectError(t, s.handleInit, initInput{}); !strings.Contains(msg, "already exists") {
+		t.Errorf("expected an already-exists error, got %q", msg)
+	}
+}
+
+func TestInitToolRefusesProjectInParent(t *testing.T) {
+	parent := t.TempDir()
+	writeProject(t, parent)
+	sub := filepath.Join(parent, "nested")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(sub) // no gaffer.toml here, but one exists in the parent
+
+	s := New("", nil, "test")
+	if msg := callToolExpectError(t, s.handleInit, initInput{}); !strings.Contains(msg, parent) {
+		t.Errorf("expected refusal to name the parent project root %s, got %q", parent, msg)
+	}
+}
+
+func TestInitToolTargetsOverride(t *testing.T) {
+	target := t.TempDir() // where the project should land
+	t.Chdir(t.TempDir())  // cwd is elsewhere and empty
+
+	s, err := NewFromProjectRoot("test", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result := callTool(t, s, initTool, s.handleInit, initInput{})
+	if result["root"] != target {
+		t.Errorf("init root = %v, want override %s", result["root"], target)
+	}
+	if _, err := os.Stat(filepath.Join(target, "gaffer.toml")); err != nil {
+		t.Errorf("expected gaffer.toml at the override dir: %v", err)
+	}
+}

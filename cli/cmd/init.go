@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
-	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
@@ -37,17 +36,9 @@ func runInit() error {
 	if err != nil {
 		return err
 	}
-
-	configPath := project.ConfigPath(dir)
-	if _, err := os.Stat(configPath); err == nil {
-		return fmt.Errorf("gaffer.toml already exists in %s", dir)
-	}
-
-	cfg := &config.Config{EngineVersion: 2}
-	if err := config.Save(configPath, cfg); err != nil {
+	if _, err := config.InitProject(dir); err != nil {
 		return err
 	}
-
 	fmt.Println("Initialized gaffer project")
 	return nil
 }

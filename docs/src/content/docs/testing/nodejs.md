@@ -11,9 +11,36 @@ description: Drive KurrentDB projections from your test suite with @kurrent/proj
 npm install --save-dev @kurrent/projections-testing
 ```
 
-Requires Node.js 22 or later. `@kurrent/kurrentdb-client` is a peer dependency, needed only when subscribing to a live KurrentDB cluster from a test.
+`@kurrent/kurrentdb-client` is a peer dependency, needed only when subscribing to a live KurrentDB cluster from a test.
+
+## Requirements
+
+- **Node.js 22 or later**, enforced through the package's `engines` field.
+- **ESM.** The package is ESM-only, so your project needs `"type": "module"` in `package.json`.
+- **TypeScript 5.2 or later** if you use TypeScript. The API relies on `using` (explicit resource management) for automatic session cleanup.
+- A **`tsconfig.json`** with at least:
+  - `"target": "ES2022"` or later.
+  - `"lib": ["ES2022", "ESNext.Disposable"]`. The `ESNext.Disposable` entry is required for `using test = projection.test()`; without it TypeScript fails with a cryptic error about `Symbol.dispose` not existing rather than a missing-lib hint.
+  - `"moduleResolution": "Node16"`, `"NodeNext"`, or `"Bundler"`.
+
+No special test-runner configuration is needed; it works with vitest, jest, mocha, or `node --test` as-is.
 
 ## Quick start
+
+Given a projection that counts orders and sums their value:
+
+```javascript
+// projections/order-count.js
+fromAll().when({
+  $init: () => ({ count: 0, totalCents: 0 }),
+  OrderPlaced: (state, event) => ({
+    count: state.count + 1,
+    totalCents: state.totalCents + event.body.cents,
+  }),
+});
+```
+
+Load its source and run events through it:
 
 ```typescript
 import { createProjection } from "@kurrent/projections-testing";
@@ -80,7 +107,7 @@ Run the projection over events, yielding a `StepResult` after each one. Accepts:
 - `AsyncIterable<EventInput>` - async generators, client streams.
 - `KurrentDBClient` - subscribes to the appropriate streams based on the projection's declared source.
 
-`StepResult` is a discriminated union on `status`. Both shapes carry `event` and `status`. The `processed` shape adds `state`, `stateRaw`, `result`, `sharedState`, `emitted`, `logs`, and `diagnostics`. The `skipped` shape adds `reason` explaining why (`unhandled`, `non-json`, `link`, `no-partition`, `no-delete-handler`, `wrong-stream`). Guard before destructuring:
+`StepResult` is a discriminated union on `status` (see [Step results](#step-results) for the full field list). Guard before destructuring:
 
 ```typescript
 for (const result of projection.run(events)) {
@@ -139,6 +166,10 @@ await client.dispose();
 
 Breaking out of the loop disposes the subscription cleanly.
 
+:::caution[Connecting over TLS]
+When pointing at a TLS cluster with a self-signed or private-CA certificate, `?tlsVerifyCert=false` in the connection string is silently ignored by `@kurrent/kurrentdb-client`. Trust the certificate explicitly instead: pass `tlsCAFile=<path>` in the connection string, or set the `NODE_EXTRA_CA_CERTS` environment variable to the CA file.
+:::
+
 ### `projection.test()`
 
 Open an interactive test session for feeding events one at a time. Use this when you want to assert against intermediate state rather than only the final aggregate.
@@ -171,15 +202,15 @@ For projections that partition state (`foreachStream`, `partitionBy`), inspect e
 
 ```typescript
 test.getState("order-1"); // state for the order-1 partition
-test.getStateRaw("order-1"); // raw persisted state JSON, before parse (see Serialization quirks)
+test.getStateRaw("order-1"); // raw persisted state JSON, before parse (see Raw state and diagnostics)
 test.getState("order-2"); // state for the order-2 partition
 test.getSharedState(); // shared state (biState projections)
 test.getResult("order-1"); // result for order-1 (V1: post-transform, V2: post-handler state)
 ```
 
-#### Serialization quirks
+#### Raw state and diagnostics
 
-Some KurrentDB quirks only surface in how state is persisted, and `state` / `getState()` hide them by parsing the persisted JSON on read.
+Some KurrentDB quirks only surface in how state is persisted, and `state` / `getState()` hide them by parsing the persisted JSON on read (see also [State serialization](#state-serialization)).
 
 - **`step.diagnostics`** lists the quirks that fired while processing the event (empty when none; it can carry more than one). The motivating case is biState string slots: KurrentDB JSON-quotes a raw string written to a state slot (`compat.biState.stringSlot` for the main slot, `compat.biState.sharedStringSlot` for shared state), so `"hello"` persists as `"\"hello\""`.
 - **`step.stateRaw`** and **`getStateRaw(partition?)`** return the persisted state JSON string before `JSON.parse`, so you can assert against the double-quoted value the quirk produces.
@@ -211,6 +242,36 @@ import { systemEvents } from "@kurrent/projections-testing";
 test.feed(systemEvents.streamDeleted("order-1", 5));
 ```
 
+## Step results
+
+`run()` and `test().feed()` both yield a `StepResult`, a discriminated union on `status`. Narrow on `status` before reading the processed-only fields.
+
+A **`processed`** result (the handler ran) carries:
+
+| Field         | Description                                                                                                                              |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `state`       | Parsed projection state for the affected partition.                                                                                      |
+| `stateRaw`    | The persisted state JSON string before `JSON.parse`, or `null` when no state was produced. See [State serialization](#state-serialization). |
+| `result`      | The partition's result. V1: state after `transformBy`/`filterBy`, or `state` if no transform applies. V2: post-handler state; transforms are not invoked. |
+| `sharedState` | Shared state for biState projections; `undefined` otherwise.                                                                             |
+| `partition`   | The partition key that was updated. Absent for unpartitioned projections.                                                                |
+| `event`       | The input event, round-tripped verbatim, so you can assert against it.                                                                   |
+| `emitted`     | Events emitted during processing (`emit` / `linkTo`).                                                                                     |
+| `logs`        | Messages from `log()` calls.                                                                                                              |
+| `diagnostics` | Quirks that fired while processing this event, empty when none. See [State serialization](#state-serialization).                         |
+
+A **`skipped`** result (the event never reached the handler) carries the same `event` plus a `reason`: `unhandled`, `non-json`, `link`, `no-partition`, `no-delete-handler`, or `wrong-stream`.
+
+## State serialization
+
+Projection state is persisted as JSON by the same engine KurrentDB uses, so a few JavaScript values serialize in ways worth knowing when you assert against `state`:
+
+- **`BigInt`** serializes to a decimal string: `10n` persists as `"10"`, matching KurrentDB.
+- **`undefined`** object properties are dropped, exactly like `JSON.stringify`; in an array position `undefined` becomes `null`.
+- **`NaN` and `Infinity`** throw a `StateSerializationError`, because KurrentDB rejects them (the `compat.serialize.nonFinite` quirk).
+
+`state` and `getState()` hide the persisted form by parsing it on read. To assert against the raw JSON (including quirks like a biState string slot being double-quoted), read `stateRaw` / `getStateRaw()` and inspect `diagnostics` (see [Raw state and diagnostics](#raw-state-and-diagnostics)).
+
 ## Event input
 
 Three event shapes are accepted:
@@ -230,7 +291,9 @@ Three event shapes are accepted:
 
 For manual test events, `eventType` and `streamId` must be non-empty and `sequenceNumber` must be a non-negative integer, matching what KurrentDB can actually deliver to a handler.
 
-Events are matched against the projection's declared source: a `fromStream("a")` / `fromStreams` / `fromCategory` projection only processes events on streams it subscribes to, and others are skipped with `reason: "wrong-stream"` (mirroring KurrentDB delivery). `fromAll()` accepts every stream.'d events by the projection's declared source)
+The `created` timestamp on events from KurrentDB carries sub-millisecond precision: a 7-digit fractional second (.NET round-trip `"o"` format). Parse it with `new Date(event.created)` for assertions. Some strict ISO-8601 parsers reject the extra digits.
+
+Events are matched against the projection's declared source: a `fromStream("a")` / `fromStreams` / `fromCategory` projection only processes events on streams it subscribes to, and others are skipped with `reason: "wrong-stream"` (mirroring KurrentDB delivery). `fromAll()` accepts every stream.
 
 ## Errors
 

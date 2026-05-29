@@ -414,7 +414,7 @@ func (tw *textWriter) statsLine(stats engine.EventStats) {
 		}
 		tw.write("%s %s encountered\n", gold(formatNumber(len(codes))), noun)
 		for _, c := range codes {
-			tw.write("  %s\n", c)
+			tw.write("%s%s\n", tw.ind(), tw.styles.skipped.Render(c))
 		}
 	}
 }

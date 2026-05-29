@@ -1,14 +1,22 @@
 package cmd
 
 import (
+	"os"
+
 	"github.com/spf13/cobra"
 
 	"github.com/kurrent-io/gaffer/cli/internal/mcpserver"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
+// envProject pins the MCP server's project root, mirroring the
+// --project flag. The flag takes precedence when both are set.
+const envProject = "GAFFER_PROJECT"
+
 func newMCPCmd() *cobra.Command {
-	return &cobra.Command{
+	var projectDir string
+
+	cmd := &cobra.Command{
 		Use:         "mcp",
 		Short:       "Start an MCP server for AI agent integration",
 		Annotations: map[string]string{AnnotationOutput: OutputStructured},
@@ -19,7 +27,12 @@ func newMCPCmd() *cobra.Command {
 			tx := telemetry.BeginMCP(cmd.Context())
 			defer tx.End(cmd.Context())
 
-			srv, err := mcpserver.NewFromProjectRoot(Version)
+			projectOverride := projectDir
+			if projectOverride == "" {
+				projectOverride = os.Getenv(envProject)
+			}
+
+			srv, err := mcpserver.NewFromProjectRoot(Version, projectOverride)
 			if err != nil {
 				// Classify the project-load failure (no project /
 				// parse / validation) so the outcome is specific
@@ -68,4 +81,9 @@ func newMCPCmd() *cobra.Command {
 			return runErr
 		},
 	}
+
+	cmd.Flags().StringVar(&projectDir, "project", "",
+		"Project directory to use instead of searching from the working directory (also set via "+envProject+")")
+
+	return cmd
 }

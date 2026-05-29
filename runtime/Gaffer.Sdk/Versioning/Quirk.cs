@@ -5,7 +5,7 @@ namespace Gaffer.Sdk.Versioning;
 /// stable <see cref="Code"/>, a description, and an optional
 /// <see cref="FixedIn"/> version.
 /// <para>
-/// A quirk fires when the projection session's DB version is unset
+/// A quirk fires when the projection session's quirks version is unset
 /// (<c>null</c> = unversioned, "all quirks on") or earlier than the fix version.
 /// Always-present quirks (no upstream fix in flight) leave <see cref="FixedIn"/>
 /// as <c>null</c> so they fire in every configuration.

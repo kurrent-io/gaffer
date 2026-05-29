@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import readline from "node:readline";
+import crossSpawn from "cross-spawn";
 import * as v from "valibot";
 import stripAnsi from "strip-ansi";
 import { log } from "../output.js";
@@ -24,6 +25,10 @@ export class GafferProcess {
 	#proc: ChildProcess | null = null;
 	#onLine: LineHandler = () => {};
 	#onExit: ExitHandler = () => {};
+	// Guards #onExit so it fires at most once. A failed spawn emits
+	// 'error' (and may also emit 'close'); a normal run emits 'close'.
+	// Either way callers must see exactly one exit signal.
+	#exited = false;
 
 	constructor(argv: string[], options: ProcessOptions = {}) {
 		if (argv.length === 0) throw new Error("argv must not be empty");
@@ -42,7 +47,12 @@ export class GafferProcess {
 				(this.#cwd ? ` (cwd: ${this.#cwd})` : ""),
 		);
 
-		const proc = spawn(head, rest, {
+		// Routed through cross-spawn so the Windows PATHEXT lookup works:
+		// an npm-installed `gaffer` resolves to a `gaffer.cmd` shim, which
+		// Node's bare spawn (shell: false) won't find - it ENOENTs. cross-spawn
+		// re-routes .cmd/.bat through cmd.exe with proper arg quoting. Matches
+		// the LSP (lsp/client.ts) and discovery (discovery/cli.ts) spawn paths.
+		const proc = crossSpawn(head, rest, {
 			stdio: ["ignore", "pipe", "pipe"],
 			cwd: this.#cwd,
 			...(this.#env !== undefined && { env: this.#env }),
@@ -79,6 +89,19 @@ export class GafferProcess {
 			if (text) log(`[stderr] ${text}`);
 		});
 
+		// A spawn that never starts (ENOENT, EACCES, unresolvable
+		// gaffer.command) emits 'error', not 'close'. Without this handler
+		// the Node default would throw an unhandled error, and callers
+		// awaiting a message (waitForMessage) would never see an exit -
+		// they'd wait out the full timeout and report a misleading
+		// "Timeout waiting for ..." instead of the real failure.
+		proc.on("error", (err) => {
+			log(`Failed to spawn process: ${err.message}`);
+			if (this.#exited) return;
+			this.#exited = true;
+			this.#onExit(null);
+		});
+
 		// 'close' fires after stdout/stderr have been drained and parsed,
 		// not just after the process exits. Critical for the fatal_error
 		// path: the CLI prints a fatal_error JSON line then exits, and
@@ -86,6 +109,8 @@ export class GafferProcess {
 		// would get the exit event before the fatal_error one.
 		proc.on("close", (code) => {
 			log(`Process exited with code ${code}`);
+			if (this.#exited) return;
+			this.#exited = true;
 			this.#onExit(code);
 		});
 

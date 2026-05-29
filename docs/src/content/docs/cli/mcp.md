@@ -13,7 +13,7 @@ description: Connect gaffer's MCP server to Claude Code, Cursor, Continue, Claud
 - **`scaffold`**: create a new projection at an explicit path and register it in `gaffer.toml`.
 - **`validate`**: check a projection for compile errors and runtime gotchas.
 - **`run`** / **`stop`**: run a projection against a fixture or live stream, and stop a running session.
-- **`get_state`** / **`get_step`** / **`get_history`** / **`get_timeline`**: inspect projection state at any point.
+- **`get_state`** / **`get_step`** / **`get_history`** / **`get_timeline`**: inspect projection state at any point. `get_step`, `get_history`, and `get_timeline` also surface the runtime quirks that fired on each step, so the assistant can spot one and cross-reference its code against the `gaffer://docs/quirks` resource.
 - **`get_projection_info`**: return a projection's parsed structure, including sources, partition mode, emit declarations, and effective engine version.
 - **`list_projections`** / **`list_events`**: workspace navigation.
 - **`debug_continue`** / **`debug_step_over`** / **`debug_step_into`** / **`debug_step_out`** / **`evaluate`**: drive the DAP debugger from natural language.

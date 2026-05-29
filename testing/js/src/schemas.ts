@@ -17,7 +17,7 @@ export const TestEventSchema = v.object({
 	streamId: v.pipe(v.string(), v.nonEmpty("streamId must not be empty")),
 	sequenceNumber: v.pipe(
 		v.number(),
-		v.integer("sequenceNumber must be an integer"),
+		v.safeInteger("sequenceNumber must be a safe integer"),
 		v.minValue(0, "sequenceNumber must be >= 0"),
 	),
 	isJson: v.boolean(),

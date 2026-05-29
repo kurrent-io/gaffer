@@ -113,6 +113,14 @@ describe("TestEventSchema", () => {
 		});
 		expect(result.success).toBe(false);
 	});
+
+	it("rejects sequenceNumber above the safe integer range", () => {
+		const result = v.safeParse(TestEventSchema, {
+			...base,
+			sequenceNumber: Number.MAX_SAFE_INTEGER + 1,
+		});
+		expect(result.success).toBe(false);
+	});
 });
 
 describe("EventInputSchema", () => {

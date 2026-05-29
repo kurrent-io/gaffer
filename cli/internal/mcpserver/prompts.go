@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -33,6 +34,10 @@ func (s *Server) registerPrompts() {
 func (s *Server) handleWriteProjectionPrompt(_ context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	requirements := req.Params.Arguments["requirements"]
 
+	// Best-effort: the docs render with or without a project. When
+	// one is loaded, fold in its config and the v1 reference.
+	cfg, root, _ := s.project()
+
 	apiRef := mustReadEmbed("resources/projection-api.md")
 	gotchas := mustReadEmbed("resources/gotchas.md")
 	examples := mustReadEmbed("resources/examples.md")
@@ -51,10 +56,12 @@ func (s *Server) handleWriteProjectionPrompt(_ context.Context, req *mcp.GetProm
 	sb.WriteString("6. Call `get_timeline` to scan results, `get_step` to inspect specific events\n")
 	sb.WriteString("7. Iterate until the output is correct\n\n")
 
-	if configData, err := os.ReadFile(project.ConfigPath(s.root)); err == nil {
-		sb.WriteString("## Project config\n\n```toml\n")
-		sb.Write(configData)
-		sb.WriteString("```\n\n")
+	if cfg != nil {
+		if configData, err := os.ReadFile(project.ConfigPath(root)); err == nil {
+			sb.WriteString("## Project config\n\n```toml\n")
+			sb.Write(configData)
+			sb.WriteString("```\n\n")
+		}
 	}
 
 	sb.WriteString("---\n\n")
@@ -64,7 +71,7 @@ func (s *Server) handleWriteProjectionPrompt(_ context.Context, req *mcp.GetProm
 	sb.WriteString("\n\n---\n\n")
 	sb.Write(examples)
 
-	if s.hasV1Projections() {
+	if cfg != nil && hasV1Projections(cfg) {
 		sb.WriteString("\n\n---\n\n")
 		sb.Write(mustReadEmbed("resources/v1-v2-differences.md"))
 	}
@@ -81,12 +88,20 @@ func (s *Server) handleFixProjectionPrompt(_ context.Context, req *mcp.GetPrompt
 	name := req.Params.Arguments["name"]
 	problem := req.Params.Arguments["problem"]
 
-	proj := s.cfg.FindProjection(name)
+	cfg, root, err := s.project()
+	if err != nil {
+		return nil, fmt.Errorf("loading gaffer.toml: %w", err)
+	}
+	if cfg == nil {
+		return nil, fmt.Errorf("no gaffer project found - fix-projection needs a project; run gaffer init first")
+	}
+
+	proj := cfg.FindProjection(name)
 	if proj == nil {
 		return nil, fmt.Errorf("projection %q not found in gaffer.toml", name)
 	}
 
-	source, err := engine.ReadSource(s.root, proj.Entry)
+	source, err := engine.ReadSource(root, proj.Entry)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +133,7 @@ func (s *Server) handleFixProjectionPrompt(_ context.Context, req *mcp.GetPrompt
 	sb.WriteString("\n\n---\n\n")
 	sb.Write(gotchas)
 
-	if s.cfg.EffectiveEngineVersion(proj) == 1 {
+	if cfg.EffectiveEngineVersion(proj) == 1 {
 		sb.WriteString("\n\n---\n\n")
 		sb.Write(mustReadEmbed("resources/v1-v2-differences.md"))
 	}
@@ -131,9 +146,9 @@ func (s *Server) handleFixProjectionPrompt(_ context.Context, req *mcp.GetPrompt
 	}, nil
 }
 
-func (s *Server) hasV1Projections() bool {
-	for _, proj := range s.cfg.Projection {
-		if s.cfg.EffectiveEngineVersion(&proj) == 1 {
+func hasV1Projections(cfg *config.Config) bool {
+	for _, proj := range cfg.Projection {
+		if cfg.EffectiveEngineVersion(&proj) == 1 {
 			return true
 		}
 	}

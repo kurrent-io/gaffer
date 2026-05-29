@@ -28,6 +28,10 @@ type infoInput struct {
 }
 
 func (s *Server) handleInfo(_ context.Context, _ *mcp.CallToolRequest, in infoInput) (*mcp.CallToolResult, any, error) {
+	if r := s.requireProject(); r != nil {
+		return r, nil, nil
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

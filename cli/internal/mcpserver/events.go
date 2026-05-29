@@ -24,6 +24,10 @@ type listEventsInput struct {
 }
 
 func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, input listEventsInput) (*mcp.CallToolResult, any, error) {
+	if r := s.requireProject(); r != nil {
+		return r, nil, nil
+	}
+
 	proj := s.cfg.FindProjection(input.Name)
 	if proj == nil {
 		return toolError("projection %q not found in gaffer.toml", input.Name), nil, nil

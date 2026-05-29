@@ -955,3 +955,147 @@ func TestVersion(t *testing.T) {
 		t.Errorf("expected version=test, got %v", result["version"])
 	}
 }
+
+// --- Project-less startup ---
+
+// newProjectlessServer builds a server with no project and chdirs to
+// an empty temp dir so the lazy cwd walk finds no gaffer.toml above
+// it - the server is genuinely project-less.
+func newProjectlessServer(t *testing.T) *Server {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	return New("", nil, "test")
+}
+
+func TestInstructionsFor(t *testing.T) {
+	if got := instructionsFor(&config.Config{}); !strings.Contains(got, "list_projections to see what exists") {
+		t.Errorf("project instructions missing workflow text: %q", got)
+	}
+	if got := instructionsFor(nil); !strings.Contains(got, "No gaffer project is loaded") {
+		t.Errorf("project-less instructions missing no-project text: %q", got)
+	}
+}
+
+func TestProjectlessProjectToolsGated(t *testing.T) {
+	s := newProjectlessServer(t)
+
+	const want = "no gaffer project found"
+	checks := []struct {
+		name string
+		msg  string
+	}{
+		{"list_projections", callToolExpectError(t, s.handleListProjections, listProjectionsInput{})},
+		{"validate", callToolExpectError(t, s.handleValidate, validateInput{Name: "x"})},
+		{"info", callToolExpectError(t, s.handleInfo, infoInput{})},
+		{"scaffold", callToolExpectError(t, s.handleScaffold, scaffoldInput{Path: "projections/x.js"})},
+		{"run", callToolExpectError(t, s.handleRun, runInput{Name: "x"})},
+		{"list_events", callToolExpectError(t, s.handleListEvents, listEventsInput{Name: "x"})},
+	}
+	for _, c := range checks {
+		if !strings.Contains(c.msg, want) {
+			t.Errorf("%s: got %q, want substring %q", c.name, c.msg, want)
+		}
+	}
+}
+
+func TestProjectlessVersionWorks(t *testing.T) {
+	s := newProjectlessServer(t)
+	result := callTool(t, s, versionTool, s.handleVersion, versionInput{})
+	if result["version"] != "test" {
+		t.Errorf("expected version=test, got %v", result["version"])
+	}
+}
+
+func TestProjectlessConfigResourceNotFound(t *testing.T) {
+	s := newProjectlessServer(t)
+	_, err := s.handleConfigResource(context.Background(), &mcp.ReadResourceRequest{
+		Params: &mcp.ReadResourceParams{URI: "gaffer://project/config"},
+	})
+	if err == nil {
+		t.Fatal("expected ResourceNotFound for project-less config resource, got nil")
+	}
+}
+
+func TestProjectlessDocsResourceWorks(t *testing.T) {
+	_ = newProjectlessServer(t)
+	handler := staticResource("resources/projection-api.md")
+	result, err := handler(context.Background(), &mcp.ReadResourceRequest{
+		Params: &mcp.ReadResourceParams{URI: "gaffer://docs/projection-api"},
+	})
+	if err != nil {
+		t.Fatalf("docs resource should work without a project: %v", err)
+	}
+	if len(result.Contents) != 1 || result.Contents[0].Text == "" {
+		t.Error("expected non-empty projection-api doc content")
+	}
+}
+
+// TestProjectlessLazyResolveAfterInit covers the mid-session pickup: a
+// project-less server resolves the project on the next tool call once a
+// gaffer.toml appears in the cwd, with no restart.
+func TestProjectlessLazyResolveAfterInit(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	s := New("", nil, "test")
+
+	if msg := callToolExpectError(t, s.handleListProjections, listProjectionsInput{}); !strings.Contains(msg, "no gaffer project found") {
+		t.Fatalf("expected gating before init, got %q", msg)
+	}
+
+	cfg := &config.Config{
+		EngineVersion: 2,
+		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
+	}
+	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	result := callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
+	projs, ok := result["projections"].([]any)
+	if !ok || len(projs) != 1 {
+		t.Fatalf("expected 1 projection after init, got %v", result["projections"])
+	}
+}
+
+// TestProjectlessLazyResolveCaches confirms resolution is a one-time
+// transition: once resolved, removing the gaffer.toml does not
+// un-resolve the server (the cached cfg is reused).
+func TestProjectlessLazyResolveCaches(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	s := New("", nil, "test")
+
+	cfgPath := filepath.Join(dir, "gaffer.toml")
+	cfg := &config.Config{
+		EngineVersion: 2,
+		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
+	}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	_ = callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
+
+	if err := os.Remove(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+	result := callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
+	if projs, ok := result["projections"].([]any); !ok || len(projs) != 1 {
+		t.Fatalf("expected cached resolution to survive file removal, got %v", result["projections"])
+	}
+}
+
+// TestProjectlessInvalidManifestSurfaces confirms a gaffer.toml that
+// exists but fails to load is surfaced (not treated as "no project"),
+// and is not cached, so a fix is picked up on retry.
+func TestProjectlessInvalidManifestSurfaces(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	s := New("", nil, "test")
+
+	if err := os.WriteFile(filepath.Join(dir, "gaffer.toml"), []byte("engine_version = 5\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if msg := callToolExpectError(t, s.handleListProjections, listProjectionsInput{}); !strings.Contains(msg, "loading gaffer.toml") {
+		t.Errorf("expected manifest load error, got %q", msg)
+	}
+}

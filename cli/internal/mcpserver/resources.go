@@ -117,7 +117,12 @@ func renderQuirksMarkdown(quirks []gafferruntime.KnownQuirk) string {
 }
 
 func (s *Server) handleConfigResource(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-	data, err := os.ReadFile(project.ConfigPath(s.root))
+	cfg, root, err := s.project()
+	if err != nil || cfg == nil {
+		return nil, mcp.ResourceNotFoundError(req.Params.URI)
+	}
+
+	data, err := os.ReadFile(project.ConfigPath(root))
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}

@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 
@@ -47,6 +48,16 @@ type Server struct {
 
 	mu      sync.Mutex
 	session *activeSession
+
+	// projMu guards the lazy nil->resolved transition of cfg/root.
+	// A server started outside a project (NewFromProjectRoot found
+	// no gaffer.toml) begins with cfg==nil and resolves on the first
+	// project-dependent tool call, so a `gaffer init` mid-session is
+	// picked up without a restart. cfg/root are written at most once;
+	// every reader goes through project()/requireProject() first, so
+	// the projMu release/acquire gives the happens-before that lets
+	// handlers read the fields directly afterwards.
+	projMu sync.Mutex
 
 	stats serverStats
 
@@ -144,12 +155,7 @@ func New(root string, cfg *config.Config, version string) *Server {
 			Version: version,
 		},
 		&mcp.ServerOptions{
-			Instructions: "Gaffer is a projection toolkit for KurrentDB. " +
-				"Read the projection-api and gotchas resources before writing projections. " +
-				"Workflow: list_projections to see what exists, get_projection_info to inspect a single one, " +
-				"scaffold to create new ones, run with fixture events to test, " +
-				"get_timeline/get_step to inspect results, debug with break_at to pause and " +
-				"evaluate expressions. Each run replaces the previous session.",
+			Instructions: instructionsFor(cfg),
 		},
 	)
 
@@ -176,10 +182,40 @@ func New(root string, cfg *config.Config, version string) *Server {
 	return s
 }
 
+// instructionsFor picks the MCP initialize instructions. They're
+// fixed for the session (the protocol sends them once), so they
+// describe the startup state: a project-less server points the agent
+// at the docs resources and how to get a project, since the
+// projection tools error until one exists.
+func instructionsFor(cfg *config.Config) string {
+	if cfg == nil {
+		return "Gaffer is a projection toolkit for KurrentDB. No gaffer project is loaded " +
+			"in the working directory, so the projection tools (list_projections, run, " +
+			"scaffold, debug, ...) are unavailable until one exists. The documentation is " +
+			"available now as resources: read projection-api, gotchas, examples, and quirks " +
+			"to learn the API. To work with projections, run `gaffer init` in the working " +
+			"directory or a parent; the server picks it up on the next tool call, no restart needed."
+	}
+	return "Gaffer is a projection toolkit for KurrentDB. " +
+		"Read the projection-api and gotchas resources before writing projections. " +
+		"Workflow: list_projections to see what exists, get_projection_info to inspect a single one, " +
+		"scaffold to create new ones, run with fixture events to test, " +
+		"get_timeline/get_step to inspect results, debug with break_at to pause and " +
+		"evaluate expressions. Each run replaces the previous session."
+}
+
+// NewFromProjectRoot builds the server for `gaffer mcp`. When no
+// gaffer.toml is found walking up from the cwd, it starts project-less
+// (cfg==nil) rather than failing, so the server stays launchable from
+// anywhere - the docs resources and get_version still work, and
+// project-dependent tools resolve the project lazily on first use (see
+// project()). A gaffer.toml that exists but fails to parse/validate
+// still surfaces as a startup error: that's a real problem the user
+// wants to see, not a missing project.
 func NewFromProjectRoot(version string) (*Server, error) {
 	root := project.FindRoot()
 	if root == "" {
-		return nil, project.ErrNotInProject
+		return New("", nil, version), nil
 	}
 
 	cfg, err := config.Load(project.ConfigPath(root))
@@ -188,6 +224,50 @@ func NewFromProjectRoot(version string) (*Server, error) {
 	}
 
 	return New(root, cfg, version), nil
+}
+
+// project resolves and caches the project config, returning it with
+// the root. A nil config with a nil error means no project was found
+// (walking up from the cwd); a non-nil error means a gaffer.toml
+// exists but failed to load. Safe to call from any handler goroutine:
+// the resolve is a one-time nil->set transition under projMu, so
+// callers that read cfg/root after a successful resolve see a stable
+// value.
+func (s *Server) project() (*config.Config, string, error) {
+	s.projMu.Lock()
+	defer s.projMu.Unlock()
+	if s.cfg != nil {
+		return s.cfg, s.root, nil
+	}
+
+	root := project.FindRoot()
+	if root == "" {
+		return nil, "", nil
+	}
+	cfg, err := config.Load(project.ConfigPath(root))
+	if err != nil {
+		return nil, "", err
+	}
+	s.root, s.cfg = root, cfg
+	return cfg, root, nil
+}
+
+// requireProject is the tool-handler gate for project-dependent tools.
+// It resolves the project (lazily, on first call) and returns nil when
+// one is available, or a tool-error result describing how to get a
+// project. Mirrors requireSession. Call it before touching s.cfg /
+// s.root; the returned result is the tool's response when non-nil.
+func (s *Server) requireProject() *mcp.CallToolResult {
+	cfg, _, err := s.project()
+	if err != nil {
+		return toolError("loading gaffer.toml: %v", err)
+	}
+	if cfg == nil {
+		cwd, _ := os.Getwd()
+		return toolError("no gaffer project found (searched upward from %s). "+
+			"Run `gaffer init` there, or restart gaffer mcp from a directory containing gaffer.toml.", cwd)
+	}
+	return nil
 }
 
 func (s *Server) Run(ctx context.Context) error {

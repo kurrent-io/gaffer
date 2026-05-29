@@ -7,6 +7,15 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PublishAot>true</PublishAot>
     <IsAotCompatible>true</IsAotCompatible>
+    <!--
+      Pin error messages and culture-sensitive operations to the
+      invariant culture so framework strings (e.g. the JSON serializer's
+      "NaN is not a valid JSON value") stay English regardless of the
+      host machine's locale, and drop the ICU dependency from the native
+      binary. Gaffer's own code already formats and parses with
+      CultureInfo.InvariantCulture, so this only changes framework text.
+    -->
+    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>

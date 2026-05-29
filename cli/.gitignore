@@ -1,5 +1,12 @@
 gaffer
 
+# Runtime shared library co-located beside the binary by release
+# builds (build-release links with a co-location-only rpath; dev builds
+# use a build-dir rpath and don't drop it here).
+Gaffer.Runtime.so
+Gaffer.Runtime.dylib
+Gaffer.Runtime.dll
+
 # Build-time copies of canonical files. internal/mcpserver/resources/
 # telemetry-info.gen.md is `cp TELEMETRY.md` produced by the
 # `_resources` recipe so the MCP resource always matches what the

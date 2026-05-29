@@ -252,6 +252,21 @@ func (s *Server) project() (*config.Config, string, error) {
 	return cfg, root, nil
 }
 
+// projectRoot returns the root the server already knows (set at
+// construction or by a prior successful resolve), else one found by
+// walking up from the cwd. Unlike project(), it does not parse or
+// validate gaffer.toml - the config resource uses it so it can surface
+// the manifest even when the manifest fails to load.
+func (s *Server) projectRoot() string {
+	s.projMu.Lock()
+	root := s.root
+	s.projMu.Unlock()
+	if root != "" {
+		return root
+	}
+	return project.FindRoot()
+}
+
 // requireProject is the tool-handler gate for project-dependent tools.
 // It resolves the project (lazily, on first call) and returns nil when
 // one is available, or a tool-error result describing how to get a
@@ -263,7 +278,10 @@ func (s *Server) requireProject() *mcp.CallToolResult {
 		return toolError("loading gaffer.toml: %v", err)
 	}
 	if cfg == nil {
-		cwd, _ := os.Getwd()
+		cwd, err := os.Getwd()
+		if err != nil {
+			cwd = "the working directory"
+		}
 		return toolError("no gaffer project found (searched upward from %s). "+
 			"Run `gaffer init` there, or restart gaffer mcp from a directory containing gaffer.toml.", cwd)
 	}

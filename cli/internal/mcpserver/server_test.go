@@ -1099,3 +1099,27 @@ func TestProjectlessInvalidManifestSurfaces(t *testing.T) {
 		t.Errorf("expected manifest load error, got %q", msg)
 	}
 }
+
+// TestConfigResourceReadsInvalidManifest confirms the config resource
+// raw-reads gaffer.toml even when it fails to parse/validate - inspecting
+// a broken manifest is exactly when the resource is useful.
+func TestConfigResourceReadsInvalidManifest(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	s := New("", nil, "test")
+
+	raw := "engine_version = 5\n# present but invalid\n"
+	if err := os.WriteFile(filepath.Join(dir, "gaffer.toml"), []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := s.handleConfigResource(context.Background(), &mcp.ReadResourceRequest{
+		Params: &mcp.ReadResourceParams{URI: "gaffer://project/config"},
+	})
+	if err != nil {
+		t.Fatalf("config resource should read a present-but-invalid manifest: %v", err)
+	}
+	if len(result.Contents) != 1 || !strings.Contains(result.Contents[0].Text, "engine_version = 5") {
+		t.Errorf("expected raw manifest content, got %v", result.Contents)
+	}
+}

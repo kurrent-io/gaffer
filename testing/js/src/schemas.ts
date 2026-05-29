@@ -87,8 +87,16 @@ export function parseEventInput(input: EventInput): ParsedEventInput {
 		if ("event" in input) return v.parse(ResolvedEventSchema, input);
 		if ("type" in input) return v.parse(RecordedEventSchema, input);
 	}
+	// JSON.stringify throws on BigInt / circular input, so guard it: the
+	// friendly error must never be replaced by a cryptic serializer TypeError.
+	let shape: string;
+	try {
+		shape = JSON.stringify(input) ?? String(input);
+	} catch {
+		shape = Object.prototype.toString.call(input);
+	}
 	throw new Error(
-		`Unrecognized event shape: ${JSON.stringify(input)}. Expected a TestEvent (eventType), a KurrentDB RecordedEvent (type), or a ResolvedEvent (event).`,
+		`Unrecognized event shape: ${shape}. Expected a TestEvent (eventType), a KurrentDB RecordedEvent (type), or a ResolvedEvent (event).`,
 	);
 }
 

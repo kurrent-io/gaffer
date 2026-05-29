@@ -414,6 +414,14 @@ describe("normalizeEvent", () => {
 		).toThrow(/Unrecognized event shape/);
 	});
 
+	it("still reports a friendly error when the bad input has a BigInt", () => {
+		// JSON.stringify throws on BigInt; the fallback must not surface that
+		// as a cryptic TypeError instead of the friendly message.
+		expect(() => parseEventInput({ foo: 1n } as unknown as EventInput)).toThrow(
+			/Unrecognized event shape/,
+		);
+	});
+
 	it("names the offending field on a near-miss TestEvent", () => {
 		// Has eventType, so it parses as a TestEvent; the empty value is
 		// reported by name instead of the union's "Expected Object" noise.

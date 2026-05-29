@@ -159,13 +159,22 @@ func Parse(data []byte) (*Config, error) {
 	return &cfg, nil
 }
 
-// Save writes the config to a gaffer.toml file.
-func Save(path string, cfg *Config) error {
+// Marshal encodes the config to TOML bytes.
+func Marshal(cfg *Config) ([]byte, error) {
 	var sb strings.Builder
 	if err := toml.NewEncoder(&sb).Encode(cfg); err != nil {
-		return fmt.Errorf("encoding config: %w", err)
+		return nil, fmt.Errorf("encoding config: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(sb.String()), 0o644); err != nil {
+	return []byte(sb.String()), nil
+}
+
+// Save writes the config to a gaffer.toml file.
+func Save(path string, cfg *Config) error {
+	data, err := Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
 	return nil

@@ -21,9 +21,9 @@ type initInput struct{}
 
 func (s *Server) handleInit(_ context.Context, _ *mcp.CallToolRequest, _ initInput) (*mcp.CallToolResult, any, error) {
 	// No lock needed: projectOverride is immutable after construction,
-	// and the gaffer.toml write is the serialization point. A concurrent
-	// resolve or a second init at most yields a benign "already exists"
-	// error, never a bad write.
+	// and InitProject's O_EXCL create is the serialization point - a
+	// second concurrent init gets the already-exists error rather than
+	// clobbering the first.
 	//
 	// Refuse if a project is already in scope (walking up from the
 	// override or cwd), naming where it was found - init exists to

@@ -3,6 +3,8 @@ package config
 import (
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -38,5 +40,27 @@ func TestInitProjectRefusesExisting(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestInitProjectConcurrent(t *testing.T) {
+	dir := t.TempDir()
+
+	const n = 8
+	var wg sync.WaitGroup
+	var successes atomic.Int32
+	wg.Add(n)
+	for range n {
+		go func() {
+			defer wg.Done()
+			if _, err := InitProject(dir); err == nil {
+				successes.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := successes.Load(); got != 1 {
+		t.Fatalf("expected exactly one successful init, got %d", got)
 	}
 }

@@ -13,9 +13,13 @@ const jsonSafe = v.check((value: unknown) => {
 const jsonData = v.pipe(v.any(), jsonSafe);
 
 export const TestEventSchema = v.object({
-	eventType: v.string(),
-	streamId: v.string(),
-	sequenceNumber: v.number(),
+	eventType: v.pipe(v.string(), v.nonEmpty("eventType must not be empty")),
+	streamId: v.pipe(v.string(), v.nonEmpty("streamId must not be empty")),
+	sequenceNumber: v.pipe(
+		v.number(),
+		v.integer("sequenceNumber must be an integer"),
+		v.minValue(0, "sequenceNumber must be >= 0"),
+	),
 	isJson: v.boolean(),
 	data: v.optional(jsonData),
 	metadata: v.optional(jsonData),

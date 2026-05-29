@@ -186,6 +186,8 @@ Three event shapes are accepted:
 
 `data` and `metadata` accept objects (auto-stringified to JSON) or strings (passed through).
 
+For manual test events, `eventType` and `streamId` must be non-empty and `sequenceNumber` must be a non-negative integer, matching what KurrentDB can actually deliver to a handler.
+
 ## Errors
 
 Errors from the runtime propagate as typed `ProjectionError` subclasses with structured fields and formatted messages:

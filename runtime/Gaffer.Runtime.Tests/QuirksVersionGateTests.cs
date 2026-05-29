@@ -3,7 +3,7 @@ using Gaffer.Sdk.Versioning;
 
 namespace Gaffer.Runtime.Tests;
 
-public class DbVersionGateTests {
+public class QuirksVersionGateTests {
 	private const string TrivialProjection = "fromAll().when({ $any: function (s, e) { return s; } });";
 
 	[Fact]
@@ -20,7 +20,7 @@ public class DbVersionGateTests {
 			TrivialProjection,
 			new ProjectionSessionOptions {
 				EngineVersion = ProjectionVersion.V2,
-				DbVersion = new KurrentDbVersion(26, 1, 0),
+				QuirksVersion = new KurrentDbVersion(26, 1, 0),
 			});
 	}
 
@@ -30,7 +30,7 @@ public class DbVersionGateTests {
 			TrivialProjection,
 			new ProjectionSessionOptions {
 				EngineVersion = ProjectionVersion.V2,
-				DbVersion = new KurrentDbVersion(26, 1, 1),
+				QuirksVersion = new KurrentDbVersion(26, 1, 1),
 			});
 	}
 
@@ -43,14 +43,14 @@ public class DbVersionGateTests {
 				TrivialProjection,
 				new ProjectionSessionOptions {
 					EngineVersion = ProjectionVersion.V2,
-					DbVersion = new KurrentDbVersion(26, 0, 0),
+					QuirksVersion = new KurrentDbVersion(26, 0, 0),
 				}));
 
 		Assert.Contains("V2", ex.Message);
 		Assert.Contains("26.1.0", ex.Message);
-		// Field name matches the JSON option key, matching ParseDbVersion's
+		// Field name matches the JSON option key, matching ParseQuirksVersion's
 		// other validation throws and the bindings' field-name contract.
-		Assert.Equal("dbVersion", ex.Field);
+		Assert.Equal("quirksVersion", ex.Field);
 	}
 
 	[Fact]
@@ -59,14 +59,14 @@ public class DbVersionGateTests {
 			TrivialProjection,
 			new ProjectionSessionOptions {
 				EngineVersion = ProjectionVersion.V1,
-				DbVersion = new KurrentDbVersion(25, 0, 0),
+				QuirksVersion = new KurrentDbVersion(25, 0, 0),
 			});
 
 		using var s2 = new ProjectionSession(
 			TrivialProjection,
 			new ProjectionSessionOptions {
 				EngineVersion = ProjectionVersion.V1,
-				DbVersion = new KurrentDbVersion(27, 0, 0),
+				QuirksVersion = new KurrentDbVersion(27, 0, 0),
 			});
 	}
 

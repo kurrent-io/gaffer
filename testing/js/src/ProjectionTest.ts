@@ -94,12 +94,12 @@ export interface ProjectionOptions {
 	/** Projection engine version. Required. */
 	engineVersion: 1 | 2;
 	/**
-	 * Target KurrentDB version (`MAJOR.MINOR.PATCH`, e.g. `"26.1.0"`). Unset
-	 * means "unversioned": gaffer matches every known KurrentDB quirk. Set
-	 * to a specific version to opt out of bugs that have been fixed upstream
-	 * as of that version.
+	 * Target KurrentDB version (`MAJOR.MINOR.PATCH`, e.g. `"26.1.0"`).
+	 * Unset means "unversioned": gaffer reproduces every known KurrentDB quirk.
+	 * Set a version to turn off quirks that have been fixed upstream as of that
+	 * version.
 	 */
-	dbVersion?: string;
+	quirksVersion?: string;
 	/** Per-projection settings. */
 	config?: ProjectionConfig;
 	/** Database-wide settings. */
@@ -191,8 +191,8 @@ export class ProjectionTest<
 
 export function toSessionOptions(options: ProjectionOptions): SessionOptions {
 	const out: SessionOptions = { engineVersion: options.engineVersion };
-	if (options.dbVersion !== undefined) {
-		out.dbVersion = options.dbVersion;
+	if (options.quirksVersion !== undefined) {
+		out.quirksVersion = options.quirksVersion;
 	}
 	const executionTimeoutMs =
 		options.config?.executionTimeoutMs ??

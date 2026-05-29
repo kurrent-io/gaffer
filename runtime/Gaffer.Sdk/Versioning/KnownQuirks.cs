@@ -1,16 +1,16 @@
 namespace Gaffer.Sdk.Versioning;
 
 /// <summary>
-/// Registry of every KurrentDB bug gaffer reproduces. Adding a new bug means
-/// adding an entry here and gating the buggy code path on
-/// <c>bug.FiresAt(dbVersion)</c>.
+/// Registry of every KurrentDB quirk gaffer reproduces. Adding a new quirk means
+/// adding an entry here and gating the quirky code path on
+/// <c>quirk.FiresAt(quirksVersion)</c>.
 /// <para>
 /// File references in descriptions point at upstream
 /// <c>KurrentDB.Projections.JavaScript/Services/Interpreted/JintProjectionStateHandler.cs</c>
 /// at tag <c>v26.1.0</c>.
 /// </para>
 /// </summary>
-public static class KnownBugs {
+public static class KnownQuirks {
 	/// <summary>
 	/// <c>linkStreamTo</c> with metadata (3+ args) crashes in upstream because
 	/// the metadata branch reads <c>parameters.At(4)</c> while the arity check
@@ -19,21 +19,21 @@ public static class KnownBugs {
 	/// Net upstream behaviour: 2-arg <c>linkStreamTo(s, l)</c> works; 3-arg
 	/// <c>linkStreamTo(s, l, md)</c> throws. Metadata is never captured.
 	/// </summary>
-	public static readonly Bug LinkStreamToOutOfBoundsParameters = new() {
+	public static readonly Quirk LinkStreamToOutOfBoundsParameters = new() {
 		Code = "compat.linkStreamTo.outOfBoundsParameters",
 		Description = "linkStreamTo with metadata (3+ args) crashes; metadata is never captured.",
 		FixedIn = null, // no upstream PR in flight
 	};
 
 	/// <summary>
-	/// Multi-param <c>log()</c> has stacked bugs in upstream: separator gate
+	/// Multi-param <c>log()</c> has stacked quirks in upstream: separator gate
 	/// is <c>i &gt; 1</c> instead of <c>&gt; 0</c>; separator string is
 	/// <c>" ,"</c> (space-comma); primitives in the multi-param branch are
 	/// logged directly inside the loop instead of appended to the buffer.
 	/// Net behaviour: <c>log("a", "b", "c")</c> emits three separate log
 	/// lines; <c>log({a:1}, {b:2})</c> emits one line <c>"{...} ,{...}"</c>.
 	/// </summary>
-	public static readonly Bug LogMultiParam = new() {
+	public static readonly Quirk LogMultiParam = new() {
 		Code = "compat.log.multiParam",
 		Description = "Multi-param log() emits primitives as separate lines and uses ' ,' separator for objects.",
 		FixedIn = null, // no upstream PR
@@ -45,7 +45,7 @@ public static class KnownBugs {
 	/// upstream <c>EnsureBody</c> performs <c>(ObjectInstance)body</c> without
 	/// checking the parsed type. Fixed in PR #5610 by removing the cast.
 	/// </summary>
-	public static readonly Bug EventBodyCast = new() {
+	public static readonly Quirk EventBodyCast = new() {
 		Code = "compat.event.bodyCast",
 		Description = "Accessing event.body throws InvalidCastException for non-object event bodies (null, primitive).",
 		FixedIn = null, // PR #5610 open, expected 26.1.1
@@ -58,7 +58,7 @@ public static class KnownBugs {
 	/// the string-passthrough branch is unreachable for biState. Fixed in PR
 	/// #5610 by checking the inner element.
 	/// </summary>
-	public static readonly Bug BiStateStringSlot = new() {
+	public static readonly Quirk BiStateStringSlot = new() {
 		Code = "compat.biState.stringSlot",
 		Description = "BiState state JSON-quotes raw string values in slot 0 instead of passing them through.",
 		FixedIn = null, // PR #5610
@@ -71,14 +71,14 @@ public static class KnownBugs {
 	/// PR #5610 by guarding with <c>double.IsFinite</c>; non-finite values
 	/// then serialize as JSON <c>null</c>, matching <c>JSON.stringify</c>.
 	/// </summary>
-	public static readonly Bug SerializeNonFinite = new() {
+	public static readonly Quirk SerializeNonFinite = new() {
 		Code = "compat.serialize.nonFinite",
 		Description = "JSON serializer throws ArgumentException on NaN/Infinity instead of writing null.",
 		FixedIn = null, // PR #5610
 	};
 
-	/// <summary>All known bugs, in registry order. Useful for enumeration in tests, MCP resources, and docs.</summary>
-	public static readonly IReadOnlyList<Bug> All = new[] {
+	/// <summary>All known quirks, in registry order. Useful for enumeration in tests, MCP resources, and docs.</summary>
+	public static readonly IReadOnlyList<Quirk> All = new[] {
 		LinkStreamToOutOfBoundsParameters,
 		LogMultiParam,
 		EventBodyCast,

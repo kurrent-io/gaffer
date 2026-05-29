@@ -6,35 +6,35 @@ namespace Gaffer.Runtime.Tests;
 
 /// <summary>
 /// Pins the JSON wire format that bindings + CLI rely on:
-/// - options going in (dbVersion accepted, parsed, validated)
+/// - options going in (quirksVersion accepted, parsed, validated)
 /// - errors coming out (compatCode appears when set)
-/// - known-bugs registry export (one entry per KnownBugs.All)
+/// - known-quirks registry export (one entry per KnownQuirks.All)
 /// </summary>
 public class NativeExportsWireFormatTests {
-	// -- ParseOptions: dbVersion --
+	// -- ParseOptions: quirksVersion --
 
 	[Fact]
-	public void ParseOptions_DbVersion_Parses() {
-		var opts = NativeExports.ParseOptions("""{"engineVersion":2,"dbVersion":"26.1.0"}""");
-		Assert.Equal(new KurrentDbVersion(26, 1, 0), opts.DbVersion);
+	public void ParseOptions_QuirksVersion_Parses() {
+		var opts = NativeExports.ParseOptions("""{"engineVersion":2,"quirksVersion":"26.1.0"}""");
+		Assert.Equal(new KurrentDbVersion(26, 1, 0), opts.QuirksVersion);
 	}
 
 	[Fact]
-	public void ParseOptions_DbVersion_MissingIsUnversioned() {
+	public void ParseOptions_QuirksVersion_MissingIsUnversioned() {
 		var opts = NativeExports.ParseOptions("""{"engineVersion":2}""");
-		Assert.Null(opts.DbVersion);
+		Assert.Null(opts.QuirksVersion);
 	}
 
 	[Fact]
-	public void ParseOptions_DbVersion_ExplicitNullIsUnversioned() {
-		var opts = NativeExports.ParseOptions("""{"engineVersion":2,"dbVersion":null}""");
-		Assert.Null(opts.DbVersion);
+	public void ParseOptions_QuirksVersion_ExplicitNullIsUnversioned() {
+		var opts = NativeExports.ParseOptions("""{"engineVersion":2,"quirksVersion":null}""");
+		Assert.Null(opts.QuirksVersion);
 	}
 
 	[Fact]
-	public void ParseOptions_DbVersion_EmptyIsUnversioned() {
-		var opts = NativeExports.ParseOptions("""{"engineVersion":2,"dbVersion":""}""");
-		Assert.Null(opts.DbVersion);
+	public void ParseOptions_QuirksVersion_EmptyIsUnversioned() {
+		var opts = NativeExports.ParseOptions("""{"engineVersion":2,"quirksVersion":""}""");
+		Assert.Null(opts.QuirksVersion);
 	}
 
 	[Theory]
@@ -42,21 +42,21 @@ public class NativeExportsWireFormatTests {
 	[InlineData("v26.1.0")]
 	[InlineData("26.1.0-rc.1")]
 	[InlineData("not a version")]
-	public void ParseOptions_DbVersion_RejectsMalformed(string s) {
+	public void ParseOptions_QuirksVersion_RejectsMalformed(string s) {
 		var ex = Assert.Throws<InvalidArgumentException>(() =>
-			NativeExports.ParseOptions($$"""{"engineVersion":2,"dbVersion":"{{s}}"}"""));
-		Assert.Equal("dbVersion", ex.Field);
+			NativeExports.ParseOptions($$"""{"engineVersion":2,"quirksVersion":"{{s}}"}"""));
+		Assert.Equal("quirksVersion", ex.Field);
 		Assert.Contains(s, ex.Message);
 	}
 
 	[Theory]
-	[InlineData("""{"engineVersion":2,"dbVersion":26}""")]      // number
-	[InlineData("""{"engineVersion":2,"dbVersion":true}""")]    // bool
-	[InlineData("""{"engineVersion":2,"dbVersion":[]}""")]      // array
-	[InlineData("""{"engineVersion":2,"dbVersion":{}}""")]      // object
-	public void ParseOptions_DbVersion_RejectsNonStringTypes(string json) {
+	[InlineData("""{"engineVersion":2,"quirksVersion":26}""")]      // number
+	[InlineData("""{"engineVersion":2,"quirksVersion":true}""")]    // bool
+	[InlineData("""{"engineVersion":2,"quirksVersion":[]}""")]      // array
+	[InlineData("""{"engineVersion":2,"quirksVersion":{}}""")]      // object
+	public void ParseOptions_QuirksVersion_RejectsNonStringTypes(string json) {
 		var ex = Assert.Throws<InvalidArgumentException>(() => NativeExports.ParseOptions(json));
-		Assert.Equal("dbVersion", ex.Field);
+		Assert.Equal("quirksVersion", ex.Field);
 	}
 
 	// -- SerializeProjectionError: compatCode --
@@ -72,26 +72,26 @@ public class NativeExportsWireFormatTests {
 	[Fact]
 	public void SerializeProjectionError_EmitsCompatCodeWhenSet() {
 		var ex = new InvalidArgumentException("test", "field") {
-			CompatCode = KnownBugs.EventBodyCast.Code,
+			CompatCode = KnownQuirks.EventBodyCast.Code,
 		};
 		var json = NativeExports.SerializeProjectionError(ex);
 		using var doc = JsonDocument.Parse(json);
-		Assert.Equal(KnownBugs.EventBodyCast.Code, doc.RootElement.GetProperty("compatCode").GetString());
+		Assert.Equal(KnownQuirks.EventBodyCast.Code, doc.RootElement.GetProperty("compatCode").GetString());
 	}
 
-	// -- SerializeKnownBugs --
+	// -- SerializeKnownQuirks --
 
 	[Fact]
-	public void SerializeKnownBugs_ReturnsOneEntryPerRegistryItem() {
-		var json = NativeExports.SerializeKnownBugs();
+	public void SerializeKnownQuirks_ReturnsOneEntryPerRegistryItem() {
+		var json = NativeExports.SerializeKnownQuirks();
 		using var doc = JsonDocument.Parse(json);
 		Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
-		Assert.Equal(KnownBugs.All.Count, doc.RootElement.GetArrayLength());
+		Assert.Equal(KnownQuirks.All.Count, doc.RootElement.GetArrayLength());
 	}
 
 	[Fact]
-	public void SerializeKnownBugs_EachEntryHasCodeAndDescription() {
-		var json = NativeExports.SerializeKnownBugs();
+	public void SerializeKnownQuirks_EachEntryHasCodeAndDescription() {
+		var json = NativeExports.SerializeKnownQuirks();
 		using var doc = JsonDocument.Parse(json);
 		foreach (var entry in doc.RootElement.EnumerateArray()) {
 			Assert.True(entry.TryGetProperty("code", out var code));
@@ -102,10 +102,10 @@ public class NativeExportsWireFormatTests {
 	}
 
 	[Fact]
-	public void SerializeKnownBugs_OmitsFixedInWhenNull() {
+	public void SerializeKnownQuirks_OmitsFixedInWhenNull() {
 		// Today every entry has FixedIn = null (no upstream fix shipped).
 		// All entries should omit the field.
-		var json = NativeExports.SerializeKnownBugs();
+		var json = NativeExports.SerializeKnownQuirks();
 		using var doc = JsonDocument.Parse(json);
 		foreach (var entry in doc.RootElement.EnumerateArray()) {
 			Assert.False(entry.TryGetProperty("fixedIn", out _));
@@ -113,14 +113,14 @@ public class NativeExportsWireFormatTests {
 	}
 
 	[Fact]
-	public void SerializeKnownBugs_IncludesAllRegistryCodes() {
-		var json = NativeExports.SerializeKnownBugs();
+	public void SerializeKnownQuirks_IncludesAllRegistryCodes() {
+		var json = NativeExports.SerializeKnownQuirks();
 		using var doc = JsonDocument.Parse(json);
 		var codes = doc.RootElement.EnumerateArray()
 			.Select(e => e.GetProperty("code").GetString())
 			.ToHashSet();
-		foreach (var bug in KnownBugs.All) {
-			Assert.Contains(bug.Code, codes);
+		foreach (var quirk in KnownQuirks.All) {
+			Assert.Contains(quirk.Code, codes);
 		}
 	}
 }

@@ -24,7 +24,7 @@ public sealed class ProjectionSession : IDisposable {
 	private readonly HashSet<string>? _handledEventTypes;
 	private string? _sharedState;
 	private readonly ProjectionVersion _version;
-	private readonly KurrentDbVersion? _dbVersion;
+	private readonly KurrentDbVersion? _quirksVersion;
 	private bool _sharedStateInitialized;
 	private List<EmittedEvent> _pendingEmitted = new();
 	private List<string> _pendingLogs = new();
@@ -66,18 +66,18 @@ public sealed class ProjectionSession : IDisposable {
 		_source = source;
 		var opts = options;
 		_version = opts.EngineVersion;
-		_dbVersion = opts.DbVersion;
+		_quirksVersion = opts.QuirksVersion;
 
 		// V2 engine doesn't exist in DB versions before its introduction.
 		// Reject up-front so the user gets a clear error instead of mysterious
-		// downstream failures. Unversioned (null DbVersion) is permissive -
+		// downstream failures. Unversioned (null QuirksVersion) is permissive -
 		// matches the unversioned-defaults model.
-		if (_version == ProjectionVersion.V2 && !KnownFeatures.ProjectionsV2.AvailableAt(_dbVersion)) {
+		if (_version == ProjectionVersion.V2 && !KnownFeatures.ProjectionsV2.AvailableAt(_quirksVersion)) {
 			// Field name matches the JSON option key the caller provided,
 			// not the C# property - that's what bindings expose to users.
 			throw new InvalidArgumentException(
-				$"V2 engine requires KurrentDB {KnownFeatures.ProjectionsV2.IntroducedIn} or later; got {_dbVersion}.",
-				"dbVersion");
+				$"V2 engine requires KurrentDB {KnownFeatures.ProjectionsV2.IntroducedIn} or later; got {_quirksVersion}.",
+				"quirksVersion");
 		}
 
 		try {
@@ -95,7 +95,7 @@ public sealed class ProjectionSession : IDisposable {
 					OnEmit?.Invoke(emitted);
 				},
 				debug: opts.Debug,
-				dbVersion: _dbVersion);
+				quirksVersion: _quirksVersion);
 
 			_handler.OnBreak = info => OnBreak?.Invoke(info);
 		} catch (ScriptPreparationException ex) when (ex.InnerException is ParseErrorException parseError) {
@@ -138,7 +138,7 @@ public sealed class ProjectionSession : IDisposable {
 			// backs on the diagnostic pass. IncludeShape gates the
 			// shape walker without affecting diagnostic collection.
 			(_diagnostics, _shape) = DiagnosticCollector.ScanWithShape(
-				source, _dbVersion, _version, opts.IncludeShape);
+				source, _quirksVersion, _version, opts.IncludeShape);
 		} catch {
 			_handler.Dispose();
 			throw;
@@ -381,7 +381,7 @@ public sealed class ProjectionSession : IDisposable {
 
 	/// <summary>
 	/// Walk the exception chain looking for a <c>GafferCompatCode</c> stashed
-	/// on <see cref="Exception.Data"/> by a bug-firing branch in the handler.
+	/// on <see cref="Exception.Data"/> by a quirk-firing branch in the handler.
 	/// </summary>
 	private static string? ExtractCompatCode(Exception? ex) {
 		for (var cur = ex; cur != null; cur = cur.InnerException) {
@@ -515,11 +515,11 @@ public sealed class ProjectionSessionOptions {
 
 	/// <summary>
 	/// Target KurrentDB version. <c>null</c> (default) means "unversioned":
-	/// gaffer reproduces every known upstream bug and permits every feature,
-	/// matching prod warts and all. Set explicitly to opt out of bugs that
+	/// gaffer reproduces every known upstream quirk and permits every feature,
+	/// matching prod warts and all. Set explicitly to opt out of quirks that
 	/// have been fixed upstream as of the given version.
 	/// </summary>
-	public KurrentDbVersion? DbVersion { get; init; }
+	public KurrentDbVersion? QuirksVersion { get; init; }
 
 	/// <summary>Maximum time for JS compilation. Default: 5 seconds.</summary>
 	public TimeSpan CompilationTimeout { get; init; } = TimeSpan.FromSeconds(5);

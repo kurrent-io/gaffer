@@ -98,7 +98,7 @@ public class DiagnosticsTests {
 		// Source Acornima rejects. The fallback path in Scan returns null
 		// so parser drift between Jint and Acornima doesn't break otherwise-
 		// valid sessions.
-		Assert.Null(DiagnosticCollector.Scan("this is not valid {{{{", dbVersion: null, engineVersion: ProjectionVersion.V2));
+		Assert.Null(DiagnosticCollector.Scan("this is not valid {{{{", quirksVersion: null, engineVersion: ProjectionVersion.V2));
 	}
 
 	[Fact]
@@ -160,7 +160,7 @@ public class DiagnosticsTests {
 		// Both the deprecation warning AND the compat warning should fire
 		// for a 3-arg linkStreamTo call.
 		Assert.Contains(session.Diagnostics!, d => d.Code == "deprecated.linkStreamTo");
-		Assert.Contains(session.Diagnostics!, d => d.Code == KnownBugs.LinkStreamToOutOfBoundsParameters.Code);
+		Assert.Contains(session.Diagnostics!, d => d.Code == KnownQuirks.LinkStreamToOutOfBoundsParameters.Code);
 	}
 
 	[Fact]
@@ -172,7 +172,7 @@ public class DiagnosticsTests {
 		Assert.NotNull(session.Diagnostics);
 		// Deprecation fires (any call); compat doesn't (2-arg form is fine in upstream).
 		Assert.Contains(session.Diagnostics!, d => d.Code == "deprecated.linkStreamTo");
-		Assert.DoesNotContain(session.Diagnostics!, d => d.Code == KnownBugs.LinkStreamToOutOfBoundsParameters.Code);
+		Assert.DoesNotContain(session.Diagnostics!, d => d.Code == KnownQuirks.LinkStreamToOutOfBoundsParameters.Code);
 	}
 
 	[Fact]
@@ -182,7 +182,7 @@ public class DiagnosticsTests {
 			"fromAll().when({ $any: function (s, e) { linkStreamTo('a', e.streamId, {}); return s; } });",
 			Options);
 
-		// User's local linkStreamTo masks the upstream bug entirely - no
+		// User's local linkStreamTo masks the upstream quirk entirely - no
 		// diagnostics at all (deprecation suppressed too).
 		Assert.Null(session.Diagnostics);
 	}
@@ -196,7 +196,7 @@ public class DiagnosticsTests {
 			Options);
 
 		Assert.NotNull(session.Diagnostics);
-		Assert.Contains(session.Diagnostics!, d => d.Code == KnownBugs.LogMultiParam.Code);
+		Assert.Contains(session.Diagnostics!, d => d.Code == KnownQuirks.LogMultiParam.Code);
 	}
 
 	[Fact]
@@ -247,11 +247,11 @@ public class DiagnosticsTests {
 
 	[Fact]
 	public void Transforms_InV2_Unversioned_StillEmits() {
-		// engine_version is independent of db_version. The V2 diagnostic
-		// fires whenever the engine is V2, regardless of dbVersion.
+		// engineVersion is independent of quirksVersion. The V2 diagnostic
+		// fires whenever the engine is V2, regardless of quirksVersion.
 		var source = "fromAll().when({ $any: function (s, e) { return s; } }).transformBy(function (s) { return s; });";
 		using var session = new ProjectionSession(source,
-			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, DbVersion = null });
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, QuirksVersion = null });
 
 		Assert.NotNull(session.Diagnostics);
 		Assert.Contains(session.Diagnostics!, d => d.Code == "compat.transforms.notInvoked");

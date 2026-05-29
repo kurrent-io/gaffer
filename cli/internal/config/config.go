@@ -28,7 +28,7 @@ var ErrManifestValidate = errors.New("validate gaffer.toml")
 type Config struct {
 	Connection         string       `toml:"connection,omitempty"`
 	EngineVersion      int          `toml:"engine_version,omitempty"`
-	DbVersion          string       `toml:"db_version,omitempty"`
+	QuirksVersion      string       `toml:"quirks_version,omitempty"`
 	CompilationTimeout *int         `toml:"compilation_timeout,omitempty"`
 	ExecutionTimeout   *int         `toml:"execution_timeout,omitempty"`
 	Projection         []Projection `toml:"projection"`
@@ -43,7 +43,7 @@ type Projection struct {
 	Name             string            `toml:"name"`
 	Entry            string            `toml:"entry"`
 	EngineVersion    int               `toml:"engine_version,omitempty"`
-	DbVersion        string            `toml:"db_version,omitempty"`
+	QuirksVersion    string            `toml:"quirks_version,omitempty"`
 	ExecutionTimeout *int              `toml:"execution_timeout,omitempty"`
 	Fixtures         map[string]string `toml:"fixtures,omitempty"`
 }
@@ -93,26 +93,26 @@ func (c *Config) EffectiveEngineVersion(p *Projection) int {
 	return c.EngineVersion
 }
 
-// EffectiveDbVersion returns the effective KurrentDB target version for the
-// given projection. Resolution order: GAFFER_DB_VERSION env var > projection's
-// db_version > top-level db_version > "". Empty string means "unversioned":
+// EffectiveQuirksVersion returns the effective KurrentDB quirks-matching version for the
+// given projection. Resolution order: GAFFER_QUIRKS_VERSION env var > projection's
+// quirks_version > top-level quirks_version > "". Empty string means "unversioned":
 // gaffer matches every known KurrentDB quirk.
-func (c *Config) EffectiveDbVersion(p *Projection) string {
-	if v := os.Getenv("GAFFER_DB_VERSION"); v != "" {
+func (c *Config) EffectiveQuirksVersion(p *Projection) string {
+	if v := os.Getenv("GAFFER_QUIRKS_VERSION"); v != "" {
 		return v
 	}
-	if p != nil && p.DbVersion != "" {
-		return p.DbVersion
+	if p != nil && p.QuirksVersion != "" {
+		return p.QuirksVersion
 	}
-	return c.DbVersion
+	return c.QuirksVersion
 }
 
-// dbVersionPattern matches MAJOR.MINOR.PATCH (e.g. "26.1.0"). Mirrors the
+// quirksVersionPattern matches MAJOR.MINOR.PATCH (e.g. "26.1.0"). Mirrors the
 // runtime's KurrentDbVersion.TryParse so we can fail-fast at config load.
-var dbVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+var quirksVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
-func validDbVersion(s string) bool {
-	return dbVersionPattern.MatchString(s)
+func validQuirksVersion(s string) bool {
+	return quirksVersionPattern.MatchString(s)
 }
 
 // LoadFromCwd resolves the project root from the current working
@@ -185,14 +185,14 @@ func (c *Config) validate() error {
 	if c.EngineVersion != 0 && c.EngineVersion != 1 && c.EngineVersion != 2 {
 		return fmt.Errorf("engine_version must be 1 or 2, got %d", c.EngineVersion)
 	}
-	if c.DbVersion != "" && !validDbVersion(c.DbVersion) {
-		return fmt.Errorf("db_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", c.DbVersion, "26.1.0")
+	if c.QuirksVersion != "" && !validQuirksVersion(c.QuirksVersion) {
+		return fmt.Errorf("quirks_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", c.QuirksVersion, "26.1.0")
 	}
-	// GAFFER_DB_VERSION overrides every db_version in the file, so an
+	// GAFFER_QUIRKS_VERSION overrides every quirks_version in the file, so an
 	// invalid value would silently invalidate the entire config without
 	// validation here. Fail fast at the same gate as the file values.
-	if v := os.Getenv("GAFFER_DB_VERSION"); v != "" && !validDbVersion(v) {
-		return fmt.Errorf("GAFFER_DB_VERSION %q must be MAJOR.MINOR.PATCH (e.g. %q)", v, "26.1.0")
+	if v := os.Getenv("GAFFER_QUIRKS_VERSION"); v != "" && !validQuirksVersion(v) {
+		return fmt.Errorf("GAFFER_QUIRKS_VERSION %q must be MAJOR.MINOR.PATCH (e.g. %q)", v, "26.1.0")
 	}
 	seen := make(map[string]bool)
 	for _, p := range c.Projection {
@@ -208,8 +208,8 @@ func (c *Config) validate() error {
 		if p.EngineVersion != 0 && p.EngineVersion != 1 && p.EngineVersion != 2 {
 			return fmt.Errorf("projection %q engine_version must be 1 or 2, got %d", p.Name, p.EngineVersion)
 		}
-		if p.DbVersion != "" && !validDbVersion(p.DbVersion) {
-			return fmt.Errorf("projection %q db_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", p.Name, p.DbVersion, "26.1.0")
+		if p.QuirksVersion != "" && !validQuirksVersion(p.QuirksVersion) {
+			return fmt.Errorf("projection %q quirks_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", p.Name, p.QuirksVersion, "26.1.0")
 		}
 		if c.EffectiveEngineVersion(&p) == 0 {
 			return fmt.Errorf("projection %q has no engine_version set (also missing top-level engine_version)", p.Name)

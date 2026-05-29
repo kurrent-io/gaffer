@@ -29,8 +29,8 @@ type outputWriter interface {
 // projection failure: the runtime error code, a human description, the source
 // file the error points at, and (when the runtime can identify it) the JS
 // position. eventId is set for handler errors that fail mid-stream. CompatCode
-// is set when the throw was driven by an upstream-bug-compat code path; the
-// CLI looks it up against the runtime's known-bugs registry to render a
+// is set when the throw was driven by an upstream-quirk-compat code path; the
+// CLI looks it up against the runtime's known-quirks registry to render a
 // "Compat: <code>... Fixed in KurrentDB X" hint.
 type fatalError struct {
 	Code        string

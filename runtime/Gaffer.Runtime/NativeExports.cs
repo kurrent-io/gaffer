@@ -715,7 +715,7 @@ internal static unsafe class NativeExports {
 	}
 
 	/// <summary>
-	/// Returns the registry of known bugs as a JSON array of
+	/// Returns the registry of known quirks as a JSON array of
 	/// <c>{ code, description, fixedIn? }</c> objects. <c>fixedIn</c> is a
 	/// MAJOR.MINOR.PATCH string when set, omitted otherwise. Caller frees.
 	/// <para>
@@ -723,25 +723,25 @@ internal static unsafe class NativeExports {
 	/// input. Returns <c>null</c> only on allocation failure.
 	/// </para>
 	/// </summary>
-	[UnmanagedCallersOnly(EntryPoint = "gaffer_known_bugs")]
-	public static byte* KnownBugs() {
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_known_quirks")]
+	public static byte* KnownQuirks() {
 		try {
-			return AllocUtf8(SerializeKnownBugs());
+			return AllocUtf8(SerializeKnownQuirks());
 		} catch {
 			return null;
 		}
 	}
 
-	internal static string SerializeKnownBugs() {
+	internal static string SerializeKnownQuirks() {
 		using var stream = new System.IO.MemoryStream();
 		using var writer = new Utf8JsonWriter(stream);
 		writer.WriteStartArray();
-		foreach (var bug in Sdk.Versioning.KnownBugs.All) {
+		foreach (var quirk in Sdk.Versioning.KnownQuirks.All) {
 			writer.WriteStartObject();
-			writer.WriteString("code", bug.Code);
-			writer.WriteString("description", bug.Description);
-			if (bug.FixedIn != null)
-				writer.WriteString("fixedIn", bug.FixedIn.ToString());
+			writer.WriteString("code", quirk.Code);
+			writer.WriteString("description", quirk.Description);
+			if (quirk.FixedIn != null)
+				writer.WriteString("fixedIn", quirk.FixedIn.ToString());
 			writer.WriteEndObject();
 		}
 		writer.WriteEndArray();
@@ -761,7 +761,7 @@ internal static unsafe class NativeExports {
 		var root = doc.RootElement;
 		return new ProjectionSessionOptions {
 			EngineVersion = ParseEngineVersion(root),
-			DbVersion = ParseDbVersion(root),
+			QuirksVersion = ParseQuirksVersion(root),
 			CompilationTimeout = TimeSpan.FromMilliseconds(
 				root.TryGetProperty("compilationTimeoutMs", out var ct) ? ct.GetInt32() : 5000),
 			ExecutionTimeout = TimeSpan.FromMilliseconds(
@@ -785,20 +785,20 @@ internal static unsafe class NativeExports {
 		};
 	}
 
-	private static KurrentDbVersion? ParseDbVersion(JsonElement root) {
-		if (!root.TryGetProperty("dbVersion", out var v) || v.ValueKind == JsonValueKind.Null)
+	private static KurrentDbVersion? ParseQuirksVersion(JsonElement root) {
+		if (!root.TryGetProperty("quirksVersion", out var v) || v.ValueKind == JsonValueKind.Null)
 			return null;
 		if (v.ValueKind != JsonValueKind.String)
 			throw new InvalidArgumentException(
-				"dbVersion must be a string in MAJOR.MINOR.PATCH form (e.g. \"26.1.0\").",
-				"dbVersion");
+				"quirksVersion must be a string in MAJOR.MINOR.PATCH form (e.g. \"26.1.0\").",
+				"quirksVersion");
 		var s = v.GetString();
 		if (string.IsNullOrEmpty(s))
 			return null;
 		if (!KurrentDbVersion.TryParse(s, out var version))
 			throw new InvalidArgumentException(
-				$"Invalid dbVersion '{s}'. Expected MAJOR.MINOR.PATCH (e.g. 26.1.0).",
-				"dbVersion");
+				$"Invalid quirksVersion '{s}'. Expected MAJOR.MINOR.PATCH (e.g. 26.1.0).",
+				"quirksVersion");
 		return version;
 	}
 

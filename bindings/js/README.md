@@ -45,7 +45,7 @@ session.dispose();
 The public surface is exported from the package root:
 
 - **`ProjectionSession`** - the session class. Construct with source + options, then `feed()`, `getState()` / `getSharedState()` / `getResult()`, `setState()`, `getSources()`, `getPartitionKey()`, `onEmit()` / `onLog()` / `onStateChanged()`, `dispose()`.
-- **`knownBugs()`** - returns the runtime's list of known engine bugs by version. Useful for surfacing actionable warnings in editor tooling.
+- **`knownQuirks()`** - returns the runtime's list of known engine quirks by version. Useful for surfacing actionable warnings in editor tooling.
 - **Error classes** - `ProjectionError` base plus `InvalidProjectionError`, `CompilationTimeoutError`, `InvalidArgumentError`, `ProjectionHandlerError`, `ExecutionTimeoutError`, `MalformedEventError`, `StateSerializationError`, `ProjectionTransformError`. All carry structured fields (`code`, `description`, event context where applicable).
 - **Types** - `ProjectionEvent`, `EmittedEvent`, `FeedResult`, `ProjectionInfo`, `SessionOptions`, `Diagnostic`, `SourceRange`, `SourcePosition`, `DiagnosticSeverity`.
 

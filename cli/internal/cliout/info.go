@@ -11,7 +11,7 @@ import (
 )
 
 // BuildInfoCore returns the subset of projection-info keys that every
-// "this is projection X" surface emits: name, source, dbVersion,
+// "this is projection X" surface emits: name, source, quirksVersion,
 // engineVersion, and the conditional event-/category-/stream-/
 // partitioning-/diagnostics-shaped fields. The streaming
 // `gaffer dev --json` writer uses this directly so its info envelope
@@ -24,9 +24,9 @@ func BuildInfoCore(proj *engine.Projection, info gafferruntime.ProjectionInfo) m
 		"name":          proj.Def.Name,
 		"engineVersion": proj.EngineVersion,
 		"source":        src["type"],
-		// Always emit dbVersion: null distinguishes unversioned (bugs on)
+		// Always emit quirksVersion: null distinguishes unversioned (quirks on)
 		// from a real version. Consumers need this signal explicitly.
-		"dbVersion": NullableString(proj.DbVersion),
+		"quirksVersion": NullableString(proj.QuirksVersion),
 	}
 	if cats, ok := src["categories"]; ok {
 		out["categories"] = cats

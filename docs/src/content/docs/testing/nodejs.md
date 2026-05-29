@@ -55,7 +55,7 @@ Create a projection from JavaScript source. The projection compiles lazily on fi
 Options:
 
 - **`engineVersion`**: `1` or `2`. Required.
-- **`dbVersion`**: target KurrentDB version (`"MAJOR.MINOR.PATCH"`, e.g. `"26.1.0"`). Unset matches every known engine quirk. Set to a specific version to opt out of bugs that have been fixed upstream as of that version.
+- **`quirksVersion`**: target KurrentDB version (`"MAJOR.MINOR.PATCH"`, e.g. `"26.1.0"`). Unset (the default) reproduces every known engine quirk; set a version to turn off quirks fixed upstream as of that version.
 - **`config`**: per-projection settings.
   - `executionTimeoutMs`: max handler execution time per event in ms (default 5000).
 - **`databaseConfig`**: database-wide settings.

@@ -5,16 +5,16 @@ using Gaffer.Sdk.Versioning;
 namespace Gaffer.Runtime.Tests;
 
 /// <summary>
-/// Tests for upstream bug-compat behaviours that gaffer reproduces. Each
-/// bug's <see cref="KnownBugs"/> entry currently has <c>FixedIn = null</c>
-/// (no upstream PR has merged), so the buggy path fires in every reachable
+/// Tests for upstream quirk-compat behaviours that gaffer reproduces. Each
+/// quirk's <see cref="KnownQuirks"/> entry currently has <c>FixedIn = null</c>
+/// (no upstream PR has merged), so the quirky path fires in every reachable
 /// configuration. The "clean" branch is intentionally unreachable today; it
 /// activates when an upstream fix lands and we flip <c>FixedIn</c> to the
 /// release version.
 /// </summary>
-public class CompatBugsTests {
-	private static ProjectionSessionOptions Options(KurrentDbVersion? dbVersion = null) =>
-		new() { EngineVersion = ProjectionVersion.V2, DbVersion = dbVersion };
+public class CompatQuirksTests {
+	private static ProjectionSessionOptions Options(KurrentDbVersion? quirksVersion = null) =>
+		new() { EngineVersion = ProjectionVersion.V2, QuirksVersion = quirksVersion };
 
 	// -- linkStreamTo --
 
@@ -39,7 +39,7 @@ public class CompatBugsTests {
 
 	[Fact]
 	public void LinkStreamTo_ThreeArgs_Throws_Unversioned() {
-		// Upstream's parameters.At(4) bug. Always fires (FixedIn = null).
+		// Upstream's parameters.At(4) quirk. Always fires (FixedIn = null).
 		using var session = new ProjectionSession("""
 			fromAll().when({
 				$any: function (s, e) { linkStreamTo("archive", e.streamId, { reason: "x" }); return s; }
@@ -52,7 +52,7 @@ public class CompatBugsTests {
 
 	[Fact]
 	public void LinkStreamTo_ThreeArgs_Throws_WhenVersioned() {
-		// FixedIn = null, so the bug fires regardless of which version is set.
+		// FixedIn = null, so the quirk fires regardless of which version is set.
 		using var session = new ProjectionSession("""
 			fromAll().when({
 				$any: function (s, e) { linkStreamTo("archive", e.streamId, { reason: "x" }); return s; }
@@ -92,7 +92,7 @@ public class CompatBugsTests {
 
 		var ex = Assert.Throws<ProjectionHandlerException>(() =>
 			session.Feed(new ProjectionEvent { EventType = "X", StreamId = "src-1", Data = "{}" }));
-		Assert.Equal(KnownBugs.LinkStreamToOutOfBoundsParameters.Code, ex.CompatCode);
+		Assert.Equal(KnownQuirks.LinkStreamToOutOfBoundsParameters.Code, ex.CompatCode);
 	}
 
 	// -- log multi-param --
@@ -115,7 +115,7 @@ public class CompatBugsTests {
 
 	[Fact]
 	public void Log_MultipleParams_EmitsPrimitivesAsSeparateLines() {
-		// Upstream multi-param bug: each primitive logs as its own line, then
+		// Upstream multi-param quirk: each primitive logs as its own line, then
 		// a final accumulated buffer (empty for all-primitives input - the
 		// separator path only adds content when objects are present).
 		using var session = new ProjectionSession("""
@@ -157,7 +157,7 @@ public class CompatBugsTests {
 
 	[Fact]
 	public void EventBody_ObjectData_Works() {
-		// Object event bodies work in both buggy and clean paths - the cast
+		// Object event bodies work in both quirky and clean paths - the cast
 		// succeeds because the parsed JSON is an object.
 		using var session = new ProjectionSession("""
 			fromAll().when({
@@ -184,7 +184,7 @@ public class CompatBugsTests {
 	public void EventBody_NonObjectData_Throws_Unversioned(string data) {
 		// Upstream's EnsureBody casts the parsed body to ObjectInstance.
 		// Non-object JSON values (null, number, string, boolean) throw
-		// InvalidCastException. Bug always fires while FixedIn = null.
+		// InvalidCastException. Quirk always fires while FixedIn = null.
 		using var session = new ProjectionSession("""
 			fromAll().when({
 				Test: function(s, e) { return e.body; }
@@ -215,13 +215,13 @@ public class CompatBugsTests {
 				Data = "null",
 				IsJson = true,
 			}));
-		Assert.Equal(KnownBugs.EventBodyCast.Code, ex.CompatCode);
+		Assert.Equal(KnownQuirks.EventBodyCast.Code, ex.CompatCode);
 	}
 
 	// -- BiState PrepareOutput string slot --
 
 	[Fact]
-	public void BiState_StringInSlot0_QuotedWhenBuggy() {
+	public void BiState_StringInSlot0_QuotedWhenQuirky() {
 		// Upstream checks _state.IsString() (the array, always false) instead
 		// of state.IsString() (the slot-0 element). Every value goes through
 		// the JSON-serializer, so raw strings come out quoted.
@@ -241,7 +241,7 @@ public class CompatBugsTests {
 			IsJson = true,
 		});
 
-		// Buggy: JSON-quoted (matches upstream). Clean would emit raw "alice".
+		// Quirky: JSON-quoted (matches upstream). Clean would emit raw "alice".
 		Assert.Equal("\"alice\"", session.GetState());
 	}
 
@@ -261,7 +261,7 @@ public class CompatBugsTests {
 				Data = "{}",
 				IsJson = true,
 			}));
-		Assert.Equal(KnownBugs.SerializeNonFinite.Code, ex.CompatCode);
+		Assert.Equal(KnownQuirks.SerializeNonFinite.Code, ex.CompatCode);
 	}
 
 	// -- SerializePrimitive NaN/Infinity --
@@ -272,7 +272,7 @@ public class CompatBugsTests {
 	[InlineData("-Infinity")]
 	public void StateContainingNonFinite_Throws_Unversioned(string jsLiteral) {
 		// Upstream's Utf8JsonWriter.WriteNumberValue throws on non-finite
-		// doubles. Bug always fires while FixedIn = null. Clean path writes
+		// doubles. Quirk always fires while FixedIn = null. Clean path writes
 		// JSON null instead.
 		using var session = new ProjectionSession($$"""
 			fromAll().when({
@@ -292,7 +292,7 @@ public class CompatBugsTests {
 
 	[Fact]
 	public void Log_MixedPrimitiveAndObjects_PrimitivesEmit_ObjectsAccumulate() {
-		// Mixed input shows the bug clearly: primitives emit immediately,
+		// Mixed input shows the quirk clearly: primitives emit immediately,
 		// objects accumulate into the buffer with " ," separator (gated on
 		// i>1, so the first object has no leading separator).
 		using var session = new ProjectionSession("""

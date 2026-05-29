@@ -19,9 +19,9 @@ type Projection struct {
 	Def           *config.Projection
 	Source        string
 	EngineVersion int
-	// DbVersion is the resolved target KurrentDB version (env > projection
+	// QuirksVersion is the resolved target KurrentDB version (env > projection
 	// > config). Empty string means unversioned.
-	DbVersion string
+	QuirksVersion string
 }
 
 func NewProjection(root string, cfg *config.Config, def *config.Projection, source string) *Projection {
@@ -31,7 +31,7 @@ func NewProjection(root string, cfg *config.Config, def *config.Projection, sour
 		Def:           def,
 		Source:        source,
 		EngineVersion: cfg.EffectiveEngineVersion(def),
-		DbVersion:     cfg.EffectiveDbVersion(def),
+		QuirksVersion: cfg.EffectiveQuirksVersion(def),
 	}
 }
 
@@ -62,7 +62,7 @@ func LoadProjection(name string) (*Projection, error) {
 		Def:           proj,
 		Source:        source,
 		EngineVersion: cfg.EffectiveEngineVersion(proj),
-		DbVersion:     cfg.EffectiveDbVersion(proj),
+		QuirksVersion: cfg.EffectiveQuirksVersion(proj),
 	}, nil
 }
 
@@ -92,16 +92,16 @@ func CreateSession(proj *Projection, debug, includeShape bool) (*gafferruntime.S
 
 // buildSessionOptions reads the resolved engine/db versions off the
 // Projection (already computed at construction). Re-resolving via
-// cfg.EffectiveDbVersion here would risk diverging from the cached value
-// if GAFFER_DB_VERSION changed between Projection construction and this
+// cfg.EffectiveQuirksVersion here would risk diverging from the cached value
+// if GAFFER_QUIRKS_VERSION changed between Projection construction and this
 // call.
 func buildSessionOptions(proj *Projection, debug, includeShape bool) *string {
 	opts := map[string]any{
 		"engineVersion": proj.EngineVersion,
 	}
 
-	if proj.DbVersion != "" {
-		opts["dbVersion"] = proj.DbVersion
+	if proj.QuirksVersion != "" {
+		opts["quirksVersion"] = proj.QuirksVersion
 	}
 
 	if debug {

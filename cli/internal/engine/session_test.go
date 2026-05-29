@@ -148,9 +148,9 @@ func TestBuildSessionOptions_ProjectionTimeoutOverridesGlobal(t *testing.T) {
 	}
 }
 
-func TestBuildSessionOptions_DbVersionPassedThroughWhenSet(t *testing.T) {
-	t.Setenv("GAFFER_DB_VERSION", "")
-	cfg := &config.Config{EngineVersion: 2, DbVersion: "26.1.0"}
+func TestBuildSessionOptions_QuirksVersionPassedThroughWhenSet(t *testing.T) {
+	t.Setenv("GAFFER_QUIRKS_VERSION", "")
+	cfg := &config.Config{EngineVersion: 2, QuirksVersion: "26.1.0"}
 	def := &config.Projection{Name: "p", Entry: "p.js"}
 	proj := NewProjection("/tmp", cfg, def, "")
 
@@ -162,13 +162,13 @@ func TestBuildSessionOptions_DbVersionPassedThroughWhenSet(t *testing.T) {
 	if err := json.Unmarshal([]byte(*opts), &m); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if m["dbVersion"] != "26.1.0" {
-		t.Errorf("expected dbVersion 26.1.0, got %v", m["dbVersion"])
+	if m["quirksVersion"] != "26.1.0" {
+		t.Errorf("expected quirksVersion 26.1.0, got %v", m["quirksVersion"])
 	}
 }
 
-func TestBuildSessionOptions_DbVersionOmittedWhenUnset(t *testing.T) {
-	t.Setenv("GAFFER_DB_VERSION", "")
+func TestBuildSessionOptions_QuirksVersionOmittedWhenUnset(t *testing.T) {
+	t.Setenv("GAFFER_QUIRKS_VERSION", "")
 	cfg := &config.Config{EngineVersion: 2}
 	def := &config.Projection{Name: "p", Entry: "p.js"}
 	proj := NewProjection("/tmp", cfg, def, "")
@@ -178,8 +178,8 @@ func TestBuildSessionOptions_DbVersionOmittedWhenUnset(t *testing.T) {
 	if err := json.Unmarshal([]byte(*opts), &m); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if _, ok := m["dbVersion"]; ok {
-		t.Errorf("expected dbVersion to be omitted, got %v", m["dbVersion"])
+	if _, ok := m["quirksVersion"]; ok {
+		t.Errorf("expected quirksVersion to be omitted, got %v", m["quirksVersion"])
 	}
 }
 

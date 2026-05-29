@@ -94,6 +94,57 @@ public class DiagnosticsTests {
 	}
 
 	[Fact]
+	public void AsyncFunctionHandler_Warns() {
+		using var session = new ProjectionSession(
+			"fromAll().when({ Ping: async function (s, e) { return s; } });", Options);
+
+		var d = Assert.Single(session.Diagnostics ?? [], x => x.Code == "handler.async");
+		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+	}
+
+	[Fact]
+	public void AsyncArrowHandler_Warns() {
+		using var session = new ProjectionSession(
+			"fromAll().when({ Ping: async (s, e) => s });", Options);
+
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "handler.async");
+	}
+
+	[Fact]
+	public void ReturnPromiseResolve_Warns() {
+		using var session = new ProjectionSession(
+			"fromAll().when({ Ping: function (s, e) { return Promise.resolve({}); } });", Options);
+
+		var d = Assert.Single(session.Diagnostics ?? [], x => x.Code == "handler.promise");
+		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+	}
+
+	[Fact]
+	public void ConciseArrowReturningPromise_Warns() {
+		using var session = new ProjectionSession(
+			"fromAll().when({ Ping: (s, e) => Promise.resolve({}) });", Options);
+
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "handler.promise");
+	}
+
+	[Fact]
+	public void NewPromiseReturn_Warns() {
+		using var session = new ProjectionSession(
+			"fromAll().when({ Ping: function (s, e) { return new Promise(function (r) { r(s); }); } });", Options);
+
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "handler.promise");
+	}
+
+	[Fact]
+	public void SyncHandler_NoAsyncOrPromiseDiagnostic() {
+		using var session = new ProjectionSession(
+			"fromAll().when({ Ping: function (s, e) { return { ok: true }; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [],
+			d => d.Code == "handler.async" || d.Code == "handler.promise");
+	}
+
+	[Fact]
 	public void LinkStreamTo_Detected() {
 		var source = "fromAll().when({ $any: function (s, e) { linkStreamTo('a-' + e.streamId, e.streamId); return s; } });";
 		var expectedCol = source.IndexOf("linkStreamTo", StringComparison.Ordinal) + 1;

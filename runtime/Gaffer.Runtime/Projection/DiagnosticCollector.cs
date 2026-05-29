@@ -22,6 +22,7 @@ internal static class DiagnosticCollector {
 		new OutputStateUnconditionalInV2Rule(),
 		new DuplicateOptionsRule(),
 		new ReorderOptionsRule(),
+		new AsyncHandlerRule(),
 	};
 
 	/// <summary>
@@ -439,6 +440,77 @@ internal static class DiagnosticCollector {
 					Range = ToSourceRange(loc),
 				});
 			}
+		}
+	}
+
+	// async / Promise-returning handlers silently produce empty state. The
+	// projection engine (Jint) is synchronous with no event loop, so a handler
+	// that returns a Promise has it serialized as the state - and a Promise has
+	// no enumerable own properties, so the state becomes {} - rather than being
+	// awaited. This matches KurrentDB but surprises users authoring tests in an
+	// async-capable JS runtime, so warn at compile time. The Promise check is a
+	// literal-syntax heuristic (new Promise(...) / Promise.x(...)) and doesn't
+	// account for a shadowed Promise global. Not quirk- or version-gated.
+	private sealed class AsyncHandlerRule : IRule {
+		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
+			var scanner = new Scanner();
+			scanner.Visit(ast);
+
+			foreach (var loc in scanner.AsyncFunctions) {
+				diagnostics.Add(new Diagnostic {
+					Code = "handler.async",
+					Message = "async is not supported in a projection: the engine runs synchronously, so the returned Promise is serialized as the state (state becomes {}) instead of being awaited.",
+					Severity = DiagnosticSeverity.Warning,
+					Range = ToSourceRange(loc),
+				});
+			}
+			foreach (var loc in scanner.PromiseReturns) {
+				diagnostics.Add(new Diagnostic {
+					Code = "handler.promise",
+					Message = "returning a Promise from a handler is not supported: the engine runs synchronously, so the Promise is serialized as the state (state becomes {}) instead of being awaited.",
+					Severity = DiagnosticSeverity.Warning,
+					Range = ToSourceRange(loc),
+				});
+			}
+		}
+
+		private sealed class Scanner : AstVisitor {
+			public List<Acornima.SourceLocation> AsyncFunctions { get; } = new();
+			public List<Acornima.SourceLocation> PromiseReturns { get; } = new();
+
+			protected override object? VisitFunctionDeclaration(FunctionDeclaration node) {
+				if (node.Async)
+					AsyncFunctions.Add(node.Location);
+				return base.VisitFunctionDeclaration(node);
+			}
+
+			protected override object? VisitFunctionExpression(FunctionExpression node) {
+				if (node.Async)
+					AsyncFunctions.Add(node.Location);
+				return base.VisitFunctionExpression(node);
+			}
+
+			protected override object? VisitArrowFunctionExpression(ArrowFunctionExpression node) {
+				if (node.Async)
+					AsyncFunctions.Add(node.Location);
+				// Concise-body arrow `(s, e) => Promise.resolve(...)` has no return
+				// statement; the body itself is the returned expression.
+				if (node.Body is Expression body && IsPromiseConstruction(body))
+					PromiseReturns.Add(body.Location);
+				return base.VisitArrowFunctionExpression(node);
+			}
+
+			protected override object? VisitReturnStatement(ReturnStatement node) {
+				if (IsPromiseConstruction(node.Argument))
+					PromiseReturns.Add(node.Location);
+				return base.VisitReturnStatement(node);
+			}
+
+			private static bool IsPromiseConstruction(Node? expr) => expr switch {
+				NewExpression { Callee: Identifier { Name: "Promise" } } => true,
+				CallExpression { Callee: MemberExpression { Computed: false, Object: Identifier { Name: "Promise" } } } => true,
+				_ => false,
+			};
 		}
 	}
 }

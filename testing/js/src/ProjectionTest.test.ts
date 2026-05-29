@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ProjectionTest, toSessionOptions } from "./ProjectionTest.js";
+import { systemEvents } from "./systemEvents.js";
 import {
 	InvalidArgumentError,
 	ProjectionError,
@@ -606,5 +607,102 @@ describe("toSessionOptions", () => {
 		});
 		expect(out.quirksVersion).toBe("26.1.0");
 		expect(out.compilationTimeoutMs).toBe(1000);
+	});
+});
+
+describe("source filtering", () => {
+	const fromStreamSource = `
+		fromStream("s-1").when({
+			$init() { return { count: 0 }; },
+			Ping(s, e) { s.count++; return s; }
+		})
+	`;
+
+	it("processes events on the declared stream", () => {
+		using test = new ProjectionTest<{ count: number }>(fromStreamSource, {
+			engineVersion: 2,
+		});
+		const step = test.feed({
+			eventType: "Ping",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			isJson: true,
+			data: {},
+		});
+		expect(step.status).toBe("processed");
+	});
+
+	it("skips events on a different stream with reason wrong-stream", () => {
+		using test = new ProjectionTest<{ count: number }>(fromStreamSource, {
+			engineVersion: 2,
+		});
+		const step = test.feed({
+			eventType: "Ping",
+			streamId: "s-2",
+			sequenceNumber: 0,
+			isJson: true,
+			data: {},
+		});
+		expect(step.status).toBe("skipped");
+		if (step.status !== "skipped") return;
+		expect(step.reason).toBe("wrong-stream");
+		// The event never reached the handler.
+		expect(test.getState("s-1")).toBeNull();
+	});
+
+	it("matches fromCategory by stream prefix", () => {
+		using test = new ProjectionTest<{ count: number }>(
+			`
+			fromCategory("cart").when({
+				$init() { return { count: 0 }; },
+				Ping(s, e) { s.count++; return s; }
+			})
+		`,
+			{ engineVersion: 2 },
+		);
+		expect(
+			test.feed({
+				eventType: "Ping",
+				streamId: "cart-1",
+				sequenceNumber: 0,
+				isJson: true,
+				data: {},
+			}).status,
+		).toBe("processed");
+
+		const off = test.feed({
+			eventType: "Ping",
+			streamId: "order-1",
+			sequenceNumber: 0,
+			isJson: true,
+			data: {},
+		});
+		expect(off.status).toBe("skipped");
+		if (off.status !== "skipped") return;
+		expect(off.reason).toBe("wrong-stream");
+	});
+
+	it("skips an off-source $streamDeleted with reason wrong-stream", () => {
+		using test = new ProjectionTest<{ count: number }>(fromStreamSource, {
+			engineVersion: 2,
+		});
+		const step = test.feed(systemEvents.streamDeleted("s-2", 0));
+		expect(step.status).toBe("skipped");
+		if (step.status !== "skipped") return;
+		expect(step.reason).toBe("wrong-stream");
+	});
+
+	it("fromAll never skips for wrong-stream", () => {
+		using test = new ProjectionTest<{ count: number }>(counterSource, {
+			engineVersion: 2,
+		});
+		const step = test.feed({
+			eventType: "ItemAdded",
+			streamId: "literally-anything",
+			sequenceNumber: 0,
+			isJson: true,
+			data: {},
+		});
+		expect(step.status).toBe("processed");
 	});
 });

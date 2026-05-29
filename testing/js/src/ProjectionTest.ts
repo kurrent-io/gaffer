@@ -5,6 +5,11 @@ import {
 	type SessionOptions,
 } from "@kurrent/gaffer-runtime";
 import { parseEventInput, normalizeEvent, type EventInput } from "./schemas.js";
+import {
+	mapProjectionInfo,
+	streamMatchesSource,
+	type ProjectionInfo,
+} from "./ProjectionInfo.js";
 
 /** An event emitted by a projection via `emit()` or `linkTo()`, with parsed data. */
 export interface TestEmittedEvent {
@@ -51,20 +56,24 @@ export interface ProcessedStepResult<
 }
 
 /**
- * Why an event was skipped by the runtime.
+ * Why an event was skipped instead of processed. `"wrong-stream"` is applied
+ * by the testing library before the event reaches the runtime; the rest are
+ * decided by the runtime.
  *
  * - `"non-json"` - V1 mode dropped the event because `isJson` is false.
  * - `"link"` - Event is a link (`$>` type or has `linkMetadata`) and `$includeLinks` is false.
  * - `"no-partition"` - The `partitionBy` function returned null, undefined, or a non-string/non-number value.
  * - `"unhandled"` - The event type is not in the projection's handler list and no `$any` handler is registered.
  * - `"no-delete-handler"` - A stream deletion event was received but no `$deleted` handler is registered.
+ * - `"wrong-stream"` - The event's stream is not one the projection's declared source (`fromStream`/`fromStreams`/`fromCategory`) subscribes to. Real KurrentDB would never deliver it.
  */
 export type SkipReason =
 	| "non-json"
 	| "link"
 	| "no-partition"
 	| "unhandled"
-	| "no-delete-handler";
+	| "no-delete-handler"
+	| "wrong-stream";
 
 /** Result when the event was filtered out before reaching the handler. */
 export interface SkippedStepResult {
@@ -122,10 +131,12 @@ export class ProjectionTest<
 	TSharedState = undefined,
 > {
 	#session: ProjectionSession;
+	#info: ProjectionInfo;
 	#disposed = false;
 
 	constructor(source: string, options: ProjectionOptions) {
 		this.#session = new ProjectionSession(source, toSessionOptions(options));
+		this.#info = mapProjectionInfo(this.#session.getSources());
 		registry.register(this, this.#session, this);
 	}
 
@@ -141,6 +152,14 @@ export class ProjectionTest<
 
 		const parsed = parseEventInput(input);
 		const normalized = normalizeEvent(parsed);
+
+		// Real KurrentDB only delivers events from the streams the projection's
+		// source subscribes to. Skip mismatches instead of feeding events the
+		// projection would never see in production.
+		if (!streamMatchesSource(this.#info, normalized.streamId)) {
+			return { status: "skipped", reason: "wrong-stream", event: input };
+		}
+
 		const feedResult = this.#session.feed(normalized);
 
 		return mapStepResult<TState, TResult, TSharedState>(feedResult, input);

@@ -36,6 +36,38 @@ export interface ProjectionInfo {
 	};
 }
 
+/**
+ * Whether an event on `streamId` would be delivered to a projection with this
+ * source definition. Real KurrentDB only feeds a handler events from the
+ * streams its source declares; the testing library mirrors that at `feed()`
+ * time. Stream/prefix semantics match `buildSubscriptionFilter` (and the
+ * subscription spec) so the manual and live-client paths agree.
+ */
+export function streamMatchesSource(
+	info: ProjectionInfo,
+	streamId: string,
+): boolean {
+	switch (info.source.type) {
+		case "all":
+			return true;
+		case "streams": {
+			const streams = info.source.streams;
+			// fromCategory multi-arg lands all-$ce-<cat> entries here; match by
+			// category prefix. Any other shape (including a mix) is an exact
+			// stream-name match, mirroring buildSubscriptionFilter's branching so
+			// feed() and the live run(client) path never disagree.
+			if (streams.every((s) => s.startsWith("$ce-"))) {
+				return streams.some((s) =>
+					streamId.startsWith(`${s.slice("$ce-".length)}-`),
+				);
+			}
+			return streams.includes(streamId);
+		}
+		case "categories":
+			return info.source.categories.some((c) => streamId.startsWith(`${c}-`));
+	}
+}
+
 /** Map the runtime's raw ProjectionInfo to a cleaner shape with discriminated unions. */
 export function mapProjectionInfo(raw: RawProjectionInfo): ProjectionInfo {
 	let source: ProjectionInfo["source"];

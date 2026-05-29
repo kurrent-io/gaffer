@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectionInfo as RawProjectionInfo } from "@kurrent/gaffer-runtime";
-import { mapProjectionInfo } from "./ProjectionInfo.js";
+import { mapProjectionInfo, streamMatchesSource } from "./ProjectionInfo.js";
 
 const defaults: RawProjectionInfo = {
 	allStreams: false,
@@ -117,5 +117,53 @@ describe("mapProjectionInfo", () => {
 			partitionResultStreamNamePattern: "result-{0}",
 			handlesDeletedNotifications: true,
 		});
+	});
+});
+
+describe("streamMatchesSource", () => {
+	it("fromAll matches every stream", () => {
+		const info = mapProjectionInfo({ ...defaults, allStreams: true });
+		expect(streamMatchesSource(info, "anything-1")).toBe(true);
+		expect(streamMatchesSource(info, "order-99")).toBe(true);
+	});
+
+	it("fromStream matches only the exact stream", () => {
+		const info = mapProjectionInfo({ ...defaults, streams: ["s-1"] });
+		expect(streamMatchesSource(info, "s-1")).toBe(true);
+		expect(streamMatchesSource(info, "s-2")).toBe(false);
+		expect(streamMatchesSource(info, "s-1-extra")).toBe(false);
+	});
+
+	it("fromStreams matches any listed stream", () => {
+		const info = mapProjectionInfo({ ...defaults, streams: ["a", "b"] });
+		expect(streamMatchesSource(info, "a")).toBe(true);
+		expect(streamMatchesSource(info, "b")).toBe(true);
+		expect(streamMatchesSource(info, "c")).toBe(false);
+	});
+
+	it("fromCategory matches the category prefix", () => {
+		const info = mapProjectionInfo({ ...defaults, categories: ["cart"] });
+		expect(streamMatchesSource(info, "cart-1")).toBe(true);
+		expect(streamMatchesSource(info, "cart-abc")).toBe(true);
+		expect(streamMatchesSource(info, "order-1")).toBe(false);
+		expect(streamMatchesSource(info, "cart")).toBe(false);
+	});
+
+	it("matches $ce- category entries in the streams array by prefix", () => {
+		const info = mapProjectionInfo({ ...defaults, streams: ["$ce-cart"] });
+		expect(streamMatchesSource(info, "cart-1")).toBe(true);
+		expect(streamMatchesSource(info, "order-1")).toBe(false);
+	});
+
+	it("treats a mixed $ce-/plain streams array as exact match", () => {
+		// Mirrors buildSubscriptionFilter: not all-$ce- falls back to exact
+		// name match, so $ce-order is literal, not a category prefix.
+		const info = mapProjectionInfo({
+			...defaults,
+			streams: ["$ce-order", "my-stream"],
+		});
+		expect(streamMatchesSource(info, "$ce-order")).toBe(true);
+		expect(streamMatchesSource(info, "my-stream")).toBe(true);
+		expect(streamMatchesSource(info, "order-1")).toBe(false);
 	});
 });

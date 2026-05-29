@@ -34,6 +34,10 @@ type textWriter struct {
 	// "your partitionBy returned null"), false for live mode
 	// (skips are runtime hygiene noise from $all).
 	showSkipped bool
+	// compileQuirks holds compat.* diagnostic codes seen at compile time
+	// (captured in WriteInfo). The summary merges them with the runtime
+	// quirks so it lists every quirk the run surfaced, header or per-event.
+	compileQuirks []string
 }
 
 type textStyles struct {
@@ -203,6 +207,9 @@ func (tw *textWriter) WriteInfo(proj *engine.Projection, info gafferruntime.Proj
 
 	for _, d := range info.Diagnostics {
 		tw.writeDiagnostic(d)
+		if strings.HasPrefix(d.Code, "compat.") {
+			tw.compileQuirks = append(tw.compileQuirks, d.Code)
+		}
 	}
 }
 
@@ -385,23 +392,29 @@ func (tw *textWriter) statsLine(stats engine.EventStats) {
 		}
 	}
 
-	// Quirks encountered during the run, broken down by code. These are
-	// non-fatal, so they're reported separately from skips and errors.
-	if len(stats.DiagnosticsByCode) > 0 {
-		codes := make([]string, 0, len(stats.DiagnosticsByCode))
-		total := 0
-		for c, n := range stats.DiagnosticsByCode {
+	// Every distinct quirk the run surfaced - compile-time (from the info
+	// header) and runtime (per-event) - listed together. Non-fatal, so kept
+	// separate from skips and errors.
+	seen := map[string]bool{}
+	for _, c := range tw.compileQuirks {
+		seen[c] = true
+	}
+	for c := range stats.DiagnosticsByCode {
+		seen[c] = true
+	}
+	if len(seen) > 0 {
+		codes := make([]string, 0, len(seen))
+		for c := range seen {
 			codes = append(codes, c)
-			total += n
 		}
 		sort.Strings(codes)
 		noun := "quirks"
-		if total == 1 {
+		if len(codes) == 1 {
 			noun = "quirk"
 		}
-		tw.write("%s %s encountered\n", gold(formatNumber(total)), noun)
+		tw.write("%s %s encountered\n", gold(formatNumber(len(codes))), noun)
 		for _, c := range codes {
-			tw.write("  %s %s\n", gold(formatNumber(stats.DiagnosticsByCode[c])), c)
+			tw.write("  %s\n", c)
 		}
 	}
 }

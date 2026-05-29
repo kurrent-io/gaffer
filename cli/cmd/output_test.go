@@ -409,14 +409,44 @@ func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
 
+	// Two distinct runtime codes; the summary lists each once, no per-code
+	// count, with a header total.
 	stats := engine.EventStats{
-		Handled:           3,
-		DiagnosticsByCode: map[string]int{"compat.biState.stringSlot": 2},
+		Handled: 3,
+		DiagnosticsByCode: map[string]int{
+			"compat.biState.stringSlot":  2,
+			"compat.serialize.nonFinite": 1,
+		},
 	}
 	tw.WriteSummary(stats, engine.StateSummary{})
 
 	out := buf.String()
-	testutil.AssertContains(t, out, "quirks encountered")
+	testutil.AssertContains(t, out, "2 quirks encountered")
+	testutil.AssertContains(t, out, "compat.biState.stringSlot")
+	testutil.AssertContains(t, out, "compat.serialize.nonFinite")
+}
+
+func TestTextWriter_WriteSummary_MergesCompileTimeQuirks(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+
+	// A compile-time compat quirk surfaced in the info header is folded into
+	// the summary tally alongside runtime quirks (deduped, deprecations excluded).
+	tw.WriteInfo(stubProjection("p", 2, ""), gafferruntime.ProjectionInfo{
+		AllStreams: true,
+		Diagnostics: []gafferruntime.Diagnostic{
+			{Code: "compat.log.multiParam", Message: "m", Severity: gafferruntime.DiagnosticSeverityWarning},
+			{Code: "deprecated.linkStreamTo", Message: "d", Severity: gafferruntime.DiagnosticSeverityWarning},
+		},
+	})
+	tw.WriteSummary(engine.EventStats{
+		Handled:           1,
+		DiagnosticsByCode: map[string]int{"compat.biState.stringSlot": 1},
+	}, engine.StateSummary{})
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "2 quirks encountered")
+	testutil.AssertContains(t, out, "compat.log.multiParam")
 	testutil.AssertContains(t, out, "compat.biState.stringSlot")
 }
 

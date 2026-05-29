@@ -197,6 +197,10 @@ internal static unsafe class NativeExports {
 			writer.WriteStringValue(result.Logs[i]);
 		writer.WriteEndArray();
 
+		writer.WritePropertyName("diagnostics");
+		writer.WriteRawValue(JsonSerializer.Serialize(
+			result.Diagnostics, Sdk.SdkJsonContext.Default.DiagnosticArray));
+
 		writer.WriteEndObject();
 		writer.Flush();
 		return Encoding.UTF8.GetString(stream.ToArray());

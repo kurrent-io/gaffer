@@ -80,7 +80,7 @@ Run the projection over events, yielding a `StepResult` after each one. Accepts:
 - `AsyncIterable<EventInput>` - async generators, client streams
 - `KurrentDBClient` - subscribes to the appropriate streams based on the projection's source definition
 
-`StepResult` is a discriminated union on `status`. Both shapes carry `event` and `status`. The `processed` shape adds `state`, `result`, `sharedState`, `emitted`, and `logs`. The `skipped` shape adds `reason` explaining why (`unhandled`, `non-json`, `link`, `no-partition`, `no-delete-handler`, `wrong-stream`). Guard before destructuring:
+`StepResult` is a discriminated union on `status`. Both shapes carry `event` and `status`. The `processed` shape adds `state`, `stateRaw`, `result`, `sharedState`, `emitted`, `logs`, and `diagnostics`. The `skipped` shape adds `reason` explaining why (`unhandled`, `non-json`, `link`, `no-partition`, `no-delete-handler`, `wrong-stream`). Guard before destructuring:
 
 ```typescript
 for (const result of projection.run(events)) {
@@ -154,9 +154,34 @@ test.feed({
 });
 
 test.getState("cart-1"); // state for cart-1
+test.getStateRaw("cart-1"); // raw persisted state JSON, before parse (see Serialization quirks)
 test.getState("cart-2"); // state for cart-2
 test.getSharedState(); // shared state (biState projections)
 test.getResult("cart-1"); // result for cart-1 (V1: post-transform; V2: post-handler state)
+```
+
+#### Serialization quirks
+
+Some KurrentDB quirks only show up in how state is persisted, and `state` / `getState()` hide them by parsing the persisted JSON on read.
+
+- **`step.diagnostics`** lists the quirks that fired while processing the event (empty when none; it can carry more than one). The motivating case is biState string slots, where a raw string written to a slot is JSON-quoted (`compat.biState.stringSlot` for the main slot, `compat.biState.sharedStringSlot` for shared state), persisting `"hello"` as `"\"hello\""`.
+- **`step.stateRaw`** and **`getStateRaw(partition?)`** return the persisted state JSON string before `JSON.parse`, so you can assert the double-quoted value.
+
+```typescript
+const step = test.feed({
+	eventType: "SetName",
+	streamId: "s-1",
+	sequenceNumber: 0,
+	isJson: true,
+	data: { name: "alice" },
+});
+if (step.status !== "processed") throw new Error(step.reason);
+
+expect(step.state).toBe("alice"); // parsed - quirk hidden
+expect(step.stateRaw).toBe('"alice"'); // raw - double-quoting visible
+expect(step.diagnostics.map((d) => d.code)).toContain(
+	"compat.biState.stringSlot",
+);
 ```
 
 ### `systemEvents`

@@ -1,5 +1,6 @@
 using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Events;
+using Gaffer.Sdk.Diagnostics;
 using Gaffer.Sdk.Versioning;
 
 namespace Gaffer.Runtime.Tests;
@@ -243,6 +244,72 @@ public class CompatQuirksTests {
 
 		// Quirky: JSON-quoted (matches upstream). Clean would emit raw "alice".
 		Assert.Equal("\"alice\"", session.GetState());
+	}
+
+	[Fact]
+	public void BiState_StringInSlot0_EmitsRuntimeDiagnostic() {
+		using var session = new ProjectionSession("""
+			options({ biState: true });
+			fromAll().when({
+				$init: function () { return "initial"; },
+				$initShared: function () { return {}; },
+				SetName: function (s, e) { s[0] = e.data.name; return s; }
+			});
+		""", Options());
+
+		var result = session.Feed(new ProjectionEvent {
+			EventType = "SetName",
+			StreamId = "s-1",
+			Data = """{"name":"alice"}""",
+			IsJson = true,
+		});
+
+		var diag = Assert.Single(result.Diagnostics);
+		Assert.Equal(KnownQuirks.BiStateStringSlot.Code, diag.Code);
+		Assert.Equal(DiagnosticSeverity.Warning, diag.Severity);
+		Assert.Null(diag.Range);
+	}
+
+	[Fact]
+	public void BiState_StringInSharedSlot_EmitsSharedRuntimeDiagnostic() {
+		using var session = new ProjectionSession("""
+			options({ biState: true });
+			fromAll().when({
+				$init: function () { return {}; },
+				$initShared: function () { return "initial"; },
+				SetShared: function (s, e) { s[1] = e.data.name; return s; }
+			});
+		""", Options());
+
+		var result = session.Feed(new ProjectionEvent {
+			EventType = "SetShared",
+			StreamId = "s-1",
+			Data = """{"name":"alice"}""",
+			IsJson = true,
+		});
+
+		Assert.Contains(result.Diagnostics, d => d.Code == KnownQuirks.BiStateSharedStringSlot.Code);
+	}
+
+	[Fact]
+	public void BiState_ObjectSlots_EmitNoRuntimeDiagnostic() {
+		using var session = new ProjectionSession("""
+			options({ biState: true });
+			fromAll().when({
+				$init: function () { return {}; },
+				$initShared: function () { return {}; },
+				SetName: function (s, e) { s[0] = { name: e.data.name }; return s; }
+			});
+		""", Options());
+
+		var result = session.Feed(new ProjectionEvent {
+			EventType = "SetName",
+			StreamId = "s-1",
+			Data = """{"name":"alice"}""",
+			IsJson = true,
+		});
+
+		Assert.Empty(result.Diagnostics);
 	}
 
 	[Fact]

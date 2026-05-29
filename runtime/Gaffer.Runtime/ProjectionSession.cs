@@ -28,6 +28,7 @@ public sealed class ProjectionSession : IDisposable {
 	private bool _sharedStateInitialized;
 	private List<EmittedEvent> _pendingEmitted = new();
 	private List<string> _pendingLogs = new();
+	private readonly List<Diagnostic> _pendingDiagnostics = new();
 
 	/// <summary>Called when the projection emits an event (emit or linkTo).</summary>
 	public Action<EmittedEvent>? OnEmit { get; set; }
@@ -93,6 +94,12 @@ public sealed class ProjectionSession : IDisposable {
 				onEmit: emitted => {
 					_pendingEmitted.Add(emitted);
 					OnEmit?.Invoke(emitted);
+				},
+				// Dedupe by code: V2 runs PrepareOutput twice per event (state +
+				// result), so the same quirk would otherwise report twice.
+				onDiagnostic: diagnostic => {
+					if (!_pendingDiagnostics.Exists(d => d.Code == diagnostic.Code))
+						_pendingDiagnostics.Add(diagnostic);
 				},
 				debug: opts.Debug,
 				quirksVersion: _quirksVersion);
@@ -214,6 +221,7 @@ public sealed class ProjectionSession : IDisposable {
 		_handler.HandlePauseIfRequested();
 		_pendingEmitted.Clear();
 		_pendingLogs.Clear();
+		_pendingDiagnostics.Clear();
 
 		try {
 			if (IsStreamDeletedEvent(@event, out var deletedStreamId))
@@ -290,6 +298,7 @@ public sealed class ProjectionSession : IDisposable {
 			SharedState = _sources.IsBiState ? _sharedState : null,
 			Emitted = _pendingEmitted.ToArray(),
 			Logs = _pendingLogs.ToArray(),
+			Diagnostics = _pendingDiagnostics.ToArray(),
 		};
 	}
 

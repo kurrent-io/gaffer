@@ -65,6 +65,20 @@ public static class KnownQuirks {
 	};
 
 	/// <summary>
+	/// BiState <c>PrepareOutput</c> JSON-quotes raw string values in slot 1
+	/// (the shared state). Unlike slot 0, upstream has no string-passthrough
+	/// branch for shared state at all - it always runs
+	/// <c>ConvertToStringHandlingNulls</c>. PR #5610's slot-0 fix does not
+	/// touch this, so it has no fix version. Tracked separately from
+	/// <see cref="BiStateStringSlot"/> because the upstream fix is partial.
+	/// </summary>
+	public static readonly Quirk BiStateSharedStringSlot = new() {
+		Code = "compat.biState.sharedStringSlot",
+		Description = "BiState shared state (slot 1) JSON-quotes raw string values instead of passing them through.",
+		FixedIn = null, // no upstream fix; PR #5610 only fixed slot 0
+	};
+
+	/// <summary>
 	/// JSON serializer throws <c>ArgumentException</c> on <c>NaN</c> or
 	/// <c>+/-Infinity</c> in state because <c>Utf8JsonWriter.WriteNumberValue</c>
 	/// rejects non-finite doubles regardless of <c>SkipValidation</c>. Fixed in
@@ -83,6 +97,7 @@ public static class KnownQuirks {
 		LogMultiParam,
 		EventBodyCast,
 		BiStateStringSlot,
+		BiStateSharedStringSlot,
 		SerializeNonFinite,
 	};
 }

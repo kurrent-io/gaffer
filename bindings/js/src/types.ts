@@ -94,6 +94,8 @@ export interface FeedResult {
 	sharedState?: unknown;
 	emitted?: EmittedEvent[];
 	logs?: string[];
+	/** Quirks that fired while processing this event. Runtime, value-dependent; range is null. Absent when none. */
+	diagnostics?: Diagnostic[];
 }
 
 /** Options for creating a projection session. */

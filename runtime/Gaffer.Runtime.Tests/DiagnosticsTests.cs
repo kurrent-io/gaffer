@@ -145,6 +145,27 @@ public class DiagnosticsTests {
 	}
 
 	[Fact]
+	public void InnerAsyncInSyncHandler_NoWarning() {
+		// The handler returns a plain object; an inner async helper and a nested
+		// Promise return must not be flagged as the handler's own behavior.
+		using var session = new ProjectionSession(
+			"fromAll().when({ Ping: function (s, e) { var f = async function () { return 1; }; function g() { return Promise.resolve(1); } return { ok: true }; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [],
+			d => d.Code == "handler.async" || d.Code == "handler.promise");
+	}
+
+	[Fact]
+	public void AsyncHelperOutsideHandler_NoWarning() {
+		// A top-level async helper isn't a handler, so it isn't flagged.
+		using var session = new ProjectionSession(
+			"async function helper() { return 1; }\nfromAll().when({ Ping: function (s, e) { return s; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [],
+			d => d.Code == "handler.async" || d.Code == "handler.promise");
+	}
+
+	[Fact]
 	public void LinkStreamTo_Detected() {
 		var source = "fromAll().when({ $any: function (s, e) { linkStreamTo('a-' + e.streamId, e.streamId); return s; } });";
 		var expectedCol = source.IndexOf("linkStreamTo", StringComparison.Ordinal) + 1;

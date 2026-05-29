@@ -244,6 +244,28 @@ func TestGetStep(t *testing.T) {
 	}
 }
 
+func TestFormatStep_PromotesDiagnostics(t *testing.T) {
+	withDiag := &history.Step{
+		Index:      1,
+		EventJSON:  `{"eventType":"Tick","streamId":"s-1"}`,
+		ResultJSON: `{"status":"processed","diagnostics":[{"code":"compat.biState.stringSlot","message":"m","severity":2,"range":null}]}`,
+		EventType:  "Tick",
+		Status:     "processed",
+	}
+	diags, ok := formatStep(withDiag)["diagnostics"].([]json.RawMessage)
+	if !ok || len(diags) != 1 {
+		t.Fatalf("expected 1 promoted diagnostic, got %v", formatStep(withDiag)["diagnostics"])
+	}
+	if !strings.Contains(string(diags[0]), "compat.biState.stringSlot") {
+		t.Errorf("promoted diagnostic missing code: %s", diags[0])
+	}
+
+	noDiag := &history.Step{Index: 1, ResultJSON: `{"status":"processed","diagnostics":[]}`}
+	if _, present := formatStep(noDiag)["diagnostics"]; present {
+		t.Error("expected diagnostics key omitted when none fired")
+	}
+}
+
 func TestGetStep_NoSession(t *testing.T) {
 	s := setupTestProject(t)
 	callToolExpectError(t, s.handleGetStep, getStepInput{Step: 1})

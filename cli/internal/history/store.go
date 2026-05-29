@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	_ "modernc.org/sqlite"
 )
@@ -38,6 +39,11 @@ type TimelineEntry struct {
 	Partition string `json:"partition,omitempty"`
 	HasEmit   bool   `json:"hasEmit"`
 	HasLog    bool   `json:"hasLog"`
+	// Quirks lists the distinct runtime-quirk codes that fired on this step.
+	// Carried in full (not as a bool like HasEmit/HasLog) because the code is
+	// itself the compact, actionable signal - it lets a timeline scan spot a
+	// quirk without drilling into every flagged step.
+	Quirks []string `json:"quirks,omitempty"`
 }
 
 func New() (*Store, error) {
@@ -60,7 +66,8 @@ func NewWithLimit(maxSteps int) (*Store, error) {
 			status      TEXT,
 			partition   TEXT,
 			has_emit    BOOLEAN,
-			has_log     BOOLEAN
+			has_log     BOOLEAN,
+			quirk_codes TEXT
 		);
 		CREATE INDEX idx_steps_status ON steps(status);
 		CREATE INDEX idx_steps_stream ON steps(stream_id);
@@ -75,12 +82,12 @@ func NewWithLimit(maxSteps int) (*Store, error) {
 
 func (s *Store) Insert(eventJSON, resultJSON string) (int64, error) {
 	eventType, streamID := extractEventFields(eventJSON)
-	status, partition, hasEmit, hasLog := extractResultFields(resultJSON)
+	status, partition, hasEmit, hasLog, quirkCodes := extractResultFields(resultJSON)
 
 	result, err := s.db.Exec(`
-		INSERT INTO steps (event_json, result_json, event_type, stream_id, status, partition, has_emit, has_log)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, eventJSON, resultJSON, eventType, streamID, status, partition, hasEmit, hasLog)
+		INSERT INTO steps (event_json, result_json, event_type, stream_id, status, partition, has_emit, has_log, quirk_codes)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, eventJSON, resultJSON, eventType, streamID, status, partition, hasEmit, hasLog, quirkCodes)
 	if err != nil {
 		return 0, fmt.Errorf("history: insert: %w", err)
 	}
@@ -122,12 +129,12 @@ func (s *Store) TimelineFiltered(from, to int64, partition string) ([]TimelineEn
 	var args []any
 
 	if partition != "" {
-		query = `SELECT step, event_type, stream_id, status, partition, has_emit, has_log
+		query = `SELECT step, event_type, stream_id, status, partition, has_emit, has_log, quirk_codes
 			FROM steps WHERE step >= ? AND step <= ? AND partition = ?
 			ORDER BY step`
 		args = []any{from, to, partition}
 	} else {
-		query = `SELECT step, event_type, stream_id, status, partition, has_emit, has_log
+		query = `SELECT step, event_type, stream_id, status, partition, has_emit, has_log, quirk_codes
 			FROM steps WHERE step >= ? AND step <= ?
 			ORDER BY step`
 		args = []any{from, to}
@@ -142,9 +149,11 @@ func (s *Store) TimelineFiltered(from, to int64, partition string) ([]TimelineEn
 	entries := []TimelineEntry{}
 	for rows.Next() {
 		var e TimelineEntry
-		if err := rows.Scan(&e.Index, &e.EventType, &e.StreamID, &e.Status, &e.Partition, &e.HasEmit, &e.HasLog); err != nil {
+		var quirkCodes sql.NullString
+		if err := rows.Scan(&e.Index, &e.EventType, &e.StreamID, &e.Status, &e.Partition, &e.HasEmit, &e.HasLog, &quirkCodes); err != nil {
 			return nil, fmt.Errorf("history: scan timeline: %w", err)
 		}
+		e.Quirks = decodeQuirkCodes(quirkCodes.String)
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()
@@ -190,15 +199,48 @@ func extractEventFields(eventJSON string) (eventType, streamID string) {
 	return obj.EventType, obj.StreamID
 }
 
-func extractResultFields(resultJSON string) (status, partition string, hasEmit, hasLog bool) {
+func extractResultFields(resultJSON string) (status, partition string, hasEmit, hasLog bool, quirkCodes string) {
 	var obj struct {
-		Status    string          `json:"status"`
-		Partition string          `json:"partition"`
-		Emitted   json.RawMessage `json:"emitted"`
-		Logs      []string        `json:"logs"`
+		Status      string          `json:"status"`
+		Partition   string          `json:"partition"`
+		Emitted     json.RawMessage `json:"emitted"`
+		Logs        []string        `json:"logs"`
+		Diagnostics []struct {
+			Code string `json:"code"`
+		} `json:"diagnostics"`
 	}
 	_ = json.Unmarshal([]byte(resultJSON), &obj)
 	hasEmit = len(obj.Emitted) > 2 && string(obj.Emitted) != "null"
 	hasLog = len(obj.Logs) > 0
-	return obj.Status, obj.Partition, hasEmit, hasLog
+
+	codes := make([]string, 0, len(obj.Diagnostics))
+	seen := map[string]bool{}
+	for _, d := range obj.Diagnostics {
+		if d.Code == "" || seen[d.Code] {
+			continue
+		}
+		seen[d.Code] = true
+		codes = append(codes, d.Code)
+	}
+	if len(codes) > 0 {
+		sort.Strings(codes)
+		if encoded, err := json.Marshal(codes); err == nil {
+			quirkCodes = string(encoded)
+		}
+	}
+	return obj.Status, obj.Partition, hasEmit, hasLog, quirkCodes
+}
+
+// decodeQuirkCodes parses the stored JSON array of distinct quirk codes back
+// into a slice, returning nil for the empty / absent case so the timeline
+// entry's `quirks` field stays omitted.
+func decodeQuirkCodes(stored string) []string {
+	if stored == "" {
+		return nil
+	}
+	var codes []string
+	if err := json.Unmarshal([]byte(stored), &codes); err != nil || len(codes) == 0 {
+		return nil
+	}
+	return codes
 }

@@ -1,6 +1,7 @@
 package history
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -9,6 +10,9 @@ const (
 	testResult         = `{"status":"processed","partition":"order-1","state":{"count":1},"emitted":[],"logs":[]}`
 	testResultWithEmit = `{"status":"processed","partition":"order-1","state":{"count":1},"emitted":[{"streamId":"notifications","eventType":"OrderNotification"}],"logs":["hello"]}`
 	testResultSkipped  = `{"status":"skipped","reason":"unhandled"}`
+	// Two distinct quirk codes plus a repeat of the first, to exercise the
+	// dedupe + sort in extractResultFields.
+	testResultWithQuirks = `{"status":"processed","partition":"order-1","state":"x","emitted":[],"logs":[],"diagnostics":[{"code":"compat.log.multiParam","message":"m","severity":2,"range":null},{"code":"compat.biState.stringSlot","message":"m2","severity":2,"range":null},{"code":"compat.log.multiParam","message":"m","severity":2,"range":null}]}`
 )
 
 func mustNew(t *testing.T) *Store {
@@ -70,6 +74,28 @@ func TestInsertExtractsEmitAndLog(t *testing.T) {
 	}
 	if !step.HasLog {
 		t.Error("expected HasLog = true")
+	}
+}
+
+func TestTimelineExtractsQuirks(t *testing.T) {
+	s := mustNew(t)
+
+	_, _ = s.Insert(testEvent, testResult)           // no quirks
+	_, _ = s.Insert(testEvent, testResultWithQuirks) // two distinct, one repeated
+
+	entries, err := s.Timeline(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].Quirks != nil {
+		t.Errorf("[0] expected nil Quirks, got %v", entries[0].Quirks)
+	}
+	want := []string{"compat.biState.stringSlot", "compat.log.multiParam"}
+	if got := entries[1].Quirks; !slices.Equal(got, want) {
+		t.Errorf("[1] Quirks = %v, want %v (distinct + sorted)", got, want)
 	}
 }
 

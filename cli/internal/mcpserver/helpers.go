@@ -32,7 +32,7 @@ func formatStep(step *history.Step) map[string]any {
 	var result any
 	_ = json.Unmarshal([]byte(step.ResultJSON), &result)
 
-	return map[string]any{
+	out := map[string]any{
 		"step":      step.Index,
 		"eventType": step.EventType,
 		"streamId":  step.StreamID,
@@ -41,6 +41,22 @@ func formatStep(step *history.Step) map[string]any {
 		"event":     event,
 		"result":    result,
 	}
+	// Promote the runtime quirks that fired to a top-level field so the
+	// assistant sees them without digging into the full result. Each is a
+	// full Diagnostic object; cross-reference its code against the
+	// gaffer://docs/quirks resource. Omitted when none fired.
+	if diags := extractDiagnostics(step.ResultJSON); len(diags) > 0 {
+		out["diagnostics"] = diags
+	}
+	return out
+}
+
+func extractDiagnostics(resultJSON string) []json.RawMessage {
+	var obj struct {
+		Diagnostics []json.RawMessage `json:"diagnostics"`
+	}
+	_ = json.Unmarshal([]byte(resultJSON), &obj)
+	return obj.Diagnostics
 }
 
 func extractState(resultJSON string) json.RawMessage {

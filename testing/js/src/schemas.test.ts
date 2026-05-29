@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as v from "valibot";
 import type { RecordedEvent, ResolvedEvent } from "@kurrent/kurrentdb-client";
 import {
+	type EventInput,
 	EventInputSchema,
 	normalizeEvent,
 	parseEventInput,
@@ -407,7 +408,22 @@ describe("normalizeEvent", () => {
 		expect(result.created.length).toBeGreaterThan(0);
 	});
 
-	it("rejects invalid input", () => {
-		expect(() => parseEventInput({ foo: "bar" } as never)).toThrow();
+	it("rejects an unrecognized shape with a friendly message", () => {
+		expect(() =>
+			parseEventInput({ foo: "bar" } as unknown as EventInput),
+		).toThrow(/Unrecognized event shape/);
+	});
+
+	it("names the offending field on a near-miss TestEvent", () => {
+		// Has eventType, so it parses as a TestEvent; the empty value is
+		// reported by name instead of the union's "Expected Object" noise.
+		expect(() =>
+			parseEventInput({
+				eventType: "",
+				streamId: "s-1",
+				sequenceNumber: 0,
+				isJson: true,
+			}),
+		).toThrow(/eventType must not be empty/);
 	});
 });

@@ -25,6 +25,16 @@ public class ErrorTests {
 		return VerifyXunit.Verifier.Verify(ex.Message);
 	}
 
+	[Theory]
+	[InlineData("fromStream('s-1').foreachStream().when({ $any: function (s, e) { return s; } })")]
+	[InlineData("fromStreams('s-1', 's-2').foreachStream().when({ $any: function (s, e) { return s; } })")]
+	public void ForeachStream_OnUnsupportedSource_RejectedWithFriendlyMessage(string source) {
+		var ex = Assert.Throws<InvalidProjectionException>(() => new ProjectionSession(
+			source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 }));
+
+		Assert.Equal("foreachStream() is only supported with fromAll() and fromCategory()", ex.Description);
+	}
+
 	[Fact]
 	public Task InvalidProjectionError_source_definition_error() {
 		var ex = Assert.Throws<InvalidProjectionException>(() => new ProjectionSession("fromStream(123)", new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 }));

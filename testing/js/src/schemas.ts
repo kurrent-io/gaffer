@@ -71,10 +71,25 @@ type ParsedEventInput = v.InferOutput<typeof EventInputSchema>;
 
 /**
  * Parse and validate an event input against the accepted schemas.
- * @throws {ValiError} If the input doesn't match any accepted event shape.
+ *
+ * Parsing against the {@link EventInputSchema} union directly reports the
+ * unhelpful "Expected Object but received Object" when nothing matches,
+ * because all three branches are objects. Discriminate on each shape's
+ * distinguishing key first, then parse against that single schema so the
+ * error names the field that's actually wrong.
+ *
+ * @throws {ValiError} If the input matches a shape but a field is invalid.
+ * @throws {Error} If the input matches no known event shape.
  */
 export function parseEventInput(input: EventInput): ParsedEventInput {
-	return v.parse(EventInputSchema, input);
+	if (typeof input === "object" && input !== null) {
+		if ("eventType" in input) return v.parse(TestEventSchema, input);
+		if ("event" in input) return v.parse(ResolvedEventSchema, input);
+		if ("type" in input) return v.parse(RecordedEventSchema, input);
+	}
+	throw new Error(
+		`Unrecognized event shape: ${JSON.stringify(input)}. Expected a TestEvent (eventType), a KurrentDB RecordedEvent (type), or a ResolvedEvent (event).`,
+	);
 }
 
 /** Event fields normalized to strings for the runtime C API. */

@@ -20,6 +20,7 @@ internal static class DiagnosticCollector {
 		new LogMultiParamRule(),
 		new TransformsNotAppliedInV2Rule(),
 		new OutputStateUnconditionalInV2Rule(),
+		new DuplicateOptionsRule(),
 	};
 
 	/// <summary>
@@ -281,6 +282,31 @@ internal static class DiagnosticCollector {
 				diagnostics.Add(new Diagnostic {
 					Code = "compat.transforms.notInvoked",
 					Message = $"{name}() is registered but never invoked under engine_version=2; result equals post-handler state. Set engine_version=1 for V1 transform behaviour. See v1-v2-differences.",
+					Severity = DiagnosticSeverity.Warning,
+					Range = ToSourceRange(loc),
+				});
+			}
+		}
+	}
+
+	// options() is last-write-wins: a second call silently discards the
+	// first. That's almost always a refactor mistake (a stale options
+	// block left behind), so warn on every call past the first. Not
+	// quirk- or version-gated - it's a usage lint, true at all versions.
+	private sealed class DuplicateOptionsRule : IRule {
+		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
+			var scanner = new IdentifierShadowScanner("options", _ => true);
+			scanner.Visit(ast);
+			// A top-level `var options` / `function options` shadows the
+			// definition global, so these calls aren't the real options().
+			if (scanner.Shadowed || scanner.Calls.Count <= 1)
+				return;
+
+			// Skip the first call; flag each later one as the duplicate.
+			foreach (var loc in scanner.Calls.Skip(1)) {
+				diagnostics.Add(new Diagnostic {
+					Code = "options.duplicate",
+					Message = "options() is called more than once; only the last call takes effect and the earlier ones are discarded.",
 					Severity = DiagnosticSeverity.Warning,
 					Range = ToSourceRange(loc),
 				});

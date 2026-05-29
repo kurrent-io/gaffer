@@ -17,6 +17,28 @@ public class DiagnosticsTests {
 	}
 
 	[Fact]
+	public void DuplicateOptions_WarnsOnEachCallPastFirst() {
+		var source =
+			"options({});\noptions({});\noptions({});\n" +
+			"fromAll().when({ $any: function (s, e) { return s; } });";
+
+		using var session = new ProjectionSession(source, Options);
+
+		Assert.NotNull(session.Diagnostics);
+		var dups = session.Diagnostics!.Where(d => d.Code == "options.duplicate").ToArray();
+		Assert.Equal(2, dups.Length); // first call is fine; calls 2 and 3 are flagged
+		Assert.All(dups, d => Assert.Equal(DiagnosticSeverity.Warning, d.Severity));
+	}
+
+	[Fact]
+	public void SingleOptions_NoDuplicateWarning() {
+		using var session = new ProjectionSession(
+			"options({});\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "options.duplicate");
+	}
+
+	[Fact]
 	public void LinkStreamTo_Detected() {
 		var source = "fromAll().when({ $any: function (s, e) { linkStreamTo('a-' + e.streamId, e.streamId); return s; } });";
 		var expectedCol = source.IndexOf("linkStreamTo", StringComparison.Ordinal) + 1;

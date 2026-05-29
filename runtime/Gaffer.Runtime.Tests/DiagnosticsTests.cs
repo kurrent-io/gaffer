@@ -75,6 +75,25 @@ public class DiagnosticsTests {
 	}
 
 	[Fact]
+	public void NestedFromStreamsCall_DoesNotSuppress_ReorderDiagnostic() {
+		// Real source is fromAll; a fromStreams() call buried in a handler body
+		// must not suppress the diagnostic.
+		using var session = new ProjectionSession(
+			"options({ reorderEvents: true });\nfromAll().when({ $any: function (s, e) { fromStreams('a', 'b'); return s; } });", Options);
+
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "options.fromStreamsOnly");
+	}
+
+	[Fact]
+	public void ShadowedOptions_Suppresses_ReorderDiagnostic() {
+		// A top-level user-defined `options` means the call isn't the builtin.
+		using var session = new ProjectionSession(
+			"function options(o) { return o; }\noptions({ reorderEvents: true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "options.fromStreamsOnly");
+	}
+
+	[Fact]
 	public void LinkStreamTo_Detected() {
 		var source = "fromAll().when({ $any: function (s, e) { linkStreamTo('a-' + e.streamId, e.streamId); return s; } });";
 		var expectedCol = source.IndexOf("linkStreamTo", StringComparison.Ordinal) + 1;

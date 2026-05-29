@@ -319,15 +319,17 @@ internal static class DiagnosticCollector {
 	// KurrentDB rejects reorderEvents on other sources at subscription creation
 	// (ReaderStrategy), and processingLag has no effect without it; gaffer
 	// otherwise stores both in QuerySources and silently ignores them. Surface an
-	// error diagnostic at compile time so the divergence is visible. The scanner
-	// matches options/fromStreams by bare identifier with no shadow check, since
-	// both are non-configurable globals that a top-level shadow can't compile over.
-	// Not quirk- or version-gated.
+	// error diagnostic at compile time so the divergence is visible. Not quirk- or
+	// version-gated.
 	private sealed class ReorderOptionsRule : IRule {
 		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
 			var scanner = new Scanner();
 			scanner.Visit(ast);
-			if (scanner.UsesFromStreams)
+			// A top-level shadow of options/fromStreams (they're writable,
+			// configurable globals) means the bare calls aren't the builtins, so
+			// the analysis can't be trusted - stay quiet. A genuine fromStreams
+			// source likewise suppresses.
+			if (scanner.OptionsShadowed || scanner.FromStreamsShadowed || scanner.UsesFromStreams)
 				return;
 
 			foreach (var (name, loc) in scanner.Offending) {
@@ -340,31 +342,78 @@ internal static class DiagnosticCollector {
 			}
 		}
 
+		// Source and options are top-level definition constructs, so only calls
+		// and shadow declarations at function depth 0 count; a fromStreams() in a
+		// handler body or nested/dead code is not the source and must not suppress.
 		private sealed class Scanner : AstVisitor {
+			private int _functionDepth;
+
 			public bool UsesFromStreams { get; private set; }
+			public bool OptionsShadowed { get; private set; }
+			public bool FromStreamsShadowed { get; private set; }
 			public List<(string Name, Acornima.SourceLocation Loc)> Offending { get; } = new();
 
+			protected override object? VisitFunctionDeclaration(FunctionDeclaration node) {
+				MarkShadow(node.Id);
+				_functionDepth++;
+				var result = base.VisitFunctionDeclaration(node);
+				_functionDepth--;
+				return result;
+			}
+
+			protected override object? VisitFunctionExpression(FunctionExpression node) {
+				_functionDepth++;
+				var result = base.VisitFunctionExpression(node);
+				_functionDepth--;
+				return result;
+			}
+
+			protected override object? VisitArrowFunctionExpression(ArrowFunctionExpression node) {
+				_functionDepth++;
+				var result = base.VisitArrowFunctionExpression(node);
+				_functionDepth--;
+				return result;
+			}
+
+			protected override object? VisitVariableDeclarator(VariableDeclarator node) {
+				MarkShadow(node.Id);
+				return base.VisitVariableDeclarator(node);
+			}
+
 			protected override object? VisitCallExpression(CallExpression node) {
-				if (node.Callee is Identifier callee) {
+				if (_functionDepth == 0 && node.Callee is Identifier callee) {
 					if (callee.Name == "fromStreams") {
 						UsesFromStreams = true;
 					} else if (callee.Name == "options" &&
 						node.Arguments.Count > 0 &&
 						node.Arguments[0] is ObjectExpression obj) {
-						foreach (var p in obj.Properties) {
-							if (p is Property { Computed: false } prop) {
-								var key = prop.Key switch {
-									Identifier id => id.Name,
-									StringLiteral lit => lit.Value,
-									_ => null,
-								};
-								if (key is "reorderEvents" or "processingLag")
-									Offending.Add((key, prop.Key.Location));
-							}
-						}
+						CollectReorderOptions(obj);
 					}
 				}
 				return base.VisitCallExpression(node);
+			}
+
+			private void MarkShadow(Node? id) {
+				if (_functionDepth != 0 || id is not Identifier { Name: var name })
+					return;
+				if (name == "options")
+					OptionsShadowed = true;
+				else if (name == "fromStreams")
+					FromStreamsShadowed = true;
+			}
+
+			private void CollectReorderOptions(ObjectExpression obj) {
+				foreach (var p in obj.Properties) {
+					if (p is not Property { Computed: false } prop)
+						continue;
+					var key = prop.Key switch {
+						Identifier id => id.Name,
+						StringLiteral lit => lit.Value,
+						_ => null,
+					};
+					if (key is "reorderEvents" or "processingLag")
+						Offending.Add((key, prop.Key.Location));
+				}
 			}
 		}
 	}

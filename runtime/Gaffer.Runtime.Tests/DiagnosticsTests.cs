@@ -39,6 +39,42 @@ public class DiagnosticsTests {
 	}
 
 	[Fact]
+	public void ReorderEvents_OnFromAll_ErrorDiagnostic() {
+		using var session = new ProjectionSession(
+			"options({ reorderEvents: true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.NotNull(session.Diagnostics);
+		var d = Assert.Single(session.Diagnostics!, x => x.Code == "options.fromStreamsOnly");
+		Assert.Equal(DiagnosticSeverity.Error, d.Severity);
+		Assert.Contains("reorderEvents", d.Message);
+	}
+
+	[Fact]
+	public void ProcessingLag_OnFromCategory_ErrorDiagnostic() {
+		using var session = new ProjectionSession(
+			"options({ processingLag: 100 });\nfromCategory('order').when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.Contains(session.Diagnostics ?? [],
+			d => d.Code == "options.fromStreamsOnly" && d.Message.Contains("processingLag"));
+	}
+
+	[Fact]
+	public void ReorderEvents_StringLiteralKey_OnFromAll_ErrorDiagnostic() {
+		using var session = new ProjectionSession(
+			"options({ \"reorderEvents\": true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "options.fromStreamsOnly");
+	}
+
+	[Fact]
+	public void ReorderOptions_OnFromStreams_NoDiagnostic() {
+		using var session = new ProjectionSession(
+			"options({ reorderEvents: true, processingLag: 100 });\nfromStreams('a', 'b').when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "options.fromStreamsOnly");
+	}
+
+	[Fact]
 	public void LinkStreamTo_Detected() {
 		var source = "fromAll().when({ $any: function (s, e) { linkStreamTo('a-' + e.streamId, e.streamId); return s; } });";
 		var expectedCol = source.IndexOf("linkStreamTo", StringComparison.Ordinal) + 1;

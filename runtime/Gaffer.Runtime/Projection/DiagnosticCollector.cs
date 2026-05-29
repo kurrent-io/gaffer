@@ -21,6 +21,7 @@ internal static class DiagnosticCollector {
 		new TransformsNotAppliedInV2Rule(),
 		new OutputStateUnconditionalInV2Rule(),
 		new DuplicateOptionsRule(),
+		new ReorderOptionsRule(),
 	};
 
 	/// <summary>
@@ -310,6 +311,60 @@ internal static class DiagnosticCollector {
 					Severity = DiagnosticSeverity.Warning,
 					Range = ToSourceRange(loc),
 				});
+			}
+		}
+	}
+
+	// reorderEvents / processingLag only apply to fromStreams() projections.
+	// KurrentDB rejects reorderEvents on other sources at subscription creation
+	// (ReaderStrategy), and processingLag has no effect without it; gaffer
+	// otherwise stores both in QuerySources and silently ignores them. Surface an
+	// error diagnostic at compile time so the divergence is visible. The scanner
+	// matches options/fromStreams by bare identifier with no shadow check, since
+	// both are non-configurable globals that a top-level shadow can't compile over.
+	// Not quirk- or version-gated.
+	private sealed class ReorderOptionsRule : IRule {
+		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
+			var scanner = new Scanner();
+			scanner.Visit(ast);
+			if (scanner.UsesFromStreams)
+				return;
+
+			foreach (var (name, loc) in scanner.Offending) {
+				diagnostics.Add(new Diagnostic {
+					Code = "options.fromStreamsOnly",
+					Message = $"{name} is only supported on fromStreams() projections.",
+					Severity = DiagnosticSeverity.Error,
+					Range = ToSourceRange(loc),
+				});
+			}
+		}
+
+		private sealed class Scanner : AstVisitor {
+			public bool UsesFromStreams { get; private set; }
+			public List<(string Name, Acornima.SourceLocation Loc)> Offending { get; } = new();
+
+			protected override object? VisitCallExpression(CallExpression node) {
+				if (node.Callee is Identifier callee) {
+					if (callee.Name == "fromStreams") {
+						UsesFromStreams = true;
+					} else if (callee.Name == "options" &&
+						node.Arguments.Count > 0 &&
+						node.Arguments[0] is ObjectExpression obj) {
+						foreach (var p in obj.Properties) {
+							if (p is Property { Computed: false } prop) {
+								var key = prop.Key switch {
+									Identifier id => id.Name,
+									StringLiteral lit => lit.Value,
+									_ => null,
+								};
+								if (key is "reorderEvents" or "processingLag")
+									Offending.Add((key, prop.Key.Location));
+							}
+						}
+					}
+				}
+				return base.VisitCallExpression(node);
 			}
 		}
 	}

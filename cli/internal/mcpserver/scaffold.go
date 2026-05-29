@@ -32,6 +32,10 @@ type scaffoldInput struct {
 }
 
 func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input scaffoldInput) (*mcp.CallToolResult, any, error) {
+	if r := s.requireProject(); r != nil {
+		return r, nil, nil
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

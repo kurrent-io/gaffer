@@ -29,6 +29,10 @@ type runInput struct {
 }
 
 func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input runInput) (*mcp.CallToolResult, any, error) {
+	if r := s.requireProject(); r != nil {
+		return r, nil, nil
+	}
+
 	s.mu.Lock()
 
 	debug := len(input.Breakpoints) > 0 || input.BreakAt > 0

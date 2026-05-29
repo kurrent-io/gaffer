@@ -32,6 +32,12 @@ func newMCPCmd() *cobra.Command {
 			// not at End time, so the values are recorded even if the
 			// session terminates unexpectedly. Schema gives mcp only
 			// features_used (no counts).
+			//
+			// A server started project-less resolves its project lazily
+			// on first tool use, so Config() is nil here and manifest
+			// features go unstamped for that session. Folded into the
+			// project-less telemetry work in UI-1616 rather than
+			// re-reading Config() after Run.
 			if cfg := srv.Config(); cfg != nil {
 				tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(cfg))
 			}

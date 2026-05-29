@@ -19,6 +19,10 @@ type validateInput struct {
 }
 
 func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input validateInput) (*mcp.CallToolResult, any, error) {
+	if r := s.requireProject(); r != nil {
+		return r, nil, nil
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

@@ -117,7 +117,15 @@ func renderQuirksMarkdown(quirks []gafferruntime.KnownQuirk) string {
 }
 
 func (s *Server) handleConfigResource(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-	data, err := os.ReadFile(project.ConfigPath(s.root))
+	// Raw file read, not s.project(): the config resource must expose
+	// the manifest even when it fails to parse or validate - that's
+	// exactly when an assistant needs to read it to debug.
+	root := s.projectRoot()
+	if root == "" {
+		return nil, mcp.ResourceNotFoundError(req.Params.URI)
+	}
+
+	data, err := os.ReadFile(project.ConfigPath(root))
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)
 	}

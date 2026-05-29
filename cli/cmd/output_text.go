@@ -85,6 +85,9 @@ func (tw *textWriter) RegisterCallbacks(session sessionCallbacks) {
 		tw.writeEmittedCb(streamID, eventType, data, metadata, isJSON, isLink)
 	})
 	session.OnLog(func(message string) {
+		// Flush the deferred event header first so logs nest under their
+		// own event in the order they were emitted, not before the header.
+		tw.flushPending()
 		tw.write("%s %s\n", tw.lineSub(tw.styles.skipped.Render("[log]")), message)
 	})
 }
@@ -133,6 +136,9 @@ func (tw *textWriter) writeNestedFields(fields []field) {
 }
 
 func (tw *textWriter) writeEmittedCb(streamID, eventType, data, metadata string, isJSON, isLink bool) {
+	// Flush the deferred event header so emitted events nest under their
+	// own event, not before the header.
+	tw.flushPending()
 	em := tw.styles.emitted
 	hasData := data != ""
 	hasMeta := metadata != ""

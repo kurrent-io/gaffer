@@ -730,6 +730,10 @@
             "mcp"
           ]
         },
+        "started_in_project": {
+          "description": "Whether the server found a gaffer project at startup. False means it\nlaunched outside a project (e.g. a globally-registered server) and\nstarted project-less, with the projection tools unavailable until a\nproject is found or created. Set once at startup.",
+          "type": "boolean"
+        },
         "manifest_features_used": {
           "description": "See ManifestCommandInvokedProperties.manifest_features_used.",
           "type": "array",

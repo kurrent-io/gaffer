@@ -41,21 +41,26 @@ func newMCPCmd() *cobra.Command {
 				return err
 			}
 
+			// Whether the server launched inside a project. Known at
+			// construction and immutable, so stamp it now.
+			tx.SetStartedInProject(srv.StartedInProject())
+
 			// Stamp manifest-derived props before the long Run blocks,
 			// not at End time, so the values are recorded even if the
-			// session terminates unexpectedly. Schema gives mcp only
-			// features_used (no counts).
-			//
-			// A server started project-less resolves its project lazily
-			// on first tool use, so Config() is nil here and manifest
-			// features go unstamped for that session. Folded into the
-			// project-less telemetry work in UI-1616 rather than
-			// re-reading Config() after Run.
+			// session terminates unexpectedly.
 			if cfg := srv.Config(); cfg != nil {
 				tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(cfg))
 			}
 
 			runErr := srv.Run(cmd.Context())
+
+			// A server that started project-less resolves its project
+			// lazily on first tool use, so Config() was nil above. Re-stamp
+			// after Run (handlers have finished) to capture manifest
+			// features for those sessions. Idempotent for in-project starts.
+			if cfg := srv.Config(); cfg != nil {
+				tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(cfg))
+			}
 
 			// Drain counters after Run returns - request goroutines
 			// have finished mutating stats by then, so the Load

@@ -155,7 +155,7 @@ func TestTextWriter_WriteInfo_QuirksVersion_Set(t *testing.T) {
 	tw.WriteInfo(stubProjection("p", 2, "26.1.0"), gafferruntime.ProjectionInfo{AllStreams: true})
 
 	out := buf.String()
-	testutil.AssertContains(t, out, "Quirks version: 26.1.0")
+	testutil.AssertContains(t, out, "Quirks: 26.1.0")
 }
 
 func TestTextWriter_WriteInfo_QuirksVersion_Unversioned(t *testing.T) {
@@ -400,7 +400,9 @@ func TestTextWriter_WriteResult_Diagnostics(t *testing.T) {
 		}},
 	})
 
-	testutil.AssertContains(t, buf.String(), "quirk: compat.biState.stringSlot")
+	out := buf.String()
+	testutil.AssertContains(t, out, "[warning] compat.biState.stringSlot")
+	testutil.AssertContains(t, out, "BiState state JSON-quotes")
 }
 
 func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
@@ -414,7 +416,7 @@ func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
 	tw.WriteSummary(stats, engine.StateSummary{})
 
 	out := buf.String()
-	testutil.AssertContains(t, out, "quirks fired:")
+	testutil.AssertContains(t, out, "quirks fired")
 	testutil.AssertContains(t, out, "compat.biState.stringSlot")
 }
 

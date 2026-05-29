@@ -194,9 +194,9 @@ func (tw *textWriter) WriteInfo(proj *engine.Projection, info gafferruntime.Proj
 	}
 
 	if proj.QuirksVersion != "" {
-		tw.detail("Quirks version", proj.QuirksVersion)
+		tw.detail("Quirks", proj.QuirksVersion)
 	} else {
-		tw.detail("Quirks version", "unversioned (matching all KurrentDB quirks)")
+		tw.detail("Quirks", "unversioned (matching all KurrentDB quirks)")
 	}
 
 	tw.blank()
@@ -213,6 +213,16 @@ func (tw *textWriter) writeDiagnostic(d gafferruntime.Diagnostic) {
 	}
 	tw.write("%s\n", tw.severityStyle(d.Severity).Render(header))
 	tw.write("%s%s\n\n", tw.ind(), d.Message)
+}
+
+// writeStepDiagnostic renders a runtime quirk nested under an event result,
+// in the same styled [severity] code / message shape as the compile-time
+// writeDiagnostic - just indented to the event's detail level and without a
+// source range (runtime quirks are value-dependent, not tied to a location).
+func (tw *textWriter) writeStepDiagnostic(d gafferruntime.Diagnostic) {
+	header := fmt.Sprintf("[%s] %s", severityLabel(d.Severity), d.Code)
+	tw.write("%s%s\n", tw.ind(), tw.severityStyle(d.Severity).Render(header))
+	tw.write("%s%s%s\n", tw.ind(), tw.ind(), d.Message)
 }
 
 func severityLabel(s gafferruntime.DiagnosticSeverity) string {
@@ -293,7 +303,7 @@ func (tw *textWriter) WriteResult(_ string, result *gafferruntime.FeedResult) {
 		tw.detail("state", string(result.State))
 	}
 	for _, d := range result.Diagnostics {
-		tw.detail("quirk", fmt.Sprintf("%s %s", tw.styles.skipped.Render(d.Code), d.Message))
+		tw.writeStepDiagnostic(d)
 	}
 	tw.blank()
 }
@@ -379,11 +389,17 @@ func (tw *textWriter) statsLine(stats engine.EventStats) {
 	// non-fatal, so they're reported separately from skips and errors.
 	if len(stats.DiagnosticsByCode) > 0 {
 		codes := make([]string, 0, len(stats.DiagnosticsByCode))
-		for c := range stats.DiagnosticsByCode {
+		total := 0
+		for c, n := range stats.DiagnosticsByCode {
 			codes = append(codes, c)
+			total += n
 		}
 		sort.Strings(codes)
-		tw.write("quirks fired:\n")
+		noun := "quirks"
+		if total == 1 {
+			noun = "quirk"
+		}
+		tw.write("%s %s fired\n", gold(formatNumber(total)), noun)
 		for _, c := range codes {
 			tw.write("  %s %s\n", gold(formatNumber(stats.DiagnosticsByCode[c])), c)
 		}

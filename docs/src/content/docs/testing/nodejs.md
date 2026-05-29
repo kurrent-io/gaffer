@@ -35,7 +35,7 @@ fromAll().when({
   $init: () => ({ count: 0, totalCents: 0 }),
   OrderPlaced: (state, event) => ({
     count: state.count + 1,
-    totalCents: state.totalCents + event.data.cents,
+    totalCents: state.totalCents + event.body.cents,
   }),
 });
 ```

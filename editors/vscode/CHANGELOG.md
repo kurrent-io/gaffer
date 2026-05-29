@@ -1,5 +1,11 @@
 # gaffer-vscode
 
+## 0.1.4
+
+### Patch Changes
+
+- fc48c10: Clicking **Debug** on Windows no longer fails with a misleading "Timeout waiting for debug message". The IPC debug spawn now routes through `cross-spawn`, which resolves the npm-installed `gaffer.cmd` shim, and a spawn that never starts surfaces immediately as an exit instead of waiting out the full timeout.
+
 ## 0.1.3
 
 ### Patch Changes

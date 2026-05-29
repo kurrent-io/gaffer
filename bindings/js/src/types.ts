@@ -94,7 +94,7 @@ export interface FeedResult {
 	sharedState?: unknown;
 	emitted?: EmittedEvent[];
 	logs?: string[];
-	/** Quirks that fired while processing this event. Runtime, value-dependent; range is null. Empty array when none (optional only for forward-compatibility with runtimes that predate the field). */
+	/** Quirks encountered while processing this event. Runtime, value-dependent; range is null. Empty array when none (optional only for forward-compatibility with runtimes that predate the field). */
 	diagnostics?: Diagnostic[];
 }
 

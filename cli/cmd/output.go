@@ -121,6 +121,7 @@ func formatEventID(ec gafferruntime.EventContext) string {
 type sessionCallbacks interface {
 	OnEmit(cb gafferruntime.EmitCallback)
 	OnLog(cb gafferruntime.LogCallback)
+	OnDiagnostic(cb gafferruntime.DiagnosticCallback)
 }
 
 func hasContent(raw json.RawMessage) bool {

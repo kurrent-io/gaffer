@@ -89,6 +89,19 @@ typedef void (*gaffer_log_cb)(
     void* user_data
 );
 
+/**
+ * Callback when a quirk fires while processing an event (e.g. a biState
+ * string slot being JSON-quoted), at the point it fires. severity matches
+ * the LSP DiagnosticSeverity enum (1=Error, 2=Warning, 3=Information, 4=Hint).
+ * The quirk is also included in the feed result's diagnostics.
+ */
+typedef void (*gaffer_diagnostic_cb)(
+    const char* code,
+    const char* message,
+    int severity,
+    void* user_data
+);
+
 /** Callback when projection state changes after processing an event. */
 typedef void (*gaffer_state_changed_cb)(
     const char* partition,
@@ -104,6 +117,9 @@ void gaffer_on_emit(gaffer_session* session, gaffer_emit_cb cb, void* user_data)
 
 /** Register a callback for console.log output. */
 void gaffer_on_log(gaffer_session* session, gaffer_log_cb cb, void* user_data);
+
+/** Register a callback for quirks that fire while processing an event. */
+void gaffer_on_diagnostic(gaffer_session* session, gaffer_diagnostic_cb cb, void* user_data);
 
 /** Register a callback for state changes. */
 void gaffer_on_state_changed(gaffer_session* session, gaffer_state_changed_cb cb, void* user_data);

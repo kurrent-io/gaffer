@@ -34,14 +34,22 @@ type textWriter struct {
 	// "your partitionBy returned null"), false for live mode
 	// (skips are runtime hygiene noise from $all).
 	showSkipped bool
+	// compileQuirks holds compat.* diagnostic codes seen at compile time
+	// (captured in WriteInfo); runtimeQuirks the distinct codes streamed via
+	// OnDiagnostic during the run. The summary lists their union, so it covers
+	// every quirk the run surfaced - header or per-event.
+	compileQuirks []string
+	runtimeQuirks map[string]bool
 }
 
 type textStyles struct {
 	label     lipgloss.Style
 	pipe      lipgloss.Style
+	logLabel  lipgloss.Style
 	emitted   lipgloss.Style
 	processed lipgloss.Style
 	skipped   lipgloss.Style
+	warning   lipgloss.Style
 	errStatus lipgloss.Style
 	errDetail lipgloss.Style
 	heading   lipgloss.Style
@@ -61,9 +69,11 @@ func newTextWriter(w, errW io.Writer) *textWriter {
 		styles: textStyles{
 			label:     r.NewStyle().Foreground(lipgloss.Color("6")),
 			pipe:      r.NewStyle().Faint(true).Foreground(lipgloss.Color("6")),
+			logLabel:  r.NewStyle().Foreground(lipgloss.Color("4")),
 			emitted:   r.NewStyle(),
 			processed: r.NewStyle().Faint(true).Foreground(lipgloss.Color("2")),
 			skipped:   r.NewStyle().Foreground(lipgloss.Color("3")),
+			warning:   r.NewStyle().Foreground(lipgloss.Color("3")),
 			errStatus: r.NewStyle().Foreground(lipgloss.Color("9")),
 			errDetail: r.NewStyle().Foreground(lipgloss.Color("1")),
 			heading:   r.NewStyle().Bold(true),
@@ -81,7 +91,20 @@ func (tw *textWriter) RegisterCallbacks(session sessionCallbacks) {
 		tw.writeEmittedCb(streamID, eventType, data, metadata, isJSON, isLink)
 	})
 	session.OnLog(func(message string) {
-		tw.write("%s %s\n", tw.lineSub(tw.styles.skipped.Render("[log]")), message)
+		// Flush the deferred event header first so logs nest under their
+		// own event in the order they were emitted, not before the header.
+		tw.flushPending()
+		tw.write("%s %s\n", tw.lineSub(tw.styles.logLabel.Render("[log]")), message)
+	})
+	session.OnDiagnostic(func(d gafferruntime.Diagnostic) {
+		// Quirks stream at the point they fire, so they render inline in the
+		// same ├ flow as logs/emits. Also collected for the run summary.
+		tw.flushPending()
+		tw.writeStepDiagnostic(d)
+		if tw.runtimeQuirks == nil {
+			tw.runtimeQuirks = map[string]bool{}
+		}
+		tw.runtimeQuirks[d.Code] = true
 	})
 }
 
@@ -129,6 +152,9 @@ func (tw *textWriter) writeNestedFields(fields []field) {
 }
 
 func (tw *textWriter) writeEmittedCb(streamID, eventType, data, metadata string, isJSON, isLink bool) {
+	// Flush the deferred event header so emitted events nest under their
+	// own event, not before the header.
+	tw.flushPending()
 	em := tw.styles.emitted
 	hasData := data != ""
 	hasMeta := metadata != ""
@@ -194,15 +220,18 @@ func (tw *textWriter) WriteInfo(proj *engine.Projection, info gafferruntime.Proj
 	}
 
 	if proj.QuirksVersion != "" {
-		tw.detail("Quirks version", proj.QuirksVersion)
+		tw.detail("Quirks", proj.QuirksVersion)
 	} else {
-		tw.detail("Quirks version", "unversioned (matching all KurrentDB quirks)")
+		tw.detail("Quirks", "unversioned (matching all KurrentDB quirks)")
 	}
 
 	tw.blank()
 
 	for _, d := range info.Diagnostics {
 		tw.writeDiagnostic(d)
+		if strings.HasPrefix(d.Code, "compat.") {
+			tw.compileQuirks = append(tw.compileQuirks, d.Code)
+		}
 	}
 }
 
@@ -213,6 +242,16 @@ func (tw *textWriter) writeDiagnostic(d gafferruntime.Diagnostic) {
 	}
 	tw.write("%s\n", tw.severityStyle(d.Severity).Render(header))
 	tw.write("%s%s\n\n", tw.ind(), d.Message)
+}
+
+// writeStepDiagnostic renders a runtime quirk as a per-event item in the same
+// ├ flow as logs and emits - it streams at the point it fires - with the
+// styled [severity] code header and its message on a continuation line. No
+// source range; runtime quirks are value-dependent, not tied to a location.
+func (tw *textWriter) writeStepDiagnostic(d gafferruntime.Diagnostic) {
+	header := fmt.Sprintf("[%s] %s", severityLabel(d.Severity), d.Code)
+	tw.write("%s\n", tw.lineSub(tw.severityStyle(d.Severity).Render(header)))
+	tw.write("%s%s\n", tw.ind("│"), d.Message)
 }
 
 func severityLabel(s gafferruntime.DiagnosticSeverity) string {
@@ -235,7 +274,7 @@ func (tw *textWriter) severityStyle(s gafferruntime.DiagnosticSeverity) lipgloss
 	case gafferruntime.DiagnosticSeverityError:
 		return tw.styles.errStatus
 	case gafferruntime.DiagnosticSeverityWarning:
-		return tw.styles.skipped
+		return tw.styles.warning
 	default:
 		return tw.styles.info
 	}
@@ -250,6 +289,15 @@ func (tw *textWriter) WriteEvent(event eventInfo) {
 	tw.pending = &event
 }
 
+// flushPending prints the deferred event header, at most once per event.
+//
+// WriteEvent defers the header (rather than printing it immediately) so a
+// skipped event renders nothing: in live mode WriteResult drops the block
+// entirely on a "skipped" result. The header is therefore shown lazily by
+// whatever produces the event's first visible output - a log (OnLog), an
+// emitted event (writeEmittedCb), or the result itself (WriteResult) - so it
+// always lands above them in order. Skips are decided before the handler
+// runs, so a dropped event never has logs or emits and never flushes here.
 func (tw *textWriter) flushPending() {
 	if tw.pending == nil {
 		return
@@ -334,7 +382,7 @@ func (tw *textWriter) writeCompatBlock(out io.Writer, code string, lookup func(s
 	if code == "" {
 		return
 	}
-	style := tw.styles.skipped // yellow, matching warning severity
+	style := tw.styles.warning
 	_, _ = fmt.Fprintf(out, "\n%s %s\n", style.Render("Compat:"), code)
 	if quirk, ok := lookup(code); ok {
 		if quirk.Description != "" {
@@ -369,6 +417,32 @@ func (tw *textWriter) statsLine(stats engine.EventStats) {
 		sort.Strings(reasons)
 		for _, r := range reasons {
 			tw.write("  %s %s\n", gold(formatNumber(stats.SkippedByReason[r])), describeSkipReason(r))
+		}
+	}
+
+	// Every distinct quirk the run surfaced - compile-time (from the info
+	// header) and runtime (per-event) - listed together. Non-fatal, so kept
+	// separate from skips and errors.
+	seen := map[string]bool{}
+	for _, c := range tw.compileQuirks {
+		seen[c] = true
+	}
+	for c := range tw.runtimeQuirks {
+		seen[c] = true
+	}
+	if len(seen) > 0 {
+		codes := make([]string, 0, len(seen))
+		for c := range seen {
+			codes = append(codes, c)
+		}
+		sort.Strings(codes)
+		noun := "quirks"
+		if len(codes) == 1 {
+			noun = "quirk"
+		}
+		tw.write("%s %s encountered\n", gold(formatNumber(len(codes))), noun)
+		for _, c := range codes {
+			tw.write("%s%s\n", tw.ind(), tw.styles.warning.Render(c))
 		}
 	}
 }

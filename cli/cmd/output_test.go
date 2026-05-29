@@ -155,7 +155,7 @@ func TestTextWriter_WriteInfo_QuirksVersion_Set(t *testing.T) {
 	tw.WriteInfo(stubProjection("p", 2, "26.1.0"), gafferruntime.ProjectionInfo{AllStreams: true})
 
 	out := buf.String()
-	testutil.AssertContains(t, out, "Quirks version: 26.1.0")
+	testutil.AssertContains(t, out, "Quirks: 26.1.0")
 }
 
 func TestTextWriter_WriteInfo_QuirksVersion_Unversioned(t *testing.T) {
@@ -385,6 +385,71 @@ func TestTextWriter_WriteResult_Processed(t *testing.T) {
 	testutil.AssertContains(t, out, `state: {"count":1}`)
 }
 
+func TestTextWriter_OnDiagnostic_RendersInline(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+	ms := &mockSession{}
+	tw.RegisterCallbacks(ms)
+
+	// Quirks stream during the event, in the ├ flow before the result.
+	tw.WriteEvent(eventInfo{SequenceNumber: 1, StreamID: "s-1", EventType: "SetName"})
+	ms.diagCb(gafferruntime.Diagnostic{
+		Code:     "compat.biState.stringSlot",
+		Message:  "BiState state JSON-quotes raw string values in slot 0.",
+		Severity: gafferruntime.DiagnosticSeverityWarning,
+	})
+	tw.WriteResult("1@s-1", &gafferruntime.FeedResult{
+		Status: "processed",
+		State:  json.RawMessage(`"\"alice\""`),
+	})
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "[warning] compat.biState.stringSlot")
+	testutil.AssertContains(t, out, "BiState state JSON-quotes")
+}
+
+func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+	ms := &mockSession{}
+	tw.RegisterCallbacks(ms)
+
+	// Two distinct runtime quirks stream during the run; the summary lists
+	// each once, no per-code count, with a header total.
+	ms.diagCb(gafferruntime.Diagnostic{Code: "compat.biState.stringSlot", Severity: gafferruntime.DiagnosticSeverityWarning})
+	ms.diagCb(gafferruntime.Diagnostic{Code: "compat.serialize.nonFinite", Severity: gafferruntime.DiagnosticSeverityWarning})
+	tw.WriteSummary(engine.EventStats{Handled: 3}, engine.StateSummary{})
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "2 quirks encountered")
+	testutil.AssertContains(t, out, "compat.biState.stringSlot")
+	testutil.AssertContains(t, out, "compat.serialize.nonFinite")
+}
+
+func TestTextWriter_WriteSummary_MergesCompileTimeQuirks(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+	ms := &mockSession{}
+	tw.RegisterCallbacks(ms)
+
+	// A compile-time compat quirk from the info header folds into the summary
+	// alongside runtime quirks (deduped; deprecations excluded).
+	tw.WriteInfo(stubProjection("p", 2, ""), gafferruntime.ProjectionInfo{
+		AllStreams: true,
+		Diagnostics: []gafferruntime.Diagnostic{
+			{Code: "compat.log.multiParam", Message: "m", Severity: gafferruntime.DiagnosticSeverityWarning},
+			{Code: "deprecated.linkStreamTo", Message: "d", Severity: gafferruntime.DiagnosticSeverityWarning},
+		},
+	})
+	ms.diagCb(gafferruntime.Diagnostic{Code: "compat.biState.stringSlot", Severity: gafferruntime.DiagnosticSeverityWarning})
+	tw.WriteSummary(engine.EventStats{Handled: 1}, engine.StateSummary{})
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "2 quirks encountered")
+	testutil.AssertContains(t, out, "compat.log.multiParam")
+	testutil.AssertContains(t, out, "compat.biState.stringSlot")
+}
+
 func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
@@ -467,6 +532,31 @@ func TestJSONWriter_WriteResult_Processed(t *testing.T) {
 	if _, ok := line["logs"]; !ok {
 		t.Error("expected logs field")
 	}
+}
+
+func TestJSONWriter_WriteResult_Diagnostics(t *testing.T) {
+	var buf bytes.Buffer
+	jw := newJSONWriter(&buf)
+
+	jw.WriteResult("1@s-1", &gafferruntime.FeedResult{
+		Status: "processed",
+		Diagnostics: []gafferruntime.Diagnostic{{
+			Code:     "compat.biState.stringSlot",
+			Message:  "BiState state JSON-quotes raw string values in slot 0.",
+			Severity: gafferruntime.DiagnosticSeverityWarning,
+		}},
+	})
+
+	var line map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	diags, ok := line["diagnostics"].([]any)
+	if !ok || len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %v", line["diagnostics"])
+	}
+	d := diags[0].(map[string]any)
+	testutil.AssertEqual(t, "code", "compat.biState.stringSlot", d["code"])
 }
 
 func TestJSONWriter_WriteResult_Skipped(t *testing.T) {
@@ -729,10 +819,14 @@ func TestTextWriter_SideEffects(t *testing.T) {
 type mockSession struct {
 	emitCb gafferruntime.EmitCallback
 	logCb  gafferruntime.LogCallback
+	diagCb gafferruntime.DiagnosticCallback
 }
 
 func (m *mockSession) OnEmit(cb gafferruntime.EmitCallback) { m.emitCb = cb }
 func (m *mockSession) OnLog(cb gafferruntime.LogCallback)   { m.logCb = cb }
+func (m *mockSession) OnDiagnostic(cb gafferruntime.DiagnosticCallback) {
+	m.diagCb = cb
+}
 
 func TestTextWriter_WriteError(t *testing.T) {
 	var buf bytes.Buffer

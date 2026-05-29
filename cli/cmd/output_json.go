@@ -79,6 +79,9 @@ func (jw *jsonWriter) WriteResult(eventID string, result *gafferruntime.FeedResu
 		} else {
 			line["logs"] = []string{}
 		}
+		if len(result.Diagnostics) > 0 {
+			line["diagnostics"] = result.Diagnostics
+		}
 	} else {
 		line["reason"] = result.SkipReason
 		if len(result.Logs) > 0 {

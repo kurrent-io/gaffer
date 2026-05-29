@@ -26,10 +26,13 @@ type ProjectionInfo struct {
 	Shape *ProjectionShape `json:"shape,omitempty"`
 }
 
-// Diagnostic is a compile-time diagnostic emitted by the runtime.
+// Diagnostic is a diagnostic emitted by the runtime - either compile-time
+// (on ProjectionInfo) or a quirk that fired at runtime (on a feed result and
+// the OnDiagnostic callback).
 //
 // Code is namespaced as "<category>.<name>" (e.g. "deprecated.linkStreamTo").
-// Range is nil if the diagnostic has no associated source location.
+// Range is nil if the diagnostic has no associated source location (always
+// nil for runtime quirks).
 type Diagnostic struct {
 	Code     string             `json:"code"`
 	Message  string             `json:"message"`

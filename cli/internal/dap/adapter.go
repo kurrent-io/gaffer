@@ -123,15 +123,15 @@ func (a *DebugAdapter) HandleBreak(info gafferruntime.BreakInfo) {
 }
 
 // SetServer connects the adapter to a DAP server for sending events.
-// Wires up session callbacks (OnLog, OnEmit) for output events on the
-// current session.
+// Wires up session callbacks (OnLog, OnEmit, OnDiagnostic) for output
+// events on the current session.
 func (a *DebugAdapter) SetServer(server *Server) {
 	a.server = server
 	a.wireSessionCallbacks()
 }
 
 // SetSession replaces the bound runtime session and re-wires OnLog /
-// OnEmit callbacks against it. Called per-iteration in dev.go's
+// OnEmit / OnDiagnostic callbacks against it. Called per-iteration in dev.go's
 // session loop so a restart's freshly-spun session keeps emitting
 // output / step events to the still-attached editor.
 func (a *DebugAdapter) SetSession(session *gafferruntime.Session) {
@@ -182,6 +182,21 @@ func (a *DebugAdapter) wireSessionCallbacks() {
 		a.mu.Unlock()
 		a.bufferOrSend(NewCustomEvent("gaffer/stepEmit", body), inspect)
 	})
+
+	a.session.OnDiagnostic(func(d gafferruntime.Diagnostic) {
+		// Quirks stream at the point they fire, so the editor can attach the
+		// warning to the step/line being processed. Distinct from
+		// gaffer/stepError (fatal).
+		a.mu.Lock()
+		inspect := a.inspect
+		a.mu.Unlock()
+		a.bufferOrSend(NewCustomEvent("gaffer/stepWarning", map[string]any{
+			"step":     a.runner.Step(),
+			"code":     d.Code,
+			"message":  d.Message,
+			"severity": d.Severity,
+		}), inspect)
+	})
 }
 
 // EventWriter returns an engine.EventWriter that sends DAP custom events
@@ -218,6 +233,8 @@ func (w *dapEventWriter) OnResult(eventID string, result *gafferruntime.FeedResu
 		"result": json.RawMessage(resultJSON),
 	})
 	w.adapter.bufferOrSend(resultEvt, inspect)
+	// Runtime quirks stream live via OnDiagnostic (gaffer/stepWarning), at the
+	// point they fire - not batched here.
 
 	if result.Status == "processed" && inspect && w.adapter.server != nil {
 		w.adapter.server.Send(w.adapter.buildStateEvent())

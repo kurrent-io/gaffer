@@ -313,6 +313,46 @@ public class CompatQuirksTests {
 	}
 
 	[Fact]
+	public void LogMultiParam_EmitsRuntimeDiagnostic() {
+		// A multi-arg log() trips compat.log.multiParam at the point it runs,
+		// surfaced on the feed result (also a compile-time diagnostic).
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				$any: function (s, e) { log("a", "b"); return s; }
+			});
+		""", Options());
+
+		var result = session.Feed(new ProjectionEvent {
+			EventType = "Test",
+			StreamId = "s-1",
+			Data = "{}",
+			IsJson = true,
+		});
+
+		Assert.Contains(result.Diagnostics, d => d.Code == KnownQuirks.LogMultiParam.Code);
+	}
+
+	[Fact]
+	public void OnDiagnostic_StreamsAtPointOfFiring() {
+		// The streaming callback fires live during feed, not just on the result.
+		var streamed = new List<string>();
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				$any: function (s, e) { log("a", "b"); return s; }
+			});
+		""", Options()) { OnDiagnostic = d => streamed.Add(d.Code) };
+
+		session.Feed(new ProjectionEvent {
+			EventType = "Test",
+			StreamId = "s-1",
+			Data = "{}",
+			IsJson = true,
+		});
+
+		Assert.Contains(KnownQuirks.LogMultiParam.Code, streamed);
+	}
+
+	[Fact]
 	public void StateContainingNaN_ExceptionCarriesCompatCode() {
 		using var session = new ProjectionSession("""
 			fromAll().when({

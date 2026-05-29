@@ -7,6 +7,7 @@ using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Events;
 using Gaffer.Runtime.Projection;
 using Gaffer.Sdk;
+using Gaffer.Sdk.Diagnostics;
 using Gaffer.Sdk.Versioning;
 
 namespace Gaffer.Runtime;
@@ -290,6 +291,23 @@ internal static unsafe class NativeExports {
 				cb(msg, userData);
 			} finally {
 				FreeUtf8(msg);
+			}
+		};
+	}
+
+	[UnmanagedCallersOnly(EntryPoint = "gaffer_on_diagnostic")]
+	public static void OnDiagnostic(nint sessionId, delegate* unmanaged<byte*, byte*, int, void*, void> cb, void* userData) {
+		if (!Sessions.TryGetValue(sessionId, out var handle))
+			return;
+
+		handle.Session.OnDiagnostic = diagnostic => {
+			var code = AllocUtf8(diagnostic.Code);
+			var message = AllocUtf8(diagnostic.Message);
+			try {
+				cb(code, message, (int)diagnostic.Severity, userData);
+			} finally {
+				FreeUtf8(code);
+				FreeUtf8(message);
 			}
 		};
 	}

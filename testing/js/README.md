@@ -164,7 +164,7 @@ test.getResult("cart-1"); // result for cart-1 (V1: post-transform; V2: post-han
 
 Some KurrentDB quirks only show up in how state is persisted, and `state` / `getState()` hide them by parsing the persisted JSON on read.
 
-- **`step.diagnostics`** lists the quirks that fired while processing the event (empty when none; it can carry more than one). The motivating case is biState string slots, where a raw string written to a slot is JSON-quoted (`compat.biState.stringSlot` for the main slot, `compat.biState.sharedStringSlot` for shared state), persisting `"hello"` as `"\"hello\""`.
+- **`step.diagnostics`** lists the quirks encountered while processing the event (empty when none; it can carry more than one, and the same code can repeat). The motivating case is biState string slots, where a raw string written to a slot is JSON-quoted (`compat.biState.stringSlot` for the main slot, `compat.biState.sharedStringSlot` for shared state), persisting `"hello"` as `"\"hello\""`. Non-persistence quirks appear here too, such as `compat.log.multiParam` fired at each multi-argument `log()` call.
 - **`step.stateRaw`** and **`getStateRaw(partition?)`** return the persisted state JSON string before `JSON.parse`, so you can assert the double-quoted value.
 
 ```typescript
@@ -213,7 +213,7 @@ Three event shapes are accepted:
 
 For manual test events, `eventType` and `streamId` must be non-empty and `sequenceNumber` must be a non-negative integer, matching what KurrentDB can actually deliver to a handler.
 
-Events are matched against the projection's declared source: a `fromStream("a")` / `fromStreams` / `fromCategory` projection only processes events on streams it subscribes to, and others are skipped with `reason: "wrong-stream"` (mirroring KurrentDB delivery). `fromAll()` accepts every stream.'d events by the projection's declared source)
+Events are matched against the projection's declared source: a `fromStream("a")` / `fromStreams` / `fromCategory` projection only processes events on streams it subscribes to, and others are skipped with `reason: "wrong-stream"` (mirroring KurrentDB delivery). `fromAll()` accepts every stream.
 
 ## Errors
 

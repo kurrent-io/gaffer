@@ -1,0 +1,6 @@
+[
+  { "eventType": "Tick", "streamId": "ticks-1", "data": "{}" },
+  { "eventType": "Tick", "streamId": "ticks-1", "data": "{}" },
+  { "eventType": "Tick", "streamId": "ticks-1", "data": "{}" },
+  { "eventType": "Tick", "streamId": "ticks-1", "data": "{}" }
+]

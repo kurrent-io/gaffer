@@ -210,13 +210,13 @@ func TestError_ProjectionTransform(t *testing.T) {
 	assertContains(t, "message", e.Error(), "transform failed")
 }
 
-// -- dbVersion + CompatCode wire format --
+// -- quirksVersion + CompatCode wire format --
 
-func TestSessionOptions_DbVersion_AcceptedAndUsed(t *testing.T) {
-	// Setting dbVersion to a recent version still works (the runtime treats
+func TestSessionOptions_QuirksVersion_AcceptedAndUsed(t *testing.T) {
+	// Setting quirksVersion to a recent version still works (the runtime treats
 	// unknown FixedIn the same way). The point of this test is the JSON
-	// passthrough: a malformed dbVersion would be rejected by the runtime.
-	opts := `{"engineVersion":2,"dbVersion":"26.1.0"}`
+	// passthrough: a malformed quirksVersion would be rejected by the runtime.
+	opts := `{"engineVersion":2,"quirksVersion":"26.1.0"}`
 	source := `fromAll().when({ $any: function (s, e) { return s; } })`
 	session, err := NewSession(source, &opts)
 	if err != nil {
@@ -225,22 +225,22 @@ func TestSessionOptions_DbVersion_AcceptedAndUsed(t *testing.T) {
 	defer session.Destroy()
 }
 
-func TestSessionOptions_DbVersion_RejectedWhenMalformed(t *testing.T) {
-	opts := `{"engineVersion":2,"dbVersion":"not-a-version"}`
+func TestSessionOptions_QuirksVersion_RejectedWhenMalformed(t *testing.T) {
+	opts := `{"engineVersion":2,"quirksVersion":"not-a-version"}`
 	_, err := NewSession("fromAll()", &opts)
 	if err == nil {
-		t.Fatal("expected NewSession to fail with malformed dbVersion")
+		t.Fatal("expected NewSession to fail with malformed quirksVersion")
 	}
 	var e *InvalidArgumentError
 	if !errors.As(err, &e) {
 		t.Fatalf("expected InvalidArgumentError, got %T", err)
 	}
-	assertEqual(t, "field", "dbVersion", e.Field)
+	assertEqual(t, "field", "quirksVersion", e.Field)
 }
 
 func TestError_CompatCode_PropagatesFromCompatFiringPath(t *testing.T) {
-	// 3-arg linkStreamTo is the always-buggy path: throws and the runtime
-	// stamps the exception with KnownBugs.LinkStreamToOutOfBoundsParameters.Code.
+	// 3-arg linkStreamTo is the always-quirky path: throws and the runtime
+	// stamps the exception with KnownQuirks.LinkStreamToOutOfBoundsParameters.Code.
 	source := `fromAll().when({ $any: function (s, e) { linkStreamTo("a", e.streamId, { reason: "x" }); return s; } })`
 	session, err := NewSession(source, &v2Opts)
 	if err != nil {

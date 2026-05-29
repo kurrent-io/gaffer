@@ -506,7 +506,7 @@ public class V2ConformanceTests {
 	[Fact]
 	public void V2_transform_throw_never_surfaces() {
 		// In V1 this would surface as ProjectionTransformException. V2 never
-		// invokes the transform, so the buggy JS body is dead code.
+		// invokes the transform, so the quirky JS body is dead code.
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return {}; },
@@ -586,8 +586,8 @@ public class V2ConformanceTests {
 	public void V2_biState_stringPartitionSlot_feedResultStateEqualsResult() {
 		// Same invariant under bi-state: the slot-0 conversion in
 		// PrepareOutput must be reflected in V2 result, including the
-		// BiStateStringSlot bug-gating that JSON-encodes strings under
-		// pre-fix dbVersion.
+		// BiStateStringSlot quirk-gating that JSON-encodes strings under
+		// pre-fix quirksVersion.
 		using var session = new ProjectionSession("""
             options({ biState: true });
             fromAll().when({

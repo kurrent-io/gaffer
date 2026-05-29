@@ -41,15 +41,15 @@ Projection engine version: `1` or `2`. `gaffer init` writes `2`. V1 is for legac
 
 A projection that doesn't set its own `engine_version` inherits this one. Loading `gaffer.toml` fails if neither the top-level nor the projection sets a version.
 
-### `db_version`
+### `quirks_version`
 
 ```toml
-db_version = "26.1.0"
+quirks_version = "26.1.0"
 ```
 
-Target KurrentDB version (`MAJOR.MINOR.PATCH`). Gaffer uses this to opt out of engine quirks that have been fixed in the named version or later. Unset means gaffer matches every known KurrentDB quirk.
+Target KurrentDB version (`MAJOR.MINOR.PATCH`). Gaffer turns off engine quirks that have been fixed in the named version or later. Unset means gaffer reproduces every known KurrentDB quirk.
 
-The `GAFFER_DB_VERSION` environment variable overrides every `db_version` in the file. Useful for CI matrices.
+The `GAFFER_QUIRKS_VERSION` environment variable overrides every `quirks_version` in the file. Useful for CI matrices.
 
 Optional.
 
@@ -120,16 +120,16 @@ Per-projection override of the top-level `engine_version`. Useful when one proje
 
 Optional.
 
-### `db_version` (per-projection)
+### `quirks_version` (per-projection)
 
 ```toml
 [[projection]]
 name = "v26-only"
 entry = "projections/v26-only.js"
-db_version = "26.1.0"
+quirks_version = "26.1.0"
 ```
 
-Per-projection override of the top-level `db_version`. Optional.
+Per-projection override of the top-level `quirks_version`. Optional.
 
 ### `execution_timeout` (per-projection)
 
@@ -149,7 +149,7 @@ Settings that exist at both top-level and per-projection resolve from most-speci
 | Setting               | Resolution                                                           |
 | --------------------- | -------------------------------------------------------------------- |
 | `engine_version`      | Per-projection > top-level. Required (load fails if neither is set). |
-| `db_version`          | `GAFFER_DB_VERSION` env > per-projection > top-level > unset.        |
+| `quirks_version`      | `GAFFER_QUIRKS_VERSION` env > per-projection > top-level > unset.    |
 | `execution_timeout`   | Per-projection > top-level > 5000ms.                                 |
 | `compilation_timeout` | Top-level only > 5000ms.                                             |
 | `connection`          | `--connection` flag > top-level.                                     |

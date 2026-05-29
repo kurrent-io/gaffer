@@ -14,12 +14,12 @@ import (
 )
 
 // stubProjection builds a synthetic *engine.Projection for output writer
-// tests that previously took (name, engineVersion, dbVersion) directly.
-func stubProjection(name string, engineVersion int, dbVersion string) *engine.Projection {
+// tests that previously took (name, engineVersion, quirksVersion) directly.
+func stubProjection(name string, engineVersion int, quirksVersion string) *engine.Projection {
 	return &engine.Projection{
 		Def:           &config.Projection{Name: name},
 		EngineVersion: engineVersion,
-		DbVersion:     dbVersion,
+		QuirksVersion: quirksVersion,
 	}
 }
 
@@ -148,17 +148,17 @@ func TestTextWriter_WriteInfo_DiagnosticWithoutRange(t *testing.T) {
 	}
 }
 
-func TestTextWriter_WriteInfo_DbVersion_Set(t *testing.T) {
+func TestTextWriter_WriteInfo_QuirksVersion_Set(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
 
 	tw.WriteInfo(stubProjection("p", 2, "26.1.0"), gafferruntime.ProjectionInfo{AllStreams: true})
 
 	out := buf.String()
-	testutil.AssertContains(t, out, "DB version: 26.1.0")
+	testutil.AssertContains(t, out, "Quirks version: 26.1.0")
 }
 
-func TestTextWriter_WriteInfo_DbVersion_Unversioned(t *testing.T) {
+func TestTextWriter_WriteInfo_QuirksVersion_Unversioned(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
 
@@ -169,7 +169,7 @@ func TestTextWriter_WriteInfo_DbVersion_Unversioned(t *testing.T) {
 	testutil.AssertContains(t, out, "matching all KurrentDB quirks")
 }
 
-func TestJSONWriter_WriteInfo_DbVersion_Set(t *testing.T) {
+func TestJSONWriter_WriteInfo_QuirksVersion_Set(t *testing.T) {
 	var buf bytes.Buffer
 	jw := newJSONWriter(&buf)
 
@@ -180,10 +180,10 @@ func TestJSONWriter_WriteInfo_DbVersion_Set(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 	proj := line["projection"].(map[string]any)
-	testutil.AssertEqual(t, "dbVersion", "26.1.0", proj["dbVersion"])
+	testutil.AssertEqual(t, "quirksVersion", "26.1.0", proj["quirksVersion"])
 }
 
-func TestJSONWriter_WriteInfo_DbVersion_NullWhenUnset(t *testing.T) {
+func TestJSONWriter_WriteInfo_QuirksVersion_NullWhenUnset(t *testing.T) {
 	var buf bytes.Buffer
 	jw := newJSONWriter(&buf)
 
@@ -194,12 +194,12 @@ func TestJSONWriter_WriteInfo_DbVersion_NullWhenUnset(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 	proj := line["projection"].(map[string]any)
-	v, ok := proj["dbVersion"]
+	v, ok := proj["quirksVersion"]
 	if !ok {
-		t.Fatal("expected dbVersion to be present (as null) when empty")
+		t.Fatal("expected quirksVersion to be present (as null) when empty")
 	}
 	if v != nil {
-		t.Errorf("expected dbVersion null, got %v (%T)", v, v)
+		t.Errorf("expected quirksVersion null, got %v (%T)", v, v)
 	}
 }
 
@@ -230,11 +230,11 @@ func TestTextWriter_WriteCompatBlock_RendersFixedInWhenSet(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, &buf)
 	fixed := "26.1.1"
-	stub := func(code string) (gafferruntime.KnownBug, bool) {
+	stub := func(code string) (gafferruntime.KnownQuirk, bool) {
 		if code != "compat.event.bodyCast" {
-			return gafferruntime.KnownBug{}, false
+			return gafferruntime.KnownQuirk{}, false
 		}
-		return gafferruntime.KnownBug{
+		return gafferruntime.KnownQuirk{
 			Code:        "compat.event.bodyCast",
 			Description: "Accessing event.body throws on non-object bodies.",
 			FixedIn:     &fixed,
@@ -256,7 +256,7 @@ func TestTextWriter_WriteCompatBlock_RendersFixedInWhenSet(t *testing.T) {
 func TestToFatalError_PropagatesCompatCodeFromInvalidArgument(t *testing.T) {
 	err := &gafferruntime.InvalidArgumentError{
 		Desc:       "bad input",
-		Field:      "dbVersion",
+		Field:      "quirksVersion",
 		CompatCode: "compat.test.synthetic",
 		Msg:        "bad input",
 	}

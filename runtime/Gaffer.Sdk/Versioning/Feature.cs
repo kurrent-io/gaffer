@@ -15,6 +15,6 @@ public sealed record Feature {
 	/// unset version (<c>null</c>) is treated as "permissive" - all features
 	/// are available, matching the unversioned-defaults model.
 	/// </summary>
-	public bool AvailableAt(KurrentDbVersion? dbVersion) =>
-		dbVersion is null || dbVersion >= IntroducedIn;
+	public bool AvailableAt(KurrentDbVersion? quirksVersion) =>
+		quirksVersion is null || quirksVersion >= IntroducedIn;
 }

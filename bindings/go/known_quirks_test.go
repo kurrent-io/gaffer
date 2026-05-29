@@ -5,18 +5,18 @@ import (
 	"testing"
 )
 
-func TestKnownBugs_ReturnsRegistry(t *testing.T) {
-	bugs, err := KnownBugs()
+func TestKnownQuirks_ReturnsRegistry(t *testing.T) {
+	quirks, err := KnownQuirks()
 	if err != nil {
-		t.Fatalf("KnownBugs failed: %v", err)
+		t.Fatalf("KnownQuirks failed: %v", err)
 	}
-	if len(bugs) == 0 {
-		t.Fatal("expected at least one known bug")
+	if len(quirks) == 0 {
+		t.Fatal("expected at least one known quirk")
 	}
 
 	// Every entry has a non-empty code in the compat.* namespace and a
 	// non-empty description.
-	for _, b := range bugs {
+	for _, b := range quirks {
 		if b.Code == "" {
 			t.Errorf("entry has empty code: %+v", b)
 		}
@@ -29,10 +29,10 @@ func TestKnownBugs_ReturnsRegistry(t *testing.T) {
 	}
 }
 
-func TestKnownBugs_IncludesAllExpectedCodes(t *testing.T) {
-	bugs, err := KnownBugs()
+func TestKnownQuirks_IncludesAllExpectedCodes(t *testing.T) {
+	quirks, err := KnownQuirks()
 	if err != nil {
-		t.Fatalf("KnownBugs failed: %v", err)
+		t.Fatalf("KnownQuirks failed: %v", err)
 	}
 
 	// Codes that are tracked by the runtime today. Update when the registry
@@ -44,8 +44,8 @@ func TestKnownBugs_IncludesAllExpectedCodes(t *testing.T) {
 		"compat.biState.stringSlot",
 		"compat.serialize.nonFinite",
 	}
-	codes := make(map[string]bool, len(bugs))
-	for _, b := range bugs {
+	codes := make(map[string]bool, len(quirks))
+	for _, b := range quirks {
 		codes[b.Code] = true
 	}
 	for _, e := range expected {

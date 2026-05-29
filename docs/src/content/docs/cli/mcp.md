@@ -24,7 +24,7 @@ description: Connect gaffer's MCP server to Claude Code, Cursor, Continue, Claud
 - Worked examples covering counters, partitioned state, `emit`, biState, and the rest.
 - Common gotchas across the projection API.
 - V1 vs V2 engine differences.
-- Known engine bugs by KurrentDB version.
+- Known engine quirks by KurrentDB version.
 - The current `gaffer.toml`, exposed so the assistant can reason about projection registration without re-reading the file.
 - Telemetry disclosure, so the assistant can answer questions about what gaffer collects.
 

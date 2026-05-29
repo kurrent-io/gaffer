@@ -31,8 +31,8 @@ internal static class DiagnosticCollector {
 	/// an otherwise-valid projection. The user just doesn't get diagnostics.
 	/// </para>
 	/// </summary>
-	public static Diagnostic[]? Scan(string source, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion) {
-		var (diagnostics, _) = ScanWithShape(source, dbVersion, engineVersion, includeShape: false);
+	public static Diagnostic[]? Scan(string source, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion) {
+		var (diagnostics, _) = ScanWithShape(source, quirksVersion, engineVersion, includeShape: false);
 		return diagnostics;
 	}
 
@@ -59,7 +59,7 @@ internal static class DiagnosticCollector {
 	/// </summary>
 	public static (Diagnostic[]? diagnostics, ProjectionShape? shape) ScanWithShape(
 		string source,
-		KurrentDbVersion? dbVersion,
+		KurrentDbVersion? quirksVersion,
 		ProjectionVersion engineVersion,
 		bool includeShape) {
 		Script ast;
@@ -71,7 +71,7 @@ internal static class DiagnosticCollector {
 		var diagnostics = new List<Diagnostic>();
 		foreach (var rule in Rules) {
 			try {
-				rule.Run(ast, dbVersion, engineVersion, diagnostics);
+				rule.Run(ast, quirksVersion, engineVersion, diagnostics);
 			} catch {
 				// One rule failing doesn't taint the others.
 			}
@@ -100,7 +100,7 @@ internal static class DiagnosticCollector {
 		Encoding.UTF8.GetByteCount(source);
 
 	internal interface IRule {
-		void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics);
+		void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics);
 	}
 
 	// Acornima: line 1-based, column 0-based. Sdk: both 1-based.
@@ -150,8 +150,8 @@ internal static class DiagnosticCollector {
 	}
 
 	private sealed class LinkStreamToDeprecationRule : IRule {
-		public void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
-			// Deprecation is independent of dbVersion - linkStreamTo is
+		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
+			// Deprecation is independent of quirksVersion - linkStreamTo is
 			// undocumented at every released version we know about.
 			var scanner = new IdentifierShadowScanner("linkStreamTo", _ => true);
 			scanner.Visit(ast);
@@ -170,22 +170,22 @@ internal static class DiagnosticCollector {
 	}
 
 	private sealed class LinkStreamToOutOfBoundsParametersRule : IRule {
-		public void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
-			if (!KnownBugs.LinkStreamToOutOfBoundsParameters.FiresAt(dbVersion))
+		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
+			if (!KnownQuirks.LinkStreamToOutOfBoundsParameters.FiresAt(quirksVersion))
 				return;
 
-			// 3+ args triggers the bug. 2-arg form is fine.
+			// 3+ args triggers the quirk. 2-arg form is fine.
 			var scanner = new IdentifierShadowScanner("linkStreamTo", call => call.Arguments.Count >= 3);
 			scanner.Visit(ast);
-			// Shadowed local linkStreamTo masks the upstream bug entirely -
-			// the call goes to the user's function, not the buggy global.
+			// Shadowed local linkStreamTo masks the upstream quirk entirely -
+			// the call goes to the user's function, not the quirky global.
 			if (scanner.Shadowed)
 				return;
 
 			foreach (var loc in scanner.Calls) {
 				diagnostics.Add(new Diagnostic {
-					Code = KnownBugs.LinkStreamToOutOfBoundsParameters.Code,
-					Message = "linkStreamTo with metadata (3+ args) crashes due to an upstream parameter-indexing bug; metadata is never captured.",
+					Code = KnownQuirks.LinkStreamToOutOfBoundsParameters.Code,
+					Message = "linkStreamTo with metadata (3+ args) crashes due to an upstream parameter-indexing quirk; metadata is never captured.",
 					Severity = DiagnosticSeverity.Warning,
 					Range = ToSourceRange(loc),
 				});
@@ -194,8 +194,8 @@ internal static class DiagnosticCollector {
 	}
 
 	private sealed class LogMultiParamRule : IRule {
-		public void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
-			if (!KnownBugs.LogMultiParam.FiresAt(dbVersion))
+		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
+			if (!KnownQuirks.LogMultiParam.FiresAt(quirksVersion))
 				return;
 
 			// No shadow check: gaffer (and KurrentDB) registers `log` as a
@@ -208,8 +208,8 @@ internal static class DiagnosticCollector {
 
 			foreach (var loc in scanner.ProblematicCalls) {
 				diagnostics.Add(new Diagnostic {
-					Code = KnownBugs.LogMultiParam.Code,
-					Message = "log() with multiple args produces unexpected output due to an upstream bug: primitives become separate log lines and objects use a ' ,' separator.",
+					Code = KnownQuirks.LogMultiParam.Code,
+					Message = "log() with multiple args produces unexpected output due to an upstream quirk: primitives become separate log lines and objects use a ' ,' separator.",
 					Severity = DiagnosticSeverity.Warning,
 					Range = ToSourceRange(loc),
 				});
@@ -220,7 +220,7 @@ internal static class DiagnosticCollector {
 			public readonly List<Acornima.SourceLocation> ProblematicCalls = new();
 
 			protected override object? VisitCallExpression(CallExpression node) {
-				// 2+ args triggers the upstream multi-param bug. 1-arg path is fine.
+				// 2+ args triggers the upstream multi-param quirk. 1-arg path is fine.
 				if (node.Callee is Identifier { Name: "log" } id && node.Arguments.Count >= 2)
 					ProblematicCalls.Add(id.Location);
 				return base.VisitCallExpression(node);
@@ -261,7 +261,7 @@ internal static class DiagnosticCollector {
 	// version, not start firing for *future* versions before they exist.
 	// Re-evaluate this gate when a third engine version lands.
 	private sealed class TransformsNotAppliedInV2Rule : IRule {
-		public void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
+		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
 			if (engineVersion != ProjectionVersion.V2)
 				return;
 
@@ -290,7 +290,7 @@ internal static class DiagnosticCollector {
 
 	// See predicate-choice rationale on TransformsNotAppliedInV2Rule.
 	private sealed class OutputStateUnconditionalInV2Rule : IRule {
-		public void Run(Script ast, KurrentDbVersion? dbVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
+		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
 			if (engineVersion != ProjectionVersion.V2)
 				return;
 

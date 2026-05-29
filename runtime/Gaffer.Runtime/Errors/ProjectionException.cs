@@ -5,8 +5,8 @@ public abstract class ProjectionException : Exception {
 	public string Description { get; }
 
 	/// <summary>
-	/// Optional <c>KnownBugs</c> code (e.g. <c>compat.event.bodyCast</c>) when
-	/// this exception was thrown by an upstream-bug-compat code path. Lets
+	/// Optional <c>KnownQuirks</c> code (e.g. <c>compat.event.bodyCast</c>) when
+	/// this exception was thrown by an upstream-quirk-compat code path. Lets
 	/// CLIs and editors annotate the error with "fixed in DB version X".
 	/// </summary>
 	public string? CompatCode { get; init; }

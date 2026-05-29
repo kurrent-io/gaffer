@@ -35,7 +35,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	// behavior. We match that by always enabling it rather than exposing a toggle.
 	private readonly bool _enableContentTypeValidation = true;
 	private readonly bool _debug;
-	private readonly KurrentDbVersion? _dbVersion;
+	private readonly KurrentDbVersion? _quirksVersion;
 	private readonly ProjectionVersion _engineVersion;
 	private readonly TimeConstraint _timeConstraint;
 	private readonly BlockingCollection<DebugCommand> _debugCommands = new();
@@ -52,15 +52,15 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private bool _faulted;
 
 	/// <summary>
-	/// Key under which bug-firing branches stash a <c>KnownBugs</c> code on
+	/// Key under which quirk-firing branches stash a <c>KnownQuirks</c> code on
 	/// <see cref="Exception.Data"/> so <see cref="ProjectionSession"/> can
 	/// pluck it off when wrapping the exception.
 	/// </summary>
 	internal const string CompatCodeDataKey = "GafferCompatCode";
 
 	/// <summary>
-	/// Run an upstream-bug-firing code block whose throw will be wrapped by
-	/// Jint into a <c>JavaScriptException</c>. On throw, stash the bug's
+	/// Run an upstream-quirk-firing code block whose throw will be wrapped by
+	/// Jint into a <c>JavaScriptException</c>. On throw, stash the quirk's
 	/// code on <see cref="Exception.Data"/> so
 	/// <see cref="ProjectionSession.WrapHandlerException"/> can plumb it
 	/// through to <see cref="ProjectionException.CompatCode"/>.
@@ -68,25 +68,25 @@ internal sealed class JintProjectionHandler : IDisposable {
 	/// Use this only for the Jint-wrapped path - i.e. when our CLR code
 	/// throws inside a method Jint calls and the runtime sees
 	/// <c>JavaScriptException</c> with our throw as <c>InnerException</c>.
-	/// If the bug-firing branch throws a <see cref="ProjectionException"/>
+	/// If the quirk-firing branch throws a <see cref="ProjectionException"/>
 	/// directly (e.g. <c>StateSerializationException</c> for NaN/Infinity),
 	/// set <c>CompatCode</c> on the exception's object initializer instead.
 	/// </para>
 	/// </summary>
-	private static T RunBuggyPath<T>(Bug bug, Func<T> body) {
+	private static T RunQuirkyPath<T>(Quirk quirk, Func<T> body) {
 		try {
 			return body();
 		} catch (Exception ex) {
-			ex.Data[CompatCodeDataKey] = bug.Code;
+			ex.Data[CompatCodeDataKey] = quirk.Code;
 			throw;
 		}
 	}
 
-	private static void RunBuggyPath(Bug bug, Action body) {
+	private static void RunQuirkyPath(Quirk quirk, Action body) {
 		try {
 			body();
 		} catch (Exception ex) {
-			ex.Data[CompatCodeDataKey] = bug.Code;
+			ex.Data[CompatCodeDataKey] = quirk.Code;
 			throw;
 		}
 	}
@@ -102,11 +102,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 		Action<string>? onLog = null,
 		Action<EmittedEvent>? onEmit = null,
 		bool debug = false,
-		KurrentDbVersion? dbVersion = null) {
+		KurrentDbVersion? quirksVersion = null) {
 		_onLog = onLog;
 		_onEmit = onEmit;
 		_debug = debug;
-		_dbVersion = dbVersion;
+		_quirksVersion = quirksVersion;
 		_engineVersion = engineVersion;
 		_definitionBuilder = new SourceDefinitionBuilder();
 		_definitionBuilder.NoWhen();
@@ -124,7 +124,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		_state = JsValue.Undefined;
 		_sharedState = JsValue.Undefined;
 		_runtime = new ProjectionRuntime(_engine, _definitionBuilder);
-		_serializer = new Serializer(_dbVersion);
+		_serializer = new Serializer(_quirksVersion);
 		_engine.Global.FastAddProperty("log", new ClrFunction(_engine, "log", Log), false, false, false);
 
 		if (debug) {
@@ -266,7 +266,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 			// JS calls to those functions still register the transforms
 			// (matches upstream V2's silent acceptance), but the engine
 			// never iterates them. Reuse PrepareOutput's conversion logic
-			// (string passthrough, bi-state slot 0, BiStateStringSlot bug
+			// (string passthrough, bi-state slot 0, BiStateStringSlot quirk
 			// gating) so GetResult() returns exactly what GetState() does
 			// under V2. See cli/internal/mcpserver/resources/v1-v2-differences.md.
 			PrepareOutput(out var newState, out _);
@@ -281,7 +281,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private void PrepareOutput(out string? newState, out string? newSharedState) {
 		if (_definitionBuilder.IsBiState && _state.IsArray()) {
 			var arr = _state.AsArray();
-			if (KnownBugs.BiStateStringSlot.FiresAt(_dbVersion)) {
+			if (KnownQuirks.BiStateStringSlot.FiresAt(_quirksVersion)) {
 				// Reproduce upstream: checks _state.IsString() (the array,
 				// always false here) instead of state.IsString() (the slot-0
 				// element), so the string-passthrough branch is unreachable.
@@ -382,9 +382,9 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 		Dictionary<string, string?>? metadata = null;
 		if (parameters.Length == 3) {
-			if (KnownBugs.LinkStreamToOutOfBoundsParameters.FiresAt(_dbVersion)) {
-				RunBuggyPath(KnownBugs.LinkStreamToOutOfBoundsParameters, () => {
-					// Reproduce upstream's parameters.At(4) bug: index 4 is
+			if (KnownQuirks.LinkStreamToOutOfBoundsParameters.FiresAt(_quirksVersion)) {
+				RunQuirkyPath(KnownQuirks.LinkStreamToOutOfBoundsParameters, () => {
+					// Reproduce upstream's parameters.At(4) quirk: index 4 is
 					// out of bounds for a 3-arg call, returns Undefined,
 					// AsObject() throws. Calling it here gives the byte-
 					// identical exception the user would see in KurrentDB.
@@ -426,8 +426,8 @@ internal sealed class JintProjectionHandler : IDisposable {
 			return JsValue.Undefined;
 		}
 
-		if (KnownBugs.LogMultiParam.FiresAt(_dbVersion)) {
-			// Reproduce upstream multi-param log() bugs:
+		if (KnownQuirks.LogMultiParam.FiresAt(_quirksVersion)) {
+			// Reproduce upstream multi-param log() quirks:
 			// - Separator gate is i>1 (so first object has no leading separator).
 			// - Separator string is " ," (space-comma).
 			// - Primitives are logged as separate lines instead of appended.
@@ -435,17 +435,17 @@ internal sealed class JintProjectionHandler : IDisposable {
 			// The two `if`s (not `if`/`else if`) mirror upstream's structure;
 			// in Jint primitives and ObjectInstance are disjoint so it makes
 			// no observable difference, but byte-fidelity is the goal.
-			var buggy = new StringBuilder();
+			var quirky = new StringBuilder();
 			for (var i = 0; i < parameters.Length; i++) {
 				if (i > 1)
-					buggy.Append(" ,");
+					quirky.Append(" ,");
 				var p = parameters.At(i);
 				if (p != null && p.IsPrimitive())
 					SafeInvokeLog(p.ToString());
 				if (p is ObjectInstance oi)
-					buggy.Append(Serialize(oi));
+					quirky.Append(Serialize(oi));
 			}
-			SafeInvokeLog(buggy.ToString());
+			SafeInvokeLog(quirky.ToString());
 			return JsValue.Undefined;
 		}
 
@@ -1546,13 +1546,13 @@ internal sealed class JintProjectionHandler : IDisposable {
 				var pd = new PropertyDescriptor(body, false, true, false);
 				SetOwnProperty("body", pd);
 				SetOwnProperty("data", pd);
-				if (KnownBugs.EventBodyCast.FiresAt(_parent._dbVersion)) {
+				if (KnownQuirks.EventBodyCast.FiresAt(_parent._quirksVersion)) {
 					// Reproduce upstream: out parameter is typed
 					// ObjectInstance, forcing a cast that throws
 					// InvalidCastException when body is null, a number,
 					// a string, or a boolean.
-					objectInstance = RunBuggyPath<JsValue>(
-						KnownBugs.EventBodyCast,
+					objectInstance = RunQuirkyPath<JsValue>(
+						KnownQuirks.EventBodyCast,
 						() => (ObjectInstance)body);
 				} else {
 					objectInstance = body;
@@ -1682,10 +1682,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 		private readonly bool _nonFiniteWritesNull;
 		private int _depth;
 
-		public Serializer(KurrentDbVersion? dbVersion) {
+		public Serializer(KurrentDbVersion? quirksVersion) {
 			// The clean (post-fix) path writes JSON null for NaN/Infinity,
-			// matching JSON.stringify. The buggy path throws.
-			_nonFiniteWritesNull = !KnownBugs.SerializeNonFinite.FiresAt(dbVersion);
+			// matching JSON.stringify. The quirky path throws.
+			_nonFiniteWritesNull = !KnownQuirks.SerializeNonFinite.FiresAt(quirksVersion);
 			_iterators = new WriteState[64];
 			_bufferWriter = new ArrayBufferWriter<byte>(1024 * 1024);
 			_writer = new Utf8JsonWriter(_bufferWriter, new JsonWriterOptions {
@@ -1840,7 +1840,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 							writer.WriteNullValue();
 						} else {
 							throw new Errors.StateSerializationException($"{num} is not a valid JSON value", "", "", 0) {
-								CompatCode = KnownBugs.SerializeNonFinite.Code,
+								CompatCode = KnownQuirks.SerializeNonFinite.Code,
 							};
 						}
 					} else {

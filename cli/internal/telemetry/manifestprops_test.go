@@ -12,7 +12,7 @@ func TestManifestFeaturesOf_AllSections(t *testing.T) {
 	cfg := &config.Config{
 		Connection:         "esdb://localhost:2113",
 		EngineVersion:      2,
-		DbVersion:          "26.1.0",
+		QuirksVersion:      "26.1.0",
 		CompilationTimeout: &timeout,
 		ExecutionTimeout:   &timeout,
 		Projection: []config.Projection{
@@ -24,11 +24,11 @@ func TestManifestFeaturesOf_AllSections(t *testing.T) {
 	want := []string{
 		"compilation_timeout",
 		"connection",
-		"db_version",
 		"engine_version",
 		"execution_timeout",
 		"fixtures",
 		"projections",
+		"quirks_version",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ManifestFeaturesOf() = %v, want %v", got, want)
@@ -60,7 +60,7 @@ func TestManifestFeaturesOf_OnlyProjectionsNoFixtures(t *testing.T) {
 }
 
 func TestManifestFeaturesOf_PerProjectionOverridesCount(t *testing.T) {
-	// Per-projection engine_version / db_version / execution_timeout
+	// Per-projection engine_version / quirks_version / execution_timeout
 	// register the feature even when the top-level key is unset.
 	// Reviewer caught this on the prior implementation that only
 	// consulted top-level fields.
@@ -71,17 +71,17 @@ func TestManifestFeaturesOf_PerProjectionOverridesCount(t *testing.T) {
 				Name:             "p",
 				Entry:            "p.js",
 				EngineVersion:    2,
-				DbVersion:        "26.1.0",
+				QuirksVersion:    "26.1.0",
 				ExecutionTimeout: &timeout,
 			},
 		},
 	}
 	got := ManifestFeaturesOf(cfg)
 	want := []string{
-		"db_version",
 		"engine_version",
 		"execution_timeout",
 		"projections",
+		"quirks_version",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ManifestFeaturesOf() = %v, want %v", got, want)

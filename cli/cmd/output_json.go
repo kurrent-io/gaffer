@@ -25,7 +25,7 @@ func (jw *jsonWriter) writeLine(v any) {
 
 func (jw *jsonWriter) WriteInfo(proj *engine.Projection, info gafferruntime.ProjectionInfo) {
 	// BuildInfoCore gives the dev stream the same source / categories /
-	// streams / events / partitioning / dbVersion shape as `info --json`
+	// streams / events / partitioning / quirksVersion shape as `info --json`
 	// without the configuration-time fields (entry, fixtures, biState,
 	// producesResults) the stream deliberately omits.
 	jw.writeLine(map[string]any{

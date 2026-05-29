@@ -352,12 +352,12 @@ linkTo('high-value-orders', e, e.metadata);
 - `event` - the full event object (not a string or ID)
 - `metadata` - optional metadata object
 
-### linkStreamTo (deprecated, buggy)
+### linkStreamTo (deprecated, quirky)
 
 Emits a `$@` event referencing an entire stream rather than a single event.
 **Avoid in new projections.** Undocumented in KurrentDB and may be removed
 in a future version. The 3-argument metadata form crashes at runtime due
-to an upstream bug (see the `db-version-bugs` MCP resource for details).
+to an upstream quirk (see the `quirks` MCP resource for details).
 
 For single-event references prefer `linkTo`. There is no clean replacement
 for stream-level references; if you need one, document the constraint and
@@ -373,8 +373,8 @@ log(`Processing order: ${e.streamId} total: ${e.body.cents}`);
 ```
 
 **Use one argument only.** Calling `log` with multiple arguments triggers
-an upstream bug that splits primitives across separate log lines and
-joins objects with a `' ,'` separator (see `db-version-bugs` resource).
+an upstream quirk that splits primitives across separate log lines and
+joins objects with a `' ,'` separator (see `quirks` resource).
 Build the string yourself with a template literal or concatenation.
 
 ## Event envelope

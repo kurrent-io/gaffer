@@ -6,7 +6,7 @@ import (
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 )
 
-// Compat-bug registry, loaded once from the runtime via KnownBugs() and
+// Compat-quirk registry, loaded once from the runtime via KnownQuirks() and
 // cached for the lifetime of the CLI process. Used by fatal-error rendering
 // to enrich a CompatCode with description + fixedIn.
 //
@@ -14,21 +14,21 @@ import (
 // empty cache, which means the CLI surfaces the bare CompatCode without
 // the registry-driven hint.
 var (
-	knownBugsOnce   sync.Once
-	knownBugsByCode map[string]gafferruntime.KnownBug
+	knownQuirksOnce   sync.Once
+	knownQuirksByCode map[string]gafferruntime.KnownQuirk
 )
 
-func compatBugLookup(code string) (gafferruntime.KnownBug, bool) {
-	knownBugsOnce.Do(func() {
-		bugs, err := gafferruntime.KnownBugs()
+func compatQuirkLookup(code string) (gafferruntime.KnownQuirk, bool) {
+	knownQuirksOnce.Do(func() {
+		quirks, err := gafferruntime.KnownQuirks()
 		if err != nil {
 			return
 		}
-		knownBugsByCode = make(map[string]gafferruntime.KnownBug, len(bugs))
-		for _, b := range bugs {
-			knownBugsByCode[b.Code] = b
+		knownQuirksByCode = make(map[string]gafferruntime.KnownQuirk, len(quirks))
+		for _, b := range quirks {
+			knownQuirksByCode[b.Code] = b
 		}
 	})
-	b, ok := knownBugsByCode[code]
+	b, ok := knownQuirksByCode[code]
 	return b, ok
 }

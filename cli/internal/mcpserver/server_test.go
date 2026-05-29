@@ -614,9 +614,9 @@ func TestResourceDocs(t *testing.T) {
 	}
 }
 
-func TestResourceDbVersionBugs(t *testing.T) {
-	result, err := dbVersionBugsResource(context.Background(), &mcp.ReadResourceRequest{
-		Params: &mcp.ReadResourceParams{URI: "gaffer://docs/db-version-bugs"},
+func TestResourceQuirks(t *testing.T) {
+	result, err := quirksResource(context.Background(), &mcp.ReadResourceRequest{
+		Params: &mcp.ReadResourceParams{URI: "gaffer://docs/quirks"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -629,7 +629,7 @@ func TestResourceDbVersionBugs(t *testing.T) {
 	}
 	text := result.Contents[0].Text
 	// Top heading + intro framing.
-	for _, want := range []string{"# KurrentDB compat bugs", "unversioned", "db_version"} {
+	for _, want := range []string{"# KurrentDB compat quirks", "unversioned", "quirks_version"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("expected resource to contain %q\n--- got ---\n%s", want, text)
 		}
@@ -679,16 +679,16 @@ func TestResourceTelemetryInfo(t *testing.T) {
 	}
 }
 
-func TestRenderDbVersionBugsMarkdown_FixedInRendering(t *testing.T) {
+func TestRenderQuirksMarkdown_FixedInRendering(t *testing.T) {
 	// The "Fixed in: KurrentDB X" branch is dead at the registry level
 	// today. Test it directly.
 	fixed := "26.1.1"
-	bugs := []gafferruntime.KnownBug{{
+	quirks := []gafferruntime.KnownQuirk{{
 		Code:        "compat.test.synthetic",
 		Description: "Test description.",
 		FixedIn:     &fixed,
 	}}
-	out := renderDbVersionBugsMarkdown(bugs)
+	out := renderQuirksMarkdown(quirks)
 	if !strings.Contains(out, "## compat.test.synthetic") {
 		t.Error("expected synthetic heading")
 	}
@@ -697,9 +697,9 @@ func TestRenderDbVersionBugsMarkdown_FixedInRendering(t *testing.T) {
 	}
 }
 
-func TestRenderDbVersionBugsMarkdown_EmptyRegistry(t *testing.T) {
-	out := renderDbVersionBugsMarkdown(nil)
-	if !strings.Contains(out, "No bugs registered") {
+func TestRenderQuirksMarkdown_EmptyRegistry(t *testing.T) {
+	out := renderQuirksMarkdown(nil)
+	if !strings.Contains(out, "No quirks registered") {
 		t.Errorf("expected empty-registry hint, got:\n%s", out)
 	}
 }

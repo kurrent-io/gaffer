@@ -555,56 +555,56 @@ describe("ProjectionTest", () => {
 		test.dispose();
 	});
 
-	it("passes dbVersion through to the runtime session", () => {
+	it("passes quirksVersion through to the runtime session", () => {
 		const test = new ProjectionTest(
 			"fromAll().when({ $any: function (s, e) { return s; } });",
-			{ engineVersion: 2, dbVersion: "26.1.0" },
+			{ engineVersion: 2, quirksVersion: "26.1.0" },
 		);
 		test.dispose();
 	});
 
-	it("rejects malformed dbVersion at construction", () => {
+	it("rejects malformed quirksVersion at construction", () => {
 		// Validation lives in the runtime; we verify the typed error
 		// surfaces unwrapped through the testing-lib boundary.
 		expect(
 			() =>
 				new ProjectionTest("fromAll()", {
 					engineVersion: 2,
-					dbVersion: "not-a-version",
+					quirksVersion: "not-a-version",
 				}),
 		).toThrow(InvalidArgumentError);
 		try {
 			new ProjectionTest("fromAll()", {
 				engineVersion: 2,
-				dbVersion: "not-a-version",
+				quirksVersion: "not-a-version",
 			});
 		} catch (err) {
 			expect(err).toBeInstanceOf(InvalidArgumentError);
-			expect((err as InvalidArgumentError).field).toBe("dbVersion");
+			expect((err as InvalidArgumentError).field).toBe("quirksVersion");
 		}
 	});
 });
 
 describe("toSessionOptions", () => {
-	it("includes dbVersion when set", () => {
-		const out = toSessionOptions({ engineVersion: 2, dbVersion: "26.1.0" });
-		expect(out.dbVersion).toBe("26.1.0");
+	it("includes quirksVersion when set", () => {
+		const out = toSessionOptions({ engineVersion: 2, quirksVersion: "26.1.0" });
+		expect(out.quirksVersion).toBe("26.1.0");
 	});
 
-	it("omits dbVersion when unset", () => {
+	it("omits quirksVersion when unset", () => {
 		const out = toSessionOptions({ engineVersion: 2 });
-		expect(out.dbVersion).toBeUndefined();
+		expect(out.quirksVersion).toBeUndefined();
 	});
 
-	it("dbVersion is a sibling, not under databaseConfig", () => {
-		// The mental model: engineVersion + dbVersion are "what target am
+	it("quirksVersion is a sibling, not under databaseConfig", () => {
+		// The mental model: engineVersion + quirksVersion are "what target am
 		// I matching"; databaseConfig is for runtime knobs (timeouts).
 		const out = toSessionOptions({
 			engineVersion: 2,
-			dbVersion: "26.1.0",
+			quirksVersion: "26.1.0",
 			databaseConfig: { compilationTimeoutMs: 1000 },
 		});
-		expect(out.dbVersion).toBe("26.1.0");
+		expect(out.quirksVersion).toBe("26.1.0");
 		expect(out.compilationTimeoutMs).toBe(1000);
 	});
 });

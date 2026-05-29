@@ -37,19 +37,19 @@ func ManifestFeaturesOf(c *config.Config) []string {
 	if len(c.Projection) > 0 {
 		features["projections"] = struct{}{}
 	}
-	// engine_version, db_version, execution_timeout can live at top
+	// engine_version, quirks_version, execution_timeout can live at top
 	// level OR on individual projections. Either declaration marks
 	// the feature as in use.
 	hasEngineVersion := c.EngineVersion != 0
-	hasDbVersion := c.DbVersion != ""
+	hasQuirksVersion := c.QuirksVersion != ""
 	hasExecutionTimeout := c.ExecutionTimeout != nil
 	hasFixtures := false
 	for _, p := range c.Projection {
 		if p.EngineVersion != 0 {
 			hasEngineVersion = true
 		}
-		if p.DbVersion != "" {
-			hasDbVersion = true
+		if p.QuirksVersion != "" {
+			hasQuirksVersion = true
 		}
 		if p.ExecutionTimeout != nil {
 			hasExecutionTimeout = true
@@ -61,8 +61,8 @@ func ManifestFeaturesOf(c *config.Config) []string {
 	if hasEngineVersion {
 		features["engine_version"] = struct{}{}
 	}
-	if hasDbVersion {
-		features["db_version"] = struct{}{}
+	if hasQuirksVersion {
+		features["quirks_version"] = struct{}{}
 	}
 	if hasExecutionTimeout {
 		features["execution_timeout"] = struct{}{}

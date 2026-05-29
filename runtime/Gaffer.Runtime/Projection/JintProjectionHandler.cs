@@ -1194,9 +1194,12 @@ internal sealed class JintProjectionHandler : IDisposable {
 		};
 
 		private static readonly Dictionary<string, string[]> AvailableProperties = new() {
-			["fromStream"] = ["when", "partitionBy", "outputState"],
+			// fromStream / fromStreams keep `foreachStream` reachable only so
+			// ForEachStream can throw a friendly error; the source doesn't
+			// actually support it (see ForEachStream).
+			["fromStream"] = ["when", "partitionBy", "outputState", "foreachStream"],
 			["fromAll"] = ["when", "partitionBy", "outputState", "foreachStream"],
-			["fromStreams"] = ["when", "partitionBy", "outputState"],
+			["fromStreams"] = ["when", "partitionBy", "outputState", "foreachStream"],
 			["fromCategory"] = ["when", "partitionBy", "outputState", "foreachStream"],
 			["when"] = ["transformBy", "filterBy", "outputState", "outputTo", "$defines_state_transform"],
 			["foreachStream"] = ["when"],
@@ -1219,6 +1222,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 			};
 
 		private readonly List<string> _definitionFunctions;
+
+		// The source method last applied (fromStream / fromStreams / fromAll /
+		// fromCategory), so ForEachStream can reject foreachStream() on sources
+		// that don't support it.
+		private string? _sourceMethod;
 
 		public ProjectionRuntime(Engine engine, SourceDefinitionBuilder builder) : base(engine) {
 			_definitionBuilder = builder;
@@ -1309,6 +1317,9 @@ internal sealed class JintProjectionHandler : IDisposable {
 		}
 
 		private JsValue ForEachStream(JsValue thisValue, JsValue[] parameters) {
+			if (_sourceMethod is "fromStream" or "fromStreams")
+				throw new ArgumentException(
+					"foreachStream() is only supported with fromAll() and fromCategory()");
 			_definitionBuilder.SetByStream();
 			RestrictProperties("foreachStream");
 			return this;
@@ -1413,6 +1424,8 @@ internal sealed class JintProjectionHandler : IDisposable {
 		}
 
 		private void RestrictProperties(string state) {
+			if (state is "fromStream" or "fromStreams" or "fromAll" or "fromCategory")
+				_sourceMethod = state;
 			var allowed = AvailableProperties[state];
 			var current = GetOwnPropertyKeys();
 			foreach (var p in current) {

@@ -12,6 +12,10 @@ type FeedResult struct {
 	SharedState json.RawMessage `json:"sharedState"`
 	Emitted     []EmittedEvent  `json:"emitted"`
 	Logs        []string        `json:"logs"`
+	// Diagnostics holds quirks that fired while processing this event (e.g. a
+	// biState string slot being JSON-quoted). Runtime, value-dependent, no
+	// source range - distinct from compile-time ProjectionInfo.Diagnostics.
+	Diagnostics []Diagnostic `json:"diagnostics"`
 }
 
 // EmittedEvent represents an event emitted by a projection via emit() or linkTo().

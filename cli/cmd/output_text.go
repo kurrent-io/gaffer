@@ -292,6 +292,9 @@ func (tw *textWriter) WriteResult(_ string, result *gafferruntime.FeedResult) {
 	if hasContent(result.State) {
 		tw.detail("state", string(result.State))
 	}
+	for _, d := range result.Diagnostics {
+		tw.detail("quirk", fmt.Sprintf("%s %s", tw.styles.skipped.Render(d.Code), d.Message))
+	}
 	tw.blank()
 }
 
@@ -369,6 +372,20 @@ func (tw *textWriter) statsLine(stats engine.EventStats) {
 		sort.Strings(reasons)
 		for _, r := range reasons {
 			tw.write("  %s %s\n", gold(formatNumber(stats.SkippedByReason[r])), describeSkipReason(r))
+		}
+	}
+
+	// Quirks that fired during the run, broken down by code. These are
+	// non-fatal, so they're reported separately from skips and errors.
+	if len(stats.DiagnosticsByCode) > 0 {
+		codes := make([]string, 0, len(stats.DiagnosticsByCode))
+		for c := range stats.DiagnosticsByCode {
+			codes = append(codes, c)
+		}
+		sort.Strings(codes)
+		tw.write("quirks fired:\n")
+		for _, c := range codes {
+			tw.write("  %s %s\n", gold(formatNumber(stats.DiagnosticsByCode[c])), c)
 		}
 	}
 }

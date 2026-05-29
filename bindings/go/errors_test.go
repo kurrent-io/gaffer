@@ -238,6 +238,39 @@ func TestSessionOptions_QuirksVersion_RejectedWhenMalformed(t *testing.T) {
 	assertEqual(t, "field", "quirksVersion", e.Field)
 }
 
+func TestFeedResult_Diagnostics_BiStateStringSlot(t *testing.T) {
+	// A biState projection that writes a raw string to slot 0 trips the
+	// stringSlot quirk; the runtime reports it on FeedResult.Diagnostics.
+	source := `
+		options({ biState: true });
+		fromAll().when({
+			$init: function () { return "initial"; },
+			$initShared: function () { return {}; },
+			SetName: function (s, e) { s[0] = e.data.name; return s; }
+		});
+	`
+	session, err := NewSession(source, &v2Opts)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
+	}
+	defer session.Destroy()
+
+	result, err := session.Feed(`{"eventType":"SetName","streamId":"s-1","sequenceNumber":0,"data":"{\"name\":\"alice\"}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	if err != nil {
+		t.Fatalf("Feed failed: %v", err)
+	}
+
+	found := false
+	for _, d := range result.Diagnostics {
+		if d.Code == "compat.biState.stringSlot" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected compat.biState.stringSlot diagnostic, got %+v", result.Diagnostics)
+	}
+}
+
 func TestError_CompatCode_PropagatesFromCompatFiringPath(t *testing.T) {
 	// 3-arg linkStreamTo is the always-quirky path: throws and the runtime
 	// stamps the exception with KnownQuirks.LinkStreamToOutOfBoundsParameters.Code.

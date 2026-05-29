@@ -213,11 +213,24 @@ func (w *dapEventWriter) OnResult(eventID string, result *gafferruntime.FeedResu
 	inspect := w.adapter.inspect
 	w.adapter.mu.Unlock()
 
+	step := w.adapter.runner.Step()
 	resultEvt := NewCustomEvent("gaffer/stepResult", map[string]any{
-		"step":   w.adapter.runner.Step(),
+		"step":   step,
 		"result": json.RawMessage(resultJSON),
 	})
 	w.adapter.bufferOrSend(resultEvt, inspect)
+
+	// Surface runtime quirks (non-fatal) as per-step warnings the editor can
+	// attach to this step. Distinct from gaffer/stepError (fatal). Reuse the
+	// same step value as the result so the two never disagree.
+	for _, d := range result.Diagnostics {
+		w.adapter.bufferOrSend(NewCustomEvent("gaffer/stepWarning", map[string]any{
+			"step":     step,
+			"code":     d.Code,
+			"message":  d.Message,
+			"severity": d.Severity,
+		}), inspect)
+	}
 
 	if result.Status == "processed" && inspect && w.adapter.server != nil {
 		w.adapter.server.Send(w.adapter.buildStateEvent())

@@ -62,6 +62,9 @@ type EventStats struct {
 	// Only consumers that explicitly want the breakdown look at this -
 	// most callers just read Skipped.
 	SkippedByReason map[string]int
+	// DiagnosticsByCode counts runtime quirks (FeedResult.Diagnostics) by
+	// code across the run. A processed event can contribute more than one.
+	DiagnosticsByCode map[string]int
 }
 
 func (s EventStats) Total() int {
@@ -164,6 +167,12 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 			r.partitions[result.Partition] = true
 		}
 	}
+	for _, d := range result.Diagnostics {
+		if r.stats.DiagnosticsByCode == nil {
+			r.stats.DiagnosticsByCode = make(map[string]int)
+		}
+		r.stats.DiagnosticsByCode[d.Code]++
+	}
 	r.mu.Unlock()
 
 	if r.writer != nil {
@@ -188,6 +197,15 @@ func (r *Runner) Stats() EventStats {
 		s.SkippedByReason = cp
 	} else {
 		s.SkippedByReason = nil
+	}
+	if len(r.stats.DiagnosticsByCode) > 0 {
+		cp := make(map[string]int, len(r.stats.DiagnosticsByCode))
+		for k, v := range r.stats.DiagnosticsByCode {
+			cp[k] = v
+		}
+		s.DiagnosticsByCode = cp
+	} else {
+		s.DiagnosticsByCode = nil
 	}
 	return s
 }

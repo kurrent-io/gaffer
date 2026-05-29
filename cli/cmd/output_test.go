@@ -385,6 +385,39 @@ func TestTextWriter_WriteResult_Processed(t *testing.T) {
 	testutil.AssertContains(t, out, `state: {"count":1}`)
 }
 
+func TestTextWriter_WriteResult_Diagnostics(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+
+	tw.WriteEvent(eventInfo{SequenceNumber: 1, StreamID: "s-1", EventType: "SetName"})
+	tw.WriteResult("1@s-1", &gafferruntime.FeedResult{
+		Status: "processed",
+		State:  json.RawMessage(`"\"alice\""`),
+		Diagnostics: []gafferruntime.Diagnostic{{
+			Code:     "compat.biState.stringSlot",
+			Message:  "BiState state JSON-quotes raw string values in slot 0.",
+			Severity: gafferruntime.DiagnosticSeverityWarning,
+		}},
+	})
+
+	testutil.AssertContains(t, buf.String(), "quirk: compat.biState.stringSlot")
+}
+
+func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
+	var buf bytes.Buffer
+	tw := newTextWriter(&buf, nil)
+
+	stats := engine.EventStats{
+		Handled:           3,
+		DiagnosticsByCode: map[string]int{"compat.biState.stringSlot": 2},
+	}
+	tw.WriteSummary(stats, engine.StateSummary{})
+
+	out := buf.String()
+	testutil.AssertContains(t, out, "quirks fired:")
+	testutil.AssertContains(t, out, "compat.biState.stringSlot")
+}
+
 func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
@@ -467,6 +500,31 @@ func TestJSONWriter_WriteResult_Processed(t *testing.T) {
 	if _, ok := line["logs"]; !ok {
 		t.Error("expected logs field")
 	}
+}
+
+func TestJSONWriter_WriteResult_Diagnostics(t *testing.T) {
+	var buf bytes.Buffer
+	jw := newJSONWriter(&buf)
+
+	jw.WriteResult("1@s-1", &gafferruntime.FeedResult{
+		Status: "processed",
+		Diagnostics: []gafferruntime.Diagnostic{{
+			Code:     "compat.biState.stringSlot",
+			Message:  "BiState state JSON-quotes raw string values in slot 0.",
+			Severity: gafferruntime.DiagnosticSeverityWarning,
+		}},
+	})
+
+	var line map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	diags, ok := line["diagnostics"].([]any)
+	if !ok || len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %v", line["diagnostics"])
+	}
+	d := diags[0].(map[string]any)
+	testutil.AssertEqual(t, "code", "compat.biState.stringSlot", d["code"])
 }
 
 func TestJSONWriter_WriteResult_Skipped(t *testing.T) {

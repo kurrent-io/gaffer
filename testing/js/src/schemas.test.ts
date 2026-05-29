@@ -80,6 +80,47 @@ describe("TestEventSchema", () => {
 		});
 		expect(result.success).toBe(false);
 	});
+
+	const base = {
+		eventType: "Ping",
+		streamId: "s-1",
+		sequenceNumber: 0,
+		isJson: true,
+	};
+
+	it("rejects empty eventType", () => {
+		const result = v.safeParse(TestEventSchema, { ...base, eventType: "" });
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects empty streamId", () => {
+		const result = v.safeParse(TestEventSchema, { ...base, streamId: "" });
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects negative sequenceNumber", () => {
+		const result = v.safeParse(TestEventSchema, {
+			...base,
+			sequenceNumber: -7,
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects non-integer sequenceNumber", () => {
+		const result = v.safeParse(TestEventSchema, {
+			...base,
+			sequenceNumber: 1.5,
+		});
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects sequenceNumber above the safe integer range", () => {
+		const result = v.safeParse(TestEventSchema, {
+			...base,
+			sequenceNumber: Number.MAX_SAFE_INTEGER + 1,
+		});
+		expect(result.success).toBe(false);
+	});
 });
 
 describe("EventInputSchema", () => {

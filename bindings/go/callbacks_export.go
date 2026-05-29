@@ -35,6 +35,21 @@ func goLogCallback(message *C.char, userData unsafe.Pointer) {
 	}
 }
 
+//export goDiagnosticCallback
+func goDiagnosticCallback(code *C.char, message *C.char, severity C.int, userData unsafe.Pointer) {
+	key := uintptr(userData)
+	callbackMu.RLock()
+	cb := diagnosticCallbacks[key]
+	callbackMu.RUnlock()
+	if cb != nil {
+		cb(Diagnostic{
+			Code:     C.GoString(code),
+			Message:  C.GoString(message),
+			Severity: DiagnosticSeverity(severity),
+		})
+	}
+}
+
 //export goStateChangedCallback
 func goStateChangedCallback(partition *C.char, stateJSON *C.char, userData unsafe.Pointer) {
 	key := uintptr(userData)

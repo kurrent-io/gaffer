@@ -385,19 +385,22 @@ func TestTextWriter_WriteResult_Processed(t *testing.T) {
 	testutil.AssertContains(t, out, `state: {"count":1}`)
 }
 
-func TestTextWriter_WriteResult_Diagnostics(t *testing.T) {
+func TestTextWriter_OnDiagnostic_RendersInline(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
+	ms := &mockSession{}
+	tw.RegisterCallbacks(ms)
 
+	// Quirks stream during the event, in the ├ flow before the result.
 	tw.WriteEvent(eventInfo{SequenceNumber: 1, StreamID: "s-1", EventType: "SetName"})
+	ms.diagCb(gafferruntime.Diagnostic{
+		Code:     "compat.biState.stringSlot",
+		Message:  "BiState state JSON-quotes raw string values in slot 0.",
+		Severity: gafferruntime.DiagnosticSeverityWarning,
+	})
 	tw.WriteResult("1@s-1", &gafferruntime.FeedResult{
 		Status: "processed",
 		State:  json.RawMessage(`"\"alice\""`),
-		Diagnostics: []gafferruntime.Diagnostic{{
-			Code:     "compat.biState.stringSlot",
-			Message:  "BiState state JSON-quotes raw string values in slot 0.",
-			Severity: gafferruntime.DiagnosticSeverityWarning,
-		}},
 	})
 
 	out := buf.String()
@@ -408,17 +411,14 @@ func TestTextWriter_WriteResult_Diagnostics(t *testing.T) {
 func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
+	ms := &mockSession{}
+	tw.RegisterCallbacks(ms)
 
-	// Two distinct runtime codes; the summary lists each once, no per-code
-	// count, with a header total.
-	stats := engine.EventStats{
-		Handled: 3,
-		DiagnosticsByCode: map[string]int{
-			"compat.biState.stringSlot":  2,
-			"compat.serialize.nonFinite": 1,
-		},
-	}
-	tw.WriteSummary(stats, engine.StateSummary{})
+	// Two distinct runtime quirks stream during the run; the summary lists
+	// each once, no per-code count, with a header total.
+	ms.diagCb(gafferruntime.Diagnostic{Code: "compat.biState.stringSlot", Severity: gafferruntime.DiagnosticSeverityWarning})
+	ms.diagCb(gafferruntime.Diagnostic{Code: "compat.serialize.nonFinite", Severity: gafferruntime.DiagnosticSeverityWarning})
+	tw.WriteSummary(engine.EventStats{Handled: 3}, engine.StateSummary{})
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "2 quirks encountered")
@@ -429,9 +429,11 @@ func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
 func TestTextWriter_WriteSummary_MergesCompileTimeQuirks(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)
+	ms := &mockSession{}
+	tw.RegisterCallbacks(ms)
 
-	// A compile-time compat quirk surfaced in the info header is folded into
-	// the summary tally alongside runtime quirks (deduped, deprecations excluded).
+	// A compile-time compat quirk from the info header folds into the summary
+	// alongside runtime quirks (deduped; deprecations excluded).
 	tw.WriteInfo(stubProjection("p", 2, ""), gafferruntime.ProjectionInfo{
 		AllStreams: true,
 		Diagnostics: []gafferruntime.Diagnostic{
@@ -439,10 +441,8 @@ func TestTextWriter_WriteSummary_MergesCompileTimeQuirks(t *testing.T) {
 			{Code: "deprecated.linkStreamTo", Message: "d", Severity: gafferruntime.DiagnosticSeverityWarning},
 		},
 	})
-	tw.WriteSummary(engine.EventStats{
-		Handled:           1,
-		DiagnosticsByCode: map[string]int{"compat.biState.stringSlot": 1},
-	}, engine.StateSummary{})
+	ms.diagCb(gafferruntime.Diagnostic{Code: "compat.biState.stringSlot", Severity: gafferruntime.DiagnosticSeverityWarning})
+	tw.WriteSummary(engine.EventStats{Handled: 1}, engine.StateSummary{})
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "2 quirks encountered")
@@ -819,10 +819,14 @@ func TestTextWriter_SideEffects(t *testing.T) {
 type mockSession struct {
 	emitCb gafferruntime.EmitCallback
 	logCb  gafferruntime.LogCallback
+	diagCb gafferruntime.DiagnosticCallback
 }
 
 func (m *mockSession) OnEmit(cb gafferruntime.EmitCallback) { m.emitCb = cb }
 func (m *mockSession) OnLog(cb gafferruntime.LogCallback)   { m.logCb = cb }
+func (m *mockSession) OnDiagnostic(cb gafferruntime.DiagnosticCallback) {
+	m.diagCb = cb
+}
 
 func TestTextWriter_WriteError(t *testing.T) {
 	var buf bytes.Buffer

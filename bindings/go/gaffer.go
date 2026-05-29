@@ -205,6 +205,13 @@ func (s *Session) OnLog(cb LogCallback) {
 	sessionOnLog(s.handle, cb)
 }
 
+// OnDiagnostic registers a callback for quirks that fire while processing an
+// event, invoked at the point each fires. The quirk is also included in the
+// feed result's Diagnostics.
+func (s *Session) OnDiagnostic(cb DiagnosticCallback) {
+	sessionOnDiagnostic(s.handle, cb)
+}
+
 // OnStateChanged registers a callback for state changes.
 func (s *Session) OnStateChanged(cb StateChangedCallback) {
 	sessionOnStateChanged(s.handle, cb)

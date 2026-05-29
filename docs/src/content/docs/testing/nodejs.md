@@ -212,7 +212,7 @@ test.getResult("order-1"); // result for order-1 (V1: post-transform, V2: post-h
 
 Some KurrentDB quirks only surface in how state is persisted, and `state` / `getState()` hide them by parsing the persisted JSON on read (see also [State serialization](#state-serialization)).
 
-- **`step.diagnostics`** lists the quirks encountered while processing the event (empty when none; it can carry more than one). The motivating case is biState string slots: KurrentDB JSON-quotes a raw string written to a state slot (`compat.biState.stringSlot` for the main slot, `compat.biState.sharedStringSlot` for shared state), so `"hello"` persists as `"\"hello\""`.
+- **`step.diagnostics`** lists the quirks encountered while processing the event (empty when none; it can carry more than one, and the same code can repeat). The motivating case is biState string slots: KurrentDB JSON-quotes a raw string written to a state slot (`compat.biState.stringSlot` for the main slot, `compat.biState.sharedStringSlot` for shared state), so `"hello"` persists as `"\"hello\""`. Non-persistence quirks appear here too, such as `compat.log.multiParam` fired at each multi-argument `log()` call.
 - **`step.stateRaw`** and **`getStateRaw(partition?)`** return the persisted state JSON string before `JSON.parse`, so you can assert against the double-quoted value the quirk produces.
 
 ```typescript

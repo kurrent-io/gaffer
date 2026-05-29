@@ -271,6 +271,34 @@ func TestFeedResult_Diagnostics_BiStateStringSlot(t *testing.T) {
 	}
 }
 
+func TestSession_OnDiagnostic_StreamsAtPointOfFiring(t *testing.T) {
+	// A multi-arg log() trips compat.log.multiParam when it runs; the streaming
+	// OnDiagnostic callback fires live during Feed.
+	source := `fromAll().when({ $any: function (s, e) { log("a", "b"); return s; } })`
+	session, err := NewSession(source, &v2Opts)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
+	}
+	defer session.Destroy()
+
+	var codes []string
+	session.OnDiagnostic(func(d Diagnostic) { codes = append(codes, d.Code) })
+
+	if _, err := session.Feed(testEvent); err != nil {
+		t.Fatalf("Feed failed: %v", err)
+	}
+
+	found := false
+	for _, c := range codes {
+		if c == "compat.log.multiParam" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected compat.log.multiParam streamed, got %v", codes)
+	}
+}
+
 func TestError_CompatCode_PropagatesFromCompatFiringPath(t *testing.T) {
 	// 3-arg linkStreamTo is the always-quirky path: throws and the runtime
 	// stamps the exception with KnownQuirks.LinkStreamToOutOfBoundsParameters.Code.

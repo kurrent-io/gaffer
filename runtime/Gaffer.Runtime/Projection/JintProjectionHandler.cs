@@ -238,13 +238,13 @@ internal sealed class JintProjectionHandler : IDisposable {
 		_engine.Constraints.Reset();
 		if ((@event.IsJson && string.IsNullOrWhiteSpace(@event.Data)) ||
 			(!_enableContentTypeValidation && !@event.IsJson && string.IsNullOrEmpty(@event.Data))) {
-			PrepareOutput(out newState, out newSharedState);
+			PrepareOutput(out newState, out newSharedState, reportQuirks: true);
 			return true;
 		}
 
 		var envelope = CreateEnvelope(partition, @event, category);
 		_state = _runtime.Handle(_state, envelope);
-		PrepareOutput(out newState, out newSharedState);
+		PrepareOutput(out newState, out newSharedState, reportQuirks: true);
 		return true;
 	}
 
@@ -273,7 +273,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 			// (string passthrough, bi-state slot 0, BiStateStringSlot quirk
 			// gating) so GetResult() returns exactly what GetState() does
 			// under V2. See cli/internal/mcpserver/resources/v1-v2-differences.md.
-			PrepareOutput(out var newState, out _);
+			PrepareOutput(out var newState, out _, reportQuirks: false);
 			return newState;
 		}
 		var result = _runtime.TransformStateToResult(_state);
@@ -282,14 +282,18 @@ internal sealed class JintProjectionHandler : IDisposable {
 		return Serialize(result);
 	}
 
-	private void PrepareOutput(out string? newState, out string? newSharedState) {
+	// reportQuirks gates runtime-diagnostic emission. The V2 result-pass
+	// (TransformStateToResult) reuses this purely to convert state to the
+	// result and passes false, so a quirk isn't reported twice for one event;
+	// the state-pass passes true.
+	private void PrepareOutput(out string? newState, out string? newSharedState, bool reportQuirks) {
 		if (_definitionBuilder.IsBiState && _state.IsArray()) {
 			var arr = _state.AsArray();
 			newState = arr.TryGetValue(0, out var state)
-				? ConvertBiStateSlot(state, KnownQuirks.BiStateStringSlot)
+				? ConvertBiStateSlot(state, KnownQuirks.BiStateStringSlot, reportQuirks)
 				: "";
 			newSharedState = arr.TryGetValue(1, out var sharedState)
-				? ConvertBiStateSlot(sharedState, KnownQuirks.BiStateSharedStringSlot)
+				? ConvertBiStateSlot(sharedState, KnownQuirks.BiStateSharedStringSlot, reportQuirks)
 				: null;
 		} else if (_state.IsString()) {
 			newState = _state.AsString();
@@ -306,9 +310,9 @@ internal sealed class JintProjectionHandler : IDisposable {
 	// runtime diagnostic so a test can catch the double-quoting; otherwise pass
 	// strings through. Slot 0 and slot 1 each have their own quirk because the
 	// upstream fix (PR #5610) only addressed slot 0.
-	private string? ConvertBiStateSlot(JsValue slot, Quirk quirk) {
+	private string? ConvertBiStateSlot(JsValue slot, Quirk quirk, bool reportQuirks) {
 		if (quirk.FiresAt(_quirksVersion)) {
-			if (slot.IsString())
+			if (reportQuirks && slot.IsString())
 				_onDiagnostic?.Invoke(new Diagnostic {
 					Code = quirk.Code,
 					Message = quirk.Description,
@@ -439,6 +443,13 @@ internal sealed class JintProjectionHandler : IDisposable {
 		}
 
 		if (KnownQuirks.LogMultiParam.FiresAt(_quirksVersion)) {
+			// Surface the quirk at the point it fires (this log() call), so a
+			// runtime consumer sees it inline. Also flagged at compile time.
+			_onDiagnostic?.Invoke(new Diagnostic {
+				Code = KnownQuirks.LogMultiParam.Code,
+				Message = KnownQuirks.LogMultiParam.Description,
+				Severity = DiagnosticSeverity.Warning,
+			});
 			// Reproduce upstream multi-param log() quirks:
 			// - Separator gate is i>1 (so first object has no leading separator).
 			// - Separator string is " ," (space-comma).

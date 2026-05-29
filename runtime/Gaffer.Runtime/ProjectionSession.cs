@@ -36,6 +36,9 @@ public sealed class ProjectionSession : IDisposable {
 	/// <summary>Called when the projection calls console.log.</summary>
 	public Action<string>? OnLog { get; set; }
 
+	/// <summary>Called when a quirk fires while processing an event (e.g. a biState string slot being JSON-quoted), at the point it fires. Also recorded on <see cref="Events.FeedResult.Diagnostics"/>.</summary>
+	public Action<Diagnostic>? OnDiagnostic { get; set; }
+
 	/// <summary>Called when projection state changes. Args: partition key, state JSON.</summary>
 	public Action<string, string?>? OnStateChanged { get; set; }
 
@@ -95,11 +98,13 @@ public sealed class ProjectionSession : IDisposable {
 					_pendingEmitted.Add(emitted);
 					OnEmit?.Invoke(emitted);
 				},
-				// Dedupe by code: V2 runs PrepareOutput twice per event (state +
-				// result), so the same quirk would otherwise report twice.
+				// Record for the FeedResult batch and stream live at the point
+				// of firing. No dedup needed: the V2 result-pass through
+				// PrepareOutput is told not to re-report (TransformStateToResult),
+				// so each genuine occurrence fires once.
 				onDiagnostic: diagnostic => {
-					if (!_pendingDiagnostics.Exists(d => d.Code == diagnostic.Code))
-						_pendingDiagnostics.Add(diagnostic);
+					_pendingDiagnostics.Add(diagnostic);
+					OnDiagnostic?.Invoke(diagnostic);
 				},
 				debug: opts.Debug,
 				quirksVersion: _quirksVersion);

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -222,25 +223,20 @@ func extractResultFields(resultJSON string) (status, partition string, hasEmit, 
 		seen[d.Code] = true
 		codes = append(codes, d.Code)
 	}
-	if len(codes) > 0 {
-		sort.Strings(codes)
-		if encoded, err := json.Marshal(codes); err == nil {
-			quirkCodes = string(encoded)
-		}
-	}
+	sort.Strings(codes)
+	// Quirk codes are dot-namespaced identifiers (e.g. compat.biState.stringSlot)
+	// with no commas, so a comma-joined string round-trips without the
+	// fallible JSON encode/decode (and the swallowed errors it would invite).
+	quirkCodes = strings.Join(codes, ",")
 	return obj.Status, obj.Partition, hasEmit, hasLog, quirkCodes
 }
 
-// decodeQuirkCodes parses the stored JSON array of distinct quirk codes back
-// into a slice, returning nil for the empty / absent case so the timeline
-// entry's `quirks` field stays omitted.
+// decodeQuirkCodes splits the stored comma-joined quirk codes back into a
+// slice, returning nil for the empty / absent case so the timeline entry's
+// `quirks` field stays omitted.
 func decodeQuirkCodes(stored string) []string {
 	if stored == "" {
 		return nil
 	}
-	var codes []string
-	if err := json.Unmarshal([]byte(stored), &codes); err != nil || len(codes) == 0 {
-		return nil
-	}
-	return codes
+	return strings.Split(stored, ",")
 }

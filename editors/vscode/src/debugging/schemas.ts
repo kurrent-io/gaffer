@@ -30,6 +30,18 @@ export const StepErrorBodySchema = v.object({
 });
 export type StepErrorBody = v.InferOutput<typeof StepErrorBodySchema>;
 
+// A runtime quirk that fired while processing the event. step and severity
+// ride along from the CLI but the step panel keys off code + message; they
+// are kept optional so a future consumer (e.g. severity-driven icon) can use
+// them without a schema change.
+export const StepWarningBodySchema = v.object({
+	code: v.string(),
+	message: v.string(),
+	step: v.optional(v.number()),
+	severity: v.optional(v.number()),
+});
+export type StepWarningBody = v.InferOutput<typeof StepWarningBodySchema>;
+
 export const StateBodySchema = v.object({
 	state: v.optional(v.unknown()),
 	result: v.optional(v.unknown()),
@@ -71,6 +83,8 @@ export const StatsBodySchema = v.object({
 	errors: v.number(),
 	skipped: v.optional(NonNegativeInt),
 	skippedByReason: v.optional(v.record(v.string(), NonNegativeInt)),
+	// Distinct runtime-quirk codes seen so far; omitted when none have fired.
+	quirks: v.optional(NonNegativeInt),
 });
 export type StatsBody = v.InferOutput<typeof StatsBodySchema>;
 

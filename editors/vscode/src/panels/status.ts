@@ -32,6 +32,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	#name = "";
 	#processed = 0;
 	#errors = 0;
+	#quirks = 0;
 	#skipped = 0;
 	#skippedByReason: Readonly<Record<string, number>> = {};
 	// Stored on the provider so that view reconstruction (when VS Code
@@ -93,6 +94,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		this.#name = name;
 		this.#processed = 0;
 		this.#errors = 0;
+		this.#quirks = 0;
 		this.#skipped = 0;
 		this.#skippedByReason = {};
 		this.#mode = "running";
@@ -117,10 +119,17 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	// The CLI throttles its emit cadence so a 200ms render coalesce
 	// here is unnecessary - by the time setStats fires the values are
 	// already at most 100ms behind the engine.
-	setStats(processed: number, errors: number): void {
-		if (this.#processed === processed && this.#errors === errors) return;
+	setStats(processed: number, errors: number, quirks = 0): void {
+		if (
+			this.#processed === processed &&
+			this.#errors === errors &&
+			this.#quirks === quirks
+		) {
+			return;
+		}
 		this.#processed = processed;
 		this.#errors = errors;
+		this.#quirks = quirks;
 		this.#postUpdate();
 	}
 
@@ -155,6 +164,11 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		}
 		if (this.#errors > 0) {
 			stats.push(`${this.#errors.toLocaleString()} errors`);
+		}
+		if (this.#quirks > 0) {
+			stats.push(
+				`${this.#quirks.toLocaleString()} ${this.#quirks === 1 ? "quirk" : "quirks"}`,
+			);
 		}
 		if (this.#skipped > 0) {
 			stats.push(formatSkipped(this.#skipped, this.#skippedByReason));

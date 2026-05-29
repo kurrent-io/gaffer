@@ -19,8 +19,13 @@ const testFeedEvent = `{"eventType":"ItemAdded","streamId":"stream-1","sequenceN
 
 func mustSetupDebugSession(t *testing.T) (*DebugAdapter, *engine.Runner, net.Conn, *bufio.Reader) {
 	t.Helper()
+	return mustSetupDebugSessionSource(t,
+		"fromAll().when({\n$init() { return { count: 0 }; },\nItemAdded(s, e) {\ns.count++;\nreturn s;\n}\n})")
+}
+
+func mustSetupDebugSessionSource(t *testing.T, source string) (*DebugAdapter, *engine.Runner, net.Conn, *bufio.Reader) {
+	t.Helper()
 	opts := testDebugOpts
-	source := "fromAll().when({\n$init() { return { count: 0 }; },\nItemAdded(s, e) {\ns.count++;\nreturn s;\n}\n})"
 	session, err := gafferruntime.NewSession(source, &opts)
 	if err != nil {
 		t.Fatal(err)
@@ -1061,6 +1066,38 @@ func TestAdapter_EmitStatsIfChanged(t *testing.T) {
 	runner.ProcessOne(skippedEvent)
 	adapter.EmitStatsIfChanged()
 	expectNoMessage(t, conn)
+}
+
+func TestAdapter_EmitStatsIfChanged_Quirks(t *testing.T) {
+	// A biState projection returning a raw string in slot 0 fires
+	// compat.biState.stringSlot at runtime (no log, so no output event to
+	// race the stats read), which the adapter surfaces as a distinct count.
+	adapter, runner, conn, reader := mustSetupDebugSessionSource(t,
+		"fromAll().when({\n$init() { return {}; },\n$initShared() { return {}; },\nItemAdded([s, sh], e) {\nreturn ['raw', sh];\n}\n})")
+
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	runner.ProcessOne(testFeedEvent)
+	adapter.EmitStatsIfChanged()
+	stats := readCustomEvent(t, conn, reader, "gaffer/stats")
+	if stats["quirks"] != float64(1) {
+		t.Fatalf("quirks: got %v, want 1", stats["quirks"])
+	}
+
+	// A second event fires the same code; the distinct count stays 1, so
+	// the quirk field alone wouldn't re-trigger an emit (handled moves it).
+	runner.ProcessOne(testFeedEvent)
+	adapter.EmitStatsIfChanged()
+	stats = readCustomEvent(t, conn, reader, "gaffer/stats")
+	if stats["quirks"] != float64(1) {
+		t.Fatalf("quirks after 2nd event: got %v, want 1 (distinct)", stats["quirks"])
+	}
 }
 
 func TestAdapter_EmitStatsIfChanged_FixtureMode(t *testing.T) {

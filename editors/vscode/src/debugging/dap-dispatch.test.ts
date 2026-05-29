@@ -12,6 +12,7 @@ interface RecordedStep {
 	startStep: InputEvent[];
 	addLog: string[];
 	addEmit: EmittedEvent[];
+	addWarning: Array<{ code: string; message: string }>;
 	setResult: StepResult[];
 	setError: Array<{ code: string; description: string }>;
 }
@@ -27,6 +28,7 @@ function fakeStep(): { provider: StepProvider; calls: RecordedStep } {
 		startStep: [],
 		addLog: [],
 		addEmit: [],
+		addWarning: [],
 		setResult: [],
 		setError: [],
 	};
@@ -34,6 +36,8 @@ function fakeStep(): { provider: StepProvider; calls: RecordedStep } {
 		startStep: (e: InputEvent) => calls.startStep.push(e),
 		addLog: (m: string) => calls.addLog.push(m),
 		addEmit: (e: EmittedEvent) => calls.addEmit.push(e),
+		addWarning: (code: string, message: string) =>
+			calls.addWarning.push({ code, message }),
 		setResult: (r: StepResult) => calls.setResult.push(r),
 		setError: (code: string, description: string) =>
 			calls.setError.push({ code, description }),
@@ -58,15 +62,15 @@ function fakeState(): { provider: StateProvider; calls: RecordedState } {
 }
 
 interface RecordedStatus {
-	setStats: Array<{ processed: number; errors: number }>;
+	setStats: Array<{ processed: number; errors: number; quirks: number }>;
 	setSkipped: Array<{ count: number; byReason: Record<string, number> }>;
 }
 
 function fakeStatus(): { provider: StatusViewProvider; calls: RecordedStatus } {
 	const calls: RecordedStatus = { setStats: [], setSkipped: [] };
 	const provider = {
-		setStats: (processed: number, errors: number) =>
-			calls.setStats.push({ processed, errors }),
+		setStats: (processed: number, errors: number, quirks = 0) =>
+			calls.setStats.push({ processed, errors, quirks }),
 		setSkipped: (count: number, byReason: Record<string, number>) =>
 			calls.setSkipped.push({ count, byReason }),
 	} as unknown as StatusViewProvider;
@@ -199,6 +203,25 @@ describe("dispatchDapEvent - happy paths", () => {
 		]);
 	});
 
+	it("routes gaffer/stepWarning to addWarning", async () => {
+		const step = fakeStep();
+		await dispatchDapEvent(
+			event("gaffer/stepWarning", {
+				step: 3,
+				code: "compat.biState.stringSlot",
+				message: "raw string JSON-quoted in slot 0",
+				severity: 2,
+			}),
+			handlers({ step: step.provider }),
+		);
+		expect(step.calls.addWarning).toEqual([
+			{
+				code: "compat.biState.stringSlot",
+				message: "raw string JSON-quoted in slot 0",
+			},
+		]);
+	});
+
 	it("routes gaffer/stepError to setError", async () => {
 		const step = fakeStep();
 		await dispatchDapEvent(
@@ -261,7 +284,20 @@ describe("dispatchDapEvent - happy paths", () => {
 			event("gaffer/stats", { handled: 12, errors: 1 }),
 			handlers({ status: status.provider }),
 		);
-		expect(status.calls.setStats).toEqual([{ processed: 12, errors: 1 }]);
+		expect(status.calls.setStats).toEqual([
+			{ processed: 12, errors: 1, quirks: 0 },
+		]);
+	});
+
+	it("routes gaffer/stats quirks count to setStats", async () => {
+		const status = fakeStatus();
+		await dispatchDapEvent(
+			event("gaffer/stats", { handled: 5, errors: 0, quirks: 2 }),
+			handlers({ status: status.provider }),
+		);
+		expect(status.calls.setStats).toEqual([
+			{ processed: 5, errors: 0, quirks: 2 },
+		]);
 	});
 
 	it("routes gaffer/stats with skipped fields to setSkipped", async () => {

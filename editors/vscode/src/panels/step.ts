@@ -43,6 +43,11 @@ export class StepProvider
 		this.#scheduleRefresh();
 	}
 
+	addWarning(code: string, message: string): void {
+		this.#items.push(buildWarningItem(code, message));
+		this.#scheduleRefresh();
+	}
+
 	setResult(result: StepResult): void {
 		this.#items.push(buildResultItem(result));
 		this.#scheduleRefresh();
@@ -120,6 +125,20 @@ function buildLogItem(message: string): TreeItemWithChildren {
 		vscode.TreeItemCollapsibleState.None,
 	);
 	item.iconPath = new vscode.ThemeIcon("comment");
+	return item;
+}
+
+function buildWarningItem(code: string, message: string): TreeItemWithChildren {
+	const item: TreeItemWithChildren = new vscode.TreeItem(
+		code,
+		vscode.TreeItemCollapsibleState.None,
+	);
+	item.iconPath = new vscode.ThemeIcon(
+		"warning",
+		new vscode.ThemeColor("problemsWarningIcon.foreground"),
+	);
+	item.description = message;
+	item.tooltip = message;
 	return item;
 }
 

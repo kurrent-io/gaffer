@@ -385,7 +385,7 @@ func (tw *textWriter) statsLine(stats engine.EventStats) {
 		}
 	}
 
-	// Quirks that fired during the run, broken down by code. These are
+	// Quirks encountered during the run, broken down by code. These are
 	// non-fatal, so they're reported separately from skips and errors.
 	if len(stats.DiagnosticsByCode) > 0 {
 		codes := make([]string, 0, len(stats.DiagnosticsByCode))
@@ -399,7 +399,7 @@ func (tw *textWriter) statsLine(stats engine.EventStats) {
 		if total == 1 {
 			noun = "quirk"
 		}
-		tw.write("%s %s fired\n", gold(formatNumber(total)), noun)
+		tw.write("%s %s encountered\n", gold(formatNumber(total)), noun)
 		for _, c := range codes {
 			tw.write("  %s %s\n", gold(formatNumber(stats.DiagnosticsByCode[c])), c)
 		}

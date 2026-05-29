@@ -56,7 +56,7 @@ export interface ProcessedStepResult<
 	emitted: TestEmittedEvent[];
 	/** Log messages from `log()` calls. */
 	logs: string[];
-	/** Quirks that fired while processing this event (e.g. a biState string slot being double-quoted). Empty when none. Runtime, value-dependent diagnostics - distinct from the projection's compile-time diagnostics. */
+	/** Quirks encountered while processing this event (e.g. a biState string slot being double-quoted). Empty when none. Runtime, value-dependent diagnostics - distinct from the projection's compile-time diagnostics. */
 	diagnostics: Diagnostic[];
 }
 

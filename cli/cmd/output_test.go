@@ -416,7 +416,7 @@ func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
 	tw.WriteSummary(stats, engine.StateSummary{})
 
 	out := buf.String()
-	testutil.AssertContains(t, out, "quirks fired")
+	testutil.AssertContains(t, out, "quirks encountered")
 	testutil.AssertContains(t, out, "compat.biState.stringSlot")
 }
 

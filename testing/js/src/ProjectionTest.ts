@@ -56,7 +56,9 @@ export interface ProcessedStepResult<
 }
 
 /**
- * Why an event was skipped by the runtime.
+ * Why an event was skipped instead of processed. `"wrong-stream"` is applied
+ * by the testing library before the event reaches the runtime; the rest are
+ * decided by the runtime.
  *
  * - `"non-json"` - V1 mode dropped the event because `isJson` is false.
  * - `"link"` - Event is a link (`$>` type or has `linkMetadata`) and `$includeLinks` is false.

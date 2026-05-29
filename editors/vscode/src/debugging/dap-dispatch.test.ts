@@ -12,6 +12,7 @@ interface RecordedStep {
 	startStep: InputEvent[];
 	addLog: string[];
 	addEmit: EmittedEvent[];
+	addWarning: Array<{ code: string; message: string }>;
 	setResult: StepResult[];
 	setError: Array<{ code: string; description: string }>;
 }
@@ -27,6 +28,7 @@ function fakeStep(): { provider: StepProvider; calls: RecordedStep } {
 		startStep: [],
 		addLog: [],
 		addEmit: [],
+		addWarning: [],
 		setResult: [],
 		setError: [],
 	};
@@ -34,6 +36,8 @@ function fakeStep(): { provider: StepProvider; calls: RecordedStep } {
 		startStep: (e: InputEvent) => calls.startStep.push(e),
 		addLog: (m: string) => calls.addLog.push(m),
 		addEmit: (e: EmittedEvent) => calls.addEmit.push(e),
+		addWarning: (code: string, message: string) =>
+			calls.addWarning.push({ code, message }),
 		setResult: (r: StepResult) => calls.setResult.push(r),
 		setError: (code: string, description: string) =>
 			calls.setError.push({ code, description }),
@@ -196,6 +200,25 @@ describe("dispatchDapEvent - happy paths", () => {
 		);
 		expect(step.calls.setResult).toEqual([
 			{ status: "processed", state: { count: 1 } },
+		]);
+	});
+
+	it("routes gaffer/stepWarning to addWarning", async () => {
+		const step = fakeStep();
+		await dispatchDapEvent(
+			event("gaffer/stepWarning", {
+				step: 3,
+				code: "compat.biState.stringSlot",
+				message: "raw string JSON-quoted in slot 0",
+				severity: 2,
+			}),
+			handlers({ step: step.provider }),
+		);
+		expect(step.calls.addWarning).toEqual([
+			{
+				code: "compat.biState.stringSlot",
+				message: "raw string JSON-quoted in slot 0",
+			},
 		]);
 	});
 

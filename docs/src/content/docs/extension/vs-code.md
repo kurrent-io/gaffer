@@ -32,7 +32,7 @@ Set breakpoints in the projection JS file. Standard VS Code debug controls work:
 A dedicated **KurrentDB Projections** panel opens at the bottom of the editor when a session starts. It has three views, two visible at any moment:
 
 - **Status**: connection phase (connecting / catching-up / caught-up / disconnected), total events processed, and a skipped-by-reason rollup. Hidden while paused at a breakpoint.
-- **Step**: the event that triggered the current pause, plus a diff of state before and after the handler ran. Visible only while paused.
+- **Step**: the event that triggered the current pause, plus a diff of state before and after the handler ran. It also lists what the handler produced as it ran: logs, emitted events, and any runtime quirks that fired. Visible only while paused.
 - **State**: current `state`, then `result` (V1 transformed state, V2 post-handler state), then shared state (for biState projections), then per-partition slices. Always visible.
 
 ## Autocomplete for projection builtins

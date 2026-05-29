@@ -20,6 +20,7 @@ import {
 	StepLogBodySchema,
 	StepResultBodySchema,
 	StepStartBodySchema,
+	StepWarningBodySchema,
 } from "./schemas.js";
 import type { StateProvider } from "../panels/state.js";
 import type { StatusViewProvider } from "../panels/status.js";
@@ -65,6 +66,14 @@ export async function dispatchDapEvent(
 		case "gaffer/stepResult": {
 			const body = parseDapBody(StepResultBodySchema, e);
 			if (body) handlers.stepProvider.setResult(body.result);
+			break;
+		}
+		case "gaffer/stepWarning": {
+			const body = parseDapBody(StepWarningBodySchema, e);
+			// A runtime quirk that fired mid-event; attaches to the current
+			// step like a log. Not the Problems panel - quirks are
+			// value-dependent and have no source range.
+			if (body) handlers.stepProvider.addWarning(body.code, body.message);
 			break;
 		}
 		case "gaffer/stepError": {

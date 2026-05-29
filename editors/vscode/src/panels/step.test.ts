@@ -147,6 +147,24 @@ describe("StepProvider", () => {
 		expect(err?.description).toBe("boom");
 	});
 
+	it("addWarning appends a warning node under the current step (debounced)", async () => {
+		const provider = new StepProvider();
+		provider.startStep({
+			sequenceNumber: 1,
+			streamId: "s",
+			eventType: "T",
+		});
+		provider.addWarning("compat.biState.stringSlot", "raw string JSON-quoted");
+		vi.advanceTimersByTime(50);
+		const items = provider.getChildren();
+		// Input + warning item.
+		expect(items).toHaveLength(2);
+		const warning = items.at(-1);
+		expect(warning?.label).toBe("compat.biState.stringSlot");
+		expect(warning?.description).toBe("raw string JSON-quoted");
+		expect((warning?.iconPath as vscode.ThemeIcon).id).toBe("warning");
+	});
+
 	it("clear empties the items and the placeholder reappears", async () => {
 		const provider = new StepProvider();
 		provider.startStep({

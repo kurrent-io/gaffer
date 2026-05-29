@@ -120,6 +120,29 @@ describe("GafferProcess", () => {
 		await rec.exited;
 	});
 
+	it("surfaces a failed spawn as an exit instead of hanging", async () => {
+		// A command that can't be resolved emits 'error', not 'close'.
+		// The process must still report an exit so callers don't hang;
+		// before the error handler existed the unhandled 'error' left
+		// onExit subscribers waiting forever. (Also guards the Windows
+		// shim-resolution fix: cross-spawn is what makes a real
+		// `gaffer.cmd` resolve here rather than ENOENT.)
+		const proc = new GafferProcess(["gaffer-nonexistent-binary-xyz"]);
+		const rec = recordMessages(proc);
+		proc.start();
+		await rec.exited;
+		expect(rec.exitCode).not.toBeNull();
+	});
+
+	it("waitForMessage rejects (not times out) when the spawn fails", async () => {
+		const proc = new GafferProcess(["gaffer-nonexistent-binary-xyz"]);
+		recordMessages(proc);
+		proc.start();
+		await expect(proc.waitForMessage("debug", 5000)).rejects.toThrow(
+			/Process exited/,
+		);
+	});
+
 	it("kill terminates a child that is still running", async () => {
 		const script = `setInterval(() => {}, 1000); console.log("started");`;
 		const proc = new GafferProcess(nodeArgv(script));

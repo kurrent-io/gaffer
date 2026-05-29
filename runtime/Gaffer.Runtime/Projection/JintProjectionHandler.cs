@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Gaffer.Runtime.Events;
+using Gaffer.Sdk.Diagnostics;
 using Gaffer.Sdk.Versioning;
 using Jint;
 using Jint.Native;
@@ -30,6 +31,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private readonly Serializer _serializer;
 	private readonly Action<string>? _onLog;
 	private readonly Action<EmittedEvent>? _onEmit;
+	private readonly Action<Diagnostic>? _onDiagnostic;
 	// KurrentDB enables content type validation for all projections on subsystem version >= 4.
 	// Editing a projection auto-bumps the subsystem version, so all active projections get this
 	// behavior. We match that by always enabling it rather than exposing a toggle.
@@ -101,10 +103,12 @@ internal sealed class JintProjectionHandler : IDisposable {
 		ProjectionVersion engineVersion,
 		Action<string>? onLog = null,
 		Action<EmittedEvent>? onEmit = null,
+		Action<Diagnostic>? onDiagnostic = null,
 		bool debug = false,
 		KurrentDbVersion? quirksVersion = null) {
 		_onLog = onLog;
 		_onEmit = onEmit;
+		_onDiagnostic = onDiagnostic;
 		_debug = debug;
 		_quirksVersion = quirksVersion;
 		_engineVersion = engineVersion;
@@ -281,22 +285,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private void PrepareOutput(out string? newState, out string? newSharedState) {
 		if (_definitionBuilder.IsBiState && _state.IsArray()) {
 			var arr = _state.AsArray();
-			if (KnownQuirks.BiStateStringSlot.FiresAt(_quirksVersion)) {
-				// Reproduce upstream: checks _state.IsString() (the array,
-				// always false here) instead of state.IsString() (the slot-0
-				// element), so the string-passthrough branch is unreachable.
-				// Every value goes through ConvertToStringHandlingNulls, which
-				// JSON-quotes raw strings.
-				newState = arr.TryGetValue(0, out var state)
-					? ConvertToStringHandlingNulls(state)
-					: "";
-			} else {
-				newState = arr.TryGetValue(0, out var state)
-					? (state.IsString() ? state.AsString() : ConvertToStringHandlingNulls(state))
-					: "";
-			}
+			newState = arr.TryGetValue(0, out var state)
+				? ConvertBiStateSlot(state, KnownQuirks.BiStateStringSlot)
+				: "";
 			newSharedState = arr.TryGetValue(1, out var sharedState)
-				? ConvertToStringHandlingNulls(sharedState)
+				? ConvertBiStateSlot(sharedState, KnownQuirks.BiStateSharedStringSlot)
 				: null;
 		} else if (_state.IsString()) {
 			newState = _state.AsString();
@@ -305,6 +298,25 @@ internal sealed class JintProjectionHandler : IDisposable {
 			newState = ConvertToStringHandlingNulls(_state);
 			newSharedState = null;
 		}
+	}
+
+	// Convert one biState state-array slot to its persisted string. When the
+	// slot's quirk fires, reproduce upstream's broken string-passthrough (a raw
+	// string is JSON-quoted instead of written as-is) and surface it as a
+	// runtime diagnostic so a test can catch the double-quoting; otherwise pass
+	// strings through. Slot 0 and slot 1 each have their own quirk because the
+	// upstream fix (PR #5610) only addressed slot 0.
+	private string? ConvertBiStateSlot(JsValue slot, Quirk quirk) {
+		if (quirk.FiresAt(_quirksVersion)) {
+			if (slot.IsString())
+				_onDiagnostic?.Invoke(new Diagnostic {
+					Code = quirk.Code,
+					Message = quirk.Description,
+					Severity = DiagnosticSeverity.Warning,
+				});
+			return ConvertToStringHandlingNulls(slot);
+		}
+		return slot.IsString() ? slot.AsString() : ConvertToStringHandlingNulls(slot);
 	}
 
 	private string? ConvertToStringHandlingNulls(JsValue value) =>

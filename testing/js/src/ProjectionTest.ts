@@ -1,5 +1,6 @@
 import {
 	ProjectionSession,
+	type Diagnostic,
 	type EmittedEvent,
 	type FeedResult,
 	type SessionOptions,
@@ -41,6 +42,8 @@ export interface ProcessedStepResult<
 	status: "processed";
 	/** Projection state for the affected partition. */
 	state: TState;
+	/** Raw persisted state JSON string for the affected partition, before `JSON.parse`. Use to assert serialization quirks (e.g. a biState string slot persisted as `"\"hello\""`) that `state` hides by parsing. Null when the projection produced no state. */
+	stateRaw: string | null;
 	/** Result for the affected partition. V1: transformed state (after `transformBy`/`filterBy`), or state if no transform. V2: post-handler state (transforms aren't invoked). */
 	result: TResult;
 	/** Shared state for biState projections. */
@@ -53,6 +56,8 @@ export interface ProcessedStepResult<
 	emitted: TestEmittedEvent[];
 	/** Log messages from `log()` calls. */
 	logs: string[];
+	/** Quirks that fired while processing this event (e.g. a biState string slot being double-quoted). Empty when none. Runtime, value-dependent diagnostics - distinct from the projection's compile-time diagnostics. */
+	diagnostics: Diagnostic[];
 }
 
 /**
@@ -161,8 +166,16 @@ export class ProjectionTest<
 		}
 
 		const feedResult = this.#session.feed(normalized);
+		const stateRaw =
+			feedResult.status === "processed"
+				? (this.#session.getState(feedResult.partition) ?? null)
+				: null;
 
-		return mapStepResult<TState, TResult, TSharedState>(feedResult, input);
+		return mapStepResult<TState, TResult, TSharedState>(
+			feedResult,
+			input,
+			stateRaw,
+		);
 	}
 
 	/** Get current state for a partition. Pass no argument for unpartitioned projections. */
@@ -172,6 +185,15 @@ export class ProjectionTest<
 	): TState | null {
 		this.#ensureNotDisposed();
 		return this.#session.getStateJson<TState>(partition) ?? null;
+	}
+
+	/** Get the raw persisted state JSON string for a partition, before `JSON.parse`. Use to assert serialization quirks that {@link getState} hides by parsing (e.g. a biState string slot persisted as `"\"hello\""`). Null if not seen. */
+	getStateRaw(
+		/** Partition key. */
+		partition?: string,
+	): string | null {
+		this.#ensureNotDisposed();
+		return this.#session.getState(partition) ?? null;
 	}
 
 	/** Get shared state for biState projections. */
@@ -229,6 +251,7 @@ export function toSessionOptions(options: ProjectionOptions): SessionOptions {
 function mapStepResult<TState, TResult, TSharedState>(
 	feed: FeedResult,
 	input: EventInput,
+	stateRaw: string | null,
 ): StepResult<TState, TResult, TSharedState> {
 	if (feed.status === "skipped") {
 		return {
@@ -241,6 +264,7 @@ function mapStepResult<TState, TResult, TSharedState>(
 	return {
 		status: "processed",
 		state: feed.state as TState,
+		stateRaw,
 		result: feed.result as TResult,
 		...(feed.sharedState !== undefined && {
 			sharedState: feed.sharedState as TSharedState,
@@ -249,6 +273,7 @@ function mapStepResult<TState, TResult, TSharedState>(
 		event: input,
 		emitted: (feed.emitted ?? []).map(mapEmittedEvent),
 		logs: feed.logs ?? [],
+		diagnostics: feed.diagnostics ?? [],
 	} as ProcessedStepResult<TState, TResult, TSharedState>;
 }
 

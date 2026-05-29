@@ -487,6 +487,7 @@ describe("ProjectionTest", () => {
 			}),
 		).toThrow("disposed");
 		expect(() => test.getState()).toThrow("disposed");
+		expect(() => test.getStateRaw()).toThrow("disposed");
 		expect(() => test.getSharedState()).toThrow("disposed");
 		expect(() => test.getResult()).toThrow("disposed");
 	});
@@ -704,5 +705,63 @@ describe("source filtering", () => {
 			data: {},
 		});
 		expect(step.status).toBe("processed");
+	});
+});
+
+describe("runtime diagnostics (biState string slot)", () => {
+	const biStateStringSlot = `
+		options({ biState: true });
+		fromAll().when({
+			$init: function () { return "initial"; },
+			$initShared: function () { return {}; },
+			SetName: function (s, e) { s[0] = e.data.name; return s; }
+		});
+	`;
+
+	it("surfaces the double-quoted raw state and a diagnostic", () => {
+		using test = new ProjectionTest(biStateStringSlot, { engineVersion: 2 });
+		const step = test.feed({
+			eventType: "SetName",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			isJson: true,
+			data: { name: "alice" },
+		});
+		expect(step.status).toBe("processed");
+		if (step.status !== "processed") return;
+
+		// Parsed state hides the quirk; raw state exposes the double-quoting.
+		expect(step.state).toBe("alice");
+		expect(step.stateRaw).toBe('"alice"');
+		expect(test.getStateRaw()).toBe('"alice"');
+
+		// The diagnostic tells the user to look, without them knowing in advance.
+		expect(
+			step.diagnostics.some((d) => d.code === "compat.biState.stringSlot"),
+		).toBe(true);
+	});
+
+	it("emits no diagnostic when slots hold objects", () => {
+		using test = new ProjectionTest(
+			`
+			options({ biState: true });
+			fromAll().when({
+				$init: function () { return {}; },
+				$initShared: function () { return {}; },
+				SetName: function (s, e) { s[0] = { name: e.data.name }; return s; }
+			});
+		`,
+			{ engineVersion: 2 },
+		);
+		const step = test.feed({
+			eventType: "SetName",
+			streamId: "s-1",
+			sequenceNumber: 0,
+			isJson: true,
+			data: { name: "alice" },
+		});
+		expect(step.status).toBe("processed");
+		if (step.status !== "processed") return;
+		expect(step.diagnostics).toEqual([]);
 	});
 });

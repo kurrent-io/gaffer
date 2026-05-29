@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Gaffer.Sdk.Diagnostics;
 
 namespace Gaffer.Sdk;
 
@@ -16,4 +17,5 @@ namespace Gaffer.Sdk;
 	PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(ProjectionInfo))]
 [JsonSerializable(typeof(ProjectionShape))]
+[JsonSerializable(typeof(Diagnostic[]))]
 public partial class SdkJsonContext : JsonSerializerContext { }

@@ -2,6 +2,7 @@ import { getNativeBindings } from "./native.js";
 import { parseErrorJson } from "./errors.js";
 import type { IKoffiRegisteredCallback } from "koffi";
 import type {
+	Diagnostic,
 	EmittedEvent,
 	FeedResult,
 	ProjectionEvent,
@@ -195,6 +196,8 @@ function parseFeedResult(json: string): FeedResult {
 	if (raw.sharedState != null) result.sharedState = raw.sharedState;
 	if (raw.emitted != null) result.emitted = raw.emitted as EmittedEvent[];
 	if (raw.logs != null) result.logs = raw.logs as string[];
+	if (raw.diagnostics != null)
+		result.diagnostics = raw.diagnostics as Diagnostic[];
 
 	return result;
 }

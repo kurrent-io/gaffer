@@ -80,7 +80,7 @@ Run the projection over events, yielding a `StepResult` after each one. Accepts:
 - `AsyncIterable<EventInput>` - async generators, client streams.
 - `KurrentDBClient` - subscribes to the appropriate streams based on the projection's declared source.
 
-`StepResult` is a discriminated union on `status`. Both shapes carry `event` and `status`. The `processed` shape adds `state`, `result`, `sharedState`, `emitted`, and `logs`. The `skipped` shape adds `reason` explaining why (`unhandled`, `non-json`, `link`, `no-partition`, `no-delete-handler`, `wrong-stream`). Guard before destructuring:
+`StepResult` is a discriminated union on `status`. Both shapes carry `event` and `status`. The `processed` shape adds `state`, `stateRaw`, `result`, `sharedState`, `emitted`, `logs`, and `diagnostics`. The `skipped` shape adds `reason` explaining why (`unhandled`, `non-json`, `link`, `no-partition`, `no-delete-handler`, `wrong-stream`). Guard before destructuring:
 
 ```typescript
 for (const result of projection.run(events)) {
@@ -171,9 +171,34 @@ For projections that partition state (`foreachStream`, `partitionBy`), inspect e
 
 ```typescript
 test.getState("order-1"); // state for the order-1 partition
+test.getStateRaw("order-1"); // raw persisted state JSON, before parse (see Serialization quirks)
 test.getState("order-2"); // state for the order-2 partition
 test.getSharedState(); // shared state (biState projections)
 test.getResult("order-1"); // result for order-1 (V1: post-transform, V2: post-handler state)
+```
+
+#### Serialization quirks
+
+Some KurrentDB quirks only surface in how state is persisted, and `state` / `getState()` hide them by parsing the persisted JSON on read.
+
+- **`step.diagnostics`** lists the quirks that fired while processing the event (empty when none; it can carry more than one). The motivating case is biState string slots: KurrentDB JSON-quotes a raw string written to a state slot (`compat.biState.stringSlot` for the main slot, `compat.biState.sharedStringSlot` for shared state), so `"hello"` persists as `"\"hello\""`.
+- **`step.stateRaw`** and **`getStateRaw(partition?)`** return the persisted state JSON string before `JSON.parse`, so you can assert against the double-quoted value the quirk produces.
+
+```typescript
+const step = test.feed({
+  eventType: "SetName",
+  streamId: "s-1",
+  sequenceNumber: 0,
+  isJson: true,
+  data: { name: "alice" },
+});
+if (step.status !== "processed") throw new Error(step.reason);
+
+expect(step.state).toBe("alice"); // parsed - quirk hidden
+expect(step.stateRaw).toBe('"alice"'); // raw - double-quoting visible
+expect(step.diagnostics.map((d) => d.code)).toContain(
+  "compat.biState.stringSlot",
+);
 ```
 
 ### `systemEvents`

@@ -1,3 +1,5 @@
+using Gaffer.Sdk.Diagnostics;
+
 namespace Gaffer.Runtime.Events;
 
 /// <summary>Result of feeding a single event to a projection session.</summary>
@@ -25,6 +27,9 @@ public sealed class FeedResult {
 
 	/// <summary>Reason the event was skipped. Null when Status is Processed.</summary>
 	public string? SkipReason { get; init; }
+
+	/// <summary>Quirks that fired while processing this event (e.g. a biState string slot being JSON-quoted). Empty array when none. Distinct from compile-time <see cref="Gaffer.Sdk.ProjectionInfo"/> diagnostics: these are runtime, value-dependent, and have no source range.</summary>
+	public Diagnostic[] Diagnostics { get; init; } = [];
 
 	internal static FeedResult Skip(string reason) => new() { Status = FeedStatus.Skipped, SkipReason = reason };
 }

@@ -273,6 +273,15 @@ func (tw *textWriter) WriteEvent(event eventInfo) {
 	tw.pending = &event
 }
 
+// flushPending prints the deferred event header, at most once per event.
+//
+// WriteEvent defers the header (rather than printing it immediately) so a
+// skipped event renders nothing: in live mode WriteResult drops the block
+// entirely on a "skipped" result. The header is therefore shown lazily by
+// whatever produces the event's first visible output - a log (OnLog), an
+// emitted event (writeEmittedCb), or the result itself (WriteResult) - so it
+// always lands above them in order. Skips are decided before the handler
+// runs, so a dropped event never has logs or emits and never flushes here.
 func (tw *textWriter) flushPending() {
 	if tw.pending == nil {
 		return

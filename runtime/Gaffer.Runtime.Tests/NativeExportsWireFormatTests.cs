@@ -80,6 +80,25 @@ public class NativeExportsWireFormatTests {
 		Assert.Equal(DiagnosticCatalog.EventBodyCast.Code, doc.RootElement.GetProperty("compatCode").GetString());
 	}
 
+	[Fact]
+	public void SerializeProjectionError_OmitsDiagnosticsWhenEmpty() {
+		var ex = new InvalidArgumentException("test", "field");
+		var json = NativeExports.SerializeProjectionError(ex);
+		using var doc = JsonDocument.Parse(json);
+		Assert.False(doc.RootElement.TryGetProperty("diagnostics", out _));
+	}
+
+	[Fact]
+	public void SerializeProjectionError_EmitsDiagnosticsWhenSet() {
+		var ex = new InvalidArgumentException("test", "field") {
+			Diagnostics = new[] { DiagnosticCatalog.EventBodyCast.ToDiagnostic() },
+		};
+		var json = NativeExports.SerializeProjectionError(ex);
+		using var doc = JsonDocument.Parse(json);
+		var diagnostics = doc.RootElement.GetProperty("diagnostics");
+		Assert.Equal(DiagnosticCatalog.EventBodyCast.Code, diagnostics[0].GetProperty("code").GetString());
+	}
+
 	// -- SerializeKnownQuirks --
 
 	[Fact]

@@ -189,4 +189,11 @@ public static class DiagnosticCatalog {
 	/// <summary>Every reproduced quirk - <see cref="All"/> filtered to <see cref="DiagnosticClass.Quirk"/>.</summary>
 	public static readonly IReadOnlyList<DiagnosticDescriptor> Quirks =
 		All.Where(d => d.Class == DiagnosticClass.Quirk).ToArray();
+
+	private static readonly Dictionary<string, DiagnosticDescriptor> ByCode =
+		All.ToDictionary(d => d.Code);
+
+	/// <summary>Look up a descriptor by its <see cref="DiagnosticDescriptor.Code"/>.</summary>
+	public static bool TryGet(string code, out DiagnosticDescriptor descriptor) =>
+		ByCode.TryGetValue(code, out descriptor!);
 }

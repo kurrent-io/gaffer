@@ -94,6 +94,9 @@ public class CompatQuirksTests {
 		var ex = Assert.Throws<ProjectionHandlerException>(() =>
 			session.Feed(new ProjectionEvent { EventType = "X", StreamId = "src-1", Data = "{}" }));
 		Assert.Equal(DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.Code, ex.CompatCode);
+		// Quirks-always-diagnose: the throwing quirk also reaches the diagnostics channel.
+		var d = Assert.Single(ex.Diagnostics, x => x.Code == DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.Code);
+		Assert.Equal(DiagnosticSeverity.Error, d.Severity);
 	}
 
 	// -- log multi-param --
@@ -217,6 +220,50 @@ public class CompatQuirksTests {
 				IsJson = true,
 			}));
 		Assert.Equal(DiagnosticCatalog.EventBodyCast.Code, ex.CompatCode);
+		var d = Assert.Single(ex.Diagnostics, x => x.Code == DiagnosticCatalog.EventBodyCast.Code);
+		Assert.Equal(DiagnosticSeverity.Error, d.Severity);
+	}
+
+	[Fact]
+	public void ThrowingQuirk_CarriesEarlierNonThrowingQuirkDiagnostics() {
+		// A non-throwing quirk (log multi-param) fires, then the same event throws (body cast).
+		// Both must reach the error's diagnostics - the throw doesn't discard what fired first.
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				Test: function (s, e) { log("a", "b"); return e.body; }
+			});
+		""", Options());
+
+		var ex = Assert.Throws<ProjectionHandlerException>(() =>
+			session.Feed(new ProjectionEvent {
+				EventType = "Test",
+				StreamId = "s-1",
+				Data = "null",
+				IsJson = true,
+			}));
+
+		Assert.Equal(2, ex.Diagnostics.Count); // exactly the two that fired, no duplication
+		Assert.Contains(ex.Diagnostics, x => x.Code == DiagnosticCatalog.LogMultiParam.Code);
+		Assert.Contains(ex.Diagnostics, x => x.Code == DiagnosticCatalog.EventBodyCast.Code);
+	}
+
+	[Fact]
+	public void ThrowingQuirk_ViaGetResult_CarriesDiagnostic() {
+		// A quirk that throws from the transform (V1 serializes transform output) reaches the
+		// error's diagnostics even though it never goes through Feed's catch. SetState seeds a
+		// partition so GetResult runs the transform without a preceding Feed.
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				$init: function () { return {}; },
+				Test: function (s, e) { return s; }
+			}).transformBy(function (s) { return { v: NaN }; }).outputState()
+			""", new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V1 });
+		session.SetState(null, "{}");
+
+		var ex = Assert.Throws<ProjectionTransformException>(() => session.GetResult());
+		Assert.Equal(DiagnosticCatalog.SerializeNonFinite.Code, ex.CompatCode);
+		var d = Assert.Single(ex.Diagnostics, x => x.Code == DiagnosticCatalog.SerializeNonFinite.Code);
+		Assert.Equal(DiagnosticSeverity.Error, d.Severity);
 	}
 
 	// -- BiState PrepareOutput string slot --
@@ -369,6 +416,8 @@ public class CompatQuirksTests {
 				IsJson = true,
 			}));
 		Assert.Equal(DiagnosticCatalog.SerializeNonFinite.Code, ex.CompatCode);
+		var d = Assert.Single(ex.Diagnostics, x => x.Code == DiagnosticCatalog.SerializeNonFinite.Code);
+		Assert.Equal(DiagnosticSeverity.Error, d.Severity);
 	}
 
 	// -- SerializePrimitive NaN/Infinity --

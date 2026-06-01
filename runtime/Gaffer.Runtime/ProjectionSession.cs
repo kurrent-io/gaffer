@@ -250,6 +250,18 @@ public sealed class ProjectionSession : IDisposable {
 		_pendingDiagnostics.Clear();
 
 		try {
+			return FeedCore(@event);
+		} catch (ProjectionException ex) {
+			// Quirks-always-diagnose: a quirk that threw reaches the same diagnostics channel
+			// as a non-throwing one. Drain whatever fired before the throw plus the throwing
+			// quirk itself onto the exception so the error response carries them.
+			AttachQuirkDiagnostics(ex);
+			throw;
+		}
+	}
+
+	private FeedResult FeedCore(ProjectionEvent @event) {
+		try {
 			if (IsStreamDeletedEvent(@event, out var deletedStreamId))
 				return FeedStreamDeleted(@event, deletedStreamId);
 		} catch (JsonException ex) {
@@ -359,7 +371,18 @@ public sealed class ProjectionSession : IDisposable {
 		LoadPartitionState(key);
 		if (_sharedStateInitialized)
 			LoadSharedState();
-		return TransformResult();
+		try {
+			return TransformResult();
+		} catch (ProjectionException ex) {
+			// Standalone result query (no event in flight), so attach only the throwing quirk -
+			// not _pendingDiagnostics, which would be stale from the last Feed. The event path's
+			// transform throw is instead caught by Feed's outer catch, which includes the
+			// pending list.
+			var thrown = BuildThrownQuirkDiagnostic(ex.CompatCode);
+			if (thrown != null)
+				ex.Diagnostics = new[] { thrown };
+			throw;
+		}
 	}
 
 	private string? TransformResult() {
@@ -424,6 +447,32 @@ public sealed class ProjectionSession : IDisposable {
 				return code;
 		}
 		return null;
+	}
+
+	// Build the diagnostic for the throwing quirk from the code stashed on the exception. The
+	// firing threw, so by the per-firing rubric it is an Error regardless of the descriptor's
+	// default severity - forced here rather than relying on every throwing quirk being
+	// catalogued Error. Fires OnDiagnostic so live consumers see it like any other quirk.
+	private Diagnostic? BuildThrownQuirkDiagnostic(string? compatCode) {
+		if (compatCode is not { } code || !DiagnosticCatalog.TryGet(code, out var descriptor))
+			return null;
+		var diagnostic = new Diagnostic {
+			Code = descriptor.Code,
+			Message = descriptor.Message,
+			Severity = DiagnosticSeverity.Error,
+		};
+		OnDiagnostic?.Invoke(diagnostic);
+		return diagnostic;
+	}
+
+	// Event path: append the throwing quirk to everything that fired before the throw
+	// (_pendingDiagnostics, which Feed clears per event) and carry the lot on the exception.
+	private void AttachQuirkDiagnostics(ProjectionException ex) {
+		var thrown = BuildThrownQuirkDiagnostic(ex.CompatCode);
+		if (thrown != null)
+			_pendingDiagnostics.Add(thrown);
+		if (_pendingDiagnostics.Count > 0)
+			ex.Diagnostics = _pendingDiagnostics.ToArray();
 	}
 
 	/// <summary>Get the partition key that would be computed for an event.</summary>

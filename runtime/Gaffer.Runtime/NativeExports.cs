@@ -110,6 +110,14 @@ internal static unsafe class NativeExports {
 				break;
 		}
 
+		// Quirks-always-diagnose: every quirk that fired while processing the throwing event,
+		// including the throwing quirk itself, rides the error alongside the single compatCode.
+		if (ex.Diagnostics.Count > 0) {
+			writer.WritePropertyName("diagnostics");
+			writer.WriteRawValue(JsonSerializer.Serialize(
+				ex.Diagnostics.ToArray(), Sdk.SdkJsonContext.Default.DiagnosticArray));
+		}
+
 		writer.WriteEndObject();
 		writer.Flush();
 		return Encoding.UTF8.GetString(stream.ToArray());
@@ -202,18 +210,6 @@ internal static unsafe class NativeExports {
 		writer.WriteRawValue(JsonSerializer.Serialize(
 			result.Diagnostics, Sdk.SdkJsonContext.Default.DiagnosticArray));
 
-		writer.WriteEndObject();
-		writer.Flush();
-		return Encoding.UTF8.GetString(stream.ToArray());
-	}
-
-	private static string SerializeFeedError(ProjectionException ex) {
-		using var stream = new System.IO.MemoryStream();
-		using var writer = new Utf8JsonWriter(stream);
-		writer.WriteStartObject();
-		writer.WriteString("status", "error");
-		writer.WritePropertyName("error");
-		writer.WriteRawValue(SerializeProjectionError(ex));
 		writer.WriteEndObject();
 		writer.Flush();
 		return Encoding.UTF8.GetString(stream.ToArray());

@@ -21,7 +21,7 @@ internal static class DiagnosticCollector {
 		new TransformsNotAppliedInV2Rule(),
 		new OutputStateUnconditionalInV2Rule(),
 		new DuplicateOptionsRule(),
-		new ReorderOptionsRule(),
+		new ReorderEventsNoEffectOnV2Rule(),
 		new AsyncHandlerRule(),
 	};
 
@@ -291,48 +291,45 @@ internal static class DiagnosticCollector {
 		}
 	}
 
-	// reorderEvents / processingLag only apply to fromStreams() projections.
-	// KurrentDB rejects reorderEvents on other sources at subscription creation
-	// (ReaderStrategy), and processingLag has no effect without it; gaffer
-	// otherwise stores both in QuerySources and silently ignores them. Surface an
-	// error diagnostic at compile time so the divergence is visible. Not quirk- or
-	// version-gated.
+	// reorderEvents / processingLag are silently ignored under engine_version 2: V2's
+	// ReadStrategyFactory never reads them, so events run in arrival order regardless of source.
+	// Warn so the user finds out the option is dead rather than wondering why ordering didn't
+	// change. The V1 path is the opposite - KurrentDB's ReaderStrategy rejects reorderEvents on
+	// the wrong source/lag with a hard error - and is reproduced as a throw at session-create in
+	// ProjectionSession, off the resolved QuerySources (authoritative; a throw must be exact).
+	// This rule is the editor-facing V2 hint and reads the AST literally (best-effort, with a
+	// source range), so it can't see a computed reorderEvents value - acceptable for a warning.
 	//
-	// NOTE (UI-1622): pending an engine-version-aware rewrite. The real KurrentDB rule is
-	// V1-only (throw on non-fromStreams / <2 streams / lag<50); on V2 reorderEvents is a
-	// silent no-op (-> DiagnosticCatalog.ReorderEventsNoEffectOnV2). Until that rewrite this
-	// rule keeps the legacy `options.fromStreamsOnly` code and behaviour.
-	private sealed class ReorderOptionsRule : IRule {
+	// processingLag alone (no reorderEvents) is a no-op on every engine, not a V2 regression, so
+	// it isn't flagged on its own; it's only surfaced when it rides alongside a reorderEvents
+	// that V2 drops.
+	private sealed class ReorderEventsNoEffectOnV2Rule : IRule {
 		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
-			var scanner = new Scanner();
-			scanner.Visit(ast);
-			// A top-level shadow of options/fromStreams (they're writable,
-			// configurable globals) means the bare calls aren't the builtins, so
-			// the analysis can't be trusted - stay quiet. A genuine fromStreams
-			// source likewise suppresses.
-			if (scanner.OptionsShadowed || scanner.FromStreamsShadowed || scanner.UsesFromStreams)
+			if (engineVersion != ProjectionVersion.V2)
 				return;
 
-			foreach (var (name, loc) in scanner.Offending) {
-				diagnostics.Add(new Diagnostic {
-					Code = "options.fromStreamsOnly",
-					Message = $"{name} is only supported on fromStreams() projections.",
-					Severity = DiagnosticSeverity.Error,
-					Range = ToSourceRange(loc),
-				});
-			}
+			var scanner = new Scanner();
+			scanner.Visit(ast);
+			// A top-level user `options`/`function options` means the call isn't the builtin,
+			// so the analysis can't be trusted - stay quiet. No reorderEvents means nothing to
+			// warn about (lone processingLag is a no-op everywhere, not V2-specific).
+			if (scanner.OptionsShadowed || scanner.ReorderEventsLocation is not { } reorderLoc)
+				return;
+
+			diagnostics.Add(DiagnosticCatalog.ReorderEventsNoEffectOnV2.ToDiagnostic(ToSourceRange(reorderLoc)));
+			if (scanner.ProcessingLagLocation is { } lagLoc)
+				diagnostics.Add(DiagnosticCatalog.ReorderEventsNoEffectOnV2.ToDiagnostic(ToSourceRange(lagLoc)));
 		}
 
-		// Source and options are top-level definition constructs, so only calls
-		// and shadow declarations at function depth 0 count; a fromStreams() in a
-		// handler body or nested/dead code is not the source and must not suppress.
+		// options is a top-level definition construct, so only calls and shadow declarations at
+		// function depth 0 count; an options() in a handler body or nested/dead code is not the
+		// source config and must be ignored.
 		private sealed class Scanner : AstVisitor {
 			private int _functionDepth;
 
-			public bool UsesFromStreams { get; private set; }
 			public bool OptionsShadowed { get; private set; }
-			public bool FromStreamsShadowed { get; private set; }
-			public List<(string Name, Acornima.SourceLocation Loc)> Offending { get; } = new();
+			public Acornima.SourceLocation? ReorderEventsLocation { get; private set; }
+			public Acornima.SourceLocation? ProcessingLagLocation { get; private set; }
 
 			protected override object? VisitFunctionDeclaration(FunctionDeclaration node) {
 				MarkShadow(node.Id);
@@ -362,25 +359,18 @@ internal static class DiagnosticCollector {
 			}
 
 			protected override object? VisitCallExpression(CallExpression node) {
-				if (_functionDepth == 0 && node.Callee is Identifier callee) {
-					if (callee.Name == "fromStreams") {
-						UsesFromStreams = true;
-					} else if (callee.Name == "options" &&
-						node.Arguments.Count > 0 &&
-						node.Arguments[0] is ObjectExpression obj) {
-						CollectReorderOptions(obj);
-					}
+				if (_functionDepth == 0 &&
+					node.Callee is Identifier { Name: "options" } &&
+					node.Arguments.Count > 0 &&
+					node.Arguments[0] is ObjectExpression obj) {
+					CollectReorderOptions(obj);
 				}
 				return base.VisitCallExpression(node);
 			}
 
 			private void MarkShadow(Node? id) {
-				if (_functionDepth != 0 || id is not Identifier { Name: var name })
-					return;
-				if (name == "options")
+				if (_functionDepth == 0 && id is Identifier { Name: "options" })
 					OptionsShadowed = true;
-				else if (name == "fromStreams")
-					FromStreamsShadowed = true;
 			}
 
 			private void CollectReorderOptions(ObjectExpression obj) {
@@ -392,8 +382,12 @@ internal static class DiagnosticCollector {
 						StringLiteral lit => lit.Value,
 						_ => null,
 					};
-					if (key is "reorderEvents" or "processingLag")
-						Offending.Add((key, prop.Key.Location));
+					// An explicit `reorderEvents: false` is already off - nothing to warn about.
+					// A non-literal value can't be proven off, so warn conservatively.
+					if (key == "reorderEvents" && prop.Value is not BooleanLiteral { Value: false })
+						ReorderEventsLocation = prop.Key.Location;
+					else if (key == "processingLag")
+						ProcessingLagLocation = prop.Key.Location;
 				}
 			}
 		}

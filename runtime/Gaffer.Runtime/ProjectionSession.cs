@@ -143,6 +143,7 @@ public sealed class ProjectionSession : IDisposable {
 			if (_sources.HandlesDeletedNotifications && !_sources.ByStreams)
 				throw new InvalidProjectionException(
 					"Deleted stream notifications are only supported with foreachStream()") { ProjectionSource = source };
+			ValidateReorderEvents();
 			if (!_sources.AllEvents && _sources.Events != null)
 				_handledEventTypes = new HashSet<string>(_sources.Events, StringComparer.Ordinal);
 
@@ -155,6 +156,26 @@ public sealed class ProjectionSession : IDisposable {
 			_handler.Dispose();
 			throw;
 		}
+	}
+
+	// Reproduce KurrentDB's V1 ReaderStrategy validation for event reordering: it rejects the
+	// definition at load unless the source is fromStreams() with 2+ streams and processingLag is
+	// at least 50ms. V2's ReadStrategyFactory ignores reorderEvents entirely, so the option is a
+	// silent no-op there (surfaced as a compile-time Warning, not a throw - see
+	// ReorderEventsNoEffectOnV2Rule). Mirrors the deleted-notifications check above.
+	private void ValidateReorderEvents() {
+		if (_version != ProjectionVersion.V1 || !_sources.ReorderEvents)
+			return;
+
+		if (_sources.AllStreams)
+			throw new InvalidProjectionException(
+				"Event reordering cannot be used with fromAll()") { ProjectionSource = _source };
+		if (_sources.Streams is not { Length: > 1 })
+			throw new InvalidProjectionException(
+				"Event reordering is only available in fromStreams([]) projections") { ProjectionSource = _source };
+		if ((_sources.ProcessingLag ?? 0) < 50)
+			throw new InvalidProjectionException(
+				"Event reordering requires processing lag at least of 50ms") { ProjectionSource = _source };
 	}
 
 	public void Dispose() {

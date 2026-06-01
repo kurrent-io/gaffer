@@ -38,59 +38,118 @@ public class DiagnosticsTests {
 		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.options.duplicate");
 	}
 
+	private static readonly ProjectionSessionOptions V1Options = new() { EngineVersion = ProjectionVersion.V1 };
+
+	// --- engine_version 2: reorderEvents is a silent no-op -> Warning, regardless of source ---
+
 	[Fact]
-	public void ReorderEvents_OnFromAll_ErrorDiagnostic() {
+	public void ReorderEvents_OnV2_WarnsNoEffect() {
 		using var session = new ProjectionSession(
 			"options({ reorderEvents: true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
 
-		Assert.NotNull(session.Diagnostics);
-		var d = Assert.Single(session.Diagnostics!, x => x.Code == "options.fromStreamsOnly");
-		Assert.Equal(DiagnosticSeverity.Error, d.Severity);
-		Assert.Contains("reorderEvents", d.Message);
+		var d = Assert.Single(session.Diagnostics ?? [], x => x.Code == "usage.reorderEvents.noEffectOnV2");
+		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
 	}
 
 	[Fact]
-	public void ProcessingLag_OnFromCategory_ErrorDiagnostic() {
-		using var session = new ProjectionSession(
-			"options({ processingLag: 100 });\nfromCategory('order').when({ $any: function (s, e) { return s; } });", Options);
-
-		Assert.Contains(session.Diagnostics ?? [],
-			d => d.Code == "options.fromStreamsOnly" && d.Message.Contains("processingLag"));
-	}
-
-	[Fact]
-	public void ReorderEvents_StringLiteralKey_OnFromAll_ErrorDiagnostic() {
-		using var session = new ProjectionSession(
-			"options({ \"reorderEvents\": true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
-
-		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "options.fromStreamsOnly");
-	}
-
-	[Fact]
-	public void ReorderOptions_OnFromStreams_NoDiagnostic() {
+	public void ReorderEvents_OnV2_FromStreams_StillWarns() {
+		// V2 ignores reorderEvents on every source, including a valid V1 fromStreams config.
 		using var session = new ProjectionSession(
 			"options({ reorderEvents: true, processingLag: 100 });\nfromStreams('a', 'b').when({ $any: function (s, e) { return s; } });", Options);
 
-		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "options.fromStreamsOnly");
+		// Both the reorderEvents and the riding-along processingLag keys are flagged.
+		Assert.Equal(2, (session.Diagnostics ?? []).Count(d => d.Code == "usage.reorderEvents.noEffectOnV2"));
 	}
 
 	[Fact]
-	public void NestedFromStreamsCall_DoesNotSuppress_ReorderDiagnostic() {
-		// Real source is fromAll; a fromStreams() call buried in a handler body
-		// must not suppress the diagnostic.
+	public void ReorderEvents_StringLiteralKey_OnV2_Warns() {
 		using var session = new ProjectionSession(
-			"options({ reorderEvents: true });\nfromAll().when({ $any: function (s, e) { fromStreams('a', 'b'); return s; } });", Options);
+			"options({ \"reorderEvents\": true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
 
-		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "options.fromStreamsOnly");
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
 	}
 
 	[Fact]
-	public void ShadowedOptions_Suppresses_ReorderDiagnostic() {
+	public void ReorderEventsFalse_OnV2_NoDiagnostic() {
+		// Explicitly off - nothing is being dropped.
+		using var session = new ProjectionSession(
+			"options({ reorderEvents: false });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	[Fact]
+	public void LoneProcessingLag_OnV2_NoDiagnostic() {
+		// processingLag without reorderEvents is a no-op on every engine, not a V2 regression.
+		using var session = new ProjectionSession(
+			"options({ processingLag: 100 });\nfromCategory('order').when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	[Fact]
+	public void ShadowedOptions_OnV2_Suppresses_ReorderWarning() {
 		// A top-level user-defined `options` means the call isn't the builtin.
 		using var session = new ProjectionSession(
 			"function options(o) { return o; }\noptions({ reorderEvents: true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
 
-		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "options.fromStreamsOnly");
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	[Fact]
+	public void ReorderEvents_OnV1_NoV2Warning() {
+		// The V2 no-op warning must not fire under V1, where reorderEvents is honoured.
+		using var session = new ProjectionSession(
+			"options({ reorderEvents: true, processingLag: 100 });\nfromStreams('a', 'b').when({ $any: function (s, e) { return s; } });", V1Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	// --- engine_version 1: KurrentDB ReaderStrategy rejects invalid reorderEvents -> throw ---
+
+	[Fact]
+	public void ReorderEvents_OnV1_FromAll_Throws() {
+		var ex = Assert.Throws<InvalidProjectionException>(() => new ProjectionSession(
+			"options({ reorderEvents: true, processingLag: 100 });\nfromAll().when({ $any: function (s, e) { return s; } });", V1Options));
+		Assert.Contains("fromAll", ex.Message);
+	}
+
+	[Fact]
+	public void ReorderEvents_OnV1_SingleStream_Throws() {
+		var ex = Assert.Throws<InvalidProjectionException>(() => new ProjectionSession(
+			"options({ reorderEvents: true, processingLag: 100 });\nfromStreams('a').when({ $any: function (s, e) { return s; } });", V1Options));
+		Assert.Contains("fromStreams", ex.Message);
+	}
+
+	[Fact]
+	public void ReorderEvents_OnV1_LagBelowFloor_Throws() {
+		var ex = Assert.Throws<InvalidProjectionException>(() => new ProjectionSession(
+			"options({ reorderEvents: true, processingLag: 10 });\nfromStreams('a', 'b').when({ $any: function (s, e) { return s; } });", V1Options));
+		Assert.Contains("50ms", ex.Message);
+	}
+
+	[Fact]
+	public void ReorderEvents_OnV1_LagAbsent_Throws() {
+		// No processingLag defaults below the 50ms floor.
+		Assert.Throws<InvalidProjectionException>(() => new ProjectionSession(
+			"options({ reorderEvents: true });\nfromStreams('a', 'b').when({ $any: function (s, e) { return s; } });", V1Options));
+	}
+
+	[Fact]
+	public void ReorderEvents_OnV1_ValidFromStreams_NoThrowNoDiagnostic() {
+		using var session = new ProjectionSession(
+			"options({ reorderEvents: true, processingLag: 100 });\nfromStreams('a', 'b').when({ $any: function (s, e) { return s; } });", V1Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	[Fact]
+	public void LoneProcessingLag_OnV1_NoThrow() {
+		// processingLag without reorderEvents is carried and ignored by KurrentDB - never validated.
+		using var session = new ProjectionSession(
+			"options({ processingLag: 10 });\nfromAll().when({ $any: function (s, e) { return s; } });", V1Options);
+
+		Assert.NotNull(session);
 	}
 
 	[Fact]

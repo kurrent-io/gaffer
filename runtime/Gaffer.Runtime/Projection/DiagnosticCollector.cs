@@ -382,10 +382,12 @@ internal static class DiagnosticCollector {
 						StringLiteral lit => lit.Value,
 						_ => null,
 					};
-					// An explicit `reorderEvents: false` is already off - nothing to warn about.
-					// A non-literal value can't be proven off, so warn conservatively.
-					if (key == "reorderEvents" && prop.Value is not BooleanLiteral { Value: false })
-						ReorderEventsLocation = prop.Key.Location;
+					// An explicit `reorderEvents: false` is already off - nothing to warn about. A
+					// non-literal value can't be proven off, so warn conservatively. Assigning on
+					// every occurrence (clearing on false) keeps last-write-wins across duplicate
+					// options() calls, so a later `false` suppresses an earlier `true`.
+					if (key == "reorderEvents")
+						ReorderEventsLocation = prop.Value is BooleanLiteral { Value: false } ? null : prop.Key.Location;
 					else if (key == "processingLag")
 						ProcessingLagLocation = prop.Key.Location;
 				}

@@ -88,6 +88,25 @@ public class DiagnosticsTests {
 	}
 
 	[Fact]
+	public void ReorderEventsFalseAfterTrue_OnV2_NoDiagnostic() {
+		// Duplicate options() is last-write-wins; the resolved reorderEvents is false, so the
+		// stale `true` from the first call must not leave a warning behind.
+		using var session = new ProjectionSession(
+			"options({ reorderEvents: true });\noptions({ reorderEvents: false });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	[Fact]
+	public void ReorderEvents_ComputedKey_OnV2_Ignored() {
+		// A computed key isn't statically resolvable, so the best-effort AST rule skips it.
+		using var session = new ProjectionSession(
+			"var k = 'reorderEvents';\noptions({ [k]: true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	[Fact]
 	public void ShadowedOptions_OnV2_Suppresses_ReorderWarning() {
 		// A top-level user-defined `options` means the call isn't the builtin.
 		using var session = new ProjectionSession(
@@ -141,6 +160,23 @@ public class DiagnosticsTests {
 			"options({ reorderEvents: true, processingLag: 100 });\nfromStreams('a', 'b').when({ $any: function (s, e) { return s; } });", V1Options);
 
 		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	[Fact]
+	public void ReorderEvents_OnV1_FromCategory_Throws() {
+		// fromCategory resolves to no Streams, so it fails the "fromStreams 2+" rule.
+		var ex = Assert.Throws<InvalidProjectionException>(() => new ProjectionSession(
+			"options({ reorderEvents: true, processingLag: 100 });\nfromCategory('order').when({ $any: function (s, e) { return s; } });", V1Options));
+		Assert.Contains("fromStreams", ex.Message);
+	}
+
+	[Fact]
+	public void ReorderEventsFalse_OnV1_NoThrow() {
+		// Explicitly off - the validation never runs regardless of source.
+		using var session = new ProjectionSession(
+			"options({ reorderEvents: false });\nfromAll().when({ $any: function (s, e) { return s; } });", V1Options);
+
+		Assert.NotNull(session);
 	}
 
 	[Fact]

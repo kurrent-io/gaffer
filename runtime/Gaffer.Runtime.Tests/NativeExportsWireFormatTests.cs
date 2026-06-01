@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Gaffer.Runtime.Errors;
+using Gaffer.Sdk.Diagnostics;
 using Gaffer.Sdk.Versioning;
 
 namespace Gaffer.Runtime.Tests;
@@ -8,7 +9,7 @@ namespace Gaffer.Runtime.Tests;
 /// Pins the JSON wire format that bindings + CLI rely on:
 /// - options going in (quirksVersion accepted, parsed, validated)
 /// - errors coming out (compatCode appears when set)
-/// - known-quirks registry export (one entry per KnownQuirks.All)
+/// - known-quirks registry export (one entry per DiagnosticCatalog.Quirks)
 /// </summary>
 public class NativeExportsWireFormatTests {
 	// -- ParseOptions: quirksVersion --
@@ -72,11 +73,11 @@ public class NativeExportsWireFormatTests {
 	[Fact]
 	public void SerializeProjectionError_EmitsCompatCodeWhenSet() {
 		var ex = new InvalidArgumentException("test", "field") {
-			CompatCode = KnownQuirks.EventBodyCast.Code,
+			CompatCode = DiagnosticCatalog.EventBodyCast.Code,
 		};
 		var json = NativeExports.SerializeProjectionError(ex);
 		using var doc = JsonDocument.Parse(json);
-		Assert.Equal(KnownQuirks.EventBodyCast.Code, doc.RootElement.GetProperty("compatCode").GetString());
+		Assert.Equal(DiagnosticCatalog.EventBodyCast.Code, doc.RootElement.GetProperty("compatCode").GetString());
 	}
 
 	// -- SerializeKnownQuirks --
@@ -86,7 +87,7 @@ public class NativeExportsWireFormatTests {
 		var json = NativeExports.SerializeKnownQuirks();
 		using var doc = JsonDocument.Parse(json);
 		Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
-		Assert.Equal(KnownQuirks.All.Count, doc.RootElement.GetArrayLength());
+		Assert.Equal(DiagnosticCatalog.Quirks.Count, doc.RootElement.GetArrayLength());
 	}
 
 	[Fact]
@@ -119,7 +120,7 @@ public class NativeExportsWireFormatTests {
 		var codes = doc.RootElement.EnumerateArray()
 			.Select(e => e.GetProperty("code").GetString())
 			.ToHashSet();
-		foreach (var quirk in KnownQuirks.All) {
+		foreach (var quirk in DiagnosticCatalog.Quirks) {
 			Assert.Contains(quirk.Code, codes);
 		}
 	}

@@ -5,7 +5,7 @@ public abstract class ProjectionException : Exception {
 	public string Description { get; }
 
 	/// <summary>
-	/// Optional <c>KnownQuirks</c> code (e.g. <c>compat.event.bodyCast</c>) when
+	/// Optional <c>DiagnosticCatalog</c> quirk code (e.g. <c>quirk.event.bodyCast</c>) when
 	/// this exception was thrown by an upstream-quirk-compat code path. Lets
 	/// CLIs and editors annotate the error with "fixed in DB version X".
 	/// </summary>

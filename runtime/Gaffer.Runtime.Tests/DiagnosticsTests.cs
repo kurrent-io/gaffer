@@ -25,9 +25,9 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(source, Options);
 
 		Assert.NotNull(session.Diagnostics);
-		var dups = session.Diagnostics!.Where(d => d.Code == "options.duplicate").ToArray();
+		var dups = session.Diagnostics!.Where(d => d.Code == "usage.options.duplicate").ToArray();
 		Assert.Equal(2, dups.Length); // first call is fine; calls 2 and 3 are flagged
-		Assert.All(dups, d => Assert.Equal(DiagnosticSeverity.Warning, d.Severity));
+		Assert.All(dups, d => Assert.Equal(DiagnosticSeverity.Information, d.Severity));
 	}
 
 	[Fact]
@@ -35,7 +35,7 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(
 			"options({});\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
 
-		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "options.duplicate");
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.options.duplicate");
 	}
 
 	[Fact]
@@ -98,8 +98,8 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(
 			"fromAll().when({ Ping: async function (s, e) { return s; } });", Options);
 
-		var d = Assert.Single(session.Diagnostics ?? [], x => x.Code == "handler.async");
-		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+		var d = Assert.Single(session.Diagnostics ?? [], x => x.Code == "usage.handler.async");
+		Assert.Equal(DiagnosticSeverity.Error, d.Severity);
 	}
 
 	[Fact]
@@ -107,7 +107,7 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(
 			"fromAll().when({ Ping: async (s, e) => s });", Options);
 
-		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "handler.async");
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "usage.handler.async");
 	}
 
 	[Fact]
@@ -115,8 +115,8 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(
 			"fromAll().when({ Ping: function (s, e) { return Promise.resolve({}); } });", Options);
 
-		var d = Assert.Single(session.Diagnostics ?? [], x => x.Code == "handler.promise");
-		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+		var d = Assert.Single(session.Diagnostics ?? [], x => x.Code == "usage.handler.promise");
+		Assert.Equal(DiagnosticSeverity.Error, d.Severity);
 	}
 
 	[Fact]
@@ -124,7 +124,7 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(
 			"fromAll().when({ Ping: (s, e) => Promise.resolve({}) });", Options);
 
-		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "handler.promise");
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "usage.handler.promise");
 	}
 
 	[Fact]
@@ -132,7 +132,7 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(
 			"fromAll().when({ Ping: function (s, e) { return new Promise(function (r) { r(s); }); } });", Options);
 
-		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "handler.promise");
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "usage.handler.promise");
 	}
 
 	[Fact]
@@ -141,7 +141,7 @@ public class DiagnosticsTests {
 			"fromAll().when({ Ping: function (s, e) { return { ok: true }; } });", Options);
 
 		Assert.DoesNotContain(session.Diagnostics ?? [],
-			d => d.Code == "handler.async" || d.Code == "handler.promise");
+			d => d.Code == "usage.handler.async" || d.Code == "usage.handler.promise");
 	}
 
 	[Fact]
@@ -152,7 +152,7 @@ public class DiagnosticsTests {
 			"fromAll().when({ Ping: function (s, e) { var f = async function () { return 1; }; function g() { return Promise.resolve(1); } return { ok: true }; } });", Options);
 
 		Assert.DoesNotContain(session.Diagnostics ?? [],
-			d => d.Code == "handler.async" || d.Code == "handler.promise");
+			d => d.Code == "usage.handler.async" || d.Code == "usage.handler.promise");
 	}
 
 	[Fact]
@@ -162,7 +162,7 @@ public class DiagnosticsTests {
 			"async function helper() { return 1; }\nfromAll().when({ Ping: function (s, e) { return s; } });", Options);
 
 		Assert.DoesNotContain(session.Diagnostics ?? [],
-			d => d.Code == "handler.async" || d.Code == "handler.promise");
+			d => d.Code == "usage.handler.async" || d.Code == "usage.handler.promise");
 	}
 
 	[Fact]
@@ -174,8 +174,8 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		var d = Assert.Single(session.Diagnostics!);
-		Assert.Equal("deprecated.linkStreamTo", d.Code);
-		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+		Assert.Equal("usage.linkStreamTo.deprecated", d.Code);
+		Assert.Equal(DiagnosticSeverity.Information, d.Severity);
 		Assert.Contains("linkStreamTo", d.Message);
 		Assert.NotNull(d.Range);
 		Assert.Equal(1, d.Range!.Start.Line);
@@ -196,7 +196,7 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		Assert.Equal(2, session.Diagnostics!.Length);
-		Assert.All(session.Diagnostics, d => Assert.Equal("deprecated.linkStreamTo", d.Code));
+		Assert.All(session.Diagnostics, d => Assert.Equal("usage.linkStreamTo.deprecated", d.Code));
 		Assert.Equal(2, session.Diagnostics[0].Range!.Start.Line);
 		Assert.Equal(3, session.Diagnostics[1].Range!.Start.Line);
 	}
@@ -226,7 +226,7 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		var linkStreamToDiagnostics = session.Diagnostics!
-			.Where(d => d.Code == "deprecated.linkStreamTo").ToArray();
+			.Where(d => d.Code == "usage.linkStreamTo.deprecated").ToArray();
 		Assert.Equal(2, linkStreamToDiagnostics.Length);
 	}
 
@@ -297,7 +297,7 @@ public class DiagnosticsTests {
 		Assert.Null(session.Diagnostics);
 	}
 
-	// -- compat.linkStreamTo.outOfBoundsParameters --
+	// -- quirk.linkStreamTo.outOfBoundsParameters --
 
 	[Fact]
 	public void LinkStreamTo_ThreeArgs_EmitsOutOfBoundsParametersWarning() {
@@ -308,8 +308,8 @@ public class DiagnosticsTests {
 		Assert.NotNull(session.Diagnostics);
 		// Both the deprecation warning AND the compat warning should fire
 		// for a 3-arg linkStreamTo call.
-		Assert.Contains(session.Diagnostics!, d => d.Code == "deprecated.linkStreamTo");
-		Assert.Contains(session.Diagnostics!, d => d.Code == KnownQuirks.LinkStreamToOutOfBoundsParameters.Code);
+		Assert.Contains(session.Diagnostics!, d => d.Code == "usage.linkStreamTo.deprecated");
+		Assert.Contains(session.Diagnostics!, d => d.Code == DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.Code);
 	}
 
 	[Fact]
@@ -320,8 +320,8 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		// Deprecation fires (any call); compat doesn't (2-arg form is fine in upstream).
-		Assert.Contains(session.Diagnostics!, d => d.Code == "deprecated.linkStreamTo");
-		Assert.DoesNotContain(session.Diagnostics!, d => d.Code == KnownQuirks.LinkStreamToOutOfBoundsParameters.Code);
+		Assert.Contains(session.Diagnostics!, d => d.Code == "usage.linkStreamTo.deprecated");
+		Assert.DoesNotContain(session.Diagnostics!, d => d.Code == DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.Code);
 	}
 
 	[Fact]
@@ -345,7 +345,7 @@ public class DiagnosticsTests {
 			Options);
 
 		Assert.NotNull(session.Diagnostics);
-		Assert.Contains(session.Diagnostics!, d => d.Code == KnownQuirks.LogMultiParam.Code);
+		Assert.Contains(session.Diagnostics!, d => d.Code == DiagnosticCatalog.LogMultiParam.Code);
 	}
 
 	[Fact]
@@ -358,7 +358,7 @@ public class DiagnosticsTests {
 		Assert.Null(session.Diagnostics);
 	}
 
-	// -- compat.transforms.notInvoked (V2) --
+	// -- usage.transforms.notInvoked (V2) --
 
 	[Fact]
 	public void Transforms_TransformBy_InV2_EmitsWarning() {
@@ -368,7 +368,7 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		var d = Assert.Single(session.Diagnostics!);
-		Assert.Equal("compat.transforms.notInvoked", d.Code);
+		Assert.Equal("usage.transforms.notInvoked", d.Code);
 		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
 		Assert.Contains("transformBy", d.Message);
 	}
@@ -381,7 +381,7 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		var d = Assert.Single(session.Diagnostics!);
-		Assert.Equal("compat.transforms.notInvoked", d.Code);
+		Assert.Equal("usage.transforms.notInvoked", d.Code);
 		Assert.Contains("filterBy", d.Message);
 	}
 
@@ -403,7 +403,7 @@ public class DiagnosticsTests {
 			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, QuirksVersion = null });
 
 		Assert.NotNull(session.Diagnostics);
-		Assert.Contains(session.Diagnostics!, d => d.Code == "compat.transforms.notInvoked");
+		Assert.Contains(session.Diagnostics!, d => d.Code == "usage.transforms.notInvoked");
 	}
 
 	[Fact]
@@ -420,7 +420,7 @@ public class DiagnosticsTests {
 			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.NotNull(session.Diagnostics);
-		Assert.Contains(session.Diagnostics!, d => d.Code == "compat.transforms.notInvoked");
+		Assert.Contains(session.Diagnostics!, d => d.Code == "usage.transforms.notInvoked");
 	}
 
 	[Fact]
@@ -436,7 +436,7 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		var transformDiagnostics = session.Diagnostics!
-			.Where(d => d.Code == "compat.transforms.notInvoked").ToArray();
+			.Where(d => d.Code == "usage.transforms.notInvoked").ToArray();
 		Assert.Equal(2, transformDiagnostics.Length);
 	}
 
@@ -473,18 +473,18 @@ public class DiagnosticsTests {
 		Assert.Null(session.Diagnostics);
 	}
 
-	// -- compat.outputState.unconditional (V2) --
+	// -- usage.outputState.unconditional (V2) --
 
 	[Fact]
-	public void OutputState_InV2_EmitsHint() {
+	public void OutputState_InV2_EmitsInformation() {
 		var source = "fromAll().when({ $any: function (s, e) { return s; } }).outputState();";
 		using var session = new ProjectionSession(source,
 			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.NotNull(session.Diagnostics);
 		var d = Assert.Single(session.Diagnostics!);
-		Assert.Equal("compat.outputState.unconditional", d.Code);
-		Assert.Equal(DiagnosticSeverity.Hint, d.Severity);
+		Assert.Equal("usage.outputState.unconditional", d.Code);
+		Assert.Equal(DiagnosticSeverity.Information, d.Severity);
 		Assert.Contains("outputState", d.Message);
 	}
 
@@ -508,7 +508,7 @@ public class DiagnosticsTests {
 			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.NotNull(session.Diagnostics);
-		Assert.Contains(session.Diagnostics!, d => d.Code == "compat.outputState.unconditional");
+		Assert.Contains(session.Diagnostics!, d => d.Code == "usage.outputState.unconditional");
 	}
 
 }

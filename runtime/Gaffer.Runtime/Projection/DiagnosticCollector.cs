@@ -162,19 +162,14 @@ internal static class DiagnosticCollector {
 				return;
 
 			foreach (var loc in scanner.Calls) {
-				diagnostics.Add(new Diagnostic {
-					Code = "deprecated.linkStreamTo",
-					Message = "linkStreamTo is undocumented in KurrentDB and may be removed in a future version.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.LinkStreamToDeprecated.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 	}
 
 	private sealed class LinkStreamToOutOfBoundsParametersRule : IRule {
 		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
-			if (!KnownQuirks.LinkStreamToOutOfBoundsParameters.FiresAt(quirksVersion))
+			if (!DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.FiresAt(quirksVersion))
 				return;
 
 			// 3+ args triggers the quirk. 2-arg form is fine.
@@ -186,19 +181,14 @@ internal static class DiagnosticCollector {
 				return;
 
 			foreach (var loc in scanner.Calls) {
-				diagnostics.Add(new Diagnostic {
-					Code = KnownQuirks.LinkStreamToOutOfBoundsParameters.Code,
-					Message = "linkStreamTo with metadata (3+ args) crashes due to an upstream parameter-indexing quirk; metadata is never captured.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 	}
 
 	private sealed class LogMultiParamRule : IRule {
 		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
-			if (!KnownQuirks.LogMultiParam.FiresAt(quirksVersion))
+			if (!DiagnosticCatalog.LogMultiParam.FiresAt(quirksVersion))
 				return;
 
 			// No shadow check: gaffer (and KurrentDB) registers `log` as a
@@ -210,12 +200,7 @@ internal static class DiagnosticCollector {
 			scanner.Visit(ast);
 
 			foreach (var loc in scanner.ProblematicCalls) {
-				diagnostics.Add(new Diagnostic {
-					Code = KnownQuirks.LogMultiParam.Code,
-					Message = "log() with multiple args produces unexpected output due to an upstream quirk: primitives become separate log lines and objects use a ' ,' separator.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.LogMultiParam.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 
@@ -281,12 +266,7 @@ internal static class DiagnosticCollector {
 			var scanner = new MemberCallScanner(name);
 			scanner.Visit(ast);
 			foreach (var loc in scanner.Calls) {
-				diagnostics.Add(new Diagnostic {
-					Code = "compat.transforms.notInvoked",
-					Message = $"{name}() is registered but never invoked under engine_version=2; result equals post-handler state. Set engine_version=1 for V1 transform behaviour. See v1-v2-differences.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.TransformsNotInvoked.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 	}
@@ -306,12 +286,7 @@ internal static class DiagnosticCollector {
 
 			// Skip the first call; flag each later one as the duplicate.
 			foreach (var loc in scanner.Calls.Skip(1)) {
-				diagnostics.Add(new Diagnostic {
-					Code = "options.duplicate",
-					Message = "options() is called more than once; only the last call takes effect and the earlier ones are discarded.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.OptionsDuplicate.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 	}
@@ -322,6 +297,11 @@ internal static class DiagnosticCollector {
 	// otherwise stores both in QuerySources and silently ignores them. Surface an
 	// error diagnostic at compile time so the divergence is visible. Not quirk- or
 	// version-gated.
+	//
+	// NOTE (UI-1622): pending an engine-version-aware rewrite. The real KurrentDB rule is
+	// V1-only (throw on non-fromStreams / <2 streams / lag<50); on V2 reorderEvents is a
+	// silent no-op (-> DiagnosticCatalog.ReorderEventsNoEffectOnV2). Until that rewrite this
+	// rule keeps the legacy `options.fromStreamsOnly` code and behaviour.
 	private sealed class ReorderOptionsRule : IRule {
 		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
 			var scanner = new Scanner();
@@ -428,17 +408,12 @@ internal static class DiagnosticCollector {
 			// V2 always emits state to the result stream regardless of
 			// outputState() (PartitionProcessor writes newState
 			// unconditionally). The call succeeds but has no effect on
-			// emission - flag as a Hint so the user knows it's redundant
+			// emission - flag as Information so the user knows it's redundant
 			// without making it look like an error.
 			var scanner = new MemberCallScanner("outputState");
 			scanner.Visit(ast);
 			foreach (var loc in scanner.Calls) {
-				diagnostics.Add(new Diagnostic {
-					Code = "compat.outputState.unconditional",
-					Message = "outputState() has no effect under engine_version=2; state is always emitted to the result stream. See v1-v2-differences.",
-					Severity = DiagnosticSeverity.Hint,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.OutputStateUnconditional.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 	}
@@ -462,20 +437,10 @@ internal static class DiagnosticCollector {
 			scanner.Visit(ast);
 
 			foreach (var loc in scanner.AsyncHandlers) {
-				diagnostics.Add(new Diagnostic {
-					Code = "handler.async",
-					Message = "async is not supported in a projection handler: the engine runs synchronously, so the handler's returned Promise is serialized as the state (state becomes {}) instead of being awaited.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.HandlerAsync.ToDiagnostic(ToSourceRange(loc)));
 			}
 			foreach (var loc in scanner.PromiseReturns) {
-				diagnostics.Add(new Diagnostic {
-					Code = "handler.promise",
-					Message = "returning a Promise from a handler is not supported: the engine runs synchronously, so the Promise is serialized as the state (state becomes {}) instead of being awaited.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.HandlerPromise.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 

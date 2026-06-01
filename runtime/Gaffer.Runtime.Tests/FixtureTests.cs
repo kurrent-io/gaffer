@@ -303,8 +303,7 @@ public class FixtureTests {
 		"error" => Sdk.Diagnostics.DiagnosticSeverity.Error,
 		"warning" => Sdk.Diagnostics.DiagnosticSeverity.Warning,
 		"information" => Sdk.Diagnostics.DiagnosticSeverity.Information,
-		"hint" => Sdk.Diagnostics.DiagnosticSeverity.Hint,
-		_ => throw new ArgumentException($"Unknown severity in fixture: {s} (expected error|warning|information|hint)"),
+		_ => throw new ArgumentException($"Unknown severity in fixture: {s} (expected error|warning|information)"),
 	};
 
 	private static void AssertError(JsonElement expected, ProjectionException actual) {

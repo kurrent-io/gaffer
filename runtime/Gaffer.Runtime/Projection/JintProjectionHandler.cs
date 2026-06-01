@@ -54,7 +54,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private bool _faulted;
 
 	/// <summary>
-	/// Key under which quirk-firing branches stash a <c>KnownQuirks</c> code on
+	/// Key under which quirk-firing branches stash a <c>DiagnosticCatalog</c> quirk code on
 	/// <see cref="Exception.Data"/> so <see cref="ProjectionSession"/> can
 	/// pluck it off when wrapping the exception.
 	/// </summary>
@@ -75,7 +75,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	/// set <c>CompatCode</c> on the exception's object initializer instead.
 	/// </para>
 	/// </summary>
-	private static T RunQuirkyPath<T>(Quirk quirk, Func<T> body) {
+	private static T RunQuirkyPath<T>(DiagnosticDescriptor quirk, Func<T> body) {
 		try {
 			return body();
 		} catch (Exception ex) {
@@ -84,7 +84,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		}
 	}
 
-	private static void RunQuirkyPath(Quirk quirk, Action body) {
+	private static void RunQuirkyPath(DiagnosticDescriptor quirk, Action body) {
 		try {
 			body();
 		} catch (Exception ex) {
@@ -290,10 +290,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 		if (_definitionBuilder.IsBiState && _state.IsArray()) {
 			var arr = _state.AsArray();
 			newState = arr.TryGetValue(0, out var state)
-				? ConvertBiStateSlot(state, KnownQuirks.BiStateStringSlot, reportQuirks)
+				? ConvertBiStateSlot(state, DiagnosticCatalog.BiStateStringSlot, reportQuirks)
 				: "";
 			newSharedState = arr.TryGetValue(1, out var sharedState)
-				? ConvertBiStateSlot(sharedState, KnownQuirks.BiStateSharedStringSlot, reportQuirks)
+				? ConvertBiStateSlot(sharedState, DiagnosticCatalog.BiStateSharedStringSlot, reportQuirks)
 				: null;
 		} else if (_state.IsString()) {
 			newState = _state.AsString();
@@ -310,14 +310,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 	// runtime diagnostic so a test can catch the double-quoting; otherwise pass
 	// strings through. Slot 0 and slot 1 each have their own quirk because the
 	// upstream fix (PR #5610) only addressed slot 0.
-	private string? ConvertBiStateSlot(JsValue slot, Quirk quirk, bool reportQuirks) {
+	private string? ConvertBiStateSlot(JsValue slot, DiagnosticDescriptor quirk, bool reportQuirks) {
 		if (quirk.FiresAt(_quirksVersion)) {
 			if (reportQuirks && slot.IsString())
-				_onDiagnostic?.Invoke(new Diagnostic {
-					Code = quirk.Code,
-					Message = quirk.Description,
-					Severity = DiagnosticSeverity.Warning,
-				});
+				_onDiagnostic?.Invoke(quirk.ToDiagnostic());
 			return ConvertToStringHandlingNulls(slot);
 		}
 		return slot.IsString() ? slot.AsString() : ConvertToStringHandlingNulls(slot);
@@ -398,8 +394,8 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 		Dictionary<string, string?>? metadata = null;
 		if (parameters.Length == 3) {
-			if (KnownQuirks.LinkStreamToOutOfBoundsParameters.FiresAt(_quirksVersion)) {
-				RunQuirkyPath(KnownQuirks.LinkStreamToOutOfBoundsParameters, () => {
+			if (DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.FiresAt(_quirksVersion)) {
+				RunQuirkyPath(DiagnosticCatalog.LinkStreamToOutOfBoundsParameters, () => {
 					// Reproduce upstream's parameters.At(4) quirk: index 4 is
 					// out of bounds for a 3-arg call, returns Undefined,
 					// AsObject() throws. Calling it here gives the byte-
@@ -442,14 +438,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 			return JsValue.Undefined;
 		}
 
-		if (KnownQuirks.LogMultiParam.FiresAt(_quirksVersion)) {
+		if (DiagnosticCatalog.LogMultiParam.FiresAt(_quirksVersion)) {
 			// Surface the quirk at the point it fires (this log() call), so a
 			// runtime consumer sees it inline. Also flagged at compile time.
-			_onDiagnostic?.Invoke(new Diagnostic {
-				Code = KnownQuirks.LogMultiParam.Code,
-				Message = KnownQuirks.LogMultiParam.Description,
-				Severity = DiagnosticSeverity.Warning,
-			});
+			_onDiagnostic?.Invoke(DiagnosticCatalog.LogMultiParam.ToDiagnostic());
 			// Reproduce upstream multi-param log() quirks:
 			// - Separator gate is i>1 (so first object has no leading separator).
 			// - Separator string is " ," (space-comma).
@@ -1582,13 +1574,13 @@ internal sealed class JintProjectionHandler : IDisposable {
 				var pd = new PropertyDescriptor(body, false, true, false);
 				SetOwnProperty("body", pd);
 				SetOwnProperty("data", pd);
-				if (KnownQuirks.EventBodyCast.FiresAt(_parent._quirksVersion)) {
+				if (DiagnosticCatalog.EventBodyCast.FiresAt(_parent._quirksVersion)) {
 					// Reproduce upstream: out parameter is typed
 					// ObjectInstance, forcing a cast that throws
 					// InvalidCastException when body is null, a number,
 					// a string, or a boolean.
 					objectInstance = RunQuirkyPath<JsValue>(
-						KnownQuirks.EventBodyCast,
+						DiagnosticCatalog.EventBodyCast,
 						() => (ObjectInstance)body);
 				} else {
 					objectInstance = body;
@@ -1721,7 +1713,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		public Serializer(KurrentDbVersion? quirksVersion) {
 			// The clean (post-fix) path writes JSON null for NaN/Infinity,
 			// matching JSON.stringify. The quirky path throws.
-			_nonFiniteWritesNull = !KnownQuirks.SerializeNonFinite.FiresAt(quirksVersion);
+			_nonFiniteWritesNull = !DiagnosticCatalog.SerializeNonFinite.FiresAt(quirksVersion);
 			_iterators = new WriteState[64];
 			_bufferWriter = new ArrayBufferWriter<byte>(1024 * 1024);
 			_writer = new Utf8JsonWriter(_bufferWriter, new JsonWriterOptions {
@@ -1876,7 +1868,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 							writer.WriteNullValue();
 						} else {
 							throw new Errors.StateSerializationException($"{num} is not a valid JSON value", "", "", 0) {
-								CompatCode = KnownQuirks.SerializeNonFinite.Code,
+								CompatCode = DiagnosticCatalog.SerializeNonFinite.Code,
 							};
 						}
 					} else {

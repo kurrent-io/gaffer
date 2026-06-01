@@ -1,3 +1,4 @@
+using Gaffer.Sdk.Diagnostics;
 using Gaffer.Sdk.Versioning;
 
 namespace Gaffer.Runtime.Tests;
@@ -5,30 +6,30 @@ namespace Gaffer.Runtime.Tests;
 public class KnownQuirksTests {
 	[Fact]
 	public void All_ContainsEveryDeclaredQuirk() {
-		Assert.Contains(KnownQuirks.LinkStreamToOutOfBoundsParameters, KnownQuirks.All);
-		Assert.Contains(KnownQuirks.LogMultiParam, KnownQuirks.All);
-		Assert.Contains(KnownQuirks.EventBodyCast, KnownQuirks.All);
-		Assert.Contains(KnownQuirks.BiStateStringSlot, KnownQuirks.All);
-		Assert.Contains(KnownQuirks.SerializeNonFinite, KnownQuirks.All);
+		Assert.Contains(DiagnosticCatalog.LinkStreamToOutOfBoundsParameters, DiagnosticCatalog.Quirks);
+		Assert.Contains(DiagnosticCatalog.LogMultiParam, DiagnosticCatalog.Quirks);
+		Assert.Contains(DiagnosticCatalog.EventBodyCast, DiagnosticCatalog.Quirks);
+		Assert.Contains(DiagnosticCatalog.BiStateStringSlot, DiagnosticCatalog.Quirks);
+		Assert.Contains(DiagnosticCatalog.SerializeNonFinite, DiagnosticCatalog.Quirks);
 	}
 
 	[Fact]
-	public void All_CodesAreUniqueAndCompatNamespaced() {
-		var codes = KnownQuirks.All.Select(b => b.Code).ToList();
+	public void All_CodesAreUniqueAndQuirkNamespaced() {
+		var codes = DiagnosticCatalog.Quirks.Select(b => b.Code).ToList();
 		Assert.Equal(codes.Count, codes.Distinct().Count());
-		Assert.All(codes, c => Assert.StartsWith("compat.", c));
+		Assert.All(codes, c => Assert.StartsWith("quirk.", c));
 	}
 
 	[Fact]
 	public void Quirk_FiresWhenUnversioned() {
 		// Default unversioned = "all quirks on" - every known quirk fires.
-		Assert.All(KnownQuirks.All, b => Assert.True(b.FiresAt(null)));
+		Assert.All(DiagnosticCatalog.Quirks, b => Assert.True(b.FiresAt(null)));
 	}
 
 	[Fact]
 	public void AlwaysQuirky_FixedInIsNull() {
-		Assert.Null(KnownQuirks.LinkStreamToOutOfBoundsParameters.FixedIn);
-		Assert.Null(KnownQuirks.LogMultiParam.FixedIn);
+		Assert.Null(DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.FixedIn);
+		Assert.Null(DiagnosticCatalog.LogMultiParam.FixedIn);
 	}
 
 	[Fact]
@@ -37,7 +38,13 @@ public class KnownQuirksTests {
 		// merged yet and all current entries have FixedIn = null. This locks
 		// the FiresAt semantics so the eventual flip behaves correctly.
 		var fixedAt = new KurrentDbVersion(26, 1, 1);
-		var quirk = new Quirk { Code = "compat.test.synthetic", Description = "test", FixedIn = fixedAt };
+		var quirk = new DiagnosticDescriptor {
+			Code = "quirk.test.synthetic",
+			Class = DiagnosticClass.Quirk,
+			Severity = DiagnosticSeverity.Warning,
+			Message = "test",
+			FixedIn = fixedAt,
+		};
 
 		Assert.True(quirk.FiresAt(null));
 		Assert.True(quirk.FiresAt(new KurrentDbVersion(26, 0, 0)));

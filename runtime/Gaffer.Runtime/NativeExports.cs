@@ -758,10 +758,10 @@ internal static unsafe class NativeExports {
 		using var stream = new System.IO.MemoryStream();
 		using var writer = new Utf8JsonWriter(stream);
 		writer.WriteStartArray();
-		foreach (var quirk in Sdk.Versioning.KnownQuirks.All) {
+		foreach (var quirk in Sdk.Diagnostics.DiagnosticCatalog.Quirks) {
 			writer.WriteStartObject();
 			writer.WriteString("code", quirk.Code);
-			writer.WriteString("description", quirk.Description);
+			writer.WriteString("description", quirk.Message);
 			if (quirk.FixedIn != null)
 				writer.WriteString("fixedIn", quirk.FixedIn.ToString());
 			writer.WriteEndObject();

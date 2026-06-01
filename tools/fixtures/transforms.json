@@ -91,8 +91,8 @@
 				"count": 1
 			},
 			"diagnostics": [
-				{ "code": "compat.transforms.notInvoked", "severity": "warning" },
-				{ "code": "compat.outputState.unconditional", "severity": "hint" }
+				{ "code": "usage.transforms.notInvoked", "severity": "warning" },
+				{ "code": "usage.outputState.unconditional", "severity": "information" }
 			]
 		},
 		"options": {
@@ -121,8 +121,8 @@
 				"count": 1
 			},
 			"diagnostics": [
-				{ "code": "compat.transforms.notInvoked", "severity": "warning" },
-				{ "code": "compat.outputState.unconditional", "severity": "hint" }
+				{ "code": "usage.transforms.notInvoked", "severity": "warning" },
+				{ "code": "usage.outputState.unconditional", "severity": "information" }
 			]
 		},
 		"options": {
@@ -139,7 +139,7 @@
 				"definesStateTransform": false
 			},
 			"diagnostics": [
-				{ "code": "compat.outputState.unconditional", "severity": "hint" }
+				{ "code": "usage.outputState.unconditional", "severity": "information" }
 			]
 		},
 		"options": {
@@ -156,8 +156,8 @@
 				"producesResults": true
 			},
 			"diagnostics": [
-				{ "code": "compat.transforms.notInvoked", "severity": "warning" },
-				{ "code": "compat.outputState.unconditional", "severity": "hint" }
+				{ "code": "usage.transforms.notInvoked", "severity": "warning" },
+				{ "code": "usage.outputState.unconditional", "severity": "information" }
 			]
 		},
 		"options": {

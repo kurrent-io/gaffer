@@ -7,7 +7,7 @@ namespace Gaffer.Runtime.Tests;
 
 /// <summary>
 /// Tests for upstream quirk-compat behaviours that gaffer reproduces. Each
-/// quirk's <see cref="KnownQuirks"/> entry currently has <c>FixedIn = null</c>
+/// quirk's <see cref="DiagnosticCatalog"/> entry currently has <c>FixedIn = null</c>
 /// (no upstream PR has merged), so the quirky path fires in every reachable
 /// configuration. The "clean" branch is intentionally unreachable today; it
 /// activates when an upstream fix lands and we flip <c>FixedIn</c> to the
@@ -93,7 +93,7 @@ public class CompatQuirksTests {
 
 		var ex = Assert.Throws<ProjectionHandlerException>(() =>
 			session.Feed(new ProjectionEvent { EventType = "X", StreamId = "src-1", Data = "{}" }));
-		Assert.Equal(KnownQuirks.LinkStreamToOutOfBoundsParameters.Code, ex.CompatCode);
+		Assert.Equal(DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.Code, ex.CompatCode);
 	}
 
 	// -- log multi-param --
@@ -216,7 +216,7 @@ public class CompatQuirksTests {
 				Data = "null",
 				IsJson = true,
 			}));
-		Assert.Equal(KnownQuirks.EventBodyCast.Code, ex.CompatCode);
+		Assert.Equal(DiagnosticCatalog.EventBodyCast.Code, ex.CompatCode);
 	}
 
 	// -- BiState PrepareOutput string slot --
@@ -265,7 +265,7 @@ public class CompatQuirksTests {
 		});
 
 		var diag = Assert.Single(result.Diagnostics);
-		Assert.Equal(KnownQuirks.BiStateStringSlot.Code, diag.Code);
+		Assert.Equal(DiagnosticCatalog.BiStateStringSlot.Code, diag.Code);
 		Assert.Equal(DiagnosticSeverity.Warning, diag.Severity);
 		Assert.Null(diag.Range);
 	}
@@ -288,7 +288,7 @@ public class CompatQuirksTests {
 			IsJson = true,
 		});
 
-		Assert.Contains(result.Diagnostics, d => d.Code == KnownQuirks.BiStateSharedStringSlot.Code);
+		Assert.Contains(result.Diagnostics, d => d.Code == DiagnosticCatalog.BiStateSharedStringSlot.Code);
 	}
 
 	[Fact]
@@ -329,7 +329,7 @@ public class CompatQuirksTests {
 			IsJson = true,
 		});
 
-		Assert.Contains(result.Diagnostics, d => d.Code == KnownQuirks.LogMultiParam.Code);
+		Assert.Contains(result.Diagnostics, d => d.Code == DiagnosticCatalog.LogMultiParam.Code);
 	}
 
 	[Fact]
@@ -349,7 +349,7 @@ public class CompatQuirksTests {
 			IsJson = true,
 		});
 
-		Assert.Contains(KnownQuirks.LogMultiParam.Code, streamed);
+		Assert.Contains(DiagnosticCatalog.LogMultiParam.Code, streamed);
 	}
 
 	[Fact]
@@ -368,7 +368,7 @@ public class CompatQuirksTests {
 				Data = "{}",
 				IsJson = true,
 			}));
-		Assert.Equal(KnownQuirks.SerializeNonFinite.Code, ex.CompatCode);
+		Assert.Equal(DiagnosticCatalog.SerializeNonFinite.Code, ex.CompatCode);
 	}
 
 	// -- SerializePrimitive NaN/Infinity --

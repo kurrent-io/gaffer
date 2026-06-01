@@ -164,7 +164,7 @@ test.getResult("cart-1"); // result for cart-1 (V1: post-transform; V2: post-han
 
 Some KurrentDB quirks only show up in how state is persisted, and `state` / `getState()` hide them by parsing the persisted JSON on read.
 
-- **`step.diagnostics`** lists the quirks encountered while processing the event (empty when none; it can carry more than one, and the same code can repeat). The motivating case is biState string slots, where a raw string written to a slot is JSON-quoted (`compat.biState.stringSlot` for the main slot, `compat.biState.sharedStringSlot` for shared state), persisting `"hello"` as `"\"hello\""`. Non-persistence quirks appear here too, such as `compat.log.multiParam` fired at each multi-argument `log()` call.
+- **`step.diagnostics`** lists the quirks encountered while processing the event (empty when none; it can carry more than one, and the same code can repeat). The motivating case is biState string slots, where a raw string written to a slot is JSON-quoted (`quirk.biState.stringSlot` for the main slot, `quirk.biState.sharedStringSlot` for shared state), persisting `"hello"` as `"\"hello\""`. Non-persistence quirks appear here too, such as `quirk.log.multiParam` fired at each multi-argument `log()` call.
 - **`step.stateRaw`** and **`getStateRaw(partition?)`** return the persisted state JSON string before `JSON.parse`, so you can assert the double-quoted value.
 
 ```typescript
@@ -180,7 +180,7 @@ if (step.status !== "processed") throw new Error(step.reason);
 expect(step.state).toBe("alice"); // parsed - quirk hidden
 expect(step.stateRaw).toBe('"alice"'); // raw - double-quoting visible
 expect(step.diagnostics.map((d) => d.code)).toContain(
-	"compat.biState.stringSlot",
+	"quirk.biState.stringSlot",
 );
 ```
 

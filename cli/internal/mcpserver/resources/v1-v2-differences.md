@@ -135,8 +135,8 @@ Set `engine_version = 1` on projections that depend on transform behaviour.
 Gaffer matches V2's behaviour by design and surfaces the gap as compile-time
 diagnostics so you find it before the result stream surprises you:
 
-* `compat.transforms.notInvoked` (Warning) on `transformBy` / `filterBy`
+* `usage.transforms.notInvoked` (Warning) on `transformBy` / `filterBy`
   calls when `engine_version=2`.
-* `compat.outputState.unconditional` (Hint) on `outputState()` calls when
+* `usage.outputState.unconditional` (Information) on `outputState()` calls when
   `engine_version=2`.
 

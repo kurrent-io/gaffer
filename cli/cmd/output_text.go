@@ -34,7 +34,7 @@ type textWriter struct {
 	// "your partitionBy returned null"), false for live mode
 	// (skips are runtime hygiene noise from $all).
 	showSkipped bool
-	// compileQuirks holds compat.* diagnostic codes seen at compile time
+	// compileQuirks holds quirk.* diagnostic codes seen at compile time
 	// (captured in WriteInfo); runtimeQuirks the distinct codes streamed via
 	// OnDiagnostic during the run. The summary lists their union, so it covers
 	// every quirk the run surfaced - header or per-event.
@@ -229,7 +229,7 @@ func (tw *textWriter) WriteInfo(proj *engine.Projection, info gafferruntime.Proj
 
 	for _, d := range info.Diagnostics {
 		tw.writeDiagnostic(d)
-		if strings.HasPrefix(d.Code, "compat.") {
+		if strings.HasPrefix(d.Code, "quirk.") {
 			tw.compileQuirks = append(tw.compileQuirks, d.Code)
 		}
 	}
@@ -262,8 +262,6 @@ func severityLabel(s gafferruntime.DiagnosticSeverity) string {
 		return "warning"
 	case gafferruntime.DiagnosticSeverityInformation:
 		return "info"
-	case gafferruntime.DiagnosticSeverityHint:
-		return "hint"
 	default:
 		return "diagnostic"
 	}

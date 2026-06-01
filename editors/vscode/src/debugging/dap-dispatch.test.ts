@@ -208,7 +208,7 @@ describe("dispatchDapEvent - happy paths", () => {
 		await dispatchDapEvent(
 			event("gaffer/stepWarning", {
 				step: 3,
-				code: "compat.biState.stringSlot",
+				code: "quirk.biState.stringSlot",
 				message: "raw string JSON-quoted in slot 0",
 				severity: 2,
 			}),
@@ -216,7 +216,7 @@ describe("dispatchDapEvent - happy paths", () => {
 		);
 		expect(step.calls.addWarning).toEqual([
 			{
-				code: "compat.biState.stringSlot",
+				code: "quirk.biState.stringSlot",
 				message: "raw string JSON-quoted in slot 0",
 			},
 		]);

@@ -244,8 +244,8 @@ type diagnosticSeverity int
 
 const (
 	diagnosticSeverityError diagnosticSeverity = 1
-	// (Warning, Information, Hint reserved by spec but not emitted
-	// today; add when a Warning-level rule lands.)
+	// (Warning, Information reserved by spec but not emitted today;
+	// add when a Warning-level rule lands. gaffer does not emit Hint.)
 )
 
 // lspDiagnostic is the wire-format diagnostic. Disambiguates from

@@ -3,7 +3,7 @@ export class ProjectionError extends Error {
 	readonly description: string;
 	override readonly cause: unknown;
 	/**
-	 * `KnownQuirk` code (e.g. `compat.event.bodyCast`) when this error was
+	 * `KnownQuirk` code (e.g. `quirk.event.bodyCast`) when this error was
 	 * thrown by an upstream-quirk-compat code path. Lets editors and CLIs
 	 * annotate the error with "fixed in DB version X". Set by
 	 * `parseErrorJson` from the runtime payload; not part of any subclass

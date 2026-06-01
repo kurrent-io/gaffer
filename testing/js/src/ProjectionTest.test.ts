@@ -737,7 +737,7 @@ describe("runtime diagnostics (biState string slot)", () => {
 
 		// The diagnostic tells the user to look, without them knowing in advance.
 		expect(
-			step.diagnostics.some((d) => d.code === "compat.biState.stringSlot"),
+			step.diagnostics.some((d) => d.code === "quirk.biState.stringSlot"),
 		).toBe(true);
 	});
 

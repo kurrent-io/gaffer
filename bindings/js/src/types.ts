@@ -46,8 +46,9 @@ export interface ProjectionInfo {
 /**
  * A compile-time diagnostic emitted by the runtime.
  *
- * `code` is namespaced as `<category>.<name>` (e.g. `deprecated.linkStreamTo`).
- * `range` is null when the diagnostic has no associated source location.
+ * `code` is namespaced as `<class>.<subject>.<detail>` (e.g.
+ * `usage.linkStreamTo.deprecated`). `range` is null when the diagnostic has no
+ * associated source location.
  */
 export interface Diagnostic {
 	code: string;
@@ -64,7 +65,6 @@ export const DiagnosticSeverity = {
 	Error: 1,
 	Warning: 2,
 	Information: 3,
-	Hint: 4,
 } as const;
 export type DiagnosticSeverity =
 	(typeof DiagnosticSeverity)[keyof typeof DiagnosticSeverity];

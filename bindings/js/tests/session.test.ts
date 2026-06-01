@@ -180,7 +180,7 @@ describe("ProjectionSession", () => {
 		[
 			"populated",
 			`{"allStreams":true,"diagnostics":[{` +
-				`"code":"deprecated.linkStreamTo",` +
+				`"code":"usage.linkStreamTo.deprecated",` +
 				`"message":"linkStreamTo is undocumented",` +
 				`"severity":2,` +
 				`"range":{"start":{"line":3,"column":5},"end":{"line":3,"column":17}}` +
@@ -193,7 +193,7 @@ describe("ProjectionSession", () => {
 		expect(diags).toHaveLength(expectedCount as number);
 		if (expectedCount === 0) return;
 		const d = diags[0];
-		expect(d?.code).toBe("deprecated.linkStreamTo");
+		expect(d?.code).toBe("usage.linkStreamTo.deprecated");
 		expect(d?.severity).toBe(DiagnosticSeverity.Warning);
 		expect(d?.range?.start).toEqual({ line: 3, column: 5 });
 		expect(d?.range?.end).toEqual({ line: 3, column: 17 });
@@ -215,8 +215,8 @@ describe("ProjectionSession", () => {
 		const sources = session.getSources();
 		expect(sources.diagnostics).toHaveLength(1);
 		const d = sources.diagnostics?.[0];
-		expect(d?.code).toBe("deprecated.linkStreamTo");
-		expect(d?.severity).toBe(DiagnosticSeverity.Warning);
+		expect(d?.code).toBe("usage.linkStreamTo.deprecated");
+		expect(d?.severity).toBe(DiagnosticSeverity.Information);
 		expect(d?.message).toContain("linkStreamTo");
 		expect(d?.range).not.toBeNull();
 		const span = (d?.range?.end.column ?? 0) - (d?.range?.start.column ?? 0);

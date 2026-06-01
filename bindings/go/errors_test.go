@@ -262,17 +262,17 @@ func TestFeedResult_Diagnostics_BiStateStringSlot(t *testing.T) {
 
 	found := false
 	for _, d := range result.Diagnostics {
-		if d.Code == "compat.biState.stringSlot" {
+		if d.Code == "quirk.biState.stringSlot" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected compat.biState.stringSlot diagnostic, got %+v", result.Diagnostics)
+		t.Fatalf("expected quirk.biState.stringSlot diagnostic, got %+v", result.Diagnostics)
 	}
 }
 
 func TestSession_OnDiagnostic_StreamsAtPointOfFiring(t *testing.T) {
-	// A multi-arg log() trips compat.log.multiParam when it runs; the streaming
+	// A multi-arg log() trips quirk.log.multiParam when it runs; the streaming
 	// OnDiagnostic callback fires live during Feed.
 	source := `fromAll().when({ $any: function (s, e) { log("a", "b"); return s; } })`
 	session, err := NewSession(source, &v2Opts)
@@ -290,12 +290,12 @@ func TestSession_OnDiagnostic_StreamsAtPointOfFiring(t *testing.T) {
 
 	found := false
 	for _, c := range codes {
-		if c == "compat.log.multiParam" {
+		if c == "quirk.log.multiParam" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected compat.log.multiParam streamed, got %v", codes)
+		t.Fatalf("expected quirk.log.multiParam streamed, got %v", codes)
 	}
 }
 
@@ -317,7 +317,7 @@ func TestError_CompatCode_PropagatesFromCompatFiringPath(t *testing.T) {
 	if !errors.As(err, &ph) {
 		t.Fatalf("expected ProjectionHandlerError, got %T", err)
 	}
-	assertEqual(t, "compatCode", "compat.linkStreamTo.outOfBoundsParameters", ph.CompatCode)
+	assertEqual(t, "compatCode", "quirk.linkStreamTo.outOfBoundsParameters", ph.CompatCode)
 }
 
 // Test helpers

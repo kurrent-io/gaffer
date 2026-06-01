@@ -55,7 +55,7 @@ func (s *Server) registerResources() {
 	s.mcp.AddResource(&mcp.Resource{
 		URI:         "gaffer://docs/quirks",
 		Name:        "quirks",
-		Description: "Catalogue of KurrentDB upstream quirks gaffer reproduces for fidelity. Look here when a fatal error reports a compat.* code, or to see what quirks would fire for a given quirks_version.",
+		Description: "Catalogue of KurrentDB upstream quirks gaffer reproduces for fidelity. Look here when a fatal error reports a quirk.* code, or to see what quirks would fire for a given quirks_version.",
 		MIMEType:    "text/markdown",
 	}, s.trackedResource(quirksResource))
 

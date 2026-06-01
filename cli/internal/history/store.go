@@ -224,7 +224,7 @@ func extractResultFields(resultJSON string) (status, partition string, hasEmit, 
 		codes = append(codes, d.Code)
 	}
 	sort.Strings(codes)
-	// Quirk codes are dot-namespaced identifiers (e.g. compat.biState.stringSlot)
+	// Quirk codes are dot-namespaced identifiers (e.g. quirk.biState.stringSlot)
 	// with no commas, so a comma-joined string round-trips without the
 	// fallible JSON encode/decode (and the swallowed errors it would invite).
 	quirkCodes = strings.Join(codes, ",")

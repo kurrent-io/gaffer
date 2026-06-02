@@ -13,6 +13,14 @@ build:
 test:
     dotnet test --verbosity quiet
 
+# Regenerate the diagnostics catalogue artifact the CLI embeds
+# (cli/internal/mcpserver/resources/diagnostics.gen.json) from DiagnosticCatalog.
+# The guard rewrites the committed file on drift and fails (Verify-style), so run
+# this after changing the catalog, then commit the result. `just runtime test`
+# (and CI) runs the same guard, so a stale artifact never merges.
+gen-diagnostics:
+    dotnet test --filter DiagnosticsArtifact_IsUpToDate --verbosity quiet
+
 # Format code and apply lint fixes
 fix:
     dotnet format

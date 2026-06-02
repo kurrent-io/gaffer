@@ -1,0 +1,85 @@
+---
+// Overrides Starlight's default Footer site-wide. Composes with Default
+// (so plugin overrides applied to EditLink / LastUpdated / Pagination
+// still flow through) and appends a brand block.
+import Default from '@astrojs/starlight/components/Footer.astro';
+import GafferLogomark from '../assets/gaffer-logomark.svg';
+import GafferWordmark from '../assets/gaffer-wordmark.svg';
+
+const year = new Date().getFullYear();
+---
+
+<Default />
+
+<div class="gaffer-footer">
+	<div class="gaffer-footer__brand">
+		<GafferLogomark class="gaffer-footer__logomark" aria-hidden="true" />
+		<GafferWordmark class="gaffer-footer__wordmark" aria-hidden="true" />
+		<span class="gaffer-footer__copy">© {year} Kurrent</span>
+	</div>
+	<nav class="gaffer-footer__links" aria-label="Footer">
+		<a href="https://github.com/kurrent-io/gaffer">GitHub</a>
+		<a href="https://www.npmjs.com/package/@kurrent/gaffer">npm</a>
+		<a href="https://docs.kurrent.io">docs.kurrent.io</a>
+	</nav>
+</div>
+
+<style>
+	.gaffer-footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 1.5rem;
+		margin-top: 3rem;
+		padding-top: 2rem;
+		border-top: 1px solid var(--color-shade-20);
+		font-size: var(--sl-text-sm);
+		color: var(--color-muted);
+	}
+
+	.gaffer-footer__brand {
+		/* Wordmark width drives logomark size via the source-banner ratio
+		   (52/152 ≈ 0.34). Same pattern as .gaffer-hero__brand. */
+		--wordmark-width: 4.4rem;
+		--logomark-width: calc(var(--wordmark-width) * 0.34);
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		color: var(--color-foreground);
+	}
+
+	.gaffer-footer__logomark {
+		display: block;
+		width: var(--logomark-width);
+		height: auto;
+		opacity: 0.7;
+		flex-shrink: 0;
+	}
+
+	.gaffer-footer__wordmark {
+		display: block;
+		width: var(--wordmark-width);
+		height: auto;
+		opacity: 0.7;
+	}
+
+	.gaffer-footer__copy {
+		color: var(--color-muted);
+	}
+
+	.gaffer-footer__links {
+		display: flex;
+		gap: 1.5rem;
+		flex-wrap: wrap;
+	}
+
+	.gaffer-footer__links a {
+		color: var(--color-muted);
+		text-decoration: none;
+	}
+
+	.gaffer-footer__links a:hover {
+		color: var(--color-foreground);
+	}
+</style>

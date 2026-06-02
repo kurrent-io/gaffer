@@ -1,5 +1,6 @@
 using Gaffer.Runtime.Errors;
 using Gaffer.Runtime.Projection;
+using Gaffer.Runtime.Projection.Diagnostics;
 using Gaffer.Sdk.Diagnostics;
 using Gaffer.Sdk.Versioning;
 

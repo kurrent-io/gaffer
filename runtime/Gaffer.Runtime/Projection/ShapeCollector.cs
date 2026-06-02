@@ -10,7 +10,7 @@ namespace Gaffer.Runtime.Projection;
 /// counts. Best-effort - a parse failure produces <c>Parsable=false</c>
 /// and otherwise-zero counts; the consumer treats the data as partial.
 /// <para>
-/// Shares the parsed AST with <see cref="DiagnosticCollector"/> -
+/// Shares the parsed AST with <see cref="Diagnostics.DiagnosticCollector"/> -
 /// both passes run against the single <c>ParseScript</c> result so
 /// the cost over the diagnostic-only path is one extra visitor pass
 /// (microsecond-scale on typical projections), not a re-parse. Gated

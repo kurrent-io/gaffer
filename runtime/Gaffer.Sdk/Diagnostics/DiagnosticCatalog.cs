@@ -163,8 +163,10 @@ public static class DiagnosticCatalog {
 		Docs = "Returning a Promise from a handler is not supported: the engine runs synchronously, so the Promise is serialized as the state (which becomes `{}`) instead of being awaited. Return the state synchronously.",
 	};
 
-	/// <summary>All descriptors, in catalog order. Quirks first, then usage.</summary>
-	public static readonly IReadOnlyList<DiagnosticDescriptor> All = new[] {
+	// Concrete array, iterated by index in the builders below. NativeAOT safety
+	// (AGENTS.md): no LINQ extension methods / interface dispatch on arrays in
+	// runtime code, since this Sdk compiles into the .so loaded by koffi/Node.
+	private static readonly DiagnosticDescriptor[] AllArray = {
 		LinkStreamToOutOfBoundsParameters,
 		LogMultiParam,
 		EventBodyCast,
@@ -180,14 +182,31 @@ public static class DiagnosticCatalog {
 		HandlerPromise,
 	};
 
-	/// <summary>Every reproduced quirk - <see cref="All"/> filtered to <see cref="DiagnosticClass.Quirk"/>.</summary>
-	public static readonly IReadOnlyList<DiagnosticDescriptor> Quirks =
-		All.Where(d => d.Class == DiagnosticClass.Quirk).ToArray();
+	/// <summary>All descriptors, in catalog order. Quirks first, then usage.</summary>
+	public static readonly IReadOnlyList<DiagnosticDescriptor> All = AllArray;
 
-	private static readonly Dictionary<string, DiagnosticDescriptor> ByCode =
-		All.ToDictionary(d => d.Code);
+	/// <summary>Every reproduced quirk - <see cref="All"/> filtered to <see cref="DiagnosticClass.Quirk"/>.</summary>
+	public static readonly IReadOnlyList<DiagnosticDescriptor> Quirks = BuildQuirks();
+
+	private static readonly Dictionary<string, DiagnosticDescriptor> ByCode = BuildByCode();
 
 	/// <summary>Look up a descriptor by its <see cref="DiagnosticDescriptor.Code"/>.</summary>
 	public static bool TryGet(string code, out DiagnosticDescriptor descriptor) =>
 		ByCode.TryGetValue(code, out descriptor!);
+
+	private static DiagnosticDescriptor[] BuildQuirks() {
+		var quirks = new List<DiagnosticDescriptor>(AllArray.Length);
+		for (var i = 0; i < AllArray.Length; i++) {
+			if (AllArray[i].Class == DiagnosticClass.Quirk)
+				quirks.Add(AllArray[i]);
+		}
+		return quirks.ToArray();
+	}
+
+	private static Dictionary<string, DiagnosticDescriptor> BuildByCode() {
+		var byCode = new Dictionary<string, DiagnosticDescriptor>(AllArray.Length);
+		for (var i = 0; i < AllArray.Length; i++)
+			byCode[AllArray[i].Code] = AllArray[i];
+		return byCode;
+	}
 }

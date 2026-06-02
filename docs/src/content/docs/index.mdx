@@ -1,0 +1,40 @@
+---
+title: Gaffer
+description: Gaffer is a toolkit for developing, testing, and debugging KurrentDB projections on your machine with the same engine as production.
+template: splash
+hero:
+  tagline: develop. test. debug. deploy.
+---
+
+import { LinkCard } from '@astrojs/starlight/components';
+import '../../styles/splash.css';
+
+**Build KurrentDB projections without guessing how they'll run in production.** Projections are server-side JavaScript that turn your events into running totals, derived streams, and read models, but because they run inside the database, they're hard to develop, and even harder to debug. gaffer brings that runtime to your machine. The engine that runs your projection locally is the same one KurrentDB uses, so what you debug is what ships.
+
+<div class="home-cards not-content">
+  <LinkCard
+    title="Get started"
+    href="./getting-started/install/"
+    description="Install gaffer, write your first projection, and step through it with the debugger."
+  />
+  <LinkCard
+    title="VS Code extension"
+    href="./extension/vs-code/"
+    description="Run and debug from CodeLens, inspect projection state, get projection-API autocomplete."
+  />
+  <LinkCard
+    title="CLI"
+    href="./cli/"
+    description="Scaffold, run, and debug projections from your terminal, against fixtures or a live instance."
+  />
+  <LinkCard
+    title="MCP"
+    href="./cli/mcp/"
+    description="Connect Claude Code, Cursor, Continue, or Claude Desktop to gaffer."
+  />
+  <LinkCard
+    title="Testing"
+    href="./testing/nodejs/"
+    description="Drive projections from Vitest, Jest, or Mocha. No database, no flakiness."
+  />
+</div>

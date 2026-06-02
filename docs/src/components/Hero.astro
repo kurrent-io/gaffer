@@ -1,0 +1,32 @@
+---
+// Overrides Starlight's default Hero on `template: splash` pages.
+// Renders HeroBackdrop full-bleed behind the gaffer wordmark + subtitle.
+import HeroBackdrop from './hero/HeroBackdrop.astro';
+import GafferLogomark from '../assets/gaffer-logomark.svg';
+import GafferWordmark from '../assets/gaffer-wordmark.svg';
+
+const { entry } = Astro.locals.starlightRoute;
+const title = entry.data.title;
+const hero = entry.data.hero;
+---
+
+{
+	hero && (
+		<div class="gaffer-hero not-content">
+			<HeroBackdrop />
+			<div class="gaffer-hero__overlay">
+				<div class="gaffer-hero__content">
+					<h1 class="sr-only">{title}</h1>
+					<div class="gaffer-hero__brand">
+						<div class="gaffer-hero__brand-row">
+							<GafferLogomark class="gaffer-hero__logomark" aria-hidden="true" />
+							<GafferWordmark class="gaffer-hero__wordmark" aria-hidden="true" />
+						</div>
+						{hero.tagline && <p class="gaffer-hero__subtitle">{hero.tagline}</p>}
+					</div>
+				</div>
+			</div>
+		</div>
+	)
+}
+

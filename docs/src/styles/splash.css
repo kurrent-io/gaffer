@@ -1,0 +1,227 @@
+/* Splash-page-only styles. Extracted from Hero.astro and HeroBackdrop.astro
+   so the splash CSS doesn't ship in the common chunk loaded on every page.
+   Imported from index.mdx via head config. */
+
+	.hero-backdrop {
+		/* Catppuccin — Latte in light mode, Mocha in dark. Mocha matches
+		   tools/vhs/demo-dev.tape's recording theme so screenshots and the
+		   live hero read identically. */
+		--hero-bg: light-dark(#ffffff, #000000);
+		--hero-fg: light-dark(#4c4f69, #cdd6f4);
+		--hero-cyan: light-dark(#179299, #94e2d5);
+		--hero-green: light-dark(#40a02b, #a6e3a1);
+		--hero-yellow: light-dark(#df8e1d, #f9e2af);
+		--hero-red: light-dark(#d20f39, #f38ba8);
+		--hero-red-alt: light-dark(#e64553, #eba0ac);
+
+		position: relative;
+		overflow: hidden;
+		height: 32rem;
+		font-family: var(--__sl-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+		font-size: 0.8rem;
+		line-height: 1.2;
+		background: var(--hero-bg);
+		color: var(--hero-fg);
+		border-radius: 0.5rem;
+	}
+
+	.hero-backdrop__tape {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+		padding: 1rem;
+		/* Opt out of scroll anchoring: when the top line is evicted the
+		   browser would otherwise scroll the page up to keep its anchor
+		   stable. */
+		overflow-anchor: none;
+	}
+
+	.hero-backdrop__line {
+		white-space: pre;
+		min-height: 1.2em;
+		overflow-anchor: none;
+	}
+
+	.hero-backdrop .t-plain {
+		color: var(--hero-fg);
+		opacity: 0.85;
+	}
+	.hero-backdrop .t-pipe {
+		color: var(--hero-cyan);
+		opacity: 0.4;
+	}
+	.hero-backdrop .t-label {
+		color: var(--hero-cyan);
+	}
+	.hero-backdrop .t-heading {
+		color: var(--hero-fg);
+		font-weight: 600;
+	}
+	.hero-backdrop .t-processed {
+		color: var(--hero-green);
+		opacity: 0.85;
+	}
+	.hero-backdrop .t-skipped {
+		color: var(--hero-yellow);
+	}
+	.hero-backdrop .t-errStatus {
+		color: var(--hero-red);
+		font-weight: 600;
+	}
+	.hero-backdrop .t-errDetail {
+		color: var(--hero-red-alt);
+	}
+	.hero-backdrop .t-info {
+		color: var(--hero-cyan);
+	}
+
+	/* Make Starlight's nav transparent on hero pages so the hero shows
+	   through it. Scoped via :has() so only splash pages get this. */
+	body:has(.gaffer-hero) {
+		--sl-color-bg-nav: transparent;
+		--sl-color-hairline-shade: transparent;
+		/* Match the hero bg so any layout gap above the nav blends in. */
+		background: light-dark(#ffffff, #000000);
+	}
+	body:has(.gaffer-hero) header.header {
+		/* Homepage is headerless — the hero does the brand work and the
+		   nav items (search, theme toggle, social) repeat on every other
+		   page. */
+		display: none;
+	}
+
+	.gaffer-hero {
+		/* Break out of Starlight's content container to full viewport
+		   width and pull up under the nav so the tape reads as a
+		   full-bleed hero behind it. The negative bottom margin lets the
+		   following page content slide up over the hero's lower portion
+		   so the rolling tape and fade keep going behind the content.
+		   z-index: -1 pushes the hero behind its siblings so the content
+		   below renders on top, not under.
+
+		   Stacking assumption: every sibling rendered below the hero
+		   relies on default z-index: auto. A sibling that creates its own
+		   stacking context (e.g. `isolation: isolate`, explicit z-index)
+		   may layer differently. If a new component below the hero looks
+		   misaligned or unreachable, check its stacking context first. */
+		position: relative;
+		z-index: -1;
+		margin-inline: calc(50% - 50vw);
+		margin-top: calc(-1 * var(--sl-nav-height, 3.5rem));
+		width: 100vw;
+		height: 100vh;
+		overflow: hidden;
+		/* clip-path is reliable against 3D-transformed children that
+		   overflow: hidden alone won't clip. */
+		clip-path: inset(0);
+		margin-bottom: -30vh;
+	}
+
+	.gaffer-hero .hero-backdrop {
+		position: absolute;
+		inset: -100vw;
+		height: 100%;
+		width: 1000px;
+		margin: auto;
+		border-radius: 0;
+		overflow: visible;
+		/* Perspective on the parent: vanishing point at the centre of the
+		   hero, off-centre from the translated tape, so the right side of
+		   the tape recedes more than the left. */
+		perspective: 700px;
+	}
+
+	.gaffer-hero .hero-backdrop__tape {
+		translate: 71% 7%;
+		transform: rotateX(42deg) rotateZ(-15deg) rotateY(14deg);
+		transform-origin: center center;
+		scale: 2.8;
+		width: 400px;
+		filter: blur(0.8px);
+	}
+
+	.gaffer-hero__overlay {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+		padding-top: 3rem;
+		padding-inline: clamp(1.5rem, 8vw, 6rem);
+		/* Extra bottom padding pushes the brand up into the hero so it
+		   sits ~30vh above the bottom edge; the gradient covers the
+		   space below. */
+		padding-bottom: calc(30vh + 3rem);
+		z-index: 1;
+		background:
+			/* Solid fade at the bottom so the hero blends into the page bg
+			   below. Wider fade so the brand emerges from the dark. */
+			linear-gradient(
+				to top,
+				light-dark(rgba(255, 255, 255, 1), rgba(0, 0, 0, 1)) 0%,
+				light-dark(rgba(255, 255, 255, 1), rgba(0, 0, 0, 1)) 3%,
+				transparent 60%
+			),
+			/* Vignette focused on the brand area. Lower cap so the top
+			   edge behind the header stays transparent. */
+			radial-gradient(
+				ellipse at 40% 60%,
+				transparent 0%,
+				transparent 20%,
+				light-dark(rgba(255, 255, 255, 0.35), rgba(0, 0, 0, 0.35)) 60%,
+				light-dark(rgba(255, 255, 255, 0.5), rgba(0, 0, 0, 0.5)) 100%
+			);
+	}
+
+	.gaffer-hero__content {
+		max-width: 100%;
+	}
+
+	.gaffer-hero__brand {
+		--wordmark-width: clamp(11rem, 24vw, 18rem);
+		/* Logomark width derived from the source banner ratio (52/152). */
+		--logomark-width: calc(var(--wordmark-width) * 0.34);
+		/* Heights from the source SVG aspect ratios: logomark 1:1,
+		   wordmark 152:33. */
+		--logomark-height: var(--logomark-width);
+		--wordmark-height: calc(var(--wordmark-width) * 33 / 152);
+		/* The brand-row centres the logomark against the wordmark, so the
+		   row bottom sits below the wordmark bottom by this offset. The
+		   subtitle margin-top subtracts it so the visible gap matches. */
+		--centring-offset: calc((var(--logomark-height) - var(--wordmark-height)) / 2);
+		--brand-gap: clamp(0.5rem, 1.5vw, 1rem);
+		color: light-dark(#000000, #ffffff);
+		display: flex;
+		flex-direction: column;
+	}
+
+	.gaffer-hero__brand-row {
+		display: flex;
+		align-items: center;
+		gap: var(--brand-gap);
+	}
+
+	.gaffer-hero__logomark {
+		display: block;
+		width: var(--logomark-width);
+		height: auto;
+		flex-shrink: 0;
+	}
+
+	.gaffer-hero__wordmark {
+		display: block;
+		width: var(--wordmark-width);
+		height: auto;
+	}
+
+	.gaffer-hero__subtitle {
+		font-family: var(--__sl-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+		font-size: clamp(0.9rem, 1.4vw, 1.1rem);
+		letter-spacing: 0.02em;
+		color: light-dark(rgba(0, 0, 0, 0.7), rgba(255, 255, 255, 0.7));
+		margin: calc(1rem - var(--centring-offset)) 0 0 0;
+		/* Push subtitle right so it lines up with the start of the wordmark. */
+		padding-left: calc(var(--logomark-width) + var(--brand-gap));
+	}

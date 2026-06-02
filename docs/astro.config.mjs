@@ -28,6 +28,10 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Gaffer',
+      components: {
+        Hero: './src/components/Hero.astro',
+        Footer: './src/components/Footer.astro',
+      },
       logo: {
         dark: './src/assets/kurrent-logo-white.svg',
         light: './src/assets/kurrent-logo-black.svg',

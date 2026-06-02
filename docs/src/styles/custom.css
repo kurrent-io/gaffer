@@ -151,3 +151,38 @@ header.header {
 	padding-block: 0.5rem;
 }
 
+/* On the homepage, match the content's horizontal padding to the hero
+   overlay so body content lines up with the hero edges. */
+body:has(.gaffer-hero) {
+	--sl-content-pad-x: clamp(1.5rem, 8vw, 6rem);
+	--sl-content-width: 100%;
+}
+
+/* Zero the content-panel top padding on the homepage so the hero butts
+   up against the nav (or page top with the nav hidden). The default
+   0.5rem otherwise shows as a thin bar above the rolling tape. */
+body:has(.gaffer-hero) .content-panel {
+	padding-top: 0;
+}
+
+/* Homepage card grid: featured card (Get started) spans two columns, the
+   other four fill a 3-column row. Stacks on narrow viewports. */
+.home-cards {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 1rem;
+	margin-block: 2rem;
+}
+.home-cards > :first-child {
+	grid-column: span 2;
+}
+
+@media (max-width: 50rem) {
+	.home-cards {
+		grid-template-columns: 1fr;
+	}
+	.home-cards > :first-child {
+		grid-column: span 1;
+	}
+}
+

@@ -1,0 +1,96 @@
+---
+// Procedural CLI-output backdrop. Renders an empty container and a
+// client-side script that streams generated lines into it.
+//
+// Visual layering (perspective, drift, depth-of-field mask) is handled
+// here in CSS. The generator stays DOM-agnostic.
+---
+
+<div class="hero-backdrop not-content" data-hero-backdrop>
+	<div class="hero-backdrop__tape" data-hero-backdrop-tape></div>
+</div>
+
+<script>
+	import { createStream, type Line } from './generator.ts';
+
+	const MAX_LINES = 80;
+	const REDUCED_PREFILL_LINES = 90;
+	const PREFILL_LINES = 30;
+
+	function lineToElement(line: Line): HTMLDivElement {
+		const div = document.createElement('div');
+		div.className = 'hero-backdrop__line';
+		if (line.tokens.length === 0) {
+			// Blank line still needs height; zero-width space keeps it.
+			div.textContent = '​';
+			return div;
+		}
+		for (const token of line.tokens) {
+			const span = document.createElement('span');
+			span.className = `t-${token.kind}`;
+			span.textContent = token.text;
+			div.appendChild(span);
+		}
+		return div;
+	}
+
+	function appendLine(tape: HTMLElement, line: Line) {
+		tape.appendChild(lineToElement(line));
+		while (tape.childElementCount > MAX_LINES) {
+			tape.firstElementChild?.remove();
+		}
+	}
+
+	function start(tape: HTMLElement) {
+		const stream = createStream();
+		const pull = (): Line => stream.next().value as Line;
+		const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+		// Prefill enough lines to fill the tape area at load. Batch into
+		// a DocumentFragment so the whole prefill is one DOM insert and
+		// one reflow.
+		const prefillCount = reduced ? REDUCED_PREFILL_LINES : PREFILL_LINES;
+		let firstPause = 600;
+		const fragment = document.createDocumentFragment();
+		while (fragment.childElementCount < prefillCount) {
+			const line = pull();
+			fragment.appendChild(lineToElement(line));
+			firstPause = line.pauseAfterMs;
+		}
+		tape.appendChild(fragment);
+		while (tape.childElementCount > MAX_LINES) {
+			tape.firstElementChild?.remove();
+		}
+
+		if (reduced) return;
+
+		// Single tracked timeout id so visibility toggles can't spawn
+		// parallel tick chains.
+		let timeoutId: number | null = null;
+		const schedule = (delay: number) => {
+			if (timeoutId !== null) clearTimeout(timeoutId);
+			timeoutId = window.setTimeout(tick, delay);
+		};
+		const tick = () => {
+			timeoutId = null;
+			if (document.hidden) return;
+			const line = pull();
+			appendLine(tape, line);
+			schedule(line.pauseAfterMs);
+		};
+		schedule(firstPause);
+
+		document.addEventListener('visibilitychange', () => {
+			if (document.hidden) {
+				if (timeoutId !== null) clearTimeout(timeoutId);
+				timeoutId = null;
+			} else if (timeoutId === null) {
+				schedule(200);
+			}
+		});
+	}
+
+	const tape = document.querySelector<HTMLElement>('[data-hero-backdrop-tape]');
+	if (tape) start(tape);
+</script>
+

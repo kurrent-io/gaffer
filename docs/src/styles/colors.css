@@ -42,10 +42,9 @@
 			var(--palette-white),
 			var(--palette-powder-black)
 		);
-		--color-foreground: light-dark(
-			var(--palette-black),
-			var(--palette-powder-blue)
-		);
+		/* Dark-mode foreground is 20% white + 80% powder-blue, pre-computed
+		   so each consumer doesn't redo the color-mix. */
+		--color-foreground: light-dark(var(--palette-black), #b2c9d1);
 
 		--color-muted: color-mix(
 			in lab,

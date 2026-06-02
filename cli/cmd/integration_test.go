@@ -299,7 +299,7 @@ func TestInfo_JSON_NoFixturesFieldWhenNoneDeclared(t *testing.T) {
 
 // 3-arg linkStreamTo always throws via the upstream out-of-bounds-parameters
 // quirk, so these tests exercise the full compat-error path: runtime tags the
-// throw with KnownQuirks.LinkStreamToOutOfBoundsParameters.Code, error flows
+// throw with DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.Code, error flows
 // through Go bindings, dev's writer renders it with the compatCode field
 // (--json) or the "Compat:" block (text).
 const compatLinkStreamToProjection = `fromAll().when({

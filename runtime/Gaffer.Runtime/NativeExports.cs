@@ -740,41 +740,6 @@ internal static unsafe class NativeExports {
 			NativeMemory.Free(ptr);
 	}
 
-	/// <summary>
-	/// Returns the registry of known quirks as a JSON array of
-	/// <c>{ code, description, fixedIn? }</c> objects. <c>fixedIn</c> is a
-	/// MAJOR.MINOR.PATCH string when set, omitted otherwise. Caller frees.
-	/// <para>
-	/// Infallible by construction - the registry is static data with no user
-	/// input. Returns <c>null</c> only on allocation failure.
-	/// </para>
-	/// </summary>
-	[UnmanagedCallersOnly(EntryPoint = "gaffer_known_quirks")]
-	public static byte* KnownQuirks() {
-		try {
-			return AllocUtf8(SerializeKnownQuirks());
-		} catch {
-			return null;
-		}
-	}
-
-	internal static string SerializeKnownQuirks() {
-		using var stream = new System.IO.MemoryStream();
-		using var writer = new Utf8JsonWriter(stream);
-		writer.WriteStartArray();
-		foreach (var quirk in Sdk.Diagnostics.DiagnosticCatalog.Quirks) {
-			writer.WriteStartObject();
-			writer.WriteString("code", quirk.Code);
-			writer.WriteString("description", quirk.Message);
-			if (quirk.FixedIn != null)
-				writer.WriteString("fixedIn", quirk.FixedIn.ToString());
-			writer.WriteEndObject();
-		}
-		writer.WriteEndArray();
-		writer.Flush();
-		return Encoding.UTF8.GetString(stream.ToArray());
-	}
-
 	// -- Helpers --
 
 	internal static ProjectionSessionOptions ParseOptions(string? json) {

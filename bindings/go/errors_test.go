@@ -301,7 +301,7 @@ func TestSession_OnDiagnostic_StreamsAtPointOfFiring(t *testing.T) {
 
 func TestError_CompatCode_PropagatesFromCompatFiringPath(t *testing.T) {
 	// 3-arg linkStreamTo is the always-quirky path: throws and the runtime
-	// stamps the exception with KnownQuirks.LinkStreamToOutOfBoundsParameters.Code.
+	// stamps the exception with DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.Code.
 	source := `fromAll().when({ $any: function (s, e) { linkStreamTo("a", e.streamId, { reason: "x" }); return s; } })`
 	session, err := NewSession(source, &v2Opts)
 	if err != nil {

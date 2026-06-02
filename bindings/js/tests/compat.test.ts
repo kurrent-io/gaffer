@@ -3,7 +3,6 @@ import {
 	ProjectionSession,
 	ProjectionHandlerError,
 	InvalidArgumentError,
-	knownQuirks,
 } from "../src/index.js";
 
 const testEvent = {
@@ -69,27 +68,6 @@ describe("compatCode propagation", () => {
 		} finally {
 			session.dispose();
 		}
-	});
-});
-
-describe("knownQuirks()", () => {
-	it("returns the registry", () => {
-		const quirks = knownQuirks();
-		expect(quirks.length).toBeGreaterThan(0);
-		for (const b of quirks) {
-			expect(b.code).toMatch(/^quirk\./);
-			expect(b.description).not.toBe("");
-		}
-	});
-
-	it("includes the expected codes", () => {
-		const codes = knownQuirks().map((b) => b.code);
-		// Update when registry changes.
-		expect(codes).toContain("quirk.linkStreamTo.outOfBoundsParameters");
-		expect(codes).toContain("quirk.log.multiParam");
-		expect(codes).toContain("quirk.event.bodyCast");
-		expect(codes).toContain("quirk.biState.stringSlot");
-		expect(codes).toContain("quirk.serialize.nonFinite");
 	});
 });
 

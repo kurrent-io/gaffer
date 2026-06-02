@@ -1,6 +1,4 @@
 export { ProjectionSession } from "./session.js";
-export { knownQuirks } from "./knownQuirks.js";
-export type { KnownQuirk } from "./knownQuirks.js";
 export {
 	ProjectionError,
 	InvalidProjectionError,

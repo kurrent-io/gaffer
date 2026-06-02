@@ -223,25 +223,18 @@ func TestTextWriter_WriteFatalError_RendersCompatBlock(t *testing.T) {
 }
 
 func TestTextWriter_WriteCompatBlock_RendersFixedInWhenSet(t *testing.T) {
-	// The "Fixed in KurrentDB X" branch is dead code today (every registry
-	// entry has FixedIn = nil), so we test it directly with a stubbed
-	// lookup. When upstream PR #5610 ships and runtime sets FixedIn, this
-	// path activates.
+	// The "Fixed in KurrentDB X" branch activates when the runtime sets
+	// compatFixedIn on the error (every catalogue entry has FixedIn = nil
+	// today). The description + fixedIn ride the error payload, no registry
+	// round-trip.
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, &buf)
-	fixed := "26.1.1"
-	stub := func(code string) (gafferruntime.KnownQuirk, bool) {
-		if code != "quirk.event.bodyCast" {
-			return gafferruntime.KnownQuirk{}, false
-		}
-		return gafferruntime.KnownQuirk{
-			Code:        "quirk.event.bodyCast",
-			Description: "Accessing event.body throws on non-object bodies.",
-			FixedIn:     &fixed,
-		}, true
-	}
 
-	tw.writeCompatBlock(&buf, "quirk.event.bodyCast", stub)
+	tw.writeCompatBlock(&buf, fatalError{
+		CompatCode:        "quirk.event.bodyCast",
+		CompatDescription: "Accessing event.body throws on non-object bodies.",
+		CompatFixedIn:     "26.1.1",
+	})
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "Compat:")

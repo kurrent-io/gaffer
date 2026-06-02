@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -702,15 +701,16 @@ func TestResourceTelemetryInfo(t *testing.T) {
 }
 
 func TestRenderQuirksMarkdown_FixedInRendering(t *testing.T) {
-	// The "Fixed in: KurrentDB X" branch is dead at the registry level
+	// The "Fixed in: KurrentDB X" branch is dead at the catalogue level
 	// today. Test it directly.
 	fixed := "26.1.1"
-	quirks := []gafferruntime.KnownQuirk{{
-		Code:        "quirk.test.synthetic",
-		Description: "Test description.",
-		FixedIn:     &fixed,
+	docs := []diagnosticDoc{{
+		Code:    "quirk.test.synthetic",
+		Class:   "quirk",
+		Message: "Test description.",
+		FixedIn: &fixed,
 	}}
-	out := renderQuirksMarkdown(quirks)
+	out := renderQuirksMarkdown(docs)
 	if !strings.Contains(out, "## quirk.test.synthetic") {
 		t.Error("expected synthetic heading")
 	}

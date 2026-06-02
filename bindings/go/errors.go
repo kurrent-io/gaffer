@@ -37,11 +37,13 @@ type JsLocation struct {
 }
 
 type InvalidProjectionError struct {
-	Desc       string
-	Location   *JsLocation
-	Source     string
-	CompatCode string
-	Msg        string
+	Desc              string
+	Location          *JsLocation
+	Source            string
+	CompatCode        string
+	CompatDescription string
+	CompatFixedIn     string
+	Msg               string
 }
 
 func (e *InvalidProjectionError) Error() string            { return e.Msg }
@@ -49,11 +51,13 @@ func (e *InvalidProjectionError) ErrorCode() string        { return "invalid-pro
 func (e *InvalidProjectionError) ErrorDescription() string { return e.Desc }
 
 type CompilationTimeoutError struct {
-	Desc       string
-	ElapsedMs  int
-	AllowedMs  int
-	CompatCode string
-	Msg        string
+	Desc              string
+	ElapsedMs         int
+	AllowedMs         int
+	CompatCode        string
+	CompatDescription string
+	CompatFixedIn     string
+	Msg               string
 }
 
 func (e *CompilationTimeoutError) Error() string            { return e.Msg }
@@ -61,10 +65,12 @@ func (e *CompilationTimeoutError) ErrorCode() string        { return "compilatio
 func (e *CompilationTimeoutError) ErrorDescription() string { return e.Desc }
 
 type InvalidArgumentError struct {
-	Desc       string
-	Field      string
-	CompatCode string
-	Msg        string
+	Desc              string
+	Field             string
+	CompatCode        string
+	CompatDescription string
+	CompatFixedIn     string
+	Msg               string
 }
 
 func (e *InvalidArgumentError) Error() string            { return e.Msg }
@@ -72,13 +78,15 @@ func (e *InvalidArgumentError) ErrorCode() string        { return "invalid-argum
 func (e *InvalidArgumentError) ErrorDescription() string { return e.Desc }
 
 type ProjectionHandlerError struct {
-	Desc       string
-	JsStack    string
-	Location   *JsLocation
-	Event      EventContext
-	Source     string
-	CompatCode string
-	Msg        string
+	Desc              string
+	JsStack           string
+	Location          *JsLocation
+	Event             EventContext
+	Source            string
+	CompatCode        string
+	CompatDescription string
+	CompatFixedIn     string
+	Msg               string
 }
 
 func (e *ProjectionHandlerError) Error() string            { return e.Msg }
@@ -86,12 +94,14 @@ func (e *ProjectionHandlerError) ErrorCode() string        { return "handler-err
 func (e *ProjectionHandlerError) ErrorDescription() string { return e.Desc }
 
 type ExecutionTimeoutError struct {
-	Desc       string
-	ElapsedMs  int
-	AllowedMs  int
-	Event      EventContext
-	CompatCode string
-	Msg        string
+	Desc              string
+	ElapsedMs         int
+	AllowedMs         int
+	Event             EventContext
+	CompatCode        string
+	CompatDescription string
+	CompatFixedIn     string
+	Msg               string
 }
 
 func (e *ExecutionTimeoutError) Error() string            { return e.Msg }
@@ -99,10 +109,12 @@ func (e *ExecutionTimeoutError) ErrorCode() string        { return "execution-ti
 func (e *ExecutionTimeoutError) ErrorDescription() string { return e.Desc }
 
 type MalformedEventError struct {
-	Desc       string
-	Event      EventContext
-	CompatCode string
-	Msg        string
+	Desc              string
+	Event             EventContext
+	CompatCode        string
+	CompatDescription string
+	CompatFixedIn     string
+	Msg               string
 }
 
 func (e *MalformedEventError) Error() string            { return e.Msg }
@@ -110,10 +122,12 @@ func (e *MalformedEventError) ErrorCode() string        { return "malformed-even
 func (e *MalformedEventError) ErrorDescription() string { return e.Desc }
 
 type StateSerializationError struct {
-	Desc       string
-	Event      EventContext
-	CompatCode string
-	Msg        string
+	Desc              string
+	Event             EventContext
+	CompatCode        string
+	CompatDescription string
+	CompatFixedIn     string
+	Msg               string
 }
 
 func (e *StateSerializationError) Error() string            { return e.Msg }
@@ -121,12 +135,14 @@ func (e *StateSerializationError) ErrorCode() string        { return "state-seri
 func (e *StateSerializationError) ErrorDescription() string { return e.Desc }
 
 type ProjectionTransformError struct {
-	Desc       string
-	JsStack    string
-	Location   *JsLocation
-	Source     string
-	CompatCode string
-	Msg        string
+	Desc              string
+	JsStack           string
+	Location          *JsLocation
+	Source            string
+	CompatCode        string
+	CompatDescription string
+	CompatFixedIn     string
+	Msg               string
 }
 
 func (e *ProjectionTransformError) Error() string            { return e.Msg }
@@ -145,20 +161,22 @@ func (e *UnexpectedError) ErrorCode() string        { return e.Code }
 func (e *UnexpectedError) ErrorDescription() string { return e.Desc }
 
 type errorJSON struct {
-	Code           string `json:"code"`
-	Description    string `json:"description"`
-	Message        string `json:"message,omitempty"`
-	CompatCode     string `json:"compatCode,omitempty"`
-	Line           *int   `json:"line,omitempty"`
-	Column         *int   `json:"column,omitempty"`
-	Elapsed        *int   `json:"elapsed,omitempty"`
-	Allowed        *int   `json:"allowed,omitempty"`
-	Field          string `json:"field,omitempty"`
-	JsStack        string `json:"jsStack,omitempty"`
-	EventType      string `json:"eventType,omitempty"`
-	StreamID       string `json:"streamId,omitempty"`
-	SequenceNumber int64  `json:"sequenceNumber,omitempty"`
-	Partition      string `json:"partition,omitempty"`
+	Code              string `json:"code"`
+	Description       string `json:"description"`
+	Message           string `json:"message,omitempty"`
+	CompatCode        string `json:"compatCode,omitempty"`
+	CompatDescription string `json:"compatDescription,omitempty"`
+	CompatFixedIn     string `json:"compatFixedIn,omitempty"`
+	Line              *int   `json:"line,omitempty"`
+	Column            *int   `json:"column,omitempty"`
+	Elapsed           *int   `json:"elapsed,omitempty"`
+	Allowed           *int   `json:"allowed,omitempty"`
+	Field             string `json:"field,omitempty"`
+	JsStack           string `json:"jsStack,omitempty"`
+	EventType         string `json:"eventType,omitempty"`
+	StreamID          string `json:"streamId,omitempty"`
+	SequenceNumber    int64  `json:"sequenceNumber,omitempty"`
+	Partition         string `json:"partition,omitempty"`
 }
 
 // consumeError decodes and frees a runtime-allocated error pointer.
@@ -188,13 +206,13 @@ func parseErrorJSON(jsonStr string, source string) error {
 		if e.Line != nil && e.Column != nil {
 			loc = &JsLocation{Line: *e.Line, Column: *e.Column}
 		}
-		return &InvalidProjectionError{Desc: e.Description, Location: loc, Source: source, CompatCode: e.CompatCode, Msg: msg}
+		return &InvalidProjectionError{Desc: e.Description, Location: loc, Source: source, CompatCode: e.CompatCode, CompatDescription: e.CompatDescription, CompatFixedIn: e.CompatFixedIn, Msg: msg}
 
 	case "compilation-timeout":
-		return &CompilationTimeoutError{Desc: e.Description, ElapsedMs: deref(e.Elapsed), AllowedMs: deref(e.Allowed), CompatCode: e.CompatCode, Msg: msg}
+		return &CompilationTimeoutError{Desc: e.Description, ElapsedMs: deref(e.Elapsed), AllowedMs: deref(e.Allowed), CompatCode: e.CompatCode, CompatDescription: e.CompatDescription, CompatFixedIn: e.CompatFixedIn, Msg: msg}
 
 	case "invalid-argument":
-		return &InvalidArgumentError{Desc: e.Description, Field: e.Field, CompatCode: e.CompatCode, Msg: msg}
+		return &InvalidArgumentError{Desc: e.Description, Field: e.Field, CompatCode: e.CompatCode, CompatDescription: e.CompatDescription, CompatFixedIn: e.CompatFixedIn, Msg: msg}
 
 	case "handler-error":
 		var loc *JsLocation
@@ -203,34 +221,42 @@ func parseErrorJSON(jsonStr string, source string) error {
 		}
 		return &ProjectionHandlerError{
 			Desc: e.Description, JsStack: e.JsStack, Location: loc,
-			Event:      EventContext{EventType: e.EventType, StreamID: e.StreamID, SequenceNumber: e.SequenceNumber, Partition: e.Partition},
-			Source:     source,
-			CompatCode: e.CompatCode,
-			Msg:        msg,
+			Event:             EventContext{EventType: e.EventType, StreamID: e.StreamID, SequenceNumber: e.SequenceNumber, Partition: e.Partition},
+			Source:            source,
+			CompatCode:        e.CompatCode,
+			CompatDescription: e.CompatDescription,
+			CompatFixedIn:     e.CompatFixedIn,
+			Msg:               msg,
 		}
 
 	case "execution-timeout":
 		return &ExecutionTimeoutError{
 			Desc: e.Description, ElapsedMs: deref(e.Elapsed), AllowedMs: deref(e.Allowed),
-			Event:      EventContext{EventType: e.EventType, StreamID: e.StreamID, SequenceNumber: e.SequenceNumber, Partition: e.Partition},
-			CompatCode: e.CompatCode,
-			Msg:        msg,
+			Event:             EventContext{EventType: e.EventType, StreamID: e.StreamID, SequenceNumber: e.SequenceNumber, Partition: e.Partition},
+			CompatCode:        e.CompatCode,
+			CompatDescription: e.CompatDescription,
+			CompatFixedIn:     e.CompatFixedIn,
+			Msg:               msg,
 		}
 
 	case "malformed-event":
 		return &MalformedEventError{
-			Desc:       e.Description,
-			Event:      EventContext{EventType: e.EventType, StreamID: e.StreamID, SequenceNumber: e.SequenceNumber, Partition: e.Partition},
-			CompatCode: e.CompatCode,
-			Msg:        msg,
+			Desc:              e.Description,
+			Event:             EventContext{EventType: e.EventType, StreamID: e.StreamID, SequenceNumber: e.SequenceNumber, Partition: e.Partition},
+			CompatCode:        e.CompatCode,
+			CompatDescription: e.CompatDescription,
+			CompatFixedIn:     e.CompatFixedIn,
+			Msg:               msg,
 		}
 
 	case "state-serialization-error":
 		return &StateSerializationError{
-			Desc:       e.Description,
-			Event:      EventContext{EventType: e.EventType, StreamID: e.StreamID, SequenceNumber: e.SequenceNumber, Partition: e.Partition},
-			CompatCode: e.CompatCode,
-			Msg:        msg,
+			Desc:              e.Description,
+			Event:             EventContext{EventType: e.EventType, StreamID: e.StreamID, SequenceNumber: e.SequenceNumber, Partition: e.Partition},
+			CompatCode:        e.CompatCode,
+			CompatDescription: e.CompatDescription,
+			CompatFixedIn:     e.CompatFixedIn,
+			Msg:               msg,
 		}
 
 	case "projection-transform-error":
@@ -238,7 +264,7 @@ func parseErrorJSON(jsonStr string, source string) error {
 		if e.Line != nil && e.Column != nil {
 			loc = &JsLocation{Line: *e.Line, Column: *e.Column}
 		}
-		return &ProjectionTransformError{Desc: e.Description, JsStack: e.JsStack, Location: loc, Source: source, CompatCode: e.CompatCode, Msg: msg}
+		return &ProjectionTransformError{Desc: e.Description, JsStack: e.JsStack, Location: loc, Source: source, CompatCode: e.CompatCode, CompatDescription: e.CompatDescription, CompatFixedIn: e.CompatFixedIn, Msg: msg}
 
 	default:
 		return &UnexpectedError{Code: e.Code, Desc: e.Description, Msg: msg}

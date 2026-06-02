@@ -366,31 +366,27 @@ func (tw *textWriter) WriteFatalError(fe fatalError) {
 	if fe.JsStack != "" {
 		_, _ = fmt.Fprintln(out, fe.JsStack)
 	}
-	tw.writeCompatBlock(out, fe.CompatCode, compatQuirkLookup)
+	tw.writeCompatBlock(out, fe)
 }
 
 // writeCompatBlock renders the "Compat: <code>" hint when the fatal error
-// was driven by an upstream-quirk-compat code path. Pulls description +
-// fixedIn from the runtime's KnownQuirks registry via the supplied lookup.
-// Stays terse: state the fact ("Fixed in KurrentDB X") rather than
-// prescribe ("bump your version"). Lookup is a parameter so tests can
-// inject a synthetic registry covering the FixedIn-set path (today every
-// real entry has FixedIn = nil).
-func (tw *textWriter) writeCompatBlock(out io.Writer, code string, lookup func(string) (gafferruntime.KnownQuirk, bool)) {
-	if code == "" {
+// was driven by an upstream-quirk-compat code path. Reads the enriched
+// description + fixedIn fields straight off the error (the runtime supplies
+// them inline now - no registry round-trip). Stays terse: state the fact
+// ("Fixed in KurrentDB X") rather than prescribe ("bump your version").
+func (tw *textWriter) writeCompatBlock(out io.Writer, fe fatalError) {
+	if fe.CompatCode == "" {
 		return
 	}
 	style := tw.styles.warning
-	_, _ = fmt.Fprintf(out, "\n%s %s\n", style.Render("Compat:"), code)
-	if quirk, ok := lookup(code); ok {
-		if quirk.Description != "" {
-			_, _ = fmt.Fprintf(out, "  %s\n", quirk.Description)
-		}
-		if quirk.FixedIn != nil {
-			_, _ = fmt.Fprintf(out, "  Fixed in KurrentDB %s.\n", *quirk.FixedIn)
-		} else {
-			_, _ = fmt.Fprintln(out, "  Current KurrentDB behaviour.")
-		}
+	_, _ = fmt.Fprintf(out, "\n%s %s\n", style.Render("Compat:"), fe.CompatCode)
+	if fe.CompatDescription != "" {
+		_, _ = fmt.Fprintf(out, "  %s\n", fe.CompatDescription)
+	}
+	if fe.CompatFixedIn != "" {
+		_, _ = fmt.Fprintf(out, "  Fixed in KurrentDB %s.\n", fe.CompatFixedIn)
+	} else {
+		_, _ = fmt.Fprintln(out, "  Current KurrentDB behaviour.")
 	}
 }
 

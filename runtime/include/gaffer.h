@@ -303,20 +303,6 @@ const char* gaffer_debug_evaluate(gaffer_session* session, const char* expressio
  */
 void gaffer_free(void* ptr);
 
-/* --------------------------------------------------------------------------
- * Compat / version registry
- * -------------------------------------------------------------------------- */
-
-/**
- * Returns the registry of known KurrentDB quirks the runtime reproduces, as a
- * JSON array of { code, description, fixedIn? } objects. fixedIn is a
- * MAJOR.MINOR.PATCH string when set, omitted when null.
- *
- * Infallible by construction (static data). Returns NULL only on allocation
- * failure. Caller must free with gaffer_free().
- */
-const char* gaffer_known_quirks(void);
-
 #ifdef __cplusplus
 }
 #endif

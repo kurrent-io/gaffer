@@ -3,17 +3,17 @@ package mcpserver
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
-	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 )
 
-//go:embed resources/*.md
+//go:embed resources/*.md resources/diagnostics.gen.json
 var embeddedResources embed.FS
 
 func (s *Server) registerResources() {
@@ -72,24 +72,40 @@ func (s *Server) registerResources() {
 	}, s.trackedResource(staticResource("resources/telemetry-info.gen.md")))
 }
 
-// quirksResource auto-generates a markdown reference from the runtime's
-// KnownQuirks registry. Single source of truth: the C# Sdk.Versioning.KnownQuirks
-// table flows through gaffer_known_quirks() into this rendering.
+// diagnosticDoc mirrors one entry in the build-generated diagnostics catalogue
+// (resources/diagnostics.gen.json), produced from the C# DiagnosticCatalog - the
+// single source of truth (see the runtime's DiagnosticsArtifactTests). No runtime
+// FFI dependency: the catalogue is embedded at build time.
+type diagnosticDoc struct {
+	Code     string  `json:"code"`
+	Class    string  `json:"class"`
+	Severity string  `json:"severity"`
+	Message  string  `json:"message"`
+	Docs     string  `json:"docs"`
+	FixedIn  *string `json:"fixedIn"`
+}
+
+// quirksResource renders the quirk entries of the embedded diagnostics catalogue
+// as markdown.
 func quirksResource(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-	quirks, err := gafferruntime.KnownQuirks()
+	raw, err := embeddedResources.ReadFile("resources/diagnostics.gen.json")
 	if err != nil {
-		return nil, fmt.Errorf("loading known-quirks registry: %w", err)
+		return nil, fmt.Errorf("reading diagnostics catalogue: %w", err)
+	}
+	var docs []diagnosticDoc
+	if err := json.Unmarshal(raw, &docs); err != nil {
+		return nil, fmt.Errorf("parsing diagnostics catalogue: %w", err)
 	}
 	return &mcp.ReadResourceResult{
 		Contents: []*mcp.ResourceContents{{
 			URI:      req.Params.URI,
 			MIMEType: "text/markdown",
-			Text:     renderQuirksMarkdown(quirks),
+			Text:     renderQuirksMarkdown(docs),
 		}},
 	}, nil
 }
 
-func renderQuirksMarkdown(quirks []gafferruntime.KnownQuirk) string {
+func renderQuirksMarkdown(docs []diagnosticDoc) string {
 	var sb strings.Builder
 	sb.WriteString("# KurrentDB compat quirks\n\n")
 	sb.WriteString("Each entry lists an upstream quirk that gaffer reproduces for ")
@@ -98,20 +114,28 @@ func renderQuirksMarkdown(quirks []gafferruntime.KnownQuirk) string {
 	sb.WriteString("to a release earlier than the quirk's `fixedIn`. Setting ")
 	sb.WriteString("`quirks_version` to a release that fixed the quirk disables ")
 	sb.WriteString("reproduction.\n\n")
-	if len(quirks) == 0 {
-		sb.WriteString("*No quirks registered in the runtime.*\n")
-		return sb.String()
-	}
-	for _, b := range quirks {
-		fmt.Fprintf(&sb, "## %s\n\n", b.Code)
-		if b.Description != "" {
-			fmt.Fprintf(&sb, "%s\n\n", b.Description)
+	rendered := 0
+	for _, d := range docs {
+		if d.Class != "quirk" {
+			continue
 		}
-		if b.FixedIn != nil {
-			fmt.Fprintf(&sb, "**Fixed in:** KurrentDB %s\n\n", *b.FixedIn)
+		rendered++
+		fmt.Fprintf(&sb, "## %s\n\n", d.Code)
+		body := d.Docs
+		if body == "" {
+			body = d.Message
+		}
+		if body != "" {
+			fmt.Fprintf(&sb, "%s\n\n", body)
+		}
+		if d.FixedIn != nil {
+			fmt.Fprintf(&sb, "**Fixed in:** KurrentDB %s\n\n", *d.FixedIn)
 		} else {
 			sb.WriteString("**Fixed in:** *not yet shipped upstream*\n\n")
 		}
+	}
+	if rendered == 0 {
+		sb.WriteString("*No quirks registered.*\n")
 	}
 	return sb.String()
 }

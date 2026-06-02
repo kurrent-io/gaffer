@@ -121,49 +121,4 @@ public class NativeExportsWireFormatTests {
 		var diagnostics = doc.RootElement.GetProperty("diagnostics");
 		Assert.Equal(DiagnosticCatalog.EventBodyCast.Code, diagnostics[0].GetProperty("code").GetString());
 	}
-
-	// -- SerializeKnownQuirks --
-
-	[Fact]
-	public void SerializeKnownQuirks_ReturnsOneEntryPerRegistryItem() {
-		var json = NativeExports.SerializeKnownQuirks();
-		using var doc = JsonDocument.Parse(json);
-		Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
-		Assert.Equal(DiagnosticCatalog.Quirks.Count, doc.RootElement.GetArrayLength());
-	}
-
-	[Fact]
-	public void SerializeKnownQuirks_EachEntryHasCodeAndDescription() {
-		var json = NativeExports.SerializeKnownQuirks();
-		using var doc = JsonDocument.Parse(json);
-		foreach (var entry in doc.RootElement.EnumerateArray()) {
-			Assert.True(entry.TryGetProperty("code", out var code));
-			Assert.False(string.IsNullOrEmpty(code.GetString()));
-			Assert.True(entry.TryGetProperty("description", out var desc));
-			Assert.False(string.IsNullOrEmpty(desc.GetString()));
-		}
-	}
-
-	[Fact]
-	public void SerializeKnownQuirks_OmitsFixedInWhenNull() {
-		// Today every entry has FixedIn = null (no upstream fix shipped).
-		// All entries should omit the field.
-		var json = NativeExports.SerializeKnownQuirks();
-		using var doc = JsonDocument.Parse(json);
-		foreach (var entry in doc.RootElement.EnumerateArray()) {
-			Assert.False(entry.TryGetProperty("fixedIn", out _));
-		}
-	}
-
-	[Fact]
-	public void SerializeKnownQuirks_IncludesAllRegistryCodes() {
-		var json = NativeExports.SerializeKnownQuirks();
-		using var doc = JsonDocument.Parse(json);
-		var codes = doc.RootElement.EnumerateArray()
-			.Select(e => e.GetProperty("code").GetString())
-			.ToHashSet();
-		foreach (var quirk in DiagnosticCatalog.Quirks) {
-			Assert.Contains(quirk.Code, codes);
-		}
-	}
 }

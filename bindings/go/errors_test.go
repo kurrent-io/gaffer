@@ -262,17 +262,17 @@ func TestFeedResult_Diagnostics_BiStateStringSlot(t *testing.T) {
 
 	found := false
 	for _, d := range result.Diagnostics {
-		if d.Code == "compat.biState.stringSlot" {
+		if d.Code == "quirk.biState.stringSlot" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected compat.biState.stringSlot diagnostic, got %+v", result.Diagnostics)
+		t.Fatalf("expected quirk.biState.stringSlot diagnostic, got %+v", result.Diagnostics)
 	}
 }
 
 func TestSession_OnDiagnostic_StreamsAtPointOfFiring(t *testing.T) {
-	// A multi-arg log() trips compat.log.multiParam when it runs; the streaming
+	// A multi-arg log() trips quirk.log.multiParam when it runs; the streaming
 	// OnDiagnostic callback fires live during Feed.
 	source := `fromAll().when({ $any: function (s, e) { log("a", "b"); return s; } })`
 	session, err := NewSession(source, &v2Opts)
@@ -290,18 +290,18 @@ func TestSession_OnDiagnostic_StreamsAtPointOfFiring(t *testing.T) {
 
 	found := false
 	for _, c := range codes {
-		if c == "compat.log.multiParam" {
+		if c == "quirk.log.multiParam" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected compat.log.multiParam streamed, got %v", codes)
+		t.Fatalf("expected quirk.log.multiParam streamed, got %v", codes)
 	}
 }
 
 func TestError_CompatCode_PropagatesFromCompatFiringPath(t *testing.T) {
 	// 3-arg linkStreamTo is the always-quirky path: throws and the runtime
-	// stamps the exception with KnownQuirks.LinkStreamToOutOfBoundsParameters.Code.
+	// stamps the exception with DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.Code.
 	source := `fromAll().when({ $any: function (s, e) { linkStreamTo("a", e.streamId, { reason: "x" }); return s; } })`
 	session, err := NewSession(source, &v2Opts)
 	if err != nil {
@@ -317,7 +317,43 @@ func TestError_CompatCode_PropagatesFromCompatFiringPath(t *testing.T) {
 	if !errors.As(err, &ph) {
 		t.Fatalf("expected ProjectionHandlerError, got %T", err)
 	}
-	assertEqual(t, "compatCode", "compat.linkStreamTo.outOfBoundsParameters", ph.CompatCode)
+	assertEqual(t, "compatCode", "quirk.linkStreamTo.outOfBoundsParameters", ph.CompatCode)
+
+	// The throwing quirk also reaches the diagnostics channel on the error.
+	found := false
+	for _, d := range ph.Diagnostics {
+		if d.Code == "quirk.linkStreamTo.outOfBoundsParameters" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected quirk.linkStreamTo.outOfBoundsParameters in error diagnostics, got %+v", ph.Diagnostics)
+	}
+}
+
+// TestParseErrorJSON_DecodesCompatEnrichment pins the compatDescription /
+// compatFixedIn / diagnostics decode against a synthetic payload. Every catalog
+// entry has FixedIn = nil today, so this wiring is otherwise structurally dead -
+// a json-tag typo wouldn't surface until upstream ships a fix and someone sets it.
+func TestParseErrorJSON_DecodesCompatEnrichment(t *testing.T) {
+	jsonStr := `{"code":"handler-error","description":"boom",` +
+		`"compatCode":"quirk.event.bodyCast",` +
+		`"compatDescription":"Accessing event.body throws.",` +
+		`"compatFixedIn":"26.1.1",` +
+		`"diagnostics":[{"code":"quirk.event.bodyCast","message":"m","severity":1,"range":null}],` +
+		`"eventType":"X","streamId":"s-1","sequenceNumber":0}`
+
+	err := parseErrorJSON(jsonStr, "src")
+	var ph *ProjectionHandlerError
+	if !errors.As(err, &ph) {
+		t.Fatalf("expected ProjectionHandlerError, got %T", err)
+	}
+	assertEqual(t, "compatCode", "quirk.event.bodyCast", ph.CompatCode)
+	assertEqual(t, "compatDescription", "Accessing event.body throws.", ph.CompatDescription)
+	assertEqual(t, "compatFixedIn", "26.1.1", ph.CompatFixedIn)
+	if len(ph.Diagnostics) != 1 || ph.Diagnostics[0].Code != "quirk.event.bodyCast" {
+		t.Errorf("expected one decoded diagnostic, got %+v", ph.Diagnostics)
+	}
 }
 
 // Test helpers

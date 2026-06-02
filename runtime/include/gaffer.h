@@ -92,7 +92,7 @@ typedef void (*gaffer_log_cb)(
 /**
  * Callback when a quirk fires while processing an event (e.g. a biState
  * string slot being JSON-quoted), at the point it fires. severity matches
- * the LSP DiagnosticSeverity enum (1=Error, 2=Warning, 3=Information, 4=Hint).
+ * the LSP DiagnosticSeverity enum (1=Error, 2=Warning, 3=Information).
  * The quirk is also included in the feed result's diagnostics.
  */
 typedef void (*gaffer_diagnostic_cb)(
@@ -302,20 +302,6 @@ const char* gaffer_debug_evaluate(gaffer_session* session, const char* expressio
  * an error_out parameter. Passing NULL is a no-op.
  */
 void gaffer_free(void* ptr);
-
-/* --------------------------------------------------------------------------
- * Compat / version registry
- * -------------------------------------------------------------------------- */
-
-/**
- * Returns the registry of known KurrentDB quirks the runtime reproduces, as a
- * JSON array of { code, description, fixedIn? } objects. fixedIn is a
- * MAJOR.MINOR.PATCH string when set, omitted when null.
- *
- * Infallible by construction (static data). Returns NULL only on allocation
- * failure. Caller must free with gaffer_free().
- */
-const char* gaffer_known_quirks(void);
 
 #ifdef __cplusplus
 }

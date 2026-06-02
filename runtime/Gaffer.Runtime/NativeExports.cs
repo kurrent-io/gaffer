@@ -47,8 +47,16 @@ internal static unsafe class NativeExports {
 		writer.WriteString("description", ex.Description);
 		if (ex.Message != ex.Description)
 			writer.WriteString("message", ex.Message);
-		if (ex.CompatCode != null)
+		if (ex.CompatCode != null) {
 			writer.WriteString("compatCode", ex.CompatCode);
+			// Enrich at source from the catalog so consumers annotate the fatal error
+			// ("reproduces upstream bug X, fixed in DB version Y") without a registry round-trip.
+			if (Sdk.Diagnostics.DiagnosticCatalog.TryGet(ex.CompatCode, out var quirk)) {
+				writer.WriteString("compatDescription", quirk.Message);
+				if (quirk.FixedIn != null)
+					writer.WriteString("compatFixedIn", quirk.FixedIn.ToString());
+			}
+		}
 
 		switch (ex) {
 			case InvalidProjectionException ip:
@@ -108,6 +116,14 @@ internal static unsafe class NativeExports {
 				if (pt.Column != null)
 					writer.WriteNumber("column", pt.Column.Value);
 				break;
+		}
+
+		// Quirks-always-diagnose: every quirk that fired while processing the throwing event,
+		// including the throwing quirk itself, rides the error alongside the single compatCode.
+		if (ex.Diagnostics.Count > 0) {
+			writer.WritePropertyName("diagnostics");
+			writer.WriteRawValue(JsonSerializer.Serialize(
+				ex.Diagnostics.ToArray(), Sdk.SdkJsonContext.Default.DiagnosticArray));
 		}
 
 		writer.WriteEndObject();
@@ -202,18 +218,6 @@ internal static unsafe class NativeExports {
 		writer.WriteRawValue(JsonSerializer.Serialize(
 			result.Diagnostics, Sdk.SdkJsonContext.Default.DiagnosticArray));
 
-		writer.WriteEndObject();
-		writer.Flush();
-		return Encoding.UTF8.GetString(stream.ToArray());
-	}
-
-	private static string SerializeFeedError(ProjectionException ex) {
-		using var stream = new System.IO.MemoryStream();
-		using var writer = new Utf8JsonWriter(stream);
-		writer.WriteStartObject();
-		writer.WriteString("status", "error");
-		writer.WritePropertyName("error");
-		writer.WriteRawValue(SerializeProjectionError(ex));
 		writer.WriteEndObject();
 		writer.Flush();
 		return Encoding.UTF8.GetString(stream.ToArray());
@@ -734,41 +738,6 @@ internal static unsafe class NativeExports {
 	public static void Free(void* ptr) {
 		if (ptr != null)
 			NativeMemory.Free(ptr);
-	}
-
-	/// <summary>
-	/// Returns the registry of known quirks as a JSON array of
-	/// <c>{ code, description, fixedIn? }</c> objects. <c>fixedIn</c> is a
-	/// MAJOR.MINOR.PATCH string when set, omitted otherwise. Caller frees.
-	/// <para>
-	/// Infallible by construction - the registry is static data with no user
-	/// input. Returns <c>null</c> only on allocation failure.
-	/// </para>
-	/// </summary>
-	[UnmanagedCallersOnly(EntryPoint = "gaffer_known_quirks")]
-	public static byte* KnownQuirks() {
-		try {
-			return AllocUtf8(SerializeKnownQuirks());
-		} catch {
-			return null;
-		}
-	}
-
-	internal static string SerializeKnownQuirks() {
-		using var stream = new System.IO.MemoryStream();
-		using var writer = new Utf8JsonWriter(stream);
-		writer.WriteStartArray();
-		foreach (var quirk in Sdk.Versioning.KnownQuirks.All) {
-			writer.WriteStartObject();
-			writer.WriteString("code", quirk.Code);
-			writer.WriteString("description", quirk.Description);
-			if (quirk.FixedIn != null)
-				writer.WriteString("fixedIn", quirk.FixedIn.ToString());
-			writer.WriteEndObject();
-		}
-		writer.WriteEndArray();
-		writer.Flush();
-		return Encoding.UTF8.GetString(stream.ToArray());
 	}
 
 	// -- Helpers --

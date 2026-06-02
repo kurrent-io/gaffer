@@ -71,7 +71,7 @@ public class ProjectionInfoMapperTests {
 	public void ToProjectionInfo_PassesDiagnosticsThrough() {
 		var diagnostics = new[] {
 			new Diagnostic {
-				Code = "deprecated.linkStreamTo",
+				Code = "usage.linkStreamTo.deprecated",
 				Message = "linkStreamTo is undocumented in KurrentDB and may be removed.",
 				Severity = DiagnosticSeverity.Warning,
 				Range = new SourceRange {
@@ -109,7 +109,7 @@ public class ProjectionInfoMapperTests {
 	public void Serialize_DiagnosticRoundTrip() {
 		var diagnostics = new[] {
 			new Diagnostic {
-				Code = "deprecated.linkStreamTo",
+				Code = "usage.linkStreamTo.deprecated",
 				Message = "linkStreamTo is undocumented in KurrentDB and may be removed.",
 				Severity = DiagnosticSeverity.Warning,
 				Range = new SourceRange {
@@ -129,7 +129,7 @@ public class ProjectionInfoMapperTests {
 		Assert.NotNull(decoded!.Diagnostics);
 		Assert.Single(decoded.Diagnostics!);
 		var d = decoded.Diagnostics![0];
-		Assert.Equal("deprecated.linkStreamTo", d.Code);
+		Assert.Equal("usage.linkStreamTo.deprecated", d.Code);
 		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
 		Assert.NotNull(d.Range);
 		Assert.Equal(12, d.Range!.Start.Line);

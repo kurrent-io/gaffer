@@ -25,9 +25,9 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(source, Options);
 
 		Assert.NotNull(session.Diagnostics);
-		var dups = session.Diagnostics!.Where(d => d.Code == "options.duplicate").ToArray();
+		var dups = session.Diagnostics!.Where(d => d.Code == "usage.options.duplicate").ToArray();
 		Assert.Equal(2, dups.Length); // first call is fine; calls 2 and 3 are flagged
-		Assert.All(dups, d => Assert.Equal(DiagnosticSeverity.Warning, d.Severity));
+		Assert.All(dups, d => Assert.Equal(DiagnosticSeverity.Information, d.Severity));
 	}
 
 	[Fact]
@@ -35,62 +35,157 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(
 			"options({});\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
 
-		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "options.duplicate");
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.options.duplicate");
 	}
 
+	private static readonly ProjectionSessionOptions V1Options = new() { EngineVersion = ProjectionVersion.V1 };
+
+	// --- engine_version 2: reorderEvents is a silent no-op -> Warning, regardless of source ---
+
 	[Fact]
-	public void ReorderEvents_OnFromAll_ErrorDiagnostic() {
+	public void ReorderEvents_OnV2_WarnsNoEffect() {
 		using var session = new ProjectionSession(
 			"options({ reorderEvents: true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
 
-		Assert.NotNull(session.Diagnostics);
-		var d = Assert.Single(session.Diagnostics!, x => x.Code == "options.fromStreamsOnly");
-		Assert.Equal(DiagnosticSeverity.Error, d.Severity);
-		Assert.Contains("reorderEvents", d.Message);
+		var d = Assert.Single(session.Diagnostics ?? [], x => x.Code == "usage.reorderEvents.noEffectOnV2");
+		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
 	}
 
 	[Fact]
-	public void ProcessingLag_OnFromCategory_ErrorDiagnostic() {
-		using var session = new ProjectionSession(
-			"options({ processingLag: 100 });\nfromCategory('order').when({ $any: function (s, e) { return s; } });", Options);
-
-		Assert.Contains(session.Diagnostics ?? [],
-			d => d.Code == "options.fromStreamsOnly" && d.Message.Contains("processingLag"));
-	}
-
-	[Fact]
-	public void ReorderEvents_StringLiteralKey_OnFromAll_ErrorDiagnostic() {
-		using var session = new ProjectionSession(
-			"options({ \"reorderEvents\": true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
-
-		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "options.fromStreamsOnly");
-	}
-
-	[Fact]
-	public void ReorderOptions_OnFromStreams_NoDiagnostic() {
+	public void ReorderEvents_OnV2_FromStreams_StillWarns() {
+		// V2 ignores reorderEvents on every source, including a valid V1 fromStreams config.
 		using var session = new ProjectionSession(
 			"options({ reorderEvents: true, processingLag: 100 });\nfromStreams('a', 'b').when({ $any: function (s, e) { return s; } });", Options);
 
-		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "options.fromStreamsOnly");
+		// Both the reorderEvents and the riding-along processingLag keys are flagged.
+		Assert.Equal(2, (session.Diagnostics ?? []).Count(d => d.Code == "usage.reorderEvents.noEffectOnV2"));
 	}
 
 	[Fact]
-	public void NestedFromStreamsCall_DoesNotSuppress_ReorderDiagnostic() {
-		// Real source is fromAll; a fromStreams() call buried in a handler body
-		// must not suppress the diagnostic.
+	public void ReorderEvents_StringLiteralKey_OnV2_Warns() {
 		using var session = new ProjectionSession(
-			"options({ reorderEvents: true });\nfromAll().when({ $any: function (s, e) { fromStreams('a', 'b'); return s; } });", Options);
+			"options({ \"reorderEvents\": true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
 
-		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "options.fromStreamsOnly");
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
 	}
 
 	[Fact]
-	public void ShadowedOptions_Suppresses_ReorderDiagnostic() {
+	public void ReorderEventsFalse_OnV2_NoDiagnostic() {
+		// Explicitly off - nothing is being dropped.
+		using var session = new ProjectionSession(
+			"options({ reorderEvents: false });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	[Fact]
+	public void LoneProcessingLag_OnV2_NoDiagnostic() {
+		// processingLag without reorderEvents is a no-op on every engine, not a V2 regression.
+		using var session = new ProjectionSession(
+			"options({ processingLag: 100 });\nfromCategory('order').when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	[Fact]
+	public void ReorderEventsFalseAfterTrue_OnV2_NoDiagnostic() {
+		// Duplicate options() is last-write-wins; the resolved reorderEvents is false, so the
+		// stale `true` from the first call must not leave a warning behind.
+		using var session = new ProjectionSession(
+			"options({ reorderEvents: true });\noptions({ reorderEvents: false });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	[Fact]
+	public void ReorderEvents_ComputedKey_OnV2_Ignored() {
+		// A computed key isn't statically resolvable, so the best-effort AST rule skips it.
+		using var session = new ProjectionSession(
+			"var k = 'reorderEvents';\noptions({ [k]: true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	[Fact]
+	public void ShadowedOptions_OnV2_Suppresses_ReorderWarning() {
 		// A top-level user-defined `options` means the call isn't the builtin.
 		using var session = new ProjectionSession(
 			"function options(o) { return o; }\noptions({ reorderEvents: true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
 
-		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "options.fromStreamsOnly");
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	[Fact]
+	public void ReorderEvents_OnV1_NoV2Warning() {
+		// The V2 no-op warning must not fire under V1, where reorderEvents is honoured.
+		using var session = new ProjectionSession(
+			"options({ reorderEvents: true, processingLag: 100 });\nfromStreams('a', 'b').when({ $any: function (s, e) { return s; } });", V1Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	// --- engine_version 1: KurrentDB ReaderStrategy rejects invalid reorderEvents -> throw ---
+
+	[Fact]
+	public void ReorderEvents_OnV1_FromAll_Throws() {
+		var ex = Assert.Throws<InvalidProjectionException>(() => new ProjectionSession(
+			"options({ reorderEvents: true, processingLag: 100 });\nfromAll().when({ $any: function (s, e) { return s; } });", V1Options));
+		Assert.Contains("fromAll", ex.Message);
+	}
+
+	[Fact]
+	public void ReorderEvents_OnV1_SingleStream_Throws() {
+		var ex = Assert.Throws<InvalidProjectionException>(() => new ProjectionSession(
+			"options({ reorderEvents: true, processingLag: 100 });\nfromStreams('a').when({ $any: function (s, e) { return s; } });", V1Options));
+		Assert.Contains("fromStreams", ex.Message);
+	}
+
+	[Fact]
+	public void ReorderEvents_OnV1_LagBelowFloor_Throws() {
+		var ex = Assert.Throws<InvalidProjectionException>(() => new ProjectionSession(
+			"options({ reorderEvents: true, processingLag: 10 });\nfromStreams('a', 'b').when({ $any: function (s, e) { return s; } });", V1Options));
+		Assert.Contains("50ms", ex.Message);
+	}
+
+	[Fact]
+	public void ReorderEvents_OnV1_LagAbsent_Throws() {
+		// No processingLag defaults below the 50ms floor.
+		Assert.Throws<InvalidProjectionException>(() => new ProjectionSession(
+			"options({ reorderEvents: true });\nfromStreams('a', 'b').when({ $any: function (s, e) { return s; } });", V1Options));
+	}
+
+	[Fact]
+	public void ReorderEvents_OnV1_ValidFromStreams_NoThrowNoDiagnostic() {
+		using var session = new ProjectionSession(
+			"options({ reorderEvents: true, processingLag: 100 });\nfromStreams('a', 'b').when({ $any: function (s, e) { return s; } });", V1Options);
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == "usage.reorderEvents.noEffectOnV2");
+	}
+
+	[Fact]
+	public void ReorderEvents_OnV1_FromCategory_Throws() {
+		// fromCategory resolves to no Streams, so it fails the "fromStreams 2+" rule.
+		var ex = Assert.Throws<InvalidProjectionException>(() => new ProjectionSession(
+			"options({ reorderEvents: true, processingLag: 100 });\nfromCategory('order').when({ $any: function (s, e) { return s; } });", V1Options));
+		Assert.Contains("fromStreams", ex.Message);
+	}
+
+	[Fact]
+	public void ReorderEventsFalse_OnV1_NoThrow() {
+		// Explicitly off - the validation never runs regardless of source.
+		using var session = new ProjectionSession(
+			"options({ reorderEvents: false });\nfromAll().when({ $any: function (s, e) { return s; } });", V1Options);
+
+		Assert.NotNull(session);
+	}
+
+	[Fact]
+	public void LoneProcessingLag_OnV1_NoThrow() {
+		// processingLag without reorderEvents is carried and ignored by KurrentDB - never validated.
+		using var session = new ProjectionSession(
+			"options({ processingLag: 10 });\nfromAll().when({ $any: function (s, e) { return s; } });", V1Options);
+
+		Assert.NotNull(session);
 	}
 
 	[Fact]
@@ -98,8 +193,8 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(
 			"fromAll().when({ Ping: async function (s, e) { return s; } });", Options);
 
-		var d = Assert.Single(session.Diagnostics ?? [], x => x.Code == "handler.async");
-		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+		var d = Assert.Single(session.Diagnostics ?? [], x => x.Code == "usage.handler.async");
+		Assert.Equal(DiagnosticSeverity.Error, d.Severity);
 	}
 
 	[Fact]
@@ -107,7 +202,7 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(
 			"fromAll().when({ Ping: async (s, e) => s });", Options);
 
-		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "handler.async");
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "usage.handler.async");
 	}
 
 	[Fact]
@@ -115,8 +210,8 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(
 			"fromAll().when({ Ping: function (s, e) { return Promise.resolve({}); } });", Options);
 
-		var d = Assert.Single(session.Diagnostics ?? [], x => x.Code == "handler.promise");
-		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+		var d = Assert.Single(session.Diagnostics ?? [], x => x.Code == "usage.handler.promise");
+		Assert.Equal(DiagnosticSeverity.Error, d.Severity);
 	}
 
 	[Fact]
@@ -124,7 +219,7 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(
 			"fromAll().when({ Ping: (s, e) => Promise.resolve({}) });", Options);
 
-		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "handler.promise");
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "usage.handler.promise");
 	}
 
 	[Fact]
@@ -132,7 +227,7 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(
 			"fromAll().when({ Ping: function (s, e) { return new Promise(function (r) { r(s); }); } });", Options);
 
-		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "handler.promise");
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == "usage.handler.promise");
 	}
 
 	[Fact]
@@ -141,7 +236,7 @@ public class DiagnosticsTests {
 			"fromAll().when({ Ping: function (s, e) { return { ok: true }; } });", Options);
 
 		Assert.DoesNotContain(session.Diagnostics ?? [],
-			d => d.Code == "handler.async" || d.Code == "handler.promise");
+			d => d.Code == "usage.handler.async" || d.Code == "usage.handler.promise");
 	}
 
 	[Fact]
@@ -152,7 +247,7 @@ public class DiagnosticsTests {
 			"fromAll().when({ Ping: function (s, e) { var f = async function () { return 1; }; function g() { return Promise.resolve(1); } return { ok: true }; } });", Options);
 
 		Assert.DoesNotContain(session.Diagnostics ?? [],
-			d => d.Code == "handler.async" || d.Code == "handler.promise");
+			d => d.Code == "usage.handler.async" || d.Code == "usage.handler.promise");
 	}
 
 	[Fact]
@@ -162,7 +257,7 @@ public class DiagnosticsTests {
 			"async function helper() { return 1; }\nfromAll().when({ Ping: function (s, e) { return s; } });", Options);
 
 		Assert.DoesNotContain(session.Diagnostics ?? [],
-			d => d.Code == "handler.async" || d.Code == "handler.promise");
+			d => d.Code == "usage.handler.async" || d.Code == "usage.handler.promise");
 	}
 
 	[Fact]
@@ -174,8 +269,8 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		var d = Assert.Single(session.Diagnostics!);
-		Assert.Equal("deprecated.linkStreamTo", d.Code);
-		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+		Assert.Equal("usage.linkStreamTo.deprecated", d.Code);
+		Assert.Equal(DiagnosticSeverity.Information, d.Severity);
 		Assert.Contains("linkStreamTo", d.Message);
 		Assert.NotNull(d.Range);
 		Assert.Equal(1, d.Range!.Start.Line);
@@ -196,7 +291,7 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		Assert.Equal(2, session.Diagnostics!.Length);
-		Assert.All(session.Diagnostics, d => Assert.Equal("deprecated.linkStreamTo", d.Code));
+		Assert.All(session.Diagnostics, d => Assert.Equal("usage.linkStreamTo.deprecated", d.Code));
 		Assert.Equal(2, session.Diagnostics[0].Range!.Start.Line);
 		Assert.Equal(3, session.Diagnostics[1].Range!.Start.Line);
 	}
@@ -226,7 +321,7 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		var linkStreamToDiagnostics = session.Diagnostics!
-			.Where(d => d.Code == "deprecated.linkStreamTo").ToArray();
+			.Where(d => d.Code == "usage.linkStreamTo.deprecated").ToArray();
 		Assert.Equal(2, linkStreamToDiagnostics.Length);
 	}
 
@@ -297,7 +392,7 @@ public class DiagnosticsTests {
 		Assert.Null(session.Diagnostics);
 	}
 
-	// -- compat.linkStreamTo.outOfBoundsParameters --
+	// -- quirk.linkStreamTo.outOfBoundsParameters --
 
 	[Fact]
 	public void LinkStreamTo_ThreeArgs_EmitsOutOfBoundsParametersWarning() {
@@ -308,8 +403,8 @@ public class DiagnosticsTests {
 		Assert.NotNull(session.Diagnostics);
 		// Both the deprecation warning AND the compat warning should fire
 		// for a 3-arg linkStreamTo call.
-		Assert.Contains(session.Diagnostics!, d => d.Code == "deprecated.linkStreamTo");
-		Assert.Contains(session.Diagnostics!, d => d.Code == KnownQuirks.LinkStreamToOutOfBoundsParameters.Code);
+		Assert.Contains(session.Diagnostics!, d => d.Code == "usage.linkStreamTo.deprecated");
+		Assert.Contains(session.Diagnostics!, d => d.Code == DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.Code);
 	}
 
 	[Fact]
@@ -320,8 +415,8 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		// Deprecation fires (any call); compat doesn't (2-arg form is fine in upstream).
-		Assert.Contains(session.Diagnostics!, d => d.Code == "deprecated.linkStreamTo");
-		Assert.DoesNotContain(session.Diagnostics!, d => d.Code == KnownQuirks.LinkStreamToOutOfBoundsParameters.Code);
+		Assert.Contains(session.Diagnostics!, d => d.Code == "usage.linkStreamTo.deprecated");
+		Assert.DoesNotContain(session.Diagnostics!, d => d.Code == DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.Code);
 	}
 
 	[Fact]
@@ -336,7 +431,7 @@ public class DiagnosticsTests {
 		Assert.Null(session.Diagnostics);
 	}
 
-	// -- compat.log.multiParam --
+	// -- quirk.log.multiParam --
 
 	[Fact]
 	public void Log_MultipleArgs_EmitsMultiParamWarning() {
@@ -345,7 +440,7 @@ public class DiagnosticsTests {
 			Options);
 
 		Assert.NotNull(session.Diagnostics);
-		Assert.Contains(session.Diagnostics!, d => d.Code == KnownQuirks.LogMultiParam.Code);
+		Assert.Contains(session.Diagnostics!, d => d.Code == DiagnosticCatalog.LogMultiParam.Code);
 	}
 
 	[Fact]
@@ -358,7 +453,7 @@ public class DiagnosticsTests {
 		Assert.Null(session.Diagnostics);
 	}
 
-	// -- compat.transforms.notInvoked (V2) --
+	// -- usage.transforms.notInvoked (V2) --
 
 	[Fact]
 	public void Transforms_TransformBy_InV2_EmitsWarning() {
@@ -368,7 +463,7 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		var d = Assert.Single(session.Diagnostics!);
-		Assert.Equal("compat.transforms.notInvoked", d.Code);
+		Assert.Equal("usage.transforms.notInvoked", d.Code);
 		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
 		Assert.Contains("transformBy", d.Message);
 	}
@@ -381,7 +476,7 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		var d = Assert.Single(session.Diagnostics!);
-		Assert.Equal("compat.transforms.notInvoked", d.Code);
+		Assert.Equal("usage.transforms.notInvoked", d.Code);
 		Assert.Contains("filterBy", d.Message);
 	}
 
@@ -403,7 +498,7 @@ public class DiagnosticsTests {
 			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, QuirksVersion = null });
 
 		Assert.NotNull(session.Diagnostics);
-		Assert.Contains(session.Diagnostics!, d => d.Code == "compat.transforms.notInvoked");
+		Assert.Contains(session.Diagnostics!, d => d.Code == "usage.transforms.notInvoked");
 	}
 
 	[Fact]
@@ -420,7 +515,7 @@ public class DiagnosticsTests {
 			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.NotNull(session.Diagnostics);
-		Assert.Contains(session.Diagnostics!, d => d.Code == "compat.transforms.notInvoked");
+		Assert.Contains(session.Diagnostics!, d => d.Code == "usage.transforms.notInvoked");
 	}
 
 	[Fact]
@@ -436,7 +531,7 @@ public class DiagnosticsTests {
 
 		Assert.NotNull(session.Diagnostics);
 		var transformDiagnostics = session.Diagnostics!
-			.Where(d => d.Code == "compat.transforms.notInvoked").ToArray();
+			.Where(d => d.Code == "usage.transforms.notInvoked").ToArray();
 		Assert.Equal(2, transformDiagnostics.Length);
 	}
 
@@ -473,18 +568,18 @@ public class DiagnosticsTests {
 		Assert.Null(session.Diagnostics);
 	}
 
-	// -- compat.outputState.unconditional (V2) --
+	// -- usage.outputState.unconditional (V2) --
 
 	[Fact]
-	public void OutputState_InV2_EmitsHint() {
+	public void OutputState_InV2_EmitsInformation() {
 		var source = "fromAll().when({ $any: function (s, e) { return s; } }).outputState();";
 		using var session = new ProjectionSession(source,
 			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.NotNull(session.Diagnostics);
 		var d = Assert.Single(session.Diagnostics!);
-		Assert.Equal("compat.outputState.unconditional", d.Code);
-		Assert.Equal(DiagnosticSeverity.Hint, d.Severity);
+		Assert.Equal("usage.outputState.unconditional", d.Code);
+		Assert.Equal(DiagnosticSeverity.Information, d.Severity);
 		Assert.Contains("outputState", d.Message);
 	}
 
@@ -508,7 +603,7 @@ public class DiagnosticsTests {
 			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.NotNull(session.Diagnostics);
-		Assert.Contains(session.Diagnostics!, d => d.Code == "compat.outputState.unconditional");
+		Assert.Contains(session.Diagnostics!, d => d.Code == "usage.outputState.unconditional");
 	}
 
 }

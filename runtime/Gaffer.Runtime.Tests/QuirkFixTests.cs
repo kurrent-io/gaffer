@@ -8,7 +8,7 @@ public class QuirkFixTests {
 	public void BiState_string_partition_state_matches_upstream_quoting() {
 		// Unversioned default = quirks on, matching upstream prod. The
 		// upstream BiState PrepareOutput quirk always JSON-quotes raw string
-		// state in slot 0 (covered by KnownQuirks.BiStateStringSlot). When
+		// state in slot 0 (covered by DiagnosticCatalog.BiStateStringSlot). When
 		// PR #5610 ships and we set FixedIn, a sibling test should cover
 		// the clean (post-fix) path where the string passes through raw.
 		using var session = new ProjectionSession("""

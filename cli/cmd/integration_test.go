@@ -299,7 +299,7 @@ func TestInfo_JSON_NoFixturesFieldWhenNoneDeclared(t *testing.T) {
 
 // 3-arg linkStreamTo always throws via the upstream out-of-bounds-parameters
 // quirk, so these tests exercise the full compat-error path: runtime tags the
-// throw with KnownQuirks.LinkStreamToOutOfBoundsParameters.Code, error flows
+// throw with DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.Code, error flows
 // through Go bindings, dev's writer renders it with the compatCode field
 // (--json) or the "Compat:" block (text).
 const compatLinkStreamToProjection = `fromAll().when({
@@ -340,8 +340,8 @@ func TestDev_FatalError_CompatCodeRoundTrips(t *testing.T) {
 	if fatal == nil {
 		t.Fatalf("expected a fatal_error event in output, got: %v", lines)
 	}
-	if got := fatal["compatCode"]; got != "compat.linkStreamTo.outOfBoundsParameters" {
-		t.Errorf("compatCode: got %v, want compat.linkStreamTo.outOfBoundsParameters", got)
+	if got := fatal["compatCode"]; got != "quirk.linkStreamTo.outOfBoundsParameters" {
+		t.Errorf("compatCode: got %v, want quirk.linkStreamTo.outOfBoundsParameters", got)
 	}
 }
 
@@ -362,7 +362,7 @@ func TestDev_FatalError_CompatBlockInText(t *testing.T) {
 	if !strings.Contains(stderr, "Compat:") {
 		t.Errorf("expected stderr to contain 'Compat:' block, got:\n%s", stderr)
 	}
-	if !strings.Contains(stderr, "compat.linkStreamTo.outOfBoundsParameters") {
+	if !strings.Contains(stderr, "quirk.linkStreamTo.outOfBoundsParameters") {
 		t.Errorf("expected stderr to contain compat code, got:\n%s", stderr)
 	}
 }

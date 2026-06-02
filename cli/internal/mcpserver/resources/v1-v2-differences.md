@@ -60,8 +60,14 @@ On V2, links are always resolved - this option has no effect.
 options({ reorderEvents: true, processingLag: 500 })
 ```
 
-Buffer events and reorder them by timestamp. Only works with `fromStreams`.
-Requires `processingLag` to be set to at least 50ms.
+Buffer events and reorder them by timestamp. On `engine_version=1` gaffer
+validates this at session create, matching KurrentDB's `ReaderStrategy`: it
+rejects the projection unless the source is `fromStreams()` with two or more
+streams and `processingLag` is at least 50ms.
+
+On `engine_version=2` it has no effect - events are processed in arrival order
+regardless - so gaffer surfaces a `usage.reorderEvents.noEffectOnV2` warning
+rather than running a projection that silently ignores the option.
 
 ### processingLag
 
@@ -135,8 +141,8 @@ Set `engine_version = 1` on projections that depend on transform behaviour.
 Gaffer matches V2's behaviour by design and surfaces the gap as compile-time
 diagnostics so you find it before the result stream surprises you:
 
-* `compat.transforms.notInvoked` (Warning) on `transformBy` / `filterBy`
+* `usage.transforms.notInvoked` (Warning) on `transformBy` / `filterBy`
   calls when `engine_version=2`.
-* `compat.outputState.unconditional` (Hint) on `outputState()` calls when
+* `usage.outputState.unconditional` (Information) on `outputState()` calls when
   `engine_version=2`.
 

@@ -108,7 +108,7 @@ func TestTextWriter_WriteInfo_RendersDiagnostics(t *testing.T) {
 	info := gafferruntime.ProjectionInfo{
 		AllStreams: true,
 		Diagnostics: []gafferruntime.Diagnostic{{
-			Code:     "deprecated.linkStreamTo",
+			Code:     "usage.linkStreamTo.deprecated",
 			Message:  "linkStreamTo is undocumented in KurrentDB and may be removed in a future version.",
 			Severity: gafferruntime.DiagnosticSeverityWarning,
 			Range: &gafferruntime.SourceRange{
@@ -121,7 +121,7 @@ func TestTextWriter_WriteInfo_RendersDiagnostics(t *testing.T) {
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "[warning]")
-	testutil.AssertContains(t, out, "deprecated.linkStreamTo")
+	testutil.AssertContains(t, out, "usage.linkStreamTo.deprecated")
 	testutil.AssertContains(t, out, "line 3, col 5")
 	testutil.AssertContains(t, out, "linkStreamTo is undocumented")
 }
@@ -133,7 +133,7 @@ func TestTextWriter_WriteInfo_DiagnosticWithoutRange(t *testing.T) {
 	info := gafferruntime.ProjectionInfo{
 		AllStreams: true,
 		Diagnostics: []gafferruntime.Diagnostic{{
-			Code:     "deprecated.something",
+			Code:     "usage.something.deprecated",
 			Message:  "no location available",
 			Severity: gafferruntime.DiagnosticSeverityWarning,
 		}},
@@ -141,7 +141,7 @@ func TestTextWriter_WriteInfo_DiagnosticWithoutRange(t *testing.T) {
 	tw.WriteInfo(stubProjection("p", 2, ""), info)
 
 	out := buf.String()
-	testutil.AssertContains(t, out, "deprecated.something")
+	testutil.AssertContains(t, out, "usage.something.deprecated")
 	testutil.AssertContains(t, out, "no location available")
 	if strings.Contains(out, "(line ") {
 		t.Error("expected no line/column info when range is nil")
@@ -207,45 +207,41 @@ func TestTextWriter_WriteFatalError_RendersCompatBlock(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	tw := newTextWriter(&stdout, &stderr)
 
-	// Use a real registry code so the lookup hits.
+	// A real fatal quirk error: the runtime enriches it with the catalogue
+	// description (and fixedIn, nil today) alongside the code.
 	tw.WriteFatalError(fatalError{
-		Code:        "handler-error",
-		Description: "Argument is not an object",
-		CompatCode:  "compat.event.bodyCast",
+		Code:              "handler-error",
+		Description:       "Argument is not an object",
+		CompatCode:        "quirk.event.bodyCast",
+		CompatDescription: "Accessing event.body throws on a non-object body.",
 	})
 
 	out := stderr.String()
 	testutil.AssertContains(t, out, "Compat:")
-	testutil.AssertContains(t, out, "compat.event.bodyCast")
-	// Today every registry entry has FixedIn = nil, so the rendering
+	testutil.AssertContains(t, out, "quirk.event.bodyCast")
+	testutil.AssertContains(t, out, "Accessing event.body throws on a non-object body.")
+	// Every catalogue entry has FixedIn = nil today, so the rendering
 	// shows "Current KurrentDB behaviour" rather than "Fixed in ...".
 	testutil.AssertContains(t, out, "Current KurrentDB behaviour")
 }
 
 func TestTextWriter_WriteCompatBlock_RendersFixedInWhenSet(t *testing.T) {
-	// The "Fixed in KurrentDB X" branch is dead code today (every registry
-	// entry has FixedIn = nil), so we test it directly with a stubbed
-	// lookup. When upstream PR #5610 ships and runtime sets FixedIn, this
-	// path activates.
+	// The "Fixed in KurrentDB X" branch activates when the runtime sets
+	// compatFixedIn on the error (every catalogue entry has FixedIn = nil
+	// today). The description + fixedIn ride the error payload, no registry
+	// round-trip.
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, &buf)
-	fixed := "26.1.1"
-	stub := func(code string) (gafferruntime.KnownQuirk, bool) {
-		if code != "compat.event.bodyCast" {
-			return gafferruntime.KnownQuirk{}, false
-		}
-		return gafferruntime.KnownQuirk{
-			Code:        "compat.event.bodyCast",
-			Description: "Accessing event.body throws on non-object bodies.",
-			FixedIn:     &fixed,
-		}, true
-	}
 
-	tw.writeCompatBlock(&buf, "compat.event.bodyCast", stub)
+	tw.writeCompatBlock(&buf, fatalError{
+		CompatCode:        "quirk.event.bodyCast",
+		CompatDescription: "Accessing event.body throws on non-object bodies.",
+		CompatFixedIn:     "26.1.1",
+	})
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "Compat:")
-	testutil.AssertContains(t, out, "compat.event.bodyCast")
+	testutil.AssertContains(t, out, "quirk.event.bodyCast")
 	testutil.AssertContains(t, out, "Accessing event.body throws on non-object bodies.")
 	testutil.AssertContains(t, out, "Fixed in KurrentDB 26.1.1.")
 	if strings.Contains(out, "Current KurrentDB behaviour") {
@@ -257,11 +253,11 @@ func TestToFatalError_PropagatesCompatCodeFromInvalidArgument(t *testing.T) {
 	err := &gafferruntime.InvalidArgumentError{
 		Desc:       "bad input",
 		Field:      "quirksVersion",
-		CompatCode: "compat.test.synthetic",
+		CompatCode: "quirk.test.synthetic",
 		Msg:        "bad input",
 	}
 	fe := toFatalError(err, "/p.js")
-	testutil.AssertEqual(t, "compatCode", "compat.test.synthetic", fe.CompatCode)
+	testutil.AssertEqual(t, "compatCode", "quirk.test.synthetic", fe.CompatCode)
 }
 
 func TestTextWriter_WriteFatalError_OmitsCompatBlockWhenAbsent(t *testing.T) {
@@ -286,14 +282,14 @@ func TestJSONWriter_WriteFatalError_IncludesCompatCode(t *testing.T) {
 	jw.WriteFatalError(fatalError{
 		Code:        "handler-error",
 		Description: "boom",
-		CompatCode:  "compat.event.bodyCast",
+		CompatCode:  "quirk.event.bodyCast",
 	})
 
 	var got map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	testutil.AssertEqual(t, "compatCode", "compat.event.bodyCast", got["compatCode"])
+	testutil.AssertEqual(t, "compatCode", "quirk.event.bodyCast", got["compatCode"])
 }
 
 func TestJSONWriter_WriteFatalError_OmitsCompatCodeWhenEmpty(t *testing.T) {
@@ -315,11 +311,11 @@ func TestToFatalError_PropagatesCompatCode(t *testing.T) {
 	err := &gafferruntime.ProjectionHandlerError{
 		Desc:       "boom",
 		Event:      gafferruntime.EventContext{StreamID: "s-1", SequenceNumber: 1},
-		CompatCode: "compat.event.bodyCast",
+		CompatCode: "quirk.event.bodyCast",
 		Msg:        "boom",
 	}
 	fe := toFatalError(err, "/p.js")
-	testutil.AssertEqual(t, "compatCode", "compat.event.bodyCast", fe.CompatCode)
+	testutil.AssertEqual(t, "compatCode", "quirk.event.bodyCast", fe.CompatCode)
 }
 
 func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
@@ -394,7 +390,7 @@ func TestTextWriter_OnDiagnostic_RendersInline(t *testing.T) {
 	// Quirks stream during the event, in the ├ flow before the result.
 	tw.WriteEvent(eventInfo{SequenceNumber: 1, StreamID: "s-1", EventType: "SetName"})
 	ms.diagCb(gafferruntime.Diagnostic{
-		Code:     "compat.biState.stringSlot",
+		Code:     "quirk.biState.stringSlot",
 		Message:  "BiState state JSON-quotes raw string values in slot 0.",
 		Severity: gafferruntime.DiagnosticSeverityWarning,
 	})
@@ -404,7 +400,7 @@ func TestTextWriter_OnDiagnostic_RendersInline(t *testing.T) {
 	})
 
 	out := buf.String()
-	testutil.AssertContains(t, out, "[warning] compat.biState.stringSlot")
+	testutil.AssertContains(t, out, "[warning] quirk.biState.stringSlot")
 	testutil.AssertContains(t, out, "BiState state JSON-quotes")
 }
 
@@ -416,14 +412,14 @@ func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
 
 	// Two distinct runtime quirks stream during the run; the summary lists
 	// each once, no per-code count, with a header total.
-	ms.diagCb(gafferruntime.Diagnostic{Code: "compat.biState.stringSlot", Severity: gafferruntime.DiagnosticSeverityWarning})
-	ms.diagCb(gafferruntime.Diagnostic{Code: "compat.serialize.nonFinite", Severity: gafferruntime.DiagnosticSeverityWarning})
+	ms.diagCb(gafferruntime.Diagnostic{Code: "quirk.biState.stringSlot", Severity: gafferruntime.DiagnosticSeverityWarning})
+	ms.diagCb(gafferruntime.Diagnostic{Code: "quirk.serialize.nonFinite", Severity: gafferruntime.DiagnosticSeverityWarning})
 	tw.WriteSummary(engine.EventStats{Handled: 3}, engine.StateSummary{})
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "2 quirks encountered")
-	testutil.AssertContains(t, out, "compat.biState.stringSlot")
-	testutil.AssertContains(t, out, "compat.serialize.nonFinite")
+	testutil.AssertContains(t, out, "quirk.biState.stringSlot")
+	testutil.AssertContains(t, out, "quirk.serialize.nonFinite")
 }
 
 func TestTextWriter_WriteSummary_MergesCompileTimeQuirks(t *testing.T) {
@@ -437,17 +433,17 @@ func TestTextWriter_WriteSummary_MergesCompileTimeQuirks(t *testing.T) {
 	tw.WriteInfo(stubProjection("p", 2, ""), gafferruntime.ProjectionInfo{
 		AllStreams: true,
 		Diagnostics: []gafferruntime.Diagnostic{
-			{Code: "compat.log.multiParam", Message: "m", Severity: gafferruntime.DiagnosticSeverityWarning},
-			{Code: "deprecated.linkStreamTo", Message: "d", Severity: gafferruntime.DiagnosticSeverityWarning},
+			{Code: "quirk.log.multiParam", Message: "m", Severity: gafferruntime.DiagnosticSeverityWarning},
+			{Code: "usage.linkStreamTo.deprecated", Message: "d", Severity: gafferruntime.DiagnosticSeverityWarning},
 		},
 	})
-	ms.diagCb(gafferruntime.Diagnostic{Code: "compat.biState.stringSlot", Severity: gafferruntime.DiagnosticSeverityWarning})
+	ms.diagCb(gafferruntime.Diagnostic{Code: "quirk.biState.stringSlot", Severity: gafferruntime.DiagnosticSeverityWarning})
 	tw.WriteSummary(engine.EventStats{Handled: 1}, engine.StateSummary{})
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "2 quirks encountered")
-	testutil.AssertContains(t, out, "compat.log.multiParam")
-	testutil.AssertContains(t, out, "compat.biState.stringSlot")
+	testutil.AssertContains(t, out, "quirk.log.multiParam")
+	testutil.AssertContains(t, out, "quirk.biState.stringSlot")
 }
 
 func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {
@@ -541,7 +537,7 @@ func TestJSONWriter_WriteResult_Diagnostics(t *testing.T) {
 	jw.WriteResult("1@s-1", &gafferruntime.FeedResult{
 		Status: "processed",
 		Diagnostics: []gafferruntime.Diagnostic{{
-			Code:     "compat.biState.stringSlot",
+			Code:     "quirk.biState.stringSlot",
 			Message:  "BiState state JSON-quotes raw string values in slot 0.",
 			Severity: gafferruntime.DiagnosticSeverityWarning,
 		}},
@@ -556,7 +552,7 @@ func TestJSONWriter_WriteResult_Diagnostics(t *testing.T) {
 		t.Fatalf("expected 1 diagnostic, got %v", line["diagnostics"])
 	}
 	d := diags[0].(map[string]any)
-	testutil.AssertEqual(t, "code", "compat.biState.stringSlot", d["code"])
+	testutil.AssertEqual(t, "code", "quirk.biState.stringSlot", d["code"])
 }
 
 func TestJSONWriter_WriteResult_Skipped(t *testing.T) {
@@ -647,7 +643,7 @@ func TestJSONWriter_WriteInfo_IncludesDiagnostics(t *testing.T) {
 	info := gafferruntime.ProjectionInfo{
 		AllStreams: true,
 		Diagnostics: []gafferruntime.Diagnostic{{
-			Code:     "deprecated.linkStreamTo",
+			Code:     "usage.linkStreamTo.deprecated",
 			Message:  "linkStreamTo is undocumented",
 			Severity: gafferruntime.DiagnosticSeverityWarning,
 			Range: &gafferruntime.SourceRange{
@@ -674,7 +670,7 @@ func TestJSONWriter_WriteInfo_IncludesDiagnostics(t *testing.T) {
 	if !ok {
 		t.Fatal("expected diagnostic object")
 	}
-	testutil.AssertEqual(t, "code", "deprecated.linkStreamTo", d["code"])
+	testutil.AssertEqual(t, "code", "usage.linkStreamTo.deprecated", d["code"])
 	testutil.AssertEqualFloat(t, "severity", 2, d["severity"])
 }
 

@@ -21,7 +21,7 @@ internal static class DiagnosticCollector {
 		new TransformsNotAppliedInV2Rule(),
 		new OutputStateUnconditionalInV2Rule(),
 		new DuplicateOptionsRule(),
-		new ReorderOptionsRule(),
+		new ReorderEventsNoEffectOnV2Rule(),
 		new AsyncHandlerRule(),
 	};
 
@@ -162,19 +162,14 @@ internal static class DiagnosticCollector {
 				return;
 
 			foreach (var loc in scanner.Calls) {
-				diagnostics.Add(new Diagnostic {
-					Code = "deprecated.linkStreamTo",
-					Message = "linkStreamTo is undocumented in KurrentDB and may be removed in a future version.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.LinkStreamToDeprecated.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 	}
 
 	private sealed class LinkStreamToOutOfBoundsParametersRule : IRule {
 		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
-			if (!KnownQuirks.LinkStreamToOutOfBoundsParameters.FiresAt(quirksVersion))
+			if (!DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.FiresAt(quirksVersion))
 				return;
 
 			// 3+ args triggers the quirk. 2-arg form is fine.
@@ -186,19 +181,14 @@ internal static class DiagnosticCollector {
 				return;
 
 			foreach (var loc in scanner.Calls) {
-				diagnostics.Add(new Diagnostic {
-					Code = KnownQuirks.LinkStreamToOutOfBoundsParameters.Code,
-					Message = "linkStreamTo with metadata (3+ args) crashes due to an upstream parameter-indexing quirk; metadata is never captured.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.LinkStreamToOutOfBoundsParameters.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 	}
 
 	private sealed class LogMultiParamRule : IRule {
 		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
-			if (!KnownQuirks.LogMultiParam.FiresAt(quirksVersion))
+			if (!DiagnosticCatalog.LogMultiParam.FiresAt(quirksVersion))
 				return;
 
 			// No shadow check: gaffer (and KurrentDB) registers `log` as a
@@ -210,12 +200,7 @@ internal static class DiagnosticCollector {
 			scanner.Visit(ast);
 
 			foreach (var loc in scanner.ProblematicCalls) {
-				diagnostics.Add(new Diagnostic {
-					Code = KnownQuirks.LogMultiParam.Code,
-					Message = "log() with multiple args produces unexpected output due to an upstream quirk: primitives become separate log lines and objects use a ' ,' separator.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.LogMultiParam.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 
@@ -281,12 +266,7 @@ internal static class DiagnosticCollector {
 			var scanner = new MemberCallScanner(name);
 			scanner.Visit(ast);
 			foreach (var loc in scanner.Calls) {
-				diagnostics.Add(new Diagnostic {
-					Code = "compat.transforms.notInvoked",
-					Message = $"{name}() is registered but never invoked under engine_version=2; result equals post-handler state. Set engine_version=1 for V1 transform behaviour. See v1-v2-differences.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.TransformsNotInvoked.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 	}
@@ -306,53 +286,50 @@ internal static class DiagnosticCollector {
 
 			// Skip the first call; flag each later one as the duplicate.
 			foreach (var loc in scanner.Calls.Skip(1)) {
-				diagnostics.Add(new Diagnostic {
-					Code = "options.duplicate",
-					Message = "options() is called more than once; only the last call takes effect and the earlier ones are discarded.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.OptionsDuplicate.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 	}
 
-	// reorderEvents / processingLag only apply to fromStreams() projections.
-	// KurrentDB rejects reorderEvents on other sources at subscription creation
-	// (ReaderStrategy), and processingLag has no effect without it; gaffer
-	// otherwise stores both in QuerySources and silently ignores them. Surface an
-	// error diagnostic at compile time so the divergence is visible. Not quirk- or
-	// version-gated.
-	private sealed class ReorderOptionsRule : IRule {
+	// reorderEvents / processingLag are silently ignored under engine_version 2: V2's
+	// ReadStrategyFactory never reads them, so events run in arrival order regardless of source.
+	// Warn so the user finds out the option is dead rather than wondering why ordering didn't
+	// change. The V1 path is the opposite - KurrentDB's ReaderStrategy rejects reorderEvents on
+	// the wrong source/lag with a hard error - and is reproduced as a throw at session-create in
+	// ProjectionSession, off the resolved QuerySources (authoritative; a throw must be exact).
+	// This rule is the editor-facing V2 hint and reads the AST literally (best-effort, with a
+	// source range), so it can't see a computed reorderEvents value - acceptable for a warning.
+	//
+	// processingLag alone (no reorderEvents) is a no-op on every engine, not a V2 regression, so
+	// it isn't flagged on its own; it's only surfaced when it rides alongside a reorderEvents
+	// that V2 drops.
+	private sealed class ReorderEventsNoEffectOnV2Rule : IRule {
 		public void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
-			var scanner = new Scanner();
-			scanner.Visit(ast);
-			// A top-level shadow of options/fromStreams (they're writable,
-			// configurable globals) means the bare calls aren't the builtins, so
-			// the analysis can't be trusted - stay quiet. A genuine fromStreams
-			// source likewise suppresses.
-			if (scanner.OptionsShadowed || scanner.FromStreamsShadowed || scanner.UsesFromStreams)
+			if (engineVersion != ProjectionVersion.V2)
 				return;
 
-			foreach (var (name, loc) in scanner.Offending) {
-				diagnostics.Add(new Diagnostic {
-					Code = "options.fromStreamsOnly",
-					Message = $"{name} is only supported on fromStreams() projections.",
-					Severity = DiagnosticSeverity.Error,
-					Range = ToSourceRange(loc),
-				});
-			}
+			var scanner = new Scanner();
+			scanner.Visit(ast);
+			// A top-level user `options`/`function options` means the call isn't the builtin,
+			// so the analysis can't be trusted - stay quiet. No reorderEvents means nothing to
+			// warn about (lone processingLag is a no-op everywhere, not V2-specific).
+			if (scanner.OptionsShadowed || scanner.ReorderEventsLocation is not { } reorderLoc)
+				return;
+
+			diagnostics.Add(DiagnosticCatalog.ReorderEventsNoEffectOnV2.ToDiagnostic(ToSourceRange(reorderLoc)));
+			if (scanner.ProcessingLagLocation is { } lagLoc)
+				diagnostics.Add(DiagnosticCatalog.ReorderEventsNoEffectOnV2.ToDiagnostic(ToSourceRange(lagLoc)));
 		}
 
-		// Source and options are top-level definition constructs, so only calls
-		// and shadow declarations at function depth 0 count; a fromStreams() in a
-		// handler body or nested/dead code is not the source and must not suppress.
+		// options is a top-level definition construct, so only calls and shadow declarations at
+		// function depth 0 count; an options() in a handler body or nested/dead code is not the
+		// source config and must be ignored.
 		private sealed class Scanner : AstVisitor {
 			private int _functionDepth;
 
-			public bool UsesFromStreams { get; private set; }
 			public bool OptionsShadowed { get; private set; }
-			public bool FromStreamsShadowed { get; private set; }
-			public List<(string Name, Acornima.SourceLocation Loc)> Offending { get; } = new();
+			public Acornima.SourceLocation? ReorderEventsLocation { get; private set; }
+			public Acornima.SourceLocation? ProcessingLagLocation { get; private set; }
 
 			protected override object? VisitFunctionDeclaration(FunctionDeclaration node) {
 				MarkShadow(node.Id);
@@ -382,25 +359,18 @@ internal static class DiagnosticCollector {
 			}
 
 			protected override object? VisitCallExpression(CallExpression node) {
-				if (_functionDepth == 0 && node.Callee is Identifier callee) {
-					if (callee.Name == "fromStreams") {
-						UsesFromStreams = true;
-					} else if (callee.Name == "options" &&
-						node.Arguments.Count > 0 &&
-						node.Arguments[0] is ObjectExpression obj) {
-						CollectReorderOptions(obj);
-					}
+				if (_functionDepth == 0 &&
+					node.Callee is Identifier { Name: "options" } &&
+					node.Arguments.Count > 0 &&
+					node.Arguments[0] is ObjectExpression obj) {
+					CollectReorderOptions(obj);
 				}
 				return base.VisitCallExpression(node);
 			}
 
 			private void MarkShadow(Node? id) {
-				if (_functionDepth != 0 || id is not Identifier { Name: var name })
-					return;
-				if (name == "options")
+				if (_functionDepth == 0 && id is Identifier { Name: "options" })
 					OptionsShadowed = true;
-				else if (name == "fromStreams")
-					FromStreamsShadowed = true;
 			}
 
 			private void CollectReorderOptions(ObjectExpression obj) {
@@ -412,8 +382,14 @@ internal static class DiagnosticCollector {
 						StringLiteral lit => lit.Value,
 						_ => null,
 					};
-					if (key is "reorderEvents" or "processingLag")
-						Offending.Add((key, prop.Key.Location));
+					// An explicit `reorderEvents: false` is already off - nothing to warn about. A
+					// non-literal value can't be proven off, so warn conservatively. Assigning on
+					// every occurrence (clearing on false) keeps last-write-wins across duplicate
+					// options() calls, so a later `false` suppresses an earlier `true`.
+					if (key == "reorderEvents")
+						ReorderEventsLocation = prop.Value is BooleanLiteral { Value: false } ? null : prop.Key.Location;
+					else if (key == "processingLag")
+						ProcessingLagLocation = prop.Key.Location;
 				}
 			}
 		}
@@ -428,17 +404,12 @@ internal static class DiagnosticCollector {
 			// V2 always emits state to the result stream regardless of
 			// outputState() (PartitionProcessor writes newState
 			// unconditionally). The call succeeds but has no effect on
-			// emission - flag as a Hint so the user knows it's redundant
+			// emission - flag as Information so the user knows it's redundant
 			// without making it look like an error.
 			var scanner = new MemberCallScanner("outputState");
 			scanner.Visit(ast);
 			foreach (var loc in scanner.Calls) {
-				diagnostics.Add(new Diagnostic {
-					Code = "compat.outputState.unconditional",
-					Message = "outputState() has no effect under engine_version=2; state is always emitted to the result stream. See v1-v2-differences.",
-					Severity = DiagnosticSeverity.Hint,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.OutputStateUnconditional.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 	}
@@ -462,20 +433,10 @@ internal static class DiagnosticCollector {
 			scanner.Visit(ast);
 
 			foreach (var loc in scanner.AsyncHandlers) {
-				diagnostics.Add(new Diagnostic {
-					Code = "handler.async",
-					Message = "async is not supported in a projection handler: the engine runs synchronously, so the handler's returned Promise is serialized as the state (state becomes {}) instead of being awaited.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.HandlerAsync.ToDiagnostic(ToSourceRange(loc)));
 			}
 			foreach (var loc in scanner.PromiseReturns) {
-				diagnostics.Add(new Diagnostic {
-					Code = "handler.promise",
-					Message = "returning a Promise from a handler is not supported: the engine runs synchronously, so the Promise is serialized as the state (state becomes {}) instead of being awaited.",
-					Severity = DiagnosticSeverity.Warning,
-					Range = ToSourceRange(loc),
-				});
+				diagnostics.Add(DiagnosticCatalog.HandlerPromise.ToDiagnostic(ToSourceRange(loc)));
 			}
 		}
 

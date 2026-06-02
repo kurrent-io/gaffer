@@ -1,0 +1,106 @@
+[
+  {
+    "code": "quirk.linkStreamTo.outOfBoundsParameters",
+    "class": "quirk",
+    "severity": "error",
+    "message": "linkStreamTo with metadata (3+ args) crashes due to an upstream parameter-indexing bug; metadata is never captured.",
+    "docs": "`linkStreamTo(stream, link, metadata)` with a third (metadata) argument crashes in the KurrentDB projection engine - the metadata branch reads an out-of-bounds parameter and throws. The two-argument form works; metadata is never captured. gaffer reproduces the crash.",
+    "fixedIn": null
+  },
+  {
+    "code": "quirk.log.multiParam",
+    "class": "quirk",
+    "severity": "warning",
+    "message": "log() with multiple args produces unexpected output due to an upstream bug: primitives become separate log lines and objects use a ' ,' separator.",
+    "docs": "`log()` with more than one argument behaves oddly in the KurrentDB engine: primitive arguments are emitted as separate log lines, and objects are joined with a ` ,` separator. Pass a single pre-formatted argument to avoid surprises.",
+    "fixedIn": null
+  },
+  {
+    "code": "quirk.event.bodyCast",
+    "class": "quirk",
+    "severity": "error",
+    "message": "Accessing event.body throws for a non-object event body (null, or a primitive like a number or string); use event.bodyRaw instead.",
+    "docs": "Accessing `event.body` throws in the KurrentDB engine when the event body is a non-object JSON value - null, or a primitive like a number or string. The upstream `EnsureBody` casts to an object without a type check. Use `event.bodyRaw` and parse it yourself. (gaffer's JS testing library normalizes a `data: null` event to an absent body, so a null body won't reproduce the throw there.)",
+    "fixedIn": null
+  },
+  {
+    "code": "quirk.biState.stringSlot",
+    "class": "quirk",
+    "severity": "warning",
+    "message": "A raw string in the bi-state partition slot is JSON-quoted instead of passed through, due to an upstream bug.",
+    "docs": "In a bi-state projection, a raw string in the partition-state slot is JSON-quoted (double-encoded) when persisted by the KurrentDB engine rather than passed through. Wrap string state in an object to avoid the double-encoding.",
+    "fixedIn": null
+  },
+  {
+    "code": "quirk.biState.sharedStringSlot",
+    "class": "quirk",
+    "severity": "warning",
+    "message": "A raw string in the bi-state shared slot is JSON-quoted instead of passed through, due to an upstream bug.",
+    "docs": "In a bi-state projection, a raw string in the shared-state slot is JSON-quoted (double-encoded) when persisted by the KurrentDB engine. Wrap shared string state in an object to avoid the double-encoding.",
+    "fixedIn": null
+  },
+  {
+    "code": "quirk.serialize.nonFinite",
+    "class": "quirk",
+    "severity": "error",
+    "message": "Projection state containing NaN or Infinity throws during serialization (JSON has no representation for non-finite numbers).",
+    "docs": "The KurrentDB engine throws when projection state contains `NaN` or `Infinity` (JSON has no representation for them). Guard non-finite numbers in your handler, e.g. store `null` or `0`.",
+    "fixedIn": null
+  },
+  {
+    "code": "usage.linkStreamTo.deprecated",
+    "class": "usage",
+    "severity": "information",
+    "message": "linkStreamTo is undocumented in KurrentDB and may be removed in a future version.",
+    "docs": "`linkStreamTo` is undocumented in KurrentDB and may be removed in a future version. Prefer `linkTo`.",
+    "fixedIn": null
+  },
+  {
+    "code": "usage.transforms.notInvoked",
+    "class": "usage",
+    "severity": "warning",
+    "message": "transformBy()/filterBy() are registered but never invoked under engine_version=2; result equals post-handler state.",
+    "docs": "`transformBy()`/`filterBy()` are registered but never invoked under engine_version 2 - the result equals the post-handler state. Use engine_version 1 for V1 transform behaviour.",
+    "fixedIn": null
+  },
+  {
+    "code": "usage.outputState.unconditional",
+    "class": "usage",
+    "severity": "information",
+    "message": "outputState() has no effect under engine_version=2; state is always emitted to the result stream.",
+    "docs": "`outputState()` has no effect under engine_version 2 - state is always emitted to the result stream. The call is redundant.",
+    "fixedIn": null
+  },
+  {
+    "code": "usage.options.duplicate",
+    "class": "usage",
+    "severity": "information",
+    "message": "options() is called more than once; only the last call takes effect and the earlier ones are discarded.",
+    "docs": "`options()` is called more than once; only the last call takes effect and earlier ones are discarded. Merge them into a single call.",
+    "fixedIn": null
+  },
+  {
+    "code": "usage.reorderEvents.noEffectOnV2",
+    "class": "usage",
+    "severity": "warning",
+    "message": "reorderEvents/processingLag have no effect under engine_version=2; events are processed in arrival order.",
+    "docs": "`reorderEvents`/`processingLag` have no effect under engine_version 2 - events are processed in arrival order. Use engine_version 1 if you need event reordering.",
+    "fixedIn": null
+  },
+  {
+    "code": "usage.handler.async",
+    "class": "usage",
+    "severity": "error",
+    "message": "async is not supported in a projection handler: the engine runs synchronously, so the returned Promise is serialized as the state (state becomes {}) instead of being awaited.",
+    "docs": "`async` handlers are not supported: the projection engine runs synchronously, so the returned Promise is serialized as the state (which becomes `{}`) instead of being awaited. Make the handler synchronous.",
+    "fixedIn": null
+  },
+  {
+    "code": "usage.handler.promise",
+    "class": "usage",
+    "severity": "error",
+    "message": "returning a Promise from a handler is not supported: the engine runs synchronously, so the Promise is serialized as the state (state becomes {}) instead of being awaited.",
+    "docs": "Returning a Promise from a handler is not supported: the engine runs synchronously, so the Promise is serialized as the state (which becomes `{}`) instead of being awaited. Return the state synchronously.",
+    "fixedIn": null
+  }
+]

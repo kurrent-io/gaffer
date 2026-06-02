@@ -1070,7 +1070,7 @@ func TestAdapter_EmitStatsIfChanged(t *testing.T) {
 
 func TestAdapter_EmitStatsIfChanged_Quirks(t *testing.T) {
 	// A biState projection returning a raw string in slot 0 fires
-	// compat.biState.stringSlot at runtime (no log, so no output event to
+	// quirk.biState.stringSlot at runtime (no log, so no output event to
 	// race the stats read), which the adapter surfaces as a distinct count.
 	adapter, runner, conn, reader := mustSetupDebugSessionSource(t,
 		"fromAll().when({\n$init() { return {}; },\n$initShared() { return {}; },\nItemAdded([s, sh], e) {\nreturn ['raw', sh];\n}\n})")

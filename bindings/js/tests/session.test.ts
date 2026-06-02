@@ -6,6 +6,7 @@ import {
 	DiagnosticSeverity,
 } from "../src/index.js";
 import type { EmittedEvent, ProjectionInfo } from "../src/index.js";
+import { parseErrorJson } from "../src/errors.js";
 
 describe("ProjectionSession", () => {
 	let session: ProjectionSession | null = null;
@@ -180,7 +181,7 @@ describe("ProjectionSession", () => {
 		[
 			"populated",
 			`{"allStreams":true,"diagnostics":[{` +
-				`"code":"deprecated.linkStreamTo",` +
+				`"code":"usage.linkStreamTo.deprecated",` +
 				`"message":"linkStreamTo is undocumented",` +
 				`"severity":2,` +
 				`"range":{"start":{"line":3,"column":5},"end":{"line":3,"column":17}}` +
@@ -193,7 +194,7 @@ describe("ProjectionSession", () => {
 		expect(diags).toHaveLength(expectedCount as number);
 		if (expectedCount === 0) return;
 		const d = diags[0];
-		expect(d?.code).toBe("deprecated.linkStreamTo");
+		expect(d?.code).toBe("usage.linkStreamTo.deprecated");
 		expect(d?.severity).toBe(DiagnosticSeverity.Warning);
 		expect(d?.range?.start).toEqual({ line: 3, column: 5 });
 		expect(d?.range?.end).toEqual({ line: 3, column: 17 });
@@ -215,8 +216,8 @@ describe("ProjectionSession", () => {
 		const sources = session.getSources();
 		expect(sources.diagnostics).toHaveLength(1);
 		const d = sources.diagnostics?.[0];
-		expect(d?.code).toBe("deprecated.linkStreamTo");
-		expect(d?.severity).toBe(DiagnosticSeverity.Warning);
+		expect(d?.code).toBe("usage.linkStreamTo.deprecated");
+		expect(d?.severity).toBe(DiagnosticSeverity.Information);
 		expect(d?.message).toContain("linkStreamTo");
 		expect(d?.range).not.toBeNull();
 		const span = (d?.range?.end.column ?? 0) - (d?.range?.start.column ?? 0);
@@ -656,5 +657,40 @@ describe("ProjectionSession", () => {
 			created: "2026-01-01T00:00:00Z",
 		});
 		expect(key).toBe("eu");
+	});
+});
+
+describe("parseErrorJson compat enrichment", () => {
+	// Every catalog entry has FixedIn = null today, so the compatDescription /
+	// compatFixedIn decode is otherwise structurally dead. Pin it against a
+	// synthetic payload so a JSON-key typo surfaces now.
+	it("decodes compatDescription, compatFixedIn, and diagnostics", () => {
+		const json = JSON.stringify({
+			code: "handler-error",
+			description: "boom",
+			compatCode: "quirk.event.bodyCast",
+			compatDescription: "Accessing event.body throws.",
+			compatFixedIn: "26.1.1",
+			diagnostics: [
+				{
+					code: "quirk.event.bodyCast",
+					message: "m",
+					severity: 1,
+					range: null,
+				},
+			],
+			eventType: "X",
+			streamId: "s-1",
+			sequenceNumber: 0,
+		});
+
+		const err = parseErrorJson(json, "src") as ProjectionHandlerError;
+		expect(err).toBeInstanceOf(ProjectionHandlerError);
+		expect(err.compatCode).toBe("quirk.event.bodyCast");
+		expect(err.compatDescription).toBe("Accessing event.body throws.");
+		expect(err.compatFixedIn).toBe("26.1.1");
+		expect(err.diagnostics?.map((d) => d.code)).toEqual([
+			"quirk.event.bodyCast",
+		]);
 	});
 });

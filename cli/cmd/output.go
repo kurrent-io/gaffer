@@ -30,17 +30,19 @@ type outputWriter interface {
 // file the error points at, and (when the runtime can identify it) the JS
 // position. eventId is set for handler errors that fail mid-stream. CompatCode
 // is set when the throw was driven by an upstream-quirk-compat code path; the
-// CLI looks it up against the runtime's known-quirks registry to render a
-// "Compat: <code>... Fixed in KurrentDB X" hint.
+// runtime supplies CompatDescription and CompatFixedIn alongside it so the CLI
+// can render a "Compat: <code>... Fixed in KurrentDB X" hint without a lookup.
 type fatalError struct {
-	Code        string
-	Description string
-	File        string
-	Line        *int
-	Column      *int
-	JsStack     string
-	EventID     string
-	CompatCode  string
+	Code              string
+	Description       string
+	File              string
+	Line              *int
+	Column            *int
+	JsStack           string
+	EventID           string
+	CompatCode        string
+	CompatDescription string
+	CompatFixedIn     string
 }
 
 func toFatalError(err error, sourcePath string) fatalError {
@@ -50,6 +52,8 @@ func toFatalError(err error, sourcePath string) fatalError {
 		fe.Code = e.ErrorCode()
 		fe.Description = e.ErrorDescription()
 		fe.CompatCode = e.CompatCode
+		fe.CompatDescription = e.CompatDescription
+		fe.CompatFixedIn = e.CompatFixedIn
 		if e.Location != nil {
 			fe.Line = &e.Location.Line
 			fe.Column = &e.Location.Column
@@ -60,6 +64,8 @@ func toFatalError(err error, sourcePath string) fatalError {
 		fe.JsStack = e.JsStack
 		fe.EventID = formatEventID(e.Event)
 		fe.CompatCode = e.CompatCode
+		fe.CompatDescription = e.CompatDescription
+		fe.CompatFixedIn = e.CompatFixedIn
 		if e.Location != nil {
 			fe.Line = &e.Location.Line
 			fe.Column = &e.Location.Column
@@ -69,6 +75,8 @@ func toFatalError(err error, sourcePath string) fatalError {
 		fe.Description = e.ErrorDescription()
 		fe.JsStack = e.JsStack
 		fe.CompatCode = e.CompatCode
+		fe.CompatDescription = e.CompatDescription
+		fe.CompatFixedIn = e.CompatFixedIn
 		if e.Location != nil {
 			fe.Line = &e.Location.Line
 			fe.Column = &e.Location.Column
@@ -79,25 +87,35 @@ func toFatalError(err error, sourcePath string) fatalError {
 			e.ErrorDescription(), e.ElapsedMs, e.AllowedMs)
 		fe.EventID = formatEventID(e.Event)
 		fe.CompatCode = e.CompatCode
+		fe.CompatDescription = e.CompatDescription
+		fe.CompatFixedIn = e.CompatFixedIn
 	case *gafferruntime.CompilationTimeoutError:
 		fe.Code = e.ErrorCode()
 		fe.Description = fmt.Sprintf("%s (elapsed %dms, allowed %dms)",
 			e.ErrorDescription(), e.ElapsedMs, e.AllowedMs)
 		fe.CompatCode = e.CompatCode
+		fe.CompatDescription = e.CompatDescription
+		fe.CompatFixedIn = e.CompatFixedIn
 	case *gafferruntime.MalformedEventError:
 		fe.Code = e.ErrorCode()
 		fe.Description = e.ErrorDescription()
 		fe.EventID = formatEventID(e.Event)
 		fe.CompatCode = e.CompatCode
+		fe.CompatDescription = e.CompatDescription
+		fe.CompatFixedIn = e.CompatFixedIn
 	case *gafferruntime.InvalidArgumentError:
 		fe.Code = e.ErrorCode()
 		fe.Description = e.ErrorDescription()
 		fe.CompatCode = e.CompatCode
+		fe.CompatDescription = e.CompatDescription
+		fe.CompatFixedIn = e.CompatFixedIn
 	case *gafferruntime.StateSerializationError:
 		fe.Code = e.ErrorCode()
 		fe.Description = e.ErrorDescription()
 		fe.EventID = formatEventID(e.Event)
 		fe.CompatCode = e.CompatCode
+		fe.CompatDescription = e.CompatDescription
+		fe.CompatFixedIn = e.CompatFixedIn
 	case gafferruntime.ProjectionError:
 		fe.Code = e.ErrorCode()
 		fe.Description = e.ErrorDescription()

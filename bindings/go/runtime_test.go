@@ -130,11 +130,11 @@ func TestGetSourcesReportsLinkStreamToDeprecation(t *testing.T) {
 		t.Fatalf("expected 1 diagnostic, got %d: %v", len(sources.Diagnostics), sources.Diagnostics)
 	}
 	d := sources.Diagnostics[0]
-	if d.Code != "deprecated.linkStreamTo" {
-		t.Errorf("expected code deprecated.linkStreamTo, got %q", d.Code)
+	if d.Code != "usage.linkStreamTo.deprecated" {
+		t.Errorf("expected code usage.linkStreamTo.deprecated, got %q", d.Code)
 	}
-	if d.Severity != DiagnosticSeverityWarning {
-		t.Errorf("expected severity Warning (2), got %d", d.Severity)
+	if d.Severity != DiagnosticSeverityInformation {
+		t.Errorf("expected severity Information (3), got %d", d.Severity)
 	}
 	if !strings.Contains(d.Message, "linkStreamTo") {
 		t.Errorf("expected message to mention linkStreamTo, got %q", d.Message)
@@ -171,7 +171,7 @@ func TestProjectionInfo_DecodesDiagnosticsWireFormat(t *testing.T) {
 		{
 			"populated",
 			`{"allStreams":true,"diagnostics":[{` +
-				`"code":"deprecated.linkStreamTo",` +
+				`"code":"usage.linkStreamTo.deprecated",` +
 				`"message":"linkStreamTo is undocumented",` +
 				`"severity":2,` +
 				`"range":{"start":{"line":3,"column":5},"end":{"line":3,"column":17}}` +
@@ -192,7 +192,7 @@ func TestProjectionInfo_DecodesDiagnosticsWireFormat(t *testing.T) {
 				return
 			}
 			d := info.Diagnostics[0]
-			if d.Code != "deprecated.linkStreamTo" {
+			if d.Code != "usage.linkStreamTo.deprecated" {
 				t.Errorf("code: %q", d.Code)
 			}
 			if d.Severity != DiagnosticSeverityWarning {

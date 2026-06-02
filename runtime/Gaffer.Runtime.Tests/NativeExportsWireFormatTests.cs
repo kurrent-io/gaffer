@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Gaffer.Runtime.Errors;
+using Gaffer.Sdk.Diagnostics;
 using Gaffer.Sdk.Versioning;
 
 namespace Gaffer.Runtime.Tests;
@@ -7,8 +8,7 @@ namespace Gaffer.Runtime.Tests;
 /// <summary>
 /// Pins the JSON wire format that bindings + CLI rely on:
 /// - options going in (quirksVersion accepted, parsed, validated)
-/// - errors coming out (compatCode appears when set)
-/// - known-quirks registry export (one entry per KnownQuirks.All)
+/// - errors coming out (compatCode, and the catalogue-enriched compatDescription/compatFixedIn)
 /// </summary>
 public class NativeExportsWireFormatTests {
 	// -- ParseOptions: quirksVersion --
@@ -72,55 +72,52 @@ public class NativeExportsWireFormatTests {
 	[Fact]
 	public void SerializeProjectionError_EmitsCompatCodeWhenSet() {
 		var ex = new InvalidArgumentException("test", "field") {
-			CompatCode = KnownQuirks.EventBodyCast.Code,
+			CompatCode = DiagnosticCatalog.EventBodyCast.Code,
 		};
 		var json = NativeExports.SerializeProjectionError(ex);
 		using var doc = JsonDocument.Parse(json);
-		Assert.Equal(KnownQuirks.EventBodyCast.Code, doc.RootElement.GetProperty("compatCode").GetString());
-	}
-
-	// -- SerializeKnownQuirks --
-
-	[Fact]
-	public void SerializeKnownQuirks_ReturnsOneEntryPerRegistryItem() {
-		var json = NativeExports.SerializeKnownQuirks();
-		using var doc = JsonDocument.Parse(json);
-		Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
-		Assert.Equal(KnownQuirks.All.Count, doc.RootElement.GetArrayLength());
+		Assert.Equal(DiagnosticCatalog.EventBodyCast.Code, doc.RootElement.GetProperty("compatCode").GetString());
 	}
 
 	[Fact]
-	public void SerializeKnownQuirks_EachEntryHasCodeAndDescription() {
-		var json = NativeExports.SerializeKnownQuirks();
+	public void SerializeProjectionError_EnrichesCompatCodeFromCatalog() {
+		var ex = new InvalidArgumentException("test", "field") {
+			CompatCode = DiagnosticCatalog.EventBodyCast.Code,
+		};
+		var json = NativeExports.SerializeProjectionError(ex);
 		using var doc = JsonDocument.Parse(json);
-		foreach (var entry in doc.RootElement.EnumerateArray()) {
-			Assert.True(entry.TryGetProperty("code", out var code));
-			Assert.False(string.IsNullOrEmpty(code.GetString()));
-			Assert.True(entry.TryGetProperty("description", out var desc));
-			Assert.False(string.IsNullOrEmpty(desc.GetString()));
-		}
+		Assert.Equal(DiagnosticCatalog.EventBodyCast.Message, doc.RootElement.GetProperty("compatDescription").GetString());
+		// Every current quirk has FixedIn = null, so compatFixedIn is omitted.
+		Assert.False(doc.RootElement.TryGetProperty("compatFixedIn", out _));
 	}
 
 	[Fact]
-	public void SerializeKnownQuirks_OmitsFixedInWhenNull() {
-		// Today every entry has FixedIn = null (no upstream fix shipped).
-		// All entries should omit the field.
-		var json = NativeExports.SerializeKnownQuirks();
+	public void SerializeProjectionError_OmitsEnrichmentForUnknownCompatCode() {
+		var ex = new InvalidArgumentException("test", "field") {
+			CompatCode = "quirk.not.inCatalog",
+		};
+		var json = NativeExports.SerializeProjectionError(ex);
 		using var doc = JsonDocument.Parse(json);
-		foreach (var entry in doc.RootElement.EnumerateArray()) {
-			Assert.False(entry.TryGetProperty("fixedIn", out _));
-		}
+		Assert.Equal("quirk.not.inCatalog", doc.RootElement.GetProperty("compatCode").GetString());
+		Assert.False(doc.RootElement.TryGetProperty("compatDescription", out _));
 	}
 
 	[Fact]
-	public void SerializeKnownQuirks_IncludesAllRegistryCodes() {
-		var json = NativeExports.SerializeKnownQuirks();
+	public void SerializeProjectionError_OmitsDiagnosticsWhenEmpty() {
+		var ex = new InvalidArgumentException("test", "field");
+		var json = NativeExports.SerializeProjectionError(ex);
 		using var doc = JsonDocument.Parse(json);
-		var codes = doc.RootElement.EnumerateArray()
-			.Select(e => e.GetProperty("code").GetString())
-			.ToHashSet();
-		foreach (var quirk in KnownQuirks.All) {
-			Assert.Contains(quirk.Code, codes);
-		}
+		Assert.False(doc.RootElement.TryGetProperty("diagnostics", out _));
+	}
+
+	[Fact]
+	public void SerializeProjectionError_EmitsDiagnosticsWhenSet() {
+		var ex = new InvalidArgumentException("test", "field") {
+			Diagnostics = new[] { DiagnosticCatalog.EventBodyCast.ToDiagnostic() },
+		};
+		var json = NativeExports.SerializeProjectionError(ex);
+		using var doc = JsonDocument.Parse(json);
+		var diagnostics = doc.RootElement.GetProperty("diagnostics");
+		Assert.Equal(DiagnosticCatalog.EventBodyCast.Code, diagnostics[0].GetProperty("code").GetString());
 	}
 }

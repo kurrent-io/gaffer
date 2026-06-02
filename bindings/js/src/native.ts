@@ -119,7 +119,6 @@ export interface NativeBindings {
 		optionsJson: string | null,
 	): { handle: number; errorJson: string | null };
 	sessionDestroy(handle: number): void;
-	knownQuirks(): string | null;
 	sessionFeed(handle: number, eventJson: string): FallibleResult;
 	sessionGetState(handle: number, partition: string | null): string | null;
 	sessionGetSharedState(handle: number): string | null;
@@ -183,7 +182,6 @@ export function getNativeBindings(): NativeBindings {
 		errorSlotType,
 	]);
 	const sessionDestroy = l.func("gaffer_session_destroy", "void", ["intptr"]);
-	const knownQuirks = l.func("gaffer_known_quirks", HeapStr, []);
 	const sessionFeed = l.func("gaffer_session_feed", HeapStr, [
 		"intptr",
 		"str",
@@ -256,7 +254,6 @@ export function getNativeBindings(): NativeBindings {
 			return { handle, errorJson: consumeErrorSlot(errSlot) };
 		},
 		sessionDestroy: (handle) => sessionDestroy(handle),
-		knownQuirks: () => knownQuirks() as string | null,
 		sessionFeed: (handle, eventJson) => {
 			const errSlot = newErrorSlot();
 			const result = sessionFeed(handle, eventJson, errSlot) as string | null;

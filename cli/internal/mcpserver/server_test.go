@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -248,7 +247,7 @@ func TestFormatStep_PromotesDiagnostics(t *testing.T) {
 	withDiag := &history.Step{
 		Index:      1,
 		EventJSON:  `{"eventType":"Tick","streamId":"s-1"}`,
-		ResultJSON: `{"status":"processed","diagnostics":[{"code":"compat.biState.stringSlot","message":"m","severity":2,"range":null}]}`,
+		ResultJSON: `{"status":"processed","diagnostics":[{"code":"quirk.biState.stringSlot","message":"m","severity":2,"range":null}]}`,
 		EventType:  "Tick",
 		Status:     "processed",
 	}
@@ -256,8 +255,8 @@ func TestFormatStep_PromotesDiagnostics(t *testing.T) {
 	if !ok || len(diags) != 1 {
 		t.Fatalf("expected 1 promoted diagnostic, got %v", formatStep(withDiag)["diagnostics"])
 	}
-	if code := diags[0].(map[string]any)["code"]; code != "compat.biState.stringSlot" {
-		t.Errorf("promoted diagnostic code = %v, want compat.biState.stringSlot", code)
+	if code := diags[0].(map[string]any)["code"]; code != "quirk.biState.stringSlot" {
+		t.Errorf("promoted diagnostic code = %v, want quirk.biState.stringSlot", code)
 	}
 
 	noDiag := &history.Step{Index: 1, ResultJSON: `{"status":"processed","diagnostics":[]}`}
@@ -658,11 +657,11 @@ func TestResourceQuirks(t *testing.T) {
 	}
 	// Every registry code is present as a heading.
 	for _, code := range []string{
-		"compat.linkStreamTo.outOfBoundsParameters",
-		"compat.log.multiParam",
-		"compat.event.bodyCast",
-		"compat.biState.stringSlot",
-		"compat.serialize.nonFinite",
+		"quirk.linkStreamTo.outOfBoundsParameters",
+		"quirk.log.multiParam",
+		"quirk.event.bodyCast",
+		"quirk.biState.stringSlot",
+		"quirk.serialize.nonFinite",
 	} {
 		if !strings.Contains(text, "## "+code) {
 			t.Errorf("expected resource to include heading for %q", code)
@@ -702,16 +701,17 @@ func TestResourceTelemetryInfo(t *testing.T) {
 }
 
 func TestRenderQuirksMarkdown_FixedInRendering(t *testing.T) {
-	// The "Fixed in: KurrentDB X" branch is dead at the registry level
+	// The "Fixed in: KurrentDB X" branch is dead at the catalogue level
 	// today. Test it directly.
 	fixed := "26.1.1"
-	quirks := []gafferruntime.KnownQuirk{{
-		Code:        "compat.test.synthetic",
-		Description: "Test description.",
-		FixedIn:     &fixed,
+	docs := []diagnosticDoc{{
+		Code:    "quirk.test.synthetic",
+		Class:   "quirk",
+		Message: "Test description.",
+		FixedIn: &fixed,
 	}}
-	out := renderQuirksMarkdown(quirks)
-	if !strings.Contains(out, "## compat.test.synthetic") {
+	out := renderQuirksMarkdown(docs)
+	if !strings.Contains(out, "## quirk.test.synthetic") {
 		t.Error("expected synthetic heading")
 	}
 	if !strings.Contains(out, "**Fixed in:** KurrentDB 26.1.1") {

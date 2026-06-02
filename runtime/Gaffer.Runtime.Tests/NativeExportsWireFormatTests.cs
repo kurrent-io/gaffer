@@ -81,6 +81,29 @@ public class NativeExportsWireFormatTests {
 	}
 
 	[Fact]
+	public void SerializeProjectionError_EnrichesCompatCodeFromCatalog() {
+		var ex = new InvalidArgumentException("test", "field") {
+			CompatCode = DiagnosticCatalog.EventBodyCast.Code,
+		};
+		var json = NativeExports.SerializeProjectionError(ex);
+		using var doc = JsonDocument.Parse(json);
+		Assert.Equal(DiagnosticCatalog.EventBodyCast.Message, doc.RootElement.GetProperty("compatDescription").GetString());
+		// Every current quirk has FixedIn = null, so compatFixedIn is omitted.
+		Assert.False(doc.RootElement.TryGetProperty("compatFixedIn", out _));
+	}
+
+	[Fact]
+	public void SerializeProjectionError_OmitsEnrichmentForUnknownCompatCode() {
+		var ex = new InvalidArgumentException("test", "field") {
+			CompatCode = "quirk.not.inCatalog",
+		};
+		var json = NativeExports.SerializeProjectionError(ex);
+		using var doc = JsonDocument.Parse(json);
+		Assert.Equal("quirk.not.inCatalog", doc.RootElement.GetProperty("compatCode").GetString());
+		Assert.False(doc.RootElement.TryGetProperty("compatDescription", out _));
+	}
+
+	[Fact]
 	public void SerializeProjectionError_OmitsDiagnosticsWhenEmpty() {
 		var ex = new InvalidArgumentException("test", "field");
 		var json = NativeExports.SerializeProjectionError(ex);

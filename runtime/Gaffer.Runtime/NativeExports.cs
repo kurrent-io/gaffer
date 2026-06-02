@@ -47,8 +47,16 @@ internal static unsafe class NativeExports {
 		writer.WriteString("description", ex.Description);
 		if (ex.Message != ex.Description)
 			writer.WriteString("message", ex.Message);
-		if (ex.CompatCode != null)
+		if (ex.CompatCode != null) {
 			writer.WriteString("compatCode", ex.CompatCode);
+			// Enrich at source from the catalog so consumers annotate the fatal error
+			// ("reproduces upstream bug X, fixed in DB version Y") without a registry round-trip.
+			if (Sdk.Diagnostics.DiagnosticCatalog.TryGet(ex.CompatCode, out var quirk)) {
+				writer.WriteString("compatDescription", quirk.Message);
+				if (quirk.FixedIn != null)
+					writer.WriteString("compatFixedIn", quirk.FixedIn.ToString());
+			}
+		}
 
 		switch (ex) {
 			case InvalidProjectionException ip:

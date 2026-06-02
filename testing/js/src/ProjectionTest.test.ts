@@ -741,6 +741,37 @@ describe("runtime diagnostics (biState string slot)", () => {
 		).toBe(true);
 	});
 
+	it("carries diagnostics on a throwing quirk's error", () => {
+		// A quirk that throws (NaN state -> serialize.nonFinite) reaches the
+		// diagnostics channel on the error, not just a compatCode.
+		using test = new ProjectionTest(
+			`fromAll().when({
+				$init: function () { return {}; },
+				Bad: function (s, e) { s.v = NaN; return s; }
+			});`,
+			{ engineVersion: 2 },
+		);
+
+		let caught: unknown;
+		try {
+			test.feed({
+				eventType: "Bad",
+				streamId: "s-1",
+				sequenceNumber: 0,
+				isJson: true,
+				data: {},
+			});
+		} catch (err) {
+			caught = err;
+		}
+
+		expect(caught).toBeInstanceOf(ProjectionError);
+		const diagnostics = (caught as ProjectionError).diagnostics ?? [];
+		expect(
+			diagnostics.some((d) => d.code === "quirk.serialize.nonFinite"),
+		).toBe(true);
+	});
+
 	it("emits no diagnostic when slots hold objects", () => {
 		using test = new ProjectionTest(
 			`

@@ -43,6 +43,7 @@ type InvalidProjectionError struct {
 	CompatCode        string
 	CompatDescription string
 	CompatFixedIn     string
+	Diagnostics       []Diagnostic
 	Msg               string
 }
 
@@ -57,6 +58,7 @@ type CompilationTimeoutError struct {
 	CompatCode        string
 	CompatDescription string
 	CompatFixedIn     string
+	Diagnostics       []Diagnostic
 	Msg               string
 }
 
@@ -70,6 +72,7 @@ type InvalidArgumentError struct {
 	CompatCode        string
 	CompatDescription string
 	CompatFixedIn     string
+	Diagnostics       []Diagnostic
 	Msg               string
 }
 
@@ -86,6 +89,7 @@ type ProjectionHandlerError struct {
 	CompatCode        string
 	CompatDescription string
 	CompatFixedIn     string
+	Diagnostics       []Diagnostic
 	Msg               string
 }
 
@@ -101,6 +105,7 @@ type ExecutionTimeoutError struct {
 	CompatCode        string
 	CompatDescription string
 	CompatFixedIn     string
+	Diagnostics       []Diagnostic
 	Msg               string
 }
 
@@ -114,6 +119,7 @@ type MalformedEventError struct {
 	CompatCode        string
 	CompatDescription string
 	CompatFixedIn     string
+	Diagnostics       []Diagnostic
 	Msg               string
 }
 
@@ -127,6 +133,7 @@ type StateSerializationError struct {
 	CompatCode        string
 	CompatDescription string
 	CompatFixedIn     string
+	Diagnostics       []Diagnostic
 	Msg               string
 }
 
@@ -142,6 +149,7 @@ type ProjectionTransformError struct {
 	CompatCode        string
 	CompatDescription string
 	CompatFixedIn     string
+	Diagnostics       []Diagnostic
 	Msg               string
 }
 
@@ -161,22 +169,23 @@ func (e *UnexpectedError) ErrorCode() string        { return e.Code }
 func (e *UnexpectedError) ErrorDescription() string { return e.Desc }
 
 type errorJSON struct {
-	Code              string `json:"code"`
-	Description       string `json:"description"`
-	Message           string `json:"message,omitempty"`
-	CompatCode        string `json:"compatCode,omitempty"`
-	CompatDescription string `json:"compatDescription,omitempty"`
-	CompatFixedIn     string `json:"compatFixedIn,omitempty"`
-	Line              *int   `json:"line,omitempty"`
-	Column            *int   `json:"column,omitempty"`
-	Elapsed           *int   `json:"elapsed,omitempty"`
-	Allowed           *int   `json:"allowed,omitempty"`
-	Field             string `json:"field,omitempty"`
-	JsStack           string `json:"jsStack,omitempty"`
-	EventType         string `json:"eventType,omitempty"`
-	StreamID          string `json:"streamId,omitempty"`
-	SequenceNumber    int64  `json:"sequenceNumber,omitempty"`
-	Partition         string `json:"partition,omitempty"`
+	Code              string       `json:"code"`
+	Description       string       `json:"description"`
+	Message           string       `json:"message,omitempty"`
+	CompatCode        string       `json:"compatCode,omitempty"`
+	CompatDescription string       `json:"compatDescription,omitempty"`
+	CompatFixedIn     string       `json:"compatFixedIn,omitempty"`
+	Diagnostics       []Diagnostic `json:"diagnostics,omitempty"`
+	Line              *int         `json:"line,omitempty"`
+	Column            *int         `json:"column,omitempty"`
+	Elapsed           *int         `json:"elapsed,omitempty"`
+	Allowed           *int         `json:"allowed,omitempty"`
+	Field             string       `json:"field,omitempty"`
+	JsStack           string       `json:"jsStack,omitempty"`
+	EventType         string       `json:"eventType,omitempty"`
+	StreamID          string       `json:"streamId,omitempty"`
+	SequenceNumber    int64        `json:"sequenceNumber,omitempty"`
+	Partition         string       `json:"partition,omitempty"`
 }
 
 // consumeError decodes and frees a runtime-allocated error pointer.
@@ -206,13 +215,13 @@ func parseErrorJSON(jsonStr string, source string) error {
 		if e.Line != nil && e.Column != nil {
 			loc = &JsLocation{Line: *e.Line, Column: *e.Column}
 		}
-		return &InvalidProjectionError{Desc: e.Description, Location: loc, Source: source, CompatCode: e.CompatCode, CompatDescription: e.CompatDescription, CompatFixedIn: e.CompatFixedIn, Msg: msg}
+		return &InvalidProjectionError{Desc: e.Description, Location: loc, Source: source, CompatCode: e.CompatCode, CompatDescription: e.CompatDescription, CompatFixedIn: e.CompatFixedIn, Diagnostics: e.Diagnostics, Msg: msg}
 
 	case "compilation-timeout":
-		return &CompilationTimeoutError{Desc: e.Description, ElapsedMs: deref(e.Elapsed), AllowedMs: deref(e.Allowed), CompatCode: e.CompatCode, CompatDescription: e.CompatDescription, CompatFixedIn: e.CompatFixedIn, Msg: msg}
+		return &CompilationTimeoutError{Desc: e.Description, ElapsedMs: deref(e.Elapsed), AllowedMs: deref(e.Allowed), CompatCode: e.CompatCode, CompatDescription: e.CompatDescription, CompatFixedIn: e.CompatFixedIn, Diagnostics: e.Diagnostics, Msg: msg}
 
 	case "invalid-argument":
-		return &InvalidArgumentError{Desc: e.Description, Field: e.Field, CompatCode: e.CompatCode, CompatDescription: e.CompatDescription, CompatFixedIn: e.CompatFixedIn, Msg: msg}
+		return &InvalidArgumentError{Desc: e.Description, Field: e.Field, CompatCode: e.CompatCode, CompatDescription: e.CompatDescription, CompatFixedIn: e.CompatFixedIn, Diagnostics: e.Diagnostics, Msg: msg}
 
 	case "handler-error":
 		var loc *JsLocation
@@ -226,6 +235,7 @@ func parseErrorJSON(jsonStr string, source string) error {
 			CompatCode:        e.CompatCode,
 			CompatDescription: e.CompatDescription,
 			CompatFixedIn:     e.CompatFixedIn,
+			Diagnostics:       e.Diagnostics,
 			Msg:               msg,
 		}
 
@@ -236,6 +246,7 @@ func parseErrorJSON(jsonStr string, source string) error {
 			CompatCode:        e.CompatCode,
 			CompatDescription: e.CompatDescription,
 			CompatFixedIn:     e.CompatFixedIn,
+			Diagnostics:       e.Diagnostics,
 			Msg:               msg,
 		}
 
@@ -246,6 +257,7 @@ func parseErrorJSON(jsonStr string, source string) error {
 			CompatCode:        e.CompatCode,
 			CompatDescription: e.CompatDescription,
 			CompatFixedIn:     e.CompatFixedIn,
+			Diagnostics:       e.Diagnostics,
 			Msg:               msg,
 		}
 
@@ -256,6 +268,7 @@ func parseErrorJSON(jsonStr string, source string) error {
 			CompatCode:        e.CompatCode,
 			CompatDescription: e.CompatDescription,
 			CompatFixedIn:     e.CompatFixedIn,
+			Diagnostics:       e.Diagnostics,
 			Msg:               msg,
 		}
 
@@ -264,7 +277,7 @@ func parseErrorJSON(jsonStr string, source string) error {
 		if e.Line != nil && e.Column != nil {
 			loc = &JsLocation{Line: *e.Line, Column: *e.Column}
 		}
-		return &ProjectionTransformError{Desc: e.Description, JsStack: e.JsStack, Location: loc, Source: source, CompatCode: e.CompatCode, CompatDescription: e.CompatDescription, CompatFixedIn: e.CompatFixedIn, Msg: msg}
+		return &ProjectionTransformError{Desc: e.Description, JsStack: e.JsStack, Location: loc, Source: source, CompatCode: e.CompatCode, CompatDescription: e.CompatDescription, CompatFixedIn: e.CompatFixedIn, Diagnostics: e.Diagnostics, Msg: msg}
 
 	default:
 		return &UnexpectedError{Code: e.Code, Desc: e.Description, Msg: msg}

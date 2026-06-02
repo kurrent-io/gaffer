@@ -64,6 +64,13 @@ describe("compatCode propagation", () => {
 				expect((err as ProjectionHandlerError).compatCode).toBe(
 					"quirk.linkStreamTo.outOfBoundsParameters",
 				);
+				// The throwing quirk also reaches the diagnostics channel.
+				const diagnostics = (err as ProjectionHandlerError).diagnostics ?? [];
+				expect(
+					diagnostics.some(
+						(d) => d.code === "quirk.linkStreamTo.outOfBoundsParameters",
+					),
+				).toBe(true);
 			}
 		} finally {
 			session.dispose();

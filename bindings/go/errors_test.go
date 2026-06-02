@@ -318,6 +318,17 @@ func TestError_CompatCode_PropagatesFromCompatFiringPath(t *testing.T) {
 		t.Fatalf("expected ProjectionHandlerError, got %T", err)
 	}
 	assertEqual(t, "compatCode", "quirk.linkStreamTo.outOfBoundsParameters", ph.CompatCode)
+
+	// The throwing quirk also reaches the diagnostics channel on the error.
+	found := false
+	for _, d := range ph.Diagnostics {
+		if d.Code == "quirk.linkStreamTo.outOfBoundsParameters" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected quirk.linkStreamTo.outOfBoundsParameters in error diagnostics, got %+v", ph.Diagnostics)
+	}
 }
 
 // Test helpers

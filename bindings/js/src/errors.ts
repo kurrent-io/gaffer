@@ -1,3 +1,5 @@
+import type { Diagnostic } from "./types.js";
+
 export class ProjectionError extends Error {
 	readonly code: string;
 	readonly description: string;
@@ -10,6 +12,13 @@ export class ProjectionError extends Error {
 	 * constructor.
 	 */
 	compatCode?: string;
+	/**
+	 * Quirks that fired while processing the event that threw, including the
+	 * throwing quirk itself. Empty/undefined unless a quirk was exercised. Gives
+	 * a throwing quirk the same diagnostics channel as a non-throwing one (which
+	 * surfaces on `FeedResult.diagnostics`). Set by `parseErrorJson`.
+	 */
+	diagnostics?: Diagnostic[];
 
 	constructor(
 		code: string,
@@ -176,6 +185,7 @@ interface ErrorJson {
 	description: string;
 	message?: string;
 	compatCode?: string;
+	diagnostics?: Diagnostic[];
 	line?: number;
 	column?: number;
 	elapsed?: number;
@@ -216,6 +226,7 @@ export function parseErrorJson(json: string, source: string): ProjectionError {
 	const err: ErrorJson = JSON.parse(json);
 	const result = constructError(err, source);
 	if (err.compatCode !== undefined) result.compatCode = err.compatCode;
+	if (err.diagnostics !== undefined) result.diagnostics = err.diagnostics;
 	return result;
 }
 

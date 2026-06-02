@@ -207,17 +207,20 @@ func TestTextWriter_WriteFatalError_RendersCompatBlock(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	tw := newTextWriter(&stdout, &stderr)
 
-	// Use a real registry code so the lookup hits.
+	// A real fatal quirk error: the runtime enriches it with the catalogue
+	// description (and fixedIn, nil today) alongside the code.
 	tw.WriteFatalError(fatalError{
-		Code:        "handler-error",
-		Description: "Argument is not an object",
-		CompatCode:  "quirk.event.bodyCast",
+		Code:              "handler-error",
+		Description:       "Argument is not an object",
+		CompatCode:        "quirk.event.bodyCast",
+		CompatDescription: "Accessing event.body throws on a non-object body.",
 	})
 
 	out := stderr.String()
 	testutil.AssertContains(t, out, "Compat:")
 	testutil.AssertContains(t, out, "quirk.event.bodyCast")
-	// Today every registry entry has FixedIn = nil, so the rendering
+	testutil.AssertContains(t, out, "Accessing event.body throws on a non-object body.")
+	// Every catalogue entry has FixedIn = nil today, so the rendering
 	// shows "Current KurrentDB behaviour" rather than "Fixed in ...".
 	testutil.AssertContains(t, out, "Current KurrentDB behaviour")
 }

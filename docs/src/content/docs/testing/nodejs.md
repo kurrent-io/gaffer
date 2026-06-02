@@ -212,7 +212,7 @@ test.getResult("order-1"); // result for order-1 (V1: post-transform, V2: post-h
 
 Some KurrentDB quirks only surface in how state is persisted, and `state` / `getState()` hide them by parsing the persisted JSON on read (see also [State serialization](#state-serialization)).
 
-- **`step.diagnostics`** lists the quirks encountered while processing the event (empty when none; it can carry more than one, and the same code can repeat). The motivating case is biState string slots: KurrentDB JSON-quotes a raw string written to a state slot (`compat.biState.stringSlot` for the main slot, `compat.biState.sharedStringSlot` for shared state), so `"hello"` persists as `"\"hello\""`. Non-persistence quirks appear here too, such as `compat.log.multiParam` fired at each multi-argument `log()` call.
+- **`step.diagnostics`** lists the quirks encountered while processing the event (empty when none; it can carry more than one, and the same code can repeat). The motivating case is biState string slots: KurrentDB JSON-quotes a raw string written to a state slot (`quirk.biState.stringSlot` for the main slot, `quirk.biState.sharedStringSlot` for shared state), so `"hello"` persists as `"\"hello\""`. Non-persistence quirks appear here too, such as `quirk.log.multiParam` fired at each multi-argument `log()` call.
 - **`step.stateRaw`** and **`getStateRaw(partition?)`** return the persisted state JSON string before `JSON.parse`, so you can assert against the double-quoted value the quirk produces.
 
 ```typescript
@@ -228,7 +228,7 @@ if (step.status !== "processed") throw new Error(step.reason);
 expect(step.state).toBe("alice"); // parsed - quirk hidden
 expect(step.stateRaw).toBe('"alice"'); // raw - double-quoting visible
 expect(step.diagnostics.map((d) => d.code)).toContain(
-  "compat.biState.stringSlot",
+  "quirk.biState.stringSlot",
 );
 ```
 
@@ -268,7 +268,7 @@ Projection state is persisted as JSON by the same engine KurrentDB uses, so a fe
 
 - **`BigInt`** serializes to a decimal string: `10n` persists as `"10"`, matching KurrentDB.
 - **`undefined`** object properties are dropped, exactly like `JSON.stringify`; in an array position `undefined` becomes `null`.
-- **`NaN` and `Infinity`** throw a `StateSerializationError`, because KurrentDB rejects them (the `compat.serialize.nonFinite` quirk).
+- **`NaN` and `Infinity`** throw a `StateSerializationError`, because KurrentDB rejects them (the `quirk.serialize.nonFinite` quirk).
 
 `state` and `getState()` hide the persisted form by parsing it on read. To assert against the raw JSON (including quirks like a biState string slot being double-quoted), read `stateRaw` / `getStateRaw()` and inspect `diagnostics` (see [Raw state and diagnostics](#raw-state-and-diagnostics)).
 

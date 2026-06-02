@@ -361,7 +361,7 @@ public class CompatQuirksTests {
 
 	[Fact]
 	public void LogMultiParam_EmitsRuntimeDiagnostic() {
-		// A multi-arg log() trips compat.log.multiParam at the point it runs,
+		// A multi-arg log() trips quirk.log.multiParam at the point it runs,
 		// surfaced on the feed result (also a compile-time diagnostic).
 		using var session = new ProjectionSession("""
 			fromAll().when({

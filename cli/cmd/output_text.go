@@ -380,9 +380,13 @@ func (tw *textWriter) writeCompatBlock(out io.Writer, fe fatalError) {
 	}
 	style := tw.styles.warning
 	_, _ = fmt.Fprintf(out, "\n%s %s\n", style.Render("Compat:"), fe.CompatCode)
-	if fe.CompatDescription != "" {
-		_, _ = fmt.Fprintf(out, "  %s\n", fe.CompatDescription)
+	// The runtime enriches these only for codes it found in the catalogue; absent
+	// them (an out-of-catalogue code) we just name the code rather than assert a
+	// behaviour we can't back up.
+	if fe.CompatDescription == "" {
+		return
 	}
+	_, _ = fmt.Fprintf(out, "  %s\n", fe.CompatDescription)
 	if fe.CompatFixedIn != "" {
 		_, _ = fmt.Fprintf(out, "  Fixed in KurrentDB %s.\n", fe.CompatFixedIn)
 	} else {

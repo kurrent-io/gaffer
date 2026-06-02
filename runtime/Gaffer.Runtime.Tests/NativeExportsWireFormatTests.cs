@@ -8,8 +8,7 @@ namespace Gaffer.Runtime.Tests;
 /// <summary>
 /// Pins the JSON wire format that bindings + CLI rely on:
 /// - options going in (quirksVersion accepted, parsed, validated)
-/// - errors coming out (compatCode appears when set)
-/// - known-quirks registry export (one entry per DiagnosticCatalog.Quirks)
+/// - errors coming out (compatCode, and the catalogue-enriched compatDescription/compatFixedIn)
 /// </summary>
 public class NativeExportsWireFormatTests {
 	// -- ParseOptions: quirksVersion --

@@ -431,7 +431,7 @@ public class DiagnosticsTests {
 		Assert.Null(session.Diagnostics);
 	}
 
-	// -- compat.log.multiParam --
+	// -- quirk.log.multiParam --
 
 	[Fact]
 	public void Log_MultipleArgs_EmitsMultiParamWarning() {

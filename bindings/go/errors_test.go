@@ -331,6 +331,31 @@ func TestError_CompatCode_PropagatesFromCompatFiringPath(t *testing.T) {
 	}
 }
 
+// TestParseErrorJSON_DecodesCompatEnrichment pins the compatDescription /
+// compatFixedIn / diagnostics decode against a synthetic payload. Every catalog
+// entry has FixedIn = nil today, so this wiring is otherwise structurally dead -
+// a json-tag typo wouldn't surface until upstream ships a fix and someone sets it.
+func TestParseErrorJSON_DecodesCompatEnrichment(t *testing.T) {
+	jsonStr := `{"code":"handler-error","description":"boom",` +
+		`"compatCode":"quirk.event.bodyCast",` +
+		`"compatDescription":"Accessing event.body throws.",` +
+		`"compatFixedIn":"26.1.1",` +
+		`"diagnostics":[{"code":"quirk.event.bodyCast","message":"m","severity":1,"range":null}],` +
+		`"eventType":"X","streamId":"s-1","sequenceNumber":0}`
+
+	err := parseErrorJSON(jsonStr, "src")
+	var ph *ProjectionHandlerError
+	if !errors.As(err, &ph) {
+		t.Fatalf("expected ProjectionHandlerError, got %T", err)
+	}
+	assertEqual(t, "compatCode", "quirk.event.bodyCast", ph.CompatCode)
+	assertEqual(t, "compatDescription", "Accessing event.body throws.", ph.CompatDescription)
+	assertEqual(t, "compatFixedIn", "26.1.1", ph.CompatFixedIn)
+	if len(ph.Diagnostics) != 1 || ph.Diagnostics[0].Code != "quirk.event.bodyCast" {
+		t.Errorf("expected one decoded diagnostic, got %+v", ph.Diagnostics)
+	}
+}
+
 // Test helpers
 
 func assertEqual(t *testing.T, field, expected, actual string) {

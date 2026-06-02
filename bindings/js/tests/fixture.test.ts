@@ -11,7 +11,7 @@ interface FixtureError {
 
 import type { SessionOptions } from "../src/types.js";
 
-type DiagnosticSeverityName = "error" | "warning" | "information" | "hint";
+type DiagnosticSeverityName = "error" | "warning" | "information";
 
 interface FixtureDiagnostic {
 	code: string;
@@ -42,7 +42,6 @@ const SEVERITY_BY_NAME: Record<DiagnosticSeverityName, number> = {
 	error: 1,
 	warning: 2,
 	information: 3,
-	hint: 4,
 };
 
 function loadFixtures(filename: string): Fixture[] {

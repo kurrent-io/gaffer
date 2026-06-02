@@ -6,17 +6,22 @@ export class ProjectionError extends Error {
 	override readonly cause: unknown;
 	/**
 	 * Diagnostic catalogue code (e.g. `quirk.event.bodyCast`) when this error
-	 * was thrown by an upstream-quirk-compat code path. Lets editors and CLIs
-	 * annotate the error with "fixed in DB version X". Set by
-	 * `parseErrorJson` from the runtime payload; not part of any subclass
-	 * constructor.
+	 * was thrown by an upstream-quirk-compat code path. This is the code of the
+	 * quirk that threw; it is also present in {@link diagnostics}, which is the
+	 * complete set of quirks that fired on this event. Set by `parseErrorJson`
+	 * from the runtime payload; not part of any subclass constructor.
 	 */
 	compatCode?: string;
+	/** Catalogue description of {@link compatCode}, when set. */
+	compatDescription?: string;
+	/** KurrentDB version that fixes {@link compatCode} upstream, when known. */
+	compatFixedIn?: string;
 	/**
 	 * Quirks that fired while processing the event that threw, including the
-	 * throwing quirk itself. Empty/undefined unless a quirk was exercised. Gives
-	 * a throwing quirk the same diagnostics channel as a non-throwing one (which
-	 * surfaces on `FeedResult.diagnostics`). Set by `parseErrorJson`.
+	 * throwing quirk ({@link compatCode}). Empty/undefined unless a quirk was
+	 * exercised. Gives a throwing quirk the same diagnostics channel as a
+	 * non-throwing one (which surfaces on `FeedResult.diagnostics`). Set by
+	 * `parseErrorJson`.
 	 */
 	diagnostics?: Diagnostic[];
 
@@ -185,6 +190,8 @@ interface ErrorJson {
 	description: string;
 	message?: string;
 	compatCode?: string;
+	compatDescription?: string;
+	compatFixedIn?: string;
 	diagnostics?: Diagnostic[];
 	line?: number;
 	column?: number;
@@ -226,6 +233,9 @@ export function parseErrorJson(json: string, source: string): ProjectionError {
 	const err: ErrorJson = JSON.parse(json);
 	const result = constructError(err, source);
 	if (err.compatCode !== undefined) result.compatCode = err.compatCode;
+	if (err.compatDescription !== undefined)
+		result.compatDescription = err.compatDescription;
+	if (err.compatFixedIn !== undefined) result.compatFixedIn = err.compatFixedIn;
 	if (err.diagnostics !== undefined) result.diagnostics = err.diagnostics;
 	return result;
 }

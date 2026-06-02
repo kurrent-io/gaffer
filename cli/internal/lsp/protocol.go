@@ -239,7 +239,7 @@ type CodeLensParams struct {
 }
 
 // diagnosticSeverity matches LSP spec values: 1=Error, 2=Warning,
-// 3=Information, 4=Hint.
+// 3=Information. (gaffer does not emit Hint.)
 type diagnosticSeverity int
 
 const (

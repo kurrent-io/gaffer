@@ -36,6 +36,12 @@ type JsLocation struct {
 	Column int `json:"column"`
 }
 
+// Compat fields, shared by every error type below: when an upstream-quirk-compat
+// code path threw, CompatCode is the throwing quirk's code (with CompatDescription
+// and, when known, CompatFixedIn from the catalogue). That same code also appears in
+// Diagnostics, which is the complete set of quirks that fired on the throwing event -
+// read CompatCode for "what broke this event", Diagnostics for "everything that fired".
+
 type InvalidProjectionError struct {
 	Desc              string
 	Location          *JsLocation

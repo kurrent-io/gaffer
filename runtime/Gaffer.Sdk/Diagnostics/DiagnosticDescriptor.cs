@@ -18,7 +18,9 @@ public sealed record DiagnosticDescriptor {
 	/// Default severity, per the per-firing rubric: <c>Error</c> when there is no correct form
 	/// (the construct throws or is unsupported), <c>Warning</c> when it runs but produces a
 	/// wrong/surprising result, <c>Information</c> when it works but is noteworthy
-	/// (lifecycle/redundancy).
+	/// (lifecycle/redundancy). This is the catalogue default; a quirk caught at the throw site is
+	/// reported as <c>Error</c> for that firing regardless (a throw is an error at that point), so
+	/// a runtime firing's severity can differ from the default here.
 	/// </summary>
 	public required DiagnosticSeverity Severity { get; init; }
 
@@ -33,13 +35,6 @@ public sealed record DiagnosticDescriptor {
 	/// flight, so the quirk fires in every configuration.
 	/// </summary>
 	public KurrentDbVersion? FixedIn { get; init; }
-
-	/// <summary>
-	/// Quirks only: whether the quirk has a runtime behaviour reproduced in the handler (some
-	/// also have a compile-time rule). Marks which descriptors have a runtime behaviour to
-	/// dispatch to.
-	/// </summary>
-	public bool HasRuntimeBehaviour { get; init; }
 
 	/// <summary>
 	/// Quirks only: true when this quirk should be reproduced for the given session quirks

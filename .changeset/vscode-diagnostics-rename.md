@@ -2,4 +2,4 @@
 "gaffer-vscode": patch
 ---
 
-Compatibility with the diagnostics taxonomy rename: the Step panel shows the new `quirk.*` / `usage.*` diagnostic codes.
+The VS Code Step panel now shows the `quirk.*` / `usage.*` diagnostic codes introduced by the diagnostics taxonomy rename in this release.

@@ -241,9 +241,12 @@ try {
 	if (err instanceof ProjectionError) {
 		err.code; // "handler-error", "malformed-event", etc.
 		err.description; // human-readable description
+		err.diagnostics; // quirks that fired on the throwing event (e.g. quirk.serialize.nonFinite)
 	}
 }
 ```
+
+When a quirk throws, `err.diagnostics` carries it (and any quirk that fired earlier in the same event), the same `Diagnostic` shape as `step.diagnostics` on a processed step - so you assert on a throwing quirk the same way.
 
 ## Related packages
 

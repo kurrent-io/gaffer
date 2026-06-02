@@ -6,6 +6,7 @@ import {
 	DiagnosticSeverity,
 } from "../src/index.js";
 import type { EmittedEvent, ProjectionInfo } from "../src/index.js";
+import { parseErrorJson } from "../src/errors.js";
 
 describe("ProjectionSession", () => {
 	let session: ProjectionSession | null = null;
@@ -656,5 +657,40 @@ describe("ProjectionSession", () => {
 			created: "2026-01-01T00:00:00Z",
 		});
 		expect(key).toBe("eu");
+	});
+});
+
+describe("parseErrorJson compat enrichment", () => {
+	// Every catalog entry has FixedIn = null today, so the compatDescription /
+	// compatFixedIn decode is otherwise structurally dead. Pin it against a
+	// synthetic payload so a JSON-key typo surfaces now.
+	it("decodes compatDescription, compatFixedIn, and diagnostics", () => {
+		const json = JSON.stringify({
+			code: "handler-error",
+			description: "boom",
+			compatCode: "quirk.event.bodyCast",
+			compatDescription: "Accessing event.body throws.",
+			compatFixedIn: "26.1.1",
+			diagnostics: [
+				{
+					code: "quirk.event.bodyCast",
+					message: "m",
+					severity: 1,
+					range: null,
+				},
+			],
+			eventType: "X",
+			streamId: "s-1",
+			sequenceNumber: 0,
+		});
+
+		const err = parseErrorJson(json, "src") as ProjectionHandlerError;
+		expect(err).toBeInstanceOf(ProjectionHandlerError);
+		expect(err.compatCode).toBe("quirk.event.bodyCast");
+		expect(err.compatDescription).toBe("Accessing event.body throws.");
+		expect(err.compatFixedIn).toBe("26.1.1");
+		expect(err.diagnostics?.map((d) => d.code)).toEqual([
+			"quirk.event.bodyCast",
+		]);
 	});
 });

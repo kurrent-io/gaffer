@@ -113,6 +113,9 @@
 		width: 100vw;
 		height: 100vh;
 		overflow: hidden;
+		/* clip-path is reliable against 3D-transformed children that
+		   overflow: hidden alone won't clip. */
+		clip-path: inset(0);
 		margin-bottom: -30vh;
 	}
 

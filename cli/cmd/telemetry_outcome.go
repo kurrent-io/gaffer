@@ -267,3 +267,41 @@ func (t *projErrTracker) last() telemetry.ProjectionOutcome {
 	}
 	return out[len(out)-1]
 }
+
+// diagSeenTracker records the distinct diagnostic codes (quirk.* / usage.*) a
+// dev / debug session surfaced - the compile-time set from ProjectionInfo plus
+// the runtime quirks the runner reports off each FeedResult / faulting error.
+// Backed by a map for dedupe, drained sorted at End time. Single-goroutine at
+// Record time, same ownership as projErrTracker: the runner fires it via
+// source.Run, which processes events synchronously on the cobra wrapper's
+// goroutine (the DAP serve goroutine drives protocol, not feeds).
+type diagSeenTracker struct {
+	seen map[string]struct{}
+}
+
+func newDiagSeenTracker() *diagSeenTracker {
+	return &diagSeenTracker{seen: map[string]struct{}{}}
+}
+
+// Record adds a diagnostic code to the set. Empty codes are ignored. Nil-safe.
+func (t *diagSeenTracker) Record(code string) {
+	if t == nil || code == "" {
+		return
+	}
+	t.seen[code] = struct{}{}
+}
+
+// Sorted returns the recorded codes in stable lexical order, ready for
+// SetDiagnosticsSeen. Returns nil (not an empty slice) when none were seen so
+// the Tx setter's nil-check omits the field entirely.
+func (t *diagSeenTracker) Sorted() []string {
+	if t == nil || len(t.seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(t.seen))
+	for k := range t.seen {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}

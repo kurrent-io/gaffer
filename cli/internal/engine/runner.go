@@ -30,6 +30,14 @@ type RunnerConfig struct {
 	Writer        EventWriter
 	History       *history.Store
 	Debug         *DebugConfig
+	// OnDiagnostic, if set, fires for each diagnostic that fires while processing
+	// an event - both the quirks on a successful FeedResult and those carried on a
+	// throwing quirk's error. It's a stream of occurrences, not distinct codes: a
+	// code can repeat within one event, so dedupe if you need a distinct set.
+	// Independent of the writer, so collection doesn't depend on the output format.
+	// Called inline from ProcessOne (i.e. the event source's goroutine), like the
+	// writer callbacks.
+	OnDiagnostic func(code string)
 }
 
 type Runner struct {
@@ -41,6 +49,7 @@ type Runner struct {
 	writer        EventWriter
 	history       *history.Store
 	debug         *DebugConfig
+	onDiagnostic  func(code string)
 
 	stats       EventStats
 	partitions  map[string]bool
@@ -77,6 +86,7 @@ func NewRunner(cfg RunnerConfig) *Runner {
 		writer:        cfg.Writer,
 		history:       cfg.History,
 		debug:         cfg.Debug,
+		onDiagnostic:  cfg.OnDiagnostic,
 		partitions:    make(map[string]bool),
 	}
 	if r.debug != nil && r.debug.OnBreak != nil {
@@ -128,6 +138,15 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 		r.faulted = true
 		r.lastError = err
 		r.mu.Unlock()
+		// A throwing quirk (e.g. event.body cast, non-finite serialize) faults the
+		// event but still carries its diagnostics on the error - surface them too.
+		if r.onDiagnostic != nil {
+			if pe, ok := err.(gafferruntime.ProjectionError); ok {
+				for _, d := range pe.ErrorDiagnostics() {
+					r.onDiagnostic(d.Code)
+				}
+			}
+		}
 		if r.writer != nil {
 			r.writer.OnError(eventID(eventJSON), fe.Code, fe.Description)
 		}
@@ -166,6 +185,11 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 	}
 	r.mu.Unlock()
 
+	if r.onDiagnostic != nil {
+		for _, d := range result.Diagnostics {
+			r.onDiagnostic(d.Code)
+		}
+	}
 	if r.writer != nil {
 		r.writer.OnResult(eventID(eventJSON), result)
 	}

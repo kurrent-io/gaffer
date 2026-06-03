@@ -233,6 +233,15 @@
             "$ref": "#/definitions/ProjectionOutcome"
           },
           "maxItems": 100
+        },
+        "diagnostics_seen": {
+          "description": "Distinct, sorted set of diagnostic codes seen during the session, across\nboth compile-time and runtime diagnostics. Presence only - no counts. Empty\nwhen none. Codes follow the `<class>.<subject>.<detail>` shape (e.g.\nquirk.event.bodyCast).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z]+\\.[a-zA-Z0-9]+\\.[a-zA-Z0-9]+$"
+          },
+          "maxItems": 100
         }
       },
       "allOf": [
@@ -284,6 +293,15 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/ProjectionOutcome"
+          },
+          "maxItems": 100
+        },
+        "diagnostics_seen": {
+          "description": "Distinct, sorted set of diagnostic codes seen during the run, across both\ncompile-time and runtime diagnostics. Presence only - no counts. Empty when\nnone. Codes follow the `<class>.<subject>.<detail>` shape (e.g.\nquirk.event.bodyCast).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z]+\\.[a-zA-Z0-9]+\\.[a-zA-Z0-9]+$"
           },
           "maxItems": 100
         }

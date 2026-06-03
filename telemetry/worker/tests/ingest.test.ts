@@ -199,26 +199,25 @@ describe("POST /v1/ingest", () => {
 	});
 });
 
-describe("GET /", () => {
-	it("returns the notice HTML", async () => {
-		const res = await worker.fetch(new Request("https://example.com/"));
-		expect(res.status).toBe(200);
-		expect(res.headers.get("content-type")).toContain("text/html");
-		const body = await res.text();
-		expect(body.toLowerCase()).toContain("<!doctype html>");
-		// Assert against an `<h1>` to confirm the markdown rendered, not just
-		// that the title tag is present.
-		expect(body).toMatch(/<h1[^>]*>[^<]*Usage telemetry[^<]*<\/h1>/);
+describe("legacy notice routes", () => {
+	it.each([
+		["/", "https://gaffer.kurrent.io/telemetry/"],
+		["/cli", "https://gaffer.kurrent.io/telemetry/cli/"],
+		["/cli/", "https://gaffer.kurrent.io/telemetry/cli/"],
+		["/vscode", "https://gaffer.kurrent.io/telemetry/vs-code/"],
+	])("301-redirects %s to the docs hub", async (path, location) => {
+		// redirect: "manual" so the harness returns the 301 instead of
+		// following it (a followed request would loop back into the worker
+		// as an unhandled /telemetry/* path and 404).
+		const res = await worker.fetch(new Request(`https://example.com${path}`, { redirect: "manual" }));
+		expect(res.status).toBe(301);
+		expect(res.headers.get("location")).toBe(location);
 	});
 
-	it("locks down the notice with a CSP", async () => {
-		const res = await worker.fetch(new Request("https://example.com/"));
-		const csp = res.headers.get("content-security-policy");
-		expect(csp).toContain("default-src 'none'");
-		// The notice has no scripts; if a future edit ever adds one, the
-		// browser should block it instead of silently running it.
-		expect(csp).toContain("script-src 'none'");
-		expect(csp).not.toContain("'unsafe-eval'");
+	it("returns 405 for non-GET/HEAD on a notice route", async () => {
+		const res = await worker.fetch(new Request("https://example.com/cli", { method: "POST" }));
+		expect(res.status).toBe(405);
+		expect(res.headers.get("allow")).toBe("GET, HEAD");
 	});
 });
 

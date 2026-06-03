@@ -1,6 +1,6 @@
 import { prune } from "./cron";
 import { handleIngest } from "./ingest";
-import { handleNotice } from "./notice";
+import { handleNoticeRedirect } from "./redirects";
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -13,21 +13,13 @@ export default {
 			return handleIngest(request, env, ctx);
 		}
 
-		const noticeResponse = handleNotice(url.pathname);
-		if (noticeResponse !== null) {
+		const redirect = handleNoticeRedirect(url.pathname);
+		if (redirect !== null) {
 			if (request.method !== "GET" && request.method !== "HEAD") {
 				return new Response(null, { status: 405, headers: { allow: "GET, HEAD" } });
 			}
-			// HTTP HEAD must return the same headers/status as GET but with
-			// no body. Workers doesn't auto-strip; do it explicitly.
-			if (request.method === "HEAD") {
-				return new Response(null, { status: noticeResponse.status, headers: noticeResponse.headers });
-			}
-			return noticeResponse;
-		}
-
-		if (url.pathname.startsWith("/fonts/") || url.pathname.startsWith("/favicons/")) {
-			return env.ASSETS.fetch(request);
+			// A 301 carries no body, so the same response is valid for HEAD.
+			return redirect;
 		}
 
 		return new Response("Not Found", { status: 404 });

@@ -21,7 +21,7 @@
     "severity": "error",
     "message": "Accessing event.body throws for a non-object event body (null, or a primitive like a number or string); use event.bodyRaw instead.",
     "docs": "Accessing `event.body` throws in the KurrentDB engine when the event body is a non-object JSON value - null, or a primitive like a number or string. The upstream `EnsureBody` casts to an object without a type check. Use `event.bodyRaw` and parse it yourself. (gaffer's JS testing library normalizes a `data: null` event to an absent body, so a null body won't reproduce the throw there.)",
-    "fixedIn": null
+    "fixedIn": "26.2.0"
   },
   {
     "code": "quirk.biState.stringSlot",
@@ -45,7 +45,7 @@
     "severity": "error",
     "message": "Projection state containing NaN or Infinity throws during serialization (JSON has no representation for non-finite numbers).",
     "docs": "The KurrentDB engine throws when projection state contains `NaN` or `Infinity` (JSON has no representation for them). Guard non-finite numbers in your handler, e.g. store `null` or `0`.",
-    "fixedIn": null
+    "fixedIn": "26.2.0"
   },
   {
     "code": "usage.linkStreamTo.deprecated",

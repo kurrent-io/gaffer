@@ -6,12 +6,12 @@ using Gaffer.Sdk.Versioning;
 namespace Gaffer.Runtime.Tests;
 
 /// <summary>
-/// Tests for upstream quirk-compat behaviours that gaffer reproduces. Each
-/// quirk's <see cref="DiagnosticCatalog"/> entry currently has <c>FixedIn = null</c>
-/// (no upstream PR has merged), so the quirky path fires in every reachable
-/// configuration. The "clean" branch is intentionally unreachable today; it
-/// activates when an upstream fix lands and we flip <c>FixedIn</c> to the
-/// release version.
+/// Tests for upstream quirk-compat behaviours that gaffer reproduces. The
+/// <c>event.body</c> cast and non-finite-serialization quirks were fixed upstream
+/// by PR #5610 (shipped 26.2.0), so their <see cref="DiagnosticCatalog"/> entries
+/// carry <c>FixedIn = 26.2.0</c> and the clean (post-fix) path is reachable and
+/// tested at that version. The remaining quirks still have <c>FixedIn = null</c>
+/// (no upstream fix), so their quirky path fires in every reachable configuration.
 /// </summary>
 public class CompatQuirksTests {
 	private static ProjectionSessionOptions Options(KurrentDbVersion? quirksVersion = null) =>
@@ -188,7 +188,8 @@ public class CompatQuirksTests {
 	public void EventBody_NonObjectData_Throws_Unversioned(string data) {
 		// Upstream's EnsureBody casts the parsed body to ObjectInstance.
 		// Non-object JSON values (null, number, string, boolean) throw
-		// InvalidCastException. Quirk always fires while FixedIn = null.
+		// InvalidCastException. Fired here at the unversioned default;
+		// suppressed at >= 26.2.0 (see EventBody_NonObjectData_Works_At26_2_0).
 		using var session = new ProjectionSession("""
 			fromAll().when({
 				Test: function(s, e) { return e.body; }
@@ -222,6 +223,31 @@ public class CompatQuirksTests {
 		Assert.Equal(DiagnosticCatalog.EventBodyCast.Code, ex.CompatCode);
 		var d = Assert.Single(ex.Diagnostics, x => x.Code == DiagnosticCatalog.EventBodyCast.Code);
 		Assert.Equal(DiagnosticSeverity.Error, d.Severity);
+	}
+
+	[Theory]
+	[InlineData("null")]
+	[InlineData("42")]
+	[InlineData("\"hello\"")]
+	[InlineData("true")]
+	public void EventBody_NonObjectData_Works_At26_2_0(string data) {
+		// PR #5610 (26.2.0) drops the ObjectInstance cast in EnsureBody, so a
+		// non-object body is accessible instead of throwing. FixedIn=26.2.0
+		// activates the clean path.
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				Test: function (s, e) { return { got: e.body }; }
+			});
+		""", Options(new KurrentDbVersion(26, 2, 0)));
+
+		session.Feed(new ProjectionEvent {
+			EventType = "Test",
+			StreamId = "s-1",
+			Data = data,
+			IsJson = true,
+		});
+
+		Assert.NotNull(session.GetState());
 	}
 
 	[Fact]
@@ -428,8 +454,8 @@ public class CompatQuirksTests {
 	[InlineData("-Infinity")]
 	public void StateContainingNonFinite_Throws_Unversioned(string jsLiteral) {
 		// Upstream's Utf8JsonWriter.WriteNumberValue throws on non-finite
-		// doubles. Quirk always fires while FixedIn = null. Clean path writes
-		// JSON null instead.
+		// doubles. Fired here at the unversioned default; the clean path
+		// (>= 26.2.0) writes JSON null - see StateContainingNonFinite_WritesNull_At26_2_0.
 		using var session = new ProjectionSession($$"""
 			fromAll().when({
 				$init: function () { return { value: 0 }; },
@@ -444,6 +470,30 @@ public class CompatQuirksTests {
 				Data = "{}",
 				IsJson = true,
 			}));
+	}
+
+	[Theory]
+	[InlineData("NaN")]
+	[InlineData("Infinity")]
+	[InlineData("-Infinity")]
+	public void StateContainingNonFinite_WritesNull_At26_2_0(string jsLiteral) {
+		// PR #5610 (26.2.0) serializes non-finite numbers as JSON null instead of
+		// throwing. FixedIn=26.2.0 activates the clean path.
+		using var session = new ProjectionSession($$"""
+			fromAll().when({
+				$init: function () { return { value: 0 }; },
+				Test: function (s, e) { s.value = {{jsLiteral}}; return s; }
+			});
+		""", Options(new KurrentDbVersion(26, 2, 0)));
+
+		session.Feed(new ProjectionEvent {
+			EventType = "Test",
+			StreamId = "s-1",
+			Data = "{}",
+			IsJson = true,
+		});
+
+		Assert.Contains("\"value\":null", session.GetState());
 	}
 
 	[Fact]

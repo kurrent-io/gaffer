@@ -220,16 +220,15 @@ func TestTextWriter_WriteFatalError_RendersCompatBlock(t *testing.T) {
 	testutil.AssertContains(t, out, "Compat:")
 	testutil.AssertContains(t, out, "quirk.event.bodyCast")
 	testutil.AssertContains(t, out, "Accessing event.body throws on a non-object body.")
-	// Every catalogue entry has FixedIn = nil today, so the rendering
+	// With no compatFixedIn on the error, the rendering
 	// shows "Current KurrentDB behaviour" rather than "Fixed in ...".
 	testutil.AssertContains(t, out, "Current KurrentDB behaviour")
 }
 
 func TestTextWriter_WriteCompatBlock_RendersFixedInWhenSet(t *testing.T) {
 	// The "Fixed in KurrentDB X" branch activates when the runtime sets
-	// compatFixedIn on the error (every catalogue entry has FixedIn = nil
-	// today). The description + fixedIn ride the error payload, no registry
-	// round-trip.
+	// compatFixedIn on the error. The description + fixedIn ride the error
+	// payload, no registry round-trip.
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, &buf)
 

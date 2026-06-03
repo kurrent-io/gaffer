@@ -1,3 +1,5 @@
+using Gaffer.Sdk.Versioning;
+
 namespace Gaffer.Sdk.Diagnostics;
 
 /// <summary>
@@ -24,7 +26,7 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "linkStreamTo with metadata (3+ args) crashes due to an upstream parameter-indexing bug; metadata is never captured.",
 		Docs = "`linkStreamTo(stream, link, metadata)` with a third (metadata) argument crashes in the KurrentDB projection engine - the metadata branch reads an out-of-bounds parameter and throws. The two-argument form works; metadata is never captured. gaffer reproduces the crash.",
-		FixedIn = null, // no upstream PR in flight
+		FixedIn = null, // no upstream fix as of 26.2.0
 	};
 
 	/// <summary>
@@ -39,7 +41,7 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Warning,
 		Message = "log() with multiple args produces unexpected output due to an upstream bug: primitives become separate log lines and objects use a ' ,' separator.",
 		Docs = "`log()` with more than one argument behaves oddly in the KurrentDB engine: primitive arguments are emitted as separate log lines, and objects are joined with a ` ,` separator. Pass a single pre-formatted argument to avoid surprises.",
-		FixedIn = null, // no upstream PR
+		FixedIn = null, // no upstream fix as of 26.2.0
 	};
 
 	/// <summary>
@@ -53,7 +55,7 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "Accessing event.body throws for a non-object event body (null, or a primitive like a number or string); use event.bodyRaw instead.",
 		Docs = "Accessing `event.body` throws in the KurrentDB engine when the event body is a non-object JSON value - null, or a primitive like a number or string. The upstream `EnsureBody` casts to an object without a type check. Use `event.bodyRaw` and parse it yourself. (gaffer's JS testing library normalizes a `data: null` event to an absent body, so a null body won't reproduce the throw there.)",
-		FixedIn = null, // PR #5610 open, expected 26.1.1
+		FixedIn = new KurrentDbVersion(26, 2, 0), // PR #5610, shipped 26.2.0
 	};
 
 	/// <summary>
@@ -95,7 +97,7 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "Projection state containing NaN or Infinity throws during serialization (JSON has no representation for non-finite numbers).",
 		Docs = "The KurrentDB engine throws when projection state contains `NaN` or `Infinity` (JSON has no representation for them). Guard non-finite numbers in your handler, e.g. store `null` or `0`.",
-		FixedIn = null, // PR #5610
+		FixedIn = new KurrentDbVersion(26, 2, 0), // PR #5610, shipped 26.2.0
 	};
 
 	// ---------- usage.* : the user's own projection code ----------

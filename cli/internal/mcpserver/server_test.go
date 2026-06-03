@@ -667,11 +667,14 @@ func TestResourceQuirks(t *testing.T) {
 			t.Errorf("expected resource to include heading for %q", code)
 		}
 	}
-	// Today every entry has FixedIn = nil; the rendering shows "not yet
-	// shipped upstream" rather than a version. Once upstream ships, that
-	// flips to "Fixed in: KurrentDB X".
+	// Quirks without an upstream fix (e.g. biState.stringSlot) render "not yet
+	// shipped upstream"; quirks fixed upstream (bodyCast / nonFinite in 26.2.0)
+	// render the version.
 	if !strings.Contains(text, "not yet shipped upstream") {
 		t.Errorf("expected at least one 'not yet shipped upstream' line")
+	}
+	if !strings.Contains(text, "KurrentDB 26.2.0") {
+		t.Errorf("expected a 'Fixed in: KurrentDB 26.2.0' line for a fixed quirk")
 	}
 }
 

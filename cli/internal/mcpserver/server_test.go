@@ -247,7 +247,7 @@ func TestFormatStep_PromotesDiagnostics(t *testing.T) {
 	withDiag := &history.Step{
 		Index:      1,
 		EventJSON:  `{"eventType":"Tick","streamId":"s-1"}`,
-		ResultJSON: `{"status":"processed","diagnostics":[{"code":"quirk.biState.stringSlot","message":"m","severity":2,"range":null}]}`,
+		ResultJSON: `{"status":"processed","diagnostics":[{"code":"quirk.serialize.rawString","message":"m","severity":2,"range":null}]}`,
 		EventType:  "Tick",
 		Status:     "processed",
 	}
@@ -255,8 +255,8 @@ func TestFormatStep_PromotesDiagnostics(t *testing.T) {
 	if !ok || len(diags) != 1 {
 		t.Fatalf("expected 1 promoted diagnostic, got %v", formatStep(withDiag)["diagnostics"])
 	}
-	if code := diags[0].(map[string]any)["code"]; code != "quirk.biState.stringSlot" {
-		t.Errorf("promoted diagnostic code = %v, want quirk.biState.stringSlot", code)
+	if code := diags[0].(map[string]any)["code"]; code != "quirk.serialize.rawString" {
+		t.Errorf("promoted diagnostic code = %v, want quirk.serialize.rawString", code)
 	}
 
 	noDiag := &history.Step{Index: 1, ResultJSON: `{"status":"processed","diagnostics":[]}`}
@@ -660,14 +660,14 @@ func TestResourceQuirks(t *testing.T) {
 		"quirk.linkStreamTo.outOfBoundsParameters",
 		"quirk.log.multiParam",
 		"quirk.event.bodyCast",
-		"quirk.biState.stringSlot",
+		"quirk.serialize.rawString",
 		"quirk.serialize.nonFinite",
 	} {
 		if !strings.Contains(text, "## "+code) {
 			t.Errorf("expected resource to include heading for %q", code)
 		}
 	}
-	// Quirks without an upstream fix (e.g. biState.stringSlot) render "not yet
+	// Quirks without an upstream fix (e.g. log.multiParam) render "not yet
 	// shipped upstream"; quirks fixed upstream (bodyCast / nonFinite in 26.2.0)
 	// render the version.
 	if !strings.Contains(text, "not yet shipped upstream") {

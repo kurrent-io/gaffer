@@ -6,11 +6,9 @@ namespace Gaffer.Runtime.Tests;
 public class QuirkFixTests {
 	[Fact]
 	public void BiState_string_partition_state_matches_upstream_quoting() {
-		// Unversioned default = quirks on, matching upstream prod. The
-		// upstream BiState PrepareOutput quirk always JSON-quotes raw string
-		// state in slot 0 (covered by DiagnosticCatalog.BiStateStringSlot). When
-		// PR #5610 ships and we set FixedIn, a sibling test should cover
-		// the clean (post-fix) path where the string passes through raw.
+		// Bi-state slots always JSON-encode (matches upstream, all versions), so a
+		// raw string in slot 0 persists as "alice" with quotes. This is the correct
+		// contract - not a quirk - and is unaffected by quirksVersion.
 		using var session = new ProjectionSession("""
             options({ biState: true });
             fromAll().when({

@@ -24,27 +24,19 @@
     "fixedIn": "26.2.0"
   },
   {
-    "code": "quirk.biState.stringSlot",
-    "class": "quirk",
-    "severity": "warning",
-    "message": "A raw string in the bi-state partition slot is JSON-quoted instead of passed through, due to an upstream bug.",
-    "docs": "In a bi-state projection, a raw string in the partition-state slot is JSON-quoted (double-encoded) when persisted by the KurrentDB engine rather than passed through. Wrap string state in an object to avoid the double-encoding.",
-    "fixedIn": null
-  },
-  {
-    "code": "quirk.biState.sharedStringSlot",
-    "class": "quirk",
-    "severity": "warning",
-    "message": "A raw string in the bi-state shared slot is JSON-quoted instead of passed through, due to an upstream bug.",
-    "docs": "In a bi-state projection, a raw string in the shared-state slot is JSON-quoted (double-encoded) when persisted by the KurrentDB engine. Wrap shared string state in an object to avoid the double-encoding.",
-    "fixedIn": null
-  },
-  {
     "code": "quirk.serialize.nonFinite",
     "class": "quirk",
     "severity": "error",
     "message": "Projection state containing NaN or Infinity throws during serialization (JSON has no representation for non-finite numbers).",
     "docs": "The KurrentDB engine throws when projection state contains `NaN` or `Infinity` (JSON has no representation for them). Guard non-finite numbers in your handler, e.g. store `null` or `0`.",
+    "fixedIn": "26.2.0"
+  },
+  {
+    "code": "quirk.serialize.rawString",
+    "class": "quirk",
+    "severity": "error",
+    "message": "A bare string returned as projection state is persisted un-encoded, so the projection faults when it reloads (Load can't JSON-parse the raw string). Wrap the string in an object.",
+    "docs": "When a projection returns a bare string as its state (not wrapped in an object), the KurrentDB engine persists it un-encoded - `\"hello\"` is written as `hello` rather than `\"hello\"`. On the next reload (restart, re-enable, resume) `Load()` runs `JSON.parse` on the stored value and throws, so the projection won't resume. Wrap string state in an object (e.g. `{ value: \"hello\" }`), or use KurrentDB 26.2.0+ where the engine JSON-encodes string state. (Bi-state state-array slots are unaffected - they always JSON-encode.)",
     "fixedIn": "26.2.0"
   },
   {

@@ -344,14 +344,14 @@ func TestOneShotDefer_PanicBeatsNonNilError(t *testing.T) {
 func TestDiagSeenTracker_DedupeAndSort(t *testing.T) {
 	tr := newDiagSeenTracker()
 	tr.Record("usage.handler.async")
-	tr.Record("quirk.biState.stringSlot")
+	tr.Record("quirk.serialize.rawString")
 	tr.Record("usage.handler.async") // dupe
 	tr.Record("quirk.log.multiParam")
 
 	got := tr.Sorted()
 	want := []string{
-		"quirk.biState.stringSlot",
 		"quirk.log.multiParam",
+		"quirk.serialize.rawString",
 		"usage.handler.async",
 	}
 	if !reflect.DeepEqual(got, want) {

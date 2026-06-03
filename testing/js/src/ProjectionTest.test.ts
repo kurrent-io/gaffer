@@ -708,20 +708,17 @@ describe("source filtering", () => {
 	});
 });
 
-describe("runtime diagnostics (biState string slot)", () => {
-	const biStateStringSlot = `
-		options({ biState: true });
+describe("runtime diagnostics (uni-state raw string)", () => {
+	const rawStringState = `
 		fromAll().when({
-			$init: function () { return "initial"; },
-			$initShared: function () { return {}; },
-			SetName: function (s, e) { s[0] = e.data.name; return s; }
+			Set: function (s, e) { return e.data.name; }
 		});
 	`;
 
-	it("surfaces the double-quoted raw state and a diagnostic", () => {
-		using test = new ProjectionTest(biStateStringSlot, { engineVersion: 2 });
+	it("surfaces the raw un-encoded state and a diagnostic", () => {
+		using test = new ProjectionTest(rawStringState, { engineVersion: 2 });
 		const step = test.feed({
-			eventType: "SetName",
+			eventType: "Set",
 			streamId: "s-1",
 			sequenceNumber: 0,
 			isJson: true,
@@ -730,14 +727,14 @@ describe("runtime diagnostics (biState string slot)", () => {
 		expect(step.status).toBe("processed");
 		if (step.status !== "processed") return;
 
-		// Parsed state hides the quirk; raw state exposes the double-quoting.
+		// gaffer JSON-encodes the state (safe) and flags the quirk: pre-26.2.0 the engine
+		// would persist a bare string raw and fault on reload.
 		expect(step.state).toBe("alice");
 		expect(step.stateRaw).toBe('"alice"');
-		expect(test.getStateRaw()).toBe('"alice"');
 
 		// The diagnostic tells the user to look, without them knowing in advance.
 		expect(
-			step.diagnostics.some((d) => d.code === "quirk.biState.stringSlot"),
+			step.diagnostics.some((d) => d.code === "quirk.serialize.rawString"),
 		).toBe(true);
 	});
 

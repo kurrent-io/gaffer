@@ -295,10 +295,9 @@ public class CompatQuirksTests {
 	// -- BiState PrepareOutput string slot --
 
 	[Fact]
-	public void BiState_StringInSlot0_QuotedWhenQuirky() {
-		// Upstream checks _state.IsString() (the array, always false) instead
-		// of state.IsString() (the slot-0 element). Every value goes through
-		// the JSON-serializer, so raw strings come out quoted.
+	public void BiState_StringSlot_JsonEncoded() {
+		// Bi-state slots always JSON-encode (matches upstream). A string slot
+		// persists as "alice" with quotes - the correct contract, not a quirk.
 		using var session = new ProjectionSession("""
 			options({ biState: true });
 			fromAll().when({
@@ -315,12 +314,11 @@ public class CompatQuirksTests {
 			IsJson = true,
 		});
 
-		// Quirky: JSON-quoted (matches upstream). Clean would emit raw "alice".
 		Assert.Equal("\"alice\"", session.GetState());
 	}
 
 	[Fact]
-	public void BiState_StringInSlot0_EmitsRuntimeDiagnostic() {
+	public void BiState_StringSlot_EmitsNoDiagnostic() {
 		using var session = new ProjectionSession("""
 			options({ biState: true });
 			fromAll().when({
@@ -337,31 +335,8 @@ public class CompatQuirksTests {
 			IsJson = true,
 		});
 
-		var diag = Assert.Single(result.Diagnostics);
-		Assert.Equal(DiagnosticCatalog.BiStateStringSlot.Code, diag.Code);
-		Assert.Equal(DiagnosticSeverity.Warning, diag.Severity);
-		Assert.Null(diag.Range);
-	}
-
-	[Fact]
-	public void BiState_StringInSharedSlot_EmitsSharedRuntimeDiagnostic() {
-		using var session = new ProjectionSession("""
-			options({ biState: true });
-			fromAll().when({
-				$init: function () { return {}; },
-				$initShared: function () { return "initial"; },
-				SetShared: function (s, e) { s[1] = e.data.name; return s; }
-			});
-		""", Options());
-
-		var result = session.Feed(new ProjectionEvent {
-			EventType = "SetShared",
-			StreamId = "s-1",
-			Data = """{"name":"alice"}""",
-			IsJson = true,
-		});
-
-		Assert.Contains(result.Diagnostics, d => d.Code == DiagnosticCatalog.BiStateSharedStringSlot.Code);
+		// A string in a bi-state slot is JSON-encoded (correct), not a quirk - no diagnostic.
+		Assert.Empty(result.Diagnostics);
 	}
 
 	[Fact]
@@ -382,6 +357,50 @@ public class CompatQuirksTests {
 			IsJson = true,
 		});
 
+		Assert.Empty(result.Diagnostics);
+	}
+
+	[Fact]
+	public void UniStateString_EmitsDiagnostic_Unversioned() {
+		// A bare string returned as state would be persisted un-encoded pre-26.2.0
+		// (quirk.serialize.rawString), faulting on reload. gaffer JSON-encodes the state
+		// (safe) and reports the quirk.
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				Set: function (s, e) { return e.data.name; }
+			});
+		""", Options());
+
+		var result = session.Feed(new ProjectionEvent {
+			EventType = "Set",
+			StreamId = "s-1",
+			Data = """{"name":"alice"}""",
+			IsJson = true,
+		});
+
+		Assert.Equal("\"alice\"", session.GetState());
+		var diag = Assert.Single(result.Diagnostics);
+		Assert.Equal(DiagnosticCatalog.SerializeRawString.Code, diag.Code);
+		Assert.Equal(DiagnosticSeverity.Error, diag.Severity);
+	}
+
+	[Fact]
+	public void UniStateString_JsonEncoded_At26_2_0() {
+		// PR #5610 (26.2.0) JSON-encodes string state so it round-trips; no quirk fires.
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				Set: function (s, e) { return e.data.name; }
+			});
+		""", Options(new KurrentDbVersion(26, 2, 0)));
+
+		var result = session.Feed(new ProjectionEvent {
+			EventType = "Set",
+			StreamId = "s-1",
+			Data = """{"name":"alice"}""",
+			IsJson = true,
+		});
+
+		Assert.Equal("\"alice\"", session.GetState());
 		Assert.Empty(result.Diagnostics);
 	}
 

@@ -59,34 +59,6 @@ public static class DiagnosticCatalog {
 	};
 
 	/// <summary>
-	/// BiState <c>PrepareOutput</c> JSON-quotes a raw string in slot 0 of the state array:
-	/// upstream checks <c>_state.IsString()</c> (the array) instead of <c>state.IsString()</c>
-	/// (the element), so the passthrough branch is unreachable. Fixed upstream in PR #5610.
-	/// </summary>
-	public static readonly DiagnosticDescriptor BiStateStringSlot = new() {
-		Code = "quirk.biState.stringSlot",
-		Class = DiagnosticClass.Quirk,
-		Severity = DiagnosticSeverity.Warning,
-		Message = "A raw string in the bi-state partition slot is JSON-quoted instead of passed through, due to an upstream bug.",
-		Docs = "In a bi-state projection, a raw string in the partition-state slot is JSON-quoted (double-encoded) when persisted by the KurrentDB engine rather than passed through. Wrap string state in an object to avoid the double-encoding.",
-		FixedIn = null, // PR #5610
-	};
-
-	/// <summary>
-	/// BiState <c>PrepareOutput</c> JSON-quotes a raw string in slot 1 (shared state). Unlike
-	/// slot 0 there is no passthrough branch at all, and PR #5610's slot-0 fix does not touch it,
-	/// so it has no fix version. Tracked separately from <see cref="BiStateStringSlot"/>.
-	/// </summary>
-	public static readonly DiagnosticDescriptor BiStateSharedStringSlot = new() {
-		Code = "quirk.biState.sharedStringSlot",
-		Class = DiagnosticClass.Quirk,
-		Severity = DiagnosticSeverity.Warning,
-		Message = "A raw string in the bi-state shared slot is JSON-quoted instead of passed through, due to an upstream bug.",
-		Docs = "In a bi-state projection, a raw string in the shared-state slot is JSON-quoted (double-encoded) when persisted by the KurrentDB engine. Wrap shared string state in an object to avoid the double-encoding.",
-		FixedIn = null, // no upstream fix; PR #5610 only fixed slot 0
-	};
-
-	/// <summary>
 	/// The JSON serializer throws on <c>NaN</c> or <c>+/-Infinity</c> in state because
 	/// <c>Utf8JsonWriter.WriteNumberValue</c> rejects non-finite doubles regardless of
 	/// <c>SkipValidation</c>. Fixed upstream in PR #5610 by writing JSON <c>null</c> instead.
@@ -97,6 +69,22 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "Projection state containing NaN or Infinity throws during serialization (JSON has no representation for non-finite numbers).",
 		Docs = "The KurrentDB engine throws when projection state contains `NaN` or `Infinity` (JSON has no representation for them). Guard non-finite numbers in your handler, e.g. store `null` or `0`.",
+		FixedIn = new KurrentDbVersion(26, 2, 0), // PR #5610, shipped 26.2.0
+	};
+
+	/// <summary>
+	/// A bare string returned as (uni-state) projection state is persisted un-encoded - the engine
+	/// writes the raw string rather than JSON-encoding it - so the projection faults on reload when
+	/// <c>Load()</c> runs <c>JsonParser.Parse</c> on the stored value. Fixed upstream in PR #5610
+	/// (26.2.0) by always JSON-encoding. Bi-state state-array slots were never affected; they
+	/// always JSON-encode.
+	/// </summary>
+	public static readonly DiagnosticDescriptor SerializeRawString = new() {
+		Code = "quirk.serialize.rawString",
+		Class = DiagnosticClass.Quirk,
+		Severity = DiagnosticSeverity.Error,
+		Message = "A bare string returned as projection state is persisted un-encoded, so the projection faults when it reloads (Load can't JSON-parse the raw string). Wrap the string in an object.",
+		Docs = "When a projection returns a bare string as its state (not wrapped in an object), the KurrentDB engine persists it un-encoded - `\"hello\"` is written as `hello` rather than `\"hello\"`. On the next reload (restart, re-enable, resume) `Load()` runs `JSON.parse` on the stored value and throws, so the projection won't resume. Wrap string state in an object (e.g. `{ value: \"hello\" }`), or use KurrentDB 26.2.0+ where the engine JSON-encodes string state. (Bi-state state-array slots are unaffected - they always JSON-encode.)",
 		FixedIn = new KurrentDbVersion(26, 2, 0), // PR #5610, shipped 26.2.0
 	};
 
@@ -172,9 +160,8 @@ public static class DiagnosticCatalog {
 		LinkStreamToOutOfBoundsParameters,
 		LogMultiParam,
 		EventBodyCast,
-		BiStateStringSlot,
-		BiStateSharedStringSlot,
 		SerializeNonFinite,
+		SerializeRawString,
 		LinkStreamToDeprecated,
 		TransformsNotInvoked,
 		OutputStateUnconditional,

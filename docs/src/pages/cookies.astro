@@ -102,16 +102,37 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 			/* private mode - leave the button in its default state */
 		}
 
+		// Best-effort removal of PostHog's stored identifiers. Covers the case
+		// where PostHog never loaded (ad blocker / CSP / offline) but left
+		// cookies and localStorage from an earlier accepted session, so the
+		// withdraw button can't rely on the live SDK to clean up after itself.
+		function clearPostHogStorage() {
+			try {
+				for (const key of Object.keys(localStorage)) {
+					if (key.startsWith('ph_') || key.includes('posthog')) localStorage.removeItem(key);
+				}
+			} catch (e) {}
+			try {
+				for (const cookie of document.cookie.split(';')) {
+					const name = cookie.split('=')[0].trim();
+					if (name.startsWith('ph_') || name.includes('posthog')) {
+						document.cookie = `${name}=; Max-Age=0; path=/`;
+					}
+				}
+			} catch (e) {}
+		}
+
 		btn.addEventListener('click', () => {
 			// Tell the live posthog instance (if loaded) to stop and clear its
-			// persisted state. opt_out_capturing also drops the distinct-id
-			// cookie so a reload won't re-identify the visitor.
+			// persisted state, then sweep up any leftover identifiers in case
+			// the SDK wasn't loaded to do it itself.
 			try {
 				window.posthog?.opt_out_capturing?.();
 				window.posthog?.reset?.();
 			} catch (e) {
 				/* keep going - we still want to update our own consent record */
 			}
+			clearPostHogStorage();
 			try {
 				localStorage.setItem(CONSENT_KEY, 'declined');
 			} catch (e) {}

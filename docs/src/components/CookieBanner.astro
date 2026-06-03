@@ -57,10 +57,14 @@
 			}
 		}
 
-		if (!read()) banner.hidden = false;
+		// Show the banner unless a known decision is on record. Any other
+		// value (corrupt or legacy) is treated as "no decision" so the visitor
+		// can still consent rather than being silently locked out.
+		const decision = read();
+		if (decision !== 'accepted' && decision !== 'declined') banner.hidden = false;
 
 		banner.addEventListener('click', (event) => {
-			const target = event.target.closest('[data-consent]');
+			const target = event.target instanceof Element ? event.target.closest('[data-consent]') : null;
 			if (!target) return;
 			const choice = target.getAttribute('data-consent');
 			write(choice);

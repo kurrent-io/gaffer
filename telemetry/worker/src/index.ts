@@ -13,7 +13,7 @@ export default {
 			return handleIngest(request, env, ctx);
 		}
 
-		const redirect = handleNoticeRedirect(url.pathname);
+		const redirect = handleNoticeRedirect(url.pathname, env.DOCS_BASE_URL);
 		if (redirect !== null) {
 			if (request.method !== "GET" && request.method !== "HEAD") {
 				return new Response(null, { status: 405, headers: { allow: "GET, HEAD" } });

@@ -201,17 +201,18 @@ describe("POST /v1/ingest", () => {
 
 describe("legacy notice routes", () => {
 	it.each([
-		["/", "https://gaffer.kurrent.io/telemetry/"],
-		["/cli", "https://gaffer.kurrent.io/telemetry/cli/"],
-		["/cli/", "https://gaffer.kurrent.io/telemetry/cli/"],
-		["/vscode", "https://gaffer.kurrent.io/telemetry/vs-code/"],
-	])("301-redirects %s to the docs hub", async (path, location) => {
+		["/", "/telemetry/"],
+		["/cli", "/telemetry/cli/"],
+		["/cli/", "/telemetry/cli/"],
+		["/vscode", "/telemetry/vs-code/"],
+	])("301-redirects %s to the docs hub", async (path, hubPath) => {
 		// redirect: "manual" so the harness returns the 301 instead of
 		// following it (a followed request would loop back into the worker
-		// as an unhandled /telemetry/* path and 404).
+		// as an unhandled /telemetry/* path and 404). The hub origin comes
+		// from the env var, so it's the staging docs URL under test.
 		const res = await worker.fetch(new Request(`https://example.com${path}`, { redirect: "manual" }));
 		expect(res.status).toBe(301);
-		expect(res.headers.get("location")).toBe(location);
+		expect(res.headers.get("location")).toBe(`${env.DOCS_BASE_URL}${hubPath}`);
 	});
 
 	it("returns 405 for non-GET/HEAD on a notice route", async () => {

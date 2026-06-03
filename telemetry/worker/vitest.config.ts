@@ -10,8 +10,9 @@ export default defineConfig({
 			// the tests, so this also makes module imports cohere.
 			main: "src/index.ts",
 			// Tests run against the staging env config so bindings (DB,
-			// ASSETS, CF_VERSION_METADATA, POSTHOG_HOST) resolve. Staging
-			// and production have the same binding shape; either would work.
+			// CF_VERSION_METADATA, POSTHOG_HOST, DOCS_BASE_URL) resolve.
+			// Staging and production have the same binding shape; either
+			// would work.
 			wrangler: { configPath: "./wrangler.jsonc", environment: "staging" },
 			miniflare: {
 				// Tests don't have access to the deploy-time secret, so set a

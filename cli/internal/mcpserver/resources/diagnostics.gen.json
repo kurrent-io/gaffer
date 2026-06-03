@@ -35,8 +35,8 @@
     "code": "quirk.serialize.rawString",
     "class": "quirk",
     "severity": "error",
-    "message": "A bare string returned as projection state is persisted un-encoded, so the projection faults when it reloads (Load can't JSON-parse the raw string). Wrap the string in an object.",
-    "docs": "When a projection returns a bare string as its state (not wrapped in an object), the KurrentDB engine persists it un-encoded - `\"hello\"` is written as `hello` rather than `\"hello\"`. On the next reload (restart, re-enable, resume) `Load()` runs `JSON.parse` on the stored value and throws, so the projection won't resume. Wrap string state in an object (e.g. `{ value: \"hello\" }`), or use KurrentDB 26.2.0+ where the engine JSON-encodes string state. (Bi-state state-array slots are unaffected - they always JSON-encode.)",
+    "message": "A bare string projection state that isn't valid JSON is persisted un-encoded, so the projection faults on reload (Load can't JSON-parse the raw string). Wrap string state in an object.",
+    "docs": "When a projection's state is a bare string that isn't valid JSON - whether a handler returned it or V1 adopted an unhandled event's body as state - the KurrentDB engine persists it un-encoded (e.g. `hello`, not `\"hello\"`). On the next reload (restart, re-enable, resume) `Load()` runs `JSON.parse` on the stored value and throws, so the projection won't resume. Wrap string state in an object (e.g. `{ value: \"hello\" }`), or use KurrentDB 26.2.0+ where the engine JSON-encodes string state. (Bi-state state-array slots are unaffected - they always JSON-encode.)",
     "fixedIn": "26.2.0"
   },
   {

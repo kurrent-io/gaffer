@@ -212,12 +212,16 @@ test.getResult("order-1"); // result for order-1 (V1: post-transform, V2: post-h
 
 Some KurrentDB quirks only surface in how state is persisted, and `state` / `getState()` hide them by parsing the persisted JSON on read (see also [State serialization](#state-serialization)).
 
-- **`step.diagnostics`** lists the quirks encountered while processing the event (empty when none; it can carry more than one, and the same code can repeat). The motivating case is biState string slots: KurrentDB JSON-quotes a raw string written to a state slot (`quirk.biState.stringSlot` for the main slot, `quirk.biState.sharedStringSlot` for shared state), so `"hello"` persists as `"\"hello\""`. Non-persistence quirks appear here too, such as `quirk.log.multiParam` fired at each multi-argument `log()` call.
-- **`step.stateRaw`** and **`getStateRaw(partition?)`** return the persisted state JSON string before `JSON.parse`, so you can assert against the double-quoted value the quirk produces.
+- **`step.diagnostics`** lists the quirks encountered while processing the event (empty when none; it can carry more than one, and the same code can repeat). The motivating case is `quirk.serialize.rawString`: a bare string state that isn't valid JSON is persisted un-encoded, so the projection would fault when it reloads (`JSON.parse` can't read it). Non-persistence quirks appear here too, such as `quirk.log.multiParam` fired at each multi-argument `log()` call.
+- **`step.stateRaw`** and **`getStateRaw(partition?)`** return the persisted state JSON string before `JSON.parse`, so you can assert the exact persisted value.
 
 ```typescript
+// A projection whose handler returns a bare string as its state.
+const test = createProjection(`fromAll().when({ Set: (s, e) => e.body.name })`, {
+  engineVersion: 2,
+}).test();
 const step = test.feed({
-  eventType: "SetName",
+  eventType: "Set",
   streamId: "s-1",
   sequenceNumber: 0,
   isJson: true,
@@ -225,10 +229,10 @@ const step = test.feed({
 });
 if (step.status !== "processed") throw new Error(step.reason);
 
-expect(step.state).toBe("alice"); // parsed - quirk hidden
-expect(step.stateRaw).toBe('"alice"'); // raw - double-quoting visible
+expect(step.state).toBe("alice"); // parsed
+expect(step.stateRaw).toBe('"alice"'); // persisted, JSON-encoded
 expect(step.diagnostics.map((d) => d.code)).toContain(
-  "quirk.biState.stringSlot",
+  "quirk.serialize.rawString",
 );
 ```
 
@@ -270,7 +274,7 @@ Projection state is persisted as JSON by the same engine KurrentDB uses, so a fe
 - **`undefined`** object properties are dropped, exactly like `JSON.stringify`; in an array position `undefined` becomes `null`.
 - **`NaN` and `Infinity`** throw a `StateSerializationError`, because KurrentDB rejects them (the `quirk.serialize.nonFinite` quirk).
 
-`state` and `getState()` hide the persisted form by parsing it on read. To assert against the raw JSON (including quirks like a biState string slot being double-quoted), read `stateRaw` / `getStateRaw()` and inspect `diagnostics` (see [Raw state and diagnostics](#raw-state-and-diagnostics)).
+`state` and `getState()` hide the persisted form by parsing it on read. To assert against the raw JSON (including quirks like a bare non-JSON string state persisted un-encoded), read `stateRaw` / `getStateRaw()` and inspect `diagnostics` (see [Raw state and diagnostics](#raw-state-and-diagnostics)).
 
 ## Event input
 

@@ -13,7 +13,7 @@ Examples of the telemetry data collected:
 - Which gaffer command ran and how it finished
 - Bucketed counts of work done (`none`, `1`, `2-9`, `10-99`, `100-999`, `1000+`)
 - The structural shape of projection files (which builtins are called, with bucketed counts; which handlers are registered; bucketed file size)
-- Which gaffer diagnostics fired during a `gaffer dev` run (the diagnostic codes only - gaffer's own `quirk.*` / `usage.*` identifiers, e.g. `quirk.biState.stringSlot`; never your code or counts)
+- Which gaffer diagnostics fired during a `gaffer dev` run (the diagnostic codes only - gaffer's own `quirk.*` / `usage.*` identifiers, e.g. `quirk.serialize.rawString`; never your code or counts)
 - Crashes in gaffer's own code (gaffer-authored error messages with scrubbed stack frames)
 
 What gaffer **does not** track:
@@ -68,7 +68,7 @@ Records which gaffer command ran, what its outcome was, and bucketed counts of w
 				"fixture_count": 2,
 				"connected_to_db": true,
 				"db_version": "26.1",
-				"diagnostics_seen": ["quirk.biState.stringSlot", "usage.handler.async"]
+				"diagnostics_seen": ["quirk.serialize.rawString", "usage.handler.async"]
 			}
 		}
 	]

@@ -73,18 +73,19 @@ public static class DiagnosticCatalog {
 	};
 
 	/// <summary>
-	/// A bare string returned as (uni-state) projection state is persisted un-encoded - the engine
+	/// A bare string projection state that isn't valid JSON is persisted un-encoded - the engine
 	/// writes the raw string rather than JSON-encoding it - so the projection faults on reload when
-	/// <c>Load()</c> runs <c>JsonParser.Parse</c> on the stored value. Fixed upstream in PR #5610
-	/// (26.2.0) by always JSON-encoding. Bi-state state-array slots were never affected; they
-	/// always JSON-encode.
+	/// <c>Load()</c> runs <c>JsonParser.Parse</c> on the stored value. Applies however the string
+	/// arose (a handler return, or V1 adopting an unhandled event's body as state). Fixed upstream
+	/// in PR #5610 (26.2.0) by always JSON-encoding. Bi-state state-array slots were never affected;
+	/// they always JSON-encode.
 	/// </summary>
 	public static readonly DiagnosticDescriptor SerializeRawString = new() {
 		Code = "quirk.serialize.rawString",
 		Class = DiagnosticClass.Quirk,
 		Severity = DiagnosticSeverity.Error,
-		Message = "A bare string returned as projection state is persisted un-encoded, so the projection faults when it reloads (Load can't JSON-parse the raw string). Wrap the string in an object.",
-		Docs = "When a projection returns a bare string as its state (not wrapped in an object), the KurrentDB engine persists it un-encoded - `\"hello\"` is written as `hello` rather than `\"hello\"`. On the next reload (restart, re-enable, resume) `Load()` runs `JSON.parse` on the stored value and throws, so the projection won't resume. Wrap string state in an object (e.g. `{ value: \"hello\" }`), or use KurrentDB 26.2.0+ where the engine JSON-encodes string state. (Bi-state state-array slots are unaffected - they always JSON-encode.)",
+		Message = "A bare string projection state that isn't valid JSON is persisted un-encoded, so the projection faults on reload (Load can't JSON-parse the raw string). Wrap string state in an object.",
+		Docs = "When a projection's state is a bare string that isn't valid JSON - whether a handler returned it or V1 adopted an unhandled event's body as state - the KurrentDB engine persists it un-encoded (e.g. `hello`, not `\"hello\"`). On the next reload (restart, re-enable, resume) `Load()` runs `JSON.parse` on the stored value and throws, so the projection won't resume. Wrap string state in an object (e.g. `{ value: \"hello\" }`), or use KurrentDB 26.2.0+ where the engine JSON-encodes string state. (Bi-state state-array slots are unaffected - they always JSON-encode.)",
 		FixedIn = new KurrentDbVersion(26, 2, 0), // PR #5610, shipped 26.2.0
 	};
 

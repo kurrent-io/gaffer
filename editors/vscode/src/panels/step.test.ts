@@ -154,13 +154,13 @@ describe("StepProvider", () => {
 			streamId: "s",
 			eventType: "T",
 		});
-		provider.addWarning("quirk.biState.stringSlot", "raw string JSON-quoted");
+		provider.addWarning("quirk.serialize.rawString", "raw string JSON-quoted");
 		vi.advanceTimersByTime(50);
 		const items = provider.getChildren();
 		// Input + warning item.
 		expect(items).toHaveLength(2);
 		const warning = items.at(-1);
-		expect(warning?.label).toBe("quirk.biState.stringSlot");
+		expect(warning?.label).toBe("quirk.serialize.rawString");
 		expect(warning?.description).toBe("raw string JSON-quoted");
 		expect((warning?.iconPath as vscode.ThemeIcon).id).toBe("warning");
 	});

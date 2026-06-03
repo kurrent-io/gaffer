@@ -4,31 +4,28 @@
 //
 // Two quirks show up:
 //
-// - compat.log.multiParam: calling log() with multiple arguments trips an
+// - quirk.log.multiParam: calling log() with multiple arguments trips an
 //   upstream quirk in how the args are rendered. gaffer detects it statically
 //   (a [warning] in the header, with a source location) AND fires it again at
 //   runtime on every Tick, inline at the log() call - the heads-up says "you
 //   have this", the inline warning says "you just hit it".
 //
-// - compat.biState.stringSlot: KurrentDB JSON-quotes a raw string written to a
-//   biState slot on persistence, storing "milestone reached" as
-//   `"\"milestone reached\""` rather than passing it through. This is
-//   value-dependent, so it can only be caught at runtime, with no source
-//   location. The event counter lives in the SHARED slot (always an object),
-//   leaving per-partition slot 0 free to hold a raw string on the third event.
+// - quirk.serialize.rawString: returning a bare string as state persists it
+//   un-encoded (e.g. `milestone reached`, not `"milestone reached"`), so the
+//   projection would fault on reload when JSON.parse runs on the stored value.
+//   This is value-dependent, so it can only be caught at runtime, with no
+//   source location - here it fires on the third event, where the handler
+//   returns a bare string instead of an object.
 fromAll().when({
   $init() {
     return { seen: 0 };
   },
-  $initShared() {
-    return { count: 0 };
-  },
-  Tick([state, shared], event) {
-    shared.count += 1;
-    log("tick", shared.count);
-    if (shared.count === 3) {
-      return ["milestone reached", shared];
+  Tick(state) {
+    const seen = (state.seen || 0) + 1;
+    log("tick", seen);
+    if (seen === 3) {
+      return "milestone reached";
     }
-    return [{ seen: shared.count }, shared];
+    return { seen };
   },
 });

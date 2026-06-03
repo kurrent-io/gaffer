@@ -1209,6 +1209,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 				{ "processingLag", (o, v) => o.SetProcessingLag(v.IsNumber() ? (int)v.AsNumber() : throw new ArgumentException("Invalid value for option 'processingLag': expected a number")) },
 				{ "resultStreamName", (o, v) => o.SetResultStreamNameOption(v.IsString() ? v.AsString() : throw new ArgumentException("Invalid value for option 'resultStreamName': expected a string")) },
 				{ "biState", (o, v) => o.SetIsBiState(v.IsBoolean() ? v.AsBoolean() : throw new ArgumentException("Invalid value for option 'biState': expected a boolean")) },
+				{ "trackEmittedStreams", (o, v) => o.SetTrackEmittedStreams(v.IsBoolean() ? v.AsBoolean() : throw new ArgumentException("Invalid value for option 'trackEmittedStreams': expected a boolean")) },
 			};
 
 		private readonly List<string> _definitionFunctions;

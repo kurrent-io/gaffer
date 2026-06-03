@@ -607,4 +607,20 @@ public class DiagnosticsTests {
 		Assert.Contains(session.Diagnostics!, d => d.Code == "usage.outputState.unconditional");
 	}
 
+	// --- engine_version 2: KurrentDB rejects trackEmittedStreams -> throw ---
+
+	[Fact]
+	public void TrackEmittedStreams_OnV2_Throws() {
+		var ex = Assert.Throws<InvalidProjectionException>(() => new ProjectionSession(
+			"options({ trackEmittedStreams: true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options));
+		Assert.Contains("engine version 2", ex.Message);
+	}
+
+	[Fact]
+	public void TrackEmittedStreams_OnV1_ParsedAndAccepted() {
+		using var session = new ProjectionSession(
+			"options({ trackEmittedStreams: true });\nfromAll().when({ $any: function (s, e) { return s; } });", V1Options);
+		Assert.True(session.Sources.TrackEmittedStreams);
+	}
+
 }

@@ -145,6 +145,7 @@ public sealed class ProjectionSession : IDisposable {
 				throw new InvalidProjectionException(
 					"Deleted stream notifications are only supported with foreachStream()") { ProjectionSource = source };
 			ValidateReorderEvents();
+			ValidateTrackEmittedStreams();
 			if (!_sources.AllEvents && _sources.Events != null)
 				_handledEventTypes = new HashSet<string>(_sources.Events, StringComparer.Ordinal);
 
@@ -177,6 +178,16 @@ public sealed class ProjectionSession : IDisposable {
 		if ((_sources.ProcessingLag ?? 0) < 50)
 			throw new InvalidProjectionException(
 				"Event reordering requires processing lag at least of 50ms") { ProjectionSource = _source };
+	}
+
+	// Reproduce KurrentDB's V2 management-layer rejection: trackEmittedStreams is not supported on
+	// engine_version 2 (V2 maintains no emitted-streams catalog), so projection creation throws.
+	// gaffer surfaces the same hard error at session-create off the resolved definition - it's a
+	// refusal, not a silent no-op, so it's a throw rather than a diagnostic (cf. ReorderEvents V1).
+	private void ValidateTrackEmittedStreams() {
+		if (_version == ProjectionVersion.V2 && _sources.TrackEmittedStreams)
+			throw new InvalidProjectionException(
+				"Tracking emitted streams is not supported with engine version 2.") { ProjectionSource = _source };
 	}
 
 	public void Dispose() {

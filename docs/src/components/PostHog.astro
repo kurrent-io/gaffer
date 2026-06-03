@@ -1,0 +1,102 @@
+---
+import { POSTHOG } from '../config';
+---
+{/*
+  Consent-gated PostHog loader. The library is only fetched once the visitor
+  has clicked "Accept" in the cookie banner (or has accepted previously).
+  We intentionally do NOT load the standard `array.js` snippet up front:
+  loading it stages a queue that flushes on `posthog.init()`, but
+  initialisation still drops the distinct-id cookie before consent is
+  granted. Loading the real bundle lazily, after consent, sidesteps that.
+
+  Global Privacy Control is treated as an implied decline: when the browser
+  signals it, we never load PostHog and the banner stays hidden.
+*/}
+<script
+	is:inline
+	define:vars={{ token: POSTHOG.token, apiHost: POSTHOG.apiHost }}
+>
+	const CONSENT_KEY = 'gaffer-docs:cookie-consent';
+
+	function gpcDeclined() {
+		return navigator.globalPrivacyControl === true;
+	}
+
+	function readConsent() {
+		try {
+			return localStorage.getItem(CONSENT_KEY);
+		} catch (e) {
+			return null;
+		}
+	}
+
+	function loadPostHog() {
+		if (window.__phLoaded || gpcDeclined()) return;
+		window.__phLoaded = true;
+
+		// Minimal stub + script loader (the official PostHog snippet, trimmed
+		// to the parts we actually use). The stub queues calls so any
+		// capture() invoked before array.js resolves is replayed after init.
+		!(function (t, e) {
+			var o, n, p, r;
+			if (e.__SV) return;
+			window.posthog = e;
+			e._i = [];
+			e.init = function (i, s, a) {
+				function g(t, e) {
+					var o = e.split('.');
+					2 == o.length && ((t = t[o[0]]), (e = o[1]));
+					t[e] = function () {
+						t.push([e].concat(Array.prototype.slice.call(arguments, 0)));
+					};
+				}
+				(p = t.createElement('script')).type = 'text/javascript';
+				p.crossOrigin = 'anonymous';
+				p.async = !0;
+				p.src = s.api_host + '/static/array.js';
+				(r = t.getElementsByTagName('script')[0]).parentNode.insertBefore(p, r);
+				var u = e;
+				for (
+					void 0 !== a ? (u = e[a] = []) : (a = 'posthog'),
+						u.people = u.people || [],
+						u.toString = function (t) {
+							var e = 'posthog';
+							return 'posthog' !== a && (e += '.' + a), t || (e += ' (stub)'), e;
+						},
+						u.people.toString = function () {
+							return u.toString(1) + '.people (stub)';
+						},
+						o = 'capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys getNextSurveyStep onSessionId'.split(
+							' ',
+						),
+						n = 0;
+					n < o.length;
+					n++
+				)
+					g(u, o[n]);
+				e._i.push([i, s, a]);
+			};
+			e.__SV = 1;
+		})(document, window.posthog || []);
+
+		window.posthog.init(token, {
+			api_host: apiHost,
+			defaults: '2026-01-30',
+			persistence: 'localStorage+cookie',
+			capture_pageview: 'history_change',
+			autocapture: false,
+			disable_session_recording: true,
+		});
+	}
+
+	// Expose a tiny API for the cookie banner to call on Accept, and so other
+	// pages can check consent without re-implementing the key.
+	window.gafferDocsAnalytics = {
+		consentKey: CONSENT_KEY,
+		enable: loadPostHog,
+		hasConsent: () => !gpcDeclined() && readConsent() === 'accepted',
+		gpcDeclined,
+	};
+
+	if (!gpcDeclined() && readConsent() === 'accepted') loadPostHog();
+</script>

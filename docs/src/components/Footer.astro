@@ -5,11 +5,14 @@
 import Default from '@astrojs/starlight/components/Footer.astro';
 import GafferLogomark from '../assets/gaffer-logomark.svg';
 import GafferWordmark from '../assets/gaffer-wordmark.svg';
+import CookieBanner from './CookieBanner.astro';
 
 const year = new Date().getFullYear();
 ---
 
 <Default {...Astro.props} />
+
+<CookieBanner />
 
 <div class="gaffer-footer">
 	<div class="gaffer-footer__brand">
@@ -21,6 +24,8 @@ const year = new Date().getFullYear();
 		<a href="https://github.com/kurrent-io/gaffer">GitHub</a>
 		<a href="https://www.npmjs.com/package/@kurrent/gaffer">npm</a>
 		<a href="https://docs.kurrent.io">docs.kurrent.io</a>
+		<a href="/privacy/">Privacy</a>
+		<a href="/cookies/">Cookies</a>
 	</nav>
 </div>
 

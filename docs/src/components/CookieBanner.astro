@@ -1,0 +1,173 @@
+---
+// Consent strip for the docs-site analytics. Single-purpose, no modal,
+// dismissable. Shown only when no decision has been recorded and the
+// browser isn't signalling Global Privacy Control.
+---
+<aside
+	id="cookie-banner"
+	class="cookie-banner"
+	role="region"
+	aria-label="Cookie consent"
+	hidden
+>
+	<div class="cookie-banner__inner">
+		<div class="cookie-banner__copy">
+			<p class="cookie-banner__head">Cookies on gaffer.kurrent.io</p>
+			<p class="cookie-banner__body">
+				We use a single analytics tool (PostHog) to see which docs pages
+				visitors read and how they move through the site. No advertising
+				cookies, no cross-site tracking, no profiling, no data sold. You can change your mind any
+				time on the <a href="/cookies/#withdraw">cookie policy page</a>.
+			</p>
+		</div>
+		<div class="cookie-banner__actions">
+			<button type="button" class="cookie-banner__btn cookie-banner__btn--primary" data-consent="accepted">
+				Accept
+			</button>
+			<button type="button" class="cookie-banner__btn" data-consent="declined">
+				Decline
+			</button>
+			<a class="cookie-banner__link" href="/cookies/">Cookie policy →</a>
+		</div>
+	</div>
+</aside>
+
+<script is:inline>
+	(function () {
+		const banner = document.getElementById('cookie-banner');
+		if (!banner) return;
+		const analytics = window.gafferDocsAnalytics;
+		const CONSENT_KEY = analytics?.consentKey ?? 'gaffer-docs:cookie-consent';
+
+		// Global Privacy Control is an implied decline: never prompt, never load.
+		if (analytics?.gpcDeclined?.() ?? navigator.globalPrivacyControl === true) return;
+
+		function read() {
+			try {
+				return localStorage.getItem(CONSENT_KEY);
+			} catch (e) {
+				return null;
+			}
+		}
+		function write(value) {
+			try {
+				localStorage.setItem(CONSENT_KEY, value);
+			} catch (e) {
+				/* private mode / quota - we'll just re-prompt next visit */
+			}
+		}
+
+		if (!read()) banner.hidden = false;
+
+		banner.addEventListener('click', (event) => {
+			const target = event.target.closest('[data-consent]');
+			if (!target) return;
+			const choice = target.getAttribute('data-consent');
+			write(choice);
+			banner.hidden = true;
+			if (choice === 'accepted') analytics?.enable?.();
+		});
+	})();
+</script>
+
+<style>
+	.cookie-banner {
+		position: fixed;
+		left: 1rem;
+		right: 1rem;
+		bottom: 1rem;
+		z-index: 50;
+		background: var(--color-background);
+		border: 1px solid var(--color-shade-40);
+		border-radius: 10px;
+		box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
+	}
+	.cookie-banner[hidden] {
+		display: none;
+	}
+	.cookie-banner__inner {
+		display: flex;
+		align-items: center;
+		gap: 1.5rem;
+		padding: 1rem 1.25rem;
+		max-width: 1200px;
+		margin: 0 auto;
+	}
+	.cookie-banner__copy {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.cookie-banner__head {
+		margin: 0 0 0.15rem;
+		font-size: var(--sl-text-sm);
+		font-weight: 600;
+		color: var(--color-foreground);
+	}
+	.cookie-banner__body {
+		margin: 0;
+		font-size: var(--sl-text-xs);
+		line-height: 1.5;
+		color: var(--color-muted);
+	}
+	.cookie-banner__body a {
+		color: var(--color-link);
+		text-underline-offset: 3px;
+	}
+	.cookie-banner__actions {
+		display: flex;
+		align-items: center;
+		gap: 0.65rem;
+		flex: 0 0 auto;
+	}
+	.cookie-banner__btn {
+		appearance: none;
+		background: transparent;
+		color: var(--color-foreground);
+		border: 1px solid var(--color-shade-50);
+		border-radius: 6px;
+		padding: 0.5rem 0.95rem;
+		font: inherit;
+		font-size: var(--sl-text-xs);
+		font-weight: 500;
+		cursor: pointer;
+		transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+	}
+	.cookie-banner__btn:hover {
+		background: var(--color-shade-10);
+	}
+	.cookie-banner__btn--primary {
+		background: var(--color-accent);
+		border-color: var(--color-accent);
+		color: var(--palette-white);
+	}
+	.cookie-banner__btn--primary:hover {
+		background: color-mix(in srgb, var(--color-accent) 85%, white);
+		border-color: color-mix(in srgb, var(--color-accent) 85%, white);
+	}
+	.cookie-banner__link {
+		font-size: var(--sl-text-xs);
+		color: var(--color-muted);
+		text-underline-offset: 3px;
+	}
+	.cookie-banner__link:hover {
+		color: var(--color-foreground);
+	}
+
+	@media (max-width: 720px) {
+		.cookie-banner {
+			left: 0.5rem;
+			right: 0.5rem;
+			bottom: 0.5rem;
+		}
+		.cookie-banner__inner {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 0.85rem;
+			padding: 0.9rem 1rem;
+		}
+		.cookie-banner__actions {
+			flex-wrap: wrap;
+			justify-content: flex-start;
+		}
+	}
+</style>

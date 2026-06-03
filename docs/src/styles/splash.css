@@ -92,6 +92,15 @@
 		display: none;
 	}
 
+	/* The hero bleeds to 100vw, which is wider than the content box when a
+	   scrollbar is present (Chromium reserves its width), so it overflows by
+	   the scrollbar width and adds a horizontal scrollbar. Clip horizontal
+	   overflow at the root to absorb the bleed. `clip` (not `hidden`) leaves
+	   position: sticky intact; scoped to the homepage via :has. */
+	html:has(.gaffer-hero) {
+		overflow-x: clip;
+	}
+
 	.gaffer-hero {
 		/* Break out of Starlight's content container to full viewport
 		   width and pull up under the nav so the tape reads as a

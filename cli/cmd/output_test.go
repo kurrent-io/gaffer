@@ -390,7 +390,7 @@ func TestTextWriter_OnDiagnostic_RendersInline(t *testing.T) {
 	tw.WriteEvent(eventInfo{SequenceNumber: 1, StreamID: "s-1", EventType: "SetName"})
 	ms.diagCb(gafferruntime.Diagnostic{
 		Code:     "quirk.log.multiParam",
-		Message:  "BiState state JSON-quotes raw string values in slot 0.",
+		Message:  "log() with multiple arguments produces unexpected output.",
 		Severity: gafferruntime.DiagnosticSeverityWarning,
 	})
 	tw.WriteResult("1@s-1", &gafferruntime.FeedResult{
@@ -400,7 +400,7 @@ func TestTextWriter_OnDiagnostic_RendersInline(t *testing.T) {
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "[warning] quirk.log.multiParam")
-	testutil.AssertContains(t, out, "BiState state JSON-quotes")
+	testutil.AssertContains(t, out, "log() with multiple arguments")
 }
 
 func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
@@ -537,7 +537,7 @@ func TestJSONWriter_WriteResult_Diagnostics(t *testing.T) {
 		Status: "processed",
 		Diagnostics: []gafferruntime.Diagnostic{{
 			Code:     "quirk.log.multiParam",
-			Message:  "BiState state JSON-quotes raw string values in slot 0.",
+			Message:  "log() with multiple arguments produces unexpected output.",
 			Severity: gafferruntime.DiagnosticSeverityWarning,
 		}},
 	})

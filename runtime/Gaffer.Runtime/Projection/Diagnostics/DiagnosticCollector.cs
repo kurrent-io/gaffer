@@ -77,7 +77,13 @@ internal static class DiagnosticCollector {
 		try {
 			ast = new Parser().ParseScript(source, "projection.js");
 		} catch {
-			return (null, includeShape ? UnparsableShape(source) : null);
+			// Acornima rejected the source but Jint accepted it (parser drift). Definition rules
+			// don't read the AST, so still run them off the resolved definition - an engine-version
+			// limitation like bi-state on V2 must surface even when the AST scan can't.
+			var defOnly = new List<Diagnostic>();
+			if (definition is not null)
+				RunDefinitionRules(definition, quirksVersion, engineVersion, defOnly);
+			return (defOnly.Count > 0 ? defOnly.ToArray() : null, includeShape ? UnparsableShape(source) : null);
 		}
 		var diagnostics = new List<Diagnostic>();
 		foreach (var rule in Rules) {
@@ -87,19 +93,22 @@ internal static class DiagnosticCollector {
 				// One rule failing doesn't taint the others.
 			}
 		}
-		if (definition is not null) {
-			foreach (var rule in DefinitionRules) {
-				try {
-					rule.Run(definition, quirksVersion, engineVersion, diagnostics);
-				} catch {
-					// One rule failing doesn't taint the others.
-				}
-			}
-		}
+		if (definition is not null)
+			RunDefinitionRules(definition, quirksVersion, engineVersion, diagnostics);
 		ProjectionShape? shape = includeShape
 			? ShapeCollector.Walk(ast, FileSizeBytes(source), parsable: true)
 			: null;
 		return (diagnostics.Count > 0 ? diagnostics.ToArray() : null, shape);
+	}
+
+	private static void RunDefinitionRules(QuerySources definition, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {
+		foreach (var rule in DefinitionRules) {
+			try {
+				rule.Run(definition, quirksVersion, engineVersion, diagnostics);
+			} catch {
+				// One rule failing doesn't taint the others.
+			}
+		}
 	}
 
 	// Sentinel "Acornima parse failed" shape: zero builtin counts,

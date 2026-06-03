@@ -19,7 +19,7 @@ internal static class DiagnosticCollector {
 		new LinkStreamToOutOfBoundsParametersRule(),
 		new LogMultiParamRule(),
 		new TransformsNotAppliedInV2Rule(),
-		new OutputStateUnconditionalInV2Rule(),
+		new OutputStateNoEffectOnV2Rule(),
 		new DuplicateOptionsRule(),
 		new ReorderEventsNoEffectOnV2Rule(),
 		new AsyncHandlerRule(),

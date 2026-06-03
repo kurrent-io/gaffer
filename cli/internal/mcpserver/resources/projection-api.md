@@ -143,8 +143,9 @@ Returns a chain with only `when`.
 **V1:** Write projection state to the result stream `$projections-{name}-result`
 after each event is processed. Without this, state is only held in memory.
 
-**V2:** No effect - state is always written to the result stream regardless.
-Calls under `engine_version=2` emit `usage.outputState.unconditional` (Information).
+**V2:** No effect - V2 does not emit result streams; state is written to the
+state stream and must be polled. Calls under `engine_version=2` emit
+`quirk.outputState.noEffectOnV2` (Warning).
 
 ```javascript
 fromCategory('order')

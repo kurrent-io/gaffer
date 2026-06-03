@@ -48,6 +48,14 @@
     "fixedIn": null
   },
   {
+    "code": "quirk.outputState.noEffectOnV2",
+    "class": "quirk",
+    "severity": "warning",
+    "message": "outputState() has no effect under engine_version 2: result streams are not emitted; state is written to the state stream and must be polled.",
+    "docs": "`outputState()` has no effect under engine_version 2. V2 does not emit `Result` events to a result stream - state is written only to the `$projections-{name}[-{partition}]-state` stream and must be polled (or that stream subscribed to). Live result-stream parity is planned for a future release; use engine_version 1 until then if you rely on result-stream subscriptions.",
+    "fixedIn": null
+  },
+  {
     "code": "usage.linkStreamTo.deprecated",
     "class": "usage",
     "severity": "information",
@@ -61,14 +69,6 @@
     "severity": "warning",
     "message": "transformBy()/filterBy() are registered but never invoked under engine_version=2; result equals post-handler state.",
     "docs": "`transformBy()`/`filterBy()` are registered but never invoked under engine_version 2 - the result equals the post-handler state. Use engine_version 1 for V1 transform behaviour.",
-    "fixedIn": null
-  },
-  {
-    "code": "usage.outputState.unconditional",
-    "class": "usage",
-    "severity": "information",
-    "message": "outputState() has no effect under engine_version=2; state is always emitted to the result stream.",
-    "docs": "`outputState()` has no effect under engine_version 2 - state is always emitted to the result stream. The call is redundant.",
     "fixedIn": null
   },
   {

@@ -104,6 +104,20 @@ public static class DiagnosticCatalog {
 		FixedIn = null, // not yet supported on V2; set when shared-state restore ships
 	};
 
+	/// <summary>
+	/// <c>outputState()</c> has no effect under engine_version 2: V2 does not emit result-stream
+	/// events, so a projection relying on result-stream subscriptions silently produces nothing.
+	/// Result-stream parity is planned for a future release, so <c>FixedIn</c> is null until then.
+	/// </summary>
+	public static readonly DiagnosticDescriptor OutputStateNoEffectOnV2 = new() {
+		Code = "quirk.outputState.noEffectOnV2",
+		Class = DiagnosticClass.Quirk,
+		Severity = DiagnosticSeverity.Warning,
+		Message = "outputState() has no effect under engine_version 2: result streams are not emitted; state is written to the state stream and must be polled.",
+		Docs = "`outputState()` has no effect under engine_version 2. V2 does not emit `Result` events to a result stream - state is written only to the `$projections-{name}[-{partition}]-state` stream and must be polled (or that stream subscribed to). Live result-stream parity is planned for a future release; use engine_version 1 until then if you rely on result-stream subscriptions.",
+		FixedIn = null, // result-stream parity planned for a future V2 release
+	};
+
 	// ---------- usage.* : the user's own projection code ----------
 
 	/// <summary><c>linkStreamTo</c> is undocumented in KurrentDB and may be removed.</summary>
@@ -122,15 +136,6 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Warning,
 		Message = "transformBy()/filterBy() are registered but never invoked under engine_version=2; result equals post-handler state.",
 		Docs = "`transformBy()`/`filterBy()` are registered but never invoked under engine_version 2 - the result equals the post-handler state. Use engine_version 1 for V1 transform behaviour.",
-	};
-
-	/// <summary><c>outputState()</c> is a no-op under engine_version 2.</summary>
-	public static readonly DiagnosticDescriptor OutputStateUnconditional = new() {
-		Code = "usage.outputState.unconditional",
-		Class = DiagnosticClass.Usage,
-		Severity = DiagnosticSeverity.Information,
-		Message = "outputState() has no effect under engine_version=2; state is always emitted to the result stream.",
-		Docs = "`outputState()` has no effect under engine_version 2 - state is always emitted to the result stream. The call is redundant.",
 	};
 
 	/// <summary><c>options()</c> called more than once; last-write-wins.</summary>
@@ -179,9 +184,9 @@ public static class DiagnosticCatalog {
 		SerializeNonFinite,
 		SerializeRawString,
 		BiStateSharedStateResetOnV2,
+		OutputStateNoEffectOnV2,
 		LinkStreamToDeprecated,
 		TransformsNotInvoked,
-		OutputStateUnconditional,
 		OptionsDuplicate,
 		ReorderEventsNoEffectOnV2,
 		HandlerAsync,

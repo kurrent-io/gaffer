@@ -569,18 +569,18 @@ public class DiagnosticsTests {
 		Assert.Null(session.Diagnostics);
 	}
 
-	// -- usage.outputState.unconditional (V2) --
+	// -- quirk.outputState.noEffectOnV2 (V2) --
 
 	[Fact]
-	public void OutputState_InV2_EmitsInformation() {
+	public void OutputState_InV2_EmitsWarning() {
 		var source = "fromAll().when({ $any: function (s, e) { return s; } }).outputState();";
 		using var session = new ProjectionSession(source,
 			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.NotNull(session.Diagnostics);
 		var d = Assert.Single(session.Diagnostics!);
-		Assert.Equal("usage.outputState.unconditional", d.Code);
-		Assert.Equal(DiagnosticSeverity.Information, d.Severity);
+		Assert.Equal("quirk.outputState.noEffectOnV2", d.Code);
+		Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
 		Assert.Contains("outputState", d.Message);
 	}
 
@@ -604,7 +604,7 @@ public class DiagnosticsTests {
 			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 		Assert.NotNull(session.Diagnostics);
-		Assert.Contains(session.Diagnostics!, d => d.Code == "usage.outputState.unconditional");
+		Assert.Contains(session.Diagnostics!, d => d.Code == "quirk.outputState.noEffectOnV2");
 	}
 
 	// --- engine_version 2: KurrentDB rejects trackEmittedStreams -> throw ---

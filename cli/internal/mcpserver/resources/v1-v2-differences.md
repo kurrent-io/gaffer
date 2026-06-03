@@ -143,6 +143,6 @@ diagnostics so you find it before the result stream surprises you:
 
 * `usage.transforms.notInvoked` (Warning) on `transformBy` / `filterBy`
   calls when `engine_version=2`.
-* `usage.outputState.unconditional` (Information) on `outputState()` calls when
+* `quirk.outputState.noEffectOnV2` (Warning) on `outputState()` calls when
   `engine_version=2`.
 

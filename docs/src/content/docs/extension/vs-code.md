@@ -69,4 +69,4 @@ See [MCP](../cli/mcp.md) for the tools and resources gaffer exposes, and for con
 
 ## Telemetry
 
-The extension collects anonymous usage telemetry by default and respects VS Code's `telemetry.telemetryLevel` setting. The first-run notice on the first activation has a **Disable** button that opts out permanently for that install. See the [telemetry notice](https://telemetry.gaffer.kurrent.io/) for what's collected.
+The extension collects anonymous usage telemetry by default and respects VS Code's `telemetry.telemetryLevel` setting. The first-run notice on the first activation has a **Disable** button that opts out permanently for that install. See the [telemetry notice](../telemetry/vs-code.md) for what's collected.

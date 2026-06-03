@@ -117,4 +117,4 @@ The `write-projection` and `fix-projection` prompts wrap the most common flows. 
 
 ## Telemetry
 
-The MCP server emits anonymous usage telemetry under the same opt-out cascade as the CLI. See the [telemetry notice](https://telemetry.gaffer.kurrent.io/) for what's collected, or run `gaffer config telemetry off` to disable.
+The MCP server emits anonymous usage telemetry under the same opt-out cascade as the CLI. See the [telemetry notice](../telemetry/cli.md) for what's collected, or run `gaffer config telemetry off` to disable.

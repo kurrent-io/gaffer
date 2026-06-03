@@ -2,6 +2,8 @@
 dist/
 # generated types
 .astro/
+# telemetry notices synced from cli/ and editors/vscode/ TELEMETRY.md
+src/content/docs/telemetry/
 # Cloudflare adapter cache (workerd downloads, dev runtime state)
 .wrangler/
 

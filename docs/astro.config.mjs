@@ -70,6 +70,7 @@ export default defineConfig({
         },
         { label: 'Editor extensions', items: ['extension/vs-code', 'extension/other-editors'] },
         { label: 'Testing', items: ['testing/nodejs'] },
+        { label: 'Telemetry', slug: 'telemetry' },
       ],
     }),
   ],

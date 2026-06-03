@@ -92,7 +92,7 @@ func TestStartupGate_FreshInstallMintsAndNotifies(t *testing.T) {
 	if c.identity.IsZero() {
 		t.Errorf("Client identity is zero after StartupGate")
 	}
-	if !strings.Contains(notice.String(), "telemetry.gaffer.kurrent.io") {
+	if !strings.Contains(notice.String(), "gaffer.kurrent.io/telemetry") {
 		t.Errorf("notice not written on fresh mint; got: %q", notice.String())
 	}
 }

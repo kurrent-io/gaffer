@@ -240,7 +240,7 @@ public class CompatQuirksTests {
 			});
 		""", Options(new KurrentDbVersion(26, 2, 0)));
 
-		session.Feed(new ProjectionEvent {
+		var result = session.Feed(new ProjectionEvent {
 			EventType = "Test",
 			StreamId = "s-1",
 			Data = data,
@@ -248,6 +248,7 @@ public class CompatQuirksTests {
 		});
 
 		Assert.NotNull(session.GetState());
+		Assert.Empty(result.Diagnostics); // at >= FixedIn the quirk neither throws nor emits
 	}
 
 	[Fact]
@@ -536,7 +537,7 @@ public class CompatQuirksTests {
 			});
 		""", Options(new KurrentDbVersion(26, 2, 0)));
 
-		session.Feed(new ProjectionEvent {
+		var result = session.Feed(new ProjectionEvent {
 			EventType = "Test",
 			StreamId = "s-1",
 			Data = "{}",
@@ -544,6 +545,7 @@ public class CompatQuirksTests {
 		});
 
 		Assert.Contains("\"value\":null", session.GetState());
+		Assert.Empty(result.Diagnostics); // at >= FixedIn the quirk neither throws nor emits
 	}
 
 	[Fact]

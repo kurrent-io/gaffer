@@ -100,9 +100,11 @@ func runDevWithDevTx(cmd *cobra.Command, name string, opts *devOpts) error {
 	tx.SetConnectedToDB(opts.Connection != "")
 
 	tracker := newProjErrTracker()
+	diagTracker := newDiagSeenTracker()
 	proj, err := runDev(cmd, name, opts, nil, runObservers{
 		onProjectionError: tracker.Record,
 		onConnected:       tx.SetDBVersion,
+		onDiagnostic:      diagTracker.Record,
 	})
 	if proj != nil && proj.Config != nil {
 		tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(proj.Config))
@@ -111,6 +113,9 @@ func runDevWithDevTx(cmd *cobra.Command, name string, opts *devOpts) error {
 	}
 	if seen := tracker.Sorted(); len(seen) > 0 {
 		tx.SetProjectionErrorsSeen(seen)
+	}
+	if seen := diagTracker.Sorted(); len(seen) > 0 {
+		tx.SetDiagnosticsSeen(seen)
 	}
 	out, ok := classifyOutcome(outcomeInputs{err: err, tracker: tracker})
 	if !ok {
@@ -134,10 +139,12 @@ func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
 
 	var dapStats dapserver.Stats
 	tracker := newProjErrTracker()
+	diagTracker := newDiagSeenTracker()
 	var fixtureEvents int
 	_, err := runDev(cmd, name, opts, &dapStats, runObservers{
 		onProjectionError: tracker.Record,
 		onFixtureEvent:    func() { fixtureEvents++ },
+		onDiagnostic:      diagTracker.Record,
 	})
 
 	tx.SetBreakpointCount(dapStats.BreakpointCount)
@@ -150,6 +157,9 @@ func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
 
 	if seen := tracker.Sorted(); len(seen) > 0 {
 		tx.SetProjectionErrorsSeen(seen)
+	}
+	if seen := diagTracker.Sorted(); len(seen) > 0 {
+		tx.SetDiagnosticsSeen(seen)
 	}
 	out, ok := classifyOutcome(outcomeInputs{
 		err:            err,
@@ -168,9 +178,10 @@ func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
 // "no observation" - non-debug callers pass an empty struct because
 // the DevTx schema doesn't carry the fields debug ones populate.
 //
-// Single-goroutine-owned: callbacks run synchronously on the cobra
-// goroutine driving source.Run, so the wrapper's tracker state needs
-// no locking.
+// Single-goroutine-owned: callbacks run synchronously on the cobra goroutine
+// driving source.Run (onDiagnostic too - the runner fires it from ProcessOne,
+// which source.Run calls inline), so the wrapper's tracker state needs no
+// locking.
 type runObservers struct {
 	// onProjectionError fires with an FFI projection error, either
 	// when a runner faults mid-iteration (recordProjectionFault) or
@@ -188,6 +199,12 @@ type runObservers struct {
 	// major.minor version (or "unknown" when the probe fails).
 	// Only invoked in live mode; never fires for fixture runs.
 	onConnected func(dbVersion string)
+	// onDiagnostic fires with each diagnostic code seen during the run: the
+	// compile-time set off ProjectionInfo (recordCompileDiagnostics, once per
+	// CreateSession) and the runtime quirks the runner reports off each
+	// FeedResult / faulting error (RunnerConfig.OnDiagnostic). Wrappers
+	// accumulate them into diagnostics_seen, independent of the output writer.
+	onDiagnostic func(code string)
 }
 
 // runDev parses the dev flags, loads the projection, and dispatches
@@ -273,6 +290,7 @@ func runDevSingle(
 		return silent(err)
 	}
 	defer session.Destroy()
+	recordCompileDiagnostics(info, obs.onDiagnostic)
 
 	telemetry.EmitProjectionShape(ctx, sourcePath, info)
 
@@ -283,10 +301,11 @@ func runDevSingle(
 	writer.WriteInfo(proj, info)
 
 	r := engine.NewRunner(engine.RunnerConfig{
-		Feed:    engine.FeedFn(session.Feed),
-		Session: session,
-		Info:    info,
-		Writer:  &eventWriterAdapter{writer: writer},
+		Feed:         engine.FeedFn(session.Feed),
+		Session:      session,
+		Info:         info,
+		Writer:       &eventWriterAdapter{writer: writer},
+		OnDiagnostic: obs.onDiagnostic,
 	})
 
 	var caughtUp bool
@@ -348,6 +367,7 @@ func runDevDebug(
 		recordCompileFault(err, obs.onProjectionError)
 		return silent(err)
 	}
+	recordCompileDiagnostics(info, obs.onDiagnostic)
 
 	telemetry.EmitProjectionShape(ctx, sourcePath, info)
 
@@ -418,11 +438,12 @@ func runDevDebug(
 		}
 
 		r := engine.NewRunner(engine.RunnerConfig{
-			Feed:    engine.FeedFn(session.Feed),
-			Session: session,
-			Info:    info,
-			Writer:  adapter.EventWriter(),
-			History: store,
+			Feed:         engine.FeedFn(session.Feed),
+			Session:      session,
+			Info:         info,
+			Writer:       adapter.EventWriter(),
+			History:      store,
+			OnDiagnostic: obs.onDiagnostic,
 			Debug: &engine.DebugConfig{
 				Session: session,
 				Info:    info,
@@ -444,6 +465,7 @@ func runDevDebug(
 				recordCompileFault(err, obs.onProjectionError)
 				return silent(err)
 			}
+			recordCompileDiagnostics(info, obs.onDiagnostic)
 			// Re-emit on restart: the shape cache dedupes if
 			// nothing structurally drifted; if the user edited
 			// the source between iterations, the new hash
@@ -556,6 +578,7 @@ func runDevDebug(
 				recordCompileFault(err, obs.onProjectionError)
 				return silent(err)
 			}
+			recordCompileDiagnostics(info, obs.onDiagnostic)
 			telemetry.EmitProjectionShape(ctx, sourcePath, info)
 			adapter.ResetForRestart()
 			adapter.AckRestart()
@@ -617,11 +640,31 @@ func recordProjectionFault(r *engine.Runner, onProjectionError func(error)) {
 // dev wrapper feed projection_errors_seen + classifyOutcome so a
 // broken projection ships as projection_compile_error rather than
 // dropping to user_error.
+//
+// It deliberately does not feed onDiagnostic: the runtime only scans for
+// diagnostics after compilation succeeds, so a compile-failure exception carries
+// none. (Runtime faults differ - the runner pulls ErrorDiagnostics off those.)
 func recordCompileFault(err error, onProjectionError func(error)) {
 	if onProjectionError == nil || err == nil {
 		return
 	}
 	onProjectionError(err)
+}
+
+// recordCompileDiagnostics feeds a freshly-created session's compile-time
+// diagnostics (off ProjectionInfo) into the telemetry observer. The runtime
+// quirks are collected separately by the runner (RunnerConfig.OnDiagnostic) off
+// each FeedResult / faulting error, so collection stays independent of the output
+// writer and doesn't fight the single-slot session.OnDiagnostic the text writer
+// and DAP adapter already own. Idempotent across DAP restarts (the tracker
+// dedupes); no-op when the observer is unset.
+func recordCompileDiagnostics(info gafferruntime.ProjectionInfo, onDiagnostic func(string)) {
+	if onDiagnostic == nil {
+		return
+	}
+	for _, d := range info.Diagnostics {
+		onDiagnostic(d.Code)
+	}
 }
 
 // buildSource constructs the event source for one iteration. The

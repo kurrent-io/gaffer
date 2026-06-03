@@ -172,6 +172,15 @@ export type DevCommandInvokedProperties = CommandInvokedBaseProperties & {
    * @maxItems 100
    */
   projection_errors_seen?: ProjectionOutcome[];
+  /**
+   * Distinct, sorted set of diagnostic codes seen during the run, across both
+   * compile-time and runtime diagnostics. Presence only - no counts. Empty when
+   * none. Codes follow the `<class>.<subject>.<detail>` shape (e.g.
+   * quirk.event.bodyCast).
+   *
+   * @maxItems 100
+   */
+  diagnostics_seen?: string[];
   [k: string]: unknown;
 };
 /**
@@ -242,6 +251,15 @@ export type DebugCommandInvokedProperties = CommandInvokedBaseProperties & {
    * @maxItems 100
    */
   projection_errors_seen?: ProjectionOutcome[];
+  /**
+   * Distinct, sorted set of diagnostic codes seen during the session, across
+   * both compile-time and runtime diagnostics. Presence only - no counts. Empty
+   * when none. Codes follow the `<class>.<subject>.<detail>` shape (e.g.
+   * quirk.event.bodyCast).
+   *
+   * @maxItems 100
+   */
+  diagnostics_seen?: string[];
   [k: string]: unknown;
 };
 /**

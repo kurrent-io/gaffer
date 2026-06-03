@@ -139,6 +139,12 @@ import "strings"
 	// Distinct, sorted set of `projection_*` outcome values seen during
 	// the run. Empty when none.
 	projection_errors_seen?: [...#ProjectionOutcome]
+
+	// Distinct, sorted set of diagnostic codes seen during the run, across both
+	// compile-time and runtime diagnostics. Presence only - no counts. Empty when
+	// none. Codes follow the `<class>.<subject>.<detail>` shape (e.g.
+	// quirk.event.bodyCast).
+	diagnostics_seen?: [...string & =~"^[a-z]+\\.[a-zA-Z0-9]+\\.[a-zA-Z0-9]+$"]
 }
 
 // `gaffer mcp` - long-running Model Context Protocol server.
@@ -201,6 +207,12 @@ import "strings"
 	// Distinct, sorted set of `projection_*` outcome values seen during
 	// the session. Empty when none.
 	projection_errors_seen?: [...#ProjectionOutcome]
+
+	// Distinct, sorted set of diagnostic codes seen during the session, across
+	// both compile-time and runtime diagnostics. Presence only - no counts. Empty
+	// when none. Codes follow the `<class>.<subject>.<detail>` shape (e.g.
+	// quirk.event.bodyCast).
+	diagnostics_seen?: [...string & =~"^[a-z]+\\.[a-zA-Z0-9]+\\.[a-zA-Z0-9]+$"]
 }
 
 // Outcome is the *final* outcome of a command invocation - whatever made it

@@ -20,6 +20,10 @@ type ProjectionError interface {
 	error
 	ErrorCode() string
 	ErrorDescription() string
+	// ErrorDiagnostics returns the diagnostics that fired on the throwing event
+	// (the throwing quirk plus any that fired earlier), or nil. Mirrors the
+	// Diagnostics field; lets callers read it without a type switch.
+	ErrorDiagnostics() []Diagnostic
 }
 
 // EventContext holds event information attached to errors during Feed.
@@ -296,3 +300,15 @@ func deref(p *int) int {
 	}
 	return *p
 }
+
+// ErrorDiagnostics implementations. The eight throwing error types expose their
+// parsed Diagnostics; UnexpectedError carries none.
+func (e *InvalidProjectionError) ErrorDiagnostics() []Diagnostic   { return e.Diagnostics }
+func (e *CompilationTimeoutError) ErrorDiagnostics() []Diagnostic  { return e.Diagnostics }
+func (e *InvalidArgumentError) ErrorDiagnostics() []Diagnostic     { return e.Diagnostics }
+func (e *ProjectionHandlerError) ErrorDiagnostics() []Diagnostic   { return e.Diagnostics }
+func (e *ExecutionTimeoutError) ErrorDiagnostics() []Diagnostic    { return e.Diagnostics }
+func (e *MalformedEventError) ErrorDiagnostics() []Diagnostic      { return e.Diagnostics }
+func (e *StateSerializationError) ErrorDiagnostics() []Diagnostic  { return e.Diagnostics }
+func (e *ProjectionTransformError) ErrorDiagnostics() []Diagnostic { return e.Diagnostics }
+func (e *UnexpectedError) ErrorDiagnostics() []Diagnostic          { return nil }

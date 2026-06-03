@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 )
 
 type mockProjectionError struct {
@@ -18,6 +20,9 @@ type mockProjectionError struct {
 func (e *mockProjectionError) Error() string            { return e.msg }
 func (e *mockProjectionError) ErrorCode() string        { return e.code }
 func (e *mockProjectionError) ErrorDescription() string { return e.desc }
+func (e *mockProjectionError) ErrorDiagnostics() []gafferruntime.Diagnostic {
+	return nil
+}
 
 func TestHandleSessionError_ProjectionError(t *testing.T) {
 	cmd := &cobra.Command{}

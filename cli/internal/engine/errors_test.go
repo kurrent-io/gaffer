@@ -16,6 +16,9 @@ type mockProjectionError struct {
 func (e *mockProjectionError) Error() string            { return e.description }
 func (e *mockProjectionError) ErrorCode() string        { return e.code }
 func (e *mockProjectionError) ErrorDescription() string { return e.description }
+func (e *mockProjectionError) ErrorDiagnostics() []gafferruntime.Diagnostic {
+	return nil
+}
 
 func TestClassifyError_ProjectionError(t *testing.T) {
 	err := &mockProjectionError{code: "handler-error", description: "boom"}

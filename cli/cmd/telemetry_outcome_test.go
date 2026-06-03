@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -11,6 +12,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 func TestOutcomeFor_NilIsSuccess(t *testing.T) {
@@ -337,4 +339,101 @@ func TestOneShotDefer_PanicBeatsNonNilError(t *testing.T) {
 		defer oneShotDefer(&retErr, func(o telemetry.Outcome) { seen = o })
 		panic("boom")
 	}()
+}
+
+func TestDiagSeenTracker_DedupeAndSort(t *testing.T) {
+	tr := newDiagSeenTracker()
+	tr.Record("usage.handler.async")
+	tr.Record("quirk.biState.stringSlot")
+	tr.Record("usage.handler.async") // dupe
+	tr.Record("quirk.log.multiParam")
+
+	got := tr.Sorted()
+	want := []string{
+		"quirk.biState.stringSlot",
+		"quirk.log.multiParam",
+		"usage.handler.async",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Sorted() = %v, want %v", got, want)
+	}
+}
+
+func TestDiagSeenTracker_EmptyReturnsNil(t *testing.T) {
+	tr := newDiagSeenTracker()
+	if got := tr.Sorted(); got != nil {
+		t.Errorf("Sorted() on empty = %v, want nil", got)
+	}
+}
+
+func TestDiagSeenTracker_IgnoresEmptyCode(t *testing.T) {
+	tr := newDiagSeenTracker()
+	tr.Record("")
+	if got := tr.Sorted(); got != nil {
+		t.Errorf(`Record("") shouldn't add anything; got %v`, got)
+	}
+}
+
+func TestDiagnosticsSeen_CompileTimeAndRuntimeUnion(t *testing.T) {
+	// The full set diagnostics_seen reports: compile-time usage.options.duplicate
+	// (two options() calls, off ProjectionInfo via recordCompileDiagnostics) plus
+	// runtime quirk.log.multiParam (multi-arg log per event, off the runner's
+	// FeedResult via RunnerConfig.OnDiagnostic).
+	source := `options({});
+options({});
+fromAll().when({ $any: function (s, e) { log("a", "b"); return s; } });`
+	opts := `{"engineVersion":2}`
+
+	session, err := gafferruntime.NewSession(source, &opts)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	defer session.Destroy()
+	info := session.GetSources()
+
+	tr := newDiagSeenTracker()
+	recordCompileDiagnostics(info, tr.Record)
+
+	r := engine.NewRunner(engine.RunnerConfig{
+		Feed:         engine.FeedFn(session.Feed),
+		Session:      session,
+		Info:         info,
+		OnDiagnostic: tr.Record,
+	})
+	r.ProcessOne(testutil.Event("X", "s-1", 0))
+
+	got := tr.Sorted()
+	if !slices.Contains(got, "usage.options.duplicate") {
+		t.Errorf("want usage.options.duplicate (compile-time) in %v", got)
+	}
+	if !slices.Contains(got, "quirk.log.multiParam") {
+		t.Errorf("want quirk.log.multiParam (runtime) in %v", got)
+	}
+}
+
+func TestDiagnosticsSeen_ThrowingQuirkViaError(t *testing.T) {
+	// A throwing quirk faults the event but still carries its code on the error;
+	// the runner reports it off err.ErrorDiagnostics so it lands in the set too.
+	source := `fromAll().when({ $any: function (s, e) { linkStreamTo("a", e.streamId, { x: 1 }); return s; } });`
+	opts := `{"engineVersion":2}`
+
+	session, err := gafferruntime.NewSession(source, &opts)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	defer session.Destroy()
+	info := session.GetSources()
+
+	tr := newDiagSeenTracker()
+	r := engine.NewRunner(engine.RunnerConfig{
+		Feed:         engine.FeedFn(session.Feed),
+		Session:      session,
+		Info:         info,
+		OnDiagnostic: tr.Record,
+	})
+	r.ProcessOne(testutil.Event("X", "s-1", 0))
+
+	if !slices.Contains(tr.Sorted(), "quirk.linkStreamTo.outOfBoundsParameters") {
+		t.Errorf("want quirk.linkStreamTo.outOfBoundsParameters from throwing quirk; got %v", tr.Sorted())
+	}
 }

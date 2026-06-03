@@ -415,6 +415,8 @@ type DevCommandInvokedProperties struct {
 	DBVersion *string `json:"db_version,omitempty"`
 	// Distinct, sorted set of `projection_*` outcome values seen during the run. Empty when none.
 	ProjectionErrorsSeen []ProjectionOutcome `json:"projection_errors_seen,omitempty"`
+	// Distinct, sorted set of diagnostic codes seen during the run, across both compile-time and runtime diagnostics. Presence only - no counts. Empty when none. Codes follow the `<class>.<subject>.<detail>` shape (e.g. quirk.event.bodyCast).
+	DiagnosticsSeen []string `json:"diagnostics_seen,omitempty"`
 }
 
 // DevTx accumulates `dev` command properties over the lifetime of the
@@ -484,6 +486,14 @@ func (tx *DevTx) SetProjectionErrorsSeen(v []ProjectionOutcome) {
 		return
 	}
 	tx.props.ProjectionErrorsSeen = v
+}
+
+// SetDiagnosticsSeen records diagnostics_seen. Distinct, sorted set of diagnostic codes seen during the run, across both compile-time and runtime diagnostics. Presence only - no counts. Empty when none. Codes follow the `<class>.<subject>.<detail>` shape (e.g. quirk.event.bodyCast). Nil-safe: silent no-op on a nil receiver.
+func (tx *DevTx) SetDiagnosticsSeen(v []string) {
+	if tx == nil {
+		return
+	}
+	tx.props.DiagnosticsSeen = v
 }
 
 // MCPCommandInvokedProperties carries the property set for `gaffer mcp`.
@@ -659,6 +669,8 @@ type DebugCommandInvokedProperties struct {
 	FixtureEventCount *RawCount `json:"fixture_event_count,omitempty"`
 	// Distinct, sorted set of `projection_*` outcome values seen during the session. Empty when none.
 	ProjectionErrorsSeen []ProjectionOutcome `json:"projection_errors_seen,omitempty"`
+	// Distinct, sorted set of diagnostic codes seen during the session, across both compile-time and runtime diagnostics. Presence only - no counts. Empty when none. Codes follow the `<class>.<subject>.<detail>` shape (e.g. quirk.event.bodyCast).
+	DiagnosticsSeen []string `json:"diagnostics_seen,omitempty"`
 }
 
 // DebugTx accumulates `debug` command properties over the lifetime of the
@@ -731,6 +743,14 @@ func (tx *DebugTx) SetProjectionErrorsSeen(v []ProjectionOutcome) {
 		return
 	}
 	tx.props.ProjectionErrorsSeen = v
+}
+
+// SetDiagnosticsSeen records diagnostics_seen. Distinct, sorted set of diagnostic codes seen during the session, across both compile-time and runtime diagnostics. Presence only - no counts. Empty when none. Codes follow the `<class>.<subject>.<detail>` shape (e.g. quirk.event.bodyCast). Nil-safe: silent no-op on a nil receiver.
+func (tx *DebugTx) SetDiagnosticsSeen(v []string) {
+	if tx == nil {
+		return
+	}
+	tx.props.DiagnosticsSeen = v
 }
 
 // ProjectionShape carries a snapshot of what a projection's source looks

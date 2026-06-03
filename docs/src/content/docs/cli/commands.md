@@ -116,7 +116,7 @@ Show or change telemetry settings.
 
 Telemetry is anonymous usage data gaffer sends to Kurrent so we can
 understand which features people use. It is opt-out: enabled by
-default. See https://telemetry.gaffer.kurrent.io (and `gaffer config
+default. See https://gaffer.kurrent.io/telemetry/ (and `gaffer config
 telemetry status`) for exactly what is collected and how to turn it off.
 
 ## gaffer config telemetry off

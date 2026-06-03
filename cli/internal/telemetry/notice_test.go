@@ -32,7 +32,7 @@ func TestNoticeText_KeyPhrasesPresent(t *testing.T) {
 		"telemetry = false in gaffer.toml",
 		"Env var",
 		"GAFFER_TELEMETRY_OPTOUT=1",
-		"https://telemetry.gaffer.kurrent.io",
+		"https://gaffer.kurrent.io/telemetry/",
 	} {
 		if !strings.Contains(notice, want) {
 			t.Errorf("notice missing %q", want)
@@ -92,7 +92,7 @@ func TestNoticeText_SyncedWithTelemetryMd(t *testing.T) {
 		"GAFFER_TELEMETRY_OPTOUT",
 		"KURRENTDB_TELEMETRY_OPTOUT",
 		"DO_NOT_TRACK",
-		"https://telemetry.gaffer.kurrent.io",
+		"https://gaffer.kurrent.io/telemetry/",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("cli/TELEMETRY.md missing %q (out of sync with the notice)", want)
@@ -134,7 +134,7 @@ func TestWriteNotice_WritesNotice(t *testing.T) {
 	// Substring rather than byte-exact: WriteNotice renders through
 	// styledbox which adds margins and (on a TTY) ANSI escapes. The
 	// content phrases are the stable contract.
-	for _, want := range []string{"anonymous", "gaffer config telemetry off", "https://telemetry.gaffer.kurrent.io"} {
+	for _, want := range []string{"anonymous", "gaffer config telemetry off", "https://gaffer.kurrent.io/telemetry/"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("WriteNotice output missing %q", want)
 		}

@@ -20,7 +20,7 @@ const noticeLead = "Gaffer sends anonymous usage data and error reports\nto help
 // noticeFooterURL is the long-form docs link. The literal must stay
 // in lockstep with the same URL in cli/TELEMETRY.md and elsewhere -
 // a sync canary in notice_test.go asserts both files mention it.
-const noticeFooterURL = "https://telemetry.gaffer.kurrent.io"
+const noticeFooterURL = "https://gaffer.kurrent.io/telemetry/"
 
 // renderNotice builds the first-mint banner as a fang-codeblock-
 // style card. The same visual vocabulary as `gaffer --help` and the

@@ -189,7 +189,7 @@ To opt out
  This project: telemetry = false in gaffer.toml
  Env var:      GAFFER_TELEMETRY_OPTOUT=1
 
-Details: https://telemetry.gaffer.kurrent.io
+Details: https://gaffer.kurrent.io/telemetry/
 ```
 
 `KURRENTDB_TELEMETRY_OPTOUT` (carried over from KurrentDB) and `DO_NOT_TRACK` (industry convention) are also honoured silently - users who set them in another context get the same effect without needing to know gaffer reads them. If telemetry has already been disabled by any of these signals, the disclosure is not shown.

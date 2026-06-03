@@ -4,11 +4,12 @@
   "type": "module",
   "version": "0.0.0",
   "scripts": {
-    "dev": "astro dev",
-    "start": "astro dev",
-    "build": "astro build",
+    "sync-telemetry": "node scripts/sync-telemetry-notices.mjs",
+    "dev": "pnpm run sync-telemetry && astro dev",
+    "start": "pnpm run sync-telemetry && astro dev",
+    "build": "pnpm run sync-telemetry && astro build",
     "preview": "astro preview",
-    "check": "astro check",
+    "check": "pnpm run sync-telemetry && astro check",
     "astro": "astro"
   },
   "dependencies": {

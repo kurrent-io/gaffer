@@ -75,7 +75,7 @@ Project-level telemetry is opted out by setting `telemetry = false` at the top o
 
 ## Telemetry
 
-The CLI emits anonymous usage telemetry by default. See the [telemetry notice](https://telemetry.gaffer.kurrent.io/) for the full list of what's collected.
+The CLI emits anonymous usage telemetry by default. See the [telemetry notice](../telemetry/cli.md) for the full list of what's collected.
 
 Opt out at the user level via any of:
 

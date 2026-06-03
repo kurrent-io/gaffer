@@ -25,7 +25,7 @@ worker/        - (later) Cloudflare Worker that ingests envelopes, stitches
 
 Both CUE files share `package telemetry`; the split is for readers, not for downstream consumers. Worker-side concerns (translation to PostHog, person-property lifting, identity merge) belong in `worker/`, not in `schemas/`.
 
-The CUE is self-documenting at the field level (descriptions survive export to jsonschema). For design rationale (why we bucket, why opt-out is the right default, edge-case behaviour) see the public notice at `https://telemetry.gaffer.kurrent.io/`.
+The CUE is self-documenting at the field level (descriptions survive export to jsonschema). For design rationale (why we bucket, why opt-out is the right default, edge-case behaviour) see the public notice at `https://gaffer.kurrent.io/telemetry/`.
 
 ## Consumer notes
 
@@ -52,4 +52,4 @@ Any one of these silences telemetry:
 - `GAFFER_TELEMETRY_OPTOUT`, `KURRENTDB_TELEMETRY_OPTOUT`, or `DO_NOT_TRACK` set to any truthy value.
 - VS Code's `telemetry.telemetryLevel` (extension respects it).
 
-Full disclosure at `https://telemetry.gaffer.kurrent.io/`.
+Full disclosure at `https://gaffer.kurrent.io/telemetry/`.

@@ -126,7 +126,7 @@ in D1, and forwards to PostHog (EU).
 Opt-out cascade: `telemetry = false` in `gaffer.toml`, `gaffer config telemetry off`,
 `GAFFER_TELEMETRY_OPTOUT` / `KURRENTDB_TELEMETRY_OPTOUT` / `DO_NOT_TRACK` env vars,
 VS Code's `telemetry.telemetryLevel`. Public notice at
-<https://telemetry.gaffer.kurrent.io/>.
+<https://gaffer.kurrent.io/telemetry/>.
 
 ## NativeAOT rules
 

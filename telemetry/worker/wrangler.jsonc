@@ -8,10 +8,10 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2026-05-01",
 
-	// observability + triggers inherit into envs. vars, assets,
-	// version_metadata, and bindings don't, so each env redeclares them.
-	// Secrets (POSTHOG_API_KEY) are set per env via `wrangler secret put
-	// <NAME> --env <env>` and persist across deploys.
+	// observability + triggers inherit into envs. vars, version_metadata,
+	// and bindings don't, so each env redeclares them. Secrets
+	// (POSTHOG_API_KEY) are set per env via `wrangler secret put <NAME>
+	// --env <env>` and persist across deploys.
 	"observability": {
 		"enabled": true,
 	},
@@ -22,13 +22,9 @@
 	"env": {
 		"staging": {
 			"name": "gaffer-telemetry-staging",
-			"assets": {
-				"directory": "./static",
-				"binding": "ASSETS",
-				"not_found_handling": "none",
-			},
 			"vars": {
 				"POSTHOG_HOST": "https://eu.i.posthog.com",
+				"DOCS_BASE_URL": "https://gaffer-docs-staging.kurrent.workers.dev",
 			},
 			"version_metadata": {
 				"binding": "CF_VERSION_METADATA",
@@ -54,13 +50,9 @@
 					"custom_domain": true,
 				},
 			],
-			"assets": {
-				"directory": "./static",
-				"binding": "ASSETS",
-				"not_found_handling": "none",
-			},
 			"vars": {
 				"POSTHOG_HOST": "https://eu.i.posthog.com",
+				"DOCS_BASE_URL": "https://gaffer.kurrent.io",
 			},
 			"version_metadata": {
 				"binding": "CF_VERSION_METADATA",

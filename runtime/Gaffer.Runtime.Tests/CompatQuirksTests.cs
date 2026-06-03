@@ -361,6 +361,37 @@ public class CompatQuirksTests {
 	}
 
 	[Fact]
+	public void BiState_OnV2_EmitsCompileDiagnostic() {
+		// Bi-state shared state isn't restored on restart under V2
+		// (quirk.biState.sharedStateResetOnV2), detected off the resolved definition.
+		using var session = new ProjectionSession("""
+			options({ biState: true });
+			fromAll().when({
+				$init: function () { return {}; },
+				$initShared: function () { return {}; },
+				Set: function (s, e) { return s; }
+			});
+		""", new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		Assert.Contains(session.Diagnostics ?? [], d => d.Code == DiagnosticCatalog.BiStateSharedStateResetOnV2.Code);
+	}
+
+	[Fact]
+	public void BiState_OnV1_NoSharedStateResetDiagnostic() {
+		// V1 supports shared state, so the V2-only quirk must not fire.
+		using var session = new ProjectionSession("""
+			options({ biState: true });
+			fromAll().when({
+				$init: function () { return {}; },
+				$initShared: function () { return {}; },
+				Set: function (s, e) { return s; }
+			});
+		""", new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V1 });
+
+		Assert.DoesNotContain(session.Diagnostics ?? [], d => d.Code == DiagnosticCatalog.BiStateSharedStateResetOnV2.Code);
+	}
+
+	[Fact]
 	public void UniStateString_EmitsDiagnostic_Unversioned() {
 		// A bare string returned as state would be persisted un-encoded pre-26.2.0
 		// (quirk.serialize.rawString), faulting on reload. gaffer JSON-encodes the state

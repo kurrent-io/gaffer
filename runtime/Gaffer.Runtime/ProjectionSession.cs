@@ -152,7 +152,7 @@ public sealed class ProjectionSession : IDisposable {
 			// backs on the diagnostic pass. IncludeShape gates the
 			// shape walker without affecting diagnostic collection.
 			(_diagnostics, _shape) = DiagnosticCollector.ScanWithShape(
-				source, _quirksVersion, _version, opts.IncludeShape);
+				source, _quirksVersion, _version, opts.IncludeShape, _sources);
 		} catch {
 			_handler.Dispose();
 			throw;

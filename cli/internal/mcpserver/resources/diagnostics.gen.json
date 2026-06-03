@@ -40,6 +40,14 @@
     "fixedIn": "26.2.0"
   },
   {
+    "code": "quirk.biState.sharedStateResetOnV2",
+    "class": "quirk",
+    "severity": "error",
+    "message": "Bi-state / $initShared is not supported under engine_version 2: shared state is silently re-initialized on restart, producing incorrect results. Use engine_version 1.",
+    "docs": "Bi-state projections (those declaring `$initShared`, operating on a `[partitionState, sharedState]` pair) are not supported under engine_version 2. The shared-state slot is not restored on restart: after a node restart, projection re-enable, or resume, the engine re-runs `$initShared` instead of reading the persisted shared state, silently producing incorrect results. Use engine_version 1 until KurrentDB implements shared-state restore on V2.",
+    "fixedIn": null
+  },
+  {
     "code": "usage.linkStreamTo.deprecated",
     "class": "usage",
     "severity": "information",

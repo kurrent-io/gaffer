@@ -88,6 +88,22 @@ public static class DiagnosticCatalog {
 		FixedIn = new KurrentDbVersion(26, 2, 0), // PR #5610, shipped 26.2.0
 	};
 
+	/// <summary>
+	/// Bi-state / <c>$initShared</c> projections are not supported under engine_version 2: the
+	/// engine silently re-initializes shared state from <c>$initShared</c> on restart instead of
+	/// restoring it from the state stream, producing incorrect results with no error. Detected at
+	/// compile time off the resolved definition (gaffer can't reproduce the restart). Not yet fixed
+	/// upstream, so <c>FixedIn</c> is null; set it when V2 gains shared-state restore.
+	/// </summary>
+	public static readonly DiagnosticDescriptor BiStateSharedStateResetOnV2 = new() {
+		Code = "quirk.biState.sharedStateResetOnV2",
+		Class = DiagnosticClass.Quirk,
+		Severity = DiagnosticSeverity.Error,
+		Message = "Bi-state / $initShared is not supported under engine_version 2: shared state is silently re-initialized on restart, producing incorrect results. Use engine_version 1.",
+		Docs = "Bi-state projections (those declaring `$initShared`, operating on a `[partitionState, sharedState]` pair) are not supported under engine_version 2. The shared-state slot is not restored on restart: after a node restart, projection re-enable, or resume, the engine re-runs `$initShared` instead of reading the persisted shared state, silently producing incorrect results. Use engine_version 1 until KurrentDB implements shared-state restore on V2.",
+		FixedIn = null, // not yet supported on V2; set when shared-state restore ships
+	};
+
 	// ---------- usage.* : the user's own projection code ----------
 
 	/// <summary><c>linkStreamTo</c> is undocumented in KurrentDB and may be removed.</summary>
@@ -162,6 +178,7 @@ public static class DiagnosticCatalog {
 		EventBodyCast,
 		SerializeNonFinite,
 		SerializeRawString,
+		BiStateSharedStateResetOnV2,
 		LinkStreamToDeprecated,
 		TransformsNotInvoked,
 		OutputStateUnconditional,

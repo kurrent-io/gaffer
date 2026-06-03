@@ -25,6 +25,13 @@ internal static class DiagnosticCollector {
 		new AsyncHandlerRule(),
 	};
 
+	// Definition-based rules run off the resolved QuerySources rather than the AST, so they can be
+	// authoritative about engine-version-specific limitations (e.g. bi-state on V2) that an AST
+	// scan could only guess at.
+	private static readonly IDefinitionRule[] DefinitionRules = new IDefinitionRule[] {
+		new BiStateUnsupportedOnV2Rule(),
+	};
+
 	/// <summary>
 	/// Parse <paramref name="source"/> and run every rule. Returns the
 	/// collected diagnostics, or <c>null</c> if there are none.
@@ -64,7 +71,8 @@ internal static class DiagnosticCollector {
 		string source,
 		KurrentDbVersion? quirksVersion,
 		ProjectionVersion engineVersion,
-		bool includeShape) {
+		bool includeShape,
+		QuerySources? definition = null) {
 		Script ast;
 		try {
 			ast = new Parser().ParseScript(source, "projection.js");
@@ -77,6 +85,15 @@ internal static class DiagnosticCollector {
 				rule.Run(ast, quirksVersion, engineVersion, diagnostics);
 			} catch {
 				// One rule failing doesn't taint the others.
+			}
+		}
+		if (definition is not null) {
+			foreach (var rule in DefinitionRules) {
+				try {
+					rule.Run(definition, quirksVersion, engineVersion, diagnostics);
+				} catch {
+					// One rule failing doesn't taint the others.
+				}
 			}
 		}
 		ProjectionShape? shape = includeShape
@@ -113,4 +130,8 @@ internal static class DiagnosticCollector {
 
 internal interface IRule {
 	void Run(Script ast, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics);
+}
+
+internal interface IDefinitionRule {
+	void Run(QuerySources definition, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics);
 }

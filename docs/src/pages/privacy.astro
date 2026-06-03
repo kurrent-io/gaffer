@@ -1,0 +1,108 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+
+const lastUpdated = '3 June 2026';
+---
+
+<StarlightPage
+	frontmatter={{
+		title: 'Privacy policy',
+		description:
+			"What personal data gaffer.kurrent.io collects, why, where it's stored, and your rights.",
+		tableOfContents: false,
+	}}
+	hasSidebar={false}
+>
+	<p><em>Last updated {lastUpdated}</em></p>
+
+	<p>
+		We collect a small amount of personal data when you visit
+		<code>gaffer.kurrent.io</code>: website analytics (only if you accept) and
+		standard hosting logs. This covers the documentation website only. Telemetry
+		that the gaffer CLI and VS Code extension send is a separate matter,
+		documented at <a href="/telemetry/">/telemetry</a>.
+	</p>
+
+	<h2>Who we are</h2>
+	<p>
+		<strong>Kurrent, Inc.</strong> operates this site and is the data controller
+		for the purposes of GDPR and equivalent laws. Contact for anything in this
+		policy, including subject-access and deletion requests:
+		<a href="mailto:privacy@kurrent.io">privacy@kurrent.io</a>.
+	</p>
+
+	<h2>What we collect</h2>
+
+	<h3>Analytics</h3>
+	<p>
+		If you click <strong>Accept</strong> on the cookie banner, we load PostHog,
+		which records page URL, referrer, viewport, browser, OS, and a coarse
+		country/region inferred from your IP (the raw IP is discarded at ingest).
+		PostHog assigns an anonymous identifier so repeat visits can be told apart
+		from new ones. We do not enable session replay, heatmaps, autocapture, or
+		any third-party advertising integrations.
+	</p>
+	<p>
+		<strong>Legal basis:</strong> your consent. You can withdraw it any time
+		from the <a href="/cookies/#withdraw">cookie policy page</a>. If your browser
+		sends a Global Privacy Control signal, we treat it as a decline and never
+		load analytics.
+	</p>
+	<p>
+		<strong>Where it goes:</strong> PostHog's EU ingest
+		(<code>eu.i.posthog.com</code>) and EU-hosted storage.
+	</p>
+
+	<h3>Hosting and request logs</h3>
+	<p>
+		The site runs on Cloudflare. Cloudflare receives standard HTTP request
+		metadata (IP, user agent, requested URL, timestamps) to serve and protect
+		the site. The request logs are processed by Cloudflare on our behalf under
+		their data-processing terms.
+	</p>
+	<p>
+		<strong>Legal basis:</strong> legitimate interest in operating and
+		protecting the website.
+	</p>
+
+	<h2>Who we share data with</h2>
+	<p>
+		We use the following sub-processors. We do not sell personal data, and we do
+		not share it for advertising.
+	</p>
+	<ul>
+		<li><strong>PostHog Inc.</strong> — analytics, EU region.</li>
+		<li><strong>Cloudflare, Inc.</strong> — hosting and request handling.</li>
+	</ul>
+
+	<h2>International transfers</h2>
+	<p>
+		Kurrent, Inc. is based in the United States. PostHog analytics data stays in
+		the EU. Cloudflare operates a global network and may route requests through
+		nodes outside your country.
+	</p>
+
+	<h2>Your rights</h2>
+	<p>If your data is covered by GDPR or UK GDPR, you have the right to:</p>
+	<ul>
+		<li>Ask what we hold about you (access)</li>
+		<li>Correct anything wrong (rectification)</li>
+		<li>Have it deleted (erasure)</li>
+		<li>Restrict or object to processing</li>
+		<li>Have it ported to another provider</li>
+		<li>Withdraw consent for analytics at any time</li>
+		<li>Complain to your local supervisory authority</li>
+	</ul>
+	<p>
+		To exercise any of these, email
+		<a href="mailto:privacy@kurrent.io">privacy@kurrent.io</a>. We aim to respond
+		within 30 days.
+	</p>
+
+	<h2>Changes</h2>
+	<p>
+		If we change this policy in a way that affects you, we will update the "last
+		updated" date at the top and, where the change is material, give visible
+		notice on the site.
+	</p>
+</StarlightPage>

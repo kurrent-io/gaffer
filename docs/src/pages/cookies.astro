@@ -1,0 +1,172 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+---
+
+<StarlightPage
+	frontmatter={{
+		title: 'Cookie policy',
+		description: 'What cookies the docs site sets, what is collected, and how to withdraw consent.',
+		tableOfContents: false,
+	}}
+	hasSidebar={false}
+>
+	<p>
+		We use a single analytics tool, PostHog, to see which docs pages visitors
+		read and how they move through the site. No advertising cookies, no
+		cross-site tracking, no profiling, no data sold. If you decline, no
+		analytics cookies are set and no events are sent.
+	</p>
+
+	<h2>What we store</h2>
+	<p>
+		When you click <strong>Accept</strong>, PostHog sets a first-party cookie
+		and a localStorage entry on <code>gaffer.kurrent.io</code>. They hold an
+		anonymous identifier so PostHog can tell repeat page views apart from new
+		ones. The identifier is not linked to your name or email.
+	</p>
+	<p>
+		We also store a small <code>gaffer-docs:cookie-consent</code> entry in
+		localStorage with the value <code>accepted</code> or <code>declined</code>
+		so you don't see the banner on every page. This is set regardless of which
+		option you choose — it is the record of your choice.
+	</p>
+
+	<h2>What gets sent</h2>
+	<ul>
+		<li>Page URL, referrer, viewport, browser and OS (from the user agent).</li>
+		<li>
+			Coarse geolocation (country, region) inferred from your IP by PostHog at
+			ingest time. The raw IP is then discarded.
+		</li>
+	</ul>
+	<p>
+		Data is sent to PostHog's EU ingest (<code>eu.i.posthog.com</code>) and
+		stored in the EU. We do not run session replay, heatmaps, autocapture, or
+		any third-party advertising or marketing pixels.
+	</p>
+
+	<h2>Global Privacy Control</h2>
+	<p>
+		If your browser sends a
+		<a href="https://globalprivacycontrol.org/">Global Privacy Control</a>
+		signal, we treat it as a decline automatically: the banner is never shown
+		and PostHog is never loaded. You don't need to do anything.
+	</p>
+
+	<h2 id="withdraw">Changing your mind</h2>
+	<p>
+		If you previously accepted, the button below tells PostHog to stop
+		capturing, forget the anonymous identifier it stored, and reloads the page
+		so nothing further is sent.
+	</p>
+	<p>
+		<button type="button" class="withdraw-btn" id="withdraw-consent">Withdraw consent</button>
+		<span class="withdraw-status" id="withdraw-status" hidden></span>
+	</p>
+
+	<h2>Contact</h2>
+	<p>
+		Questions about this policy:
+		<a href="mailto:privacy@kurrent.io">privacy@kurrent.io</a>. For broader
+		data-handling questions, see the <a href="/privacy/">privacy policy</a>.
+	</p>
+</StarlightPage>
+
+<script is:inline>
+	(function () {
+		const btn = document.getElementById('withdraw-consent');
+		const status = document.getElementById('withdraw-status');
+		if (!btn || !status) return;
+
+		const CONSENT_KEY = 'gaffer-docs:cookie-consent';
+
+		function setStatus(text) {
+			status.textContent = text;
+			status.hidden = false;
+		}
+
+		// Reflect the current state on load so the button copy matches what
+		// it'll actually do.
+		try {
+			const current = localStorage.getItem(CONSENT_KEY);
+			if (current !== 'accepted') {
+				btn.textContent = 'Consent already withdrawn';
+				btn.disabled = true;
+				setStatus(
+					current === 'declined'
+						? 'You previously declined analytics on this site.'
+						: "Analytics is off — you haven't accepted yet.",
+				);
+			}
+		} catch (e) {
+			/* private mode - leave the button in its default state */
+		}
+
+		// Best-effort removal of PostHog's stored identifiers. Covers the case
+		// where PostHog never loaded (ad blocker / CSP / offline) but left
+		// cookies and localStorage from an earlier accepted session, so the
+		// withdraw button can't rely on the live SDK to clean up after itself.
+		function clearPostHogStorage() {
+			try {
+				for (const key of Object.keys(localStorage)) {
+					if (key.startsWith('ph_') || key.includes('posthog')) localStorage.removeItem(key);
+				}
+			} catch (e) {}
+			try {
+				for (const cookie of document.cookie.split(';')) {
+					const name = cookie.split('=')[0].trim();
+					if (name.startsWith('ph_') || name.includes('posthog')) {
+						document.cookie = `${name}=; Max-Age=0; path=/`;
+					}
+				}
+			} catch (e) {}
+		}
+
+		btn.addEventListener('click', () => {
+			// Tell the live posthog instance (if loaded) to stop and clear its
+			// persisted state, then sweep up any leftover identifiers in case
+			// the SDK wasn't loaded to do it itself.
+			try {
+				window.posthog?.opt_out_capturing?.();
+				window.posthog?.reset?.();
+			} catch (e) {
+				/* keep going - we still want to update our own consent record */
+			}
+			clearPostHogStorage();
+			try {
+				localStorage.setItem(CONSENT_KEY, 'declined');
+			} catch (e) {}
+			btn.disabled = true;
+			setStatus('Done. Reloading to finish clearing analytics…');
+			setTimeout(() => window.location.reload(), 700);
+		});
+	})();
+</script>
+
+<style>
+	.withdraw-btn {
+		appearance: none;
+		background: var(--color-accent);
+		color: var(--palette-white);
+		border: 1px solid var(--color-accent);
+		border-radius: 6px;
+		padding: 0.55rem 1rem;
+		font: inherit;
+		font-weight: 500;
+		cursor: pointer;
+	}
+	.withdraw-btn:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--color-accent) 85%, white);
+	}
+	.withdraw-btn:disabled {
+		background: transparent;
+		color: var(--color-muted);
+		border-color: var(--color-shade-50);
+		cursor: default;
+	}
+	.withdraw-status {
+		margin-inline-start: 0.75rem;
+		font-size: var(--sl-text-sm);
+		color: var(--color-muted);
+	}
+</style>

@@ -64,8 +64,17 @@ function renderIndex() {
 		"Nothing that could identify you or your projection code is collected, and every surface " +
 		"can be turned off. Each surface is governed independently by its own opt-outs.";
 	const list = surfaces.map((s) => `- [${s.linkLabel}](./${s.slug}.md): ${s.description}`).join("\n");
-	const body = `${intro}\n\n${list}\n`;
-	return `${frontmatter("Telemetry", "What gaffer collects, why, and how to opt out.")}\n${banner("scripts/sync-telemetry-notices.mjs")}\n\n${body}`;
+	// The docs website's own analytics are a separate thing from gaffer the
+	// tool's telemetry; call that out explicitly so the two aren't conflated.
+	const docsAnalytics =
+		"## This documentation site\n\n" +
+		"Separate from gaffer's product telemetry above, this documentation website counts " +
+		"page views with [PostHog](https://posthog.com) so we can see which docs are useful. " +
+		"It is consent-gated: nothing is collected unless you accept the cookie banner, and it " +
+		"is skipped entirely if your browser sends Global Privacy Control. See the " +
+		"[cookie policy](/cookies/) and [privacy policy](/privacy/).";
+	const body = `${intro}\n\n${list}\n\n${docsAnalytics}\n`;
+	return `${frontmatter("Telemetry", "What gaffer and this docs site collect, why, and how to opt out.")}\n${banner("scripts/sync-telemetry-notices.mjs")}\n\n${body}`;
 }
 
 mkdirSync(outDir, { recursive: true });

@@ -1,0 +1,10 @@
+---
+// Overrides Starlight's default Head site-wide to inject the consent-gated
+// PostHog loader. Composes with Default so Starlight's own head tags (and
+// any plugin overrides) still flow through.
+import Default from '@astrojs/starlight/components/Head.astro';
+import PostHog from './PostHog.astro';
+---
+
+<Default {...Astro.props} />
+<PostHog />

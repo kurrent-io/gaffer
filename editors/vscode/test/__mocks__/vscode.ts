@@ -52,25 +52,48 @@ export class EventEmitter<T> implements vscode.EventEmitter<T> {
 
 export class Uri implements vscode.Uri {
 	readonly scheme: string;
-	readonly authority: string = "";
+	readonly authority: string;
 	readonly path: string;
-	readonly query: string = "";
-	readonly fragment: string = "";
+	readonly query: string;
+	readonly fragment: string;
 	readonly fsPath: string;
-	private constructor(scheme: string, path: string) {
-		this.scheme = scheme;
-		this.path = path;
-		this.fsPath = path;
+	private constructor(parts: {
+		scheme: string;
+		path: string;
+		authority?: string;
+		query?: string;
+		fragment?: string;
+	}) {
+		this.scheme = parts.scheme;
+		this.authority = parts.authority ?? "";
+		this.path = parts.path;
+		this.query = parts.query ?? "";
+		this.fragment = parts.fragment ?? "";
+		this.fsPath = parts.path;
 	}
 	static file(p: string): Uri {
-		return new Uri("file", p);
+		return new Uri({ scheme: "file", path: p });
 	}
 	static parse(value: string, _strict?: boolean): Uri {
-		// Minimal: accept "scheme:path" or treat the whole thing as a
-		// file path. Production doesn't call parse; the stub exists so
-		// the type satisfies vscode.Uri's static surface.
+		// http/https go through the platform URL parser so authority,
+		// path, query, and fragment split the way VS Code's real
+		// Uri.parse splits them (the deep-link tests assert on .fragment).
+		if (/^https?:\/\//i.test(value)) {
+			const u = new URL(value);
+			return new Uri({
+				scheme: u.protocol.replace(/:$/, ""),
+				authority: u.host,
+				path: u.pathname,
+				query: u.search.replace(/^\?/, ""),
+				fragment: u.hash.replace(/^#/, ""),
+			});
+		}
+		// Otherwise accept "scheme:path" or treat the whole value as a
+		// file path.
 		const m = /^([a-zA-Z][a-zA-Z0-9+\-.]*):(.*)$/.exec(value);
-		return m ? new Uri(m[1] ?? "file", m[2] ?? "") : Uri.file(value);
+		return m
+			? new Uri({ scheme: m[1] ?? "file", path: m[2] ?? "" })
+			: Uri.file(value);
 	}
 	static joinPath(base: vscode.Uri, ...segments: string[]): Uri {
 		// Mirror node:path.join semantics for the cases we hit in production:
@@ -106,7 +129,10 @@ export class Uri implements vscode.Uri {
 		throw NOT_IMPLEMENTED("Uri.with");
 	}
 	toString(_skipEncoding?: boolean): string {
-		return `${this.scheme}://${this.path}`;
+		const authority = this.authority ? `//${this.authority}` : "";
+		const query = this.query ? `?${this.query}` : "";
+		const fragment = this.fragment ? `#${this.fragment}` : "";
+		return `${this.scheme}:${authority}${this.path}${query}${fragment}`;
 	}
 	toJSON(): unknown {
 		return {

@@ -129,10 +129,14 @@ export class Uri implements vscode.Uri {
 		throw NOT_IMPLEMENTED("Uri.with");
 	}
 	toString(_skipEncoding?: boolean): string {
-		const authority = this.authority ? `//${this.authority}` : "";
+		// VS Code emits the `//` authority separator when there's an authority
+		// or the scheme is file, so file URIs serialize as file:///path even
+		// with an empty authority.
+		const slashes =
+			this.authority || this.scheme === "file" ? `//${this.authority}` : "";
 		const query = this.query ? `?${this.query}` : "";
 		const fragment = this.fragment ? `#${this.fragment}` : "";
-		return `${this.scheme}:${authority}${this.path}${query}${fragment}`;
+		return `${this.scheme}:${slashes}${this.path}${query}${fragment}`;
 	}
 	toJSON(): unknown {
 		return {

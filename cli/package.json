@@ -1,6 +1,6 @@
 {
 	"name": "@kurrent/gaffer",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Develop, test, debug, and deploy KurrentDB projections from the command line",
 	"license": "LicenseRef-KurrentLicenseV1",
 	"repository": {

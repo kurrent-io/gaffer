@@ -1,6 +1,6 @@
 {
 	"name": "@kurrent/projections-testing",
-	"version": "0.1.2",
+	"version": "0.2.0",
 	"description": "Test library for KurrentDB projections",
 	"license": "Apache-2.0",
 	"repository": {

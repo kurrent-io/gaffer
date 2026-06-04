@@ -36,7 +36,8 @@ func newScaffoldCmd() *cobra.Command {
 			"current directory and must end in a supported extension (" +
 			strings.Join(scaffold.ListExtensions(), ", ") + "). " +
 			"The projection's gaffer.toml key defaults to the file's basename; pass --name to override.",
-		Args: cobra.ExactArgs(1),
+		Example: "gaffer scaffold ./projections/order.js",
+		Args:    exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
 			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
 				telemetry.EmitScaffold(cmd.Context(), telemetry.ScaffoldCommandInvokedProperties{Outcome: o})

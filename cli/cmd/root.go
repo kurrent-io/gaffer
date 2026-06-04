@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/fang"
 	"github.com/mattn/go-isatty"
@@ -27,6 +28,20 @@ func silent(err error) error { return &silentError{err: err} }
 func errorHandler(w io.Writer, styles fang.Styles, err error) {
 	var s *silentError
 	if errors.As(err, &s) {
+		return
+	}
+	var argErr *argCountError
+	if errors.As(err, &argErr) {
+		// Reuse fang's styled ERROR badge, but print the body as plain
+		// indented text rather than through styles.ErrorText: that style
+		// reflows to a fixed width and collapses our newline, joining the
+		// headline and example onto one line. Printing it ourselves also
+		// drops the trailing "." fang appends, which would look mistyped
+		// after a runnable example. The example stands in for fang's
+		// "Try --help" usage hint.
+		body := "  " + strings.ReplaceAll(argErr.Error(), "\n", "\n  ")
+		_, _ = io.WriteString(w, styles.ErrorHeader.String()+"\n")
+		_, _ = io.WriteString(w, body+"\n\n")
 		return
 	}
 	fang.DefaultErrorHandler(w, styles, err)

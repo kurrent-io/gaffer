@@ -45,7 +45,7 @@ Flags:
 Run a projection locally.
 
 ```
-gaffer dev [projection] [flags]
+gaffer dev <projection> [flags]
 ```
 
 Flags:
@@ -66,7 +66,7 @@ Flags:
 Show projection details.
 
 ```
-gaffer info [projection] [flags]
+gaffer info <projection> [flags]
 ```
 
 Flags:

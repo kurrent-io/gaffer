@@ -12,7 +12,7 @@ CLI:
 npm i -g @kurrent/gaffer
 ```
 
-VS Code extension - install [KurrentDB Projections](https://gaffer.kurrent.io/extension/vs-code/) for run/debug from `gaffer.toml`, breakpoint debugging, and an auto-registered MCP server.
+VS Code extension - install [KurrentDB Gaffer](https://gaffer.kurrent.io/extension/vs-code/) for run/debug from `gaffer.toml`, breakpoint debugging, and an auto-registered MCP server.
 
 Test library:
 

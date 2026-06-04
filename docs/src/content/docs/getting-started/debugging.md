@@ -7,7 +7,7 @@ Gaffer's debug server speaks the Debug Adapter Protocol over TCP, so any DAP-awa
 
 ## VS Code
 
-The [KurrentDB Projections](../extension/vs-code.md) extension wires everything up: click **Debug** above the projection in `gaffer.toml`, set breakpoints in the JS, step through handlers as they run. The extension manages the gaffer subprocess and port for you.
+The [KurrentDB Gaffer](../extension/vs-code.md) extension wires everything up: click **Debug** above the projection in `gaffer.toml`, set breakpoints in the JS, step through handlers as they run. The extension manages the gaffer subprocess and port for you.
 
 ## Other editors
 

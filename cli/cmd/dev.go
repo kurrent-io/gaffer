@@ -40,9 +40,10 @@ func newDevCmd() *cobra.Command {
 	opts := &devOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "dev [projection]",
-		Short: "Run a projection locally",
-		Args:  cobra.ExactArgs(1),
+		Use:     "dev <projection>",
+		Short:   "Run a projection locally",
+		Example: "gaffer dev order-count",
+		Args:    exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// `gaffer dev` (cobra) maps to two telemetry event
 			// variants: `dev` (single / fixture) and `debug` (DAP

@@ -16,9 +16,10 @@ func newInfoCmd() *cobra.Command {
 	var asJSON bool
 
 	cmd := &cobra.Command{
-		Use:   "info [projection]",
-		Short: "Show projection details",
-		Args:  cobra.ExactArgs(1),
+		Use:     "info <projection>",
+		Short:   "Show projection details",
+		Example: "gaffer info order-count",
+		Args:    exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
 			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
 				telemetry.EmitInfo(cmd.Context(), telemetry.InfoCommandInvokedProperties{Outcome: o})

@@ -164,12 +164,12 @@ describe("StepProvider", () => {
 		expect(warning?.description).toBe("raw string JSON-quoted");
 		expect((warning?.iconPath as vscode.ThemeIcon).id).toBe("warning");
 		// Clicking the quirk opens its entry in the diagnostics reference,
-		// anchored on the code verbatim.
+		// anchored on the heading's Starlight slug (lowercase, dot-stripped).
 		expect(warning?.command?.command).toBe("vscode.open");
 		const target = warning?.command?.arguments?.[0] as vscode.Uri;
 		expect(target.authority).toBe("gaffer.kurrent.io");
 		expect(target.path).toBe("/reference/diagnostics/");
-		expect(target.fragment).toBe("quirk.serialize.rawString");
+		expect(target.fragment).toBe("quirkserializerawstring");
 	});
 
 	it("clear empties the items and the placeholder reappears", async () => {

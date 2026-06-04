@@ -247,13 +247,21 @@ func (tw *textWriter) WriteInfo(proj *engine.Projection, info gafferruntime.Proj
 	}
 }
 
+// diagnosticAnchor is the docs heading slug for a code: github-slugger's
+// lowercase, dot-stripped form (quirk.log.multiParam -> quirklogmultiparam).
+// It must match the Starlight heading slug so the CLI links to the same anchor
+// a reader gets by copying the heading's own anchor link.
+func diagnosticAnchor(code string) string {
+	return strings.ToLower(strings.ReplaceAll(code, ".", ""))
+}
+
 // linkCode wraps a diagnostic code in an OSC 8 hyperlink to its docs anchor on
 // interactive terminals; elsewhere it returns the code unchanged.
 func (tw *textWriter) linkCode(code string) string {
 	if !tw.links {
 		return code
 	}
-	return termenv.Hyperlink(diagnosticsReferenceURL+"#"+code, code)
+	return termenv.Hyperlink(diagnosticsReferenceURL+"#"+diagnosticAnchor(code), code)
 }
 
 func (tw *textWriter) writeDiagnostic(d gafferruntime.Diagnostic) {

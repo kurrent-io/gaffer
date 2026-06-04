@@ -2,10 +2,14 @@ import * as vscode from "vscode";
 import { jsonToTreeItems, type TreeItemWithChildren } from "./json-tree.js";
 import type { EmittedEvent, InputEvent, StepResult } from "../ipc/schemas.js";
 
-// Per-code anchor on the generated diagnostics reference. The anchor is the
-// code verbatim (the docs page emits a matching `<a id="<code>">`).
 const DIAGNOSTICS_REFERENCE_URL =
 	"https://gaffer.kurrent.io/reference/diagnostics/";
+
+// The docs heading slug for a code: github-slugger's lowercase, dot-stripped
+// form (quirk.log.multiParam -> quirklogmultiparam). Must match the Starlight
+// slug so this links to the same anchor a reader gets from the heading link.
+const diagnosticAnchor = (code: string) =>
+	code.replaceAll(".", "").toLowerCase();
 
 export class StepProvider
 	implements vscode.TreeDataProvider<TreeItemWithChildren>, vscode.Disposable
@@ -148,7 +152,11 @@ function buildWarningItem(code: string, message: string): TreeItemWithChildren {
 	item.command = {
 		command: "vscode.open",
 		title: "Open diagnostics reference",
-		arguments: [vscode.Uri.parse(`${DIAGNOSTICS_REFERENCE_URL}#${code}`)],
+		arguments: [
+			vscode.Uri.parse(
+				`${DIAGNOSTICS_REFERENCE_URL}#${diagnosticAnchor(code)}`,
+			),
+		],
 	};
 	return item;
 }

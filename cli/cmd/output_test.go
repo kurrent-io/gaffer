@@ -457,10 +457,11 @@ func TestTextWriter_LinkCode(t *testing.T) {
 		t.Fatalf("non-interactive linkCode = %q, want the bare code", got)
 	}
 
-	// Interactive: the code is wrapped in an OSC 8 hyperlink to its anchor.
+	// Interactive: the code is wrapped in an OSC 8 hyperlink to the docs
+	// heading slug (github-slugger's lowercase, dot-stripped form).
 	link := &textWriter{links: true}
 	got := link.linkCode("quirk.log.multiParam")
-	want := "https://gaffer.kurrent.io/reference/diagnostics/#quirk.log.multiParam"
+	want := "https://gaffer.kurrent.io/reference/diagnostics/#quirklogmultiparam"
 	if !strings.Contains(got, want) {
 		t.Fatalf("interactive linkCode = %q, want it to target %q", got, want)
 	}

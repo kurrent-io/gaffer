@@ -3,9 +3,10 @@
 // cli/internal/mcpserver/resources/diagnostics.gen.json is the single source
 // of truth - generated from the C# DiagnosticCatalog and drift-guarded by a
 // runtime test. This script renders it into a Starlight page at
-// src/content/docs/reference/diagnostics.md, one entry per code, with a stable
-// per-code anchor (`<a id="<code>">`) so the CLI and editor can deep-link to
-// `#<code>` without depending on Starlight's lossy heading slugs.
+// src/content/docs/reference/diagnostics.md, one entry per code. The CLI and
+// editor deep-link to each entry via the heading's Starlight slug (github-
+// slugger's lowercase, dot-stripped form of the code), which is also what the
+// heading's own anchor link copies - so every surface points at the same URL.
 //
 // Output is gitignored and regenerated before every dev/build/check run.
 
@@ -35,11 +36,9 @@ function renderEntry(d) {
 	if (d.class === "quirk") {
 		meta.push(d.fixedIn ? `**Fixed in:** KurrentDB ${d.fixedIn}` : "**Fixed in:** _not yet shipped upstream_");
 	}
-	// The code-verbatim anchor is the deep-link target; the heading keeps its
-	// own (lossy) Starlight slug for the table of contents.
+	// The heading's own Starlight slug is the deep-link target, so clicking the
+	// heading's anchor link copies the same `#<slug>` the CLI and editor build.
 	const parts = [
-		`<a id=${JSON.stringify(d.code)}></a>`,
-		"",
 		`### \`${d.code}\``,
 		"",
 		meta.join(" · "),

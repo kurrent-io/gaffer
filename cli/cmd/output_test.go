@@ -449,6 +449,26 @@ func TestTextWriter_WriteSummary_MergesCompileTimeQuirks(t *testing.T) {
 	testutil.AssertContains(t, out, "See https://gaffer.kurrent.io/reference/diagnostics/")
 }
 
+func TestTextWriter_LinkCode(t *testing.T) {
+	// Non-interactive (a buffer is not a TTY): codes stay plain so the
+	// output is copyable and tests/CI/pipes see no escape sequences.
+	plain := newTextWriter(&bytes.Buffer{}, nil)
+	if got := plain.linkCode("quirk.log.multiParam"); got != "quirk.log.multiParam" {
+		t.Fatalf("non-interactive linkCode = %q, want the bare code", got)
+	}
+
+	// Interactive: the code is wrapped in an OSC 8 hyperlink to its anchor.
+	link := &textWriter{links: true}
+	got := link.linkCode("quirk.log.multiParam")
+	want := "https://gaffer.kurrent.io/reference/diagnostics/#quirk.log.multiParam"
+	if !strings.Contains(got, want) {
+		t.Fatalf("interactive linkCode = %q, want it to target %q", got, want)
+	}
+	if !strings.Contains(got, "\x1b]8;;") {
+		t.Fatalf("interactive linkCode = %q, want an OSC 8 hyperlink", got)
+	}
+}
+
 func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, nil)

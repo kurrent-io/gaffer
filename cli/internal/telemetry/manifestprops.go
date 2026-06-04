@@ -40,12 +40,12 @@ func ManifestFeaturesOf(c *config.Config) []string {
 	// engine_version, quirks_version, execution_timeout can live at top
 	// level OR on individual projections. Either declaration marks
 	// the feature as in use.
-	hasEngineVersion := c.EngineVersion != 0
+	hasEngineVersion := c.EngineVersion != nil
 	hasQuirksVersion := c.QuirksVersion != ""
 	hasExecutionTimeout := c.ExecutionTimeout != nil
 	hasFixtures := false
 	for _, p := range c.Projection {
-		if p.EngineVersion != 0 {
+		if p.EngineVersion != nil {
 			hasEngineVersion = true
 		}
 		if p.QuirksVersion != "" {

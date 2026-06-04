@@ -11,7 +11,7 @@ func TestManifestFeaturesOf_AllSections(t *testing.T) {
 	timeout := 30
 	cfg := &config.Config{
 		Connection:         "esdb://localhost:2113",
-		EngineVersion:      2,
+		EngineVersion:      intPtr(2),
 		QuirksVersion:      "26.1.0",
 		CompilationTimeout: &timeout,
 		ExecutionTimeout:   &timeout,
@@ -70,7 +70,7 @@ func TestManifestFeaturesOf_PerProjectionOverridesCount(t *testing.T) {
 			{
 				Name:             "p",
 				Entry:            "p.js",
-				EngineVersion:    2,
+				EngineVersion:    intPtr(2),
 				QuirksVersion:    "26.1.0",
 				ExecutionTimeout: &timeout,
 			},

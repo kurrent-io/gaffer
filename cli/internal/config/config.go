@@ -27,7 +27,7 @@ var ErrManifestValidate = errors.New("validate gaffer.toml")
 // Config represents a gaffer.toml file.
 type Config struct {
 	Connection         string       `toml:"connection,omitempty"`
-	EngineVersion      int          `toml:"engine_version,omitempty"`
+	EngineVersion      *int         `toml:"engine_version,omitempty"`
 	QuirksVersion      string       `toml:"quirks_version,omitempty"`
 	CompilationTimeout *int         `toml:"compilation_timeout,omitempty"`
 	ExecutionTimeout   *int         `toml:"execution_timeout,omitempty"`
@@ -42,7 +42,7 @@ type Config struct {
 type Projection struct {
 	Name             string            `toml:"name"`
 	Entry            string            `toml:"entry"`
-	EngineVersion    int               `toml:"engine_version,omitempty"`
+	EngineVersion    *int              `toml:"engine_version,omitempty"`
 	QuirksVersion    string            `toml:"quirks_version,omitempty"`
 	ExecutionTimeout *int              `toml:"execution_timeout,omitempty"`
 	Fixtures         map[string]string `toml:"fixtures,omitempty"`
@@ -87,10 +87,13 @@ func (c *Config) FixtureCount() int {
 // EffectiveEngineVersion returns the projection's engine_version, falling
 // back to the top-level engine_version. Returns 0 if neither is set.
 func (c *Config) EffectiveEngineVersion(p *Projection) int {
-	if p.EngineVersion != 0 {
-		return p.EngineVersion
+	if p != nil && p.EngineVersion != nil {
+		return *p.EngineVersion
 	}
-	return c.EngineVersion
+	if c.EngineVersion != nil {
+		return *c.EngineVersion
+	}
+	return 0
 }
 
 // EffectiveQuirksVersion returns the effective KurrentDB quirks-matching version for the
@@ -191,8 +194,8 @@ func (c *Config) FindProjection(name string) *Projection {
 }
 
 func (c *Config) validate() error {
-	if c.EngineVersion != 0 && c.EngineVersion != 1 && c.EngineVersion != 2 {
-		return fmt.Errorf("engine_version must be 1 or 2, got %d", c.EngineVersion)
+	if c.EngineVersion != nil && *c.EngineVersion != 1 && *c.EngineVersion != 2 {
+		return fmt.Errorf("engine_version must be 1 or 2, got %d", *c.EngineVersion)
 	}
 	if c.QuirksVersion != "" && !validQuirksVersion(c.QuirksVersion) {
 		return fmt.Errorf("quirks_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", c.QuirksVersion, "26.1.0")
@@ -214,8 +217,8 @@ func (c *Config) validate() error {
 		// path either doesn't surface them (engine_version) or
 		// handles them post-loop with cross-element state
 		// (duplicate-name).
-		if p.EngineVersion != 0 && p.EngineVersion != 1 && p.EngineVersion != 2 {
-			return fmt.Errorf("projection %q engine_version must be 1 or 2, got %d", p.Name, p.EngineVersion)
+		if p.EngineVersion != nil && *p.EngineVersion != 1 && *p.EngineVersion != 2 {
+			return fmt.Errorf("projection %q engine_version must be 1 or 2, got %d", p.Name, *p.EngineVersion)
 		}
 		if p.QuirksVersion != "" && !validQuirksVersion(p.QuirksVersion) {
 			return fmt.Errorf("projection %q quirks_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", p.Name, p.QuirksVersion, "26.1.0")

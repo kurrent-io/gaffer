@@ -17,7 +17,8 @@ import (
 func InitProject(dir string) (string, error) {
 	configPath := project.ConfigPath(dir)
 
-	data, err := Marshal(&Config{EngineVersion: 2})
+	defaultEngine := 2
+	data, err := Marshal(&Config{EngineVersion: &defaultEngine})
 	if err != nil {
 		return "", err
 	}

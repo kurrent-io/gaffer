@@ -39,8 +39,8 @@ engine_version = 1
 		t.Fatalf("expected name cart-count, got %s", cfg.Projection[0].Name)
 	}
 
-	if cfg.Projection[1].EngineVersion != 1 {
-		t.Fatalf("expected engine_version 1, got %d", cfg.Projection[1].EngineVersion)
+	if cfg.Projection[1].EngineVersion == nil || *cfg.Projection[1].EngineVersion != 1 {
+		t.Fatalf("expected engine_version 1, got %v", cfg.Projection[1].EngineVersion)
 	}
 }
 
@@ -174,13 +174,13 @@ func TestFindProjection(t *testing.T) {
 }
 
 func TestEffectiveEngineVersion(t *testing.T) {
-	cfg := &Config{EngineVersion: 2}
+	cfg := &Config{EngineVersion: ptr(2)}
 	p := Projection{Name: "a", Entry: "a.js"}
 	if got := cfg.EffectiveEngineVersion(&p); got != 2 {
 		t.Fatalf("expected top-level 2, got %d", got)
 	}
 
-	p.EngineVersion = 1
+	p.EngineVersion = ptr(1)
 	if got := cfg.EffectiveEngineVersion(&p); got != 1 {
 		t.Fatalf("expected per-projection override 1, got %d", got)
 	}
@@ -520,7 +520,7 @@ func TestSaveAndReload(t *testing.T) {
 
 	cfg := &Config{
 		Projection: []Projection{
-			{Name: "test", Entry: "test.js", EngineVersion: 1},
+			{Name: "test", Entry: "test.js", EngineVersion: ptr(1)},
 		},
 	}
 
@@ -541,8 +541,8 @@ func TestSaveAndReload(t *testing.T) {
 		t.Fatalf("expected name test, got %s", loaded.Projection[0].Name)
 	}
 
-	if loaded.Projection[0].EngineVersion != 1 {
-		t.Fatalf("expected engine_version 1, got %d", loaded.Projection[0].EngineVersion)
+	if loaded.Projection[0].EngineVersion == nil || *loaded.Projection[0].EngineVersion != 1 {
+		t.Fatalf("expected engine_version 1, got %v", loaded.Projection[0].EngineVersion)
 	}
 }
 
@@ -555,7 +555,7 @@ func TestSaveAndReload_Fixtures(t *testing.T) {
 	path := filepath.Join(dir, "gaffer.toml")
 
 	cfg := &Config{
-		EngineVersion: 2,
+		EngineVersion: ptr(2),
 		Projection: []Projection{
 			{
 				Name:  "checkout",
@@ -612,3 +612,49 @@ func TestProjectionCount(t *testing.T) {
 		t.Errorf("ProjectionCount() on empty = %d, want 0", got)
 	}
 }
+
+// TestMarshalOmitsUnsetEngineVersion guards UI-1635: with EngineVersion
+// as a plain int, omitempty did not suppress the zero value and every
+// save wrote a spurious `engine_version = 0` line at the top level and
+// on every projection. As *int, an unset version marshals to nothing.
+func TestMarshalOmitsUnsetEngineVersion(t *testing.T) {
+	cfg := &Config{
+		Projection: []Projection{{Name: "a", Entry: "a.js"}},
+	}
+	data, err := Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "engine_version =") {
+		t.Errorf("expected no engine_version line for an unset version, got:\n%s", data)
+	}
+}
+
+// TestValidateRejectsZeroEngineVersion documents the deliberate
+// behaviour change from the UI-1635 fix: an explicit `engine_version = 0`
+// is now a distinct, invalid state rather than being silently treated as
+// "unset". It must fail with the same "1 or 2" message as any other bad
+// version.
+func TestValidateRejectsZeroEngineVersion(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+engine_version = 0
+
+[[projection]]
+name = "test"
+entry = "test.js"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for engine_version = 0")
+	}
+	if !strings.Contains(err.Error(), "must be 1 or 2, got 0") {
+		t.Errorf("expected \"must be 1 or 2, got 0\", got %q", err.Error())
+	}
+}
+
+func ptr[T any](v T) *T { return &v }

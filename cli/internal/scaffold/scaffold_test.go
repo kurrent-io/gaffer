@@ -43,6 +43,24 @@ func TestScaffold(t *testing.T) {
 	}
 }
 
+func TestScaffold_NoZeroEngineVersionWritten(t *testing.T) {
+	// UI-1635: re-saving the manifest on scaffold must not stamp
+	// engine_version = 0 onto the new projection or any existing one.
+	p := testutil.NewProject(t).AddProjection("existing", "// placeholder").Save()
+
+	if _, err := Scaffold(p.Dir, p.Cfg, "counter", "projections/counter.js", "all", "none", false); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(p.Dir, "gaffer.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "engine_version = 0") {
+		t.Errorf("gaffer.toml contains engine_version = 0:\n%s", data)
+	}
+}
+
 func TestScaffold_CustomPath(t *testing.T) {
 	p := testutil.NewProject(t).Save()
 

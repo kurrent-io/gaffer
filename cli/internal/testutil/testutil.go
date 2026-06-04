@@ -99,12 +99,13 @@ type Project struct {
 func NewProject(t *testing.T) *Project {
 	t.Helper()
 	dir := t.TempDir()
-	cfg := &config.Config{EngineVersion: 2}
+	defaultEngine := 2
+	cfg := &config.Config{EngineVersion: &defaultEngine}
 	return &Project{Dir: dir, Cfg: cfg, t: t}
 }
 
 func (p *Project) WithEngineVersion(v int) *Project {
-	p.Cfg.EngineVersion = v
+	p.Cfg.EngineVersion = &v
 	return p
 }
 

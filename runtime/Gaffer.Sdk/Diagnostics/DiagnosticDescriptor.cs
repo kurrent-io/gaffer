@@ -30,6 +30,12 @@ public sealed record DiagnosticDescriptor {
 	/// <summary>Longer explanation (Markdown) for docs surfaces. Optional.</summary>
 	public string? Docs { get; init; }
 
+	/// <summary>Docs-only: a minimal projection snippet that triggers the diagnostic. Optional.</summary>
+	public string? BadExample { get; init; }
+
+	/// <summary>Docs-only: the corrected snippet, or a short note when the fix is a config change. Optional.</summary>
+	public string? GoodExample { get; init; }
+
 	/// <summary>
 	/// Quirks only: the KurrentDB version that fixes this upstream. <c>null</c> = no fix in
 	/// flight, so the quirk fires in every configuration.

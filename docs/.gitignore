@@ -4,6 +4,8 @@ dist/
 .astro/
 # telemetry notices synced from cli/ and editors/vscode/ TELEMETRY.md
 src/content/docs/telemetry/
+# diagnostics reference synced from the catalog artifact (gaffer-toml.md in the same dir is committed)
+src/content/docs/reference/diagnostics.md
 # Cloudflare adapter cache (workerd downloads, dev runtime state)
 .wrangler/
 

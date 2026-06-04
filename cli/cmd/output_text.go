@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
+	"github.com/muesli/termenv"
 )
 
 const indentSize = 3
@@ -40,7 +41,17 @@ type textWriter struct {
 	// every quirk the run surfaced - header or per-event.
 	compileQuirks []string
 	runtimeQuirks map[string]bool
+	// links is true on interactive terminals (the renderer resolves a
+	// non-Ascii colour profile), where diagnostic codes are wrapped in OSC 8
+	// hyperlinks to their docs anchor. Off for pipes, CI, and tests so output
+	// stays plain and copyable.
+	links bool
 }
+
+// diagnosticsReferenceURL is the generated reference page; each code has a
+// matching `#<code>` anchor. Printed once per summary as a plain `See` line,
+// and used as the target when codes are hyperlinked on interactive terminals.
+const diagnosticsReferenceURL = "https://gaffer.kurrent.io/reference/diagnostics/"
 
 type textStyles struct {
 	label     lipgloss.Style
@@ -64,8 +75,9 @@ type prefixed struct {
 func newTextWriter(w, errW io.Writer) *textWriter {
 	r := lipgloss.NewRenderer(w)
 	tw := &textWriter{
-		w:    w,
-		errW: errW,
+		w:     w,
+		errW:  errW,
+		links: r.ColorProfile() != termenv.Ascii,
 		styles: textStyles{
 			label:     r.NewStyle().Foreground(lipgloss.Color("6")),
 			pipe:      r.NewStyle().Faint(true).Foreground(lipgloss.Color("6")),
@@ -235,8 +247,25 @@ func (tw *textWriter) WriteInfo(proj *engine.Projection, info gafferruntime.Proj
 	}
 }
 
+// diagnosticAnchor is the docs heading slug for a code: github-slugger's
+// lowercase, dot-stripped form (quirk.log.multiParam -> quirklogmultiparam).
+// It must match the Starlight heading slug so the CLI links to the same anchor
+// a reader gets by copying the heading's own anchor link.
+func diagnosticAnchor(code string) string {
+	return strings.ToLower(strings.ReplaceAll(code, ".", ""))
+}
+
+// linkCode wraps a diagnostic code in an OSC 8 hyperlink to its docs anchor on
+// interactive terminals; elsewhere it returns the code unchanged.
+func (tw *textWriter) linkCode(code string) string {
+	if !tw.links {
+		return code
+	}
+	return termenv.Hyperlink(diagnosticsReferenceURL+"#"+diagnosticAnchor(code), code)
+}
+
 func (tw *textWriter) writeDiagnostic(d gafferruntime.Diagnostic) {
-	header := fmt.Sprintf("[%s] %s", severityLabel(d.Severity), d.Code)
+	header := fmt.Sprintf("[%s] %s", severityLabel(d.Severity), tw.linkCode(d.Code))
 	if d.Range != nil {
 		header += fmt.Sprintf(" (line %d, col %d)", d.Range.Start.Line, d.Range.Start.Column)
 	}
@@ -249,7 +278,7 @@ func (tw *textWriter) writeDiagnostic(d gafferruntime.Diagnostic) {
 // styled [severity] code header and its message on a continuation line. No
 // source range; runtime quirks are value-dependent, not tied to a location.
 func (tw *textWriter) writeStepDiagnostic(d gafferruntime.Diagnostic) {
-	header := fmt.Sprintf("[%s] %s", severityLabel(d.Severity), d.Code)
+	header := fmt.Sprintf("[%s] %s", severityLabel(d.Severity), tw.linkCode(d.Code))
 	tw.write("%s\n", tw.lineSub(tw.severityStyle(d.Severity).Render(header)))
 	tw.write("%s%s\n", tw.ind("│"), d.Message)
 }
@@ -440,8 +469,9 @@ func (tw *textWriter) statsLine(stats engine.EventStats) {
 		}
 		tw.write("%s %s encountered\n", gold(formatNumber(len(codes))), noun)
 		for _, c := range codes {
-			tw.write("%s%s\n", tw.ind(), tw.styles.warning.Render(c))
+			tw.write("%s%s\n", tw.ind(), tw.styles.warning.Render(tw.linkCode(c)))
 		}
+		tw.write("%sSee %s\n", tw.ind(), tw.styles.label.Render(diagnosticsReferenceURL))
 	}
 }
 

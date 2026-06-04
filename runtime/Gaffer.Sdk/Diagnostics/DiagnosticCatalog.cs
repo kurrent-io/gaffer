@@ -26,6 +26,22 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "linkStreamTo with metadata (3+ args) crashes due to an upstream parameter-indexing bug; metadata is never captured.",
 		Docs = "`linkStreamTo(stream, link, metadata)` with a third (metadata) argument crashes in the KurrentDB projection engine - the metadata branch reads an out-of-bounds parameter and throws. The two-argument form works; metadata is never captured. gaffer reproduces the crash.",
+		BadExample = """
+		fromAll().when({
+		  Archived(state, event) {
+		    linkStreamTo("archive-" + event.streamId, event.streamId, { reason: "x" }); // 3-arg form crashes
+		    return state;
+		  }
+		});
+		""",
+		GoodExample = """
+		fromAll().when({
+		  Archived(state, event) {
+		    linkStreamTo("archive-" + event.streamId, event.streamId); // two args; metadata isn't captured
+		    return state;
+		  }
+		});
+		""",
 		FixedIn = null, // no upstream fix as of 26.2.0
 	};
 
@@ -41,6 +57,22 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Warning,
 		Message = "log() with multiple args produces unexpected output due to an upstream bug: primitives become separate log lines and objects use a ' ,' separator.",
 		Docs = "`log()` with more than one argument behaves oddly in the KurrentDB engine: primitive arguments are emitted as separate log lines, and objects are joined with a ` ,` separator. Pass a single pre-formatted argument to avoid surprises.",
+		BadExample = """
+		fromAll().when({
+		  Ping(state, event) {
+		    log("seen", event.streamId); // multiple args render oddly
+		    return state;
+		  }
+		});
+		""",
+		GoodExample = """
+		fromAll().when({
+		  Ping(state, event) {
+		    log(`seen ${event.streamId}`);
+		    return state;
+		  }
+		});
+		""",
 		FixedIn = null, // no upstream fix as of 26.2.0
 	};
 
@@ -55,6 +87,20 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "Accessing event.body throws for a non-object event body (null, or a primitive like a number or string); use event.bodyRaw instead.",
 		Docs = "Accessing `event.body` throws in the KurrentDB engine when the event body is a non-object JSON value - null, or a primitive like a number or string. The upstream `EnsureBody` casts to an object without a type check. Use `event.bodyRaw` and parse it yourself. (gaffer's JS testing library normalizes a `data: null` event to an absent body, so a null body won't reproduce the throw there.)",
+		BadExample = """
+		fromAll().when({
+		  Measured(state, event) {
+		    return { latest: event.body }; // throws when the body is a primitive (42, "x", null)
+		  }
+		});
+		""",
+		GoodExample = """
+		fromAll().when({
+		  Measured(state, event) {
+		    return { latest: JSON.parse(event.bodyRaw) }; // parse bodyRaw yourself
+		  }
+		});
+		""",
 		FixedIn = new KurrentDbVersion(26, 2, 0), // PR #5610, shipped 26.2.0
 	};
 
@@ -69,6 +115,22 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "Projection state containing NaN or Infinity throws during serialization (JSON has no representation for non-finite numbers).",
 		Docs = "The KurrentDB engine throws when projection state contains `NaN` or `Infinity` (JSON has no representation for them). Guard non-finite numbers in your handler, e.g. store `null` or `0`.",
+		BadExample = """
+		fromAll().when({
+		  Sampled(state, event) {
+		    state.avg = state.total / state.count; // count 0 -> Infinity, throws on persist
+		    return state;
+		  }
+		});
+		""",
+		GoodExample = """
+		fromAll().when({
+		  Sampled(state, event) {
+		    state.avg = state.count > 0 ? state.total / state.count : 0;
+		    return state;
+		  }
+		});
+		""",
 		FixedIn = new KurrentDbVersion(26, 2, 0), // PR #5610, shipped 26.2.0
 	};
 
@@ -86,6 +148,20 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "A bare string projection state that isn't valid JSON is persisted un-encoded, so the projection faults on reload (Load can't JSON-parse the raw string). Wrap string state in an object.",
 		Docs = "When a projection's state is a bare string that isn't valid JSON - whether a handler returned it or V1 adopted an unhandled event's body as state - the KurrentDB engine persists it un-encoded (e.g. `hello`, not `\"hello\"`). On the next reload (restart, re-enable, resume) `Load()` runs `JSON.parse` on the stored value and throws, so the projection won't resume. Wrap string state in an object (e.g. `{ value: \"hello\" }`), or use KurrentDB 26.2.0+ where the engine JSON-encodes string state. (Bi-state state-array slots are unaffected - they always JSON-encode.)",
+		BadExample = """
+		fromAll().when({
+		  Set(state, event) {
+		    return event.body.name; // bare string state
+		  }
+		});
+		""",
+		GoodExample = """
+		fromAll().when({
+		  Set(state, event) {
+		    return { name: event.body.name };
+		  }
+		});
+		""",
 		FixedIn = new KurrentDbVersion(26, 2, 0), // PR #5610, shipped 26.2.0
 	};
 
@@ -102,6 +178,19 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "Bi-state / $initShared is not supported under engine_version 2: shared state is silently re-initialized on restart, producing incorrect results. Use engine_version 1.",
 		Docs = "Bi-state projections (those declaring `$initShared`, operating on a `[partitionState, sharedState]` pair) are not supported under engine_version 2. The shared-state slot is not restored on restart: after a node restart, projection re-enable, or resume, the engine re-runs `$initShared` instead of reading the persisted shared state, silently producing incorrect results. Use engine_version 1 until KurrentDB implements shared-state restore on V2.",
+		BadExample = """
+		options({ biState: true });
+		fromAll().foreachStream().when({
+		  $initShared() { return { total: 0 }; },
+		  Deposit([state, shared], event) {
+		    shared.total += event.body.amount;
+		    return [state, shared];
+		  }
+		});
+		""",
+		GoodExample = """
+		// Run on engine_version 1; V2 does not restore shared state on restart.
+		""",
 		FixedIn = null, // not yet supported on V2; set when shared-state restore ships
 	};
 
@@ -116,6 +205,14 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Warning,
 		Message = "outputState() has no effect under engine_version 2: result streams are not emitted; state is written to the state stream and must be polled.",
 		Docs = "`outputState()` has no effect under engine_version 2. V2 does not emit `Result` events to a result stream - state is written only to the `$projections-{name}[-{partition}]-state` stream and must be polled (or that stream subscribed to). Live result-stream parity is planned for a future release; use engine_version 1 until then if you rely on result-stream subscriptions.",
+		BadExample = """
+		fromAll().when({
+		  Counted(state, event) { return { count: state.count + 1 }; }
+		}).outputState(); // no effect under engine_version 2
+		""",
+		GoodExample = """
+		// Run on engine_version 1, or read the $projections-{name}-state stream.
+		""",
 		FixedIn = null, // result-stream parity planned for a future V2 release
 	};
 
@@ -128,6 +225,22 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Information,
 		Message = "linkStreamTo is undocumented in KurrentDB and may be removed in a future version.",
 		Docs = "`linkStreamTo` is undocumented in KurrentDB and may be removed in a future version. Prefer `linkTo`.",
+		BadExample = """
+		fromAll().when({
+		  Archived(state, event) {
+		    linkStreamTo("archive-" + event.streamId, event.streamId); // undocumented, may be removed
+		    return state;
+		  }
+		});
+		""",
+		GoodExample = """
+		fromAll().when({
+		  Archived(state, event) {
+		    linkTo("archive-" + event.streamId, event); // prefer linkTo
+		    return state;
+		  }
+		});
+		""",
 	};
 
 	/// <summary><c>transformBy</c>/<c>filterBy</c> are not invoked under engine_version 2.</summary>
@@ -137,6 +250,17 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Warning,
 		Message = "transformBy()/filterBy() are registered but never invoked under engine_version=2; result equals post-handler state.",
 		Docs = "`transformBy()`/`filterBy()` are registered but never invoked under engine_version 2 - the result equals the post-handler state. Use engine_version 1 for V1 transform behaviour.",
+		BadExample = """
+		fromAll().when({
+		  Counted(state, event) { return { count: state.count + 1 }; }
+		}).transformBy(state => ({ total: state.count })); // not invoked under engine_version 2
+		""",
+		GoodExample = """
+		// Produce the final shape in the handler, or run on engine_version 1.
+		fromAll().when({
+		  Counted(state, event) { return { total: state.total + 1 }; }
+		});
+		""",
 	};
 
 	/// <summary><c>options()</c> called more than once; last-write-wins.</summary>
@@ -146,6 +270,15 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Information,
 		Message = "options() is called more than once; only the last call takes effect and the earlier ones are discarded.",
 		Docs = "`options()` is called more than once; only the last call takes effect and earlier ones are discarded. Merge them into a single call.",
+		BadExample = """
+		options({ biState: true });
+		options({ resultStreamName: "results" }); // overwrites the first; biState is lost
+		fromAll().when({ /* ... */ });
+		""",
+		GoodExample = """
+		options({ biState: true, resultStreamName: "results" });
+		fromAll().when({ /* ... */ });
+		""",
 	};
 
 	/// <summary><c>reorderEvents</c>/<c>processingLag</c> are a no-op under engine_version 2.</summary>
@@ -155,6 +288,13 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Warning,
 		Message = "reorderEvents/processingLag have no effect under engine_version=2; events are processed in arrival order.",
 		Docs = "`reorderEvents`/`processingLag` have no effect under engine_version 2 - events are processed in arrival order. Use engine_version 1 if you need event reordering.",
+		BadExample = """
+		options({ reorderEvents: true, processingLag: 100 }); // no effect under engine_version 2
+		fromStreams("a", "b").when({ /* ... */ });
+		""",
+		GoodExample = """
+		// Run on engine_version 1 if you need event reordering.
+		""",
 	};
 
 	/// <summary>An <c>async</c> handler silently produces empty state.</summary>
@@ -164,6 +304,20 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "async is not supported in a projection handler: the engine runs synchronously, so the returned Promise is serialized as the state (state becomes {}) instead of being awaited.",
 		Docs = "`async` handlers are not supported: the projection engine runs synchronously, so the returned Promise is serialized as the state (which becomes `{}`) instead of being awaited. Make the handler synchronous.",
+		BadExample = """
+		fromAll().when({
+		  async Loaded(state, event) { // async isn't supported; state becomes {}
+		    return state;
+		  }
+		});
+		""",
+		GoodExample = """
+		fromAll().when({
+		  Loaded(state, event) {
+		    return state;
+		  }
+		});
+		""",
 	};
 
 	/// <summary>Returning a Promise from a handler silently produces empty state.</summary>
@@ -173,6 +327,20 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "returning a Promise from a handler is not supported: the engine runs synchronously, so the Promise is serialized as the state (state becomes {}) instead of being awaited.",
 		Docs = "Returning a Promise from a handler is not supported: the engine runs synchronously, so the Promise is serialized as the state (which becomes `{}`) instead of being awaited. Return the state synchronously.",
+		BadExample = """
+		fromAll().when({
+		  Loaded(state, event) {
+		    return Promise.resolve(state); // Promise serialized as state -> {}
+		  }
+		});
+		""",
+		GoodExample = """
+		fromAll().when({
+		  Loaded(state, event) {
+		    return state;
+		  }
+		});
+		""",
 	};
 
 	// Concrete array, iterated by index in the builders below. NativeAOT safety

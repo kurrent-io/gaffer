@@ -85,4 +85,4 @@ Opt out at the user level via any of:
 - `DO_NOT_TRACK=1` in the environment.
 - VS Code's `telemetry.telemetryLevel` set to `off` (the extension and CLI both respect it).
 
-Opt out at the project level by setting `telemetry = false` in [`gaffer.toml`](./gaffer-toml.md#telemetry).
+Opt out at the project level by setting `telemetry = false` in [`gaffer.toml`](../reference/gaffer-toml.md#telemetry).

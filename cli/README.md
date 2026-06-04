@@ -64,7 +64,7 @@ entry = "projections/order-count.js"
 fixtures.happy = "fixtures/orders.json"
 ```
 
-User-level settings (telemetry opt-out, identity) live in `~/.config/gaffer/config.toml` and are managed with `gaffer config`. See the [configuration reference](https://gaffer.kurrent.io/cli/gaffer-toml/) for every option.
+User-level settings (telemetry opt-out, identity) live in `~/.config/gaffer/config.toml` and are managed with `gaffer config`. See the [configuration reference](https://gaffer.kurrent.io/reference/gaffer-toml/) for every option.
 
 ## Editor integration
 

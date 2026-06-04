@@ -419,6 +419,8 @@ func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
 	testutil.AssertContains(t, out, "2 quirks encountered")
 	testutil.AssertContains(t, out, "quirk.log.multiParam")
 	testutil.AssertContains(t, out, "quirk.serialize.nonFinite")
+	// Linked once per summary, pointing at the diagnostics reference.
+	testutil.AssertContains(t, out, "See https://gaffer.kurrent.io/reference/diagnostics/")
 }
 
 func TestTextWriter_WriteSummary_MergesCompileTimeQuirks(t *testing.T) {
@@ -443,6 +445,29 @@ func TestTextWriter_WriteSummary_MergesCompileTimeQuirks(t *testing.T) {
 	testutil.AssertContains(t, out, "2 quirks encountered")
 	testutil.AssertContains(t, out, "quirk.log.multiParam")
 	testutil.AssertContains(t, out, "quirk.serialize.nonFinite")
+	// Linked once per summary, pointing at the diagnostics reference.
+	testutil.AssertContains(t, out, "See https://gaffer.kurrent.io/reference/diagnostics/")
+}
+
+func TestTextWriter_LinkCode(t *testing.T) {
+	// Non-interactive (a buffer is not a TTY): codes stay plain so the
+	// output is copyable and tests/CI/pipes see no escape sequences.
+	plain := newTextWriter(&bytes.Buffer{}, nil)
+	if got := plain.linkCode("quirk.log.multiParam"); got != "quirk.log.multiParam" {
+		t.Fatalf("non-interactive linkCode = %q, want the bare code", got)
+	}
+
+	// Interactive: the code is wrapped in an OSC 8 hyperlink to the docs
+	// heading slug (github-slugger's lowercase, dot-stripped form).
+	link := &textWriter{links: true}
+	got := link.linkCode("quirk.log.multiParam")
+	want := "https://gaffer.kurrent.io/reference/diagnostics/#quirklogmultiparam"
+	if !strings.Contains(got, want) {
+		t.Fatalf("interactive linkCode = %q, want it to target %q", got, want)
+	}
+	if !strings.Contains(got, "\x1b]8;;") {
+		t.Fatalf("interactive linkCode = %q, want an OSC 8 hyperlink", got)
+	}
 }
 
 func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {

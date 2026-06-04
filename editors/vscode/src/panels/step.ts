@@ -2,6 +2,15 @@ import * as vscode from "vscode";
 import { jsonToTreeItems, type TreeItemWithChildren } from "./json-tree.js";
 import type { EmittedEvent, InputEvent, StepResult } from "../ipc/schemas.js";
 
+const DIAGNOSTICS_REFERENCE_URL =
+	"https://gaffer.kurrent.io/reference/diagnostics/";
+
+// The docs heading slug for a code: github-slugger's lowercase, dot-stripped
+// form (quirk.log.multiParam -> quirklogmultiparam). Must match the Starlight
+// slug so this links to the same anchor a reader gets from the heading link.
+const diagnosticAnchor = (code: string) =>
+	code.replaceAll(".", "").toLowerCase();
+
 export class StepProvider
 	implements vscode.TreeDataProvider<TreeItemWithChildren>, vscode.Disposable
 {
@@ -139,6 +148,16 @@ function buildWarningItem(code: string, message: string): TreeItemWithChildren {
 	);
 	item.description = message;
 	item.tooltip = message;
+	// Click the quirk to open its entry in the diagnostics reference.
+	item.command = {
+		command: "vscode.open",
+		title: "Open diagnostics reference",
+		arguments: [
+			vscode.Uri.parse(
+				`${DIAGNOSTICS_REFERENCE_URL}#${diagnosticAnchor(code)}`,
+			),
+		],
+	};
 	return item;
 }
 

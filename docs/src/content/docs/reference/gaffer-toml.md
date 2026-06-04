@@ -72,7 +72,7 @@ telemetry = false
 
 Project-level telemetry opt-out. Setting `false` disables telemetry for any gaffer command run inside this project, regardless of the user's own opt-out state.
 
-For user-level opt-outs that apply across every project, see [Telemetry](../#telemetry).
+For user-level opt-outs that apply across every project, see [Telemetry](../cli/index.md#telemetry).
 
 Optional. Telemetry is on by default.
 

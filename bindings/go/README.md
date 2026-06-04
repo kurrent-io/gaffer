@@ -13,21 +13,33 @@ just runtime publish
 ## Usage
 
 ```go
-import gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+import (
+	"fmt"
+	"log"
 
-session := gafferruntime.SessionCreate(`
+	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+)
+
+session, err := gafferruntime.NewSession(`
     fromAll().when({
         $init() { return { count: 0 }; },
         OrderPlaced(s, e) { s.count++; return s; }
     })
 `, nil)
-defer gafferruntime.SessionDestroy(session)
+if err != nil {
+    log.Fatal(err)
+}
+defer session.Destroy()
 
-gafferruntime.SessionFeed(session, `{"eventType":"OrderPlaced","streamId":"order-1","data":"{}"}`)
+if _, err := session.Feed(`{"eventType":"OrderPlaced","streamId":"order-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`); err != nil {
+    log.Fatal(err)
+}
 
-state := gafferruntime.SessionGetState(session, nil)
+state := session.GetState(nil)
 fmt.Println(*state) // {"count":1}
 ```
+
+`NewSession`'s second argument is an optional options JSON (`*string`); pass `nil` for the defaults.
 
 ## Building
 

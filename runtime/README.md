@@ -21,7 +21,7 @@ using var session = new ProjectionSession("""
         $init() { return { count: 0 }; },
         OrderPlaced(s, e) { s.count++; return s; }
     })
-""");
+""", new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
 
 session.OnEmit = e => Console.WriteLine($"Emitted: {e.EventType} -> {e.StreamId}");
 

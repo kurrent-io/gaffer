@@ -29,8 +29,8 @@ The CLI replays the events declared as `fixtures.happy` in [`demo/gaffer.toml`](
 Or start a new project from scratch:
 
 ```sh
-gaffer init                  # create gaffer.toml
-gaffer scaffold order-count  # add projections/order-count.js
+gaffer init                            # create gaffer.toml
+gaffer scaffold projections/order.js   # add a projection at that path
 ```
 
 See the [getting started guide](https://gaffer.kurrent.io/getting-started/install/) for a full walkthrough including fixtures, editor setup, and the dev loop.
@@ -40,7 +40,7 @@ See the [getting started guide](https://gaffer.kurrent.io/getting-started/instal
 | Command                    | What it does                                                                |
 | -------------------------- | --------------------------------------------------------------------------- |
 | `gaffer init`              | Create `gaffer.toml` in the current directory                               |
-| `gaffer scaffold <name>`   | Add a new projection to the project                                         |
+| `gaffer scaffold <path>`   | Add a new projection at `<path>` (must end in `.js`)                        |
 | `gaffer dev <projection>`  | Run a projection against fixtures, an events file, or a live KurrentDB      |
 | `gaffer info <projection>` | Show projection details                                                     |
 | `gaffer mcp`               | Start an MCP server for AI agent integration                                |

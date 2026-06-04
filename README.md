@@ -40,7 +40,7 @@ const projection = createProjection<{ count: number }>(`
     $init: () => ({ count: 0 }),
     OrderPlaced: (s) => ({ count: s.count + 1 }),
   });
-`);
+`, { engineVersion: 2 });
 
 for (const { state } of projection.run(events)) {
   // assert on state at each step

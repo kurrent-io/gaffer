@@ -33,11 +33,12 @@ Picking either parent in the changeset prompt bumps the whole cluster to the sam
    - Bumps `version` fields in the affected `package.json` files
    - Generates / updates per-package `CHANGELOG.md`
    - Deletes the consumed changeset markdown files
-4. The merge commit lands with no remaining changesets, so the next workflow run on `main` falls through to the `publish:` script in [`release.yml`](.github/workflows/release.yml) (`changesets/action` runs the publish script whenever it doesn't find changesets to consume). That script is a placeholder today; each owning ticket wires its package into it (or adds its own `needs: changesets` job inspecting the action's `publishedPackages` output). Owners:
-   - `@kurrent/gaffer` and its CLI native packages - owned by UI-1530.
-   - `@kurrent/gaffer-runtime` and its runtime native packages - owned by UI-1536.
-   - `@kurrent/projections-testing` - owned by UI-1537.
-   - `gaffer` (VS Code extension) - owned by UI-1532; publishes via `vsce` to the Marketplace, not npm. Marked `private: true` in its `package.json` so npm publish skips it.
+4. The merge commit lands with no remaining changesets. On the next `main` run, `changesets/action` finds nothing to consume and runs its `publish:` command, which dispatches the [`Release publish`](.github/workflows/release-publish.yml) workflow (a single-runner `publish:` slot can't host the cross-OS native matrix). That workflow does the actual publishing:
+   - **npm packages** - builds the per-platform native binary matrices, then publishes the CLI cluster (`@kurrent/gaffer` + its native packages), the runtime cluster (`@kurrent/gaffer-runtime` + its native packages), and `@kurrent/projections-testing`, all with provenance via npm trusted publishing.
+   - **VS Code extension** - builds the `.vsix` and publishes to Open VSX and the Visual Studio Marketplace. `skipDuplicate` makes this a no-op unless `editors/vscode/package.json`'s version changed, so the extension ships only when its changeset bumped the version. It stays `private: true` so the npm publishes skip it.
+   - **Production deploys** - the telemetry worker and docs site redeploy to production on the same run.
+
+   `release-publish.yml` also takes a manual `workflow_dispatch` with `dry_run: true` for a publish smoke-test.
 
 ## Telemetry worker deploys
 

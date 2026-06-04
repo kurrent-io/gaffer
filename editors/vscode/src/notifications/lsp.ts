@@ -3,7 +3,7 @@ import { showOutputPanel } from "../output.js";
 
 export const showLspNotReady = (): Thenable<unknown> =>
 	vscode.window.showInformationMessage(
-		"KurrentDB Projections is still starting up. Try again in a moment.",
+		"Gaffer is still starting up. Try again in a moment.",
 	);
 
 export const showLspError = (): Thenable<unknown> =>

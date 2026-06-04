@@ -1,9 +1,7 @@
 import * as vscode from "vscode";
 
 export const showNoWorkspace = (): Thenable<unknown> =>
-	vscode.window.showWarningMessage(
-		"Open a folder first to use KurrentDB Projections.",
-	);
+	vscode.window.showWarningMessage("Open a folder first to use Gaffer.");
 
 // Fired when a command was invoked against a URI that isn't part of
 // any workspace folder (e.g. a folder added via "Reveal in Explorer"

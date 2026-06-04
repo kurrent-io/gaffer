@@ -1,6 +1,6 @@
 {
 	"name": "gaffer-vscode",
-	"displayName": "KurrentDB Projections",
+	"displayName": "KurrentDB Gaffer (Projections tooling)",
 	"description": "KurrentDB projection toolkit",
 	"version": "0.1.3",
 	"license": "LicenseRef-KurrentLicenseV1",
@@ -78,7 +78,7 @@
 	},
 	"contributes": {
 		"configuration": {
-			"title": "KurrentDB Projections",
+			"title": "Gaffer",
 			"properties": {
 				"gaffer.command": {
 					"order": 1,
@@ -116,38 +116,38 @@
 		"commands": [
 			{
 				"command": "gaffer.runProjection",
-				"title": "KurrentDB Projections: Debug"
+				"title": "Gaffer: Debug"
 			},
 			{
 				"command": "gaffer.debugProjection",
-				"title": "KurrentDB Projections: Debug"
+				"title": "Gaffer: Debug"
 			},
 			{
 				"command": "gaffer.debugProjectionPick",
-				"title": "KurrentDB Projections: Debug from Fixture"
+				"title": "Gaffer: Debug from Fixture"
 			},
 			{
 				"command": "gaffer.stopDebug",
-				"title": "KurrentDB Projections: Stop"
+				"title": "Gaffer: Stop"
 			},
 			{
 				"command": "gaffer.init",
-				"title": "KurrentDB Projections: Init"
+				"title": "Gaffer: Init"
 			},
 			{
 				"command": "gaffer.scaffold",
-				"title": "KurrentDB Projections: Scaffold"
+				"title": "Gaffer: Scaffold"
 			},
 			{
 				"command": "gaffer.scaffoldHere",
 				"title": "Scaffold Projection Here",
-				"category": "KurrentDB Projections"
+				"category": "Gaffer"
 			}
 		],
 		"debuggers": [
 			{
 				"type": "gaffer",
-				"label": "KurrentDB Projections",
+				"label": "Gaffer",
 				"languages": [
 					"javascript"
 				],
@@ -166,7 +166,7 @@
 					{
 						"type": "gaffer",
 						"request": "attach",
-						"name": "KurrentDB Projections: Attach",
+						"name": "Gaffer: Attach",
 						"port": 4711
 					}
 				]
@@ -203,7 +203,7 @@
 			"panel": [
 				{
 					"id": "gaffer",
-					"title": "KurrentDB Projections",
+					"title": "Gaffer",
 					"icon": "$(activate-breakpoints)"
 				}
 			]
@@ -245,7 +245,7 @@
 		"mcpServerDefinitionProviders": [
 			{
 				"id": "gaffer",
-				"label": "KurrentDB Projections"
+				"label": "Gaffer"
 			}
 		]
 	},

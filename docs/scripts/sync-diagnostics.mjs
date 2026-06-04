@@ -37,7 +37,7 @@ function renderEntry(d) {
 	}
 	// The code-verbatim anchor is the deep-link target; the heading keeps its
 	// own (lossy) Starlight slug for the table of contents.
-	return [
+	const parts = [
 		`<a id=${JSON.stringify(d.code)}></a>`,
 		"",
 		`### \`${d.code}\``,
@@ -46,7 +46,10 @@ function renderEntry(d) {
 		"",
 		(d.docs || d.message || "").trim(),
 		"",
-	].join("\n");
+	];
+	if (d.badExample) parts.push("**Problem**", "", "```js", d.badExample.trim(), "```", "");
+	if (d.goodExample) parts.push("**Fix**", "", "```js", d.goodExample.trim(), "```", "");
+	return parts.join("\n");
 }
 
 function renderSection(title, intro, entries) {

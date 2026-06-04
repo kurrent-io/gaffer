@@ -29,6 +29,8 @@ public class DiagnosticsArtifactTests {
 		[JsonPropertyName("message")] public required string Message { get; init; }
 		[JsonPropertyName("docs")] public string? Docs { get; init; }
 		[JsonPropertyName("fixedIn")] public string? FixedIn { get; init; }
+		[JsonPropertyName("badExample")] public string? BadExample { get; init; }
+		[JsonPropertyName("goodExample")] public string? GoodExample { get; init; }
 	}
 
 	private static readonly JsonSerializerOptions Options = new() {
@@ -46,6 +48,8 @@ public class DiagnosticsArtifactTests {
 			Message = d.Message,
 			Docs = d.Docs,
 			FixedIn = d.FixedIn?.ToString(),
+			BadExample = d.BadExample,
+			GoodExample = d.GoodExample,
 		}).ToList();
 		// Trailing newline so the committed file is POSIX-clean.
 		return JsonSerializer.Serialize(docs, Options) + "\n";

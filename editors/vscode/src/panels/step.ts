@@ -2,6 +2,11 @@ import * as vscode from "vscode";
 import { jsonToTreeItems, type TreeItemWithChildren } from "./json-tree.js";
 import type { EmittedEvent, InputEvent, StepResult } from "../ipc/schemas.js";
 
+// Per-code anchor on the generated diagnostics reference. The anchor is the
+// code verbatim (the docs page emits a matching `<a id="<code>">`).
+const DIAGNOSTICS_REFERENCE_URL =
+	"https://gaffer.kurrent.io/reference/diagnostics/";
+
 export class StepProvider
 	implements vscode.TreeDataProvider<TreeItemWithChildren>, vscode.Disposable
 {
@@ -139,6 +144,12 @@ function buildWarningItem(code: string, message: string): TreeItemWithChildren {
 	);
 	item.description = message;
 	item.tooltip = message;
+	// Click the quirk to open its entry in the diagnostics reference.
+	item.command = {
+		command: "vscode.open",
+		title: "Open diagnostics reference",
+		arguments: [vscode.Uri.parse(`${DIAGNOSTICS_REFERENCE_URL}#${code}`)],
+	};
 	return item;
 }
 

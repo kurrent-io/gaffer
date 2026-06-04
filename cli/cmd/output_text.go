@@ -42,6 +42,10 @@ type textWriter struct {
 	runtimeQuirks map[string]bool
 }
 
+// diagnosticsReferenceURL is the generated reference page; each code has a
+// matching `#<code>` anchor. Linked once per summary, not per firing.
+const diagnosticsReferenceURL = "https://gaffer.kurrent.io/reference/diagnostics/"
+
 type textStyles struct {
 	label     lipgloss.Style
 	pipe      lipgloss.Style
@@ -442,6 +446,7 @@ func (tw *textWriter) statsLine(stats engine.EventStats) {
 		for _, c := range codes {
 			tw.write("%s%s\n", tw.ind(), tw.styles.warning.Render(c))
 		}
+		tw.write("%sSee %s\n", tw.ind(), tw.styles.label.Render(diagnosticsReferenceURL))
 	}
 }
 

@@ -419,6 +419,8 @@ func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
 	testutil.AssertContains(t, out, "2 quirks encountered")
 	testutil.AssertContains(t, out, "quirk.log.multiParam")
 	testutil.AssertContains(t, out, "quirk.serialize.nonFinite")
+	// Linked once per summary, pointing at the diagnostics reference.
+	testutil.AssertContains(t, out, "See https://gaffer.kurrent.io/reference/diagnostics/")
 }
 
 func TestTextWriter_WriteSummary_MergesCompileTimeQuirks(t *testing.T) {
@@ -443,6 +445,8 @@ func TestTextWriter_WriteSummary_MergesCompileTimeQuirks(t *testing.T) {
 	testutil.AssertContains(t, out, "2 quirks encountered")
 	testutil.AssertContains(t, out, "quirk.log.multiParam")
 	testutil.AssertContains(t, out, "quirk.serialize.nonFinite")
+	// Linked once per summary, pointing at the diagnostics reference.
+	testutil.AssertContains(t, out, "See https://gaffer.kurrent.io/reference/diagnostics/")
 }
 
 func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {

@@ -18,11 +18,12 @@ bindings/
   go/                      # Go bindings (gafferruntime package), FFI tests
   js/                      # JS/TS bindings (@kurrent/gaffer-runtime), koffi FFI
     native/linux-x64/      # Platform-specific native package
-cli/                       # Go CLI (Cobra) - dev, info, init, mcp, scaffold; hosts the DAP, LSP, and MCP servers
+cli/                       # Go CLI (Cobra) - dev, info, init, scaffold, config, mcp, lsp, version; hosts the DAP, LSP, and MCP servers
 testing/
   js/                      # @kurrent/projections-testing - test lib wrapping runtime
 editors/
   vscode/                  # VS Code extension - debug adapter, status panels, LSP client, gaffer.toml support
+types/                     # @kurrent/projections-types - TS declarations for projection files (consumed by the VS Code tsserver plugin)
 telemetry/                 # Cross-cutting analytics: CUE schemas, generated types, Cloudflare Worker
 demo/                      # Example gaffer project with fixtures
 docs/                      # Astro + Starlight site published to gaffer.kurrent.io

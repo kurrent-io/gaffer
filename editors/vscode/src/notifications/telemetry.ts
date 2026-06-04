@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import type { FirstRunChoice } from "../telemetry/notice.js";
 
-const TELEMETRY_DISCLOSURE_URL = "https://telemetry.gaffer.kurrent.io/";
+const TELEMETRY_DISCLOSURE_URL = "https://gaffer.kurrent.io/telemetry/";
 
 // Disclosure-button labels in the message order they appear. Mapped
 // back to the FirstRunChoice union below so the notice runner stays

@@ -27,8 +27,9 @@ The `--fixture` flag picks an event set defined in [`gaffer.toml`](gaffer.toml).
 | [`event-counter`](projections/event-counter.js) | `partitionBy` to count events by type |
 | [`bistate-counter`](projections/bistate-counter.js) | Bi-state projections with `$initShared` |
 | [`broken`](projections/broken.js) | Syntax errors and how Gaffer reports them |
+| [`quirks`](projections/quirks.js) | How `gaffer dev` surfaces compile-time and runtime quirks (`--fixture ticks`) |
 
-Fixtures (`fixtures/orders.json`, `fixtures/orders-full.json`) are JSON arrays of event records. See `gaffer.toml` for how each projection is wired to its fixtures.
+Fixtures (`fixtures/orders.json`, `fixtures/orders-full.json`, `fixtures/quirks-ticks.json`) are JSON arrays of event records. See `gaffer.toml` for how each projection is wired to its fixtures.
 
 ## Building from source
 

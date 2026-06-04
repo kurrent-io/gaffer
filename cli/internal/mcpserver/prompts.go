@@ -36,7 +36,7 @@ func (s *Server) handleWriteProjectionPrompt(_ context.Context, req *mcp.GetProm
 
 	// Best-effort: the docs render with or without a project. When
 	// one is loaded, fold in its config and the v1 reference.
-	cfg, root, _ := s.project()
+	cfg, root, _ := s.loadProject()
 
 	apiRef := mustReadEmbed("resources/projection-api.md")
 	gotchas := mustReadEmbed("resources/gotchas.md")
@@ -88,7 +88,7 @@ func (s *Server) handleFixProjectionPrompt(_ context.Context, req *mcp.GetPrompt
 	name := req.Params.Arguments["name"]
 	problem := req.Params.Arguments["problem"]
 
-	cfg, root, err := s.project()
+	cfg, root, err := s.loadProject()
 	if err != nil {
 		return nil, fmt.Errorf("loading gaffer.toml: %w", err)
 	}

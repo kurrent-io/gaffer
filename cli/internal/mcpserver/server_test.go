@@ -951,9 +951,19 @@ func TestInfo_RequiresNameWhenMultiple(t *testing.T) {
 	}
 }
 
+// writeManifest overwrites the project's gaffer.toml on disk. Handlers
+// reload the manifest per call, so a test that wants the server to see a
+// particular config writes it here rather than mutating s.cfg.
+func writeManifest(t *testing.T, root string, cfg *config.Config) {
+	t.Helper()
+	if err := config.Save(filepath.Join(root, "gaffer.toml"), cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestInfo_ErrorsWhenNoProjections(t *testing.T) {
 	s := setupTestProject(t)
-	s.cfg.Projection = nil
+	writeManifest(t, s.root, &config.Config{EngineVersion: ptr(2)})
 
 	msg := callToolExpectError(t, s.handleInfo, infoInput{})
 	if !strings.Contains(msg, "no projections configured") {
@@ -963,7 +973,10 @@ func TestInfo_ErrorsWhenNoProjections(t *testing.T) {
 
 func TestInfo_DefaultsWhenSingleProjection(t *testing.T) {
 	s := setupTestProject(t)
-	s.cfg.Projection = s.cfg.Projection[:1]
+	writeManifest(t, s.root, &config.Config{
+		EngineVersion: ptr(2),
+		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
+	})
 
 	result := callTool(t, s, infoTool, s.handleInfo, infoInput{})
 	if result["name"] != "order-count" {
@@ -1082,30 +1095,80 @@ func TestProjectlessLazyResolveAfterInit(t *testing.T) {
 	}
 }
 
-// TestProjectlessLazyResolveCaches confirms resolution is a one-time
-// transition: once resolved, removing the gaffer.toml does not
-// un-resolve the server (the cached cfg is reused).
-func TestProjectlessLazyResolveCaches(t *testing.T) {
+// TestProjectlessReloadAfterInit confirms a server that started without a
+// project picks up a gaffer.toml created mid-session, and that a later
+// edit to it is reflected on the next call - the per-call reload, on the
+// project-less resolve path.
+func TestProjectlessReloadAfterInit(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	s := New("", nil, "test")
 
 	cfgPath := filepath.Join(dir, "gaffer.toml")
-	cfg := &config.Config{
+	if err := config.Save(cfgPath, &config.Config{
 		EngineVersion: ptr(2),
 		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
-	}
-	if err := config.Save(cfgPath, cfg); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
+	first := callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
+	if projs, ok := first["projections"].([]any); !ok || len(projs) != 1 {
+		t.Fatalf("expected 1 projection after init, got %v", first["projections"])
+	}
+
+	if err := config.Save(cfgPath, &config.Config{
+		EngineVersion: ptr(2),
+		Projection: []config.Projection{
+			{Name: "order-count", Entry: "projections/order-count.js"},
+			{Name: "totals", Entry: "projections/totals.js"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	second := callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
+	if projs, ok := second["projections"].([]any); !ok || len(projs) != 2 {
+		t.Fatalf("expected reload to show 2 projections after edit, got %v", second["projections"])
+	}
+}
+
+// TestReloadPicksUpManifestEdits is the core UI-1636 guard: editing
+// gaffer.toml during a running session is visible to the next tool call,
+// no restart. Before the per-call reload, list_projections read a config
+// cached at startup and never saw the edit.
+func TestReloadPicksUpManifestEdits(t *testing.T) {
+	s := setupTestProject(t)
+
+	before := callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
+	if projs, ok := before["projections"].([]any); !ok || len(projs) != 2 {
+		t.Fatalf("expected 2 projections at start, got %v", before["projections"])
+	}
+
+	writeManifest(t, s.root, &config.Config{
+		EngineVersion: ptr(2),
+		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
+	})
+
+	after := callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
+	if projs, ok := after["projections"].([]any); !ok || len(projs) != 1 {
+		t.Fatalf("expected reload to reflect the edit (1 projection), got %v", after["projections"])
+	}
+}
+
+// TestReloadSurfacesInvalidManifest covers the other half of UI-1636: a
+// manifest that goes invalid mid-session returns a load error on the next
+// call rather than silently serving the last good config.
+func TestReloadSurfacesInvalidManifest(t *testing.T) {
+	s := setupTestProject(t)
+
 	_ = callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
 
-	if err := os.Remove(cfgPath); err != nil {
+	if err := os.WriteFile(filepath.Join(s.root, "gaffer.toml"), []byte("engine_version = 5\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result := callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
-	if projs, ok := result["projections"].([]any); !ok || len(projs) != 1 {
-		t.Fatalf("expected cached resolution to survive file removal, got %v", result["projections"])
+
+	msg := callToolExpectError(t, s.handleListProjections, listProjectionsInput{})
+	if !strings.Contains(msg, "loading gaffer.toml") {
+		t.Errorf("expected manifest load error after invalid edit, got %q", msg)
 	}
 }
 

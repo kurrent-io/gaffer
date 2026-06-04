@@ -3,10 +3,11 @@ package mcpserver
 import (
 	"context"
 
+	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
-func (s *Server) startLiveSubscription(sess *activeSession) error {
+func (s *Server) startLiveSubscription(sess *activeSession, cfg *config.Config, root string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	sess.cancel = cancel
 	sess.runner.SetStatus("running")
@@ -27,8 +28,8 @@ func (s *Server) startLiveSubscription(sess *activeSession) error {
 	sess.done = done
 
 	source := engine.NewLiveSource(engine.LiveSourceConfig{
-		ConnStr:       s.cfg.Connection,
-		Root:          s.root,
+		ConnStr:       cfg.Connection,
+		Root:          root,
 		Info:          sess.runner.Info(),
 		EngineVersion: sess.runner.EngineVersion(),
 		OnCaughtUp: func() {

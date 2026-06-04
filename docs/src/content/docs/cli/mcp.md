@@ -26,7 +26,7 @@ description: Connect gaffer's MCP server to Claude Code, Cursor, Continue, Claud
 - Common gotchas across the projection API.
 - V1 vs V2 engine differences.
 - Known engine quirks by KurrentDB version.
-- The current `gaffer.toml`, exposed so the assistant can reason about projection registration without re-reading the file.
+- The current `gaffer.toml`, exposed so the assistant can reason about projection registration.
 - Telemetry disclosure, so the assistant can answer questions about what gaffer collects.
 
 **Prompts** for the two most common workflows:

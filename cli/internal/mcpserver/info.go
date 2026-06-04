@@ -28,7 +28,8 @@ type infoInput struct {
 }
 
 func (s *Server) handleInfo(_ context.Context, _ *mcp.CallToolRequest, in infoInput) (*mcp.CallToolResult, any, error) {
-	if r := s.requireProject(); r != nil {
+	cfg, root, r := s.requireProject()
+	if r != nil {
 		return r, nil, nil
 	}
 
@@ -37,27 +38,27 @@ func (s *Server) handleInfo(_ context.Context, _ *mcp.CallToolRequest, in infoIn
 
 	name := in.Name
 	if name == "" {
-		switch len(s.cfg.Projection) {
+		switch len(cfg.Projection) {
 		case 0:
 			return toolError("no projections configured in gaffer.toml"), nil, nil
 		case 1:
-			name = s.cfg.Projection[0].Name
+			name = cfg.Projection[0].Name
 		default:
-			return toolError("name required: project has %d projections; call list_projections to discover names", len(s.cfg.Projection)), nil, nil
+			return toolError("name required: project has %d projections; call list_projections to discover names", len(cfg.Projection)), nil, nil
 		}
 	}
 
-	proj := s.cfg.FindProjection(name)
+	proj := cfg.FindProjection(name)
 	if proj == nil {
 		return toolError("projection %q not found in gaffer.toml; call list_projections to discover names", name), nil, nil
 	}
 
-	source, err := engine.ReadSource(s.root, proj.Entry)
+	source, err := engine.ReadSource(root, proj.Entry)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}
 
-	lp := engine.NewProjection(s.root, s.cfg, proj, source)
+	lp := engine.NewProjection(root, cfg, proj, source)
 	session, info, err := engine.CreateSession(lp, false, false)
 	if err != nil {
 		var projErr gafferruntime.ProjectionError

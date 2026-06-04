@@ -32,7 +32,8 @@ type scaffoldInput struct {
 }
 
 func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input scaffoldInput) (*mcp.CallToolResult, any, error) {
-	if r := s.requireProject(); r != nil {
+	cfg, root, r := s.requireProject()
+	if r != nil {
 		return r, nil, nil
 	}
 
@@ -50,7 +51,7 @@ func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input
 
 	// scaffold.Scaffold owns path validation and name defaulting;
 	// the handler just routes the JSON shape into the call.
-	result, err := scaffold.Scaffold(s.root, s.cfg, input.Name, input.Path, source, partition, input.Emit)
+	result, err := scaffold.Scaffold(root, cfg, input.Name, input.Path, source, partition, input.Emit)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}

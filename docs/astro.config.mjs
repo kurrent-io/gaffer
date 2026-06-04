@@ -3,6 +3,7 @@ import { defineConfig, sessionDrivers } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import cloudflare from '@astrojs/cloudflare';
 import rehypeAstroRelativeMarkdownLinks from 'astro-rehype-relative-markdown-links';
+import starlightLlmsTxt from 'starlight-llms-txt';
 
 // Canonical URLs, sitemap, and og:url use `site`. Staging deploys
 // emit their own absolute URLs so an indexed staging page doesn't
@@ -28,6 +29,12 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Gaffer',
+      plugins: [
+        starlightLlmsTxt({
+          description:
+            'Gaffer is the developer toolkit for KurrentDB projections - scaffold, run, debug, and test the same JavaScript projection engine that ships inside KurrentDB, locally.',
+        }),
+      ],
       components: {
         Hero: './src/components/Hero.astro',
         Head: './src/components/Head.astro',

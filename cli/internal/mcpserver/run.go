@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/pathutil"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -29,7 +30,8 @@ type runInput struct {
 }
 
 func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input runInput) (*mcp.CallToolResult, any, error) {
-	if r := s.requireProject(); r != nil {
+	cfg, root, r := s.requireProject()
+	if r != nil {
 		return r, nil, nil
 	}
 
@@ -37,7 +39,7 @@ func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input ru
 
 	debug := len(input.Breakpoints) > 0 || input.BreakAt > 0
 
-	sess, err := s.createSession(input.Name, debug)
+	sess, err := s.createSession(cfg, root, input.Name, debug)
 	if err != nil {
 		s.mu.Unlock()
 		var projErr gafferruntime.ProjectionError
@@ -62,7 +64,7 @@ func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input ru
 	}
 
 	if input.Events == "" {
-		if err := s.startLiveMode(sess, input.BreakAt); err != nil {
+		if err := s.startLiveMode(sess, input.BreakAt, cfg, root); err != nil {
 			s.mu.Unlock()
 			return toolError("%v", err), nil, nil
 		}
@@ -74,7 +76,7 @@ func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input ru
 	}
 
 	if debug {
-		if err := s.runFixtureDebugMode(sess, input.Events, input.BreakAt); err != nil {
+		if err := s.runFixtureDebugMode(sess, root, input.Events, input.BreakAt); err != nil {
 			s.mu.Unlock()
 			return toolError("%v", err), nil, nil
 		}
@@ -86,7 +88,7 @@ func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input ru
 	}
 
 	defer s.mu.Unlock()
-	return s.runFixtureMode(sess, input.Events)
+	return s.runFixtureMode(sess, root, input.Events)
 }
 
 func (s *Server) setupBreakpoints(sess *activeSession, breakpoints []breakpointInput) error {
@@ -109,15 +111,15 @@ func (s *Server) setupBreakpoints(sess *activeSession, breakpoints []breakpointI
 	return nil
 }
 
-func (s *Server) startLiveMode(sess *activeSession, breakAt int64) error {
+func (s *Server) startLiveMode(sess *activeSession, breakAt int64, cfg *config.Config, root string) error {
 	if breakAt > 0 {
 		sess.runner.SetBreakAtStep(breakAt)
 	}
-	return s.startLiveSubscription(sess)
+	return s.startLiveSubscription(sess, cfg, root)
 }
 
-func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string, breakAt int64) error {
-	eventsPath = pathutil.AnchorUnder(s.root, eventsPath)
+func (s *Server) runFixtureDebugMode(sess *activeSession, root, eventsPath string, breakAt int64) error {
+	eventsPath = pathutil.AnchorUnder(root, eventsPath)
 
 	events, err := engine.LoadEvents(eventsPath)
 	if err != nil {
@@ -149,8 +151,8 @@ func (s *Server) runFixtureDebugMode(sess *activeSession, eventsPath string, bre
 	return nil
 }
 
-func (s *Server) runFixtureMode(sess *activeSession, eventsPath string) (*mcp.CallToolResult, any, error) {
-	eventsPath = pathutil.AnchorUnder(s.root, eventsPath)
+func (s *Server) runFixtureMode(sess *activeSession, root, eventsPath string) (*mcp.CallToolResult, any, error) {
+	eventsPath = pathutil.AnchorUnder(root, eventsPath)
 
 	events, err := engine.LoadEvents(eventsPath)
 	if err != nil {

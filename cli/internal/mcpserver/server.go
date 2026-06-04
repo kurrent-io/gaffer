@@ -61,14 +61,14 @@ type Server struct {
 	mu      sync.Mutex
 	session *activeSession
 
-	// projMu guards the lazy nil->resolved transition of cfg/root.
-	// A server started outside a project (NewFromProjectRoot found
-	// no gaffer.toml) begins with cfg==nil and resolves on the first
-	// project-dependent tool call, so a `gaffer init` mid-session is
-	// picked up without a restart. cfg/root are written at most once;
-	// every reader goes through project()/requireProject() first, so
-	// the projMu release/acquire gives the happens-before that lets
-	// handlers read the fields directly afterwards.
+	// projMu guards the shared cfg/root snapshot. root is resolved once
+	// (it never moves during a session); cfg is re-read from disk on
+	// every project-dependent tool call (see loadProject) so a manifest
+	// edit - or a `gaffer init` that creates a previously missing
+	// project - is picked up without a restart. Handlers use the
+	// cfg/root that loadProject returns, not these fields directly; the
+	// snapshot exists for Config() (end-of-session telemetry) and
+	// projectRoot() (the config resource).
 	projMu sync.Mutex
 
 	stats serverStats
@@ -82,10 +82,14 @@ type Server struct {
 	projErrs  []error
 }
 
-// Config returns the parsed gaffer.toml the server was constructed
-// with. Used by the cobra RunE to derive manifest-level telemetry
-// properties at End time without re-loading the file.
+// Config returns the most recently loaded gaffer.toml snapshot. Used by
+// the cobra RunE to derive manifest-level telemetry properties at End
+// time. With per-call reload this reflects the manifest as of the last
+// project-dependent tool call (nil if none ever ran in a project-less
+// session).
 func (s *Server) Config() *config.Config {
+	s.projMu.Lock()
+	defer s.projMu.Unlock()
 	return s.cfg
 }
 
@@ -239,7 +243,7 @@ func resolveRoot(override string) string {
 // gaffer.toml is found, it starts project-less (cfg==nil) rather than
 // failing, so the server stays launchable from anywhere - the docs
 // resources and get_version still work, and project-dependent tools
-// resolve the project lazily on first use (see project()). A
+// resolve the project lazily on first use (see loadProject()). A
 // gaffer.toml that exists but fails to parse/validate still surfaces as
 // a startup error: that's a real problem the user wants to see, not a
 // missing project.
@@ -279,21 +283,20 @@ func normalizeOverride(override string) string {
 	return override
 }
 
-// project resolves and caches the project config, returning it with
-// the root. A nil config with a nil error means no project was found
-// (walking up from the cwd); a non-nil error means a gaffer.toml
-// exists but failed to load. Safe to call from any handler goroutine:
-// the resolve is a one-time nil->set transition under projMu, so
-// callers that read cfg/root after a successful resolve see a stable
-// value.
-func (s *Server) project() (*config.Config, string, error) {
-	s.projMu.Lock()
-	defer s.projMu.Unlock()
-	if s.cfg != nil {
-		return s.cfg, s.root, nil
-	}
-
-	root := resolveRoot(s.projectOverride)
+// loadProject resolves the project root and re-reads gaffer.toml from
+// disk on every call, so a manifest edit - or a `gaffer init` that
+// creates a previously missing project - is visible to the next tool
+// call without a restart. It returns the freshly parsed config and root,
+// (nil, "", nil) when no project is in scope, or a non-nil error when a
+// gaffer.toml exists but fails to load or validate.
+//
+// The root is resolved once and cached in s.root (it never moves during
+// a session); only the config content is re-read. The fresh cfg is
+// snapshotted into s.cfg under projMu for Config()'s end-of-session
+// telemetry. Callers use the returned values, not the shared fields, so
+// a concurrent reload can't race their reads.
+func (s *Server) loadProject() (*config.Config, string, error) {
+	root := s.projectRoot()
 	if root == "" {
 		return nil, "", nil
 	}
@@ -301,7 +304,9 @@ func (s *Server) project() (*config.Config, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	s.projMu.Lock()
 	s.root, s.cfg = root, cfg
+	s.projMu.Unlock()
 	return cfg, root, nil
 }
 
@@ -321,19 +326,20 @@ func (s *Server) projectRoot() string {
 }
 
 // requireProject is the tool-handler gate for project-dependent tools.
-// It resolves the project (lazily, on first call) and returns nil when
-// one is available, or a tool-error result describing how to get a
-// project. Mirrors requireSession. Call it before touching s.cfg /
-// s.root; the returned result is the tool's response when non-nil.
-func (s *Server) requireProject() *mcp.CallToolResult {
-	cfg, _, err := s.project()
+// It re-reads gaffer.toml (see loadProject) and returns the parsed config
+// with the project root, or a tool-error result when no project is in
+// scope or the manifest fails to load. Handlers use the returned cfg/root
+// rather than s.cfg/s.root so each call sees the manifest as it is on
+// disk now. Mirrors requireSession.
+func (s *Server) requireProject() (*config.Config, string, *mcp.CallToolResult) {
+	cfg, root, err := s.loadProject()
 	if err != nil {
-		return toolError("loading gaffer.toml: %v", err)
+		return nil, "", toolError("loading gaffer.toml: %v", err)
 	}
 	if cfg == nil {
-		return toolError("%s", s.noProjectMessage())
+		return nil, "", toolError("%s", s.noProjectMessage())
 	}
-	return nil
+	return cfg, root, nil
 }
 
 // noProjectMessage explains that no project was found and how to point
@@ -362,11 +368,11 @@ func (s *Server) Run(ctx context.Context) error {
 	return err
 }
 
-func (s *Server) connectToKurrentDB() (*kurrentdb.Client, error) {
-	if s.cfg.Connection == "" {
+func (s *Server) connectToKurrentDB(cfg *config.Config, root string) (*kurrentdb.Client, error) {
+	if cfg.Connection == "" {
 		return nil, fmt.Errorf("no connection configured in gaffer.toml")
 	}
-	return engine.Connect(s.cfg.Connection, s.root)
+	return engine.Connect(cfg.Connection, root)
 }
 
 func (s *Server) closeSession() {
@@ -390,20 +396,20 @@ func (s *Server) closeSession() {
 	}
 }
 
-func (s *Server) createSession(name string, debug bool) (*activeSession, error) {
+func (s *Server) createSession(cfg *config.Config, root, name string, debug bool) (*activeSession, error) {
 	s.closeSession()
 
-	proj := s.cfg.FindProjection(name)
+	proj := cfg.FindProjection(name)
 	if proj == nil {
 		return nil, fmt.Errorf("projection %q not found in gaffer.toml", name)
 	}
 
-	source, err := engine.ReadSource(s.root, proj.Entry)
+	source, err := engine.ReadSource(root, proj.Entry)
 	if err != nil {
 		return nil, err
 	}
 
-	lp := engine.NewProjection(s.root, s.cfg, proj, source)
+	lp := engine.NewProjection(root, cfg, proj, source)
 	runtime, info, err := engine.CreateSession(lp, debug, false)
 	if err != nil {
 		return nil, err
@@ -417,7 +423,7 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 
 	sess := &activeSession{}
 
-	cfg := engine.RunnerConfig{
+	runnerCfg := engine.RunnerConfig{
 		Feed:          engine.FeedFn(runtime.Feed),
 		Session:       runtime,
 		Info:          info,
@@ -431,7 +437,7 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 		sess.caughtUpCh = make(chan struct{}, 1)
 		sess.errorCh = make(chan error, 1)
 
-		cfg.Debug = &engine.DebugConfig{
+		runnerCfg.Debug = &engine.DebugConfig{
 			Session: runtime,
 			Info:    info,
 			OnBreak: func(bi gafferruntime.BreakInfo) {
@@ -442,7 +448,7 @@ func (s *Server) createSession(name string, debug bool) (*activeSession, error) 
 			},
 		}
 	}
-	sess.runner = engine.NewRunner(cfg)
+	sess.runner = engine.NewRunner(runnerCfg)
 
 	if debug {
 		sess.runner.SetStatus("debugging")

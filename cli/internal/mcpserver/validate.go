@@ -19,24 +19,25 @@ type validateInput struct {
 }
 
 func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input validateInput) (*mcp.CallToolResult, any, error) {
-	if r := s.requireProject(); r != nil {
+	cfg, root, r := s.requireProject()
+	if r != nil {
 		return r, nil, nil
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	proj := s.cfg.FindProjection(input.Name)
+	proj := cfg.FindProjection(input.Name)
 	if proj == nil {
 		return toolError("projection %q not found in gaffer.toml", input.Name), nil, nil
 	}
 
-	source, err := engine.ReadSource(s.root, proj.Entry)
+	source, err := engine.ReadSource(root, proj.Entry)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}
 
-	lp := engine.NewProjection(s.root, s.cfg, proj, source)
+	lp := engine.NewProjection(root, cfg, proj, source)
 	session, info, err := engine.CreateSession(lp, false, false)
 	if err != nil {
 		var projErr gafferruntime.ProjectionError
@@ -59,7 +60,7 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 		"valid":           true,
 		"name":            input.Name,
 		"entry":           proj.Entry,
-		"engineVersion":   s.cfg.EffectiveEngineVersion(proj),
+		"engineVersion":   cfg.EffectiveEngineVersion(proj),
 		"source":          engine.DescribeSource(info),
 		"events":          info.Events,
 		"partitioning":    engine.DescribePartitioning(info),

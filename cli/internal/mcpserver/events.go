@@ -24,21 +24,22 @@ type listEventsInput struct {
 }
 
 func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, input listEventsInput) (*mcp.CallToolResult, any, error) {
-	if r := s.requireProject(); r != nil {
+	cfg, root, r := s.requireProject()
+	if r != nil {
 		return r, nil, nil
 	}
 
-	proj := s.cfg.FindProjection(input.Name)
+	proj := cfg.FindProjection(input.Name)
 	if proj == nil {
 		return toolError("projection %q not found in gaffer.toml", input.Name), nil, nil
 	}
 
-	source, err := engine.ReadSource(s.root, proj.Entry)
+	source, err := engine.ReadSource(root, proj.Entry)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}
 
-	lp := engine.NewProjection(s.root, s.cfg, proj, source)
+	lp := engine.NewProjection(root, cfg, proj, source)
 	session, info, err := engine.CreateSession(lp, false, false)
 	if err != nil {
 		// CreateSession only fails on FFI projection errors here
@@ -50,7 +51,7 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 	}
 	defer session.Destroy()
 
-	client, err := s.connectToKurrentDB()
+	client, err := s.connectToKurrentDB(cfg, root)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}
@@ -64,7 +65,7 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 		limit = 2000
 	}
 
-	events, err := s.sampleProjectionEvents(ctx, client, info, s.cfg.EffectiveEngineVersion(proj), limit)
+	events, err := s.sampleProjectionEvents(ctx, client, info, cfg.EffectiveEngineVersion(proj), limit)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}

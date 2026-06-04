@@ -14,21 +14,22 @@ var listProjectionsTool = &mcp.Tool{
 type listProjectionsInput struct{}
 
 func (s *Server) handleListProjections(_ context.Context, _ *mcp.CallToolRequest, _ listProjectionsInput) (*mcp.CallToolResult, any, error) {
-	if r := s.requireProject(); r != nil {
+	cfg, root, r := s.requireProject()
+	if r != nil {
 		return r, nil, nil
 	}
 
 	projections := []map[string]any{}
-	for _, proj := range s.cfg.Projection {
+	for _, proj := range cfg.Projection {
 		projections = append(projections, map[string]any{
 			"name":          proj.Name,
 			"entry":         proj.Entry,
-			"engineVersion": s.cfg.EffectiveEngineVersion(&proj),
+			"engineVersion": cfg.EffectiveEngineVersion(&proj),
 		})
 	}
 
 	return toolResult(map[string]any{
 		"projections": projections,
-		"root":        s.root,
+		"root":        root,
 	}), nil, nil
 }

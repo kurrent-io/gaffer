@@ -5,11 +5,13 @@
   "version": "0.0.0",
   "scripts": {
     "sync-telemetry": "node scripts/sync-telemetry-notices.mjs",
-    "dev": "pnpm run sync-telemetry && astro dev",
-    "start": "pnpm run sync-telemetry && astro dev",
-    "build": "pnpm run sync-telemetry && astro build",
+    "sync-diagnostics": "node scripts/sync-diagnostics.mjs",
+    "sync": "pnpm run sync-telemetry && pnpm run sync-diagnostics",
+    "dev": "pnpm run sync && astro dev",
+    "start": "pnpm run sync && astro dev",
+    "build": "pnpm run sync && astro build",
     "preview": "astro preview",
-    "check": "pnpm run sync-telemetry && astro check",
+    "check": "pnpm run sync && astro check",
     "astro": "astro"
   },
   "dependencies": {

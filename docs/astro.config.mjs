@@ -67,10 +67,11 @@ export default defineConfig({
         },
         {
           label: 'Gaffer CLI',
-          items: ['cli', 'cli/mcp', 'cli/commands', 'cli/gaffer-toml'],
+          items: ['cli', 'cli/mcp', 'cli/commands'],
         },
         { label: 'Editor extensions', items: ['extension/vs-code', 'extension/other-editors'] },
         { label: 'Testing', items: ['testing/nodejs'] },
+        { label: 'Reference', items: ['reference/diagnostics', 'reference/gaffer-toml'] },
         { label: 'Telemetry', slug: 'telemetry' },
       ],
     }),

@@ -107,8 +107,8 @@ func TestLoadEvents_FileNotFound(t *testing.T) {
 }
 
 func TestBuildSessionOptions_EngineVersionFromProjection(t *testing.T) {
-	cfg := &config.Config{EngineVersion: 2}
-	def := &config.Projection{EngineVersion: 1}
+	cfg := &config.Config{EngineVersion: ptr(2)}
+	def := &config.Projection{EngineVersion: ptr(1)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	opts := buildSessionOptions(proj, false, false)
@@ -150,7 +150,7 @@ func TestBuildSessionOptions_ProjectionTimeoutOverridesGlobal(t *testing.T) {
 
 func TestBuildSessionOptions_QuirksVersionPassedThroughWhenSet(t *testing.T) {
 	t.Setenv("GAFFER_QUIRKS_VERSION", "")
-	cfg := &config.Config{EngineVersion: 2, QuirksVersion: "26.1.0"}
+	cfg := &config.Config{EngineVersion: ptr(2), QuirksVersion: "26.1.0"}
 	def := &config.Projection{Name: "p", Entry: "p.js"}
 	proj := NewProjection("/tmp", cfg, def, "")
 
@@ -169,7 +169,7 @@ func TestBuildSessionOptions_QuirksVersionPassedThroughWhenSet(t *testing.T) {
 
 func TestBuildSessionOptions_QuirksVersionOmittedWhenUnset(t *testing.T) {
 	t.Setenv("GAFFER_QUIRKS_VERSION", "")
-	cfg := &config.Config{EngineVersion: 2}
+	cfg := &config.Config{EngineVersion: ptr(2)}
 	def := &config.Projection{Name: "p", Entry: "p.js"}
 	proj := NewProjection("/tmp", cfg, def, "")
 
@@ -184,7 +184,7 @@ func TestBuildSessionOptions_QuirksVersionOmittedWhenUnset(t *testing.T) {
 }
 
 func TestBuildSessionOptions_AlwaysIncludesEngineVersion(t *testing.T) {
-	cfg := &config.Config{EngineVersion: 2}
+	cfg := &config.Config{EngineVersion: ptr(2)}
 	def := &config.Projection{}
 	proj := NewProjection("/tmp", cfg, def, "")
 
@@ -257,8 +257,8 @@ func TestReadSource_MissingFile(t *testing.T) {
 }
 
 func TestNewProjection_SetsFields(t *testing.T) {
-	cfg := &config.Config{Connection: "esdb://localhost:2113", EngineVersion: 2}
-	def := &config.Projection{Name: "counts", Entry: "counts.js", EngineVersion: 1}
+	cfg := &config.Config{Connection: "esdb://localhost:2113", EngineVersion: ptr(2)}
+	def := &config.Projection{Name: "counts", Entry: "counts.js", EngineVersion: ptr(1)}
 
 	p := NewProjection("/project", cfg, def, "fromAll().when({})")
 
@@ -280,7 +280,7 @@ func TestNewProjection_SetsFields(t *testing.T) {
 }
 
 func TestNewProjection_TopLevelEngineVersion(t *testing.T) {
-	cfg := &config.Config{EngineVersion: 2}
+	cfg := &config.Config{EngineVersion: ptr(2)}
 	def := &config.Projection{Name: "test", Entry: "test.js"}
 
 	p := NewProjection("/project", cfg, def, "source")
@@ -291,7 +291,7 @@ func TestNewProjection_TopLevelEngineVersion(t *testing.T) {
 }
 
 func TestCreateSession_ValidSource(t *testing.T) {
-	cfg := &config.Config{EngineVersion: 2}
+	cfg := &config.Config{EngineVersion: ptr(2)}
 	def := &config.Projection{Name: "test", Entry: "test.js"}
 	proj := NewProjection("/tmp", cfg, def, `fromAll().when({$init() { return {}; }})`)
 
@@ -404,3 +404,5 @@ entry = "exists.js"
 		t.Fatal("expected error for missing projection")
 	}
 }
+
+func ptr[T any](v T) *T { return &v }

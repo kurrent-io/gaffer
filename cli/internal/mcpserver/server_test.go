@@ -79,7 +79,7 @@ func setupTestProject(t *testing.T) *Server {
 	}
 
 	cfg := &config.Config{
-		EngineVersion: 2,
+		EngineVersion: ptr(2),
 		Projection: []config.Projection{
 			{Name: "order-count", Entry: "projections/order-count.js"},
 			{Name: "broken", Entry: "projections/broken.js"},
@@ -1068,7 +1068,7 @@ func TestProjectlessLazyResolveAfterInit(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		EngineVersion: 2,
+		EngineVersion: ptr(2),
 		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
 	}
 	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
@@ -1092,7 +1092,7 @@ func TestProjectlessLazyResolveCaches(t *testing.T) {
 
 	cfgPath := filepath.Join(dir, "gaffer.toml")
 	cfg := &config.Config{
-		EngineVersion: 2,
+		EngineVersion: ptr(2),
 		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
 	}
 	if err := config.Save(cfgPath, cfg); err != nil {
@@ -1154,7 +1154,7 @@ func TestConfigResourceReadsInvalidManifest(t *testing.T) {
 func writeProject(t *testing.T, dir string) {
 	t.Helper()
 	cfg := &config.Config{
-		EngineVersion: 2,
+		EngineVersion: ptr(2),
 		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
 	}
 	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
@@ -1293,7 +1293,7 @@ func TestStartedInProject(t *testing.T) {
 	if New("", nil, "test").StartedInProject() {
 		t.Error("project-less construction should report StartedInProject() == false")
 	}
-	if !New(t.TempDir(), &config.Config{EngineVersion: 2}, "test").StartedInProject() {
+	if !New(t.TempDir(), &config.Config{EngineVersion: ptr(2)}, "test").StartedInProject() {
 		t.Error("in-project construction should report StartedInProject() == true")
 	}
 
@@ -1331,3 +1331,5 @@ func TestStartedInProjectStableAcrossLazyResolve(t *testing.T) {
 		t.Error("StartedInProject() must stay false after a lazy resolve")
 	}
 }
+
+func ptr[T any](v T) *T { return &v }

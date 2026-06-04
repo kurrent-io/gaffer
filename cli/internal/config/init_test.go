@@ -23,8 +23,8 @@ func TestInitProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loading created project: %v", err)
 	}
-	if cfg.EngineVersion != 2 {
-		t.Errorf("engine version = %d, want 2", cfg.EngineVersion)
+	if cfg.EngineVersion == nil || *cfg.EngineVersion != 2 {
+		t.Errorf("engine version = %v, want 2", cfg.EngineVersion)
 	}
 }
 

@@ -11,7 +11,7 @@ import * as vscode from "vscode";
 let channel: vscode.OutputChannel | null = null;
 
 export function initOutput(context: vscode.ExtensionContext): void {
-	channel = vscode.window.createOutputChannel("KurrentDB Projections", "log");
+	channel = vscode.window.createOutputChannel("Gaffer", "log");
 	context.subscriptions.push(channel);
 }
 
@@ -19,7 +19,7 @@ export function initOutput(context: vscode.ExtensionContext): void {
 // extension-host debugging.
 export const log = (msg: string): void => {
 	channel?.appendLine(msg);
-	console.log(`KurrentDB Projections: ${msg}`);
+	console.log(`Gaffer: ${msg}`);
 };
 
 // Append a streamed line to the channel. Used by renderCliMessage to

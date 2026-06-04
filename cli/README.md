@@ -70,7 +70,7 @@ User-level settings (telemetry opt-out, identity) live in `~/.config/gaffer/conf
 
 Gaffer ships with Language Server Protocol and Debug Adapter Protocol servers, plus a VS Code extension that wires them up automatically.
 
-- **VS Code** - install the [KurrentDB Projections extension](https://gaffer.kurrent.io/extension/vs-code/) for inline diagnostics, run/debug codelens above `gaffer.toml` projections, and breakpoint debugging.
+- **VS Code** - install the [KurrentDB Gaffer extension](https://gaffer.kurrent.io/extension/vs-code/) for inline diagnostics, run/debug codelens above `gaffer.toml` projections, and breakpoint debugging.
 - **Other editors** - run `gaffer lsp` over stdio for LSP integration. See the [other editors guide](https://gaffer.kurrent.io/extension/other-editors/) for examples.
 
 ## AI agent integration
@@ -84,7 +84,7 @@ See the [MCP integration guide](https://gaffer.kurrent.io/cli/mcp/) for client s
 | Package                                                                                                    | What it is                                                                           |
 | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | [`@kurrent/projections-testing`](https://www.npmjs.com/package/@kurrent/projections-testing)               | Library for testing projections from your existing test runner (vitest, jest, mocha) |
-| [KurrentDB Projections for VS Code](https://gaffer.kurrent.io/extension/vs-code/)                          | Editor integration with debugger, codelens, and MCP server                           |
+| [KurrentDB Gaffer for VS Code](https://gaffer.kurrent.io/extension/vs-code/)                               | Editor integration with debugger, codelens, and MCP server                           |
 
 ## Telemetry
 

@@ -17,7 +17,7 @@ const COMMAND_OPEN = "gaffer._cliInstall.open";
 export const INSTALL_DOCS_URL =
 	"https://gaffer.kurrent.io/getting-started/install/";
 
-const TERMINAL_NAME = "KurrentDB Projections: Install CLI";
+const TERMINAL_NAME = "Gaffer: Install CLI";
 
 const BUTTON_INSTALL = "Install";
 const BUTTON_DOCS = "Install guide";

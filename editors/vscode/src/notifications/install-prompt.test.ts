@@ -190,7 +190,7 @@ describe("runNpmInstall", () => {
 		const promise = runNpmInstall();
 		const [terminal] = getState().terminals;
 		if (!terminal) throw new Error("no terminal spawned");
-		expect(terminal.options.name).toBe("KurrentDB Projections: Install CLI");
+		expect(terminal.options.name).toBe("Gaffer: Install CLI");
 		expect(terminal.options.shellArgs).toEqual([
 			"install",
 			"-g",

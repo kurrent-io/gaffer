@@ -16,7 +16,7 @@ const DISMISSED_VERSION_KEY = "gaffer.cliUpdate.dismissedVersion";
 const NOTIFICATIONS_SETTING = "cliUpdateNotifications";
 const COMMAND_OPEN = "gaffer._cliUpdate.open";
 
-const TERMINAL_NAME = "KurrentDB Projections: Update CLI";
+const TERMINAL_NAME = "Gaffer: Update CLI";
 
 const BUTTON_UPDATE = "Update";
 const BUTTON_SKIP = "Skip this version";

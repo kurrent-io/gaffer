@@ -256,10 +256,10 @@ When a quirk throws, `err.diagnostics` carries it (and any quirk that fired earl
 
 ## Related packages
 
-| Package                                                                           | What it is                                                 |
-| --------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| [`@kurrent/gaffer`](https://www.npmjs.com/package/@kurrent/gaffer)                | CLI to scaffold, run, debug, and deploy projections        |
-| [KurrentDB Projections for VS Code](https://gaffer.kurrent.io/extension/vs-code/) | Editor integration with debugger, codelens, and MCP server |
+| Package                                                                      | What it is                                                 |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [`@kurrent/gaffer`](https://www.npmjs.com/package/@kurrent/gaffer)           | CLI to scaffold, run, debug, and deploy projections        |
+| [KurrentDB Gaffer for VS Code](https://gaffer.kurrent.io/extension/vs-code/) | Editor integration with debugger, codelens, and MCP server |
 
 ## Documentation
 

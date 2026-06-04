@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/kurrent-io/gaffer/main/editors/vscode/media/banner.png" alt="KurrentDB Projections" width="100%">
+<img src="https://raw.githubusercontent.com/kurrent-io/gaffer/main/editors/vscode/media/banner.png" alt="KurrentDB Gaffer" width="100%">
 
 Projection debugger and CodeLens companion for [KurrentDB](https://www.kurrent.io). Run and debug projections from `gaffer.toml`, step through handlers with full state inspection, and get type-aware autocomplete for projection builtins.
 
@@ -10,7 +10,7 @@ Powered by the [gaffer](https://www.npmjs.com/package/@kurrent/gaffer) toolkit.
 
 **Step through handlers.** Set breakpoints in your projection JS. Step over, into, and out of handlers. Watch state evolve event by event in the dedicated panel.
 
-**Live state inspection.** The KurrentDB Projections panel shows the current step, partitioned state, shared state (for biState projections), emitted events, and console output as the projection runs.
+**Live state inspection.** The Gaffer panel shows the current step, partitioned state, shared state (for biState projections), emitted events, and console output as the projection runs.
 
 **Type-aware autocomplete for projection builtins.** A TypeScript server plugin injects `fromStream`, `when`, `emit`, `linkTo`, `partitionBy`, and the rest of the projection API into JavaScript files that share a workspace root with a registered projection. No imports needed.
 
@@ -19,8 +19,8 @@ Powered by the [gaffer](https://www.npmjs.com/package/@kurrent/gaffer) toolkit.
 ## Quick start
 
 1. Install the extension.
-2. Open a folder and add projections via `KurrentDB Projections: Scaffold` (palette) or right-click a folder and pick `Scaffold Projection Here`. A fresh folder gets a `gaffer.toml` created for it automatically as part of the first scaffold; run `KurrentDB Projections: Init` from the palette if you'd rather create the toml without scaffolding.
-3. Click Debug above any projection in `gaffer.toml`, or run `KurrentDB Projections: Debug` from the command palette.
+2. Open a folder and add projections via `Gaffer: Scaffold` (palette) or right-click a folder and pick `Scaffold Projection Here`. A fresh folder gets a `gaffer.toml` created for it automatically as part of the first scaffold; run `Gaffer: Init` from the palette if you'd rather create the toml without scaffolding.
+3. Click Debug above any projection in `gaffer.toml`, or run `Gaffer: Debug` from the command palette.
 
 The extension spawns the [`@kurrent/gaffer` CLI](https://www.npmjs.com/package/@kurrent/gaffer) for LSP, MCP, and debug sessions. It will offer to install the CLI on first use if it isn't already on `PATH`. Requires `@kurrent/gaffer` 0.1.0 or later.
 
@@ -34,13 +34,13 @@ The extension spawns the [`@kurrent/gaffer` CLI](https://www.npmjs.com/package/@
 
 ## Commands
 
-| Command                                     | What it does                                                                                              |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `KurrentDB Projections: Init`               | Create a `gaffer.toml` in the current folder                                                              |
-| `KurrentDB Projections: Scaffold`           | Add a new projection to the project via a multi-step picker. Right-clicking a folder runs it scoped there |
-| `KurrentDB Projections: Debug`              | Pick a projection from the workspace and launch a debug session                                           |
-| `KurrentDB Projections: Debug from Fixture` | Codelens-triggered Debug session bound to a specific fixture in `gaffer.toml`                             |
-| `KurrentDB Projections: Stop`               | Stop the running session                                                                                  |
+| Command                      | What it does                                                                                              |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `Gaffer: Init`               | Create a `gaffer.toml` in the current folder                                                              |
+| `Gaffer: Scaffold`           | Add a new projection to the project via a multi-step picker. Right-clicking a folder runs it scoped there |
+| `Gaffer: Debug`              | Pick a projection from the workspace and launch a debug session                                           |
+| `Gaffer: Debug from Fixture` | Codelens-triggered Debug session bound to a specific fixture in `gaffer.toml`                             |
+| `Gaffer: Stop`               | Stop the running session                                                                                  |
 
 ## Telemetry
 

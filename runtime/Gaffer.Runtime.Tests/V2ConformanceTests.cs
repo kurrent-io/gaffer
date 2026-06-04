@@ -563,12 +563,9 @@ public class V2ConformanceTests {
 
 	[Fact]
 	public void V2_stringState_feedResultStateEqualsResult() {
-		// V2 conformance promise: result == post-handler state. For string
-		// state the cache stores the raw string (PrepareOutput's IsString
-		// passthrough), so V2 result must do the same - no JSON-quoting.
-		// Asserted via FeedResult (in-memory state, doesn't go through the
-		// state-cache reload path which has a separate pre-existing
-		// limitation orthogonal to V2 transform semantics).
+		// V2 conformance promise: result == post-handler state. A bare non-JSON string
+		// trips quirk.serialize.rawString, so gaffer JSON-encodes it (safe) on both the
+		// state and result paths - they must still match.
 		using var session = new ProjectionSession("""
             fromAll().when({
                 $init: function() { return "alice"; },
@@ -578,16 +575,15 @@ public class V2ConformanceTests {
 
 		var feedResult = session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
 
-		Assert.Equal("alice", feedResult.State);
+		Assert.Equal("\"alice\"", feedResult.State);
 		Assert.Equal(feedResult.State, feedResult.Result);
 	}
 
 	[Fact]
 	public void V2_biState_stringPartitionSlot_feedResultStateEqualsResult() {
 		// Same invariant under bi-state: the slot-0 conversion in
-		// PrepareOutput must be reflected in V2 result, including the
-		// BiStateStringSlot quirk-gating that JSON-encodes strings under
-		// pre-fix quirksVersion.
+		// PrepareOutput (always JSON-encoding the slot) must be reflected
+		// in the V2 result.
 		using var session = new ProjectionSession("""
             options({ biState: true });
             fromAll().when({

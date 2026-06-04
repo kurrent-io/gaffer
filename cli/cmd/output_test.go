@@ -220,16 +220,15 @@ func TestTextWriter_WriteFatalError_RendersCompatBlock(t *testing.T) {
 	testutil.AssertContains(t, out, "Compat:")
 	testutil.AssertContains(t, out, "quirk.event.bodyCast")
 	testutil.AssertContains(t, out, "Accessing event.body throws on a non-object body.")
-	// Every catalogue entry has FixedIn = nil today, so the rendering
+	// With no compatFixedIn on the error, the rendering
 	// shows "Current KurrentDB behaviour" rather than "Fixed in ...".
 	testutil.AssertContains(t, out, "Current KurrentDB behaviour")
 }
 
 func TestTextWriter_WriteCompatBlock_RendersFixedInWhenSet(t *testing.T) {
 	// The "Fixed in KurrentDB X" branch activates when the runtime sets
-	// compatFixedIn on the error (every catalogue entry has FixedIn = nil
-	// today). The description + fixedIn ride the error payload, no registry
-	// round-trip.
+	// compatFixedIn on the error. The description + fixedIn ride the error
+	// payload, no registry round-trip.
 	var buf bytes.Buffer
 	tw := newTextWriter(&buf, &buf)
 
@@ -390,8 +389,8 @@ func TestTextWriter_OnDiagnostic_RendersInline(t *testing.T) {
 	// Quirks stream during the event, in the ├ flow before the result.
 	tw.WriteEvent(eventInfo{SequenceNumber: 1, StreamID: "s-1", EventType: "SetName"})
 	ms.diagCb(gafferruntime.Diagnostic{
-		Code:     "quirk.biState.stringSlot",
-		Message:  "BiState state JSON-quotes raw string values in slot 0.",
+		Code:     "quirk.log.multiParam",
+		Message:  "log() with multiple arguments produces unexpected output.",
 		Severity: gafferruntime.DiagnosticSeverityWarning,
 	})
 	tw.WriteResult("1@s-1", &gafferruntime.FeedResult{
@@ -400,8 +399,8 @@ func TestTextWriter_OnDiagnostic_RendersInline(t *testing.T) {
 	})
 
 	out := buf.String()
-	testutil.AssertContains(t, out, "[warning] quirk.biState.stringSlot")
-	testutil.AssertContains(t, out, "BiState state JSON-quotes")
+	testutil.AssertContains(t, out, "[warning] quirk.log.multiParam")
+	testutil.AssertContains(t, out, "log() with multiple arguments")
 }
 
 func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
@@ -412,13 +411,13 @@ func TestTextWriter_WriteSummary_QuirksBreakdown(t *testing.T) {
 
 	// Two distinct runtime quirks stream during the run; the summary lists
 	// each once, no per-code count, with a header total.
-	ms.diagCb(gafferruntime.Diagnostic{Code: "quirk.biState.stringSlot", Severity: gafferruntime.DiagnosticSeverityWarning})
+	ms.diagCb(gafferruntime.Diagnostic{Code: "quirk.log.multiParam", Severity: gafferruntime.DiagnosticSeverityWarning})
 	ms.diagCb(gafferruntime.Diagnostic{Code: "quirk.serialize.nonFinite", Severity: gafferruntime.DiagnosticSeverityWarning})
 	tw.WriteSummary(engine.EventStats{Handled: 3}, engine.StateSummary{})
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "2 quirks encountered")
-	testutil.AssertContains(t, out, "quirk.biState.stringSlot")
+	testutil.AssertContains(t, out, "quirk.log.multiParam")
 	testutil.AssertContains(t, out, "quirk.serialize.nonFinite")
 }
 
@@ -437,13 +436,13 @@ func TestTextWriter_WriteSummary_MergesCompileTimeQuirks(t *testing.T) {
 			{Code: "usage.linkStreamTo.deprecated", Message: "d", Severity: gafferruntime.DiagnosticSeverityWarning},
 		},
 	})
-	ms.diagCb(gafferruntime.Diagnostic{Code: "quirk.biState.stringSlot", Severity: gafferruntime.DiagnosticSeverityWarning})
+	ms.diagCb(gafferruntime.Diagnostic{Code: "quirk.serialize.nonFinite", Severity: gafferruntime.DiagnosticSeverityError})
 	tw.WriteSummary(engine.EventStats{Handled: 1}, engine.StateSummary{})
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "2 quirks encountered")
 	testutil.AssertContains(t, out, "quirk.log.multiParam")
-	testutil.AssertContains(t, out, "quirk.biState.stringSlot")
+	testutil.AssertContains(t, out, "quirk.serialize.nonFinite")
 }
 
 func TestTextWriter_WriteSummary_Unpartitioned(t *testing.T) {
@@ -537,8 +536,8 @@ func TestJSONWriter_WriteResult_Diagnostics(t *testing.T) {
 	jw.WriteResult("1@s-1", &gafferruntime.FeedResult{
 		Status: "processed",
 		Diagnostics: []gafferruntime.Diagnostic{{
-			Code:     "quirk.biState.stringSlot",
-			Message:  "BiState state JSON-quotes raw string values in slot 0.",
+			Code:     "quirk.log.multiParam",
+			Message:  "log() with multiple arguments produces unexpected output.",
 			Severity: gafferruntime.DiagnosticSeverityWarning,
 		}},
 	})
@@ -552,7 +551,7 @@ func TestJSONWriter_WriteResult_Diagnostics(t *testing.T) {
 		t.Fatalf("expected 1 diagnostic, got %v", line["diagnostics"])
 	}
 	d := diags[0].(map[string]any)
-	testutil.AssertEqual(t, "code", "quirk.biState.stringSlot", d["code"])
+	testutil.AssertEqual(t, "code", "quirk.log.multiParam", d["code"])
 }
 
 func TestJSONWriter_WriteResult_Skipped(t *testing.T) {

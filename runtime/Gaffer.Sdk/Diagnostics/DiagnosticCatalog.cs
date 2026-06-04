@@ -1,3 +1,5 @@
+using Gaffer.Sdk.Versioning;
+
 namespace Gaffer.Sdk.Diagnostics;
 
 /// <summary>
@@ -24,7 +26,7 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "linkStreamTo with metadata (3+ args) crashes due to an upstream parameter-indexing bug; metadata is never captured.",
 		Docs = "`linkStreamTo(stream, link, metadata)` with a third (metadata) argument crashes in the KurrentDB projection engine - the metadata branch reads an out-of-bounds parameter and throws. The two-argument form works; metadata is never captured. gaffer reproduces the crash.",
-		FixedIn = null, // no upstream PR in flight
+		FixedIn = null, // no upstream fix as of 26.2.0
 	};
 
 	/// <summary>
@@ -39,7 +41,7 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Warning,
 		Message = "log() with multiple args produces unexpected output due to an upstream bug: primitives become separate log lines and objects use a ' ,' separator.",
 		Docs = "`log()` with more than one argument behaves oddly in the KurrentDB engine: primitive arguments are emitted as separate log lines, and objects are joined with a ` ,` separator. Pass a single pre-formatted argument to avoid surprises.",
-		FixedIn = null, // no upstream PR
+		FixedIn = null, // no upstream fix as of 26.2.0
 	};
 
 	/// <summary>
@@ -53,35 +55,7 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "Accessing event.body throws for a non-object event body (null, or a primitive like a number or string); use event.bodyRaw instead.",
 		Docs = "Accessing `event.body` throws in the KurrentDB engine when the event body is a non-object JSON value - null, or a primitive like a number or string. The upstream `EnsureBody` casts to an object without a type check. Use `event.bodyRaw` and parse it yourself. (gaffer's JS testing library normalizes a `data: null` event to an absent body, so a null body won't reproduce the throw there.)",
-		FixedIn = null, // PR #5610 open, expected 26.1.1
-	};
-
-	/// <summary>
-	/// BiState <c>PrepareOutput</c> JSON-quotes a raw string in slot 0 of the state array:
-	/// upstream checks <c>_state.IsString()</c> (the array) instead of <c>state.IsString()</c>
-	/// (the element), so the passthrough branch is unreachable. Fixed upstream in PR #5610.
-	/// </summary>
-	public static readonly DiagnosticDescriptor BiStateStringSlot = new() {
-		Code = "quirk.biState.stringSlot",
-		Class = DiagnosticClass.Quirk,
-		Severity = DiagnosticSeverity.Warning,
-		Message = "A raw string in the bi-state partition slot is JSON-quoted instead of passed through, due to an upstream bug.",
-		Docs = "In a bi-state projection, a raw string in the partition-state slot is JSON-quoted (double-encoded) when persisted by the KurrentDB engine rather than passed through. Wrap string state in an object to avoid the double-encoding.",
-		FixedIn = null, // PR #5610
-	};
-
-	/// <summary>
-	/// BiState <c>PrepareOutput</c> JSON-quotes a raw string in slot 1 (shared state). Unlike
-	/// slot 0 there is no passthrough branch at all, and PR #5610's slot-0 fix does not touch it,
-	/// so it has no fix version. Tracked separately from <see cref="BiStateStringSlot"/>.
-	/// </summary>
-	public static readonly DiagnosticDescriptor BiStateSharedStringSlot = new() {
-		Code = "quirk.biState.sharedStringSlot",
-		Class = DiagnosticClass.Quirk,
-		Severity = DiagnosticSeverity.Warning,
-		Message = "A raw string in the bi-state shared slot is JSON-quoted instead of passed through, due to an upstream bug.",
-		Docs = "In a bi-state projection, a raw string in the shared-state slot is JSON-quoted (double-encoded) when persisted by the KurrentDB engine. Wrap shared string state in an object to avoid the double-encoding.",
-		FixedIn = null, // no upstream fix; PR #5610 only fixed slot 0
+		FixedIn = new KurrentDbVersion(26, 2, 0), // PR #5610, shipped 26.2.0
 	};
 
 	/// <summary>
@@ -95,7 +69,54 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Error,
 		Message = "Projection state containing NaN or Infinity throws during serialization (JSON has no representation for non-finite numbers).",
 		Docs = "The KurrentDB engine throws when projection state contains `NaN` or `Infinity` (JSON has no representation for them). Guard non-finite numbers in your handler, e.g. store `null` or `0`.",
-		FixedIn = null, // PR #5610
+		FixedIn = new KurrentDbVersion(26, 2, 0), // PR #5610, shipped 26.2.0
+	};
+
+	/// <summary>
+	/// A bare string projection state that isn't valid JSON is persisted un-encoded - the engine
+	/// writes the raw string rather than JSON-encoding it - so the projection faults on reload when
+	/// <c>Load()</c> runs <c>JsonParser.Parse</c> on the stored value. Applies however the string
+	/// arose (a handler return, or V1 adopting an unhandled event's body as state). Fixed upstream
+	/// in PR #5610 (26.2.0) by always JSON-encoding. Bi-state state-array slots were never affected;
+	/// they always JSON-encode.
+	/// </summary>
+	public static readonly DiagnosticDescriptor SerializeRawString = new() {
+		Code = "quirk.serialize.rawString",
+		Class = DiagnosticClass.Quirk,
+		Severity = DiagnosticSeverity.Error,
+		Message = "A bare string projection state that isn't valid JSON is persisted un-encoded, so the projection faults on reload (Load can't JSON-parse the raw string). Wrap string state in an object.",
+		Docs = "When a projection's state is a bare string that isn't valid JSON - whether a handler returned it or V1 adopted an unhandled event's body as state - the KurrentDB engine persists it un-encoded (e.g. `hello`, not `\"hello\"`). On the next reload (restart, re-enable, resume) `Load()` runs `JSON.parse` on the stored value and throws, so the projection won't resume. Wrap string state in an object (e.g. `{ value: \"hello\" }`), or use KurrentDB 26.2.0+ where the engine JSON-encodes string state. (Bi-state state-array slots are unaffected - they always JSON-encode.)",
+		FixedIn = new KurrentDbVersion(26, 2, 0), // PR #5610, shipped 26.2.0
+	};
+
+	/// <summary>
+	/// Bi-state / <c>$initShared</c> projections are not supported under engine_version 2: the
+	/// engine silently re-initializes shared state from <c>$initShared</c> on restart instead of
+	/// restoring it from the state stream, producing incorrect results with no error. Detected at
+	/// compile time off the resolved definition (gaffer can't reproduce the restart). Not yet fixed
+	/// upstream, so <c>FixedIn</c> is null; set it when V2 gains shared-state restore.
+	/// </summary>
+	public static readonly DiagnosticDescriptor BiStateSharedStateResetOnV2 = new() {
+		Code = "quirk.biState.sharedStateResetOnV2",
+		Class = DiagnosticClass.Quirk,
+		Severity = DiagnosticSeverity.Error,
+		Message = "Bi-state / $initShared is not supported under engine_version 2: shared state is silently re-initialized on restart, producing incorrect results. Use engine_version 1.",
+		Docs = "Bi-state projections (those declaring `$initShared`, operating on a `[partitionState, sharedState]` pair) are not supported under engine_version 2. The shared-state slot is not restored on restart: after a node restart, projection re-enable, or resume, the engine re-runs `$initShared` instead of reading the persisted shared state, silently producing incorrect results. Use engine_version 1 until KurrentDB implements shared-state restore on V2.",
+		FixedIn = null, // not yet supported on V2; set when shared-state restore ships
+	};
+
+	/// <summary>
+	/// <c>outputState()</c> has no effect under engine_version 2: V2 does not emit result-stream
+	/// events, so a projection relying on result-stream subscriptions silently produces nothing.
+	/// Result-stream parity is planned for a future release, so <c>FixedIn</c> is null until then.
+	/// </summary>
+	public static readonly DiagnosticDescriptor OutputStateNoEffectOnV2 = new() {
+		Code = "quirk.outputState.noEffectOnV2",
+		Class = DiagnosticClass.Quirk,
+		Severity = DiagnosticSeverity.Warning,
+		Message = "outputState() has no effect under engine_version 2: result streams are not emitted; state is written to the state stream and must be polled.",
+		Docs = "`outputState()` has no effect under engine_version 2. V2 does not emit `Result` events to a result stream - state is written only to the `$projections-{name}[-{partition}]-state` stream and must be polled (or that stream subscribed to). Live result-stream parity is planned for a future release; use engine_version 1 until then if you rely on result-stream subscriptions.",
+		FixedIn = null, // result-stream parity planned for a future V2 release
 	};
 
 	// ---------- usage.* : the user's own projection code ----------
@@ -116,15 +137,6 @@ public static class DiagnosticCatalog {
 		Severity = DiagnosticSeverity.Warning,
 		Message = "transformBy()/filterBy() are registered but never invoked under engine_version=2; result equals post-handler state.",
 		Docs = "`transformBy()`/`filterBy()` are registered but never invoked under engine_version 2 - the result equals the post-handler state. Use engine_version 1 for V1 transform behaviour.",
-	};
-
-	/// <summary><c>outputState()</c> is a no-op under engine_version 2.</summary>
-	public static readonly DiagnosticDescriptor OutputStateUnconditional = new() {
-		Code = "usage.outputState.unconditional",
-		Class = DiagnosticClass.Usage,
-		Severity = DiagnosticSeverity.Information,
-		Message = "outputState() has no effect under engine_version=2; state is always emitted to the result stream.",
-		Docs = "`outputState()` has no effect under engine_version 2 - state is always emitted to the result stream. The call is redundant.",
 	};
 
 	/// <summary><c>options()</c> called more than once; last-write-wins.</summary>
@@ -170,12 +182,12 @@ public static class DiagnosticCatalog {
 		LinkStreamToOutOfBoundsParameters,
 		LogMultiParam,
 		EventBodyCast,
-		BiStateStringSlot,
-		BiStateSharedStringSlot,
 		SerializeNonFinite,
+		SerializeRawString,
+		BiStateSharedStateResetOnV2,
+		OutputStateNoEffectOnV2,
 		LinkStreamToDeprecated,
 		TransformsNotInvoked,
-		OutputStateUnconditional,
 		OptionsDuplicate,
 		ReorderEventsNoEffectOnV2,
 		HandlerAsync,

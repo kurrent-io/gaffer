@@ -18,6 +18,7 @@ internal sealed class SourceDefinitionBuilder {
 	private string? _partitionResultStreamNamePattern;
 	private bool _reorderEvents;
 	private int? _processingLag;
+	private bool _trackEmittedStreams;
 
 	public bool IsBiState => _isBiState;
 
@@ -52,6 +53,7 @@ internal sealed class SourceDefinitionBuilder {
 	public void SetIsBiState(bool isBiState) => _isBiState = isBiState;
 	public void SetReorderEvents(bool reorderEvents) => _reorderEvents = reorderEvents;
 	public void SetProcessingLag(int processingLag) => _processingLag = processingLag;
+	public void SetTrackEmittedStreams(bool trackEmittedStreams) => _trackEmittedStreams = trackEmittedStreams;
 
 	public void SetResultStreamNameOption(string resultStreamName) =>
 		_resultStreamName = string.IsNullOrWhiteSpace(resultStreamName) ? null : resultStreamName;
@@ -77,5 +79,6 @@ internal sealed class SourceDefinitionBuilder {
 		PartitionResultStreamNamePattern = _partitionResultStreamNamePattern,
 		ReorderEvents = _reorderEvents,
 		ProcessingLag = _processingLag,
+		TrackEmittedStreams = _trackEmittedStreams,
 	};
 }

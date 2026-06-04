@@ -143,6 +143,13 @@ diagnostics so you find it before the result stream surprises you:
 
 * `usage.transforms.notInvoked` (Warning) on `transformBy` / `filterBy`
   calls when `engine_version=2`.
-* `usage.outputState.unconditional` (Information) on `outputState()` calls when
+* `quirk.outputState.noEffectOnV2` (Warning) on `outputState()` calls when
   `engine_version=2`.
+* `quirk.biState.sharedStateResetOnV2` (Error) on bi-state / `$initShared`
+  projections when `engine_version=2`; V2 silently re-initializes shared state
+  on restart, producing wrong results.
+
+`trackEmittedStreams` is rejected outright under `engine_version=2` (the
+projection fails to create), matching KurrentDB, which maintains no
+emitted-streams catalog on V2.
 

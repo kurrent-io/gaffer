@@ -87,7 +87,19 @@ public class NativeExportsWireFormatTests {
 		var json = NativeExports.SerializeProjectionError(ex);
 		using var doc = JsonDocument.Parse(json);
 		Assert.Equal(DiagnosticCatalog.EventBodyCast.Message, doc.RootElement.GetProperty("compatDescription").GetString());
-		// Every current quirk has FixedIn = null, so compatFixedIn is omitted.
+		// EventBodyCast is fixed upstream in 26.2.0 (PR #5610), so the enrichment surfaces compatFixedIn.
+		Assert.Equal("26.2.0", doc.RootElement.GetProperty("compatFixedIn").GetString());
+	}
+
+	[Fact]
+	public void SerializeProjectionError_OmitsCompatFixedIn_WhenQuirkHasNoFix() {
+		// LogMultiParam has no upstream fix (FixedIn = null), so compatFixedIn is omitted.
+		var ex = new InvalidArgumentException("test", "field") {
+			CompatCode = DiagnosticCatalog.LogMultiParam.Code,
+		};
+		var json = NativeExports.SerializeProjectionError(ex);
+		using var doc = JsonDocument.Parse(json);
+		Assert.Equal(DiagnosticCatalog.LogMultiParam.Message, doc.RootElement.GetProperty("compatDescription").GetString());
 		Assert.False(doc.RootElement.TryGetProperty("compatFixedIn", out _));
 	}
 

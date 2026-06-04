@@ -280,9 +280,9 @@ internal sealed class JintProjectionHandler : IDisposable {
 			// JS calls to those functions still register the transforms
 			// (matches upstream V2's silent acceptance), but the engine
 			// never iterates them. Reuse PrepareOutput's conversion logic
-			// (string passthrough, bi-state slot 0, BiStateStringSlot quirk
-			// gating) so GetResult() returns exactly what GetState() does
-			// under V2. See cli/internal/mcpserver/resources/v1-v2-differences.md.
+			// (bi-state slots and uni-state string handling) so GetResult()
+			// returns exactly what GetState() does under V2. See
+			// cli/internal/mcpserver/resources/v1-v2-differences.md.
 			PrepareOutput(out var newState, out _, reportQuirks: false);
 			return newState;
 		}
@@ -298,15 +298,14 @@ internal sealed class JintProjectionHandler : IDisposable {
 	// the state-pass passes true.
 	private void PrepareOutput(out string? newState, out string? newSharedState, bool reportQuirks) {
 		if (_definitionBuilder.IsBiState && _state.IsArray()) {
+			// Bi-state slots always JSON-encode, both slots (matches upstream's
+			// ConvertToStringHandlingNulls). A string slot persists as `"hello"`, not raw -
+			// that is the correct contract, not a quirk.
 			var arr = _state.AsArray();
-			newState = arr.TryGetValue(0, out var state)
-				? ConvertBiStateSlot(state, DiagnosticCatalog.BiStateStringSlot, reportQuirks)
-				: "";
-			newSharedState = arr.TryGetValue(1, out var sharedState)
-				? ConvertBiStateSlot(sharedState, DiagnosticCatalog.BiStateSharedStringSlot, reportQuirks)
-				: null;
+			newState = arr.TryGetValue(0, out var state) ? ConvertToStringHandlingNulls(state) : "";
+			newSharedState = arr.TryGetValue(1, out var sharedState) ? ConvertToStringHandlingNulls(sharedState) : null;
 		} else if (_state.IsString()) {
-			newState = _state.AsString();
+			newState = ConvertUniStateString(_state, reportQuirks);
 			newSharedState = null;
 		} else {
 			newState = ConvertToStringHandlingNulls(_state);
@@ -314,13 +313,27 @@ internal sealed class JintProjectionHandler : IDisposable {
 		}
 	}
 
-	// Convert one biState state-array slot to its persisted string. When the slot's quirk fires,
-	// BiStateSlotBehaviour reproduces upstream's broken string passthrough (and reports it);
-	// otherwise strings pass through unchanged.
-	private string? ConvertBiStateSlot(JsValue slot, DiagnosticDescriptor quirk, bool reportQuirks) =>
-		quirk.FiresAt(_quirksVersion)
-			? BiStateSlotBehaviour.Apply(slot, quirk, reportQuirks, _quirkContext)
-			: slot.IsString() ? slot.AsString() : ConvertToStringHandlingNulls(slot);
+	// The engine persists string state raw. Valid JSON text round-trips on reload (e.g. V1's
+	// unhandled-event-replaces-with-body sets state to the raw body), so pass it through unchanged.
+	// A bare non-JSON string faults on a reload's JsonParser.Parse pre-26.2.0
+	// (quirk.serialize.rawString); gaffer can't carry raw invalid JSON on the wire, so it
+	// JSON-encodes that case (safe) and reports the quirk when it fires.
+	private string? ConvertUniStateString(JsValue state, bool reportQuirks) {
+		var str = state.AsString();
+		if (IsValidJson(str))
+			return str;
+		var report = reportQuirks && DiagnosticCatalog.SerializeRawString.FiresAt(_quirksVersion);
+		return RawStringStateBehaviour.Apply(state, report, _quirkContext);
+	}
+
+	private static bool IsValidJson(string s) {
+		try {
+			using var _ = System.Text.Json.JsonDocument.Parse(s);
+			return true;
+		} catch (System.Text.Json.JsonException) {
+			return false;
+		}
+	}
 
 	private string? ConvertToStringHandlingNulls(JsValue value) =>
 		value.IsNull() || value.IsUndefined() ? null : Serialize(value);
@@ -1196,6 +1209,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 				{ "processingLag", (o, v) => o.SetProcessingLag(v.IsNumber() ? (int)v.AsNumber() : throw new ArgumentException("Invalid value for option 'processingLag': expected a number")) },
 				{ "resultStreamName", (o, v) => o.SetResultStreamNameOption(v.IsString() ? v.AsString() : throw new ArgumentException("Invalid value for option 'resultStreamName': expected a string")) },
 				{ "biState", (o, v) => o.SetIsBiState(v.IsBoolean() ? v.AsBoolean() : throw new ArgumentException("Invalid value for option 'biState': expected a boolean")) },
+				{ "trackEmittedStreams", (o, v) => o.SetTrackEmittedStreams(v.IsBoolean() ? v.AsBoolean() : throw new ArgumentException("Invalid value for option 'trackEmittedStreams': expected a boolean")) },
 			};
 
 		private readonly List<string> _definitionFunctions;

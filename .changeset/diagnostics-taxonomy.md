@@ -11,11 +11,9 @@ This is a breaking rename of the diagnostic codes surfaced on `FeedResult.diagno
 - `compat.linkStreamTo.outOfBoundsParameters` → `quirk.linkStreamTo.outOfBoundsParameters`
 - `compat.log.multiParam` → `quirk.log.multiParam`
 - `compat.event.bodyCast` → `quirk.event.bodyCast`
-- `compat.biState.stringSlot` → `quirk.biState.stringSlot`
-- `compat.biState.sharedStringSlot` → `quirk.biState.sharedStringSlot`
 - `compat.serialize.nonFinite` → `quirk.serialize.nonFinite`
 - `compat.transforms.notInvoked` → `usage.transforms.notInvoked`
-- `compat.outputState.unconditional` → `usage.outputState.unconditional`
+- `compat.outputState.unconditional` → `quirk.outputState.noEffectOnV2`
 - `deprecated.linkStreamTo` → `usage.linkStreamTo.deprecated` (now Information, was Warning)
 - `options.duplicate` → `usage.options.duplicate`
 - `handler.async` → `usage.handler.async`
@@ -27,3 +25,5 @@ Other changes in this release:
 - **`reorderEvents` is engine-version aware.** Under `engine_version 1`, an invalid reordering config (not `fromStreams()` with 2+ streams, or `processingLag` below 50ms) is rejected at session create, matching KurrentDB's `ReaderStrategy`. Under `engine_version 2` it has no effect and surfaces as a `usage.reorderEvents.noEffectOnV2` warning rather than the old unconditional error. This replaces the `options.fromStreamsOnly` diagnostic.
 - **Throwing quirks now also raise a diagnostic.** A quirk that throws (e.g. `quirk.event.bodyCast`, `quirk.serialize.nonFinite`) exposes a `diagnostics` array on the thrown error, surfaced on the Go error types and the JS `ProjectionError` and propagated through the testing library. The array carries the quirk that threw plus any that fired earlier in the same event, so it is the complete set where `compatCode` is just the throwing quirk's code. Errors are also enriched with `compatDescription` and `compatFixedIn`.
 - **Quirk-catalogue exports are removed.** The catalogue is no longer exported over FFI: `knownQuirks()` (and the `KnownQuirk` type) is gone from the JS runtime binding, and `KnownQuirks()` / `KnownQuirk` / `DiagnosticSeverityHint` are gone from the Go binding. Assert on `step.diagnostics` (the data plane) instead.
+- **Diagnostics trued up against KurrentDB 26.2.0 (PR #5610).** `quirk.event.bodyCast` and `quirk.serialize.nonFinite` are marked fixed in 26.2.0 and no longer fire when targeting that version. The `biState.stringSlot` / `biState.sharedStringSlot` quirks are **removed**: JSON-encoding a string state-array slot is correct KurrentDB behaviour, not a bug. The real bug is the new `quirk.serialize.rawString`: a bare string state that isn't valid JSON is persisted un-encoded and faults on reload (also fixed in 26.2.0).
+- **New `engine_version 2` diagnostics.** `quirk.biState.sharedStateResetOnV2` flags bi-state / `$initShared` projections on V2, where shared state is silently re-initialized on restart. `trackEmittedStreams` on V2 is rejected at session create, matching KurrentDB. `outputState()` on V2 is now `quirk.outputState.noEffectOnV2` (Warning, was `usage.outputState.unconditional` Information). V2 emits no result streams, with parity planned for a future release.

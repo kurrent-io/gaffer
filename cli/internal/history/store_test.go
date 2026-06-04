@@ -12,7 +12,7 @@ const (
 	testResultSkipped  = `{"status":"skipped","reason":"unhandled"}`
 	// Two distinct quirk codes plus a repeat of the first, to exercise the
 	// dedupe + sort in extractResultFields.
-	testResultWithQuirks = `{"status":"processed","partition":"order-1","state":"x","emitted":[],"logs":[],"diagnostics":[{"code":"quirk.log.multiParam","message":"m","severity":2,"range":null},{"code":"quirk.biState.stringSlot","message":"m2","severity":2,"range":null},{"code":"quirk.log.multiParam","message":"m","severity":2,"range":null}]}`
+	testResultWithQuirks = `{"status":"processed","partition":"order-1","state":"x","emitted":[],"logs":[],"diagnostics":[{"code":"quirk.log.multiParam","message":"m","severity":2,"range":null},{"code":"quirk.serialize.rawString","message":"m2","severity":2,"range":null},{"code":"quirk.log.multiParam","message":"m","severity":2,"range":null}]}`
 )
 
 func mustNew(t *testing.T) *Store {
@@ -93,7 +93,7 @@ func TestTimelineExtractsQuirks(t *testing.T) {
 	if entries[0].Quirks != nil {
 		t.Errorf("[0] expected nil Quirks, got %v", entries[0].Quirks)
 	}
-	want := []string{"quirk.biState.stringSlot", "quirk.log.multiParam"}
+	want := []string{"quirk.log.multiParam", "quirk.serialize.rawString"}
 	if got := entries[1].Quirks; !slices.Equal(got, want) {
 		t.Errorf("[1] Quirks = %v, want %v (distinct + sorted)", got, want)
 	}

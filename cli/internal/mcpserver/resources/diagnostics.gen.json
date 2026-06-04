@@ -21,23 +21,7 @@
     "severity": "error",
     "message": "Accessing event.body throws for a non-object event body (null, or a primitive like a number or string); use event.bodyRaw instead.",
     "docs": "Accessing `event.body` throws in the KurrentDB engine when the event body is a non-object JSON value - null, or a primitive like a number or string. The upstream `EnsureBody` casts to an object without a type check. Use `event.bodyRaw` and parse it yourself. (gaffer's JS testing library normalizes a `data: null` event to an absent body, so a null body won't reproduce the throw there.)",
-    "fixedIn": null
-  },
-  {
-    "code": "quirk.biState.stringSlot",
-    "class": "quirk",
-    "severity": "warning",
-    "message": "A raw string in the bi-state partition slot is JSON-quoted instead of passed through, due to an upstream bug.",
-    "docs": "In a bi-state projection, a raw string in the partition-state slot is JSON-quoted (double-encoded) when persisted by the KurrentDB engine rather than passed through. Wrap string state in an object to avoid the double-encoding.",
-    "fixedIn": null
-  },
-  {
-    "code": "quirk.biState.sharedStringSlot",
-    "class": "quirk",
-    "severity": "warning",
-    "message": "A raw string in the bi-state shared slot is JSON-quoted instead of passed through, due to an upstream bug.",
-    "docs": "In a bi-state projection, a raw string in the shared-state slot is JSON-quoted (double-encoded) when persisted by the KurrentDB engine. Wrap shared string state in an object to avoid the double-encoding.",
-    "fixedIn": null
+    "fixedIn": "26.2.0"
   },
   {
     "code": "quirk.serialize.nonFinite",
@@ -45,6 +29,30 @@
     "severity": "error",
     "message": "Projection state containing NaN or Infinity throws during serialization (JSON has no representation for non-finite numbers).",
     "docs": "The KurrentDB engine throws when projection state contains `NaN` or `Infinity` (JSON has no representation for them). Guard non-finite numbers in your handler, e.g. store `null` or `0`.",
+    "fixedIn": "26.2.0"
+  },
+  {
+    "code": "quirk.serialize.rawString",
+    "class": "quirk",
+    "severity": "error",
+    "message": "A bare string projection state that isn't valid JSON is persisted un-encoded, so the projection faults on reload (Load can't JSON-parse the raw string). Wrap string state in an object.",
+    "docs": "When a projection's state is a bare string that isn't valid JSON - whether a handler returned it or V1 adopted an unhandled event's body as state - the KurrentDB engine persists it un-encoded (e.g. `hello`, not `\"hello\"`). On the next reload (restart, re-enable, resume) `Load()` runs `JSON.parse` on the stored value and throws, so the projection won't resume. Wrap string state in an object (e.g. `{ value: \"hello\" }`), or use KurrentDB 26.2.0+ where the engine JSON-encodes string state. (Bi-state state-array slots are unaffected - they always JSON-encode.)",
+    "fixedIn": "26.2.0"
+  },
+  {
+    "code": "quirk.biState.sharedStateResetOnV2",
+    "class": "quirk",
+    "severity": "error",
+    "message": "Bi-state / $initShared is not supported under engine_version 2: shared state is silently re-initialized on restart, producing incorrect results. Use engine_version 1.",
+    "docs": "Bi-state projections (those declaring `$initShared`, operating on a `[partitionState, sharedState]` pair) are not supported under engine_version 2. The shared-state slot is not restored on restart: after a node restart, projection re-enable, or resume, the engine re-runs `$initShared` instead of reading the persisted shared state, silently producing incorrect results. Use engine_version 1 until KurrentDB implements shared-state restore on V2.",
+    "fixedIn": null
+  },
+  {
+    "code": "quirk.outputState.noEffectOnV2",
+    "class": "quirk",
+    "severity": "warning",
+    "message": "outputState() has no effect under engine_version 2: result streams are not emitted; state is written to the state stream and must be polled.",
+    "docs": "`outputState()` has no effect under engine_version 2. V2 does not emit `Result` events to a result stream - state is written only to the `$projections-{name}[-{partition}]-state` stream and must be polled (or that stream subscribed to). Live result-stream parity is planned for a future release; use engine_version 1 until then if you rely on result-stream subscriptions.",
     "fixedIn": null
   },
   {
@@ -61,14 +69,6 @@
     "severity": "warning",
     "message": "transformBy()/filterBy() are registered but never invoked under engine_version=2; result equals post-handler state.",
     "docs": "`transformBy()`/`filterBy()` are registered but never invoked under engine_version 2 - the result equals the post-handler state. Use engine_version 1 for V1 transform behaviour.",
-    "fixedIn": null
-  },
-  {
-    "code": "usage.outputState.unconditional",
-    "class": "usage",
-    "severity": "information",
-    "message": "outputState() has no effect under engine_version=2; state is always emitted to the result stream.",
-    "docs": "`outputState()` has no effect under engine_version 2 - state is always emitted to the result stream. The call is redundant.",
     "fixedIn": null
   },
   {

@@ -18,4 +18,5 @@ public sealed class QuerySources {
 	public string? PartitionResultStreamNamePattern { get; init; }
 	public bool ReorderEvents { get; init; }
 	public int? ProcessingLag { get; init; }
+	public bool TrackEmittedStreams { get; init; }
 }

@@ -51,6 +51,16 @@ public class DiagnosticCatalogTests {
 	}
 
 	[Fact]
+	public void FixedQuirks_CarryUpstreamFixVersion() {
+		// PR #5610 fixed these in 26.2.0; FiresAt suppresses them at/above that version.
+		var fixedIn = new KurrentDbVersion(26, 2, 0);
+		Assert.Equal(fixedIn, DiagnosticCatalog.EventBodyCast.FixedIn);
+		Assert.Equal(fixedIn, DiagnosticCatalog.SerializeNonFinite.FixedIn);
+		Assert.False(DiagnosticCatalog.EventBodyCast.FiresAt(fixedIn));
+		Assert.True(DiagnosticCatalog.EventBodyCast.FiresAt(new KurrentDbVersion(26, 1, 0)));
+	}
+
+	[Fact]
 	public void TryGet_ResolvesDeclaredCodesAndRejectsUnknown() {
 		Assert.True(DiagnosticCatalog.TryGet(DiagnosticCatalog.EventBodyCast.Code, out var found));
 		Assert.Equal(DiagnosticCatalog.EventBodyCast, found);
@@ -59,9 +69,9 @@ public class DiagnosticCatalogTests {
 
 	[Fact]
 	public void GatedWithKnownFix_DoesNotFireAtOrAboveFixVersion() {
-		// Synthetic check using a constructed quirk, since real PR #5610 isn't
-		// merged yet and all current entries have FixedIn = null. This locks
-		// the FiresAt semantics so the eventual flip behaves correctly.
+		// Synthetic constructed quirk, locking the FiresAt semantics independent
+		// of any catalog entry's FixedIn (bodyCast / nonFinite now carry a real
+		// FixedIn from PR #5610; others remain null).
 		var fixedAt = new KurrentDbVersion(26, 1, 1);
 		var quirk = new DiagnosticDescriptor {
 			Code = "quirk.test.synthetic",

@@ -100,7 +100,7 @@ describe("V2 transform diagnostics", () => {
 		}
 	});
 
-	it("emits usage.outputState.unconditional for outputState() under V2", () => {
+	it("emits quirk.outputState.noEffectOnV2 for outputState() under V2", () => {
 		const session = new ProjectionSession(
 			`fromAll().when({ $any: function (s, e) { return s; } }).outputState();`,
 			{ engineVersion: 2 },
@@ -111,7 +111,7 @@ describe("V2 transform diagnostics", () => {
 				expect.fail("expected diagnostics, got null");
 			}
 			expect(
-				diagnostics.some((d) => d.code === "usage.outputState.unconditional"),
+				diagnostics.some((d) => d.code === "quirk.outputState.noEffectOnV2"),
 			).toBe(true);
 		} finally {
 			session.dispose();

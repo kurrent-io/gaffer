@@ -238,15 +238,12 @@ func TestSessionOptions_QuirksVersion_RejectedWhenMalformed(t *testing.T) {
 	assertEqual(t, "field", "quirksVersion", e.Field)
 }
 
-func TestFeedResult_Diagnostics_BiStateStringSlot(t *testing.T) {
-	// A biState projection that writes a raw string to slot 0 trips the
-	// stringSlot quirk; the runtime reports it on FeedResult.Diagnostics.
+func TestFeedResult_Diagnostics_RawStringState(t *testing.T) {
+	// A uni-state projection that returns a bare string persists it un-encoded
+	// (quirk.serialize.rawString); the runtime reports it on FeedResult.Diagnostics.
 	source := `
-		options({ biState: true });
 		fromAll().when({
-			$init: function () { return "initial"; },
-			$initShared: function () { return {}; },
-			SetName: function (s, e) { s[0] = e.data.name; return s; }
+			Set: function (s, e) { return e.data.name; }
 		});
 	`
 	session, err := NewSession(source, &v2Opts)
@@ -255,19 +252,19 @@ func TestFeedResult_Diagnostics_BiStateStringSlot(t *testing.T) {
 	}
 	defer session.Destroy()
 
-	result, err := session.Feed(`{"eventType":"SetName","streamId":"s-1","sequenceNumber":0,"data":"{\"name\":\"alice\"}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	result, err := session.Feed(`{"eventType":"Set","streamId":"s-1","sequenceNumber":0,"data":"{\"name\":\"alice\"}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 	if err != nil {
 		t.Fatalf("Feed failed: %v", err)
 	}
 
 	found := false
 	for _, d := range result.Diagnostics {
-		if d.Code == "quirk.biState.stringSlot" {
+		if d.Code == "quirk.serialize.rawString" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected quirk.biState.stringSlot diagnostic, got %+v", result.Diagnostics)
+		t.Fatalf("expected quirk.serialize.rawString diagnostic, got %+v", result.Diagnostics)
 	}
 }
 

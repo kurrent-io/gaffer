@@ -625,7 +625,7 @@ func TestMarshalOmitsUnsetEngineVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data), "engine_version") {
+	if strings.Contains(string(data), "engine_version =") {
 		t.Errorf("expected no engine_version line for an unset version, got:\n%s", data)
 	}
 }

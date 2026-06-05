@@ -533,20 +533,38 @@ describe("runScaffoldWizard", () => {
 		// `prev` should carry the previously-entered "orders-42" so
 		// the user doesn't have to retype.
 		push("pathArg", { kind: "value", value: "p" });
-		push("source", { kind: "value", value: "stream" });
+		push("source", { kind: "value", value: "category" });
 		push("sourceName", { kind: "value", value: "orders-42" });
 		push("partition", { kind: "back" });
 		push("sourceName", { kind: "value", value: "orders-99" });
 		push("partition", { kind: "value", value: "none" });
 		push("emit", { kind: "value", value: false });
 		const result = await runScaffoldWizard(steps);
-		expect(result?.source).toEqual({ kind: "stream", name: "orders-99" });
+		expect(result?.source).toEqual({ kind: "category", name: "orders-99" });
 		const sourceNameCalls = calls.filter((c) => c.step === "sourceName");
 		expect(sourceNameCalls).toHaveLength(2);
 		// `prev` is the {kind, prev} bundle that queuedSteps wraps in.
 		expect((sourceNameCalls[1]?.prev as { prev: unknown })?.prev).toBe(
 			"orders-42",
 		);
+	});
+
+	it("skips the partition step on the single-stream path and forces none", async () => {
+		const { steps, push, calls } = queuedSteps();
+		push("pathArg", { kind: "value", value: "p" });
+		push("source", { kind: "value", value: "stream" });
+		push("sourceName", { kind: "value", value: "orders-42" });
+		push("emit", { kind: "value", value: false });
+		const result = await runScaffoldWizard(steps);
+		// per-stream partitioning is invalid with fromStream(), so the
+		// step is skipped entirely and partition is forced to none.
+		expect(calls.find((c) => c.step === "partition")).toBeUndefined();
+		expect(result).toEqual({
+			pathArg: "p",
+			source: { kind: "stream", name: "orders-42" },
+			partition: "none",
+			emit: false,
+		});
 	});
 
 	it("skips the sourceName step on the all-events path", async () => {

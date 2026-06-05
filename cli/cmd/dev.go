@@ -98,29 +98,24 @@ func completeFixtures(_ *cobra.Command, args []string, _ string) ([]string, cobr
 // from the projections declared in gaffer.toml; non-interactively the
 // positional is required, mirroring the pre-prompt exactArgs(1) error.
 func resolveDevName(cmd *cobra.Command, args []string, opts *devOpts) (string, error) {
-	if len(args) > 0 {
-		return args[0], nil
-	}
-	if !prompt.Enabled(opts.Yes) {
-		return "", missingArgErr(cmd)
-	}
-
-	root := project.FindRoot()
-	if root == "" {
-		return "", project.ErrNotInProject
-	}
-	cfg, err := config.Load(project.ConfigPath(root))
-	if err != nil {
-		return "", err
-	}
-	names := make([]prompt.Option, 0, len(cfg.Projection))
-	for _, p := range cfg.Projection {
-		names = append(names, prompt.Opt(p.Name))
-	}
-	if len(names) == 0 {
-		return "", fmt.Errorf("no projections declared in gaffer.toml")
-	}
-	return prompt.Select("Projection", names, names[0].Value)
+	return resolveRequiredArg(cmd, args, prompt.Enabled(opts.Yes), func() (string, error) {
+		root := project.FindRoot()
+		if root == "" {
+			return "", project.ErrNotInProject
+		}
+		cfg, err := config.Load(project.ConfigPath(root))
+		if err != nil {
+			return "", err
+		}
+		names := make([]prompt.Option, 0, len(cfg.Projection))
+		for _, p := range cfg.Projection {
+			names = append(names, prompt.Opt(p.Name))
+		}
+		if len(names) == 0 {
+			return "", fmt.Errorf("no projections declared in gaffer.toml")
+		}
+		return prompt.Select("Projection", names, names[0].Value)
+	})
 }
 
 // maybePromptDevSource picks an event source interactively when the user

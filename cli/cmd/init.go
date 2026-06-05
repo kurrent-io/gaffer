@@ -56,13 +56,9 @@ func runInit(cmd *cobra.Command, yes bool, engineVersion int) error {
 				return err
 			}
 		}
-		ok, err := prompt.Confirm(
-			fmt.Sprintf("Initialize gaffer project (engine version %d)?", engineVersion), true)
-		if err != nil {
+		if err := prompt.ConfirmOrCancel(
+			fmt.Sprintf("Initialize gaffer project (engine version %d)?", engineVersion)); err != nil {
 			return err
-		}
-		if !ok {
-			return prompt.ErrCancelled
 		}
 	}
 

@@ -81,3 +81,19 @@ func maxArgs(n int) cobra.PositionalArgs {
 func missingArgErr(cmd *cobra.Command) error {
 	return &argCountError{cmd: cmd, got: 0, want: 1}
 }
+
+// resolveRequiredArg returns the single positional an interactive command
+// needs. Present on the command line, it's used verbatim. Absent, it's
+// promptFn's result when interactive, or the styled missingArgErr when
+// not. The one place the "use arg / prompt / else error" dance lives, so
+// the commands whose positional is required only non-interactively
+// (scaffold, dev, and later deploy) can't drift on the order or message.
+func resolveRequiredArg(cmd *cobra.Command, args []string, interactive bool, promptFn func() (string, error)) (string, error) {
+	if len(args) > 0 {
+		return args[0], nil
+	}
+	if !interactive {
+		return "", missingArgErr(cmd)
+	}
+	return promptFn()
+}

@@ -67,19 +67,19 @@ func runScaffold(cmd *cobra.Command, args []string, opts *scaffoldOpts) error {
 		return err
 	}
 
-	pathArg := ""
-	if len(args) > 0 {
-		pathArg = args[0]
+	interactive := prompt.Enabled(opts.Yes)
+	pathArg, err := resolveRequiredArg(cmd, args, interactive, func() (string, error) {
+		p, err := prompt.Input("Projection file path", "", "./projections/order.js", validateScaffoldPath)
+		return strings.TrimSpace(p), err
+	})
+	if err != nil {
+		return err
 	}
 
-	if prompt.Enabled(opts.Yes) {
-		if err := promptScaffold(cmd, &pathArg, opts); err != nil {
+	if interactive {
+		if err := promptScaffoldOptions(cmd, pathArg, opts); err != nil {
 			return err
 		}
-	} else if pathArg == "" {
-		// Non-interactive with no path: the positional is required.
-		// Same message exactArgs(1) gave before scaffold went interactive.
-		return missingArgErr(cmd)
 	}
 
 	relPath, err := resolveScaffoldRelPath(pathArg, root)
@@ -99,19 +99,11 @@ func runScaffold(cmd *cobra.Command, args []string, opts *scaffoldOpts) error {
 	return nil
 }
 
-// promptScaffold fills the gaps the user didn't pass: the path (when the
-// positional was omitted) and any of source / partition / emit not set
-// via flags. It ends with a summary confirm; declining returns
+// promptScaffoldOptions fills the option gaps the user didn't pass via
+// flags - any of source / partition / emit - then ends with a summary
+// confirm over the already-resolved pathArg. Declining returns
 // prompt.ErrCancelled. opts is mutated in place.
-func promptScaffold(cmd *cobra.Command, pathArg *string, opts *scaffoldOpts) error {
-	if *pathArg == "" {
-		p, err := prompt.Input("Projection file path", "", "./projections/order.js", validateScaffoldPath)
-		if err != nil {
-			return err
-		}
-		*pathArg = strings.TrimSpace(p)
-	}
-
+func promptScaffoldOptions(cmd *cobra.Command, pathArg string, opts *scaffoldOpts) error {
 	if !cmd.Flags().Changed("source") {
 		if err := promptSource(opts); err != nil {
 			return err
@@ -141,16 +133,9 @@ func promptScaffold(cmd *cobra.Command, pathArg *string, opts *scaffoldOpts) err
 	if opts.Emit {
 		emitLabel = "on"
 	}
-	ok, err := prompt.Confirm(fmt.Sprintf(
+	return prompt.ConfirmOrCancel(fmt.Sprintf(
 		"Create %s - source: %s, partitioning: %s, emit: %s?",
-		*pathArg, opts.Source, opts.Partition, emitLabel), true)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return prompt.ErrCancelled
-	}
-	return nil
+		pathArg, opts.Source, opts.Partition, emitLabel))
 }
 
 // promptSource asks for the event source. "all" needs no follow-up;

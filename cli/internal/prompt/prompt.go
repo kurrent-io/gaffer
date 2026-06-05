@@ -23,6 +23,12 @@ var ErrCancelled = errors.New("cancelled")
 // stderr (`2>file`) has nowhere to draw and must fall back to
 // non-interactive. A single gate so the rule stays identical across
 // commands.
+//
+// The contract this expresses: --yes (and any non-terminal, e.g. pipes /
+// CI) means "take the non-interactive path." It does not mean "accept
+// defaults" - whether the non-interactive path has enough to proceed or
+// errors (e.g. a still-missing required positional) is each command's
+// decision, not this gate's.
 func Enabled(yes bool) bool {
 	return !yes &&
 		isatty.IsTerminal(os.Stdin.Fd()) &&
@@ -75,6 +81,22 @@ func Confirm(title string, value bool) (bool, error) {
 		return false, err
 	}
 	return v, nil
+}
+
+// ConfirmOrCancel is the summary-confirm-before-acting primitive: it
+// prompts (defaulting to yes) and returns nil when confirmed, ErrCancelled
+// when declined or aborted. Declining a "do this?" summary is a clean
+// cancellation, same as Ctrl-C/Esc - this is the one place that decision
+// lives, so callers (and deploy's confirm-before-apply) don't re-derive it.
+func ConfirmOrCancel(title string) error {
+	ok, err := Confirm(title, true)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrCancelled
+	}
+	return nil
 }
 
 // run wraps a single field in a one-group form themed to match the

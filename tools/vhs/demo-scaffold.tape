@@ -6,6 +6,12 @@
 Output ../assets/demo-scaffold.gif
 
 Env GAFFER_TELEMETRY_OPTOUT "1"
+# Don't let the once-a-day "update available" notice appear mid-recording.
+Env GAFFER_NO_UPDATE_CHECK "1"
+# Force colour: under ttyd in CI the charm libs detect no colour support
+# and render the prompts unstyled, so force a truecolor profile.
+Env CLICOLOR_FORCE "1"
+Env COLORTERM "truecolor"
 
 Set FontSize 14
 Set Width 1200

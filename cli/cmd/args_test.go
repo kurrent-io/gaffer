@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/fang"
+
+	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 )
 
 // requiredArgCommands are the leaf commands that take exactly one
@@ -15,10 +17,13 @@ import (
 var requiredArgCommands = []struct {
 	args        []string // path to the command under root
 	placeholder string   // expected positional placeholder in the Use line
+	prompts     bool     // omitting the positional prompts on a TTY, so it's
+	// required only non-interactively (maxArgs + missingArgErr from RunE)
+	// rather than rejected at the Args layer (exactArgs).
 }{
-	{[]string{"scaffold"}, "<path>"},
-	{[]string{"dev"}, "<projection>"},
-	{[]string{"info"}, "<projection>"},
+	{[]string{"scaffold"}, "<path>", true},
+	{[]string{"dev"}, "<projection>", true},
+	{[]string{"info"}, "<projection>", false},
 }
 
 func TestExactArgs_MissingArgNamesArgumentAndExample(t *testing.T) {
@@ -26,7 +31,20 @@ func TestExactArgs_MissingArgNamesArgumentAndExample(t *testing.T) {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			cmd := findLeaf(t, NewRootCmd(), tc.args)
 
-			err := cmd.Args(cmd, nil)
+			// Where the missing-positional error is raised differs:
+			// exactArgs commands reject at the Args layer; prompt commands
+			// allow zero args there (so a bare TTY invocation can prompt)
+			// and raise missingArgErr from RunE on the non-interactive
+			// path. Both must produce the same styled message.
+			var err error
+			if tc.prompts {
+				if argsErr := cmd.Args(cmd, nil); argsErr != nil {
+					t.Fatalf("prompt command should allow zero args at the Args layer, got %v", argsErr)
+				}
+				err = missingArgErr(cmd)
+			} else {
+				err = cmd.Args(cmd, nil)
+			}
 			if err == nil {
 				t.Fatal("expected an error for zero args")
 			}
@@ -82,6 +100,16 @@ func TestErrorHandler_KeepsExampleOnItsOwnLine(t *testing.T) {
 	}
 	if !strings.Contains(out, "\n  example: gaffer scaffold ./projections/order.js") {
 		t.Errorf("expected the example on its own indented line, got:\n%s", out)
+	}
+}
+
+// A cancelled prompt is a clean exit: errorHandler must print nothing so
+// the user isn't shown an error banner for Ctrl-C / Esc / declining.
+func TestErrorHandler_SwallowsPromptCancellation(t *testing.T) {
+	var buf bytes.Buffer
+	errorHandler(&buf, fang.Styles{}, prompt.ErrCancelled)
+	if buf.Len() != 0 {
+		t.Errorf("expected no output for a cancelled prompt, got:\n%s", buf.String())
 	}
 }
 

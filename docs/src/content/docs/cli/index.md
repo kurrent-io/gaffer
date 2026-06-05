@@ -20,6 +20,16 @@ The `gaffer` CLI scaffolds projections, runs them locally against fixtures or li
 
 See [the full command reference](./commands.md) for every subcommand and flag, or run `gaffer <command> --help`.
 
+## Interactive mode
+
+On a terminal, `gaffer init`, `gaffer scaffold`, and `gaffer dev` prompt for anything you didn't pass on the command line:
+
+- `gaffer init` asks for the engine version.
+- `gaffer scaffold` asks for the path (when omitted) and any of source, partitioning, and emit not set via flags.
+- `gaffer dev` asks which projection to run (when omitted) and which source to use when none is given via `--events`, `--fixture`, or `--connection`.
+
+Anything you pass explicitly - a positional or a flag - is taken as-is and never re-prompted; only the gaps are asked. Pass `--yes` (`-y`) to skip prompts and accept defaults - the same thing that happens automatically when input isn't a terminal (pipes, CI), so scripts keep working unchanged. Press Ctrl-C or Esc on any prompt to cancel.
+
 ## Project configuration
 
 Each gaffer project has a `gaffer.toml` at its root, created by `gaffer init`. It declares the projections in the project, their entry files, and any named fixtures:
@@ -38,7 +48,7 @@ fixtures.full = "fixtures/orders-full.json"
 Top-level keys:
 
 - **`connection`**: KurrentDB connection string. Optional; only required when running a projection against a live event stream.
-- **`engine_version`**: `1` or `2`. `gaffer init` writes `2`. V1 is for legacy compatibility. Can be overridden per-projection inside `[[projection]]`.
+- **`engine_version`**: `1` or `2`. `gaffer init` writes `2` by default; pass `gaffer init --engine-version 1` or pick it at the prompt to write `1`. V1 is for legacy compatibility. Can be overridden per-projection inside `[[projection]]`.
 
 Per-projection (`[[projection]]`):
 
@@ -72,6 +82,7 @@ Project-level telemetry is opted out by setting `telemetry = false` at the top o
 - **`--debug`**: starts the DAP debug server alongside `gaffer dev`. See [Debugging projections](../getting-started/debugging.md).
 - **`--connection`**: override `connection` from `gaffer.toml` for a single invocation.
 - **`--fixture <name>`** / **`--events <path>`**: pick a named fixture from `gaffer.toml`, or point at a JSON events file directly.
+- **`--yes` / `-y`**: skip interactive prompts and accept defaults. Applies to `gaffer init`, `gaffer scaffold`, and `gaffer dev`. See [Interactive mode](#interactive-mode).
 
 ## Telemetry
 

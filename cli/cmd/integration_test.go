@@ -204,6 +204,77 @@ func TestDev_NoSource_ErrorMentionsFixture(t *testing.T) {
 	}
 }
 
+// Relaxing scaffold/dev to maxArgs(1) for interactive prompting must not
+// change what a bare, non-interactive invocation shows: the test process
+// has no TTY, so prompt.Enabled is false and the required positional is
+// still enforced - with the same styled message exactArgs(1) gave.
+func TestScaffold_NoArg_NonInteractive_MissingArg(t *testing.T) {
+	p := testutil.NewProject(t).AddProjection("orders", integrationProjection).Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"scaffold"})
+	root.SetErr(&bytes.Buffer{})
+
+	err := ExecuteRoot(context.Background(), root)
+	if err == nil || !strings.Contains(err.Error(), "missing required argument <path>") {
+		t.Fatalf("expected missing-<path> error, got: %v", err)
+	}
+}
+
+func TestDev_NoArg_NonInteractive_MissingArg(t *testing.T) {
+	p := testutil.NewProject(t).AddProjection("orders", integrationProjection).Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"dev"})
+	root.SetErr(&bytes.Buffer{})
+
+	err := ExecuteRoot(context.Background(), root)
+	if err == nil || !strings.Contains(err.Error(), "missing required argument <projection>") {
+		t.Fatalf("expected missing-<projection> error, got: %v", err)
+	}
+}
+
+// The --engine-version flag must flow through to the written gaffer.toml,
+// and an invalid value must fail before anything is created.
+func TestInit_EngineVersionFlag(t *testing.T) {
+	dir := t.TempDir()
+	chdirTo(t, dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"init", "--engine-version", "1"})
+	root.SetErr(&bytes.Buffer{})
+	if err := ExecuteRoot(context.Background(), root); err != nil {
+		t.Fatalf("init --engine-version 1: %v", err)
+	}
+
+	cfg, err := config.Load(filepath.Join(dir, "gaffer.toml"))
+	if err != nil {
+		t.Fatalf("loading created project: %v", err)
+	}
+	if cfg.EngineVersion == nil || *cfg.EngineVersion != 1 {
+		t.Errorf("engine_version = %v, want 1", cfg.EngineVersion)
+	}
+}
+
+func TestInit_InvalidEngineVersion(t *testing.T) {
+	dir := t.TempDir()
+	chdirTo(t, dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"init", "--engine-version", "3"})
+	root.SetErr(&bytes.Buffer{})
+
+	err := ExecuteRoot(context.Background(), root)
+	if err == nil || !strings.Contains(err.Error(), "must be 1 or 2") {
+		t.Fatalf("expected an engine_version validation error, got: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "gaffer.toml")); statErr == nil {
+		t.Error("gaffer.toml should not have been created for an invalid version")
+	}
+}
+
 func TestInfo_JSON(t *testing.T) {
 	dir := setupIntegrationProject(t)
 	chdirTo(t, dir)

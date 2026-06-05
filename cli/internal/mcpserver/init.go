@@ -41,7 +41,7 @@ func (s *Server) handleInit(_ context.Context, _ *mcp.CallToolRequest, _ initInp
 		dir = cwd
 	}
 
-	path, err := config.InitProject(dir)
+	path, err := config.InitProject(dir, config.DefaultEngineVersion)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}

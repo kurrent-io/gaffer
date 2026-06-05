@@ -17,7 +17,7 @@ In an empty directory:
 gaffer init
 ```
 
-This creates `gaffer.toml` in the current directory.
+This creates `gaffer.toml` in the current directory. On a terminal you'll be prompted for the engine version; press Enter to accept the default (`2`). Add `-y` to skip the prompt, or pass `--engine-version 1` to choose up front. See [Interactive mode](../cli/index.md#interactive-mode).
 
 ## Scaffold a projection
 
@@ -25,7 +25,7 @@ This creates `gaffer.toml` in the current directory.
 gaffer scaffold projections/order-count.js
 ```
 
-This creates the file at the path you gave and registers it in `gaffer.toml` under the basename (`order-count`). The scaffolded file is a working skeleton with no logic yet:
+This creates the file at the path you gave and registers it in `gaffer.toml` under the basename (`order-count`). On a terminal you'll first be prompted for the source, partitioning, and emit; press Enter at each to accept the defaults (which produce the skeleton below), or add `-y` to skip the prompts. The scaffolded file is a working skeleton with no logic yet:
 
 <!-- prettier-ignore -->
 ```js

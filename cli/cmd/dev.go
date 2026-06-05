@@ -20,6 +20,8 @@ import (
 	dapserver "github.com/kurrent-io/gaffer/cli/internal/dap"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
+	"github.com/kurrent-io/gaffer/cli/internal/project"
+	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
@@ -34,6 +36,7 @@ type devOpts struct {
 	DebugPort                  int
 	UntilCaughtUp              bool
 	StartPausedIfNoBreakpoints bool
+	Yes                        bool
 }
 
 func newDevCmd() *cobra.Command {
@@ -43,7 +46,10 @@ func newDevCmd() *cobra.Command {
 		Use:     "dev <projection>",
 		Short:   "Run a projection locally",
 		Example: "gaffer dev order-count",
-		Args:    exactArgs(1),
+		Long: "Run a projection locally against a fixture or live KurrentDB. " +
+			"Run without <projection> on a terminal to pick one, and to pick a " +
+			"source when none is given via --events / --fixture / --connection.",
+		Args: maxArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// `gaffer dev` (cobra) maps to two telemetry event
 			// variants: `dev` (single / fixture) and `debug` (DAP
@@ -51,9 +57,9 @@ func newDevCmd() *cobra.Command {
 			// variant gets the right Tx + setters; both forms
 			// share runDev's flag validation + setup.
 			if opts.Debug {
-				return runDevWithDebugTx(cmd, args[0], opts)
+				return runDevWithDebugTx(cmd, args, opts)
 			}
-			return runDevWithDevTx(cmd, args[0], opts)
+			return runDevWithDevTx(cmd, args, opts)
 		},
 	}
 	cmd.Flags().StringVar(&opts.Events, "events", "", "Path to a JSON events file (ad-hoc fixture)")
@@ -64,6 +70,7 @@ func newDevCmd() *cobra.Command {
 	cmd.Flags().IntVar(&opts.DebugPort, "debug-port", 0, "DAP debug server port (0 = OS picks a free port; the actual bound port is reported on stderr and in --json output)")
 	cmd.Flags().BoolVar(&opts.UntilCaughtUp, "until-caught-up", false, "Exit when subscription catches up (live mode only)")
 	cmd.Flags().BoolVar(&opts.StartPausedIfNoBreakpoints, "start-paused-if-no-breakpoints", false, "Pause at the start of the first event when no breakpoints are set (debug mode only)")
+	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip prompts (a projection and source must be resolvable without prompting)")
 	_ = cmd.RegisterFlagCompletionFunc("fixture", completeFixtures)
 	return cmd
 }
@@ -86,6 +93,100 @@ func completeFixtures(_ *cobra.Command, args []string, _ string) ([]string, cobr
 	return proj.Def.FixtureNames(), cobra.ShellCompDirectiveNoFileComp
 }
 
+// resolveDevName returns the projection to run. When the positional was
+// given it's used verbatim. Otherwise, on a terminal, the user picks
+// from the projections declared in gaffer.toml; non-interactively the
+// positional is required, mirroring the pre-prompt exactArgs(1) error.
+func resolveDevName(cmd *cobra.Command, args []string, opts *devOpts) (string, error) {
+	return resolveRequiredArg(cmd, args, prompt.Enabled(opts.Yes), func() (string, error) {
+		root := project.FindRoot()
+		if root == "" {
+			return "", project.ErrNotInProject
+		}
+		cfg, err := config.Load(project.ConfigPath(root))
+		if err != nil {
+			return "", err
+		}
+		names := make([]prompt.Option, 0, len(cfg.Projection))
+		for _, p := range cfg.Projection {
+			names = append(names, prompt.Opt(p.Name))
+		}
+		if len(names) == 0 {
+			return "", fmt.Errorf("no projections declared in gaffer.toml")
+		}
+		return prompt.Select("Projection", names, names[0].Value)
+	})
+}
+
+// maybePromptDevSource picks an event source interactively when the user
+// pinned none via --events / --fixture / --connection. It offers the
+// projection's declared fixtures plus a live option when gaffer.toml has
+// a connection. With a single possible source it's selected without
+// prompting (and echoed to stderr, since the user wasn't asked); with
+// none it's a no-op so buildSource emits its usual "no event source"
+// guidance. A chosen fixture is set on opts.Fixture; "live" leaves opts
+// alone so resolveConnection falls back to config.
+func maybePromptDevSource(cmd *cobra.Command, proj *engine.Projection, opts *devOpts) error {
+	if opts.Events != "" || opts.Fixture != "" || opts.Connection != "" {
+		return nil
+	}
+	if !prompt.Enabled(opts.Yes) {
+		return nil
+	}
+
+	const liveValue = "\x00live"
+	choices := make([]prompt.Option, 0)
+	for _, f := range proj.Def.FixtureNames() {
+		choices = append(choices, prompt.Option{Label: "Fixture: " + f, Value: f})
+	}
+	hasLive := proj.Config.Connection != ""
+	if hasLive {
+		choices = append(choices, prompt.Option{Label: "Live (connection from gaffer.toml)", Value: liveValue})
+	}
+
+	switch len(choices) {
+	case 0:
+		return nil
+	case 1:
+		// Only one possible source: use it without asking, but echo the
+		// choice so the run isn't reading from a source the user never
+		// saw chosen.
+		if choices[0].Value == liveValue {
+			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Using live connection from gaffer.toml")
+		} else {
+			opts.Fixture = choices[0].Value
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Using fixture: %s\n", choices[0].Value)
+		}
+		return nil
+	}
+
+	sel, err := prompt.Select("Event source", choices, choices[0].Value)
+	if err != nil {
+		return err
+	}
+	if sel != liveValue {
+		opts.Fixture = sel
+	}
+	return nil
+}
+
+// devConnectedToDB reports whether the resolved dev run used a live
+// KurrentDB source, for the connected_to_db telemetry property. It's not
+// just "was --connection passed": runDev folds a --fixture (or an
+// interactively-picked one) into opts.Events, so a live run is one with
+// no fixture/events file in play and a connection that resolves (flag or
+// gaffer.toml). opts.Fixture is checked too because a failed fixture
+// lookup leaves opts.Fixture set while opts.Events stays empty - that's a
+// fixture invocation, not live. Falls back to the flag when the
+// projection didn't load (proj is nil), where opts isn't fully resolved.
+func devConnectedToDB(opts *devOpts, proj *engine.Projection) bool {
+	if proj == nil || proj.Config == nil {
+		return opts.Connection != ""
+	}
+	return opts.Events == "" && opts.Fixture == "" &&
+		resolveConnection(opts.Connection, proj.Config) != ""
+}
+
 // runDevWithDevTx is the cobra wrapper for the non-debug path:
 // opens a DevTx, calls runDev, drains the dev-side setters that
 // are knowable here. Defer-direct per the Tx contract.
@@ -94,15 +195,13 @@ func completeFixtures(_ *cobra.Command, args []string, _ string) ([]string, cobr
 // from the loaded *engine.Projection. LoadProjection already parsed
 // gaffer.toml, so runDev returns the projection alongside the error
 // and the wrapper stamps from there.
-func runDevWithDevTx(cmd *cobra.Command, name string, opts *devOpts) error {
+func runDevWithDevTx(cmd *cobra.Command, args []string, opts *devOpts) error {
 	tx := telemetry.BeginDev(cmd.Context())
 	defer tx.End(cmd.Context())
 
-	tx.SetConnectedToDB(opts.Connection != "")
-
 	tracker := newProjErrTracker()
 	diagTracker := newDiagSeenTracker()
-	proj, err := runDev(cmd, name, opts, nil, runObservers{
+	proj, err := runDev(cmd, args, opts, nil, runObservers{
 		onProjectionError: tracker.Record,
 		onConnected:       tx.SetDBVersion,
 		onDiagnostic:      diagTracker.Record,
@@ -112,6 +211,7 @@ func runDevWithDevTx(cmd *cobra.Command, name string, opts *devOpts) error {
 		tx.SetProjectionCount(proj.Config.ProjectionCount())
 		tx.SetFixtureCount(proj.Config.FixtureCount())
 	}
+	tx.SetConnectedToDB(devConnectedToDB(opts, proj))
 	if seen := tracker.Sorted(); len(seen) > 0 {
 		tx.SetProjectionErrorsSeen(seen)
 	}
@@ -134,7 +234,7 @@ func runDevWithDevTx(cmd *cobra.Command, name string, opts *devOpts) error {
 // The debug variant's schema doesn't carry manifest-derived props,
 // so the returned *engine.Projection is ignored here - dev mode is
 // the only variant that surfaces them.
-func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
+func runDevWithDebugTx(cmd *cobra.Command, args []string, opts *devOpts) error {
 	tx := telemetry.BeginDebug(cmd.Context())
 	defer tx.End(cmd.Context())
 
@@ -142,7 +242,7 @@ func runDevWithDebugTx(cmd *cobra.Command, name string, opts *devOpts) error {
 	tracker := newProjErrTracker()
 	diagTracker := newDiagSeenTracker()
 	var fixtureEvents int
-	_, err := runDev(cmd, name, opts, &dapStats, runObservers{
+	_, err := runDev(cmd, args, opts, &dapStats, runObservers{
 		onProjectionError: tracker.Record,
 		onFixtureEvent:    func() { fixtureEvents++ },
 		onDiagnostic:      diagTracker.Record,
@@ -212,7 +312,7 @@ type runObservers struct {
 // to runDevSingle or runDevDebug. Returns the loaded *engine.Projection
 // alongside the error so the cobra wrappers can drain telemetry
 // properties off it; nil when LoadProjection failed.
-func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.Stats, obs runObservers) (*engine.Projection, error) {
+func runDev(cmd *cobra.Command, args []string, opts *devOpts, dapStats *dapserver.Stats, obs runObservers) (*engine.Projection, error) {
 	if opts.StartPausedIfNoBreakpoints && !opts.Debug {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: --start-paused-if-no-breakpoints requires --debug; ignoring")
 	}
@@ -221,9 +321,18 @@ func runDev(cmd *cobra.Command, name string, opts *devOpts, dapStats *dapserver.
 		return nil, fmt.Errorf("only one of --events or --fixture may be used at a time")
 	}
 
+	name, err := resolveDevName(cmd, args, opts)
+	if err != nil {
+		return nil, err
+	}
+
 	proj, err := engine.LoadProjection(name)
 	if err != nil {
 		return nil, err
+	}
+
+	if err := maybePromptDevSource(cmd, proj, opts); err != nil {
+		return proj, err
 	}
 
 	// --fixture is a layer on top of --events: resolve the named

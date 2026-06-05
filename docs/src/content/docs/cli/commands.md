@@ -9,7 +9,7 @@ Full reference for every gaffer subcommand. Generated from the CLI source; run `
 
 Initialize a new gaffer project.
 
-Creates gaffer.toml in the current directory.
+Creates gaffer.toml in the current directory. Run on a terminal to choose the engine version, or pass --engine-version / --yes to skip the prompt.
 
 ```
 gaffer init [flags]
@@ -18,14 +18,15 @@ gaffer init [flags]
 Flags:
 
 ```
-  -y, --yes   Accept all defaults, no prompts (currently the only mode)
+      --engine-version int   Projection engine version written to gaffer.toml (1 or 2) (default 2)
+  -y, --yes                  Skip prompts and accept defaults
 ```
 
 ## gaffer scaffold
 
 Add a new projection to the project.
 
-Create a projection at <path>. The path is resolved relative to the current directory and must end in a supported extension (.js). The projection's gaffer.toml key defaults to the file's basename; pass --name to override.
+Create a projection at <path>. The path is resolved relative to the current directory and must end in a supported extension (.js). The projection's gaffer.toml key defaults to the file's basename; pass --name to override. Run without <path> on a terminal to be prompted for the path and options.
 
 ```
 gaffer scaffold <path> [flags]
@@ -38,11 +39,14 @@ Flags:
       --name string        Projection name in gaffer.toml (defaults to the file's basename)
       --partition string   Partitioning (none, per-stream) (default "none")
       --source string      Event source (all, stream:name, category:name) (default "all")
+  -y, --yes                Skip prompts (a path must be supplied without prompting)
 ```
 
 ## gaffer dev
 
 Run a projection locally.
+
+Run a projection locally against a fixture or live KurrentDB. Run without <projection> on a terminal to pick one, and to pick a source when none is given via --events / --fixture / --connection.
 
 ```
 gaffer dev <projection> [flags]
@@ -59,6 +63,7 @@ Flags:
       --json                             Output as NDJSON
       --start-paused-if-no-breakpoints   Pause at the start of the first event when no breakpoints are set (debug mode only)
       --until-caught-up                  Exit when subscription catches up (live mode only)
+  -y, --yes                              Skip prompts (a projection and source must be resolvable without prompting)
 ```
 
 ## gaffer info

@@ -270,14 +270,19 @@ export async function runScaffoldWizard(
 	let emit: boolean | undefined;
 
 	// step identifies the renderer directly (no overlap between paths):
-	// 1=name, 2=source, 3=sourceName (skipped on the all-events path),
-	// 4=partition, 5=emit. totalSteps drops to 4 the moment the user
-	// picks "all"; the logical display number for partition/emit
-	// shifts accordingly so the user sees a clean "1 of 4 ... 4 of 4"
-	// progression instead of skipping a number.
+	// 1=name, 2=source, 3=sourceName, 4=partition, 5=emit. Two steps are
+	// conditional on the chosen source: sourceName is skipped for "all",
+	// and partition is skipped for a single stream (per-stream
+	// partitioning is invalid with fromStream(), so "none" is forced).
+	// totalSteps depends on the chosen source and isn't known until step
+	// 2, so the denominator can drop from 5 to 4 after the user picks
+	// all-events or a single stream (category is 5; both skips are 4).
+	// Step numerators stay contiguous within the chosen path.
 	let step: 1 | 2 | 3 | 4 | 5 = 1;
 	for (;;) {
-		const total = sourceKind === "all" ? 4 : 5;
+		const hasSourceName = sourceKind !== "all";
+		const hasPartition = sourceKind !== "stream";
+		const total = 2 + (hasSourceName ? 1 : 0) + (hasPartition ? 1 : 0) + 1;
 		if (step === 1) {
 			const r = await steps.pathArg(pathArg, 1, total);
 			if (r.kind === "cancel" || r.kind === "back") return undefined;
@@ -307,23 +312,30 @@ export async function runScaffoldWizard(
 				continue;
 			}
 			sourceName = r.value;
-			step = 4;
+			// A single stream can't use per-stream partitioning, so skip
+			// the partition step and force "none".
+			if (sourceKind === "stream") {
+				partition = "none";
+				step = 5;
+			} else {
+				step = 4;
+			}
 		} else if (step === 4) {
-			const logical = sourceKind === "all" ? 3 : 4;
+			const logical = hasSourceName ? 4 : 3;
 			const r = await steps.partition(partition, logical, total);
 			if (r.kind === "cancel") return undefined;
 			if (r.kind === "back") {
-				step = sourceKind === "all" ? 2 : 3;
+				step = hasSourceName ? 3 : 2;
 				continue;
 			}
 			partition = r.value;
 			step = 5;
 		} else {
-			const logical = sourceKind === "all" ? 4 : 5;
+			const logical = total;
 			const r = await steps.emit(emit, logical, total);
 			if (r.kind === "cancel") return undefined;
 			if (r.kind === "back") {
-				step = 4;
+				step = hasPartition ? 4 : 3;
 				continue;
 			}
 			emit = r.value;

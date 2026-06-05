@@ -59,3 +59,41 @@ func exactArgs(n int) cobra.PositionalArgs {
 		return &argCountError{cmd: cmd, got: len(args), want: n}
 	}
 }
+
+// maxArgs allows up to n positional arguments, returning an argCountError
+// (the same styled message as exactArgs) when too many are given. Used by
+// commands whose single positional is required only on the non-interactive
+// path: the positional may be omitted to prompt for it, so the missing
+// case is enforced in RunE via missingArgErr rather than here.
+func maxArgs(n int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) <= n {
+			return nil
+		}
+		return &argCountError{cmd: cmd, got: len(args), want: n}
+	}
+}
+
+// missingArgErr is the error a command raises from RunE when its required
+// positional was omitted on the non-interactive path. Mirrors
+// exactArgs(1)'s "missing required argument <name>" message so relaxing a
+// command to maxArgs(1) doesn't change what non-interactive users see.
+func missingArgErr(cmd *cobra.Command) error {
+	return &argCountError{cmd: cmd, got: 0, want: 1}
+}
+
+// resolveRequiredArg returns the single positional an interactive command
+// needs. Present on the command line, it's used verbatim. Absent, it's
+// promptFn's result when interactive, or the styled missingArgErr when
+// not. The one place the "use arg / prompt / else error" dance lives, so
+// the commands whose positional is required only non-interactively
+// (scaffold, dev, and later deploy) can't drift on the order or message.
+func resolveRequiredArg(cmd *cobra.Command, args []string, interactive bool, promptFn func() (string, error)) (string, error) {
+	if len(args) > 0 {
+		return args[0], nil
+	}
+	if !interactive {
+		return "", missingArgErr(cmd)
+	}
+	return promptFn()
+}

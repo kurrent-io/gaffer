@@ -43,6 +43,28 @@ func TestScaffold(t *testing.T) {
 	}
 }
 
+func TestScaffold_InvalidComboWritesNothing(t *testing.T) {
+	p := testutil.NewProject(t).Save()
+
+	_, err := Scaffold(p.Dir, p.Cfg, "bad", "projections/bad.js", "stream:orders", "per-stream", false)
+	if err == nil || !strings.Contains(err.Error(), "single-stream source") {
+		t.Fatalf("expected single-stream/per-stream rejection, got: %v", err)
+	}
+
+	// Generation runs before any filesystem work, so neither the file nor
+	// its parent directory should exist.
+	if _, statErr := os.Stat(filepath.Join(p.Dir, "projections")); statErr == nil {
+		t.Error("projections/ directory should not have been created for an invalid combo")
+	}
+	reloaded, err := config.Load(filepath.Join(p.Dir, "gaffer.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.FindProjection("bad") != nil {
+		t.Error("invalid projection should not have been added to gaffer.toml")
+	}
+}
+
 func TestScaffold_NoZeroEngineVersionWritten(t *testing.T) {
 	// UI-1635: re-saving the manifest on scaffold must not stamp
 	// engine_version = 0 onto the new projection or any existing one.
@@ -347,6 +369,12 @@ func TestGenerateSource(t *testing.T) {
 			source:    "topic:foo",
 			partition: "none",
 			errMsg:    "unsupported source",
+		},
+		{
+			name:      "single stream with per-stream partitioning is rejected",
+			source:    "stream:orders",
+			partition: "per-stream",
+			errMsg:    "single-stream source",
 		},
 	}
 

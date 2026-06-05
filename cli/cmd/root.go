@@ -11,6 +11,7 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
+	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 	"github.com/kurrent-io/gaffer/cli/internal/updatecheck"
 )
 
@@ -28,6 +29,12 @@ func silent(err error) error { return &silentError{err: err} }
 func errorHandler(w io.Writer, styles fang.Styles, err error) {
 	var s *silentError
 	if errors.As(err, &s) {
+		return
+	}
+	// A prompt the user aborted (Ctrl+C / Esc) is a clean cancellation,
+	// not a failure: huh has already restored the terminal, so print
+	// nothing.
+	if errors.Is(err, prompt.ErrCancelled) {
 		return
 	}
 	var argErr *argCountError

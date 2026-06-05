@@ -37,7 +37,7 @@ Optional. Omit when you only run projections against fixture files.
 engine_version = 2
 ```
 
-Projection engine version: `1` or `2`. `gaffer init` writes `2`. V1 is for legacy compatibility with older KurrentDB releases.
+Projection engine version: `1` or `2`. `gaffer init` writes `2` by default; pass `gaffer init --engine-version 1` (or pick it at the interactive prompt) to write `1` instead. V1 is for legacy compatibility with older KurrentDB releases.
 
 A projection that doesn't set its own `engine_version` inherits this one. Loading `gaffer.toml` fails if neither the top-level nor the projection sets a version.
 

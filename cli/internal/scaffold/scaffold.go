@@ -66,6 +66,14 @@ func Scaffold(
 		return nil, fmt.Errorf("projection %q already exists in gaffer.toml", name)
 	}
 
+	// Generate before any filesystem side effects so an invalid
+	// source/partition combination fails without leaving a directory
+	// behind.
+	content, err := GenerateSource(source, partition, emit)
+	if err != nil {
+		return nil, err
+	}
+
 	absPath := filepath.Join(root, filepath.FromSlash(cleanRel))
 
 	// Resolve symlinks anywhere on the parent path so an in-tree
@@ -85,11 +93,6 @@ func Scaffold(
 
 	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 		return nil, fmt.Errorf("creating directory: %w", err)
-	}
-
-	content, err := GenerateSource(source, partition, emit)
-	if err != nil {
-		return nil, err
 	}
 
 	if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
@@ -197,6 +200,12 @@ func GenerateSource(source, partition string, emit bool) (string, error) {
 
 	switch partition {
 	case "per-stream":
+		// foreachStream() partitions a multi-stream source; the runtime
+		// rejects it on a single stream (fromStream). Catch it here so
+		// scaffold can't emit a projection that only fails at run time.
+		if strings.HasPrefix(source, "stream:") {
+			return "", fmt.Errorf("per-stream partitioning is not supported with a single-stream source; use 'all' or 'category:<name>', or partition 'none'")
+		}
 		sb.WriteString("  .foreachStream()\n")
 	case "none":
 		// no partitioning

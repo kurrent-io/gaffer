@@ -77,7 +77,7 @@ func runScaffold(cmd *cobra.Command, args []string, opts *scaffoldOpts) error {
 	}
 
 	if interactive {
-		if err := promptScaffoldOptions(cmd, pathArg, opts); err != nil {
+		if err := promptScaffoldOptions(cmd, opts); err != nil {
 			return err
 		}
 	}
@@ -100,10 +100,9 @@ func runScaffold(cmd *cobra.Command, args []string, opts *scaffoldOpts) error {
 }
 
 // promptScaffoldOptions fills the option gaps the user didn't pass via
-// flags - any of source / partition / emit - then ends with a summary
-// confirm over the already-resolved pathArg. Declining returns
-// prompt.ErrCancelled. opts is mutated in place.
-func promptScaffoldOptions(cmd *cobra.Command, pathArg string, opts *scaffoldOpts) error {
+// flags - any of source / partition / emit. No summary confirm:
+// Ctrl-C/Esc aborts if you change your mind. opts is mutated in place.
+func promptScaffoldOptions(cmd *cobra.Command, opts *scaffoldOpts) error {
 	if !cmd.Flags().Changed("source") {
 		if err := promptSource(opts); err != nil {
 			return err
@@ -129,13 +128,7 @@ func promptScaffoldOptions(cmd *cobra.Command, pathArg string, opts *scaffoldOpt
 		opts.Emit = emit
 	}
 
-	emitLabel := "off"
-	if opts.Emit {
-		emitLabel = "on"
-	}
-	return prompt.ConfirmOrCancel(fmt.Sprintf(
-		"Create %s - source: %s, partitioning: %s, emit: %s?",
-		pathArg, opts.Source, opts.Partition, emitLabel))
+	return nil
 }
 
 // promptSource asks for the event source. "all" needs no follow-up;

@@ -83,22 +83,6 @@ func Confirm(title string, value bool) (bool, error) {
 	return v, nil
 }
 
-// ConfirmOrCancel is the summary-confirm-before-acting primitive: it
-// prompts (defaulting to yes) and returns nil when confirmed, ErrCancelled
-// when declined or aborted. Declining a "do this?" summary is a clean
-// cancellation, same as Ctrl-C/Esc - this is the one place that decision
-// lives, so callers (and deploy's confirm-before-apply) don't re-derive it.
-func ConfirmOrCancel(title string) error {
-	ok, err := Confirm(title, true)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return ErrCancelled
-	}
-	return nil
-}
-
 // run wraps a single field in a one-group form themed to match the
 // rest of the charm-based CLI output (fang, lipgloss). A user abort is
 // translated to ErrCancelled so callers get one sentinel regardless of

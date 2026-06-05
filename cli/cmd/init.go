@@ -46,18 +46,13 @@ func runInit(cmd *cobra.Command, yes bool, engineVersion int) error {
 		return fmt.Errorf("engine_version must be 1 or 2, got %d", engineVersion)
 	}
 
-	if prompt.Enabled(yes) {
-		// Gaps model: prompt only for what wasn't passed. The flag has
-		// a default, so Changed distinguishes "explicitly set" from
-		// "left at default".
-		if !cmd.Flags().Changed("engine-version") {
-			engineVersion, err = promptEngineVersion(engineVersion)
-			if err != nil {
-				return err
-			}
-		}
-		if err := prompt.ConfirmOrCancel(
-			fmt.Sprintf("Initialize gaffer project (engine version %d)?", engineVersion)); err != nil {
+	// Gaps model: prompt only for what wasn't passed. The flag has a
+	// default, so Changed distinguishes "explicitly set" from "left at
+	// default". No summary confirm - Ctrl-C/Esc aborts if you change
+	// your mind.
+	if prompt.Enabled(yes) && !cmd.Flags().Changed("engine-version") {
+		engineVersion, err = promptEngineVersion(engineVersion)
+		if err != nil {
 			return err
 		}
 	}

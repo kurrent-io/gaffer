@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/fang"
+
+	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 )
 
 // requiredArgCommands are the leaf commands that take exactly one
@@ -98,6 +100,16 @@ func TestErrorHandler_KeepsExampleOnItsOwnLine(t *testing.T) {
 	}
 	if !strings.Contains(out, "\n  example: gaffer scaffold ./projections/order.js") {
 		t.Errorf("expected the example on its own indented line, got:\n%s", out)
+	}
+}
+
+// A cancelled prompt is a clean exit: errorHandler must print nothing so
+// the user isn't shown an error banner for Ctrl-C / Esc / declining.
+func TestErrorHandler_SwallowsPromptCancellation(t *testing.T) {
+	var buf bytes.Buffer
+	errorHandler(&buf, fang.Styles{}, prompt.ErrCancelled)
+	if buf.Len() != 0 {
+		t.Errorf("expected no output for a cancelled prompt, got:\n%s", buf.String())
 	}
 }
 

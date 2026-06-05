@@ -11,6 +11,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
+	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
@@ -32,6 +33,8 @@ func TestOutcomeFor_StructuralSentinels(t *testing.T) {
 		{"manifest-validate", fmt.Errorf("%w: bad config", config.ErrManifestValidate), telemetry.OutcomeManifestValidationError},
 		{"db-connect", fmt.Errorf("%w: dns", engine.ErrDBConnect), telemetry.OutcomeDBConnectError},
 		{"db-disconnect", fmt.Errorf("%w: subscription dropped", engine.ErrDBDisconnect), telemetry.OutcomeDBDisconnect},
+		{"prompt-cancelled", prompt.ErrCancelled, telemetry.OutcomeUserInterrupt},
+		{"prompt-cancelled-wrapped", fmt.Errorf("%w", prompt.ErrCancelled), telemetry.OutcomeUserInterrupt},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

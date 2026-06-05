@@ -22,9 +22,12 @@ Set Theme "Catppuccin Mocha"
 
 # Record in a fresh project so the run is repeatable and doesn't mutate
 # demo/. The init is hidden setup; only the scaffold interaction shows.
+# Silence init and let it finish before Show so its "Initialized..."
+# line can't leak into the recording.
 Hide
-Type "export PS1='$ ' && cd $(mktemp -d) && gaffer init -y"
+Type "export PS1='$ ' && cd $(mktemp -d) && gaffer init -y >/dev/null 2>&1"
 Enter
+Sleep 1s
 Ctrl+L
 Show
 

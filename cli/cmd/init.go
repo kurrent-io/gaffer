@@ -18,7 +18,8 @@ func newInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize a new gaffer project",
-		Long:  "Creates gaffer.toml in the current directory.",
+		Long: "Creates gaffer.toml in the current directory. Run on a terminal to " +
+			"choose the engine version, or pass --engine-version / --yes to skip the prompt.",
 		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
 			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
 				telemetry.EmitInit(cmd.Context(), telemetry.InitCommandInvokedProperties{Outcome: o})
@@ -38,6 +39,13 @@ func runInit(cmd *cobra.Command, yes bool, engineVersion int) error {
 		return err
 	}
 
+	// Validate a flag-supplied version up front so an invalid --engine-version
+	// fails immediately rather than after the user works through the prompts
+	// and confirms a value that InitProject will then reject.
+	if engineVersion != 1 && engineVersion != 2 {
+		return fmt.Errorf("engine_version must be 1 or 2, got %d", engineVersion)
+	}
+
 	if prompt.Enabled(yes) {
 		// Gaps model: prompt only for what wasn't passed. The flag has
 		// a default, so Changed distinguishes "explicitly set" from
@@ -49,7 +57,7 @@ func runInit(cmd *cobra.Command, yes bool, engineVersion int) error {
 			}
 		}
 		ok, err := prompt.Confirm(
-			fmt.Sprintf("Initialize gaffer project with engine_version = %d?", engineVersion), true)
+			fmt.Sprintf("Initialize gaffer project (engine version %d)?", engineVersion), true)
 		if err != nil {
 			return err
 		}

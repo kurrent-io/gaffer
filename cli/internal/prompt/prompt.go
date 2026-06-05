@@ -38,12 +38,13 @@ type Option struct {
 // Opt is a label==value option, the common case.
 func Opt(value string) Option { return Option{Label: value, Value: value} }
 
-// Input prompts for free text, pre-filled with value. validate may be
-// nil; when set it runs on each submit and a non-nil error keeps the
-// user on the field.
-func Input(title, value string, validate func(string) error) (string, error) {
+// Input prompts for free text, pre-filled with value. placeholder is the
+// greyed-out hint shown while the field is empty ("" for none). validate
+// may be nil; when set it runs on each submit and a non-nil error keeps
+// the user on the field.
+func Input(title, value, placeholder string, validate func(string) error) (string, error) {
 	v := value
-	field := huh.NewInput().Title(title).Value(&v)
+	field := huh.NewInput().Title(title).Placeholder(placeholder).Value(&v)
 	if validate != nil {
 		field = field.Validate(validate)
 	}

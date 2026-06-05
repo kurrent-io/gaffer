@@ -9,7 +9,7 @@ Full reference for every gaffer subcommand. Generated from the CLI source; run `
 
 Initialize a new gaffer project.
 
-Creates gaffer.toml in the current directory.
+Creates gaffer.toml in the current directory. Run on a terminal to choose the engine version, or pass --engine-version / --yes to skip the prompt.
 
 ```
 gaffer init [flags]
@@ -63,7 +63,7 @@ Flags:
       --json                             Output as NDJSON
       --start-paused-if-no-breakpoints   Pause at the start of the first event when no breakpoints are set (debug mode only)
       --until-caught-up                  Exit when subscription catches up (live mode only)
-  -y, --yes                              Skip prompts (require <projection> and an explicit source)
+  -y, --yes                              Skip prompts (a projection and source must be resolvable without prompting)
 ```
 
 ## gaffer info

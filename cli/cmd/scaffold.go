@@ -105,7 +105,7 @@ func runScaffold(cmd *cobra.Command, args []string, opts *scaffoldOpts) error {
 // prompt.ErrCancelled. opts is mutated in place.
 func promptScaffold(cmd *cobra.Command, pathArg *string, opts *scaffoldOpts) error {
 	if *pathArg == "" {
-		p, err := prompt.Input("Projection file path", "", validateScaffoldPath)
+		p, err := prompt.Input("Projection file path", "", "./projections/order.js", validateScaffoldPath)
 		if err != nil {
 			return err
 		}
@@ -137,9 +137,13 @@ func promptScaffold(cmd *cobra.Command, pathArg *string, opts *scaffoldOpts) err
 		opts.Emit = emit
 	}
 
+	emitLabel := "off"
+	if opts.Emit {
+		emitLabel = "on"
+	}
 	ok, err := prompt.Confirm(fmt.Sprintf(
-		"Create projection %s (source=%s, partition=%s, emit=%t)?",
-		*pathArg, opts.Source, opts.Partition, opts.Emit), true)
+		"Create %s - source: %s, partitioning: %s, emit: %s?",
+		*pathArg, opts.Source, opts.Partition, emitLabel), true)
 	if err != nil {
 		return err
 	}
@@ -166,7 +170,8 @@ func promptSource(opts *scaffoldOpts) error {
 		opts.Source = "all"
 		return nil
 	}
-	name, err := prompt.Input(kind+" name", "", func(s string) error {
+	title := strings.ToUpper(kind[:1]) + kind[1:] + " name"
+	name, err := prompt.Input(title, "", "orders", func(s string) error {
 		if strings.TrimSpace(s) == "" {
 			return fmt.Errorf("a %s name is required", kind)
 		}

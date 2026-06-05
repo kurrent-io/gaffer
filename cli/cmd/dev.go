@@ -70,7 +70,7 @@ func newDevCmd() *cobra.Command {
 	cmd.Flags().IntVar(&opts.DebugPort, "debug-port", 0, "DAP debug server port (0 = OS picks a free port; the actual bound port is reported on stderr and in --json output)")
 	cmd.Flags().BoolVar(&opts.UntilCaughtUp, "until-caught-up", false, "Exit when subscription catches up (live mode only)")
 	cmd.Flags().BoolVar(&opts.StartPausedIfNoBreakpoints, "start-paused-if-no-breakpoints", false, "Pause at the start of the first event when no breakpoints are set (debug mode only)")
-	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip prompts (require <projection> and an explicit source)")
+	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip prompts (a projection and source must be resolvable without prompting)")
 	_ = cmd.RegisterFlagCompletionFunc("fixture", completeFixtures)
 	return cmd
 }
@@ -127,10 +127,11 @@ func resolveDevName(cmd *cobra.Command, args []string, opts *devOpts) (string, e
 // pinned none via --events / --fixture / --connection. It offers the
 // projection's declared fixtures plus a live option when gaffer.toml has
 // a connection. With a single possible source it's selected without
-// prompting; with none it's a no-op so buildSource emits its usual
-// "no event source" guidance. A chosen fixture is set on opts.Fixture;
-// "live" leaves opts alone so resolveConnection falls back to config.
-func maybePromptDevSource(proj *engine.Projection, opts *devOpts) error {
+// prompting (and echoed to stderr, since the user wasn't asked); with
+// none it's a no-op so buildSource emits its usual "no event source"
+// guidance. A chosen fixture is set on opts.Fixture; "live" leaves opts
+// alone so resolveConnection falls back to config.
+func maybePromptDevSource(cmd *cobra.Command, proj *engine.Projection, opts *devOpts) error {
 	if opts.Events != "" || opts.Fixture != "" || opts.Connection != "" {
 		return nil
 	}
@@ -141,19 +142,25 @@ func maybePromptDevSource(proj *engine.Projection, opts *devOpts) error {
 	const liveValue = "\x00live"
 	choices := make([]prompt.Option, 0)
 	for _, f := range proj.Def.FixtureNames() {
-		choices = append(choices, prompt.Option{Label: "fixture: " + f, Value: f})
+		choices = append(choices, prompt.Option{Label: "Fixture: " + f, Value: f})
 	}
 	hasLive := proj.Config.Connection != ""
 	if hasLive {
-		choices = append(choices, prompt.Option{Label: "live (connection from gaffer.toml)", Value: liveValue})
+		choices = append(choices, prompt.Option{Label: "Live (connection from gaffer.toml)", Value: liveValue})
 	}
 
 	switch len(choices) {
 	case 0:
 		return nil
 	case 1:
-		if choices[0].Value != liveValue {
+		// Only one possible source: use it without asking, but echo the
+		// choice so the run isn't reading from a source the user never
+		// saw chosen.
+		if choices[0].Value == liveValue {
+			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Using live connection from gaffer.toml")
+		} else {
 			opts.Fixture = choices[0].Value
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Using fixture: %s\n", choices[0].Value)
 		}
 		return nil
 	}
@@ -180,8 +187,6 @@ func runDevWithDevTx(cmd *cobra.Command, args []string, opts *devOpts) error {
 	tx := telemetry.BeginDev(cmd.Context())
 	defer tx.End(cmd.Context())
 
-	tx.SetConnectedToDB(opts.Connection != "")
-
 	tracker := newProjErrTracker()
 	diagTracker := newDiagSeenTracker()
 	proj, err := runDev(cmd, args, opts, nil, runObservers{
@@ -189,11 +194,20 @@ func runDevWithDevTx(cmd *cobra.Command, args []string, opts *devOpts) error {
 		onConnected:       tx.SetDBVersion,
 		onDiagnostic:      diagTracker.Record,
 	})
+	// connected_to_db reflects whether the resolved source was live, not
+	// just whether --connection was passed: runDev folds a --fixture (or an
+	// interactively-picked one) into opts.Events, so an empty opts.Events
+	// plus a resolvable connection (flag or gaffer.toml) means a live run.
+	// Computed after runDev so the interactive "live" choice counts. Falls
+	// back to the flag when the projection didn't load (proj is nil).
+	connectedToDB := opts.Connection != ""
 	if proj != nil && proj.Config != nil {
+		connectedToDB = opts.Events == "" && resolveConnection(opts.Connection, proj.Config) != ""
 		tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(proj.Config))
 		tx.SetProjectionCount(proj.Config.ProjectionCount())
 		tx.SetFixtureCount(proj.Config.FixtureCount())
 	}
+	tx.SetConnectedToDB(connectedToDB)
 	if seen := tracker.Sorted(); len(seen) > 0 {
 		tx.SetProjectionErrorsSeen(seen)
 	}
@@ -313,7 +327,7 @@ func runDev(cmd *cobra.Command, args []string, opts *devOpts, dapStats *dapserve
 		return nil, err
 	}
 
-	if err := maybePromptDevSource(proj, opts); err != nil {
+	if err := maybePromptDevSource(cmd, proj, opts); err != nil {
 		return proj, err
 	}
 

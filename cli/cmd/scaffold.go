@@ -52,7 +52,7 @@ func newScaffoldCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Source, "source", "all", "Event source (all, stream:name, category:name)")
 	cmd.Flags().StringVar(&opts.Partition, "partition", "none", "Partitioning (none, per-stream)")
 	cmd.Flags().BoolVar(&opts.Emit, "emit", false, "Enable emit/linkTo")
-	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip prompts and accept defaults")
+	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip prompts (a path must be supplied without prompting)")
 	return cmd
 }
 

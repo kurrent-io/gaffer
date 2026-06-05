@@ -39,7 +39,7 @@ Flags:
       --name string        Projection name in gaffer.toml (defaults to the file's basename)
       --partition string   Partitioning (none, per-stream) (default "none")
       --source string      Event source (all, stream:name, category:name) (default "all")
-  -y, --yes                Skip prompts and accept defaults
+  -y, --yes                Skip prompts (a path must be supplied without prompting)
 ```
 
 ## gaffer dev

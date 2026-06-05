@@ -567,6 +567,21 @@ describe("runScaffoldWizard", () => {
 		});
 	});
 
+	it("Back from emit returns to sourceName (not partition) on the single-stream path", async () => {
+		const { steps, push, calls } = queuedSteps();
+		push("pathArg", { kind: "value", value: "p" });
+		push("source", { kind: "value", value: "stream" });
+		push("sourceName", { kind: "value", value: "orders-42" });
+		push("emit", { kind: "back" });
+		push("sourceName", { kind: "value", value: "orders-99" });
+		push("emit", { kind: "value", value: false });
+		const result = await runScaffoldWizard(steps);
+		// Partition is skipped on the stream path, so Back from emit must
+		// land on sourceName, never partition.
+		expect(calls.find((c) => c.step === "partition")).toBeUndefined();
+		expect(result?.source).toEqual({ kind: "stream", name: "orders-99" });
+	});
+
 	it("skips the sourceName step on the all-events path", async () => {
 		const { steps, push, calls } = queuedSteps();
 		push("pathArg", { kind: "value", value: "p" });

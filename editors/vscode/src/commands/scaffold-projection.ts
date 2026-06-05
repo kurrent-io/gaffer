@@ -274,8 +274,10 @@ export async function runScaffoldWizard(
 	// conditional on the chosen source: sourceName is skipped for "all",
 	// and partition is skipped for a single stream (per-stream
 	// partitioning is invalid with fromStream(), so "none" is forced).
-	// totalSteps and the logical display numbers shift accordingly so the
-	// user sees a clean "1 of N ... N of N" progression.
+	// totalSteps depends on the chosen source and isn't known until step
+	// 2, so the denominator can drop from 5 to 4 after the user picks
+	// all-events or a single stream (category is 5; both skips are 4).
+	// Step numerators stay contiguous within the chosen path.
 	let step: 1 | 2 | 3 | 4 | 5 = 1;
 	for (;;) {
 		const hasSourceName = sourceKind !== "all";

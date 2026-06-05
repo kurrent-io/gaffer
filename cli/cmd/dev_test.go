@@ -7,10 +7,41 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 	"github.com/spf13/cobra"
 )
+
+func TestDevConnectedToDB(t *testing.T) {
+	withConn := &engine.Projection{Config: &config.Config{Connection: "kurrentdb://localhost:2113"}}
+	noConn := &engine.Projection{Config: &config.Config{}}
+
+	cases := []struct {
+		name string
+		opts *devOpts
+		proj *engine.Projection
+		want bool
+	}{
+		{"fixture resolved into events", &devOpts{Fixture: "happy", Events: "fixtures/happy.json"}, withConn, false},
+		// Failed fixture lookup leaves Events empty but Fixture set, so the
+		// Fixture check is what keeps it from counting as live.
+		{"fixture lookup failed", &devOpts{Fixture: "typo"}, withConn, false},
+		{"events file", &devOpts{Events: "e.json"}, withConn, false},
+		{"connection flag", &devOpts{Connection: "kurrentdb://x"}, noConn, true},
+		{"config connection", &devOpts{}, withConn, true},
+		{"no source, no connection", &devOpts{}, noConn, false},
+		{"projection not loaded, connection flag", &devOpts{Connection: "kurrentdb://x"}, nil, true},
+		{"projection not loaded, no flag", &devOpts{}, nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := devConnectedToDB(tc.opts, tc.proj); got != tc.want {
+				t.Errorf("devConnectedToDB = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestFinalizeRun_Interrupted(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

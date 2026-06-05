@@ -25,7 +25,7 @@ See [the full command reference](./commands.md) for every subcommand and flag, o
 On a terminal, `gaffer init`, `gaffer scaffold`, and `gaffer dev` prompt for anything you didn't pass on the command line:
 
 - `gaffer init` asks for the engine version.
-- `gaffer scaffold` asks for the path (when omitted) and any of source, partitioning, and emit not set via flags, then confirms before writing.
+- `gaffer scaffold` asks for the path (when omitted) and any of source, partitioning, and emit not set via flags.
 - `gaffer dev` asks which projection to run (when omitted) and which source to use when none is given via `--events`, `--fixture`, or `--connection`.
 
 Anything you pass explicitly - a positional or a flag - is taken as-is and never re-prompted; only the gaps are asked. Pass `--yes` (`-y`) to skip prompts and accept defaults - the same thing that happens automatically when input isn't a terminal (pipes, CI), so scripts keep working unchanged. Press Ctrl-C or Esc on any prompt to cancel.

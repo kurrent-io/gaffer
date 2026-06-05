@@ -170,6 +170,23 @@ func maybePromptDevSource(cmd *cobra.Command, proj *engine.Projection, opts *dev
 	return nil
 }
 
+// devConnectedToDB reports whether the resolved dev run used a live
+// KurrentDB source, for the connected_to_db telemetry property. It's not
+// just "was --connection passed": runDev folds a --fixture (or an
+// interactively-picked one) into opts.Events, so a live run is one with
+// no fixture/events file in play and a connection that resolves (flag or
+// gaffer.toml). opts.Fixture is checked too because a failed fixture
+// lookup leaves opts.Fixture set while opts.Events stays empty - that's a
+// fixture invocation, not live. Falls back to the flag when the
+// projection didn't load (proj is nil), where opts isn't fully resolved.
+func devConnectedToDB(opts *devOpts, proj *engine.Projection) bool {
+	if proj == nil || proj.Config == nil {
+		return opts.Connection != ""
+	}
+	return opts.Events == "" && opts.Fixture == "" &&
+		resolveConnection(opts.Connection, proj.Config) != ""
+}
+
 // runDevWithDevTx is the cobra wrapper for the non-debug path:
 // opens a DevTx, calls runDev, drains the dev-side setters that
 // are knowable here. Defer-direct per the Tx contract.
@@ -189,20 +206,12 @@ func runDevWithDevTx(cmd *cobra.Command, args []string, opts *devOpts) error {
 		onConnected:       tx.SetDBVersion,
 		onDiagnostic:      diagTracker.Record,
 	})
-	// connected_to_db reflects whether the resolved source was live, not
-	// just whether --connection was passed: runDev folds a --fixture (or an
-	// interactively-picked one) into opts.Events, so an empty opts.Events
-	// plus a resolvable connection (flag or gaffer.toml) means a live run.
-	// Computed after runDev so the interactive "live" choice counts. Falls
-	// back to the flag when the projection didn't load (proj is nil).
-	connectedToDB := opts.Connection != ""
 	if proj != nil && proj.Config != nil {
-		connectedToDB = opts.Events == "" && resolveConnection(opts.Connection, proj.Config) != ""
 		tx.SetManifestFeaturesUsed(telemetry.ManifestFeaturesOf(proj.Config))
 		tx.SetProjectionCount(proj.Config.ProjectionCount())
 		tx.SetFixtureCount(proj.Config.FixtureCount())
 	}
-	tx.SetConnectedToDB(connectedToDB)
+	tx.SetConnectedToDB(devConnectedToDB(opts, proj))
 	if seen := tracker.Sorted(); len(seen) > 0 {
 		tx.SetProjectionErrorsSeen(seen)
 	}

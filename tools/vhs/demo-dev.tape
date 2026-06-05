@@ -23,6 +23,13 @@ Set Padding 20
 Set TypingSpeed 50ms
 Set Theme "Catppuccin Mocha"
 
+# Clean, consistent prompt across all demo recordings.
+Hide
+Type "export PS1='$ '"
+Enter
+Ctrl+L
+Show
+
 Type "gaffer info order-count"
 Enter
 Sleep 2500ms

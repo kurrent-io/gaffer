@@ -99,6 +99,22 @@ func TestSourceKind(t *testing.T) {
 	}
 }
 
+func TestPartitionOptionsFor(t *testing.T) {
+	// A single stream can't use per-stream partitioning, so only "none"
+	// is offered; every other source gets both.
+	streamOpts := partitionOptionsFor("stream:orders")
+	if len(streamOpts) != 1 || streamOpts[0].Value != "none" {
+		t.Errorf("stream source: got %+v, want only none", streamOpts)
+	}
+
+	for _, src := range []string{"all", "category:order"} {
+		opts := partitionOptionsFor(src)
+		if len(opts) != 2 {
+			t.Errorf("%s: got %d options, want none + per-stream", src, len(opts))
+		}
+	}
+}
+
 func TestValidateScaffoldPath(t *testing.T) {
 	if err := validateScaffoldPath("projections/order.js"); err != nil {
 		t.Errorf("supported extension should validate, got %v", err)

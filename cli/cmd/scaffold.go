@@ -110,14 +110,19 @@ func promptScaffoldOptions(cmd *cobra.Command, opts *scaffoldOpts) error {
 	}
 
 	if !cmd.Flags().Changed("partition") {
-		part, err := prompt.Select("Partitioning", []prompt.Option{
-			{Label: "None", Value: "none"},
-			{Label: "Per stream", Value: "per-stream"},
-		}, opts.Partition)
-		if err != nil {
-			return err
+		// Filter on the chosen source: per-stream partitioning is invalid
+		// with a single stream, so don't offer it. With only "none" left
+		// there's nothing to ask.
+		partitionOpts := partitionOptionsFor(opts.Source)
+		if len(partitionOpts) == 1 {
+			opts.Partition = partitionOpts[0].Value
+		} else {
+			part, err := prompt.Select("Partitioning", partitionOpts, opts.Partition)
+			if err != nil {
+				return err
+			}
+			opts.Partition = part
 		}
-		opts.Partition = part
 	}
 
 	if !cmd.Flags().Changed("emit") {
@@ -160,6 +165,18 @@ func promptSource(opts *scaffoldOpts) error {
 	}
 	opts.Source = kind + ":" + strings.TrimSpace(name)
 	return nil
+}
+
+// partitionOptionsFor returns the partition choices valid for source.
+// A single-stream source (fromStream) can't use per-stream partitioning
+// (foreachStream), so only "none" is offered; every other source gets
+// both. Mirrors the rule GenerateSource enforces.
+func partitionOptionsFor(source string) []prompt.Option {
+	opts := []prompt.Option{{Label: "None", Value: "none"}}
+	if sourceKind(source) != "stream" {
+		opts = append(opts, prompt.Option{Label: "Per stream", Value: "per-stream"})
+	}
+	return opts
 }
 
 // sourceKind maps a source value back to its prompt option so an

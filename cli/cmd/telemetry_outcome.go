@@ -8,6 +8,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
+	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
@@ -20,9 +21,11 @@ import (
 //   - dev: err + tracker
 //   - debug: err + tracker + dapProtocolErr
 //
-// internal_error / user_interrupt outcomes don't pass through this
-// helper - they're set by the global panic-recover handler in main
-// and the Tx outcome cascade respectively.
+// internal_error doesn't pass through this helper - it's set by the
+// global panic-recover handler in main. user_interrupt arrives two
+// ways: dev's Tx outcome cascade (SIGINT mid-run), and one-shot
+// commands whose interactive prompt was aborted, which surfaces as
+// prompt.ErrCancelled and classifies here via classifyStructural.
 type outcomeInputs struct {
 	err            error
 	tracker        *projErrTracker
@@ -148,6 +151,8 @@ func oneShotDefer(retErr *error, emit func(telemetry.Outcome)) {
 // (e.g. projection-error mapping) or to user_error.
 func classifyStructural(err error) (telemetry.Outcome, bool) {
 	switch {
+	case errors.Is(err, prompt.ErrCancelled):
+		return telemetry.OutcomeUserInterrupt, true
 	case errors.Is(err, project.ErrNotInProject):
 		return telemetry.OutcomeManifestNotFound, true
 	case errors.Is(err, config.ErrManifestParse):

@@ -3,7 +3,7 @@
 #   vhs ../tools/vhs/demo-init.tape
 # or via the "Regenerate demo recordings" workflow on GitHub.
 
-Output ../assets/demo-init.gif
+Output ../docs/public/demo-init.gif
 
 # Suppress the first-run telemetry disclosure banner so it doesn't
 # appear in the recording.

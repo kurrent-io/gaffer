@@ -88,11 +88,14 @@ jobs:
           commit-message: Regenerate demo recordings
           title: Regenerate demo recordings
           body: |
-            Regenerated demo recordings under `assets/` via the
+            Regenerated demo recordings (under `assets/` and `docs/public/`)
+            via the
             [Regenerate demo recordings](https://github.com/${{ github.repository }}/actions/workflows/regen-demos.yml)
             workflow.
 
             Review the rendered GIFs (not the binary diffs) before merging.
           branch: regen-demos
-          add-paths: assets/*.gif
+          add-paths: |
+            assets/*.gif
+            docs/public/*.gif
           labels: documentation

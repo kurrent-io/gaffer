@@ -3,7 +3,7 @@
 #   vhs ../tools/vhs/demo-scaffold.tape
 # or via the "Regenerate demo recordings" workflow on GitHub.
 
-Output ../assets/demo-scaffold.gif
+Output ../docs/public/demo-scaffold.gif
 
 Env GAFFER_TELEMETRY_OPTOUT "1"
 # Don't let the once-a-day "update available" notice appear mid-recording.

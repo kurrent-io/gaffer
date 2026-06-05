@@ -76,7 +76,11 @@ jobs:
       # / Show in the tape file didn't suppress the prompt + command).
       - name: Regenerate demo recordings
         working-directory: demo
-        run: vhs ../tools/vhs/demo-dev.tape
+        run: |
+          for tape in ../tools/vhs/*.tape; do
+            echo "Recording $tape"
+            vhs "$tape"
+          done
 
       - name: Open PR with updated recordings
         uses: peter-evans/create-pull-request@v6
@@ -84,11 +88,14 @@ jobs:
           commit-message: Regenerate demo recordings
           title: Regenerate demo recordings
           body: |
-            Regenerated demo recordings under `assets/` via the
+            Regenerated demo recordings (under `assets/` and `docs/public/`)
+            via the
             [Regenerate demo recordings](https://github.com/${{ github.repository }}/actions/workflows/regen-demos.yml)
             workflow.
 
             Review the rendered GIFs (not the binary diffs) before merging.
           branch: regen-demos
-          add-paths: assets/*.gif
+          add-paths: |
+            assets/*.gif
+            docs/public/*.gif
           labels: documentation

@@ -30,6 +30,8 @@ On a terminal, `gaffer init`, `gaffer scaffold`, and `gaffer dev` prompt for any
 
 Anything you pass explicitly - a positional or a flag - is taken as-is and never re-prompted; only the gaps are asked. Pass `--yes` (`-y`) to skip prompts and accept defaults - the same thing that happens automatically when input isn't a terminal (pipes, CI), so scripts keep working unchanged. Press Ctrl-C or Esc on any prompt to cancel.
 
+![gaffer scaffold prompting for source, name, and emit](/demo-scaffold.gif)
+
 ## Project configuration
 
 Each gaffer project has a `gaffer.toml` at its root, created by `gaffer init`. It declares the projections in the project, their entry files, and any named fixtures:

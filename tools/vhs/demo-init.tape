@@ -1,39 +1,42 @@
-# Demo recording for cli/README.md.
+# Demo recording for the docs (getting started / interactive mode).
 # Regenerate from the demo/ directory with
-#   vhs ../tools/vhs/demo-dev.tape
+#   vhs ../tools/vhs/demo-init.tape
 # or via the "Regenerate demo recordings" workflow on GitHub.
 
-Output ../assets/demo-dev.gif
+Output ../docs/public/demo-init.gif
 
 # Suppress the first-run telemetry disclosure banner so it doesn't
-# appear in the recording. CI runs in a fresh environment each time,
-# so without this the banner shows on every regen.
+# appear in the recording.
 Env GAFFER_TELEMETRY_OPTOUT "1"
 # Don't let the once-a-day "update available" notice appear mid-recording.
 Env GAFFER_NO_UPDATE_CHECK "1"
 # Force colour: under ttyd in CI the charm libs detect no colour support
-# and render output unstyled, so force a truecolor profile.
+# and render the prompts unstyled, so force a truecolor profile.
 Env CLICOLOR_FORCE "1"
 Env COLORTERM "truecolor"
 
 Set FontSize 14
 Set Width 1200
-Set Height 700
+Set Height 600
 Set Padding 20
 Set TypingSpeed 50ms
 Set Theme "Catppuccin Mocha"
 
-# Clean, consistent prompt across all demo recordings.
+# `gaffer init` refuses to run where a gaffer.toml already exists (the
+# demo/ dir has one), so record in a fresh temp directory with a clean
+# prompt. Hidden so only the gaffer interaction shows.
 Hide
-Type "export PS1='$ '"
+Type "export PS1='$ ' && cd $(mktemp -d)"
 Enter
 Ctrl+L
 Show
 
-Type "gaffer info order-count"
+Type "gaffer init"
 Enter
-Sleep 2500ms
-
-Type "gaffer dev order-count --fixture happy"
+Sleep 1.5s
+Down
+Sleep 800ms
+Up
+Sleep 1s
 Enter
-Sleep 4s
+Sleep 2.5s

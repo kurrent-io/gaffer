@@ -81,13 +81,13 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.x"
 
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
 
       - name: Publish runtime (NativeAOT, ${{ matrix.rid }})
         run: just runtime publish ${{ matrix.rid }}
@@ -95,7 +95,7 @@ jobs:
       - name: Copy binary into native package
         run: just bindings::js-${{ matrix.platform }}::build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: runtime-native-${{ matrix.platform }}
           path: bindings/js/native/${{ matrix.platform }}/gaffer.${{ matrix.ext }}
@@ -111,13 +111,11 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.2.1
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -128,10 +126,11 @@ jobs:
 
       - name: Download runtime native artifacts
         # Each artifact extracts to artifacts/<artifact-name>/ - the
-        # upload step uses a single-file path which v4 strips down to
-        # just the basename, so we can't rely on the directory
+        # upload step uses a single-file path, which upload-artifact
+        # strips to just the basename (common-ancestor stripping, stable
+        # across action majors), so we can't rely on the directory
         # structure inside the artifact (that's the 0.1.0 publish bug).
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: runtime-native-*
           path: artifacts
@@ -187,18 +186,18 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.x"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.work
           cache-dependency-path: cli/go.sum
 
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
 
       - name: Publish runtime (NativeAOT, ${{ matrix.rid }})
         run: just runtime publish ${{ matrix.rid }}
@@ -221,7 +220,7 @@ jobs:
       - name: Stage CLI + runtime into native package
         run: just cli::${{ matrix.platform }}::build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cli-native-${{ matrix.platform }}
           path: |
@@ -239,13 +238,11 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.2.1
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -256,10 +253,11 @@ jobs:
 
       - name: Download CLI native artifacts
         # Each artifact extracts to artifacts/<artifact-name>/ - the
-        # upload step's multi-line path is stripped by v4 to the
-        # common parent, so files inside each artifact are flat
-        # (gaffer + Gaffer.Runtime.<ext>, no directory).
-        uses: actions/download-artifact@v4
+        # upload step's multi-line path is stripped by upload-artifact
+        # to the common parent (stable across action majors), so files
+        # inside each artifact are flat (gaffer + Gaffer.Runtime.<ext>,
+        # no directory).
+        uses: actions/download-artifact@v8
         with:
           pattern: cli-native-*
           path: artifacts
@@ -298,13 +296,11 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.2.1
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -330,18 +326,16 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.2.1
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
 
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -362,18 +356,16 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.2.1
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
 
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -388,13 +380,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.2.1
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -425,7 +415,7 @@ jobs:
 
       - name: Upload .vsix artifact (dry-run validation)
         if: ${{ inputs.dry_run }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gaffer-vscode-extension
           path: ${{ steps.vsix.outputs.path }}

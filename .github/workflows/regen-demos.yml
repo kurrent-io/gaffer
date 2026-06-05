@@ -76,7 +76,11 @@ jobs:
       # / Show in the tape file didn't suppress the prompt + command).
       - name: Regenerate demo recordings
         working-directory: demo
-        run: vhs ../tools/vhs/demo-dev.tape
+        run: |
+          for tape in ../tools/vhs/*.tape; do
+            echo "Recording $tape"
+            vhs "$tape"
+          done
 
       - name: Open PR with updated recordings
         uses: peter-evans/create-pull-request@v6

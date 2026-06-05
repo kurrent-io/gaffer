@@ -15,6 +15,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/pathutil"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
+	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 	"github.com/kurrent-io/gaffer/cli/internal/scaffold"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
@@ -24,6 +25,7 @@ type scaffoldOpts struct {
 	Source    string
 	Partition string
 	Emit      bool
+	Yes       bool
 }
 
 func newScaffoldCmd() *cobra.Command {
@@ -35,24 +37,26 @@ func newScaffoldCmd() *cobra.Command {
 		Long: "Create a projection at <path>. The path is resolved relative to the " +
 			"current directory and must end in a supported extension (" +
 			strings.Join(scaffold.ListExtensions(), ", ") + "). " +
-			"The projection's gaffer.toml key defaults to the file's basename; pass --name to override.",
+			"The projection's gaffer.toml key defaults to the file's basename; pass --name to override. " +
+			"Run without <path> on a terminal to be prompted for the path and options.",
 		Example: "gaffer scaffold ./projections/order.js",
-		Args:    exactArgs(1),
+		Args:    maxArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
 			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
 				telemetry.EmitScaffold(cmd.Context(), telemetry.ScaffoldCommandInvokedProperties{Outcome: o})
 			})
-			return runScaffold(args[0], opts)
+			return runScaffold(cmd, args, opts)
 		},
 	}
 	cmd.Flags().StringVar(&opts.Name, "name", "", "Projection name in gaffer.toml (defaults to the file's basename)")
 	cmd.Flags().StringVar(&opts.Source, "source", "all", "Event source (all, stream:name, category:name)")
 	cmd.Flags().StringVar(&opts.Partition, "partition", "none", "Partitioning (none, per-stream)")
 	cmd.Flags().BoolVar(&opts.Emit, "emit", false, "Enable emit/linkTo")
+	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip prompts and accept defaults")
 	return cmd
 }
 
-func runScaffold(pathArg string, opts *scaffoldOpts) error {
+func runScaffold(cmd *cobra.Command, args []string, opts *scaffoldOpts) error {
 	root := project.FindRoot()
 	if root == "" {
 		return project.ErrNotInProject
@@ -61,6 +65,21 @@ func runScaffold(pathArg string, opts *scaffoldOpts) error {
 	cfg, err := config.Load(project.ConfigPath(root))
 	if err != nil {
 		return err
+	}
+
+	pathArg := ""
+	if len(args) > 0 {
+		pathArg = args[0]
+	}
+
+	if prompt.Enabled(opts.Yes) {
+		if err := promptScaffold(cmd, &pathArg, opts); err != nil {
+			return err
+		}
+	} else if pathArg == "" {
+		// Non-interactive with no path: the positional is required.
+		// Same message exactArgs(1) gave before scaffold went interactive.
+		return missingArgErr(cmd)
 	}
 
 	relPath, err := resolveScaffoldRelPath(pathArg, root)
@@ -77,6 +96,113 @@ func runScaffold(pathArg string, opts *scaffoldOpts) error {
 	}
 
 	fmt.Printf("Created %s\n", result.RelPath)
+	return nil
+}
+
+// promptScaffold fills the gaps the user didn't pass: the path (when the
+// positional was omitted) and any of source / partition / emit not set
+// via flags. It ends with a summary confirm; declining returns
+// prompt.ErrCancelled. opts is mutated in place.
+func promptScaffold(cmd *cobra.Command, pathArg *string, opts *scaffoldOpts) error {
+	if *pathArg == "" {
+		p, err := prompt.Input("Projection file path", "", validateScaffoldPath)
+		if err != nil {
+			return err
+		}
+		*pathArg = strings.TrimSpace(p)
+	}
+
+	if !cmd.Flags().Changed("source") {
+		if err := promptSource(opts); err != nil {
+			return err
+		}
+	}
+
+	if !cmd.Flags().Changed("partition") {
+		part, err := prompt.Select("Partitioning", []prompt.Option{
+			{Label: "None", Value: "none"},
+			{Label: "Per stream", Value: "per-stream"},
+		}, opts.Partition)
+		if err != nil {
+			return err
+		}
+		opts.Partition = part
+	}
+
+	if !cmd.Flags().Changed("emit") {
+		emit, err := prompt.Confirm("Enable emit/linkTo?", opts.Emit)
+		if err != nil {
+			return err
+		}
+		opts.Emit = emit
+	}
+
+	ok, err := prompt.Confirm(fmt.Sprintf(
+		"Create projection %s (source=%s, partition=%s, emit=%t)?",
+		*pathArg, opts.Source, opts.Partition, opts.Emit), true)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return prompt.ErrCancelled
+	}
+	return nil
+}
+
+// promptSource asks for the event source. "all" needs no follow-up;
+// stream / category each take a name that's folded into the
+// "stream:<name>" / "category:<name>" form scaffold.GenerateSource
+// expects.
+func promptSource(opts *scaffoldOpts) error {
+	kind, err := prompt.Select("Event source", []prompt.Option{
+		{Label: "All events", Value: "all"},
+		{Label: "A single stream", Value: "stream"},
+		{Label: "A category", Value: "category"},
+	}, sourceKind(opts.Source))
+	if err != nil {
+		return err
+	}
+	if kind == "all" {
+		opts.Source = "all"
+		return nil
+	}
+	name, err := prompt.Input(kind+" name", "", func(s string) error {
+		if strings.TrimSpace(s) == "" {
+			return fmt.Errorf("a %s name is required", kind)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	opts.Source = kind + ":" + strings.TrimSpace(name)
+	return nil
+}
+
+// sourceKind maps a source value back to its prompt option so an
+// explicit default (or a --source not passed) pre-highlights sensibly.
+func sourceKind(source string) string {
+	switch {
+	case strings.HasPrefix(source, "stream:"):
+		return "stream"
+	case strings.HasPrefix(source, "category:"):
+		return "category"
+	default:
+		return "all"
+	}
+}
+
+// validateScaffoldPath gives immediate feedback in the prompt on the one
+// rule that's cheap to check here - the extension allowlist. Path
+// resolution and the no-escape / collision checks still run downstream in
+// resolveScaffoldRelPath and scaffold.Scaffold.
+func validateScaffoldPath(p string) error {
+	if strings.TrimSpace(p) == "" {
+		return fmt.Errorf("a path is required")
+	}
+	if !scaffold.IsSupported(filepath.Ext(p)) {
+		return fmt.Errorf("path must end in %s", strings.Join(scaffold.ListExtensions(), ", "))
+	}
 	return nil
 }
 

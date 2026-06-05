@@ -15,10 +15,13 @@ import (
 var requiredArgCommands = []struct {
 	args        []string // path to the command under root
 	placeholder string   // expected positional placeholder in the Use line
+	prompts     bool     // omitting the positional prompts on a TTY, so it's
+	// required only non-interactively (maxArgs + missingArgErr from RunE)
+	// rather than rejected at the Args layer (exactArgs).
 }{
-	{[]string{"scaffold"}, "<path>"},
-	{[]string{"dev"}, "<projection>"},
-	{[]string{"info"}, "<projection>"},
+	{[]string{"scaffold"}, "<path>", true},
+	{[]string{"dev"}, "<projection>", false},
+	{[]string{"info"}, "<projection>", false},
 }
 
 func TestExactArgs_MissingArgNamesArgumentAndExample(t *testing.T) {
@@ -26,7 +29,20 @@ func TestExactArgs_MissingArgNamesArgumentAndExample(t *testing.T) {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			cmd := findLeaf(t, NewRootCmd(), tc.args)
 
-			err := cmd.Args(cmd, nil)
+			// Where the missing-positional error is raised differs:
+			// exactArgs commands reject at the Args layer; prompt commands
+			// allow zero args there (so a bare TTY invocation can prompt)
+			// and raise missingArgErr from RunE on the non-interactive
+			// path. Both must produce the same styled message.
+			var err error
+			if tc.prompts {
+				if argsErr := cmd.Args(cmd, nil); argsErr != nil {
+					t.Fatalf("prompt command should allow zero args at the Args layer, got %v", argsErr)
+				}
+				err = missingArgErr(cmd)
+			} else {
+				err = cmd.Args(cmd, nil)
+			}
 			if err == nil {
 				t.Fatal("expected an error for zero args")
 			}

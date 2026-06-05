@@ -83,3 +83,30 @@ func TestResolveScaffoldRelPath_OutsideRoot(t *testing.T) {
 		t.Errorf("expected 'outside the project root', got: %v", err)
 	}
 }
+
+func TestSourceKind(t *testing.T) {
+	cases := map[string]string{
+		"all":            "all",
+		"stream:orders":  "stream",
+		"category:order": "category",
+		"":               "all",
+		"something-else": "all",
+	}
+	for in, want := range cases {
+		if got := sourceKind(in); got != want {
+			t.Errorf("sourceKind(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestValidateScaffoldPath(t *testing.T) {
+	if err := validateScaffoldPath("projections/order.js"); err != nil {
+		t.Errorf("supported extension should validate, got %v", err)
+	}
+	if err := validateScaffoldPath(""); err == nil {
+		t.Error("empty path should be rejected")
+	}
+	if err := validateScaffoldPath("order.txt"); err == nil {
+		t.Error("unsupported extension should be rejected")
+	}
+}

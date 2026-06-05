@@ -1,5 +1,11 @@
 # gaffer-vscode
 
+## 0.1.5
+
+### Patch Changes
+
+- b2b05f1: Scaffold from the command palette now skips the partitioning step for a single-stream source, where per-stream partitioning isn't valid, matching the CLI.
+
 ## 0.1.4
 
 ### Patch Changes

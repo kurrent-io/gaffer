@@ -20,7 +20,7 @@ var requiredArgCommands = []struct {
 	// rather than rejected at the Args layer (exactArgs).
 }{
 	{[]string{"scaffold"}, "<path>", true},
-	{[]string{"dev"}, "<projection>", false},
+	{[]string{"dev"}, "<projection>", true},
 	{[]string{"info"}, "<projection>", false},
 }
 

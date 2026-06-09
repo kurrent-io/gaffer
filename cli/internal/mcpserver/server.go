@@ -369,10 +369,23 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) connectToKurrentDB(cfg *config.Config, root string) (*kurrentdb.Client, error) {
-	if cfg.Connection == "" {
-		return nil, fmt.Errorf("no connection configured in gaffer.toml")
+	connStr, err := mcpConnection(cfg)
+	if err != nil {
+		return nil, err
 	}
-	return engine.Connect(cfg.Connection, root)
+	return engine.Connect(connStr, root)
+}
+
+// mcpConnection resolves the connection the mcp server dials. It uses
+// the default env; a project with no default env (or none at all)
+// can't be reached over the server-touching tools. Per-call env
+// selection is layered on later (the tools gain an optional env arg).
+func mcpConnection(cfg *config.Config) (string, error) {
+	env, err := cfg.ResolveEnv("")
+	if err != nil {
+		return "", err
+	}
+	return env.Connection, nil
 }
 
 func (s *Server) closeSession() {

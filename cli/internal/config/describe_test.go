@@ -22,11 +22,12 @@ func describeFile(t *testing.T, content string) string {
 
 func TestDescribe_HappyPath(t *testing.T) {
 	path := describeFile(t, `
-engine_version = 2
+quirks_version = "26.1.0"
 
 [[projection]]
 name = "checkout"
 entry = "checkout.js"
+engine_version = 2
 fixtures.happy = "fixtures/orders.json"
 fixtures.full = "fixtures/orders-full.json"
 `)
@@ -278,14 +279,19 @@ func TestDescribe_ParseErrorBecomesFileLevelDiagnostic(t *testing.T) {
 	}
 }
 
-func TestDescribe_PopulatesConnectionFromTopLevel(t *testing.T) {
-	// Connection is project-level (top of toml). The LSP server
-	// surfaces it via gaffer/projectionDetails so the editor can
-	// gate the "live" run option in the picker.
-	path := describeFile(t, `connection = "esdb://localhost:2113"
+func TestDescribe_PopulatesConnectionFromDefaultEnv(t *testing.T) {
+	// Connection comes from the default env (the [env.*] block with
+	// default = true). The LSP server surfaces it via
+	// gaffer/projectionDetails so the editor can gate the "live" run
+	// option in the picker.
+	path := describeFile(t, `[env.local]
+connection = "esdb://localhost:2113"
+default = true
+
 [[projection]]
 name = "p"
 entry = "p.js"
+engine_version = 2
 `)
 	desc, err := Describe(context.Background(), path)
 	if err != nil {
@@ -293,6 +299,27 @@ entry = "p.js"
 	}
 	if desc.Connection != "esdb://localhost:2113" {
 		t.Errorf("Connection: got %q want %q", desc.Connection, "esdb://localhost:2113")
+	}
+}
+
+func TestDescribe_OmitsConnectionWhenNoDefaultEnv(t *testing.T) {
+	// An env without default = true yields no default connection;
+	// Description.Connection stays empty so the editor gates the live
+	// option.
+	path := describeFile(t, `[env.prod]
+connection = "esdb://prod:2113"
+
+[[projection]]
+name = "p"
+entry = "p.js"
+engine_version = 2
+`)
+	desc, err := Describe(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if desc.Connection != "" {
+		t.Errorf("Connection: got %q want empty (no default env)", desc.Connection)
 	}
 }
 
@@ -390,10 +417,11 @@ entry = "p.js"
 }
 
 func TestDescribe_ConfigWithNoProjections(t *testing.T) {
-	// Top-level settings only, no projections. Valid TOML,
-	// nothing to lens. Empty projections + no diagnostics.
-	path := describeFile(t, `engine_version = 2
+	// Env-only config, no projections. Valid TOML, nothing to lens.
+	// Empty projections + no diagnostics.
+	path := describeFile(t, `[env.local]
 connection = "kurrentdb://localhost:2113"
+default = true
 `)
 	desc, err := Describe(context.Background(), path)
 	if err != nil {

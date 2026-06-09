@@ -99,9 +99,15 @@ func TestBuildManifest_ScaffoldFlags(t *testing.T) {
 }
 
 func TestBuildManifest_InitFlags(t *testing.T) {
+	// init is non-interactive and takes no command-specific flags: it
+	// writes a commented starter template with no active env or
+	// projection.
 	flags := commandFlags(t, manifestCommands(t), "init")
-	if !flags["yes"] {
-		t.Error("expected flag \"yes\" on init command")
+	if flags["yes"] {
+		t.Error("init command should not expose a \"yes\" flag")
+	}
+	if flags["engine-version"] {
+		t.Error("init command should not expose an \"engine-version\" flag")
 	}
 }
 

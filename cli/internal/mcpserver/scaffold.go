@@ -8,6 +8,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/scaffold"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -51,7 +52,7 @@ func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input
 
 	// scaffold.Scaffold owns path validation and name defaulting;
 	// the handler just routes the JSON shape into the call.
-	result, err := scaffold.Scaffold(root, cfg, input.Name, input.Path, source, partition, input.Emit)
+	result, err := scaffold.Scaffold(root, cfg, input.Name, input.Path, source, partition, input.Emit, config.DefaultEngineVersion)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}

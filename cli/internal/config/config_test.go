@@ -11,11 +11,10 @@ func TestLoadValidConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
-engine_version = 2
-
 [[projection]]
 name = "cart-count"
 entry = "projections/cart-count.js"
+engine_version = 2
 
 [[projection]]
 name = "user-stats"
@@ -67,6 +66,7 @@ func TestLoadMissingName(t *testing.T) {
 	content := `
 [[projection]]
 entry = "projections/test.js"
+engine_version = 2
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -84,6 +84,7 @@ func TestLoadMissingEntry(t *testing.T) {
 	content := `
 [[projection]]
 name = "test"
+engine_version = 2
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -123,10 +124,12 @@ func TestLoadDuplicateNames(t *testing.T) {
 [[projection]]
 name = "test"
 entry = "a.js"
+engine_version = 2
 
 [[projection]]
 name = "test"
 entry = "b.js"
+engine_version = 2
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -145,6 +148,7 @@ func TestLoadPathTraversal(t *testing.T) {
 [[projection]]
 name = "evil"
 entry = "../../etc/passwd"
+engine_version = 2
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -174,21 +178,21 @@ func TestFindProjection(t *testing.T) {
 }
 
 func TestEffectiveEngineVersion(t *testing.T) {
-	cfg := &Config{EngineVersion: ptr(2)}
-	p := Projection{Name: "a", Entry: "a.js"}
+	cfg := &Config{}
+
+	p := Projection{Name: "a", Entry: "a.js", EngineVersion: ptr(2)}
 	if got := cfg.EffectiveEngineVersion(&p); got != 2 {
-		t.Fatalf("expected top-level 2, got %d", got)
+		t.Fatalf("expected per-projection 2, got %d", got)
 	}
 
 	p.EngineVersion = ptr(1)
 	if got := cfg.EffectiveEngineVersion(&p); got != 1 {
-		t.Fatalf("expected per-projection override 1, got %d", got)
+		t.Fatalf("expected per-projection 1, got %d", got)
 	}
 
-	emptyCfg := &Config{}
-	emptyP := Projection{Name: "b", Entry: "b.js"}
-	if got := emptyCfg.EffectiveEngineVersion(&emptyP); got != 0 {
-		t.Fatalf("expected 0 when neither set, got %d", got)
+	unset := Projection{Name: "b", Entry: "b.js"}
+	if got := cfg.EffectiveEngineVersion(&unset); got != 0 {
+		t.Fatalf("expected 0 when projection has no engine_version, got %d", got)
 	}
 }
 
@@ -234,12 +238,12 @@ func TestLoadValidatesQuirksVersion(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
-engine_version = 2
 quirks_version = "not-a-version"
 
 [[projection]]
 name = "a"
 entry = "a.js"
+engine_version = 2
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -253,11 +257,10 @@ func TestLoadValidatesProjectionQuirksVersion(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
-engine_version = 2
-
 [[projection]]
 name = "a"
 entry = "a.js"
+engine_version = 2
 quirks_version = "26.1"
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -273,11 +276,10 @@ func TestLoadValidatesEnvQuirksVersion(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
-engine_version = 2
-
 [[projection]]
 name = "a"
 entry = "a.js"
+engine_version = 2
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -295,13 +297,13 @@ func TestLoadGlobalTimeouts(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
-engine_version = 2
 compilation_timeout = 1000
 execution_timeout = 500
 
 [[projection]]
 name = "test"
 entry = "test.js"
+engine_version = 2
 execution_timeout = 2000
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -328,11 +330,10 @@ func TestLoadFixtures(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
-engine_version = 2
-
 [[projection]]
 name = "order-count"
 entry = "projections/order-count.js"
+engine_version = 2
 fixtures.happy-path = "fixtures/happy.json"
 fixtures.edge-cases = "fixtures/edge.json"
 `
@@ -371,11 +372,10 @@ func TestLoadFixtures_DuplicateName(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
-engine_version = 2
-
 [[projection]]
 name = "p"
 entry = "p.js"
+engine_version = 2
 fixtures.dup = "a.json"
 fixtures.dup = "b.json"
 `
@@ -394,10 +394,10 @@ func TestLoadFixtures_EmptyName(t *testing.T) {
 	// lookup would silently treat this as nameless. Reject explicitly.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
-	content := `engine_version = 2
-[[projection]]
+	content := `[[projection]]
 name = "p"
 entry = "p.js"
+engine_version = 2
 fixtures."" = "x.json"
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -412,10 +412,10 @@ fixtures."" = "x.json"
 func TestLoadFixtures_EmptyPath(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
-	content := `engine_version = 2
-[[projection]]
+	content := `[[projection]]
 name = "p"
 entry = "p.js"
+engine_version = 2
 fixtures.empty = ""
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -433,10 +433,10 @@ func TestLoadFixtures_InternalDotDotResolvesInsideRoot(t *testing.T) {
 	// whose Clean form starts with ".." are escapes.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
-	content := `engine_version = 2
-[[projection]]
+	content := `[[projection]]
 name = "p"
 entry = "p.js"
+engine_version = 2
 fixtures.happy = "fixtures/sub/../happy.json"
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -451,11 +451,10 @@ func TestLoadFixtures_PathEscape(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
-engine_version = 2
-
 [[projection]]
 name = "p"
 entry = "p.js"
+engine_version = 2
 fixtures.evil = "../outside.json"
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -474,11 +473,10 @@ func TestLoadFixtures_NameMatchesProjection(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
-engine_version = 2
-
 [[projection]]
 name = "happy-path"
 entry = "p.js"
+engine_version = 2
 fixtures.happy-path = "fixtures/happy.json"
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -555,11 +553,11 @@ func TestSaveAndReload_Fixtures(t *testing.T) {
 	path := filepath.Join(dir, "gaffer.toml")
 
 	cfg := &Config{
-		EngineVersion: ptr(2),
 		Projection: []Projection{
 			{
-				Name:  "checkout",
-				Entry: "checkout.js",
+				Name:          "checkout",
+				Entry:         "checkout.js",
+				EngineVersion: ptr(2),
 				Fixtures: map[string]string{
 					"happy": "fixtures/orders.json",
 					"full":  "fixtures/orders-full.json",
@@ -615,8 +613,8 @@ func TestProjectionCount(t *testing.T) {
 
 // TestMarshalOmitsUnsetEngineVersion guards UI-1635: with EngineVersion
 // as a plain int, omitempty did not suppress the zero value and every
-// save wrote a spurious `engine_version = 0` line at the top level and
-// on every projection. As *int, an unset version marshals to nothing.
+// save wrote a spurious `engine_version = 0` line on every projection.
+// As *int, an unset version marshals to nothing.
 func TestMarshalOmitsUnsetEngineVersion(t *testing.T) {
 	cfg := &Config{
 		Projection: []Projection{{Name: "a", Entry: "a.js"}},
@@ -639,11 +637,10 @@ func TestValidateRejectsZeroEngineVersion(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
-engine_version = 0
-
 [[projection]]
 name = "test"
 entry = "test.js"
+engine_version = 0
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -654,6 +651,232 @@ entry = "test.js"
 	}
 	if !strings.Contains(err.Error(), "must be 1 or 2, got 0") {
 		t.Errorf("expected \"must be 1 or 2, got 0\", got %q", err.Error())
+	}
+}
+
+func TestLoadTrackEmittedStreamsRequiresV1(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+[[projection]]
+name = "p"
+entry = "p.js"
+engine_version = 2
+track_emitted_streams = true
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for track_emitted_streams on engine_version 2")
+	}
+	if !strings.Contains(err.Error(), "track_emitted_streams is only valid with engine_version 1") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadTrackEmittedStreamsAllowedOnV1(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+[[projection]]
+name = "p"
+entry = "p.js"
+engine_version = 1
+track_emitted_streams = true
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if cfg.Projection[0].TrackEmittedStreams == nil || !*cfg.Projection[0].TrackEmittedStreams {
+		t.Fatalf("expected track_emitted_streams true, got %v", cfg.Projection[0].TrackEmittedStreams)
+	}
+}
+
+func TestLoadEnvMissingConnection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+[env.local]
+default = true
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for env with empty connection")
+	}
+	if !strings.Contains(err.Error(), `env "local" missing required field: connection`) {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadEnvMultipleDefaults(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+[env.local]
+connection = "esdb://localhost:2113?tls=false"
+default = true
+
+[env.prod]
+connection = "esdb://prod:2113"
+default = true
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for two default envs")
+	}
+	if !strings.Contains(err.Error(), "only one env may set default = true") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadValidMultiEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+[env.local]
+connection = "esdb://localhost:2113?tls=false"
+default = true
+
+[env.prod]
+connection = "esdb://prod:2113"
+
+[[projection]]
+name = "p"
+entry = "p.js"
+engine_version = 2
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(cfg.Env) != 2 {
+		t.Fatalf("expected 2 envs, got %d", len(cfg.Env))
+	}
+	got := cfg.DefaultEnvConnection()
+	if got != "esdb://localhost:2113?tls=false" {
+		t.Errorf("DefaultEnvConnection() = %q, want local connection", got)
+	}
+	resolved, err := cfg.ResolveEnv("prod")
+	if err != nil {
+		t.Fatalf("ResolveEnv(prod): %v", err)
+	}
+	if resolved.Connection != "esdb://prod:2113" {
+		t.Errorf("ResolveEnv(prod).Connection = %q", resolved.Connection)
+	}
+}
+
+func TestLoadZeroEnvsWithProjections(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+[[projection]]
+name = "p"
+entry = "p.js"
+engine_version = 2
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(cfg.Env) != 0 {
+		t.Fatalf("expected 0 envs, got %d", len(cfg.Env))
+	}
+	if cfg.DefaultEnvConnection() != "" {
+		t.Errorf("expected empty default connection, got %q", cfg.DefaultEnvConnection())
+	}
+}
+
+func TestLoadRejectsRemovedTopLevelConnection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+connection = "esdb://localhost:2113?tls=false"
+
+[[projection]]
+name = "p"
+entry = "p.js"
+engine_version = 2
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected migration error for top-level connection")
+	}
+	if !strings.Contains(err.Error(), "connection is now per-environment") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadRejectsRemovedTopLevelEngineVersion(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+engine_version = 2
+
+[env.local]
+connection = "esdb://localhost:2113?tls=false"
+default = true
+
+[[projection]]
+name = "p"
+entry = "p.js"
+engine_version = 2
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected migration error for top-level engine_version")
+	}
+	if !strings.Contains(err.Error(), "engine_version is now per-projection") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// An old single-env gaffer.toml trips both removed keys at once; the
+// message names both so the user fixes them in one pass.
+func TestLoadReportsAllRemovedTopLevelKeys(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+connection = "esdb://localhost:2113?tls=false"
+engine_version = 2
+
+[[projection]]
+name = "p"
+entry = "p.js"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected migration error")
+	}
+	if !strings.Contains(err.Error(), "connection is now per-environment") ||
+		!strings.Contains(err.Error(), "engine_version is now per-projection") {
+		t.Errorf("expected both keys named, got: %v", err)
 	}
 }
 

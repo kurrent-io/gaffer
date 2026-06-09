@@ -14,7 +14,7 @@ import (
 )
 
 func TestDevConnectedToDB(t *testing.T) {
-	withConn := &engine.Projection{Config: &config.Config{Connection: "kurrentdb://localhost:2113"}}
+	withConn := &engine.Projection{Config: &config.Config{Env: map[string]config.Env{"local": {Connection: "kurrentdb://localhost:2113", Default: true}}}}
 	noConn := &engine.Projection{Config: &config.Config{}}
 
 	cases := []struct {

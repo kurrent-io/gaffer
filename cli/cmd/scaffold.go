@@ -90,7 +90,7 @@ func runScaffold(cmd *cobra.Command, args []string, opts *scaffoldOpts) error {
 	// Name defaulting lives in scaffold.Scaffold so the CLI and the
 	// MCP tool share the rule. Pass through whatever the user gave
 	// us, empty or not.
-	result, err := scaffold.Scaffold(root, cfg, opts.Name, relPath, opts.Source, opts.Partition, opts.Emit)
+	result, err := scaffold.Scaffold(root, cfg, opts.Name, relPath, opts.Source, opts.Partition, opts.Emit, config.DefaultEngineVersion)
 	if err != nil {
 		return err
 	}

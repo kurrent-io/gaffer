@@ -26,26 +26,39 @@ var ErrManifestValidate = errors.New("validate gaffer.toml")
 
 // Config represents a gaffer.toml file.
 type Config struct {
-	Connection         string       `toml:"connection,omitempty"`
-	EngineVersion      *int         `toml:"engine_version,omitempty"`
-	QuirksVersion      string       `toml:"quirks_version,omitempty"`
-	CompilationTimeout *int         `toml:"compilation_timeout,omitempty"`
-	ExecutionTimeout   *int         `toml:"execution_timeout,omitempty"`
-	Projection         []Projection `toml:"projection"`
+	QuirksVersion      string         `toml:"quirks_version,omitempty"`
+	CompilationTimeout *int           `toml:"compilation_timeout,omitempty"`
+	ExecutionTimeout   *int           `toml:"execution_timeout,omitempty"`
+	Env                map[string]Env `toml:"env,omitempty"`
+	Projection         []Projection   `toml:"projection"`
+}
+
+// Env is a named deployment target, declared as `[env.<name>]`. Each
+// env is self-contained: it carries its own connection and inherits
+// nothing from the top level or other envs. At most one env may set
+// default = true; it's used when --env is omitted.
+type Env struct {
+	Connection string `toml:"connection"`
+	Default    bool   `toml:"default,omitempty"`
 }
 
 // Projection is a single projection entry in the config.
+//
+// EngineVersion is required (no top-level fallback); validate()
+// rejects a projection without it. TrackEmittedStreams is optional and
+// valid only on the v1 engine.
 //
 // Fixtures is a name -> path map, declared in the toml as
 // `fixtures.<name> = "<path>"`. Paths are resolved relative to the
 // project root, same as Projection.Entry.
 type Projection struct {
-	Name             string            `toml:"name"`
-	Entry            string            `toml:"entry"`
-	EngineVersion    *int              `toml:"engine_version,omitempty"`
-	QuirksVersion    string            `toml:"quirks_version,omitempty"`
-	ExecutionTimeout *int              `toml:"execution_timeout,omitempty"`
-	Fixtures         map[string]string `toml:"fixtures,omitempty"`
+	Name                string            `toml:"name"`
+	Entry               string            `toml:"entry"`
+	EngineVersion       *int              `toml:"engine_version,omitempty"`
+	TrackEmittedStreams *bool             `toml:"track_emitted_streams,omitempty"`
+	QuirksVersion       string            `toml:"quirks_version,omitempty"`
+	ExecutionTimeout    *int              `toml:"execution_timeout,omitempty"`
+	Fixtures            map[string]string `toml:"fixtures,omitempty"`
 }
 
 // FindFixture returns the path of the named fixture and true, or "" and
@@ -84,14 +97,12 @@ func (c *Config) FixtureCount() int {
 	return total
 }
 
-// EffectiveEngineVersion returns the projection's engine_version, falling
-// back to the top-level engine_version. Returns 0 if neither is set.
+// EffectiveEngineVersion returns the projection's engine_version. After
+// a successful Load it is always set (validate() requires it); returns
+// 0 only for a nil projection or a config that bypassed validation.
 func (c *Config) EffectiveEngineVersion(p *Projection) int {
 	if p != nil && p.EngineVersion != nil {
 		return *p.EngineVersion
-	}
-	if c.EngineVersion != nil {
-		return *c.EngineVersion
 	}
 	return 0
 }
@@ -139,9 +150,16 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
-	cfg, err := Parse(data)
+	cfg, md, err := decode(data)
 	if err != nil {
 		return nil, err
+	}
+	// Removed-key migration hints run before validate() so an upgraded
+	// project with an old gaffer.toml gets pointed at the new schema
+	// instead of a downstream "no environments" / "missing
+	// engine_version" error that doesn't name the cause.
+	if err := checkRemovedKeys(md); err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrManifestValidate, err)
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrManifestValidate, err)
@@ -155,11 +173,52 @@ func Load(path string) (*Config, error) {
 // want the file's content from disk should use Load; Parse is for
 // in-memory bytes (LSP didChange flow, tests).
 func Parse(data []byte) (*Config, error) {
+	cfg, _, err := decode(data)
+	return cfg, err
+}
+
+// decode unmarshals raw config bytes, returning the decoder metadata so
+// callers can inspect which keys went unmatched (used for removed-key
+// migration hints). Wraps TOML syntax errors as ErrManifestParse.
+func decode(data []byte) (*Config, toml.MetaData, error) {
 	var cfg Config
-	if err := toml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrManifestParse, err)
+	md, err := toml.Decode(string(data), &cfg)
+	if err != nil {
+		return nil, md, fmt.Errorf("%w: %s", ErrManifestParse, err)
 	}
-	return &cfg, nil
+	return &cfg, md, nil
+}
+
+// removedTopLevelKeys maps a top-level key that gaffer.toml used to
+// accept to its migration message. Each message leads with what
+// changed, then how to fix it. The multi-environment restructure
+// dropped both; the TOML decoder silently ignores unknown keys, so
+// without this an old file's connection just vanishes.
+var removedTopLevelKeys = map[string]string{
+	"connection":     "connection is now per-environment. Move it into an [env.<name>] block, and set `default = true` for auto-selection.",
+	"engine_version": "engine_version is now per-projection. Set it on each [[projection]].",
+}
+
+// checkRemovedKeys reports any removed top-level keys found in the
+// decoded-but-unmatched set, with migration advice. Only top-level
+// scalars are considered, so an [env.*] connection (legitimately
+// decoded) or an unrelated nested key never trips it. Multiple hits
+// are listed one per line in sorted order for a stable message.
+func checkRemovedKeys(md toml.MetaData) error {
+	var msgs []string
+	for _, key := range md.Undecoded() {
+		if len(key) != 1 {
+			continue
+		}
+		if advice, ok := removedTopLevelKeys[key[0]]; ok {
+			msgs = append(msgs, advice)
+		}
+	}
+	if len(msgs) == 0 {
+		return nil
+	}
+	sort.Strings(msgs)
+	return errors.New(strings.Join(msgs, "\n"))
 }
 
 // Marshal encodes the config to TOML bytes.
@@ -194,9 +253,6 @@ func (c *Config) FindProjection(name string) *Projection {
 }
 
 func (c *Config) validate() error {
-	if c.EngineVersion != nil && *c.EngineVersion != 1 && *c.EngineVersion != 2 {
-		return fmt.Errorf("engine_version must be 1 or 2, got %d", *c.EngineVersion)
-	}
 	if c.QuirksVersion != "" && !validQuirksVersion(c.QuirksVersion) {
 		return fmt.Errorf("quirks_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", c.QuirksVersion, "26.1.0")
 	}
@@ -206,6 +262,9 @@ func (c *Config) validate() error {
 	if v := os.Getenv("GAFFER_QUIRKS_VERSION"); v != "" && !validQuirksVersion(v) {
 		return fmt.Errorf("GAFFER_QUIRKS_VERSION %q must be MAJOR.MINOR.PATCH (e.g. %q)", v, "26.1.0")
 	}
+	if err := c.validateEnvs(); err != nil {
+		return err
+	}
 	seen := make(map[string]bool)
 	for _, p := range c.Projection {
 		// Shared with Describe via checkProjection - rule list and
@@ -213,18 +272,20 @@ func (c *Config) validate() error {
 		if _, msg, fail := checkProjection(p); fail {
 			return fmt.Errorf("%s", msg)
 		}
-		// Strict-only checks: engine_version, duplicate-name. Loose
-		// path either doesn't surface them (engine_version) or
-		// handles them post-loop with cross-element state
-		// (duplicate-name).
-		if p.EngineVersion != nil && *p.EngineVersion != 1 && *p.EngineVersion != 2 {
+		// Strict-only checks: engine_version, track_emitted_streams,
+		// duplicate-name. The loose path either doesn't surface them
+		// or handles them post-loop with cross-element state.
+		if p.EngineVersion == nil {
+			return fmt.Errorf("projection %q missing required field: engine_version", p.Name)
+		}
+		if *p.EngineVersion != 1 && *p.EngineVersion != 2 {
 			return fmt.Errorf("projection %q engine_version must be 1 or 2, got %d", p.Name, *p.EngineVersion)
+		}
+		if p.TrackEmittedStreams != nil && *p.EngineVersion != 1 {
+			return fmt.Errorf("projection %q track_emitted_streams is only valid with engine_version 1", p.Name)
 		}
 		if p.QuirksVersion != "" && !validQuirksVersion(p.QuirksVersion) {
 			return fmt.Errorf("projection %q quirks_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", p.Name, p.QuirksVersion, "26.1.0")
-		}
-		if c.EffectiveEngineVersion(&p) == 0 {
-			return fmt.Errorf("projection %q has no engine_version set (also missing top-level engine_version)", p.Name)
 		}
 		if seen[p.Name] {
 			return fmt.Errorf("duplicate projection name: %q", p.Name)
@@ -237,6 +298,34 @@ func (c *Config) validate() error {
 				return fmt.Errorf("%s", msg)
 			}
 		}
+	}
+	return nil
+}
+
+// validateEnvs checks the [env.*] blocks: each env must carry a
+// non-empty connection, and at most one may set default = true. Zero
+// envs is valid - a project that only runs against fixtures needs no
+// connection. Env names are iterated in sorted order so error messages
+// are stable regardless of map iteration order.
+func (c *Config) validateEnvs() error {
+	names := make([]string, 0, len(c.Env))
+	for name := range c.Env {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var defaults []string
+	for _, name := range names {
+		env := c.Env[name]
+		if strings.TrimSpace(env.Connection) == "" {
+			return fmt.Errorf("env %q missing required field: connection", name)
+		}
+		if env.Default {
+			defaults = append(defaults, name)
+		}
+	}
+	if len(defaults) > 1 {
+		return fmt.Errorf("only one env may set default = true, got %d: %s", len(defaults), strings.Join(defaults, ", "))
 	}
 	return nil
 }

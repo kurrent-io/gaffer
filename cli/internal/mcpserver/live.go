@@ -8,6 +8,11 @@ import (
 )
 
 func (s *Server) startLiveSubscription(sess *activeSession, cfg *config.Config, root string) error {
+	connStr, err := mcpConnection(cfg)
+	if err != nil {
+		return err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	sess.cancel = cancel
 	sess.runner.SetStatus("running")
@@ -28,7 +33,7 @@ func (s *Server) startLiveSubscription(sess *activeSession, cfg *config.Config, 
 	sess.done = done
 
 	source := engine.NewLiveSource(engine.LiveSourceConfig{
-		ConnStr:       cfg.Connection,
+		ConnStr:       connStr,
 		Root:          root,
 		Info:          sess.runner.Info(),
 		EngineVersion: sess.runner.EngineVersion(),

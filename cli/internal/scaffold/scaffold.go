@@ -45,11 +45,16 @@ type Result struct {
 // slash-form regardless. If name is empty, it defaults to the file's
 // basename without extension - kept here so the rule stays consistent
 // across the CLI and MCP surfaces.
+//
+// engineVersion is written onto the new projection (engine_version is
+// required per projection). Callers pass the user's choice, defaulting
+// to config.DefaultEngineVersion.
 func Scaffold(
 	root string,
 	cfg *config.Config,
 	name, relPath, source, partition string,
 	emit bool,
+	engineVersion int,
 ) (*Result, error) {
 	cleanRel, err := validateRelPath(relPath)
 	if err != nil {
@@ -99,9 +104,11 @@ func Scaffold(
 		return nil, fmt.Errorf("writing file: %w", err)
 	}
 
+	ev := engineVersion
 	cfg.Projection = append(cfg.Projection, config.Projection{
-		Name:  name,
-		Entry: cleanRel,
+		Name:          name,
+		Entry:         cleanRel,
+		EngineVersion: &ev,
 	})
 
 	configPath := project.ConfigPath(root)

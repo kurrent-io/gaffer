@@ -1,7 +1,10 @@
-// Package envvar holds tiny shared helpers for parsing environment
-// variables. Lives in its own package so feature packages (telemetry,
-// updatecheck) share the same notion of "truthy" without growing
-// cross-package imports.
+// Package envvar is the shared environment-variable access layer:
+// loading the project's .env into the process environment (Load),
+// reading well-known values (Credentials), interpolating ${VAR}
+// references (Expand), and parsing truthy flags (IsTruthy). Centralised
+// here so .env is a uniform underlay for every env-var read - telemetry
+// opt-out, update-check, credentials, connection strings - rather than
+// being loaded ad hoc on one code path.
 package envvar
 
 import "strings"

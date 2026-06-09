@@ -210,7 +210,7 @@ Telemetry transmission can be disabled by any one of the following:
 
 - Add `telemetry = false` at the top of `gaffer.toml`. Covers every gaffer invocation in that project, including CI.
 - Run `gaffer config telemetry off`. Covers every gaffer invocation by this user on this machine.
-- Set `GAFFER_TELEMETRY_OPTOUT`, `KURRENTDB_TELEMETRY_OPTOUT`, or `DO_NOT_TRACK` to a truthy value (`1`, `true`, `yes`, `on`).
+- Set `GAFFER_TELEMETRY_OPTOUT`, `KURRENTDB_TELEMETRY_OPTOUT`, or `DO_NOT_TRACK` to a truthy value (`1`, `true`, `yes`, `on`). Read from your shell environment or a project `.env` file.
 
 When opted out, gaffer does not collect telemetry. No envelope is constructed and no event is recorded locally.
 

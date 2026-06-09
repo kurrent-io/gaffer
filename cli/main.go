@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kurrent-io/gaffer/cli/cmd"
+	"github.com/kurrent-io/gaffer/cli/internal/envvar"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 	"github.com/kurrent-io/gaffer/cli/internal/updatecheck"
@@ -50,6 +51,18 @@ func main() {
 func runMain() (exitCode int) {
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Load the project's base .env into the process environment before
+	// anything reads env vars (telemetry opt-out, update-check), so a
+	// committed .env is honoured uniformly - not just on the DB
+	// connection path. Best-effort at startup: a malformed .env is
+	// surfaced later by the connection path and must not brick a plain
+	// `gaffer --help`.
+	if cwd, err := os.Getwd(); err == nil {
+		if root := project.FindRootFrom(cwd); root != "" {
+			_ = envvar.Load(root)
+		}
+	}
 
 	// Peek argv for the hidden root flags before cobra parses. Two
 	// readers need the values early: the Client itself (so every
@@ -140,7 +153,10 @@ func runMain() (exitCode int) {
 }
 
 // buildClient resolves opt-out and identity from the user's config
-// and constructs the per-process telemetry Client. Returns nil when
+// and constructs the per-process telemetry Client. Relies on runMain
+// having already loaded the project's .env into the process env, so a
+// .env-declared opt-out (GAFFER_TELEMETRY_OPTOUT etc.) is honoured -
+// keep that Load ahead of this call. Returns nil when
 // opt-out is active, when the config is unreadable, or when identity
 // resolution fails - all "telemetry off for this run" signals.
 //

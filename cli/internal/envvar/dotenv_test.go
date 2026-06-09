@@ -1,0 +1,201 @@
+package envvar
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// clearEnv unsets the given keys and restores their original values
+// after the test, so .env-loading tests don't leak into each other or
+// the process.
+func clearEnv(t *testing.T, keys ...string) {
+	t.Helper()
+	for _, key := range keys {
+		orig, set := os.LookupEnv(key)
+		_ = os.Unsetenv(key)
+		if set {
+			t.Cleanup(func() { _ = os.Setenv(key, orig) })
+		} else {
+			t.Cleanup(func() { _ = os.Unsetenv(key) })
+		}
+	}
+}
+
+func TestLoad_NoProjectDir(t *testing.T) {
+	if err := Load(""); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestLoad_NoEnvFile(t *testing.T) {
+	if err := Load(t.TempDir()); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestLoad_BaseEnvFile(t *testing.T) {
+	clearEnv(t, "KURRENTDB_USERNAME", "KURRENTDB_PASSWORD")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("KURRENTDB_USERNAME=admin\nKURRENTDB_PASSWORD=changeit\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Load(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	user, pass := Credentials()
+	if user != "admin" || pass != "changeit" {
+		t.Fatalf("expected admin/changeit, got %q/%q", user, pass)
+	}
+}
+
+// Load is no-override: a value already in the process environment (the
+// shell) wins over .env.
+func TestLoad_ShellWins(t *testing.T) {
+	clearEnv(t, "KURRENTDB_USERNAME")
+	t.Setenv("KURRENTDB_USERNAME", "shelluser")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("KURRENTDB_USERNAME=fileuser\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Load(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	if user, _ := Credentials(); user != "shelluser" {
+		t.Fatalf("expected shell value to win, got %q", user)
+	}
+}
+
+func TestCredentials_Empty(t *testing.T) {
+	clearEnv(t, "KURRENTDB_USERNAME", "KURRENTDB_PASSWORD")
+	if user, pass := Credentials(); user != "" || pass != "" {
+		t.Fatalf("expected empty credentials, got %q/%q", user, pass)
+	}
+}
+
+func TestExpand_Substitutes(t *testing.T) {
+	clearEnv(t, "GAFFER_TEST_SECRET")
+	t.Setenv("GAFFER_TEST_SECRET", "s3cr3t")
+	got, err := Expand("kurrentdb://admin:${GAFFER_TEST_SECRET}@host:2113")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "kurrentdb://admin:s3cr3t@host:2113"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestExpand_UndefinedErrors(t *testing.T) {
+	clearEnv(t, "GAFFER_TEST_MISSING")
+	_, err := Expand("kurrentdb://${GAFFER_TEST_MISSING}@host")
+	if err == nil {
+		t.Fatal("expected error for undefined variable")
+	}
+	if got := err.Error(); !contains(got, "GAFFER_TEST_MISSING") {
+		t.Errorf("expected error to name the variable, got %q", got)
+	}
+}
+
+// A bare `$` (e.g. in an inline password) is not interpolation and is
+// left untouched.
+func TestExpand_LeavesBareDollarAlone(t *testing.T) {
+	in := "kurrentdb://admin:pa$$word@host:2113"
+	got, err := Expand(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != in {
+		t.Fatalf("expected bare $ untouched, got %q", got)
+	}
+}
+
+func TestLoad_MalformedReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	// Unterminated double-quote: godotenv rejects it. Guards the
+	// doc-promised error path that Connect surfaces and startup swallows.
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("KEY=\"unterminated\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Load(dir); err == nil {
+		t.Fatal("expected error for malformed .env")
+	}
+}
+
+func TestExpand_MultipleVars(t *testing.T) {
+	clearEnv(t, "GAFFER_TEST_A", "GAFFER_TEST_B")
+	t.Setenv("GAFFER_TEST_A", "alpha")
+	t.Setenv("GAFFER_TEST_B", "beta")
+	got, err := Expand("${GAFFER_TEST_A}-${GAFFER_TEST_B}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "alpha-beta" {
+		t.Fatalf("got %q, want %q", got, "alpha-beta")
+	}
+}
+
+func TestExpand_NoVarsPassthrough(t *testing.T) {
+	in := "kurrentdb://host:2113?tls=false"
+	got, err := Expand(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != in {
+		t.Fatalf("got %q, want unchanged %q", got, in)
+	}
+}
+
+// ${} has no variable name; the regex requires at least one character,
+// so it is left literal rather than treated as a (missing) variable.
+func TestExpand_EmptyBracesLeftLiteral(t *testing.T) {
+	in := "a${}b"
+	got, err := Expand(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != in {
+		t.Fatalf("got %q, want unchanged %q", got, in)
+	}
+}
+
+// A substituted value is inserted verbatim - no re-expansion, and a `}`
+// or `$` in the value doesn't terminate or re-trigger interpolation.
+func TestExpand_ValueWithSpecialCharsInsertedVerbatim(t *testing.T) {
+	clearEnv(t, "GAFFER_TEST_VAL")
+	t.Setenv("GAFFER_TEST_VAL", "pa}ss$x")
+	got, err := Expand("p:${GAFFER_TEST_VAL}@host")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "p:pa}ss$x@host" {
+		t.Fatalf("got %q, want verbatim insertion", got)
+	}
+}
+
+func TestExpand_DedupesMissing(t *testing.T) {
+	clearEnv(t, "GAFFER_TEST_MISSING")
+	_, err := Expand("${GAFFER_TEST_MISSING}/${GAFFER_TEST_MISSING}")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	// Variable named once despite two references.
+	if c := countOccurrences(err.Error(), "GAFFER_TEST_MISSING"); c != 1 {
+		t.Errorf("expected variable named once, got %d", c)
+	}
+}
+
+func contains(s, sub string) bool { return countOccurrences(s, sub) > 0 }
+
+func countOccurrences(s, sub string) int {
+	n := 0
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			n++
+		}
+	}
+	return n
+}

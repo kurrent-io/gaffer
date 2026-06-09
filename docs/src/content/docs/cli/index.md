@@ -49,7 +49,7 @@ fixtures.full = "fixtures/orders-full.json"
 
 Top-level keys:
 
-- **`connection`**: KurrentDB connection string. Optional; only required when running a projection against a live event stream.
+- **`connection`**: KurrentDB connection string. Optional; only required when running a projection against a live event stream. Supports `${VAR}` expansion so credentials can stay out of the file. See [Environment file](#environment-file-env).
 - **`engine_version`**: `1` or `2`. `gaffer init` writes `2` by default; pass `gaffer init --engine-version 1` or pick it at the prompt to write `1`. V1 is for legacy compatibility. Can be overridden per-projection inside `[[projection]]`.
 
 Per-projection (`[[projection]]`):
@@ -57,6 +57,16 @@ Per-projection (`[[projection]]`):
 - **`name`**: the lookup key for `gaffer dev <name>` and other commands.
 - **`entry`**: path to the projection JS file, relative to the project root.
 - **`fixtures.<name>`**: path to a JSON events file, relative to the project root. Referenced from `gaffer dev <name> --fixture <fixture-name>`.
+
+## Environment file (`.env`)
+
+A `.env` file at the project root is loaded into the environment when gaffer starts, so secrets stay out of `gaffer.toml` and out of version control. Reference them in `connection` with `${VAR}`:
+
+```toml
+connection = "kurrentdb://admin:${DB_PASSWORD}@localhost:2113"
+```
+
+`.env` supplies any environment variable gaffer reads, including the telemetry and update-check opt-outs below. The shell environment always wins: a variable set in your shell, or injected by CI, is never overwritten by `.env`.
 
 ## User configuration
 
@@ -97,5 +107,7 @@ Opt out at the user level via any of:
 - `KURRENTDB_TELEMETRY_OPTOUT=1` in the environment.
 - `DO_NOT_TRACK=1` in the environment.
 - VS Code's `telemetry.telemetryLevel` set to `off` (the extension and CLI both respect it).
+
+The environment-variable opt-outs are read from your shell or a project [`.env`](#environment-file-env).
 
 Opt out at the project level by setting `telemetry = false` in [`gaffer.toml`](../reference/gaffer-toml.md#telemetry).

@@ -152,7 +152,6 @@ echo "Initialized gaffer project"
 			"--invoked-by=vscode",
 			"--invoked-via=command_palette",
 			"init",
-			"--yes",
 		]);
 	});
 

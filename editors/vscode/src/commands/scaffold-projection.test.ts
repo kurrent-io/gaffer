@@ -168,7 +168,7 @@ describe("scaffoldProjection - auto-init when no gaffer.toml", () => {
 		fs.rmSync(tmpRoot, { recursive: true, force: true });
 	});
 
-	it("spawns `gaffer init --yes` at the workspace root before scaffolding when no toml exists", async () => {
+	it("spawns `gaffer init` at the workspace root before scaffolding when no toml exists", async () => {
 		// Stub records each invocation's argv + cwd to a separate
 		// file so the test can assert init ran before scaffold.
 		const initArgv = path.join(tmpRoot, "init.argv");
@@ -199,7 +199,9 @@ exit 1
 		setConfiguration("gaffer", "command", { globalValue: [stub] });
 		await scaffoldProjection(makeDeps())();
 		expect(fs.existsSync(initArgv)).toBe(true);
-		expect(fs.readFileSync(initArgv, "utf8")).toMatch(/init --yes/);
+		const initArgs = fs.readFileSync(initArgv, "utf8");
+		expect(initArgs).toMatch(/\binit\b/);
+		expect(initArgs).not.toMatch(/--yes/);
 		expect(fs.readFileSync(initCwd, "utf8").trim()).toBe(tmpRoot);
 		expect(fs.existsSync(scaffoldArgv)).toBe(true);
 		// Visible trace so the new gaffer.toml doesn't appear unannounced.

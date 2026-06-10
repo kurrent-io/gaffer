@@ -61,7 +61,7 @@ export function scaffoldProjection(
 		if (!choices) return;
 
 		// If there's no gaffer.toml anywhere above the target, run
-		// `gaffer init --yes` at the workspace root before scaffolding.
+		// `gaffer init` at the workspace root before scaffolding.
 		// The user committed to "I want a projection" by completing
 		// the wizard; init is the unavoidable precondition and runs
 		// silently rather than forcing a separate command round-trip.
@@ -69,7 +69,7 @@ export function scaffoldProjection(
 		// gaffer.toml doesn't appear unannounced.
 		if (!(await findProjectRoot(target))) {
 			const initResult = await runGafferCommand(
-				["init", "--yes"],
+				["init"],
 				workspace.uri.fsPath,
 				deps.telemetry,
 				"command_palette",

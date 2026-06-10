@@ -57,6 +57,7 @@ const sampleChoices: ScaffoldChoices = {
 	source: { kind: "category", name: "orders" },
 	partition: "per-stream",
 	emit: false,
+	engineVersion: 2,
 };
 
 describe("validateName", () => {
@@ -167,7 +168,7 @@ describe("scaffoldProjection - auto-init when no gaffer.toml", () => {
 		fs.rmSync(tmpRoot, { recursive: true, force: true });
 	});
 
-	it("spawns `gaffer init --yes` at the workspace root before scaffolding when no toml exists", async () => {
+	it("spawns `gaffer init` at the workspace root before scaffolding when no toml exists", async () => {
 		// Stub records each invocation's argv + cwd to a separate
 		// file so the test can assert init ran before scaffold.
 		const initArgv = path.join(tmpRoot, "init.argv");
@@ -198,7 +199,9 @@ exit 1
 		setConfiguration("gaffer", "command", { globalValue: [stub] });
 		await scaffoldProjection(makeDeps())();
 		expect(fs.existsSync(initArgv)).toBe(true);
-		expect(fs.readFileSync(initArgv, "utf8")).toMatch(/init --yes/);
+		const initArgs = fs.readFileSync(initArgv, "utf8");
+		expect(initArgs).toMatch(/\binit\b/);
+		expect(initArgs).not.toMatch(/--yes/);
 		expect(fs.readFileSync(initCwd, "utf8").trim()).toBe(tmpRoot);
 		expect(fs.existsSync(scaffoldArgv)).toBe(true);
 		// Visible trace so the new gaffer.toml doesn't appear unannounced.
@@ -388,6 +391,7 @@ echo "Created projections/order-totals.js"
 			"projections/order-totals.js",
 			"--source=category:orders",
 			"--partition=per-stream",
+			"--engine-version=2",
 		]);
 		const opened = getState().executeCommandCalls.find(
 			(c) => c.name === "vscode.open",
@@ -416,6 +420,7 @@ touch "${tmpRoot}/projections/p.js"
 					source: { kind: "all" },
 					partition: "none",
 					emit: true,
+					engineVersion: 2,
 				}),
 			}),
 		)();
@@ -423,6 +428,33 @@ touch "${tmpRoot}/projections/p.js"
 		expect(argv).toContain("--source=all");
 		expect(argv).toContain("--partition=none");
 		expect(argv).toContain("--emit");
+	});
+
+	it("passes the chosen non-default --engine-version", async () => {
+		fs.writeFileSync(path.join(tmpRoot, "gaffer.toml"), "engine_version = 2\n");
+		setWorkspaceFolders([makeFolder("proj", tmpRoot)]);
+		const argvLog = path.join(tmpRoot, "argv.log");
+		const stub = writeStub(
+			`#!/bin/sh
+echo "$@" > "${argvLog}"
+mkdir -p "${tmpRoot}/projections"
+touch "${tmpRoot}/projections/p.js"
+`,
+		);
+		setConfiguration("gaffer", "command", { globalValue: [stub] });
+		await scaffoldProjection(
+			makeDeps({
+				wizard: cannedWizard({
+					pathArg: "projections/p.js",
+					source: { kind: "all" },
+					partition: "none",
+					emit: false,
+					engineVersion: 1,
+				}),
+			}),
+		)();
+		const argv = fs.readFileSync(argvLog, "utf8").trim().split(" ");
+		expect(argv).toContain("--engine-version=1");
 	});
 
 	it("surfaces CLI stderr on scaffold failure", async () => {
@@ -471,6 +503,7 @@ function queuedSteps(): {
 		sourceName: [],
 		partition: [],
 		emit: [],
+		engineVersion: [],
 	};
 	const calls: { step: keyof WizardSteps; prev: unknown }[] = [];
 	const pop = <T>(key: keyof WizardSteps, prev: unknown): StepResult<T> => {
@@ -486,6 +519,7 @@ function queuedSteps(): {
 			Promise.resolve(pop("sourceName", { kind, prev })),
 		partition: (prev) => Promise.resolve(pop("partition", prev)),
 		emit: (prev) => Promise.resolve(pop("emit", prev)),
+		engineVersion: (prev) => Promise.resolve(pop("engineVersion", prev)),
 	};
 	return {
 		steps,
@@ -495,34 +529,38 @@ function queuedSteps(): {
 }
 
 describe("runScaffoldWizard", () => {
-	it("walks the happy path with all events (4-step total)", async () => {
+	it("walks the happy path with all events (5-step total)", async () => {
 		const { steps, push } = queuedSteps();
 		push("pathArg", { kind: "value", value: "p" });
 		push("source", { kind: "value", value: "all" });
 		push("partition", { kind: "value", value: "none" });
 		push("emit", { kind: "value", value: false });
+		push("engineVersion", { kind: "value", value: 2 });
 		const result = await runScaffoldWizard(steps);
 		expect(result).toEqual({
 			pathArg: "p",
 			source: { kind: "all" },
 			partition: "none",
 			emit: false,
+			engineVersion: 2,
 		});
 	});
 
-	it("walks the happy path with a category source (5-step total)", async () => {
+	it("walks the happy path with a category source (6-step total)", async () => {
 		const { steps, push } = queuedSteps();
 		push("pathArg", { kind: "value", value: "totals" });
 		push("source", { kind: "value", value: "category" });
 		push("sourceName", { kind: "value", value: "orders" });
 		push("partition", { kind: "value", value: "per-stream" });
 		push("emit", { kind: "value", value: true });
+		push("engineVersion", { kind: "value", value: 1 });
 		const result = await runScaffoldWizard(steps);
 		expect(result).toEqual({
 			pathArg: "totals",
 			source: { kind: "category", name: "orders" },
 			partition: "per-stream",
 			emit: true,
+			engineVersion: 1,
 		});
 	});
 
@@ -539,6 +577,7 @@ describe("runScaffoldWizard", () => {
 		push("sourceName", { kind: "value", value: "orders-99" });
 		push("partition", { kind: "value", value: "none" });
 		push("emit", { kind: "value", value: false });
+		push("engineVersion", { kind: "value", value: 2 });
 		const result = await runScaffoldWizard(steps);
 		expect(result?.source).toEqual({ kind: "category", name: "orders-99" });
 		const sourceNameCalls = calls.filter((c) => c.step === "sourceName");
@@ -555,6 +594,7 @@ describe("runScaffoldWizard", () => {
 		push("source", { kind: "value", value: "stream" });
 		push("sourceName", { kind: "value", value: "orders-42" });
 		push("emit", { kind: "value", value: false });
+		push("engineVersion", { kind: "value", value: 2 });
 		const result = await runScaffoldWizard(steps);
 		// per-stream partitioning is invalid with fromStream(), so the
 		// step is skipped entirely and partition is forced to none.
@@ -564,6 +604,7 @@ describe("runScaffoldWizard", () => {
 			source: { kind: "stream", name: "orders-42" },
 			partition: "none",
 			emit: false,
+			engineVersion: 2,
 		});
 	});
 
@@ -575,6 +616,7 @@ describe("runScaffoldWizard", () => {
 		push("emit", { kind: "back" });
 		push("sourceName", { kind: "value", value: "orders-99" });
 		push("emit", { kind: "value", value: false });
+		push("engineVersion", { kind: "value", value: 2 });
 		const result = await runScaffoldWizard(steps);
 		// Partition is skipped on the stream path, so Back from emit must
 		// land on sourceName, never partition.
@@ -588,6 +630,7 @@ describe("runScaffoldWizard", () => {
 		push("source", { kind: "value", value: "all" });
 		push("partition", { kind: "value", value: "none" });
 		push("emit", { kind: "value", value: false });
+		push("engineVersion", { kind: "value", value: 2 });
 		await runScaffoldWizard(steps);
 		expect(calls.find((c) => c.step === "sourceName")).toBeUndefined();
 	});
@@ -600,10 +643,26 @@ describe("runScaffoldWizard", () => {
 		push("source", { kind: "value", value: "all" });
 		push("partition", { kind: "value", value: "none" });
 		push("emit", { kind: "value", value: false });
+		push("engineVersion", { kind: "value", value: 2 });
 		await runScaffoldWizard(steps);
 		// Two source calls, no sourceName call.
 		expect(calls.filter((c) => c.step === "source")).toHaveLength(2);
 		expect(calls.find((c) => c.step === "sourceName")).toBeUndefined();
+	});
+
+	it("Back from engineVersion returns to emit", async () => {
+		const { steps, push, calls } = queuedSteps();
+		push("pathArg", { kind: "value", value: "p" });
+		push("source", { kind: "value", value: "all" });
+		push("partition", { kind: "value", value: "none" });
+		push("emit", { kind: "value", value: false });
+		push("engineVersion", { kind: "back" });
+		push("emit", { kind: "value", value: true });
+		push("engineVersion", { kind: "value", value: 2 });
+		const result = await runScaffoldWizard(steps);
+		expect(calls.filter((c) => c.step === "emit")).toHaveLength(2);
+		expect(result?.emit).toBe(true);
+		expect(result?.engineVersion).toBe(2);
 	});
 
 	// Cancellation at each step. The state machine routes every cancel
@@ -642,6 +701,15 @@ describe("runScaffoldWizard", () => {
 			push("source", { kind: "value", value: "all" });
 			push("partition", { kind: "value", value: "none" });
 			push("emit", { kind: "cancel" });
+			expect(await runScaffoldWizard(steps)).toBeUndefined();
+		});
+		it("at the engineVersion step", async () => {
+			const { steps, push } = queuedSteps();
+			push("pathArg", { kind: "value", value: "p" });
+			push("source", { kind: "value", value: "all" });
+			push("partition", { kind: "value", value: "none" });
+			push("emit", { kind: "value", value: false });
+			push("engineVersion", { kind: "cancel" });
 			expect(await runScaffoldWizard(steps)).toBeUndefined();
 		});
 	});

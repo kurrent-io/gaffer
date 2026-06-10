@@ -3,51 +3,87 @@ title: gaffer.toml
 description: Full reference for the gaffer.toml project configuration file.
 ---
 
-`gaffer.toml` lives at the root of a gaffer project and declares its projections, connection settings, and engine version. `gaffer init` writes the initial file.
+`gaffer.toml` lives at the root of a gaffer project and declares its projections, the environments they connect to, and per-projection settings. `gaffer init` writes the initial file.
 
-## Example
+:::caution[Upgrading from an older gaffer.toml]
+Top-level `connection` and top-level `engine_version` are no longer supported. Loading a file with either key fails with a migration hint.
+
+- A top-level `connection` moves into an [`[env.<name>]`](#envname) block.
+- A top-level `engine_version` moves onto each [`[[projection]]`](#engine_version) (every projection now sets its own).
+
+Before:
 
 ```toml
 connection = "kurrentdb://localhost:2113?tls=false"
 engine_version = 2
-telemetry = true
 
 [[projection]]
 name = "order-count"
 entry = "projections/order-count.js"
+```
+
+After:
+
+```toml
+[env.local]
+connection = "kurrentdb://localhost:2113?tls=false"
+default = true
+
+[[projection]]
+name = "order-count"
+entry = "projections/order-count.js"
+engine_version = 2
+```
+:::
+
+## Example
+
+```toml
+telemetry = true
+
+[env.local]
+connection = "kurrentdb://localhost:2113?tls=false"
+default = true
+
+[[projection]]
+name = "order-count"
+entry = "projections/order-count.js"
+engine_version = 2
 fixtures.happy = "fixtures/orders.json"
 fixtures.full = "fixtures/orders-full.json"
+
+[[projection]]
+name = "order-totals"
+entry = "projections/order-totals.js"
+engine_version = 2
 ```
 
 ## Top-level keys
 
-### `connection`
+### `[env.<name>]`
 
 ```toml
+[env.local]
 connection = "kurrentdb://localhost:2113?tls=false"
+default = true
+
+[env.staging]
+connection = "kurrentdb://admin:${DB_PASSWORD}@staging:2113"
 ```
 
-KurrentDB connection string. Used when running a projection against a live event stream (`gaffer dev <projection>` without `--events` or `--fixture`). Override per-invocation with `--connection`.
+An environment names a KurrentDB connection. Select one with `gaffer dev --env <name>`. Environment names must match `^[A-Za-z0-9_-]+$`.
 
-`${VAR}` references are expanded from the environment, so credentials need not be committed:
+- **`connection`**: KurrentDB connection string for the environment. Required. Used when running a projection against a live event stream (`gaffer dev <projection>` without `--events` or `--fixture`). Override per-invocation with `--connection`.
+- **`default`**: optional bool. Exactly one environment may set `default = true`. It's used when `--env` is omitted; without a default, a live run requires `--env` (fixture runs need no environment). Two defaults is a config error.
+
+`${VAR}` references in `connection` are expanded so credentials need not be committed:
 
 ```toml
-connection = "kurrentdb://admin:${DB_PASSWORD}@localhost:2113"
+[env.staging]
+connection = "kurrentdb://admin:${DB_PASSWORD}@staging:2113"
 ```
 
-Values resolve from the process environment and a [`.env`](../cli/index.md#environment-file-env) file at the project root. A referenced variable that isn't set is an error; a bare `$` (only `${...}` is a reference) is left untouched.
-
-Optional. Omit when you only run projections against fixture files.
-
-### `engine_version`
-
-```toml
-engine_version = 2
-```
-
-Projection engine version: `1` or `2`. `gaffer init` writes `2` by default; pass `gaffer init --engine-version 1` (or pick it at the interactive prompt) to write `1` instead. V1 is for legacy compatibility with older KurrentDB releases.
-
-A projection that doesn't set its own `engine_version` inherits this one. Loading `gaffer.toml` fails if neither the top-level nor the projection sets a version.
+Values resolve, highest precedence first, from the shell environment, then a per-environment [`.env.<env>`](../cli/index.md#environment-file-env) file, then the base [`.env`](../cli/index.md#environment-file-env) file at the project root. A referenced variable that isn't set is an error; only the braced `${...}` form is a reference, so a bare `$` is left untouched.
 
 ### `quirks_version`
 
@@ -115,18 +151,28 @@ Named JSON events files. Run with `gaffer dev <name> --fixture happy`. Path is r
 
 Optional. Add one entry per scenario you want to re-run.
 
-### `engine_version` (per-projection)
+### `engine_version`
 
 ```toml
 [[projection]]
-name = "legacy-counter"
-entry = "projections/legacy-counter.js"
-engine_version = 1
+name = "order-count"
+entry = "projections/order-count.js"
+engine_version = 2
 ```
 
-Per-projection override of the top-level `engine_version`. Useful when one projection in a project targets a different engine than the rest.
+Projection engine version: `1` or `2`. Required on every projection. V1 is for legacy compatibility with older KurrentDB releases; V2 is the default for new projections written by `gaffer scaffold`. There is no top-level fallback, so each projection states its own version.
 
-Optional.
+### `track_emitted_streams`
+
+```toml
+[[projection]]
+name = "order-events"
+entry = "projections/order-events.js"
+engine_version = 1
+track_emitted_streams = true
+```
+
+Records the streams a projection emits to, mirroring the KurrentDB V1 projection option of the same name. Bool, optional, and valid only when the projection's `engine_version = 1`. Setting it on a V2 projection is a config error.
 
 ### `quirks_version` (per-projection)
 
@@ -156,8 +202,8 @@ Settings that exist at both top-level and per-projection resolve from most-speci
 
 | Setting               | Resolution                                                           |
 | --------------------- | -------------------------------------------------------------------- |
-| `engine_version`      | Per-projection > top-level. Required (load fails if neither is set). |
-| `quirks_version`      | `GAFFER_QUIRKS_VERSION` env > per-projection > top-level > unset.    |
-| `execution_timeout`   | Per-projection > top-level > 5000ms.                                 |
-| `compilation_timeout` | Top-level only > 5000ms.                                             |
-| `connection`          | `--connection` flag > top-level.                                     |
+| `engine_version`      | Per-projection only. Required on each `[[projection]]`.                   |
+| `quirks_version`      | `GAFFER_QUIRKS_VERSION` env > per-projection > top-level > unset.         |
+| `execution_timeout`   | Per-projection > top-level > 5000ms.                                      |
+| `compilation_timeout` | Top-level only > 5000ms.                                                  |
+| `connection`          | `--connection` flag > selected env (`--env`, or the default env).         |

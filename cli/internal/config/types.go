@@ -48,10 +48,10 @@ const (
 type Description struct {
 	ConfigFile string `json:"configFile"`
 	Format     string `json:"format"`
-	// Connection is the project-level `connection` field. Empty
-	// string means no connection was declared in the toml; the
-	// editor uses this to gate the "live" option in the
-	// run-projection picker.
+	// Connection is the default env's connection (the [env.*] block
+	// with default = true). Empty string means no default env was
+	// declared; the editor uses this to gate the "live" option in
+	// the run-projection picker.
 	Connection  string                  `json:"connection,omitempty"`
 	Projections []ProjectionDescription `json:"projections,omitempty"`
 	Diagnostics []Diagnostic            `json:"diagnostics,omitempty"`

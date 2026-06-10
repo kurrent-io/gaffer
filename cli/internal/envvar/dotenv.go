@@ -29,9 +29,12 @@ func Load(projectDir string) error {
 	}
 	// godotenv surfaces a missing file as fs.ErrNotExist, which is the
 	// "no .env" no-op. Any other error - unreadable file, malformed
-	// contents - is a real problem and is returned, not swallowed.
+	// contents - is a real problem and is returned, not swallowed. The
+	// godotenv error is deliberately NOT wrapped: its parse errors echo
+	// raw file bytes, which for a credential-bearing .env would leak
+	// secrets into the message.
 	if err := godotenv.Load(filepath.Join(projectDir, ".env")); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("loading .env: %w", err)
+		return errors.New("malformed .env")
 	}
 	return nil
 }
@@ -42,21 +45,58 @@ func Credentials() (username, password string) {
 	return os.Getenv("KURRENTDB_USERNAME"), os.Getenv("KURRENTDB_PASSWORD")
 }
 
+// shellEnv is the process environment captured by Snapshot before Load
+// layered any .env on top. It lets Expand apply shell > .env.<env> >
+// .env precedence: after Load, the process env no longer distinguishes
+// a real shell variable from a base-.env one, so the per-env overlay
+// can't tell which to override. The snapshot draws that line.
+var shellEnv map[string]string
+
+// Snapshot records the current process environment as the "shell"
+// layer. Call once at process startup, before Load. A nil snapshot
+// (Snapshot never called) leaves the shell layer empty, so Expand falls
+// back to the live process environment.
+func Snapshot() {
+	env := os.Environ()
+	m := make(map[string]string, len(env))
+	for _, kv := range env {
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			m[kv[:i]] = kv[i+1:]
+		}
+	}
+	shellEnv = m
+}
+
 // braceVarPattern matches the braced ${VAR} interpolation form only. A
 // bare `$` (e.g. inside an inline connection-string password) is left
 // untouched.
 var braceVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 
-// Expand substitutes ${VAR} references in s with their value from the
-// process environment (which includes .env after Load). Returns an
-// error naming any referenced variable that isn't set, so a missing
-// secret fails loudly instead of silently expanding to an empty
-// string.
-func Expand(s string) (string, error) {
+// Expand substitutes ${VAR} references in s, resolving each name with
+// precedence shell env > .env.<envName> > base .env. The shell layer is
+// the Snapshot taken before Load; the base layer is the live process
+// environment (which Load populated from .env). When envName and
+// projectDir are set, .env.<envName> is read from projectDir as a
+// non-mutating overlay between them - so a long-running server can
+// resolve different envs per call without leaking one into the next.
+//
+// Returns an error naming any referenced variable that isn't set (a
+// missing secret fails loudly rather than expanding to ""), or if
+// .env.<envName> exists but is malformed.
+func Expand(s, projectDir, envName string) (string, error) {
+	var overlay map[string]string
+	if projectDir != "" && envName != "" {
+		m, err := readEnvFile(filepath.Join(projectDir, ".env."+envName))
+		if err != nil {
+			return "", err
+		}
+		overlay = m
+	}
+
 	var missing []string
 	out := braceVarPattern.ReplaceAllStringFunc(s, func(match string) string {
 		name := match[2 : len(match)-1]
-		if v, ok := os.LookupEnv(name); ok {
+		if v, ok := resolveVar(name, overlay); ok {
 			return v
 		}
 		missing = append(missing, name)
@@ -66,6 +106,38 @@ func Expand(s string) (string, error) {
 		return "", fmt.Errorf("undefined environment variable(s): %s", strings.Join(dedupeSorted(missing), ", "))
 	}
 	return out, nil
+}
+
+// resolveVar applies the shell > overlay (.env.<env>) > base layering.
+// A name present in the shell snapshot wins outright; otherwise the
+// per-env overlay wins over the base process env. os.LookupEnv covers
+// both the shell (which also sits in the process env) and the base
+// .env, but the explicit shell check is what lets the overlay override
+// a base-.env value without overriding a real shell value.
+func resolveVar(name string, overlay map[string]string) (string, bool) {
+	if v, ok := shellEnv[name]; ok {
+		return v, true
+	}
+	if v, ok := overlay[name]; ok {
+		return v, true
+	}
+	return os.LookupEnv(name)
+}
+
+// readEnvFile parses a .env-format file into a map without touching the
+// process environment. A missing file is (nil, nil); a malformed file
+// is an error. The godotenv error is deliberately NOT wrapped: its
+// parse errors echo raw file bytes, which for a credential-bearing
+// .env.<env> would leak secrets into the message.
+func readEnvFile(path string) (map[string]string, error) {
+	m, err := godotenv.Read(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("malformed %s", filepath.Base(path))
+	}
+	return m, nil
 }
 
 func dedupeSorted(in []string) []string {

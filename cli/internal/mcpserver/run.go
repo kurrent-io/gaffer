@@ -25,6 +25,7 @@ type breakpointInput struct {
 type runInput struct {
 	Name        string            `json:"name" jsonschema:"Projection name from gaffer.toml"`
 	Events      string            `json:"events,omitempty" jsonschema:"Path to a JSON fixture file (relative to project root or absolute). Omit for live KurrentDB subscription."`
+	Env         string            `json:"env,omitempty" jsonschema:"Environment from gaffer.toml [env.<name>] to subscribe against (live mode only). Omit to use the default environment."`
 	Breakpoints []breakpointInput `json:"breakpoints,omitempty" jsonschema:"Source line breakpoints to set before feeding events. Enables debug mode."`
 	BreakAt     int64             `json:"break_at,omitempty" jsonschema:"Pause at a specific step (1-based). Enables debug mode."`
 }
@@ -64,7 +65,7 @@ func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input ru
 	}
 
 	if input.Events == "" {
-		if err := s.startLiveMode(sess, input.BreakAt, cfg, root); err != nil {
+		if err := s.startLiveMode(sess, input.BreakAt, cfg, root, input.Env); err != nil {
 			s.mu.Unlock()
 			return toolError("%v", err), nil, nil
 		}
@@ -111,11 +112,11 @@ func (s *Server) setupBreakpoints(sess *activeSession, breakpoints []breakpointI
 	return nil
 }
 
-func (s *Server) startLiveMode(sess *activeSession, breakAt int64, cfg *config.Config, root string) error {
+func (s *Server) startLiveMode(sess *activeSession, breakAt int64, cfg *config.Config, root, envName string) error {
 	if breakAt > 0 {
 		sess.runner.SetBreakAtStep(breakAt)
 	}
-	return s.startLiveSubscription(sess, cfg, root)
+	return s.startLiveSubscription(sess, cfg, root, envName)
 }
 
 func (s *Server) runFixtureDebugMode(sess *activeSession, root, eventsPath string, breakAt int64) error {

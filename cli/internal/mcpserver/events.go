@@ -20,6 +20,7 @@ var listEventsTool = &mcp.Tool{
 
 type listEventsInput struct {
 	Name  string `json:"name" jsonschema:"Projection name from gaffer.toml"`
+	Env   string `json:"env,omitempty" jsonschema:"Environment from gaffer.toml [env.<name>] to sample from. Omit to use the default environment."`
 	Limit int    `json:"limit,omitempty" jsonschema:"Maximum events to sample (default 200, max 2000)"`
 }
 
@@ -51,7 +52,7 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 	}
 	defer session.Destroy()
 
-	client, err := s.connectToKurrentDB(cfg, root)
+	client, err := s.connectToKurrentDB(cfg, root, input.Env)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}

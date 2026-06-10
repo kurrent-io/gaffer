@@ -222,6 +222,44 @@ func TestScaffold_NoArg_NonInteractive_MissingArg(t *testing.T) {
 	}
 }
 
+// The --engine-version flag reaches scaffold through cobra binding and
+// lands on the new projection.
+func TestScaffold_EngineVersionFlag(t *testing.T) {
+	p := testutil.NewProject(t).AddProjection("orders", integrationProjection).Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"scaffold", "projections/legacy.js", "--engine-version", "1", "--yes"})
+	root.SetErr(&bytes.Buffer{})
+	testutil.CaptureStdout(t, func() {
+		if err := ExecuteRoot(context.Background(), root); err != nil {
+			t.Fatalf("scaffold: %v", err)
+		}
+	})
+
+	cfg, err := config.Load(filepath.Join(p.Dir, "gaffer.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proj := cfg.FindProjection("legacy")
+	if proj == nil || proj.EngineVersion == nil || *proj.EngineVersion != 1 {
+		t.Fatalf("engine_version: got %v, want 1", proj)
+	}
+}
+
+func TestScaffold_InvalidEngineVersionFlag(t *testing.T) {
+	p := testutil.NewProject(t).AddProjection("orders", integrationProjection).Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"scaffold", "projections/bad.js", "--engine-version", "5", "--yes"})
+	root.SetErr(&bytes.Buffer{})
+	err := ExecuteRoot(context.Background(), root)
+	if err == nil || !strings.Contains(err.Error(), "engine_version") {
+		t.Fatalf("expected engine_version error, got: %v", err)
+	}
+}
+
 func TestDev_NoArg_NonInteractive_MissingArg(t *testing.T) {
 	p := testutil.NewProject(t).AddProjection("orders", integrationProjection).Save()
 	chdirTo(t, p.Dir)
@@ -236,42 +274,48 @@ func TestDev_NoArg_NonInteractive_MissingArg(t *testing.T) {
 	}
 }
 
-// The --engine-version flag must flow through to the written gaffer.toml,
-// and an invalid value must fail before anything is created.
-func TestInit_EngineVersionFlag(t *testing.T) {
+// init writes the commented starter template, which loads as a valid
+// config with no active envs or projections.
+func TestInit_CreatesLoadableTemplate(t *testing.T) {
 	dir := t.TempDir()
 	chdirTo(t, dir)
 
 	root := NewRootCmd()
-	root.SetArgs([]string{"init", "--engine-version", "1"})
+	root.SetArgs([]string{"init"})
 	root.SetErr(&bytes.Buffer{})
 	if err := ExecuteRoot(context.Background(), root); err != nil {
-		t.Fatalf("init --engine-version 1: %v", err)
+		t.Fatalf("init: %v", err)
 	}
 
 	cfg, err := config.Load(filepath.Join(dir, "gaffer.toml"))
 	if err != nil {
 		t.Fatalf("loading created project: %v", err)
 	}
-	if cfg.EngineVersion == nil || *cfg.EngineVersion != 1 {
-		t.Errorf("engine_version = %v, want 1", cfg.EngineVersion)
+	if len(cfg.Env) != 0 {
+		t.Errorf("expected 0 envs, got %d", len(cfg.Env))
+	}
+	if len(cfg.Projection) != 0 {
+		t.Errorf("expected 0 projections, got %d", len(cfg.Projection))
 	}
 }
 
-func TestInit_InvalidEngineVersion(t *testing.T) {
+func TestInit_RefusesExisting(t *testing.T) {
 	dir := t.TempDir()
 	chdirTo(t, dir)
 
-	root := NewRootCmd()
-	root.SetArgs([]string{"init", "--engine-version", "3"})
-	root.SetErr(&bytes.Buffer{})
-
-	err := ExecuteRoot(context.Background(), root)
-	if err == nil || !strings.Contains(err.Error(), "must be 1 or 2") {
-		t.Fatalf("expected an engine_version validation error, got: %v", err)
+	first := NewRootCmd()
+	first.SetArgs([]string{"init"})
+	first.SetErr(&bytes.Buffer{})
+	if err := ExecuteRoot(context.Background(), first); err != nil {
+		t.Fatalf("first init: %v", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(dir, "gaffer.toml")); statErr == nil {
-		t.Error("gaffer.toml should not have been created for an invalid version")
+
+	second := NewRootCmd()
+	second.SetArgs([]string{"init"})
+	second.SetErr(&bytes.Buffer{})
+	err := ExecuteRoot(context.Background(), second)
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected already-exists error, got: %v", err)
 	}
 }
 
@@ -444,7 +488,7 @@ func TestEndToEnd_InitScaffoldDev(t *testing.T) {
 
 	// 1. init
 	initRoot := NewRootCmd()
-	initRoot.SetArgs([]string{"init", "--yes"})
+	initRoot.SetArgs([]string{"init"})
 	initRoot.SetErr(&bytes.Buffer{})
 	testutil.CaptureStdout(t, func() {
 		if err := ExecuteRoot(context.Background(), initRoot); err != nil {

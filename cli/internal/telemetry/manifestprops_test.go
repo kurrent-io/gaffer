@@ -10,25 +10,46 @@ import (
 func TestManifestFeaturesOf_AllSections(t *testing.T) {
 	timeout := 30
 	cfg := &config.Config{
-		Connection:         "esdb://localhost:2113",
-		EngineVersion:      intPtr(2),
 		QuirksVersion:      "26.1.0",
 		CompilationTimeout: &timeout,
 		ExecutionTimeout:   &timeout,
+		Env: map[string]config.Env{
+			"local": {Connection: "esdb://localhost:2113", Default: true},
+		},
 		Projection: []config.Projection{
-			{Name: "p1", Entry: "p1.js", Fixtures: map[string]string{"f": "f.json"}},
-			{Name: "p2", Entry: "p2.js"},
+			{Name: "p1", Entry: "p1.js", EngineVersion: intPtr(2), Fixtures: map[string]string{"f": "f.json"}},
+			{Name: "p2", Entry: "p2.js", EngineVersion: intPtr(2)},
 		},
 	}
 	got := ManifestFeaturesOf(cfg)
 	want := []string{
 		"compilation_timeout",
-		"connection",
 		"engine_version",
+		"env",
 		"execution_timeout",
 		"fixtures",
 		"projections",
 		"quirks_version",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ManifestFeaturesOf() = %v, want %v", got, want)
+	}
+}
+
+func TestManifestFeaturesOf_TrackEmittedStreams(t *testing.T) {
+	// track_emitted_streams is a v1-only per-projection feature; its
+	// presence registers the label.
+	track := true
+	cfg := &config.Config{
+		Projection: []config.Projection{
+			{Name: "p", Entry: "p.js", EngineVersion: intPtr(1), TrackEmittedStreams: &track},
+		},
+	}
+	got := ManifestFeaturesOf(cfg)
+	want := []string{
+		"engine_version",
+		"projections",
+		"track_emitted_streams",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ManifestFeaturesOf() = %v, want %v", got, want)

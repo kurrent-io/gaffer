@@ -107,7 +107,7 @@ func TestLoadEvents_FileNotFound(t *testing.T) {
 }
 
 func TestBuildSessionOptions_EngineVersionFromProjection(t *testing.T) {
-	cfg := &config.Config{EngineVersion: ptr(2)}
+	cfg := &config.Config{}
 	def := &config.Projection{EngineVersion: ptr(1)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
@@ -150,8 +150,8 @@ func TestBuildSessionOptions_ProjectionTimeoutOverridesGlobal(t *testing.T) {
 
 func TestBuildSessionOptions_QuirksVersionPassedThroughWhenSet(t *testing.T) {
 	t.Setenv("GAFFER_QUIRKS_VERSION", "")
-	cfg := &config.Config{EngineVersion: ptr(2), QuirksVersion: "26.1.0"}
-	def := &config.Projection{Name: "p", Entry: "p.js"}
+	cfg := &config.Config{QuirksVersion: "26.1.0"}
+	def := &config.Projection{Name: "p", Entry: "p.js", EngineVersion: ptr(2)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	opts := buildSessionOptions(proj, false, false)
@@ -169,8 +169,8 @@ func TestBuildSessionOptions_QuirksVersionPassedThroughWhenSet(t *testing.T) {
 
 func TestBuildSessionOptions_QuirksVersionOmittedWhenUnset(t *testing.T) {
 	t.Setenv("GAFFER_QUIRKS_VERSION", "")
-	cfg := &config.Config{EngineVersion: ptr(2)}
-	def := &config.Projection{Name: "p", Entry: "p.js"}
+	cfg := &config.Config{}
+	def := &config.Projection{Name: "p", Entry: "p.js", EngineVersion: ptr(2)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	opts := buildSessionOptions(proj, false, false)
@@ -184,8 +184,8 @@ func TestBuildSessionOptions_QuirksVersionOmittedWhenUnset(t *testing.T) {
 }
 
 func TestBuildSessionOptions_AlwaysIncludesEngineVersion(t *testing.T) {
-	cfg := &config.Config{EngineVersion: ptr(2)}
-	def := &config.Projection{}
+	cfg := &config.Config{}
+	def := &config.Projection{EngineVersion: ptr(2)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	opts := buildSessionOptions(proj, false, false)
@@ -257,7 +257,7 @@ func TestReadSource_MissingFile(t *testing.T) {
 }
 
 func TestNewProjection_SetsFields(t *testing.T) {
-	cfg := &config.Config{Connection: "esdb://localhost:2113", EngineVersion: ptr(2)}
+	cfg := &config.Config{Env: map[string]config.Env{"local": {Connection: "esdb://localhost:2113", Default: true}}}
 	def := &config.Projection{Name: "counts", Entry: "counts.js", EngineVersion: ptr(1)}
 
 	p := NewProjection("/project", cfg, def, "fromAll().when({})")
@@ -279,20 +279,21 @@ func TestNewProjection_SetsFields(t *testing.T) {
 	}
 }
 
-func TestNewProjection_TopLevelEngineVersion(t *testing.T) {
-	cfg := &config.Config{EngineVersion: ptr(2)}
-	def := &config.Projection{Name: "test", Entry: "test.js"}
+func TestNewProjection_EngineVersionFromProjection(t *testing.T) {
+	// engine_version is per-projection; there is no top-level fallback.
+	cfg := &config.Config{}
+	def := &config.Projection{Name: "test", Entry: "test.js", EngineVersion: ptr(2)}
 
 	p := NewProjection("/project", cfg, def, "source")
 
 	if p.EngineVersion != 2 {
-		t.Errorf("expected top-level engineVersion 2, got %d", p.EngineVersion)
+		t.Errorf("expected engineVersion 2 from projection, got %d", p.EngineVersion)
 	}
 }
 
 func TestCreateSession_ValidSource(t *testing.T) {
-	cfg := &config.Config{EngineVersion: ptr(2)}
-	def := &config.Projection{Name: "test", Entry: "test.js"}
+	cfg := &config.Config{}
+	def := &config.Projection{Name: "test", Entry: "test.js", EngineVersion: ptr(2)}
 	proj := NewProjection("/tmp", cfg, def, `fromAll().when({$init() { return {}; }})`)
 
 	session, sources, err := CreateSession(proj, false, false)
@@ -320,11 +321,10 @@ func TestCreateSession_InvalidSource(t *testing.T) {
 func TestLoadProjection_ValidProject(t *testing.T) {
 	dir := t.TempDir()
 
-	toml := `engine_version = 2
-
-[[projection]]
+	toml := `[[projection]]
 name = "counts"
 entry = "counts.js"
+engine_version = 2
 `
 	if err := os.WriteFile(filepath.Join(dir, "gaffer.toml"), []byte(toml), 0o644); err != nil {
 		t.Fatal(err)
@@ -385,6 +385,7 @@ func TestLoadProjection_ProjectionNotFound(t *testing.T) {
 	toml := `[[projection]]
 name = "exists"
 entry = "exists.js"
+engine_version = 2
 `
 	if err := os.WriteFile(filepath.Join(dir, "gaffer.toml"), []byte(toml), 0o644); err != nil {
 		t.Fatal(err)

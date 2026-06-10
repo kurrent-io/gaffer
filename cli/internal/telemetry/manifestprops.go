@@ -12,10 +12,9 @@ import (
 // events as `manifest_features_used`.
 //
 // Labels are gaffer-side (not raw TOML keys) so renaming a field in
-// the TOML schema doesn't silently change wire output. Per-projection
-// overrides count toward the same top-level label - e.g. one
-// projection setting `engine_version` registers the `engine_version`
-// feature whether or not the top-level key is set.
+// the TOML schema doesn't silently change wire output. A feature that
+// can be declared per-projection (engine_version, quirks_version,
+// execution_timeout) registers once if any projection sets it.
 //
 // Privacy: section *presence* only; no values, names, or paths cross
 // this boundary.
@@ -28,8 +27,8 @@ func ManifestFeaturesOf(c *config.Config) []string {
 		return nil
 	}
 	features := map[string]struct{}{}
-	if c.Connection != "" {
-		features["connection"] = struct{}{}
+	if len(c.Env) > 0 {
+		features["env"] = struct{}{}
 	}
 	if c.CompilationTimeout != nil {
 		features["compilation_timeout"] = struct{}{}
@@ -37,16 +36,20 @@ func ManifestFeaturesOf(c *config.Config) []string {
 	if len(c.Projection) > 0 {
 		features["projections"] = struct{}{}
 	}
-	// engine_version, quirks_version, execution_timeout can live at top
-	// level OR on individual projections. Either declaration marks
-	// the feature as in use.
-	hasEngineVersion := c.EngineVersion != nil
+	// engine_version is per-projection; quirks_version and
+	// execution_timeout can live at top level OR on individual
+	// projections. Any declaration marks the feature as in use.
+	hasEngineVersion := false
 	hasQuirksVersion := c.QuirksVersion != ""
 	hasExecutionTimeout := c.ExecutionTimeout != nil
 	hasFixtures := false
+	hasTrackEmitted := false
 	for _, p := range c.Projection {
 		if p.EngineVersion != nil {
 			hasEngineVersion = true
+		}
+		if p.TrackEmittedStreams != nil {
+			hasTrackEmitted = true
 		}
 		if p.QuirksVersion != "" {
 			hasQuirksVersion = true
@@ -60,6 +63,9 @@ func ManifestFeaturesOf(c *config.Config) []string {
 	}
 	if hasEngineVersion {
 		features["engine_version"] = struct{}{}
+	}
+	if hasTrackEmitted {
+		features["track_emitted_streams"] = struct{}{}
 	}
 	if hasQuirksVersion {
 		features["quirks_version"] = struct{}{}

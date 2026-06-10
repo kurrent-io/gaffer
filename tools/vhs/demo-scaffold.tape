@@ -25,7 +25,7 @@ Set Theme "Catppuccin Mocha"
 # Silence init and let it finish before Show so its "Initialized..."
 # line can't leak into the recording.
 Hide
-Type "export PS1='$ ' && cd $(mktemp -d) && gaffer init -y >/dev/null 2>&1"
+Type "export PS1='$ ' && cd $(mktemp -d) && gaffer init >/dev/null 2>&1"
 Enter
 Sleep 1s
 Ctrl+L
@@ -49,5 +49,8 @@ Enter
 Sleep 1s
 # Partitioning is skipped for a single stream (per-stream is invalid
 # there), so the next prompt is the emit toggle. Accept the default (No).
+Enter
+Sleep 1s
+# Engine version: accept the default (2, recommended).
 Enter
 Sleep 2.5s

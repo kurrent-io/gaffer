@@ -368,11 +368,21 @@ func (s *Server) Run(ctx context.Context) error {
 	return err
 }
 
-func (s *Server) connectToKurrentDB(cfg *config.Config, root string) (*kurrentdb.Client, error) {
-	if cfg.Connection == "" {
-		return nil, fmt.Errorf("no connection configured in gaffer.toml")
+func (s *Server) connectToKurrentDB(cfg *config.Config, root, envName string) (*kurrentdb.Client, error) {
+	env, err := mcpConnection(cfg, envName)
+	if err != nil {
+		return nil, err
 	}
-	return engine.Connect(cfg.Connection, root)
+	return engine.Connect(env.Connection, root, env.Name)
+}
+
+// mcpConnection resolves the env the mcp server dials. envName selects a
+// named [env.<name>]; an empty string uses the env marked default. A
+// project with no matching env (or no default when none is named) can't
+// be reached over the server-touching tools. The returned name drives
+// the .env.<env> overlay at connect time.
+func mcpConnection(cfg *config.Config, envName string) (config.ResolvedEnv, error) {
+	return cfg.ResolveEnv(envName)
 }
 
 func (s *Server) closeSession() {

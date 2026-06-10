@@ -79,10 +79,9 @@ func setupTestProject(t *testing.T) *Server {
 	}
 
 	cfg := &config.Config{
-		EngineVersion: ptr(2),
 		Projection: []config.Projection{
-			{Name: "order-count", Entry: "projections/order-count.js"},
-			{Name: "broken", Entry: "projections/broken.js"},
+			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)},
+			{Name: "broken", Entry: "projections/broken.js", EngineVersion: ptr(2)},
 		},
 	}
 
@@ -93,6 +92,58 @@ func setupTestProject(t *testing.T) *Server {
 
 	s = New(dir, cfg, "test")
 	return s
+}
+
+// setupTestProjectWithEnv is setupTestProject plus a default [env.local],
+// so the server-touching tools have an environment to resolve - used to
+// prove the per-call env arg reaches resolution.
+func setupTestProjectWithEnv(t *testing.T) *Server {
+	t.Helper()
+	dir := t.TempDir()
+	projDir := filepath.Join(dir, "projections")
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projDir, "order-count.js"), []byte(testProjection), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Env: map[string]config.Env{
+			"local": {Connection: "kurrentdb://localhost:2113?tls=false", Default: true},
+		},
+		Projection: []config.Projection{
+			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)},
+		},
+	}
+	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
+		t.Fatal(err)
+	}
+	s := New(dir, cfg, "test")
+	t.Cleanup(func() {
+		s.mu.Lock()
+		s.closeSession()
+		s.mu.Unlock()
+	})
+	return s
+}
+
+// An unknown env name is rejected at resolution, before any connection
+// attempt, proving the tool's env arg is threaded to ResolveEnv rather
+// than silently falling back to the default env.
+func TestListEvents_UnknownEnv(t *testing.T) {
+	s := setupTestProjectWithEnv(t)
+	msg := callToolExpectError(t, s.handleListEvents, listEventsInput{Name: "order-count", Env: "ghost"})
+	if !strings.Contains(msg, "unknown environment") || !strings.Contains(msg, "ghost") {
+		t.Errorf("expected unknown-env error naming 'ghost', got %q", msg)
+	}
+}
+
+func TestRun_LiveUnknownEnv(t *testing.T) {
+	s := setupTestProjectWithEnv(t)
+	msg := callToolExpectError(t, s.handleRun, runInput{Name: "order-count", Env: "ghost"})
+	if !strings.Contains(msg, "unknown environment") || !strings.Contains(msg, "ghost") {
+		t.Errorf("expected unknown-env error naming 'ghost', got %q", msg)
+	}
 }
 
 func callTool[In, Out any](t *testing.T, s *Server, tool *mcp.Tool, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error), input In) map[string]any {
@@ -351,6 +402,40 @@ func TestScaffold(t *testing.T) {
 	// Config should have new projection
 	if s.cfg.FindProjection("new-proj") == nil {
 		t.Error("expected new-proj in config")
+	}
+}
+
+func TestScaffold_EngineVersion(t *testing.T) {
+	s := setupTestProject(t)
+	callTool(t, s, scaffoldTool, s.handleScaffold, scaffoldInput{
+		Path:          "projections/legacy.js",
+		EngineVersion: 1,
+	})
+
+	proj := s.cfg.FindProjection("legacy")
+	if proj == nil || proj.EngineVersion == nil || *proj.EngineVersion != 1 {
+		t.Fatalf("expected engine_version 1, got %v", proj)
+	}
+}
+
+func TestScaffold_EngineVersionDefaultsTo2(t *testing.T) {
+	s := setupTestProject(t)
+	callTool(t, s, scaffoldTool, s.handleScaffold, scaffoldInput{Path: "projections/default-ev.js"})
+
+	proj := s.cfg.FindProjection("default-ev")
+	if proj == nil || proj.EngineVersion == nil || *proj.EngineVersion != config.DefaultEngineVersion {
+		t.Fatalf("expected default engine_version %d, got %v", config.DefaultEngineVersion, proj)
+	}
+}
+
+func TestScaffold_EngineVersionInvalid(t *testing.T) {
+	s := setupTestProject(t)
+	msg := callToolExpectError(t, s.handleScaffold, scaffoldInput{
+		Path:          "projections/bad.js",
+		EngineVersion: 5,
+	})
+	if !strings.Contains(msg, "engine_version") {
+		t.Errorf("expected engine_version error, got %q", msg)
 	}
 }
 
@@ -963,7 +1048,7 @@ func writeManifest(t *testing.T, root string, cfg *config.Config) {
 
 func TestInfo_ErrorsWhenNoProjections(t *testing.T) {
 	s := setupTestProject(t)
-	writeManifest(t, s.root, &config.Config{EngineVersion: ptr(2)})
+	writeManifest(t, s.root, &config.Config{})
 
 	msg := callToolExpectError(t, s.handleInfo, infoInput{})
 	if !strings.Contains(msg, "no projections configured") {
@@ -974,8 +1059,7 @@ func TestInfo_ErrorsWhenNoProjections(t *testing.T) {
 func TestInfo_DefaultsWhenSingleProjection(t *testing.T) {
 	s := setupTestProject(t)
 	writeManifest(t, s.root, &config.Config{
-		EngineVersion: ptr(2),
-		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
 	})
 
 	result := callTool(t, s, infoTool, s.handleInfo, infoInput{})
@@ -1081,8 +1165,7 @@ func TestProjectlessLazyResolveAfterInit(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		EngineVersion: ptr(2),
-		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
 	}
 	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
 		t.Fatal(err)
@@ -1106,8 +1189,7 @@ func TestProjectlessReloadAfterInit(t *testing.T) {
 
 	cfgPath := filepath.Join(dir, "gaffer.toml")
 	if err := config.Save(cfgPath, &config.Config{
-		EngineVersion: ptr(2),
-		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1117,10 +1199,9 @@ func TestProjectlessReloadAfterInit(t *testing.T) {
 	}
 
 	if err := config.Save(cfgPath, &config.Config{
-		EngineVersion: ptr(2),
 		Projection: []config.Projection{
-			{Name: "order-count", Entry: "projections/order-count.js"},
-			{Name: "totals", Entry: "projections/totals.js"},
+			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)},
+			{Name: "totals", Entry: "projections/totals.js", EngineVersion: ptr(2)},
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -1144,8 +1225,7 @@ func TestReloadPicksUpManifestEdits(t *testing.T) {
 	}
 
 	writeManifest(t, s.root, &config.Config{
-		EngineVersion: ptr(2),
-		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
 	})
 
 	after := callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
@@ -1162,7 +1242,8 @@ func TestReloadSurfacesInvalidManifest(t *testing.T) {
 
 	_ = callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
 
-	if err := os.WriteFile(filepath.Join(s.root, "gaffer.toml"), []byte("engine_version = 5\n"), 0o644); err != nil {
+	invalid := "[[projection]]\nname = \"p\"\nentry = \"p.js\"\nengine_version = 5\n"
+	if err := os.WriteFile(filepath.Join(s.root, "gaffer.toml"), []byte(invalid), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1180,7 +1261,8 @@ func TestProjectlessInvalidManifestSurfaces(t *testing.T) {
 	t.Chdir(dir)
 	s := New("", nil, "test")
 
-	if err := os.WriteFile(filepath.Join(dir, "gaffer.toml"), []byte("engine_version = 5\n"), 0o644); err != nil {
+	invalid := "[[projection]]\nname = \"p\"\nentry = \"p.js\"\nengine_version = 5\n"
+	if err := os.WriteFile(filepath.Join(dir, "gaffer.toml"), []byte(invalid), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if msg := callToolExpectError(t, s.handleListProjections, listProjectionsInput{}); !strings.Contains(msg, "loading gaffer.toml") {
@@ -1196,7 +1278,7 @@ func TestConfigResourceReadsInvalidManifest(t *testing.T) {
 	t.Chdir(dir)
 	s := New("", nil, "test")
 
-	raw := "engine_version = 5\n# present but invalid\n"
+	raw := "[[projection]]\nname = \"p\"\nentry = \"p.js\"\nengine_version = 5\n# present but invalid\n"
 	if err := os.WriteFile(filepath.Join(dir, "gaffer.toml"), []byte(raw), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1217,8 +1299,7 @@ func TestConfigResourceReadsInvalidManifest(t *testing.T) {
 func writeProject(t *testing.T, dir string) {
 	t.Helper()
 	cfg := &config.Config{
-		EngineVersion: ptr(2),
-		Projection:    []config.Projection{{Name: "order-count", Entry: "projections/order-count.js"}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
 	}
 	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
 		t.Fatal(err)
@@ -1356,7 +1437,7 @@ func TestStartedInProject(t *testing.T) {
 	if New("", nil, "test").StartedInProject() {
 		t.Error("project-less construction should report StartedInProject() == false")
 	}
-	if !New(t.TempDir(), &config.Config{EngineVersion: ptr(2)}, "test").StartedInProject() {
+	if !New(t.TempDir(), &config.Config{}, "test").StartedInProject() {
 		t.Error("in-project construction should report StartedInProject() == true")
 	}
 

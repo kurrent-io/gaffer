@@ -9,17 +9,10 @@ Full reference for every gaffer subcommand. Generated from the CLI source; run `
 
 Initialize a new gaffer project.
 
-Creates gaffer.toml in the current directory. Run on a terminal to choose the engine version, or pass --engine-version / --yes to skip the prompt.
+Creates a starter gaffer.toml in the current directory. Define an environment and add projections with `gaffer scaffold`.
 
 ```
-gaffer init [flags]
-```
-
-Flags:
-
-```
-      --engine-version int   Projection engine version written to gaffer.toml (1 or 2) (default 2)
-  -y, --yes                  Skip prompts and accept defaults
+gaffer init
 ```
 
 ## gaffer scaffold
@@ -35,11 +28,12 @@ gaffer scaffold <path> [flags]
 Flags:
 
 ```
-      --emit               Enable emit/linkTo
-      --name string        Projection name in gaffer.toml (defaults to the file's basename)
-      --partition string   Partitioning (none, per-stream) (default "none")
-      --source string      Event source (all, stream:name, category:name) (default "all")
-  -y, --yes                Skip prompts (a path must be supplied without prompting)
+      --emit                 Enable emit/linkTo
+      --engine-version int   Projection engine version (1 or 2) (default 2)
+      --name string          Projection name in gaffer.toml (defaults to the file's basename)
+      --partition string     Partitioning (none, per-stream) (default "none")
+      --source string        Event source (all, stream:name, category:name) (default "all")
+  -y, --yes                  Skip prompts (a path must be supplied without prompting)
 ```
 
 ## gaffer dev
@@ -55,9 +49,10 @@ gaffer dev <projection> [flags]
 Flags:
 
 ```
-      --connection string                KurrentDB connection string (overrides config)
+      --connection string                KurrentDB connection string (overrides --env and config)
       --debug                            Start DAP debug server
       --debug-port int                   DAP debug server port (0 = OS picks a free port; the actual bound port is reported on stderr and in --json output)
+      --env string                       Environment to run against, from gaffer.toml [env.<name>] (defaults to the env marked default)
       --events string                    Path to a JSON events file (ad-hoc fixture)
       --fixture string                   Named fixture declared as fixtures.<name> in gaffer.toml
       --json                             Output as NDJSON

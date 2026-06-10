@@ -16,10 +16,14 @@ func TestServer_ProjectionDetailsReturnsConnectionAndFixtures(t *testing.T) {
 	defer cancel()
 
 	root := t.TempDir()
-	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `connection = "esdb://localhost:2113"
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[env.local]
+connection = "esdb://localhost:2113"
+default = true
+
 [[projection]]
 name = "checkout"
 entry = "checkout.js"
+engine_version = 2
 fixtures.happy = "fixtures/happy.json"
 fixtures.sad = "fixtures/sad.json"
 `)
@@ -206,10 +210,14 @@ func TestServer_ProjectionDetailsEmptyResultForUnknownProjection(t *testing.T) {
 	defer cancel()
 
 	root := t.TempDir()
-	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `connection = "esdb://localhost:2113"
+	cfg := writeWorkspaceFile(t, root, "gaffer.toml", `[env.local]
+connection = "esdb://localhost:2113"
+default = true
+
 [[projection]]
 name = "real"
 entry = "real.js"
+engine_version = 2
 `)
 	uri := pathToURI(cfg)
 	writeWorkspaceFile(t, root, "real.js", "function project(){}")

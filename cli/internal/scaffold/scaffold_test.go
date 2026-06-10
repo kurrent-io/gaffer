@@ -13,7 +13,7 @@ import (
 func TestScaffold(t *testing.T) {
 	p := testutil.NewProject(t).AddProjection("existing", "// placeholder").Save()
 
-	result, err := Scaffold(p.Dir, p.Cfg, "counter", "projections/counter.js", "category:order", "per-stream", true)
+	result, err := Scaffold(p.Dir, p.Cfg, "counter", "projections/counter.js", "category:order", "per-stream", true, config.DefaultEngineVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestScaffold(t *testing.T) {
 func TestScaffold_InvalidComboWritesNothing(t *testing.T) {
 	p := testutil.NewProject(t).Save()
 
-	_, err := Scaffold(p.Dir, p.Cfg, "bad", "projections/bad.js", "stream:orders", "per-stream", false)
+	_, err := Scaffold(p.Dir, p.Cfg, "bad", "projections/bad.js", "stream:orders", "per-stream", false, config.DefaultEngineVersion)
 	if err == nil || !strings.Contains(err.Error(), "single-stream source") {
 		t.Fatalf("expected single-stream/per-stream rejection, got: %v", err)
 	}
@@ -65,12 +65,13 @@ func TestScaffold_InvalidComboWritesNothing(t *testing.T) {
 	}
 }
 
-func TestScaffold_NoZeroEngineVersionWritten(t *testing.T) {
-	// UI-1635: re-saving the manifest on scaffold must not stamp
-	// engine_version = 0 onto the new projection or any existing one.
+func TestScaffold_WritesEngineVersionOnNewProjection(t *testing.T) {
+	// Scaffold stamps the chosen engine_version on the new projection
+	// (engine_version is required per projection) and must never write
+	// the invalid engine_version = 0 (UI-1635).
 	p := testutil.NewProject(t).AddProjection("existing", "// placeholder").Save()
 
-	if _, err := Scaffold(p.Dir, p.Cfg, "counter", "projections/counter.js", "all", "none", false); err != nil {
+	if _, err := Scaffold(p.Dir, p.Cfg, "counter", "projections/counter.js", "all", "none", false, config.DefaultEngineVersion); err != nil {
 		t.Fatal(err)
 	}
 
@@ -81,12 +82,53 @@ func TestScaffold_NoZeroEngineVersionWritten(t *testing.T) {
 	if strings.Contains(string(data), "engine_version = 0") {
 		t.Errorf("gaffer.toml contains engine_version = 0:\n%s", data)
 	}
+
+	reloaded, err := config.Load(filepath.Join(p.Dir, "gaffer.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proj := reloaded.FindProjection("counter")
+	if proj == nil {
+		t.Fatal("expected counter projection in saved config")
+	}
+	if proj.EngineVersion == nil || *proj.EngineVersion != config.DefaultEngineVersion {
+		t.Errorf("engine_version: got %v, want %d", proj.EngineVersion, config.DefaultEngineVersion)
+	}
+}
+
+func TestScaffold_WritesGivenEngineVersion(t *testing.T) {
+	p := testutil.NewProject(t).AddProjection("existing", "// placeholder").Save()
+
+	if _, err := Scaffold(p.Dir, p.Cfg, "legacy", "projections/legacy.js", "all", "none", false, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded, err := config.Load(filepath.Join(p.Dir, "gaffer.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proj := reloaded.FindProjection("legacy")
+	if proj == nil || proj.EngineVersion == nil || *proj.EngineVersion != 1 {
+		t.Fatalf("engine_version: got %v, want 1", proj.EngineVersion)
+	}
+}
+
+func TestScaffold_RejectsInvalidEngineVersion(t *testing.T) {
+	p := testutil.NewProject(t)
+
+	if _, err := Scaffold(p.Dir, p.Cfg, "bad", "projections/bad.js", "all", "none", false, 5); err == nil {
+		t.Fatal("expected error for engine_version 5")
+	}
+	// Validation runs before any filesystem work, so nothing is written.
+	if _, err := os.Stat(filepath.Join(p.Dir, "projections", "bad.js")); err == nil {
+		t.Error("scaffold wrote a file despite the invalid engine_version")
+	}
 }
 
 func TestScaffold_CustomPath(t *testing.T) {
 	p := testutil.NewProject(t).Save()
 
-	result, err := Scaffold(p.Dir, p.Cfg, "totals", "lib/handlers/totals.js", "all", "none", false)
+	result, err := Scaffold(p.Dir, p.Cfg, "totals", "lib/handlers/totals.js", "all", "none", false, config.DefaultEngineVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +145,7 @@ func TestScaffold_NameDistinctFromPath(t *testing.T) {
 	// CLI's --name flag plumbs through to here.
 	p := testutil.NewProject(t).Save()
 
-	result, err := Scaffold(p.Dir, p.Cfg, "order-totals", "projections/totals.js", "all", "none", false)
+	result, err := Scaffold(p.Dir, p.Cfg, "order-totals", "projections/totals.js", "all", "none", false, config.DefaultEngineVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +169,7 @@ func TestScaffold_NameDistinctFromPath(t *testing.T) {
 func TestScaffold_DuplicateName(t *testing.T) {
 	p := testutil.NewProject(t).AddProjection("existing", "// placeholder").Save()
 
-	_, err := Scaffold(p.Dir, p.Cfg, "existing", "projections/existing.js", "all", "none", false)
+	_, err := Scaffold(p.Dir, p.Cfg, "existing", "projections/existing.js", "all", "none", false, config.DefaultEngineVersion)
 	if err == nil {
 		t.Fatal("expected error for duplicate name")
 	}
@@ -147,7 +189,7 @@ func TestScaffold_FileAlreadyExists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := Scaffold(p.Dir, p.Cfg, "taken", "projections/taken.js", "all", "none", false)
+	_, err := Scaffold(p.Dir, p.Cfg, "taken", "projections/taken.js", "all", "none", false, config.DefaultEngineVersion)
 	if err == nil {
 		t.Fatal("expected error for existing file")
 	}
@@ -181,7 +223,7 @@ func TestScaffold_PathValidation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := Scaffold(p.Dir, p.Cfg, "x", tc.path, "all", "none", false)
+			_, err := Scaffold(p.Dir, p.Cfg, "x", tc.path, "all", "none", false, config.DefaultEngineVersion)
 			if err == nil {
 				t.Fatalf("expected error for path %q", tc.path)
 			}
@@ -197,7 +239,7 @@ func TestScaffold_BackslashSeparatorsNormalised(t *testing.T) {
 	// entry stays slash-form and portable across platforms.
 	p := testutil.NewProject(t).Save()
 
-	result, err := Scaffold(p.Dir, p.Cfg, "totals", "lib\\handlers\\totals.js", "all", "none", false)
+	result, err := Scaffold(p.Dir, p.Cfg, "totals", "lib\\handlers\\totals.js", "all", "none", false, config.DefaultEngineVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +253,7 @@ func TestScaffold_NameDefaultsFromBasename(t *testing.T) {
 	// the basename without extension.
 	p := testutil.NewProject(t).Save()
 
-	result, err := Scaffold(p.Dir, p.Cfg, "", "projections/counter.js", "all", "none", false)
+	result, err := Scaffold(p.Dir, p.Cfg, "", "projections/counter.js", "all", "none", false, config.DefaultEngineVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +270,7 @@ func TestScaffold_DotPrefixFilenameRoundTripsThroughLoad(t *testing.T) {
 	// CLI writes a toml that subsequent commands can't load.
 	p := testutil.NewProject(t).Save()
 
-	result, err := Scaffold(p.Dir, p.Cfg, "", "..hidden.js", "all", "none", false)
+	result, err := Scaffold(p.Dir, p.Cfg, "", "..hidden.js", "all", "none", false, config.DefaultEngineVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +298,7 @@ func TestScaffold_RejectsSymlinkEscape(t *testing.T) {
 		t.Skipf("symlink unsupported on this platform: %v", err)
 	}
 
-	_, err := Scaffold(p.Dir, p.Cfg, "x", "escape/counter.js", "all", "none", false)
+	_, err := Scaffold(p.Dir, p.Cfg, "x", "escape/counter.js", "all", "none", false, config.DefaultEngineVersion)
 	if err == nil {
 		t.Fatal("expected error for symlink escape")
 	}
@@ -278,7 +320,7 @@ func TestScaffold_RejectsDeepSymlinkEscape(t *testing.T) {
 
 	// Two levels of missing directories between the symlink and
 	// the leaf - exercises the loop, not just the single-step fallback.
-	_, err := Scaffold(p.Dir, p.Cfg, "x", "escape/new-sub/nested/counter.js", "all", "none", false)
+	_, err := Scaffold(p.Dir, p.Cfg, "x", "escape/new-sub/nested/counter.js", "all", "none", false, config.DefaultEngineVersion)
 	if err == nil {
 		t.Fatal("expected error for deep symlink escape")
 	}
@@ -290,7 +332,7 @@ func TestScaffold_RejectsDeepSymlinkEscape(t *testing.T) {
 func TestScaffold_NameValidation(t *testing.T) {
 	p := testutil.NewProject(t).Save()
 
-	_, err := Scaffold(p.Dir, p.Cfg, "  ", "projections/x.js", "all", "none", false)
+	_, err := Scaffold(p.Dir, p.Cfg, "  ", "projections/x.js", "all", "none", false, config.DefaultEngineVersion)
 	if err == nil {
 		t.Fatal("expected error for whitespace-only name")
 	}

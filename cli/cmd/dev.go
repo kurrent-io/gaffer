@@ -31,6 +31,7 @@ type devOpts struct {
 	Events                     string
 	Fixture                    string
 	JSON                       bool
+	Env                        string
 	Connection                 string
 	Debug                      bool
 	DebugPort                  int
@@ -65,7 +66,8 @@ func newDevCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Events, "events", "", "Path to a JSON events file (ad-hoc fixture)")
 	cmd.Flags().StringVar(&opts.Fixture, "fixture", "", "Named fixture declared as fixtures.<name> in gaffer.toml")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output as NDJSON")
-	cmd.Flags().StringVar(&opts.Connection, "connection", "", "KurrentDB connection string (overrides config)")
+	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment to run against, from gaffer.toml [env.<name>] (defaults to the env marked default)")
+	cmd.Flags().StringVar(&opts.Connection, "connection", "", "KurrentDB connection string (overrides --env and config)")
 	cmd.Flags().BoolVar(&opts.Debug, "debug", false, "Start DAP debug server")
 	cmd.Flags().IntVar(&opts.DebugPort, "debug-port", 0, "DAP debug server port (0 = OS picks a free port; the actual bound port is reported on stderr and in --json output)")
 	cmd.Flags().BoolVar(&opts.UntilCaughtUp, "until-caught-up", false, "Exit when subscription catches up (live mode only)")
@@ -127,7 +129,7 @@ func resolveDevName(cmd *cobra.Command, args []string, opts *devOpts) (string, e
 // guidance. A chosen fixture is set on opts.Fixture; "live" leaves opts
 // alone so resolveConnection falls back to config.
 func maybePromptDevSource(cmd *cobra.Command, proj *engine.Projection, opts *devOpts) error {
-	if opts.Events != "" || opts.Fixture != "" || opts.Connection != "" {
+	if opts.Events != "" || opts.Fixture != "" || opts.Connection != "" || opts.Env != "" {
 		return nil
 	}
 	if !prompt.Enabled(opts.Yes) {
@@ -139,8 +141,8 @@ func maybePromptDevSource(cmd *cobra.Command, proj *engine.Projection, opts *dev
 	for _, f := range proj.Def.FixtureNames() {
 		choices = append(choices, prompt.Option{Label: "Fixture: " + f, Value: f})
 	}
-	hasLive := proj.Config.Connection != ""
-	if hasLive {
+	resolved, _ := resolveConnection(opts, proj.Config)
+	if resolved.Connection != "" {
 		choices = append(choices, prompt.Option{Label: "Live (connection from gaffer.toml)", Value: liveValue})
 	}
 
@@ -183,8 +185,8 @@ func devConnectedToDB(opts *devOpts, proj *engine.Projection) bool {
 	if proj == nil || proj.Config == nil {
 		return opts.Connection != ""
 	}
-	return opts.Events == "" && opts.Fixture == "" &&
-		resolveConnection(opts.Connection, proj.Config) != ""
+	resolved, err := resolveConnection(opts, proj.Config)
+	return opts.Events == "" && opts.Fixture == "" && err == nil && resolved.Connection != ""
 }
 
 // runDevWithDevTx is the cobra wrapper for the non-debug path:
@@ -798,13 +800,17 @@ func buildSource(
 		}
 		return engine.NewFixtureSource(events), nil
 	}
-	connStr := resolveConnection(opts.Connection, proj.Config)
-	if connStr == "" {
-		return nil, fmt.Errorf("no event source: use --fixture <name>, --events <path>, or configure connection in gaffer.toml")
+	resolved, err := resolveConnection(opts, proj.Config)
+	if err != nil {
+		return nil, err
+	}
+	if resolved.Connection == "" {
+		return nil, fmt.Errorf("no event source: use --fixture <name>, --events <path>, or configure an [env.<name>] in gaffer.toml")
 	}
 	liveCfg := engine.LiveSourceConfig{
-		ConnStr:       connStr,
+		ConnStr:       resolved.Connection,
 		Root:          proj.Root,
+		EnvName:       resolved.Name,
 		Info:          info,
 		EngineVersion: proj.EngineVersion,
 	}
@@ -838,11 +844,24 @@ func finalizeRun(ctx context.Context, caughtUp bool, srcErr error, r *engine.Run
 	return srcErr
 }
 
-func resolveConnection(override string, cfg *config.Config) string {
-	if override != "" {
-		return override
+// resolveConnection determines the live target for a dev run, returning
+// the resolved env (its name drives .env.<env> overlay at connect time).
+// --connection wins outright (ad-hoc, no env name). An explicit --env
+// must resolve or it's an error (the user named a target that isn't
+// there). With neither flag, the default env is used if one exists; a
+// project with no default env yields an empty connection and no error -
+// dev falls back to fixtures.
+func resolveConnection(opts *devOpts, cfg *config.Config) (config.ResolvedEnv, error) {
+	if opts.Connection != "" {
+		return config.ResolvedEnv{Connection: opts.Connection}, nil
 	}
-	return cfg.Connection
+	if opts.Env != "" {
+		return cfg.ResolveEnv(opts.Env)
+	}
+	if env, ok := cfg.DefaultEnv(); ok {
+		return env, nil
+	}
+	return config.ResolvedEnv{}, nil
 }
 
 type eventWriterAdapter struct {

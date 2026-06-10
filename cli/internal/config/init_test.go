@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -11,7 +12,7 @@ import (
 func TestInitProject(t *testing.T) {
 	dir := t.TempDir()
 
-	path, err := InitProject(dir, DefaultEngineVersion)
+	path, err := InitProject(dir)
 	if err != nil {
 		t.Fatalf("InitProject: %v", err)
 	}
@@ -19,53 +20,46 @@ func TestInitProject(t *testing.T) {
 		t.Errorf("path = %q, want %q", path, want)
 	}
 
+	// The starter template is entirely commented out: it loads as a
+	// valid config with no active envs or projections.
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("loading created project: %v", err)
 	}
-	if cfg.EngineVersion == nil || *cfg.EngineVersion != 2 {
-		t.Errorf("engine version = %v, want 2", cfg.EngineVersion)
+	if len(cfg.Env) != 0 {
+		t.Errorf("expected 0 envs, got %d", len(cfg.Env))
+	}
+	if len(cfg.Projection) != 0 {
+		t.Errorf("expected 0 projections, got %d", len(cfg.Projection))
 	}
 }
 
-func TestInitProjectEngineVersion1(t *testing.T) {
+func TestInitProjectTemplateMarkers(t *testing.T) {
 	dir := t.TempDir()
 
-	path, err := InitProject(dir, 1)
+	path, err := InitProject(dir)
 	if err != nil {
 		t.Fatalf("InitProject: %v", err)
 	}
-	cfg, err := Load(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("loading created project: %v", err)
+		t.Fatal(err)
 	}
-	if cfg.EngineVersion == nil || *cfg.EngineVersion != 1 {
-		t.Errorf("engine version = %v, want 1", cfg.EngineVersion)
-	}
-}
-
-func TestInitProjectRejectsInvalidVersion(t *testing.T) {
-	dir := t.TempDir()
-
-	_, err := InitProject(dir, 3)
-	if err == nil {
-		t.Fatal("expected an error for engine_version 3")
-	}
-	if !strings.Contains(err.Error(), "must be 1 or 2") {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if _, statErr := Load(filepath.Join(dir, "gaffer.toml")); statErr == nil {
-		t.Error("gaffer.toml should not have been created for an invalid version")
+	content := string(data)
+	for _, marker := range []string{"[env.", "[[projection]]", "engine_version = 2"} {
+		if !strings.Contains(content, marker) {
+			t.Errorf("expected template to document %q, got:\n%s", marker, content)
+		}
 	}
 }
 
 func TestInitProjectRefusesExisting(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := InitProject(dir, DefaultEngineVersion); err != nil {
+	if _, err := InitProject(dir); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err := InitProject(dir, DefaultEngineVersion)
+	_, err := InitProject(dir)
 	if err == nil {
 		t.Fatal("expected an error re-initializing an existing project")
 	}
@@ -84,7 +78,7 @@ func TestInitProjectConcurrent(t *testing.T) {
 	for range n {
 		go func() {
 			defer wg.Done()
-			if _, err := InitProject(dir, DefaultEngineVersion); err == nil {
+			if _, err := InitProject(dir); err == nil {
 				successes.Add(1)
 			}
 		}()

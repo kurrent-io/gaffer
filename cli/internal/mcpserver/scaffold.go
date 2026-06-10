@@ -8,6 +8,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/scaffold"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -24,11 +25,12 @@ var scaffoldTool = &mcp.Tool{
 }
 
 type scaffoldInput struct {
-	Path      string `json:"path" jsonschema:"Projection file path, relative to the project root. Must end in a supported extension (e.g. .js)."`
-	Name      string `json:"name,omitempty" jsonschema:"Projection name in gaffer.toml. Defaults to the file's basename without extension."`
-	Source    string `json:"source,omitempty" jsonschema:"Event source: 'all' (default), 'stream:name', or 'category:name'"`
-	Partition string `json:"partition,omitempty" jsonschema:"Partitioning: 'none' (default) or 'per-stream'"`
-	Emit      bool   `json:"emit,omitempty" jsonschema:"Include emit/linkTo example in template"`
+	Path          string `json:"path" jsonschema:"Projection file path, relative to the project root. Must end in a supported extension (e.g. .js)."`
+	Name          string `json:"name,omitempty" jsonschema:"Projection name in gaffer.toml. Defaults to the file's basename without extension."`
+	Source        string `json:"source,omitempty" jsonschema:"Event source: 'all' (default), 'stream:name', or 'category:name'"`
+	Partition     string `json:"partition,omitempty" jsonschema:"Partitioning: 'none' (default) or 'per-stream'"`
+	Emit          bool   `json:"emit,omitempty" jsonschema:"Include emit/linkTo example in template"`
+	EngineVersion int    `json:"engine_version,omitempty" jsonschema:"Projection engine version: 1 or 2. Defaults to 2; use 1 only for legacy compatibility."`
 }
 
 func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input scaffoldInput) (*mcp.CallToolResult, any, error) {
@@ -48,10 +50,15 @@ func (s *Server) handleScaffold(_ context.Context, _ *mcp.CallToolRequest, input
 	if partition == "" {
 		partition = "none"
 	}
+	engineVersion := input.EngineVersion
+	if engineVersion == 0 {
+		engineVersion = config.DefaultEngineVersion
+	}
 
-	// scaffold.Scaffold owns path validation and name defaulting;
-	// the handler just routes the JSON shape into the call.
-	result, err := scaffold.Scaffold(root, cfg, input.Name, input.Path, source, partition, input.Emit)
+	// scaffold.Scaffold owns path validation, name defaulting, and the
+	// engine_version 1-or-2 check; the handler just routes the JSON
+	// shape into the call.
+	result, err := scaffold.Scaffold(root, cfg, input.Name, input.Path, source, partition, input.Emit, engineVersion)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}

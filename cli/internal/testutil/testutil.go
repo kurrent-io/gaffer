@@ -91,26 +91,40 @@ func Event(eventType, streamID string, seq int) string {
 type Project struct {
 	Dir string
 	Cfg *config.Config
-	t   *testing.T
+	// engineVersion is stamped on each projection added via
+	// AddProjection (engine_version is per-projection and required).
+	// Defaults to 2; change with WithEngineVersion.
+	engineVersion int
+	t             *testing.T
 }
 
-// NewProject returns a test project with engine_version=2 by default.
-// Call WithEngineVersion to override.
+// NewProject returns a test project whose added projections get
+// engine_version=2 by default. Call WithEngineVersion to override.
 func NewProject(t *testing.T) *Project {
 	t.Helper()
 	dir := t.TempDir()
-	defaultEngine := 2
-	cfg := &config.Config{EngineVersion: &defaultEngine}
-	return &Project{Dir: dir, Cfg: cfg, t: t}
+	return &Project{Dir: dir, Cfg: &config.Config{}, engineVersion: 2, t: t}
 }
 
+// WithEngineVersion sets the engine_version stamped on projections.
+// Applies to projections added afterward and retro-applies to any
+// already added, so call order doesn't matter.
 func (p *Project) WithEngineVersion(v int) *Project {
-	p.Cfg.EngineVersion = &v
+	p.engineVersion = v
+	for i := range p.Cfg.Projection {
+		ev := v
+		p.Cfg.Projection[i].EngineVersion = &ev
+	}
 	return p
 }
 
+// WithConnection registers a single default env carrying connStr, so
+// the project resolves a connection when --env is omitted.
 func (p *Project) WithConnection(connStr string) *Project {
-	p.Cfg.Connection = connStr
+	if p.Cfg.Env == nil {
+		p.Cfg.Env = make(map[string]config.Env)
+	}
+	p.Cfg.Env["default"] = config.Env{Connection: connStr, Default: true}
 	return p
 }
 
@@ -126,9 +140,11 @@ func (p *Project) AddProjection(name, source string) *Project {
 		p.t.Fatal(err)
 	}
 
+	ev := p.engineVersion
 	p.Cfg.Projection = append(p.Cfg.Projection, config.Projection{
-		Name:  name,
-		Entry: relPath,
+		Name:          name,
+		Entry:         relPath,
+		EngineVersion: &ev,
 	})
 	return p
 }

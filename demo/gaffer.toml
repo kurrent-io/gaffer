@@ -1,31 +1,38 @@
+[env.cloud]
 connection = "kurrentdb+discover://d3r0d13tv1llhr4flj40.mesdb.eventstore.cloud:2113"
-engine_version = 2
+default = true
 
 [[projection]]
 name = "order-count"
 entry = "projections/order-count.js"
+engine_version = 2
 fixtures.happy = "fixtures/orders.json"
 fixtures.full = "fixtures/orders-full.json"
 
 [[projection]]
 name = "event-counter"
 entry = "projections/event-counter.js"
+engine_version = 2
 
 [[projection]]
 name = "order-notifications"
 entry = "projections/order-notifications.js"
+engine_version = 2
 fixtures.happy = "fixtures/orders.json"
 fixtures.full = "fixtures/orders-full.json"
 
 [[projection]]
 name = "broken"
 entry = "projections/broken.js"
+engine_version = 2
 
 [[projection]]
 name = "bistate-counter"
 entry = "projections/bistate-counter.js"
+engine_version = 2
 
 [[projection]]
 name = "quirks"
 entry = "projections/quirks.js"
+engine_version = 2
 fixtures.ticks = "fixtures/quirks-ticks.json"

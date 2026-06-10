@@ -1,5 +1,5 @@
-// gaffer.init: command-palette flow that runs `gaffer init --yes` in
-// the workspace. Lives outside extension.ts so the branching UX logic
+// gaffer.init: command-palette flow that runs `gaffer init` in the
+// workspace. Lives outside extension.ts so the branching UX logic
 // (folder resolution, toml-exists handling) can be unit-tested in
 // isolation.
 
@@ -41,7 +41,7 @@ export function initProjection(deps: InitProjectionDeps): () => Promise<void> {
 			return;
 		}
 		const result = await runGafferCommand(
-			["init", "--yes"],
+			["init"],
 			target.fsPath,
 			deps.telemetry,
 			"command_palette",

@@ -25,7 +25,7 @@ See [the full command reference](./commands.md) for every subcommand and flag, o
 On a terminal, `gaffer scaffold` and `gaffer dev` prompt for anything you didn't pass on the command line:
 
 - `gaffer scaffold` asks for the path (when omitted) and any of source, partitioning, emit, and engine version not set via flags.
-- `gaffer dev` asks which projection to run (when omitted) and which source to use when none is given via `--events`, `--fixture`, or `--connection`.
+- `gaffer dev` asks which projection to run (when omitted) and which event source to use when none is pinned via `--events`, `--fixture`, `--connection`, or `--env`. The picker lists every declared fixture and configured environment; with a single source it's used without asking.
 
 Anything you pass explicitly (a positional or a flag) is taken as-is and never re-prompted; only the gaps are asked. Pass `--yes` (`-y`) to skip prompts and accept defaults, the same thing that happens automatically when input isn't a terminal (pipes, CI), so scripts keep working unchanged. Press Ctrl-C or Esc on any prompt to cancel.
 
@@ -50,7 +50,7 @@ fixtures.full = "fixtures/orders-full.json"
 
 Top-level keys:
 
-- **`[env.<name>]`**: an environment, naming a KurrentDB connection. Each block has a required **`connection`** (the connection string, supporting `${VAR}` expansion so credentials can stay out of the file) and an optional **`default`** bool. Exactly one environment may be the default. Select an environment with `gaffer dev --env <name>`; with a default set, `--env` is optional. See [Environment file](#environment-file-env) and the [gaffer.toml reference](../reference/gaffer-toml.md#envname).
+- **`[env.<name>]`**: an environment, naming a KurrentDB connection. Each block has a required **`connection`** (the connection string, supporting `${VAR}` expansion so credentials can stay out of the file) and an optional **`default`** bool. Exactly one environment may be the default. Select an environment with `gaffer dev --env <name>` or pick it from the interactive prompt; `--env` can be omitted on a non-interactive run when one environment is the default. See [Environment file](#environment-file-env) and the [gaffer.toml reference](../reference/gaffer-toml.md#envname).
 
 `engine_version` is set per-`[[projection]]` (`1` or `2`), not at the top level.
 
@@ -98,7 +98,7 @@ Project-level telemetry is opted out by setting `telemetry = false` at the top o
 
 - **`--json`**: structured output instead of the default text rendering. `gaffer dev --json` emits NDJSON (one event per line); other commands emit a single JSON object.
 - **`--debug`**: starts the DAP debug server alongside `gaffer dev`. See [Debugging projections](../getting-started/debugging.md).
-- **`--env <name>`**: select an environment from `gaffer.toml` to run `gaffer dev` against. Optional when one environment is marked `default`.
+- **`--env <name>`**: select an environment from `gaffer.toml` to run `gaffer dev` against. Optional when one environment is marked `default`, or on a terminal where you're prompted to pick; required for non-interactive runs with no default.
 - **`--connection`**: ad-hoc connection string for a single `gaffer dev` invocation. Overrides `--env` and the configured environment.
 - **`--fixture <name>`** / **`--events <path>`**: pick a named fixture from `gaffer.toml`, or point at a JSON events file directly.
 - **`--yes` / `-y`**: skip interactive prompts and accept defaults. Applies to `gaffer scaffold` and `gaffer dev`. See [Interactive mode](#interactive-mode).

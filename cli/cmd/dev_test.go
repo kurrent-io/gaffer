@@ -164,3 +164,75 @@ func TestFinalizeRun_CleanExit(t *testing.T) {
 		t.Errorf("expected no output, got %q", stderr.String())
 	}
 }
+
+func TestDevSourceChoices(t *testing.T) {
+	cfg := &config.Config{
+		Env: map[string]config.Env{
+			"local": {Connection: "esdb://local", Default: true},
+			"prod":  {Connection: "esdb://prod"},
+		},
+	}
+	choices := devSourceChoices([]string{"happy"}, cfg)
+
+	// Fixtures first, then envs sorted by name; tags padded to a column,
+	// the default env tagged.
+	want := []struct{ label, value string }{
+		{"Fixture: happy", "happy"},
+		{"Env:     local [default]", devEnvPrefix + "local"},
+		{"Env:     prod", devEnvPrefix + "prod"},
+	}
+	if len(choices) != len(want) {
+		t.Fatalf("got %d choices, want %d: %+v", len(choices), len(want), choices)
+	}
+	for i, w := range want {
+		if choices[i].Label != w.label || choices[i].Value != w.value {
+			t.Errorf("choice %d = {%q, %q}, want {%q, %q}", i, choices[i].Label, choices[i].Value, w.label, w.value)
+		}
+	}
+}
+
+func TestDevSourceChoices_NoEnvs(t *testing.T) {
+	choices := devSourceChoices([]string{"happy"}, &config.Config{})
+	if len(choices) != 1 || choices[0].Value != "happy" {
+		t.Fatalf("got %+v, want a single fixture choice", choices)
+	}
+}
+
+func TestApplyDevSource(t *testing.T) {
+	t.Run("env prefix sets Env", func(t *testing.T) {
+		opts := &devOpts{}
+		applyDevSource(opts, devEnvPrefix+"cloud")
+		if opts.Env != "cloud" || opts.Fixture != "" {
+			t.Fatalf("got Env=%q Fixture=%q, want Env=cloud", opts.Env, opts.Fixture)
+		}
+	})
+	t.Run("plain value sets Fixture", func(t *testing.T) {
+		opts := &devOpts{}
+		applyDevSource(opts, "happy")
+		if opts.Fixture != "happy" || opts.Env != "" {
+			t.Fatalf("got Fixture=%q Env=%q, want Fixture=happy", opts.Fixture, opts.Env)
+		}
+	})
+}
+
+func TestNoSourceErr(t *testing.T) {
+	t.Run("with envs suggests --env and lists them", func(t *testing.T) {
+		cfg := &config.Config{Env: map[string]config.Env{"cloud": {Connection: "esdb://c"}}}
+		msg := noSourceErr(cfg).Error()
+		if !strings.Contains(msg, "--env") || !strings.Contains(msg, "cloud") {
+			t.Errorf("message should suggest --env and name cloud, got %q", msg)
+		}
+		if !strings.Contains(msg, "default = true") {
+			t.Errorf("message should mention default = true, got %q", msg)
+		}
+	})
+	t.Run("without envs guides to add one", func(t *testing.T) {
+		msg := noSourceErr(&config.Config{}).Error()
+		if !strings.Contains(msg, "[env.<name>]") {
+			t.Errorf("message should guide to add an env block, got %q", msg)
+		}
+		if strings.Contains(msg, "available:") {
+			t.Errorf("message should not list envs when none exist, got %q", msg)
+		}
+	})
+}

@@ -120,14 +120,47 @@ func resolveDevName(cmd *cobra.Command, args []string, opts *devOpts) (string, e
 	})
 }
 
+// devEnvPrefix tags a source choice's Value as a live environment (by
+// name) rather than a fixture, so applyDevSource can tell them apart.
+const devEnvPrefix = "\x00env:"
+
+// devSourceChoices lists the selectable event sources for a dev run: the
+// projection's declared fixtures, then one live option per configured
+// environment (so a non-default env is reachable without editing
+// gaffer.toml). The default env, if any, is labelled as such.
+func devSourceChoices(fixtures []string, cfg *config.Config) []prompt.Option {
+	choices := make([]prompt.Option, 0, len(fixtures)+len(cfg.Env))
+	// Pad the tag so the values line up in a column; "Fixture:" is widest.
+	const tagWidth = len("Fixture:")
+	for _, f := range fixtures {
+		choices = append(choices, prompt.Option{Label: fmt.Sprintf("%-*s %s", tagWidth, "Fixture:", f), Value: f})
+	}
+	for _, name := range cfg.EnvNames() {
+		label := fmt.Sprintf("%-*s %s", tagWidth, "Env:", name)
+		if cfg.Env[name].Default {
+			label += " [default]"
+		}
+		choices = append(choices, prompt.Option{Label: label, Value: devEnvPrefix + name})
+	}
+	return choices
+}
+
+// applyDevSource records a picked source on opts: a live env (carrying
+// devEnvPrefix) onto opts.Env, otherwise a fixture name onto opts.Fixture.
+func applyDevSource(opts *devOpts, sel string) {
+	if env, ok := strings.CutPrefix(sel, devEnvPrefix); ok {
+		opts.Env = env
+	} else {
+		opts.Fixture = sel
+	}
+}
+
 // maybePromptDevSource picks an event source interactively when the user
-// pinned none via --events / --fixture / --connection. It offers the
-// projection's declared fixtures plus a live option when gaffer.toml has
-// a connection. With a single possible source it's selected without
+// pinned none via --events / --fixture / --connection / --env. It offers
+// the projection's fixtures plus one live option per configured
+// environment. With a single possible source it's selected without
 // prompting (and echoed to stderr, since the user wasn't asked); with
-// none it's a no-op so buildSource emits its usual "no event source"
-// guidance. A chosen fixture is set on opts.Fixture; "live" leaves opts
-// alone so resolveConnection falls back to config.
+// none it's a no-op so buildSource emits its usual guidance.
 func maybePromptDevSource(cmd *cobra.Command, proj *engine.Projection, opts *devOpts) error {
 	if opts.Events != "" || opts.Fixture != "" || opts.Connection != "" || opts.Env != "" {
 		return nil
@@ -136,16 +169,7 @@ func maybePromptDevSource(cmd *cobra.Command, proj *engine.Projection, opts *dev
 		return nil
 	}
 
-	const liveValue = "\x00live"
-	choices := make([]prompt.Option, 0)
-	for _, f := range proj.Def.FixtureNames() {
-		choices = append(choices, prompt.Option{Label: "Fixture: " + f, Value: f})
-	}
-	resolved, _ := resolveConnection(opts, proj.Config)
-	if resolved.Connection != "" {
-		choices = append(choices, prompt.Option{Label: "Live (connection from gaffer.toml)", Value: liveValue})
-	}
-
+	choices := devSourceChoices(proj.Def.FixtureNames(), proj.Config)
 	switch len(choices) {
 	case 0:
 		return nil
@@ -153,22 +177,24 @@ func maybePromptDevSource(cmd *cobra.Command, proj *engine.Projection, opts *dev
 		// Only one possible source: use it without asking, but echo the
 		// choice so the run isn't reading from a source the user never
 		// saw chosen.
-		if choices[0].Value == liveValue {
-			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Using live connection from gaffer.toml")
+		applyDevSource(opts, choices[0].Value)
+		if opts.Env != "" {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Using live connection: %s\n", opts.Env)
 		} else {
-			opts.Fixture = choices[0].Value
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Using fixture: %s\n", choices[0].Value)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Using fixture: %s\n", opts.Fixture)
 		}
 		return nil
 	}
 
-	sel, err := prompt.Select("Event source", choices, choices[0].Value)
+	preselect := choices[0].Value
+	if def, ok := proj.Config.DefaultEnv(); ok {
+		preselect = devEnvPrefix + def.Name
+	}
+	sel, err := prompt.Select("Event source", choices, preselect)
 	if err != nil {
 		return err
 	}
-	if sel != liveValue {
-		opts.Fixture = sel
-	}
+	applyDevSource(opts, sel)
 	return nil
 }
 
@@ -805,7 +831,7 @@ func buildSource(
 		return nil, err
 	}
 	if resolved.Connection == "" {
-		return nil, fmt.Errorf("no event source: use --fixture <name>, --events <path>, or configure an [env.<name>] in gaffer.toml")
+		return nil, noSourceErr(proj.Config)
 	}
 	liveCfg := engine.LiveSourceConfig{
 		ConnStr:       resolved.Connection,
@@ -842,6 +868,20 @@ func finalizeRun(ctx context.Context, caughtUp bool, srcErr error, r *engine.Run
 		return nil
 	}
 	return srcErr
+}
+
+// noSourceErr explains why a dev run resolved no event source, tailored
+// to whether gaffer.toml has environments to point --env at. With envs
+// configured, the user just hasn't selected one (no default, no --env);
+// with none, they need a fixture, an events file, or an [env.<name>].
+func noSourceErr(cfg *config.Config) error {
+	if len(cfg.Env) > 0 {
+		return fmt.Errorf(
+			"no environment selected: pass --env <name> (available: %s) or set default = true in gaffer.toml; or use --fixture <name> / --events <path>",
+			strings.Join(cfg.EnvNames(), ", "),
+		)
+	}
+	return fmt.Errorf("no event source: use --fixture <name>, --events <path>, or add an [env.<name>] to gaffer.toml")
 }
 
 // resolveConnection determines the live target for a dev run, returning

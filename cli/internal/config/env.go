@@ -31,21 +31,21 @@ func (c *Config) ResolveEnv(name string) (ResolvedEnv, error) {
 		return ResolvedEnv{}, errors.New("no environments configured in gaffer.toml; add an [env.<name>] block")
 	}
 	if name == "" {
-		for _, n := range c.envNames() {
+		for _, n := range c.EnvNames() {
 			if c.Env[n].Default {
 				return ResolvedEnv{Name: n, Connection: c.Env[n].Connection}, nil
 			}
 		}
 		return ResolvedEnv{}, fmt.Errorf(
 			"no default environment in gaffer.toml; pass --env <name> (available: %s)",
-			strings.Join(c.envNames(), ", "),
+			strings.Join(c.EnvNames(), ", "),
 		)
 	}
 	e, ok := c.Env[name]
 	if !ok {
 		return ResolvedEnv{}, fmt.Errorf(
 			"unknown environment %q (available: %s)",
-			name, strings.Join(c.envNames(), ", "),
+			name, strings.Join(c.EnvNames(), ", "),
 		)
 	}
 	return ResolvedEnv{Name: name, Connection: e.Connection}, nil
@@ -57,7 +57,7 @@ func (c *Config) ResolveEnv(name string) (ResolvedEnv, error) {
 // as a benign absence (dev falling back to fixtures, the loose LSP
 // describe path) rather than a command failure.
 func (c *Config) DefaultEnv() (ResolvedEnv, bool) {
-	for _, n := range c.envNames() {
+	for _, n := range c.EnvNames() {
 		if c.Env[n].Default {
 			return ResolvedEnv{Name: n, Connection: c.Env[n].Connection}, true
 		}
@@ -72,8 +72,8 @@ func (c *Config) DefaultEnvConnection() string {
 	return env.Connection
 }
 
-// envNames returns the configured env names in sorted order.
-func (c *Config) envNames() []string {
+// EnvNames returns the configured env names in sorted order.
+func (c *Config) EnvNames() []string {
 	names := make([]string, 0, len(c.Env))
 	for n := range c.Env {
 		names = append(names, n)

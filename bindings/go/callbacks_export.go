@@ -4,10 +4,17 @@ package gafferruntime
 #include "gaffer.h"
 */
 import "C"
-import "unsafe"
+
+// The exported trampolines below receive the session handle through C's
+// void* user_data as C.uintptr_t, not unsafe.Pointer. The runtime's handles
+// are small integers (see Session.handle); received as a pointer they would
+// occupy a pointer-typed parameter slot, and the GC's stack scan could abort
+// the process ("invalid pointer found on stack") if growth hits the
+// trampoline prologue while the value is live. An integer parameter keeps the
+// handle out of the stack maps.
 
 //export goEmitCallback
-func goEmitCallback(streamID *C.char, eventType *C.char, data *C.char, metadata *C.char, isJson C.int, isLink C.int, userData unsafe.Pointer) {
+func goEmitCallback(streamID *C.char, eventType *C.char, data *C.char, metadata *C.char, isJson C.int, isLink C.int, userData C.uintptr_t) {
 	key := uintptr(userData)
 	callbackMu.RLock()
 	cb := emitCallbacks[key]
@@ -25,7 +32,7 @@ func goEmitCallback(streamID *C.char, eventType *C.char, data *C.char, metadata 
 }
 
 //export goLogCallback
-func goLogCallback(message *C.char, userData unsafe.Pointer) {
+func goLogCallback(message *C.char, userData C.uintptr_t) {
 	key := uintptr(userData)
 	callbackMu.RLock()
 	cb := logCallbacks[key]
@@ -36,7 +43,7 @@ func goLogCallback(message *C.char, userData unsafe.Pointer) {
 }
 
 //export goDiagnosticCallback
-func goDiagnosticCallback(code *C.char, message *C.char, severity C.int, userData unsafe.Pointer) {
+func goDiagnosticCallback(code *C.char, message *C.char, severity C.int, userData C.uintptr_t) {
 	key := uintptr(userData)
 	callbackMu.RLock()
 	cb := diagnosticCallbacks[key]
@@ -51,7 +58,7 @@ func goDiagnosticCallback(code *C.char, message *C.char, severity C.int, userDat
 }
 
 //export goStateChangedCallback
-func goStateChangedCallback(partition *C.char, stateJSON *C.char, userData unsafe.Pointer) {
+func goStateChangedCallback(partition *C.char, stateJSON *C.char, userData C.uintptr_t) {
 	key := uintptr(userData)
 	callbackMu.RLock()
 	cb := changedCallbacks[key]
@@ -66,7 +73,7 @@ func goStateChangedCallback(partition *C.char, stateJSON *C.char, userData unsaf
 }
 
 //export goBreakCallback
-func goBreakCallback(reason *C.char, source *C.char, line C.int, column C.int, userData unsafe.Pointer) {
+func goBreakCallback(reason *C.char, source *C.char, line C.int, column C.int, userData C.uintptr_t) {
 	key := uintptr(userData)
 	callbackMu.RLock()
 	cb := breakCallbacks[key]

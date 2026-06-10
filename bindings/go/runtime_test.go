@@ -3,7 +3,10 @@ package gafferruntime
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -78,6 +81,87 @@ func TestFeedAndGetState(t *testing.T) {
 	state := mustGetState(t, session, nil)
 	if state != `{"count":3}` {
 		t.Fatalf("expected {\"count\":3}, got %s", state)
+	}
+}
+
+// TestSessionHandleIsNotPointer is the deterministic guard for the
+// integer-handle-in-pointer-field bug. The runtime returns small integer
+// handles (1, 2, 3, ...), so Session.handle must not be a pointer type: a
+// pointer-typed field puts those integers in the GC's stack maps, which aborts
+// the process ("invalid pointer found on stack"). Unlike the concurrent-GC
+// test below, this fails immediately and regardless of scheduling or -race.
+func TestSessionHandleIsNotPointer(t *testing.T) {
+	f, ok := reflect.TypeOf(Session{}).FieldByName("handle")
+	if !ok {
+		t.Fatal("Session has no handle field")
+	}
+	if f.Type.Kind() == reflect.Pointer {
+		t.Fatalf("Session.handle must not be a pointer type, got %s", f.Type)
+	}
+}
+
+// TestSessionHandleSurvivesConcurrentGC exercises the FFI under GC pressure:
+// it feeds concurrently across sessions while a background goroutine churns
+// runtime.GC(), so a stack scan can coincide with a live handle mid-Feed
+// (consumeError -> json.Unmarshal) or mid-callback (the handle flows back
+// through user_data into the emit trampoline). With the handle stored as a
+// pointer this could trip the GC's invalidptr abort; uintptr storage and an
+// integer-typed user_data keep it off the stack maps. This is a probabilistic
+// behavioural check - TestSessionHandleIsNotPointer is the deterministic guard
+// against the field type regressing.
+func TestSessionHandleSurvivesConcurrentGC(t *testing.T) {
+	const (
+		sessions = 8
+		rounds   = 20
+		event    = `{"eventType":"ItemAdded","streamId":"cart-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`
+	)
+
+	ss := make([]*Session, sessions)
+	for i := range ss {
+		ss[i] = mustCreateSession(t, `
+			fromAll().when({
+				$init() { return { count: 0 }; },
+				ItemAdded(s, e) { s.count++; emit("counter-out", "Counted", { n: s.count }); return s; }
+			})
+		`)
+		ss[i].OnEmit(func(_, _, _, _ string, _, _ bool) {})
+	}
+
+	stop := make(chan struct{})
+	gcDone := make(chan struct{})
+	go func() {
+		defer close(gcDone)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				runtime.GC()
+			}
+		}
+	}()
+
+	var wg sync.WaitGroup
+	for _, s := range ss {
+		wg.Add(1)
+		go func(s *Session) {
+			defer wg.Done()
+			for range rounds {
+				if _, err := s.Feed(event); err != nil {
+					t.Errorf("Feed failed: %v", err)
+					return
+				}
+			}
+		}(s)
+	}
+	wg.Wait()
+	close(stop)
+	<-gcDone
+
+	for _, s := range ss {
+		if got := mustGetState(t, s, nil); got != `{"count":20}` {
+			t.Fatalf("expected {\"count\":20}, got %s", got)
+		}
 	}
 }
 

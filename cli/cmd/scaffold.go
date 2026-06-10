@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -21,11 +22,12 @@ import (
 )
 
 type scaffoldOpts struct {
-	Name      string
-	Source    string
-	Partition string
-	Emit      bool
-	Yes       bool
+	Name          string
+	Source        string
+	Partition     string
+	Emit          bool
+	EngineVersion int
+	Yes           bool
 }
 
 func newScaffoldCmd() *cobra.Command {
@@ -52,6 +54,7 @@ func newScaffoldCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Source, "source", "all", "Event source (all, stream:name, category:name)")
 	cmd.Flags().StringVar(&opts.Partition, "partition", "none", "Partitioning (none, per-stream)")
 	cmd.Flags().BoolVar(&opts.Emit, "emit", false, "Enable emit/linkTo")
+	cmd.Flags().IntVar(&opts.EngineVersion, "engine-version", config.DefaultEngineVersion, "Projection engine version (1 or 2)")
 	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip prompts (a path must be supplied without prompting)")
 	return cmd
 }
@@ -90,7 +93,7 @@ func runScaffold(cmd *cobra.Command, args []string, opts *scaffoldOpts) error {
 	// Name defaulting lives in scaffold.Scaffold so the CLI and the
 	// MCP tool share the rule. Pass through whatever the user gave
 	// us, empty or not.
-	result, err := scaffold.Scaffold(root, cfg, opts.Name, relPath, opts.Source, opts.Partition, opts.Emit, config.DefaultEngineVersion)
+	result, err := scaffold.Scaffold(root, cfg, opts.Name, relPath, opts.Source, opts.Partition, opts.Emit, opts.EngineVersion)
 	if err != nil {
 		return err
 	}
@@ -133,7 +136,36 @@ func promptScaffoldOptions(cmd *cobra.Command, opts *scaffoldOpts) error {
 		opts.Emit = emit
 	}
 
+	if !cmd.Flags().Changed("engine-version") {
+		ev, err := promptEngineVersion(opts.EngineVersion)
+		if err != nil {
+			return err
+		}
+		opts.EngineVersion = ev
+	}
+
 	return nil
+}
+
+// promptEngineVersion asks which engine version the new projection
+// should use, pre-selecting current. Returns the chosen 1 or 2.
+func promptEngineVersion(current int) (int, error) {
+	choice, err := prompt.Select(
+		"Projection engine version",
+		[]prompt.Option{
+			{Label: "2 (recommended)", Value: "2"},
+			{Label: "1", Value: "1"},
+		},
+		fmt.Sprint(current),
+	)
+	if err != nil {
+		return 0, err
+	}
+	v, err := strconv.Atoi(choice)
+	if err != nil {
+		return 0, fmt.Errorf("invalid engine version %q", choice)
+	}
+	return v, nil
 }
 
 // promptSource asks for the event source. "all" needs no follow-up;

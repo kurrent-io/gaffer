@@ -96,6 +96,35 @@ func TestScaffold_WritesEngineVersionOnNewProjection(t *testing.T) {
 	}
 }
 
+func TestScaffold_WritesGivenEngineVersion(t *testing.T) {
+	p := testutil.NewProject(t).AddProjection("existing", "// placeholder").Save()
+
+	if _, err := Scaffold(p.Dir, p.Cfg, "legacy", "projections/legacy.js", "all", "none", false, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded, err := config.Load(filepath.Join(p.Dir, "gaffer.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proj := reloaded.FindProjection("legacy")
+	if proj == nil || proj.EngineVersion == nil || *proj.EngineVersion != 1 {
+		t.Fatalf("engine_version: got %v, want 1", proj.EngineVersion)
+	}
+}
+
+func TestScaffold_RejectsInvalidEngineVersion(t *testing.T) {
+	p := testutil.NewProject(t)
+
+	if _, err := Scaffold(p.Dir, p.Cfg, "bad", "projections/bad.js", "all", "none", false, 5); err == nil {
+		t.Fatal("expected error for engine_version 5")
+	}
+	// Validation runs before any filesystem work, so nothing is written.
+	if _, err := os.Stat(filepath.Join(p.Dir, "projections", "bad.js")); err == nil {
+		t.Error("scaffold wrote a file despite the invalid engine_version")
+	}
+}
+
 func TestScaffold_CustomPath(t *testing.T) {
 	p := testutil.NewProject(t).Save()
 

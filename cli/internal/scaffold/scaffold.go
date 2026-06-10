@@ -56,6 +56,10 @@ func Scaffold(
 	emit bool,
 	engineVersion int,
 ) (*Result, error) {
+	if engineVersion != 1 && engineVersion != 2 {
+		return nil, fmt.Errorf("engine_version must be 1 or 2, got %d", engineVersion)
+	}
+
 	cleanRel, err := validateRelPath(relPath)
 	if err != nil {
 		return nil, err

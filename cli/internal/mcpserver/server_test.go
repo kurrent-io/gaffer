@@ -353,6 +353,40 @@ func TestScaffold(t *testing.T) {
 	}
 }
 
+func TestScaffold_EngineVersion(t *testing.T) {
+	s := setupTestProject(t)
+	callTool(t, s, scaffoldTool, s.handleScaffold, scaffoldInput{
+		Path:          "projections/legacy.js",
+		EngineVersion: 1,
+	})
+
+	proj := s.cfg.FindProjection("legacy")
+	if proj == nil || proj.EngineVersion == nil || *proj.EngineVersion != 1 {
+		t.Fatalf("expected engine_version 1, got %v", proj)
+	}
+}
+
+func TestScaffold_EngineVersionDefaultsTo2(t *testing.T) {
+	s := setupTestProject(t)
+	callTool(t, s, scaffoldTool, s.handleScaffold, scaffoldInput{Path: "projections/default-ev.js"})
+
+	proj := s.cfg.FindProjection("default-ev")
+	if proj == nil || proj.EngineVersion == nil || *proj.EngineVersion != config.DefaultEngineVersion {
+		t.Fatalf("expected default engine_version %d, got %v", config.DefaultEngineVersion, proj)
+	}
+}
+
+func TestScaffold_EngineVersionInvalid(t *testing.T) {
+	s := setupTestProject(t)
+	msg := callToolExpectError(t, s.handleScaffold, scaffoldInput{
+		Path:          "projections/bad.js",
+		EngineVersion: 5,
+	})
+	if !strings.Contains(msg, "engine_version") {
+		t.Errorf("expected engine_version error, got %q", msg)
+	}
+}
+
 func TestScaffold_ExplicitName(t *testing.T) {
 	// Caller picks a file name distinct from the gaffer.toml key.
 	s := setupTestProject(t)

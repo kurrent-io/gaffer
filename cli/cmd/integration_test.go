@@ -222,6 +222,44 @@ func TestScaffold_NoArg_NonInteractive_MissingArg(t *testing.T) {
 	}
 }
 
+// The --engine-version flag reaches scaffold through cobra binding and
+// lands on the new projection.
+func TestScaffold_EngineVersionFlag(t *testing.T) {
+	p := testutil.NewProject(t).AddProjection("orders", integrationProjection).Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"scaffold", "projections/legacy.js", "--engine-version", "1", "--yes"})
+	root.SetErr(&bytes.Buffer{})
+	testutil.CaptureStdout(t, func() {
+		if err := ExecuteRoot(context.Background(), root); err != nil {
+			t.Fatalf("scaffold: %v", err)
+		}
+	})
+
+	cfg, err := config.Load(filepath.Join(p.Dir, "gaffer.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proj := cfg.FindProjection("legacy")
+	if proj == nil || proj.EngineVersion == nil || *proj.EngineVersion != 1 {
+		t.Fatalf("engine_version: got %v, want 1", proj)
+	}
+}
+
+func TestScaffold_InvalidEngineVersionFlag(t *testing.T) {
+	p := testutil.NewProject(t).AddProjection("orders", integrationProjection).Save()
+	chdirTo(t, p.Dir)
+
+	root := NewRootCmd()
+	root.SetArgs([]string{"scaffold", "projections/bad.js", "--engine-version", "5", "--yes"})
+	root.SetErr(&bytes.Buffer{})
+	err := ExecuteRoot(context.Background(), root)
+	if err == nil || !strings.Contains(err.Error(), "engine_version") {
+		t.Fatalf("expected engine_version error, got: %v", err)
+	}
+}
+
 func TestDev_NoArg_NonInteractive_MissingArg(t *testing.T) {
 	p := testutil.NewProject(t).AddProjection("orders", integrationProjection).Save()
 	chdirTo(t, p.Dir)

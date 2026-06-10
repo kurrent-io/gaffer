@@ -23,16 +23,16 @@ _resources:
 build: _resources
     CGO_ENABLED=1 go build -tags dev -ldflags "-X github.com/kurrent-io/gaffer/cli/cmd.Version=$(jq -r .version package.json)-dev" -o gaffer{{exe-suffix}} .
 
-# Build the CLI for release: stamps the version and switches the
-# telemetry sink to production. No `dev` tag - the shipped binary's
-# rpath is co-location only, so it doesn't leak the build-machine
-# path. Invoked by the publish pipeline; the version argument comes
-# from changesets/action's published packages. The prod ingest URL is
-# also hard-coded in editors/vscode/vite.config.ts (as
-# `PRODUCTION_INGEST_URL`); keep them in lockstep if the worker URL
-# ever moves.
+# Build the CLI for release: stamps the version, clears the dev-build
+# flag (so the update-check is live), and switches the telemetry sink to
+# production. No `dev` tag - the shipped binary's rpath is co-location
+# only, so it doesn't leak the build-machine path. Invoked by the
+# publish pipeline; the version argument comes from changesets/action's
+# published packages. The prod ingest URL is also hard-coded in
+# editors/vscode/vite.config.ts (as `PRODUCTION_INGEST_URL`); keep them
+# in lockstep if the worker URL ever moves.
 build-release version: _resources
-    CGO_ENABLED=1 go build -ldflags '-X github.com/kurrent-io/gaffer/cli/cmd.Version={{version}} -X github.com/kurrent-io/gaffer/cli/internal/telemetry.DefaultWorkerURL=https://telemetry.gaffer.kurrent.io/v1/ingest' -o gaffer{{exe-suffix}} .
+    CGO_ENABLED=1 go build -ldflags '-X github.com/kurrent-io/gaffer/cli/cmd.Version={{version}} -X github.com/kurrent-io/gaffer/cli/cmd.devBuild=false -X github.com/kurrent-io/gaffer/cli/internal/telemetry.DefaultWorkerURL=https://telemetry.gaffer.kurrent.io/v1/ingest' -o gaffer{{exe-suffix}} .
 
 # Run tests
 test: _resources

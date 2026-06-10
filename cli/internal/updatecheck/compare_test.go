@@ -33,26 +33,3 @@ func TestIsNewer(t *testing.T) {
 		})
 	}
 }
-
-func TestIsDevVersion(t *testing.T) {
-	cases := []struct {
-		v    string
-		want bool
-	}{
-		{"0.3.1-dev", true},
-		{"v0.3.1-dev", true},
-		{"0.0.0-dev", true},
-		{"0.2.0-rc.1", true},
-		{"0.3.1", false},
-		{"v0.3.1", false},
-		{"", false},
-		{"not-a-version", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.v, func(t *testing.T) {
-			if got := IsDevVersion(tc.v); got != tc.want {
-				t.Errorf("IsDevVersion(%q) = %v, want %v", tc.v, got, tc.want)
-			}
-		})
-	}
-}

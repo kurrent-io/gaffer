@@ -54,6 +54,13 @@ type Options struct {
 	// without a baseline.
 	Current string
 
+	// DevBuild marks a local/source build (cmd.IsDevBuild). When set,
+	// the whole pipeline stays quiet - no notice, no fetch, no
+	// updateAvailable signal - because a source build isn't installed
+	// from npm and shouldn't be nagged to upgrade. A real published
+	// pre-release leaves this false so its users still get notices.
+	DevBuild bool
+
 	// Fetcher resolves npm's `latest` dist-tag. Nil falls back to
 	// the default NpmFetcher. Production wiring constructs an
 	// NpmFetcher with the gaffer-cli/<ver> user agent and passes it
@@ -85,6 +92,7 @@ type Options struct {
 // close-during-Flush transition exactly like telemetry.Client.
 type Client struct {
 	current     string
+	devBuild    bool
 	fetcher     Fetcher
 	cacheDir    string
 	stderr      io.Writer
@@ -106,6 +114,7 @@ type Client struct {
 func New(opts Options) *Client {
 	c := &Client{
 		current:  opts.Current,
+		devBuild: opts.DevBuild,
 		fetcher:  opts.Fetcher,
 		cacheDir: opts.CacheDir,
 		stderr:   opts.Stderr,
@@ -166,7 +175,7 @@ func (c *Client) startOnce(disable, quiet bool) {
 		// the client silently per "best-effort" posture.
 		return
 	}
-	if IsDevVersion(c.current) {
+	if c.devBuild {
 		// Dev builds come from source, not npm; the notice (and the
 		// registry fetch behind it) would be noise.
 		return
@@ -283,8 +292,8 @@ func (c *Client) UpdateAvailable() string {
 	if c == nil || c.current == "" || c.cacheDirErr != nil {
 		return ""
 	}
-	if IsDevVersion(c.current) {
-		// A source build is never "behind" its own npm release.
+	if c.devBuild {
+		// A source build is never "behind" an npm release.
 		return ""
 	}
 	cache, _ := LoadCache(c.cacheDir)

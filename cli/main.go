@@ -99,8 +99,9 @@ func runMain() (exitCode int) {
 	// above is specifically about telemetry identity-mint racing with
 	// `gaffer config telemetry`, which has no analogue here.
 	updateClient := updatecheck.New(updatecheck.Options{
-		Current: cmd.Version,
-		Fetcher: updatecheck.NpmFetcher{UserAgent: userAgent()},
+		Current:  cmd.Version,
+		DevBuild: cmd.IsDevBuild(),
+		Fetcher:  updatecheck.NpmFetcher{UserAgent: userAgent()},
 	})
 	ctx = updatecheck.WithClient(ctx, updateClient)
 

@@ -17,6 +17,21 @@ import (
 // build-info package.
 var Version = "0.0.0-dev"
 
+// devBuild marks a build that was not produced by the release pipeline:
+// a bare `go build`, `just cli build`, or any local compile. It is the
+// signal the update-check uses to stay quiet, set explicitly via
+// ldflags rather than inferred from Version's `-dev` suffix - a real
+// published pre-release (e.g. `0.4.0-rc.1`) is a genuine release whose
+// users should still be told about newer versions, so its build leaves
+// devBuild "false". `build-release` overrides it to "false"; every
+// other path keeps the "true" default.
+var devBuild = "true"
+
+// IsDevBuild reports whether this binary is a local/dev build (see
+// devBuild). main passes it to the update-check so source builds aren't
+// nagged to `npm install` over themselves.
+func IsDevBuild() bool { return devBuild == "true" }
+
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",

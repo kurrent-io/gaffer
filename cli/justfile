@@ -14,12 +14,14 @@ _resources:
     cp TELEMETRY.md internal/mcpserver/resources/telemetry-info.gen.md
 
 # Build the CLI binary. Default builds point at the staging telemetry
-# worker; use `build-release` to bake the prod URL + version in for
+# worker and stamp the package.json version with a `-dev` suffix (e.g.
+# `0.3.1-dev`) so `gaffer version` tracks the real version; use
+# `build-release` to bake the prod URL + release version in for
 # shippable artefacts. The `dev` build tag adds a build-dir rpath to
 # the cgo link so the binary finds the runtime without it being
 # co-located - see bindings/go/gaffer_dev.go.
 build: _resources
-    CGO_ENABLED=1 go build -tags dev -o gaffer{{exe-suffix}} .
+    CGO_ENABLED=1 go build -tags dev -ldflags "-X github.com/kurrent-io/gaffer/cli/cmd.Version=$(jq -r .version package.json)-dev" -o gaffer{{exe-suffix}} .
 
 # Build the CLI for release: stamps the version and switches the
 # telemetry sink to production. No `dev` tag - the shipped binary's

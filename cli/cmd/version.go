@@ -8,11 +8,14 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
-// Version is the gaffer release string, set at build time via
-// ldflags (`-X github.com/kurrent-io/gaffer/cli/cmd.Version=...`).
-// Exported so main.go can stamp it onto the telemetry User-Agent
-// header without re-importing a build-info package.
-var Version = "0.0.1-dev"
+// Version is the gaffer release string, set at build time via ldflags
+// (`-X github.com/kurrent-io/gaffer/cli/cmd.Version=...`). Both build
+// recipes stamp it: `just cli build` with `<package.json version>-dev`,
+// `build-release` with the release version. This default only shows
+// through on a bare `go build` with no ldflags. Exported so main.go can
+// stamp it onto the telemetry User-Agent header without re-importing a
+// build-info package.
+var Version = "0.0.0-dev"
 
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{

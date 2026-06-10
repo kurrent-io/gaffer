@@ -61,6 +61,12 @@ fixtures.sad = "fixtures/sad.json"
 		result.Fixtures[1] != "sad" {
 		t.Errorf("fixtures: got %v want [happy sad]", result.Fixtures)
 	}
+	// Every configured env is reported (name + default) so the editor's
+	// run picker can offer non-default envs, not just the connection.
+	if len(result.Environments) != 1 || result.Environments[0].Name != "local" ||
+		!result.Environments[0].Default {
+		t.Errorf("environments: got %+v want [{local default}]", result.Environments)
+	}
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)

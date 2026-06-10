@@ -3,9 +3,15 @@ import * as v from "valibot";
 import { getLanguageClient } from "./client.js";
 import { log } from "../output.js";
 
+const EnvSchema = v.object({
+	name: v.string(),
+	default: v.optional(v.boolean(), false),
+});
+
 const ProjectionDetailsSchema = v.object({
 	connection: v.nullable(v.string()),
 	fixtures: v.array(v.string()),
+	environments: v.optional(v.array(EnvSchema), []),
 });
 
 export type ProjectionDetails = v.InferOutput<typeof ProjectionDetailsSchema>;

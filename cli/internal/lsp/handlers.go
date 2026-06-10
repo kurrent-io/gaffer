@@ -270,8 +270,9 @@ func (s *Server) handleProjectionDetails(req *jsonrpc2.Request) (interface{}, er
 			}
 		}
 		return ProjectionDetailsResult{
-			Connection: conn,
-			Fixtures:   fixtures,
+			Connection:   conn,
+			Fixtures:     fixtures,
+			Environments: parse.Description.Environments,
 		}, nil
 	}
 	return ProjectionDetailsResult{Fixtures: []string{}}, nil

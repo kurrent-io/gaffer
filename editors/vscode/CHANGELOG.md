@@ -1,5 +1,13 @@
 # gaffer-vscode
 
+## 0.1.6
+
+### Patch Changes
+
+- 22d9480: Debug CodeLenses are now environment-aware. The projection-level **Debug** lens runs live against the default environment, or the sole configured one, and is hidden when there's no unambiguous target so it no longer faults. **Debug from fixture...** becomes **Debug from...**: a single picker offering the projection's fixtures and every configured environment, so a non-default environment is reachable without editing `gaffer.toml`.
+- a01807a: The command palette **Gaffer: Debug** now offers configured environments, matching the CodeLens picker. After you choose a projection it lists every fixture and every `[env.<name>]`, with the default tagged, so a non-default environment is reachable from the palette. Previously it only knew the default connection, leaving multi-environment projects unable to pick another env there.
+- 33e3b4b: `gaffer scaffold` now lets you choose the new projection's engine version (`1` or `2`, default `2`). It's a `--engine-version` flag and an interactive prompt on the CLI, an `engine_version` argument on the MCP `scaffold` tool, and a step in the VS Code scaffold wizard.
+
 ## 0.1.5
 
 ### Patch Changes

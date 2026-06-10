@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -9,9 +10,29 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
-// envProject pins the MCP server's project root, mirroring the
+// EnvProject pins the MCP server's project root, mirroring the
 // --project flag. The flag takes precedence when both are set.
-const envProject = "GAFFER_PROJECT"
+const EnvProject = "GAFFER_PROJECT"
+
+// PeekProjectOverride resolves the mcp project override from raw argv,
+// before cobra parses. Used at process startup (main) to load the
+// target project's .env even when gaffer is launched outside that
+// project - the parsed-flag path in newMCPCmd handles it post-parse.
+// Precedence matches the flag-over-env rule: a --project / --project=
+// argument wins, otherwise GAFFER_PROJECT. Returns "" when neither is
+// set. Scanning argv generally is safe - no other command defines
+// --project.
+func PeekProjectOverride(args []string) string {
+	for i, a := range args {
+		if a == "--project" && i+1 < len(args) {
+			return args[i+1]
+		}
+		if v, ok := strings.CutPrefix(a, "--project="); ok {
+			return v
+		}
+	}
+	return os.Getenv(EnvProject)
+}
 
 func newMCPCmd() *cobra.Command {
 	var projectDir string
@@ -29,7 +50,7 @@ func newMCPCmd() *cobra.Command {
 
 			projectOverride := projectDir
 			if projectOverride == "" {
-				projectOverride = os.Getenv(envProject)
+				projectOverride = os.Getenv(EnvProject)
 			}
 
 			srv, err := mcpserver.NewFromProjectRoot(Version, projectOverride)
@@ -91,7 +112,7 @@ func newMCPCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&projectDir, "project", "",
-		"Project directory to use instead of searching from the working directory (also set via "+envProject+")")
+		"Project directory to use instead of searching from the working directory (also set via "+EnvProject+")")
 
 	return cmd
 }

@@ -55,12 +55,11 @@ func runMain() (exitCode int) {
 	// Load the project's base .env into the process environment before
 	// anything reads env vars (telemetry opt-out, update-check), so a
 	// committed .env is honoured uniformly - not just on the DB
-	// connection path. Best-effort at startup: a malformed .env is
-	// surfaced later by the connection path and must not brick a plain
-	// `gaffer --help`.
-	if cwd, err := os.Getwd(); err == nil {
-		if root := project.FindRootFrom(cwd); root != "" {
-			_ = envvar.Load(root)
+	// connection path. Non-fatal: a broken .env must not brick a plain
+	// `gaffer --help`, so we warn and carry on rather than exiting.
+	if root := startupEnvRoot(); root != "" {
+		if err := envvar.Load(root); err != nil {
+			fmt.Fprintf(os.Stderr, "gaffer: %v\n", err)
 		}
 	}
 
@@ -150,6 +149,23 @@ func runMain() (exitCode int) {
 		return 1
 	}
 	return 0
+}
+
+// startupEnvRoot picks the project root whose .env to load at startup.
+// It honours the mcp project override (--project / GAFFER_PROJECT), so a
+// server launched outside its project still loads that project's .env
+// before opt-out and update-check read the environment; otherwise it
+// discovers the root from the working directory. Returns "" when no
+// project is in scope.
+func startupEnvRoot() string {
+	if override := cmd.PeekProjectOverride(os.Args[1:]); override != "" {
+		return project.FindRootFrom(override)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return project.FindRootFrom(cwd)
 }
 
 // buildClient resolves opt-out and identity from the user's config

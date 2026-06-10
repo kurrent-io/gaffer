@@ -1,7 +1,9 @@
 package envvar
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,11 +27,13 @@ func Load(projectDir string) error {
 	if projectDir == "" {
 		return nil
 	}
-	path := filepath.Join(projectDir, ".env")
-	if _, err := os.Stat(path); err != nil {
-		return nil
+	// godotenv surfaces a missing file as fs.ErrNotExist, which is the
+	// "no .env" no-op. Any other error - unreadable file, malformed
+	// contents - is a real problem and is returned, not swallowed.
+	if err := godotenv.Load(filepath.Join(projectDir, ".env")); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("loading .env: %w", err)
 	}
-	return godotenv.Load(path)
+	return nil
 }
 
 // Credentials returns the KurrentDB username and password from the

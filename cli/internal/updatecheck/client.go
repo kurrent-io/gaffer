@@ -166,6 +166,11 @@ func (c *Client) startOnce(disable, quiet bool) {
 		// the client silently per "best-effort" posture.
 		return
 	}
+	if IsDevVersion(c.current) {
+		// Dev builds come from source, not npm; the notice (and the
+		// registry fetch behind it) would be noise.
+		return
+	}
 	cache, _ := LoadCache(c.cacheDir)
 	if !quiet && cache.LatestVersion != "" && IsNewer(cache.LatestVersion, c.current) {
 		_, _ = fmt.Fprintln(c.stderr, renderNotice(c.stderr, c.current, cache.LatestVersion))
@@ -276,6 +281,10 @@ func (c *Client) Flush(ctx context.Context) error {
 // Nil-safe: returns "" on a nil receiver.
 func (c *Client) UpdateAvailable() string {
 	if c == nil || c.current == "" || c.cacheDirErr != nil {
+		return ""
+	}
+	if IsDevVersion(c.current) {
+		// A source build is never "behind" its own npm release.
 		return ""
 	}
 	cache, _ := LoadCache(c.cacheDir)

@@ -17,6 +17,16 @@ func IsNewer(latest, current string) bool {
 	return semver.Compare(l, c) > 0
 }
 
+// IsDevVersion reports whether v is a local dev build - a semver
+// pre-release such as `0.3.1-dev`. Dev builds come from source, not from
+// npm, so the update check skips them: comparing `0.3.1-dev` against the
+// published `0.3.1` would otherwise flag the release as "newer" (semver
+// sorts a pre-release below its release) on every run.
+func IsDevVersion(v string) bool {
+	n := normalizeSemver(v)
+	return semver.IsValid(n) && semver.Prerelease(n) != ""
+}
+
 func normalizeSemver(v string) string {
 	if v == "" {
 		return ""

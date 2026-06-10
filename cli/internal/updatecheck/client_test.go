@@ -101,6 +101,43 @@ func TestStart_FlagDisable_NoPrintNoFetch(t *testing.T) {
 	}
 }
 
+// A dev build (semver pre-release) is built from source, not npm, so it
+// neither prints the notice nor fetches - even with a newer release
+// cached. Without the guard, `0.4.0` > `0.3.1-dev` would nag every run.
+func TestStart_DevBuild_NoPrintNoFetch(t *testing.T) {
+	fetcher := &stubFetcher{latest: "0.4.0"}
+	c, buf := newTestClient(t, "0.3.1-dev", fetcher)
+	if err := SaveCache(c.cacheDir, Cache{
+		CheckedAt:          time.Now().Add(-time.Hour),
+		CheckedWithVersion: "0.3.1-dev",
+		LatestVersion:      "0.4.0",
+	}); err != nil {
+		t.Fatalf("seed cache: %v", err)
+	}
+	c.Start(false, false)
+	flushOrFail(t, c, time.Second)
+	if buf.Len() != 0 {
+		t.Errorf("dev build printed update notice: %q", buf.String())
+	}
+	if fetcher.callCount() != 0 {
+		t.Errorf("dev build fetched %d times, want 0", fetcher.callCount())
+	}
+}
+
+func TestUpdateAvailable_DevBuild(t *testing.T) {
+	c, _ := newTestClient(t, "0.3.1-dev", &stubFetcher{})
+	if err := SaveCache(c.cacheDir, Cache{
+		CheckedAt:          time.Now().Add(-time.Hour),
+		CheckedWithVersion: "0.3.1-dev",
+		LatestVersion:      "0.4.0",
+	}); err != nil {
+		t.Fatalf("seed cache: %v", err)
+	}
+	if got := c.UpdateAvailable(); got != "" {
+		t.Errorf("dev build reported update %q, want none", got)
+	}
+}
+
 // TestStart_Quiet_RefreshesButDoesNotPrint asserts that the
 // notice-suppression path (non-TTY, structured output) still drives
 // the background refresh. The VS Code extension relies on `gaffer

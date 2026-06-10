@@ -45,7 +45,7 @@ func TestLoad_BaseEnvFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	user, pass := Credentials()
+	user, pass := Credentials("", "")
 	if user != "admin" || pass != "changeit" {
 		t.Fatalf("expected admin/changeit, got %q/%q", user, pass)
 	}
@@ -65,15 +65,57 @@ func TestLoad_ShellWins(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if user, _ := Credentials(); user != "shelluser" {
+	if user, _ := Credentials("", ""); user != "shelluser" {
 		t.Fatalf("expected shell value to win, got %q", user)
 	}
 }
 
 func TestCredentials_Empty(t *testing.T) {
 	clearEnv(t, "KURRENTDB_USERNAME", "KURRENTDB_PASSWORD")
-	if user, pass := Credentials(); user != "" || pass != "" {
+	if user, pass := Credentials("", ""); user != "" || pass != "" {
 		t.Fatalf("expected empty credentials, got %q/%q", user, pass)
+	}
+}
+
+// Per-environment credentials live in .env.<env> and are applied for the
+// selected env - the whole point of the per-env file.
+func TestCredentials_FromEnvOverlay(t *testing.T) {
+	resetSnapshot(t)
+	clearEnv(t, "KURRENTDB_USERNAME", "KURRENTDB_PASSWORD")
+	dir := t.TempDir()
+	Snapshot() // shell layer has no KURRENTDB_* credentials
+	writeFile(t, dir, ".env.prod", "KURRENTDB_USERNAME=produser\nKURRENTDB_PASSWORD=prodpass\n")
+
+	user, pass := Credentials(dir, "prod")
+	if user != "produser" || pass != "prodpass" {
+		t.Fatalf("expected produser/prodpass from .env.prod, got %q/%q", user, pass)
+	}
+}
+
+// A real shell credential wins over .env.<env>.
+func TestCredentials_ShellOverridesEnvOverlay(t *testing.T) {
+	resetSnapshot(t)
+	clearEnv(t, "KURRENTDB_USERNAME")
+	t.Setenv("KURRENTDB_USERNAME", "shelluser")
+	dir := t.TempDir()
+	Snapshot() // shell layer includes KURRENTDB_USERNAME=shelluser
+	writeFile(t, dir, ".env.prod", "KURRENTDB_USERNAME=produser\n")
+
+	if user, _ := Credentials(dir, "prod"); user != "shelluser" {
+		t.Fatalf("expected shell to win over .env.prod, got %q", user)
+	}
+}
+
+// With no env name (ad-hoc --connection), the overlay isn't consulted.
+func TestCredentials_NoEnvNameSkipsOverlay(t *testing.T) {
+	resetSnapshot(t)
+	clearEnv(t, "KURRENTDB_USERNAME")
+	dir := t.TempDir()
+	Snapshot()
+	writeFile(t, dir, ".env.prod", "KURRENTDB_USERNAME=produser\n")
+
+	if user, _ := Credentials(dir, ""); user != "" {
+		t.Fatalf("expected no credential without an env name, got %q", user)
 	}
 }
 

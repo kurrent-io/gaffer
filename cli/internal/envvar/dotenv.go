@@ -39,10 +39,20 @@ func Load(projectDir string) error {
 	return nil
 }
 
-// Credentials returns the KurrentDB username and password from the
-// environment (populated from .env by Load when present).
-func Credentials() (username, password string) {
-	return os.Getenv("KURRENTDB_USERNAME"), os.Getenv("KURRENTDB_PASSWORD")
+// Credentials returns the KurrentDB username and password for the
+// selected environment, resolved with the same precedence as Expand:
+// shell env > .env.<envName> > base .env. So per-environment credentials
+// can live in .env.<env>. envName is "" for an ad-hoc --connection with
+// no environment, in which case only shell + base .env apply.
+//
+// The .env.<envName> read is best-effort: Connect resolves the
+// connection via Expand first, which already surfaces a malformed
+// overlay, so a read failure here just falls back to shell + base .env.
+func Credentials(projectDir, envName string) (username, password string) {
+	overlay, _ := overlayFor(projectDir, envName)
+	username, _ = resolveVar("KURRENTDB_USERNAME", overlay)
+	password, _ = resolveVar("KURRENTDB_PASSWORD", overlay)
+	return username, password
 }
 
 // shellEnv is the process environment captured by Snapshot before Load
@@ -84,13 +94,9 @@ var braceVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 // missing secret fails loudly rather than expanding to ""), or if
 // .env.<envName> exists but is malformed.
 func Expand(s, projectDir, envName string) (string, error) {
-	var overlay map[string]string
-	if projectDir != "" && envName != "" {
-		m, err := readEnvFile(filepath.Join(projectDir, ".env."+envName))
-		if err != nil {
-			return "", err
-		}
-		overlay = m
+	overlay, err := overlayFor(projectDir, envName)
+	if err != nil {
+		return "", err
 	}
 
 	var missing []string
@@ -122,6 +128,17 @@ func resolveVar(name string, overlay map[string]string) (string, bool) {
 		return v, true
 	}
 	return os.LookupEnv(name)
+}
+
+// overlayFor reads the per-environment .env.<envName> overlay from
+// projectDir. It returns nil when there's no project or no environment
+// to key on (the overlay only has meaning once an environment is
+// selected). A missing file is (nil, nil); a malformed file is an error.
+func overlayFor(projectDir, envName string) (map[string]string, error) {
+	if projectDir == "" || envName == "" {
+		return nil, nil
+	}
+	return readEnvFile(filepath.Join(projectDir, ".env."+envName))
 }
 
 // readEnvFile parses a .env-format file into a map without touching the

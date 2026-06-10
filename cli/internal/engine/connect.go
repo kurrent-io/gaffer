@@ -46,7 +46,7 @@ func Connect(connStr, projectRoot, envName string) (*kurrentdb.Client, error) {
 		return nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, scrubRaw(err.Error(), connStr, redacted))
 	}
 
-	username, password := envvar.Credentials()
+	username, password := envvar.Credentials(projectRoot, envName)
 	if username != "" {
 		dbConfig.Username = username
 		dbConfig.Password = password

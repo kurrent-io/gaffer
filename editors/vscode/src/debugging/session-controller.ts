@@ -44,6 +44,10 @@ export interface DebugProjectionArgs {
 	// [[projection.fixtures]]; the CLI resolves the name to a path.
 	// Omit for a live KurrentDB run (default).
 	fixture?: string;
+	// When set (and no fixture), run live against this [env.<name>].
+	// Omitted falls back to the gaffer.toml default env, matching the
+	// CLI's own --env resolution. Mutually exclusive with fixture.
+	env?: string;
 }
 
 export interface SessionControllerDeps {
@@ -226,7 +230,7 @@ export class SessionController implements vscode.Disposable {
 		// and would otherwise wipe the flag before the catch checks it.
 		this.#fatalErrorSeen = false;
 
-		const { name, tomlUri, fixture } = args;
+		const { name, tomlUri, fixture, env: envName } = args;
 		const tomlDir = vscode.Uri.joinPath(tomlUri, "..").fsPath;
 		// Port we ask the CLI to bind to. The CLI confirms via the debug
 		// message and we attach using whatever it actually bound (below).
@@ -244,6 +248,7 @@ export class SessionController implements vscode.Disposable {
 				"--debug",
 				...(requestedPort >= 0 ? ["--debug-port", String(requestedPort)] : []),
 				...(fixture ? ["--fixture", fixture] : []),
+				...(envName ? ["--env", envName] : []),
 				// Start-paused is the extension's default UX: clicking Debug
 				// lands the user in `inspecting` immediately so the State view
 				// is populated and the user can explore before processing

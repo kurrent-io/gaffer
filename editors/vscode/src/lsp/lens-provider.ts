@@ -71,12 +71,24 @@ const ProjectionArgsSchema = v.object({
 	name: v.string(),
 	configURI: v.string(),
 	fixture: v.optional(v.string()),
+	// Set on the projection-level Debug lens: the env to run live
+	// against (the resolved default/sole env). Absent on per-fixture
+	// lenses, which run a fixture rather than connecting.
+	env: v.optional(v.string()),
+});
+
+// A configured [env.<name>] as the server reports it: name plus whether
+// it's the default. `default` is omitted on the wire when false.
+const EnvSchema = v.object({
+	name: v.string(),
+	default: v.optional(v.boolean(), false),
 });
 
 const ProjectionPickArgsSchema = v.object({
 	name: v.string(),
 	configURI: v.string(),
 	fixtureNames: v.array(v.string()),
+	envs: v.optional(v.array(EnvSchema), []),
 });
 
 // parseConfigURI guards `vscode.Uri.parse` so a malformed URI
@@ -247,11 +259,17 @@ export class LspCodeLensProvider
 			return null;
 		}
 
-		const cmdArgs: { name: string; tomlUri: vscode.Uri; fixture?: string } = {
+		const cmdArgs: {
+			name: string;
+			tomlUri: vscode.Uri;
+			fixture?: string;
+			env?: string;
+		} = {
 			name: args.name,
 			tomlUri,
 		};
 		if (args.fixture !== undefined) cmdArgs.fixture = args.fixture;
+		if (args.env !== undefined) cmdArgs.env = args.env;
 		return new vscode.CodeLens(range, {
 			title: "$(debug-start) Debug",
 			command: "gaffer.debugProjection",
@@ -290,10 +308,15 @@ export class LspCodeLensProvider
 		const tomlUri = parseConfigURI(args.configURI);
 		if (!tomlUri) return null;
 		return new vscode.CodeLens(range, {
-			title: "$(debug-start) Debug from fixture...",
+			title: "$(debug-start) Debug from...",
 			command: "gaffer.debugProjectionPick",
 			arguments: [
-				{ name: args.name, tomlUri, fixtureNames: args.fixtureNames },
+				{
+					name: args.name,
+					tomlUri,
+					fixtureNames: args.fixtureNames,
+					envs: args.envs,
+				},
 			],
 		});
 	}

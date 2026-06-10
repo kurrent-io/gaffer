@@ -248,7 +248,10 @@ export class SessionController implements vscode.Disposable {
 				"--debug",
 				...(requestedPort >= 0 ? ["--debug-port", String(requestedPort)] : []),
 				...(fixture ? ["--fixture", fixture] : []),
-				...(envName ? ["--env", envName] : []),
+				// fixture and env are mutually exclusive (a fixture is
+				// offline); if both somehow arrive, the fixture wins, matching
+				// the CLI, which resolves the fixture before any connection.
+				...(envName && !fixture ? ["--env", envName] : []),
 				// Start-paused is the extension's default UX: clicking Debug
 				// lands the user in `inspecting` immediately so the State view
 				// is populated and the user can explore before processing

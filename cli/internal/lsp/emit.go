@@ -127,17 +127,24 @@ func emitCodeLenses(desc config.Description, uri string) []CodeLens {
 }
 
 // liveDebugTarget returns the env name a one-click Debug should run
-// against, or "" when there's no unambiguous live target. That's the
-// default env, or the sole configured env when none is marked default;
-// with two or more envs and no default the user must choose, so the
-// projection-level Debug lens is suppressed in favour of "Debug from...".
+// against, or "" when there's no unambiguous live target - in which case
+// the projection-level Debug lens is suppressed in favour of "Debug
+// from...". The target is the single default env, or the sole configured
+// env when none is marked default. Two or more envs with no default is
+// ambiguous; so is more than one default (an invalid config the loose
+// describe path doesn't reject - emitting a one-click Debug there would
+// target an arbitrary env and fault at launch).
 func liveDebugTarget(envs []config.EnvDescription) string {
+	var defaults []string
 	for _, e := range envs {
 		if e.Default {
-			return e.Name
+			defaults = append(defaults, e.Name)
 		}
 	}
-	if len(envs) == 1 {
+	if len(defaults) == 1 {
+		return defaults[0]
+	}
+	if len(defaults) == 0 && len(envs) == 1 {
 		return envs[0].Name
 	}
 	return ""

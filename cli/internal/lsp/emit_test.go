@@ -17,6 +17,10 @@ func TestLiveDebugTarget(t *testing.T) {
 		{"one non-default", []config.EnvDescription{{Name: "cloud"}}, "cloud"},
 		{"many with a default", []config.EnvDescription{{Name: "cloud"}, {Name: "local", Default: true}}, "local"},
 		{"many no default", []config.EnvDescription{{Name: "cloud"}, {Name: "local"}}, ""},
+		// Invalid config (strict load rejects >1 default); the loose
+		// describe path still emits it, so the target must be ambiguous.
+		{"multiple defaults", []config.EnvDescription{{Name: "cloud", Default: true}, {Name: "local", Default: true}}, ""},
+		{"sole env also marked default", []config.EnvDescription{{Name: "cloud", Default: true}}, "cloud"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

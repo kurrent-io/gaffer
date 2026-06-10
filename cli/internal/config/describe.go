@@ -107,6 +107,12 @@ func DescribeBytes(ctx context.Context, path string, data []byte) (Description, 
 		return desc, nil
 	}
 	desc.Connection = cfg.DefaultEnvConnection()
+	for _, n := range cfg.EnvNames() {
+		desc.Environments = append(desc.Environments, EnvDescription{
+			Name:    n,
+			Default: cfg.Env[n].Default,
+		})
+	}
 
 	if err := ctx.Err(); err != nil {
 		return Description{}, err

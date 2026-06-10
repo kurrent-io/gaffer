@@ -49,6 +49,7 @@ func validProjections(parses []parseResult) iter.Seq2[parseResult, config.Projec
 // server transformed).
 func emitCodeLenses(desc config.Description, uri string) []CodeLens {
 	out := []CodeLens{}
+	target := liveDebugTarget(desc.Environments)
 	for _, p := range desc.Projections {
 		if p.Diagnostic != nil {
 			// Projection-level issue (missing name, missing entry,
@@ -57,18 +58,24 @@ func emitCodeLenses(desc config.Description, uri string) []CodeLens {
 			// the problem.
 			continue
 		}
-		// Projection-level Debug lens.
-		out = append(out, CodeLens{
-			Range: rangeToLSP(p.Range),
-			Command: &Command{
-				Title:   "Debug",
-				Command: CommandDebugProjection,
-				Arguments: []interface{}{
-					projectionArgs{Name: p.Name, ConfigURI: uri},
+		// Projection-level Debug lens - the one-click "go live" action.
+		// Emitted only when there's an unambiguous live target (a
+		// default env, or the sole env); otherwise the user picks an
+		// environment via "Debug from..." and clicking a bare Debug
+		// would have nothing to resolve to.
+		if target != "" {
+			out = append(out, CodeLens{
+				Range: rangeToLSP(p.Range),
+				Command: &Command{
+					Title:   "Debug",
+					Command: CommandDebugProjection,
+					Arguments: []interface{}{
+						projectionArgs{Name: p.Name, ConfigURI: uri, Env: target},
+					},
 				},
-			},
-			Data: &CodeLensData{Intent: IntentDebug},
-		})
+				Data: &CodeLensData{Intent: IntentDebug},
+			})
+		}
 
 		// Per-fixture lenses (valid only). Suppressed when the
 		// fixture's range collapses to the projection-header range
@@ -97,14 +104,19 @@ func emitCodeLenses(desc config.Description, uri string) []CodeLens {
 				Data: &CodeLensData{Intent: IntentDebug},
 			})
 		}
-		if len(validNames) > 0 {
+		if len(validNames) > 0 || len(desc.Environments) > 0 {
 			out = append(out, CodeLens{
 				Range: rangeToLSP(p.Range),
 				Command: &Command{
-					Title:   "Debug from fixture...",
+					Title:   "Debug from...",
 					Command: CommandDebugProjectionPick,
 					Arguments: []interface{}{
-						projectionPickArgs{Name: p.Name, ConfigURI: uri, FixtureNames: validNames},
+						projectionPickArgs{
+							Name:         p.Name,
+							ConfigURI:    uri,
+							FixtureNames: validNames,
+							Envs:         desc.Environments,
+						},
 					},
 				},
 				Data: &CodeLensData{Intent: IntentDebugChoose},
@@ -112,6 +124,30 @@ func emitCodeLenses(desc config.Description, uri string) []CodeLens {
 		}
 	}
 	return out
+}
+
+// liveDebugTarget returns the env name a one-click Debug should run
+// against, or "" when there's no unambiguous live target - in which case
+// the projection-level Debug lens is suppressed in favour of "Debug
+// from...". The target is the single default env, or the sole configured
+// env when none is marked default. Two or more envs with no default is
+// ambiguous; so is more than one default (an invalid config the loose
+// describe path doesn't reject - emitting a one-click Debug there would
+// target an arbitrary env and fault at launch).
+func liveDebugTarget(envs []config.EnvDescription) string {
+	var defaults []string
+	for _, e := range envs {
+		if e.Default {
+			defaults = append(defaults, e.Name)
+		}
+	}
+	if len(defaults) == 1 {
+		return defaults[0]
+	}
+	if len(defaults) == 0 && len(envs) == 1 {
+		return envs[0].Name
+	}
+	return ""
 }
 
 // projectionArgs is the Command.Arguments[0] payload for a
@@ -124,15 +160,20 @@ type projectionArgs struct {
 	Name      string `json:"name"`
 	ConfigURI string `json:"configURI"`
 	Fixture   string `json:"fixture,omitempty"`
+	// Env is the environment to run live against, set on the
+	// projection-level Debug lens (the resolved live target). Empty on
+	// per-fixture lenses, which run a fixture rather than connecting.
+	Env string `json:"env,omitempty"`
 }
 
 // projectionPickArgs is the payload for the dropdown lens. Includes
-// the available fixture names so the editor extension can pop a
-// quick-pick without re-fetching.
+// the available fixture names and environments so the editor extension
+// can pop a quick-pick without re-fetching.
 type projectionPickArgs struct {
-	Name         string   `json:"name"`
-	ConfigURI    string   `json:"configURI"`
-	FixtureNames []string `json:"fixtureNames"`
+	Name         string                  `json:"name"`
+	ConfigURI    string                  `json:"configURI"`
+	FixtureNames []string                `json:"fixtureNames"`
+	Envs         []config.EnvDescription `json:"envs,omitempty"`
 }
 
 // emitEntryScriptLenses returns Debug lenses for a non-toml URI
@@ -170,17 +211,20 @@ func emitEntryScriptLenses(parses []parseResult, uri string) []CodeLens {
 			continue
 		}
 		tomlURI := pathToURI(parse.Description.ConfigFile)
-		out = append(out, CodeLens{
-			Range: zeroRange,
-			Command: &Command{
-				Title:   `Debug "` + p.Name + `"`,
-				Command: CommandDebugProjection,
-				Arguments: []interface{}{
-					projectionArgs{Name: p.Name, ConfigURI: tomlURI},
+		liveTarget := liveDebugTarget(parse.Description.Environments)
+		if liveTarget != "" {
+			out = append(out, CodeLens{
+				Range: zeroRange,
+				Command: &Command{
+					Title:   `Debug "` + p.Name + `"`,
+					Command: CommandDebugProjection,
+					Arguments: []interface{}{
+						projectionArgs{Name: p.Name, ConfigURI: tomlURI, Env: liveTarget},
+					},
 				},
-			},
-			Data: &CodeLensData{Intent: IntentDebug},
-		})
+				Data: &CodeLensData{Intent: IntentDebug},
+			})
+		}
 		validNames := make([]string, 0, len(p.Fixtures))
 		for _, fx := range p.Fixtures {
 			if fx.Diagnostic != nil {
@@ -188,14 +232,19 @@ func emitEntryScriptLenses(parses []parseResult, uri string) []CodeLens {
 			}
 			validNames = append(validNames, fx.Name)
 		}
-		if len(validNames) > 0 {
+		if len(validNames) > 0 || len(parse.Description.Environments) > 0 {
 			out = append(out, CodeLens{
 				Range: zeroRange,
 				Command: &Command{
-					Title:   `Debug "` + p.Name + `" from fixture...`,
+					Title:   `Debug "` + p.Name + `" from...`,
 					Command: CommandDebugProjectionPick,
 					Arguments: []interface{}{
-						projectionPickArgs{Name: p.Name, ConfigURI: tomlURI, FixtureNames: validNames},
+						projectionPickArgs{
+							Name:         p.Name,
+							ConfigURI:    tomlURI,
+							FixtureNames: validNames,
+							Envs:         parse.Description.Environments,
+						},
 					},
 				},
 				Data: &CodeLensData{Intent: IntentDebugChoose},

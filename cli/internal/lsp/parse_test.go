@@ -303,6 +303,10 @@ func TestServer_CodeLensRequestReturnsLenses(t *testing.T) {
 name = "checkout"
 entry = "checkout.js"
 fixtures.happy = "fixtures/happy.json"
+
+[env.local]
+connection = "kurrentdb://localhost:2113?tls=false"
+default = true
 `
 	_ = conn.Notify(ctx, MethodDidOpen, &DidOpenTextDocumentParams{
 		TextDocument: TextDocumentItem{URI: uri, Text: content},

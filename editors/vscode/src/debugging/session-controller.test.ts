@@ -238,6 +238,36 @@ describe("SessionController.start - happy path", () => {
 		expect(session.argv).not.toContain("--fixture");
 	});
 
+	it("passes --env <name> when args.env is set", async () => {
+		const h = makeHarness();
+		const { startPromise, session } = await startUntilWaitForDebug(h, {
+			env: "cloud",
+		});
+		session.resolveDebug(4711);
+		await startPromise;
+		expect(session.argv).toContain("--env");
+		const idx = session.argv.indexOf("--env");
+		expect(session.argv[idx + 1]).toBe("cloud");
+	});
+
+	it("omits --env when args.env is unset", async () => {
+		const h = makeHarness();
+		const { session } = await startToRunning(h);
+		expect(session.argv).not.toContain("--env");
+	});
+
+	it("prefers --fixture over --env when both are set (mutually exclusive)", async () => {
+		const h = makeHarness();
+		const { startPromise, session } = await startUntilWaitForDebug(h, {
+			fixture: "happy",
+			env: "cloud",
+		});
+		session.resolveDebug(4711);
+		await startPromise;
+		expect(session.argv).toContain("--fixture");
+		expect(session.argv).not.toContain("--env");
+	});
+
 	it("passes --start-paused-if-no-breakpoints by default", async () => {
 		// Extension's UX default: lands the user in `inspecting` mode
 		// immediately so the State view is populated before any events

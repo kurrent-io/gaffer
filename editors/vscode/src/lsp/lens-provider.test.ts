@@ -78,6 +78,7 @@ describe("LspCodeLensProvider", () => {
 			fakeServerLens("debug", {
 				name: "checkout",
 				configURI: "file:///p/gaffer.toml",
+				env: "cloud",
 			}),
 		]);
 		const p = new LspCodeLensProvider();
@@ -90,8 +91,11 @@ describe("LspCodeLensProvider", () => {
 		const args = lenses[0]?.command?.arguments?.[0] as {
 			name: string;
 			tomlUri: vscode.Uri;
+			env?: string;
 		};
 		expect(args.name).toBe("checkout");
+		// The resolved live target threads through to the launch arg.
+		expect(args.env).toBe("cloud");
 		// Compute the expected toString via the same Uri.parse so
 		// the assertion adapts to the mock's normalization quirks
 		// (VS Code's real Uri.parse normalizes; the mock doesn't).
@@ -180,12 +184,13 @@ describe("LspCodeLensProvider", () => {
 		expect(lenses[0]?.command?.command).toBe("workbench.trust.manage");
 	});
 
-	it("decorates a debug-choose lens as the dropdown variant", async () => {
+	it("decorates a debug-choose lens as the dropdown variant, threading fixtures + envs", async () => {
 		setLspRequestHandler("textDocument/codeLens", () => [
 			fakeServerLens("debug-choose", {
 				name: "checkout",
 				configURI: "file:///p/gaffer.toml",
 				fixtureNames: ["happy", "sad"],
+				envs: [{ name: "local", default: true }, { name: "prod" }],
 			}),
 		]);
 		const p = new LspCodeLensProvider();
@@ -193,14 +198,18 @@ describe("LspCodeLensProvider", () => {
 		p.setManifest(manifestWithDebug);
 		const lenses = await getLenses(p);
 		expect(lenses).toHaveLength(1);
-		expect(lenses[0]?.command?.title).toBe(
-			"$(debug-start) Debug from fixture...",
-		);
+		expect(lenses[0]?.command?.title).toBe("$(debug-start) Debug from...");
 		expect(lenses[0]?.command?.command).toBe("gaffer.debugProjectionPick");
 		const args = lenses[0]?.command?.arguments?.[0] as {
 			fixtureNames: string[];
+			envs: { name: string; default: boolean }[];
 		};
 		expect(args.fixtureNames).toEqual(["happy", "sad"]);
+		// `default` defaults to false when the server omits it (prod).
+		expect(args.envs).toEqual([
+			{ name: "local", default: true },
+			{ name: "prod", default: false },
+		]);
 	});
 
 	it("hides debug-choose when the projection has an active session", async () => {

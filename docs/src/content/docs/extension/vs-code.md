@@ -21,7 +21,7 @@ If you only want the `gaffer.toml` without scaffolding a projection, **Gaffer: I
 
 ## Run and debug projections
 
-Once `gaffer.toml` exists, the extension adds a **Debug** CodeLens above each projection block. Projections with multiple fixtures get a **Debug from fixture...** lens instead, which prompts you to pick which fixture before launching.
+Once `gaffer.toml` exists, the extension adds CodeLenses above each projection block. **Debug** runs live against your default environment, or your only one, and is hidden when there's no single obvious target. **Debug from...** opens a picker of the projection's fixtures and configured environments, so you can debug against any of them.
 
 Set breakpoints in the projection JS file. Standard VS Code debug controls work: step over, into, out, continue. The call stack and scopes views populate with the projection's JS frames and variables.
 
@@ -64,7 +64,7 @@ See [MCP](../cli/mcp.md) for the tools and resources gaffer exposes, and for con
 | `Gaffer: Scaffold`           | Command palette                  | Add a new projection. Prompts for path, source, partition, an emit example, and engine version. Runs `gaffer init` first if no `gaffer.toml` is present. |
 | `Scaffold Projection Here`   | Explorer right-click on a folder | Same wizard as Scaffold, but the new file lands in the clicked folder and prompts only for the file name.                                |
 | `Gaffer: Debug`              | CodeLens or command palette      | Launch the projection with the debugger attached. Lens uses the projection at the cursor; palette prompts for one.                       |
-| `Gaffer: Debug from Fixture` | CodeLens                         | Pick a fixture, launch with the debugger attached.                                                                                       |
+| `Gaffer: Debug from...`      | CodeLens                         | Pick a source (a fixture or a configured environment) and launch with the debugger attached.                                            |
 | `Gaffer: Stop`               | CodeLens or command palette      | Stop the running session.                                                                                                                |
 
 ## Telemetry

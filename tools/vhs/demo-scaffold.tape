@@ -50,4 +50,7 @@ Sleep 1s
 # Partitioning is skipped for a single stream (per-stream is invalid
 # there), so the next prompt is the emit toggle. Accept the default (No).
 Enter
+Sleep 1s
+# Engine version: accept the default (2, recommended).
+Enter
 Sleep 2.5s

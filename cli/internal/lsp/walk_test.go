@@ -524,6 +524,10 @@ func TestServer_CodeLensServedFromWalkedDiskState(t *testing.T) {
 name = "checkout"
 entry = "checkout.js"
 fixtures.happy = "fixtures/happy.json"
+
+[env.local]
+connection = "kurrentdb://localhost:2113?tls=false"
+default = true
 `)
 	uri := pathToURI(cfg)
 

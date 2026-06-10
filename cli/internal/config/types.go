@@ -52,9 +52,24 @@ type Description struct {
 	// with default = true). Empty string means no default env was
 	// declared; the editor uses this to gate the "live" option in
 	// the run-projection picker.
-	Connection  string                  `json:"connection,omitempty"`
-	Projections []ProjectionDescription `json:"projections,omitempty"`
-	Diagnostics []Diagnostic            `json:"diagnostics,omitempty"`
+	Connection string `json:"connection,omitempty"`
+	// Environments lists the configured [env.<name>] blocks, sorted by
+	// name, each flagged if it's the default. The editor uses these to
+	// populate the debug source picker and to decide whether a one-click
+	// Debug has an unambiguous live target.
+	Environments []EnvDescription        `json:"environments,omitempty"`
+	Projections  []ProjectionDescription `json:"projections,omitempty"`
+	Diagnostics  []Diagnostic            `json:"diagnostics,omitempty"`
+}
+
+// EnvDescription is a single [env.<name>] block in a Description: its
+// name and whether it's the default (the env used when --env is
+// omitted). The connection string is deliberately omitted - the editor
+// selects an env by name and lets the CLI resolve the connection (and
+// any ${VAR} / .env.<name> credentials) at launch.
+type EnvDescription struct {
+	Name    string `json:"name"`
+	Default bool   `json:"default,omitempty"`
 }
 
 // ProjectionDescription is a single projection's view: name, entry

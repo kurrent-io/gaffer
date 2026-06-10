@@ -22,6 +22,10 @@ func TestServer_CodeLensOnEntryScriptFromCachedToml(t *testing.T) {
 name = "checkout"
 entry = "checkout.js"
 fixtures.happy = "fixtures/happy.json"
+
+[env.local]
+connection = "kurrentdb://localhost:2113?tls=false"
+default = true
 `)
 	tomlURI := pathToURI(cfg)
 	jsPath := filepath.Join(root, "checkout.js")
@@ -296,6 +300,10 @@ entry = "shared.js"
 [[projection]]
 name = "beta"
 entry = "shared.js"
+
+[env.local]
+connection = "kurrentdb://localhost:2113?tls=false"
+default = true
 `)
 	tomlURI := pathToURI(cfg)
 	jsURI := pathToURI(filepath.Join(root, "shared.js"))
@@ -320,18 +328,21 @@ entry = "shared.js"
 	}, &lenses); err != nil {
 		t.Fatalf("codeLens: %v", err)
 	}
-	if len(lenses) != 2 {
-		t.Fatalf("expected 2 lenses (one per projection sharing entry), got %d: %+v", len(lenses), lenses)
-	}
-	titles := map[string]bool{}
+	// One live Debug lens per projection sharing the entry, each title
+	// disambiguated by projection name. (With an env configured each
+	// projection also gets a "Debug from..." dropdown; filter to the
+	// Debug intent so this stays a check on the per-projection lenses.)
+	debugTitles := map[string]bool{}
 	for _, l := range lenses {
 		if l.Command == nil {
 			t.Fatalf("lens missing command: %+v", l)
 		}
-		titles[l.Command.Title] = true
+		if l.Data != nil && l.Data.Intent == IntentDebug {
+			debugTitles[l.Command.Title] = true
+		}
 	}
-	if !titles[`Debug "alpha"`] || !titles[`Debug "beta"`] {
-		t.Errorf("expected disambiguated titles, got %v", titles)
+	if len(debugTitles) != 2 || !debugTitles[`Debug "alpha"`] || !debugTitles[`Debug "beta"`] {
+		t.Errorf("expected one disambiguated Debug lens per projection, got %v", debugTitles)
 	}
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)

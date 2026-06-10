@@ -60,6 +60,22 @@ func newTestClient(t *testing.T, current string, fetcher Fetcher) (*Client, *byt
 	return c, buf
 }
 
+// newDevTestClient is newTestClient with the dev-build flag set - the
+// signal that suppresses the whole pipeline for source builds.
+func newDevTestClient(t *testing.T, current string, fetcher Fetcher) (*Client, *bytes.Buffer) {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	c := New(Options{
+		Current:  current,
+		DevBuild: true,
+		Fetcher:  fetcher,
+		CacheDir: t.TempDir(),
+		Stderr:   buf,
+		Now:      func() time.Time { return time.Date(2026, 5, 19, 12, 0, 0, 0, time.UTC) },
+	})
+	return c, buf
+}
+
 func TestStart_EnvDisable_NoPrintNoFetch(t *testing.T) {
 	t.Setenv(EnvDisable, "1")
 	fetcher := &stubFetcher{latest: "0.2.0"}
@@ -98,6 +114,65 @@ func TestStart_FlagDisable_NoPrintNoFetch(t *testing.T) {
 	}
 	if fetcher.callCount() != 0 {
 		t.Errorf("flag-disabled fetched %d times, want 0", fetcher.callCount())
+	}
+}
+
+// A dev build is built from source, not npm, so it neither prints the
+// notice nor fetches - even with a newer release cached. The dev-build
+// flag drives this, not the version string: the version here is a plain
+// release number, yet the cached `0.4.0` still produces no nag.
+func TestStart_DevBuild_NoPrintNoFetch(t *testing.T) {
+	fetcher := &stubFetcher{latest: "0.4.0"}
+	c, buf := newDevTestClient(t, "0.3.1", fetcher)
+	if err := SaveCache(c.cacheDir, Cache{
+		CheckedAt:          time.Now().Add(-time.Hour),
+		CheckedWithVersion: "0.3.1",
+		LatestVersion:      "0.4.0",
+	}); err != nil {
+		t.Fatalf("seed cache: %v", err)
+	}
+	c.Start(false, false)
+	flushOrFail(t, c, time.Second)
+	if buf.Len() != 0 {
+		t.Errorf("dev build printed update notice: %q", buf.String())
+	}
+	if fetcher.callCount() != 0 {
+		t.Errorf("dev build fetched %d times, want 0", fetcher.callCount())
+	}
+}
+
+func TestUpdateAvailable_DevBuild(t *testing.T) {
+	c, _ := newDevTestClient(t, "0.3.1", &stubFetcher{})
+	if err := SaveCache(c.cacheDir, Cache{
+		CheckedAt:          time.Now().Add(-time.Hour),
+		CheckedWithVersion: "0.3.1",
+		LatestVersion:      "0.4.0",
+	}); err != nil {
+		t.Fatalf("seed cache: %v", err)
+	}
+	if got := c.UpdateAvailable(); got != "" {
+		t.Errorf("dev build reported update %q, want none", got)
+	}
+}
+
+// A real published pre-release (DevBuild false) is a genuine release, so
+// its users still get told about newer versions - here the `0.4.0` final
+// over the `0.4.0-rc.1` they're running. This is the case the dev-build
+// flag deliberately keeps distinct from a source build.
+func TestStart_Prerelease_PrintsNotice(t *testing.T) {
+	fetcher := &stubFetcher{latest: "0.4.0"}
+	c, buf := newTestClient(t, "0.4.0-rc.1", fetcher)
+	if err := SaveCache(c.cacheDir, Cache{
+		CheckedAt:          time.Now().Add(-time.Hour),
+		CheckedWithVersion: "0.4.0-rc.1",
+		LatestVersion:      "0.4.0",
+	}); err != nil {
+		t.Fatalf("seed cache: %v", err)
+	}
+	c.Start(false, false)
+	flushOrFail(t, c, time.Second)
+	if !strings.Contains(buf.String(), "gaffer 0.4.0 available") {
+		t.Errorf("pre-release build missing update notice: %q", buf.String())
 	}
 }
 

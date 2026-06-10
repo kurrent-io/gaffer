@@ -109,6 +109,7 @@ function scaffoldFlags(choices: ScaffoldChoices): string[] {
 	const flags = [
 		`--source=${encodeSource(choices.source)}`,
 		`--partition=${choices.partition}`,
+		`--engine-version=${choices.engineVersion}`,
 	];
 	if (choices.emit) flags.push("--emit");
 	return flags;
@@ -212,6 +213,7 @@ export interface ScaffoldChoices {
 		| { kind: "category"; name: string };
 	partition: Partition;
 	emit: boolean;
+	engineVersion: number;
 }
 
 // `name` flavor asks for a bare projection identifier and appends
@@ -258,6 +260,11 @@ export interface WizardSteps {
 		step: number,
 		totalSteps: number,
 	): Promise<StepResult<boolean>>;
+	engineVersion(
+		prev: number | undefined,
+		step: number,
+		totalSteps: number,
+	): Promise<StepResult<number>>;
 }
 
 export async function runScaffoldWizard(
@@ -268,21 +275,23 @@ export async function runScaffoldWizard(
 	let sourceName: string | undefined;
 	let partition: Partition | undefined;
 	let emit: boolean | undefined;
+	let engineVersion: number | undefined;
 
 	// step identifies the renderer directly (no overlap between paths):
-	// 1=name, 2=source, 3=sourceName, 4=partition, 5=emit. Two steps are
-	// conditional on the chosen source: sourceName is skipped for "all",
-	// and partition is skipped for a single stream (per-stream
-	// partitioning is invalid with fromStream(), so "none" is forced).
-	// totalSteps depends on the chosen source and isn't known until step
-	// 2, so the denominator can drop from 5 to 4 after the user picks
-	// all-events or a single stream (category is 5; both skips are 4).
-	// Step numerators stay contiguous within the chosen path.
-	let step: 1 | 2 | 3 | 4 | 5 = 1;
+	// 1=name, 2=source, 3=sourceName, 4=partition, 5=emit, 6=engineVersion.
+	// Two steps are conditional on the chosen source: sourceName is
+	// skipped for "all", and partition is skipped for a single stream
+	// (per-stream partitioning is invalid with fromStream(), so "none" is
+	// forced). totalSteps depends on the chosen source and isn't known
+	// until step 2, so the denominator can drop from 6 to 5 after the
+	// user picks all-events or a single stream (category is 6; both skips
+	// are 5). Step numerators stay contiguous within the chosen path.
+	let step: 1 | 2 | 3 | 4 | 5 | 6 = 1;
 	for (;;) {
 		const hasSourceName = sourceKind !== "all";
 		const hasPartition = sourceKind !== "stream";
-		const total = 2 + (hasSourceName ? 1 : 0) + (hasPartition ? 1 : 0) + 1;
+		// emit + engineVersion are the two always-present tail steps.
+		const total = 2 + (hasSourceName ? 1 : 0) + (hasPartition ? 1 : 0) + 2;
 		if (step === 1) {
 			const r = await steps.pathArg(pathArg, 1, total);
 			if (r.kind === "cancel" || r.kind === "back") return undefined;
@@ -330,15 +339,23 @@ export async function runScaffoldWizard(
 			}
 			partition = r.value;
 			step = 5;
-		} else {
-			const logical = total;
-			const r = await steps.emit(emit, logical, total);
+		} else if (step === 5) {
+			const r = await steps.emit(emit, total - 1, total);
 			if (r.kind === "cancel") return undefined;
 			if (r.kind === "back") {
 				step = hasPartition ? 4 : 3;
 				continue;
 			}
 			emit = r.value;
+			step = 6;
+		} else {
+			const r = await steps.engineVersion(engineVersion, total, total);
+			if (r.kind === "cancel") return undefined;
+			if (r.kind === "back") {
+				step = 5;
+				continue;
+			}
+			engineVersion = r.value;
 			return {
 				pathArg: pathArg as string,
 				source:
@@ -349,7 +366,8 @@ export async function runScaffoldWizard(
 								name: sourceName as string,
 							},
 				partition: partition as Partition,
-				emit,
+				emit: emit as boolean,
+				engineVersion,
 			};
 		}
 	}
@@ -476,6 +494,27 @@ export function createVscodeWizardSteps(flavor: WizardFlavor): WizardSteps {
 						label: "Include emit() example",
 						description: "Comment showing how to emit a derived event",
 						value: true,
+					},
+				],
+				active: prev,
+				hasBack: true,
+			}),
+		engineVersion: (prev, step, totalSteps) =>
+			runQuickPickStep<number>({
+				title,
+				step,
+				totalSteps,
+				placeholder: "Which projection engine version?",
+				items: [
+					{
+						label: "2 (recommended)",
+						description: "Current engine",
+						value: 2,
+					},
+					{
+						label: "1",
+						description: "Legacy compatibility",
+						value: 1,
 					},
 				],
 				active: prev,

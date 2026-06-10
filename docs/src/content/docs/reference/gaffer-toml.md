@@ -71,10 +71,10 @@ default = true
 connection = "kurrentdb://admin:${DB_PASSWORD}@staging:2113"
 ```
 
-An environment names a KurrentDB connection. Select one with `gaffer dev --env <name>`. Environment names must match `^[A-Za-z0-9_-]+$`.
+An environment names a KurrentDB connection. Select one with `gaffer dev --env <name>`, or pick it from the interactive prompt. Environment names must match `^[A-Za-z0-9_-]+$`.
 
 - **`connection`**: KurrentDB connection string for the environment. Required. Used when running a projection against a live event stream (`gaffer dev <projection>` without `--events` or `--fixture`). Override per-invocation with `--connection`.
-- **`default`**: optional bool. Exactly one environment may set `default = true`. It's used when `--env` is omitted; without a default, a live run requires `--env` (fixture runs need no environment). Two defaults is a config error.
+- **`default`**: optional bool. Exactly one environment may set `default = true`. It's used when `--env` is omitted; without a default, an interactive `gaffer dev` prompts you to pick an environment, while a non-interactive run requires `--env` (fixture runs need no environment). Two defaults is a config error.
 
 `${VAR}` references in `connection` are expanded so credentials need not be committed:
 

@@ -13,7 +13,7 @@ The extension needs the `gaffer` CLI on PATH. See [Install gaffer](../getting-st
 
 ## Bootstrap a project
 
-Run **Gaffer: Scaffold** from the command palette to add a projection. The wizard prompts for a path, event source, partition mode, and whether to seed an `emit` example. If the folder has no `gaffer.toml`, the extension runs `gaffer init` first and notes that it did.
+Run **Gaffer: Scaffold** from the command palette to add a projection. The wizard prompts for a path, engine version, event source, partition mode, and whether to seed an `emit` example. If the folder has no `gaffer.toml`, the extension runs `gaffer init` first and notes that it did.
 
 Right-clicking a folder in the explorer and picking **Scaffold Projection Here** drops the new file into that folder with a simpler one-step prompt for the filename.
 
@@ -61,7 +61,7 @@ See [MCP](../cli/mcp.md) for the tools and resources gaffer exposes, and for con
 | Command                      | Invoked via                      | What it does                                                                                                                             |
 | ---------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `Gaffer: Init`               | Command palette                  | Bootstrap a gaffer project in the current workspace folder (runs `gaffer init`).                                                         |
-| `Gaffer: Scaffold`           | Command palette                  | Add a new projection. Prompts for path, source, partition, and an emit example. Runs `gaffer init` first if no `gaffer.toml` is present. |
+| `Gaffer: Scaffold`           | Command palette                  | Add a new projection. Prompts for path, engine version, source, partition, and an emit example. Runs `gaffer init` first if no `gaffer.toml` is present. |
 | `Scaffold Projection Here`   | Explorer right-click on a folder | Same wizard as Scaffold, but the new file lands in the clicked folder and prompts only for the file name.                                |
 | `Gaffer: Debug`              | CodeLens or command palette      | Launch the projection with the debugger attached. Lens uses the projection at the cursor; palette prompts for one.                       |
 | `Gaffer: Debug from Fixture` | CodeLens                         | Pick a fixture, launch with the debugger attached.                                                                                       |

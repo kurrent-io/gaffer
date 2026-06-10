@@ -10,7 +10,7 @@ description: Connect gaffer's MCP server to Claude Code, Cursor, Continue, Claud
 **Tools** for the projection lifecycle:
 
 - **`init`**: create a `gaffer.toml` to start a new project when there isn't one yet.
-- **`scaffold`**: create a new projection at an explicit path and register it in `gaffer.toml`.
+- **`scaffold`**: create a new projection at an explicit path and register it in `gaffer.toml`. Accepts an `engine_version` argument (`1` or `2`, defaults to `2`).
 - **`validate`**: check a projection for compile errors and runtime gotchas.
 - **`run`** / **`stop`**: run a projection against a fixture or live stream, and stop a running session.
 - **`get_state`** / **`get_step`** / **`get_history`** / **`get_timeline`**: inspect projection state at any point. `get_step`, `get_history`, and `get_timeline` also surface the runtime quirks that fired on each step, so the assistant can spot one and cross-reference its code against the `gaffer://docs/quirks` resource.

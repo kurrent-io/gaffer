@@ -22,51 +22,57 @@ See [the full command reference](./commands.md) for every subcommand and flag, o
 
 ## Interactive mode
 
-On a terminal, `gaffer init`, `gaffer scaffold`, and `gaffer dev` prompt for anything you didn't pass on the command line:
+On a terminal, `gaffer scaffold` and `gaffer dev` prompt for anything you didn't pass on the command line:
 
-- `gaffer init` asks for the engine version.
-- `gaffer scaffold` asks for the path (when omitted) and any of source, partitioning, and emit not set via flags.
+- `gaffer scaffold` asks for the path (when omitted) and any of engine version, source, partitioning, and emit not set via flags.
 - `gaffer dev` asks which projection to run (when omitted) and which source to use when none is given via `--events`, `--fixture`, or `--connection`.
 
-Anything you pass explicitly - a positional or a flag - is taken as-is and never re-prompted; only the gaps are asked. Pass `--yes` (`-y`) to skip prompts and accept defaults - the same thing that happens automatically when input isn't a terminal (pipes, CI), so scripts keep working unchanged. Press Ctrl-C or Esc on any prompt to cancel.
+Anything you pass explicitly (a positional or a flag) is taken as-is and never re-prompted; only the gaps are asked. Pass `--yes` (`-y`) to skip prompts and accept defaults, the same thing that happens automatically when input isn't a terminal (pipes, CI), so scripts keep working unchanged. Press Ctrl-C or Esc on any prompt to cancel.
 
-![gaffer scaffold prompting for source, name, and emit](/demo-scaffold.gif)
+![gaffer scaffold prompting for projection options](/demo-scaffold.gif)
 
 ## Project configuration
 
 Each gaffer project has a `gaffer.toml` at its root, created by `gaffer init`. It declares the projections in the project, their entry files, and any named fixtures:
 
 ```toml
+[env.local]
 connection = "kurrentdb://localhost:2113?tls=false"
-engine_version = 2
+default = true
 
 [[projection]]
 name = "order-count"
 entry = "projections/order-count.js"
+engine_version = 2
 fixtures.happy = "fixtures/orders.json"
 fixtures.full = "fixtures/orders-full.json"
 ```
 
 Top-level keys:
 
-- **`connection`**: KurrentDB connection string. Optional; only required when running a projection against a live event stream. Supports `${VAR}` expansion so credentials can stay out of the file. See [Environment file](#environment-file-env).
-- **`engine_version`**: `1` or `2`. `gaffer init` writes `2` by default; pass `gaffer init --engine-version 1` or pick it at the prompt to write `1`. V1 is for legacy compatibility. Can be overridden per-projection inside `[[projection]]`.
+- **`[env.<name>]`**: an environment, naming a KurrentDB connection. Each block has a required **`connection`** (the connection string, supporting `${VAR}` expansion so credentials can stay out of the file) and an optional **`default`** bool. Exactly one environment may be the default. Select an environment with `gaffer dev --env <name>`; with a default set, `--env` is optional. See [Environment file](#environment-file-env) and the [gaffer.toml reference](../reference/gaffer-toml.md#envname).
+
+`engine_version` is set per-`[[projection]]` (`1` or `2`), not at the top level.
 
 Per-projection (`[[projection]]`):
 
 - **`name`**: the lookup key for `gaffer dev <name>` and other commands.
 - **`entry`**: path to the projection JS file, relative to the project root.
+- **`engine_version`**: `1` or `2`. Required on every projection. V1 is for legacy compatibility; V2 is the default for new projections.
 - **`fixtures.<name>`**: path to a JSON events file, relative to the project root. Referenced from `gaffer dev <name> --fixture <fixture-name>`.
 
 ## Environment file (`.env`)
 
-A `.env` file at the project root is loaded into the environment when gaffer starts, so secrets stay out of `gaffer.toml` and out of version control. Reference them in `connection` with `${VAR}`:
+A `.env` file at the project root is loaded into the environment when gaffer starts, so secrets stay out of `gaffer.toml` and out of version control. Reference them in an environment's `connection` with `${VAR}`:
 
 ```toml
+[env.local]
 connection = "kurrentdb://admin:${DB_PASSWORD}@localhost:2113"
 ```
 
-`.env` supplies any environment variable gaffer reads, including the telemetry and update-check opt-outs below. The shell environment always wins: a variable set in your shell, or injected by CI, is never overwritten by `.env`.
+`.env` supplies any environment variable gaffer reads, including the telemetry and update-check opt-outs below.
+
+A per-environment `.env.<env>` file (matching the selected `[env.<name>]`) overlays the base `.env`, so each environment can carry its own credentials. The precedence, highest first, is the shell environment, then `.env.<env>`, then the base `.env`. A variable set in your shell, or injected by CI, is never overwritten by either file.
 
 ## User configuration
 
@@ -92,9 +98,10 @@ Project-level telemetry is opted out by setting `telemetry = false` at the top o
 
 - **`--json`**: structured output instead of the default text rendering. `gaffer dev --json` emits NDJSON (one event per line); other commands emit a single JSON object.
 - **`--debug`**: starts the DAP debug server alongside `gaffer dev`. See [Debugging projections](../getting-started/debugging.md).
-- **`--connection`**: override `connection` from `gaffer.toml` for a single invocation.
+- **`--env <name>`**: select an environment from `gaffer.toml` to run `gaffer dev` against. Optional when one environment is marked `default`.
+- **`--connection`**: ad-hoc connection string for a single `gaffer dev` invocation. Overrides `--env` and the configured environment.
 - **`--fixture <name>`** / **`--events <path>`**: pick a named fixture from `gaffer.toml`, or point at a JSON events file directly.
-- **`--yes` / `-y`**: skip interactive prompts and accept defaults. Applies to `gaffer init`, `gaffer scaffold`, and `gaffer dev`. See [Interactive mode](#interactive-mode).
+- **`--yes` / `-y`**: skip interactive prompts and accept defaults. Applies to `gaffer scaffold` and `gaffer dev`. See [Interactive mode](#interactive-mode).
 
 ## Telemetry
 

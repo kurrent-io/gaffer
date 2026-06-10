@@ -2,7 +2,7 @@
 "@kurrent/gaffer": minor
 ---
 
-**Breaking: `gaffer.toml` now models connections as named environments, and `engine_version` is set per projection.** Top-level `connection` and top-level `engine_version` are no longer supported; loading a file with either fails with a migration hint.
+**Breaking:** `gaffer.toml` now models connections as named environments, and `engine_version` is set per projection. Top-level `connection` and top-level `engine_version` are no longer supported; loading a file with either fails with a migration hint.
 
 To migrate, move the top-level `connection` into an `[env.<name>]` block (mark one `default = true`), and set `engine_version` on each `[[projection]]`:
 

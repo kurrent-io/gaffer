@@ -103,10 +103,12 @@ func TestSessionHandleIsNotPointer(t *testing.T) {
 // TestSessionHandleSurvivesConcurrentGC exercises the FFI under GC pressure:
 // it feeds concurrently across sessions while a background goroutine churns
 // runtime.GC(), so a stack scan can coincide with a live handle mid-Feed
-// (consumeError -> json.Unmarshal). With the handle stored as a pointer this
-// could trip the GC's invalidptr abort; storing it as uintptr keeps it off the
-// stack maps. This is a probabilistic behavioural check - TestSessionHandleIsNotPointer
-// is the deterministic guard against the field type regressing.
+// (consumeError -> json.Unmarshal) or mid-callback (the handle flows back
+// through user_data into the emit trampoline). With the handle stored as a
+// pointer this could trip the GC's invalidptr abort; uintptr storage and an
+// integer-typed user_data keep it off the stack maps. This is a probabilistic
+// behavioural check - TestSessionHandleIsNotPointer is the deterministic guard
+// against the field type regressing.
 func TestSessionHandleSurvivesConcurrentGC(t *testing.T) {
 	const (
 		sessions = 8
@@ -119,9 +121,10 @@ func TestSessionHandleSurvivesConcurrentGC(t *testing.T) {
 		ss[i] = mustCreateSession(t, `
 			fromAll().when({
 				$init() { return { count: 0 }; },
-				ItemAdded(s, e) { s.count++; return s; }
+				ItemAdded(s, e) { s.count++; emit("counter-out", "Counted", { n: s.count }); return s; }
 			})
 		`)
+		ss[i].OnEmit(func(_, _, _, _ string, _, _ bool) {})
 	}
 
 	stop := make(chan struct{})

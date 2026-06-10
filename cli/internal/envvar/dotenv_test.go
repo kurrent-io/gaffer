@@ -45,7 +45,7 @@ func TestLoad_BaseEnvFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	user, pass := Credentials()
+	user, pass := Credentials(nil)
 	if user != "admin" || pass != "changeit" {
 		t.Fatalf("expected admin/changeit, got %q/%q", user, pass)
 	}
@@ -65,22 +65,64 @@ func TestLoad_ShellWins(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if user, _ := Credentials(); user != "shelluser" {
+	if user, _ := Credentials(nil); user != "shelluser" {
 		t.Fatalf("expected shell value to win, got %q", user)
 	}
 }
 
 func TestCredentials_Empty(t *testing.T) {
 	clearEnv(t, "KURRENTDB_USERNAME", "KURRENTDB_PASSWORD")
-	if user, pass := Credentials(); user != "" || pass != "" {
+	if user, pass := Credentials(nil); user != "" || pass != "" {
 		t.Fatalf("expected empty credentials, got %q/%q", user, pass)
+	}
+}
+
+// Per-environment credentials live in .env.<env> and are applied for the
+// selected env - the whole point of the per-env file.
+func TestCredentials_FromEnvOverlay(t *testing.T) {
+	resetSnapshot(t)
+	clearEnv(t, "KURRENTDB_USERNAME", "KURRENTDB_PASSWORD")
+	dir := t.TempDir()
+	Snapshot() // shell layer has no KURRENTDB_* credentials
+	writeFile(t, dir, ".env.prod", "KURRENTDB_USERNAME=produser\nKURRENTDB_PASSWORD=prodpass\n")
+
+	user, pass := Credentials(mustOverlay(t, dir, "prod"))
+	if user != "produser" || pass != "prodpass" {
+		t.Fatalf("expected produser/prodpass from .env.prod, got %q/%q", user, pass)
+	}
+}
+
+// A real shell credential wins over .env.<env>.
+func TestCredentials_ShellOverridesEnvOverlay(t *testing.T) {
+	resetSnapshot(t)
+	clearEnv(t, "KURRENTDB_USERNAME")
+	t.Setenv("KURRENTDB_USERNAME", "shelluser")
+	dir := t.TempDir()
+	Snapshot() // shell layer includes KURRENTDB_USERNAME=shelluser
+	writeFile(t, dir, ".env.prod", "KURRENTDB_USERNAME=produser\n")
+
+	if user, _ := Credentials(mustOverlay(t, dir, "prod")); user != "shelluser" {
+		t.Fatalf("expected shell to win over .env.prod, got %q", user)
+	}
+}
+
+// With no env name (ad-hoc --connection), the overlay isn't consulted.
+func TestCredentials_NoEnvNameSkipsOverlay(t *testing.T) {
+	resetSnapshot(t)
+	clearEnv(t, "KURRENTDB_USERNAME")
+	dir := t.TempDir()
+	Snapshot()
+	writeFile(t, dir, ".env.prod", "KURRENTDB_USERNAME=produser\n")
+
+	if user, _ := Credentials(mustOverlay(t, dir, "")); user != "" {
+		t.Fatalf("expected no credential without an env name, got %q", user)
 	}
 }
 
 func TestExpand_Substitutes(t *testing.T) {
 	clearEnv(t, "GAFFER_TEST_SECRET")
 	t.Setenv("GAFFER_TEST_SECRET", "s3cr3t")
-	got, err := Expand("kurrentdb://admin:${GAFFER_TEST_SECRET}@host:2113", "", "")
+	got, err := Expand("kurrentdb://admin:${GAFFER_TEST_SECRET}@host:2113", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +133,7 @@ func TestExpand_Substitutes(t *testing.T) {
 
 func TestExpand_UndefinedErrors(t *testing.T) {
 	clearEnv(t, "GAFFER_TEST_MISSING")
-	_, err := Expand("kurrentdb://${GAFFER_TEST_MISSING}@host", "", "")
+	_, err := Expand("kurrentdb://${GAFFER_TEST_MISSING}@host", nil)
 	if err == nil {
 		t.Fatal("expected error for undefined variable")
 	}
@@ -104,7 +146,7 @@ func TestExpand_UndefinedErrors(t *testing.T) {
 // left untouched.
 func TestExpand_LeavesBareDollarAlone(t *testing.T) {
 	in := "kurrentdb://admin:pa$$word@host:2113"
-	got, err := Expand(in, "", "")
+	got, err := Expand(in, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +171,7 @@ func TestExpand_MultipleVars(t *testing.T) {
 	clearEnv(t, "GAFFER_TEST_A", "GAFFER_TEST_B")
 	t.Setenv("GAFFER_TEST_A", "alpha")
 	t.Setenv("GAFFER_TEST_B", "beta")
-	got, err := Expand("${GAFFER_TEST_A}-${GAFFER_TEST_B}", "", "")
+	got, err := Expand("${GAFFER_TEST_A}-${GAFFER_TEST_B}", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +182,7 @@ func TestExpand_MultipleVars(t *testing.T) {
 
 func TestExpand_NoVarsPassthrough(t *testing.T) {
 	in := "kurrentdb://host:2113?tls=false"
-	got, err := Expand(in, "", "")
+	got, err := Expand(in, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +195,7 @@ func TestExpand_NoVarsPassthrough(t *testing.T) {
 // so it is left literal rather than treated as a (missing) variable.
 func TestExpand_EmptyBracesLeftLiteral(t *testing.T) {
 	in := "a${}b"
-	got, err := Expand(in, "", "")
+	got, err := Expand(in, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +209,7 @@ func TestExpand_EmptyBracesLeftLiteral(t *testing.T) {
 func TestExpand_ValueWithSpecialCharsInsertedVerbatim(t *testing.T) {
 	clearEnv(t, "GAFFER_TEST_VAL")
 	t.Setenv("GAFFER_TEST_VAL", "pa}ss$x")
-	got, err := Expand("p:${GAFFER_TEST_VAL}@host", "", "")
+	got, err := Expand("p:${GAFFER_TEST_VAL}@host", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +235,7 @@ func TestExpand_EnvOverlayOverridesBase(t *testing.T) {
 	}
 	writeFile(t, dir, ".env.prod", "GAFFER_LAYER=overlay\n")
 
-	got, err := Expand("${GAFFER_LAYER}", dir, "prod")
+	got, err := Expand("${GAFFER_LAYER}", mustOverlay(t, dir, "prod"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +253,7 @@ func TestExpand_ShellOverridesEnvOverlay(t *testing.T) {
 	Snapshot() // shell layer includes GAFFER_LAYER=shell
 	writeFile(t, dir, ".env.prod", "GAFFER_LAYER=overlay\n")
 
-	got, err := Expand("${GAFFER_LAYER}", dir, "prod")
+	got, err := Expand("${GAFFER_LAYER}", mustOverlay(t, dir, "prod"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +270,7 @@ func TestExpand_EnvOverlayWhenBaseAbsent(t *testing.T) {
 	Snapshot()
 	writeFile(t, dir, ".env.prod", "GAFFER_LAYER=overlay\n")
 
-	got, err := Expand("${GAFFER_LAYER}", dir, "prod")
+	got, err := Expand("${GAFFER_LAYER}", mustOverlay(t, dir, "prod"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +292,7 @@ func TestExpand_NoEnvNameSkipsOverlay(t *testing.T) {
 	}
 	writeFile(t, dir, ".env.prod", "GAFFER_LAYER=overlay\n")
 
-	got, err := Expand("${GAFFER_LAYER}", dir, "")
+	got, err := Expand("${GAFFER_LAYER}", mustOverlay(t, dir, ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,13 +304,11 @@ func TestExpand_NoEnvNameSkipsOverlay(t *testing.T) {
 // A malformed .env.<env> is surfaced (naming the file) but its contents
 // are never echoed - godotenv parse errors include raw file bytes, which
 // for a credential file would leak secrets.
-func TestExpand_MalformedEnvOverlayErrors(t *testing.T) {
-	resetSnapshot(t)
+func TestOverlay_MalformedErrors(t *testing.T) {
 	dir := t.TempDir()
-	Snapshot()
 	writeFile(t, dir, ".env.prod", "PASSWORD=s3cr3t\nKEY=\"unterminated\n")
 
-	_, err := Expand("no vars here", dir, "prod")
+	_, err := Overlay(dir, "prod")
 	if err == nil {
 		t.Fatal("expected error for malformed .env.prod")
 	}
@@ -287,9 +327,53 @@ func writeFile(t *testing.T, dir, name, content string) {
 	}
 }
 
+func mustOverlay(t *testing.T, dir, envName string) map[string]string {
+	t.Helper()
+	overlay, err := Overlay(dir, envName)
+	if err != nil {
+		t.Fatalf("Overlay(%q, %q): %v", dir, envName, err)
+	}
+	return overlay
+}
+
+// Without a Snapshot (shellEnv nil), the overlay must not override a real
+// process-env variable: the process env wins and the overlay only fills
+// names it doesn't define. Guards against a Connect that runs before
+// Snapshot silently letting .env.<env> shadow a real environment value.
+func TestResolveVar_NoSnapshotProcessEnvWins(t *testing.T) {
+	resetSnapshot(t)
+	shellEnv = nil
+	clearEnv(t, "GAFFER_LAYER")
+	t.Setenv("GAFFER_LAYER", "real")
+
+	got, err := Expand("${GAFFER_LAYER}", map[string]string{"GAFFER_LAYER": "overlay"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "real" {
+		t.Fatalf("got %q, want real (process env wins over overlay without a snapshot)", got)
+	}
+}
+
+// Without a Snapshot, the overlay still supplies a value the process env
+// lacks - it fills gaps, it just never overrides.
+func TestResolveVar_NoSnapshotOverlayFillsGaps(t *testing.T) {
+	resetSnapshot(t)
+	shellEnv = nil
+	clearEnv(t, "GAFFER_LAYER")
+
+	got, err := Expand("${GAFFER_LAYER}", map[string]string{"GAFFER_LAYER": "overlay"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "overlay" {
+		t.Fatalf("got %q, want overlay (fills a gap the process env lacks)", got)
+	}
+}
+
 func TestExpand_DedupesMissing(t *testing.T) {
 	clearEnv(t, "GAFFER_TEST_MISSING")
-	_, err := Expand("${GAFFER_TEST_MISSING}/${GAFFER_TEST_MISSING}", "", "")
+	_, err := Expand("${GAFFER_TEST_MISSING}/${GAFFER_TEST_MISSING}", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}

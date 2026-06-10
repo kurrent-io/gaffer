@@ -28,11 +28,19 @@ func Connect(connStr, projectRoot, envName string) (*kurrentdb.Client, error) {
 		return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 	}
 
+	// Read the .env.<envName> overlay once and share it across connection
+	// expansion and credential resolution, so both see the same view and
+	// the file is parsed a single time.
+	overlay, err := envvar.Overlay(projectRoot, envName)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+	}
+
 	// Interpolate ${VAR} (e.g. credentials kept out of the committed
 	// connection) before parsing; a missing var errors here rather than
-	// dialing a malformed endpoint. envName layers .env.<envName> over
-	// the base .env for this target.
-	connStr, err := envvar.Expand(connStr, projectRoot, envName)
+	// dialing a malformed endpoint. The overlay layers .env.<envName>
+	// over the base .env for this target.
+	connStr, err = envvar.Expand(connStr, overlay)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 	}
@@ -46,7 +54,7 @@ func Connect(connStr, projectRoot, envName string) (*kurrentdb.Client, error) {
 		return nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, scrubRaw(err.Error(), connStr, redacted))
 	}
 
-	username, password := envvar.Credentials()
+	username, password := envvar.Credentials(overlay)
 	if username != "" {
 		dbConfig.Username = username
 		dbConfig.Password = password

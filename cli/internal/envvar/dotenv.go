@@ -39,10 +39,16 @@ func Load(projectDir string) error {
 	return nil
 }
 
-// Credentials returns the KurrentDB username and password from the
-// environment (populated from .env by Load when present).
-func Credentials() (username, password string) {
-	return os.Getenv("KURRENTDB_USERNAME"), os.Getenv("KURRENTDB_PASSWORD")
+// Credentials returns the KurrentDB username and password resolved from
+// the given overlay with the same precedence as Expand: shell env >
+// overlay (.env.<env>) > base .env. So per-environment credentials can
+// live in .env.<env>. Pass the overlay from Overlay (nil for an ad-hoc
+// connection with no environment); resolving it once in the caller lets
+// Expand and Credentials share a single read of the file.
+func Credentials(overlay map[string]string) (username, password string) {
+	username, _ = resolveVar("KURRENTDB_USERNAME", overlay)
+	password, _ = resolveVar("KURRENTDB_PASSWORD", overlay)
+	return username, password
 }
 
 // shellEnv is the process environment captured by Snapshot before Load
@@ -73,26 +79,18 @@ func Snapshot() {
 var braceVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 
 // Expand substitutes ${VAR} references in s, resolving each name with
-// precedence shell env > .env.<envName> > base .env. The shell layer is
-// the Snapshot taken before Load; the base layer is the live process
-// environment (which Load populated from .env). When envName and
-// projectDir are set, .env.<envName> is read from projectDir as a
-// non-mutating overlay between them - so a long-running server can
-// resolve different envs per call without leaking one into the next.
+// precedence shell env > overlay (.env.<env>) > base .env. The shell
+// layer is the Snapshot taken before Load; the base layer is the live
+// process environment (which Load populated from .env). The overlay is
+// the per-environment .env.<env> map from Overlay (nil when no
+// environment is selected) - a non-mutating layer between shell and base
+// that the caller resolves once and shares with Credentials, so a
+// long-running server can resolve different envs per call without
+// leaking one into the next.
 //
 // Returns an error naming any referenced variable that isn't set (a
-// missing secret fails loudly rather than expanding to ""), or if
-// .env.<envName> exists but is malformed.
-func Expand(s, projectDir, envName string) (string, error) {
-	var overlay map[string]string
-	if projectDir != "" && envName != "" {
-		m, err := readEnvFile(filepath.Join(projectDir, ".env."+envName))
-		if err != nil {
-			return "", err
-		}
-		overlay = m
-	}
-
+// missing secret fails loudly rather than expanding to "").
+func Expand(s string, overlay map[string]string) (string, error) {
 	var missing []string
 	out := braceVarPattern.ReplaceAllStringFunc(s, func(match string) string {
 		name := match[2 : len(match)-1]
@@ -109,19 +107,45 @@ func Expand(s, projectDir, envName string) (string, error) {
 }
 
 // resolveVar applies the shell > overlay (.env.<env>) > base layering.
-// A name present in the shell snapshot wins outright; otherwise the
-// per-env overlay wins over the base process env. os.LookupEnv covers
-// both the shell (which also sits in the process env) and the base
-// .env, but the explicit shell check is what lets the overlay override
-// a base-.env value without overriding a real shell value.
+// With a Snapshot, a name in the shell layer wins outright; otherwise
+// the per-env overlay wins over the base process env (which Load
+// populated from .env).
+//
+// Without a Snapshot (shellEnv nil) the shell and base layers are
+// indistinguishable in the process env, so we can't let the overlay win
+// over what might be a real shell variable: the process env takes
+// precedence and the overlay only fills names it doesn't define. This
+// keeps a Connect that runs before Snapshot from silently letting
+// .env.<env> override a real environment variable.
 func resolveVar(name string, overlay map[string]string) (string, bool) {
-	if v, ok := shellEnv[name]; ok {
+	if shellEnv != nil {
+		if v, ok := shellEnv[name]; ok {
+			return v, true
+		}
+		if v, ok := overlay[name]; ok {
+			return v, true
+		}
+		return os.LookupEnv(name)
+	}
+	if v, ok := os.LookupEnv(name); ok {
 		return v, true
 	}
 	if v, ok := overlay[name]; ok {
 		return v, true
 	}
-	return os.LookupEnv(name)
+	return "", false
+}
+
+// Overlay reads the per-environment .env.<envName> overlay from
+// projectDir, for the caller to pass to Expand and Credentials. It
+// returns nil when there's no project or no environment to key on (the
+// overlay only has meaning once an environment is selected). A missing
+// file is (nil, nil); a malformed file is an error.
+func Overlay(projectDir, envName string) (map[string]string, error) {
+	if projectDir == "" || envName == "" {
+		return nil, nil
+	}
+	return readEnvFile(filepath.Join(projectDir, ".env."+envName))
 }
 
 // readEnvFile parses a .env-format file into a map without touching the

@@ -29,5 +29,5 @@ engine_version = 2
 Each `[env.<name>]` carries its own `connection`, and exactly one may set `default = true` (used when `--env` is omitted). Environment names must match `^[A-Za-z0-9_-]+$`.
 
 - `gaffer dev` gained `--env <name>` to select an environment; `--connection` is an ad-hoc override that beats both `--env` and the configured environment. The MCP `list_events` and live `run` tools take the same `env` argument.
-- A per-environment `.env.<env>` file overlays the base `.env`. The precedence, highest first, is the shell environment, then `.env.<env>`, then the base `.env`. `${VAR}` references in a connection are expanded from those sources.
+- A per-environment `.env.<env>` file overlays the base `.env`, so each environment can carry its own credentials. The precedence, highest first, is the shell environment, then `.env.<env>`, then the base `.env`. Both `${VAR}` references in a connection and the `KURRENTDB_USERNAME` / `KURRENTDB_PASSWORD` credentials resolve from those sources.
 - `gaffer init` no longer takes `--engine-version` or `--yes`; it writes a commented starter template.

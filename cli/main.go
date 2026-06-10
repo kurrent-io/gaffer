@@ -52,6 +52,12 @@ func runMain() (exitCode int) {
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Snapshot the real shell environment before loading any .env, so
+	// connection ${VAR} expansion can apply shell > .env.<env> > .env
+	// precedence (after Load, shell and base-.env vars are
+	// indistinguishable in the process env).
+	envvar.Snapshot()
+
 	// Load the project's base .env into the process environment before
 	// anything reads env vars (telemetry opt-out, update-check), so a
 	// committed .env is honoured uniformly - not just on the DB

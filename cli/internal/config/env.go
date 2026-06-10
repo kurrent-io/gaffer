@@ -51,18 +51,25 @@ func (c *Config) ResolveEnv(name string) (ResolvedEnv, error) {
 	return ResolvedEnv{Name: name, Connection: e.Connection}, nil
 }
 
-// DefaultEnvConnection returns the connection of the env marked
-// default = true, or "" when there's no default env. Unlike ResolveEnv
-// it never errors - it's for best-effort/loose callers (the LSP
-// describe path) that only need to know whether a default live target
-// exists, not to fail a command.
-func (c *Config) DefaultEnvConnection() string {
+// DefaultEnv returns the env marked default = true and true, or the
+// zero ResolvedEnv and false when no env is the default. Unlike
+// ResolveEnv it never errors - it's for callers that treat "no default"
+// as a benign absence (dev falling back to fixtures, the loose LSP
+// describe path) rather than a command failure.
+func (c *Config) DefaultEnv() (ResolvedEnv, bool) {
 	for _, n := range c.envNames() {
 		if c.Env[n].Default {
-			return c.Env[n].Connection
+			return ResolvedEnv{Name: n, Connection: c.Env[n].Connection}, true
 		}
 	}
-	return ""
+	return ResolvedEnv{}, false
+}
+
+// DefaultEnvConnection returns the default env's connection, or "" when
+// there's no default env.
+func (c *Config) DefaultEnvConnection() string {
+	env, _ := c.DefaultEnv()
+	return env.Connection
 }
 
 // envNames returns the configured env names in sorted order.

@@ -20,18 +20,19 @@ var ErrDBConnect = errors.New("connect to KurrentDB")
 // distinguish "couldn't connect" from "connected then lost the link".
 var ErrDBDisconnect = errors.New("KurrentDB connection lost")
 
-func Connect(connStr, projectRoot string) (*kurrentdb.Client, error) {
+func Connect(connStr, projectRoot, envName string) (*kurrentdb.Client, error) {
 	// Base .env is also loaded once at startup; reloading here (no-override,
 	// so it never clobbers shell vars) keeps Connect self-contained for
 	// callers and tests that reach it without the startup path.
 	if err := envvar.Load(projectRoot); err != nil {
-		return nil, fmt.Errorf("%w: loading .env: %s", ErrDBConnect, err)
+		return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 	}
 
 	// Interpolate ${VAR} (e.g. credentials kept out of the committed
 	// connection) before parsing; a missing var errors here rather than
-	// dialing a malformed endpoint.
-	connStr, err := envvar.Expand(connStr)
+	// dialing a malformed endpoint. envName layers .env.<envName> over
+	// the base .env for this target.
+	connStr, err := envvar.Expand(connStr, projectRoot, envName)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 	}

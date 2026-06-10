@@ -2,6 +2,8 @@ package engine
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -108,10 +110,36 @@ func TestScrubRaw_NoOpWhenRawAbsent(t *testing.T) {
 	}
 }
 
+// Connect threads its envName through to ${VAR} expansion, so a value
+// from .env.<envName> resolves the connection; with no env name the
+// same reference is undefined. Guards the EnvName seam end to end.
+func TestConnect_AppliesEnvOverlay(t *testing.T) {
+	const key = "GAFFER_CONNECT_OVERLAY_TEST"
+	_ = os.Unsetenv(key)
+	t.Cleanup(func() { _ = os.Unsetenv(key) })
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env.prod"), []byte(key+"=resolved\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	connStr := "kurrentdb://${" + key + "}@host:2113"
+
+	// With the prod overlay the variable resolves, so expansion does not
+	// fail (any later error is the dial, not an undefined variable).
+	if _, err := Connect(connStr, dir, "prod"); err != nil && strings.Contains(err.Error(), key) {
+		t.Fatalf("env overlay not applied: %v", err)
+	}
+	// Without an env name there's no overlay, so the variable is undefined.
+	_, err := Connect(connStr, dir, "")
+	if err == nil || !strings.Contains(err.Error(), key) {
+		t.Fatalf("expected undefined-variable error without overlay, got %v", err)
+	}
+}
+
 func TestConnect_MalformedConnStr_DoesNotLeakPassword(t *testing.T) {
 	connStr := "kurrentdb://user:supersecret@host:%XX"
 
-	_, err := Connect(connStr, "")
+	_, err := Connect(connStr, "", "")
 	if err == nil {
 		t.Fatal("expected error for malformed connection string")
 	}

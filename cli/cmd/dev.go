@@ -141,8 +141,8 @@ func maybePromptDevSource(cmd *cobra.Command, proj *engine.Projection, opts *dev
 	for _, f := range proj.Def.FixtureNames() {
 		choices = append(choices, prompt.Option{Label: "Fixture: " + f, Value: f})
 	}
-	conn, _ := resolveConnection(opts, proj.Config)
-	if conn != "" {
+	resolved, _ := resolveConnection(opts, proj.Config)
+	if resolved.Connection != "" {
 		choices = append(choices, prompt.Option{Label: "Live (connection from gaffer.toml)", Value: liveValue})
 	}
 
@@ -185,8 +185,8 @@ func devConnectedToDB(opts *devOpts, proj *engine.Projection) bool {
 	if proj == nil || proj.Config == nil {
 		return opts.Connection != ""
 	}
-	conn, err := resolveConnection(opts, proj.Config)
-	return opts.Events == "" && opts.Fixture == "" && err == nil && conn != ""
+	resolved, err := resolveConnection(opts, proj.Config)
+	return opts.Events == "" && opts.Fixture == "" && err == nil && resolved.Connection != ""
 }
 
 // runDevWithDevTx is the cobra wrapper for the non-debug path:
@@ -800,16 +800,17 @@ func buildSource(
 		}
 		return engine.NewFixtureSource(events), nil
 	}
-	connStr, err := resolveConnection(opts, proj.Config)
+	resolved, err := resolveConnection(opts, proj.Config)
 	if err != nil {
 		return nil, err
 	}
-	if connStr == "" {
+	if resolved.Connection == "" {
 		return nil, fmt.Errorf("no event source: use --fixture <name>, --events <path>, or configure an [env.<name>] in gaffer.toml")
 	}
 	liveCfg := engine.LiveSourceConfig{
-		ConnStr:       connStr,
+		ConnStr:       resolved.Connection,
 		Root:          proj.Root,
+		EnvName:       resolved.Name,
 		Info:          info,
 		EngineVersion: proj.EngineVersion,
 	}
@@ -843,23 +844,24 @@ func finalizeRun(ctx context.Context, caughtUp bool, srcErr error, r *engine.Run
 	return srcErr
 }
 
-// resolveConnection determines the live connection string for a dev
-// run. --connection wins outright. An explicit --env must resolve or
-// it's an error (the user named a target that isn't there). With
-// neither flag, the default env is used if one exists; a project with
-// no default env yields "" and no error - dev falls back to fixtures.
-func resolveConnection(opts *devOpts, cfg *config.Config) (string, error) {
+// resolveConnection determines the live target for a dev run, returning
+// the resolved env (its name drives .env.<env> overlay at connect time).
+// --connection wins outright (ad-hoc, no env name). An explicit --env
+// must resolve or it's an error (the user named a target that isn't
+// there). With neither flag, the default env is used if one exists; a
+// project with no default env yields an empty connection and no error -
+// dev falls back to fixtures.
+func resolveConnection(opts *devOpts, cfg *config.Config) (config.ResolvedEnv, error) {
 	if opts.Connection != "" {
-		return opts.Connection, nil
+		return config.ResolvedEnv{Connection: opts.Connection}, nil
 	}
 	if opts.Env != "" {
-		env, err := cfg.ResolveEnv(opts.Env)
-		if err != nil {
-			return "", err
-		}
-		return env.Connection, nil
+		return cfg.ResolveEnv(opts.Env)
 	}
-	return cfg.DefaultEnvConnection(), nil
+	if env, ok := cfg.DefaultEnv(); ok {
+		return env, nil
+	}
+	return config.ResolvedEnv{}, nil
 }
 
 type eventWriterAdapter struct {

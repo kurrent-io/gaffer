@@ -880,4 +880,43 @@ entry = "p.js"
 	}
 }
 
+func TestDefaultEnv(t *testing.T) {
+	cfg := &Config{Env: map[string]Env{
+		"local": {Connection: "esdb://local:2113", Default: true},
+		"prod":  {Connection: "esdb://prod:2113"},
+	}}
+	env, ok := cfg.DefaultEnv()
+	if !ok {
+		t.Fatal("expected a default env")
+	}
+	if env.Name != "local" || env.Connection != "esdb://local:2113" {
+		t.Fatalf("got %+v, want local default", env)
+	}
+
+	// Envs configured but none marked default.
+	noDefault := &Config{Env: map[string]Env{"prod": {Connection: "esdb://prod:2113"}}}
+	if env, ok := noDefault.DefaultEnv(); ok {
+		t.Fatalf("expected no default, got %+v", env)
+	}
+}
+
+func TestLoadRejectsPathTraversalEnvName(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+[env."../../etc"]
+connection = "esdb://localhost:2113"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for path-significant env name")
+	}
+	if !strings.Contains(err.Error(), "env name") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func ptr[T any](v T) *T { return &v }

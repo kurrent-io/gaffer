@@ -302,6 +302,11 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// envNamePattern constrains [env.<name>] keys to a plain identifier.
+// The name becomes part of the .env.<name> overlay file path, so
+// path-significant characters (separators, "..") must be rejected.
+var envNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
 // validateEnvs checks the [env.*] blocks: each env must carry a
 // non-empty connection, and at most one may set default = true. Zero
 // envs is valid - a project that only runs against fixtures needs no
@@ -316,6 +321,12 @@ func (c *Config) validateEnvs() error {
 
 	var defaults []string
 	for _, name := range names {
+		// The name is concatenated into the .env.<name> overlay path at
+		// connect time, so constrain it to a plain identifier - a TOML
+		// quoted key like [env."../secrets"] must not escape the project.
+		if !envNamePattern.MatchString(name) {
+			return fmt.Errorf("env name %q must contain only letters, digits, '_' or '-'", name)
+		}
 		env := c.Env[name]
 		if strings.TrimSpace(env.Connection) == "" {
 			return fmt.Errorf("env %q missing required field: connection", name)

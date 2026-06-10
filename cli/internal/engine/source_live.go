@@ -11,6 +11,7 @@ import (
 type LiveSourceConfig struct {
 	ConnStr       string
 	Root          string
+	EnvName       string
 	Info          gafferruntime.ProjectionInfo
 	EngineVersion int
 	OnCaughtUp    func() // called when subscription reaches head of stream, nil = ignore, must not block
@@ -35,7 +36,7 @@ func NewLiveSource(cfg LiveSourceConfig) EventSource {
 }
 
 func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
-	client, err := Connect(l.cfg.ConnStr, l.cfg.Root)
+	client, err := Connect(l.cfg.ConnStr, l.cfg.Root, l.cfg.EnvName)
 	if err != nil {
 		return err
 	}

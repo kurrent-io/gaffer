@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Server) startLiveSubscription(sess *activeSession, cfg *config.Config, root string) error {
-	connStr, err := mcpConnection(cfg)
+	env, err := mcpConnection(cfg)
 	if err != nil {
 		return err
 	}
@@ -33,8 +33,9 @@ func (s *Server) startLiveSubscription(sess *activeSession, cfg *config.Config, 
 	sess.done = done
 
 	source := engine.NewLiveSource(engine.LiveSourceConfig{
-		ConnStr:       connStr,
+		ConnStr:       env.Connection,
 		Root:          root,
+		EnvName:       env.Name,
 		Info:          sess.runner.Info(),
 		EngineVersion: sess.runner.EngineVersion(),
 		OnCaughtUp: func() {

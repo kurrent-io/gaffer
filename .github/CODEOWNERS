@@ -1,7 +1,2 @@
-# Default owners for everything in the repo. Unless a later match
-# takes precedence, the UI team is requested for review on all PRs.
-*                       @kurrent-io/ui
-
-# Lock down the CODEOWNERS file itself to admins so changes to
-# ownership require admin approval.
+*                       @kurrent-io/ui-admin
 /.github/CODEOWNERS     @kurrent-io/ui-admin

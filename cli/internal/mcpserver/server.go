@@ -368,21 +368,21 @@ func (s *Server) Run(ctx context.Context) error {
 	return err
 }
 
-func (s *Server) connectToKurrentDB(cfg *config.Config, root string) (*kurrentdb.Client, error) {
-	env, err := mcpConnection(cfg)
+func (s *Server) connectToKurrentDB(cfg *config.Config, root, envName string) (*kurrentdb.Client, error) {
+	env, err := mcpConnection(cfg, envName)
 	if err != nil {
 		return nil, err
 	}
 	return engine.Connect(env.Connection, root, env.Name)
 }
 
-// mcpConnection resolves the env the mcp server dials. It uses the
-// default env; a project with no default env (or none at all) can't be
-// reached over the server-touching tools. Per-call env selection is
-// layered on later (the tools gain an optional env arg). The returned
-// name drives .env.<env> overlay at connect time.
-func mcpConnection(cfg *config.Config) (config.ResolvedEnv, error) {
-	return cfg.ResolveEnv("")
+// mcpConnection resolves the env the mcp server dials. envName selects a
+// named [env.<name>]; an empty string uses the env marked default. A
+// project with no matching env (or no default when none is named) can't
+// be reached over the server-touching tools. The returned name drives
+// the .env.<env> overlay at connect time.
+func mcpConnection(cfg *config.Config, envName string) (config.ResolvedEnv, error) {
+	return cfg.ResolveEnv(envName)
 }
 
 func (s *Server) closeSession() {

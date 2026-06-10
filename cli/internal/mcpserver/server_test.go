@@ -94,6 +94,58 @@ func setupTestProject(t *testing.T) *Server {
 	return s
 }
 
+// setupTestProjectWithEnv is setupTestProject plus a default [env.local],
+// so the server-touching tools have an environment to resolve - used to
+// prove the per-call env arg reaches resolution.
+func setupTestProjectWithEnv(t *testing.T) *Server {
+	t.Helper()
+	dir := t.TempDir()
+	projDir := filepath.Join(dir, "projections")
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projDir, "order-count.js"), []byte(testProjection), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Env: map[string]config.Env{
+			"local": {Connection: "kurrentdb://localhost:2113?tls=false", Default: true},
+		},
+		Projection: []config.Projection{
+			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)},
+		},
+	}
+	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
+		t.Fatal(err)
+	}
+	s := New(dir, cfg, "test")
+	t.Cleanup(func() {
+		s.mu.Lock()
+		s.closeSession()
+		s.mu.Unlock()
+	})
+	return s
+}
+
+// An unknown env name is rejected at resolution, before any connection
+// attempt, proving the tool's env arg is threaded to ResolveEnv rather
+// than silently falling back to the default env.
+func TestListEvents_UnknownEnv(t *testing.T) {
+	s := setupTestProjectWithEnv(t)
+	msg := callToolExpectError(t, s.handleListEvents, listEventsInput{Name: "order-count", Env: "ghost"})
+	if !strings.Contains(msg, "unknown environment") || !strings.Contains(msg, "ghost") {
+		t.Errorf("expected unknown-env error naming 'ghost', got %q", msg)
+	}
+}
+
+func TestRun_LiveUnknownEnv(t *testing.T) {
+	s := setupTestProjectWithEnv(t)
+	msg := callToolExpectError(t, s.handleRun, runInput{Name: "order-count", Env: "ghost"})
+	if !strings.Contains(msg, "unknown environment") || !strings.Contains(msg, "ghost") {
+		t.Errorf("expected unknown-env error naming 'ghost', got %q", msg)
+	}
+}
+
 func callTool[In, Out any](t *testing.T, s *Server, tool *mcp.Tool, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error), input In) map[string]any {
 	t.Helper()
 	result, _, err := handler(context.Background(), nil, input)

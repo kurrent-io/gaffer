@@ -7,8 +7,8 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
-func (s *Server) startLiveSubscription(sess *activeSession, cfg *config.Config, root string) error {
-	env, err := mcpConnection(cfg)
+func (s *Server) startLiveSubscription(sess *activeSession, cfg *config.Config, root, envName string) error {
+	env, err := mcpConnection(cfg, envName)
 	if err != nil {
 		return err
 	}

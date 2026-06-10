@@ -13,7 +13,11 @@
 // Decision 7 for the rationale.
 package lsp
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/kurrent-io/gaffer/cli/internal/config"
+)
 
 // LSP method names. Server registers handlers keyed on these.
 const (
@@ -374,13 +378,16 @@ type ProjectionDetailsParams struct {
 }
 
 // ProjectionDetailsResult is the bits of a projection's parsed
-// config that the editor needs to drive a "live vs fixture" picker.
-// Connection is the project-level connection string; nil means
-// no `connection` field in the toml (live runs would fail). Fixtures
-// is the projection's named-fixture list, alphabetically sorted.
+// config that the editor needs to drive its run/debug source picker.
+// Connection is the default env's connection string; nil means no
+// default env (kept for back-compat). Fixtures is the projection's
+// named-fixture list, alphabetically sorted. Environments is every
+// configured [env.<name>] (name + whether it's the default), so the
+// picker can offer non-default envs - matching the CodeLens picker.
 type ProjectionDetailsResult struct {
-	Connection *string  `json:"connection"`
-	Fixtures   []string `json:"fixtures"`
+	Connection   *string                 `json:"connection"`
+	Fixtures     []string                `json:"fixtures"`
+	Environments []config.EnvDescription `json:"environments,omitempty"`
 }
 
 // FileSystemWatcher is one entry in

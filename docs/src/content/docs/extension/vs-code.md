@@ -25,7 +25,7 @@ Once `gaffer.toml` exists, the extension adds CodeLenses above each projection b
 
 Set breakpoints in the projection JS file. Standard VS Code debug controls work: step over, into, out, continue. The call stack and scopes views populate with the projection's JS frames and variables.
 
-`Gaffer: Debug` is also available from the command palette. It opens a quickpick listing every projection in the workspace.
+`Gaffer: Debug` is also available from the command palette: it lists every projection in the workspace, then prompts for a source (a fixture or a configured environment) when there's more than one.
 
 ## State inspection
 
@@ -63,7 +63,7 @@ See [MCP](../cli/mcp.md) for the tools and resources gaffer exposes, and for con
 | `Gaffer: Init`               | Command palette                  | Bootstrap a gaffer project in the current workspace folder (runs `gaffer init`).                                                         |
 | `Gaffer: Scaffold`           | Command palette                  | Add a new projection. Prompts for path, source, partition, an emit example, and engine version. Runs `gaffer init` first if no `gaffer.toml` is present. |
 | `Scaffold Projection Here`   | Explorer right-click on a folder | Same wizard as Scaffold, but the new file lands in the clicked folder and prompts only for the file name.                                |
-| `Gaffer: Debug`              | CodeLens or command palette      | Launch the projection with the debugger attached. Lens uses the projection at the cursor; palette prompts for one.                       |
+| `Gaffer: Debug`              | CodeLens or command palette      | Launch the projection with the debugger attached. Lens uses the projection at the cursor; palette prompts for a projection and source.    |
 | `Gaffer: Debug from...`      | CodeLens                         | Pick a source (a fixture or a configured environment) and launch with the debugger attached.                                            |
 | `Gaffer: Stop`               | CodeLens or command palette      | Stop the running session.                                                                                                                |
 

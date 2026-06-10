@@ -10,83 +10,80 @@ afterEach(() => {
 });
 
 describe("pickRunMode", () => {
-	it("returns null (live) when details is null", async () => {
-		// LSP didn't answer / rejected -> graceful degradation to live
-		// (matches the pre-picker single-step UX).
-		expect(await pickRunMode("p", null)).toBeNull();
-	});
-
-	it("returns null (live) when projection has neither connection nor fixtures", async () => {
-		// CLI will surface the resulting error itself; we don't gate
-		// the run with an extra confirmation toast.
-		expect(
-			await pickRunMode("p", { connection: null, fixtures: [] }),
-		).toBeNull();
-	});
-
-	it("returns null (live) when projection has connection but no fixtures", async () => {
-		// Only one possible run mode -> skip the second pick.
-		expect(
-			await pickRunMode("p", {
-				connection: "esdb://localhost:2113",
-				fixtures: [],
-			}),
-		).toBeNull();
-		// No QuickPick should have been shown.
+	it("returns an empty (live default) source when details is null", async () => {
+		// LSP didn't answer; degrade to a live default run, no picker.
+		expect(await pickRunMode("p", null)).toEqual({});
 		expect(getState().quickPickCalls).toEqual([]);
 	});
 
-	it("shows a fixture-only QuickPick when projection has fixtures but no connection", async () => {
-		queueQuickPick({ label: "fixture: happy", mode: "fixture", name: "happy" });
+	it("returns empty (live default) when there are no fixtures or envs", async () => {
+		expect(
+			await pickRunMode("p", {
+				connection: null,
+				fixtures: [],
+				environments: [],
+			}),
+		).toEqual({});
+		expect(getState().quickPickCalls).toEqual([]);
+	});
+
+	it("auto-selects a sole environment without prompting", async () => {
+		const result = await pickRunMode("checkout", {
+			connection: "esdb://prod:2113",
+			fixtures: [],
+			environments: [{ name: "prod", default: true }],
+		});
+		expect(result).toEqual({ env: "prod" });
+		expect(getState().quickPickCalls).toEqual([]);
+	});
+
+	it("auto-selects a sole fixture without prompting", async () => {
+		const result = await pickRunMode("checkout", {
+			connection: null,
+			fixtures: ["happy"],
+			environments: [],
+		});
+		expect(result).toEqual({ fixture: "happy" });
+		expect(getState().quickPickCalls).toEqual([]);
+	});
+
+	it("prompts with fixtures then envs when there's more than one source", async () => {
+		queueQuickPick({ label: "Env: prod", env: "prod" });
+		const result = await pickRunMode("checkout", {
+			connection: "esdb://local:2113",
+			fixtures: ["happy"],
+			environments: [
+				{ name: "local", default: true },
+				{ name: "prod", default: false },
+			],
+		});
+		expect(result).toEqual({ env: "prod" });
+		const labels = (
+			getState().quickPickCalls.at(-1)?.items as ReadonlyArray<{
+				label: string;
+			}>
+		).map((i) => i.label);
+		expect(labels).toEqual(["Fixture: happy", "Env: local", "Env: prod"]);
+	});
+
+	it("returns the fixture when a fixture row is picked", async () => {
+		queueQuickPick({ label: "Fixture: sad", fixture: "sad" });
 		const result = await pickRunMode("checkout", {
 			connection: null,
 			fixtures: ["happy", "sad"],
+			environments: [],
 		});
-		expect(result).toBe("happy");
-		const lastCall = getState().quickPickCalls.at(-1);
-		const labels = (lastCall?.items as ReadonlyArray<{ label: string }>).map(
-			(i) => i.label,
-		);
-		expect(labels).toEqual(["fixture: happy", "fixture: sad"]);
-	});
-
-	it("shows live + fixtures when projection has both", async () => {
-		queueQuickPick({
-			label: "connection: esdb://localhost:2113",
-			mode: "live",
-		});
-		const result = await pickRunMode("checkout", {
-			connection: "esdb://localhost:2113",
-			fixtures: ["happy"],
-		});
-		expect(result).toBeNull();
-		const lastCall = getState().quickPickCalls.at(-1);
-		const labels = (lastCall?.items as ReadonlyArray<{ label: string }>).map(
-			(i) => i.label,
-		);
-		expect(labels).toEqual([
-			"connection: esdb://localhost:2113",
-			"fixture: happy",
-		]);
-	});
-
-	it("returns the fixture name when a fixture item is picked", async () => {
-		queueQuickPick({ label: "fixture: sad", mode: "fixture", name: "sad" });
-		const result = await pickRunMode("checkout", {
-			connection: "esdb://localhost:2113",
-			fixtures: ["happy", "sad"],
-		});
-		expect(result).toBe("sad");
+		expect(result).toEqual({ fixture: "sad" });
 	});
 
 	it("returns undefined when the user dismisses the picker", async () => {
-		// Picker dismissal vs. live default are distinct: dismissal
-		// must propagate as undefined so runProjection aborts the run
-		// rather than launching live.
+		// Dismissal must stay distinct from a live-default source so
+		// runProjection aborts rather than launching.
 		queueQuickPick(undefined);
 		const result = await pickRunMode("checkout", {
-			connection: "esdb://localhost:2113",
-			fixtures: ["happy"],
+			connection: null,
+			fixtures: ["happy", "sad"],
+			environments: [],
 		});
 		expect(result).toBeUndefined();
 	});

@@ -22,6 +22,7 @@ import { showLspError, showLspNotReady } from "../notifications/lsp.js";
 import { showTrustWarning } from "../notifications/trust.js";
 import { showNoProjections } from "../notifications/workspace.js";
 import type { DebugProjectionArgs } from "../debugging/session-controller.js";
+import { buildSourceItems } from "./debug-projection-pick.js";
 
 export interface RunProjectionDeps {
 	// SessionController.start, passed by reference rather than the
@@ -67,8 +68,8 @@ export function runProjection(deps: RunProjectionDeps): () => Promise<void> {
 			picked.projection.name,
 			picked.projection.tomlUri,
 		);
-		const fixture = await pickRunMode(picked.projection.name, details);
-		if (fixture === undefined) return;
+		const source = await pickRunMode(picked.projection.name, details);
+		if (source === undefined) return;
 		const manifest = await tryFetchManifest(
 			deps.workspaceCwd(),
 			deps.telemetry,
@@ -87,54 +88,46 @@ export function runProjection(deps: RunProjectionDeps): () => Promise<void> {
 		await deps.start({
 			name: picked.projection.name,
 			tomlUri: picked.projection.tomlUri,
-			...(fixture === null ? {} : { fixture }),
+			...source,
 		});
 	};
 }
 
-// pickRunMode resolves the second-step QuickPick. Exported for unit
+// The source a run was resolved to: a named fixture, a live env, or
+// neither (empty - a live run with no explicit env, letting the CLI
+// resolve the default or surface an error). Spread straight into
+// DebugProjectionArgs.
+export type RunSource = { fixture?: string; env?: string };
+
+// pickRunMode resolves the second-step source pick. Exported for unit
 // testing; the runProjection caller is the only production caller.
 //
-// Return value:
-//   - `undefined`: user dismissed the second pick, abort the run
-//   - `null`: live run (no fixture)
-//   - `string`: named fixture to run against
-//
-// When details is null (LSP didn't answer or rejected), default to
-// live - the same single-step flow we had before the picker landed.
-// When the projection has neither a connection nor any fixtures, also
-// default to live; the CLI will surface the resulting error itself
-// rather than us blocking the run with a confirmation toast.
+// Returns the chosen RunSource, or undefined if the user dismisses the
+// picker. It mirrors the CodeLens "Debug from..." picker
+// (buildSourceItems): one row per fixture, then one per configured
+// environment (default tagged). A sole source is used without
+// prompting. With nothing to choose - no fixtures, no envs, or the LSP
+// didn't answer - it falls through to an empty (live default) source so
+// the CLI surfaces any resulting error rather than us blocking the run.
 export async function pickRunMode(
 	projectionName: string,
 	details: ProjectionDetails | null,
-): Promise<string | null | undefined> {
-	if (!details) return null;
-	const hasConnection = details.connection !== null;
-	const fixtures = details.fixtures;
-	if (!hasConnection && fixtures.length === 0) return null;
-	if (hasConnection && fixtures.length === 0) return null;
-	type Item = vscode.QuickPickItem & {
-		mode: "live" | "fixture";
-		name?: string;
-	};
-	const items: Item[] = [];
-	if (hasConnection) {
-		items.push({
-			label: `connection: ${details.connection}`,
-			mode: "live",
-		});
-	}
-	for (const f of fixtures) {
-		items.push({
-			label: `fixture: ${f}`,
-			mode: "fixture",
-			name: f,
-		});
-	}
+): Promise<RunSource | undefined> {
+	const items = details
+		? buildSourceItems(details.fixtures, details.environments)
+		: [];
+	const [first] = items;
+	if (!first) return {};
+	if (items.length === 1) return sourceOf(first);
 	const picked = await vscode.window.showQuickPick(items, {
 		placeHolder: `Run ${projectionName} against...`,
 	});
 	if (!picked) return undefined;
-	return picked.mode === "live" ? null : (picked.name ?? null);
+	return sourceOf(picked);
+}
+
+function sourceOf(item: { fixture?: string; env?: string }): RunSource {
+	if (item.env !== undefined) return { env: item.env };
+	if (item.fixture !== undefined) return { fixture: item.fixture };
+	return {};
 }

@@ -29,6 +29,14 @@ connection = "kurrentdb://localhost:2113?tls=false"
 
 KurrentDB connection string. Used when running a projection against a live event stream (`gaffer dev <projection>` without `--events` or `--fixture`). Override per-invocation with `--connection`.
 
+`${VAR}` references are expanded from the environment, so credentials need not be committed:
+
+```toml
+connection = "kurrentdb://admin:${DB_PASSWORD}@localhost:2113"
+```
+
+Values resolve from the process environment and a [`.env`](../cli/index.md#environment-file-env) file at the project root. A referenced variable that isn't set is an error; a bare `$` (only `${...}` is a reference) is left untouched.
+
 Optional. Omit when you only run projections against fixture files.
 
 ### `engine_version`

@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
-	"github.com/kurrent-io/gaffer/cli/internal/dotenv"
+	"github.com/kurrent-io/gaffer/cli/internal/envvar"
 )
 
 // ErrDBConnect wraps every Connect failure (bad URL, dotenv read,
@@ -21,8 +21,19 @@ var ErrDBConnect = errors.New("connect to KurrentDB")
 var ErrDBDisconnect = errors.New("KurrentDB connection lost")
 
 func Connect(connStr, projectRoot string) (*kurrentdb.Client, error) {
-	if err := dotenv.Load(projectRoot, ""); err != nil {
+	// Base .env is also loaded once at startup; reloading here (no-override,
+	// so it never clobbers shell vars) keeps Connect self-contained for
+	// callers and tests that reach it without the startup path.
+	if err := envvar.Load(projectRoot); err != nil {
 		return nil, fmt.Errorf("%w: loading .env: %s", ErrDBConnect, err)
+	}
+
+	// Interpolate ${VAR} (e.g. credentials kept out of the committed
+	// connection) before parsing; a missing var errors here rather than
+	// dialing a malformed endpoint.
+	connStr, err := envvar.Expand(connStr)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 	}
 
 	redacted := RedactConnection(connStr)
@@ -34,7 +45,7 @@ func Connect(connStr, projectRoot string) (*kurrentdb.Client, error) {
 		return nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, scrubRaw(err.Error(), connStr, redacted))
 	}
 
-	username, password := dotenv.Credentials()
+	username, password := envvar.Credentials()
 	if username != "" {
 		dbConfig.Username = username
 		dbConfig.Password = password

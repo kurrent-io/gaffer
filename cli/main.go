@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kurrent-io/gaffer/cli/cmd"
+	"github.com/kurrent-io/gaffer/cli/internal/envvar"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 	"github.com/kurrent-io/gaffer/cli/internal/updatecheck"
@@ -50,6 +51,17 @@ func main() {
 func runMain() (exitCode int) {
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Load the project's base .env into the process environment before
+	// anything reads env vars (telemetry opt-out, update-check), so a
+	// committed .env is honoured uniformly - not just on the DB
+	// connection path. Non-fatal: a broken .env must not brick a plain
+	// `gaffer --help`, so we warn and carry on rather than exiting.
+	if root := startupEnvRoot(); root != "" {
+		if err := envvar.Load(root); err != nil {
+			fmt.Fprintf(os.Stderr, "gaffer: %v\n", err)
+		}
+	}
 
 	// Peek argv for the hidden root flags before cobra parses. Two
 	// readers need the values early: the Client itself (so every
@@ -139,8 +151,28 @@ func runMain() (exitCode int) {
 	return 0
 }
 
+// startupEnvRoot picks the project root whose .env to load at startup.
+// It honours the mcp project override (--project / GAFFER_PROJECT), so a
+// server launched outside its project still loads that project's .env
+// before opt-out and update-check read the environment; otherwise it
+// discovers the root from the working directory. Returns "" when no
+// project is in scope.
+func startupEnvRoot() string {
+	if override := cmd.PeekProjectOverride(os.Args[1:]); override != "" {
+		return project.FindRootFrom(override)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return project.FindRootFrom(cwd)
+}
+
 // buildClient resolves opt-out and identity from the user's config
-// and constructs the per-process telemetry Client. Returns nil when
+// and constructs the per-process telemetry Client. Relies on runMain
+// having already loaded the project's .env into the process env, so a
+// .env-declared opt-out (GAFFER_TELEMETRY_OPTOUT etc.) is honoured -
+// keep that Load ahead of this call. Returns nil when
 // opt-out is active, when the config is unreadable, or when identity
 // resolution fails - all "telemetry off for this run" signals.
 //

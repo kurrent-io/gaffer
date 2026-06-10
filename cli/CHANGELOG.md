@@ -1,5 +1,48 @@
 # @kurrent/gaffer
 
+## 0.4.0
+
+### Minor Changes
+
+- 33e3b4b: **Breaking:** `gaffer.toml` now models connections as named environments, and `engine_version` is set per projection. Top-level `connection` and top-level `engine_version` are no longer supported; loading a file with either fails with a migration hint.
+
+  To migrate, move the top-level `connection` into an `[env.<name>]` block (mark one `default = true`), and set `engine_version` on each `[[projection]]`:
+
+  ```toml
+  # before
+  connection = "kurrentdb://localhost:2113?tls=false"
+  engine_version = 2
+
+  [[projection]]
+  name = "order-count"
+  entry = "projections/order-count.js"
+
+  # after
+  [env.local]
+  connection = "kurrentdb://localhost:2113?tls=false"
+  default = true
+
+  [[projection]]
+  name = "order-count"
+  entry = "projections/order-count.js"
+  engine_version = 2
+  ```
+
+  Each `[env.<name>]` carries its own `connection`, and exactly one may set `default = true` (used when `--env` is omitted). Environment names must match `^[A-Za-z0-9_-]+$`.
+  - `gaffer dev` gained `--env <name>` to select an environment; `--connection` is an ad-hoc override that beats both `--env` and the configured environment. The MCP `list_events` and live `run` tools take the same `env` argument.
+  - A per-environment `.env.<env>` file overlays the base `.env`, so each environment can carry its own credentials. The precedence, highest first, is the shell environment, then `.env.<env>`, then the base `.env`. Both `${VAR}` references in a connection and the `KURRENTDB_USERNAME` / `KURRENTDB_PASSWORD` credentials resolve from those sources.
+  - `gaffer init` no longer takes `--engine-version` or `--yes`; it writes a commented starter template.
+
+### Patch Changes
+
+- 327fc30: `gaffer dev` resolves event sources more helpfully when `gaffer.toml` defines environments. The interactive source picker now offers each configured environment as a live option, not just the `default` one, so a single non-default environment is selected automatically and multiple are pickable. When no source resolves non-interactively, the error names the available environments and suggests `--env <name>` or `default = true`, rather than pointing you to configure an `[env.<name>]` you may already have.
+- 3324def: `.env` is now loaded into the process environment at startup, so a project `.env` applies on every code path, not only after a database connection is made.
+  - Env-var opt-outs (`GAFFER_TELEMETRY_OPTOUT`, `KURRENTDB_TELEMETRY_OPTOUT`, `DO_NOT_TRACK`, `GAFFER_NO_UPDATE_CHECK`) set in `.env` are now honoured. Previously they were read only from the shell environment.
+  - The `connection` string in `gaffer.toml` supports `${VAR}` expansion (braced form only), so credentials can stay out of the committed file. An undefined variable is an error; a bare `$` is left untouched.
+  - The shell environment wins over `.env`: a value already set in the shell, or injected by CI, is never overwritten.
+
+- 33e3b4b: `gaffer scaffold` now lets you choose the new projection's engine version (`1` or `2`, default `2`). It's a `--engine-version` flag and an interactive prompt on the CLI, an `engine_version` argument on the MCP `scaffold` tool, and a step in the VS Code scaffold wizard.
+
 ## 0.3.1
 
 ### Patch Changes

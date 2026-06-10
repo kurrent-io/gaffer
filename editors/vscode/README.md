@@ -34,13 +34,13 @@ The extension spawns the [`@kurrent/gaffer` CLI](https://www.npmjs.com/package/@
 
 ## Commands
 
-| Command                      | What it does                                                                                              |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `Gaffer: Init`               | Create a `gaffer.toml` in the current folder                                                              |
-| `Gaffer: Scaffold`           | Add a new projection to the project via a multi-step picker. Right-clicking a folder runs it scoped there |
-| `Gaffer: Debug`              | Pick a projection from the workspace and launch a debug session                                           |
-| `Gaffer: Debug from Fixture` | Codelens-triggered Debug session bound to a specific fixture in `gaffer.toml`                             |
-| `Gaffer: Stop`               | Stop the running session                                                                                  |
+| Command                 | What it does                                                                                              |
+| ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| `Gaffer: Init`          | Create a `gaffer.toml` in the current folder                                                              |
+| `Gaffer: Scaffold`      | Add a new projection to the project via a multi-step picker. Right-clicking a folder runs it scoped there |
+| `Gaffer: Debug`         | Pick a projection from the workspace and launch a debug session                                           |
+| `Gaffer: Debug from...` | Codelens-triggered picker to debug against a fixture or a configured environment                          |
+| `Gaffer: Stop`          | Stop the running session                                                                                  |
 
 ## Telemetry
 

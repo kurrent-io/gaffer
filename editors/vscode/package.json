@@ -124,7 +124,7 @@
 			},
 			{
 				"command": "gaffer.debugProjectionPick",
-				"title": "Gaffer: Debug from Fixture"
+				"title": "Gaffer: Debug from..."
 			},
 			{
 				"command": "gaffer.stopDebug",

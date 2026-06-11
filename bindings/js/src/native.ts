@@ -64,7 +64,38 @@ function findLibPath(): string {
 		// package or binary not found, fall through
 	}
 
-	// 3. Walk up looking for the runtime library (dev fallback)
+	// 3. Dev fallback (gated, see findDevLibPath)
+	const devPath = findDevLibPath();
+	if (devPath) return devPath;
+
+	throw new Error(
+		`Could not find Gaffer runtime library for ${platformKey}. ` +
+			`Install ${platform.packageName}, set GAFFER_RUNTIME_LIB to the library path, ` +
+			`or set GAFFER_RUNTIME_DEV to load it from a gaffer source checkout.`,
+	);
+}
+
+/**
+ * Resolves the runtime library built in a gaffer source tree, or null. Walks up
+ * from this module looking for the .NET publish output. Gated behind
+ * GAFFER_RUNTIME_DEV because it koffi.loads the first matching library in ANY
+ * ancestor directory: in a production install an ancestor writable by another
+ * principal (a shared CI workspace, a /tmp deploy) could hold a planted library
+ * and get arbitrary native code run in the host process. Production installs
+ * resolve the platform package and never reach this. Exported for tests; not
+ * part of the package's public surface (index.ts).
+ */
+export function findDevLibPath(): string | null {
+	// Presence-based opt-in, but reject the obvious "off" values so a stray
+	// GAFFER_RUNTIME_DEV=0 doesn't re-open the fallback.
+	const optIn = process.env.GAFFER_RUNTIME_DEV;
+	if (!optIn || optIn === "0" || optIn.toLowerCase() === "false") {
+		return null;
+	}
+
+	const platform = PLATFORMS[`${process.platform}-${process.arch}`];
+	if (!platform) return null;
+
 	const dotnetLibFile = `Gaffer.Runtime.${platform.libFile.split(".").pop()}`;
 	let dir = import.meta.dirname;
 	for (let i = 0; i < 10; i++) {
@@ -82,11 +113,7 @@ function findLibPath(): string {
 		if (existsSync(candidate)) return candidate;
 		dir = resolve(dir, "..");
 	}
-
-	throw new Error(
-		`Could not find Gaffer runtime library for ${platformKey}. ` +
-			`Install ${platform.packageName} or set GAFFER_RUNTIME_LIB.`,
-	);
+	return null;
 }
 
 let lib: koffi.IKoffiLib | null = null;

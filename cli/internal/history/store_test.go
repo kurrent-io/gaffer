@@ -2,6 +2,7 @@ package history
 
 import (
 	"slices"
+	"sync"
 	"testing"
 )
 
@@ -304,4 +305,38 @@ func TestCount(t *testing.T) {
 	if count != 2 {
 		t.Errorf("Count = %d, want 2", count)
 	}
+}
+
+// A ":memory:" database is private to its connection, so reads and writes
+// must share one connection or a query lands on an empty one and fails with
+// "no such table: steps". This mirrors a live run (background inserter) being
+// queried by a concurrent get_timeline. Without SetMaxOpenConns(1) it fails
+// within a few dozen iterations.
+func TestConcurrentInsertAndQuery(t *testing.T) {
+	s := mustNew(t)
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = s.Insert(testEvent, testResult)
+			}
+		}
+	}()
+
+	for i := 0; i < 2000; i++ {
+		if _, err := s.TimelineFiltered(1, 100, ""); err != nil {
+			close(stop)
+			wg.Wait()
+			t.Fatalf("timeline query failed at iteration %d: %v", i, err)
+		}
+	}
+	close(stop)
+	wg.Wait()
 }

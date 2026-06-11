@@ -340,6 +340,25 @@ func TestGetTimeline(t *testing.T) {
 	}
 }
 
+func TestGetTimeline_NoSteps(t *testing.T) {
+	s := setupTestProject(t)
+	emptyFixture := filepath.Join(s.root, "fixtures", "empty.json")
+	if err := os.WriteFile(emptyFixture, []byte("[]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/empty.json"})
+
+	result := callTool(t, s, getTimelineTool, s.handleGetTimeline, getTimelineInput{})
+
+	entries := result["entries"].([]any)
+	if len(entries) != 0 {
+		t.Fatalf("expected 0 entries, got %d", len(entries))
+	}
+	if result["message"] != "No timeline recorded for this session." {
+		t.Errorf("expected no-timeline message, got %v", result["message"])
+	}
+}
+
 func TestGetTimeline_PartitionFilter(t *testing.T) {
 	s := setupTestProject(t)
 	callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})

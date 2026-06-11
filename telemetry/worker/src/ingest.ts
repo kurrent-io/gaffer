@@ -23,7 +23,43 @@ const MAX_BODY_BYTES = 1024 * 1024;
 // staging override) can't silently send the API key to a different host.
 const ALLOWED_POSTHOG_HOSTS = ["https://eu.i.posthog.com"];
 
+// Throttle the rate-limit drop log to at most once per isolate per window.
+// The drop is the designed response to a flood, so logging every shed request
+// would re-add the cost/log-amplification vector the limit exists to remove -
+// while we still want enough signal in `wrangler tail` to see the limiter is
+// firing. `lastRateLimitLogAt` is per-isolate best-effort, which is fine: a
+// flood concentrates on a few isolates per colo, collapsing N drops into one
+// log line per window.
+const RATE_LIMIT_LOG_INTERVAL_MS = 60 * 1000;
+let lastRateLimitLogAt = 0;
+
 export async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+	// Per-source rate limit, checked before any body read so a flood is shed
+	// at minimal cost. `/v1/ingest` is public and unauthenticated (telemetry
+	// is anonymous - there's no token to check), so this is the only bound on
+	// the D1 writes + PostHog forward each request triggers. The counter is
+	// edge-local (per-colo), so it bounds a single-source flood; it does not
+	// aggregate a distributed one - that's the accepted limit of the native
+	// binding for a medium-severity telemetry endpoint. We drop (200) rather
+	// than 429 to keep the "always 200" posture - the fire-and-forget client
+	// ignores the status, and a distinct code would only hand an attacker a
+	// signal to tune against. Fail open if the limiter itself errors: a blip
+	// shouldn't drop all telemetry, and the guards below still apply.
+	let allowed = true;
+	try {
+		allowed = (await env.INGEST_RATE_LIMITER.limit({ key: rateLimitKey(request) })).success;
+	} catch (err) {
+		console.error("rate limiter unavailable, allowing:", err);
+	}
+	if (!allowed) {
+		const now = Date.now();
+		if (now - lastRateLimitLogAt > RATE_LIMIT_LOG_INTERVAL_MS) {
+			lastRateLimitLogAt = now;
+			console.error("drop: rate limit exceeded");
+		}
+		return ok();
+	}
+
 	// Fast-path reject on an oversized Content-Length. The streaming check
 	// below catches clients that omit or lie about the header.
 	const contentLength = request.headers.get("content-length");
@@ -94,6 +130,17 @@ export async function handleIngest(request: Request, env: Env, ctx: ExecutionCon
 	// Chain merge then forward in one waitUntil so isolate eviction can't
 	// land one POST without the other and the causal order (merge person
 	// link before the stitched event) is preserved.
+	//
+	// The merge fires on the request-supplied (emitter_id, invoker_id) pair
+	// without checking it against prior stitching state. Such a check can't
+	// harden this: the endpoint is unauthenticated and the caller owns both
+	// IDs, so any "invoker must have been seen" gate is satisfied by first
+	// emitting an event for that invoker. It would block only fully-blind
+	// random-pair merges while adding state to maintain. The realistic abuse
+	// is volume (flooding junk merges to pollute PostHog / drive cost), which
+	// the rate limit above bounds; a targeted merge of a specific victim
+	// needs that victim's emitter_id, a random UUIDv4 that never leaves the
+	// local state file except over TLS to this worker.
 	const invokerId = envelope.context.invoker_id;
 	ctx.waitUntil(
 		(async () => {
@@ -165,6 +212,26 @@ async function readBodyCapped(request: Request, max: number): Promise<string | n
 		offset += c.byteLength;
 	}
 	return new TextDecoder().decode(buf);
+}
+
+// Rate-limit key derived from CF-Connecting-IP, which Cloudflare sets from
+// the TLS peer at the edge - clients can't forge it. IPv4 is one address per
+// client, so it's keyed whole. For IPv6 a single client typically controls a
+// whole /64, so we collapse to the /64 prefix (first four hextets) to stop an
+// attacker rotating the low 64 bits for a fresh bucket per request. Requests
+// that somehow lack the header share one "unknown" bucket rather than
+// bypassing the limit.
+function rateLimitKey(request: Request): string {
+	const ip = request.headers.get("cf-connecting-ip");
+	if (!ip) return "unknown";
+	if (!ip.includes(":")) return ip;
+
+	// Expand a `::` run so the /64 prefix is taken from the right groups.
+	const [head, tail = ""] = ip.split("::");
+	const headParts = head ? head.split(":") : [];
+	const tailParts = tail ? tail.split(":") : [];
+	const fill = Array(Math.max(0, 8 - headParts.length - tailParts.length)).fill("0");
+	return [...headParts, ...fill, ...tailParts].slice(0, 4).join(":");
 }
 
 function ok(): Response {

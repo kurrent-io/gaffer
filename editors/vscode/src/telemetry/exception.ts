@@ -62,7 +62,7 @@ function makeEntry(
 	args: { extensionPath: string; workspaceFolders: readonly string[] },
 ): ExceptionEntry {
 	const type = err instanceof Error ? err.name : "Error";
-	const value = scrubPaths(err instanceof Error ? err.message : String(err));
+	const value = scrubMessage(err instanceof Error ? err.message : String(err));
 	const stack = err instanceof Error ? (err.stack ?? "") : "";
 	const frames = parseStack(stack)
 		.map((f) => classifyFrame(f, args))
@@ -79,31 +79,43 @@ function makeEntry(
 	};
 }
 
-// Strip filesystem-path shapes from an exception message. The schema
-// contract for `value` is "only a message gaffer wrote", but Node / VS Code
-// errors that bubble through the wrap sites embed absolute paths verbatim
-// (e.g. `EACCES: permission denied, stat '/home/user/secret/gaffer.toml'`),
-// and the username lives inside them. gaffer throws plain Errors with no
-// brand to allowlist on, so we strip the path and keep the diagnostic
-// skeleton (`EACCES: permission denied, stat '<path>'`).
+// Strip path- and credential-shaped substrings from an exception message.
+// The schema contract for `value` is "only a message gaffer wrote", but Node
+// / VS Code errors that bubble through the wrap sites embed verbatim (a)
+// absolute filesystem paths - `EACCES: ... stat '/home/user/x'` - whose
+// directories carry the username, and (b) connection-string credentials and
+// private hostnames - `esdb://admin:changeit@cluster.kurrent.cloud:2113`.
+// gaffer throws plain Errors with no brand to allowlist on, so we strip both
+// and keep the diagnostic skeleton (`... stat '<path>'`, `esdb://<redacted>`).
 //
 // Scope: these wrap sites are extension-host surfaces (fs, child_process,
-// vscode API), so filesystem paths are the leak vector. Projection / Jint
-// messages - which the contract also forbids - originate in the CLI, not
-// here, so this doesn't attempt general identifier removal.
+// vscode API), so paths and connection errors are the leak vectors.
+// Projection / Jint messages - which the contract also forbids - originate
+// in the CLI, not here, so this doesn't attempt general identifier removal.
 //
-// Rules run in order. The quoted rule goes first and handles the common
-// fs-error shape `... '<abs path>'`: it spans the whole quoted run, so a path
-// with spaces ("My Project", "Program Files") doesn't leak its tail, and it
-// fires only when the quoted content opens with a path indicator (`file://`
-// included) so a quoted identifier like 'foo' is left alone. The unquoted
-// rules are the fallback; an unquoted path with spaces strips only to the
-// first space. The POSIX and `~` rules are boundary-anchored so an in-word
-// slash like "read/write" isn't mistaken for a path, and the Windows drive
-// rule rejects a preceding letter so a URL scheme ("https://") isn't clipped.
-const PATH_RULES: ReadonlyArray<
-	[RegExp, (match: string, quote: string) => string]
+// Rules run in order. The credential rule goes first: a URL with userinfo
+// (`scheme://user:pass@host`) has its authority redacted, keeping the scheme
+// (a non-sensitive signal it was a connection failure) and the path after it
+// (unscrubbed - a db name is low-sensitivity and aids diagnosis). The userinfo
+// span runs to the `@`, so a `/` in the password doesn't defeat it; the cost
+// is that a credential-less URL with an `@` in its path is over-redacted,
+// which leaks nothing. A URL without any `@` (gaffer's own `https://`
+// endpoints) is left intact. The
+// quoted rule handles the common fs-error shape `... '<abs path>'`: it spans
+// the whole quoted run, so a path with spaces ("My Project") doesn't leak its
+// tail, and it fires only when the quoted content opens with a path indicator
+// (`file://` included) so a quoted identifier like 'foo' is left alone. The
+// unquoted rules are the fallback; an unquoted path with spaces strips only
+// to the first space. The POSIX and `~` rules are boundary-anchored so an
+// in-word slash like "read/write" isn't mistaken for a path, and the Windows
+// drive rule rejects a preceding letter so a URL scheme isn't clipped.
+const SCRUB_RULES: ReadonlyArray<
+	[RegExp, (match: string, group1: string) => string]
 > = [
+	[
+		/(\b[a-z][a-z\d+.-]*:\/\/)[^\s'"`@]*@[^/\s'"`]*/gi,
+		(_m, scheme) => `${scheme}<redacted>`,
+	],
 	[
 		/(['"])(?:file:\/\/|\/|~\/|\\\\|[A-Za-z]:[\\/])[^'"]*\1/g,
 		(_m, quote) => `${quote}<path>${quote}`,
@@ -115,9 +127,9 @@ const PATH_RULES: ReadonlyArray<
 	[/(?<=^|[\s'"`(:=,])(?:\/[^\s/'"`<>:*?|]+)+\/?/g, () => "<path>"],
 ];
 
-function scrubPaths(message: string): string {
+function scrubMessage(message: string): string {
 	let out = message;
-	for (const [pattern, replacement] of PATH_RULES) {
+	for (const [pattern, replacement] of SCRUB_RULES) {
 		out = out.replace(pattern, replacement);
 	}
 	return out;

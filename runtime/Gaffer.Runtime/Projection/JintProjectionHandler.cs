@@ -326,6 +326,15 @@ internal sealed class JintProjectionHandler : IDisposable {
 	// result and passes false, so a quirk isn't reported twice for one event;
 	// the state-pass passes true.
 	private void PrepareOutput(out string? newState, out string? newSharedState, bool reportQuirks) {
+		// A bi-state handler must keep state as the [state, sharedState] array (mutating it in
+		// place, or returning it). Returning anything else is persisted as-is and then faults on
+		// the next event in LoadCurrentState, wedging the partition - exactly as KurrentDB does.
+		// gaffer reproduces that; warn so it's diagnosable. A clean rejection lands if/when
+		// quirk.biState.nonArrayReturn gets a FixedIn.
+		if (reportQuirks && _definitionBuilder.IsBiState && !_state.IsArray()
+			&& DiagnosticCatalog.BiStateNonArrayReturn.FiresAt(_quirksVersion))
+			_onDiagnostic?.Invoke(DiagnosticCatalog.BiStateNonArrayReturn.ToDiagnostic());
+
 		if (_definitionBuilder.IsBiState && _state.IsArray()) {
 			// Bi-state slots always JSON-encode, both slots (matches upstream's
 			// ConvertToStringHandlingNulls). A string slot persists as `"hello"`, not raw -

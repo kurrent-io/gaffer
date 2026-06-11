@@ -195,6 +195,45 @@ public static class DiagnosticCatalog {
 	};
 
 	/// <summary>
+	/// A bi-state handler that returns a non-array (not the <c>[partitionState, sharedState]</c>
+	/// pair) corrupts the state: the engine persists the malformed value, then faults restoring
+	/// the pair on the next event for that partition, wedging it until its state is reset. gaffer
+	/// reproduces the wedge (it can't clean up what the engine persists). Not rejected upstream, so
+	/// <c>FixedIn</c> is null; set it if the engine starts rejecting a non-array return.
+	/// </summary>
+	public static readonly DiagnosticDescriptor BiStateNonArrayReturn = new() {
+		Code = "quirk.biState.nonArrayReturn",
+		Class = DiagnosticClass.Quirk,
+		Severity = DiagnosticSeverity.Error,
+		Message = "A bi-state handler returned a non-array instead of the [state, sharedState] pair; the malformed state is persisted and the next event for this partition faults restoring it, wedging the partition. Mutate the pair in place, or return it.",
+		Docs = "Bi-state projections operate on a `[partitionState, sharedState]` pair. A handler must mutate that pair in place or return it. If it returns anything else (a single slot, a fresh object, a scalar, or null), the KurrentDB engine persists the malformed value, then faults on the next event for that partition while restoring the pair, wedging the partition until its state is reset; gaffer reproduces that wedge. Return the `[state, sharedState]` pair, or omit the return and mutate it in place.",
+		BadExample = """
+		options({ biState: true });
+		fromAll().foreachStream().when({
+		  $init() { return { balance: 0 }; },
+		  $initShared() { return { total: 0 }; },
+		  Deposited([state, shared], event) {
+		    shared.total += event.body.amount;
+		    return { balance: state.balance + event.body.amount }; // returns an object, not the [state, shared] pair
+		  }
+		});
+		""",
+		GoodExample = """
+		options({ biState: true });
+		fromAll().foreachStream().when({
+		  $init() { return { balance: 0 }; },
+		  $initShared() { return { total: 0 }; },
+		  Deposited([state, shared], event) {
+		    state.balance += event.body.amount;
+		    shared.total += event.body.amount;
+		    return [state, shared]; // return the pair (or omit the return and mutate in place)
+		  }
+		});
+		""",
+		FixedIn = null, // KurrentDB wedges with no clean error; set if the engine starts rejecting this
+	};
+
+	/// <summary>
 	/// <c>outputState()</c> has no effect under engine_version 2: V2 does not emit result-stream
 	/// events, so a projection relying on result-stream subscriptions silently produces nothing.
 	/// Result-stream parity is planned for a future release, so <c>FixedIn</c> is null until then.
@@ -353,6 +392,7 @@ public static class DiagnosticCatalog {
 		SerializeNonFinite,
 		SerializeRawString,
 		BiStateSharedStateResetOnV2,
+		BiStateNonArrayReturn,
 		OutputStateNoEffectOnV2,
 		LinkStreamToDeprecated,
 		TransformsNotInvoked,

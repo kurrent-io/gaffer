@@ -544,6 +544,53 @@ func TestSaveAndReload(t *testing.T) {
 	}
 }
 
+func TestSave_Atomic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+
+	first := &Config{Projection: []Projection{{Name: "first", Entry: "first.js", EngineVersion: ptr(2)}}}
+	if err := Save(path, first); err != nil {
+		t.Fatal(err)
+	}
+
+	// Overwriting an existing manifest goes through the rename path and
+	// fully replaces the prior content.
+	second := &Config{Projection: []Projection{{Name: "second", Entry: "second.js", EngineVersion: ptr(2)}}}
+	if err := Save(path, second); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Projection) != 1 || loaded.Projection[0].Name != "second" {
+		t.Fatalf("expected the manifest replaced with 'second', got %+v", loaded.Projection)
+	}
+
+	// The temp file is renamed (or cleaned up on failure), never left in
+	// the project dir for a watcher to trip over.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "gaffer.toml" {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("expected only gaffer.toml in dir, got %v", names)
+	}
+
+	// Perm matches the previous in-place WriteFile (0644), not CreateTemp's 0600.
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o644 {
+		t.Fatalf("expected mode 0644, got %o", perm)
+	}
+}
+
 func TestSaveAndReload_Fixtures(t *testing.T) {
 	// Round-trip: encoding the Fixtures map through toml.NewEncoder
 	// and decoding back must preserve names and paths. Without this

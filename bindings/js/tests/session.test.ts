@@ -361,6 +361,72 @@ describe("ProjectionSession", () => {
 		expect(e0?.data).toContain("ABC");
 	});
 
+	it("surfaces an exception thrown in an onEmit callback", () => {
+		session = new ProjectionSession(
+			`
+			fromAll().when({
+				$init() { return {}; },
+				OrderPlaced(s, e) {
+					emit("notifications", "OrderNotification", { orderId: e.data.orderId });
+					return s;
+				}
+			})
+		`,
+			{ engineVersion: 2 },
+		);
+
+		// koffi swallows a throw at the FFI boundary, so without the stash/rethrow
+		// the feed would succeed and the consumer would silently lose the event.
+		let calls = 0;
+		session.onEmit(() => {
+			calls++;
+			if (calls === 1) throw new Error("callback boom");
+		});
+
+		const order = {
+			eventType: "OrderPlaced",
+			streamId: "order-1",
+			sequenceNumber: 0,
+			data: '{"orderId":"ABC"}',
+			isJson: true,
+			eventId: "00000000-0000-0000-0000-000000000000",
+			created: "2026-01-01T00:00:00Z",
+		};
+
+		expect(() => session?.feed(order)).toThrow("callback boom");
+		// The stash is cleared after rethrow: a later call where the callback
+		// doesn't throw completes normally rather than replaying the stale error.
+		expect(() => session?.feed(order)).not.toThrow();
+	});
+
+	it("surfaces an exception thrown in an onStateChanged callback", () => {
+		session = new ProjectionSession(
+			`
+			fromAll().when({
+				$init() { return { count: 0 }; },
+				Ping(s, e) { s.count++; return s; }
+			})
+		`,
+			{ engineVersion: 2 },
+		);
+
+		session.onStateChanged(() => {
+			throw new Error("state callback boom");
+		});
+
+		expect(() =>
+			session?.feed({
+				eventType: "Ping",
+				streamId: "s-1",
+				sequenceNumber: 0,
+				data: "{}",
+				isJson: true,
+				eventId: "00000000-0000-0000-0000-000000000000",
+				created: "2026-01-01T00:00:00Z",
+			}),
+		).toThrow("state callback boom");
+	});
+
 	it("onLog captures console.log", () => {
 		session = new ProjectionSession(
 			`

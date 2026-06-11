@@ -1,5 +1,25 @@
 # @kurrent/projections-testing
 
+## 0.2.1
+
+### Patch Changes
+
+- 401093e: Errors from `partitionBy`, `$init`, `$initShared`, and `$created` now surface as structured projection errors with event context, like errors from event handlers. Previously they escaped as raw engine exceptions that the bindings reported as a generic "unexpected" error with no stream or sequence context, and a `partitionBy` timeout could not be caught by type. `getPartitionKey` wraps the same way.
+- 12dbafc: `createProjection` now forwards `databaseConfig.maxStateSizeBytes` to the session, letting tests configure the serialized-state size limit (default 16 MiB).
+- Updated dependencies [cc72aae]
+- Updated dependencies [c1e2d9b]
+- Updated dependencies [eb5573c]
+- Updated dependencies [401093e]
+- Updated dependencies [2f31371]
+- Updated dependencies [65bc7f1]
+- Updated dependencies [21b0bad]
+- Updated dependencies [3a3a921]
+- Updated dependencies [e01399d]
+- Updated dependencies [12dbafc]
+- Updated dependencies [3a3a921]
+- Updated dependencies [7b1d552]
+  - @kurrent/gaffer-runtime@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

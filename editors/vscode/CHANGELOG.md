@@ -1,5 +1,12 @@
 # gaffer-vscode
 
+## 0.1.7
+
+### Patch Changes
+
+- aa31ec5: Exception telemetry now redacts connection-string credentials and hosts from error messages before they leave your machine, extending the filesystem-path scrubbing already applied to these messages. A URL carrying credentials (e.g. `esdb://user:pass@cluster:2113`) is reduced to `esdb://<redacted>`, keeping only the scheme and path.
+- 7a3d067: Exception telemetry now strips filesystem paths from error messages before they leave your machine. OS-level errors (e.g. a permission-denied `stat`) embed absolute paths that could include your username; these are now replaced with `<path>`, matching the telemetry notice's existing "no paths or error messages" promise. Stack frames were already scrubbed to basenames.
+
 ## 0.1.6
 
 ### Patch Changes

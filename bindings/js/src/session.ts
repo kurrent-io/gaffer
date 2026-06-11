@@ -39,18 +39,29 @@ function stashCallbackError(resources: SessionResources, error: unknown): void {
 
 function releaseResources(resources: SessionResources): void {
 	if (resources.released) return;
-	resources.released = true;
 	const native = getNativeBindings();
+	// Attempt every step even if an earlier one throws - freeing the native
+	// session matters most - but collect failures rather than swallowing them,
+	// and rethrow the first so dispose() surfaces it. `released` is set only
+	// after the attempts, so the flag reflects work actually done.
+	const errors: unknown[] = [];
 	for (const cb of resources.callbacks) {
-		// Best-effort: a failing unregister must not skip sessionDestroy below.
 		try {
 			native.unregisterCallback(cb);
-		} catch {
-			// ignore - releasing the native session is what matters
+		} catch (error) {
+			errors.push(error);
 		}
 	}
 	resources.callbacks = [];
-	native.sessionDestroy(resources.handle);
+	try {
+		native.sessionDestroy(resources.handle);
+	} catch (error) {
+		errors.push(error);
+	}
+	resources.released = true;
+	if (errors.length > 0) {
+		throw errors[0];
+	}
 }
 
 /**
@@ -60,9 +71,10 @@ function releaseResources(resources: SessionResources): void {
  * every future callback registration. This is a safety net - dispose() (or a
  * `using` declaration) is still the correct way to release a session promptly.
  *
- * The body is guarded: an exception thrown from a FinalizationRegistry callback
- * is swallowed by the host and can't be acted on, so suppressing it keeps a bad
- * unregister from surfacing as an unhandled rejection.
+ * releaseResources rethrows the first cleanup failure so dispose() can surface
+ * it, but the finalizer path has no caller to receive it - and an uncaught throw
+ * from a FinalizationRegistry callback is swallowed by the host anyway - so it's
+ * caught and dropped here.
  */
 const sessionFinalization = new FinalizationRegistry<SessionResources>(
 	(resources) => {

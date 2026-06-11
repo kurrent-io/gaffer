@@ -457,6 +457,17 @@ describe("buildException message scrubbing", () => {
 		);
 	});
 
+	it("redacts every host of a comma-separated multi-host connection string", () => {
+		// KurrentDB cluster DSNs list gossip seeds comma-separated. The host
+		// run must consume through the commas so a later seed isn't left
+		// exposed; stopping at the first comma would leak node2/node3.
+		expect(
+			valueFrom(
+				"gossip failed: esdb://admin:changeit@node1:2113,node2:2113,node3:2113?tls=true",
+			),
+		).toBe("gossip failed: esdb://<redacted>");
+	});
+
 	it("leaves a credential-less URL intact", () => {
 		expect(valueFrom("request to https://gaffer.kurrent.io/docs failed")).toBe(
 			"request to https://gaffer.kurrent.io/docs failed",

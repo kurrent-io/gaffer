@@ -165,11 +165,13 @@ func runMain() (exitCode int) {
 // discovers the root from the working directory. Returns "" when no project
 // is in scope.
 //
-// The walk is bounded at $HOME so a stray gaffer.toml in an ancestor outside
-// the user's home (a world-writable /tmp, /home on a shared host) can't turn
-// its .env - which may carry KURRENTDB credentials - into ambient state for
-// every invocation below it. Mirrors the telemetry opt-out walk's bound. An
-// undeterminable home falls back to unbounded, matching prior behaviour.
+// The walk stops at $HOME, mirroring the telemetry opt-out walk, so a stray
+// gaffer.toml in a shared ancestor above your home (e.g. /home on a
+// multi-user host, or /) isn't picked up and its .env - which may carry
+// KURRENTDB credentials - isn't made ambient for every invocation below it.
+// The bound only bites while working under $HOME; an undeterminable home, or
+// a cwd outside it, falls back to an unbounded walk, matching prior
+// behaviour and the telemetry walk.
 func startupEnvRoot() string {
 	home, _ := os.UserHomeDir()
 	if override := cmd.PeekProjectOverride(os.Args[1:]); override != "" {
@@ -203,7 +205,7 @@ func buildClient(noticeOut io.Writer, invocation telemetry.Invocation) *telemetr
 	cwd, _ := os.Getwd()
 	home, _ := os.UserHomeDir()
 	// Bounded at $HOME like the .env loader and opt-out walk, so a stray
-	// ancestor gaffer.toml outside home can't set this run's project_id.
+	// gaffer.toml above home doesn't set this run's project_id.
 	projectRoot := project.FindRootFromBounded(cwd, home)
 	return telemetry.StartupGate(store, cwd, home, projectRoot, noticeOut, invocation,
 		telemetry.WithUserAgent(userAgent()),

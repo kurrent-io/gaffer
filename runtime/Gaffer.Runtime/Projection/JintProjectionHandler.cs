@@ -221,6 +221,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	public void Load(string? state) {
+		EnsureNotFaulted();
 		_engine.Constraints.Reset();
 		LoadCurrentState(state != null ? _parser.Parse(state) : JsValue.Null);
 	}
@@ -236,6 +237,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	public void LoadShared(string? state) {
+		EnsureNotFaulted();
 		_engine.Constraints.Reset();
 		LoadCurrentSharedState(state != null ? _parser.Parse(state) : JsValue.Null);
 	}
@@ -251,17 +253,20 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	public void Initialize() {
+		EnsureNotFaulted();
 		_engine.Constraints.Reset();
 		LoadCurrentState(_runtime.InitializeState());
 	}
 
 	public void InitializeShared() {
+		EnsureNotFaulted();
 		_engine.Constraints.Reset();
 		_sharedState = _runtime.InitializeSharedState();
 		LoadCurrentSharedState(_sharedState);
 	}
 
 	public string? GetStatePartition(ProjectionEvent @event, string category) {
+		EnsureNotFaulted();
 		_engine.Constraints.Reset();
 		var envelope = CreateEnvelope("", @event, category);
 		var partition = _runtime.GetPartition(envelope);
@@ -303,6 +308,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	public string? TransformStateToResult() {
+		EnsureNotFaulted();
 		_engine.Constraints.Reset();
 		if (_engineVersion == ProjectionVersion.V2) {
 			// V2 doesn't apply transformBy/filterBy - state is the result.

@@ -88,6 +88,7 @@ Options:
 - **`databaseConfig`**: database-wide settings.
   - `compilationTimeoutMs`: max compile time in ms (default 5000).
   - `executionTimeoutMs`: default max handler execution time in ms (default 5000).
+  - `maxStateSizeBytes`: max serialized projection state size in bytes (default 16 MiB).
 
 ### `projection.validate()`
 
@@ -273,7 +274,7 @@ Projection state is persisted as JSON by the same engine KurrentDB uses, so a fe
 - **`BigInt`** serializes to a decimal string: `10n` persists as `"10"`, matching KurrentDB.
 - **`undefined`** object properties are dropped, exactly like `JSON.stringify`; in an array position `undefined` becomes `null`.
 - **`NaN` and `Infinity`** throw a `StateSerializationError`, because KurrentDB rejects them (the `quirk.serialize.nonFinite` quirk).
-- **Deeply nested, circular, or oversized state** throws a `StateSerializationError`: state nested more than 64 levels deep, a value containing a circular reference (`s.self = s`), or an array with more than ~2 billion elements.
+- **Deeply nested, circular, or oversized state** throws a `StateSerializationError`: state nested more than 64 levels deep, a value containing a circular reference (`s.self = s`), an array with more than ~2 billion elements, or serialized state exceeding `maxStateSizeBytes` (default 16 MiB).
 
 `state` and `getState()` hide the persisted form by parsing it on read. To assert against the raw JSON (including quirks like a bare non-JSON string state persisted un-encoded), read `stateRaw` / `getStateRaw()` and inspect `diagnostics` (see [Raw state and diagnostics](#raw-state-and-diagnostics)).
 

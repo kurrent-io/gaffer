@@ -85,6 +85,14 @@ public sealed class ProjectionSession : IDisposable {
 				"quirksVersion");
 		}
 
+		// A non-positive cap faults every non-empty state on serialize - reject it up-front
+		// rather than let it surface as a confusing per-event state-serialization error.
+		if (opts.MaxStateSizeBytes <= 0) {
+			throw new InvalidArgumentException(
+				"maxStateSizeBytes must be a positive number of bytes.",
+				"maxStateSizeBytes");
+		}
+
 		try {
 			_handler = new JintProjectionHandler(
 				source,
@@ -108,7 +116,8 @@ public sealed class ProjectionSession : IDisposable {
 					OnDiagnostic?.Invoke(diagnostic);
 				},
 				debug: opts.Debug,
-				quirksVersion: _quirksVersion);
+				quirksVersion: _quirksVersion,
+				maxStateSizeBytes: opts.MaxStateSizeBytes);
 
 			_handler.OnBreak = info => OnBreak?.Invoke(info);
 		} catch (ScriptPreparationException ex) when (ex.InnerException is ParseErrorException parseError) {
@@ -649,6 +658,20 @@ public sealed class ProjectionSessionOptions {
 
 	/// <summary>Maximum time for JS handler execution per event. Default: 5 seconds.</summary>
 	public TimeSpan ExecutionTimeout { get; init; } = TimeSpan.FromSeconds(5);
+
+	/// <summary>
+	/// KurrentDB's default for <c>MaxProjectionStateSize</c> (its <c>TFConsts.MaxLogRecordSize</c>,
+	/// 16 MiB), mirrored as <see cref="MaxStateSizeBytes"/>'s default.
+	/// </summary>
+	public const long DefaultMaxStateSizeBytes = 16 * 1024 * 1024;
+
+	/// <summary>
+	/// Maximum size in bytes of serialized projection state. Mirrors KurrentDB's
+	/// configurable <c>MaxProjectionStateSize</c> node option. Enforced during
+	/// serialization; exceeding it raises a <see cref="StateSerializationException"/>.
+	/// Default: 16 MiB.
+	/// </summary>
+	public long MaxStateSizeBytes { get; init; } = DefaultMaxStateSizeBytes;
 
 	/// <summary>Enable Jint debug hooks for breakpoints and stepping. Has performance overhead.</summary>
 	public bool Debug { get; init; }

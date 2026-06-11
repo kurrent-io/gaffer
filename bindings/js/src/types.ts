@@ -111,5 +111,7 @@ export interface SessionOptions {
 	quirksVersion?: string;
 	compilationTimeoutMs?: number;
 	executionTimeoutMs?: number;
+	/** Maximum size in bytes of serialized projection state. Default: 16 MiB. */
+	maxStateSizeBytes?: number;
 	debug?: boolean;
 }

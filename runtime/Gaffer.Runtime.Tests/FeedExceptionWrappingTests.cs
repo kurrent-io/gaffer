@@ -39,6 +39,11 @@ public class FeedExceptionWrappingTests {
 
 	[Fact]
 	public void PartitionBy_timeout_is_wrapped_as_execution_timeout() {
+		// The runtime disables its time constraint when a debugger is attached, so this
+		// timeout-driven test would spin forever under one - skip rather than hang.
+		if (System.Diagnostics.Debugger.IsAttached)
+			return;
+
 		using var session = Session("""
 			fromAll().partitionBy(function(e) { while (true) {} }).when({
 				$init: function() { return {}; },

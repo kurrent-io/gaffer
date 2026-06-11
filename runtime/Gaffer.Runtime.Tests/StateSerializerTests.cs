@@ -115,4 +115,13 @@ public class StateSerializerTests {
 		session.Feed(TestEvent);
 		Assert.Equal("{\"hello\":\"world\"}", session.GetState());
 	}
+
+	[Fact]
+	public void Non_positive_max_state_size_is_rejected() {
+		var ex = Assert.Throws<InvalidArgumentException>(() => new ProjectionSession(
+			"fromAll().when({ $init: function() { return {}; } })",
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, MaxStateSizeBytes = 0 }));
+
+		Assert.Contains("maxStateSizeBytes", ex.Message);
+	}
 }

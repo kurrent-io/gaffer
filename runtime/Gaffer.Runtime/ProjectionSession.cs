@@ -85,6 +85,14 @@ public sealed class ProjectionSession : IDisposable {
 				"quirksVersion");
 		}
 
+		// A non-positive cap faults every non-empty state on serialize - reject it up-front
+		// rather than let it surface as a confusing per-event state-serialization error.
+		if (opts.MaxStateSizeBytes <= 0) {
+			throw new InvalidArgumentException(
+				"maxStateSizeBytes must be a positive number of bytes.",
+				"maxStateSizeBytes");
+		}
+
 		try {
 			_handler = new JintProjectionHandler(
 				source,

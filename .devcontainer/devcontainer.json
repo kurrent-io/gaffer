@@ -4,6 +4,11 @@
     "dockerfile": "Dockerfile",
     "cacheFrom": "ghcr.io/kurrent-io/gaffer-devcontainer:latest"
   },
+  // SECURITY: bind-mounts the host's docker daemon socket so `just db-up`
+  // can start KurrentDB for integration tests. A process inside this
+  // container can drive the host docker daemon, which is equivalent to
+  // host root. postCreate.sh also runs `just init` on whatever branch is
+  // checked out. Only open branches you trust in this devcontainer.
   "mounts": [
     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
   ],

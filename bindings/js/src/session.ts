@@ -11,13 +11,88 @@ import type {
 } from "./types.js";
 
 /**
+ * Native resources backing a session, kept in a standalone object so the
+ * FinalizationRegistry can release them without referencing (and thus pinning)
+ * the ProjectionSession itself. Shared by dispose() and the finalizer, so the
+ * `released` flag prevents a double free across the two paths.
+ */
+interface SessionResources {
+	handle: number;
+	callbacks: IKoffiRegisteredCallback[];
+	released: boolean;
+	// First exception thrown by a registered callback during the current native
+	// call, boxed so a thrown `undefined` is still distinguishable from "none".
+	// koffi swallows callback throws at the FFI boundary, so we stash here and
+	// rethrow once the native call returns (see #rethrowCallbackError). It lives
+	// on resources, not the session, so the koffi callback closures can reach it
+	// without capturing `this` - which would pin the session and defeat the
+	// FinalizationRegistry below.
+	callbackError: { value: unknown } | undefined;
+}
+
+// Keep the first error; later callbacks during the same native call don't
+// clobber it. A free function so the callback closures stash via the resources
+// object rather than the session.
+function stashCallbackError(resources: SessionResources, error: unknown): void {
+	resources.callbackError ??= { value: error };
+}
+
+function releaseResources(resources: SessionResources): void {
+	if (resources.released) return;
+	const native = getNativeBindings();
+	// Attempt every step even if an earlier one throws - freeing the native
+	// session matters most - but collect failures rather than swallowing them,
+	// and rethrow the first so dispose() surfaces it. `released` is set only
+	// after the attempts, so the flag reflects work actually done.
+	const errors: unknown[] = [];
+	for (const cb of resources.callbacks) {
+		try {
+			native.unregisterCallback(cb);
+		} catch (error) {
+			errors.push(error);
+		}
+	}
+	resources.callbacks = [];
+	try {
+		native.sessionDestroy(resources.handle);
+	} catch (error) {
+		errors.push(error);
+	}
+	resources.released = true;
+	if (errors.length > 0) {
+		throw errors[0];
+	}
+}
+
+/**
+ * Releases the native session and koffi callback slots for any session that is
+ * garbage-collected without dispose(). koffi has a hard 8192-callback-slot cap,
+ * so a long-running process that leaks sessions would otherwise eventually fail
+ * every future callback registration. This is a safety net - dispose() (or a
+ * `using` declaration) is still the correct way to release a session promptly.
+ *
+ * releaseResources rethrows the first cleanup failure so dispose() can surface
+ * it, but the finalizer path has no caller to receive it - and an uncaught throw
+ * from a FinalizationRegistry callback is swallowed by the host anyway - so it's
+ * caught and dropped here.
+ */
+const sessionFinalization = new FinalizationRegistry<SessionResources>(
+	(resources) => {
+		try {
+			releaseResources(resources);
+		} catch {
+			// nothing actionable from inside a finalizer
+		}
+	},
+);
+
+/**
  * A projection runtime session. Wraps the native gaffer runtime via FFI.
  * Not thread-safe - do not use from multiple workers concurrently.
  */
 export class ProjectionSession {
 	#handle: number;
-	#disposed = false;
-	#registeredCallbacks: IKoffiRegisteredCallback[] = [];
+	#resources: SessionResources;
 	readonly #source: string;
 
 	constructor(source: string, options: SessionOptions) {
@@ -32,35 +107,56 @@ export class ProjectionSession {
 			throw new Error("Unknown error creating session");
 		}
 		this.#handle = handle;
+		this.#resources = {
+			handle,
+			callbacks: [],
+			released: false,
+			callbackError: undefined,
+		};
+		sessionFinalization.register(this, this.#resources, this.#resources);
 	}
 
 	/** Register a callback for emitted events (emit and linkTo). */
 	onEmit(cb: (event: EmittedEvent) => void): void {
 		this.#ensureNotDisposed();
+		// Capture resources, not `this` - the koffi-retained closure must not
+		// reference the session or it pins it past GC (see SessionResources).
+		const resources = this.#resources;
 		const handle = getNativeBindings().onEmit(
 			this.#handle,
 			(stream, type, data, metadataJson, isJson, isLink) => {
-				const metadata = metadataJson
-					? (JSON.parse(metadataJson) as Record<string, string | null>)
-					: null;
-				cb({
-					streamId: stream,
-					eventType: type,
-					data,
-					isJson,
-					isLink,
-					metadata,
-				});
+				try {
+					const metadata = metadataJson
+						? (JSON.parse(metadataJson) as Record<string, string | null>)
+						: null;
+					cb({
+						streamId: stream,
+						eventType: type,
+						data,
+						isJson,
+						isLink,
+						metadata,
+					});
+				} catch (error) {
+					stashCallbackError(resources, error);
+				}
 			},
 		);
-		this.#registeredCallbacks.push(handle);
+		resources.callbacks.push(handle);
 	}
 
 	/** Register a callback for console.log output. */
 	onLog(cb: (message: string) => void): void {
 		this.#ensureNotDisposed();
-		const handle = getNativeBindings().onLog(this.#handle, cb);
-		this.#registeredCallbacks.push(handle);
+		const resources = this.#resources;
+		const handle = getNativeBindings().onLog(this.#handle, (message) => {
+			try {
+				cb(message);
+			} catch (error) {
+				stashCallbackError(resources, error);
+			}
+		});
+		resources.callbacks.push(handle);
 	}
 
 	/** Register a callback for state changes. */
@@ -68,8 +164,18 @@ export class ProjectionSession {
 		cb: (partition: string, stateJson: string | null) => void,
 	): void {
 		this.#ensureNotDisposed();
-		const handle = getNativeBindings().onStateChanged(this.#handle, cb);
-		this.#registeredCallbacks.push(handle);
+		const resources = this.#resources;
+		const handle = getNativeBindings().onStateChanged(
+			this.#handle,
+			(partition, state) => {
+				try {
+					cb(partition, state);
+				} catch (error) {
+					stashCallbackError(resources, error);
+				}
+			},
+		);
+		resources.callbacks.push(handle);
 	}
 
 	/** Feed a single event to the projection and return the step result. */
@@ -79,6 +185,7 @@ export class ProjectionSession {
 			this.#handle,
 			JSON.stringify(event),
 		);
+		this.#rethrowCallbackError();
 		if (errorJson) {
 			throw parseErrorJson(errorJson, this.#source);
 		}
@@ -147,6 +254,7 @@ export class ProjectionSession {
 			this.#handle,
 			partition ?? null,
 		);
+		this.#rethrowCallbackError();
 		if (errorJson) {
 			throw parseErrorJson(errorJson, this.#source);
 		}
@@ -180,6 +288,7 @@ export class ProjectionSession {
 			this.#handle,
 			JSON.stringify(event),
 		);
+		this.#rethrowCallbackError();
 		if (errorJson) {
 			throw parseErrorJson(errorJson, this.#source);
 		}
@@ -188,14 +297,9 @@ export class ProjectionSession {
 
 	/** Release the session and free native resources. */
 	dispose(): void {
-		if (this.#disposed) return;
-		this.#disposed = true;
-		const native = getNativeBindings();
-		for (const cb of this.#registeredCallbacks) {
-			native.unregisterCallback(cb);
-		}
-		this.#registeredCallbacks = [];
-		native.sessionDestroy(this.#handle);
+		if (this.#resources.released) return;
+		sessionFinalization.unregister(this.#resources);
+		releaseResources(this.#resources);
 	}
 
 	/** Implements Symbol.dispose for `using` syntax. */
@@ -204,8 +308,16 @@ export class ProjectionSession {
 	}
 
 	#ensureNotDisposed(): void {
-		if (this.#disposed) {
+		if (this.#resources.released) {
 			throw new Error("Session has been disposed");
+		}
+	}
+
+	#rethrowCallbackError(): void {
+		const stashed = this.#resources.callbackError;
+		if (stashed) {
+			this.#resources.callbackError = undefined;
+			throw stashed.value;
 		}
 	}
 }

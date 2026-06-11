@@ -93,6 +93,9 @@ func (r *Runner) Drain() {
 	r.draining = true
 	r.breakAtStep = 0
 	wasPaused := r.paused
+	// Clear paused now we're resuming, so a later Paused() read (e.g.
+	// Destroy -> Unblock) doesn't issue a second, spurious Continue.
+	r.paused = false
 	r.mu.Unlock()
 
 	r.debug.Session.ClearBreakpoints()

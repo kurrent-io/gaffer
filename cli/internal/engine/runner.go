@@ -104,6 +104,7 @@ func NewRunner(cfg RunnerConfig) *Runner {
 			// step the break_at pause converts into - so the blocked
 			// Feed returns and the feed goroutine can exit.
 			if r.draining {
+				r.paused = false
 				r.mu.Unlock()
 				go r.debug.Session.Continue()
 				return

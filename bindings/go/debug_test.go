@@ -48,7 +48,9 @@ func TestDebug_BreakpointPausesAndContinues(t *testing.T) {
 		t.Fatalf("expected line 4, got %d", breakInfo.Line)
 	}
 
-	session.Continue()
+	if err := session.Continue(); err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case err := <-feedDone:
@@ -106,7 +108,9 @@ func TestDebug_GetCallStack(t *testing.T) {
 		t.Fatalf("expected ItemAdded, got %s", frames[0].Name)
 	}
 
-	session.Continue()
+	if err := session.Continue(); err != nil {
+		t.Fatal(err)
+	}
 	<-feedDone
 }
 
@@ -169,7 +173,9 @@ func TestDebug_GetScopesAndVariables(t *testing.T) {
 		t.Fatal("expected to find variable 's'")
 	}
 
-	session.Continue()
+	if err := session.Continue(); err != nil {
+		t.Fatal(err)
+	}
 	<-feedDone
 }
 
@@ -183,7 +189,9 @@ func TestDebug_ClearBreakpoints(t *testing.T) {
 	defer session.Destroy()
 
 	session.SetBreakpoint(4, 1, nil) //nolint:errcheck
-	session.ClearBreakpoints()
+	if err := session.ClearBreakpoints(); err != nil {
+		t.Fatal(err)
+	}
 
 	result, err := session.Feed(debugTestEvent)
 	if err != nil {
@@ -191,5 +199,31 @@ func TestDebug_ClearBreakpoints(t *testing.T) {
 	}
 	if result.Status != "processed" {
 		t.Fatalf("expected processed, got %s", result.Status)
+	}
+}
+
+// TestDebug_StepControlSurfacesNotPausedError pins the UI-1675 fix: the
+// debug-control methods return the runtime's error instead of swallowing it.
+// Continuing or stepping a session that isn't paused must surface an error
+// rather than silently no-op.
+func TestDebug_StepControlSurfacesNotPausedError(t *testing.T) {
+	opts := debugOpts
+	source := "fromAll().when({\n$init() { return { count: 0 }; },\nItemAdded(s, e) {\ns.count++;\nreturn s;\n}\n})"
+	session, err := NewSession(source, &opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Destroy()
+
+	controls := map[string]func() error{
+		"Continue": session.Continue,
+		"StepInto": session.StepInto,
+		"StepOver": session.StepOver,
+		"StepOut":  session.StepOut,
+	}
+	for name, fn := range controls {
+		if err := fn(); err == nil {
+			t.Errorf("%s on a non-paused session: expected an error, got nil", name)
+		}
 	}
 }

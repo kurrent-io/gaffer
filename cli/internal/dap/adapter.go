@@ -2,6 +2,7 @@ package dap
 
 import (
 	"encoding/json"
+	"fmt"
 	"path"
 	"strings"
 	"sync"
@@ -346,7 +347,47 @@ func (a *DebugAdapter) handleSetBreakpoints(s *Server, req *godap.SetBreakpoints
 	s.Send(resp)
 }
 
+// reportDebugError surfaces a debug-control failure to the editor's debug
+// console. Continue and the step commands run on goroutines after their DAP
+// response is already sent, so a returned error has no response to ride out
+// on; sending it as a stderr output event keeps it from being swallowed.
+func (a *DebugAdapter) reportDebugError(action string, err error) {
+	if err == nil || a.server == nil {
+		return
+	}
+	a.server.SendEvent(&godap.OutputEvent{
+		Event: NewEvent("output"),
+		Body: godap.OutputEventBody{
+			Category: "stderr",
+			Output:   fmt.Sprintf("debug %s failed: %s\n", action, err.Error()),
+		},
+	})
+}
+
+// HandleDebugError is wired as the runner's DebugConfig.OnError, surfacing
+// errors from the runner's internal auto-step goroutine. (The dev command
+// doesn't use break_at, so this is a safety net rather than a hot path.)
+func (a *DebugAdapter) HandleDebugError(err error) {
+	a.reportDebugError("step", err)
+}
+
+// ensurePaused rejects a step/continue request when the engine isn't paused,
+// with a proper DAP error response, rather than acknowledging a command the
+// runtime will throw on (and only reporting the failure later via an async
+// stderr event). Mirrors the MCP server's synchronous paused guard. Returns
+// false when it has already sent the error response.
+func (a *DebugAdapter) ensurePaused(s *Server, seq int, command string) bool {
+	if a.runner != nil && a.runner.Paused() {
+		return true
+	}
+	s.Send(NewErrorResponse(seq, command, "session is not paused"))
+	return false
+}
+
 func (a *DebugAdapter) handleContinue(s *Server, req *godap.ContinueRequest) {
+	if !a.ensurePaused(s, req.Seq, req.Command) {
+		return
+	}
 	resp := &godap.ContinueResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
 	resp.Body.AllThreadsContinued = true
@@ -365,41 +406,57 @@ func (a *DebugAdapter) handleContinue(s *Server, req *godap.ContinueRequest) {
 		"mode": "live",
 	}))
 
-	go a.runner.Continue()
+	go func() {
+		a.reportDebugError("continue", a.runner.Continue())
+	}()
 }
 
 func (a *DebugAdapter) handlePause(s *Server, req *godap.PauseRequest) {
-	a.session.Pause()
+	if err := a.session.Pause(); err != nil {
+		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
+		return
+	}
 	resp := &godap.PauseResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
 	s.Send(resp)
 }
 
-func (a *DebugAdapter) sendStepResponse(s *Server, resp godap.Message, stepFn func()) {
+func (a *DebugAdapter) sendStepResponse(s *Server, resp godap.Message, action string, stepFn func() error) {
 	s.Send(resp)
 	s.SendEvent(&godap.ContinuedEvent{
 		Event: NewEvent("continued"),
 		Body:  godap.ContinuedEventBody{ThreadId: 1, AllThreadsContinued: true},
 	})
-	go stepFn()
+	go func() {
+		a.reportDebugError(action, stepFn())
+	}()
 }
 
 func (a *DebugAdapter) handleNext(s *Server, req *godap.NextRequest) {
+	if !a.ensurePaused(s, req.Seq, req.Command) {
+		return
+	}
 	resp := &godap.NextResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
-	a.sendStepResponse(s, resp, a.runner.StepOver)
+	a.sendStepResponse(s, resp, "step over", a.runner.StepOver)
 }
 
 func (a *DebugAdapter) handleStepIn(s *Server, req *godap.StepInRequest) {
+	if !a.ensurePaused(s, req.Seq, req.Command) {
+		return
+	}
 	resp := &godap.StepInResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
-	a.sendStepResponse(s, resp, a.runner.StepInto)
+	a.sendStepResponse(s, resp, "step into", a.runner.StepInto)
 }
 
 func (a *DebugAdapter) handleStepOut(s *Server, req *godap.StepOutRequest) {
+	if !a.ensurePaused(s, req.Seq, req.Command) {
+		return
+	}
 	resp := &godap.StepOutResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
-	a.sendStepResponse(s, resp, a.runner.StepOut)
+	a.sendStepResponse(s, resp, "step out", a.runner.StepOut)
 }
 
 func (a *DebugAdapter) handleStackTrace(s *Server, req *godap.StackTraceRequest) {
@@ -501,7 +558,11 @@ func (a *DebugAdapter) handleConfigurationDone(s *Server, req *godap.Configurati
 	}
 	a.mu.Unlock()
 	if pauseAtEntry {
-		a.session.Pause()
+		// Unlike handlePause, the entry pause can't ride an error response: this
+		// is the configurationDone request, and a pause failure shouldn't fail
+		// config completion. Surface it on the console instead. (Pause only
+		// fails on a dead session, so this is a safety net.)
+		a.reportDebugError("pause", a.session.Pause())
 	}
 
 	resp := &godap.ConfigurationDoneResponse{}

@@ -472,6 +472,18 @@ func (s *Server) createSession(cfg *config.Config, root, name string, debug bool
 				default:
 				}
 			},
+			// The runner's internal auto-step (break_at) runs on its own
+			// goroutine; route its errors to errorCh so waitForBreak reports
+			// them instead of timing out with a misleading breakpoint message.
+			// Non-blocking send, matching OnBreak/the feed-error path: errorCh
+			// is buffered 1 and waitForBreak reads one value per wait, so if a
+			// feed error already holds the slot this drop is harmless.
+			OnError: func(err error) {
+				select {
+				case sess.errorCh <- err:
+				default:
+				}
+			},
 		}
 	}
 	sess.runner = engine.NewRunner(runnerCfg)

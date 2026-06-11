@@ -1186,10 +1186,10 @@ func TestAdapter_StartPausedIfNoBreakpoints_ContinueProcessesSubsequentEvents(t 
 // the session before the post-run summary path could read state.
 // CollectState then panicked with "use of destroyed session".
 //
-// r.Unblock is the cancellation-path replacement: it clears
+// r.Drain is the cancellation-path replacement: it clears
 // breakpoints + resumes if paused, but leaves the session alive so
 // state can still be collected.
-func TestAdapter_UnblockReleasesPausedFeedAndKeepsSessionAlive(t *testing.T) {
+func TestAdapter_DrainReleasesPausedFeedAndKeepsSessionAlive(t *testing.T) {
 	adapter, runner, conn, reader := mustSetupDebugSession(t)
 	adapter.SetStartPausedIfNoBreakpoints(true)
 
@@ -1215,12 +1215,12 @@ func TestAdapter_UnblockReleasesPausedFeedAndKeepsSessionAlive(t *testing.T) {
 
 	// Simulate the dev command's ctx-cancellation handler. Must
 	// release the paused feed without destroying the session.
-	runner.Unblock()
+	runner.Drain()
 
 	select {
 	case <-feedDone:
 	case <-time.After(5 * time.Second):
-		t.Fatal("Unblock did not release the paused feed")
+		t.Fatal("Drain did not release the paused feed")
 	}
 
 	// The session must still be queryable - this is what dev.go's

@@ -341,13 +341,13 @@ func TestRunner_DebugNilGuards(t *testing.T) {
 		t.Error("GetVariables: expected error")
 	}
 
-	// These should not panic
-	r.ClearBreakpoints()
-	r.Continue()
-	r.StepOver()
-	r.StepInto()
-	r.StepOut()
-	r.Unblock()
+	// These should not panic, and return nil when debug is disabled
+	for _, fn := range []func() error{r.ClearBreakpoints, r.Continue, r.StepOver, r.StepInto, r.StepOut} {
+		if err := fn(); err != nil {
+			t.Errorf("debug-disabled control method: unexpected error %v", err)
+		}
+	}
+	r.Drain() // no-op when debug is disabled; must not panic
 	r.Destroy()
 }
 

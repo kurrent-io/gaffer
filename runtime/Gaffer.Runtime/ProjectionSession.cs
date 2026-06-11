@@ -389,12 +389,14 @@ public sealed class ProjectionSession : IDisposable {
 		if (!_stateCache.ContainsKey(key))
 			return null;
 		try {
-			// Inside the try (like Feed): state reload runs the fault check and parses cached
-			// state, so its exceptions must be wrapped too rather than leaking raw.
-			LoadPartitionState(key);
-			if (_sharedStateInitialized)
-				LoadSharedState();
-			return TransformResult();
+			// Reload state inside TransformResult's try (passed as preload) so a load-step
+			// exception - a faulted session, a malformed cached state, a re-run $init - gets the
+			// same mapping as a transform throw rather than leaking raw. Mirrors Feed.
+			return TransformResult(() => {
+				LoadPartitionState(key);
+				if (_sharedStateInitialized)
+					LoadSharedState();
+			});
 		} catch (ProjectionException ex) {
 			// Standalone result query (no event in flight), so attach only the throwing quirk -
 			// not _pendingDiagnostics, which would be stale from the last Feed. The event path's
@@ -404,17 +406,15 @@ public sealed class ProjectionSession : IDisposable {
 			if (thrown != null)
 				ex.Diagnostics = new[] { thrown };
 			throw;
-		} catch (Exception ex) when (ex is not ProjectionException) {
-			throw new ProjectionTransformException(ex.Message, innerException: ex) {
-				ProjectionSource = _source,
-				CompatCode = ExtractCompatCode(ex),
-			};
 		}
 	}
 
-	private string? TransformResult() {
+	private string? TransformResult(Action? preload = null) {
 		try {
+			preload?.Invoke();
 			return _handler.TransformStateToResult();
+		} catch (OperationCanceledException) {
+			throw;
 		} catch (JavaScriptException ex) {
 			int? line = ex.Location.Start.Line > 0 ? ex.Location.Start.Line : null;
 			int? column = line != null ? ex.Location.Start.Column : null;

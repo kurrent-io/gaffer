@@ -290,20 +290,25 @@ public sealed class ProjectionSession : IDisposable {
 		if (_version == ProjectionVersion.V1 && !@event.IsJson)
 			return FeedResult.Skip("non-json");
 
-		var partition = ResolvePartition(@event);
-		if (partition == null)
-			return FeedResult.Skip("no-partition");
-
-		if (!ShouldProcess(@event))
-			return FeedResult.Skip("unhandled");
-
-		var isNewPartition = LoadPartitionState(partition);
-		LoadSharedState();
-
-		if (isNewPartition)
-			_handler.ProcessPartitionCreated(partition, @event);
-
+		// partitionBy, $init/state load, $initShared and $created all run user JS (or parse
+		// stored state) and must be wrapped too - otherwise a throw, timeout, or malformed
+		// state here escapes as a raw engine exception with no event context. partition stays
+		// null until ResolvePartition succeeds, so a throwing partitionBy wraps without one.
+		string? partition = null;
 		try {
+			partition = ResolvePartition(@event);
+			if (partition == null)
+				return FeedResult.Skip("no-partition");
+
+			if (!ShouldProcess(@event))
+				return FeedResult.Skip("unhandled");
+
+			var isNewPartition = LoadPartitionState(partition);
+			LoadSharedState();
+
+			if (isNewPartition)
+				_handler.ProcessPartitionCreated(partition, @event);
+
 			var processed = _handler.ProcessEvent(
 				partition,
 				ResolveCategory(@event),
@@ -422,7 +427,7 @@ public sealed class ProjectionSession : IDisposable {
 
 	private bool IsPartitioned => _sources.ByStreams || _sources.ByCustomPartitions;
 
-	private ProjectionException WrapHandlerException(Exception ex, ProjectionEvent @event, string partition) {
+	private ProjectionException WrapHandlerException(Exception ex, ProjectionEvent @event, string? partition) {
 		var part = IsPartitioned ? partition : null;
 		var compatCode = ExtractCompatCode(ex);
 		return ex switch {
@@ -488,7 +493,17 @@ public sealed class ProjectionSession : IDisposable {
 	}
 
 	/// <summary>Get the partition key that would be computed for an event.</summary>
-	public string? GetPartitionKey(ProjectionEvent @event) => ResolvePartition(@event);
+	public string? GetPartitionKey(ProjectionEvent @event) {
+		// Mirrors Feed: a throwing or timing-out partitionBy must surface as a
+		// ProjectionException with event context, not a raw engine exception.
+		try {
+			return ResolvePartition(@event);
+		} catch (OperationCanceledException) {
+			throw;
+		} catch (Exception ex) when (ex is not ProjectionException) {
+			throw WrapHandlerException(ex, @event, null);
+		}
+	}
 
 	private string? ResolvePartition(ProjectionEvent @event) {
 		if (_sources.ByCustomPartitions)
@@ -536,10 +551,10 @@ public sealed class ProjectionSession : IDisposable {
 		if (!_sources.HandlesDeletedNotifications)
 			return FeedResult.Skip("no-delete-handler");
 
-		LoadPartitionState(partition);
-		LoadSharedState();
-
 		try {
+			LoadPartitionState(partition);
+			LoadSharedState();
+
 			_handler.ProcessPartitionDeleted(partition, out var newState);
 
 			_stateCache[partition] = newState;
@@ -548,6 +563,8 @@ public sealed class ProjectionSession : IDisposable {
 				OnStateChanged?.Invoke(partition, newState);
 
 			return BuildResult(partition);
+		} catch (OperationCanceledException) {
+			throw;
 		} catch (StateSerializationException ex) {
 			var part = IsPartitioned ? partition : null;
 			throw new StateSerializationException(

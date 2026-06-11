@@ -25,6 +25,35 @@ namespace Gaffer.Runtime.Projection;
 
 internal sealed class JintProjectionHandler : IDisposable {
 	private static readonly Stopwatch Sw = Stopwatch.StartNew();
+
+	// Sandbox guardrails against hostile or buggy projection code. Without these a
+	// runaway script raises an uncatchable StackOverflowException (or OOMs the host)
+	// before the time constraint can fire.
+	//
+	// Jint's StackGuard (MaxExecutionStackCount) is the recursion guard: it probes real
+	// native stack headroom via RuntimeHelpers.TryEnsureSufficientExecutionStack and, when
+	// the stack is running low, raises a catchable RangeError ("Maximum call stack size
+	// exceeded") once the logical call depth exceeds this count - the same error a browser
+	// engine produces. We deliberately do NOT use Jint's LimitRecursion: empirically it
+	// fails to prevent the crash and itself overflows the host when the per-call-site limit
+	// is reached (verified against Jint 4.6.3). See reference_jint_resource_limits.
+	//
+	// This count is the throw-vs-spill threshold at the native-stack-low point, NOT a cap on
+	// legitimate recursion - that is bounded by actual native stack capacity (thousands of
+	// frames). It must stay well below the smallest native-stack-low depth across hosts to
+	// throw cleanly instead of spilling execution onto fresh threads: spilling both amplified
+	// the original crash and breaks the per-thread memory accounting below. This assumes the
+	// engine runs on a >=1MB-stack thread (bottoms out around ~1000 frames); the CLI, LSP and
+	// FFI hosts all invoke on default-sized OS threads that satisfy this.
+	private const int MaxExecutionStackCount = 200;
+
+	// Bounds cumulative allocation per handler invocation (reset before each call via
+	// _engine.Constraints.Reset()). Checked at statement boundaries, so it catches
+	// iterative/accumulating allocation; a single huge native allocation completes before
+	// the check fires and trips it on the next statement. 256 MiB is a deliberately generous
+	// ceiling: real handlers allocate KB-MB per event, so it only trips on runaway growth.
+	private const long MaxAllocatedBytesPerOperation = 256L * 1024 * 1024;
+
 	private readonly Engine _engine;
 	private readonly SourceDefinitionBuilder _definitionBuilder;
 	private readonly ProjectionRuntime _runtime;
@@ -122,7 +151,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 		if (debug)
 			_timeConstraint.Disabled = true;
 		_engine = new Engine(opts => {
-			opts.Constraint(_timeConstraint).DisableStringCompilation();
+			opts.Constraint(_timeConstraint)
+				.DisableStringCompilation()
+				.LimitMemory(MaxAllocatedBytesPerOperation);
+			opts.Constraints.MaxExecutionStackCount = MaxExecutionStackCount;
 			if (debug) {
 				opts.Debugger.Enabled = true;
 				opts.Debugger.StatementHandling = DebuggerStatementHandling.Script;

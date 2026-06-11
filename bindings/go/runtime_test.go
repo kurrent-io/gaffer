@@ -165,6 +165,48 @@ func TestSessionHandleSurvivesConcurrentGC(t *testing.T) {
 	}
 }
 
+// TestCallbackPanicIsRethrownAndSessionRecovers checks that a panic from a user
+// callback is captured (not unwound through the runtime's .NET frames) and
+// re-raised on the Go side with its original value once Feed returns, and that
+// the session stays usable afterwards - proving the panic didn't abandon the
+// handler mid-flight.
+func TestCallbackPanicIsRethrownAndSessionRecovers(t *testing.T) {
+	session := mustCreateSession(t, `
+		fromAll().when({
+			$init() { return { count: 0 }; },
+			Tick(s, e) { s.count++; emit("out", "Ticked", { n: s.count }); return s; }
+		})
+	`)
+
+	shouldPanic := true
+	session.OnEmit(func(_, _, _, _ string, _, _ bool) {
+		if shouldPanic {
+			panic("boom from callback")
+		}
+	})
+
+	const event = `{"eventType":"Tick","streamId":"clock-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`
+
+	recovered := func() (r any) {
+		defer func() { r = recover() }()
+		_, _ = session.Feed(event)
+		return nil
+	}()
+	if recovered == nil {
+		t.Fatal("expected Feed to re-raise the callback panic, but it returned normally")
+	}
+	if msg, ok := recovered.(string); !ok || msg != "boom from callback" {
+		t.Fatalf("expected re-raised panic %q, got %v (%T)", "boom from callback", recovered, recovered)
+	}
+
+	// Session still works: the runtime completed the handler and its cleanup.
+	shouldPanic = false
+	mustFeed(t, session, event)
+	if got := mustGetState(t, session, nil); got != `{"count":2}` {
+		t.Fatalf("expected {\"count\":2} after two feeds, got %s", got)
+	}
+}
+
 func TestEventDataAccessible(t *testing.T) {
 	session := mustCreateSession(t, `
 		fromAll().when({

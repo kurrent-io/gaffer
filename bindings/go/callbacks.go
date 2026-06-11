@@ -14,6 +14,7 @@ import "C"
 
 import (
 	"sync"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -89,4 +90,51 @@ func cleanupCallbacks(session *C.gaffer_session) {
 	delete(changedCallbacks, key)
 	delete(breakCallbacks, key)
 	callbackMu.Unlock()
+	takePanic(key)
+}
+
+// Panic handoff from callback trampolines.
+//
+// User callbacks run synchronously inside an FFI call, on the runtime's .NET
+// NativeAOT frames. A panic must not unwind through those frames: it would skip
+// the cleanup in their finally blocks and abandon the reverse-pinvoke frame
+// mid-flight (undefined behaviour for the .NET runtime). Each trampoline defers
+// recoverCallback to capture the panic and stash it under the session handle;
+// the Session method that drove the FFI call re-raises it on the Go side once
+// the call has returned (see Session.rethrowCallbackPanic).
+var (
+	panicMu       sync.Mutex
+	pendingPanics = make(map[uintptr]any)
+	pendingPanicN atomic.Int64 // fast path: skip the lock when no panic is stashed
+)
+
+// recoverCallback captures a panic from the user callback that was just
+// invoked. Deferred at the top of each trampoline. The first panic per session
+// wins; later callbacks in the same FFI call still run but cannot overwrite it.
+func recoverCallback(key uintptr) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	panicMu.Lock()
+	if _, exists := pendingPanics[key]; !exists {
+		pendingPanics[key] = r
+		pendingPanicN.Add(1)
+	}
+	panicMu.Unlock()
+}
+
+// takePanic removes and returns the stashed callback panic for the session.
+func takePanic(key uintptr) (any, bool) {
+	if pendingPanicN.Load() == 0 {
+		return nil, false
+	}
+	panicMu.Lock()
+	r, ok := pendingPanics[key]
+	if ok {
+		delete(pendingPanics, key)
+		pendingPanicN.Add(-1)
+	}
+	panicMu.Unlock()
+	return r, ok
 }

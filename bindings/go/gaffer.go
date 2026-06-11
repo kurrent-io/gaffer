@@ -58,6 +58,21 @@ func (s *Session) c() *C.gaffer_session {
 	return (*C.gaffer_session)(unsafe.Pointer(s.handle))
 }
 
+// rethrowCallbackPanic re-raises, with its original value, a panic captured
+// from a user callback during the FFI call that just returned (see
+// recoverCallback). A callback panic surfaces to the caller instead of being
+// swallowed at the FFI boundary. The original stack is lost; the value is not.
+//
+// Invariant: every Session method that can run user projection JS (and so fire
+// a callback) must `defer s.rethrowCallbackPanic()`, or a panic stashed during
+// its FFI call lingers and is mis-raised on a later call. Destroy is the one
+// exception - it drops any stash rather than re-raising during teardown.
+func (s *Session) rethrowCallbackPanic() {
+	if r, ok := takePanic(s.handle); ok {
+		panic(r)
+	}
+}
+
 // NewSession compiles a projection from JavaScript source and returns a session.
 func NewSession(source string, optionsJSON *string) (*Session, error) {
 	cs := C.CString(source)
@@ -83,6 +98,10 @@ func (s *Session) Destroy() {
 	if s.handle == 0 {
 		return
 	}
+	// Unregister callbacks before destroying. Tearing down a paused session
+	// resumes the engine, which can fire callbacks; with the maps already
+	// cleared those are no-ops, so no user code (and no panic) runs during
+	// teardown. cleanupCallbacks also drops any stash as a backstop.
 	cleanupCallbacks(s.c())
 	C.gaffer_session_destroy(s.c())
 	s.handle = 0
@@ -97,6 +116,7 @@ func (s *Session) ensureAlive() {
 // Feed sends a single event to the projection and returns the step result.
 func (s *Session) Feed(eventJSON string) (*FeedResult, error) {
 	s.ensureAlive()
+	defer s.rethrowCallbackPanic()
 	cs := C.CString(eventJSON)
 	defer C.free(unsafe.Pointer(cs))
 	var cErr *C.char
@@ -165,6 +185,7 @@ func (s *Session) SetState(partition *string, stateJSON string) {
 // for unknown partitions, or for V1 filtered-out results.
 func (s *Session) GetResult(partition *string) (*string, error) {
 	s.ensureAlive()
+	defer s.rethrowCallbackPanic()
 	var cp *C.char
 	if partition != nil {
 		cp = C.CString(*partition)
@@ -200,6 +221,7 @@ func (s *Session) GetSources() ProjectionInfo {
 // GetPartitionKey returns the partition key that would be computed for an event.
 func (s *Session) GetPartitionKey(eventJSON string) *string {
 	s.ensureAlive()
+	defer s.rethrowCallbackPanic()
 	cs := C.CString(eventJSON)
 	defer C.free(unsafe.Pointer(cs))
 	result := C.gaffer_session_get_partition_key(s.c(), cs, nil)
@@ -296,24 +318,28 @@ func (s *Session) Pause() {
 // StepInto steps into the next function call. Only valid while paused.
 func (s *Session) StepInto() {
 	s.ensureAlive()
+	defer s.rethrowCallbackPanic()
 	C.gaffer_debug_step_into(s.c(), nil)
 }
 
 // StepOver steps over the next statement. Only valid while paused.
 func (s *Session) StepOver() {
 	s.ensureAlive()
+	defer s.rethrowCallbackPanic()
 	C.gaffer_debug_step_over(s.c(), nil)
 }
 
 // StepOut steps out of the current function. Only valid while paused.
 func (s *Session) StepOut() {
 	s.ensureAlive()
+	defer s.rethrowCallbackPanic()
 	C.gaffer_debug_step_out(s.c(), nil)
 }
 
 // Evaluate evaluates an expression in the current debug context. Only valid while paused.
 func (s *Session) Evaluate(expression string) (*DebugVariable, error) {
 	s.ensureAlive()
+	defer s.rethrowCallbackPanic()
 	cs := C.CString(expression)
 	defer C.free(unsafe.Pointer(cs))
 	var cErr *C.char
@@ -341,12 +367,14 @@ func (s *Session) ClearBreakpoints() {
 // Continue resumes execution after a debug pause.
 func (s *Session) Continue() {
 	s.ensureAlive()
+	defer s.rethrowCallbackPanic()
 	C.gaffer_debug_continue(s.c(), nil)
 }
 
 // GetCallStack returns the call stack while paused.
 func (s *Session) GetCallStack() ([]DebugCallFrame, error) {
 	s.ensureAlive()
+	defer s.rethrowCallbackPanic()
 	var cErr *C.char
 	result := C.gaffer_debug_get_call_stack(s.c(), &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
@@ -366,6 +394,7 @@ func (s *Session) GetCallStack() ([]DebugCallFrame, error) {
 // GetScopes returns the scopes for a call frame while paused.
 func (s *Session) GetScopes(frameIndex int) ([]DebugScopeInfo, error) {
 	s.ensureAlive()
+	defer s.rethrowCallbackPanic()
 	var cErr *C.char
 	result := C.gaffer_debug_get_scopes(s.c(), C.int(frameIndex), &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
@@ -385,6 +414,7 @@ func (s *Session) GetScopes(frameIndex int) ([]DebugScopeInfo, error) {
 // GetVariables returns the variables for a scope or object reference while paused.
 func (s *Session) GetVariables(variablesReference int) ([]DebugVariable, error) {
 	s.ensureAlive()
+	defer s.rethrowCallbackPanic()
 	var cErr *C.char
 	result := C.gaffer_debug_get_variables(s.c(), C.int(variablesReference), &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))

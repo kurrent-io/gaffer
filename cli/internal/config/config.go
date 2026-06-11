@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -230,13 +231,62 @@ func Marshal(cfg *Config) ([]byte, error) {
 	return []byte(sb.String()), nil
 }
 
-// Save writes the config to a gaffer.toml file.
+// Save writes the config to gaffer.toml atomically: it encodes to a temp
+// file in the same directory, fsyncs it, then renames it over path. POSIX
+// rename is atomic, so a concurrent reader - the LSP file watcher and the
+// MCP server both re-read gaffer.toml on change - always sees either the
+// old or the new complete file, never a half-written one, and a crash
+// mid-write can't truncate the manifest. Mirrors userconfig.Store.Save and
+// updatecheck.SaveCache.
+//
+// The parent directory is not fsynced: gaffer.toml is project config the
+// user keeps in version control, so a power loss that reverts the rename
+// just leaves the prior committed manifest in place - cheaper than the
+// extra sync. The temp fsync still guarantees the replacement is never a
+// truncated file.
 func Save(path string, cfg *Config) error {
 	data, err := Marshal(cfg)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+
+	// Preserve the existing manifest's mode, like the previous in-place
+	// os.WriteFile did (it truncated without changing permissions). Forcing
+	// a fixed mode would widen a gaffer.toml a restrictive umask had kept
+	// private - and it can hold connection-string credentials. A brand-new
+	// manifest (Save normally overwrites an existing one) uses 0644, like
+	// InitProject.
+	mode := os.FileMode(0o644)
+	if info, statErr := os.Stat(path); statErr == nil {
+		mode = info.Mode().Perm()
+	}
+
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	tmpPath := tmp.Name()
+	// Unconditional cleanup: after a successful rename Remove returns
+	// ENOENT (ignored); every failure path leaves the temp removed.
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("writing config: %w", err)
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("writing config: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("writing config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
 	return nil

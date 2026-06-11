@@ -100,7 +100,7 @@ Project-level telemetry is opted out by setting `telemetry = false` at the top o
 - **`--debug`**: starts the DAP debug server alongside `gaffer dev`. See [Debugging projections](../getting-started/debugging.md).
 - **`--env <name>`**: select an environment from `gaffer.toml` to run `gaffer dev` against. Optional when one environment is marked `default`, or on a terminal where you're prompted to pick; required for non-interactive runs with no default.
 - **`--connection`**: ad-hoc connection string for a single `gaffer dev` invocation. Overrides `--env` and the configured environment.
-- **`--fixture <name>`** / **`--events <path>`**: pick a named fixture from `gaffer.toml`, or point at a JSON events file directly.
+- **`--fixture <name>`** / **`--events <path>`**: pick a named fixture from `gaffer.toml`, or point at a JSON events file directly. These offline sources are mutually exclusive with the live ones (`--env` / `--connection`); combining the two is a usage error.
 - **`--yes` / `-y`**: skip interactive prompts and accept defaults. Applies to `gaffer scaffold` and `gaffer dev`. See [Interactive mode](#interactive-mode).
 
 ## Telemetry

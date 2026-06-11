@@ -178,8 +178,46 @@ func TestDev_FixtureAndEventsMutuallyExclusive(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected mutex error")
 	}
-	if !strings.Contains(err.Error(), "only one of --events or --fixture") {
-		t.Errorf("expected mutex error, got: %v", err)
+	if !strings.Contains(err.Error(), "fixture") || !strings.Contains(err.Error(), "events") {
+		t.Errorf("expected --fixture/--events mutex error, got: %v", err)
+	}
+}
+
+// Offline (--fixture/--events) and live (--env/--connection) source
+// flags can't be combined: cobra rejects the mix before RunE rather
+// than the run silently dropping the live flag.
+func TestDev_OfflineAndLiveSourceFlagsMutuallyExclusive(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want [2]string
+	}{
+		{"fixture + env", []string{"--fixture", "happy", "--env", "prod"}, [2]string{"fixture", "env"}},
+		{"fixture + connection", []string{"--fixture", "happy", "--connection", "kurrentdb://h:2113"}, [2]string{"fixture", "connection"}},
+		{"events + env", []string{"--events", "fixtures/happy.json", "--env", "prod"}, [2]string{"events", "env"}},
+		{"events + connection", []string{"--events", "fixtures/happy.json", "--connection", "kurrentdb://h:2113"}, [2]string{"events", "connection"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := testutil.NewProject(t).
+				AddProjection("orders", integrationProjection).
+				AddNamedFixture("orders", "happy", integrationFixture).
+				Save()
+			chdirTo(t, p.Dir)
+
+			root := NewRootCmd()
+			root.SetArgs(append([]string{"dev", "orders"}, tc.args...))
+			root.SetErr(&bytes.Buffer{})
+
+			err := ExecuteRoot(context.Background(), root)
+			if err == nil {
+				t.Fatalf("expected mutex error for %s", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.want[0]) ||
+				!strings.Contains(err.Error(), tc.want[1]) {
+				t.Errorf("expected %v mutex error, got: %v", tc.want, err)
+			}
+		})
 	}
 }
 

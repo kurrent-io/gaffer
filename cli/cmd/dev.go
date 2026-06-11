@@ -73,6 +73,19 @@ func newDevCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.UntilCaughtUp, "until-caught-up", false, "Exit when subscription catches up (live mode only)")
 	cmd.Flags().BoolVar(&opts.StartPausedIfNoBreakpoints, "start-paused-if-no-breakpoints", false, "Pause at the start of the first event when no breakpoints are set (debug mode only)")
 	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip prompts (a projection and source must be resolvable without prompting)")
+	// A run reads from an offline fixture or live from KurrentDB, never
+	// both. The offline flags (--fixture, --events) and the live flags
+	// (--env, --connection) are mutually exclusive pairwise, so cobra
+	// rejects a contradictory mix with a usage error before RunE rather
+	// than us silently dropping one. --fixture/--events are themselves
+	// one-or-the-other; --env + --connection may combine (--connection
+	// is a documented ad-hoc override of --env), so that pair is left
+	// unmarked.
+	cmd.MarkFlagsMutuallyExclusive("fixture", "events")
+	cmd.MarkFlagsMutuallyExclusive("fixture", "env")
+	cmd.MarkFlagsMutuallyExclusive("fixture", "connection")
+	cmd.MarkFlagsMutuallyExclusive("events", "env")
+	cmd.MarkFlagsMutuallyExclusive("events", "connection")
 	_ = cmd.RegisterFlagCompletionFunc("fixture", completeFixtures)
 	return cmd
 }
@@ -345,10 +358,6 @@ func runDev(cmd *cobra.Command, args []string, opts *devOpts, dapStats *dapserve
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: --start-paused-if-no-breakpoints requires --debug; ignoring")
 	}
 
-	if opts.Events != "" && opts.Fixture != "" {
-		return nil, fmt.Errorf("only one of --events or --fixture may be used at a time")
-	}
-
 	name, err := resolveDevName(cmd, args, opts)
 	if err != nil {
 		return nil, err
@@ -365,9 +374,9 @@ func runDev(cmd *cobra.Command, args []string, opts *devOpts, dapStats *dapserve
 
 	// --fixture is a layer on top of --events: resolve the named
 	// fixture's path through the loaded config, then everything
-	// downstream uses opts.Events as the path. Mutex with --events
-	// is the manual check above, not cobra-enforced - so we never
-	// reach here with both set.
+	// downstream uses opts.Events as the path. The two are mutually
+	// exclusive (MarkFlagsMutuallyExclusive on the command), so we
+	// never reach here with both set.
 	if opts.Fixture != "" {
 		path, ok := proj.Def.FindFixture(opts.Fixture)
 		if !ok {

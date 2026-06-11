@@ -50,6 +50,10 @@ The public surface is exported from the package root:
 
 The TypeScript declarations are the source of truth for the surface; see [`src/index.ts`](src/index.ts) for the full export list.
 
+## Library resolution
+
+The native library is located in this order: the `GAFFER_RUNTIME_LIB` environment variable (an explicit path), then the platform-specific optional-dependency package (the production path). Building from a gaffer source checkout, set `GAFFER_RUNTIME_DEV=1` to also fall back to the runtime's `.NET` publish output found by walking up from the package. That walk-up is gated behind the env var so an installed package never loads a library from an arbitrary ancestor directory.
+
 ## Related packages
 
 | Package                                                                                      | What it is                                                               |

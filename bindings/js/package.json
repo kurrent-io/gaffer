@@ -25,7 +25,7 @@
 	],
 	"scripts": {
 		"build": "tsc",
-		"test": "vitest run",
+		"test": "GAFFER_RUNTIME_DEV=1 vitest run",
 		"check": "tsc --noEmit && eslint . && prettier --check .",
 		"fix": "eslint --fix . && prettier --write ."
 	},

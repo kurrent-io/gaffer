@@ -143,6 +143,12 @@ type activeSession struct {
 	runner *engine.Runner
 	cancel context.CancelFunc
 
+	// debug is true when the run requested a breakpoint or break_at, so a
+	// timeout can name a breakpoint; live is true for a live subscription,
+	// so a timeout can name catching up. Both shape the timeout message.
+	debug bool
+	live  bool
+
 	// MCP coordination channels
 	breakCh    chan gafferruntime.BreakInfo
 	done       chan struct{} // closed when background feed goroutine exits
@@ -441,7 +447,7 @@ func (s *Server) createSession(cfg *config.Config, root, name string, debug bool
 		return nil, fmt.Errorf("creating history store: %w", err)
 	}
 
-	sess := &activeSession{}
+	sess := &activeSession{debug: debug}
 
 	runnerCfg := engine.RunnerConfig{
 		Feed:          engine.FeedFn(runtime.Feed),

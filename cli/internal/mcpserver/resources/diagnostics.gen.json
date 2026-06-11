@@ -60,6 +60,16 @@
     "goodExample": "// Run on engine_version 1; V2 does not restore shared state on restart."
   },
   {
+    "code": "quirk.biState.nonArrayReturn",
+    "class": "quirk",
+    "severity": "error",
+    "message": "A bi-state handler returned a non-array instead of the [state, sharedState] pair; the malformed state is persisted and the next event for this partition faults restoring it, wedging the partition. Mutate the pair in place, or return it.",
+    "docs": "Bi-state projections operate on a `[partitionState, sharedState]` pair. A handler must mutate that pair in place or return it. If it returns anything else (a single slot, a fresh object, a scalar, or null), the KurrentDB engine persists the malformed value, then faults on the next event for that partition while restoring the pair, wedging the partition until its state is reset; gaffer reproduces that wedge. Return the `[state, sharedState]` pair, or omit the return and mutate it in place.",
+    "fixedIn": null,
+    "badExample": "options({ biState: true });\nfromAll().foreachStream().when({\n  $init() { return { balance: 0 }; },\n  $initShared() { return { total: 0 }; },\n  Deposited([state, shared], event) {\n    shared.total += event.body.amount;\n    return { balance: state.balance + event.body.amount }; // returns an object, not the [state, shared] pair\n  }\n});",
+    "goodExample": "options({ biState: true });\nfromAll().foreachStream().when({\n  $init() { return { balance: 0 }; },\n  $initShared() { return { total: 0 }; },\n  Deposited([state, shared], event) {\n    state.balance += event.body.amount;\n    shared.total += event.body.amount;\n    return [state, shared]; // return the pair (or omit the return and mutate in place)\n  }\n});"
+  },
+  {
     "code": "quirk.outputState.noEffectOnV2",
     "class": "quirk",
     "severity": "warning",

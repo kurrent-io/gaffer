@@ -161,7 +161,10 @@ func (s *Server) handleDebugContinue(ctx context.Context, _ *mcp.CallToolRequest
 	}
 
 	sess := s.session
-	sess.runner.Continue()
+	if err := sess.runner.Continue(); err != nil {
+		s.mu.Unlock()
+		return toolError("continue failed: %v", err), nil, nil
+	}
 	s.mu.Unlock()
 
 	wr := s.waitForBreak(ctx, sess, defaultDebugTimeout)
@@ -233,18 +236,18 @@ var stepOutTool = &mcp.Tool{
 type debugStepInput struct{}
 
 func (s *Server) handleStepOver(ctx context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
-	return s.doStep(ctx, func(r *engine.Runner) { r.StepOver() })
+	return s.doStep(ctx, func(r *engine.Runner) error { return r.StepOver() })
 }
 
 func (s *Server) handleStepInto(ctx context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
-	return s.doStep(ctx, func(r *engine.Runner) { r.StepInto() })
+	return s.doStep(ctx, func(r *engine.Runner) error { return r.StepInto() })
 }
 
 func (s *Server) handleStepOut(ctx context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
-	return s.doStep(ctx, func(r *engine.Runner) { r.StepOut() })
+	return s.doStep(ctx, func(r *engine.Runner) error { return r.StepOut() })
 }
 
-func (s *Server) doStep(ctx context.Context, stepFn func(*engine.Runner)) (*mcp.CallToolResult, any, error) {
+func (s *Server) doStep(ctx context.Context, stepFn func(*engine.Runner) error) (*mcp.CallToolResult, any, error) {
 	s.mu.Lock()
 
 	if s.session == nil {
@@ -257,7 +260,10 @@ func (s *Server) doStep(ctx context.Context, stepFn func(*engine.Runner)) (*mcp.
 	}
 
 	sess := s.session
-	stepFn(sess.runner)
+	if err := stepFn(sess.runner); err != nil {
+		s.mu.Unlock()
+		return toolError("step failed: %v", err), nil, nil
+	}
 	s.mu.Unlock()
 
 	wr := s.waitForBreak(ctx, sess, defaultDebugTimeout)

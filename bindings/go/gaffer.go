@@ -329,31 +329,44 @@ func (s *Session) SetBreakpoint(line, column int, opts *BreakpointOptions) (*Sna
 	return &snapped, nil
 }
 
-// Pause requests a pause before the next event is processed.
-func (s *Session) Pause() {
+// Pause requests a pause before the next event is processed. Returns an error
+// if the runtime rejects the request. Panics on a destroyed session, like the
+// other methods.
+func (s *Session) Pause() error {
 	s.ensureAlive()
-	C.gaffer_debug_pause(s.c(), nil)
+	var cErr *C.char
+	C.gaffer_debug_pause(s.c(), &cErr)
+	return consumeError(cErr, s.source)
 }
 
-// StepInto steps into the next function call. Only valid while paused.
-func (s *Session) StepInto() {
+// StepInto steps into the next function call. Only valid while paused; returns
+// an error otherwise.
+func (s *Session) StepInto() error {
 	s.ensureAlive()
 	defer s.rethrowCallbackPanic()
-	C.gaffer_debug_step_into(s.c(), nil)
+	var cErr *C.char
+	C.gaffer_debug_step_into(s.c(), &cErr)
+	return consumeError(cErr, s.source)
 }
 
-// StepOver steps over the next statement. Only valid while paused.
-func (s *Session) StepOver() {
+// StepOver steps over the next statement. Only valid while paused; returns an
+// error otherwise.
+func (s *Session) StepOver() error {
 	s.ensureAlive()
 	defer s.rethrowCallbackPanic()
-	C.gaffer_debug_step_over(s.c(), nil)
+	var cErr *C.char
+	C.gaffer_debug_step_over(s.c(), &cErr)
+	return consumeError(cErr, s.source)
 }
 
-// StepOut steps out of the current function. Only valid while paused.
-func (s *Session) StepOut() {
+// StepOut steps out of the current function. Only valid while paused; returns
+// an error otherwise.
+func (s *Session) StepOut() error {
 	s.ensureAlive()
 	defer s.rethrowCallbackPanic()
-	C.gaffer_debug_step_out(s.c(), nil)
+	var cErr *C.char
+	C.gaffer_debug_step_out(s.c(), &cErr)
+	return consumeError(cErr, s.source)
 }
 
 // Evaluate evaluates an expression in the current debug context. Only valid while paused.
@@ -378,17 +391,23 @@ func (s *Session) Evaluate(expression string) (*DebugVariable, error) {
 	return &v, nil
 }
 
-// ClearBreakpoints removes all breakpoints.
-func (s *Session) ClearBreakpoints() {
+// ClearBreakpoints removes all breakpoints. Returns an error if the runtime
+// rejects the request. Panics on a destroyed session, like the other methods.
+func (s *Session) ClearBreakpoints() error {
 	s.ensureAlive()
-	C.gaffer_debug_clear_breakpoints(s.c(), nil)
+	var cErr *C.char
+	C.gaffer_debug_clear_breakpoints(s.c(), &cErr)
+	return consumeError(cErr, s.source)
 }
 
-// Continue resumes execution after a debug pause.
-func (s *Session) Continue() {
+// Continue resumes execution after a debug pause. Only valid while paused;
+// returns an error otherwise.
+func (s *Session) Continue() error {
 	s.ensureAlive()
 	defer s.rethrowCallbackPanic()
-	C.gaffer_debug_continue(s.c(), nil)
+	var cErr *C.char
+	C.gaffer_debug_continue(s.c(), &cErr)
+	return consumeError(cErr, s.source)
 }
 
 // GetCallStack returns the call stack while paused.

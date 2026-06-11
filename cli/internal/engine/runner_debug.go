@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -10,6 +11,12 @@ type DebugConfig struct {
 	Session *gafferruntime.Session
 	Info    gafferruntime.ProjectionInfo
 	OnBreak func(gafferruntime.BreakInfo) // must not call Runner methods
+	// OnError, if set, receives errors from debug-control commands the runner
+	// issues on its own goroutines (the internal auto-step to a break_at
+	// target in NewRunner's OnBreak) - the one debug-control path where a
+	// returned error has no caller to receive it. Interactive step/continue
+	// errors return synchronously to their callers instead.
+	OnError func(error)
 }
 
 type Breakpoint struct {
@@ -23,7 +30,9 @@ func (r *Runner) SetBreakpoints(breakpoints []Breakpoint) ([]*gafferruntime.Snap
 	if r.debug == nil {
 		return nil, fmt.Errorf("debug not enabled")
 	}
-	r.debug.Session.ClearBreakpoints()
+	if err := r.debug.Session.ClearBreakpoints(); err != nil {
+		return nil, fmt.Errorf("clearing breakpoints: %w", err)
+	}
 	snapped := make([]*gafferruntime.SnappedBreakpoint, len(breakpoints))
 	for i, bp := range breakpoints {
 		var opts *gafferruntime.BreakpointOptions
@@ -39,26 +48,43 @@ func (r *Runner) SetBreakpoints(breakpoints []Breakpoint) ([]*gafferruntime.Snap
 	return snapped, nil
 }
 
-func (r *Runner) ClearBreakpoints() {
-	if r.debug != nil {
-		r.debug.Session.ClearBreakpoints()
+func (r *Runner) ClearBreakpoints() error {
+	if r.debug == nil {
+		return nil
 	}
+	return r.debug.Session.ClearBreakpoints()
 }
 
-func (r *Runner) doStep(fn func()) {
+func (r *Runner) doStep(fn func() error) error {
 	if r.debug == nil {
-		return
+		return nil
 	}
+	// Flip paused optimistically, before issuing the command. The only error
+	// fn can return is the runtime's "not paused" - which means the engine
+	// wasn't paused anyway, so false is the correct resulting state. Leaving it
+	// false on error also lets the caller's next Paused() guard reject cleanly
+	// rather than re-entering here and failing again.
 	r.mu.Lock()
 	r.paused = false
 	r.mu.Unlock()
-	fn()
+	return fn()
 }
 
-func (r *Runner) Continue() { r.doStep(func() { r.debug.Session.Continue() }) }
-func (r *Runner) StepOver() { r.doStep(func() { r.debug.Session.StepOver() }) }
-func (r *Runner) StepInto() { r.doStep(func() { r.debug.Session.StepInto() }) }
-func (r *Runner) StepOut()  { r.doStep(func() { r.debug.Session.StepOut() }) }
+func (r *Runner) Continue() error {
+	return r.doStep(func() error { return r.debug.Session.Continue() })
+}
+
+func (r *Runner) StepOver() error {
+	return r.doStep(func() error { return r.debug.Session.StepOver() })
+}
+
+func (r *Runner) StepInto() error {
+	return r.doStep(func() error { return r.debug.Session.StepInto() })
+}
+
+func (r *Runner) StepOut() error {
+	return r.doStep(func() error { return r.debug.Session.StepOut() })
+}
 
 // Unblock releases the JS thread if it's paused at a breakpoint so a
 // blocked ProcessOne can return. Use this on cancellation paths where
@@ -67,14 +93,29 @@ func (r *Runner) StepOut()  { r.doStep(func() { r.debug.Session.StepOut() }) }
 //
 // Safe to call when no breakpoints are set or the runner isn't paused.
 // Safe to call when debug is disabled (no-op).
-func (r *Runner) Unblock() {
+//
+// Best-effort: it always attempts the Continue that actually releases a paused
+// Feed even if clearing breakpoints failed, and joins both errors. Cancellation
+// and teardown callers generally ignore the result - the session is going away -
+// but it's returned rather than swallowed so a caller that cares can see it.
+func (r *Runner) Unblock() error {
 	if r.debug == nil {
-		return
+		return nil
 	}
-	r.debug.Session.ClearBreakpoints()
-	if r.Paused() {
-		r.debug.Session.Continue()
+	// Clear paused before resuming, like doStep and Drain, so a later
+	// Paused() read (the DAP adapter's ensurePaused guard, a follow-up
+	// Destroy->Unblock) doesn't see a stale true and act on an already
+	// running engine.
+	r.mu.Lock()
+	wasPaused := r.paused
+	r.paused = false
+	r.mu.Unlock()
+	clearErr := r.debug.Session.ClearBreakpoints()
+	var contErr error
+	if wasPaused {
+		contErr = r.debug.Session.Continue()
 	}
+	return errors.Join(clearErr, contErr)
 }
 
 // Drain forces a debugging session to run to completion so a Feed blocked
@@ -98,17 +139,19 @@ func (r *Runner) Drain() {
 	r.paused = false
 	r.mu.Unlock()
 
-	r.debug.Session.ClearBreakpoints()
+	// Errors are discarded: Drain is terminal teardown, so there's nothing
+	// actionable to report.
+	_ = r.debug.Session.ClearBreakpoints()
 	// Resume an engine already parked at a break. A break that lands after
 	// this (the in-flight step from a break_at pause) is resumed by the
 	// draining branch in the OnBreak handler instead.
 	if wasPaused {
-		r.debug.Session.Continue()
+		_ = r.debug.Session.Continue()
 	}
 }
 
 func (r *Runner) Destroy() {
-	r.Unblock()
+	_ = r.Unblock()
 	if r.session != nil {
 		r.session.Destroy()
 	}

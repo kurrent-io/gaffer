@@ -595,6 +595,7 @@ func runDevDebug(
 				Session: session,
 				Info:    info,
 				OnBreak: adapter.HandleBreak,
+				OnError: adapter.HandleDebugError,
 			},
 		})
 		adapter.SetSession(session)
@@ -643,10 +644,10 @@ func runDevDebug(
 				default:
 				}
 				innerCancel()
-				r.Unblock()
+				_ = r.Unblock()
 			case <-ctx.Done():
 				innerCancel()
-				r.Unblock()
+				_ = r.Unblock()
 			case <-iterDone:
 				// source.Run returned naturally; nothing to do.
 			}

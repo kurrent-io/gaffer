@@ -1215,7 +1215,9 @@ func TestAdapter_UnblockReleasesPausedFeedAndKeepsSessionAlive(t *testing.T) {
 
 	// Simulate the dev command's ctx-cancellation handler. Must
 	// release the paused feed without destroying the session.
-	runner.Unblock()
+	if err := runner.Unblock(); err != nil {
+		t.Fatalf("Unblock: %v", err)
+	}
 
 	select {
 	case <-feedDone:

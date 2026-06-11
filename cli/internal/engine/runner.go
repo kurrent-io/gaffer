@@ -102,16 +102,26 @@ func NewRunner(cfg RunnerConfig) *Runner {
 			r.mu.Lock()
 			// During teardown, resume rather than park - including the
 			// step the break_at pause converts into - so the blocked
-			// Feed returns and the feed goroutine can exit.
+			// Feed returns and the feed goroutine can exit. The resume
+			// error is irrelevant: the session is going away.
 			if r.draining {
 				r.paused = false
 				r.mu.Unlock()
-				go r.debug.Session.Continue()
+				go func() { _ = r.debug.Session.Continue() }()
 				return
 			}
 			if info.Reason == "pause" && r.breakAtStep > 0 {
 				r.mu.Unlock()
-				go r.debug.Session.StepInto()
+				// Auto-step off the pause-breakpoint to land at the break_at
+				// target with full context. Must run on its own goroutine -
+				// StepInto blocks on the engine thread that's currently running
+				// this callback. A returned error has no caller here, so route
+				// it through OnError (e.g. MCP's error channel).
+				go func() {
+					if err := r.debug.Session.StepInto(); err != nil && r.debug.OnError != nil {
+						r.debug.OnError(err)
+					}
+				}()
 				return
 			}
 			r.paused = true
@@ -125,13 +135,21 @@ func NewRunner(cfg RunnerConfig) *Runner {
 func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 	r.mu.Lock()
 	step := r.step.Add(1)
+	var pauseErr error
 	if r.debug != nil {
 		r.pausedEvent = eventJSON
 		if r.breakAtStep > 0 && step == r.breakAtStep {
-			r.debug.Session.Pause()
+			pauseErr = r.debug.Session.Pause()
 		}
 	}
 	r.mu.Unlock()
+	// Route a failed break_at pause through OnError, like the auto-step path:
+	// ProcessOne runs on the feed goroutine with no caller to return to, and a
+	// swallowed failure would leave the consumer waiting for a break that never
+	// arrives. (Pause only fails on a dead session, so this is a safety net.)
+	if pauseErr != nil && r.debug.OnError != nil {
+		r.debug.OnError(pauseErr)
+	}
 
 	if r.writer != nil {
 		r.writer.OnEvent(eventJSON)

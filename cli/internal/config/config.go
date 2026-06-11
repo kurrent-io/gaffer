@@ -250,6 +250,17 @@ func Save(path string, cfg *Config) error {
 		return err
 	}
 
+	// Preserve the existing manifest's mode, like the previous in-place
+	// os.WriteFile did (it truncated without changing permissions). Forcing
+	// a fixed mode would widen a gaffer.toml a restrictive umask had kept
+	// private - and it can hold connection-string credentials. A brand-new
+	// manifest (Save normally overwrites an existing one) uses 0644, like
+	// InitProject.
+	mode := os.FileMode(0o644)
+	if info, statErr := os.Stat(path); statErr == nil {
+		mode = info.Mode().Perm()
+	}
+
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
 	if err != nil {
@@ -264,8 +275,7 @@ func Save(path string, cfg *Config) error {
 		_ = tmp.Close()
 		return fmt.Errorf("writing config: %w", err)
 	}
-	// CreateTemp makes the file 0600; match the previous Save's 0644.
-	if err := tmp.Chmod(0o644); err != nil {
+	if err := tmp.Chmod(mode); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("writing config: %w", err)
 	}

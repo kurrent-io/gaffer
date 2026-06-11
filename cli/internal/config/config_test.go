@@ -553,8 +553,12 @@ func TestSave_Atomic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Overwriting an existing manifest goes through the rename path and
-	// fully replaces the prior content.
+	// Tighten the manifest, then overwrite it. Save must go through the
+	// rename path, fully replace the content, and preserve the restrictive
+	// mode rather than widening it (gaffer.toml may hold credentials).
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	second := &Config{Projection: []Projection{{Name: "second", Entry: "second.js", EngineVersion: ptr(2)}}}
 	if err := Save(path, second); err != nil {
 		t.Fatal(err)
@@ -581,13 +585,12 @@ func TestSave_Atomic(t *testing.T) {
 		t.Fatalf("expected only gaffer.toml in dir, got %v", names)
 	}
 
-	// Perm matches the previous in-place WriteFile (0644), not CreateTemp's 0600.
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o644 {
-		t.Fatalf("expected mode 0644, got %o", perm)
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Fatalf("expected Save to preserve mode 0600, got %o", perm)
 	}
 }
 

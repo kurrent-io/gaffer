@@ -34,7 +34,7 @@ func CollectState(session *gafferruntime.Session, info gafferruntime.ProjectionI
 		summary.Partitions = make(map[string]PartitionState)
 		for partition := range partitions {
 			ps := PartitionState{}
-			if state := session.GetState(&partition); state != nil {
+			if state, err := session.GetState(&partition); err == nil && state != nil {
 				ps.State = json.RawMessage(*state)
 			}
 			if info.DefinesStateTransform {
@@ -45,7 +45,7 @@ func CollectState(session *gafferruntime.Session, info gafferruntime.ProjectionI
 			summary.Partitions[partition] = ps
 		}
 	} else {
-		if state := session.GetState(nil); state != nil {
+		if state, err := session.GetState(nil); err == nil && state != nil {
 			summary.State = json.RawMessage(*state)
 		}
 		if info.DefinesStateTransform {
@@ -56,7 +56,7 @@ func CollectState(session *gafferruntime.Session, info gafferruntime.ProjectionI
 	}
 
 	if info.BiState {
-		if shared := session.GetSharedState(); shared != nil {
+		if shared, err := session.GetSharedState(); err == nil && shared != nil {
 			summary.SharedState = json.RawMessage(*shared)
 		}
 	}

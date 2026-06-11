@@ -120,16 +120,17 @@ export interface NativeBindings {
 	): { handle: number; errorJson: string | null };
 	sessionDestroy(handle: number): void;
 	sessionFeed(handle: number, eventJson: string): FallibleResult;
-	sessionGetState(handle: number, partition: string | null): string | null;
-	sessionGetSharedState(handle: number): string | null;
+	sessionGetState(handle: number, partition: string | null): FallibleResult;
+	sessionGetSharedState(handle: number): FallibleResult;
+	/** Returns errorJson (null on success); SetState has no result value. */
 	sessionSetState(
 		handle: number,
 		partition: string | null,
 		stateJson: string,
-	): void;
+	): string | null;
 	sessionGetResult(handle: number, partition: string | null): FallibleResult;
 	sessionGetSources(handle: number): FallibleResult;
-	sessionGetPartitionKey(handle: number, eventJson: string): string | null;
+	sessionGetPartitionKey(handle: number, eventJson: string): FallibleResult;
 	onEmit(
 		handle: number,
 		cb: (
@@ -264,20 +265,17 @@ export function getNativeBindings(): NativeBindings {
 			const result = sessionGetState(handle, partition, errSlot) as
 				| string
 				| null;
-			// silent: discard any error
-			consumeErrorSlot(errSlot);
-			return result;
+			return { result, errorJson: consumeErrorSlot(errSlot) };
 		},
 		sessionGetSharedState: (handle) => {
 			const errSlot = newErrorSlot();
 			const result = sessionGetSharedState(handle, errSlot) as string | null;
-			consumeErrorSlot(errSlot);
-			return result;
+			return { result, errorJson: consumeErrorSlot(errSlot) };
 		},
 		sessionSetState: (handle, partition, stateJson) => {
 			const errSlot = newErrorSlot();
 			sessionSetState(handle, partition, stateJson, errSlot);
-			consumeErrorSlot(errSlot);
+			return consumeErrorSlot(errSlot);
 		},
 		sessionGetResult: (handle, partition) => {
 			const errSlot = newErrorSlot();
@@ -296,8 +294,7 @@ export function getNativeBindings(): NativeBindings {
 			const result = sessionGetPartitionKey(handle, eventJson, errSlot) as
 				| string
 				| null;
-			consumeErrorSlot(errSlot);
-			return result;
+			return { result, errorJson: consumeErrorSlot(errSlot) };
 		},
 		onEmit: (handle, cb) => {
 			const nativeCb = koffi.register(

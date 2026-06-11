@@ -136,7 +136,7 @@ func (r *Runner) GetPartitionState(partition string) (state *string, result *str
 	if r.session == nil {
 		return nil, nil
 	}
-	state = r.session.GetState(&partition)
+	state, _ = r.session.GetState(&partition)
 	if r.info.DefinesStateTransform {
 		result, _ = r.session.GetResult(&partition)
 	}

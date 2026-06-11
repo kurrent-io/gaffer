@@ -106,7 +106,9 @@ func runFixture(t *testing.T, f fixture) {
 
 	// Set state
 	if f.SetState != nil {
-		session.SetState(f.SetState.Partition, f.SetState.State)
+		if err := session.SetState(f.SetState.Partition, f.SetState.State); err != nil {
+			t.Fatalf("SetState failed: %v", err)
+		}
 	}
 
 	// Feed events
@@ -183,7 +185,10 @@ func runFixture(t *testing.T, f fixture) {
 
 	// Check state
 	if f.Expect.State != nil {
-		state := session.GetState(nil)
+		state, err := session.GetState(nil)
+		if err != nil {
+			t.Fatalf("GetState failed: %v", err)
+		}
 		if state == nil {
 			t.Fatal("GetState returned nil")
 		}
@@ -193,7 +198,10 @@ func runFixture(t *testing.T, f fixture) {
 	// Check per-partition states
 	for partition, expected := range f.Expect.States {
 		p := partition
-		state := session.GetState(&p)
+		state, err := session.GetState(&p)
+		if err != nil {
+			t.Fatalf("GetState failed: %v", err)
+		}
 		if string(expected) == "null" {
 			if state != nil {
 				t.Fatalf("expected nil state for partition %q, got %s", partition, *state)
@@ -208,7 +216,10 @@ func runFixture(t *testing.T, f fixture) {
 
 	// Check shared state
 	if f.Expect.SharedState != nil {
-		shared := session.GetSharedState()
+		shared, err := session.GetSharedState()
+		if err != nil {
+			t.Fatalf("GetSharedState failed: %v", err)
+		}
 		if shared == nil {
 			t.Fatal("GetSharedState returned nil")
 		}

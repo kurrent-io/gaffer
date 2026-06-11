@@ -658,6 +658,50 @@ describe("ProjectionSession", () => {
 		});
 		expect(key).toBe("eu");
 	});
+
+	it("getPartitionKey surfaces a throwing partitionBy as an error", () => {
+		const s = new ProjectionSession(
+			`
+			fromAll().partitionBy(function(e) {
+				throw new Error("boom in partitionBy");
+			}).when({
+				$init() { return {}; },
+				Event(s, e) { return s; }
+			})
+		`,
+			{ engineVersion: 2 },
+		);
+		session = s;
+
+		// Previously the error was swallowed and the call returned null.
+		expect(() =>
+			s.getPartitionKey({
+				eventType: "Event",
+				streamId: "s-1",
+				sequenceNumber: 0,
+				data: "{}",
+				isJson: true,
+				eventId: "00000000-0000-0000-0000-000000000000",
+				created: "2026-01-01T00:00:00Z",
+			}),
+		).toThrow();
+	});
+
+	it("setState throws when the runtime rejects the state", () => {
+		const s = new ProjectionSession(
+			`
+			fromAll().when({
+				$init() { return {}; },
+				Event(s, e) { return s; }
+			})
+		`,
+			{ engineVersion: 2 },
+		);
+		session = s;
+
+		// A null state is rejected by the FFI; previously the error was swallowed.
+		expect(() => s.setState(null, null as unknown as string)).toThrow();
+	});
 });
 
 describe("parseErrorJson compat enrichment", () => {

@@ -31,7 +31,10 @@ func mustFeed(t *testing.T, session *Session, eventJSON string) *FeedResult {
 
 func mustGetState(t *testing.T, session *Session, partition *string) string {
 	t.Helper()
-	state := session.GetState(partition)
+	state, err := session.GetState(partition)
+	if err != nil {
+		t.Fatalf("GetState failed: %v", err)
+	}
 	if state == nil {
 		t.Fatal("GetState returned nil")
 		return ""
@@ -366,7 +369,9 @@ func TestSetAndRestoreState(t *testing.T) {
 		})
 	`)
 
-	session.SetState(nil, `{"count":10}`)
+	if err := session.SetState(nil, `{"count":10}`); err != nil {
+		t.Fatalf("SetState failed: %v", err)
+	}
 	mustFeed(t, session, `{"eventType":"Ping","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
 
 	state := mustGetState(t, session, nil)
@@ -422,7 +427,10 @@ func TestUnknownPartitionReturnsNil(t *testing.T) {
 	`)
 
 	p := "nonexistent"
-	state := session.GetState(&p)
+	state, err := session.GetState(&p)
+	if err != nil {
+		t.Fatalf("GetState failed: %v", err)
+	}
 	if state != nil {
 		t.Fatalf("expected nil, got %s", *state)
 	}
@@ -548,7 +556,10 @@ func TestBiStateSharedState(t *testing.T) {
 		t.Fatalf("expected count:2 in state, got %s", state)
 	}
 
-	shared := session.GetSharedState()
+	shared, err := session.GetSharedState()
+	if err != nil {
+		t.Fatalf("GetSharedState failed: %v", err)
+	}
 	if shared == nil {
 		t.Fatal("expected shared state")
 		return
@@ -598,13 +609,38 @@ func TestGetPartitionKey(t *testing.T) {
 		})
 	`)
 
-	key := session.GetPartitionKey(`{"eventType":"Event","streamId":"s-1","sequenceNumber":0,"data":"{\"region\":\"eu\"}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	key, err := session.GetPartitionKey(`{"eventType":"Event","streamId":"s-1","sequenceNumber":0,"data":"{\"region\":\"eu\"}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	if err != nil {
+		t.Fatalf("GetPartitionKey failed: %v", err)
+	}
 	if key == nil {
 		t.Fatal("expected partition key")
 		return
 	}
 	if *key != "eu" {
 		t.Fatalf("expected 'eu', got %s", *key)
+	}
+}
+
+// TestGetPartitionKeySurfacesError checks that a getter no longer conflates a
+// runtime error with a nil (not-applicable) result: a throwing partitionBy
+// surfaces as an error, not a silent nil.
+func TestGetPartitionKeySurfacesError(t *testing.T) {
+	session := mustCreateSession(t, `
+		fromAll().partitionBy(function(e) {
+			throw new Error("boom in partitionBy");
+		}).when({
+			$init() { return {}; },
+			Event(s, e) { return s; }
+		})
+	`)
+
+	key, err := session.GetPartitionKey(`{"eventType":"Event","streamId":"s-1","sequenceNumber":0,"data":"{}","isJson":true,"eventId":"00000000-0000-0000-0000-000000000000","created":"2026-01-01T00:00:00Z"}`)
+	if err == nil {
+		t.Fatal("expected an error from the throwing partitionBy, got nil")
+	}
+	if key != nil {
+		t.Fatalf("expected nil key on error, got %s", *key)
 	}
 }
 

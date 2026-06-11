@@ -424,8 +424,11 @@ internal static unsafe class NativeExports {
 		}
 		try {
 			var json = FromUtf8(stateJson);
-			if (json != null)
-				handle.Session.SetState(FromUtf8(partition), json);
+			if (json == null) {
+				WriteError(errorOut, new InvalidArgumentException("state_json is null", "state_json"));
+				return;
+			}
+			handle.Session.SetState(FromUtf8(partition), json);
 		} catch (Exception ex) {
 			WriteError(errorOut, ex);
 		}

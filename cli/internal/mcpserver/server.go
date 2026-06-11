@@ -385,25 +385,35 @@ func mcpConnection(cfg *config.Config, envName string) (config.ResolvedEnv, erro
 	return cfg.ResolveEnv(envName)
 }
 
+// closeSession tears down the active session. The caller must hold s.mu,
+// which stays held for the entire teardown.
+//
+// s.session is captured into a local and cleared up front, so a concurrent
+// teardown-triggering call (stop+stop, stop+run, run+run) that acquires
+// s.mu next sees no session and can't double-Destroy or nil-deref. The
+// background feed/live goroutine never takes s.mu, so waiting on its done
+// channel while holding the lock can't deadlock. Handlers parked in
+// waitForBreak re-check session identity after re-acquiring s.mu (see
+// handleWaitResult), so they won't touch the runner destroyed here.
 func (s *Server) closeSession() {
-	if s.session != nil {
-		if s.session.cancel != nil {
-			s.session.cancel()
-		}
-		// Unblock any Feed paused at a breakpoint before waiting for goroutine
-		s.session.runner.ClearBreakpoints()
-		if s.session.runner.Paused() {
-			s.session.runner.Continue()
-		}
-		if s.session.done != nil {
-			done := s.session.done
-			s.mu.Unlock()
-			<-done
-			s.mu.Lock()
-		}
-		s.session.runner.Destroy()
-		s.session = nil
+	sess := s.session
+	if sess == nil {
+		return
 	}
+	s.session = nil
+
+	if sess.cancel != nil {
+		sess.cancel()
+	}
+	// Force a paused/break_at session to run to completion before waiting
+	// for the feed goroutine, so <-done can't block forever (Drain is
+	// terminal, unlike a bare ClearBreakpoints+Continue which races the
+	// async step a break_at pause converts into).
+	sess.runner.Drain()
+	if sess.done != nil {
+		<-sess.done
+	}
+	sess.runner.Destroy()
 }
 
 func (s *Server) createSession(cfg *config.Config, root, name string, debug bool) (*activeSession, error) {
@@ -475,12 +485,24 @@ func (s *Server) createSession(cfg *config.Config, root, name string, debug bool
 // concerns. Package-level (rather than a method on *Server)
 // because Go disallows type parameters on methods - In/Out vary
 // per tool.
+//
+// It also recovers any panic the handler raises and reports it as a
+// tool error. The go-sdk dispatches tool calls concurrently on their
+// own goroutines and does not recover handler panics, so an unrecovered
+// panic (e.g. a use-after-free against a session a concurrent teardown
+// destroyed) would take the whole gaffer mcp process down. This mirrors
+// the recover guards on the DAP path.
 func trackedTool[In, Out any](
 	s *Server,
 	fn func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error),
 ) func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error) {
-	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (res *mcp.CallToolResult, out Out, err error) {
 		s.stats.toolCalls.Add(1)
+		defer func() {
+			if r := recover(); r != nil {
+				res, out, err = toolError("internal error: %v", r), *new(Out), nil
+			}
+		}()
 		return fn(ctx, req, in)
 	}
 }

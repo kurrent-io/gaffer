@@ -60,6 +60,10 @@ type Runner struct {
 	paused      bool
 	pausedEvent string
 	breakAtStep int64
+	// draining is set by Drain() on teardown. Once set, the OnBreak
+	// handler resumes the engine instead of parking it, so a blocked
+	// Feed can run to completion and the feed goroutine can exit.
+	draining bool
 }
 
 type EventStats struct {
@@ -91,14 +95,24 @@ func NewRunner(cfg RunnerConfig) *Runner {
 	}
 	if r.debug != nil && r.debug.OnBreak != nil {
 		r.debug.Session.OnBreak(func(info gafferruntime.BreakInfo) {
+			// Hold the lock across the whole decision: reading draining
+			// and setting paused must be atomic with respect to Drain,
+			// or Drain could observe paused=false (and skip its resume)
+			// in the window before we park, deadlocking the feed goroutine.
 			r.mu.Lock()
-			breakAt := r.breakAtStep
-			r.mu.Unlock()
-			if info.Reason == "pause" && breakAt > 0 {
+			// During teardown, resume rather than park - including the
+			// step the break_at pause converts into - so the blocked
+			// Feed returns and the feed goroutine can exit.
+			if r.draining {
+				r.mu.Unlock()
+				go r.debug.Session.Continue()
+				return
+			}
+			if info.Reason == "pause" && r.breakAtStep > 0 {
+				r.mu.Unlock()
 				go r.debug.Session.StepInto()
 				return
 			}
-			r.mu.Lock()
 			r.paused = true
 			r.mu.Unlock()
 			r.debug.OnBreak(info)

@@ -1,0 +1,22 @@
+version: 2
+
+updates:
+  # Keep the SHA-pinned GitHub Actions current. Dependabot rewrites both the
+  # pinned SHA and the trailing `# vX.Y.Z` comment on each bump.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # Quarantine lag: wait until a release has been public for 7 days before
+    # proposing it, so a compromised or retagged release that gets yanked in
+    # that window never reaches us. Security updates ignore cooldown and still
+    # fire immediately for advisory-flagged versions.
+    cooldown:
+      default-days: 7
+    # One PR for all action bumps rather than one per action.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    labels:
+      - tooling

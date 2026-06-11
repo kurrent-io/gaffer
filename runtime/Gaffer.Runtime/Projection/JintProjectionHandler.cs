@@ -1777,6 +1777,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 			public WriteState(JsArray instance) {
 				_position = -1;
+				// Length is a uint (JS arrays cap at 2^32-1); a straight (int) cast wraps negative
+				// above int.MaxValue and would silently serialize a huge sparse array as [].
+				if (instance.Length > int.MaxValue)
+					throw new Errors.StateSerializationException(
+						$"Cannot serialize an array with more than {int.MaxValue} elements", "", "", 0);
 				_length = (int)instance.Length;
 				_instance = instance;
 				_type = Type.Array;
@@ -1787,7 +1792,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 			public WriteState(ObjectInstance instance) {
 				_position = -1;
 				_length = -1;
-				_instance = JsValue.Null;
+				_instance = instance; // kept for cycle detection; the object is walked via _iterator
 				_type = Type.Object;
 				_started = false;
 				_iterator = instance.GetOwnProperties().GetEnumerator();
@@ -1822,7 +1827,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 						for (; _position < _length; _position++) {
 							var value = instance[(uint)_position];
 							if (value.Type == Types.Object) {
-								writeStates[++depth] = value is JsArray ai ? new WriteState(ai) : new WriteState(value.AsObject());
+								PushChild(value, ref depth, writeStates);
 								_position++;
 								return true;
 							}
@@ -1839,7 +1844,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 								continue;
 							WriteMaybeCachedPropertyName(name.AsString(), knownPropertyNames, writer);
 							if (value.Type == Types.Object) {
-								writeStates[++depth] = value is JsArray ai ? new WriteState(ai) : new WriteState(value.AsObject());
+								PushChild(value, ref depth, writeStates);
 								_position++;
 								return true;
 							}
@@ -1854,6 +1859,22 @@ internal sealed class JintProjectionHandler : IDisposable {
 				writeStates[depth] = default;
 				depth--;
 				return depth >= 0;
+			}
+
+			// Push a nested array/object onto the iterator stack, guarding the two ways the fixed
+			// stack overflows: a circular reference (which JSON.stringify rejects outright) and
+			// state nested past the stack depth. Both surface as a clean state-serialization error
+			// instead of an IndexOutOfRangeException reported as a bogus handler failure.
+			private static void PushChild(JsValue value, ref int depth, WriteState[] writeStates) {
+				for (var i = 0; i <= depth; i++) {
+					if (ReferenceEquals(value, writeStates[i]._instance))
+						throw new Errors.StateSerializationException(
+							"Cannot serialize a circular structure", "", "", 0);
+				}
+				if (depth + 1 >= writeStates.Length)
+					throw new Errors.StateSerializationException(
+						$"Cannot serialize a value nested deeper than {writeStates.Length} levels", "", "", 0);
+				writeStates[++depth] = value is JsArray ai ? new WriteState(ai) : new WriteState(value.AsObject());
 			}
 		}
 

@@ -56,18 +56,23 @@ jobs:
       # vhs-action@v2's built-in ffmpeg installer is unreliable
       # ("Failed to install ffmpeg", run 26033450846). Install the
       # stack ourselves: ffmpeg from apt, ttyd from its release binary,
-      # vhs from go install.
+      # vhs from go install. ttyd and vhs are pinned (bump by hand) - the
+      # job holds contents/pull-requests:write, so a floating release
+      # asset would be unverified code execution under that token.
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Install ttyd
         run: |
-          curl -fsSL https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.x86_64 -o /tmp/ttyd
+          # sha256 from the release's SHA256SUMS asset; refresh on version bump.
+          curl -fsSL https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 -o /tmp/ttyd
+          echo "8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55  /tmp/ttyd" | sha256sum -c -
           chmod +x /tmp/ttyd
           sudo mv /tmp/ttyd /usr/local/bin/ttyd
 
+      # Version is verified by the Go checksum database (sum.golang.org).
       - name: Install VHS
-        run: go install github.com/charmbracelet/vhs@latest
+        run: go install github.com/charmbracelet/vhs@v0.11.0
 
       # Run vhs from the demo/ directory so the recorded shell starts
       # there. Avoids a visible `cd demo` step in the recording (Hide

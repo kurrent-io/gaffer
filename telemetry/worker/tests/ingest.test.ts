@@ -1,6 +1,7 @@
 import { exports } from "cloudflare:workers";
-import { env } from "cloudflare:test";
+import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { handleIngest } from "../src/ingest";
 import { applyMigrations, resetTables } from "./migrations";
 
 const validEnvelope = {
@@ -172,6 +173,56 @@ describe("POST /v1/ingest", () => {
 			distinct_id: envelopeWithInvoker.emitter_id,
 			properties: { alias: envelopeWithInvoker.context.invoker_id },
 		});
+	});
+
+	it("drops (200, no forward, no merge) when the rate limiter rejects", async () => {
+		// Inject a limiter that denies. The full miniflare binding can't be
+		// driven over its window deterministically, so exercise the branch by
+		// overriding the binding on a direct handleIngest call. Use an envelope
+		// that carries invoker_id so a single `fetchMock` assertion proves both
+		// the PostHog forward and the $merge_dangerously fire are skipped.
+		const limited = { ...env, INGEST_RATE_LIMITER: { limit: async () => ({ success: false }) } } as unknown as Env;
+		const ctx = createExecutionContext();
+		const res = await handleIngest(
+			new Request("https://example.com/v1/ingest", { method: "POST", body: JSON.stringify(envelopeWithInvoker) }),
+			limited,
+			ctx,
+		);
+		await waitOnExecutionContext(ctx);
+
+		expect(res.status).toBe(200);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["IPv4 keyed whole", "203.0.113.7", "203.0.113.7"],
+		["IPv6 collapsed to the /64 prefix", "2001:db8:1:2:aaaa:bbbb:cccc:dddd", "2001:db8:1:2"],
+		["IPv6 with a :: run expanded before truncating", "2001:db8::dead:beef", "2001:db8:0:0"],
+		["missing header shares the 'unknown' bucket", null, "unknown"],
+	])("rate-limit key: %s", async (_label, header, expectedKey) => {
+		let seenKey: string | undefined;
+		const spyEnv = {
+			...env,
+			INGEST_RATE_LIMITER: {
+				limit: async ({ key }: { key: string }) => {
+					seenKey = key;
+					return { success: true };
+				},
+			},
+		} as unknown as Env;
+		const ctx = createExecutionContext();
+		await handleIngest(
+			new Request("https://example.com/v1/ingest", {
+				method: "POST",
+				headers: header === null ? {} : { "CF-Connecting-IP": header },
+				body: JSON.stringify(validEnvelope),
+			}),
+			spyEnv,
+			ctx,
+		);
+		await waitOnExecutionContext(ctx);
+
+		expect(seenKey).toBe(expectedKey);
 	});
 
 	it("does not refire $merge_dangerously for a repeat (emitter, invoker) pair", async () => {

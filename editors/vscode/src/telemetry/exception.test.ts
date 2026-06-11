@@ -309,7 +309,7 @@ describe("buildException", () => {
 	});
 });
 
-describe("buildException path scrubbing", () => {
+describe("buildException message scrubbing", () => {
 	function valueFrom(message: string, err?: unknown): string {
 		const out = buildException({
 			err:
@@ -415,5 +415,71 @@ describe("buildException path scrubbing", () => {
 		expect(
 			valueFrom("", "EACCES, open '/home/george/secret/gaffer.toml'"),
 		).toBe("EACCES, open '<path>'");
+	});
+
+	it("redacts connection-string credentials and host, keeping the scheme and path", () => {
+		expect(
+			valueFrom(
+				"connection failed: esdb://admin:changeit@cluster.kurrent.cloud:2113/db",
+			),
+		).toBe("connection failed: esdb://<redacted>/db");
+	});
+
+	it("redacts userinfo from an https URL", () => {
+		expect(valueFrom("401 from https://user:pass@api.internal/v1")).toBe(
+			"401 from https://<redacted>/v1",
+		);
+	});
+
+	it("redacts a quoted connection string (incl. compound scheme)", () => {
+		expect(
+			valueFrom("bad dsn 'esdb+discover://admin:changeit@host:2113'"),
+		).toBe("bad dsn 'esdb+discover://<redacted>'");
+	});
+
+	it("redacts user-only userinfo", () => {
+		expect(valueFrom("auth required: redis://deploy@10.1.2.3:6379")).toBe(
+			"auth required: redis://<redacted>",
+		);
+	});
+
+	it("redacts a credential whose password contains a slash", () => {
+		// The userinfo run stops at `@`, not the first `/`, so a base64 /
+		// generated password with a `/` doesn't slip the redaction.
+		expect(valueFrom("connect failed: esdb://admin:p/a/ss@host:2113/db")).toBe(
+			"connect failed: esdb://<redacted>/db",
+		);
+	});
+
+	it("keeps a multi-segment path after the redaction (later rules don't eat it)", () => {
+		expect(valueFrom("esdb://u:p@host:2113/a/b/c down")).toBe(
+			"esdb://<redacted>/a/b/c down",
+		);
+	});
+
+	it("redacts every host of a comma-separated multi-host connection string", () => {
+		// KurrentDB cluster DSNs list gossip seeds comma-separated. The host
+		// run must consume through the commas so a later seed isn't left
+		// exposed; stopping at the first comma would leak node2/node3.
+		expect(
+			valueFrom(
+				"gossip failed: esdb://admin:changeit@node1:2113,node2:2113,node3:2113?tls=true",
+			),
+		).toBe("gossip failed: esdb://<redacted>");
+	});
+
+	it("leaves a credential-less URL intact", () => {
+		expect(valueFrom("request to https://gaffer.kurrent.io/docs failed")).toBe(
+			"request to https://gaffer.kurrent.io/docs failed",
+		);
+	});
+
+	it("does not treat a bare email or scp-style git remote as a connection string", () => {
+		expect(valueFrom("contact admin@example.com for access")).toBe(
+			"contact admin@example.com for access",
+		);
+		expect(valueFrom("clone failed: git@github.com:org/repo.git")).toBe(
+			"clone failed: git@github.com:org/repo.git",
+		);
 	});
 });

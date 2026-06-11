@@ -15,6 +15,7 @@ func (s *Server) startLiveSubscription(sess *activeSession, cfg *config.Config, 
 
 	ctx, cancel := context.WithCancel(context.Background())
 	sess.cancel = cancel
+	sess.live = true
 	sess.runner.SetStatus("running")
 
 	if sess.caughtUpCh == nil {

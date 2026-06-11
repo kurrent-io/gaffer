@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -46,11 +47,43 @@ func (s *Server) waitForBreak(ctx context.Context, sess *activeSession, timeout 
 			return waitResult{err: err}
 
 		case <-timer.C:
+			// select picks a ready case at random, so the timer can win
+			// even when a terminal signal is also ready. Re-check before
+			// reporting a timeout for a run that actually finished, caught
+			// up, or errored.
+			if wr, ok := terminalSignal(sess); ok {
+				return wr
+			}
 			return waitResult{err: context.DeadlineExceeded}
 
 		case <-ctx.Done():
+			if wr, ok := terminalSignal(sess); ok {
+				return wr
+			}
 			return waitResult{err: ctx.Err()}
 		}
+	}
+}
+
+// terminalSignal does a non-blocking check of the break / done / caughtUp /
+// error channels, returning (result, true) if any has already fired. The
+// timer and ctx cases use it so a simultaneously-ready terminal signal wins
+// over a timeout or cancellation.
+func terminalSignal(sess *activeSession) (waitResult, bool) {
+	select {
+	case info := <-sess.breakCh:
+		return waitResult{breakInfo: &info}, true
+	case <-sess.done:
+		if sess.runner.Faulted() {
+			return waitResult{err: sess.runner.LastError()}, true
+		}
+		return waitResult{completed: true}, true
+	case <-sess.caughtUpCh:
+		return waitResult{caughtUp: true}, true
+	case err := <-sess.errorCh:
+		return waitResult{err: err}, true
+	default:
+		return waitResult{}, false
 	}
 }
 
@@ -89,10 +122,11 @@ func (s *Server) handleWaitResult(sess *activeSession, wr waitResult) (*mcp.Call
 		return toolResult(summary), nil, nil
 	}
 
-	if wr.err == context.DeadlineExceeded {
-		return toolError("timed out waiting for breakpoint"), nil, nil
+	if errors.Is(wr.err, context.DeadlineExceeded) {
+		return toolError("%s (processed %d events); the session is still running, inspect it with get_state/get_timeline or end it with stop",
+			timeoutCondition(sess), sess.handled()), nil, nil
 	}
-	if wr.err == context.Canceled {
+	if errors.Is(wr.err, context.Canceled) {
 		return toolError("cancelled"), nil, nil
 	}
 	if wr.err != nil {
@@ -103,6 +137,21 @@ func (s *Server) handleWaitResult(sess *activeSession, wr waitResult) (*mcp.Call
 	}
 
 	return toolError("unexpected state"), nil, nil
+}
+
+// timeoutCondition names what the run was actually waiting for when it timed
+// out, so the message doesn't mention a breakpoint that was never requested.
+// A live run waits to catch up; a debug run waits for a breakpoint; a live
+// debug run waits for either.
+func timeoutCondition(sess *activeSession) string {
+	switch {
+	case sess.live && sess.debug:
+		return "timed out before catching up to the head of the stream or hitting a breakpoint"
+	case sess.live:
+		return "timed out before catching up to the head of the stream"
+	default:
+		return "timed out waiting for a breakpoint"
+	}
 }
 
 var evaluateTool = &mcp.Tool{

@@ -1062,6 +1062,28 @@ func TestResolveRange(t *testing.T) {
 	}
 }
 
+// --- timeout message ---
+
+func TestTimeoutCondition(t *testing.T) {
+	tests := []struct {
+		name        string
+		live, debug bool
+		want        string
+	}{
+		{"live, no breakpoint", true, false, "timed out before catching up to the head of the stream"},
+		{"live with breakpoint", true, true, "timed out before catching up to the head of the stream or hitting a breakpoint"},
+		{"fixture debug", false, true, "timed out waiting for a breakpoint"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := timeoutCondition(&activeSession{live: tt.live, debug: tt.debug})
+			if got != tt.want {
+				t.Errorf("timeoutCondition(live=%v, debug=%v) = %q, want %q", tt.live, tt.debug, got, tt.want)
+			}
+		})
+	}
+}
+
 // --- Info ---
 
 func TestInfo_ExplicitName(t *testing.T) {

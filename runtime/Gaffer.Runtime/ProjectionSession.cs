@@ -383,16 +383,20 @@ public sealed class ProjectionSession : IDisposable {
 	/// post-handler state directly - V2 doesn't iterate transforms. Returns
 	/// null for unknown partitions.
 	/// </summary>
-	/// <exception cref="ProjectionTransformException">V1 only - thrown if a registered <c>transformBy</c>/<c>filterBy</c> function throws. V2 doesn't invoke transforms, so this never fires under V2.</exception>
+	/// <exception cref="ProjectionTransformException">Thrown if a registered <c>transformBy</c>/<c>filterBy</c> function throws (V1 only - V2 doesn't invoke transforms), or if reloading the partition's state fails for either version (e.g. a faulted session).</exception>
 	public string? GetResult(string? partition = null) {
 		var key = partition ?? "";
 		if (!_stateCache.ContainsKey(key))
 			return null;
-		LoadPartitionState(key);
-		if (_sharedStateInitialized)
-			LoadSharedState();
 		try {
-			return TransformResult();
+			// Reload state inside TransformResult's try (passed as preload) so a load-step
+			// exception - a faulted session, a malformed cached state, a re-run $init - gets the
+			// same mapping as a transform throw rather than leaking raw. Mirrors Feed.
+			return TransformResult(() => {
+				LoadPartitionState(key);
+				if (_sharedStateInitialized)
+					LoadSharedState();
+			});
 		} catch (ProjectionException ex) {
 			// Standalone result query (no event in flight), so attach only the throwing quirk -
 			// not _pendingDiagnostics, which would be stale from the last Feed. The event path's
@@ -405,9 +409,12 @@ public sealed class ProjectionSession : IDisposable {
 		}
 	}
 
-	private string? TransformResult() {
+	private string? TransformResult(Action? preload = null) {
 		try {
+			preload?.Invoke();
 			return _handler.TransformStateToResult();
+		} catch (OperationCanceledException) {
+			throw;
 		} catch (JavaScriptException ex) {
 			int? line = ex.Location.Start.Line > 0 ? ex.Location.Start.Line : null;
 			int? column = line != null ? ex.Location.Start.Column : null;

@@ -81,13 +81,13 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
         with:
           dotnet-version: "10.x"
 
-      - uses: extractions/setup-just@v4
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
 
       - name: Publish runtime (NativeAOT, ${{ matrix.rid }})
         run: just runtime publish ${{ matrix.rid }}
@@ -95,7 +95,7 @@ jobs:
       - name: Copy binary into native package
         run: just bindings::js-${{ matrix.platform }}::build
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: runtime-native-${{ matrix.platform }}
           path: bindings/js/native/${{ matrix.platform }}/gaffer.${{ matrix.ext }}
@@ -111,11 +111,11 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@d15e628ca66d93ee5f352c71671a7bc6a97af5c9 # v6.0.8
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -130,7 +130,7 @@ jobs:
         # strips to just the basename (common-ancestor stripping, stable
         # across action majors), so we can't rely on the directory
         # structure inside the artifact (that's the 0.1.0 publish bug).
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: runtime-native-*
           path: artifacts
@@ -186,18 +186,18 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
         with:
           dotnet-version: "10.x"
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version-file: go.work
           cache-dependency-path: cli/go.sum
 
-      - uses: extractions/setup-just@v4
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
 
       - name: Publish runtime (NativeAOT, ${{ matrix.rid }})
         run: just runtime publish ${{ matrix.rid }}
@@ -220,7 +220,7 @@ jobs:
       - name: Stage CLI + runtime into native package
         run: just cli::${{ matrix.platform }}::build
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cli-native-${{ matrix.platform }}
           path: |
@@ -238,11 +238,11 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@d15e628ca66d93ee5f352c71671a7bc6a97af5c9 # v6.0.8
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -257,7 +257,7 @@ jobs:
         # to the common parent (stable across action majors), so files
         # inside each artifact are flat (gaffer + Gaffer.Runtime.<ext>,
         # no directory).
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: cli-native-*
           path: artifacts
@@ -296,11 +296,11 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@d15e628ca66d93ee5f352c71671a7bc6a97af5c9 # v6.0.8
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -326,16 +326,16 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@d15e628ca66d93ee5f352c71671a7bc6a97af5c9 # v6.0.8
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 22
           cache: pnpm
 
-      - uses: extractions/setup-just@v4
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -356,16 +356,16 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@d15e628ca66d93ee5f352c71671a7bc6a97af5c9 # v6.0.8
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 22
           cache: pnpm
 
-      - uses: extractions/setup-just@v4
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -380,11 +380,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@d15e628ca66d93ee5f352c71671a7bc6a97af5c9 # v6.0.8
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -415,19 +415,19 @@ jobs:
 
       - name: Upload .vsix artifact (dry-run validation)
         if: ${{ inputs.dry_run }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: gaffer-vscode-extension
           path: ${{ steps.vsix.outputs.path }}
           if-no-files-found: error
 
-      # HaaLeo/publish-vscode-extension@v2 with `skipDuplicate: true`
+      # publish-vscode-extension with `skipDuplicate: true`
       # fails silently when the marketplace already has this version,
       # so re-firing this workflow without a version bump in
       # `editors/vscode/package.json` is a no-op rather than an error.
       - name: Publish to Open VSX
         if: ${{ !inputs.dry_run }}
-        uses: HaaLeo/publish-vscode-extension@v2
+        uses: HaaLeo/publish-vscode-extension@ca5561daa085dee804bf9f37fe0165785a9b14db # v2.0.0
         with:
           pat: ${{ secrets.OPEN_VSX_TOKEN }}
           extensionFile: ${{ steps.vsix.outputs.path }}
@@ -435,7 +435,7 @@ jobs:
 
       - name: Publish to Visual Studio Marketplace
         if: ${{ !inputs.dry_run }}
-        uses: HaaLeo/publish-vscode-extension@v2
+        uses: HaaLeo/publish-vscode-extension@ca5561daa085dee804bf9f37fe0165785a9b14db # v2.0.0
         with:
           pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
           registryUrl: https://marketplace.visualstudio.com

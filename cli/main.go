@@ -158,21 +158,30 @@ func runMain() (exitCode int) {
 	return 0
 }
 
-// startupEnvRoot picks the project root whose .env to load at startup.
-// It honours the mcp project override (--project / GAFFER_PROJECT), so a
-// server launched outside its project still loads that project's .env
+// startupEnvRoot picks the project root whose base .env is auto-loaded at
+// startup. It honours the mcp project override (--project / GAFFER_PROJECT),
+// so a server launched outside its project still loads that project's .env
 // before opt-out and update-check read the environment; otherwise it
-// discovers the root from the working directory. Returns "" when no
-// project is in scope.
+// discovers the root from the working directory. Returns "" when no project
+// is in scope.
+//
+// The walk stops at $HOME, mirroring the telemetry opt-out walk, so a stray
+// gaffer.toml in a shared ancestor above your home (e.g. /home on a
+// multi-user host, or /) isn't picked up and its .env - which may carry
+// KURRENTDB credentials - isn't made ambient for every invocation below it.
+// The bound only bites while working under $HOME; an undeterminable home, or
+// a cwd outside it, falls back to an unbounded walk, matching prior
+// behaviour and the telemetry walk.
 func startupEnvRoot() string {
+	home, _ := os.UserHomeDir()
 	if override := cmd.PeekProjectOverride(os.Args[1:]); override != "" {
-		return project.FindRootFrom(override)
+		return project.FindRootFromBounded(override, home)
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return ""
 	}
-	return project.FindRootFrom(cwd)
+	return project.FindRootFromBounded(cwd, home)
 }
 
 // buildClient resolves opt-out and identity from the user's config
@@ -195,7 +204,9 @@ func buildClient(noticeOut io.Writer, invocation telemetry.Invocation) *telemetr
 	}
 	cwd, _ := os.Getwd()
 	home, _ := os.UserHomeDir()
-	projectRoot := project.FindRootFrom(cwd)
+	// Bounded at $HOME like the .env loader and opt-out walk, so a stray
+	// gaffer.toml above home doesn't set this run's project_id.
+	projectRoot := project.FindRootFromBounded(cwd, home)
 	return telemetry.StartupGate(store, cwd, home, projectRoot, noticeOut, invocation,
 		telemetry.WithUserAgent(userAgent()),
 		telemetry.WithLibVersion(cmd.Version),

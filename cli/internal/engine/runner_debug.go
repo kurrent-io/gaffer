@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"errors"
 	"fmt"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -86,44 +85,15 @@ func (r *Runner) StepOut() error {
 	return r.doStep(func() error { return r.debug.Session.StepOut() })
 }
 
-// Unblock releases the JS thread if it's paused at a breakpoint so a
-// blocked ProcessOne can return. Use this on cancellation paths where
-// the caller needs the source loop to exit but still wants to read
-// state, write a summary, etc. against a live session afterwards.
-//
-// Safe to call when no breakpoints are set or the runner isn't paused.
-// Safe to call when debug is disabled (no-op).
-//
-// Best-effort: it always attempts the Continue that actually releases a paused
-// Feed even if clearing breakpoints failed, and joins both errors. Cancellation
-// and teardown callers generally ignore the result - the session is going away -
-// but it's returned rather than swallowed so a caller that cares can see it.
-func (r *Runner) Unblock() error {
-	if r.debug == nil {
-		return nil
-	}
-	// Clear paused before resuming, like doStep and Drain, so a later
-	// Paused() read (the DAP adapter's ensurePaused guard, a follow-up
-	// Destroy->Unblock) doesn't see a stale true and act on an already
-	// running engine.
-	r.mu.Lock()
-	wasPaused := r.paused
-	r.paused = false
-	r.mu.Unlock()
-	clearErr := r.debug.Session.ClearBreakpoints()
-	var contErr error
-	if wasPaused {
-		contErr = r.debug.Session.Continue()
-	}
-	return errors.Join(clearErr, contErr)
-}
-
-// Drain forces a debugging session to run to completion so a Feed blocked
-// at a breakpoint or the break_at pause can return. Unlike Unblock it is
-// terminal: it sets the draining flag, so any break that fires afterwards -
+// Drain releases a Feed blocked at a breakpoint or the break_at pause so it
+// can run to completion and the feed goroutine can exit. It is terminal: it
+// sets the draining flag under the lock, so any break that fires afterwards -
 // including the asynchronous step the break_at pause converts into, or one
-// armed just as teardown begins - resumes immediately instead of re-parking
-// the engine. Callers use it before waiting for the feed goroutine to exit.
+// armed concurrently just as teardown begins - resumes immediately instead of
+// re-parking the engine. That closes the window a plain "clear + continue if
+// paused" leaves open. Callers use it on cancellation/teardown paths, before
+// waiting for the feed goroutine to exit; the session stays readable (state,
+// summary) afterwards, it just no longer pauses.
 //
 // Safe to call when debug is disabled (no-op) or no breakpoint is set.
 func (r *Runner) Drain() {
@@ -134,8 +104,9 @@ func (r *Runner) Drain() {
 	r.draining = true
 	r.breakAtStep = 0
 	wasPaused := r.paused
-	// Clear paused now we're resuming, so a later Paused() read (e.g.
-	// Destroy -> Unblock) doesn't issue a second, spurious Continue.
+	// Clear paused now we're resuming, so a later Paused() read (e.g. the DAP
+	// adapter's ensurePaused guard, or a follow-up Drain) doesn't see a stale
+	// true and act on an already running engine.
 	r.paused = false
 	r.mu.Unlock()
 
@@ -151,7 +122,7 @@ func (r *Runner) Drain() {
 }
 
 func (r *Runner) Destroy() {
-	_ = r.Unblock()
+	r.Drain()
 	if r.session != nil {
 		r.session.Destroy()
 	}

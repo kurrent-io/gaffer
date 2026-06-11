@@ -644,10 +644,10 @@ func runDevDebug(
 				default:
 				}
 				innerCancel()
-				_ = r.Unblock()
+				r.Drain()
 			case <-ctx.Done():
 				innerCancel()
-				_ = r.Unblock()
+				r.Drain()
 			case <-iterDone:
 				// source.Run returned naturally; nothing to do.
 			}

@@ -21,8 +21,8 @@
 	],
 	"scripts": {
 		"build": "tsc",
-		"test": "GAFFER_RUNTIME_DEV=1 vitest run",
-		"test:integration": "GAFFER_RUNTIME_DEV=1 vitest run --config vitest.integration.config.ts",
+		"test": "vitest run",
+		"test:integration": "vitest run --config vitest.integration.config.ts",
 		"check": "tsc --noEmit && eslint . && prettier --check .",
 		"fix": "eslint --fix . && prettier --write ."
 	},

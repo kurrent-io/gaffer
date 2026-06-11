@@ -6,5 +6,10 @@ export default defineConfig({
 		// Tests load a NativeAOT shared library via koffi; the cold start
 		// can take several seconds on CI runners.
 		testTimeout: 30_000,
+		// Opt into the dev source-tree library fallback (see findDevLibPath):
+		// the workspace ships no prebuilt binary, so tests load the runtime
+		// built in the source tree. Set here, not inline in the npm script, so
+		// it works on every platform.
+		env: { GAFFER_RUNTIME_DEV: "1" },
 	},
 });

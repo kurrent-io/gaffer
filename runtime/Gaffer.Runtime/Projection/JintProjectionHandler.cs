@@ -25,6 +25,32 @@ namespace Gaffer.Runtime.Projection;
 
 internal sealed class JintProjectionHandler : IDisposable {
 	private static readonly Stopwatch Sw = Stopwatch.StartNew();
+
+	// Sandbox guardrails against hostile or buggy projection code. Without these a
+	// runaway script raises an uncatchable StackOverflowException (or OOMs the host)
+	// before the time constraint can fire.
+	//
+	// LimitRecursion bounds per-call-site recursion and raises a catchable
+	// RecursionDepthOverflowException, catching the common `function f(){f()}` bomb as well
+	// as mutual recursion through fixed call sites. We deliberately do NOT use Jint's
+	// StackGuard (MaxExecutionStackCount): when native stack runs low it spills execution
+	// onto a fresh thread (RunOnEmptyStack) and blocks waiting for it. The runtime is hosted
+	// in-process via FFI (koffi/cgo) on small-stack caller threads where that spill triggers
+	// immediately and deadlocks the host. See reference_jint_resource_limits.
+	//
+	// 64 mirrors the JSON parse depth cap and sits well below native stack capacity on every
+	// host - including small-stack FFI threads - so the overflow throws cleanly before the
+	// native stack is exhausted. It bounds same-call-site recursion, not total call depth;
+	// legitimate projection recursion is shallow (event JSON is itself capped at depth 64).
+	private const int MaxRecursionDepth = 64;
+
+	// Bounds cumulative allocation per handler invocation (reset before each call via
+	// _engine.Constraints.Reset()). Checked at statement boundaries, so it catches
+	// iterative/accumulating allocation; a single huge native allocation completes before
+	// the check fires and trips it on the next statement. 256 MiB is a deliberately generous
+	// ceiling: real handlers allocate KB-MB per event, so it only trips on runaway growth.
+	private const long MaxAllocatedBytesPerOperation = 256L * 1024 * 1024;
+
 	private readonly Engine _engine;
 	private readonly SourceDefinitionBuilder _definitionBuilder;
 	private readonly ProjectionRuntime _runtime;
@@ -122,7 +148,10 @@ internal sealed class JintProjectionHandler : IDisposable {
 		if (debug)
 			_timeConstraint.Disabled = true;
 		_engine = new Engine(opts => {
-			opts.Constraint(_timeConstraint).DisableStringCompilation();
+			opts.Constraint(_timeConstraint)
+				.DisableStringCompilation()
+				.LimitMemory(MaxAllocatedBytesPerOperation)
+				.LimitRecursion(MaxRecursionDepth);
 			if (debug) {
 				opts.Debugger.Enabled = true;
 				opts.Debugger.StatementHandling = DebuggerStatementHandling.Script;

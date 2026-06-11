@@ -26,6 +26,20 @@ func (s *Server) handleGetTimeline(_ context.Context, _ *mcp.CallToolRequest, in
 		return errResult, nil, nil
 	}
 
+	_, maxStep, err := sess.runner.HistoryRange()
+	if err != nil {
+		return toolError("querying timeline: %v", err), nil, nil
+	}
+	if maxStep == 0 {
+		// No steps recorded - e.g. a live run that caught up or timed out
+		// without processing an event. Report it plainly instead of
+		// returning a bare empty range.
+		return toolResult(map[string]any{
+			"entries": []any{},
+			"message": "No timeline recorded for this session.",
+		}), nil, nil
+	}
+
 	from, to := s.resolveRange(input.From, input.To)
 
 	entries, err := sess.runner.TimelineFiltered(from, to, input.Partition)

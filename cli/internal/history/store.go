@@ -57,6 +57,14 @@ func NewWithLimit(maxSteps int) (*Store, error) {
 		return nil, fmt.Errorf("history: open: %w", err)
 	}
 
+	// Pin the pool to a single connection. A ":memory:" database is private
+	// to its connection, so the schema created below and every row inserted
+	// later must live on the same one. Without this the pool can hand a
+	// query a second, empty connection - which fails with "no such table:
+	// steps". It surfaces under concurrent access: a live subscription keeps
+	// inserting on one connection while a get_timeline call opens another.
+	db.SetMaxOpenConns(1)
+
 	if _, err := db.Exec(`
 		CREATE TABLE steps (
 			step        INTEGER PRIMARY KEY AUTOINCREMENT,

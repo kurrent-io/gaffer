@@ -23,6 +23,16 @@ const MAX_BODY_BYTES = 1024 * 1024;
 // staging override) can't silently send the API key to a different host.
 const ALLOWED_POSTHOG_HOSTS = ["https://eu.i.posthog.com"];
 
+// Throttle the rate-limit drop log to at most once per isolate per window.
+// The drop is the designed response to a flood, so logging every shed request
+// would re-add the cost/log-amplification vector the limit exists to remove -
+// while we still want enough signal in `wrangler tail` to see the limiter is
+// firing. `lastRateLimitLogAt` is per-isolate best-effort, which is fine: a
+// flood concentrates on a few isolates per colo, collapsing N drops into one
+// log line per window.
+const RATE_LIMIT_LOG_INTERVAL_MS = 60 * 1000;
+let lastRateLimitLogAt = 0;
+
 export async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 	// Per-source rate limit, checked before any body read so a flood is shed
 	// at minimal cost. `/v1/ingest` is public and unauthenticated (telemetry
@@ -42,7 +52,11 @@ export async function handleIngest(request: Request, env: Env, ctx: ExecutionCon
 		console.error("rate limiter unavailable, allowing:", err);
 	}
 	if (!allowed) {
-		console.error("drop: rate limit exceeded");
+		const now = Date.now();
+		if (now - lastRateLimitLogAt > RATE_LIMIT_LOG_INTERVAL_MS) {
+			lastRateLimitLogAt = now;
+			console.error("drop: rate limit exceeded");
+		}
 		return ok();
 	}
 

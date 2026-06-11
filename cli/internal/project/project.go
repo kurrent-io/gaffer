@@ -37,5 +37,15 @@ func FindRoot() string {
 // FindRootFrom walks up from the given directory looking for gaffer.toml.
 // Returns the directory containing it, or empty string if not found.
 func FindRootFrom(dir string) string {
-	return pathutil.WalkUpFor(dir, ConfigFileName, "")
+	return FindRootFromBounded(dir, "")
+}
+
+// FindRootFromBounded is FindRootFrom with an upper bound: the walk stops
+// before inspecting stopAt, so a stray gaffer.toml at or above stopAt (e.g.
+// $HOME, or a world-writable /tmp on a shared host) is never treated as the
+// project root. An empty stopAt is unbounded (walks to the filesystem root).
+// Used for the startup .env auto-load, which would otherwise pull a stray
+// ancestor's secrets into every invocation.
+func FindRootFromBounded(dir, stopAt string) string {
+	return pathutil.WalkUpFor(dir, ConfigFileName, stopAt)
 }

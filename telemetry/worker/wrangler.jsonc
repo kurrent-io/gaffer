@@ -38,9 +38,10 @@
 				},
 			],
 			// Per-IP rate limit on /v1/ingest. Edge-local (per-colo) counter,
-			// no storage cost. `namespace_id` is an arbitrary per-worker
-			// identifier for the counter; staging and production are separate
-			// workers, so reusing the same value keeps them isolated.
+			// no storage cost. `namespace_id` is account-scoped and counters
+			// are shared by any binding using the same id (even across
+			// workers), so staging and production MUST use distinct ids to
+			// keep their budgets isolated. Staging = 1001, production = 1002.
 			"ratelimits": [
 				{
 					"name": "INGEST_RATE_LIMITER",
@@ -76,11 +77,13 @@
 					"migrations_dir": "migrations",
 				},
 			],
-			// Per-IP rate limit on /v1/ingest. See the staging env note.
+			// Per-IP rate limit on /v1/ingest. Distinct namespace_id from
+			// staging (account-scoped, shared counters) - see the staging
+			// env note.
 			"ratelimits": [
 				{
 					"name": "INGEST_RATE_LIMITER",
-					"namespace_id": "1001",
+					"namespace_id": "1002",
 					"simple": { "limit": 100, "period": 60 },
 				},
 			],

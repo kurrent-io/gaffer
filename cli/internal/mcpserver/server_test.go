@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
@@ -681,6 +682,45 @@ func TestStop_WhilePaused(t *testing.T) {
 
 	// Session should be gone
 	callToolExpectError(t, s.handleGetStep, getStepInput{Step: 1})
+}
+
+// TestConcurrentRunStop exercises the session-teardown races: a run
+// handler parked at a breakpoint while a concurrent stop/run tears the
+// session down. Before the fix, closeSession dropped s.mu and re-read the
+// shared s.session (nil-deref / double-Destroy), and the parked handler
+// woke to call into the destroyed native session (a process-fatal panic).
+// The handlers are invoked directly here, so the trackedTool recover
+// backstop is not in play - a residual panic surfaces through the per-
+// goroutine recover. Run with -race to also catch the s.session data race.
+func TestConcurrentRunStop(t *testing.T) {
+	s := setupTestProject(t)
+
+	guard := func(fn func()) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("handler panicked: %v", r)
+			}
+		}()
+		fn()
+	}
+	run := func(in runInput) {
+		guard(func() { _, _, _ = s.handleRun(context.Background(), nil, in) })
+	}
+	stop := func() {
+		guard(func() { _, _, _ = s.handleStop(context.Background(), nil, stopInput{}) })
+	}
+
+	for i := 0; i < 100; i++ {
+		var wg sync.WaitGroup
+		wg.Add(3)
+		go func() {
+			defer wg.Done()
+			run(runInput{Name: "order-count", Events: "fixtures/orders.json", BreakAt: 2})
+		}()
+		go func() { defer wg.Done(); run(runInput{Name: "order-count", Events: "fixtures/orders.json"}) }()
+		go func() { defer wg.Done(); stop() }()
+		wg.Wait()
+	}
 }
 
 // --- Resources ---

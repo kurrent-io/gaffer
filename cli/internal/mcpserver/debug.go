@@ -58,6 +58,15 @@ func (s *Server) waitForBreak(ctx context.Context, sess *activeSession, timeout 
 // If a breakpoint was hit, returns the debug context. Otherwise returns
 // status information. Must be called with s.mu held.
 func (s *Server) handleWaitResult(sess *activeSession, wr waitResult) (*mcp.CallToolResult, any, error) {
+	// A concurrent stop/run may have torn down or replaced the session
+	// while this handler was parked in waitForBreak (which releases s.mu).
+	// s.session no longer pointing at sess means our runner was destroyed;
+	// touching it would panic on the destroyed native session. Bail with a
+	// clean error instead.
+	if s.session != sess {
+		return toolError("session was stopped"), nil, nil
+	}
+
 	if wr.breakInfo != nil {
 		debugContext := s.collectDebugContext(sess, *wr.breakInfo)
 		debugContext["paused"] = true

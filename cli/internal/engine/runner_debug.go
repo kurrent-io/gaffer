@@ -77,6 +77,36 @@ func (r *Runner) Unblock() {
 	}
 }
 
+// Drain forces a debugging session to run to completion so a Feed blocked
+// at a breakpoint or the break_at pause can return. Unlike Unblock it is
+// terminal: it sets the draining flag, so any break that fires afterwards -
+// including the asynchronous step the break_at pause converts into, or one
+// armed just as teardown begins - resumes immediately instead of re-parking
+// the engine. Callers use it before waiting for the feed goroutine to exit.
+//
+// Safe to call when debug is disabled (no-op) or no breakpoint is set.
+func (r *Runner) Drain() {
+	if r.debug == nil {
+		return
+	}
+	r.mu.Lock()
+	r.draining = true
+	r.breakAtStep = 0
+	wasPaused := r.paused
+	// Clear paused now we're resuming, so a later Paused() read (e.g.
+	// Destroy -> Unblock) doesn't issue a second, spurious Continue.
+	r.paused = false
+	r.mu.Unlock()
+
+	r.debug.Session.ClearBreakpoints()
+	// Resume an engine already parked at a break. A break that lands after
+	// this (the in-flight step from a break_at pause) is resumed by the
+	// draining branch in the OnBreak handler instead.
+	if wasPaused {
+		r.debug.Session.Continue()
+	}
+}
+
 func (r *Runner) Destroy() {
 	r.Unblock()
 	if r.session != nil {

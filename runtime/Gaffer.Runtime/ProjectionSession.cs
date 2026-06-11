@@ -383,15 +383,17 @@ public sealed class ProjectionSession : IDisposable {
 	/// post-handler state directly - V2 doesn't iterate transforms. Returns
 	/// null for unknown partitions.
 	/// </summary>
-	/// <exception cref="ProjectionTransformException">V1 only - thrown if a registered <c>transformBy</c>/<c>filterBy</c> function throws. V2 doesn't invoke transforms, so this never fires under V2.</exception>
+	/// <exception cref="ProjectionTransformException">Thrown if a registered <c>transformBy</c>/<c>filterBy</c> function throws (V1 only - V2 doesn't invoke transforms), or if reloading the partition's state fails for either version (e.g. a faulted session).</exception>
 	public string? GetResult(string? partition = null) {
 		var key = partition ?? "";
 		if (!_stateCache.ContainsKey(key))
 			return null;
-		LoadPartitionState(key);
-		if (_sharedStateInitialized)
-			LoadSharedState();
 		try {
+			// Inside the try (like Feed): state reload runs the fault check and parses cached
+			// state, so its exceptions must be wrapped too rather than leaking raw.
+			LoadPartitionState(key);
+			if (_sharedStateInitialized)
+				LoadSharedState();
 			return TransformResult();
 		} catch (ProjectionException ex) {
 			// Standalone result query (no event in flight), so attach only the throwing quirk -
@@ -402,6 +404,11 @@ public sealed class ProjectionSession : IDisposable {
 			if (thrown != null)
 				ex.Diagnostics = new[] { thrown };
 			throw;
+		} catch (Exception ex) when (ex is not ProjectionException) {
+			throw new ProjectionTransformException(ex.Message, innerException: ex) {
+				ProjectionSource = _source,
+				CompatCode = ExtractCompatCode(ex),
+			};
 		}
 	}
 

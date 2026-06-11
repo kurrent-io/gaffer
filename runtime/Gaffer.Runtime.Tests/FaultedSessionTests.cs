@@ -47,7 +47,8 @@ public class FaultedSessionTests {
 		session.OnEmit = _ => throw new Exception("sink down");
 		Assert.ThrowsAny<Exception>(() => session.Feed(Event(2)));
 
-		// The result path reloads state and runs transforms; a faulted session must refuse it.
-		Assert.Throws<InvalidOperationException>(() => session.GetResult());
+		// The result path reloads state and runs transforms; a faulted session must refuse it,
+		// surfaced as a wrapped projection error rather than a raw exception.
+		Assert.Throws<ProjectionTransformException>(() => session.GetResult());
 	}
 }

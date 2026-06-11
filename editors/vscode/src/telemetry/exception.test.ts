@@ -308,3 +308,112 @@ describe("buildException", () => {
 		expect(out.properties.exceptions[0]?.in_app).toBe(false);
 	});
 });
+
+describe("buildException path scrubbing", () => {
+	function valueFrom(message: string, err?: unknown): string {
+		const out = buildException({
+			err:
+				err ??
+				makeError({
+					message,
+					stack: `    at f (${EXT_PATH}/dist/extension.js:1:1)`,
+				}),
+			phase: "event_processing",
+			extensionPath: EXT_PATH,
+			workspaceFolders: [],
+		});
+		return out.properties.exceptions[0]?.value ?? "";
+	}
+
+	it("scrubs a quoted POSIX absolute path from a Node fs error", () => {
+		expect(
+			valueFrom(
+				"EACCES: permission denied, stat '/home/george/project/secret/gaffer.toml'",
+			),
+		).toBe("EACCES: permission denied, stat '<path>'");
+	});
+
+	it("scrubs a quoted path containing spaces in full (no tail leak)", () => {
+		expect(
+			valueFrom(
+				"EACCES: permission denied, open '/Users/jane/My Project/gaffer.toml'",
+			),
+		).toBe("EACCES: permission denied, open '<path>'");
+	});
+
+	it("does not clip a URL scheme as a Windows drive path", () => {
+		expect(valueFrom("request to https://eu.i.posthog.com/batch failed")).toBe(
+			"request to https://eu.i.posthog.com/batch failed",
+		);
+	});
+
+	it("scrubs a Windows drive-letter path", () => {
+		expect(
+			valueFrom(
+				"EPERM: operation not permitted, open 'C:\\Users\\George\\AppData\\gaffer.toml'",
+			),
+		).toBe("EPERM: operation not permitted, open '<path>'");
+	});
+
+	it("scrubs a UNC path", () => {
+		expect(
+			valueFrom(
+				String.raw`open failed for \\fileserver\share\secret\gaffer.toml`,
+			),
+		).toBe("open failed for <path>");
+	});
+
+	it("scrubs a file:// URL", () => {
+		expect(
+			valueFrom(
+				"failed to import file:///home/george/My%20Proj/gaffer.toml at runtime",
+			),
+		).toBe("failed to import <path> at runtime");
+	});
+
+	it("scrubs a quoted file:// URL containing spaces in full", () => {
+		expect(
+			valueFrom("Cannot find module 'file:///home/jane/My Proj/x.js'"),
+		).toBe("Cannot find module '<path>'");
+	});
+
+	it("scrubs a home-relative path", () => {
+		expect(valueFrom("cannot open ~/projects/secret/gaffer.toml")).toBe(
+			"cannot open <path>",
+		);
+	});
+
+	it("strips an unquoted path only to the first space (documented best-effort)", () => {
+		// Unquoted paths with spaces can't be bounded without eating trailing
+		// prose, so the tail after the first space survives. The quoted rule
+		// covers the common fs-error shape; Linux usernames can't contain
+		// spaces and Node quotes paths in fs errors, so this is the residual.
+		expect(valueFrom("see /tmp/My Cache/file for details")).toBe(
+			"see <path> Cache/file for details",
+		);
+	});
+
+	it("scrubs every path in a multi-path message", () => {
+		expect(valueFrom("copy from '/a/b/c' to '/d/e/f' failed")).toBe(
+			"copy from '<path>' to '<path>' failed",
+		);
+	});
+
+	it("leaves an in-word slash alone (not a path)", () => {
+		expect(valueFrom("merge conflict in read/write mode")).toBe(
+			"merge conflict in read/write mode",
+		);
+	});
+
+	it("leaves a message with no path untouched", () => {
+		expect(
+			valueFrom("Cannot read properties of undefined (reading 'foo')"),
+		).toBe("Cannot read properties of undefined (reading 'foo')");
+	});
+
+	it("scrubs a path from a non-Error throwable", () => {
+		expect(
+			valueFrom("", "EACCES, open '/home/george/secret/gaffer.toml'"),
+		).toBe("EACCES, open '<path>'");
+	});
+});

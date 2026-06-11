@@ -134,7 +134,8 @@ internal sealed class JintProjectionHandler : IDisposable {
 		Action<EmittedEvent>? onEmit = null,
 		Action<Diagnostic>? onDiagnostic = null,
 		bool debug = false,
-		KurrentDbVersion? quirksVersion = null) {
+		KurrentDbVersion? quirksVersion = null,
+		long maxStateSizeBytes = ProjectionSessionOptions.DefaultMaxStateSizeBytes) {
 		_onLog = onLog;
 		_onEmit = onEmit;
 		_onDiagnostic = onDiagnostic;
@@ -160,7 +161,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 		_state = JsValue.Undefined;
 		_sharedState = JsValue.Undefined;
 		_runtime = new ProjectionRuntime(_engine, _definitionBuilder);
-		_serializer = new Serializer(_quirksVersion);
+		_serializer = new Serializer(_quirksVersion, maxStateSizeBytes);
 		_quirkContext = new QuirkContext {
 			OnDiagnostic = _onDiagnostic,
 			ToPersistedString = ConvertToStringHandlingNulls,
@@ -1732,12 +1733,14 @@ internal sealed class JintProjectionHandler : IDisposable {
 		private readonly Utf8JsonWriter _writer;
 		private readonly Dictionary<string, JsonEncodedText> _knownPropertyNames;
 		private readonly bool _nonFiniteWritesNull;
+		private readonly long _maxStateSizeBytes;
 		private int _depth;
 
-		public Serializer(KurrentDbVersion? quirksVersion) {
+		public Serializer(KurrentDbVersion? quirksVersion, long maxStateSizeBytes) {
 			// The clean (post-fix) path writes JSON null for NaN/Infinity,
 			// matching JSON.stringify. The quirky path throws.
 			_nonFiniteWritesNull = !DiagnosticCatalog.SerializeNonFinite.FiresAt(quirksVersion);
+			_maxStateSizeBytes = maxStateSizeBytes;
 			_iterators = new WriteState[64];
 			_bufferWriter = new ArrayBufferWriter<byte>(1024 * 1024);
 			_writer = new Utf8JsonWriter(_bufferWriter, new JsonWriterOptions {
@@ -1760,12 +1763,30 @@ internal sealed class JintProjectionHandler : IDisposable {
 			else
 				_iterators[_depth] = new WriteState(value);
 
+			// Enforce the state-size budget DURING serialization. KurrentDB checks size
+			// post-serialize (CoreProjectionCheckpointManager); checking here also bounds inputs
+			// that are tiny in memory but expand without limit on serialize, which the late check
+			// would OOM before reaching. Write() checks after each primitive (a flat or sparse
+			// array/object floods the buffer inside one call); the loop checks after each step
+			// (a shared-reference DAG explodes through container nesting, returning each level).
 			ref var current = ref _iterators[0];
-			while (current.Write(_writer, ref _depth, _iterators, _knownPropertyNames, _nonFiniteWritesNull))
-				current = ref _iterators[_depth];
+			bool more;
+			do {
+				more = current.Write(_writer, ref _depth, _iterators, _knownPropertyNames, _nonFiniteWritesNull, _maxStateSizeBytes);
+				ThrowIfOversize(_writer, _maxStateSizeBytes);
+				if (more)
+					current = ref _iterators[_depth];
+			} while (more);
 
 			_writer.Flush();
 			return _bufferWriter.WrittenMemory;
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static void ThrowIfOversize(Utf8JsonWriter writer, long maxStateSizeBytes) {
+			if (writer.BytesCommitted + writer.BytesPending > maxStateSizeBytes)
+				throw new Errors.StateSerializationException(
+					$"State size exceeds the configured maximum of {maxStateSizeBytes} bytes", "", "", 0);
 		}
 
 		private struct WriteState {
@@ -1825,7 +1846,8 @@ internal sealed class JintProjectionHandler : IDisposable {
 			[MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
 			public bool Write(
 				Utf8JsonWriter writer, ref int depth, WriteState[] writeStates,
-				Dictionary<string, JsonEncodedText> knownPropertyNames, bool nonFiniteWritesNull) {
+				Dictionary<string, JsonEncodedText> knownPropertyNames, bool nonFiniteWritesNull,
+				long maxStateSizeBytes) {
 				switch (_type) {
 					case Type.Array:
 						if (_position == -1) { writer.WriteStartArray(); _position++; }
@@ -1838,6 +1860,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 								return true;
 							}
 							SerializePrimitive(value, writer, nonFiniteWritesNull);
+							ThrowIfOversize(writer, maxStateSizeBytes);
 						}
 						writer.WriteEndArray();
 						break;
@@ -1855,6 +1878,7 @@ internal sealed class JintProjectionHandler : IDisposable {
 								return true;
 							}
 							SerializePrimitive(value, writer, nonFiniteWritesNull);
+							ThrowIfOversize(writer, maxStateSizeBytes);
 						}
 						writer.WriteEndObject();
 						break;

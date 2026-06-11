@@ -101,6 +101,8 @@ export interface DatabaseConfig {
 	compilationTimeoutMs?: number;
 	/** Maximum time for JS handler execution per event in ms (default, overridden by projection config). Default: 5000. */
 	executionTimeoutMs?: number;
+	/** Maximum size in bytes of serialized projection state. Default: 16 MiB. */
+	maxStateSizeBytes?: number;
 }
 
 /** Options for configuring a projection session. */
@@ -244,6 +246,10 @@ export function toSessionOptions(options: ProjectionOptions): SessionOptions {
 	const compilationTimeoutMs = options.databaseConfig?.compilationTimeoutMs;
 	if (compilationTimeoutMs !== undefined) {
 		out.compilationTimeoutMs = compilationTimeoutMs;
+	}
+	const maxStateSizeBytes = options.databaseConfig?.maxStateSizeBytes;
+	if (maxStateSizeBytes !== undefined) {
+		out.maxStateSizeBytes = maxStateSizeBytes;
 	}
 	return out;
 }

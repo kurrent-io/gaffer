@@ -61,6 +61,7 @@ Options:
 - `databaseConfig` - database-wide settings
   - `compilationTimeoutMs` - max compilation time in ms (default 5000)
   - `executionTimeoutMs` - default max handler execution time in ms (default 5000)
+  - `maxStateSizeBytes` - max serialized projection state size in bytes (default 16 MiB)
 
 ### `projection.validate()`
 

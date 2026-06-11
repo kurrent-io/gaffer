@@ -609,6 +609,14 @@ describe("toSessionOptions", () => {
 		expect(out.quirksVersion).toBe("26.1.0");
 		expect(out.compilationTimeoutMs).toBe(1000);
 	});
+
+	it("maxStateSizeBytes forwards from databaseConfig", () => {
+		const out = toSessionOptions({
+			engineVersion: 2,
+			databaseConfig: { maxStateSizeBytes: 1024 },
+		});
+		expect(out.maxStateSizeBytes).toBe(1024);
+	});
 });
 
 describe("source filtering", () => {

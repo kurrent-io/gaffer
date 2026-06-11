@@ -760,6 +760,8 @@ internal static unsafe class NativeExports {
 				root.TryGetProperty("compilationTimeoutMs", out var ct) ? ct.GetInt32() : 5000),
 			ExecutionTimeout = TimeSpan.FromMilliseconds(
 				root.TryGetProperty("executionTimeoutMs", out var et) ? et.GetInt32() : 5000),
+			MaxStateSizeBytes = root.TryGetProperty("maxStateSizeBytes", out var ms)
+				? ms.GetInt64() : ProjectionSessionOptions.DefaultMaxStateSizeBytes,
 			Debug = root.TryGetProperty("debug", out var d) && d.GetBoolean(),
 			IncludeShape = root.TryGetProperty("includeShape", out var inc) && inc.GetBoolean(),
 		};

@@ -1,5 +1,25 @@
 # @kurrent/gaffer-runtime
 
+## 0.3.0
+
+### Minor Changes
+
+- 3a3a921: **Breaking:** a throw inside an `onEmit`, `onLog`, or `onStateChanged` callback now surfaces from the `feed`, `getResult`, or `getPartitionKey` call that triggered it, instead of being swallowed at the koffi FFI boundary where a consumer could silently lose events.
+- 7b1d552: **Breaking:** `setState` and the state getters now surface runtime errors instead of swallowing them. `setState` throws when the runtime rejects the state, where a failed restore was previously silent. `getState`, `getSharedState`, and `getPartitionKey` throw on a genuine runtime error (such as a throwing `partitionBy`) rather than returning `null`. A `null` result now means only not-seen or not-applicable. The native runtime also rejects a null state passed to `setState`.
+
+### Patch Changes
+
+- cc72aae: Clearing a bi-state projection's shared state now sticks. Previously, when a handler set the shared slot to `null`, the assignment was skipped and the prior value was reloaded on the next event, silently resurrecting shared state the handler had cleared. The shared slot now mirrors the partition slot and is assigned unconditionally.
+- c1e2d9b: A bi-state projection whose handler returns a non-array (instead of the `[state, sharedState]` pair) now emits a `quirk.biState.nonArrayReturn` diagnostic. KurrentDB persists the malformed value and then wedges the partition on the next event; gaffer reproduces that and surfaces the diagnostic so the cause is visible instead of an unexplained failure.
+- eb5573c: A faulted projection session (one whose `emit` or `log` callback threw) now refuses partition resolution, state initialization, and the result/transform path, not just event handling. Previously those entry points still re-ran user code (`partitionBy`, `$init`, `$initShared`, `transformBy`/`filterBy`) on a session already marked faulted, which could re-invoke the failing callback instead of failing fast.
+- 401093e: Errors from `partitionBy`, `$init`, `$initShared`, and `$created` now surface as structured projection errors with event context, like errors from event handlers. Previously they escaped as raw engine exceptions that the bindings reported as a generic "unexpected" error with no stream or sequence context, and a `partitionBy` timeout could not be caught by type. `getPartitionKey` wraps the same way.
+- 2f31371: The native-library loader no longer walks up ancestor directories to find a source-tree build unless `GAFFER_RUNTIME_DEV` is set. The ungated walk-up let an install load the first matching library in any ancestor directory, so an ancestor writable by another principal could plant one and run arbitrary native code. Production installs resolve the platform package and are unaffected; loading from a gaffer source checkout now opts in via `GAFFER_RUNTIME_DEV`.
+- 65bc7f1: `getResult` now wraps errors from reloading state (a faulted session, or malformed cached state) as a `ProjectionTransformError`, instead of leaking a raw runtime exception. It now reports state-reload failures the same way `feed` does.
+- 21b0bad: The projection sandbox now bounds script recursion depth and cumulative per-event allocation. A runaway or hostile projection that previously crashed the host process (uncatchable stack overflow) or exhausted its memory now raises a catchable `ProjectionHandlerError` (or `ProjectionTransformError`) instead. Deeply nested event JSON was already rejected as malformed; this closes the equivalent gap for projection code.
+- 3a3a921: Sessions now release their native handle and koffi callback slots via a `FinalizationRegistry` if garbage-collected without `dispose()`, guarding long-running processes against koffi's hard callback-slot cap.
+- e01399d: The state serializer now raises a clear error for state it can't serialize. Deeply nested state, a circular reference, and an array with more than ~2 billion elements each surface as a state-serialization error. Previously these produced a misleading "Index was outside the bounds of the array" failure, or silently serialized an oversized array as `[]`.
+- 12dbafc: State serialization now enforces a size limit, configurable via `maxStateSizeBytes` (default 16 MiB), raising a `StateSerializationError` when exceeded. This restores KurrentDB's `MaxProjectionStateSize` cap, which gaffer's hand-written session layer never ported. It also bounds the cost of serializing a small acyclic state graph that expands exponentially through shared references.
+
 ## 0.2.0
 
 ### Minor Changes

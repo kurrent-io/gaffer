@@ -30,22 +30,19 @@ internal sealed class JintProjectionHandler : IDisposable {
 	// runaway script raises an uncatchable StackOverflowException (or OOMs the host)
 	// before the time constraint can fire.
 	//
-	// Jint's StackGuard (MaxExecutionStackCount) is the recursion guard: it probes real
-	// native stack headroom via RuntimeHelpers.TryEnsureSufficientExecutionStack and, when
-	// the stack is running low, raises a catchable RangeError ("Maximum call stack size
-	// exceeded") once the logical call depth exceeds this count - the same error a browser
-	// engine produces. We deliberately do NOT use Jint's LimitRecursion: empirically it
-	// fails to prevent the crash and itself overflows the host when the per-call-site limit
-	// is reached (verified against Jint 4.6.3). See reference_jint_resource_limits.
+	// LimitRecursion bounds per-call-site recursion and raises a catchable
+	// RecursionDepthOverflowException, catching the common `function f(){f()}` bomb as well
+	// as mutual recursion through fixed call sites. We deliberately do NOT use Jint's
+	// StackGuard (MaxExecutionStackCount): when native stack runs low it spills execution
+	// onto a fresh thread (RunOnEmptyStack) and blocks waiting for it. The runtime is hosted
+	// in-process via FFI (koffi/cgo) on small-stack caller threads where that spill triggers
+	// immediately and deadlocks the host. See reference_jint_resource_limits.
 	//
-	// This count is the throw-vs-spill threshold at the native-stack-low point, NOT a cap on
-	// legitimate recursion - that is bounded by actual native stack capacity (thousands of
-	// frames). It must stay well below the smallest native-stack-low depth across hosts to
-	// throw cleanly instead of spilling execution onto fresh threads: spilling both amplified
-	// the original crash and breaks the per-thread memory accounting below. This assumes the
-	// engine runs on a >=1MB-stack thread (bottoms out around ~1000 frames); the CLI, LSP and
-	// FFI hosts all invoke on default-sized OS threads that satisfy this.
-	private const int MaxExecutionStackCount = 200;
+	// 64 mirrors the JSON parse depth cap and sits well below native stack capacity on every
+	// host - including small-stack FFI threads - so the overflow throws cleanly before the
+	// native stack is exhausted. It bounds same-call-site recursion, not total call depth;
+	// legitimate projection recursion is shallow (event JSON is itself capped at depth 64).
+	private const int MaxRecursionDepth = 64;
 
 	// Bounds cumulative allocation per handler invocation (reset before each call via
 	// _engine.Constraints.Reset()). Checked at statement boundaries, so it catches
@@ -153,8 +150,8 @@ internal sealed class JintProjectionHandler : IDisposable {
 		_engine = new Engine(opts => {
 			opts.Constraint(_timeConstraint)
 				.DisableStringCompilation()
-				.LimitMemory(MaxAllocatedBytesPerOperation);
-			opts.Constraints.MaxExecutionStackCount = MaxExecutionStackCount;
+				.LimitMemory(MaxAllocatedBytesPerOperation)
+				.LimitRecursion(MaxRecursionDepth);
 			if (debug) {
 				opts.Debugger.Enabled = true;
 				opts.Debugger.StatementHandling = DebuggerStatementHandling.Script;

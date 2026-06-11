@@ -29,7 +29,7 @@ public class ResourceLimitTests {
 			""");
 
 		var ex = Assert.Throws<ProjectionHandlerException>(() => session.Feed(TestEvent));
-		Assert.Contains("call stack", ex.Description, StringComparison.OrdinalIgnoreCase);
+		Assert.Contains("recursion", ex.Description, StringComparison.OrdinalIgnoreCase);
 	}
 
 	[Fact]
@@ -46,12 +46,12 @@ public class ResourceLimitTests {
 			""");
 
 		var ex = Assert.Throws<ProjectionHandlerException>(() => session.Feed(TestEvent));
-		Assert.Contains("call stack", ex.Description, StringComparison.OrdinalIgnoreCase);
+		Assert.Contains("recursion", ex.Description, StringComparison.OrdinalIgnoreCase);
 	}
 
 	[Fact]
 	public void Runaway_recursion_throws_in_debug_mode() {
-		// The time constraint is disabled under debug, so the stack guard is the only thing
+		// The time constraint is disabled under debug, so the recursion limit is the only thing
 		// standing between a runaway and a host-killing StackOverflow. It must stay active.
 		using var session = Session("""
 			fromAll().when({
@@ -61,7 +61,7 @@ public class ResourceLimitTests {
 			""", debug: true);
 
 		var ex = Assert.Throws<ProjectionHandlerException>(() => session.Feed(TestEvent));
-		Assert.Contains("call stack", ex.Description, StringComparison.OrdinalIgnoreCase);
+		Assert.Contains("recursion", ex.Description, StringComparison.OrdinalIgnoreCase);
 	}
 
 	[Fact]
@@ -71,14 +71,14 @@ public class ResourceLimitTests {
 				$init: function() { return { total: 0 }; },
 				Test: function(s, e) {
 					function sum(n) { return n === 0 ? 0 : n + sum(n - 1); }
-					s.total = sum(100);
+					s.total = sum(50);
 					return s;
 				}
 			})
 			""");
 
 		session.Feed(TestEvent);
-		Assert.Contains("\"total\":5050", session.GetResult());
+		Assert.Contains("\"total\":1275", session.GetResult());
 	}
 
 	[Fact]

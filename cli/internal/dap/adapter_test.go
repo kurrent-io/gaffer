@@ -1226,6 +1226,6 @@ func TestAdapter_DrainReleasesPausedFeedAndKeepsSessionAlive(t *testing.T) {
 	// The session must still be queryable - this is what dev.go's
 	// post-run summary write needs after disconnect. CollectState
 	// panicked here under the previous Destroy-based teardown.
-	summary := runner.CollectState()
-	_ = summary // smoke test: must not panic
+	summary, err := runner.CollectState()
+	_, _ = summary, err // smoke test: must not panic
 }

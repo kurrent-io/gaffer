@@ -161,28 +161,34 @@ func (r *Runner) GetVariables(variablesReference int) ([]gafferruntime.DebugVari
 	return r.debug.Session.GetVariables(variablesReference)
 }
 
-func (r *Runner) CollectState() StateSummary {
+func (r *Runner) CollectState() (StateSummary, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.collectStateLocked()
 }
 
-func (r *Runner) collectStateLocked() StateSummary {
+func (r *Runner) collectStateLocked() (StateSummary, error) {
 	if r.session == nil {
-		return StateSummary{}
+		return StateSummary{}, nil
 	}
 	return CollectState(r.session, r.info, r.partitions)
 }
 
-func (r *Runner) GetPartitionState(partition string) (state *string, result *string) {
+func (r *Runner) GetPartitionState(partition string) (state *string, result *string, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.session == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
-	state, _ = r.session.GetState(&partition)
+	state, err = r.session.GetState(&partition)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading state for partition %q: %w", partition, err)
+	}
 	if r.info.DefinesStateTransform {
-		result, _ = r.session.GetResult(&partition)
+		result, err = r.session.GetResult(&partition)
+		if err != nil {
+			return nil, nil, fmt.Errorf("reading result for partition %q: %w", partition, err)
+		}
 	}
-	return state, result
+	return state, result, nil
 }

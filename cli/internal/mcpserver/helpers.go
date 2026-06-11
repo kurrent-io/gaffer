@@ -73,6 +73,18 @@ func toolResult(data any) *mcp.CallToolResult {
 	}
 }
 
+// putStateError records a CollectState failure on a summary map as a soft
+// field. The run/debug/wait paths embed state as one field among
+// completed/processed/errors: the run itself succeeded, only the state read
+// failed, so failing the whole tool call would hide the counts the caller
+// wants. get_state hard-errors instead (toolError) because state is its entire
+// payload. Omitted when err is nil.
+func putStateError(summary map[string]any, err error) {
+	if err != nil {
+		summary["stateError"] = err.Error()
+	}
+}
+
 func toolError(format string, args ...any) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf(format, args...)}},

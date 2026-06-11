@@ -466,7 +466,10 @@ func runDevSingle(
 		return err
 	}
 
-	summary := r.CollectState()
+	summary, stateErr := r.CollectState()
+	if stateErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: reading projection state: %v\n", stateErr)
+	}
 	writer.WriteSummary(r.Stats(), summary)
 	if r.Faulted() {
 		if lastErr := r.LastError(); lastErr != nil {
@@ -752,7 +755,10 @@ func runDevDebug(
 			return err
 		}
 
-		summary := r.CollectState()
+		summary, stateErr := r.CollectState()
+		if stateErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: reading projection state: %v\n", stateErr)
+		}
 		writer.WriteSummary(r.Stats(), summary)
 		session.Destroy()
 		if r.Faulted() {

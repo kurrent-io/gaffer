@@ -115,7 +115,9 @@ func (s *Server) handleWaitResult(sess *activeSession, wr waitResult) (*mcp.Call
 	}
 
 	if wr.completed {
-		summary := sess.runner.CollectState().ToMap()
+		state, stateErr := sess.runner.CollectState()
+		summary := state.ToMap()
+		putStateError(summary, stateErr)
 		summary["completed"] = true
 		summary["processed"] = sess.handled()
 		summary["errors"] = sess.errors()
@@ -259,10 +261,11 @@ func (s *Server) collectDebugContext(sess *activeSession, info gafferruntime.Bre
 		}
 	}
 
-	stateSummary := sess.runner.CollectState().ToMap()
-	for k, v := range stateSummary {
+	state, stateErr := sess.runner.CollectState()
+	for k, v := range state.ToMap() {
 		result[k] = v
 	}
+	putStateError(result, stateErr)
 
 	return result
 }

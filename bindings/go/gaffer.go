@@ -135,39 +135,51 @@ func (s *Session) Feed(eventJSON string) (*FeedResult, error) {
 	return &fr, nil
 }
 
-// GetState returns the current state for a partition, or nil if the
-// partition has not been seen. Pass nil for the default (unpartitioned) state.
-func (s *Session) GetState(partition *string) *string {
+// GetState returns the current state for a partition, or nil if the partition
+// has not been seen. Pass nil for the default (unpartitioned) state. A non-nil
+// error means the lookup failed - distinct from a not-seen nil result.
+func (s *Session) GetState(partition *string) (*string, error) {
 	s.ensureAlive()
 	var cp *C.char
 	if partition != nil {
 		cp = C.CString(*partition)
 		defer C.free(unsafe.Pointer(cp))
 	}
-	result := C.gaffer_session_get_state(s.c(), cp, nil)
+	var cErr *C.char
+	result := C.gaffer_session_get_state(s.c(), cp, &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
+	if err := consumeError(cErr, s.source); err != nil {
+		return nil, err
+	}
 	if result == nil {
-		return nil
+		return nil, nil
 	}
 	str := C.GoString(result)
-	return &str
+	return &str, nil
 }
 
-// GetSharedState returns the shared state for biState projections, or nil.
-func (s *Session) GetSharedState() *string {
+// GetSharedState returns the shared state for biState projections, or nil if
+// none. A non-nil error means the lookup failed - distinct from a nil result.
+func (s *Session) GetSharedState() (*string, error) {
 	s.ensureAlive()
-	result := C.gaffer_session_get_shared_state(s.c(), nil)
+	var cErr *C.char
+	result := C.gaffer_session_get_shared_state(s.c(), &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
+	if err := consumeError(cErr, s.source); err != nil {
+		return nil, err
+	}
 	if result == nil {
-		return nil
+		return nil, nil
 	}
 	str := C.GoString(result)
-	return &str
+	return &str, nil
 }
 
-// SetState restores state for a partition (e.g. from a cache).
-// Pass nil for the default partition.
-func (s *Session) SetState(partition *string, stateJSON string) {
+// SetState restores state for a partition (e.g. from a cache). Pass nil for
+// the default partition. Returns an error if the runtime rejects the state -
+// previously a failed restore was silent, leaving the projection to compute
+// from $init state undetected.
+func (s *Session) SetState(partition *string, stateJSON string) error {
 	s.ensureAlive()
 	var cp *C.char
 	if partition != nil {
@@ -176,7 +188,9 @@ func (s *Session) SetState(partition *string, stateJSON string) {
 	}
 	cs := C.CString(stateJSON)
 	defer C.free(unsafe.Pointer(cs))
-	C.gaffer_session_set_state(s.c(), cp, cs, nil)
+	var cErr *C.char
+	C.gaffer_session_set_state(s.c(), cp, cs, &cErr)
+	return consumeError(cErr, s.source)
 }
 
 // GetResult returns the result for a partition. Under V1, applies any
@@ -218,19 +232,25 @@ func (s *Session) GetSources() ProjectionInfo {
 	return info
 }
 
-// GetPartitionKey returns the partition key that would be computed for an event.
-func (s *Session) GetPartitionKey(eventJSON string) *string {
+// GetPartitionKey returns the partition key that would be computed for an
+// event, or nil if the projection is unpartitioned. A non-nil error means the
+// computation failed (e.g. a throwing partitionBy) - distinct from a nil key.
+func (s *Session) GetPartitionKey(eventJSON string) (*string, error) {
 	s.ensureAlive()
 	defer s.rethrowCallbackPanic()
 	cs := C.CString(eventJSON)
 	defer C.free(unsafe.Pointer(cs))
-	result := C.gaffer_session_get_partition_key(s.c(), cs, nil)
+	var cErr *C.char
+	result := C.gaffer_session_get_partition_key(s.c(), cs, &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
+	if err := consumeError(cErr, s.source); err != nil {
+		return nil, err
+	}
 	if result == nil {
-		return nil
+		return nil, nil
 	}
 	str := C.GoString(result)
-	return &str
+	return &str, nil
 }
 
 // OnEmit registers a callback for emitted events (emit and linkTo).

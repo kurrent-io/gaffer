@@ -44,7 +44,7 @@ session.dispose();
 
 The public surface is exported from the package root:
 
-- **`ProjectionSession`** - the session class. Construct with source + options, then `feed()`, `getState()` / `getSharedState()` / `getResult()`, `setState()`, `getSources()`, `getPartitionKey()`, `onEmit()` / `onLog()` / `onStateChanged()`, `dispose()`.
+- **`ProjectionSession`** - the session class. Construct with source + options, then `feed()`, `getState()` / `getSharedState()` / `getResult()`, `setState()`, `getSources()`, `getPartitionKey()`, `onEmit()` / `onLog()` / `onStateChanged()`, `dispose()`. The fallible methods throw a `ProjectionError` subclass on a runtime error. The state getters return `null` only for a genuinely absent partition or value, never to mask an error.
 - **Error classes** - `ProjectionError` base plus `InvalidProjectionError`, `CompilationTimeoutError`, `InvalidArgumentError`, `ProjectionHandlerError`, `ExecutionTimeoutError`, `MalformedEventError`, `StateSerializationError`, `ProjectionTransformError`. All carry structured fields (`code`, `description`, event context where applicable).
 - **Types** - `ProjectionEvent`, `EmittedEvent`, `FeedResult`, `ProjectionInfo`, `SessionOptions`, `Diagnostic`, `SourceRange`, `SourcePosition`, `DiagnosticSeverity`.
 

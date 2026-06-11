@@ -88,10 +88,18 @@ export class ProjectionSession {
 		return parseFeedResult(result);
 	}
 
-	/** Get current state for a partition, or null if not seen. */
+	/** Get current state for a partition, or null if not seen. Throws if the
+	 * lookup fails - distinct from a not-seen null. */
 	getState(partition?: string): string | null {
 		this.#ensureNotDisposed();
-		return getNativeBindings().sessionGetState(this.#handle, partition ?? null);
+		const { result, errorJson } = getNativeBindings().sessionGetState(
+			this.#handle,
+			partition ?? null,
+		);
+		if (errorJson) {
+			throw parseErrorJson(errorJson, this.#source);
+		}
+		return result;
 	}
 
 	/** Get current state parsed as JSON. */
@@ -100,10 +108,16 @@ export class ProjectionSession {
 		return state ? (JSON.parse(state) as T) : null;
 	}
 
-	/** Get shared state for biState projections. */
+	/** Get shared state for biState projections. Throws if the lookup fails. */
 	getSharedState(): string | null {
 		this.#ensureNotDisposed();
-		return getNativeBindings().sessionGetSharedState(this.#handle);
+		const { result, errorJson } = getNativeBindings().sessionGetSharedState(
+			this.#handle,
+		);
+		if (errorJson) {
+			throw parseErrorJson(errorJson, this.#source);
+		}
+		return result;
 	}
 
 	/** Get shared state parsed as JSON. */
@@ -112,10 +126,18 @@ export class ProjectionSession {
 		return state ? (JSON.parse(state) as T) : null;
 	}
 
-	/** Restore state for a partition. */
+	/** Restore state for a partition. Throws if the runtime rejects the state
+	 * (previously a failed restore was silent). */
 	setState(partition: string | null, stateJson: string): void {
 		this.#ensureNotDisposed();
-		getNativeBindings().sessionSetState(this.#handle, partition, stateJson);
+		const errorJson = getNativeBindings().sessionSetState(
+			this.#handle,
+			partition,
+			stateJson,
+		);
+		if (errorJson) {
+			throw parseErrorJson(errorJson, this.#source);
+		}
 	}
 
 	/** Get the transformed result for a partition. */
@@ -150,13 +172,18 @@ export class ProjectionSession {
 		return JSON.parse(result) as ProjectionInfo;
 	}
 
-	/** Get the partition key for an event. */
+	/** Get the partition key for an event, or null if unpartitioned. Throws if
+	 * the computation fails (e.g. a throwing partitionBy). */
 	getPartitionKey(event: ProjectionEvent): string | null {
 		this.#ensureNotDisposed();
-		return getNativeBindings().sessionGetPartitionKey(
+		const { result, errorJson } = getNativeBindings().sessionGetPartitionKey(
 			this.#handle,
 			JSON.stringify(event),
 		);
+		if (errorJson) {
+			throw parseErrorJson(errorJson, this.#source);
+		}
+		return result;
 	}
 
 	/** Release the session and free native resources. */

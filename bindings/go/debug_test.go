@@ -59,7 +59,10 @@ func TestDebug_BreakpointPausesAndContinues(t *testing.T) {
 		t.Fatal("timed out waiting for feed to complete")
 	}
 
-	state := session.GetState(nil)
+	state, err := session.GetState(nil)
+	if err != nil {
+		t.Fatalf("GetState failed: %v", err)
+	}
 	if state == nil || *state != `{"count":1}` {
 		t.Fatalf("unexpected state: %v", state)
 	}

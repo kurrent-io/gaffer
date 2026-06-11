@@ -1,6 +1,7 @@
 package history
 
 import (
+	"runtime"
 	"slices"
 	"sync"
 	"testing"
@@ -316,6 +317,7 @@ func TestConcurrentInsertAndQuery(t *testing.T) {
 	s := mustNew(t)
 
 	stop := make(chan struct{})
+	insertErr := make(chan error, 1)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -325,7 +327,14 @@ func TestConcurrentInsertAndQuery(t *testing.T) {
 			case <-stop:
 				return
 			default:
-				_, _ = s.Insert(testEvent, testResult)
+				if _, err := s.Insert(testEvent, testResult); err != nil {
+					select {
+					case insertErr <- err:
+					default:
+					}
+					return
+				}
+				runtime.Gosched()
 			}
 		}
 	}()
@@ -339,4 +348,10 @@ func TestConcurrentInsertAndQuery(t *testing.T) {
 	}
 	close(stop)
 	wg.Wait()
+
+	select {
+	case err := <-insertErr:
+		t.Fatalf("insert failed: %v", err)
+	default:
+	}
 }

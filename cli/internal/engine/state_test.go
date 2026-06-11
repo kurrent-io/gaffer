@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -25,6 +26,15 @@ func newTestSessionWithVersion(t *testing.T, source string, engineVersion int) *
 	return session
 }
 
+func mustCollectState(t *testing.T, session *gafferruntime.Session, info gafferruntime.ProjectionInfo, partitions map[string]bool) StateSummary {
+	t.Helper()
+	summary, err := CollectState(session, info, partitions)
+	if err != nil {
+		t.Fatalf("CollectState: %v", err)
+	}
+	return summary
+}
+
 func TestCollectState_Unpartitioned(t *testing.T) {
 	session := newTestSession(t, `fromAll().when({
 		$init() { return { count: 0 }; },
@@ -36,7 +46,7 @@ func TestCollectState_Unpartitioned(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	summary := CollectState(session, info, nil)
+	summary := mustCollectState(t, session, info, nil)
 
 	if summary.Partitioned {
 		t.Error("expected unpartitioned")
@@ -68,7 +78,7 @@ func TestCollectState_Partitioned(t *testing.T) {
 	}
 
 	partitions := map[string]bool{"s-1": true, "s-2": true}
-	summary := CollectState(session, info, partitions)
+	summary := mustCollectState(t, session, info, partitions)
 
 	if !summary.Partitioned {
 		t.Error("expected partitioned")
@@ -106,7 +116,7 @@ func TestCollectState_WithTransforms(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	summary := CollectState(session, info, nil)
+	summary := mustCollectState(t, session, info, nil)
 
 	if !summary.HasTransforms {
 		t.Fatal("expected HasTransforms")
@@ -137,7 +147,7 @@ func TestCollectState_PartitionedWithTransforms(t *testing.T) {
 	}
 
 	partitions := map[string]bool{"s-1": true}
-	summary := CollectState(session, info, partitions)
+	summary := mustCollectState(t, session, info, partitions)
 
 	if !summary.Partitioned {
 		t.Error("expected partitioned")
@@ -190,13 +200,35 @@ func TestCollectState_BiState(t *testing.T) {
 	}
 
 	partitions := map[string]bool{"s-1": true}
-	summary := CollectState(session, info, partitions)
+	summary := mustCollectState(t, session, info, partitions)
 
 	if !summary.HasBiState {
 		t.Error("expected hasBiState")
 	}
 	if len(summary.SharedState) == 0 {
 		t.Error("expected sharedState")
+	}
+}
+
+func TestCollectState_GetResultError(t *testing.T) {
+	// A throwing V1 transformBy makes GetResult error. CollectState must
+	// propagate it rather than report the result as absent.
+	session := newTestSessionWithVersion(t, `fromAll().when({
+		$init() { return { count: 0 }; },
+		ItemAdded(s, e) { s.count++; return s; }
+	}).transformBy(function(s) { throw new Error("boom"); })`, 1)
+	info := session.GetSources()
+
+	// The throw surfaces at Feed (V1 computes the result eagerly); ignore it.
+	// GetResult re-runs the transform on the next read and errors again.
+	_, _ = session.Feed(testutil.Event("ItemAdded", "s-1", 0))
+
+	_, err := CollectState(session, info, nil)
+	if err == nil {
+		t.Fatal("expected error from throwing transformBy")
+	}
+	if !strings.Contains(err.Error(), "reading result") {
+		t.Errorf("expected a result-read error, got %v", err)
 	}
 }
 

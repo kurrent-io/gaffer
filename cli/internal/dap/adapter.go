@@ -679,8 +679,16 @@ func (a *DebugAdapter) flushStepBuffer() {
 }
 
 func (a *DebugAdapter) buildStateEvent() *CustomEvent {
-	summary := a.runner.CollectState()
+	// Live state view: a getter error (a throwing V1 transform) has no DAP
+	// error response to ride on here - this is a pushed event, not a
+	// request/response - so it's surfaced as a stateError field on the body
+	// rather than dropped. The on-demand gaffer/partitionState request and the
+	// MCP get_state path return hard errors instead.
+	summary, err := a.runner.CollectState()
 	body := summary.ToMap()
+	if err != nil {
+		body["stateError"] = err.Error()
+	}
 
 	// gaffer/state ships partitions as just names; per-partition state
 	// is fetched on demand via gaffer/partitionState. gaffer/finalState
@@ -726,8 +734,14 @@ func (a *DebugAdapter) emitFinalState() {
 		return
 	}
 	defer func() { _ = recover() }()
-	summary := a.runner.CollectState()
-	a.server.Send(NewCustomEvent("gaffer/finalState", summary.ToMap()))
+	// Post-mortem snapshot (see buildStateEvent): a getter error rides along as
+	// a stateError field so the editor still gets whatever state was collected.
+	summary, err := a.runner.CollectState()
+	body := summary.ToMap()
+	if err != nil {
+		body["stateError"] = err.Error()
+	}
+	a.server.Send(NewCustomEvent("gaffer/finalState", body))
 }
 
 // EmitStatsIfChanged sends a gaffer/stats custom event with cumulative
@@ -873,7 +887,11 @@ func (a *DebugAdapter) handleGafferPartitionState(s *Server, req *GafferPartitio
 		"partition": partition,
 	}
 
-	state, result := a.runner.GetPartitionState(partition)
+	state, result, err := a.runner.GetPartitionState(partition)
+	if err != nil {
+		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
+		return
+	}
 	if state != nil {
 		body["state"] = json.RawMessage(*state)
 	}

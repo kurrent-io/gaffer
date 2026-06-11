@@ -170,7 +170,9 @@ func (s *Server) runFixtureMode(sess *activeSession, root, eventsPath string) (*
 		s.recordProjectionError(sess.runner.LastError())
 	}
 
-	summary := sess.runner.CollectState().ToMap()
+	state, stateErr := sess.runner.CollectState()
+	summary := state.ToMap()
+	putStateError(summary, stateErr)
 	summary["completed"] = !sess.runner.Faulted()
 	summary["processed"] = sess.handled()
 	summary["errors"] = sess.errors()

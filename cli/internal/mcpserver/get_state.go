@@ -27,7 +27,10 @@ func (s *Server) handleGetState(_ context.Context, _ *mcp.CallToolRequest, input
 
 	if input.Partition != "" {
 		result := map[string]any{"partition": input.Partition}
-		state, r := sess.runner.GetPartitionState(input.Partition)
+		state, r, err := sess.runner.GetPartitionState(input.Partition)
+		if err != nil {
+			return toolError("%v", err), nil, nil
+		}
 		if state != nil {
 			result["state"] = json.RawMessage(*state)
 		}
@@ -37,5 +40,9 @@ func (s *Server) handleGetState(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolResult(result), nil, nil
 	}
 
-	return toolResult(sess.runner.CollectState().ToMap()), nil, nil
+	summary, err := sess.runner.CollectState()
+	if err != nil {
+		return toolError("%v", err), nil, nil
+	}
+	return toolResult(summary.ToMap()), nil, nil
 }

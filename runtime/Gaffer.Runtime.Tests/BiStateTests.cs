@@ -155,4 +155,29 @@ public class BiStateTests {
 		Assert.Contains("\"numberOfAccounts\":2", shared);
 		Assert.Contains("\"totalBalance\":850", shared);
 	}
+
+	[Fact]
+	public void Clearing_shared_state_does_not_resurrect_the_old_value() {
+		using var session = new ProjectionSession("""
+			options({ biState: true });
+			fromAll().when({
+				$init: function() { return {}; },
+				$initShared: function() { return { total: 0 }; },
+				Add: function(s, e) { s[1].total += 1; },
+				Clear: function(s, e) { s[1] = null; },
+				Noop: function(s, e) { }
+			})
+			""", new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		session.Feed(new ProjectionEvent { EventType = "Add", StreamId = "s-1", Data = "{}" });
+		Assert.Contains("\"total\":1", session.GetSharedState()!);
+
+		// Clearing the shared slot must stick, not be skipped and left holding the old value.
+		session.Feed(new ProjectionEvent { EventType = "Clear", StreamId = "s-1", SequenceNumber = 1, Data = "{}" });
+		Assert.Null(session.GetSharedState());
+
+		// The next event must not reload the stale value into the engine.
+		session.Feed(new ProjectionEvent { EventType = "Noop", StreamId = "s-1", SequenceNumber = 2, Data = "{}" });
+		Assert.Null(session.GetSharedState());
+	}
 }

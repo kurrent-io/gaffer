@@ -339,7 +339,10 @@ public sealed class ProjectionSession : IDisposable {
 		if (newState != null)
 			OnStateChanged?.Invoke(partition, newState);
 
-		if (_sources.IsBiState && newSharedState != null)
+		// Assign unconditionally (like the partition slot above): skipping a null here would leave
+		// _sharedState holding the prior value, which LoadSharedState then reloads - silently
+		// resurrecting shared state the handler cleared.
+		if (_sources.IsBiState)
 			_sharedState = newSharedState;
 	}
 

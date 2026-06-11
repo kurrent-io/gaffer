@@ -93,8 +93,10 @@ public class ResourceLimitTests {
 			})
 			""");
 
+		// The Jint MemoryLimitExceededException surfaces through the standard catch-all with
+		// its raw "allocated ... but is limited to ..." message (no custom masking).
 		var ex = Assert.Throws<ProjectionHandlerException>(() => session.Feed(TestEvent));
-		Assert.Contains("memory", ex.Description, StringComparison.OrdinalIgnoreCase);
+		Assert.Contains("limited to", ex.Description, StringComparison.OrdinalIgnoreCase);
 	}
 
 	[Fact]

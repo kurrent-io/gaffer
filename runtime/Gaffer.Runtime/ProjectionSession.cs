@@ -415,10 +415,6 @@ public sealed class ProjectionSession : IDisposable {
 			throw new ProjectionTransformException(
 				ex.Description,
 				innerException: ex) { ProjectionSource = _source, CompatCode = ex.CompatCode };
-		} catch (MemoryLimitExceededException ex) {
-			throw new ProjectionTransformException(
-				"Projection script exceeded the memory limit",
-				innerException: ex) { ProjectionSource = _source };
 		} catch (Exception ex) when (ex is not ProjectionException) {
 			throw new ProjectionTransformException(ex.Message, innerException: ex) { ProjectionSource = _source, CompatCode = ExtractCompatCode(ex) };
 		}
@@ -439,10 +435,6 @@ public sealed class ProjectionSession : IDisposable {
 				med.Message,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
 				med.InnerException) { CompatCode = compatCode },
-			MemoryLimitExceededException => new ProjectionHandlerException(
-				"Projection script exceeded the memory limit",
-				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
-				innerException: ex) { ProjectionSource = _source, CompatCode = compatCode },
 			JavaScriptException js => new ProjectionHandlerException(
 				js.Message,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,

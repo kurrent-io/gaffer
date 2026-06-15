@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"golang.org/x/oauth2"
 )
 
 // Endpoints holds the OAuth endpoints discovered from an OIDC issuer.
@@ -24,7 +26,14 @@ func Discover(ctx context.Context, issuer string) (Endpoints, error) {
 		return Endpoints{}, err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	// Honour an http.Client supplied via the context (oauth2.HTTPClient), so
+	// discovery shares the same timeout as token fetches.
+	client := http.DefaultClient
+	if c, ok := ctx.Value(oauth2.HTTPClient).(*http.Client); ok && c != nil {
+		client = c
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return Endpoints{}, fmt.Errorf("oidc discovery: %w", err)
 	}

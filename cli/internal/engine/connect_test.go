@@ -126,11 +126,11 @@ func TestConnect_AppliesEnvOverlay(t *testing.T) {
 
 	// With the prod overlay the variable resolves, so expansion does not
 	// fail (any later error is the dial, not an undefined variable).
-	if _, err := Connect(connStr, dir, "prod"); err != nil && strings.Contains(err.Error(), key) {
+	if _, err := Connect(connStr, dir, "prod", nil); err != nil && strings.Contains(err.Error(), key) {
 		t.Fatalf("env overlay not applied: %v", err)
 	}
 	// Without an env name there's no overlay, so the variable is undefined.
-	_, err := Connect(connStr, dir, "")
+	_, err := Connect(connStr, dir, "", nil)
 	if err == nil || !strings.Contains(err.Error(), key) {
 		t.Fatalf("expected undefined-variable error without overlay, got %v", err)
 	}
@@ -139,7 +139,7 @@ func TestConnect_AppliesEnvOverlay(t *testing.T) {
 func TestConnect_MalformedConnStr_DoesNotLeakPassword(t *testing.T) {
 	connStr := "kurrentdb://user:supersecret@host:%XX"
 
-	_, err := Connect(connStr, "", "")
+	_, err := Connect(connStr, "", "", nil)
 	if err == nil {
 		t.Fatal("expected error for malformed connection string")
 	}

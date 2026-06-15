@@ -14,6 +14,7 @@ import (
 type ResolvedEnv struct {
 	Name       string
 	Connection string
+	OAuth      *OAuthConfig
 }
 
 // ResolveEnv selects an environment by name, or the default when name
@@ -33,7 +34,7 @@ func (c *Config) ResolveEnv(name string) (ResolvedEnv, error) {
 	if name == "" {
 		for _, n := range c.EnvNames() {
 			if c.Env[n].Default {
-				return ResolvedEnv{Name: n, Connection: c.Env[n].Connection}, nil
+				return ResolvedEnv{Name: n, Connection: c.Env[n].Connection, OAuth: c.Env[n].OAuth}, nil
 			}
 		}
 		return ResolvedEnv{}, fmt.Errorf(
@@ -48,7 +49,7 @@ func (c *Config) ResolveEnv(name string) (ResolvedEnv, error) {
 			name, strings.Join(c.EnvNames(), ", "),
 		)
 	}
-	return ResolvedEnv{Name: name, Connection: e.Connection}, nil
+	return ResolvedEnv{Name: name, Connection: e.Connection, OAuth: e.OAuth}, nil
 }
 
 // DefaultEnv returns the env marked default = true and true, or the
@@ -59,7 +60,7 @@ func (c *Config) ResolveEnv(name string) (ResolvedEnv, error) {
 func (c *Config) DefaultEnv() (ResolvedEnv, bool) {
 	for _, n := range c.EnvNames() {
 		if c.Env[n].Default {
-			return ResolvedEnv{Name: n, Connection: c.Env[n].Connection}, true
+			return ResolvedEnv{Name: n, Connection: c.Env[n].Connection, OAuth: c.Env[n].OAuth}, true
 		}
 	}
 	return ResolvedEnv{}, false

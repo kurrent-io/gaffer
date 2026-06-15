@@ -51,7 +51,7 @@ fixtures.full = "fixtures/orders-full.json"
 
 Top-level keys:
 
-- **`[env.<name>]`**: an environment, naming a KurrentDB connection. Each block has a required **`connection`** (the connection string, supporting `${VAR}` expansion so credentials can stay out of the file) and an optional **`default`** bool. Exactly one environment may be the default. Select an environment with `gaffer dev --env <name>` or pick it from the interactive prompt; `--env` can be omitted on a non-interactive run when one environment is the default. For OAuth/OIDC, add an [`[env.<name>.oauth]`](../reference/gaffer-toml.md#envnameoauth) block and run [`gaffer auth`](./commands.md#gaffer-auth). See [Environment file](#environment-file-env) and the [gaffer.toml reference](../reference/gaffer-toml.md#envname).
+- **`[env.<name>]`**: an environment, naming a KurrentDB connection. Each block has a required **`connection`** (the connection string, supporting `${VAR}` expansion so credentials can stay out of the file) and an optional **`default`** bool. Exactly one environment may be the default. Select an environment with `gaffer dev --env <name>` or pick it from the interactive prompt; `--env` can be omitted on a non-interactive run when one environment is the default. An OAuth/OIDC environment also carries an [`[env.<name>.oauth]`](../reference/gaffer-toml.md#envnameoauth) block, authenticated with [`gaffer auth`](./commands.md#gaffer-auth). See [Environment file](#environment-file-env) and the [gaffer.toml reference](../reference/gaffer-toml.md#envname).
 
 `engine_version` is set per-`[[projection]]` (`1` or `2`), not at the top level.
 

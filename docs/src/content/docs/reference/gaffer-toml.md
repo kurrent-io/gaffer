@@ -105,7 +105,7 @@ Authenticate to the environment with OAuth/OIDC bearer tokens instead of a usern
 The **client secret is never written to `gaffer.toml`**. Its presence in the environment selects how a token is obtained:
 
 - **With `KURRENTDB_OAUTH_CLIENT_SECRET` set**: gaffer uses the non-interactive client-credentials grant, for CI and automation. The secret resolves with the same precedence as `connection` variables (shell, then `.env.<env>`, then `.env`).
-- **Without it**: run `gaffer auth --env <name>` once to sign in through the browser. The token is stored in the OS keyring and refreshed automatically. `GAFFER_NO_OPEN` prints the authorization URL instead of launching a browser; `GAFFER_KEYRING_PASSWORD` supplies the keyring passphrase on a host without an OS keyring.
+- **Without it**: run `gaffer auth --env <name>` once to sign in through the browser. The token is stored in the OS keyring and refreshed automatically. `GAFFER_NO_OPEN` prints the authorization URL instead of launching a browser. With no OS keyring the token is kept in an encrypted file protected by a passphrase; `GAFFER_KEYRING_PASSWORD` supplies that passphrase where no terminal is available to prompt on (CI, or an editor-spawned process), and without it gaffer fails with guidance rather than hanging.
 
 `gaffer auth --clear` removes every stored token, signing out of all environments. It needs neither the keyring passphrase nor a gaffer project, so it also resets a keyring whose passphrase has been forgotten.
 

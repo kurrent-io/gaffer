@@ -3,12 +3,22 @@ package oauth
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/url"
 	"sync"
+	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
+
+// WithHTTPTimeout returns a context carrying an *http.Client with the given
+// per-request timeout. The oauth package uses it for all of its HTTP -
+// discovery, token fetches, refreshes, and the login code exchange - so a slow
+// identity provider cannot hang a request indefinitely.
+func WithHTTPTimeout(ctx context.Context, timeout time.Duration) context.Context {
+	return context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: timeout})
+}
 
 // Config is the OAuth configuration for an env, independent of the gaffer.toml
 // representation.

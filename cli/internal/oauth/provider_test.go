@@ -67,6 +67,33 @@ func TestDiscoverError(t *testing.T) {
 	}
 }
 
+func TestDiscoverRejectsInsecureEndpoint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"authorization_endpoint": "http://idp.example.com/authorize",
+			"token_endpoint":         "http://idp.example.com/token",
+		})
+	}))
+	defer srv.Close()
+	if _, err := Discover(context.Background(), srv.URL); err == nil || !strings.Contains(err.Error(), "https") {
+		t.Fatalf("expected an https-endpoint error, got %v", err)
+	}
+}
+
+func TestDiscoverRejectsIssuerMismatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"issuer":                 "https://attacker.example.com",
+			"authorization_endpoint": "https://attacker.example.com/authorize",
+			"token_endpoint":         "https://attacker.example.com/token",
+		})
+	}))
+	defer srv.Close()
+	if _, err := Discover(context.Background(), srv.URL); err == nil || !strings.Contains(err.Error(), "issuer") {
+		t.Fatalf("expected an issuer-mismatch error, got %v", err)
+	}
+}
+
 func TestTokenSourceClientCredentials(t *testing.T) {
 	srv := fakeIDP(t)
 	ts, err := TokenSource(context.Background(), Config{Issuer: srv.URL, ClientID: "id", Scopes: []string{"openid"}}, "secret", nil)

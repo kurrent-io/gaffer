@@ -3,13 +3,11 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os/exec"
 	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/oauth2"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/oauth"
@@ -41,6 +39,20 @@ func newAuthCmd() *cobra.Command {
 	return cmd
 }
 
+// resolveOAuthEnv resolves the named env and requires it to have OAuth
+// configured. Split out so the resolution and error paths are unit-testable
+// without a project on disk, a keyring, or a browser.
+func resolveOAuthEnv(cfg *config.Config, envName string) (config.ResolvedEnv, error) {
+	resolved, err := cfg.ResolveEnv(envName)
+	if err != nil {
+		return config.ResolvedEnv{}, err
+	}
+	if resolved.OAuth == nil {
+		return config.ResolvedEnv{}, fmt.Errorf("env %q has no [env.%s.oauth] configuration", resolved.Name, resolved.Name)
+	}
+	return resolved, nil
+}
+
 func runAuth(cmd *cobra.Command, envName string) error {
 	root := project.FindRoot()
 	if root == "" {
@@ -50,17 +62,14 @@ func runAuth(cmd *cobra.Command, envName string) error {
 	if err != nil {
 		return err
 	}
-	resolved, err := cfg.ResolveEnv(envName)
+	resolved, err := resolveOAuthEnv(cfg, envName)
 	if err != nil {
 		return err
-	}
-	if resolved.OAuth == nil {
-		return fmt.Errorf("env %q has no [oauth] configuration", resolved.Name)
 	}
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), authTimeout)
 	defer cancel()
-	ctx = context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: 30 * time.Second})
+	ctx = oauth.WithHTTPTimeout(ctx, 30*time.Second)
 
 	tok, err := oauth.Login(ctx, oauth.Config{
 		Issuer:   resolved.OAuth.Issuer,

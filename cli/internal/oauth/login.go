@@ -72,7 +72,11 @@ func Login(ctx context.Context, c Config, openBrowser func(authURL string) error
 		}
 		switch {
 		case q.Get("error") != "":
-			send(callback{err: fmt.Errorf("authorization failed: %s", q.Get("error"))}, "Authorization failed. You can close this window.", http.StatusBadRequest)
+			authErr := q.Get("error")
+			if desc := q.Get("error_description"); desc != "" {
+				authErr += ": " + desc
+			}
+			send(callback{err: fmt.Errorf("authorization failed: %s", authErr)}, "Authorization failed. You can close this window.", http.StatusBadRequest)
 		case q.Get("state") != state:
 			send(callback{err: fmt.Errorf("state mismatch (possible CSRF)")}, "State mismatch. You can close this window.", http.StatusBadRequest)
 		case q.Get("code") == "":

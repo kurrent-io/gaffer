@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/envvar"
 	"github.com/kurrent-io/gaffer/cli/internal/oauth"
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
-	"golang.org/x/oauth2"
 )
 
 // ErrDBConnect wraps every Connect failure (bad URL, dotenv read,
@@ -108,7 +106,7 @@ func oauthProvider(c *config.OAuthConfig, envName string, overlay map[string]str
 	// Background, not a per-RPC context: the token source outlives any single
 	// request and refreshes on its own schedule. The timeout-bearing client
 	// bounds discovery and refresh HTTP.
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Timeout: oauthTimeout})
+	ctx := oauth.WithHTTPTimeout(context.Background(), oauthTimeout)
 	src, err := oauth.TokenSource(ctx, oauth.Config{
 		Issuer:   c.Issuer,
 		ClientID: c.ClientID,

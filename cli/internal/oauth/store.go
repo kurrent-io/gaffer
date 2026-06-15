@@ -30,12 +30,13 @@ type TokenStore struct {
 // OpenTokenStore opens the token store. The encrypted-file fallback lives under
 // dir/keyring; dir is typically the gaffer user-config directory.
 func OpenTokenStore(dir string) (*TokenStore, error) {
+	keyringDir := filepath.Join(dir, "keyring")
 	kr, err := keyring.Open(keyring.Config{
 		ServiceName:              keyringService,
 		KeychainName:             keyringService,
 		KeychainTrustApplication: true,
-		FileDir:                  filepath.Join(dir, "keyring"),
-		FilePasswordFunc:         filePassword,
+		FileDir:                  keyringDir,
+		FilePasswordFunc:         filePassword(keyringDir),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open keyring: %w", err)
@@ -94,9 +95,21 @@ func Identity(issuer, clientID string) string {
 // filePassword supplies the passphrase for the encrypted-file fallback. The
 // native keyrings ignore it; it only matters on hosts without one (e.g. a
 // headless box). It prefers GAFFER_KEYRING_PASSWORD, otherwise prompts.
-func filePassword(prompt string) (string, error) {
-	if v := os.Getenv("GAFFER_KEYRING_PASSWORD"); v != "" {
-		return v, nil
+//
+// The keyring backend uses one hook for both first-time creation and later
+// unlocks, so its built-in prompt says "unlock" even when setting the
+// passphrase. We word it ourselves, keying off whether the store already holds
+// any entries, so the first run reads as creating a passphrase rather than
+// unlocking one that doesn't exist yet.
+func filePassword(keyringDir string) keyring.PromptFunc {
+	return func(string) (string, error) {
+		if v := os.Getenv("GAFFER_KEYRING_PASSWORD"); v != "" {
+			return v, nil
+		}
+		prompt := "Enter passphrase to unlock gaffer's stored credentials"
+		if entries, err := os.ReadDir(keyringDir); err != nil || len(entries) == 0 {
+			prompt = "Create a passphrase to protect gaffer's stored credentials"
+		}
+		return keyring.TerminalPrompt(prompt)
 	}
-	return keyring.TerminalPrompt(prompt)
 }

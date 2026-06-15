@@ -12,6 +12,7 @@ import (
 
 	"github.com/99designs/keyring"
 	"golang.org/x/oauth2"
+	"golang.org/x/term"
 )
 
 const keyringService = "gaffer-oauth"
@@ -121,6 +122,14 @@ func filePassword(keyringDir string) keyring.PromptFunc {
 	return func(string) (string, error) {
 		if v := os.Getenv("GAFFER_KEYRING_PASSWORD"); v != "" {
 			return v, nil
+		}
+		// A non-interactive caller (an editor, CI, a piped run) has no terminal
+		// to prompt on, and TerminalPrompt would write to stdout - corrupting
+		// the LSP/DAP protocol stream - before failing opaquely. Fail fast with
+		// guidance instead.
+		if !term.IsTerminal(int(os.Stdin.Fd())) {
+			return "", errors.New("gaffer's stored credentials are protected by a keyring passphrase, " +
+				"but there is no terminal to enter it; set GAFFER_KEYRING_PASSWORD, or run `gaffer auth` from a terminal")
 		}
 		prompt := "Enter passphrase to unlock gaffer's stored credentials"
 		if entries, err := os.ReadDir(keyringDir); err != nil || len(entries) == 0 {

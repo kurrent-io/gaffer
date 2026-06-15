@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"time"
@@ -101,9 +102,14 @@ func runAuth(cmd *cobra.Command, envName string) error {
 }
 
 // browserOpener prints the authorization URL and best-effort opens it. A failed
-// open is not fatal: the user can copy the printed URL.
+// open is not fatal: the user can copy the printed URL. Setting GAFFER_NO_OPEN
+// skips the open entirely (for headless, CI, or scripted logins).
 func browserOpener(cmd *cobra.Command) func(string) error {
 	return func(authURL string) error {
+		if os.Getenv("GAFFER_NO_OPEN") != "" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Visit this URL to sign in:\n\n  %s\n\n", authURL)
+			return nil
+		}
 		fmt.Fprintf(cmd.ErrOrStderr(),
 			"Opening your browser to sign in. If it doesn't open, visit:\n\n  %s\n\n", authURL)
 		_ = openBrowser(authURL)
@@ -111,7 +117,8 @@ func browserOpener(cmd *cobra.Command) func(string) error {
 	}
 }
 
-func openBrowser(url string) error {
+// openBrowser is a var so tests can confirm GAFFER_NO_OPEN suppresses it.
+var openBrowser = func(url string) error {
 	switch runtime.GOOS {
 	case "darwin":
 		return exec.Command("open", url).Start()

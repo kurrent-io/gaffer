@@ -1,0 +1,102 @@
+// Package oauth implements gaffer's OAuth/OIDC authentication: a token store,
+// OIDC discovery, the KurrentDB credentials provider, and the interactive
+// login flow used by `gaffer auth`.
+package oauth
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/99designs/keyring"
+	"golang.org/x/oauth2"
+)
+
+const keyringService = "gaffer-oauth"
+
+// ErrNoToken is returned by TokenStore.Load when no token is stored for the
+// identity.
+var ErrNoToken = errors.New("no stored token")
+
+// TokenStore persists OAuth tokens in the OS keyring (macOS Keychain, Linux
+// Secret Service, Windows Credential Manager, ...), falling back to an
+// encrypted file when no keyring is available.
+type TokenStore struct {
+	kr keyring.Keyring
+}
+
+// OpenTokenStore opens the token store. The encrypted-file fallback lives under
+// dir/keyring; dir is typically the gaffer user-config directory.
+func OpenTokenStore(dir string) (*TokenStore, error) {
+	kr, err := keyring.Open(keyring.Config{
+		ServiceName:              keyringService,
+		KeychainName:             keyringService,
+		KeychainTrustApplication: true,
+		FileDir:                  filepath.Join(dir, "keyring"),
+		FilePasswordFunc:         filePassword,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open keyring: %w", err)
+	}
+	return &TokenStore{kr: kr}, nil
+}
+
+func newTokenStore(kr keyring.Keyring) *TokenStore { return &TokenStore{kr: kr} }
+
+// Save stores the token for identity, replacing any existing one.
+func (s *TokenStore) Save(identity string, tok *oauth2.Token) error {
+	data, err := json.Marshal(tok)
+	if err != nil {
+		return fmt.Errorf("encode token: %w", err)
+	}
+	return s.kr.Set(keyring.Item{
+		Key:         identity,
+		Data:        data,
+		Label:       keyringService,
+		Description: "OAuth token",
+	})
+}
+
+// Load returns the stored token for identity, or ErrNoToken if none is stored.
+func (s *TokenStore) Load(identity string) (*oauth2.Token, error) {
+	item, err := s.kr.Get(identity)
+	if errors.Is(err, keyring.ErrKeyNotFound) {
+		return nil, ErrNoToken
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var tok oauth2.Token
+	if err := json.Unmarshal(item.Data, &tok); err != nil {
+		return nil, fmt.Errorf("decode stored token: %w", err)
+	}
+	return &tok, nil
+}
+
+// Delete removes the stored token for identity. It is a no-op when none exists.
+func (s *TokenStore) Delete(identity string) error {
+	if err := s.kr.Remove(identity); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+		return err
+	}
+	return nil
+}
+
+// Identity is the storage key for tokens issued to clientID by issuer. Keying
+// on the OAuth identity rather than the env name lets a single login serve
+// every project that targets the same issuer and client.
+func Identity(issuer, clientID string) string {
+	return issuer + "|" + clientID
+}
+
+// filePassword supplies the passphrase for the encrypted-file fallback. The
+// native keyrings ignore it; it only matters on hosts without one (e.g. a
+// headless box). It prefers GAFFER_KEYRING_PASSWORD, otherwise prompts.
+func filePassword(prompt string) (string, error) {
+	if v := os.Getenv("GAFFER_KEYRING_PASSWORD"); v != "" {
+		return v, nil
+	}
+	return keyring.TerminalPrompt(prompt)
+}

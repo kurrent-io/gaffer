@@ -221,7 +221,7 @@ func TestOAuthProvider_ClientCredentials(t *testing.T) {
 	srv := oauthFakeIDP(t)
 	overlay := map[string]string{"KURRENTDB_OAUTH_CLIENT_SECRET": "secret"}
 
-	provider, err := oauthProvider(&config.OAuthConfig{Issuer: srv.URL, ClientID: "id"}, "prod", overlay)
+	provider, err := oauthProvider(&config.OAuthConfig{Issuer: srv.URL, ClientID: "id"}, "prod", "", overlay)
 	if err != nil {
 		t.Fatalf("oauthProvider: %v", err)
 	}

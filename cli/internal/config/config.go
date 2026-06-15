@@ -59,6 +59,11 @@ type OAuthConfig struct {
 	ClientID string   `toml:"client_id"`
 	Scopes   []string `toml:"scopes,omitempty"`
 	Audience string   `toml:"audience,omitempty"`
+	// CAFile is an optional path (relative to the project root, or absolute) to
+	// a PEM CA bundle used to verify the issuer's TLS, for an identity provider
+	// served by an internal/self-signed CA. A CA certificate is public, so this
+	// is a path in config, not a secret.
+	CAFile string `toml:"ca_file,omitempty"`
 }
 
 // Projection is a single projection entry in the config.

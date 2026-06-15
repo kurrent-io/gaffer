@@ -63,7 +63,7 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig)
 	// KURRENTDB_PASSWORD (and any inline user:pass in the connection string)
 	// are intentionally ignored in favour of bearer tokens.
 	if oauthCfg != nil {
-		provider, err := oauthProvider(oauthCfg, envName, overlay)
+		provider, err := oauthProvider(oauthCfg, envName, projectRoot, overlay)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 		}
@@ -89,7 +89,7 @@ const oauthTimeout = 30 * time.Second
 // config. A configured client secret (KURRENTDB_OAUTH_CLIENT_SECRET) selects
 // the client-credentials grant; otherwise the token stored by `gaffer auth` is
 // used and refreshed in place.
-func oauthProvider(c *config.OAuthConfig, envName string, overlay map[string]string) (kurrentdb.CredentialsProvider, error) {
+func oauthProvider(c *config.OAuthConfig, envName, projectRoot string, overlay map[string]string) (kurrentdb.CredentialsProvider, error) {
 	secret := envvar.OAuthClientSecret(overlay)
 
 	var store *oauth.TokenStore
@@ -105,8 +105,12 @@ func oauthProvider(c *config.OAuthConfig, envName string, overlay map[string]str
 
 	// Background, not a per-RPC context: the token source outlives any single
 	// request and refreshes on its own schedule. The timeout-bearing client
-	// bounds discovery and refresh HTTP.
-	ctx := oauth.WithHTTPTimeout(context.Background(), oauthTimeout)
+	// bounds discovery and refresh HTTP, and verifies the issuer against the
+	// configured CA when one is set.
+	ctx, err := oauth.WithHTTPClient(context.Background(), oauthTimeout, oauth.ResolveCAFile(c.CAFile, projectRoot))
+	if err != nil {
+		return nil, err
+	}
 	src, err := oauth.TokenSource(ctx, oauth.Config{
 		Issuer:   c.Issuer,
 		ClientID: c.ClientID,

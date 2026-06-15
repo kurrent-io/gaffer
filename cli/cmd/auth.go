@@ -69,7 +69,10 @@ func runAuth(cmd *cobra.Command, envName string) error {
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), authTimeout)
 	defer cancel()
-	ctx = oauth.WithHTTPTimeout(ctx, 30*time.Second)
+	ctx, err = oauth.WithHTTPClient(ctx, 30*time.Second, oauth.ResolveCAFile(resolved.OAuth.CAFile, root))
+	if err != nil {
+		return err
+	}
 
 	tok, err := oauth.Login(ctx, oauth.Config{
 		Issuer:   resolved.OAuth.Issuer,

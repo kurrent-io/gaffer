@@ -319,6 +319,7 @@ issuer = "https://idp.example.com/realms/kurrent"
 client_id = "kurrentdb-client"
 scopes = ["openid", "profile"]
 audience = "kurrentdb-client"
+ca_file = "certs/idp-ca.pem"
 `)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -332,6 +333,9 @@ audience = "kurrentdb-client"
 		}
 		if len(o.Scopes) != 2 || o.Audience != "kurrentdb-client" {
 			t.Errorf("unexpected scopes/audience: %+v", o)
+		}
+		if o.CAFile != "certs/idp-ca.pem" {
+			t.Errorf("unexpected ca_file: %q", o.CAFile)
 		}
 	})
 

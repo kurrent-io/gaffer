@@ -2,9 +2,14 @@ package oauth
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -12,12 +17,39 @@ import (
 	"golang.org/x/oauth2/clientcredentials"
 )
 
-// WithHTTPTimeout returns a context carrying an *http.Client with the given
-// per-request timeout. The oauth package uses it for all of its HTTP -
-// discovery, token fetches, refreshes, and the login code exchange - so a slow
-// identity provider cannot hang a request indefinitely.
-func WithHTTPTimeout(ctx context.Context, timeout time.Duration) context.Context {
-	return context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: timeout})
+// ResolveCAFile resolves a configured ca_file path against baseDir (the project
+// root). An absolute path or the empty string is returned unchanged.
+func ResolveCAFile(caFile, baseDir string) string {
+	if caFile == "" || filepath.IsAbs(caFile) {
+		return caFile
+	}
+	return filepath.Join(baseDir, caFile)
+}
+
+// WithHTTPClient returns a context carrying an *http.Client that the oauth
+// package uses for all of its HTTP - discovery, token fetches, refreshes, and
+// the login code exchange. The timeout bounds each request so a slow identity
+// provider cannot hang one indefinitely. When caFile is non-empty, the issuer's
+// TLS is verified against that PEM CA bundle instead of the system trust store,
+// for an IdP served by an internal/self-signed CA.
+func WithHTTPClient(ctx context.Context, timeout time.Duration, caFile string) (context.Context, error) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if caFile != "" {
+		pem, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("read oauth ca_file: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("oauth ca_file %q: no certificates found", caFile)
+		}
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = &tls.Config{}
+		}
+		transport.TLSClientConfig.RootCAs = pool
+	}
+	client := &http.Client{Timeout: timeout, Transport: transport}
+	return context.WithValue(ctx, oauth2.HTTPClient, client), nil
 }
 
 // Config is the OAuth configuration for an env, independent of the gaffer.toml

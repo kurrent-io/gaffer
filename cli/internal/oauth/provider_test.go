@@ -3,10 +3,13 @@ package oauth
 import (
 	"context"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -91,6 +94,66 @@ func TestDiscoverRejectsIssuerMismatch(t *testing.T) {
 	defer srv.Close()
 	if _, err := Discover(context.Background(), srv.URL); err == nil || !strings.Contains(err.Error(), "issuer") {
 		t.Fatalf("expected an issuer-mismatch error, got %v", err)
+	}
+}
+
+func TestWithHTTPClient(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	// The server is signed by its own (untrusted) cert; write it as a CA bundle.
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	if err := os.WriteFile(caFile, certPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	get := func(ctx context.Context) error {
+		resp, err := ctx.Value(oauth2.HTTPClient).(*http.Client).Get(srv.URL)
+		if err != nil {
+			return err
+		}
+		return resp.Body.Close()
+	}
+
+	t.Run("trusts the configured CA", func(t *testing.T) {
+		ctx, err := WithHTTPClient(context.Background(), 5*time.Second, caFile)
+		if err != nil {
+			t.Fatalf("WithHTTPClient: %v", err)
+		}
+		if err := get(ctx); err != nil {
+			t.Errorf("expected the configured CA to be trusted, got %v", err)
+		}
+	})
+
+	t.Run("rejects an untrusted cert without a CA", func(t *testing.T) {
+		ctx, err := WithHTTPClient(context.Background(), 5*time.Second, "")
+		if err != nil {
+			t.Fatalf("WithHTTPClient: %v", err)
+		}
+		if err := get(ctx); err == nil {
+			t.Error("expected an untrusted-certificate error")
+		}
+	})
+
+	t.Run("errors on an unreadable ca_file", func(t *testing.T) {
+		if _, err := WithHTTPClient(context.Background(), time.Second, "/no/such/ca.pem"); err == nil {
+			t.Error("expected an error for a missing ca_file")
+		}
+	})
+}
+
+func TestResolveCAFile(t *testing.T) {
+	if got := ResolveCAFile("", "/root"); got != "" {
+		t.Errorf("empty stays empty, got %q", got)
+	}
+	if got := ResolveCAFile("/abs/ca.pem", "/root"); got != "/abs/ca.pem" {
+		t.Errorf("absolute unchanged, got %q", got)
+	}
+	if got := ResolveCAFile("certs/ca.pem", "/root"); got != "/root/certs/ca.pem" {
+		t.Errorf("relative joined to root, got %q", got)
 	}
 }
 

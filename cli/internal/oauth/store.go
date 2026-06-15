@@ -85,6 +85,22 @@ func (s *TokenStore) Delete(identity string) error {
 	return nil
 }
 
+// Clear removes every token gaffer has stored and returns how many it removed.
+// Neither listing nor removal needs the keyring passphrase, so it recovers a
+// store whose passphrase has been forgotten.
+func (s *TokenStore) Clear() (int, error) {
+	keys, err := s.kr.Keys()
+	if err != nil {
+		return 0, err
+	}
+	for _, k := range keys {
+		if err := s.kr.Remove(k); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+			return 0, err
+		}
+	}
+	return len(keys), nil
+}
+
 // Identity is the storage key for tokens issued to clientID by issuer. Keying
 // on the OAuth identity rather than the env name lets a single login serve
 // every project that targets the same issuer and client.

@@ -22,6 +22,7 @@ const authTimeout = 5 * time.Minute
 
 func newAuthCmd() *cobra.Command {
 	var envName string
+	var clear bool
 
 	cmd := &cobra.Command{
 		Use:   "auth",
@@ -31,15 +32,23 @@ func newAuthCmd() *cobra.Command {
 			"refreshes automatically. It applies to environments configured for OAuth in\n" +
 			"gaffer.toml. For CI, set KURRENTDB_OAUTH_CLIENT_SECRET instead to use the\n" +
 			"non-interactive client-credentials grant.\n\n" +
+			"--clear removes every stored token, signing out of all environments. Use it to\n" +
+			"reset a keyring whose passphrase has been forgotten; it needs neither the\n" +
+			"passphrase nor a gaffer project.\n\n" +
 			"GAFFER_NO_OPEN prints the authorization URL instead of opening a browser.\n" +
 			"GAFFER_KEYRING_PASSWORD supplies the keyring passphrase on a host without an OS keyring.",
 		Example: "gaffer auth --env staging",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if clear {
+				return runAuthClear(cmd)
+			}
 			return runAuth(cmd, envName)
 		},
 	}
 	cmd.Flags().StringVar(&envName, "env", "", "Environment to authenticate (defaults to the env marked default)")
+	cmd.Flags().BoolVar(&clear, "clear", false, "Remove every stored token, signing out of all environments")
+	cmd.MarkFlagsMutuallyExclusive("env", "clear")
 	return cmd
 }
 
@@ -101,6 +110,26 @@ func runAuth(cmd *cobra.Command, envName string) error {
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Authenticated to env %q. Token stored.\n", resolved.Name)
+	return nil
+}
+
+// runAuthClear removes every stored token. It deliberately resolves nothing but
+// the user-config directory: clearing must work from outside a project and
+// without the keyring passphrase, so a forgotten passphrase is recoverable.
+func runAuthClear(cmd *cobra.Command) error {
+	dir, err := userconfig.DefaultDir()
+	if err != nil {
+		return err
+	}
+	store, err := oauth.OpenTokenStore(dir)
+	if err != nil {
+		return err
+	}
+	n, err := store.Clear()
+	if err != nil {
+		return fmt.Errorf("clear tokens: %w", err)
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Cleared %d stored token(s).\n", n)
 	return nil
 }
 

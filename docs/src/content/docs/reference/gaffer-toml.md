@@ -107,6 +107,8 @@ The **client secret is never written to `gaffer.toml`**. Its presence in the env
 - **With `KURRENTDB_OAUTH_CLIENT_SECRET` set**: gaffer uses the non-interactive client-credentials grant, for CI and automation. The secret resolves with the same precedence as `connection` variables (shell, then `.env.<env>`, then `.env`).
 - **Without it**: run `gaffer auth --env <name>` once to sign in through the browser. The token is stored in the OS keyring and refreshed automatically. `GAFFER_NO_OPEN` prints the authorization URL instead of launching a browser; `GAFFER_KEYRING_PASSWORD` supplies the keyring passphrase on a host without an OS keyring.
 
+`gaffer auth --clear` removes every stored token, signing out of all environments. It needs neither the keyring passphrase nor a gaffer project, so it also resets a keyring whose passphrase has been forgotten.
+
 ### `quirks_version`
 
 ```toml

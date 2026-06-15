@@ -418,11 +418,26 @@ func (o *OAuthConfig) validate(envName string) error {
 	if strings.TrimSpace(o.Issuer) == "" {
 		return fmt.Errorf("env %q oauth: missing required field: issuer", envName)
 	}
-	if u, err := url.Parse(o.Issuer); err != nil || u.Scheme == "" || u.Host == "" {
+	u, err := url.Parse(o.Issuer)
+	if err != nil || u.Scheme == "" || u.Host == "" {
 		return fmt.Errorf("env %q oauth: issuer must be an absolute URL, got %q", envName, o.Issuer)
+	}
+	// Discovery and (for client-credentials) the secret-bearing token request go
+	// to the issuer, so require TLS except for a loopback issuer used in dev.
+	if u.Scheme != "https" && !isLoopbackHost(u.Hostname()) {
+		return fmt.Errorf("env %q oauth: issuer must use https, got %q", envName, o.Issuer)
 	}
 	if strings.TrimSpace(o.ClientID) == "" {
 		return fmt.Errorf("env %q oauth: missing required field: client_id", envName)
 	}
 	return nil
+}
+
+func isLoopbackHost(host string) bool {
+	switch host {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
 }

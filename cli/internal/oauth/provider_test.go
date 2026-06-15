@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -123,5 +124,44 @@ func TestTokenSourceInteractiveRequiresLogin(t *testing.T) {
 	_, err := TokenSource(context.Background(), Config{Issuer: srv.URL, ClientID: "id"}, "", store)
 	if !errors.Is(err, ErrNoToken) {
 		t.Fatalf("expected ErrNoToken, got %v", err)
+	}
+}
+
+// TestPersistingSourceConcurrent exercises the per-RPC concurrency the provider
+// promises. Run with -race to catch a data race in persistingSource.
+func TestPersistingSourceConcurrent(t *testing.T) {
+	srv := fakeIDP(t)
+	store := newTokenStore(keyring.NewArrayKeyring(nil))
+	id := Identity(srv.URL, "id")
+	if err := store.Save(id, &oauth2.Token{
+		AccessToken:  "stale",
+		RefreshToken: "refresh-old",
+		TokenType:    "Bearer",
+		Expiry:       time.Now().Add(-time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ts, err := TokenSource(context.Background(), Config{Issuer: srv.URL, ClientID: "id"}, "", store)
+	if err != nil {
+		t.Fatalf("TokenSource: %v", err)
+	}
+
+	const n = 50
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := ts.Token(); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent Token(): %v", err)
 	}
 }

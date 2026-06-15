@@ -1,13 +1,18 @@
 package engine
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
+	"github.com/kurrent-io/gaffer/cli/internal/config"
 )
 
 func TestRedactConnection(t *testing.T) {
@@ -180,5 +185,51 @@ func TestProbeServerVersion(t *testing.T) {
 				t.Errorf("ProbeServerVersion = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// oauthFakeIDP serves OIDC discovery + a token endpoint that echoes the grant
+// type into the access token, for testing oauthProvider without a real IdP.
+func oauthFakeIDP(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	var srv *httptest.Server
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"issuer":                 srv.URL,
+			"authorization_endpoint": srv.URL + "/authorize",
+			"token_endpoint":         srv.URL + "/token",
+		})
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "access-" + r.FormValue("grant_type"),
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	})
+	srv = httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// A configured client secret selects the client-credentials grant and never
+// opens the keyring, so this exercises the engine-level wiring without a store.
+func TestOAuthProvider_ClientCredentials(t *testing.T) {
+	srv := oauthFakeIDP(t)
+	overlay := map[string]string{"KURRENTDB_OAUTH_CLIENT_SECRET": "secret"}
+
+	provider, err := oauthProvider(&config.OAuthConfig{Issuer: srv.URL, ClientID: "id"}, "prod", overlay)
+	if err != nil {
+		t.Fatalf("oauthProvider: %v", err)
+	}
+	creds, err := provider(context.Background())
+	if err != nil {
+		t.Fatalf("provider: %v", err)
+	}
+	if !strings.Contains(creds.BearerToken, "client_credentials") {
+		t.Errorf("expected a client_credentials bearer token, got %q", creds.BearerToken)
 	}
 }

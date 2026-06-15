@@ -61,6 +61,9 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig)
 		return nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, scrubRaw(err.Error(), connStr, redacted))
 	}
 
+	// An env with OAuth configured uses it exclusively: KURRENTDB_USERNAME /
+	// KURRENTDB_PASSWORD (and any inline user:pass in the connection string)
+	// are intentionally ignored in favour of bearer tokens.
 	if oauthCfg != nil {
 		provider, err := oauthProvider(oauthCfg, envName, overlay)
 		if err != nil {

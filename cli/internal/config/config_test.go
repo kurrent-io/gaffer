@@ -335,6 +335,22 @@ audience = "kurrentdb-client"
 		}
 	})
 
+	t.Run("http issuer allowed for loopback", func(t *testing.T) {
+		cfg, err := load(t, `
+[env.local]
+connection = "kurrentdb://localhost:2113?tls=false"
+[env.local.oauth]
+issuer = "http://localhost:8080/realms/kurrent"
+client_id = "kurrentdb-client"
+`)
+		if err != nil {
+			t.Fatalf("unexpected error for loopback http issuer: %v", err)
+		}
+		if cfg.Env["local"].OAuth == nil {
+			t.Fatal("expected oauth config")
+		}
+	})
+
 	t.Run("env without oauth has nil OAuth", func(t *testing.T) {
 		cfg, err := load(t, `
 [env.prod]
@@ -365,6 +381,11 @@ connection = "kurrentdb://prod:2113"
 			name:    "issuer not an absolute url",
 			body:    "\n[env.prod]\nconnection = \"kurrentdb://prod:2113\"\n[env.prod.oauth]\nissuer = \"idp.example.com\"\nclient_id = \"x\"\n",
 			wantErr: "issuer must be an absolute URL",
+		},
+		{
+			name:    "http issuer rejected for non-loopback host",
+			body:    "\n[env.prod]\nconnection = \"kurrentdb://prod:2113\"\n[env.prod.oauth]\nissuer = \"http://idp.example.com\"\nclient_id = \"x\"\n",
+			wantErr: "issuer must use https",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

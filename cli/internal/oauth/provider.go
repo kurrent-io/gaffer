@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"sync"
 
@@ -47,6 +48,9 @@ func clientCredentialsSource(ctx context.Context, c Config, secret string, eps E
 }
 
 func interactiveSource(ctx context.Context, c Config, store *TokenStore, eps Endpoints) (oauth2.TokenSource, error) {
+	if store == nil {
+		return nil, errors.New("interactive OAuth requires a token store")
+	}
 	id := Identity(c.Issuer, c.ClientID)
 	tok, err := store.Load(id)
 	if err != nil {
@@ -89,9 +93,10 @@ func (p *persistingSource) Token() (*oauth2.Token, error) {
 	if err != nil {
 		return nil, err
 	}
-	if p.last == nil || tok.AccessToken != p.last.AccessToken {
+	if p.last == nil || tok.AccessToken != p.last.AccessToken || tok.RefreshToken != p.last.RefreshToken {
 		// Best effort: a persistence failure must not break an otherwise
-		// valid token.
+		// valid token. Compare the refresh token too, so a refresh-token
+		// rotation with an unchanged access token is still persisted.
 		_ = p.store.Save(p.id, tok)
 		p.last = tok
 	}

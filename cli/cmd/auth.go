@@ -26,10 +26,13 @@ func newAuthCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Authenticate to an environment's OAuth identity provider",
-		Long: "Run an interactive browser login (OAuth authorization code + PKCE) and store the\n" +
-			"resulting token for the environment's OAuth issuer. Use this for environments\n" +
-			"with an [env.<name>.oauth] block. CI should instead set KURRENTDB_OAUTH_CLIENT_SECRET\n" +
-			"for the non-interactive client-credentials grant.",
+		Long: "Signs in to the environment's OAuth identity provider with an interactive browser\n" +
+			"login (authorization code + PKCE) and stores the resulting token, which gaffer\n" +
+			"refreshes automatically. It applies to environments configured for OAuth in\n" +
+			"gaffer.toml. For CI, set KURRENTDB_OAUTH_CLIENT_SECRET instead to use the\n" +
+			"non-interactive client-credentials grant.\n\n" +
+			"GAFFER_NO_OPEN prints the authorization URL instead of opening a browser.\n" +
+			"GAFFER_KEYRING_PASSWORD supplies the keyring passphrase on a host without an OS keyring.",
 		Example: "gaffer auth --env staging",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

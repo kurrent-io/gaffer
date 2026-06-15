@@ -30,6 +30,7 @@ var topLevelOrder = []string{
 	"scaffold",
 	"dev",
 	"info",
+	"auth",
 	"mcp",
 	"lsp",
 	"config",

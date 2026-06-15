@@ -109,7 +109,7 @@ func runAuth(cmd *cobra.Command, envName string) error {
 		return fmt.Errorf("store token: %w", err)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Authenticated to env %q. Token stored.\n", resolved.Name)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Authenticated to env %q. Token stored.\n", resolved.Name)
 	return nil
 }
 
@@ -129,7 +129,7 @@ func runAuthClear(cmd *cobra.Command) error {
 	if err != nil {
 		return fmt.Errorf("clear tokens: %w", err)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Cleared %d stored token(s).\n", n)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Cleared %d stored token(s).\n", n)
 	return nil
 }
 
@@ -139,10 +139,10 @@ func runAuthClear(cmd *cobra.Command) error {
 func browserOpener(cmd *cobra.Command) func(string) error {
 	return func(authURL string) error {
 		if os.Getenv("GAFFER_NO_OPEN") != "" {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Visit this URL to sign in:\n\n  %s\n\n", authURL)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Visit this URL to sign in:\n\n  %s\n\n", authURL)
 			return nil
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(),
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 			"Opening your browser to sign in. If it doesn't open, visit:\n\n  %s\n\n", authURL)
 		_ = openBrowser(authURL)
 		return nil

@@ -39,7 +39,7 @@ func Login(ctx context.Context, c Config, openBrowser func(authURL string) error
 	if err != nil {
 		return nil, err
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	conf := &oauth2.Config{
 		ClientID:    c.ClientID,
@@ -89,7 +89,7 @@ func Login(ctx context.Context, c Config, openBrowser func(authURL string) error
 			send(callback{err: fmt.Errorf("no authorization code in callback")}, "Missing code. You can close this window.", http.StatusBadRequest)
 		default:
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			fmt.Fprint(w, successPage)
+			_, _ = fmt.Fprint(w, successPage)
 			select {
 			case resultCh <- callback{code: q.Get("code")}:
 			default:
@@ -99,7 +99,7 @@ func Login(ctx context.Context, c Config, openBrowser func(authURL string) error
 
 	srv := &http.Server{Handler: mux}
 	go func() { _ = srv.Serve(listener) }()
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 
 	if err := openBrowser(authURL); err != nil {
 		return nil, fmt.Errorf("open browser: %w", err)

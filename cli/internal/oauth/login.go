@@ -3,6 +3,7 @@ package oauth
 import (
 	"context"
 	"crypto/rand"
+	_ "embed"
 	"encoding/base64"
 	"fmt"
 	"net"
@@ -10,6 +11,11 @@ import (
 
 	"golang.org/x/oauth2"
 )
+
+// successPage is served to the browser once the callback succeeds.
+//
+//go:embed success.html
+var successPage string
 
 // callbackPorts are the loopback ports the login redirect listens on, tried in
 // order. They match the redirect URIs registered for the KurrentDB OAuth client
@@ -82,7 +88,8 @@ func Login(ctx context.Context, c Config, openBrowser func(authURL string) error
 		case q.Get("code") == "":
 			send(callback{err: fmt.Errorf("no authorization code in callback")}, "Missing code. You can close this window.", http.StatusBadRequest)
 		default:
-			fmt.Fprintln(w, "Authentication complete. You can close this window and return to gaffer.")
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			fmt.Fprint(w, successPage)
 			select {
 			case resultCh <- callback{code: q.Get("code")}:
 			default:

@@ -49,7 +49,7 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.5.0 // indirect
 	github.com/danieljoos/wincred v1.1.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/dvsekhvalnov/jose2go v1.5.0 // indirect
+	github.com/dvsekhvalnov/jose2go v1.7.0 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect

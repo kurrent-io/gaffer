@@ -336,6 +336,22 @@ user_key_file = "certs/user.key"
 		}
 	})
 
+	t.Run("surrounding whitespace is trimmed", func(t *testing.T) {
+		cfg, err := load(t, `
+[env.staging]
+connection = "kurrentdb://staging:2113?tls=true"
+user_cert_file = "  certs/user.crt  "
+user_key_file = "  certs/user.key  "
+`)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		resolved, _ := cfg.ResolveEnv("staging")
+		if resolved.Cert == nil || resolved.Cert.CertFile != "certs/user.crt" || resolved.Cert.KeyFile != "certs/user.key" {
+			t.Errorf("expected trimmed cert paths, got %+v", resolved.Cert)
+		}
+	})
+
 	t.Run("no cert files resolves to nil", func(t *testing.T) {
 		cfg, err := load(t, `
 [env.plain]

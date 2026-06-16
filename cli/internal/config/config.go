@@ -65,10 +65,12 @@ type CertAuth struct {
 // The emptiness test matches validate()'s (whitespace-trimmed), so a
 // whitespace-only value is treated as unset rather than a populated path.
 func (e Env) certAuth() *CertAuth {
-	if strings.TrimSpace(e.UserCertFile) == "" && strings.TrimSpace(e.UserKeyFile) == "" {
+	cert := strings.TrimSpace(e.UserCertFile)
+	key := strings.TrimSpace(e.UserKeyFile)
+	if cert == "" && key == "" {
 		return nil
 	}
-	return &CertAuth{CertFile: e.UserCertFile, KeyFile: e.UserKeyFile}
+	return &CertAuth{CertFile: cert, KeyFile: key}
 }
 
 // OAuthConfig enables OAuth/OIDC authentication for an env, declared as

@@ -117,6 +117,9 @@ func resolveCertPath(path, projectRoot string, overlay map[string]string) (strin
 	if err != nil {
 		return "", err
 	}
+	// Trim after expansion too: a ${VAR} can introduce surrounding whitespace
+	// that the config-load trim never saw, which would corrupt the path.
+	expanded = strings.TrimSpace(expanded)
 	if expanded == "" || filepath.IsAbs(expanded) {
 		return expanded, nil
 	}

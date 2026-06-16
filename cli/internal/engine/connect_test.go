@@ -166,6 +166,12 @@ func TestResolveCertPath(t *testing.T) {
 			t.Fatal("expected an undefined-variable error")
 		}
 	})
+	t.Run("trims surrounding whitespace, including from expansion", func(t *testing.T) {
+		got, err := resolveCertPath("  ${CERT}  ", "/proj", map[string]string{"CERT": " certs/user.crt "})
+		if err != nil || got != filepath.Join("/proj", "certs/user.crt") {
+			t.Fatalf("got %q, %v", got, err)
+		}
+	})
 }
 
 // A user certificate is presented in the TLS handshake, so a connection with

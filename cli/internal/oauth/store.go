@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/99designs/keyring"
 	"golang.org/x/oauth2"
@@ -104,9 +105,11 @@ func (s *TokenStore) Clear() (int, error) {
 
 // Identity is the storage key for tokens issued to clientID by issuer. Keying
 // on the OAuth identity rather than the env name lets a single login serve
-// every project that targets the same issuer and client.
+// every project that targets the same issuer and client. The issuer's trailing
+// slash is trimmed to match OIDC discovery, so the same issuer spelled with or
+// without one resolves to a single stored token.
 func Identity(issuer, clientID string) string {
-	return issuer + "|" + clientID
+	return strings.TrimRight(issuer, "/") + "|" + clientID
 }
 
 // filePassword supplies the passphrase for the encrypted-file fallback. The

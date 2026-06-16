@@ -33,7 +33,10 @@ func ResolveCAFile(caFile, baseDir string) string {
 // TLS is verified against that PEM CA bundle instead of the system trust store,
 // for an IdP served by an internal/self-signed CA.
 func WithHTTPClient(ctx context.Context, timeout time.Duration, caFile string) (context.Context, error) {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport := &http.Transport{}
+	if base, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = base.Clone()
+	}
 	if caFile != "" {
 		pem, err := os.ReadFile(caFile)
 		if err != nil {

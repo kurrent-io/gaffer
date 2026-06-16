@@ -80,6 +80,12 @@ func TestTokenStoreClear(t *testing.T) {
 	}
 }
 
+func TestIdentityNormalizesTrailingSlash(t *testing.T) {
+	if Identity("https://idp.example.com/", "c") != Identity("https://idp.example.com", "c") {
+		t.Error("issuer trailing slash must not change the identity")
+	}
+}
+
 func TestIdentityDistinct(t *testing.T) {
 	if Identity("iss", "c1") == Identity("iss", "c2") {
 		t.Error("different client ids must produce different identities")

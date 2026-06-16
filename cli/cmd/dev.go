@@ -854,6 +854,7 @@ func buildSource(
 		Root:          proj.Root,
 		EnvName:       resolved.Name,
 		OAuth:         resolved.OAuth,
+		Cert:          resolved.Cert,
 		Info:          info,
 		EngineVersion: proj.EngineVersion,
 	}

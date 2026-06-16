@@ -14,6 +14,7 @@ type LiveSourceConfig struct {
 	Root          string
 	EnvName       string
 	OAuth         *config.OAuthConfig
+	Cert          *config.CertAuth
 	Info          gafferruntime.ProjectionInfo
 	EngineVersion int
 	OnCaughtUp    func() // called when subscription reaches head of stream, nil = ignore, must not block
@@ -38,7 +39,7 @@ func NewLiveSource(cfg LiveSourceConfig) EventSource {
 }
 
 func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
-	client, err := Connect(l.cfg.ConnStr, l.cfg.Root, l.cfg.EnvName, l.cfg.OAuth)
+	client, err := Connect(l.cfg.ConnStr, l.cfg.Root, l.cfg.EnvName, l.cfg.OAuth, l.cfg.Cert)
 	if err != nil {
 		return err
 	}

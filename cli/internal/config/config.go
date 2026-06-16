@@ -42,7 +42,35 @@ type Config struct {
 type Env struct {
 	Connection string       `toml:"connection"`
 	OAuth      *OAuthConfig `toml:"oauth,omitempty"`
-	Default    bool         `toml:"default,omitempty"`
+	// UserCertFile and UserKeyFile point at an X.509 user certificate and its
+	// private key for authenticating to KurrentDB. Both must be set together, or
+	// neither. Paths support ${VAR} expansion and resolve relative to the project
+	// root; they are presented in the TLS handshake, so the connection must use
+	// TLS. Independent of OAuth (transport-layer client cert vs bearer token).
+	UserCertFile string `toml:"user_cert_file,omitempty"`
+	UserKeyFile  string `toml:"user_key_file,omitempty"`
+	Default      bool   `toml:"default,omitempty"`
+}
+
+// CertAuth is an env's X.509 user-certificate auth: the cert and key file paths
+// as written in config. The paths are raw here - ${VAR} expansion and
+// project-root resolution happen at connect time, like the connection string.
+type CertAuth struct {
+	CertFile string
+	KeyFile  string
+}
+
+// certAuth returns the env's user-certificate config, or nil when neither file
+// is set. validate() enforces both-or-neither, so a non-nil result has both.
+// The emptiness test matches validate()'s (whitespace-trimmed), so a
+// whitespace-only value is treated as unset rather than a populated path.
+func (e Env) certAuth() *CertAuth {
+	cert := strings.TrimSpace(e.UserCertFile)
+	key := strings.TrimSpace(e.UserKeyFile)
+	if cert == "" && key == "" {
+		return nil
+	}
+	return &CertAuth{CertFile: cert, KeyFile: key}
 }
 
 // OAuthConfig enables OAuth/OIDC authentication for an env, declared as
@@ -408,6 +436,9 @@ func (c *Config) validateEnvs() error {
 			if err := env.OAuth.validate(name); err != nil {
 				return err
 			}
+		}
+		if (strings.TrimSpace(env.UserCertFile) == "") != (strings.TrimSpace(env.UserKeyFile) == "") {
+			return fmt.Errorf("env %q: user_cert_file and user_key_file must be set together", name)
 		}
 		if env.Default {
 			defaults = append(defaults, name)

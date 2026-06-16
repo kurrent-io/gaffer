@@ -293,6 +293,102 @@ engine_version = 2
 	}
 }
 
+func TestLoadEnvCert(t *testing.T) {
+	const base = `
+[[projection]]
+name = "a"
+entry = "a.js"
+engine_version = 2
+`
+	load := func(t *testing.T, body string) (*Config, error) {
+		t.Helper()
+		dir := t.TempDir()
+		path := filepath.Join(dir, "gaffer.toml")
+		if err := os.WriteFile(path, []byte(base+body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return Load(path)
+	}
+
+	t.Run("both files parse and resolve", func(t *testing.T) {
+		cfg, err := load(t, `
+[env.staging]
+connection = "kurrentdb://staging:2113?tls=true"
+user_cert_file = "certs/user.crt"
+user_key_file = "certs/user.key"
+`)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		e := cfg.Env["staging"]
+		if e.UserCertFile != "certs/user.crt" || e.UserKeyFile != "certs/user.key" {
+			t.Errorf("unexpected cert fields: %+v", e)
+		}
+		resolved, err := cfg.ResolveEnv("staging")
+		if err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+		if resolved.Cert == nil {
+			t.Fatal("expected resolved Cert, got nil")
+		}
+		if resolved.Cert.CertFile != "certs/user.crt" || resolved.Cert.KeyFile != "certs/user.key" {
+			t.Errorf("unexpected resolved cert: %+v", resolved.Cert)
+		}
+	})
+
+	t.Run("surrounding whitespace is trimmed", func(t *testing.T) {
+		cfg, err := load(t, `
+[env.staging]
+connection = "kurrentdb://staging:2113?tls=true"
+user_cert_file = "  certs/user.crt  "
+user_key_file = "  certs/user.key  "
+`)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		resolved, _ := cfg.ResolveEnv("staging")
+		if resolved.Cert == nil || resolved.Cert.CertFile != "certs/user.crt" || resolved.Cert.KeyFile != "certs/user.key" {
+			t.Errorf("expected trimmed cert paths, got %+v", resolved.Cert)
+		}
+	})
+
+	t.Run("no cert files resolves to nil", func(t *testing.T) {
+		cfg, err := load(t, `
+[env.plain]
+connection = "kurrentdb://plain:2113"
+`)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		resolved, _ := cfg.ResolveEnv("plain")
+		if resolved.Cert != nil {
+			t.Errorf("expected nil Cert, got %+v", resolved.Cert)
+		}
+	})
+
+	t.Run("cert without key is rejected", func(t *testing.T) {
+		_, err := load(t, `
+[env.staging]
+connection = "kurrentdb://staging:2113?tls=true"
+user_cert_file = "certs/user.crt"
+`)
+		if err == nil || !strings.Contains(err.Error(), "set together") {
+			t.Fatalf("expected a both-together error, got %v", err)
+		}
+	})
+
+	t.Run("key without cert is rejected", func(t *testing.T) {
+		_, err := load(t, `
+[env.staging]
+connection = "kurrentdb://staging:2113?tls=true"
+user_key_file = "certs/user.key"
+`)
+		if err == nil || !strings.Contains(err.Error(), "set together") {
+			t.Fatalf("expected a both-together error, got %v", err)
+		}
+	})
+}
+
 func TestLoadEnvOAuth(t *testing.T) {
 	const base = `
 [[projection]]

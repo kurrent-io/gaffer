@@ -38,6 +38,7 @@ func (s *Server) startLiveSubscription(sess *activeSession, cfg *config.Config, 
 		Root:          root,
 		EnvName:       env.Name,
 		OAuth:         env.OAuth,
+		Cert:          env.Cert,
 		Info:          sess.runner.Info(),
 		EngineVersion: sess.runner.EngineVersion(),
 		OnCaughtUp: func() {

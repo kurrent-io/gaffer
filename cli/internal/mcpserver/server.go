@@ -379,7 +379,7 @@ func (s *Server) connectToKurrentDB(cfg *config.Config, root, envName string) (*
 	if err != nil {
 		return nil, err
 	}
-	return engine.Connect(env.Connection, root, env.Name)
+	return engine.Connect(env.Connection, root, env.Name, env.OAuth)
 }
 
 // mcpConnection resolves the env the mcp server dials. envName selects a

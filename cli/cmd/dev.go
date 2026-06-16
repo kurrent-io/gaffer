@@ -853,6 +853,7 @@ func buildSource(
 		ConnStr:       resolved.Connection,
 		Root:          proj.Root,
 		EnvName:       resolved.Name,
+		OAuth:         resolved.OAuth,
 		Info:          info,
 		EngineVersion: proj.EngineVersion,
 	}

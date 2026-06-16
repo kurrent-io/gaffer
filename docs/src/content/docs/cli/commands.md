@@ -75,6 +75,34 @@ Flags:
       --json   Output as JSON
 ```
 
+## gaffer auth
+
+Authenticate to an environment's OAuth identity provider.
+
+Signs in to the environment's OAuth identity provider with an interactive browser
+login (authorization code + PKCE) and stores the resulting token, which gaffer
+refreshes automatically. It applies to environments configured for OAuth in
+gaffer.toml. For CI, set KURRENTDB_OAUTH_CLIENT_SECRET instead to use the
+non-interactive client-credentials grant.
+
+--clear removes every stored token, signing out of all environments. Use it to
+reset a keyring whose passphrase has been forgotten; it needs neither the
+passphrase nor a gaffer project.
+
+GAFFER_NO_OPEN prints the authorization URL instead of opening a browser.
+GAFFER_KEYRING_PASSWORD supplies the keyring passphrase on a host without an OS keyring.
+
+```
+gaffer auth [flags]
+```
+
+Flags:
+
+```
+      --clear        Remove every stored token, signing out of all environments
+      --env string   Environment to authenticate (defaults to the env marked default)
+```
+
 ## gaffer mcp
 
 Start an MCP server for AI agent integration.

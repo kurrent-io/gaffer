@@ -93,6 +93,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newDevCmd())
 	root.AddCommand(newManifestCmd())
 	root.AddCommand(newInfoCmd())
+	root.AddCommand(newAuthCmd())
 	root.AddCommand(newMCPCmd())
 	root.AddCommand(newLSPCmd())
 	root.AddCommand(newConfigCmd())

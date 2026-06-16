@@ -293,6 +293,117 @@ engine_version = 2
 	}
 }
 
+func TestLoadEnvOAuth(t *testing.T) {
+	const base = `
+[[projection]]
+name = "a"
+entry = "a.js"
+engine_version = 2
+`
+	load := func(t *testing.T, body string) (*Config, error) {
+		t.Helper()
+		dir := t.TempDir()
+		path := filepath.Join(dir, "gaffer.toml")
+		if err := os.WriteFile(path, []byte(base+body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return Load(path)
+	}
+
+	t.Run("valid oauth parses", func(t *testing.T) {
+		cfg, err := load(t, `
+[env.prod]
+connection = "kurrentdb://prod:2113"
+[env.prod.oauth]
+issuer = "https://idp.example.com/realms/kurrent"
+client_id = "kurrentdb-client"
+scopes = ["openid", "profile"]
+audience = "kurrentdb-client"
+ca_file = "certs/idp-ca.pem"
+`)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		o := cfg.Env["prod"].OAuth
+		if o == nil {
+			t.Fatal("expected oauth config, got nil")
+		}
+		if o.Issuer != "https://idp.example.com/realms/kurrent" || o.ClientID != "kurrentdb-client" {
+			t.Errorf("unexpected issuer/client_id: %+v", o)
+		}
+		if len(o.Scopes) != 2 || o.Audience != "kurrentdb-client" {
+			t.Errorf("unexpected scopes/audience: %+v", o)
+		}
+		if o.CAFile != "certs/idp-ca.pem" {
+			t.Errorf("unexpected ca_file: %q", o.CAFile)
+		}
+	})
+
+	t.Run("http issuer allowed for loopback", func(t *testing.T) {
+		cfg, err := load(t, `
+[env.local]
+connection = "kurrentdb://localhost:2113?tls=false"
+[env.local.oauth]
+issuer = "http://localhost:8080/realms/kurrent"
+client_id = "kurrentdb-client"
+`)
+		if err != nil {
+			t.Fatalf("unexpected error for loopback http issuer: %v", err)
+		}
+		if cfg.Env["local"].OAuth == nil {
+			t.Fatal("expected oauth config")
+		}
+	})
+
+	t.Run("env without oauth has nil OAuth", func(t *testing.T) {
+		cfg, err := load(t, `
+[env.prod]
+connection = "kurrentdb://prod:2113"
+`)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Env["prod"].OAuth != nil {
+			t.Error("expected nil OAuth when the section is omitted")
+		}
+	})
+
+	for _, tc := range []struct {
+		name, body, wantErr string
+	}{
+		{
+			name:    "missing issuer",
+			body:    "\n[env.prod]\nconnection = \"kurrentdb://prod:2113\"\n[env.prod.oauth]\nclient_id = \"x\"\n",
+			wantErr: "missing required field: issuer",
+		},
+		{
+			name:    "missing client_id",
+			body:    "\n[env.prod]\nconnection = \"kurrentdb://prod:2113\"\n[env.prod.oauth]\nissuer = \"https://idp.example.com\"\n",
+			wantErr: "missing required field: client_id",
+		},
+		{
+			name:    "issuer not an absolute url",
+			body:    "\n[env.prod]\nconnection = \"kurrentdb://prod:2113\"\n[env.prod.oauth]\nissuer = \"idp.example.com\"\nclient_id = \"x\"\n",
+			wantErr: "issuer must be an absolute URL",
+		},
+		{
+			name:    "http issuer rejected for non-loopback host",
+			body:    "\n[env.prod]\nconnection = \"kurrentdb://prod:2113\"\n[env.prod.oauth]\nissuer = \"http://idp.example.com\"\nclient_id = \"x\"\n",
+			wantErr: "issuer must use https",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := load(t, tc.body)
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("expected error containing %q, got: %v", tc.wantErr, err)
+			}
+		})
+	}
+}
+
 func TestLoadGlobalTimeouts(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")

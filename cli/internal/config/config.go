@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -39,8 +40,30 @@ type Config struct {
 // nothing from the top level or other envs. At most one env may set
 // default = true; it's used when --env is omitted.
 type Env struct {
-	Connection string `toml:"connection"`
-	Default    bool   `toml:"default,omitempty"`
+	Connection string       `toml:"connection"`
+	OAuth      *OAuthConfig `toml:"oauth,omitempty"`
+	Default    bool         `toml:"default,omitempty"`
+}
+
+// OAuthConfig enables OAuth/OIDC authentication for an env, declared as
+// `[env.<name>.oauth]`. Endpoints are discovered from the issuer's
+// `/.well-known/openid-configuration`.
+//
+// The client secret is never stored here. It is read from the environment
+// (KURRENTDB_OAUTH_CLIENT_SECRET) with the same precedence as other secrets;
+// its presence selects the non-interactive client-credentials grant. Without a
+// secret, `gaffer auth` performs an interactive login and the stored token is
+// used.
+type OAuthConfig struct {
+	Issuer   string   `toml:"issuer"`
+	ClientID string   `toml:"client_id"`
+	Scopes   []string `toml:"scopes,omitempty"`
+	Audience string   `toml:"audience,omitempty"`
+	// CAFile is an optional path (relative to the project root, or absolute) to
+	// a PEM CA bundle used to verify the issuer's TLS, for an identity provider
+	// served by an internal/self-signed CA. A CA certificate is public, so this
+	// is a path in config, not a secret.
+	CAFile string `toml:"ca_file,omitempty"`
 }
 
 // Projection is a single projection entry in the config.
@@ -381,6 +404,11 @@ func (c *Config) validateEnvs() error {
 		if strings.TrimSpace(env.Connection) == "" {
 			return fmt.Errorf("env %q missing required field: connection", name)
 		}
+		if env.OAuth != nil {
+			if err := env.OAuth.validate(name); err != nil {
+				return err
+			}
+		}
 		if env.Default {
 			defaults = append(defaults, name)
 		}
@@ -389,4 +417,32 @@ func (c *Config) validateEnvs() error {
 		return fmt.Errorf("only one env may set default = true, got %d: %s", len(defaults), strings.Join(defaults, ", "))
 	}
 	return nil
+}
+
+func (o *OAuthConfig) validate(envName string) error {
+	if strings.TrimSpace(o.Issuer) == "" {
+		return fmt.Errorf("env %q oauth: missing required field: issuer", envName)
+	}
+	u, err := url.Parse(o.Issuer)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("env %q oauth: issuer must be an absolute URL, got %q", envName, o.Issuer)
+	}
+	// Discovery and (for client-credentials) the secret-bearing token request go
+	// to the issuer, so require TLS except for a loopback issuer used in dev.
+	if u.Scheme != "https" && !isLoopbackHost(u.Hostname()) {
+		return fmt.Errorf("env %q oauth: issuer must use https, got %q", envName, o.Issuer)
+	}
+	if strings.TrimSpace(o.ClientID) == "" {
+		return fmt.Errorf("env %q oauth: missing required field: client_id", envName)
+	}
+	return nil
+}
+
+func isLoopbackHost(host string) bool {
+	switch host {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
 }

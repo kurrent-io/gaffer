@@ -51,6 +51,15 @@ func Credentials(overlay map[string]string) (username, password string) {
 	return username, password
 }
 
+// OAuthClientSecret returns the OAuth client secret resolved from the overlay
+// with the same precedence as Credentials. Its presence selects the
+// non-interactive client-credentials grant; an empty result means an
+// interactive login (the token stored by `gaffer auth`) is used instead.
+func OAuthClientSecret(overlay map[string]string) string {
+	secret, _ := resolveVar("KURRENTDB_OAUTH_CLIENT_SECRET", overlay)
+	return secret
+}
+
 // shellEnv is the process environment captured by Snapshot before Load
 // layered any .env on top. It lets Expand apply shell > .env.<env> >
 // .env precedence: after Load, the process env no longer distinguishes

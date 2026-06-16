@@ -1,12 +1,17 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
+	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/envvar"
+	"github.com/kurrent-io/gaffer/cli/internal/oauth"
+	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
 
 // ErrDBConnect wraps every Connect failure (bad URL, dotenv read,
@@ -20,7 +25,7 @@ var ErrDBConnect = errors.New("connect to KurrentDB")
 // distinguish "couldn't connect" from "connected then lost the link".
 var ErrDBDisconnect = errors.New("KurrentDB connection lost")
 
-func Connect(connStr, projectRoot, envName string) (*kurrentdb.Client, error) {
+func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig) (*kurrentdb.Client, error) {
 	// Base .env is also loaded once at startup; reloading here (no-override,
 	// so it never clobbers shell vars) keeps Connect self-contained for
 	// callers and tests that reach it without the startup path.
@@ -54,8 +59,16 @@ func Connect(connStr, projectRoot, envName string) (*kurrentdb.Client, error) {
 		return nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, scrubRaw(err.Error(), connStr, redacted))
 	}
 
-	username, password := envvar.Credentials(overlay)
-	if username != "" {
+	// An env with OAuth configured uses it exclusively: KURRENTDB_USERNAME /
+	// KURRENTDB_PASSWORD (and any inline user:pass in the connection string)
+	// are intentionally ignored in favour of bearer tokens.
+	if oauthCfg != nil {
+		provider, err := oauthProvider(oauthCfg, envName, projectRoot, overlay)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+		}
+		dbConfig.CredentialsProvider = provider
+	} else if username, password := envvar.Credentials(overlay); username != "" {
 		dbConfig.Username = username
 		dbConfig.Password = password
 	}
@@ -66,6 +79,58 @@ func Connect(connStr, projectRoot, envName string) (*kurrentdb.Client, error) {
 		return nil, fmt.Errorf("%w: %s", ErrDBConnect, scrubRaw(err.Error(), connStr, redacted))
 	}
 	return client, nil
+}
+
+// oauthTimeout bounds OIDC discovery and each token fetch/refresh, so a slow
+// or unreachable identity provider can't hang a connection or an RPC.
+const oauthTimeout = 30 * time.Second
+
+// oauthProvider builds the KurrentDB credentials provider for an env's OAuth
+// config. A configured client secret (KURRENTDB_OAUTH_CLIENT_SECRET) selects
+// the client-credentials grant; otherwise the token stored by `gaffer auth` is
+// used and refreshed in place.
+func oauthProvider(c *config.OAuthConfig, envName, projectRoot string, overlay map[string]string) (kurrentdb.CredentialsProvider, error) {
+	secret := envvar.OAuthClientSecret(overlay)
+
+	var store *oauth.TokenStore
+	if secret == "" {
+		dir, err := userconfig.DefaultDir()
+		if err != nil {
+			return nil, err
+		}
+		if store, err = oauth.OpenTokenStore(dir); err != nil {
+			return nil, err
+		}
+	}
+
+	// Background, not a per-RPC context: the token source outlives any single
+	// request and refreshes on its own schedule. The timeout-bearing client
+	// bounds discovery and refresh HTTP, and verifies the issuer against the
+	// configured CA when one is set.
+	ctx, err := oauth.WithHTTPClient(context.Background(), oauthTimeout, oauth.ResolveCAFile(c.CAFile, projectRoot))
+	if err != nil {
+		return nil, err
+	}
+	src, err := oauth.TokenSource(ctx, oauth.Config{
+		Issuer:   c.Issuer,
+		ClientID: c.ClientID,
+		Scopes:   c.Scopes,
+		Audience: c.Audience,
+	}, secret, store)
+	if err != nil {
+		if errors.Is(err, oauth.ErrNoToken) {
+			return nil, fmt.Errorf("env %q requires an interactive login: run `gaffer auth --env %s`", envName, envName)
+		}
+		return nil, err
+	}
+
+	return func(context.Context) (*kurrentdb.Credentials, error) {
+		tok, err := src.Token()
+		if err != nil {
+			return nil, err
+		}
+		return &kurrentdb.Credentials{BearerToken: tok.AccessToken}, nil
+	}, nil
 }
 
 // dbVersionUnknown is the value telemetry stamps on db_version when

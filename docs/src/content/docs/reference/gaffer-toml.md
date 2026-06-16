@@ -85,6 +85,30 @@ connection = "kurrentdb://admin:${DB_PASSWORD}@staging:2113"
 
 Values resolve, highest precedence first, from the shell environment, then a per-environment [`.env.<env>`](../cli/index.md#environment-file-env) file, then the base [`.env`](../cli/index.md#environment-file-env) file at the project root. A referenced variable that isn't set is an error; only the braced `${...}` form is a reference, so a bare `$` is left untouched.
 
+### `[env.<name>.oauth]`
+
+```toml
+[env.staging.oauth]
+issuer    = "https://idp.example.com/realms/kurrent"
+client_id = "kurrentdb-client"
+scopes    = ["openid"]
+```
+
+Authenticate to the environment with OAuth/OIDC bearer tokens instead of a username and password. The KurrentDB cluster must be configured for OAuth (a licensed feature, not available on Kurrent Cloud). Endpoints are discovered from the issuer's `/.well-known/openid-configuration`.
+
+- **`issuer`**: OIDC issuer URL. Required. Must be `https` (an `http` loopback issuer is allowed for local development).
+- **`client_id`**: OAuth client ID. Required.
+- **`scopes`**: optional list of scopes to request.
+- **`audience`**: optional audience parameter, for identity providers that require one (e.g. Auth0).
+- **`ca_file`**: optional path (relative to the project root, or absolute) to a PEM CA bundle for verifying the issuer's TLS, when the provider is served by an internal or self-signed CA. A CA certificate is public, so it lives here rather than in the environment.
+
+The **client secret is never written to `gaffer.toml`**. Its presence in the environment selects how a token is obtained:
+
+- **With `KURRENTDB_OAUTH_CLIENT_SECRET` set**: gaffer uses the non-interactive client-credentials grant, for CI and automation. The secret resolves with the same precedence as `connection` variables (shell, then `.env.<env>`, then `.env`).
+- **Without it**: run `gaffer auth --env <name>` once to sign in through the browser. The token is stored in the OS keyring and refreshed automatically. `GAFFER_NO_OPEN` prints the authorization URL instead of launching a browser. With no OS keyring the token is kept in an encrypted file protected by a passphrase; `GAFFER_KEYRING_PASSWORD` supplies that passphrase where no terminal is available to prompt on (CI, or an editor-spawned process), and without it gaffer fails with guidance rather than hanging.
+
+`gaffer auth --clear` removes every stored token, signing out of all environments. It needs neither the keyring passphrase nor a gaffer project, so it also resets a keyring whose passphrase has been forgotten.
+
 ### `quirks_version`
 
 ```toml

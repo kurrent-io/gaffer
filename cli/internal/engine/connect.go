@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,7 +26,7 @@ var ErrDBConnect = errors.New("connect to KurrentDB")
 // distinguish "couldn't connect" from "connected then lost the link".
 var ErrDBDisconnect = errors.New("KurrentDB connection lost")
 
-func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig) (*kurrentdb.Client, error) {
+func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig, certCfg *config.CertAuth) (*kurrentdb.Client, error) {
 	// Base .env is also loaded once at startup; reloading here (no-override,
 	// so it never clobbers shell vars) keeps Connect self-contained for
 	// callers and tests that reach it without the startup path.
@@ -72,6 +73,27 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig)
 		dbConfig.Username = username
 		dbConfig.Password = password
 	}
+
+	// An X.509 user certificate is presented in the TLS handshake, so it's set
+	// independently of the credentials branch above (an env may use mutual TLS
+	// and OAuth together). The client resolves relative cert paths against its
+	// own cwd; resolving here against the project root - and ${VAR}-expanding,
+	// like the connection string - keeps cert paths working from any directory.
+	if certCfg != nil {
+		if dbConfig.DisableTLS {
+			return nil, fmt.Errorf("%w: env %q sets a user certificate but the connection disables TLS; a user certificate requires TLS", ErrDBConnect, envName)
+		}
+		certFile, err := resolveCertPath(certCfg.CertFile, projectRoot, overlay)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+		}
+		keyFile, err := resolveCertPath(certCfg.KeyFile, projectRoot, overlay)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+		}
+		dbConfig.UserCertFile = certFile
+		dbConfig.UserKeyFile = keyFile
+	}
 	dbConfig.Logger = kurrentdb.NoopLogging()
 
 	client, err := kurrentdb.NewClient(dbConfig)
@@ -79,6 +101,20 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig)
 		return nil, fmt.Errorf("%w: %s", ErrDBConnect, scrubRaw(err.Error(), connStr, redacted))
 	}
 	return client, nil
+}
+
+// resolveCertPath expands ${VAR} references in a cert path (using the same
+// overlay as the connection string) and resolves a relative result against the
+// project root. An absolute path or empty string is returned unchanged.
+func resolveCertPath(path, projectRoot string, overlay map[string]string) (string, error) {
+	expanded, err := envvar.Expand(path, overlay)
+	if err != nil {
+		return "", err
+	}
+	if expanded == "" || filepath.IsAbs(expanded) {
+		return expanded, nil
+	}
+	return filepath.Join(projectRoot, expanded), nil
 }
 
 // oauthTimeout bounds OIDC discovery and each token fetch/refresh, so a slow

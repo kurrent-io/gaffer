@@ -131,20 +131,57 @@ func TestConnect_AppliesEnvOverlay(t *testing.T) {
 
 	// With the prod overlay the variable resolves, so expansion does not
 	// fail (any later error is the dial, not an undefined variable).
-	if _, err := Connect(connStr, dir, "prod", nil); err != nil && strings.Contains(err.Error(), key) {
+	if _, err := Connect(connStr, dir, "prod", nil, nil); err != nil && strings.Contains(err.Error(), key) {
 		t.Fatalf("env overlay not applied: %v", err)
 	}
 	// Without an env name there's no overlay, so the variable is undefined.
-	_, err := Connect(connStr, dir, "", nil)
+	_, err := Connect(connStr, dir, "", nil, nil)
 	if err == nil || !strings.Contains(err.Error(), key) {
 		t.Fatalf("expected undefined-variable error without overlay, got %v", err)
+	}
+}
+
+func TestResolveCertPath(t *testing.T) {
+	t.Run("relative joins the project root", func(t *testing.T) {
+		got, err := resolveCertPath("certs/user.crt", "/proj", nil)
+		if err != nil || got != filepath.Join("/proj", "certs/user.crt") {
+			t.Fatalf("got %q, %v", got, err)
+		}
+	})
+	t.Run("absolute path is unchanged", func(t *testing.T) {
+		abs := filepath.Join("/abs", "user.crt")
+		got, err := resolveCertPath(abs, "/proj", nil)
+		if err != nil || got != abs {
+			t.Fatalf("got %q, %v", got, err)
+		}
+	})
+	t.Run("expands vars before resolving", func(t *testing.T) {
+		got, err := resolveCertPath("${CERT_DIR}/user.key", "/proj", map[string]string{"CERT_DIR": "sub"})
+		if err != nil || got != filepath.Join("/proj", "sub/user.key") {
+			t.Fatalf("got %q, %v", got, err)
+		}
+	})
+	t.Run("undefined var errors", func(t *testing.T) {
+		if _, err := resolveCertPath("${GAFFER_CERT_TEST_UNSET}/user.key", "/proj", nil); err == nil {
+			t.Fatal("expected an undefined-variable error")
+		}
+	})
+}
+
+// A user certificate is presented in the TLS handshake, so a connection with
+// TLS disabled can't use one; Connect rejects the combination before dialing.
+func TestConnect_CertRequiresTLS(t *testing.T) {
+	cert := &config.CertAuth{CertFile: "user.crt", KeyFile: "user.key"}
+	_, err := Connect("kurrentdb://host:2113?tls=false", t.TempDir(), "", nil, cert)
+	if err == nil || !strings.Contains(err.Error(), "requires TLS") {
+		t.Fatalf("expected a TLS-required error, got %v", err)
 	}
 }
 
 func TestConnect_MalformedConnStr_DoesNotLeakPassword(t *testing.T) {
 	connStr := "kurrentdb://user:supersecret@host:%XX"
 
-	_, err := Connect(connStr, "", "", nil)
+	_, err := Connect(connStr, "", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for malformed connection string")
 	}

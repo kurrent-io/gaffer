@@ -62,8 +62,10 @@ type CertAuth struct {
 
 // certAuth returns the env's user-certificate config, or nil when neither file
 // is set. validate() enforces both-or-neither, so a non-nil result has both.
+// The emptiness test matches validate()'s (whitespace-trimmed), so a
+// whitespace-only value is treated as unset rather than a populated path.
 func (e Env) certAuth() *CertAuth {
-	if e.UserCertFile == "" && e.UserKeyFile == "" {
+	if strings.TrimSpace(e.UserCertFile) == "" && strings.TrimSpace(e.UserKeyFile) == "" {
 		return nil
 	}
 	return &CertAuth{CertFile: e.UserCertFile, KeyFile: e.UserKeyFile}

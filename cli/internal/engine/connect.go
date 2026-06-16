@@ -91,6 +91,12 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 		}
+		// Guard against a ${VAR} that expands to empty: a half-set pair would
+		// silently disable the cert (the client loads it only when both are set)
+		// rather than authenticating as intended.
+		if certFile == "" || keyFile == "" {
+			return nil, fmt.Errorf("%w: env %q user certificate path resolved to empty (check ${VAR} expansion)", ErrDBConnect, envName)
+		}
 		dbConfig.UserCertFile = certFile
 		dbConfig.UserKeyFile = keyFile
 	}

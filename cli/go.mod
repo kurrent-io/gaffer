@@ -12,7 +12,7 @@ require (
 	github.com/google/go-dap v0.12.0
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
-	github.com/kurrent-io/KurrentDB-Client-Go v1.1.2-0.20260615075856-377e233eca24
+	github.com/kurrent-io/KurrentDB-Client-Go v1.3.0
 	github.com/kurrent-io/gaffer/bindings/go v0.0.0-20260519114710-8ddaf5577894
 	github.com/mattn/go-isatty v0.0.20
 	github.com/modelcontextprotocol/go-sdk v1.4.1

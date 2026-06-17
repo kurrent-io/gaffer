@@ -92,6 +92,13 @@ describe("renderCliMessage", () => {
 		expect(lines).toEqual(["  ERROR: E_FOO - boom"]);
 	});
 
+	it("renders an auth_required line naming the env and command", () => {
+		const lines = record({ type: "auth_required", env: "prod" });
+		expect(lines).toEqual([
+			"  Authentication required for env prod - run gaffer auth --env prod",
+		]);
+	});
+
 	it("renders a summary preceded by a blank line", () => {
 		const lines = record({
 			type: "summary",

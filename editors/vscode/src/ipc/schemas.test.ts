@@ -62,6 +62,20 @@ describe("CliMessageWireSchema", () => {
 		});
 	});
 
+	describe("auth_required", () => {
+		it("accepts an env", () => {
+			const r = v.safeParse(CliMessageWireSchema, {
+				type: "auth_required",
+				env: "prod",
+			});
+			expect(r.success).toBe(true);
+		});
+		it("rejects a missing env", () => {
+			const r = v.safeParse(CliMessageWireSchema, { type: "auth_required" });
+			expect(r.success).toBe(false);
+		});
+	});
+
 	describe("result", () => {
 		it("accepts a processed result with optional fields", () => {
 			const r = v.safeParse(CliMessageWireSchema, {

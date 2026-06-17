@@ -28,6 +28,7 @@ import {
 	showStartFailure,
 } from "../notifications/debug.js";
 import { showTrustWarning } from "../notifications/trust.js";
+import { showAuthRequired } from "../notifications/auth.js";
 import type { StepProvider } from "../panels/step.js";
 import type { StateProvider } from "../panels/state.js";
 import type { StatusViewProvider } from "../panels/status.js";
@@ -334,6 +335,10 @@ export class SessionController implements vscode.Disposable {
 			void showProjectionFailed();
 		});
 
+		session.on("auth_required", (msg) => {
+			void this.#handleAuthRequired(msg.env, invokedVia);
+		});
+
 		this.#statusProvider.reset(name);
 		this.#phaseTracker.reset();
 		session.start();
@@ -388,6 +393,31 @@ export class SessionController implements vscode.Disposable {
 		// (cleanupSession also settles). Either resolves cleanly.
 		await ready.promise;
 		this.#startedReady = null;
+	}
+
+	// Offers to sign in when a run reported auth_required, launching
+	// `gaffer auth --env <env>` in a terminal. The terminal is a pty, so an
+	// interactive keyring passphrase prompt works there; the spawn env carries
+	// the same GAFFER_KEYRING_PASSWORD the run uses, so a sign-in stores a token
+	// the run can later unlock.
+	async #handleAuthRequired(
+		env: string,
+		invokedVia: InvokedVia,
+	): Promise<void> {
+		if (!(await showAuthRequired(env))) return;
+		const [shellPath, ...shellArgs] = this.#buildArgv(
+			["auth", "--env", env],
+			invokedVia,
+		);
+		if (!shellPath) return;
+		const spawnEnv = this.#getSpawnEnv();
+		const terminal = vscode.window.createTerminal({
+			name: `gaffer auth (${env})`,
+			shellPath,
+			shellArgs,
+			...(spawnEnv ? { env: spawnEnv } : {}),
+		});
+		terminal.show();
 	}
 
 	// Called from the onDidStartDebugSession listener once VS Code has

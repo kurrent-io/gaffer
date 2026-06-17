@@ -96,6 +96,19 @@ describe("gafferSpawnEnv", () => {
 		// process.env keys are still present so the child gets PATH etc.
 		expect(env.PATH).toBe(process.env.PATH);
 	});
+
+	it("injects GAFFER_KEYRING_PASSWORD once a passphrase is set, even when not opted out", async () => {
+		const { gafferSpawnEnv, setKeyringPassword } = await import("./cli.js");
+		try {
+			setKeyringPassword("s3cret");
+			const env = gafferSpawnEnv(false);
+			if (env === undefined) throw new Error("expected an env override");
+			expect(env.GAFFER_KEYRING_PASSWORD).toBe("s3cret");
+			expect(env.PATH).toBe(process.env.PATH);
+		} finally {
+			setKeyringPassword(undefined);
+		}
+	});
 });
 
 describe("gafferMcpEnv", () => {
@@ -107,6 +120,18 @@ describe("gafferMcpEnv", () => {
 	it("returns the opt-out override when opted out", async () => {
 		const { gafferMcpEnv } = await import("./cli.js");
 		expect(gafferMcpEnv(true)).toEqual({ GAFFER_TELEMETRY_OPTOUT: "1" });
+	});
+
+	it("includes GAFFER_KEYRING_PASSWORD once a passphrase is set", async () => {
+		const { gafferMcpEnv, setKeyringPassword } = await import("./cli.js");
+		try {
+			setKeyringPassword("s3cret");
+			expect(gafferMcpEnv(false)).toEqual({
+				GAFFER_KEYRING_PASSWORD: "s3cret",
+			});
+		} finally {
+			setKeyringPassword(undefined);
+		}
 	});
 });
 

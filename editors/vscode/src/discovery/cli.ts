@@ -39,18 +39,34 @@ export interface Invocation {
  * the latter is also null when telemetry init fails (noop fallback),
  * where the user hasn't actually chosen to opt out.
  */
+// Set once at activation from SecretStorage; injected into every gaffer spawn
+// as GAFFER_KEYRING_PASSWORD so the encrypted-file token store unlocks without a
+// prompt. gaffer ignores it when an OS keyring is available.
+let keyringPassword: string | undefined;
+
+export function setKeyringPassword(pw: string | undefined): void {
+	keyringPassword = pw;
+}
+
 export function gafferSpawnEnv(
 	optedOut: boolean,
 ): NodeJS.ProcessEnv | undefined {
-	if (!optedOut) return undefined;
-	return { ...process.env, GAFFER_TELEMETRY_OPTOUT: "1" };
+	if (!optedOut && !keyringPassword) return undefined;
+	return {
+		...process.env,
+		...(optedOut ? { GAFFER_TELEMETRY_OPTOUT: "1" } : {}),
+		...(keyringPassword ? { GAFFER_KEYRING_PASSWORD: keyringPassword } : {}),
+	};
 }
 
 /** Same intent as `gafferSpawnEnv` but in the additive shape VS Code's
  * `McpStdioServerDefinition.env` expects: keys merged onto the parent
  * env at spawn time. */
 export function gafferMcpEnv(optedOut: boolean): Record<string, string> {
-	return optedOut ? { GAFFER_TELEMETRY_OPTOUT: "1" } : {};
+	return {
+		...(optedOut ? { GAFFER_TELEMETRY_OPTOUT: "1" } : {}),
+		...(keyringPassword ? { GAFFER_KEYRING_PASSWORD: keyringPassword } : {}),
+	};
 }
 
 /**

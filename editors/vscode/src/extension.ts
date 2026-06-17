@@ -2,8 +2,10 @@ import * as vscode from "vscode";
 import {
 	buildGafferArgv,
 	gafferSpawnEnv,
+	setKeyringPassword,
 	tryFetchManifest,
 } from "./discovery/cli.js";
+import { getOrCreateKeyringPassword } from "./keyring-secret.js";
 import type { Manifest } from "./discovery/schemas.js";
 import { LspCodeLensProvider } from "./lsp/lens-provider.js";
 import { StepProvider } from "./panels/step.js";
@@ -146,6 +148,11 @@ export async function activate(
 		log,
 	});
 	const telemetry = activeTelemetry;
+
+	// Resolve the keyring passphrase once (generating it on first run) so every
+	// gaffer spawn carries GAFFER_KEYRING_PASSWORD and OAuth token storage works
+	// without an interactive prompt on hosts with no OS keyring.
+	setKeyringPassword(await getOrCreateKeyringPassword(context.secrets));
 
 	// First-run telemetry disclosure. Fire-and-forget; we hold the
 	// promise so the facade can pick up a mid-session `[Disable]`

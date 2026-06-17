@@ -97,11 +97,28 @@ describe("gafferSpawnEnv", () => {
 		expect(env.PATH).toBe(process.env.PATH);
 	});
 
-	it("injects GAFFER_KEYRING_PASSWORD once a passphrase is set, even when not opted out", async () => {
+	it("does not carry the keyring passphrase (lsp/manifest spawns don't authenticate)", async () => {
 		const { gafferSpawnEnv, setKeyringPassword } = await import("./cli.js");
 		try {
 			setKeyringPassword("s3cret");
-			const env = gafferSpawnEnv(false);
+			expect(gafferSpawnEnv(false)).toBeUndefined();
+		} finally {
+			setKeyringPassword(undefined);
+		}
+	});
+});
+
+describe("gafferRunEnv", () => {
+	it("returns undefined when not opted out and no passphrase is set", async () => {
+		const { gafferRunEnv } = await import("./cli.js");
+		expect(gafferRunEnv(false)).toBeUndefined();
+	});
+
+	it("injects GAFFER_KEYRING_PASSWORD once a passphrase is set, even when not opted out", async () => {
+		const { gafferRunEnv, setKeyringPassword } = await import("./cli.js");
+		try {
+			setKeyringPassword("s3cret");
+			const env = gafferRunEnv(false);
 			if (env === undefined) throw new Error("expected an env override");
 			expect(env.GAFFER_KEYRING_PASSWORD).toBe("s3cret");
 			expect(env.PATH).toBe(process.env.PATH);

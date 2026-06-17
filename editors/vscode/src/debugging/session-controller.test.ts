@@ -590,6 +590,21 @@ describe("SessionController.start - failures", () => {
 		).toBe(false);
 	});
 
+	it("suppresses the faulted toast when auth_required preceded a non-zero exit", async () => {
+		const h = makeHarness();
+		const { session } = await startToRunning(h);
+
+		// The CLI emits auth_required then exits non-zero; only the sign-in
+		// prompt should show, not a competing "Projection faulted" toast.
+		session.fire({ type: "auth_required", env: "prod" });
+		session.fire({ type: "exit", code: 1 });
+		await flushAllMicrotasks();
+
+		expect(
+			getShownMessages().some((m) => m.message.includes("Projection faulted")),
+		).toBe(false);
+	});
+
 	it("shows showProjectionFault when fatal_error did NOT precede a non-zero exit", async () => {
 		// Negative control for the suppression test above.
 		const h = makeHarness();

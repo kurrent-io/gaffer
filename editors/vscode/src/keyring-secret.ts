@@ -7,7 +7,8 @@ const SECRET_KEY = "gaffer.keyringPassword";
 // random one on first use. It's injected into spawned gaffer processes as
 // GAFFER_KEYRING_PASSWORD so gaffer's encrypted-file token store unlocks without
 // a prompt on hosts with no OS keyring (gaffer ignores it when an OS keyring is
-// available). Stored in VS Code SecretStorage, which is OS-encrypted at rest.
+// available). Stored in VS Code SecretStorage, which is OS-encrypted at rest
+// where a backing store (Keychain / DPAPI / libsecret) is present.
 export async function getOrCreateKeyringPassword(
 	secrets: vscode.SecretStorage,
 ): Promise<string> {

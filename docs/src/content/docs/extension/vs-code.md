@@ -29,9 +29,9 @@ Set breakpoints in the projection JS file. Standard VS Code debug controls work:
 
 ## Authentication
 
-When you debug against an environment that uses [OAuth](../reference/gaffer-toml.md#envnameoauth) and you haven't signed in yet, the run stops and the extension shows a **Sign in** action. It opens a terminal running `gaffer auth --env <name>`; complete the browser login once and the stored token refreshes automatically for later runs.
+When you debug against an environment that uses [OAuth](../reference/gaffer-toml.md#envnameoauth) and you haven't signed in yet, the run stops and the extension shows a **Sign in** action. It opens a terminal running `gaffer auth --env <name>`. You sign in through the browser once, and the stored token refreshes automatically for later runs.
 
-The token is kept in your OS keyring where one is available (macOS Keychain, Windows Credential Manager, Linux Secret Service), so nothing prompts for a passphrase. On a host without an OS keyring (a remote or container session), the extension manages an encrypted-file keyring for you: it generates a passphrase, stores it in VS Code's secret storage, and passes it to gaffer, so sign-in and later runs work without prompting. To use the CLI directly on such a host, set `GAFFER_KEYRING_PASSWORD` yourself.
+The token is kept in your OS keyring where one is available (macOS Keychain, Windows Credential Manager, Linux Secret Service), so nothing prompts for a passphrase. On a host without an OS keyring (a remote or container session), the extension manages an encrypted-file keyring for you. It generates a passphrase, stores it in VS Code's secret storage, and passes it to gaffer, so sign-in and later runs work without prompting. To use the CLI directly on such a host, set `GAFFER_KEYRING_PASSWORD` yourself.
 
 ## State inspection
 

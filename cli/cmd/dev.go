@@ -695,8 +695,8 @@ func runDevDebug(
 		close(iterDone)
 		innerCancel()
 
-		// An auth-required failure happens on connect, before any events, and a
-		// restart won't fix it - surface the sign-in signal and stop.
+		// An auth-required failure happens on connect, before any projection
+		// events, and a restart won't fix it - surface the signal and stop.
 		if authErr := asAuthRequired(srcErr); authErr != nil {
 			writer.WriteAuthRequired(authErr.Env)
 			session.Destroy()

@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import {
 	buildGafferArgv,
-	gafferSpawnEnv,
+	gafferRunEnv,
 	setKeyringPassword,
 	tryFetchManifest,
 } from "./discovery/cli.js";
@@ -337,7 +337,7 @@ async function activateAfterTelemetry(
 				invokerId: telemetry.invokerId(),
 				invokedVia,
 			}),
-		getSpawnEnv: () => gafferSpawnEnv(telemetry.isOptedOut()),
+		getSpawnEnv: () => gafferRunEnv(telemetry.isOptedOut()),
 		stepProvider,
 		stateProvider,
 		statusProvider,

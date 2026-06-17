@@ -97,7 +97,7 @@ Project-level telemetry is opted out by setting `telemetry = false` at the top o
 
 ## Common flags
 
-- **`--json`**: structured output instead of the default text rendering. `gaffer dev --json` emits NDJSON (one event per line); other commands emit a single JSON object.
+- **`--json`**: structured output instead of the default text rendering. `gaffer dev --json` emits NDJSON, one object per line, each tagged with a `type`: `info`, `event`, `result`, `error`, `fatal_error`, `summary`, and `auth_required` (emitted when a live run needs an interactive sign-in). Other commands emit a single JSON object.
 - **`--debug`**: starts the DAP debug server alongside `gaffer dev`. See [Debugging projections](../getting-started/debugging.md).
 - **`--env <name>`**: select an environment from `gaffer.toml` to run `gaffer dev` against. Optional when one environment is marked `default`, or on a terminal where you're prompted to pick; required for non-interactive runs with no default.
 - **`--connection`**: ad-hoc connection string for a single `gaffer dev` invocation. Overrides `--env` and the configured environment.

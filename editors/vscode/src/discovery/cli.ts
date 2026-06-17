@@ -51,6 +51,16 @@ export function setKeyringPassword(pw: string | undefined): void {
 export function gafferSpawnEnv(
 	optedOut: boolean,
 ): NodeJS.ProcessEnv | undefined {
+	if (!optedOut) return undefined;
+	return { ...process.env, GAFFER_TELEMETRY_OPTOUT: "1" };
+}
+
+/** Like `gafferSpawnEnv` but also carries GAFFER_KEYRING_PASSWORD, for spawns
+ * that connect to KurrentDB and so touch the OAuth token store (dev/debug runs
+ * and the sign-in terminal). Kept off the lsp/manifest/scaffold spawns, which
+ * never authenticate, so the passphrase isn't handed to processes that don't
+ * need it. */
+export function gafferRunEnv(optedOut: boolean): NodeJS.ProcessEnv | undefined {
 	if (!optedOut && !keyringPassword) return undefined;
 	return {
 		...process.env,
@@ -59,9 +69,10 @@ export function gafferSpawnEnv(
 	};
 }
 
-/** Same intent as `gafferSpawnEnv` but in the additive shape VS Code's
+/** Same intent as `gafferRunEnv` but in the additive shape VS Code's
  * `McpStdioServerDefinition.env` expects: keys merged onto the parent
- * env at spawn time. */
+ * env at spawn time. The MCP server connects to KurrentDB for its live
+ * tools, so it carries the keyring passphrase too. */
 export function gafferMcpEnv(optedOut: boolean): Record<string, string> {
 	return {
 		...(optedOut ? { GAFFER_TELEMETRY_OPTOUT: "1" } : {}),

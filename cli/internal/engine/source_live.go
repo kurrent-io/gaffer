@@ -67,7 +67,7 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 			if ctx.Err() != nil {
 				return nil
 			}
-			return l.connectionLost(authInvalidated, fmt.Sprintf("%s", subEvent.SubscriptionDropped.Error))
+			return l.connectionLost(authInvalidated, subEvent.SubscriptionDropped.Error.Error())
 		}
 
 		if subEvent.CaughtUp != nil {

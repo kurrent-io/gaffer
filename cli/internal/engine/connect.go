@@ -217,6 +217,10 @@ func oauthProvider(c *config.OAuthConfig, envName, projectRoot string, overlay m
 			// trip the flag so the run prompts re-sign-in rather than reporting
 			// a generic disconnect. Only meaningful for the interactive flow
 			// (store != nil); client-credentials has no stored token.
+			//
+			// The Delete is best-effort: the trip already drives the re-sign-in,
+			// and the subsequent `gaffer auth` overwrites the token, so a failed
+			// delete still self-heals.
 			if store != nil && oauth.IsInvalidGrant(err) {
 				_ = store.Delete(id)
 				authInvalidated.Trip()

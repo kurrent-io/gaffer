@@ -194,12 +194,19 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		}
 
 		const name = this.#name || "projection";
+		// A failed run takes a failure title regardless of mode; the icon is
+		// rendered alongside it in the webview.
+		const title = this.#errorReason
+			? `${name} failed`
+			: this.#mode === "ended"
+				? `Finished ${name}`
+				: `Running ${name}...`;
 		const update: UpdateMessage =
 			this.#mode === "ended"
 				? {
 						type: "update",
 						mode: "ended",
-						title: `Finished ${name}`,
+						title,
 						stats,
 						showPauseButton: false,
 						pauseButtonLabel: "Pause at next event",
@@ -209,7 +216,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 				: {
 						type: "update",
 						mode: "running",
-						title: `Running ${name}...`,
+						title,
 						stats,
 						showPauseButton: !connecting && !stale,
 						pauseButtonLabel: this.#pausePending

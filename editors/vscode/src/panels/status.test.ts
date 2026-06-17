@@ -47,6 +47,8 @@ describe("StatusViewProvider", () => {
 		expect(lastUpdate(view).error).toBe(
 			"KurrentDB connection lost: server not ready",
 		);
+		// The title flips to a failure title (the icon renders alongside it).
+		expect(lastUpdate(view).title).toBe("projection failed");
 		// The chip keeps showing the phase, not the (truncating) error text.
 		expect(view.description).toBe("Connecting");
 

@@ -11,6 +11,7 @@ interface UpdateMessage {
 	showPauseButton: boolean;
 	pauseButtonLabel: string;
 	pauseButtonDisabled: boolean;
+	error: string | null;
 }
 
 function lastUpdate(
@@ -35,6 +36,28 @@ describe("StatusViewProvider", () => {
 		expect(update.title).toBe("Running projection...");
 		expect(update.stats).toEqual(["Connecting..."]);
 		expect(update.showPauseButton).toBe(false);
+	});
+
+	it("setError surfaces the reason in the body and keeps it out of the description chip", () => {
+		const provider = new StatusViewProvider();
+		const view = makeFakeWebviewView();
+		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+
+		provider.setError("KurrentDB connection lost: server not ready");
+		expect(lastUpdate(view).error).toBe(
+			"KurrentDB connection lost: server not ready",
+		);
+		// The chip keeps showing the phase, not the (truncating) error text.
+		expect(view.description).toBe("Connecting");
+
+		// The reason persists across the disconnect transition.
+		provider.setPhase("disconnected");
+		expect(lastUpdate(view).error).toBe(
+			"KurrentDB connection lost: server not ready",
+		);
+
+		provider.reset("p");
+		expect(lastUpdate(view).error).toBeNull();
 	});
 
 	it("setPhase('catching-up') replaces the Connecting placeholder with Waiting for events and shows the pause button", () => {

@@ -25,6 +25,9 @@ interface UpdateMessage {
 	showPauseButton: boolean;
 	pauseButtonLabel: string;
 	pauseButtonDisabled: boolean;
+	// Reason the run failed, rendered as a distinct error state in the body.
+	// null when the run hasn't failed.
+	error: string | null;
 }
 
 export class StatusViewProvider implements vscode.WebviewViewProvider {
@@ -63,7 +66,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 			enableScripts: true,
 			localResourceRoots: [],
 		};
-		this.#applyDescription();
+		webviewView.description = PHASE_LABELS[this.#phase];
 
 		const nonce = generateNonce();
 		webviewView.webview.html = statusTemplate
@@ -90,24 +93,16 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	setPhase(phase: Phase): void {
 		if (this.#phase === phase) return;
 		this.#phase = phase;
-		this.#applyDescription();
+		if (this.#view) this.#view.description = PHASE_LABELS[phase];
 		this.#postUpdate();
 	}
 
-	// Records why a run failed. The reason is shown in place of the phase label
-	// (and the toast carries the full text); it persists through the subsequent
-	// disconnected transition until the next reset.
+	// Records why a run failed. Shown as a distinct error state in the panel
+	// body (the full reason, not truncated like the header chip would), and
+	// carried in the toast. Persists until the next reset.
 	setError(reason: string): void {
 		this.#errorReason = reason;
-		this.#applyDescription();
 		this.#postUpdate();
-	}
-
-	// The description chip shows the failure reason when one is set, otherwise
-	// the current phase. Re-applied on every panel (re)mount.
-	#applyDescription(): void {
-		if (!this.#view) return;
-		this.#view.description = this.#errorReason ?? PHASE_LABELS[this.#phase];
 	}
 
 	reset(name: string): void {
@@ -209,6 +204,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 						showPauseButton: false,
 						pauseButtonLabel: "Pause at next event",
 						pauseButtonDisabled: false,
+						error: this.#errorReason,
 					}
 				: {
 						type: "update",
@@ -220,6 +216,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 							? "Waiting for event to pause"
 							: "Pause at next event",
 						pauseButtonDisabled: this.#pausePending,
+						error: this.#errorReason,
 					};
 		void this.#view.webview.postMessage(update);
 	}

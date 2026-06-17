@@ -132,6 +132,15 @@ const AuthRequiredMessageSchema = v.object({
 	env: v.string(),
 });
 
+// Emitted when a run ends on a connection/runtime failure (a dropped
+// subscription, a failed connect). The host toasts the reason and reflects it
+// in the status panel, rather than leaving the user with a generic exit code.
+const RunErrorMessageSchema = v.object({
+	type: v.literal("run_error"),
+	code: v.string(),
+	description: v.string(),
+});
+
 // CLI-emitted messages as they appear on stdout. v.variant is O(1) on the
 // discriminator vs v.union's linear try-each.
 export const CliMessageWireSchema = v.variant("type", [
@@ -144,6 +153,7 @@ export const CliMessageWireSchema = v.variant("type", [
 	DebugMessageSchema,
 	FatalErrorMessageSchema,
 	AuthRequiredMessageSchema,
+	RunErrorMessageSchema,
 ]);
 export type CliMessageWire = v.InferOutput<typeof CliMessageWireSchema>;
 

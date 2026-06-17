@@ -52,6 +52,10 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	// do nothing, so we hide it, and the stats placeholder reads
 	// "Connecting..." instead of "Waiting for events...".
 	#phase: Phase = "connecting";
+	// Reason a run failed (a run_error from the CLI). When set it takes
+	// precedence over the phase label in the description chip, so the user sees
+	// "why" the run stopped rather than a bare "Disconnected". Cleared on reset.
+	#errorReason: string | null = null;
 
 	resolveWebviewView(webviewView: vscode.WebviewView): void {
 		this.#view = webviewView;
@@ -59,7 +63,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 			enableScripts: true,
 			localResourceRoots: [],
 		};
-		webviewView.description = PHASE_LABELS[this.#phase];
+		this.#applyDescription();
 
 		const nonce = generateNonce();
 		webviewView.webview.html = statusTemplate
@@ -86,8 +90,24 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	setPhase(phase: Phase): void {
 		if (this.#phase === phase) return;
 		this.#phase = phase;
-		if (this.#view) this.#view.description = PHASE_LABELS[phase];
+		this.#applyDescription();
 		this.#postUpdate();
+	}
+
+	// Records why a run failed. The reason is shown in place of the phase label
+	// (and the toast carries the full text); it persists through the subsequent
+	// disconnected transition until the next reset.
+	setError(reason: string): void {
+		this.#errorReason = reason;
+		this.#applyDescription();
+		this.#postUpdate();
+	}
+
+	// The description chip shows the failure reason when one is set, otherwise
+	// the current phase. Re-applied on every panel (re)mount.
+	#applyDescription(): void {
+		if (!this.#view) return;
+		this.#view.description = this.#errorReason ?? PHASE_LABELS[this.#phase];
 	}
 
 	reset(name: string): void {
@@ -100,6 +120,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		this.#mode = "running";
 		this.#pausePending = false;
 		this.#phase = "connecting";
+		this.#errorReason = null;
 		this.#postUpdate();
 	}
 

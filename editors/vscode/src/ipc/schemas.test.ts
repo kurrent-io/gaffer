@@ -76,6 +76,24 @@ describe("CliMessageWireSchema", () => {
 		});
 	});
 
+	describe("run_error", () => {
+		it("accepts a code and description", () => {
+			const r = v.safeParse(CliMessageWireSchema, {
+				type: "run_error",
+				code: "db_disconnect",
+				description: "KurrentDB connection lost",
+			});
+			expect(r.success).toBe(true);
+		});
+		it("rejects a missing description", () => {
+			const r = v.safeParse(CliMessageWireSchema, {
+				type: "run_error",
+				code: "db_disconnect",
+			});
+			expect(r.success).toBe(false);
+		});
+	});
+
 	describe("result", () => {
 		it("accepts a processed result with optional fields", () => {
 			const r = v.safeParse(CliMessageWireSchema, {

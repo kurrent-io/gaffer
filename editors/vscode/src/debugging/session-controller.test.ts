@@ -29,7 +29,7 @@ import type { DebugState } from "../types.js";
 interface ProviderCalls {
 	step: { clear: number };
 	state: { clear: number; markEnded: number; setDebugSessionCount: number };
-	status: { reset: string[]; markEnded: number };
+	status: { reset: string[]; markEnded: number; setError: string[] };
 }
 
 function fakeProviders(): {
@@ -41,7 +41,7 @@ function fakeProviders(): {
 	const calls: ProviderCalls = {
 		step: { clear: 0 },
 		state: { clear: 0, markEnded: 0, setDebugSessionCount: 0 },
-		status: { reset: [], markEnded: 0 },
+		status: { reset: [], markEnded: 0, setError: [] },
 	};
 	const step = {
 		clear: () => {
@@ -65,6 +65,9 @@ function fakeProviders(): {
 		},
 		markEnded: () => {
 			calls.status.markEnded++;
+		},
+		setError: (reason: string) => {
+			calls.status.setError.push(reason);
 		},
 	} as unknown as StatusViewProvider;
 	return { step, state, status, calls };
@@ -588,6 +591,30 @@ describe("SessionController.start - failures", () => {
 		expect(
 			getState().terminals.some((t) => t.name.includes("gaffer auth")),
 		).toBe(false);
+	});
+
+	it("toasts the reason, records it on the status panel, and suppresses the generic exit toast on run_error", async () => {
+		const h = makeHarness();
+		const { session } = await startToRunning(h);
+
+		session.fire({
+			type: "run_error",
+			code: "db_disconnect",
+			description: "KurrentDB connection lost: server not ready",
+		});
+		session.fire({ type: "exit", code: 1 });
+		await flushAllMicrotasks();
+
+		const messages = getShownMessages();
+		expect(
+			messages.some((m) => m.message.includes("KurrentDB connection lost")),
+		).toBe(true);
+		expect(messages.some((m) => m.message.includes("Projection faulted"))).toBe(
+			false,
+		);
+		expect(h.providerCalls.status.setError).toEqual([
+			"KurrentDB connection lost: server not ready",
+		]);
 	});
 
 	it("suppresses the faulted toast when auth_required preceded a non-zero exit", async () => {

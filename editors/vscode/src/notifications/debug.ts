@@ -16,6 +16,12 @@ export const showStartFailure = (message: string): Thenable<unknown> =>
 export const showProjectionFailed = (): Thenable<unknown> =>
 	vscode.window.showErrorMessage("Projection failed - see Problems panel");
 
+// A connection/runtime failure that ended the run (e.g. a dropped subscription).
+// Surfaces the reason the CLI reported so the user isn't left with a silent
+// failure or a bare exit code.
+export const showRunError = (description: string): Thenable<unknown> =>
+	vscode.window.showErrorMessage(description);
+
 export const showPortInUse = (description: string): Thenable<unknown> =>
 	vscode.window
 		.showErrorMessage(

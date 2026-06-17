@@ -37,7 +37,7 @@ The token is kept in your OS keyring where one is available (macOS Keychain, Win
 
 A dedicated **Gaffer** panel opens at the bottom of the editor when a session starts. It has three views, two visible at any moment:
 
-- **Status**: connection phase (connecting / catching-up / caught-up / disconnected), total events processed, a count of distinct runtime quirks seen, and a skipped-by-reason rollup. Hidden while paused at a breakpoint.
+- **Status**: connection phase (connecting / catching-up / caught-up / disconnected), total events processed, a count of distinct runtime quirks seen, and a skipped-by-reason rollup. Hidden while paused at a breakpoint. If a run drops on a connection failure, the reason appears in this panel and as a notification.
 - **Step**: the event that triggered the current pause, plus a diff of state before and after the handler ran. It also lists what the handler produced as it ran: logs, emitted events, and any runtime quirks that fired. Visible only while paused.
 - **State**: current `state`, then `result` (V1 transformed state, V2 post-handler state), then shared state (for biState projections), then per-partition slices. Always visible.
 

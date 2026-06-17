@@ -25,6 +25,7 @@ import {
 	showPortInUse,
 	showProjectionFailed,
 	showProjectionFault,
+	showRunError,
 	showStartFailure,
 } from "../notifications/debug.js";
 import { showTrustWarning } from "../notifications/trust.js";
@@ -114,6 +115,10 @@ export class SessionController implements vscode.Disposable {
 	// "Projection faulted" toast on top of the "Sign in" prompt - the non-zero
 	// exit is the auth failure, already surfaced. Reset alongside #fatalErrorSeen.
 	#authRequiredSeen = false;
+	// Set by the run_error listener so the exit handler doesn't also fire a
+	// generic toast - the run_error already surfaced the reason. Reset alongside
+	// #fatalErrorSeen.
+	#runErrorSeen = false;
 	// Deferred awaited by start() so it doesn't return until the
 	// onDidStartDebugSession-driven post-start work (setStatus + focus)
 	// has completed. Set just before vscode.debug.startDebugging, read
@@ -235,6 +240,7 @@ export class SessionController implements vscode.Disposable {
 		// and would otherwise wipe the flag before the catch checks it.
 		this.#fatalErrorSeen = false;
 		this.#authRequiredSeen = false;
+		this.#runErrorSeen = false;
 
 		const { name, tomlUri, fixture, env: envName } = args;
 		const tomlDir = vscode.Uri.joinPath(tomlUri, "..").fsPath;
@@ -299,7 +305,11 @@ export class SessionController implements vscode.Disposable {
 			// post-mortem to preserve - never reached running.
 			if (s === "starting") {
 				log(`CLI exited during start (code ${msg.code})`);
-				if (!this.#fatalErrorSeen && !this.#authRequiredSeen) {
+				if (
+					!this.#fatalErrorSeen &&
+					!this.#authRequiredSeen &&
+					!this.#runErrorSeen
+				) {
 					await showStartFailure(`CLI exited (code ${msg.code})`);
 				}
 				await this.#cleanupSession("idle");
@@ -312,7 +322,8 @@ export class SessionController implements vscode.Disposable {
 				if (
 					msg.code !== 0 &&
 					!this.#fatalErrorSeen &&
-					!this.#authRequiredSeen
+					!this.#authRequiredSeen &&
+					!this.#runErrorSeen
 				) {
 					await showProjectionFault(msg.code);
 				}
@@ -349,6 +360,14 @@ export class SessionController implements vscode.Disposable {
 			// CLI exits non-zero) suppresses its own faulted toast.
 			this.#authRequiredSeen = true;
 			void this.#handleAuthRequired(msg.env, invokedVia);
+		});
+
+		session.on("run_error", (msg) => {
+			// Synchronous flag (see auth_required) so the exit handler doesn't
+			// also toast. Surface the reason and reflect it in the status panel.
+			this.#runErrorSeen = true;
+			this.#statusProvider.setError(msg.description);
+			void showRunError(msg.description);
 		});
 
 		this.#statusProvider.reset(name);

@@ -25,6 +25,9 @@ interface UpdateMessage {
 	showPauseButton: boolean;
 	pauseButtonLabel: string;
 	pauseButtonDisabled: boolean;
+	// Reason the run failed, rendered as a distinct error state in the body.
+	// null when the run hasn't failed.
+	error: string | null;
 }
 
 export class StatusViewProvider implements vscode.WebviewViewProvider {
@@ -52,6 +55,10 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	// do nothing, so we hide it, and the stats placeholder reads
 	// "Connecting..." instead of "Waiting for events...".
 	#phase: Phase = "connecting";
+	// Reason a run failed (a run_error from the CLI). When set it takes
+	// precedence over the phase label in the description chip, so the user sees
+	// "why" the run stopped rather than a bare "Disconnected". Cleared on reset.
+	#errorReason: string | null = null;
 
 	resolveWebviewView(webviewView: vscode.WebviewView): void {
 		this.#view = webviewView;
@@ -90,6 +97,14 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		this.#postUpdate();
 	}
 
+	// Records why a run failed. Shown as a distinct error state in the panel
+	// body (the full reason, not truncated like the header chip would), and
+	// carried in the toast. Persists until the next reset.
+	setError(reason: string): void {
+		this.#errorReason = reason;
+		this.#postUpdate();
+	}
+
 	reset(name: string): void {
 		this.#name = name;
 		this.#processed = 0;
@@ -100,6 +115,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		this.#mode = "running";
 		this.#pausePending = false;
 		this.#phase = "connecting";
+		this.#errorReason = null;
 		this.#postUpdate();
 	}
 
@@ -178,27 +194,36 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		}
 
 		const name = this.#name || "projection";
+		// A failed run takes a failure title regardless of mode; the icon is
+		// rendered alongside it in the webview.
+		const title = this.#errorReason
+			? `${name} failed`
+			: this.#mode === "ended"
+				? `Finished ${name}`
+				: `Running ${name}...`;
 		const update: UpdateMessage =
 			this.#mode === "ended"
 				? {
 						type: "update",
 						mode: "ended",
-						title: `Finished ${name}`,
+						title,
 						stats,
 						showPauseButton: false,
 						pauseButtonLabel: "Pause at next event",
 						pauseButtonDisabled: false,
+						error: this.#errorReason,
 					}
 				: {
 						type: "update",
 						mode: "running",
-						title: `Running ${name}...`,
+						title,
 						stats,
 						showPauseButton: !connecting && !stale,
 						pauseButtonLabel: this.#pausePending
 							? "Waiting for event to pause"
 							: "Pause at next event",
 						pauseButtonDisabled: this.#pausePending,
+						error: this.#errorReason,
 					};
 		void this.#view.webview.postMessage(update);
 	}

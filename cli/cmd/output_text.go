@@ -398,6 +398,14 @@ func (tw *textWriter) WriteFatalError(fe fatalError) {
 	tw.writeCompatBlock(out, fe)
 }
 
+func (tw *textWriter) WriteRunError(_, description string) {
+	out := tw.errW
+	if out == nil {
+		out = tw.w
+	}
+	_, _ = fmt.Fprintf(out, "\n%s\n%s\n", tw.styles.errStatus.Render("ERROR"), description)
+}
+
 func (tw *textWriter) WriteAuthRequired(env string) {
 	out := tw.errW
 	if out == nil {

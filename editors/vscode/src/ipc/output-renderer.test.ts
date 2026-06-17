@@ -99,6 +99,15 @@ describe("renderCliMessage", () => {
 		]);
 	});
 
+	it("renders a run_error line with the reason", () => {
+		const lines = record({
+			type: "run_error",
+			code: "db_disconnect",
+			description: "KurrentDB connection lost",
+		});
+		expect(lines).toEqual(["  ERROR: KurrentDB connection lost"]);
+	});
+
 	it("renders a summary preceded by a blank line", () => {
 		const lines = record({
 			type: "summary",

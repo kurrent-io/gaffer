@@ -1,5 +1,15 @@
 # @kurrent/gaffer
 
+## 0.4.2
+
+### Patch Changes
+
+- 76a66a2: `gaffer dev --json` now emits an `auth_required` message when a live run can't authenticate without an interactive sign-in (no stored token, or a keyring that can't be unlocked non-interactively), instead of failing with a generic connection error. The VS Code extension uses this to offer a "Sign in" action that runs `gaffer auth` for you.
+- 502a951: Gaffer can now authenticate to KurrentDB with an X.509 user certificate. Set `user_cert_file` and `user_key_file` on an `[env.<name>]` block. The paths expand `${VAR}` references and resolve relative to the project root, so a relative path works from any directory. The certificate requires a TLS connection and can be combined with OAuth.
+- dffc3fc: Gaffer can now authenticate to KurrentDB with OAuth/OIDC bearer tokens. An `[env.<name>.oauth]` block configures the issuer and client ID. For interactive use, `gaffer auth --env <name>` signs in through the browser and stores a token that refreshes automatically; `gaffer auth --clear` removes stored tokens. For CI, setting `KURRENTDB_OAUTH_CLIENT_SECRET` selects the non-interactive client-credentials grant. `GAFFER_NO_OPEN` prints the sign-in URL instead of opening a browser, and `GAFFER_KEYRING_PASSWORD` supplies the keyring passphrase where there's no terminal to prompt on.
+- fef0f6f: gaffer now discards a stored OAuth token the identity provider has rejected (`invalid_grant`) and re-prompts for sign-in, instead of surfacing it as a generic connection failure. In the VS Code extension the "Sign in" action re-appears on the same run.
+- ce3de42: `gaffer dev --json` now emits a `run_error` message when a run ends on a connection failure (a dropped subscription or a failed connect), carrying the reason. Previously this only reached the output as plain stderr text. The VS Code extension uses it to show the failure as a notification and reflect it in the status panel, instead of a silent failure or a bare exit code.
+
 ## 0.4.1
 
 ### Patch Changes

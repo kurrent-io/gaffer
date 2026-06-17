@@ -13,6 +13,7 @@ import {
 	getLastStartedDebugSession,
 	getShownMessages,
 	getState,
+	queueMessageResponse,
 	setCommandHandler,
 	setConfiguration,
 	setStartDebuggingResult,
@@ -552,6 +553,56 @@ describe("SessionController.start - failures", () => {
 		expect(messages.some((m) => m.message.includes("Projection faulted"))).toBe(
 			false,
 		);
+	});
+
+	it("launches gaffer auth in a terminal when the user signs in on auth_required", async () => {
+		const h = makeHarness();
+		const { session } = await startToRunning(h);
+
+		queueMessageResponse("Sign in");
+		session.fire({ type: "auth_required", env: "prod" });
+		await flushAllMicrotasks();
+
+		expect(getShownMessages().some((m) => m.message.includes("prod"))).toBe(
+			true,
+		);
+
+		const authTerminal = getState().terminals.find((t) =>
+			t.name.includes("gaffer auth"),
+		);
+		expect(authTerminal).toBeDefined();
+		expect(authTerminal?.options.shellArgs).toEqual(
+			expect.arrayContaining(["auth", "--env", "prod"]),
+		);
+		expect(authTerminal?.showCount).toBeGreaterThan(0);
+	});
+
+	it("does not launch a terminal when the user dismisses auth_required", async () => {
+		const h = makeHarness();
+		const { session } = await startToRunning(h);
+
+		// No queued response: showErrorMessage resolves undefined (dismissed).
+		session.fire({ type: "auth_required", env: "prod" });
+		await flushAllMicrotasks();
+
+		expect(
+			getState().terminals.some((t) => t.name.includes("gaffer auth")),
+		).toBe(false);
+	});
+
+	it("suppresses the faulted toast when auth_required preceded a non-zero exit", async () => {
+		const h = makeHarness();
+		const { session } = await startToRunning(h);
+
+		// The CLI emits auth_required then exits non-zero; only the sign-in
+		// prompt should show, not a competing "Projection faulted" toast.
+		session.fire({ type: "auth_required", env: "prod" });
+		session.fire({ type: "exit", code: 1 });
+		await flushAllMicrotasks();
+
+		expect(
+			getShownMessages().some((m) => m.message.includes("Projection faulted")),
+		).toBe(false);
 	});
 
 	it("shows showProjectionFault when fatal_error did NOT precede a non-zero exit", async () => {

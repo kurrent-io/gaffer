@@ -125,6 +125,13 @@ const FatalErrorMessageSchema = v.object({
 	eventId: v.optional(v.string()),
 });
 
+// Emitted when a live run can't authenticate without an interactive sign-in.
+// The host surfaces a "Sign in" action that runs `gaffer auth --env <env>`.
+const AuthRequiredMessageSchema = v.object({
+	type: v.literal("auth_required"),
+	env: v.string(),
+});
+
 // CLI-emitted messages as they appear on stdout. v.variant is O(1) on the
 // discriminator vs v.union's linear try-each.
 export const CliMessageWireSchema = v.variant("type", [
@@ -136,6 +143,7 @@ export const CliMessageWireSchema = v.variant("type", [
 	SummaryMessageSchema,
 	DebugMessageSchema,
 	FatalErrorMessageSchema,
+	AuthRequiredMessageSchema,
 ]);
 export type CliMessageWire = v.InferOutput<typeof CliMessageWireSchema>;
 

@@ -28,10 +28,30 @@ export function makeContext(): vscode.ExtensionContext {
 		globalStorageUri,
 		workspaceState: makeMemento(),
 		globalState: makeMemento(),
+		secrets: makeSecretStorage(),
 		extension: {
 			packageJSON: { version: "0.0.0-test" },
 		},
 	} as unknown as vscode.ExtensionContext;
+}
+
+// In-memory SecretStorage for tests. Covers get/store/delete; onDidChange is a
+// no-op since production code only reads/writes.
+function makeSecretStorage(): vscode.SecretStorage {
+	const store = new Map<string, string>();
+	return {
+		get: (key: string): Thenable<string | undefined> =>
+			Promise.resolve(store.get(key)),
+		store: (key: string, value: string): Thenable<void> => {
+			store.set(key, value);
+			return Promise.resolve();
+		},
+		delete: (key: string): Thenable<void> => {
+			store.delete(key);
+			return Promise.resolve();
+		},
+		onDidChange: () => ({ dispose: () => {} }),
+	} as unknown as vscode.SecretStorage;
 }
 
 // In-memory Memento for tests. Mirrors vscode.Memento for the keys

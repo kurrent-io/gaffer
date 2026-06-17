@@ -39,6 +39,15 @@ export interface Invocation {
  * the latter is also null when telemetry init fails (noop fallback),
  * where the user hasn't actually chosen to opt out.
  */
+// Set once at activation from SecretStorage; injected into every gaffer spawn
+// as GAFFER_KEYRING_PASSWORD so the encrypted-file token store unlocks without a
+// prompt. gaffer ignores it when an OS keyring is available.
+let keyringPassword: string | undefined;
+
+export function setKeyringPassword(pw: string | undefined): void {
+	keyringPassword = pw;
+}
+
 export function gafferSpawnEnv(
 	optedOut: boolean,
 ): NodeJS.ProcessEnv | undefined {
@@ -46,11 +55,29 @@ export function gafferSpawnEnv(
 	return { ...process.env, GAFFER_TELEMETRY_OPTOUT: "1" };
 }
 
-/** Same intent as `gafferSpawnEnv` but in the additive shape VS Code's
+/** Like `gafferSpawnEnv` but also carries GAFFER_KEYRING_PASSWORD, for spawns
+ * that connect to KurrentDB and so touch the OAuth token store (dev/debug runs
+ * and the sign-in terminal). Kept off the lsp/manifest/scaffold spawns, which
+ * never authenticate, so the passphrase isn't handed to processes that don't
+ * need it. */
+export function gafferRunEnv(optedOut: boolean): NodeJS.ProcessEnv | undefined {
+	if (!optedOut && !keyringPassword) return undefined;
+	return {
+		...process.env,
+		...(optedOut ? { GAFFER_TELEMETRY_OPTOUT: "1" } : {}),
+		...(keyringPassword ? { GAFFER_KEYRING_PASSWORD: keyringPassword } : {}),
+	};
+}
+
+/** Same intent as `gafferRunEnv` but in the additive shape VS Code's
  * `McpStdioServerDefinition.env` expects: keys merged onto the parent
- * env at spawn time. */
+ * env at spawn time. The MCP server connects to KurrentDB for its live
+ * tools, so it carries the keyring passphrase too. */
 export function gafferMcpEnv(optedOut: boolean): Record<string, string> {
-	return optedOut ? { GAFFER_TELEMETRY_OPTOUT: "1" } : {};
+	return {
+		...(optedOut ? { GAFFER_TELEMETRY_OPTOUT: "1" } : {}),
+		...(keyringPassword ? { GAFFER_KEYRING_PASSWORD: keyringPassword } : {}),
+	};
 }
 
 /**

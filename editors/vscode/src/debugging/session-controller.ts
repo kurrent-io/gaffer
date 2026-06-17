@@ -28,6 +28,7 @@ import {
 	showStartFailure,
 } from "../notifications/debug.js";
 import { showTrustWarning } from "../notifications/trust.js";
+import { showAuthRequired } from "../notifications/auth.js";
 import type { StepProvider } from "../panels/step.js";
 import type { StateProvider } from "../panels/state.js";
 import type { StatusViewProvider } from "../panels/status.js";
@@ -109,6 +110,10 @@ export class SessionController implements vscode.Disposable {
 	// each new session (not in cleanup) so the catch path can still
 	// observe it after cleanup has awaited in the same async chain.
 	#fatalErrorSeen = false;
+	// Set by the auth_required listener so the exit handler doesn't also fire a
+	// "Projection faulted" toast on top of the "Sign in" prompt - the non-zero
+	// exit is the auth failure, already surfaced. Reset alongside #fatalErrorSeen.
+	#authRequiredSeen = false;
 	// Deferred awaited by start() so it doesn't return until the
 	// onDidStartDebugSession-driven post-start work (setStatus + focus)
 	// has completed. Set just before vscode.debug.startDebugging, read
@@ -229,6 +234,7 @@ export class SessionController implements vscode.Disposable {
 		// has awaited cleanup - cleanup awaits in the same async chain
 		// and would otherwise wipe the flag before the catch checks it.
 		this.#fatalErrorSeen = false;
+		this.#authRequiredSeen = false;
 
 		const { name, tomlUri, fixture, env: envName } = args;
 		const tomlDir = vscode.Uri.joinPath(tomlUri, "..").fsPath;
@@ -293,7 +299,7 @@ export class SessionController implements vscode.Disposable {
 			// post-mortem to preserve - never reached running.
 			if (s === "starting") {
 				log(`CLI exited during start (code ${msg.code})`);
-				if (!this.#fatalErrorSeen) {
+				if (!this.#fatalErrorSeen && !this.#authRequiredSeen) {
 					await showStartFailure(`CLI exited (code ${msg.code})`);
 				}
 				await this.#cleanupSession("idle");
@@ -303,7 +309,11 @@ export class SessionController implements vscode.Disposable {
 			// State view + Status counters survive for inspection.
 			if (s === "running" || s === "inspecting") {
 				log(`CLI exited with code ${msg.code}`);
-				if (msg.code !== 0 && !this.#fatalErrorSeen) {
+				if (
+					msg.code !== 0 &&
+					!this.#fatalErrorSeen &&
+					!this.#authRequiredSeen
+				) {
 					await showProjectionFault(msg.code);
 				}
 				await this.#cleanupSession("ended");
@@ -332,6 +342,13 @@ export class SessionController implements vscode.Disposable {
 				log(`Fatal error (no file): ${msg.code} - ${msg.description}`);
 			}
 			void showProjectionFailed();
+		});
+
+		session.on("auth_required", (msg) => {
+			// Set synchronously so the exit handler (which fires right after the
+			// CLI exits non-zero) suppresses its own faulted toast.
+			this.#authRequiredSeen = true;
+			void this.#handleAuthRequired(msg.env, invokedVia);
 		});
 
 		this.#statusProvider.reset(name);
@@ -388,6 +405,31 @@ export class SessionController implements vscode.Disposable {
 		// (cleanupSession also settles). Either resolves cleanly.
 		await ready.promise;
 		this.#startedReady = null;
+	}
+
+	// Offers to sign in when a run reported auth_required, launching
+	// `gaffer auth --env <env>` in a terminal. The terminal is a pty, so an
+	// interactive keyring passphrase prompt works there; the spawn env carries
+	// the same GAFFER_KEYRING_PASSWORD the run uses, so a sign-in stores a token
+	// the run can later unlock.
+	async #handleAuthRequired(
+		env: string,
+		invokedVia: InvokedVia,
+	): Promise<void> {
+		if (!(await showAuthRequired(env))) return;
+		const [shellPath, ...shellArgs] = this.#buildArgv(
+			["auth", "--env", env],
+			invokedVia,
+		);
+		if (!shellPath) return;
+		const spawnEnv = this.#getSpawnEnv();
+		const terminal = vscode.window.createTerminal({
+			name: `gaffer auth (${env})`,
+			shellPath,
+			shellArgs,
+			...(spawnEnv ? { env: spawnEnv } : {}),
+		});
+		terminal.show();
 	}
 
 	// Called from the onDidStartDebugSession listener once VS Code has

@@ -61,6 +61,11 @@ export function renderCliMessage(msg: CliMessage, write: WriteFn): void {
 			}
 			break;
 		}
+		case "auth_required":
+			write(
+				`  Authentication required for env ${msg.env} - run gaffer auth --env ${msg.env}`,
+			);
+			break;
 		case "exit":
 			write(`Process exited (code ${msg.code})`);
 			break;

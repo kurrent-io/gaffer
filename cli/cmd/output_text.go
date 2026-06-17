@@ -398,6 +398,15 @@ func (tw *textWriter) WriteFatalError(fe fatalError) {
 	tw.writeCompatBlock(out, fe)
 }
 
+func (tw *textWriter) WriteAuthRequired(env string) {
+	out := tw.errW
+	if out == nil {
+		out = tw.w
+	}
+	_, _ = fmt.Fprintf(out, "\n%s\n", tw.styles.errStatus.Render("Authentication required"))
+	_, _ = fmt.Fprintf(out, "Run `gaffer auth --env %s` to sign in.\n", env)
+}
+
 // writeCompatBlock renders the "Compat: <code>" hint when the fatal error
 // was driven by an upstream-quirk-compat code path. Reads the enriched
 // description + fixedIn fields straight off the error (the runtime supplies

@@ -128,6 +128,16 @@ func (jw *jsonWriter) WriteFatalError(fe fatalError) {
 	jw.writeLine(line)
 }
 
+// WriteAuthRequired emits a typed signal that a live run needs an interactive
+// sign-in for env. The VS Code extension matches on this to offer a "Sign in"
+// action rather than surfacing a generic connection error.
+func (jw *jsonWriter) WriteAuthRequired(env string) {
+	jw.writeLine(map[string]any{
+		"type": "auth_required",
+		"env":  env,
+	})
+}
+
 func (jw *jsonWriter) WriteSummary(stats engine.EventStats, state engine.StateSummary) {
 	line := map[string]any{
 		"type":      "summary",

@@ -22,6 +22,7 @@ type outputWriter interface {
 	WriteResult(eventID string, result *gafferruntime.FeedResult)
 	WriteError(eventID string, code string, description string)
 	WriteFatalError(fe fatalError)
+	WriteAuthRequired(env string)
 	WriteSummary(stats engine.EventStats, state engine.StateSummary)
 }
 

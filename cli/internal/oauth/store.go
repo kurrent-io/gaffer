@@ -22,6 +22,11 @@ const keyringService = "gaffer-oauth"
 // identity.
 var ErrNoToken = errors.New("no stored token")
 
+// ErrKeyringLocked is returned when the encrypted-file keyring needs a
+// passphrase but none is available non-interactively (no GAFFER_KEYRING_PASSWORD
+// and no terminal to prompt on). Callers treat it as needing a sign-in.
+var ErrKeyringLocked = errors.New("keyring is locked and no terminal is available to unlock it")
+
 // TokenStore persists OAuth tokens in the OS keyring (macOS Keychain, Linux
 // Secret Service, Windows Credential Manager, ...), falling back to an
 // encrypted file when no keyring is available.
@@ -131,8 +136,7 @@ func filePassword(keyringDir string) keyring.PromptFunc {
 		// the LSP/DAP protocol stream - before failing opaquely. Fail fast with
 		// guidance instead.
 		if !term.IsTerminal(int(os.Stdin.Fd())) {
-			return "", errors.New("gaffer's stored credentials are protected by a keyring passphrase, " +
-				"but there is no terminal to enter it; set GAFFER_KEYRING_PASSWORD, or run `gaffer auth` from a terminal")
+			return "", fmt.Errorf("%w: set GAFFER_KEYRING_PASSWORD, or run `gaffer auth` from a terminal", ErrKeyringLocked)
 		}
 		prompt := "Enter passphrase to unlock gaffer's stored credentials"
 		if entries, err := os.ReadDir(keyringDir); err != nil || len(entries) == 0 {

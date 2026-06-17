@@ -138,6 +138,18 @@ func (jw *jsonWriter) WriteAuthRequired(env string) {
 	})
 }
 
+// WriteRunError emits a connection/runtime failure that ended the run (e.g. a
+// dropped subscription or a failed connect), distinct from a per-event error or
+// a projection fault. The VS Code extension surfaces it as a toast carrying the
+// reason rather than a generic exit-code message.
+func (jw *jsonWriter) WriteRunError(code, description string) {
+	jw.writeLine(map[string]any{
+		"type":        "run_error",
+		"code":        code,
+		"description": description,
+	})
+}
+
 func (jw *jsonWriter) WriteSummary(stats engine.EventStats, state engine.StateSummary) {
 	line := map[string]any{
 		"type":      "summary",

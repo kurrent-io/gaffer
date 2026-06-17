@@ -23,6 +23,7 @@ type outputWriter interface {
 	WriteError(eventID string, code string, description string)
 	WriteFatalError(fe fatalError)
 	WriteAuthRequired(env string)
+	WriteRunError(code, description string)
 	WriteSummary(stats engine.EventStats, state engine.StateSummary)
 }
 

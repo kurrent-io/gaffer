@@ -467,8 +467,12 @@ func runDevSingle(
 		return silent(srcErr)
 	}
 
-	if err := finalizeRun(ctx, caughtUp, srcErr, r, os.Stderr); err != nil {
-		return err
+	if runErr := finalizeRun(ctx, caughtUp, srcErr, r, os.Stderr); runErr != nil {
+		if code, ok := runErrorCode(runErr); ok {
+			writer.WriteRunError(code, runErr.Error())
+			return silent(runErr)
+		}
+		return runErr
 	}
 
 	summary, stateErr := r.CollectState()
@@ -763,9 +767,13 @@ func runDevDebug(
 		}
 
 		adapter.SendTerminated()
-		if err := finalizeRun(ctx, caughtUp, srcErr, r, os.Stderr); err != nil {
+		if runErr := finalizeRun(ctx, caughtUp, srcErr, r, os.Stderr); runErr != nil {
 			session.Destroy()
-			return err
+			if code, ok := runErrorCode(runErr); ok {
+				writer.WriteRunError(code, runErr.Error())
+				return silent(runErr)
+			}
+			return runErr
 		}
 
 		summary, stateErr := r.CollectState()
@@ -900,6 +908,19 @@ func asAuthRequired(err error) *engine.AuthRequiredError {
 		return are
 	}
 	return nil
+}
+
+// runErrorCode classifies a connection/runtime failure that ended the run, so
+// the dev paths can emit a typed run_error (with the reason) the editor can
+// surface, rather than letting it fall through to a generic stderr render.
+func runErrorCode(err error) (string, bool) {
+	switch {
+	case errors.Is(err, engine.ErrDBDisconnect):
+		return "db_disconnect", true
+	case errors.Is(err, engine.ErrDBConnect):
+		return "db_connect", true
+	}
+	return "", false
 }
 
 func finalizeRun(ctx context.Context, caughtUp bool, srcErr error, r *engine.Runner, stderr io.Writer) error {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -33,6 +34,34 @@ func TestJSONWriterAuthRequired(t *testing.T) {
 	}
 	if got["type"] != "auth_required" || got["env"] != "prod" {
 		t.Errorf("unexpected auth_required message: %v", got)
+	}
+}
+
+func TestJSONWriterRunError(t *testing.T) {
+	var buf bytes.Buffer
+	newJSONWriter(&buf).WriteRunError("db_disconnect", "KurrentDB connection lost: ...")
+
+	var got map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("invalid json %q: %v", buf.String(), err)
+	}
+	if got["type"] != "run_error" || got["code"] != "db_disconnect" {
+		t.Errorf("unexpected run_error message: %v", got)
+	}
+	if got["description"] != "KurrentDB connection lost: ..." {
+		t.Errorf("unexpected description: %v", got["description"])
+	}
+}
+
+func TestRunErrorCode(t *testing.T) {
+	if code, ok := runErrorCode(fmt.Errorf("%w: dropped", engine.ErrDBDisconnect)); !ok || code != "db_disconnect" {
+		t.Errorf("disconnect: got (%q, %v)", code, ok)
+	}
+	if code, ok := runErrorCode(fmt.Errorf("%w: dns", engine.ErrDBConnect)); !ok || code != "db_connect" {
+		t.Errorf("connect: got (%q, %v)", code, ok)
+	}
+	if _, ok := runErrorCode(errors.New("unrelated")); ok {
+		t.Error("unrelated error should not classify as a run error")
 	}
 }
 

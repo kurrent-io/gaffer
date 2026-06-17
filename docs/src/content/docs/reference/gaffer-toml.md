@@ -75,7 +75,7 @@ An environment names a KurrentDB connection. Select one with `gaffer dev --env <
 
 - **`connection`**: KurrentDB connection string for the environment. Required. Used when running a projection against a live event stream (`gaffer dev <projection>` without `--events` or `--fixture`). Override per-invocation with `--connection`.
 - **`default`**: optional bool. Exactly one environment may set `default = true`. It's used when `--env` is omitted; without a default, an interactive `gaffer dev` prompts you to pick an environment, while a non-interactive run requires `--env` (fixture runs need no environment). Two defaults is a config error.
-- **`user_cert_file`** / **`user_key_file`**: optional paths to an X.509 user certificate and its private key, for authenticating to KurrentDB with a client certificate. Both must be set together. The certificate is presented in the TLS handshake, so the connection must use TLS. A client certificate is independent of OAuth, so an environment may use both. Like `connection`, the paths expand `${VAR}` references and resolve relative to the project root when not absolute, so a relative path works regardless of the directory `gaffer` runs from. It is an enterprise or self-hosted feature, not available on Kurrent Cloud.
+- **`user_cert_file`** / **`user_key_file`**: optional paths to an X.509 user certificate and its private key, for authenticating to KurrentDB with a client certificate. Both must be set together. The certificate is presented in the TLS handshake, so the connection must use TLS. A client certificate is independent of OAuth, so an environment may use both. Like `connection`, the paths expand `${VAR}` references and resolve relative to the project root when not absolute, so a relative path works regardless of the directory `gaffer` runs from.
 
 ```toml
 [env.staging]
@@ -102,7 +102,7 @@ client_id = "kurrentdb-client"
 scopes    = ["openid"]
 ```
 
-Authenticate to the environment with OAuth/OIDC bearer tokens instead of a username and password. The KurrentDB cluster must be configured for OAuth (a licensed feature, not available on Kurrent Cloud). Endpoints are discovered from the issuer's `/.well-known/openid-configuration`.
+Authenticate to the environment with OAuth/OIDC bearer tokens instead of a username and password. Endpoints are discovered from the issuer's `/.well-known/openid-configuration`.
 
 - **`issuer`**: OIDC issuer URL. Required. Must be `https` (an `http` loopback issuer is allowed for local development).
 - **`client_id`**: OAuth client ID. Required.

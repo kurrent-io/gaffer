@@ -32,6 +32,7 @@ func TestOutcomeFor_StructuralSentinels(t *testing.T) {
 		{"manifest-parse", fmt.Errorf("%w: bad toml", config.ErrManifestParse), telemetry.OutcomeManifestParseError},
 		{"manifest-validate", fmt.Errorf("%w: bad config", config.ErrManifestValidate), telemetry.OutcomeManifestValidationError},
 		{"db-connect", fmt.Errorf("%w: dns", engine.ErrDBConnect), telemetry.OutcomeDBConnectError},
+		{"auth-required", &engine.AuthRequiredError{Env: "prod"}, telemetry.OutcomeDBConnectError},
 		{"db-disconnect", fmt.Errorf("%w: subscription dropped", engine.ErrDBDisconnect), telemetry.OutcomeDBDisconnect},
 		{"prompt-cancelled", prompt.ErrCancelled, telemetry.OutcomeUserInterrupt},
 		{"prompt-cancelled-wrapped", fmt.Errorf("%w", prompt.ErrCancelled), telemetry.OutcomeUserInterrupt},

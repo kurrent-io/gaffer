@@ -150,6 +150,14 @@ func oneShotDefer(retErr *error, emit func(telemetry.Outcome)) {
 // match so callers can fall through to a more specific classifier
 // (e.g. projection-error mapping) or to user_error.
 func classifyStructural(err error) (telemetry.Outcome, bool) {
+	// An auth-required failure is a typed error (no longer wrapped as
+	// ErrDBConnect), but it's still a failure to connect, so it keeps that
+	// bucket - the classification it had before becoming distinct. A dedicated
+	// outcome would need a telemetry schema change.
+	var authErr *engine.AuthRequiredError
+	if errors.As(err, &authErr) {
+		return telemetry.OutcomeDBConnectError, true
+	}
 	switch {
 	case errors.Is(err, prompt.ErrCancelled):
 		return telemetry.OutcomeUserInterrupt, true

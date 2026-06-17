@@ -462,6 +462,11 @@ func runDevSingle(
 	}
 	srcErr := source.Run(ctx, r.ProcessOne)
 
+	if authErr := asAuthRequired(srcErr); authErr != nil {
+		writer.WriteAuthRequired(authErr.Env)
+		return silent(srcErr)
+	}
+
 	if err := finalizeRun(ctx, caughtUp, srcErr, r, os.Stderr); err != nil {
 		return err
 	}
@@ -690,6 +695,14 @@ func runDevDebug(
 		close(iterDone)
 		innerCancel()
 
+		// An auth-required failure happens on connect, before any events, and a
+		// restart won't fix it - surface the sign-in signal and stop.
+		if authErr := asAuthRequired(srcErr); authErr != nil {
+			writer.WriteAuthRequired(authErr.Env)
+			session.Destroy()
+			return silent(srcErr)
+		}
+
 		// Final flush regardless of how this iteration ended.
 		adapter.EmitStatsIfChanged()
 		adapter.EmitStateIfChanged()
@@ -879,6 +892,16 @@ func buildSource(
 // finalizeRun handles post-loop disposition. If the context was cancelled
 // without catching up (user interrupt), prints a notice and clears the
 // faulted state. Otherwise propagates any source error.
+// asAuthRequired returns the AuthRequiredError in err's chain, or nil. Both dev
+// paths use it to emit the typed sign-in signal instead of a generic failure.
+func asAuthRequired(err error) *engine.AuthRequiredError {
+	var are *engine.AuthRequiredError
+	if errors.As(err, &are) {
+		return are
+	}
+	return nil
+}
+
 func finalizeRun(ctx context.Context, caughtUp bool, srcErr error, r *engine.Runner, stderr io.Writer) error {
 	if ctx.Err() != nil && !caughtUp {
 		_, _ = fmt.Fprint(stderr, "Interrupted\n\n")

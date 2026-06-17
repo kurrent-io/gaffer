@@ -26,6 +26,19 @@ var ErrDBConnect = errors.New("connect to KurrentDB")
 // distinguish "couldn't connect" from "connected then lost the link".
 var ErrDBDisconnect = errors.New("KurrentDB connection lost")
 
+// AuthRequiredError is returned when an OAuth env can't authenticate without an
+// interactive sign-in: no stored token, or a passphrase-locked keyring that
+// can't be unlocked non-interactively. It's distinct from ErrDBConnect so
+// callers (the --json stream, telemetry) can surface a "sign in" action rather
+// than a generic connection failure. Env is the environment to authenticate.
+type AuthRequiredError struct {
+	Env string
+}
+
+func (e *AuthRequiredError) Error() string {
+	return fmt.Sprintf("env %q requires sign-in: run `gaffer auth --env %s`", e.Env, e.Env)
+}
+
 func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig, certCfg *config.CertAuth) (*kurrentdb.Client, error) {
 	// Base .env is also loaded once at startup; reloading here (no-override,
 	// so it never clobbers shell vars) keeps Connect self-contained for
@@ -66,6 +79,12 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 	if oauthCfg != nil {
 		provider, err := oauthProvider(oauthCfg, envName, projectRoot, overlay)
 		if err != nil {
+			// An auth-required error stands on its own: it asks the user to sign
+			// in, not to debug a connection, so it isn't wrapped as ErrDBConnect.
+			var authErr *AuthRequiredError
+			if errors.As(err, &authErr) {
+				return nil, err
+			}
 			return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 		}
 		dbConfig.CredentialsProvider = provider
@@ -163,8 +182,10 @@ func oauthProvider(c *config.OAuthConfig, envName, projectRoot string, overlay m
 		Audience: c.Audience,
 	}, secret, store)
 	if err != nil {
-		if errors.Is(err, oauth.ErrNoToken) {
-			return nil, fmt.Errorf("env %q requires an interactive login: run `gaffer auth --env %s`", envName, envName)
+		// No stored token, or a passphrase-locked keyring we can't unlock
+		// non-interactively: both need an interactive sign-in.
+		if errors.Is(err, oauth.ErrNoToken) || errors.Is(err, oauth.ErrKeyringLocked) {
+			return nil, &AuthRequiredError{Env: envName}
 		}
 		return nil, err
 	}

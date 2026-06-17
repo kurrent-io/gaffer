@@ -23,6 +23,38 @@ func stubProjection(name string, engineVersion int, quirksVersion string) *engin
 	}
 }
 
+func TestJSONWriterAuthRequired(t *testing.T) {
+	var buf bytes.Buffer
+	newJSONWriter(&buf).WriteAuthRequired("prod")
+
+	var got map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("invalid json %q: %v", buf.String(), err)
+	}
+	if got["type"] != "auth_required" || got["env"] != "prod" {
+		t.Errorf("unexpected auth_required message: %v", got)
+	}
+}
+
+func TestAsAuthRequired(t *testing.T) {
+	are := &engine.AuthRequiredError{Env: "prod"}
+
+	if got := asAuthRequired(are); got == nil || got.Env != "prod" {
+		t.Errorf("direct: got %v", got)
+	}
+	// Must unwrap through silent(), since the dev paths return silent(srcErr)
+	// and telemetry classification runs on the wrapped error.
+	if got := asAuthRequired(silent(are)); got == nil || got.Env != "prod" {
+		t.Errorf("through silent(): got %v", got)
+	}
+	if got := asAuthRequired(errors.New("unrelated")); got != nil {
+		t.Errorf("unrelated error should be nil, got %v", got)
+	}
+	if got := asAuthRequired(nil); got != nil {
+		t.Errorf("nil should be nil, got %v", got)
+	}
+}
+
 func TestFormatNumber(t *testing.T) {
 	tests := []struct {
 		input int

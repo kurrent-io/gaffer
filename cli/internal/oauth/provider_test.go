@@ -255,3 +255,22 @@ func TestPersistingSourceConcurrent(t *testing.T) {
 		t.Errorf("concurrent Token(): %v", err)
 	}
 }
+
+func TestIsInvalidGrant(t *testing.T) {
+	if !IsInvalidGrant(&oauth2.RetrieveError{ErrorCode: "invalid_grant"}) {
+		t.Error("expected true for invalid_grant")
+	}
+	// Survives wrapping (the refresh error reaches us wrapped).
+	if !IsInvalidGrant(fmt.Errorf("refresh: %w", &oauth2.RetrieveError{ErrorCode: "invalid_grant"})) {
+		t.Error("expected true for a wrapped invalid_grant")
+	}
+	if IsInvalidGrant(&oauth2.RetrieveError{ErrorCode: "invalid_client"}) {
+		t.Error("expected false for a different error code")
+	}
+	if IsInvalidGrant(errors.New("network down")) {
+		t.Error("expected false for a non-oauth error")
+	}
+	if IsInvalidGrant(nil) {
+		t.Error("expected false for nil")
+	}
+}

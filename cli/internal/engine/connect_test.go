@@ -131,11 +131,11 @@ func TestConnect_AppliesEnvOverlay(t *testing.T) {
 
 	// With the prod overlay the variable resolves, so expansion does not
 	// fail (any later error is the dial, not an undefined variable).
-	if _, err := Connect(connStr, dir, "prod", nil, nil); err != nil && strings.Contains(err.Error(), key) {
+	if _, _, err := Connect(connStr, dir, "prod", nil, nil); err != nil && strings.Contains(err.Error(), key) {
 		t.Fatalf("env overlay not applied: %v", err)
 	}
 	// Without an env name there's no overlay, so the variable is undefined.
-	_, err := Connect(connStr, dir, "", nil, nil)
+	_, _, err := Connect(connStr, dir, "", nil, nil)
 	if err == nil || !strings.Contains(err.Error(), key) {
 		t.Fatalf("expected undefined-variable error without overlay, got %v", err)
 	}
@@ -178,7 +178,7 @@ func TestResolveCertPath(t *testing.T) {
 // TLS disabled can't use one; Connect rejects the combination before dialing.
 func TestConnect_CertRequiresTLS(t *testing.T) {
 	cert := &config.CertAuth{CertFile: "user.crt", KeyFile: "user.key"}
-	_, err := Connect("kurrentdb://host:2113?tls=false", t.TempDir(), "", nil, cert)
+	_, _, err := Connect("kurrentdb://host:2113?tls=false", t.TempDir(), "", nil, cert)
 	if err == nil || !strings.Contains(err.Error(), "requires TLS") {
 		t.Fatalf("expected a TLS-required error, got %v", err)
 	}
@@ -187,7 +187,7 @@ func TestConnect_CertRequiresTLS(t *testing.T) {
 func TestConnect_MalformedConnStr_DoesNotLeakPassword(t *testing.T) {
 	connStr := "kurrentdb://user:supersecret@host:%XX"
 
-	_, err := Connect(connStr, "", "", nil, nil)
+	_, _, err := Connect(connStr, "", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for malformed connection string")
 	}
@@ -264,7 +264,7 @@ func TestOAuthProvider_ClientCredentials(t *testing.T) {
 	srv := oauthFakeIDP(t)
 	overlay := map[string]string{"KURRENTDB_OAUTH_CLIENT_SECRET": "secret"}
 
-	provider, err := oauthProvider(&config.OAuthConfig{Issuer: srv.URL, ClientID: "id"}, "prod", "", overlay)
+	provider, err := oauthProvider(&config.OAuthConfig{Issuer: srv.URL, ClientID: "id"}, "prod", "", overlay, &AuthInvalidation{})
 	if err != nil {
 		t.Fatalf("oauthProvider: %v", err)
 	}
@@ -274,5 +274,29 @@ func TestOAuthProvider_ClientCredentials(t *testing.T) {
 	}
 	if !strings.Contains(creds.BearerToken, "client_credentials") {
 		t.Errorf("expected a client_credentials bearer token, got %q", creds.BearerToken)
+	}
+}
+
+func TestConnectionLost(t *testing.T) {
+	l := &liveSource{cfg: LiveSourceConfig{EnvName: "prod"}}
+
+	// No flag, or a flag that wasn't tripped: a plain disconnect.
+	for _, inv := range []*AuthInvalidation{nil, {}} {
+		err := l.connectionLost(inv, "subscription dropped")
+		if !errors.Is(err, ErrDBDisconnect) {
+			t.Errorf("expected ErrDBDisconnect, got %v", err)
+		}
+		if are := (*AuthRequiredError)(nil); errors.As(err, &are) {
+			t.Errorf("did not expect AuthRequiredError, got %v", err)
+		}
+	}
+
+	// Tripped (token rejected mid-run): re-sign-in is required.
+	tripped := &AuthInvalidation{}
+	tripped.Trip()
+	err := l.connectionLost(tripped, "subscription dropped")
+	var are *AuthRequiredError
+	if !errors.As(err, &are) || are.Env != "prod" {
+		t.Errorf("expected AuthRequiredError for prod, got %v", err)
 	}
 }

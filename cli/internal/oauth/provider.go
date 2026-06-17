@@ -147,3 +147,12 @@ func (p *persistingSource) Token() (*oauth2.Token, error) {
 	}
 	return tok, nil
 }
+
+// IsInvalidGrant reports whether err is an OAuth token-endpoint rejection with
+// error "invalid_grant" - the stored token (or its refresh token) is no longer
+// valid, so re-authentication is required. Distinct from a transient refresh
+// failure (network, IdP down), which should not discard the token.
+func IsInvalidGrant(err error) bool {
+	var re *oauth2.RetrieveError
+	return errors.As(err, &re) && re.ErrorCode == "invalid_grant"
+}

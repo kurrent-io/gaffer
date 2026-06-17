@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
@@ -39,12 +40,23 @@ func (e *AuthRequiredError) Error() string {
 	return fmt.Sprintf("env %q requires sign-in: run `gaffer auth --env %s`", e.Env, e.Env)
 }
 
-func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig, certCfg *config.CertAuth) (*kurrentdb.Client, error) {
+// AuthInvalidation is tripped by the OAuth credentials provider when the IdP
+// rejects the stored token (invalid_grant), after it clears the dead token.
+// Connect returns it (nil for non-OAuth envs) so the live source can turn the
+// resulting connection failure into an AuthRequiredError - prompting re-sign-in
+// rather than reporting a generic disconnect. The provider runs on the client's
+// RPC goroutines, so access is atomic.
+type AuthInvalidation struct{ tripped atomic.Bool }
+
+func (a *AuthInvalidation) Trip()         { a.tripped.Store(true) }
+func (a *AuthInvalidation) Tripped() bool { return a.tripped.Load() }
+
+func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig, certCfg *config.CertAuth) (*kurrentdb.Client, *AuthInvalidation, error) {
 	// Base .env is also loaded once at startup; reloading here (no-override,
 	// so it never clobbers shell vars) keeps Connect self-contained for
 	// callers and tests that reach it without the startup path.
 	if err := envvar.Load(projectRoot); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+		return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 	}
 
 	// Read the .env.<envName> overlay once and share it across connection
@@ -52,7 +64,7 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 	// the file is parsed a single time.
 	overlay, err := envvar.Overlay(projectRoot, envName)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+		return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 	}
 
 	// Interpolate ${VAR} (e.g. credentials kept out of the committed
@@ -61,7 +73,7 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 	// over the base .env for this target.
 	connStr, err = envvar.Expand(connStr, overlay)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+		return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 	}
 
 	redacted := RedactConnection(connStr)
@@ -70,22 +82,28 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 		// Don't %w the underlying error: url.Parse errors echo the
 		// original input, which for malformed connection strings
 		// includes the password verbatim.
-		return nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, scrubRaw(err.Error(), connStr, redacted))
+		return nil, nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, scrubRaw(err.Error(), connStr, redacted))
 	}
+
+	// authInvalidated is tripped by the OAuth provider if the IdP rejects the
+	// stored token; the live source reads it to prompt re-sign-in. Nil unless
+	// the env uses OAuth.
+	var authInvalidated *AuthInvalidation
 
 	// An env with OAuth configured uses it exclusively: KURRENTDB_USERNAME /
 	// KURRENTDB_PASSWORD (and any inline user:pass in the connection string)
 	// are intentionally ignored in favour of bearer tokens.
 	if oauthCfg != nil {
-		provider, err := oauthProvider(oauthCfg, envName, projectRoot, overlay)
+		authInvalidated = &AuthInvalidation{}
+		provider, err := oauthProvider(oauthCfg, envName, projectRoot, overlay, authInvalidated)
 		if err != nil {
 			// An auth-required error stands on its own: it asks the user to sign
 			// in, not to debug a connection, so it isn't wrapped as ErrDBConnect.
 			var authErr *AuthRequiredError
 			if errors.As(err, &authErr) {
-				return nil, err
+				return nil, nil, err
 			}
-			return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+			return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 		}
 		dbConfig.CredentialsProvider = provider
 	} else if username, password := envvar.Credentials(overlay); username != "" {
@@ -100,21 +118,21 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 	// like the connection string - keeps cert paths working from any directory.
 	if certCfg != nil {
 		if dbConfig.DisableTLS {
-			return nil, fmt.Errorf("%w: env %q sets a user certificate but the connection disables TLS; a user certificate requires TLS", ErrDBConnect, envName)
+			return nil, nil, fmt.Errorf("%w: env %q sets a user certificate but the connection disables TLS; a user certificate requires TLS", ErrDBConnect, envName)
 		}
 		certFile, err := resolveCertPath(certCfg.CertFile, projectRoot, overlay)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+			return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 		}
 		keyFile, err := resolveCertPath(certCfg.KeyFile, projectRoot, overlay)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+			return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
 		}
 		// Guard against a ${VAR} that expands to empty: a half-set pair would
 		// silently disable the cert (the client loads it only when both are set)
 		// rather than authenticating as intended.
 		if certFile == "" || keyFile == "" {
-			return nil, fmt.Errorf("%w: env %q user certificate path resolved to empty (check ${VAR} expansion)", ErrDBConnect, envName)
+			return nil, nil, fmt.Errorf("%w: env %q user certificate path resolved to empty (check ${VAR} expansion)", ErrDBConnect, envName)
 		}
 		dbConfig.UserCertFile = certFile
 		dbConfig.UserKeyFile = keyFile
@@ -123,9 +141,9 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 
 	client, err := kurrentdb.NewClient(dbConfig)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrDBConnect, scrubRaw(err.Error(), connStr, redacted))
+		return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, scrubRaw(err.Error(), connStr, redacted))
 	}
-	return client, nil
+	return client, authInvalidated, nil
 }
 
 // resolveCertPath expands ${VAR} references in a cert path (using the same
@@ -153,7 +171,7 @@ const oauthTimeout = 30 * time.Second
 // config. A configured client secret (KURRENTDB_OAUTH_CLIENT_SECRET) selects
 // the client-credentials grant; otherwise the token stored by `gaffer auth` is
 // used and refreshed in place.
-func oauthProvider(c *config.OAuthConfig, envName, projectRoot string, overlay map[string]string) (kurrentdb.CredentialsProvider, error) {
+func oauthProvider(c *config.OAuthConfig, envName, projectRoot string, overlay map[string]string, authInvalidated *AuthInvalidation) (kurrentdb.CredentialsProvider, error) {
 	secret := envvar.OAuthClientSecret(overlay)
 
 	var store *oauth.TokenStore
@@ -190,9 +208,23 @@ func oauthProvider(c *config.OAuthConfig, envName, projectRoot string, overlay m
 		return nil, err
 	}
 
+	id := oauth.Identity(c.Issuer, c.ClientID)
 	return func(context.Context) (*kurrentdb.Credentials, error) {
 		tok, err := src.Token()
 		if err != nil {
+			// A rejected token (invalid_grant) can't be refreshed - it's a dead
+			// credential, not a transient failure. Drop it from the store and
+			// trip the flag so the run prompts re-sign-in rather than reporting
+			// a generic disconnect. Only meaningful for the interactive flow
+			// (store != nil); client-credentials has no stored token.
+			//
+			// The Delete is best-effort: the trip already drives the re-sign-in,
+			// and the subsequent `gaffer auth` overwrites the token, so a failed
+			// delete still self-heals.
+			if store != nil && oauth.IsInvalidGrant(err) {
+				_ = store.Delete(id)
+				authInvalidated.Trip()
+			}
 			return nil, err
 		}
 		return &kurrentdb.Credentials{BearerToken: tok.AccessToken}, nil

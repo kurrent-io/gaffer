@@ -39,7 +39,7 @@ func NewLiveSource(cfg LiveSourceConfig) EventSource {
 }
 
 func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
-	client, err := Connect(l.cfg.ConnStr, l.cfg.Root, l.cfg.EnvName, l.cfg.OAuth, l.cfg.Cert)
+	client, authInvalidated, err := Connect(l.cfg.ConnStr, l.cfg.Root, l.cfg.EnvName, l.cfg.OAuth, l.cfg.Cert)
 	if err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 		// connect problem. Tag as disconnect so the outcome
 		// distinguishes "couldn't reach the server" from "reached
 		// but couldn't keep using it".
-		return fmt.Errorf("%w: subscribing: %s", ErrDBDisconnect, err)
+		return l.connectionLost(authInvalidated, fmt.Sprintf("subscribing: %s", err))
 	}
 	defer func() { _ = sub.Close() }()
 
@@ -67,7 +67,7 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 			if ctx.Err() != nil {
 				return nil
 			}
-			return fmt.Errorf("%w: %s", ErrDBDisconnect, subEvent.SubscriptionDropped.Error)
+			return l.connectionLost(authInvalidated, subEvent.SubscriptionDropped.Error.Error())
 		}
 
 		if subEvent.CaughtUp != nil {
@@ -97,4 +97,15 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 			return nil
 		}
 	}
+}
+
+// connectionLost classifies a lost live connection. If the OAuth token was
+// rejected mid-run (authInvalidated tripped, and the dead token already
+// cleared), it returns an AuthRequiredError so the caller prompts re-sign-in;
+// otherwise it's a plain disconnect carrying the reason.
+func (l *liveSource) connectionLost(authInvalidated *AuthInvalidation, reason string) error {
+	if authInvalidated != nil && authInvalidated.Tripped() {
+		return &AuthRequiredError{Env: l.cfg.EnvName}
+	}
+	return fmt.Errorf("%w: %s", ErrDBDisconnect, reason)
 }

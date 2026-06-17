@@ -379,7 +379,11 @@ func (s *Server) connectToKurrentDB(cfg *config.Config, root, envName string) (*
 	if err != nil {
 		return nil, err
 	}
-	return engine.Connect(env.Connection, root, env.Name, env.OAuth, env.Cert)
+	// The auth-invalidation handle drives the editor's re-sign-in prompt on a
+	// debug run; the MCP server has no such UX, so it's dropped. A rejected
+	// token is still cleared by the provider, so the next call self-heals.
+	client, _, err := engine.Connect(env.Connection, root, env.Name, env.OAuth, env.Cert)
+	return client, err
 }
 
 // mcpConnection resolves the env the mcp server dials. envName selects a

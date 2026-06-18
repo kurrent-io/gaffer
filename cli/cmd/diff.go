@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -92,7 +93,11 @@ func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
 	}
 	defer func() { _ = client.Close() }()
 
-	entry, err := compareProjection(cmd.Context(), remote.New(client), cfg, root, name)
+	// remote calls block until their context deadline if the projections
+	// subsystem doesn't respond, so bound the read rather than hang the command.
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+	defer cancel()
+	entry, err := compareProjection(ctx, remote.New(client), cfg, root, name)
 	if err != nil {
 		return err
 	}

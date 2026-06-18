@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -63,8 +64,14 @@ func openSourceDiff(name, remoteQuery, local string, out, errOut io.Writer) erro
 	c := exec.Command(argv[0], args...)
 	c.Stdout = out
 	c.Stderr = errOut
-	// git diff --no-index and diff -u exit non-zero when the files differ, which
-	// is always the case here, so the exit status isn't a failure to surface.
-	_ = c.Run()
+	// A diff tool that ran and exited non-zero is reporting "files differ" (git
+	// diff --no-index and diff -u use exit 1), which is always the case here, so
+	// the exit status isn't a failure. A start failure (a misconfigured
+	// GAFFER_EXTERNAL_DIFF, a missing binary) is real and surfaced.
+	err = c.Run()
+	var exitErr *exec.ExitError
+	if err != nil && !errors.As(err, &exitErr) {
+		return fmt.Errorf("running diff viewer %q: %w", argv[0], err)
+	}
 	return nil
 }

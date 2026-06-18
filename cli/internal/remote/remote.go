@@ -58,6 +58,11 @@ func New(db *kurrentdb.Client) *Client {
 // CreateOptions are the create-time settings deploy derives from the local
 // projection. Emit and TrackEmittedStreams come from source analysis and config.
 type CreateOptions struct {
+	// EngineVersion selects the projection engine: 1 or 2. Zero defaults to V1
+	// server-side; deploy sets it explicitly from each projection's config.
+	// Engine version is fixed at create - there is no Update equivalent, so
+	// changing it means delete-and-recreate.
+	EngineVersion       int
 	Emit                bool
 	TrackEmittedStreams bool
 }
@@ -90,9 +95,14 @@ func leaderOpts() kurrentdb.GenericProjectionOptions {
 // duplicate name is rejected by the projections subsystem with an unclassified
 // error, not ErrAlreadyExists (see that sentinel), so callers check existence
 // with a read before creating rather than racing a create against the error.
+//
+// EngineVersion 2 with TrackEmittedStreams is rejected by the client before any
+// RPC (V2 does not support tracking emitted streams); deploy validates the
+// combination from config rather than relying on that error.
 func (c *Client) Create(ctx context.Context, name, query string, opts CreateOptions) error {
 	return classify(c.proj.Create(ctx, name, query, kurrentdb.CreateProjectionOptions{
 		RequiresLeader:      true,
+		EngineVersion:       kurrentdb.ProjectionEngineVersion(opts.EngineVersion),
 		Emit:                opts.Emit,
 		TrackEmittedStreams: opts.TrackEmittedStreams,
 	}))

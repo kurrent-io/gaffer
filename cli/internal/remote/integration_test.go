@@ -71,7 +71,7 @@ func TestIntegration_CreateReadUpdateDelete(t *testing.T) {
 	name := "remoteit" + testutil.TestSuffix()
 	t.Cleanup(cleanupProjection(c, name))
 
-	if err := c.Create(ctx, name, countQuery, CreateOptions{Emit: false}); err != nil {
+	if err := c.Create(ctx, name, countQuery, CreateOptions{EngineVersion: 2, Emit: false}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
@@ -87,8 +87,8 @@ func TestIntegration_CreateReadUpdateDelete(t *testing.T) {
 	if def.Query != countQuery {
 		t.Errorf("Read query = %q, want the deployed query", def.Query)
 	}
-	if def.EngineVersion < 1 {
-		t.Errorf("Read engineVersion = %d, want >= 1", def.EngineVersion)
+	if def.EngineVersion != 2 {
+		t.Errorf("Read engineVersion = %d, want 2 (the version Create requested)", def.EngineVersion)
 	}
 	if def.Emit {
 		t.Errorf("Read emit = true, want false")

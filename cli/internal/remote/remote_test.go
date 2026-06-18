@@ -69,17 +69,28 @@ func (f *fakeProjAPI) Reset(_ context.Context, name string, opts kurrentdb.Reset
 }
 
 func TestCreatePassesOptions(t *testing.T) {
-	fake := &fakeProjAPI{}
-	c := &Client{proj: fake}
-
-	if err := c.Create(context.Background(), "orders", "fromAll()", CreateOptions{Emit: true, TrackEmittedStreams: true}); err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	if fake.called != "create" || fake.lastName != "orders" || fake.lastQuery != "fromAll()" {
-		t.Fatalf("called %q name %q query %q", fake.called, fake.lastName, fake.lastQuery)
-	}
-	if !fake.createOpts.RequiresLeader || !fake.createOpts.Emit || !fake.createOpts.TrackEmittedStreams {
-		t.Fatalf("create opts = %+v", fake.createOpts)
+	for _, tc := range []struct {
+		name       string
+		opts       CreateOptions
+		wantEngine kurrentdb.ProjectionEngineVersion
+	}{
+		{"v2 with emit", CreateOptions{EngineVersion: 2, Emit: true}, kurrentdb.ProjectionEngineVersionV2},
+		{"v1 tracking emitted streams", CreateOptions{EngineVersion: 1, TrackEmittedStreams: true}, kurrentdb.ProjectionEngineVersionV1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeProjAPI{}
+			c := &Client{proj: fake}
+			if err := c.Create(context.Background(), "orders", "fromAll()", tc.opts); err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			if fake.called != "create" || fake.lastName != "orders" || fake.lastQuery != "fromAll()" {
+				t.Fatalf("called %q name %q query %q", fake.called, fake.lastName, fake.lastQuery)
+			}
+			got := fake.createOpts
+			if !got.RequiresLeader || got.EngineVersion != tc.wantEngine || got.Emit != tc.opts.Emit || got.TrackEmittedStreams != tc.opts.TrackEmittedStreams {
+				t.Fatalf("create opts = %+v, want engine %v", got, tc.wantEngine)
+			}
+		})
 	}
 }
 

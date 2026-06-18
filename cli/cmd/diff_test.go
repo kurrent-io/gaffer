@@ -13,48 +13,63 @@ func desc(query string, engineVersion int, emit bool) *deploy.Descriptor {
 	return &deploy.Descriptor{Query: query, EngineVersion: engineVersion, Emit: emit}
 }
 
-func TestRenderDiffText(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		e    diffEntry
-		want string
-	}{
-		{"in sync", diffEntry{Name: "a", State: stateInSync}, "a: in sync"},
-		{"not deployed", diffEntry{Name: "b", State: stateNotDeployed, Local: desc("q", 2, false)}, "b: not deployed (local only)"},
-		{"untracked", diffEntry{Name: "c", State: stateUntracked}, "c: untracked (deployed, not in gaffer.toml)"},
-		{
-			"drifted",
-			diffEntry{
-				Name:     "d",
-				State:    stateDrifted,
-				Cmp:      deploy.Comparison{QueryDiffers: true, EngineVersionDiffers: true},
-				Local:    desc("x", 2, false),
-				Deployed: desc("y", 1, false),
-			},
-			"d: drifted (query, engine version: remote=1 local=2)",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var b bytes.Buffer
-			renderDiffText(&b, tc.e)
-			if got := strings.TrimSpace(b.String()); got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
-			}
-		})
+// renderWriteDiff captures WriteDiff's output. lipgloss renders plain (no ANSI)
+// to a buffer, so assertions can match on substrings.
+func renderWriteDiff(e diffEntry) string {
+	var b bytes.Buffer
+	newTextWriter(&b, &b).WriteDiff(e)
+	return b.String()
+}
+
+func TestWriteDiffInSync(t *testing.T) {
+	out := renderWriteDiff(diffEntry{
+		Name: "count", State: stateInSync,
+		Local: desc("q", 2, false), Deployed: desc("q", 2, false),
+	})
+	for _, want := range []string{"count", "Query: in sync", "Engine version: in sync", "Emit: in sync"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
 	}
 }
 
-func TestDriftReasonsLabelDirection(t *testing.T) {
-	e := diffEntry{
-		Cmp:      deploy.Comparison{EmitDiffers: true, TrackEmittedStreamsDiffers: true},
-		Local:    &deploy.Descriptor{Emit: true, TrackEmittedStreams: true},
-		Deployed: &deploy.Descriptor{Emit: false, TrackEmittedStreams: false},
-	}
-	got := strings.Join(driftReasons(e), ", ")
-	for _, want := range []string{"emit: remote=false local=true", "track emitted streams: remote=false local=true"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("reasons = %q, want it to contain %q", got, want)
+func TestWriteDiffDrifted(t *testing.T) {
+	out := renderWriteDiff(diffEntry{
+		Name:  "count",
+		State: stateDrifted,
+		Cmp:   deploy.Comparison{QueryDiffers: true, EngineVersionDiffers: true},
+		// remote one line, local three -> +2 -0.
+		Deployed: desc("a\n", 1, false),
+		Local:    desc("a\nb\nc\n", 2, false),
+	})
+	for _, want := range []string{"Query: +2 -0", "Engine version: remote v1, local v2", "Emit: in sync"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
 		}
+	}
+}
+
+func TestWriteDiffEmitAndTrackDrift(t *testing.T) {
+	out := renderWriteDiff(diffEntry{
+		Name:     "count",
+		State:    stateDrifted,
+		Cmp:      deploy.Comparison{EmitDiffers: true, TrackEmittedStreamsDiffers: true},
+		Deployed: &deploy.Descriptor{EngineVersion: 1, Emit: false, TrackEmittedStreams: false},
+		Local:    &deploy.Descriptor{EngineVersion: 1, Emit: true, TrackEmittedStreams: true},
+	})
+	for _, want := range []string{"Emit: remote off, local on", "Track emitted streams: remote off, local on"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestWriteDiffOneSided(t *testing.T) {
+	if out := renderWriteDiff(diffEntry{Name: "orders", State: stateNotDeployed, Local: desc("q", 2, false)}); !strings.Contains(out, "orders") || !strings.Contains(out, "not deployed (local only)") {
+		t.Errorf("not-deployed render:\n%s", out)
+	}
+	if out := renderWriteDiff(diffEntry{Name: "legacy", State: stateUntracked, Deployed: desc("q", 2, false)}); !strings.Contains(out, "untracked (deployed, not in gaffer.toml)") {
+		t.Errorf("untracked render:\n%s", out)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/muesli/termenv"
 )
@@ -245,6 +246,62 @@ func (tw *textWriter) WriteInfo(proj *engine.Projection, info gafferruntime.Proj
 			tw.compileQuirks = append(tw.compileQuirks, d.Code)
 		}
 	}
+}
+
+// WriteDiff renders a projection's comparison against what's deployed, matching
+// the info command's heading + indented detail layout. In-sync and drifted
+// projections show a line per dimension; a one-sided projection (not deployed,
+// untracked) shows a single status line.
+func (tw *textWriter) WriteDiff(e diffEntry) {
+	tw.heading(e.Name)
+	switch e.State {
+	case stateNotDeployed:
+		tw.status(tw.styles.warning.Render("not deployed (local only)"))
+	case stateUntracked:
+		tw.status(tw.styles.warning.Render("untracked (deployed, not in gaffer.toml)"))
+	default:
+		tw.detail("Query", tw.queryStatus(e))
+		tw.detail("Engine version", tw.versionStatus(e))
+		tw.detail("Emit", tw.boolStatus(e.Cmp.EmitDiffers, e.Deployed.Emit, e.Local.Emit))
+		// Track-emitted-streams is a niche v1 option; show it only when it drifts.
+		if e.Cmp.TrackEmittedStreamsDiffers {
+			tw.detail("Track emitted streams", tw.boolStatus(true, e.Deployed.TrackEmittedStreams, e.Local.TrackEmittedStreams))
+		}
+	}
+}
+
+func (tw *textWriter) inSync() string { return tw.styles.processed.Render("in sync") }
+
+// queryStatus shows the line diffstat (+added -removed) when the query differs;
+// the full source diff is the external viewer's job.
+func (tw *textWriter) queryStatus(e diffEntry) string {
+	if !e.Cmp.QueryDiffers {
+		return tw.inSync()
+	}
+	added, removed := deploy.LineStat(e.Deployed.Query, e.Local.Query)
+	return tw.styles.processed.Render(fmt.Sprintf("+%d", added)) + " " +
+		tw.styles.errDetail.Render(fmt.Sprintf("-%d", removed))
+}
+
+func (tw *textWriter) versionStatus(e diffEntry) string {
+	if !e.Cmp.EngineVersionDiffers {
+		return tw.inSync()
+	}
+	return tw.styles.warning.Render(fmt.Sprintf("remote v%d, local v%d", e.Deployed.EngineVersion, e.Local.EngineVersion))
+}
+
+func (tw *textWriter) boolStatus(differs, remote, local bool) string {
+	if !differs {
+		return tw.inSync()
+	}
+	return tw.styles.warning.Render(fmt.Sprintf("remote %s, local %s", onOff(remote), onOff(local)))
+}
+
+func onOff(b bool) string {
+	if b {
+		return "on"
+	}
+	return "off"
 }
 
 // diagnosticAnchor is the docs heading slug for a code: github-slugger's

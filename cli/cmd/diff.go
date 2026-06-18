@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -105,7 +104,7 @@ func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
 	if opts.JSON {
 		return renderDiffJSON(cmd.OutOrStdout(), entry)
 	}
-	renderDiffText(cmd.OutOrStdout(), entry)
+	newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr()).WriteDiff(entry)
 	if entry.State == stateDrifted && entry.Cmp.QueryDiffers {
 		return openSourceDiff(entry.Name, entry.Deployed.CanonicalQuery(), entry.Local.CanonicalQuery(), cmd.OutOrStdout(), cmd.ErrOrStderr())
 	}
@@ -153,39 +152,6 @@ func compareProjection(ctx context.Context, r *remote.Client, cfg *config.Config
 		state = stateDrifted
 	}
 	return diffEntry{Name: name, State: state, Cmp: cmp, Local: &local, Deployed: &deployed}, nil
-}
-
-func renderDiffText(w io.Writer, e diffEntry) {
-	switch e.State {
-	case stateInSync:
-		_, _ = fmt.Fprintf(w, "%s: in sync\n", e.Name)
-	case stateNotDeployed:
-		_, _ = fmt.Fprintf(w, "%s: not deployed (local only)\n", e.Name)
-	case stateUntracked:
-		_, _ = fmt.Fprintf(w, "%s: untracked (deployed, not in gaffer.toml)\n", e.Name)
-	case stateDrifted:
-		_, _ = fmt.Fprintf(w, "%s: drifted (%s)\n", e.Name, strings.Join(driftReasons(e), ", "))
-	}
-}
-
-// driftReasons names each changed dimension, labelling values remote (deployed)
-// vs local so the direction is unambiguous. The query change itself is shown by
-// the source viewer.
-func driftReasons(e diffEntry) []string {
-	var rs []string
-	if e.Cmp.QueryDiffers {
-		rs = append(rs, "query")
-	}
-	if e.Cmp.EngineVersionDiffers {
-		rs = append(rs, fmt.Sprintf("engine version: remote=%d local=%d", e.Deployed.EngineVersion, e.Local.EngineVersion))
-	}
-	if e.Cmp.EmitDiffers {
-		rs = append(rs, fmt.Sprintf("emit: remote=%t local=%t", e.Deployed.Emit, e.Local.Emit))
-	}
-	if e.Cmp.TrackEmittedStreamsDiffers {
-		rs = append(rs, fmt.Sprintf("track emitted streams: remote=%t local=%t", e.Deployed.TrackEmittedStreams, e.Local.TrackEmittedStreams))
-	}
-	return rs
 }
 
 // diffJSON is the --json shape for one projection. State is one of in-sync,

@@ -143,8 +143,8 @@ func TestDiff_Integration_Viewer(t *testing.T) {
 		}
 	})
 
-	if !strings.Contains(out, name+": drifted") {
-		t.Errorf("missing drift summary in:\n%s", out)
+	if !strings.Contains(out, name) || !strings.Contains(out, "Query: +") {
+		t.Errorf("missing styled drift summary in:\n%s", out)
 	}
 	if !strings.Contains(out, ".remote") || !strings.Contains(out, ".local") {
 		t.Errorf("viewer was not invoked with the two temp files:\n%s", out)

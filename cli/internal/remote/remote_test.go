@@ -15,7 +15,8 @@ import (
 // fakeProjAPI records the last call's name and options so the option-mapping
 // can be asserted without a live database. Returns err from every method.
 type fakeProjAPI struct {
-	err error
+	err        error
+	listResult []kurrentdb.ProjectionStatus
 
 	lastName    string
 	lastQuery   string
@@ -25,6 +26,11 @@ type fakeProjAPI struct {
 	resetOpts   kurrentdb.ResetProjectionOptions
 	genericOpts kurrentdb.GenericProjectionOptions
 	called      string
+}
+
+func (f *fakeProjAPI) ListContinuous(_ context.Context, opts kurrentdb.GenericProjectionOptions) ([]kurrentdb.ProjectionStatus, error) {
+	f.called, f.genericOpts = "list", opts
+	return f.listResult, f.err
 }
 
 func (f *fakeProjAPI) Create(_ context.Context, name, query string, opts kurrentdb.CreateProjectionOptions) error {

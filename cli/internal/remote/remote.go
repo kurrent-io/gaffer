@@ -36,6 +36,7 @@ type projectionAPI interface {
 	Disable(ctx context.Context, name string, opts kurrentdb.GenericProjectionOptions) error
 	Abort(ctx context.Context, name string, opts kurrentdb.GenericProjectionOptions) error
 	Reset(ctx context.Context, name string, opts kurrentdb.ResetProjectionOptions) error
+	ListContinuous(ctx context.Context, opts kurrentdb.GenericProjectionOptions) ([]kurrentdb.ProjectionStatus, error)
 }
 
 // Client performs projection operations against a connected KurrentDB.
@@ -77,10 +78,11 @@ type DeleteOptions struct {
 	DeleteCheckpointStream bool
 }
 
-// Management operations run against the cluster leader: projection writes are
-// not safe on a follower, and routing them explicitly avoids a NotLeader error
-// on a multi-node cluster (harmless on a single node).
-func mutationOpts() kurrentdb.GenericProjectionOptions {
+// Projection operations run against the cluster leader: writes are not safe on
+// a follower, and the leader is the authoritative source for statistics (the
+// projections subsystem runs there). Routing explicitly avoids a NotLeader
+// round-trip on a multi-node cluster, and is harmless on a single node.
+func leaderOpts() kurrentdb.GenericProjectionOptions {
 	return kurrentdb.GenericProjectionOptions{RequiresLeader: true}
 }
 
@@ -117,19 +119,19 @@ func (c *Client) Delete(ctx context.Context, name string, opts DeleteOptions) er
 
 // Enable starts (or resumes) a projection.
 func (c *Client) Enable(ctx context.Context, name string) error {
-	return classify(c.proj.Enable(ctx, name, mutationOpts()))
+	return classify(c.proj.Enable(ctx, name, leaderOpts()))
 }
 
 // Disable stops a projection, writing a final checkpoint so it resumes from
 // where it stopped.
 func (c *Client) Disable(ctx context.Context, name string) error {
-	return classify(c.proj.Disable(ctx, name, mutationOpts()))
+	return classify(c.proj.Disable(ctx, name, leaderOpts()))
 }
 
 // Abort stops a projection without writing a checkpoint; on re-enable it
 // resumes from its last persisted checkpoint, replaying anything since.
 func (c *Client) Abort(ctx context.Context, name string) error {
-	return classify(c.proj.Abort(ctx, name, mutationOpts()))
+	return classify(c.proj.Abort(ctx, name, leaderOpts()))
 }
 
 // Reset rewinds a projection to the beginning, discarding its state. The

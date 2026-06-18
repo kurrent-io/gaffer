@@ -216,3 +216,26 @@ Flags:
       --json                Output as JSON
 ```
 
+## gaffer status
+
+Show the state of projections on an environment.
+
+Show the runtime state of projections on a KurrentDB environment and how they
+compare to local config.
+
+With no argument, lists every local and deployed projection: running, stopped or
+faulted, progress, and whether each is in sync, drifted, not deployed, or
+untracked. Name a projection for its detail. Pass --json for machine output.
+
+```
+gaffer status [projection] [flags]
+```
+
+Flags:
+
+```
+      --connection string   KurrentDB connection string (overrides --env)
+      --env string          Environment from gaffer.toml
+      --json                Output as JSON
+```
+

@@ -15,15 +15,15 @@ func desc(query string, engineVersion int, emit bool) *deploy.Descriptor {
 
 // renderWriteDiff captures WriteDiff's output. lipgloss renders plain (no ANSI)
 // to a buffer, so assertions can match on substrings.
-func renderWriteDiff(e diffEntry) string {
+func renderWriteDiff(e comparison) string {
 	var b bytes.Buffer
 	newTextWriter(&b, &b).WriteDiff(e)
 	return b.String()
 }
 
 func TestWriteDiffInSync(t *testing.T) {
-	out := renderWriteDiff(diffEntry{
-		Name: "count", State: stateInSync,
+	out := renderWriteDiff(comparison{
+		Name: "count", State: driftInSync,
 		Local: desc("q", 2, false), Deployed: desc("q", 2, false),
 	})
 	for _, want := range []string{"count", "Query: in sync", "Engine version: 2", "Emit: disabled"} {
@@ -34,9 +34,9 @@ func TestWriteDiffInSync(t *testing.T) {
 }
 
 func TestWriteDiffDrifted(t *testing.T) {
-	out := renderWriteDiff(diffEntry{
+	out := renderWriteDiff(comparison{
 		Name:  "count",
-		State: stateDrifted,
+		State: driftDrifted,
 		Cmp:   deploy.Comparison{QueryDiffers: true, EngineVersionDiffers: true},
 		// remote one line, local three -> +2 -0.
 		Deployed: desc("a\n", 1, false),
@@ -50,9 +50,9 @@ func TestWriteDiffDrifted(t *testing.T) {
 }
 
 func TestWriteDiffEmitAndTrackDrift(t *testing.T) {
-	out := renderWriteDiff(diffEntry{
+	out := renderWriteDiff(comparison{
 		Name:     "count",
-		State:    stateDrifted,
+		State:    driftDrifted,
 		Cmp:      deploy.Comparison{EmitDiffers: true, TrackEmittedStreamsDiffers: true},
 		Deployed: &deploy.Descriptor{EngineVersion: 1, Emit: false, TrackEmittedStreams: false},
 		Local:    &deploy.Descriptor{EngineVersion: 1, Emit: true, TrackEmittedStreams: true},
@@ -65,16 +65,16 @@ func TestWriteDiffEmitAndTrackDrift(t *testing.T) {
 }
 
 func TestWriteDiffOneSided(t *testing.T) {
-	if out := renderWriteDiff(diffEntry{Name: "orders", State: stateNotDeployed, Local: desc("q", 2, false)}); !strings.Contains(out, "orders") || !strings.Contains(out, "not deployed (local only)") {
+	if out := renderWriteDiff(comparison{Name: "orders", State: driftNotDeployed, Local: desc("q", 2, false)}); !strings.Contains(out, "orders") || !strings.Contains(out, "not deployed (local only)") {
 		t.Errorf("not-deployed render:\n%s", out)
 	}
-	if out := renderWriteDiff(diffEntry{Name: "legacy", State: stateUntracked, Deployed: desc("q", 2, false)}); !strings.Contains(out, "untracked (deployed, not in gaffer.toml)") {
+	if out := renderWriteDiff(comparison{Name: "legacy", State: driftUntracked, Deployed: desc("q", 2, false)}); !strings.Contains(out, "untracked (deployed, not in gaffer.toml)") {
 		t.Errorf("untracked render:\n%s", out)
 	}
 }
 
 func TestRenderDiffJSON(t *testing.T) {
-	decode := func(e diffEntry) diffJSON {
+	decode := func(e comparison) diffJSON {
 		t.Helper()
 		var b bytes.Buffer
 		if err := renderDiffJSON(&b, e); err != nil {
@@ -87,14 +87,14 @@ func TestRenderDiffJSON(t *testing.T) {
 		return j
 	}
 
-	synced := decode(diffEntry{Name: "s", State: stateInSync, Local: desc("q", 2, true), Deployed: desc("q", 2, true)})
+	synced := decode(comparison{Name: "s", State: driftInSync, Local: desc("q", 2, true), Deployed: desc("q", 2, true)})
 	if synced.State != "in-sync" || synced.LocalHash == "" || synced.LocalHash != synced.DeployedHash || synced.Drift != nil {
 		t.Errorf("synced = %+v; want matching non-empty hashes, no drift", synced)
 	}
 
-	drifted := decode(diffEntry{
+	drifted := decode(comparison{
 		Name:     "d",
-		State:    stateDrifted,
+		State:    driftDrifted,
 		Cmp:      deploy.Comparison{QueryDiffers: true},
 		Local:    desc("x", 2, false),
 		Deployed: desc("y", 2, false),
@@ -103,7 +103,7 @@ func TestRenderDiffJSON(t *testing.T) {
 		t.Errorf("drifted = %+v; want query drift and differing hashes", drifted)
 	}
 
-	untracked := decode(diffEntry{Name: "u", State: stateUntracked, Deployed: desc("q", 2, false)})
+	untracked := decode(comparison{Name: "u", State: driftUntracked, Deployed: desc("q", 2, false)})
 	if untracked.State != "untracked" || untracked.LocalHash != "" || untracked.DeployedHash == "" || untracked.Drift != nil {
 		t.Errorf("untracked = %+v; want deployed hash only", untracked)
 	}

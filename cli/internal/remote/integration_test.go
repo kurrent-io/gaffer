@@ -32,11 +32,20 @@ func connectClient(t *testing.T) *Client {
 	return New(db)
 }
 
+// testContext returns a context bounded by a generous deadline, so a stalled
+// projections subsystem fails the test rather than hanging it - the remote
+// package documents that its RPCs block until the context deadline.
+func testContext(t *testing.T) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+	return ctx
+}
+
 // waitForState polls until the projection reaches want, or fails after a few
 // seconds. Projection lifecycle transitions are asynchronous on the server.
-func waitForState(t *testing.T, c *Client, name string, want State) Status {
+func waitForState(t *testing.T, ctx context.Context, c *Client, name string, want State) Status {
 	t.Helper()
-	ctx := context.Background()
 	deadline := time.Now().Add(15 * time.Second)
 	var last Status
 	for time.Now().Before(deadline) {
@@ -59,7 +68,10 @@ const countQuery = `fromAll().when({ $init() { return { count: 0 }; }, $any(s, e
 // projection must be disabled before it can be deleted, so disable first.
 func cleanupProjection(c *Client, name string) func() {
 	return func() {
-		ctx := context.Background()
+		// Cleanup runs after the test body, when its context may be done, so use
+		// a fresh bounded one.
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
 		_ = c.Disable(ctx, name)
 		_ = c.Delete(ctx, name, DeleteOptions{DeleteEmittedStreams: true, DeleteStateStream: true, DeleteCheckpointStream: true})
 	}
@@ -67,7 +79,7 @@ func cleanupProjection(c *Client, name string) func() {
 
 func TestIntegration_CreateReadUpdateDelete(t *testing.T) {
 	c := connectClient(t)
-	ctx := context.Background()
+	ctx := testContext(t)
 	name := "remoteit" + testutil.TestSuffix()
 	t.Cleanup(cleanupProjection(c, name))
 
@@ -121,7 +133,7 @@ func TestIntegration_CreateReadUpdateDelete(t *testing.T) {
 	if err := c.Disable(ctx, name); err != nil {
 		t.Fatalf("Disable before delete: %v", err)
 	}
-	waitForState(t, c, name, StateStopped)
+	waitForState(t, ctx, c, name, StateStopped)
 	if err := c.Delete(ctx, name, DeleteOptions{}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
@@ -142,24 +154,24 @@ func TestIntegration_CreateReadUpdateDelete(t *testing.T) {
 
 func TestIntegration_StatusAndList(t *testing.T) {
 	c := connectClient(t)
-	ctx := context.Background()
+	ctx := testContext(t)
 	name := "remoteit" + testutil.TestSuffix()
 	t.Cleanup(cleanupProjection(c, name))
 
 	if err := c.Create(ctx, name, countQuery, CreateOptions{}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	waitForState(t, c, name, StateRunning)
+	waitForState(t, ctx, c, name, StateRunning)
 
 	if err := c.Disable(ctx, name); err != nil {
 		t.Fatalf("Disable: %v", err)
 	}
-	waitForState(t, c, name, StateStopped)
+	waitForState(t, ctx, c, name, StateStopped)
 
 	if err := c.Enable(ctx, name); err != nil {
 		t.Fatalf("Enable: %v", err)
 	}
-	waitForState(t, c, name, StateRunning)
+	waitForState(t, ctx, c, name, StateRunning)
 
 	list, err := c.List(ctx)
 	if err != nil {
@@ -188,7 +200,7 @@ func TestIntegration_StatusAndList(t *testing.T) {
 
 func TestIntegration_FaultedProjection(t *testing.T) {
 	c := connectClient(t)
-	ctx := context.Background()
+	ctx := testContext(t)
 	suffix := testutil.TestSuffix()
 	name := "remoteit" + suffix
 	t.Cleanup(cleanupProjection(c, name))
@@ -211,7 +223,7 @@ func TestIntegration_FaultedProjection(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	st := waitForState(t, c, name, StateFaulted)
+	st := waitForState(t, ctx, c, name, StateFaulted)
 	if st.FaultReason == "" {
 		t.Errorf("faulted projection has empty FaultReason; raw status = %q", st.Raw)
 	}
@@ -219,7 +231,7 @@ func TestIntegration_FaultedProjection(t *testing.T) {
 
 func TestIntegration_NotFound(t *testing.T) {
 	c := connectClient(t)
-	ctx := context.Background()
+	ctx := testContext(t)
 	missing := "remoteit_missing" + testutil.TestSuffix()
 
 	if _, err := c.Status(ctx, missing); !errors.Is(err, ErrNotFound) {

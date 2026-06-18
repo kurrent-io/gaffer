@@ -90,7 +90,10 @@ func readDefinition(next func() (*kurrentdb.ResolvedEvent, error), name string) 
 		if err != nil {
 			return nil, classify(err)
 		}
-		if ev.Event == nil || ev.Event.EventType != projectionUpdatedType {
+		// A non-error Recv yields a non-nil event in practice; guard ev anyway so
+		// an injected next that returns (nil, nil) skips rather than panics. ev.Event
+		// is nil for a resolved link with no underlying event.
+		if ev == nil || ev.Event == nil || ev.Event.EventType != projectionUpdatedType {
 			continue
 		}
 		return parseDefinition(ev.Event.Data, name)

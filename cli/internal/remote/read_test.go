@@ -120,7 +120,8 @@ func TestReadDefinitionSkipsNonStateEvents(t *testing.T) {
 	linkOnly := &kurrentdb.ResolvedEvent{Event: nil} // resolved link with no event
 	next := recvSeq(
 		recvStep{ev: other},
-		recvStep{ev: linkOnly},
+		recvStep{ev: nil},      // degenerate (nil, nil): must skip, not panic
+		recvStep{ev: linkOnly}, // resolved link with no underlying event
 		recvStep{ev: updatedEvent(`{"query":"q","engineVersion":1}`)},
 	)
 	got, err := readDefinition(next, "orders")

@@ -50,6 +50,11 @@ func newDiffCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff <projection>",
 		Short: "Show how a projection differs from what's deployed",
+		Long: "Compare a projection's local definition against what's deployed on KurrentDB.\n\n" +
+			"Reports one of four states: in sync, drifted, not deployed (local only), or " +
+			"untracked (on the server but absent from gaffer.toml). When the query differs, " +
+			"the source is shown in an external diff viewer (git diff --no-index by default; " +
+			"set GAFFER_EXTERNAL_DIFF to override). Pass --json for machine-readable output.",
 		Example: "  gaffer diff order-count\n" +
 			"  gaffer diff order-count --env staging",
 		Args: exactArgs(1),

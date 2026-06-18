@@ -60,6 +60,7 @@ type textStyles struct {
 	logLabel  lipgloss.Style
 	emitted   lipgloss.Style
 	processed lipgloss.Style
+	added     lipgloss.Style
 	skipped   lipgloss.Style
 	warning   lipgloss.Style
 	errStatus lipgloss.Style
@@ -85,6 +86,7 @@ func newTextWriter(w, errW io.Writer) *textWriter {
 			logLabel:  r.NewStyle().Foreground(lipgloss.Color("4")),
 			emitted:   r.NewStyle(),
 			processed: r.NewStyle().Faint(true).Foreground(lipgloss.Color("2")),
+			added:     r.NewStyle().Foreground(lipgloss.Color("2")),
 			skipped:   r.NewStyle().Foreground(lipgloss.Color("3")),
 			warning:   r.NewStyle().Foreground(lipgloss.Color("3")),
 			errStatus: r.NewStyle().Foreground(lipgloss.Color("9")),
@@ -280,23 +282,23 @@ func (tw *textWriter) WriteDiff(e diffEntry) {
 
 func (tw *textWriter) queryStatus(e diffEntry) string {
 	if !e.Cmp.QueryDiffers {
-		return tw.styles.processed.Render("in sync")
+		return tw.styles.added.Render("in sync")
 	}
 	added, removed := deploy.LineStat(e.Deployed.Query, e.Local.Query)
-	return tw.styles.processed.Render(fmt.Sprintf("+%d", added)) + " " +
+	return tw.styles.added.Render(fmt.Sprintf("+%d", added)) + " " +
 		tw.styles.errDetail.Render(fmt.Sprintf("-%d", removed))
 }
 
 func (tw *textWriter) versionStatus(e diffEntry) string {
 	if !e.Cmp.EngineVersionDiffers {
-		return tw.styles.processed.Render(fmt.Sprintf("%d", e.Local.EngineVersion))
+		return tw.styles.added.Render(fmt.Sprintf("%d", e.Local.EngineVersion))
 	}
 	return tw.styles.warning.Render(fmt.Sprintf("remote %d, local %d", e.Deployed.EngineVersion, e.Local.EngineVersion))
 }
 
 func (tw *textWriter) flagStatus(differs, remote, local bool) string {
 	if !differs {
-		return tw.styles.processed.Render(enabledStr(local))
+		return tw.styles.added.Render(enabledStr(local))
 	}
 	return tw.styles.warning.Render(fmt.Sprintf("remote %s, local %s", enabledStr(remote), enabledStr(local)))
 }

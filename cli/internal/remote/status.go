@@ -25,9 +25,13 @@ const (
 	StateUnknown State = "unknown"
 )
 
-// Status is the live state of a deployed projection. It is gaffer's own shape,
-// not the client's: commands depend on a classified State and named fields, not
-// on parsing the server's status string themselves.
+// Status is the live RUNTIME state of a deployed projection. It is gaffer's own
+// shape, not the client's: commands depend on a classified State and named
+// fields, not on parsing the server's status string themselves.
+//
+// It deliberately carries only runtime fields. The configured definition
+// (query, engine version, emit) lives on Definition via Read - a command that
+// needs both, like a status view with engine version, reads both.
 type Status struct {
 	Name        string
 	State       State

@@ -1,7 +1,6 @@
 // Package remote wraps server-side projection operations against a connected
 // KurrentDB: the management RPCs (create, update, delete, enable, disable,
-// reset) and, in later slices, reading back deployed projection definitions
-// and live status.
+// reset), live status reads, and reading back deployed projection definitions.
 //
 // It is the deployed-side counterpart to the local project package - project
 // reads gaffer.toml (the source of truth on disk), remote reads and mutates
@@ -41,9 +40,8 @@ type projectionAPI interface {
 
 // Client performs projection operations against a connected KurrentDB.
 type Client struct {
-	// db backs the raw stream reads the read substrate needs (later slices:
-	// reading the last $ProjectionUpdated to recover a deployed definition).
-	// The management verbs only use proj.
+	// db backs the raw stream read in Read (the last $ProjectionUpdated on
+	// $projections-<name>); the management verbs and status reads use proj.
 	db   *kurrentdb.Client
 	proj projectionAPI
 }

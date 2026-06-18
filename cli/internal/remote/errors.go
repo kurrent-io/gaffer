@@ -34,11 +34,12 @@ var (
 // classify maps a projection-operation error to a typed sentinel where it
 // recognises one, leaving unrecognised errors wrapped unchanged.
 //
-// Two error shapes reach here. A typed *kurrentdb.Error comes from a mutation
-// that fails before its gRPC round-trip (a closed connection, surfaced by
-// getConnectionHandle) and, in a later slice, from the Statistics read. A
-// mutation that reaches the server and is rejected returns a raw gRPC status.
-// classify checks the typed error first, then falls back to the gRPC code.
+// Two error shapes reach here. A typed *kurrentdb.Error comes from the
+// Statistics read, from a stream read (a missing stream is ResourceNotFound),
+// and from a mutation that fails before its gRPC round-trip (a closed
+// connection, surfaced by getConnectionHandle). A mutation that reaches the
+// server and is rejected returns a raw gRPC status. classify checks the typed
+// error first, then falls back to the gRPC code.
 func classify(err error) error {
 	if err == nil {
 		return nil

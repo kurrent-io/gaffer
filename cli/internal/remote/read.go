@@ -40,6 +40,11 @@ type Definition struct {
 // with enums as strings and null/default fields omitted; Go's case-insensitive
 // unmarshalling tolerates a casing change, and the pointer/zero defaults below
 // map an omitted field to its documented meaning.
+//
+// handlerType (the projection's handler kind) is intentionally not decoded:
+// gaffer projections are JavaScript-only today, so it's a constant. Add it when
+// diff needs to guard that a deployed projection is the same kind before
+// comparing query text.
 type persistedState struct {
 	Query               string `json:"query"`
 	EngineVersion       int    `json:"engineVersion"`
@@ -59,6 +64,10 @@ func (c *Client) Read(ctx context.Context, name string) (*Definition, error) {
 	stream, err := c.db.ReadStream(ctx, projectionStreamPrefix+name, kurrentdb.ReadStreamOptions{
 		Direction: kurrentdb.Backwards,
 		From:      kurrentdb.End{},
+		// Read from the leader for the same reason the management and statistics
+		// calls do: the leader holds the current definition, so a diff or deploy
+		// comparison is not racing a lagging follower.
+		RequiresLeader: true,
 	}, definitionScanLimit)
 	if err != nil {
 		return nil, classify(err)

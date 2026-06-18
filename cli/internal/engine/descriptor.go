@@ -38,14 +38,14 @@ func derivesEmit(proj *Projection) (bool, error) {
 }
 
 // shapeEmits reports whether a projection's shape shows it writing events:
-// emit(), linkTo(), or copyTo(). All three produce emitted streams, so the
-// server needs EmitEnabled for any of them.
+// emit(), linkTo(), linkStreamTo(), or copyTo(). All four are in-handler write
+// sinks, so the server needs EmitEnabled for any of them.
 func shapeEmits(shape *gafferruntime.ProjectionShape) bool {
 	if shape == nil {
 		return false
 	}
 	c := shape.BuiltinCounts
-	return positive(c.Emit) || positive(c.LinkTo) || positive(c.CopyTo)
+	return positive(c.Emit) || positive(c.LinkTo) || positive(c.LinkStreamTo) || positive(c.CopyTo)
 }
 
 func positive(p *int) bool { return p != nil && *p > 0 }

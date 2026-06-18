@@ -22,6 +22,7 @@ func TestShapeEmits(t *testing.T) {
 		{"no writes", &gafferruntime.ProjectionShape{}, false},
 		{"emit", counts(func(c *gafferruntime.ProjectionShapeBuiltinCounts) { c.Emit = ptr(1) }), true},
 		{"linkTo", counts(func(c *gafferruntime.ProjectionShapeBuiltinCounts) { c.LinkTo = ptr(2) }), true},
+		{"linkStreamTo", counts(func(c *gafferruntime.ProjectionShapeBuiltinCounts) { c.LinkStreamTo = ptr(1) }), true},
 		{"copyTo", counts(func(c *gafferruntime.ProjectionShapeBuiltinCounts) { c.CopyTo = ptr(1) }), true},
 		{"zero count is not emit", counts(func(c *gafferruntime.ProjectionShapeBuiltinCounts) { c.Emit = ptr(0) }), false},
 	} {

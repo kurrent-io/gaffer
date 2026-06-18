@@ -30,7 +30,15 @@ func diffSetupClient(t *testing.T) *remote.Client {
 	return remote.New(db)
 }
 
-func runDiffJSON(t *testing.T, args ...string) []diffJSON {
+func cleanupRemote(t *testing.T, r *remote.Client, name string) {
+	t.Cleanup(func() {
+		ctx := context.Background()
+		_ = r.Disable(ctx, name)
+		_ = r.Delete(ctx, name, remote.DeleteOptions{DeleteEmittedStreams: true, DeleteStateStream: true, DeleteCheckpointStream: true})
+	})
+}
+
+func runDiffJSON(t *testing.T, args ...string) diffJSON {
 	t.Helper()
 	root := NewRootCmd()
 	root.SetArgs(append([]string{"diff", "--json"}, args...))
@@ -40,7 +48,7 @@ func runDiffJSON(t *testing.T, args ...string) []diffJSON {
 			t.Fatalf("diff: %v", err)
 		}
 	})
-	var got []diffJSON
+	var got diffJSON
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("unmarshal diff json: %v\n%s", err, out)
 	}
@@ -52,40 +60,44 @@ func TestDiff_Integration(t *testing.T) {
 	ctx := context.Background()
 	suffix := testutil.TestSuffix()
 	deployed := "difftest" + suffix
+	notDeployed := "difflocal" + suffix
+	untracked := "diffuntracked" + suffix
 	const source = "fromAll().when({ $init: function () { return { n: 0 }; }, $any: function (s, e) { s.n++; return s; } })\n"
 
-	notDeployed := "difflocal" + suffix
 	p := testutil.NewProject(t).
 		WithConnection(testutil.ConnectionString()).
 		AddProjection(deployed, source).
 		AddProjection(notDeployed, source).
 		Save()
 	chdirTo(t, p.Dir)
+	cleanupRemote(t, r, deployed)
+	cleanupRemote(t, r, untracked)
 
-	t.Cleanup(func() {
-		_ = r.Disable(ctx, deployed)
-		_ = r.Delete(ctx, deployed, remote.DeleteOptions{DeleteEmittedStreams: true, DeleteStateStream: true, DeleteCheckpointStream: true})
-	})
-
-	// Deploy the first projection with the same source -> in sync.
 	if err := r.Create(ctx, deployed, source, remote.CreateOptions{EngineVersion: 2}); err != nil {
-		t.Fatalf("Create: %v", err)
+		t.Fatalf("Create deployed: %v", err)
+	}
+	// untracked: on the server, never in local config.
+	if err := r.Create(ctx, untracked, source, remote.CreateOptions{EngineVersion: 2}); err != nil {
+		t.Fatalf("Create untracked: %v", err)
 	}
 
 	t.Run("in sync", func(t *testing.T) {
 		got := runDiffJSON(t, deployed)
-		if len(got) != 1 || got[0].State != "in-sync" {
-			t.Fatalf("got %+v, want one in-sync entry", got)
-		}
-		if got[0].LocalHash == "" || got[0].LocalHash != got[0].DeployedHash {
-			t.Fatalf("in-sync hashes should match and be set: %+v", got[0])
+		if got.State != "in-sync" || got.LocalHash == "" || got.LocalHash != got.DeployedHash {
+			t.Fatalf("got %+v, want in-sync with matching hashes", got)
 		}
 	})
 
 	t.Run("not deployed", func(t *testing.T) {
-		got := runDiffJSON(t, notDeployed)
-		if len(got) != 1 || got[0].State != "not-deployed" {
+		if got := runDiffJSON(t, notDeployed); got.State != "not-deployed" {
 			t.Fatalf("got %+v, want not-deployed", got)
+		}
+	})
+
+	t.Run("untracked", func(t *testing.T) {
+		got := runDiffJSON(t, untracked)
+		if got.State != "untracked" || got.DeployedHash == "" || got.LocalHash != "" {
+			t.Fatalf("got %+v, want untracked with deployed hash only", got)
 		}
 	})
 
@@ -95,7 +107,7 @@ func TestDiff_Integration(t *testing.T) {
 			t.Fatalf("rewrite source: %v", err)
 		}
 		got := runDiffJSON(t, deployed)
-		if len(got) != 1 || got[0].State != "drifted" || got[0].Drift == nil || !got[0].Drift.Query {
+		if got.State != "drifted" || got.Drift == nil || !got.Drift.Query {
 			t.Fatalf("got %+v, want drifted with query change", got)
 		}
 	})
@@ -110,14 +122,10 @@ func TestDiff_Integration_Viewer(t *testing.T) {
 
 	p := testutil.NewProject(t).WithConnection(testutil.ConnectionString()).AddProjection(name, source).Save()
 	chdirTo(t, p.Dir)
-	t.Cleanup(func() {
-		_ = r.Disable(ctx, name)
-		_ = r.Delete(ctx, name, remote.DeleteOptions{DeleteEmittedStreams: true, DeleteStateStream: true, DeleteCheckpointStream: true})
-	})
+	cleanupRemote(t, r, name)
 	if err := r.Create(ctx, name, source, remote.CreateOptions{EngineVersion: 2}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	// Drift the query so the viewer is invoked.
 	if err := os.WriteFile(filepath.Join(p.Dir, "projections", name+".js"), []byte(source+"// edited\n"), 0o644); err != nil {
 		t.Fatalf("rewrite: %v", err)
 	}
@@ -138,7 +146,7 @@ func TestDiff_Integration_Viewer(t *testing.T) {
 	if !strings.Contains(out, name+": drifted") {
 		t.Errorf("missing drift summary in:\n%s", out)
 	}
-	if !strings.Contains(out, ".deployed") || !strings.Contains(out, ".local") {
+	if !strings.Contains(out, ".remote") || !strings.Contains(out, ".local") {
 		t.Errorf("viewer was not invoked with the two temp files:\n%s", out)
 	}
 }

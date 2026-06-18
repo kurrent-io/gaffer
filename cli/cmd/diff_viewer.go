@@ -31,12 +31,12 @@ func resolveDiffCommand(getenv func(string) string, lookPath func(string) (strin
 	return nil, false
 }
 
-// openSourceDiff renders the deployed vs local query through an external diff
-// viewer. The two queries are written to temp files (named for readable diff
-// headers) and the viewer is run with stdout/stderr inherited so it pages and
-// colours itself. With no viewer available it prints a hint instead of dumping
-// the source.
-func openSourceDiff(name, deployed, local string, out, errOut io.Writer) error {
+// openSourceDiff renders the remote (deployed) vs local query through an
+// external diff viewer. The two queries are written to temp files (named for
+// readable diff headers) and the viewer is run with stdout/stderr inherited so
+// it pages and colours itself. With no viewer available it prints a hint instead
+// of dumping the source.
+func openSourceDiff(name, remoteQuery, local string, out, errOut io.Writer) error {
 	argv, ok := resolveDiffCommand(os.Getenv, exec.LookPath)
 	if !ok {
 		_, _ = fmt.Fprintf(errOut, "%s: query differs - set GAFFER_EXTERNAL_DIFF or install git to view the source diff\n", name)
@@ -50,16 +50,16 @@ func openSourceDiff(name, deployed, local string, out, errOut io.Writer) error {
 	defer func() { _ = os.RemoveAll(dir) }()
 
 	safe := strings.ReplaceAll(name, string(os.PathSeparator), "_")
-	deployedPath := filepath.Join(dir, safe+".deployed")
+	remotePath := filepath.Join(dir, safe+".remote")
 	localPath := filepath.Join(dir, safe+".local")
-	if err := os.WriteFile(deployedPath, []byte(deployed), 0o600); err != nil {
+	if err := os.WriteFile(remotePath, []byte(remoteQuery), 0o600); err != nil {
 		return err
 	}
 	if err := os.WriteFile(localPath, []byte(local), 0o600); err != nil {
 		return err
 	}
 
-	args := append(append([]string{}, argv[1:]...), deployedPath, localPath)
+	args := append(append([]string{}, argv[1:]...), remotePath, localPath)
 	c := exec.Command(argv[0], args...)
 	c.Stdout = out
 	c.Stderr = errOut

@@ -99,6 +99,13 @@ func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
 		return renderDiffJSON(cmd.OutOrStdout(), entries)
 	}
 	renderDiffText(cmd.OutOrStdout(), entries)
+	for _, e := range entries {
+		if e.State == stateDrifted && e.Cmp.QueryDiffers {
+			if err := openSourceDiff(e.Name, e.Deployed.CanonicalQuery(), e.Local.CanonicalQuery(), cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 

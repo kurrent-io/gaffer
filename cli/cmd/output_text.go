@@ -275,9 +275,12 @@ func (tw *textWriter) WriteDiff(e diffEntry) {
 // no scalar value, so it shows "in sync" or a +added -removed line stat; the
 // full source diff is the external viewer's job.
 
+// A matched dimension renders green (all green reads as in sync at a glance); a
+// drifted one renders the change in the warning colour so it stands out.
+
 func (tw *textWriter) queryStatus(e diffEntry) string {
 	if !e.Cmp.QueryDiffers {
-		return "in sync"
+		return tw.styles.processed.Render("in sync")
 	}
 	added, removed := deploy.LineStat(e.Deployed.Query, e.Local.Query)
 	return tw.styles.processed.Render(fmt.Sprintf("+%d", added)) + " " +
@@ -286,14 +289,14 @@ func (tw *textWriter) queryStatus(e diffEntry) string {
 
 func (tw *textWriter) versionStatus(e diffEntry) string {
 	if !e.Cmp.EngineVersionDiffers {
-		return fmt.Sprintf("%d", e.Local.EngineVersion)
+		return tw.styles.processed.Render(fmt.Sprintf("%d", e.Local.EngineVersion))
 	}
 	return tw.styles.warning.Render(fmt.Sprintf("remote %d, local %d", e.Deployed.EngineVersion, e.Local.EngineVersion))
 }
 
 func (tw *textWriter) flagStatus(differs, remote, local bool) string {
 	if !differs {
-		return enabledStr(local)
+		return tw.styles.processed.Render(enabledStr(local))
 	}
 	return tw.styles.warning.Render(fmt.Sprintf("remote %s, local %s", enabledStr(remote), enabledStr(local)))
 }

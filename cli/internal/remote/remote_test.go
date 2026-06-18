@@ -254,6 +254,7 @@ func TestFromKurrentCode(t *testing.T) {
 		sentinel error
 	}{
 		{kurrentdb.ErrorCodeResourceNotFound, ErrNotFound},
+		{kurrentdb.ErrorCodeStreamDeleted, ErrNotFound},
 		{kurrentdb.ErrorCodeResourceAlreadyExists, ErrAlreadyExists},
 		{kurrentdb.ErrorUnavailable, ErrUnavailable},
 		{kurrentdb.ErrorCodeNotLeader, ErrUnavailable},

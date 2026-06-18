@@ -73,7 +73,7 @@ func kurrentMessage(kerr *kurrentdb.Error) string {
 
 func fromKurrentCode(code kurrentdb.ErrorCode) error {
 	switch code {
-	case kurrentdb.ErrorCodeResourceNotFound:
+	case kurrentdb.ErrorCodeResourceNotFound, kurrentdb.ErrorCodeStreamDeleted:
 		return ErrNotFound
 	case kurrentdb.ErrorCodeResourceAlreadyExists:
 		return ErrAlreadyExists

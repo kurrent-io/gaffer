@@ -64,17 +64,18 @@ func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
 	return nil
 }
 
-// diffJSON is the --json shape for one projection. State is one of in-sync,
-// drifted, not-deployed, untracked.
+// diffJSON is the --json shape for one projection. drift is the verdict (one of
+// in-sync, drifted, not-deployed, untracked), matching gaffer status; changes
+// names the dimensions that differ, present only when drifted.
 type diffJSON struct {
-	Name         string     `json:"name"`
-	State        string     `json:"state"`
-	LocalHash    string     `json:"localHash,omitempty"`
-	DeployedHash string     `json:"deployedHash,omitempty"`
-	Drift        *driftJSON `json:"drift,omitempty"`
+	Name         string       `json:"name"`
+	Drift        string       `json:"drift"`
+	LocalHash    string       `json:"localHash,omitempty"`
+	DeployedHash string       `json:"deployedHash,omitempty"`
+	Changes      *changesJSON `json:"changes,omitempty"`
 }
 
-type driftJSON struct {
+type changesJSON struct {
 	Query               bool `json:"query"`
 	EngineVersion       bool `json:"engineVersion"`
 	Emit                bool `json:"emit"`
@@ -82,7 +83,7 @@ type driftJSON struct {
 }
 
 func renderDiffJSON(w io.Writer, e comparison) error {
-	j := diffJSON{Name: e.Name, State: string(e.State)}
+	j := diffJSON{Name: e.Name, Drift: string(e.State)}
 	if e.Local != nil {
 		j.LocalHash = e.Local.Hash()
 	}
@@ -90,7 +91,7 @@ func renderDiffJSON(w io.Writer, e comparison) error {
 		j.DeployedHash = e.Deployed.Hash()
 	}
 	if e.State == driftDrifted {
-		j.Drift = &driftJSON{
+		j.Changes = &changesJSON{
 			Query:               e.Cmp.QueryDiffers,
 			EngineVersion:       e.Cmp.EngineVersionDiffers,
 			Emit:                e.Cmp.EmitDiffers,

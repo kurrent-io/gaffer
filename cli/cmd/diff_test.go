@@ -88,7 +88,7 @@ func TestRenderDiffJSON(t *testing.T) {
 	}
 
 	synced := decode(comparison{Name: "s", State: driftInSync, Local: desc("q", 2, true), Deployed: desc("q", 2, true)})
-	if synced.State != "in-sync" || synced.LocalHash == "" || synced.LocalHash != synced.DeployedHash || synced.Drift != nil {
+	if synced.Drift != "in-sync" || synced.LocalHash == "" || synced.LocalHash != synced.DeployedHash || synced.Changes != nil {
 		t.Errorf("synced = %+v; want matching non-empty hashes, no drift", synced)
 	}
 
@@ -99,12 +99,12 @@ func TestRenderDiffJSON(t *testing.T) {
 		Local:    desc("x", 2, false),
 		Deployed: desc("y", 2, false),
 	})
-	if drifted.Drift == nil || !drifted.Drift.Query || drifted.LocalHash == drifted.DeployedHash {
+	if drifted.Changes == nil || !drifted.Changes.Query || drifted.LocalHash == drifted.DeployedHash {
 		t.Errorf("drifted = %+v; want query drift and differing hashes", drifted)
 	}
 
 	untracked := decode(comparison{Name: "u", State: driftUntracked, Deployed: desc("q", 2, false)})
-	if untracked.State != "untracked" || untracked.LocalHash != "" || untracked.DeployedHash == "" || untracked.Drift != nil {
+	if untracked.Drift != "untracked" || untracked.LocalHash != "" || untracked.DeployedHash == "" || untracked.Changes != nil {
 		t.Errorf("untracked = %+v; want deployed hash only", untracked)
 	}
 }

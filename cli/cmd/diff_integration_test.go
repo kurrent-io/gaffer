@@ -83,20 +83,20 @@ func TestDiff_Integration(t *testing.T) {
 
 	t.Run("in sync", func(t *testing.T) {
 		got := runDiffJSON(t, deployed)
-		if got.State != "in-sync" || got.LocalHash == "" || got.LocalHash != got.DeployedHash {
+		if got.Drift != "in-sync" || got.LocalHash == "" || got.LocalHash != got.DeployedHash {
 			t.Fatalf("got %+v, want in-sync with matching hashes", got)
 		}
 	})
 
 	t.Run("not deployed", func(t *testing.T) {
-		if got := runDiffJSON(t, notDeployed); got.State != "not-deployed" {
+		if got := runDiffJSON(t, notDeployed); got.Drift != "not-deployed" {
 			t.Fatalf("got %+v, want not-deployed", got)
 		}
 	})
 
 	t.Run("untracked", func(t *testing.T) {
 		got := runDiffJSON(t, untracked)
-		if got.State != "untracked" || got.DeployedHash == "" || got.LocalHash != "" {
+		if got.Drift != "untracked" || got.DeployedHash == "" || got.LocalHash != "" {
 			t.Fatalf("got %+v, want untracked with deployed hash only", got)
 		}
 	})
@@ -107,7 +107,7 @@ func TestDiff_Integration(t *testing.T) {
 			t.Fatalf("rewrite source: %v", err)
 		}
 		got := runDiffJSON(t, deployed)
-		if got.State != "drifted" || got.Drift == nil || !got.Drift.Query {
+		if got.Drift != "drifted" || got.Changes == nil || !got.Changes.Query {
 			t.Fatalf("got %+v, want drifted with query change", got)
 		}
 	})

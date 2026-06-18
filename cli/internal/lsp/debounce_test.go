@@ -14,7 +14,7 @@ func TestServer_DidChangeIsDebounced(t *testing.T) {
 	// the latest text - intermediate keystrokes (which may be
 	// transiently invalid) must not flicker squiggles.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	_, done := startServerWithStore(ctx, srv, ServerOptions{
@@ -87,7 +87,7 @@ func TestServer_DidCloseClearsPendingDebounce(t *testing.T) {
 	// a buffer the user just closed would leave squiggles in the
 	// editor's Problems panel.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	_, done := startServerWithStore(ctx, srv, ServerOptions{
@@ -159,7 +159,7 @@ func TestServer_ShutdownDrainsPendingDebounce(t *testing.T) {
 	// Run's defer plus the callback's identity check together
 	// prevent any late publish.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	_, done := startServerWithStore(ctx, srv, ServerOptions{
@@ -206,7 +206,7 @@ func TestServer_DidChangeWatchedFilesIgnoresOpenBufferDebounce(t *testing.T) {
 	// install disk content. AddFromDisk is a no-op when memory-
 	// sourced, so the buffer survives. Pin the contract.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -273,7 +273,7 @@ func TestServer_DidChangeDebounceIsPerURI(t *testing.T) {
 	// keying is the contract - a future "global debounce" refactor
 	// would break it loudly.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	_, done := startServerWithStore(ctx, srv, ServerOptions{
@@ -335,11 +335,11 @@ func TestServer_DidChangeDebounceIsPerURI(t *testing.T) {
 
 func TestServer_DidOpenIsImmediate(t *testing.T) {
 	// didOpen must publish well before the debounce window - it's
-	// the first parse, not a keystroke. With a generous 500ms
-	// debounce the test would obviously hang under that timeout
-	// if didOpen incorrectly went through the debounce path.
+	// the first parse, not a keystroke. The 250ms waitFor below sits
+	// under the 500ms debounce window, so a didOpen wrongly routed
+	// through the debouncer would miss that window and fail.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	_, done := startServerWithStore(ctx, srv, ServerOptions{

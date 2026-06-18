@@ -58,7 +58,7 @@ func newClientConn(ctx context.Context, stream io.ReadWriteCloser) *jsonrpc2.Con
 
 func TestServer_InitializeReturnsCapabilities(t *testing.T) {
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	done := startServer(ctx, srv, ServerOptions{Version: "test"})
@@ -100,7 +100,7 @@ func TestServer_ExitDrivesDisconnect(t *testing.T) {
 	// Run returns within a short timeout WITHOUT the client having
 	// to call conn.Close().
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	done := startServer(ctx, srv, ServerOptions{})
@@ -152,7 +152,7 @@ func TestServer_ContextCancellationStopsRun(t *testing.T) {
 
 func TestServer_DoubleInitializeIsRejected(t *testing.T) {
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	done := startServer(ctx, srv, ServerOptions{})
@@ -180,7 +180,7 @@ func TestServer_DoubleInitializeIsRejected(t *testing.T) {
 
 func TestServer_UnknownMethodReturnsMethodNotFound(t *testing.T) {
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	done := startServer(ctx, srv, ServerOptions{})
@@ -209,7 +209,7 @@ func TestServer_ExitWithoutShutdownAfterInitializeIsAProtocolError(t *testing.T)
 	// initialize, the session is unclean. Run returns an error so
 	// callers can map to a non-zero exit code.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	done := startServer(ctx, srv, ServerOptions{})
@@ -234,7 +234,7 @@ func TestServer_DisconnectWithoutShutdownAfterInitializeIsAProtocolError(t *test
 	// either shutdown or exit. Same protocol-error outcome - no
 	// graceful close was negotiated.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	done := startServer(ctx, srv, ServerOptions{})
@@ -252,7 +252,7 @@ func TestServer_ExitBeforeInitializeIsClean(t *testing.T) {
 	// LSP spec: exit before initialize is exit code 0 - no session
 	// was ever established, nothing to leak.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	done := startServer(ctx, srv, ServerOptions{})
@@ -282,7 +282,7 @@ func startServerWithStore(ctx context.Context, stream io.ReadWriteCloser, opts S
 
 func TestServer_DidOpenStoresTheBuffer(t *testing.T) {
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	server, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -313,7 +313,7 @@ func TestServer_DidOpenStoresTheBuffer(t *testing.T) {
 
 func TestServer_DidChangeUpdatesContent(t *testing.T) {
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	server, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -348,7 +348,7 @@ func TestServer_DidChangeMultipleEventsTakesLast(t *testing.T) {
 	// one as authoritative. A future "first wins" refactor breaks
 	// this test loudly.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	server, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -381,7 +381,7 @@ func TestServer_DidChangeMultipleEventsTakesLast(t *testing.T) {
 
 func TestServer_DidCloseRemovesFromStore(t *testing.T) {
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	server, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -421,7 +421,7 @@ func TestServer_DidSaveIsAccepted(t *testing.T) {
 	// silently drops for notifications. Verify the connection
 	// stays alive and the store is untouched.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	server, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -461,6 +461,13 @@ func TestServer_DidSaveIsAccepted(t *testing.T) {
 // value to waitFor explicitly.
 const waitForTimeout = 5 * time.Second
 
+// ctxTimeout backstops a test's server connection. It must exceed
+// waitForTimeout: a waitFor poll outliving its connection context
+// would await an async effect (e.g. a codeLens/refresh Call) that
+// can no longer be sent once the context is cancelled, spinning out
+// the full budget before failing.
+const ctxTimeout = waitForTimeout + 2*time.Second
+
 // waitFor polls cond until it returns true or `timeout` elapses,
 // failing the test if the latter. Used to bridge the async gap
 // between sending an LSP notification and its handler completing.
@@ -481,7 +488,7 @@ func TestServer_AcceptsNullWorkspaceFolders(t *testing.T) {
 	// JSON unmarshal accepts null for slices in Go (-> nil); pin so a
 	// future tightening doesn't reject legitimate clients.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	done := startServer(ctx, srv, ServerOptions{})
@@ -535,7 +542,7 @@ func TestServer_FallsBackToRootURIWhenWorkspaceFoldersAbsent(t *testing.T) {
 	// must still walk the rootUri so the lens contract holds for
 	// those clients.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -577,7 +584,7 @@ func TestServer_DidOpenSameURITwiceOverwritesBuffer(t *testing.T) {
 	// behavior - the second Open replaces the first - so a
 	// future contract change is loud.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	server, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -610,7 +617,7 @@ func TestServer_DisconnectBeforeInitializeIsClean(t *testing.T) {
 	// Client connects and disconnects without initializing - no
 	// state to lose, no protocol violation.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	done := startServer(ctx, srv, ServerOptions{})

@@ -8,9 +8,11 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
+	"github.com/kurrent-io/gaffer/cli/internal/remote"
 	"github.com/muesli/termenv"
 )
 
@@ -254,12 +256,12 @@ func (tw *textWriter) WriteInfo(proj *engine.Projection, info gafferruntime.Proj
 // the info command's heading + indented detail layout. In-sync and drifted
 // projections show a line per dimension; a one-sided projection (not deployed,
 // untracked) shows a single status line.
-func (tw *textWriter) WriteDiff(e diffEntry) {
+func (tw *textWriter) WriteDiff(e comparison) {
 	tw.heading(e.Name)
 	switch e.State {
-	case stateNotDeployed:
+	case driftNotDeployed:
 		tw.status(tw.styles.warning.Render("not deployed (local only)"))
-	case stateUntracked:
+	case driftUntracked:
 		tw.status(tw.styles.warning.Render("untracked (deployed, not in gaffer.toml)"))
 	default:
 		tw.detail("Query", tw.queryStatus(e))
@@ -280,7 +282,7 @@ func (tw *textWriter) WriteDiff(e diffEntry) {
 // A matched dimension renders green (all green reads as in sync at a glance); a
 // drifted one renders the change in the warning colour so it stands out.
 
-func (tw *textWriter) queryStatus(e diffEntry) string {
+func (tw *textWriter) queryStatus(e comparison) string {
 	if !e.Cmp.QueryDiffers {
 		return tw.styles.added.Render("in sync")
 	}
@@ -289,7 +291,7 @@ func (tw *textWriter) queryStatus(e diffEntry) string {
 		tw.styles.errDetail.Render(fmt.Sprintf("-%d", removed))
 }
 
-func (tw *textWriter) versionStatus(e diffEntry) string {
+func (tw *textWriter) versionStatus(e comparison) string {
 	if !e.Cmp.EngineVersionDiffers {
 		return tw.styles.added.Render(fmt.Sprintf("%d", e.Local.EngineVersion))
 	}
@@ -308,6 +310,127 @@ func enabledStr(b bool) string {
 		return "enabled"
 	}
 	return "disabled"
+}
+
+// WriteStatus renders a single projection's status as a detail block: its
+// runtime state (when deployed) and how it compares to local.
+func (tw *textWriter) WriteStatus(e statusEntry) {
+	tw.heading(e.Name)
+	if e.runtime != nil {
+		tw.detail("State", tw.runtimeStateStyle(e).Render(runtimeStateText(e)))
+		tw.detail("Progress", progressText(e))
+		if e.runtime.Position != "" {
+			tw.detail("Position", e.runtime.Position)
+		}
+		if e.runtime.State == remote.StateFaulted && e.runtime.FaultReason != "" {
+			tw.detail("Fault", tw.styles.errDetail.Render(e.runtime.FaultReason))
+		}
+	}
+	tw.detail("Drift", tw.driftStyle(e.State).Render(driftBlockText(e.State)))
+}
+
+// driftBlockText spells out the one-sided verdicts for the single-projection
+// block (the table keeps the terse driftText), matching gaffer diff's phrasing.
+func driftBlockText(d driftState) string {
+	switch d {
+	case driftNotDeployed:
+		return "not deployed (local only)"
+	case driftUntracked:
+		return "untracked (deployed, not in gaffer.toml)"
+	default:
+		return driftText(d)
+	}
+}
+
+// WriteStatusTable renders all projections as a borderless aligned table. The
+// cell text is plain; colour is applied per cell by the StyleFunc keying off the
+// row's entry, so lipgloss's ANSI-aware width keeps the columns aligned.
+func (tw *textWriter) WriteStatusTable(entries []statusEntry) {
+	const pad = 3
+	t := table.New().
+		BorderTop(false).BorderBottom(false).BorderLeft(false).BorderRight(false).
+		BorderColumn(false).BorderRow(false).BorderHeader(false).
+		Headers("PROJECTION", "STATE", "PROGRESS", "DRIFT").
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == table.HeaderRow {
+				return tw.styles.heading.PaddingRight(pad)
+			}
+			switch col {
+			case 1:
+				return tw.runtimeStateStyle(entries[row]).PaddingRight(pad)
+			case 3:
+				return tw.driftStyle(entries[row].State).PaddingRight(pad)
+			default:
+				return tw.styles.emitted.PaddingRight(pad)
+			}
+		})
+	for _, e := range entries {
+		t.Row(e.Name, runtimeStateText(e), progressText(e), driftText(e.State))
+	}
+	// Trim the column padding the last cell leaves as trailing whitespace (plain
+	// in piped output; invisible inside the colour codes on a terminal).
+	for _, line := range strings.Split(strings.TrimRight(t.String(), "\n"), "\n") {
+		tw.write("%s\n", strings.TrimRight(line, " "))
+	}
+	for _, e := range entries {
+		if e.State == driftDrifted {
+			tw.write("\n%s\n", tw.styles.pipe.Render("Drifted - run gaffer diff <projection> to see what changed."))
+			break
+		}
+	}
+}
+
+func runtimeStateText(e statusEntry) string {
+	if e.runtime == nil {
+		return "-"
+	}
+	return string(e.runtime.State)
+}
+
+func progressText(e statusEntry) string {
+	if e.runtime == nil {
+		return "-"
+	}
+	if e.runtime.Progress < 0 {
+		return "unknown"
+	}
+	return fmt.Sprintf("%.0f%%", e.runtime.Progress)
+}
+
+func (tw *textWriter) runtimeStateStyle(e statusEntry) lipgloss.Style {
+	if e.runtime == nil {
+		return tw.styles.emitted
+	}
+	switch e.runtime.State {
+	case remote.StateRunning:
+		return tw.styles.added
+	case remote.StateFaulted:
+		return tw.styles.errStatus
+	default:
+		return tw.styles.emitted
+	}
+}
+
+func driftText(d driftState) string {
+	switch d {
+	case driftInSync:
+		return "in sync"
+	case driftDrifted:
+		return "drifted"
+	case driftNotDeployed:
+		return "not deployed"
+	case driftUntracked:
+		return "untracked"
+	default:
+		return string(d)
+	}
+}
+
+func (tw *textWriter) driftStyle(d driftState) lipgloss.Style {
+	if d == driftInSync {
+		return tw.styles.added
+	}
+	return tw.styles.warning
 }
 
 // diagnosticAnchor is the docs heading slug for a code: github-slugger's

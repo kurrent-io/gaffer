@@ -14,7 +14,7 @@ func TestServer_CodeLensOnEntryScriptFromCachedToml(t *testing.T) {
 	// must come from the cached parse of the matching gaffer.toml,
 	// not from any parse of the .js file (we don't parse .js).
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -88,7 +88,7 @@ default = true
 func TestServer_CodeLensOnNonEntryScriptReturnsEmpty(t *testing.T) {
 	// .js file that no projection points at gets zero lenses.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -134,7 +134,7 @@ func TestServer_CodeLensRefreshFiresOnTomlParse(t *testing.T) {
 	// editor re-fetches its lens. Gated on the client advertising
 	// refreshSupport per LSP 3.16 spec.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	_, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -176,7 +176,7 @@ func TestServer_CodeLensRefreshSuppressedWhenClientLacksSupport(t *testing.T) {
 	// must not receive workspace/codeLens/refresh requests. Without
 	// the gate, every parse would log MethodNotFound from the client.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	_, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -221,7 +221,7 @@ func TestServer_CodeLensRefreshErrorIsLogged(t *testing.T) {
 	// client a handler that always returns an error for that
 	// method.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	_, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -289,7 +289,7 @@ func TestServer_CodeLensOnEntryScriptFromMultipleProjections(t *testing.T) {
 	// projection, with the projection name in the title so stacked
 	// lenses are distinguishable.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -355,7 +355,7 @@ func TestServer_CodeLensRefreshFiresOnDidCloseWithCachedParse(t *testing.T) {
 	// refresh: any open .js entry-script editor's lens depended
 	// on that parse and is now stale.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	_, done := startServerWithStore(ctx, srv, ServerOptions{})

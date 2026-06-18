@@ -89,7 +89,7 @@ func TestServer_InitializedWalksWorkspaceAndPublishes(t *testing.T) {
 	// publish diagnostics for the file - without the client ever
 	// sending didOpen.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -129,7 +129,7 @@ func TestServer_InitializedRegistersFileWatcher(t *testing.T) {
 	// Server should send a client/registerCapability request after
 	// initialized, asking the editor to watch **/gaffer.toml.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -195,7 +195,7 @@ func TestServer_InitializedSkipsOpenBuffers(t *testing.T) {
 	// wins. The store's Source must remain sourceMemory after the
 	// walk completes.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -258,7 +258,7 @@ func TestServer_DidChangeWatchedFiles_RereadsFromDisk(t *testing.T) {
 	// Editor reports that the user edited gaffer.toml in another
 	// editor / on the CLI. Server should re-read disk and republish.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -308,7 +308,7 @@ func TestServer_DidChangeWatchedFiles_DeletedClearsState(t *testing.T) {
 	// Watcher reports the file was deleted. Server should drop it
 	// from the store and clear its diagnostics.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -355,7 +355,7 @@ func TestServer_DidChangeWatchedFiles_CreatedSeedsAndPublishes(t *testing.T) {
 	// after the initial walk. Watcher reports Created; server reads
 	// and publishes diagnostics.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -409,7 +409,7 @@ func TestServer_DidChangeWatchedFiles_OpenBufferSurvivesDiskEvent(t *testing.T) 
 	// the watcher reports Changed. The buffer must NOT be
 	// overwritten - memory wins until the user closes the buffer.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -474,7 +474,7 @@ func TestServer_InitializeWithoutInitializedDoesNotWalk(t *testing.T) {
 	// stops at `initialize`, the server must not poke the
 	// filesystem or push capability registrations.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -516,7 +516,7 @@ func TestServer_CodeLensServedFromWalkedDiskState(t *testing.T) {
 	// walk seeds disk-sourced state and parses it; codeLens reads
 	// the cached parse.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -575,7 +575,7 @@ func TestServer_DidChangeWatchedFiles_ChangedThenDeletedOrderPreserved(t *testin
 	// distinguish - that holds even if Changed re-inserted then
 	// some later cleanup removed it.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -639,7 +639,7 @@ func TestServer_DidChangeWatchedFiles_DeletedThenCreatedOrderPreserved(t *testin
 	// then re-seeds. Asserting the final state has a parse pins
 	// that the Created landed AFTER the Deleted.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -689,7 +689,7 @@ func TestServer_DidChangeWatchedFiles_MixedURIBatch(t *testing.T) {
 	// process both. Pin that one URI's events don't somehow
 	// suppress the other's.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -743,7 +743,7 @@ func TestServer_DidChangeWatchedFiles_NonGafferIgnored(t *testing.T) {
 	// gate by basename keeps non-gaffer events from reaching the
 	// document store.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	server, done := startServerWithStore(ctx, srv, ServerOptions{})

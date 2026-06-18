@@ -115,7 +115,7 @@ func TestServer_DidOpenPushesDiagnostics(t *testing.T) {
 	// A toml with an invalid fixture path should produce a
 	// publishDiagnostics notification with the rule code attached.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	_, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -167,7 +167,7 @@ func TestServer_DidOpenForNonGafferFileSkipsParse(t *testing.T) {
 	// extensions could read it) but NOT parsed - we only parse
 	// gaffer.toml.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	server, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -201,7 +201,7 @@ func TestServer_DidChangeRepublishesDiagnostics(t *testing.T) {
 	// publishDiagnostics for the URI should clear the squiggles
 	// (zero diagnostics).
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	_, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -249,7 +249,7 @@ func TestServer_DidCloseClearsDiagnostics(t *testing.T) {
 	// in the editor's Problems panel - else stale diagnostics
 	// linger after the file has been hidden.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	_, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -289,7 +289,7 @@ func TestServer_CodeLensRequestReturnsLenses(t *testing.T) {
 	// return the projection-level Debug lens, the dropdown, and
 	// the per-fixture lens.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	server, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -358,7 +358,7 @@ func TestServer_CodeLensWithoutPriorParseReturnsEmpty(t *testing.T) {
 	// Client asks for lenses on a URI we've never seen. Empty
 	// response is the canonical "no lenses for this document."
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	_, done := startServerWithStore(ctx, srv, ServerOptions{})
@@ -389,7 +389,7 @@ func TestServer_DidCloseThenReopenDropsInflightParse(t *testing.T) {
 	// fresh state and the codeLens response would reflect the
 	// stale parse.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	server, done := startServerWithStore(ctx, srv, ServerOptions{})

@@ -4,7 +4,6 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestServer_ProjectionDetailsReturnsConnectionAndFixtures(t *testing.T) {
@@ -12,7 +11,7 @@ func TestServer_ProjectionDetailsReturnsConnectionAndFixtures(t *testing.T) {
 	// projection's named fixtures. Powers the run-projection
 	// picker on the editor side.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -78,7 +77,7 @@ func TestServer_ProjectionDetailsNilConnectionWhenUndeclared(t *testing.T) {
 	// JSON null), letting the editor gate the "live" option in
 	// the picker.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -129,7 +128,7 @@ func TestServer_ProjectionDetailsSkipsMalformedFixtures(t *testing.T) {
 	// unrunnable. Filtering it out at the source means the editor
 	// picker never offers a fixture the CLI would reject.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -180,7 +179,7 @@ func TestServer_ProjectionDetailsEmptyResultForUnknownConfigURI(t *testing.T) {
 	// editor falls through to the live-only flow without surfacing
 	// a toast.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	done := startServer(ctx, srv, ServerOptions{})
@@ -212,7 +211,7 @@ func TestServer_ProjectionDetailsEmptyResultForUnknownProjection(t *testing.T) {
 	// Known config URI but the projection name doesn't match -
 	// same fall-through as unknown URI; editor degrades to live.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()

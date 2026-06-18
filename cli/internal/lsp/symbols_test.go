@@ -4,7 +4,6 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestServer_WorkspaceSymbolReturnsProjectionsAcrossTomls(t *testing.T) {
@@ -12,7 +11,7 @@ func TestServer_WorkspaceSymbolReturnsProjectionsAcrossTomls(t *testing.T) {
 	// cached parse, not just the one matching the request URI.
 	// Powers the editor's QuickPick and Cmd+T navigation.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -73,7 +72,7 @@ func TestServer_WorkspaceSymbolSkipsInvalidProjections(t *testing.T) {
 	// missing entry, escape) aren't actionable - a navigation
 	// target for them would lead nowhere useful. Skip them.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	root := t.TempDir()
@@ -116,7 +115,7 @@ entry = "missing-name.js"
 func TestServer_WorkspaceSymbolCapabilityAdvertised(t *testing.T) {
 	// Pin the capability surface - clients gate Cmd+T on this.
 	srv, cli := pipePair()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	done := startServer(ctx, srv, ServerOptions{})

@@ -26,7 +26,7 @@ func TestWriteDiffInSync(t *testing.T) {
 		Name: "count", State: stateInSync,
 		Local: desc("q", 2, false), Deployed: desc("q", 2, false),
 	})
-	for _, want := range []string{"count", "Query: in sync", "Engine version: in sync", "Emit: in sync"} {
+	for _, want := range []string{"count", "Query: in sync", "Engine version: 2", "Emit: disabled"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
@@ -42,7 +42,7 @@ func TestWriteDiffDrifted(t *testing.T) {
 		Deployed: desc("a\n", 1, false),
 		Local:    desc("a\nb\nc\n", 2, false),
 	})
-	for _, want := range []string{"Query: +2 -0", "Engine version: remote v1, local v2", "Emit: in sync"} {
+	for _, want := range []string{"Query: +2 -0", "Engine version: remote 1, local 2", "Emit: disabled"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
@@ -57,7 +57,7 @@ func TestWriteDiffEmitAndTrackDrift(t *testing.T) {
 		Deployed: &deploy.Descriptor{EngineVersion: 1, Emit: false, TrackEmittedStreams: false},
 		Local:    &deploy.Descriptor{EngineVersion: 1, Emit: true, TrackEmittedStreams: true},
 	})
-	for _, want := range []string{"Emit: remote off, local on", "Track emitted streams: remote off, local on"} {
+	for _, want := range []string{"Emit: remote disabled, local enabled", "Track emitted streams: remote disabled, local enabled"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}

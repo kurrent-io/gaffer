@@ -262,21 +262,22 @@ func (tw *textWriter) WriteDiff(e diffEntry) {
 	default:
 		tw.detail("Query", tw.queryStatus(e))
 		tw.detail("Engine version", tw.versionStatus(e))
-		tw.detail("Emit", tw.boolStatus(e.Cmp.EmitDiffers, e.Deployed.Emit, e.Local.Emit))
+		tw.detail("Emit", tw.flagStatus(e.Cmp.EmitDiffers, e.Deployed.Emit, e.Local.Emit))
 		// Track-emitted-streams is a niche v1 option; show it only when it drifts.
 		if e.Cmp.TrackEmittedStreamsDiffers {
-			tw.detail("Track emitted streams", tw.boolStatus(true, e.Deployed.TrackEmittedStreams, e.Local.TrackEmittedStreams))
+			tw.detail("Track emitted streams", tw.flagStatus(true, e.Deployed.TrackEmittedStreams, e.Local.TrackEmittedStreams))
 		}
 	}
 }
 
-func (tw *textWriter) inSync() string { return tw.styles.processed.Render("in sync") }
+// The per-dimension helpers show the value when local and deployed agree (a
+// single value implies in sync) and the change when they differ. The query has
+// no scalar value, so it shows "in sync" or a +added -removed line stat; the
+// full source diff is the external viewer's job.
 
-// queryStatus shows the line diffstat (+added -removed) when the query differs;
-// the full source diff is the external viewer's job.
 func (tw *textWriter) queryStatus(e diffEntry) string {
 	if !e.Cmp.QueryDiffers {
-		return tw.inSync()
+		return "in sync"
 	}
 	added, removed := deploy.LineStat(e.Deployed.Query, e.Local.Query)
 	return tw.styles.processed.Render(fmt.Sprintf("+%d", added)) + " " +
@@ -285,23 +286,23 @@ func (tw *textWriter) queryStatus(e diffEntry) string {
 
 func (tw *textWriter) versionStatus(e diffEntry) string {
 	if !e.Cmp.EngineVersionDiffers {
-		return tw.inSync()
+		return fmt.Sprintf("%d", e.Local.EngineVersion)
 	}
-	return tw.styles.warning.Render(fmt.Sprintf("remote v%d, local v%d", e.Deployed.EngineVersion, e.Local.EngineVersion))
+	return tw.styles.warning.Render(fmt.Sprintf("remote %d, local %d", e.Deployed.EngineVersion, e.Local.EngineVersion))
 }
 
-func (tw *textWriter) boolStatus(differs, remote, local bool) string {
+func (tw *textWriter) flagStatus(differs, remote, local bool) string {
 	if !differs {
-		return tw.inSync()
+		return enabledStr(local)
 	}
-	return tw.styles.warning.Render(fmt.Sprintf("remote %s, local %s", onOff(remote), onOff(local)))
+	return tw.styles.warning.Render(fmt.Sprintf("remote %s, local %s", enabledStr(remote), enabledStr(local)))
 }
 
-func onOff(b bool) string {
+func enabledStr(b bool) string {
 	if b {
-		return "on"
+		return "enabled"
 	}
-	return "off"
+	return "disabled"
 }
 
 // diagnosticAnchor is the docs heading slug for a code: github-slugger's

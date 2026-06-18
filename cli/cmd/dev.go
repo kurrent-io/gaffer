@@ -954,14 +954,23 @@ func noSourceErr(cfg *config.Config) error {
 // project with no default env yields an empty connection and no error -
 // dev falls back to fixtures.
 func resolveConnection(opts *devOpts, cfg *config.Config) (config.ResolvedEnv, error) {
-	if opts.Connection != "" {
-		return config.ResolvedEnv{Connection: opts.Connection}, nil
+	return resolveLiveEnv(opts.Connection, opts.Env, cfg)
+}
+
+// resolveLiveEnv resolves a live KurrentDB target from explicit flags, shared by
+// dev and diff: an ad-hoc --connection wins (no env name, so no OAuth/cert or
+// .env.<env> overlay), then a named --env, then the default env. An empty
+// connection with no error means no target was resolvable; the caller decides
+// whether that's an error.
+func resolveLiveEnv(connection, env string, cfg *config.Config) (config.ResolvedEnv, error) {
+	if connection != "" {
+		return config.ResolvedEnv{Connection: connection}, nil
 	}
-	if opts.Env != "" {
-		return cfg.ResolveEnv(opts.Env)
+	if env != "" {
+		return cfg.ResolveEnv(env)
 	}
-	if env, ok := cfg.DefaultEnv(); ok {
-		return env, nil
+	if e, ok := cfg.DefaultEnv(); ok {
+		return e, nil
 	}
 	return config.ResolvedEnv{}, nil
 }

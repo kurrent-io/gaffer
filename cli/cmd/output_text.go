@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/muesli/termenv"
 )
@@ -59,6 +60,7 @@ type textStyles struct {
 	logLabel  lipgloss.Style
 	emitted   lipgloss.Style
 	processed lipgloss.Style
+	added     lipgloss.Style
 	skipped   lipgloss.Style
 	warning   lipgloss.Style
 	errStatus lipgloss.Style
@@ -84,6 +86,7 @@ func newTextWriter(w, errW io.Writer) *textWriter {
 			logLabel:  r.NewStyle().Foreground(lipgloss.Color("4")),
 			emitted:   r.NewStyle(),
 			processed: r.NewStyle().Faint(true).Foreground(lipgloss.Color("2")),
+			added:     r.NewStyle().Foreground(lipgloss.Color("2")),
 			skipped:   r.NewStyle().Foreground(lipgloss.Color("3")),
 			warning:   r.NewStyle().Foreground(lipgloss.Color("3")),
 			errStatus: r.NewStyle().Foreground(lipgloss.Color("9")),
@@ -245,6 +248,66 @@ func (tw *textWriter) WriteInfo(proj *engine.Projection, info gafferruntime.Proj
 			tw.compileQuirks = append(tw.compileQuirks, d.Code)
 		}
 	}
+}
+
+// WriteDiff renders a projection's comparison against what's deployed, matching
+// the info command's heading + indented detail layout. In-sync and drifted
+// projections show a line per dimension; a one-sided projection (not deployed,
+// untracked) shows a single status line.
+func (tw *textWriter) WriteDiff(e diffEntry) {
+	tw.heading(e.Name)
+	switch e.State {
+	case stateNotDeployed:
+		tw.status(tw.styles.warning.Render("not deployed (local only)"))
+	case stateUntracked:
+		tw.status(tw.styles.warning.Render("untracked (deployed, not in gaffer.toml)"))
+	default:
+		tw.detail("Query", tw.queryStatus(e))
+		tw.detail("Engine version", tw.versionStatus(e))
+		tw.detail("Emit", tw.flagStatus(e.Cmp.EmitDiffers, e.Deployed.Emit, e.Local.Emit))
+		// Track-emitted-streams is a niche v1 option; show it only when it drifts.
+		if e.Cmp.TrackEmittedStreamsDiffers {
+			tw.detail("Track emitted streams", tw.flagStatus(true, e.Deployed.TrackEmittedStreams, e.Local.TrackEmittedStreams))
+		}
+	}
+}
+
+// The per-dimension helpers show the value when local and deployed agree (a
+// single value implies in sync) and the change when they differ. The query has
+// no scalar value, so it shows "in sync" or a +added -removed line stat; the
+// full source diff is the external viewer's job.
+
+// A matched dimension renders green (all green reads as in sync at a glance); a
+// drifted one renders the change in the warning colour so it stands out.
+
+func (tw *textWriter) queryStatus(e diffEntry) string {
+	if !e.Cmp.QueryDiffers {
+		return tw.styles.added.Render("in sync")
+	}
+	added, removed := deploy.LineStat(e.Deployed.Query, e.Local.Query)
+	return tw.styles.added.Render(fmt.Sprintf("+%d", added)) + " " +
+		tw.styles.errDetail.Render(fmt.Sprintf("-%d", removed))
+}
+
+func (tw *textWriter) versionStatus(e diffEntry) string {
+	if !e.Cmp.EngineVersionDiffers {
+		return tw.styles.added.Render(fmt.Sprintf("%d", e.Local.EngineVersion))
+	}
+	return tw.styles.warning.Render(fmt.Sprintf("remote %d, local %d", e.Deployed.EngineVersion, e.Local.EngineVersion))
+}
+
+func (tw *textWriter) flagStatus(differs, remote, local bool) string {
+	if !differs {
+		return tw.styles.added.Render(enabledStr(local))
+	}
+	return tw.styles.warning.Render(fmt.Sprintf("remote %s, local %s", enabledStr(remote), enabledStr(local)))
+}
+
+func enabledStr(b bool) string {
+	if b {
+		return "enabled"
+	}
+	return "disabled"
 }
 
 // diagnosticAnchor is the docs heading slug for a code: github-slugger's

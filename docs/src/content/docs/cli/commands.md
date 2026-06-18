@@ -196,3 +196,23 @@ Print the gaffer version.
 gaffer version
 ```
 
+## gaffer diff
+
+Show how a projection differs from what's deployed.
+
+Compare a projection's local definition against what's deployed on KurrentDB.
+
+Reports one of four states: in sync, drifted, not deployed (local only), or untracked (on the server but absent from gaffer.toml). When the query differs, the source is shown in an external diff viewer (git diff --no-index by default; set GAFFER_EXTERNAL_DIFF to override). Pass --json for machine-readable output.
+
+```
+gaffer diff <projection> [flags]
+```
+
+Flags:
+
+```
+      --connection string   KurrentDB connection string (overrides --env)
+      --env string          Environment from gaffer.toml to compare against
+      --json                Output as JSON
+```
+

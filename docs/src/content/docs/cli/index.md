@@ -13,6 +13,7 @@ The `gaffer` CLI scaffolds projections, runs them locally against fixtures or li
 | [`gaffer scaffold <path>`](./commands.md#gaffer-scaffold) | Create a projection file at `<path>` and register it in `gaffer.toml`.                                                        |
 | [`gaffer dev <name>`](./commands.md#gaffer-dev)      | Run a projection against fixtures (`--fixture <name>` or `--events <path>`) or live KurrentDB.                                |
 | [`gaffer info <name>`](./commands.md#gaffer-info)    | Print the projection's details: source, partitioning, declared fixtures, engine version, matched events, and any diagnostics. |
+| [`gaffer diff <projection>`](./commands.md#gaffer-diff) | Compare a projection's local definition against what's deployed: in sync, drifted, not deployed, or untracked. |
 | [`gaffer auth`](./commands.md#gaffer-auth)           | Sign in to an environment's OAuth identity provider and store the token. See [`[env.<name>.oauth]`](../reference/gaffer-toml.md#envnameoauth). |
 | [`gaffer mcp`](./commands.md#gaffer-mcp)             | Start the gaffer MCP server over stdio. See [MCP](./mcp.md).                                                                  |
 | [`gaffer lsp`](./commands.md#gaffer-lsp)             | Start the gaffer LSP server over stdio. Used by the [VS Code extension](../extension/vs-code.md).                             |
@@ -99,8 +100,8 @@ Project-level telemetry is opted out by setting `telemetry = false` at the top o
 
 - **`--json`**: structured output instead of the default text rendering. `gaffer dev --json` emits NDJSON, one object per line, each tagged with a `type`: `info`, `event`, `result`, `error`, `fatal_error`, `summary`, `auth_required`, and `run_error`. `auth_required` signals that a live run needs an interactive sign-in, and `run_error` that a run ended on a connection failure. Other commands emit a single JSON object.
 - **`--debug`**: starts the DAP debug server alongside `gaffer dev`. See [Debugging projections](../getting-started/debugging.md).
-- **`--env <name>`**: select an environment from `gaffer.toml` to run `gaffer dev` against. Optional when one environment is marked `default`, or on a terminal where you're prompted to pick; required for non-interactive runs with no default.
-- **`--connection`**: ad-hoc connection string for a single `gaffer dev` invocation. Overrides `--env` and the configured environment.
+- **`--env <name>`**: select an environment from `gaffer.toml` for a command that touches a live KurrentDB (`gaffer dev`, `gaffer diff`). Optional when one environment is marked `default`, or on a terminal where you're prompted to pick; required for non-interactive runs with no default.
+- **`--connection`**: ad-hoc connection string for a single invocation of `gaffer dev` or `gaffer diff`. Overrides `--env` and the configured environment.
 - **`--fixture <name>`** / **`--events <path>`**: pick a named fixture from `gaffer.toml`, or point at a JSON events file directly. These offline sources are mutually exclusive with the live ones (`--env` / `--connection`); combining the two is a usage error.
 - **`--yes` / `-y`**: skip interactive prompts and accept defaults. Applies to `gaffer scaffold` and `gaffer dev`. See [Interactive mode](#interactive-mode).
 

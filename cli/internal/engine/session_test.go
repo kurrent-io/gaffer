@@ -126,25 +126,65 @@ func TestBuildSessionOptions_EngineVersionFromProjection(t *testing.T) {
 	}
 }
 
-func TestBuildSessionOptions_ProjectionTimeoutOverridesGlobal(t *testing.T) {
-	globalTimeout := 500
+// The [database_config] and per-projection timeouts are declaration-only: they
+// describe the expected server config and must never reach gaffer's local
+// engine, which is guarded by GAFFER_TIMEOUT_MS instead.
+func TestBuildSessionOptions_ConfigTimeoutsNotApplied(t *testing.T) {
+	t.Setenv(EnvTimeoutMs, "")
+	dbTimeout := 500
 	projTimeout := 2000
-	cfg := &config.Config{ExecutionTimeout: &globalTimeout}
-	def := &config.Projection{ExecutionTimeout: &projTimeout}
+	cfg := &config.Config{DatabaseConfig: &config.DatabaseConfig{
+		CompilationTimeout: &dbTimeout,
+		ExecutionTimeout:   &dbTimeout,
+	}}
+	def := &config.Projection{EngineVersion: ptr(2), ExecutionTimeout: &projTimeout}
 	proj := NewProjection("/tmp", cfg, def, "")
 
-	opts := buildSessionOptions(proj, false, false)
-	if opts == nil {
-		t.Fatal("expected options")
-	}
-
 	var m map[string]any
-	if err := json.Unmarshal([]byte(*opts), &m); err != nil {
+	if err := json.Unmarshal([]byte(*buildSessionOptions(proj, false, false)), &m); err != nil {
 		t.Fatal(err)
 	}
+	for _, key := range []string{"compilationTimeoutMs", "executionTimeoutMs"} {
+		if _, ok := m[key]; ok {
+			t.Errorf("config timeouts must not be applied locally; got %s=%v", key, m[key])
+		}
+	}
+}
 
-	if m["executionTimeoutMs"] != float64(2000) {
-		t.Errorf("expected execution timeout 2000, got %v", m["executionTimeoutMs"])
+// GAFFER_TIMEOUT_MS is the local hang-guard, applied to both phases.
+func TestBuildSessionOptions_HangGuardFromEnv(t *testing.T) {
+	t.Setenv(EnvTimeoutMs, "12000")
+	cfg := &config.Config{}
+	def := &config.Projection{EngineVersion: ptr(2)}
+	proj := NewProjection("/tmp", cfg, def, "")
+
+	var m map[string]any
+	if err := json.Unmarshal([]byte(*buildSessionOptions(proj, false, false)), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["compilationTimeoutMs"] != float64(12000) || m["executionTimeoutMs"] != float64(12000) {
+		t.Errorf("expected both timeouts 12000, got compile=%v execute=%v",
+			m["compilationTimeoutMs"], m["executionTimeoutMs"])
+	}
+}
+
+// A non-positive, unparseable, or out-of-int32-range GAFFER_TIMEOUT_MS is
+// ignored so the runtime applies its built-in default.
+func TestBuildSessionOptions_HangGuardIgnoresBadEnv(t *testing.T) {
+	for _, v := range []string{"0", "-1", "soon", "9999999999"} {
+		t.Run(v, func(t *testing.T) {
+			t.Setenv(EnvTimeoutMs, v)
+			proj := NewProjection("/tmp", &config.Config{}, &config.Projection{EngineVersion: ptr(2)}, "")
+			var m map[string]any
+			if err := json.Unmarshal([]byte(*buildSessionOptions(proj, false, false)), &m); err != nil {
+				t.Fatal(err)
+			}
+			for _, key := range []string{"compilationTimeoutMs", "executionTimeoutMs"} {
+				if _, ok := m[key]; ok {
+					t.Errorf("expected %s omitted for %q", key, v)
+				}
+			}
+		})
 	}
 }
 
@@ -203,31 +243,52 @@ func TestBuildSessionOptions_AlwaysIncludesEngineVersion(t *testing.T) {
 	}
 }
 
-func TestBuildSessionOptions_GlobalFallback(t *testing.T) {
-	execTimeout := 500
-	compTimeout := 1000
-	cfg := &config.Config{
-		ExecutionTimeout:   &execTimeout,
-		CompilationTimeout: &compTimeout,
+// max_state_size is the one [database_config] knob enforced locally.
+func TestBuildSessionOptions_MaxStateSizeFromDatabaseConfig(t *testing.T) {
+	t.Setenv(EnvTimeoutMs, "")
+	maxState := int64(8388608)
+	cfg := &config.Config{DatabaseConfig: &config.DatabaseConfig{MaxStateSize: &maxState}}
+	def := &config.Projection{EngineVersion: ptr(2)}
+	proj := NewProjection("/tmp", cfg, def, "")
+
+	var m map[string]any
+	if err := json.Unmarshal([]byte(*buildSessionOptions(proj, false, false)), &m); err != nil {
+		t.Fatal(err)
 	}
-	def := &config.Projection{}
+	if m["maxStateSizeBytes"] != float64(8388608) {
+		t.Errorf("expected max state size 8388608, got %v", m["maxStateSizeBytes"])
+	}
+}
+
+func TestBuildSessionOptions_MaxStateSizeOmittedWhenUnset(t *testing.T) {
+	cfg := &config.Config{}
+	def := &config.Projection{EngineVersion: ptr(2)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	opts := buildSessionOptions(proj, false, false)
-	if opts == nil {
-		t.Fatal("expected options")
-	}
-
 	var m map[string]any
 	if err := json.Unmarshal([]byte(*opts), &m); err != nil {
 		t.Fatal(err)
 	}
-
-	if m["executionTimeoutMs"] != float64(500) {
-		t.Errorf("expected execution timeout 500, got %v", m["executionTimeoutMs"])
+	if _, ok := m["maxStateSizeBytes"]; ok {
+		t.Errorf("expected maxStateSizeBytes omitted, got %v", m["maxStateSizeBytes"])
 	}
-	if m["compilationTimeoutMs"] != float64(1000) {
-		t.Errorf("expected compilation timeout 1000, got %v", m["compilationTimeoutMs"])
+}
+
+// A non-positive max_state_size is ignored (the runtime default applies).
+func TestBuildSessionOptions_MaxStateSizeOmittedWhenNonPositive(t *testing.T) {
+	zero := int64(0)
+	cfg := &config.Config{DatabaseConfig: &config.DatabaseConfig{MaxStateSize: &zero}}
+	def := &config.Projection{EngineVersion: ptr(2)}
+	proj := NewProjection("/tmp", cfg, def, "")
+
+	opts := buildSessionOptions(proj, false, false)
+	var m map[string]any
+	if err := json.Unmarshal([]byte(*opts), &m); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m["maxStateSizeBytes"]; ok {
+		t.Errorf("expected maxStateSizeBytes omitted for non-positive value, got %v", m["maxStateSizeBytes"])
 	}
 }
 

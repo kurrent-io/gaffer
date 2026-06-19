@@ -9,10 +9,14 @@ import (
 
 func TestManifestFeaturesOf_AllSections(t *testing.T) {
 	timeout := 30
+	maxState := int64(8388608)
 	cfg := &config.Config{
-		QuirksVersion:      "26.1.0",
-		CompilationTimeout: &timeout,
-		ExecutionTimeout:   &timeout,
+		QuirksVersion: "26.1.0",
+		DatabaseConfig: &config.DatabaseConfig{
+			CompilationTimeout: &timeout,
+			ExecutionTimeout:   &timeout,
+			MaxStateSize:       &maxState,
+		},
 		Env: map[string]config.Env{
 			"local": {Connection: "esdb://localhost:2113", Default: true},
 		},
@@ -28,6 +32,7 @@ func TestManifestFeaturesOf_AllSections(t *testing.T) {
 		"env",
 		"execution_timeout",
 		"fixtures",
+		"max_state_size",
 		"projections",
 		"quirks_version",
 	}

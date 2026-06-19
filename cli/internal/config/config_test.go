@@ -500,12 +500,14 @@ connection = "kurrentdb://prod:2113"
 	}
 }
 
-func TestLoadGlobalTimeouts(t *testing.T) {
+func TestLoadDatabaseConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
+[database_config]
 compilation_timeout = 1000
 execution_timeout = 500
+max_state_size = 8388608
 
 [[projection]]
 name = "test"
@@ -522,11 +524,18 @@ execution_timeout = 2000
 		t.Fatal(err)
 	}
 
-	if cfg.CompilationTimeout == nil || *cfg.CompilationTimeout != 1000 {
+	db := cfg.DatabaseConfig
+	if db == nil {
+		t.Fatal("expected database_config to be set")
+	}
+	if db.CompilationTimeout == nil || *db.CompilationTimeout != 1000 {
 		t.Fatal("expected compilation_timeout 1000")
 	}
-	if cfg.ExecutionTimeout == nil || *cfg.ExecutionTimeout != 500 {
+	if db.ExecutionTimeout == nil || *db.ExecutionTimeout != 500 {
 		t.Fatal("expected execution_timeout 500")
+	}
+	if db.MaxStateSize == nil || *db.MaxStateSize != 8388608 {
+		t.Fatal("expected max_state_size 8388608")
 	}
 	if cfg.Projection[0].ExecutionTimeout == nil || *cfg.Projection[0].ExecutionTimeout != 2000 {
 		t.Fatal("expected projection execution_timeout 2000")
@@ -1108,6 +1117,62 @@ engine_version = 2
 	}
 	if !strings.Contains(err.Error(), "engine_version is now per-projection") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadRejectsRemovedTopLevelTimeouts(t *testing.T) {
+	for _, tc := range []struct {
+		key  string
+		want string
+	}{
+		{"compilation_timeout", "compilation_timeout is now under [database_config]"},
+		{"execution_timeout", "execution_timeout is now under [database_config]"},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "gaffer.toml")
+			content := tc.key + ` = 1000
+
+[env.local]
+connection = "esdb://localhost:2113?tls=false"
+default = true
+
+[[projection]]
+name = "p"
+entry = "p.js"
+engine_version = 2
+`
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Load(path)
+			if err == nil {
+				t.Fatalf("expected migration error for top-level %s", tc.key)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+// A per-projection execution_timeout is still valid and must not trip the
+// removed-top-level-key check (which inspects only top-level keys).
+func TestLoadAllowsProjectionExecutionTimeout(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+[[projection]]
+name = "p"
+entry = "p.js"
+engine_version = 2
+execution_timeout = 2000
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err != nil {
+		t.Fatalf("per-projection execution_timeout should load: %v", err)
 	}
 }
 

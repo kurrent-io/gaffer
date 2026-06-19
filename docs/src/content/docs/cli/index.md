@@ -105,6 +105,7 @@ Project-level telemetry is opted out by setting `telemetry = false` at the top o
 - **`--connection`**: ad-hoc connection string for a single invocation of `gaffer dev`, `gaffer diff`, or `gaffer status`. Overrides `--env` and the configured environment.
 - **`--fixture <name>`** / **`--events <path>`**: pick a named fixture from `gaffer.toml`, or point at a JSON events file directly. These offline sources are mutually exclusive with the live ones (`--env` / `--connection`); combining the two is a usage error.
 - **`--yes` / `-y`**: skip interactive prompts and accept defaults. Applies to `gaffer scaffold` and `gaffer dev`. See [Interactive mode](#interactive-mode).
+- **`GAFFER_TIMEOUT_MS`** (environment variable): bounds how long a projection may run locally before gaffer treats it as hung, in milliseconds, applied to `gaffer dev` and `gaffer test`. Raise it from the 5000ms default only on slow hardware. The [`[database_config]`](../reference/gaffer-toml.md#database_config) timeouts declare the server's configuration and do not affect local runs.
 
 ## Telemetry
 

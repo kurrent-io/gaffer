@@ -49,9 +49,12 @@ func waitForStatus(t *testing.T, ctx context.Context, c *Client, name, desc stri
 	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
 	var last Status
+	var lastErr error
 	for time.Now().Before(deadline) {
 		st, err := c.Status(ctx, name)
-		if err == nil {
+		if err != nil {
+			lastErr = err
+		} else {
 			last = *st
 			if pred(*st) {
 				return *st
@@ -59,7 +62,7 @@ func waitForStatus(t *testing.T, ctx context.Context, c *Client, name, desc stri
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	t.Fatalf("projection %q never %s; last status = %+v", name, desc, last)
+	t.Fatalf("projection %q never %s; last status = %+v, last error = %v", name, desc, last, lastErr)
 	return Status{}
 }
 

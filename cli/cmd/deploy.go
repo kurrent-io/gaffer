@@ -142,7 +142,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
-	sink := newDeploySink(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts.JSON, names, cancel)
+	sink := newDeploySink(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts.JSON, names, ctx, cancel)
 	failed := deployRun(ctx, r, cfg, root, names, sink)
 	if ferr := sink.finish(); ferr != nil {
 		return ferr

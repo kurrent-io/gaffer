@@ -22,12 +22,12 @@ type deploySink interface {
 // CI, tests) - the same terminal gate that drives coloured output. cancel stops
 // the deploy when the interactive view is interrupted; the non-interactive sinks
 // don't need it (a pipe's Ctrl-C arrives as a signal the command context handles).
-func newDeploySink(w, errW io.Writer, jsonOut bool, names []string, cancel context.CancelFunc) deploySink {
+func newDeploySink(w, errW io.Writer, jsonOut bool, names []string, ctx context.Context, cancel context.CancelFunc) deploySink {
 	if jsonOut {
 		return &jsonSink{w: w, results: []deployJSON{}}
 	}
 	if interactiveWriter(w) {
-		return newTeaSink(w, names, cancel)
+		return newTeaSink(w, names, ctx, cancel)
 	}
 	return newPlainSink(w, errW, names)
 }

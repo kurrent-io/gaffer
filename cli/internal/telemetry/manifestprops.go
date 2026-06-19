@@ -30,18 +30,21 @@ func ManifestFeaturesOf(c *config.Config) []string {
 	if len(c.Env) > 0 {
 		features["env"] = struct{}{}
 	}
-	if c.CompilationTimeout != nil {
+	if c.DatabaseConfig != nil && c.DatabaseConfig.CompilationTimeout != nil {
 		features["compilation_timeout"] = struct{}{}
+	}
+	if c.DatabaseConfig != nil && c.DatabaseConfig.MaxStateSize != nil {
+		features["max_state_size"] = struct{}{}
 	}
 	if len(c.Projection) > 0 {
 		features["projections"] = struct{}{}
 	}
-	// engine_version is per-projection; quirks_version and
-	// execution_timeout can live at top level OR on individual
-	// projections. Any declaration marks the feature as in use.
+	// engine_version is per-projection; quirks_version is top-level or
+	// per-projection; execution_timeout is [database_config] or a
+	// per-projection override. Any declaration marks the feature as in use.
 	hasEngineVersion := false
 	hasQuirksVersion := c.QuirksVersion != ""
-	hasExecutionTimeout := c.ExecutionTimeout != nil
+	hasExecutionTimeout := c.DatabaseConfig != nil && c.DatabaseConfig.ExecutionTimeout != nil
 	hasFixtures := false
 	hasTrackEmitted := false
 	for _, p := range c.Projection {

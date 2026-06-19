@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -112,14 +113,23 @@ func buildSessionOptions(proj *Projection, debug, includeShape bool) *string {
 		opts["includeShape"] = true
 	}
 
-	if proj.Def.ExecutionTimeout != nil && *proj.Def.ExecutionTimeout > 0 {
-		opts["executionTimeoutMs"] = *proj.Def.ExecutionTimeout
-	} else if proj.Config.ExecutionTimeout != nil && *proj.Config.ExecutionTimeout > 0 {
-		opts["executionTimeoutMs"] = *proj.Config.ExecutionTimeout
+	// The [database_config] timeouts (and a per-projection execution_timeout)
+	// declare the engine config expected on the deployment target; they are NOT
+	// applied to local runs, because a wall-clock budget measured on a dev
+	// machine says nothing about how the same handler behaves on the server.
+	// gaffer's local engine instead uses a generous hang-guard so a runaway
+	// projection can't wedge the process - the runtime's built-in default,
+	// raised via GAFFER_TIMEOUT_MS for slow hardware.
+	if ms := handlerTimeoutMs(); ms > 0 {
+		opts["compilationTimeoutMs"] = ms
+		opts["executionTimeoutMs"] = ms
 	}
 
-	if proj.Config.CompilationTimeout != nil && *proj.Config.CompilationTimeout > 0 {
-		opts["compilationTimeoutMs"] = *proj.Config.CompilationTimeout
+	// max_state_size is portable - serialized bytes are the same on a laptop and
+	// the server - so unlike the timeouts it IS enforced locally, reproducing
+	// the server's cap to catch state bloat before deploy.
+	if db := proj.Config.DatabaseConfig; db != nil && db.MaxStateSize != nil && *db.MaxStateSize > 0 {
+		opts["maxStateSizeBytes"] = *db.MaxStateSize
 	}
 
 	data, err := json.Marshal(opts)
@@ -128,6 +138,29 @@ func buildSessionOptions(proj *Projection, debug, includeShape bool) *string {
 	}
 	str := string(data)
 	return &str
+}
+
+// EnvTimeoutMs is the environment variable that overrides gaffer's local
+// compilation/execution hang-guard, in milliseconds. It bounds how long a
+// projection may run locally before gaffer treats it as wedged; it is not a
+// server-fidelity check (the [database_config] timeouts declare the server's,
+// and are not applied locally).
+const EnvTimeoutMs = "GAFFER_TIMEOUT_MS"
+
+// handlerTimeoutMs returns the local hang-guard timeout in milliseconds from
+// EnvTimeoutMs, applied to both compilation and execution. Returns 0, meaning
+// "let the runtime apply its built-in default", when unset, non-positive, or
+// unparseable.
+func handlerTimeoutMs() int {
+	v := os.Getenv(EnvTimeoutMs)
+	if v == "" {
+		return 0
+	}
+	ms, err := strconv.Atoi(v)
+	if err != nil || ms <= 0 {
+		return 0
+	}
+	return ms
 }
 
 const zeroUUID = "00000000-0000-0000-0000-000000000000"

@@ -9,6 +9,11 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
+// hangGuardHint is appended to local timeout errors so a user knows which lever
+// to pull. The [database_config] timeouts are declaration-only, so pointing
+// them at the env var heads off the natural-but-wrong fix of raising the config.
+var hangGuardHint = "Set " + engine.EnvTimeoutMs + " to raise gaffer's local time limit (the [database_config] timeouts are not applied to local runs)."
+
 type eventInfo = engine.EventEnvelope
 
 func parseEventInfo(eventJSON string) eventInfo {
@@ -85,16 +90,16 @@ func toFatalError(err error, sourcePath string) fatalError {
 		}
 	case *gafferruntime.ExecutionTimeoutError:
 		fe.Code = e.ErrorCode()
-		fe.Description = fmt.Sprintf("%s (elapsed %dms, allowed %dms)",
-			e.ErrorDescription(), e.ElapsedMs, e.AllowedMs)
+		fe.Description = fmt.Sprintf("%s (elapsed %dms, allowed %dms). %s",
+			e.ErrorDescription(), e.ElapsedMs, e.AllowedMs, hangGuardHint)
 		fe.EventID = formatEventID(e.Event)
 		fe.CompatCode = e.CompatCode
 		fe.CompatDescription = e.CompatDescription
 		fe.CompatFixedIn = e.CompatFixedIn
 	case *gafferruntime.CompilationTimeoutError:
 		fe.Code = e.ErrorCode()
-		fe.Description = fmt.Sprintf("%s (elapsed %dms, allowed %dms)",
-			e.ErrorDescription(), e.ElapsedMs, e.AllowedMs)
+		fe.Description = fmt.Sprintf("%s (elapsed %dms, allowed %dms). %s",
+			e.ErrorDescription(), e.ElapsedMs, e.AllowedMs, hangGuardHint)
 		fe.CompatCode = e.CompatCode
 		fe.CompatDescription = e.CompatDescription
 		fe.CompatFixedIn = e.CompatFixedIn

@@ -5,17 +5,20 @@ description: Full reference for the gaffer.toml project configuration file.
 
 `gaffer.toml` lives at the root of a gaffer project and declares its projections, the environments they connect to, and per-projection settings. `gaffer init` writes the initial file.
 
-:::caution[Upgrading from an older gaffer.toml]
-Top-level `connection` and top-level `engine_version` are no longer supported. Loading a file with either key fails with a migration hint.
+:::caution[Upgrading gaffer.toml]
+Several top-level keys are no longer supported. Loading a file with any of them fails with a migration hint.
 
 - A top-level `connection` moves into an [`[env.<name>]`](#envname) block.
 - A top-level `engine_version` moves onto each [`[[projection]]`](#engine_version) (every projection now sets its own).
+- Top-level `compilation_timeout` and `execution_timeout` move into [`[database_config]`](#database_config), where they declare the deployment target's configuration rather than affecting local runs (set `GAFFER_TIMEOUT_MS` to bound local runs). `execution_timeout` may still be set on a `[[projection]]`.
 
 Before:
 
 ```toml
 connection = "kurrentdb://localhost:2113?tls=false"
 engine_version = 2
+compilation_timeout = 5000
+execution_timeout = 5000
 
 [[projection]]
 name = "order-count"
@@ -28,6 +31,10 @@ After:
 [env.local]
 connection = "kurrentdb://localhost:2113?tls=false"
 default = true
+
+[database_config]
+compilation_timeout = 5000
+execution_timeout = 5000
 
 [[projection]]
 name = "order-count"
@@ -129,16 +136,21 @@ The `GAFFER_QUIRKS_VERSION` environment variable overrides every `quirks_version
 
 Optional.
 
-### `compilation_timeout` / `execution_timeout`
+### `[database_config]`
+
+Node-level engine settings: the configuration gaffer expects on the deployment target. The key names and grouping mirror the `databaseConfig` group in the [`@kurrent/projections-testing`](../testing/nodejs.md) library (in TOML's snake_case form), though local enforcement differs as noted below. `max_state_size` applies to local runs (`gaffer dev`, `gaffer test`); the timeouts do not.
 
 ```toml
-compilation_timeout = 5000
-execution_timeout = 5000
+[database_config]
+max_state_size = 16777216
+compilation_timeout = 500
+execution_timeout = 250
 ```
 
-Time limits in milliseconds. `compilation_timeout` bounds projection compilation. `execution_timeout` bounds each handler invocation. The runtime applies a 5000ms default for both when omitted.
+- **`max_state_size`**: maximum size in bytes of a projection's serialized state, mapping to the server's `MaxProjectionStateSize`. Default and ceiling are both 16777216 (16 MiB); the server rejects a larger value. Enforced on local runs: gaffer faults a projection whose state would exceed the cap, so you catch state bloat before deploy. The boundary is an approximation, not an exact match, because gaffer measures UTF-8 serialized bytes rather than the server's own measure. A non-positive value is ignored and the default applies.
+- **`compilation_timeout`** / **`execution_timeout`**: time limits in milliseconds the server applies to compiling a projection and to each handler invocation, mapping to its `ProjectionCompilationTimeout` (default 500ms) and `ProjectionExecutionTimeout` (default 250ms). They are declaration only: gaffer records them for configuration checks against a deployment target, but does not apply them to local runs, because a wall-clock budget measured on your machine isn't comparable to the server's. To bound how long a local projection may run before gaffer treats it as hung, set the `GAFFER_TIMEOUT_MS` environment variable (milliseconds, applied to both phases). You would only raise it from gaffer's built-in 5000ms default on slow hardware.
 
-Per-projection overrides via `execution_timeout` inside `[[projection]]`.
+All keys are optional; omit the section to take the defaults.
 
 ### `telemetry`
 
@@ -226,7 +238,7 @@ entry = "projections/slow-projection.js"
 execution_timeout = 30000
 ```
 
-Per-projection override of the top-level `execution_timeout`. Use for projections with long-running handlers (large reductions, heavy regex work). Optional.
+Declares a per-projection override of [`[database_config].execution_timeout`](#database_config) on the deployment target, for a projection with long-running handlers (large reductions, heavy regex work). Like the `[database_config]` timeouts, it is declaration only and is not applied to local runs. Optional.
 
 ## Resolution order
 
@@ -236,6 +248,6 @@ Settings that exist at both top-level and per-projection resolve from most-speci
 | --------------------- | -------------------------------------------------------------------- |
 | `engine_version`      | Per-projection only. Required on each `[[projection]]`.                   |
 | `quirks_version`      | `GAFFER_QUIRKS_VERSION` env > per-projection > top-level > unset.         |
-| `execution_timeout`   | Per-projection > top-level > 5000ms.                                      |
-| `compilation_timeout` | Top-level only > 5000ms.                                                  |
+| `max_state_size`      | `[database_config]` > 16777216 (16 MiB). Enforced locally.                |
+| `compilation_timeout` / `execution_timeout` | Declaration only; not applied locally. The local hang-guard is `GAFFER_TIMEOUT_MS` > 5000ms. |
 | `connection`          | `--connection` flag > selected env (`--env`, or the default env).         |

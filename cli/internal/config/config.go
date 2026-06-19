@@ -28,11 +28,30 @@ var ErrManifestValidate = errors.New("validate gaffer.toml")
 
 // Config represents a gaffer.toml file.
 type Config struct {
-	QuirksVersion      string         `toml:"quirks_version,omitempty"`
-	CompilationTimeout *int           `toml:"compilation_timeout,omitempty"`
-	ExecutionTimeout   *int           `toml:"execution_timeout,omitempty"`
-	Env                map[string]Env `toml:"env,omitempty"`
-	Projection         []Projection   `toml:"projection"`
+	QuirksVersion  string          `toml:"quirks_version,omitempty"`
+	DatabaseConfig *DatabaseConfig `toml:"database_config,omitempty"`
+	Env            map[string]Env  `toml:"env,omitempty"`
+	Projection     []Projection    `toml:"projection"`
+}
+
+// DatabaseConfig holds node-level engine settings, declared as
+// `[database_config]`, mirroring the grouping of the JS testing lib's
+// databaseConfig (in TOML snake_case). These are node-wide (not per-env, not
+// per-projection).
+//
+// The section declares the engine config expected on a deployment target. As a
+// rule it applies to local runs too, with one documented exception: the
+// timeouts. A wall-clock budget measured on a dev machine isn't comparable to
+// the server, so CompilationTimeout/ExecutionTimeout (in milliseconds) are
+// declaration-only here - recorded for deploy-time configuration checks, never
+// applied locally. gaffer's local hang-guard is GAFFER_TIMEOUT_MS instead.
+// MaxStateSize (in bytes) is portable, so it both declares the expected server
+// cap and is enforced locally; a non-positive value is ignored (16 MiB
+// default).
+type DatabaseConfig struct {
+	CompilationTimeout *int   `toml:"compilation_timeout,omitempty"`
+	ExecutionTimeout   *int   `toml:"execution_timeout,omitempty"`
+	MaxStateSize       *int64 `toml:"max_state_size,omitempty"`
 }
 
 // Env is a named deployment target, declared as `[env.<name>]`. Each
@@ -243,12 +262,14 @@ func decode(data []byte) (*Config, toml.MetaData, error) {
 
 // removedTopLevelKeys maps a top-level key that gaffer.toml used to
 // accept to its migration message. Each message leads with what
-// changed, then how to fix it. The multi-environment restructure
-// dropped both; the TOML decoder silently ignores unknown keys, so
-// without this an old file's connection just vanishes.
+// changed, then how to fix it. The TOML decoder silently ignores
+// unknown keys, so without this an old file's relocated key just
+// vanishes instead of being honoured.
 var removedTopLevelKeys = map[string]string{
-	"connection":     "connection is now per-environment. Move it into an [env.<name>] block, and set `default = true` for auto-selection.",
-	"engine_version": "engine_version is now per-projection. Set it on each [[projection]].",
+	"connection":          "connection is now per-environment. Move it into an [env.<name>] block, and set `default = true` for auto-selection.",
+	"engine_version":      "engine_version is now per-projection. Set it on each [[projection]].",
+	"compilation_timeout": "compilation_timeout is now under [database_config]. Move it into a [database_config] block.",
+	"execution_timeout":   "execution_timeout is now under [database_config]. Move it into a [database_config] block, or set it on a [[projection]] for a per-projection override.",
 }
 
 // checkRemovedKeys reports any removed top-level keys found in the

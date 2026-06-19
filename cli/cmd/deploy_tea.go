@@ -32,13 +32,12 @@ func interactiveWriter(w io.Writer) bool {
 	return ok && isatty.IsTerminal(f.Fd()) && isatty.IsTerminal(os.Stdin.Fd())
 }
 
-// Messages driving the deploy view: a projection's RPC began, finished, or the
-// whole run is done. The work loop sends these into the program from the main
-// goroutine while the program renders in its own.
+// Messages driving the deploy view: a projection's RPC began or finished. The
+// work loop sends these into the program from the main goroutine while the
+// program renders in its own; the model quits itself once the last row commits.
 type (
-	deployStartMsg  struct{ name string }
-	deployDoneMsg   struct{ res deployResult }
-	deployFinishMsg struct{}
+	deployStartMsg struct{ name string }
+	deployDoneMsg  struct{ res deployResult }
 )
 
 type rowStatus int
@@ -112,12 +111,18 @@ func (m teaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			lines = append(lines, m.tw.deployResultLine(m.rows[m.committed].res, m.nameWidth))
 			m.committed++
 		}
-		if len(lines) == 0 {
-			return m, nil
+		var cmd tea.Cmd
+		if len(lines) > 0 {
+			cmd = tea.Println(strings.Join(lines, "\n"))
 		}
-		return m, tea.Println(strings.Join(lines, "\n"))
-	case deployFinishMsg:
-		return m, tea.Quit
+		if m.committed == len(m.rows) {
+			// Last rows committed: print this final batch and quit in one
+			// sequence, so the quit can't outrace the print and drop the trailing
+			// lines. A separate quit message did exactly that on a one-projection
+			// deploy - its print and quit ran as independent racing commands.
+			return m, tea.Sequence(cmd, tea.Quit)
+		}
+		return m, cmd
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -223,13 +228,13 @@ func (s *teaSink) start(name string, _, _ int) { s.prog.Send(deployStartMsg{name
 
 func (s *teaSink) done(res deployResult) { s.prog.Send(deployDoneMsg{res: res}) }
 
+// finish waits for the program to exit. The model quits itself: on completion
+// (the last row's commit sequences a quit) or on interrupt (Ctrl-C, or a signal
+// bubbletea handles). A signal-delivered interrupt quits with ErrInterrupted,
+// which isn't a sink failure - the command context is already cancelled, so
+// runDeploy reports the interrupt from ctx.Err() and exits cleanly.
 func (s *teaSink) finish() error {
-	s.prog.Send(deployFinishMsg{})
 	err := <-s.exited
-	// A signal-delivered interrupt (SIGTERM, or SIGINT not captured as a raw-mode
-	// key) quits the program with ErrInterrupted. That isn't a sink failure: the
-	// command context is already cancelled, so runDeploy reports the interrupt
-	// from ctx.Err() and exits cleanly rather than printing a program error.
 	if errors.Is(err, tea.ErrInterrupted) {
 		return nil
 	}

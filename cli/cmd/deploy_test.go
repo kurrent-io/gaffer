@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -330,14 +331,14 @@ func TestTeaModelTransitions(t *testing.T) {
 	}
 
 	// Finishing a row commits it to scrollback (a tea.Println command) and drops
-	// it from the live window.
+	// it from the live window. Not the last row, so no quit yet.
 	finished, cmd := m.Update(deployDoneMsg{res: deployResult{Name: "alpha", Action: actCreate}})
 	m = finished.(teaModel)
 	if m.committed != 1 || m.counts.created != 1 {
 		t.Errorf("after done: committed=%d created=%d", m.committed, m.counts.created)
 	}
-	if cmd == nil {
-		t.Error("done should commit the finished row via a tea.Println command")
+	if producesQuit(cmd) {
+		t.Error("a non-final commit must not quit")
 	}
 	if v := m.View(); strings.Contains(v, "alpha") {
 		t.Errorf("committed row should leave the live window:\n%s", v)
@@ -346,9 +347,15 @@ func TestTeaModelTransitions(t *testing.T) {
 		t.Errorf("live window should show the pending row and running summary:\n%s", v)
 	}
 
-	_, cmd = m.Update(deployFinishMsg{})
-	if !isQuit(cmd) {
-		t.Error("finish should quit the program")
+	// Finishing the last row commits it and quits, in one command, so the final
+	// line can't be lost to a quit that races the print.
+	last, cmd := m.Update(deployDoneMsg{res: deployResult{Name: "beta", Action: actSkip}})
+	m = last.(teaModel)
+	if m.committed != 2 {
+		t.Errorf("committed = %d after the last row, want 2", m.committed)
+	}
+	if !producesQuit(cmd) {
+		t.Error("the last commit should quit the program")
 	}
 	// View must end with a trailing newline so its last line is empty: bubbletea
 	// erases the final rendered line on quit, so the summary must not be it.
@@ -460,17 +467,29 @@ func TestTeaModelCtrlCCancels(t *testing.T) {
 	if !cancelled {
 		t.Error("Ctrl-C should cancel the deploy context")
 	}
-	if !isQuit(cmd) {
+	if !producesQuit(cmd) {
 		t.Error("Ctrl-C should quit the program")
 	}
 }
 
-// isQuit reports whether cmd is tea.Quit, by running it and checking for the
-// QuitMsg - so a quit assertion can't pass on just any non-nil command.
-func isQuit(cmd tea.Cmd) bool {
+// producesQuit reports whether running cmd yields a tea.Quit, directly or inside
+// a tea.Sequence (whose message is a slice of commands) - so a quit assertion
+// can't pass on just any non-nil command, and still sees a sequenced quit.
+func producesQuit(cmd tea.Cmd) bool {
 	if cmd == nil {
 		return false
 	}
-	_, ok := cmd().(tea.QuitMsg)
-	return ok
+	msg := cmd()
+	if _, ok := msg.(tea.QuitMsg); ok {
+		return true
+	}
+	rv := reflect.ValueOf(msg)
+	if rv.Kind() == reflect.Slice {
+		for i := 0; i < rv.Len(); i++ {
+			if c, ok := rv.Index(i).Interface().(tea.Cmd); ok && producesQuit(c) {
+				return true
+			}
+		}
+	}
+	return false
 }

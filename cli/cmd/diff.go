@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -47,7 +46,7 @@ func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
 
 	// remote calls block until their context deadline if the projections
 	// subsystem doesn't respond, so bound the read rather than hang the command.
-	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), projectionRPCTimeout)
 	defer cancel()
 	entry, err := compareProjection(ctx, r, cfg, root, name)
 	if err != nil {

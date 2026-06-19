@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
@@ -11,6 +12,12 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
+
+// projectionRPCTimeout bounds a single projection management call. The
+// projections subsystem replies with nothing while it is still starting, so an
+// unbounded call would hang; diff and status bound the whole command by it,
+// deploy bounds each projection by it. Shared so the three move together.
+const projectionRPCTimeout = 30 * time.Second
 
 // connectEnv loads the project, resolves the live env from explicit flags, and
 // connects, returning a remote client and a cleanup to defer. Shared by the

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -64,7 +63,7 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 
 	// remote calls block until their context deadline if the projections
 	// subsystem doesn't respond, so bound them rather than hang the command.
-	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(cmd.Context(), projectionRPCTimeout)
 	defer cancel()
 
 	if name != "" {

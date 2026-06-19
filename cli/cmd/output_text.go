@@ -436,6 +436,74 @@ func (tw *textWriter) driftStyle(d driftState) lipgloss.Style {
 	return tw.styles.warning
 }
 
+// deployResultLine renders one projection's verdict: a status marker, the name
+// padded to nameWidth so verdicts align, and the outcome. Returns the line
+// without a trailing newline so both the plain sink and the interactive view can
+// place it. Created/updated read green, skipped faint, refused a warning, a
+// failed RPC red.
+func (tw *textWriter) deployResultLine(res deployResult, nameWidth int) string {
+	name := fmt.Sprintf("%-*s", nameWidth, res.Name)
+	var marker, verdict string
+	switch {
+	case res.Err != nil:
+		marker = tw.styles.errStatus.Render("✗")
+		verdict = tw.styles.errDetail.Render("failed: " + res.Err.Error())
+	case res.Action == actRefuse:
+		marker = tw.styles.warning.Render("✗")
+		verdict = tw.styles.warning.Render("refused (" + res.Reason + ")")
+	case res.Action == actSkip:
+		marker = tw.styles.pipe.Render("·")
+		verdict = tw.styles.pipe.Render("skipped (in sync)")
+	case res.Action == actCreate:
+		marker = tw.styles.added.Render("✓")
+		verdict = tw.styles.added.Render("created")
+	case res.Action == actUpdate:
+		marker = tw.styles.added.Render("✓")
+		verdict = tw.styles.added.Render("updated")
+	default:
+		marker = tw.styles.warning.Render("?")
+		verdict = tw.styles.warning.Render("unknown")
+	}
+	return fmt.Sprintf("  %s %s  %s", marker, name, verdict)
+}
+
+// deployRowLine renders one projection row for the interactive in-place view:
+// pending (dim, waiting), active (the spinner frame, deploying now), or its
+// final verdict once done. spin is the current spinner frame, used only for the
+// active row. Done rows reuse deployResultLine so live and committed lines match.
+func (tw *textWriter) deployRowLine(row deployRow, spin string, nameWidth int) string {
+	switch row.status {
+	case rowActive:
+		return fmt.Sprintf("  %s %-*s  %s", spin, nameWidth, row.name, tw.styles.label.Render("deploying"))
+	case rowDone:
+		return tw.deployResultLine(row.res, nameWidth)
+	default:
+		return fmt.Sprintf("  %s %s", tw.styles.pipe.Render("·"), tw.styles.pipe.Render(fmt.Sprintf("%-*s", nameWidth, row.name)))
+	}
+}
+
+// deploySummaryLine is the tally after a run. Created, updated and skipped
+// always show; refused and failed only when non-zero, in their alert colour.
+func (tw *textWriter) deploySummaryLine(c deployCounts) string {
+	segs := []string{
+		fmt.Sprintf("%d created", c.created),
+		fmt.Sprintf("%d updated", c.updated),
+		fmt.Sprintf("%d skipped", c.skipped),
+	}
+	if c.refused > 0 {
+		segs = append(segs, tw.styles.warning.Render(fmt.Sprintf("%d refused", c.refused)))
+	}
+	if c.failed > 0 {
+		segs = append(segs, tw.styles.errStatus.Render(fmt.Sprintf("%d failed", c.failed)))
+	}
+	return strings.Join(segs, tw.styles.pipe.Render(" · "))
+}
+
+func (tw *textWriter) writeDeploySummary(c deployCounts) {
+	tw.blank()
+	tw.write("%s\n", tw.deploySummaryLine(c))
+}
+
 // diagnosticAnchor is the docs heading slug for a code: github-slugger's
 // lowercase, dot-stripped form (quirk.log.multiParam -> quirklogmultiparam).
 // It must match the Starlight heading slug so the CLI links to the same anchor

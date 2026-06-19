@@ -150,17 +150,19 @@ const EnvTimeoutMs = "GAFFER_TIMEOUT_MS"
 // handlerTimeoutMs returns the local hang-guard timeout in milliseconds from
 // EnvTimeoutMs, applied to both compilation and execution. Returns 0, meaning
 // "let the runtime apply its built-in default", when unset, non-positive, or
-// unparseable.
+// unparseable. Parsed as a 32-bit value because the runtime reads these
+// timeouts as int32; an out-of-range value (over ~24 days) is rejected rather
+// than overflowing on the runtime side.
 func handlerTimeoutMs() int {
 	v := os.Getenv(EnvTimeoutMs)
 	if v == "" {
 		return 0
 	}
-	ms, err := strconv.Atoi(v)
+	ms, err := strconv.ParseInt(v, 10, 32)
 	if err != nil || ms <= 0 {
 		return 0
 	}
-	return ms
+	return int(ms)
 }
 
 const zeroUUID = "00000000-0000-0000-0000-000000000000"

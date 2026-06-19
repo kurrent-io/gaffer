@@ -168,10 +168,10 @@ func TestBuildSessionOptions_HangGuardFromEnv(t *testing.T) {
 	}
 }
 
-// A non-positive or unparseable GAFFER_TIMEOUT_MS is ignored so the runtime
-// applies its built-in default.
+// A non-positive, unparseable, or out-of-int32-range GAFFER_TIMEOUT_MS is
+// ignored so the runtime applies its built-in default.
 func TestBuildSessionOptions_HangGuardIgnoresBadEnv(t *testing.T) {
-	for _, v := range []string{"0", "-1", "soon"} {
+	for _, v := range []string{"0", "-1", "soon", "9999999999"} {
 		t.Run(v, func(t *testing.T) {
 			t.Setenv(EnvTimeoutMs, v)
 			proj := NewProjection("/tmp", &config.Config{}, &config.Projection{EngineVersion: ptr(2)}, "")

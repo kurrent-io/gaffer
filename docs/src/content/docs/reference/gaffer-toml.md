@@ -204,7 +204,7 @@ entry = "projections/order-count.js"
 engine_version = 2
 ```
 
-Projection engine version: `1` or `2`. Required on every projection. V1 is for legacy compatibility with older KurrentDB releases; V2 is the default for new projections written by `gaffer scaffold`. There is no top-level fallback, so each projection states its own version.
+Projection engine version: `1` or `2`. Required on every projection. V1 is for legacy compatibility with older KurrentDB releases; V2 is the default for new projections written by `gaffer scaffold`. There is no top-level fallback, so each projection states its own version. It is fixed at create time on the server, so `gaffer deploy` refuses an in-place update that changes it rather than recreating the projection and dropping its state.
 
 ### `track_emitted_streams`
 
@@ -216,7 +216,7 @@ engine_version = 1
 track_emitted_streams = true
 ```
 
-Records the streams a projection emits to, mirroring the KurrentDB V1 projection option of the same name. Bool, optional, and valid only when the projection's `engine_version = 1`. Setting it on a V2 projection is a config error.
+Records the streams a projection emits to, mirroring the KurrentDB V1 projection option of the same name. Bool, optional, and valid only when the projection's `engine_version = 1`. Setting it on a V2 projection is a config error. Like `engine_version`, it is fixed at create time, so `gaffer deploy` refuses an in-place update that changes it.
 
 ### `quirks_version` (per-projection)
 

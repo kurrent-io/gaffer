@@ -98,6 +98,7 @@ Compile the projection and return its source definition. Throws if the source is
 const info = projection.validate();
 console.log(info.source); // { type: "all" } or { type: "categories", categories: ["order"] }
 console.log(info.events); // ["OrderPlaced"] or "all"
+console.log(info.settings.emitsEvents); // true if it calls emit/linkTo/linkStreamTo/copyTo
 ```
 
 ### `projection.run(events)`

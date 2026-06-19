@@ -192,4 +192,29 @@ public class ProjectionSessionTests {
 		Assert.NotNull(session.Sources.Categories);
 		Assert.Contains("orders", session.Sources.Categories);
 	}
+
+	// EmitsEvents is detected on compile without IncludeShape, so it's set on a
+	// plain session (no shape requested).
+	[Fact]
+	public void EmitsEvents_True_WhenProjectionWrites() {
+		using var session = new ProjectionSession("""
+            fromAll().when({
+                $any: function(s, e) { emit("out", "Echo", { v: e.data }); return s; }
+            })
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		Assert.True(session.EmitsEvents);
+	}
+
+	[Fact]
+	public void EmitsEvents_False_WhenReadOnly() {
+		using var session = new ProjectionSession("""
+            fromAll().when({
+                $init: function() { return { n: 0 }; },
+                $any: function(s, e) { s.n++; return s; }
+            })
+        """, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2 });
+
+		Assert.False(session.EmitsEvents);
+	}
 }

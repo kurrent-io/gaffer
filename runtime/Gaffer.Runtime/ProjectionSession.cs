@@ -21,6 +21,7 @@ public sealed class ProjectionSession : IDisposable {
 	private readonly QuerySources _sources;
 	private readonly Diagnostic[]? _diagnostics;
 	private readonly Gaffer.Sdk.ProjectionShape? _shape;
+	private readonly bool _emitsEvents;
 	private readonly Dictionary<string, string?> _stateCache = new();
 	private readonly HashSet<string>? _handledEventTypes;
 	private string? _sharedState;
@@ -59,6 +60,14 @@ public sealed class ProjectionSession : IDisposable {
 	/// caller via <see cref="Gaffer.Sdk.ProjectionInfo.Shape"/>.
 	/// </summary>
 	public Gaffer.Sdk.ProjectionShape? Shape => _shape;
+
+	/// <summary>
+	/// Whether the projection writes events (calls emit / linkTo /
+	/// linkStreamTo / copyTo). Detected on every compile from the source,
+	/// independent of <see cref="ProjectionSessionOptions.IncludeShape"/>.
+	/// Surfaced via <see cref="Gaffer.Sdk.ProjectionInfo.EmitsEvents"/>.
+	/// </summary>
+	public bool EmitsEvents => _emitsEvents;
 
 	/// <summary>
 	/// Create a new projection session from JavaScript source code.
@@ -161,7 +170,7 @@ public sealed class ProjectionSession : IDisposable {
 			// Combined scan: one parse, optional shape walk piggy-
 			// backs on the diagnostic pass. IncludeShape gates the
 			// shape walker without affecting diagnostic collection.
-			(_diagnostics, _shape) = DiagnosticCollector.ScanWithShape(
+			(_diagnostics, _shape, _emitsEvents) = DiagnosticCollector.ScanWithShape(
 				source, _quirksVersion, _version, opts.IncludeShape, _sources);
 		} catch {
 			_handler.Dispose();

@@ -34,6 +34,7 @@ export interface ProjectionInfo {
 	definesHandlers: boolean;
 	definesStateTransform: boolean;
 	producesResults: boolean;
+	emitsEvents: boolean;
 	handlesDeletedNotifications: boolean;
 	includeLinks: boolean;
 	resultStreamName: string | null;

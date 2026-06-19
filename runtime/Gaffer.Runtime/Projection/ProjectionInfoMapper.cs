@@ -8,7 +8,7 @@ namespace Gaffer.Runtime.Projection;
 /// the public <see cref="ProjectionInfo"/> (gaffer-shape) returned to consumers.
 /// </summary>
 internal static class ProjectionInfoMapper {
-	public static ProjectionInfo ToProjectionInfo(QuerySources s, Diagnostic[]? diagnostics = null, ProjectionShape? shape = null) => new() {
+	public static ProjectionInfo ToProjectionInfo(QuerySources s, Diagnostic[]? diagnostics = null, ProjectionShape? shape = null, bool emitsEvents = false) => new() {
 		AllStreams = s.AllStreams,
 		AllEvents = s.AllEvents,
 		Categories = s.Categories,
@@ -20,6 +20,7 @@ internal static class ProjectionInfoMapper {
 		DefinesHandlers = s.DefinesFold,
 		DefinesStateTransform = s.DefinesStateTransform,
 		ProducesResults = s.ProducesResults,
+		EmitsEvents = emitsEvents,
 		HandlesDeletedNotifications = s.HandlesDeletedNotifications,
 		IncludeLinks = s.IncludeLinks,
 		ResultStreamName = s.ResultStreamName,

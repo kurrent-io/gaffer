@@ -163,4 +163,14 @@ public class ProjectionInfoMapperTests {
 
 		Assert.Null(info.Shape);
 	}
+
+	[Fact]
+	public void EmitsEvents_Mapped() {
+		Assert.True(ProjectionInfoMapper.ToProjectionInfo(new QuerySources(), emitsEvents: true).EmitsEvents);
+	}
+
+	[Fact]
+	public void EmitsEvents_DefaultsFalse() {
+		Assert.False(ProjectionInfoMapper.ToProjectionInfo(new QuerySources()).EmitsEvents);
+	}
 }

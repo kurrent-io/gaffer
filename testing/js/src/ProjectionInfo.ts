@@ -21,6 +21,8 @@ export interface ProjectionInfo {
 
 	/** Projection configuration settings. */
 	settings: {
+		/** Whether the projection writes events (`emit`, `linkTo`, `linkStreamTo`, or `copyTo`). */
+		emitsEvents: boolean;
 		/** Whether link events are included in processing. */
 		includeLinks: boolean;
 		/** Whether events are reordered by timestamp before processing. */
@@ -96,6 +98,7 @@ export function mapProjectionInfo(raw: RawProjectionInfo): ProjectionInfo {
 		events: raw.allEvents ? "all" : (raw.events ?? []),
 		biState: raw.biState,
 		settings: {
+			emitsEvents: raw.emitsEvents,
 			includeLinks: raw.includeLinks,
 			reorderEvents: raw.reorderEvents,
 			processingLag: raw.processingLag,

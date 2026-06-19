@@ -3,36 +3,8 @@ package engine
 import (
 	"testing"
 
-	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 )
-
-func TestShapeEmits(t *testing.T) {
-	counts := func(set func(*gafferruntime.ProjectionShapeBuiltinCounts)) *gafferruntime.ProjectionShape {
-		s := &gafferruntime.ProjectionShape{}
-		set(&s.BuiltinCounts)
-		return s
-	}
-	for _, tc := range []struct {
-		name  string
-		shape *gafferruntime.ProjectionShape
-		want  bool
-	}{
-		{"nil shape", nil, false},
-		{"no writes", &gafferruntime.ProjectionShape{}, false},
-		{"emit", counts(func(c *gafferruntime.ProjectionShapeBuiltinCounts) { c.Emit = ptr(1) }), true},
-		{"linkTo", counts(func(c *gafferruntime.ProjectionShapeBuiltinCounts) { c.LinkTo = ptr(2) }), true},
-		{"linkStreamTo", counts(func(c *gafferruntime.ProjectionShapeBuiltinCounts) { c.LinkStreamTo = ptr(1) }), true},
-		{"copyTo", counts(func(c *gafferruntime.ProjectionShapeBuiltinCounts) { c.CopyTo = ptr(1) }), true},
-		{"zero count is not emit", counts(func(c *gafferruntime.ProjectionShapeBuiltinCounts) { c.Emit = ptr(0) }), false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := shapeEmits(tc.shape); got != tc.want {
-				t.Errorf("shapeEmits = %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
 
 func TestLocalDescriptor(t *testing.T) {
 	const emitting = `fromAll().when({ $any: function (s, e) { emit('out', 'T', {}); return s; } })`

@@ -14,6 +14,7 @@ const defaults: RawProjectionInfo = {
 	definesHandlers: false,
 	definesStateTransform: false,
 	producesResults: false,
+	emitsEvents: false,
 	handlesDeletedNotifications: false,
 	includeLinks: false,
 	resultStreamName: null,
@@ -102,6 +103,7 @@ describe("mapProjectionInfo", () => {
 	it("maps settings", () => {
 		const info = mapProjectionInfo({
 			...defaults,
+			emitsEvents: true,
 			includeLinks: true,
 			reorderEvents: true,
 			processingLag: 500,
@@ -110,6 +112,7 @@ describe("mapProjectionInfo", () => {
 			handlesDeletedNotifications: true,
 		});
 		expect(info.settings).toEqual({
+			emitsEvents: true,
 			includeLinks: true,
 			reorderEvents: true,
 			processingLag: 500,

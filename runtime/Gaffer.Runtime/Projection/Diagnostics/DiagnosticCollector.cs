@@ -42,7 +42,7 @@ internal static class DiagnosticCollector {
 	/// </para>
 	/// </summary>
 	public static Diagnostic[]? Scan(string source, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion) {
-		var (diagnostics, _) = ScanWithShape(source, quirksVersion, engineVersion, includeShape: false);
+		var (diagnostics, _, _) = ScanWithShape(source, quirksVersion, engineVersion, includeShape: false);
 		return diagnostics;
 	}
 
@@ -67,7 +67,7 @@ internal static class DiagnosticCollector {
 	/// "shape skipped".
 	/// </para>
 	/// </summary>
-	public static (Diagnostic[]? diagnostics, ProjectionShape? shape) ScanWithShape(
+	public static (Diagnostic[]? diagnostics, ProjectionShape? shape, bool emitsEvents) ScanWithShape(
 		string source,
 		KurrentDbVersion? quirksVersion,
 		ProjectionVersion engineVersion,
@@ -79,11 +79,12 @@ internal static class DiagnosticCollector {
 		} catch {
 			// Acornima rejected the source but Jint accepted it (parser drift). Definition rules
 			// don't read the AST, so still run them off the resolved definition - an engine-version
-			// limitation like bi-state on V2 must surface even when the AST scan can't.
+			// limitation like bi-state on V2 must surface even when the AST scan can't. Emit-ness
+			// can't be detected without the AST, so report false (same limitation as a null shape).
 			var defOnly = new List<Diagnostic>();
 			if (definition is not null)
 				RunDefinitionRules(definition, quirksVersion, engineVersion, defOnly);
-			return (defOnly.Count > 0 ? defOnly.ToArray() : null, includeShape ? UnparsableShape(source) : null);
+			return (defOnly.Count > 0 ? defOnly.ToArray() : null, includeShape ? UnparsableShape(source) : null, false);
 		}
 		var diagnostics = new List<Diagnostic>();
 		foreach (var rule in Rules) {
@@ -95,10 +96,13 @@ internal static class DiagnosticCollector {
 		}
 		if (definition is not null)
 			RunDefinitionRules(definition, quirksVersion, engineVersion, diagnostics);
+		// Emit detection rides this always-on parse (not gated by includeShape),
+		// so emit-ness is known on every compile without the shape walk.
+		bool emitsEvents = EmitDetector.Detect(ast);
 		ProjectionShape? shape = includeShape
 			? ShapeCollector.Walk(ast, FileSizeBytes(source), parsable: true)
 			: null;
-		return (diagnostics.Count > 0 ? diagnostics.ToArray() : null, shape);
+		return (diagnostics.Count > 0 ? diagnostics.ToArray() : null, shape, emitsEvents);
 	}
 
 	private static void RunDefinitionRules(QuerySources definition, KurrentDbVersion? quirksVersion, ProjectionVersion engineVersion, List<Diagnostic> diagnostics) {

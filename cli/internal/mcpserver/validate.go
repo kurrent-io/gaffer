@@ -66,5 +66,6 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 		"partitioning":    engine.DescribePartitioning(info),
 		"biState":         info.BiState,
 		"producesResults": info.ProducesResults,
+		"emitsEvents":     info.EmitsEvents,
 	}), nil, nil
 }

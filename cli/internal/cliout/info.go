@@ -16,8 +16,8 @@ import (
 // partitioning-/diagnostics-shaped fields. The streaming
 // `gaffer dev --json` writer uses this directly so its info envelope
 // stays in step with `info --json`'s body without inheriting the
-// configuration-time fields (entry, fixtures, biState, producesResults)
-// that the stream form omits.
+// configuration-time fields (entry, fixtures, biState, producesResults,
+// emitsEvents) that the stream form omits.
 func BuildInfoCore(proj *engine.Projection, info gafferruntime.ProjectionInfo) map[string]any {
 	src := engine.DescribeSource(info)
 	out := map[string]any{
@@ -49,8 +49,8 @@ func BuildInfoCore(proj *engine.Projection, info gafferruntime.ProjectionInfo) m
 // BuildInfoJSON returns the flat JSON-ready map that `gaffer info --json`
 // emits, and that the MCP get_projection_info tool returns. Built by
 // taking the shared BuildInfoCore subset and adding the configuration-
-// time fields (entry, biState, producesResults, fixtures) that callers
-// inspecting a configured projection want to see.
+// time fields (entry, biState, producesResults, emitsEvents, fixtures)
+// that callers inspecting a configured projection want to see.
 //
 // Returns map[string]any (not a typed struct) because the output is a
 // conditional union: six fields are present only when the projection
@@ -63,6 +63,7 @@ func BuildInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) m
 	out["entry"] = proj.Def.Entry
 	out["biState"] = info.BiState
 	out["producesResults"] = info.ProducesResults
+	out["emitsEvents"] = info.EmitsEvents
 	if len(proj.Def.Fixtures) > 0 {
 		names := proj.Def.FixtureNames()
 		fixtures := make([]map[string]any, len(names))

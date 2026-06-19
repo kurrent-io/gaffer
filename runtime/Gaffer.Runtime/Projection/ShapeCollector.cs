@@ -27,15 +27,14 @@ namespace Gaffer.Runtime.Projection;
 /// </summary>
 internal static class ShapeCollector {
 	// Projection builtins called as bare identifiers: the source-
-	// definition entries (`fromAll()`, `fromStream(...)`, ...) and
-	// the in-handler sinks (`emit(...)`, `linkTo(...)`,
-	// `linkStreamTo(...)`, `copyTo(...)`). Caller-position match:
+	// definition entries (`fromAll()`, `fromStream(...)`, ...) plus the
+	// in-handler write sinks, which are shared with EmitDetector as the
+	// single source of truth for sink names. Caller-position match:
 	// CallExpression.Callee is an Identifier with this name.
 	// `someService.emit(...)` does NOT count (Identifier-only
 	// dispatch).
-	private static readonly HashSet<string> IdentifierBuiltins = new() {
+	private static readonly HashSet<string> IdentifierBuiltins = new(EmitDetector.WriteSinks) {
 		"fromAll", "fromStream", "fromStreams", "fromCategory", "fromCategories",
-		"emit", "linkTo", "copyTo", "linkStreamTo",
 	};
 
 	// Chained projection builtins: methods called on the

@@ -200,6 +200,9 @@ func TestValidate_Valid(t *testing.T) {
 	if result["partitioning"] != "byStream" {
 		t.Errorf("expected partitioning=byStream, got %v", result["partitioning"])
 	}
+	if result["emitsEvents"] != false {
+		t.Errorf("expected emitsEvents=false for the non-emitting fixture, got %v", result["emitsEvents"])
+	}
 }
 
 func TestValidate_NotFound(t *testing.T) {

@@ -18,6 +18,14 @@ public sealed class ProjectionInfo {
 	public bool DefinesHandlers { get; init; }
 	public bool DefinesStateTransform { get; init; }
 	public bool ProducesResults { get; init; }
+
+	/// <summary>
+	/// Whether the projection writes events: it calls <c>emit()</c>,
+	/// <c>linkTo()</c>, <c>linkStreamTo()</c>, or <c>copyTo()</c>. Detected
+	/// from the source on every compile (not gated by <see cref="Shape"/>).
+	/// Authoritative signal for the server's <c>emitEnabled</c> flag on deploy.
+	/// </summary>
+	public bool EmitsEvents { get; init; }
 	public bool HandlesDeletedNotifications { get; init; }
 	public bool IncludeLinks { get; init; }
 	public string? ResultStreamName { get; init; }

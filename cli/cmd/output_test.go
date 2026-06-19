@@ -154,12 +154,14 @@ func TestTextWriter_WriteInfo_BiStateAndProducesResults(t *testing.T) {
 		AllStreams:      true,
 		BiState:         true,
 		ProducesResults: true,
+		EmitsEvents:     true,
 	}
 	tw.WriteInfo(stubProjection("bi-state-proj", 2, ""), info)
 
 	out := buf.String()
 	testutil.AssertContains(t, out, "BiState: yes")
 	testutil.AssertContains(t, out, "Produces results: yes")
+	testutil.AssertContains(t, out, "Emits events: yes")
 }
 
 func TestTextWriter_WriteInfo_RendersDiagnostics(t *testing.T) {
@@ -393,6 +395,9 @@ func TestTextWriter_WriteInfo_OmitsFalseFlags(t *testing.T) {
 	}
 	if strings.Contains(out, "Produces results") {
 		t.Error("should not show Produces results when false")
+	}
+	if strings.Contains(out, "Emits events") {
+		t.Error("should not show Emits events when false")
 	}
 }
 

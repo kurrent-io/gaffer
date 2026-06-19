@@ -231,6 +231,9 @@ func (tw *textWriter) WriteInfo(proj *engine.Projection, info gafferruntime.Proj
 	if info.ProducesResults {
 		tw.detail("Produces results", "yes")
 	}
+	if info.EmitsEvents {
+		tw.detail("Emits events", "yes")
+	}
 
 	if proj.EngineVersion != 0 {
 		tw.detail("Engine", fmt.Sprintf("v%d", proj.EngineVersion))

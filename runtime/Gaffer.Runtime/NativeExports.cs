@@ -459,7 +459,7 @@ internal static unsafe class NativeExports {
 			return null;
 		}
 		try {
-			var info = ProjectionInfoMapper.ToProjectionInfo(handle.Session.Sources, handle.Session.Diagnostics, handle.Session.Shape);
+			var info = ProjectionInfoMapper.ToProjectionInfo(handle.Session.Sources, handle.Session.Diagnostics, handle.Session.Shape, handle.Session.EmitsEvents);
 			return AllocUtf8(JsonSerializer.Serialize(info, SdkJsonContext.Default.ProjectionInfo));
 		} catch (Exception ex) {
 			WriteError(errorOut, ex);

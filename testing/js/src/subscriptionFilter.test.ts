@@ -13,6 +13,7 @@ function makeInfo(overrides: Partial<ProjectionInfo> = {}): ProjectionInfo {
 		partitioning: { type: "none" },
 		biState: false,
 		settings: {
+			emitsEvents: false,
 			includeLinks: false,
 			reorderEvents: false,
 			processingLag: null,
@@ -119,6 +120,7 @@ describe("buildSubscriptionFilter", () => {
 			makeInfo({
 				events: ["OrderPlaced"],
 				settings: {
+					emitsEvents: false,
 					includeLinks: false,
 					reorderEvents: false,
 					processingLag: null,

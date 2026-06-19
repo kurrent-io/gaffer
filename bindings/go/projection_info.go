@@ -14,6 +14,7 @@ type ProjectionInfo struct {
 	DefinesHandlers                  bool         `json:"definesHandlers"`
 	DefinesStateTransform            bool         `json:"definesStateTransform"`
 	ProducesResults                  bool         `json:"producesResults"`
+	EmitsEvents                      bool         `json:"emitsEvents"`
 	HandlesDeletedNotifications      bool         `json:"handlesDeletedNotifications"`
 	IncludeLinks                     bool         `json:"includeLinks"`
 	ResultStreamName                 *string      `json:"resultStreamName"`

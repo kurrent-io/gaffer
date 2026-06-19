@@ -42,9 +42,10 @@ func testContext(t *testing.T) context.Context {
 	return ctx
 }
 
-// waitForState polls until the projection reaches want, or fails after a few
-// seconds. Projection lifecycle transitions are asynchronous on the server.
-func waitForState(t *testing.T, ctx context.Context, c *Client, name string, want State) Status {
+// waitForStatus polls until pred holds, or fails after a few seconds.
+// Projection lifecycle transitions are asynchronous on the server. desc names
+// the awaited condition for the timeout message.
+func waitForStatus(t *testing.T, ctx context.Context, c *Client, name, desc string, pred func(Status) bool) Status {
 	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
 	var last Status
@@ -52,14 +53,23 @@ func waitForState(t *testing.T, ctx context.Context, c *Client, name string, wan
 		st, err := c.Status(ctx, name)
 		if err == nil {
 			last = *st
-			if st.State == want {
+			if pred(*st) {
 				return *st
 			}
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	t.Fatalf("projection %q never reached %s; last status = %+v", name, want, last)
+	t.Fatalf("projection %q never %s; last status = %+v", name, desc, last)
 	return Status{}
+}
+
+// waitForState polls until the projection reaches want, or fails after a few
+// seconds.
+func waitForState(t *testing.T, ctx context.Context, c *Client, name string, want State) Status {
+	t.Helper()
+	return waitForStatus(t, ctx, c, name, fmt.Sprintf("reached %s", want), func(st Status) bool {
+		return st.State == want
+	})
 }
 
 const countQuery = `fromAll().when({ $init() { return { count: 0 }; }, $any(s, e) { s.count++; return s; } })`
@@ -223,10 +233,13 @@ func TestIntegration_FaultedProjection(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	st := waitForState(t, ctx, c, name, StateFaulted)
-	if st.FaultReason == "" {
-		t.Errorf("faulted projection has empty FaultReason; raw status = %q", st.Raw)
-	}
+	// The server reports Faulted before it populates the reason: the status
+	// passes through a transitional "Running/FaultedStopping" substate where it
+	// classifies as faulted but StateReason is still empty. Wait for the reason
+	// to settle, not just the state.
+	waitForStatus(t, ctx, c, name, "faulted with a reason", func(st Status) bool {
+		return st.State == StateFaulted && st.FaultReason != ""
+	})
 }
 
 func TestIntegration_NotFound(t *testing.T) {

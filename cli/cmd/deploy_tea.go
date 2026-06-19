@@ -181,7 +181,7 @@ type teaSink struct {
 	exited chan error
 }
 
-func newTeaSink(w io.Writer, names []string, cancel context.CancelFunc) *teaSink {
+func newTeaSink(w io.Writer, names []string, ctx context.Context, cancel context.CancelFunc) *teaSink {
 	tw := newTextWriter(w, w)
 	sp := spinner.New(spinner.WithSpinner(spinner.MiniDot))
 	sp.Style = tw.styles.label
@@ -202,7 +202,11 @@ func newTeaSink(w io.Writer, names []string, cancel context.CancelFunc) *teaSink
 		height:    initialHeight(w),
 		cancel:    cancel,
 	}
-	p := tea.NewProgram(m, tea.WithOutput(w))
+	// Bind the program to the deploy context: if it is cancelled by anything
+	// other than the interactive Ctrl-C (a signal, a future deadline), the
+	// program is killed and finish() unblocks, rather than waiting forever for an
+	// auto-quit that a half-finished run will never reach.
+	p := tea.NewProgram(m, tea.WithOutput(w), tea.WithContext(ctx))
 	s := &teaSink{prog: p, exited: make(chan error, 1)}
 	go func() {
 		_, err := p.Run()
@@ -228,14 +232,15 @@ func (s *teaSink) start(name string, _, _ int) { s.prog.Send(deployStartMsg{name
 
 func (s *teaSink) done(res deployResult) { s.prog.Send(deployDoneMsg{res: res}) }
 
-// finish waits for the program to exit. The model quits itself: on completion
-// (the last row's commit sequences a quit) or on interrupt (Ctrl-C, or a signal
-// bubbletea handles). A signal-delivered interrupt quits with ErrInterrupted,
-// which isn't a sink failure - the command context is already cancelled, so
-// runDeploy reports the interrupt from ctx.Err() and exits cleanly.
+// finish waits for the program to exit. The model quits itself on completion
+// (the last row's commit sequences a quit), and the program is otherwise killed
+// by Ctrl-C or by the deploy context being cancelled (a signal). Neither
+// interrupt is a sink failure - the context is already cancelled, so runDeploy
+// reports it from ctx.Err() and exits cleanly; only a genuine render error
+// surfaces here.
 func (s *teaSink) finish() error {
 	err := <-s.exited
-	if errors.Is(err, tea.ErrInterrupted) {
+	if errors.Is(err, tea.ErrInterrupted) || errors.Is(err, tea.ErrProgramKilled) {
 		return nil
 	}
 	return err

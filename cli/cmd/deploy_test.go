@@ -230,12 +230,12 @@ func TestJSONSinkEmpty(t *testing.T) {
 
 func TestNewDeploySink(t *testing.T) {
 	var b bytes.Buffer
-	if _, ok := newDeploySink(&b, &b, true, []string{"a"}, func() {}).(*jsonSink); !ok {
+	if _, ok := newDeploySink(&b, &b, true, []string{"a"}, context.Background(), func() {}).(*jsonSink); !ok {
 		t.Error("--json should select the JSON sink")
 	}
 	// A buffer is not a terminal, so the non-json path must fall to plain (never
 	// the interactive program) in pipes, CI, and tests.
-	if _, ok := newDeploySink(&b, &b, false, []string{"a"}, func() {}).(*plainSink); !ok {
+	if _, ok := newDeploySink(&b, &b, false, []string{"a"}, context.Background(), func() {}).(*plainSink); !ok {
 		t.Error("non-terminal writer should select the plain sink")
 	}
 	if interactiveWriter(&b) {

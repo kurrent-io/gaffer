@@ -22,12 +22,14 @@ func terminalFile(w io.Writer) (*os.File, bool) {
 	return f, ok
 }
 
-// interactiveWriter reports whether w is a terminal, which gates the animated
-// deploy view. Off for pipes, CI and tests (w is a buffer), where the plain
-// streaming sink renders instead - the same terminal gate coloured output uses.
+// interactiveWriter reports whether the animated deploy view can run: w must be
+// a terminal to render, and stdin must be a terminal too because the view reads
+// raw-mode keys (Ctrl-C). If either end is redirected (pipes, CI, tests) the
+// plain streaming sink renders instead - the same terminal gate coloured output
+// uses, plus the stdin check the interactive input needs.
 func interactiveWriter(w io.Writer) bool {
 	f, ok := terminalFile(w)
-	return ok && isatty.IsTerminal(f.Fd())
+	return ok && isatty.IsTerminal(f.Fd()) && isatty.IsTerminal(os.Stdin.Fd())
 }
 
 // Messages driving the deploy view: a projection's RPC began, finished, or the

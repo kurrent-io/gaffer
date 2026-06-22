@@ -317,6 +317,25 @@ func TestJSONSink(t *testing.T) {
 	}
 }
 
+func TestJSONSinkResetOmitsLogicChange(t *testing.T) {
+	// A promoted reset still carries logicChange on the plan item, but the result
+	// must not leak it into JSON: a rebuild is signalled by outcome "rebuilt", not
+	// logic_change (which means "continued over a logic change").
+	var b bytes.Buffer
+	s := &jsonSink{w: &b}
+	s.done(plannedItem{name: "e", action: actReset, logicChange: true}.result())
+	if err := s.finish(); err != nil {
+		t.Fatalf("finish: %v", err)
+	}
+	var got []deployJSON
+	if err := json.Unmarshal(b.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, b.String())
+	}
+	if len(got) != 1 || got[0].Outcome != "rebuilt" || got[0].LogicChange {
+		t.Errorf("reset JSON = %+v, want outcome rebuilt with logic_change false", got)
+	}
+}
+
 func TestPlainSink(t *testing.T) {
 	var b bytes.Buffer
 	s := newPlainSink(&b, &b, []string{"alpha", "b"})

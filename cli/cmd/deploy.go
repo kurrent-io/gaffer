@@ -298,7 +298,10 @@ type plannedItem struct {
 // result is the deployResult for an item that was not (or not yet) applied: a
 // planning error, or a skip/refuse that the apply phase emits verbatim.
 func (p plannedItem) result() deployResult {
-	return deployResult{Name: p.name, Action: p.action, Reason: p.reason, LogicChange: p.logicChange, Err: p.err}
+	// LogicChange marks a continued logic change (an update that kept state). A
+	// reset rebuilds, so it reports outcome "rebuilt", not a logic-change flag -
+	// drop the flag once the item is no longer an update.
+	return deployResult{Name: p.name, Action: p.action, Reason: p.reason, LogicChange: p.logicChange && p.action == actUpdate, Err: p.err}
 }
 
 // planAll computes the action for every projection without writing anything -

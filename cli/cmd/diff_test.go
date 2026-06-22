@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -73,6 +74,44 @@ func TestWriteDiffOneSided(t *testing.T) {
 	}
 }
 
+func TestWriteDiffInvalid(t *testing.T) {
+	// Local source doesn't compile but is deployed: the query and engine version
+	// (no compile needed) still diff against the deployed side, emit is unknown,
+	// and the compile error is shown.
+	out := renderWriteDiff(comparison{
+		Name:     "count",
+		State:    driftInvalid,
+		Cmp:      deploy.Comparison{QueryDiffers: true, EngineVersionDiffers: true},
+		Deployed: desc("a\n", 1, true),
+		Local:    desc("a\nb\n", 2, false), // partial: emit is not meaningful
+		LocalErr: errors.New("Unexpected identifier 'state' (projection.js:7:11)"),
+	})
+	for _, want := range []string{
+		"Query: +1 -0",
+		"Engine version: remote 1, local 2",
+		"Emit: unknown (local source does not compile)",
+		"Unexpected identifier 'state'",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestWriteDiffInvalidNotDeployed(t *testing.T) {
+	out := renderWriteDiff(comparison{
+		Name:     "count",
+		State:    driftInvalid,
+		Local:    desc("a\n", 2, false),
+		LocalErr: errors.New("Unexpected end of input"),
+	})
+	for _, want := range []string{"not deployed; local source does not compile", "Unexpected end of input"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
 func TestRenderDiffJSON(t *testing.T) {
 	decode := func(e comparison) diffJSON {
 		t.Helper()
@@ -106,5 +145,16 @@ func TestRenderDiffJSON(t *testing.T) {
 	untracked := decode(comparison{Name: "u", State: driftUntracked, Deployed: desc("q", 2, false)})
 	if untracked.Drift != "untracked" || untracked.LocalHash != "" || untracked.DeployedHash == "" || untracked.Changes != nil {
 		t.Errorf("untracked = %+v; want deployed hash only", untracked)
+	}
+
+	// Invalid: report the compile error and the deployed hash, but no local hash
+	// (emit can't be derived) and no changes verdict.
+	invalid := decode(comparison{
+		Name: "i", State: driftInvalid,
+		Local: desc("q", 2, false), Deployed: desc("q", 2, false),
+		LocalErr: errors.New("boom"),
+	})
+	if invalid.Drift != "invalid" || invalid.Error != "boom" || invalid.LocalHash != "" || invalid.DeployedHash == "" || invalid.Changes != nil {
+		t.Errorf("invalid = %+v; want error + deployed hash only", invalid)
 	}
 }

@@ -45,3 +45,26 @@ func TestLocalDescriptor(t *testing.T) {
 		})
 	}
 }
+
+func TestPartialDescriptor(t *testing.T) {
+	// Deliberately uncompilable source: PartialDescriptor must not compile, so it
+	// returns the query, engine version and track-emitted-streams regardless.
+	const broken = `fromAll().when({ $any: function (s, e) { retrn s; } })`
+	cfg := &config.Config{}
+	def := &config.Projection{Name: "p", Entry: "p.js", EngineVersion: ptr(1), TrackEmittedStreams: ptr(true)}
+	proj := NewProjection("/tmp", cfg, def, broken)
+
+	d := PartialDescriptor(proj)
+	if d.Query != broken {
+		t.Errorf("Query = %q, want the raw source", d.Query)
+	}
+	if d.EngineVersion != 1 {
+		t.Errorf("EngineVersion = %d, want 1", d.EngineVersion)
+	}
+	if !d.TrackEmittedStreams {
+		t.Error("TrackEmittedStreams = false, want true")
+	}
+	if d.Emit {
+		t.Error("Emit must be left false (unknown) without compiling")
+	}
+}

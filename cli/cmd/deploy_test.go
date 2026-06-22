@@ -55,6 +55,7 @@ func TestPlanAction(t *testing.T) {
 			[]string{"engine version (remote 2, local 1)", "track emitted streams (remote true, local false)"},
 		},
 		{"query and emit drift still updates", drift(deploy.Comparison{QueryDiffers: true, EmitDiffers: true}, desc("a", 2, true), desc("b", 2, false)), actUpdate, nil},
+		{"invalid refuses (can't compile under --force)", comparison{State: driftInvalid}, actRefuse, []string{"local source does not compile"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

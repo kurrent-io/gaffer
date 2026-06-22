@@ -35,8 +35,9 @@ func newStatusCmd() *cobra.Command {
 		Long: "Show the runtime state of projections on a KurrentDB environment and how they\n" +
 			"compare to local config.\n\n" +
 			"With no argument, lists every local and deployed projection: running, stopped or\n" +
-			"faulted, progress, and whether each is in sync, drifted, not deployed, or\n" +
-			"untracked. Name a projection for its detail. Pass --json for machine output.",
+			"faulted, progress, and whether each is in sync, drifted, not deployed, untracked,\n" +
+			"or invalid (local source doesn't compile). Name a projection for its detail. Pass\n" +
+			"--json for machine output.",
 		Example: "  gaffer status\n" +
 			"  gaffer status order-count --env staging",
 		Args: maxArgs(1),
@@ -100,7 +101,10 @@ func statusOne(ctx context.Context, r *remote.Client, cfg *config.Config, root, 
 		return statusEntry{}, err
 	}
 	e := statusEntry{comparison: cmp}
-	if cmp.State != driftNotDeployed {
+	// Fetch runtime state only when the projection exists on the server. Gating on
+	// Deployed (not the drift state) covers driftInvalid: a projection that won't
+	// compile and isn't deployed has no runtime to ask for.
+	if cmp.Deployed != nil {
 		st, err := r.Status(ctx, name)
 		if err != nil && !errors.Is(err, remote.ErrNotFound) {
 			return statusEntry{}, err
@@ -160,6 +164,9 @@ type statusJSON struct {
 	Name    string             `json:"name"`
 	Drift   string             `json:"drift"`
 	Runtime *statusRuntimeJSON `json:"runtime,omitempty"`
+	// Error is the compile error, present only when drift is invalid, so a
+	// machine consumer sees why a projection is invalid, not just that it is.
+	Error string `json:"error,omitempty"`
 }
 
 type statusRuntimeJSON struct {
@@ -173,6 +180,9 @@ func renderStatusJSON(w io.Writer, entries []statusEntry) error {
 	out := make([]statusJSON, 0, len(entries))
 	for _, e := range entries {
 		j := statusJSON{Name: e.Name, Drift: string(e.State)}
+		if e.State == driftInvalid && e.LocalErr != nil {
+			j.Error = e.LocalErr.Error()
+		}
 		if e.runtime != nil {
 			j.Runtime = &statusRuntimeJSON{
 				State:       string(e.runtime.State),

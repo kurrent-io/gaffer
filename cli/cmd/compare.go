@@ -78,17 +78,24 @@ const (
 	driftDrifted     driftState = "drifted"
 	driftNotDeployed driftState = "not-deployed" // in local config, absent on the server
 	driftUntracked   driftState = "untracked"    // on the server, not in local config
+	driftInvalid     driftState = "invalid"      // local source doesn't compile; drift is indeterminate
 )
 
 // comparison is the result of comparing one projection's local definition
 // against what's deployed. Local/Deployed are set when that side exists; Cmp is
 // meaningful only when Drifted.
+//
+// LocalErr is set when the local source failed to compile (State is then
+// driftInvalid). Local is still populated with the partial descriptor that needs
+// no compile (query, engine version, track-emitted-streams); emit is unknown, so
+// Cmp's emit dimension and the hash verdict are not meaningful.
 type comparison struct {
 	Name     string
 	State    driftState
 	Cmp      deploy.Comparison
 	Local    *deploy.Descriptor
 	Deployed *deploy.Descriptor
+	LocalErr error
 }
 
 // compareProjection compares one projection's local definition against what's
@@ -112,17 +119,35 @@ func compareProjection(ctx context.Context, r *remote.Client, cfg *config.Config
 	if err != nil {
 		return comparison{}, err
 	}
-	local, err := engine.LocalDescriptor(engine.NewProjection(root, cfg, def, source))
-	if err != nil {
+	proj := engine.NewProjection(root, cfg, def, source)
+	local, localErr := engine.LocalDescriptor(proj)
+
+	deployedDef, err := r.Read(ctx, name)
+	notDeployed := errors.Is(err, remote.ErrNotFound)
+	if err != nil && !notDeployed {
 		return comparison{}, err
 	}
 
-	deployedDef, err := r.Read(ctx, name)
-	if errors.Is(err, remote.ErrNotFound) {
-		return comparison{Name: name, State: driftNotDeployed, Local: &local}, nil
+	// A local compile failure is a per-projection condition, not a command
+	// failure: report it as invalid and keep going, so the rest of a status
+	// overview still renders and a diff still shows source + config fields. The
+	// partial descriptor carries everything that needs no compile; emit is
+	// unknown, so there's no in-sync/drifted verdict. This absorbs every
+	// session-creation failure (in practice a compile error), not only syntax
+	// errors - the same classification preflight makes.
+	if localErr != nil {
+		partial := engine.PartialDescriptor(proj)
+		c := comparison{Name: name, State: driftInvalid, Local: &partial, LocalErr: localErr}
+		if !notDeployed {
+			deployed := deployedDef.Descriptor()
+			c.Deployed = &deployed
+			c.Cmp = deploy.Compare(partial, deployed)
+		}
+		return c, nil
 	}
-	if err != nil {
-		return comparison{}, err
+
+	if notDeployed {
+		return comparison{Name: name, State: driftNotDeployed, Local: &local}, nil
 	}
 
 	deployed := deployedDef.Descriptor()

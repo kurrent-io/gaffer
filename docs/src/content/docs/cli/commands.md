@@ -225,7 +225,9 @@ Show how a projection differs from what's deployed.
 
 Compare a projection's local definition against what's deployed on KurrentDB.
 
-Reports one of five states: in sync, drifted, not deployed (local only), untracked (on the server but absent from gaffer.toml), or invalid (the local source doesn't compile, so the source and config still diff but emit is unknown). When the query differs, the source is shown in an external diff viewer (git diff --no-index by default; set GAFFER_EXTERNAL_DIFF to override). Pass --json for machine-readable output.
+Reports one of five states: in sync, drifted, not deployed (local only), untracked (on the server but absent from gaffer.toml), or invalid. Invalid means the local source doesn't compile; the source and config still diff, but emit is unknown.
+
+When the query differs, the source is shown in an external diff viewer (git diff --no-index by default; set GAFFER_EXTERNAL_DIFF to override). Pass --json for machine-readable output.
 
 ```
 gaffer diff <projection> [flags]

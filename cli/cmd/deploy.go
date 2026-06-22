@@ -15,6 +15,7 @@ type deployOpts struct {
 	Env        string
 	Connection string
 	JSON       bool
+	Force      bool
 }
 
 // deployAction is what deploy decides to do with one projection, derived from
@@ -98,7 +99,11 @@ func newDeployCmd() *cobra.Command {
 			"The emit flag is always sent explicitly so an update never clears it. A change to engine " +
 			"version or track-emitted-streams can't be applied in place (it would mean recreating the " +
 			"projection and dropping its state), so deploy refuses it and leaves the projection " +
-			"untouched. Pass --json for machine-readable output.",
+			"untouched.\n\n" +
+			"Every projection is compiled before anything is sent to the server; if any fails to " +
+			"compile or has errors that would fault on the server, the whole deploy is refused so " +
+			"a bad projection can't leave a half-applied set. --force skips this check. Pass --json " +
+			"for machine-readable output.",
 		Example: "  gaffer deploy\n" +
 			"  gaffer deploy order-count --env staging",
 		Args: maxArgs(1),
@@ -113,15 +118,15 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment from gaffer.toml to deploy to")
 	cmd.Flags().StringVar(&opts.Connection, "connection", "", "KurrentDB connection string (overrides --env)")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output as JSON")
+	cmd.Flags().BoolVar(&opts.Force, "force", false, "Skip the preflight compile check and deploy anyway")
 	return cmd
 }
 
 func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
-	cfg, root, r, cleanup, err := connectEnv(opts.Connection, opts.Env)
+	cfg, root, err := loadProject()
 	if err != nil {
 		return err
 	}
-	defer cleanup()
 
 	names, err := deployNames(cfg, name)
 	if err != nil {
@@ -135,6 +140,22 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 		}
 		return nil
 	}
+
+	// Preflight gate, before connecting: compile everything locally, unless
+	// bypassed. A failure refuses the whole run - so a bad projection can't leave
+	// the earlier ones already applied - and needs no reachable server.
+	if !opts.Force {
+		if failures := runPreflight(root, cfg, names); len(failures) > 0 {
+			renderPreflightFailures(cmd.OutOrStdout(), opts.JSON, len(names), failures)
+			return silent(fmt.Errorf("preflight failed: %d of %d projections have errors", len(failures), len(names)))
+		}
+	}
+
+	r, cleanup, err := connectResolved(cfg, root, opts.Connection, opts.Env)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
 	// A deploy-scoped context so an interactive interrupt (Ctrl-C, captured as a
 	// key by the terminal in raw mode) can cancel the in-flight RPC and stop the

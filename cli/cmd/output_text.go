@@ -504,6 +504,22 @@ func (tw *textWriter) writeDeploySummary(c deployCounts) {
 	tw.write("%s\n", tw.deploySummaryLine(c))
 }
 
+// writePreflightFailures reports the projections that can't be deployed and how
+// to proceed. Each failure shows its name and one line per problem (a compile
+// error, or each error-severity diagnostic), in the alert colour.
+func (tw *textWriter) writePreflightFailures(total int, failures []preflightFailure) {
+	tw.write("%s\n\n", tw.styles.heading.Render(
+		fmt.Sprintf("Preflight failed: %d of %d projections have errors", len(failures), total)))
+	for _, f := range failures {
+		reasons := f.reasons()
+		tw.write("  %s %s\n", tw.styles.errStatus.Render("✗"), tw.styles.heading.Render(f.Name))
+		for _, r := range reasons {
+			tw.write("    %s\n", tw.styles.errDetail.Render(r))
+		}
+	}
+	tw.write("\n%s\n", tw.styles.pipe.Render("Fix the errors above, or pass --force to deploy anyway."))
+}
+
 // diagnosticAnchor is the docs heading slug for a code: github-slugger's
 // lowercase, dot-stripped form (quirk.log.multiParam -> quirklogmultiparam).
 // It must match the Starlight heading slug so the CLI links to the same anchor

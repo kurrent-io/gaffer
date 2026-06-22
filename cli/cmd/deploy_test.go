@@ -261,40 +261,62 @@ func (s *recordingSink) done(res deployResult) {
 }
 func (s *recordingSink) finish() error { return nil }
 
-func TestRunDeployLoop(t *testing.T) {
-	names := []string{"a", "b", "c", "d"}
-	plan := map[string]deployResult{
-		"a": {Name: "a", Action: actCreate},
-		"b": {Name: "b", Action: actRefuse, Reason: "x"},
-		"c": {Name: "c", Action: actUpdate, Err: errors.New("boom")},
-		"d": {Name: "d", Action: actSkip},
+func TestApplyPlan(t *testing.T) {
+	plan := []plannedItem{
+		{name: "a", action: actCreate},
+		{name: "b", action: actRefuse, reason: "x"},
+		{name: "c", action: actUpdate}, // apply will fail
+		{name: "d", action: actSkip},
+		{name: "e", err: errors.New("read boom")}, // planning failure
 	}
 	sink := &recordingSink{}
-	failed := runDeployLoop(context.Background(), names, sink, func(n string) deployResult { return plan[n] })
+	var applied []string
+	failed := applyPlan(context.Background(), plan, sink, func(item plannedItem) error {
+		applied = append(applied, item.name)
+		if item.name == "c" {
+			return errors.New("apply boom")
+		}
+		return nil
+	})
 
-	if failed != 2 { // refuse (b) + error (c)
-		t.Errorf("failed = %d, want 2 (refuse + error)", failed)
+	if failed != 3 { // refuse (b) + apply error (c) + planning error (e)
+		t.Errorf("failed = %d, want 3 (refuse + apply error + plan error)", failed)
 	}
-	want := []string{"start:a", "done:a", "start:b", "done:b", "start:c", "done:c", "start:d", "done:d"}
+	// apply runs only for create/update items, never refuse/skip/planning-error.
+	if strings.Join(applied, ",") != "a,c" {
+		t.Errorf("apply called for %v, want [a c]", applied)
+	}
+	want := []string{"start:a", "done:a", "start:b", "done:b", "start:c", "done:c", "start:d", "done:d", "start:e", "done:e"}
 	if strings.Join(sink.events, ",") != strings.Join(want, ",") {
 		t.Errorf("event order = %v, want %v", sink.events, want)
 	}
+	byName := map[string]deployResult{}
+	for _, r := range sink.results {
+		byName[r.Name] = r
+	}
+	if byName["c"].Err == nil {
+		t.Error("c should carry the apply error")
+	}
+	if byName["e"].Err == nil {
+		t.Error("e should carry the planning error")
+	}
 }
 
-func TestRunDeployLoopStopsOnCancel(t *testing.T) {
+func TestApplyPlanStopsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
+	plan := []plannedItem{{name: "a", action: actCreate}, {name: "b", action: actCreate}, {name: "c", action: actCreate}}
 	sink := &recordingSink{}
 	calls := 0
-	runDeployLoop(ctx, []string{"a", "b", "c"}, sink, func(n string) deployResult {
+	applyPlan(ctx, plan, sink, func(plannedItem) error {
 		calls++
-		cancel() // interrupt arrives while the first projection is in flight
-		return deployResult{Name: n, Action: actCreate}
+		cancel() // interrupt arrives while the first item is applying
+		return nil
 	})
 	if calls != 1 {
-		t.Errorf("did %d projections after cancel, want 1 then stop", calls)
+		t.Errorf("applied %d items after cancel, want 1 then stop", calls)
 	}
 	if strings.Join(sink.events, ",") != "start:a,done:a" {
-		t.Errorf("events after cancel = %v, want only the first projection", sink.events)
+		t.Errorf("events after cancel = %v, want only the first item", sink.events)
 	}
 }
 

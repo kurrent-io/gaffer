@@ -540,6 +540,64 @@ func (tw *textWriter) writeDeploySummary(c deployCounts) {
 	tw.write("%s\n", tw.deploySummaryLine(c))
 }
 
+// writePlanSummary previews what a deploy would change, ahead of the confirm
+// prompt: the per-action counts and a warning for any faulted update target.
+// Planning errors aren't counted here - they surface during the apply phase.
+func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, creates, updates int, prod bool) {
+	if prod {
+		banner := "PRODUCTION"
+		if target != "" {
+			banner += " - " + target
+		}
+		tw.write("%s\n", tw.styles.errStatus.Render("⚠ "+banner))
+	}
+	skipped, refused := 0, 0
+	for _, it := range plan {
+		if it.err != nil {
+			continue
+		}
+		switch it.action {
+		case actSkip:
+			skipped++
+		case actRefuse:
+			refused++
+		}
+	}
+
+	var segs []string
+	if creates > 0 {
+		segs = append(segs, tw.styles.added.Render(fmt.Sprintf("%d to create", creates)))
+	}
+	if updates > 0 {
+		segs = append(segs, tw.styles.added.Render(fmt.Sprintf("%d to update", updates)))
+	}
+	if skipped > 0 {
+		segs = append(segs, tw.styles.pipe.Render(fmt.Sprintf("%d in sync", skipped)))
+	}
+	if refused > 0 {
+		segs = append(segs, tw.styles.warning.Render(fmt.Sprintf("%d refused", refused)))
+	}
+
+	heading := "Plan"
+	if target != "" {
+		heading += " for " + target
+	}
+	tw.write("%s\n", tw.styles.heading.Render(heading+":"))
+	tw.write("  %s\n", strings.Join(segs, tw.styles.pipe.Render(" · ")))
+	tw.writeFaultedWarnings(plan)
+	tw.blank()
+}
+
+// writeFaultedWarnings emits one line per faulted update target. Shared by the
+// interactive plan summary and the non-interactive (--yes) path, so a faulted
+// clobber is surfaced however the deploy is confirmed.
+func (tw *textWriter) writeFaultedWarnings(plan []plannedItem) {
+	for _, name := range faultedUpdates(plan) {
+		tw.write("  %s %s\n", tw.styles.warning.Render("⚠"),
+			tw.styles.warning.Render(name+" is faulted; updating won't clear the fault"))
+	}
+}
+
 // writePreflightFailures reports the projections that can't be deployed and how
 // to proceed. Each failure shows its name and one line per problem (a compile
 // error, or each error-severity diagnostic), in the alert colour.

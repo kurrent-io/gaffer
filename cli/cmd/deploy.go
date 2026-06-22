@@ -16,6 +16,7 @@ type deployOpts struct {
 	Connection string
 	JSON       bool
 	Force      bool
+	Yes        bool
 }
 
 // deployAction is what deploy decides to do with one projection, derived from
@@ -102,8 +103,13 @@ func newDeployCmd() *cobra.Command {
 			"untouched.\n\n" +
 			"Every projection is compiled before anything is sent to the server; if any fails to " +
 			"compile or has errors that would fault on the server, the whole deploy is refused so " +
-			"a bad projection can't leave a half-applied set. --force skips this check. Pass --json " +
-			"for machine-readable output.",
+			"a bad projection can't leave a half-applied set. --force skips this check.\n\n" +
+			"When the plan would change something, deploy shows it and asks to confirm before " +
+			"applying; updating a projection that's currently faulted is flagged, since the update " +
+			"won't clear the fault. --yes skips the prompt; without a terminal (or with --json) deploy " +
+			"won't apply unconfirmed, so pass --yes in scripts. A server that reports itself as " +
+			"production gets a louder confirm and refuses --force (deploy without it and confirm). " +
+			"Pass --json for machine-readable output.",
 		Example: "  gaffer deploy\n" +
 			"  gaffer deploy order-count --env staging",
 		Args: maxArgs(1),
@@ -119,6 +125,7 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Connection, "connection", "", "KurrentDB connection string (overrides --env)")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output as JSON")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Skip the preflight compile check and deploy anyway")
+	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip the confirmation prompt")
 	return cmd
 }
 
@@ -169,8 +176,52 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	}
 	defer cleanup()
 
+	// Plan first (reads only), so the whole run is known before any write - the
+	// basis for the confirm gate and, later, --dry-run.
+	plan := planAll(ctx, r, cfg, root, names)
+	if ctx.Err() != nil {
+		return silent(ctx.Err())
+	}
+
+	// Only a plan that changes something needs the target identity (and
+	// confirmation). Reading server info is a leader round-trip, so skip it on a
+	// no-op deploy.
+	creates, updates := planChangeCounts(plan)
+	target, prod := "", false
+	if creates+updates > 0 {
+		// The server's self-reported identity names the target in the confirm and
+		// gates the production tier (it keys on the DB's own flag, never the env
+		// label). Bound the read like the other management calls so a hung
+		// $server-info can't stall the deploy.
+		siCtx, siCancel := context.WithTimeout(ctx, projectionRPCTimeout)
+		info, siErr := r.ServerInfo(siCtx)
+		siCancel()
+		// $server-info is advisory and often unreadable - absent on most DBs, or
+		// ACL-restricted on a secured server - so any error falls back to baseline
+		// silently (info is nil). Not worth a warning on every deploy, and a real
+		// connection failure surfaces when the apply writes. Trade-off: an
+		// unreadable prod DB drops the prod tier (re-permits --force); the core
+		// never-apply-unconfirmed guard still holds.
+		_ = siErr
+		target = deployTarget(opts.Env, info)
+		prod = info.IsProduction()
+	}
+
+	// --force is the blanket (nuclear) bypass; production never accepts it. Refuse
+	// before applying - the projections were already compiled past preflight, but
+	// nothing has been written yet.
+	if prod && opts.Force {
+		return silent(fmt.Errorf("--force is not allowed on production %s: it bypasses safety checks. Deploy without it and confirm the change", targetDesc(target)))
+	}
+
+	if err := confirmPlan(cmd.OutOrStdout(), cmd.ErrOrStderr(), plan, target, creates, updates, opts.Yes, opts.JSON, prod); err != nil {
+		return err
+	}
+
 	sink := newDeploySink(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts.JSON, names, ctx, cancel)
-	failed := deployRun(ctx, r, cfg, root, names, sink)
+	failed := applyPlan(ctx, plan, sink, func(item plannedItem) error {
+		return applyOne(ctx, r, item)
+	})
 	if ferr := sink.finish(); ferr != nil {
 		return ferr
 	}
@@ -203,28 +254,104 @@ func deployNames(cfg *config.Config, name string) ([]string, error) {
 	return names, nil
 }
 
-// deployRun deploys each projection in order, reporting progress through the
-// sink, and returns how many failed (a create/update error) or were refused. It
-// continues past a failure so the remaining projections still deploy and the
-// summary is complete; the caller turns a non-zero count into a non-zero exit.
-func deployRun(ctx context.Context, r *remote.Client, cfg *config.Config, root string, names []string, sink deploySink) int {
-	return runDeployLoop(ctx, names, sink, func(name string) deployResult {
-		return deployOne(ctx, r, cfg, root, name)
-	})
+// plannedItem is one projection's planned action, computed by the plan phase
+// before any write. cmp carries the comparison (Local for the apply, Deployed
+// for the guards); err is a planning failure (the compare/read), kept distinct
+// from an apply failure so the two surface with the right reason.
+type plannedItem struct {
+	name    string
+	cmp     comparison
+	action  deployAction
+	reason  string
+	faulted bool // deployed projection is currently faulted (update items only)
+	err     error
 }
 
-// runDeployLoop drives the sink over each projection's outcome, stopping early
-// if the context is cancelled (an interrupt). The per-projection work is a
-// parameter so the loop's accounting - the failed/refused tally and the
-// start/done event order - is testable without a live database.
-func runDeployLoop(ctx context.Context, names []string, sink deploySink, one func(name string) deployResult) (failed int) {
-	total := len(names)
-	for i, name := range names {
+// result is the deployResult for an item that was not (or not yet) applied: a
+// planning error, or a skip/refuse that the apply phase emits verbatim.
+func (p plannedItem) result() deployResult {
+	return deployResult{Name: p.name, Action: p.action, Reason: p.reason, Err: p.err}
+}
+
+// planAll computes the action for every projection without writing anything -
+// the read-only first half of deploy, shared with the confirm gate (and, later,
+// --dry-run). Stops early on an interrupt; a per-projection compare failure is
+// carried on the item, not fatal, so the rest of the plan still forms.
+func planAll(ctx context.Context, r *remote.Client, cfg *config.Config, root string, names []string) []plannedItem {
+	faulted := faultedProjections(ctx, r)
+	plan := make([]plannedItem, 0, len(names))
+	for _, name := range names {
 		if ctx.Err() != nil {
 			break
 		}
-		sink.start(name, i+1, total)
-		res := one(name)
+		plan = append(plan, planOne(ctx, r, cfg, root, name, faulted))
+	}
+	return plan
+}
+
+// faultedProjections lists deployed projections once and returns the set
+// currently faulted, so the plan can flag a faulted update target without a
+// status call per projection. Best-effort: a list failure yields an empty set
+// (no faulted warnings) rather than failing the plan.
+func faultedProjections(ctx context.Context, r *remote.Client) map[string]bool {
+	ctx, cancel := context.WithTimeout(ctx, projectionRPCTimeout)
+	defer cancel()
+	statuses, err := r.List(ctx)
+	if err != nil {
+		return nil
+	}
+	faulted := make(map[string]bool)
+	for i := range statuses {
+		if statuses[i].State == remote.StateFaulted {
+			faulted[statuses[i].Name] = true
+		}
+	}
+	return faulted
+}
+
+// planOne compares one projection and decides its action, applying nothing. The
+// read is bounded: a management call blocks until its deadline if the projections
+// subsystem is slow, and one stalled projection shouldn't consume the whole
+// plan's budget. faulted is the set of faulted projections (from one prior list),
+// consulted for update targets so the confirm can warn.
+func planOne(ctx context.Context, r *remote.Client, cfg *config.Config, root, name string, faulted map[string]bool) plannedItem {
+	ctx, cancel := context.WithTimeout(ctx, projectionRPCTimeout)
+	defer cancel()
+
+	cmp, err := compareProjection(ctx, r, cfg, root, name)
+	if err != nil {
+		return plannedItem{name: name, err: err}
+	}
+	action, reason := planAction(cmp)
+	item := plannedItem{name: name, cmp: cmp, action: action, reason: reason}
+	// An update overwrites a deployed projection; flag it when that projection is
+	// faulted so the confirm can warn (updating won't clear the fault).
+	if action == actUpdate && faulted[name] {
+		item.faulted = true
+	}
+	return item
+}
+
+// applyPlan executes a plan, reporting progress through the sink, and returns how
+// many failed (an apply error) or were refused. It applies only create/update
+// items; skip/refuse/planning-error items stream their verdict unchanged. It
+// continues past a failure so the summary is complete; the caller turns a
+// non-zero count into a non-zero exit. The apply itself is a parameter so the
+// loop's accounting and event order are testable without a live database.
+func applyPlan(ctx context.Context, plan []plannedItem, sink deploySink, apply func(plannedItem) error) (failed int) {
+	total := len(plan)
+	for i := range plan {
+		item := plan[i]
+		if ctx.Err() != nil {
+			break
+		}
+		sink.start(item.name, i+1, total)
+		res := item.result()
+		if item.err == nil && (item.action == actCreate || item.action == actUpdate) {
+			if err := apply(item); err != nil {
+				res.Err = err
+			}
+		}
 		if res.Err != nil || res.Action == actRefuse {
 			failed++
 		}
@@ -233,25 +360,11 @@ func runDeployLoop(ctx context.Context, names []string, sink deploySink, one fun
 	return failed
 }
 
-// deployOne compares one projection and applies the planned action. Each
-// projection gets its own bounded context: a management RPC blocks until its
-// deadline if the projections subsystem is slow to respond, and one stalled
-// projection should not consume the whole run's budget.
-func deployOne(ctx context.Context, r *remote.Client, cfg *config.Config, root, name string) deployResult {
+// applyOne performs one item's create/update, bounded by its own deadline.
+func applyOne(ctx context.Context, r *remote.Client, item plannedItem) error {
 	ctx, cancel := context.WithTimeout(ctx, projectionRPCTimeout)
 	defer cancel()
-
-	cmp, err := compareProjection(ctx, r, cfg, root, name)
-	if err != nil {
-		return deployResult{Name: name, Err: err}
-	}
-	action, reason := planAction(cmp)
-	if action == actCreate || action == actUpdate {
-		if err := applyAction(ctx, r, name, action, cmp.Local); err != nil {
-			return deployResult{Name: name, Action: action, Err: err}
-		}
-	}
-	return deployResult{Name: name, Action: action, Reason: reason}
+	return applyAction(ctx, r, item.name, item.action, item.cmp.Local)
 }
 
 // planAction maps a drift comparison to the action deploy takes. It is pure: the

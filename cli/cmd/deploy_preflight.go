@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"strings"
@@ -35,10 +36,15 @@ func (f preflightFailure) reasons() []string {
 // runPreflight compiles every projection before any server write, returning the
 // ones that can't be deployed. Compiling up front makes a bad projection refuse
 // the whole run rather than leaving a half-applied set, the way a per-projection
-// compile-then-apply loop would.
-func runPreflight(root string, cfg *config.Config, names []string) []preflightFailure {
+// compile-then-apply loop would. It stops early if the context is cancelled (an
+// interrupt) - a large set of compiles shouldn't outlast a Ctrl-C; the caller
+// sees the cancellation via ctx.Err() and reports it instead of the failures.
+func runPreflight(ctx context.Context, root string, cfg *config.Config, names []string) []preflightFailure {
 	var failures []preflightFailure
 	for _, name := range names {
+		if ctx.Err() != nil {
+			break
+		}
 		def := cfg.FindProjection(name) // non-nil: deployNames only yields config names
 		source, err := engine.ReadSource(root, def.Entry)
 		if err != nil {
@@ -59,8 +65,10 @@ func runPreflight(root string, cfg *config.Config, names []string) []preflightFa
 // renderPreflightFailures reports the refusal: a JSON array of invalid
 // projections, or a text block listing each failure and how to proceed. Kept
 // separate from the deploy sink because preflight is a gate before any apply -
-// its outcomes aren't apply verdicts.
-func renderPreflightFailures(w io.Writer, jsonOut bool, total int, failures []preflightFailure) {
+// its outcomes aren't apply verdicts. Returns the JSON encode error so a write
+// failure surfaces rather than vanishing behind the non-zero exit, matching the
+// deploy sink.
+func renderPreflightFailures(w io.Writer, jsonOut bool, total int, failures []preflightFailure) error {
 	if jsonOut {
 		out := make([]deployJSON, len(failures))
 		for i, f := range failures {
@@ -68,8 +76,8 @@ func renderPreflightFailures(w io.Writer, jsonOut bool, total int, failures []pr
 		}
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		_ = enc.Encode(out)
-		return
+		return enc.Encode(out)
 	}
 	newTextWriter(w, w).writePreflightFailures(total, failures)
+	return nil
 }

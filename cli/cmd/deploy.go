@@ -141,12 +141,24 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 		return nil
 	}
 
+	// A deploy-scoped context so an interrupt (Ctrl-C: a signal during preflight,
+	// or a raw-mode key during the interactive apply) cancels the in-flight work
+	// and stops the loops rather than running to completion.
+	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
+
 	// Preflight gate, before connecting: compile everything locally, unless
 	// bypassed. A failure refuses the whole run - so a bad projection can't leave
 	// the earlier ones already applied - and needs no reachable server.
 	if !opts.Force {
-		if failures := runPreflight(root, cfg, names); len(failures) > 0 {
-			renderPreflightFailures(cmd.OutOrStdout(), opts.JSON, len(names), failures)
+		failures := runPreflight(ctx, root, cfg, names)
+		if ctx.Err() != nil {
+			return silent(ctx.Err())
+		}
+		if len(failures) > 0 {
+			if err := renderPreflightFailures(cmd.OutOrStdout(), opts.JSON, len(names), failures); err != nil {
+				return err
+			}
 			return silent(fmt.Errorf("preflight failed: %d of %d projections have errors", len(failures), len(names)))
 		}
 	}
@@ -156,12 +168,6 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 		return err
 	}
 	defer cleanup()
-
-	// A deploy-scoped context so an interactive interrupt (Ctrl-C, captured as a
-	// key by the terminal in raw mode) can cancel the in-flight RPC and stop the
-	// loop, not just tear down the view.
-	ctx, cancel := context.WithCancel(cmd.Context())
-	defer cancel()
 
 	sink := newDeploySink(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts.JSON, names, ctx, cancel)
 	failed := deployRun(ctx, r, cfg, root, names, sink)

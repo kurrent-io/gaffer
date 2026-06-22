@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -33,10 +34,12 @@ func TestPreflightFailureReasons(t *testing.T) {
 
 func TestRenderPreflightFailuresJSON(t *testing.T) {
 	var b bytes.Buffer
-	renderPreflightFailures(&b, true, 3, []preflightFailure{
+	if err := renderPreflightFailures(&b, true, 3, []preflightFailure{
 		{Name: "a", CompileErr: errors.New("boom")},
 		{Name: "b", Diagnostics: []gafferruntime.Diagnostic{{Code: "quirk.x", Message: "bad"}}},
-	})
+	}); err != nil {
+		t.Fatalf("renderPreflightFailures: %v", err)
+	}
 
 	var got []deployJSON
 	if err := json.Unmarshal(b.Bytes(), &got); err != nil {
@@ -57,10 +60,12 @@ func TestRenderPreflightFailuresJSON(t *testing.T) {
 
 func TestRenderPreflightFailuresText(t *testing.T) {
 	var b bytes.Buffer
-	renderPreflightFailures(&b, false, 3, []preflightFailure{
+	if err := renderPreflightFailures(&b, false, 3, []preflightFailure{
 		{Name: "order-count", CompileErr: errors.New("Unexpected token")},
 		{Name: "cart", Diagnostics: []gafferruntime.Diagnostic{{Code: "quirk.x", Message: "faults on the server"}}},
-	})
+	}); err != nil {
+		t.Fatalf("renderPreflightFailures: %v", err)
+	}
 	out := b.String()
 	for _, want := range []string{
 		"2 of 3 projections have errors",
@@ -83,7 +88,7 @@ func TestRunPreflight(t *testing.T) {
 		AddProjection("bad", broken).
 		Save()
 
-	failures := runPreflight(p.Dir, p.Cfg, []string{"good", "bad"})
+	failures := runPreflight(context.Background(), p.Dir, p.Cfg, []string{"good", "bad"})
 	if len(failures) != 1 {
 		t.Fatalf("got %d failures, want 1 (the broken projection): %+v", len(failures), failures)
 	}
@@ -99,7 +104,20 @@ func TestRunPreflightAllValid(t *testing.T) {
 		AddProjection("b", valid).
 		Save()
 
-	if failures := runPreflight(p.Dir, p.Cfg, []string{"a", "b"}); len(failures) != 0 {
+	if failures := runPreflight(context.Background(), p.Dir, p.Cfg, []string{"a", "b"}); len(failures) != 0 {
 		t.Errorf("all-valid project should have no failures, got %+v", failures)
+	}
+}
+
+// A cancelled context short-circuits the loop before compiling: the broken
+// projection that would otherwise fail is never reached.
+func TestRunPreflightStopsOnCancel(t *testing.T) {
+	const broken = `fromAll().when({ $any: function (s, e) { return `
+	p := testutil.NewProject(t).AddProjection("bad", broken).Save()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if failures := runPreflight(ctx, p.Dir, p.Cfg, []string{"bad"}); len(failures) != 0 {
+		t.Errorf("a cancelled preflight should compile nothing, got %+v", failures)
 	}
 }

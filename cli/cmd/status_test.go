@@ -122,6 +122,7 @@ func TestRenderStatusJSON(t *testing.T) {
 	entries := []statusEntry{
 		{comparison: comparison{Name: "count", State: driftInSync}, runtime: &remote.Status{State: remote.StateRunning, Progress: 100, Position: "C:1"}},
 		{comparison: comparison{Name: "orders", State: driftNotDeployed}},
+		{comparison: comparison{Name: "broken", State: driftInvalid, LocalErr: errors.New("Unexpected token (3:5)")}, runtime: &remote.Status{State: remote.StateRunning}},
 	}
 	var b bytes.Buffer
 	if err := renderStatusJSON(&b, entries); err != nil {
@@ -131,13 +132,16 @@ func TestRenderStatusJSON(t *testing.T) {
 	if err := json.Unmarshal(b.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, b.String())
 	}
-	if len(got) != 2 {
-		t.Fatalf("want 2 entries, got %d", len(got))
+	if len(got) != 3 {
+		t.Fatalf("want 3 entries, got %d", len(got))
 	}
 	if got[0].Drift != "in-sync" || got[0].Runtime == nil || got[0].Runtime.State != "running" {
 		t.Errorf("count entry = %+v", got[0])
 	}
-	if got[1].Drift != "not-deployed" || got[1].Runtime != nil {
+	if got[1].Drift != "not-deployed" || got[1].Runtime != nil || got[1].Error != "" {
 		t.Errorf("orders should carry drift only, got %+v", got[1])
+	}
+	if got[2].Drift != "invalid" || got[2].Error != "Unexpected token (3:5)" {
+		t.Errorf("broken entry should carry the compile error, got %+v", got[2])
 	}
 }

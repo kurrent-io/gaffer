@@ -278,13 +278,26 @@ func (p plannedItem) result() deployResult {
 // --dry-run). Stops early on an interrupt; a per-projection compare failure is
 // carried on the item, not fatal, so the rest of the plan still forms.
 func planAll(ctx context.Context, r *remote.Client, cfg *config.Config, root string, names []string) []plannedItem {
-	faulted := faultedProjections(ctx, r)
 	plan := make([]plannedItem, 0, len(names))
+	updates := false
 	for _, name := range names {
 		if ctx.Err() != nil {
 			break
 		}
-		plan = append(plan, planOne(ctx, r, cfg, root, name, faulted))
+		item := planOne(ctx, r, cfg, root, name)
+		updates = updates || item.action == actUpdate
+		plan = append(plan, item)
+	}
+	// Faulted status only matters for update targets (to warn before clobbering),
+	// so list once only when the plan actually updates something - a no-op
+	// (all in sync) or create-only deploy skips the leader List entirely.
+	if updates {
+		faulted := faultedProjections(ctx, r)
+		for i := range plan {
+			if plan[i].action == actUpdate && faulted[plan[i].name] {
+				plan[i].faulted = true
+			}
+		}
 	}
 	return plan
 }
@@ -312,9 +325,9 @@ func faultedProjections(ctx context.Context, r *remote.Client) map[string]bool {
 // planOne compares one projection and decides its action, applying nothing. The
 // read is bounded: a management call blocks until its deadline if the projections
 // subsystem is slow, and one stalled projection shouldn't consume the whole
-// plan's budget. faulted is the set of faulted projections (from one prior list),
-// consulted for update targets so the confirm can warn.
-func planOne(ctx context.Context, r *remote.Client, cfg *config.Config, root, name string, faulted map[string]bool) plannedItem {
+// plan's budget. The faulted flag is filled in by planAll afterwards, only when
+// the plan turns out to have updates.
+func planOne(ctx context.Context, r *remote.Client, cfg *config.Config, root, name string) plannedItem {
 	ctx, cancel := context.WithTimeout(ctx, projectionRPCTimeout)
 	defer cancel()
 
@@ -323,13 +336,7 @@ func planOne(ctx context.Context, r *remote.Client, cfg *config.Config, root, na
 		return plannedItem{name: name, err: err}
 	}
 	action, reason := planAction(cmp)
-	item := plannedItem{name: name, cmp: cmp, action: action, reason: reason}
-	// An update overwrites a deployed projection; flag it when that projection is
-	// faulted so the confirm can warn (updating won't clear the fault).
-	if action == actUpdate && faulted[name] {
-		item.faulted = true
-	}
-	return item
+	return plannedItem{name: name, cmp: cmp, action: action, reason: reason}
 }
 
 // applyPlan executes a plan, reporting progress through the sink, and returns how

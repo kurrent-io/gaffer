@@ -269,6 +269,11 @@ func planAction(c comparison) (deployAction, string) {
 			return actRefuse, recreateReason(c)
 		}
 		return actUpdate, ""
+	case driftInvalid:
+		// Only reachable under --force (preflight otherwise blocks first): the
+		// source doesn't compile, so emit is unknown and the projection can't be
+		// applied correctly. Refuse rather than send a wrong definition.
+		return actRefuse, "local source does not compile"
 	default:
 		// Untracked never reaches here: deployNames only yields names in config,
 		// so compareProjection returns one of the above. Defensive only.

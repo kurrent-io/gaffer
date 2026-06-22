@@ -13,7 +13,7 @@ The `gaffer` CLI scaffolds projections, runs them locally against fixtures or li
 | [`gaffer scaffold <path>`](./commands.md#gaffer-scaffold) | Create a projection file at `<path>` and register it in `gaffer.toml`.                                                        |
 | [`gaffer dev <name>`](./commands.md#gaffer-dev)      | Run a projection against fixtures (`--fixture <name>` or `--events <path>`) or live KurrentDB.                                |
 | [`gaffer info <name>`](./commands.md#gaffer-info)    | Print the projection's details: source, partitioning, declared fixtures, engine version, matched events, whether it emits events, and any diagnostics. |
-| [`gaffer diff <projection>`](./commands.md#gaffer-diff) | Compare a projection's local definition against what's deployed: in sync, drifted, not deployed, or untracked. |
+| [`gaffer diff <projection>`](./commands.md#gaffer-diff) | Compare a projection's local definition against what's deployed: in sync, drifted, not deployed, untracked, or invalid (local source doesn't compile). |
 | [`gaffer status [projection]`](./commands.md#gaffer-status) | Show the runtime state of projections on an environment and how they compare to local config. |
 | [`gaffer deploy [projection]`](./commands.md#gaffer-deploy) | Create or update projections on an environment: create the new ones, update the changed ones, skip the in-sync ones. Compiles every projection locally first and refuses the run if any has errors (`--force` bypasses). |
 | [`gaffer auth`](./commands.md#gaffer-auth)           | Sign in to an environment's OAuth identity provider and store the token. See [`[env.<name>.oauth]`](../reference/gaffer-toml.md#envnameoauth). |

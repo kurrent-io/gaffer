@@ -26,3 +26,16 @@ func LocalDescriptor(proj *Projection) (deploy.Descriptor, error) {
 		TrackEmittedStreams: proj.Def.TrackEmittedStreams != nil && *proj.Def.TrackEmittedStreams,
 	}, nil
 }
+
+// PartialDescriptor builds the descriptor WITHOUT compiling: query, engine
+// version and track-emitted-streams come straight from source and config. Emit
+// is left zero because it can only be derived by compiling, so the caller (a
+// projection that failed to compile) must treat emit as unknown rather than
+// false. For showing what a diff can without a working compile.
+func PartialDescriptor(proj *Projection) deploy.Descriptor {
+	return deploy.Descriptor{
+		Query:               proj.Source,
+		EngineVersion:       proj.EngineVersion,
+		TrackEmittedStreams: proj.Def.TrackEmittedStreams != nil && *proj.Def.TrackEmittedStreams,
+	}
+}

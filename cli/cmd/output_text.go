@@ -266,6 +266,8 @@ func (tw *textWriter) WriteDiff(e comparison) {
 		tw.status(tw.styles.warning.Render("not deployed (local only)"))
 	case driftUntracked:
 		tw.status(tw.styles.warning.Render("untracked (deployed, not in gaffer.toml)"))
+	case driftInvalid:
+		tw.writeInvalidDiff(e)
 	default:
 		tw.detail("Query", tw.queryStatus(e))
 		tw.detail("Engine version", tw.versionStatus(e))
@@ -274,6 +276,28 @@ func (tw *textWriter) WriteDiff(e comparison) {
 		if e.Cmp.TrackEmittedStreamsDiffers {
 			tw.detail("Track emitted streams", tw.flagStatus(true, e.Deployed.TrackEmittedStreams, e.Local.TrackEmittedStreams))
 		}
+	}
+}
+
+// writeInvalidDiff renders a diff whose local source doesn't compile: the
+// dimensions that need no compile (query, engine version, track-emitted-streams)
+// still show against the deployed side, emit is unknown, and there's no overall
+// verdict. With nothing deployed there's nothing to compare, so it just notes the
+// state. The compile error follows so the user knows what to fix.
+func (tw *textWriter) writeInvalidDiff(e comparison) {
+	if e.Deployed == nil {
+		tw.status(tw.styles.warning.Render("not deployed; local source does not compile"))
+	} else {
+		tw.detail("Query", tw.queryStatus(e))
+		tw.detail("Engine version", tw.versionStatus(e))
+		tw.detail("Emit", tw.styles.warning.Render("unknown (local source does not compile)"))
+		if e.Cmp.TrackEmittedStreamsDiffers {
+			tw.detail("Track emitted streams", tw.flagStatus(true, e.Deployed.TrackEmittedStreams, e.Local.TrackEmittedStreams))
+		}
+	}
+	if e.LocalErr != nil {
+		tw.blank()
+		tw.write("%s\n", tw.styles.errDetail.Render(e.LocalErr.Error()))
 	}
 }
 
@@ -330,6 +354,10 @@ func (tw *textWriter) WriteStatus(e statusEntry) {
 		}
 	}
 	tw.detail("Drift", tw.driftStyle(e.State).Render(driftBlockText(e.State)))
+	if e.State == driftInvalid && e.LocalErr != nil {
+		tw.blank()
+		tw.write("%s\n", tw.styles.errDetail.Render(e.LocalErr.Error()))
+	}
 }
 
 // driftBlockText spells out the one-sided verdicts for the single-projection
@@ -340,6 +368,8 @@ func driftBlockText(d driftState) string {
 		return "not deployed (local only)"
 	case driftUntracked:
 		return "untracked (deployed, not in gaffer.toml)"
+	case driftInvalid:
+		return "invalid (local source does not compile)"
 	default:
 		return driftText(d)
 	}
@@ -424,16 +454,22 @@ func driftText(d driftState) string {
 		return "not deployed"
 	case driftUntracked:
 		return "untracked"
+	case driftInvalid:
+		return "invalid"
 	default:
 		return string(d)
 	}
 }
 
 func (tw *textWriter) driftStyle(d driftState) lipgloss.Style {
-	if d == driftInSync {
+	switch d {
+	case driftInSync:
 		return tw.styles.added
+	case driftInvalid:
+		return tw.styles.errStatus
+	default:
+		return tw.styles.warning
 	}
-	return tw.styles.warning
 }
 
 // deployResultLine renders one projection's verdict: a status marker, the name

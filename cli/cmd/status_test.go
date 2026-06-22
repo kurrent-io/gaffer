@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -32,6 +33,9 @@ func TestWriteStatusTable(t *testing.T) {
 		{comparison: comparison{Name: "count", State: driftInSync}, runtime: &remote.Status{State: remote.StateRunning, Progress: 100}},
 		{comparison: comparison{Name: "orders", State: driftNotDeployed}},
 		{comparison: comparison{Name: "legacy", State: driftUntracked}, runtime: &remote.Status{State: remote.StateRunning, Progress: 100}},
+		// A broken local projection that's still running on the server: the row
+		// shows its runtime state, with drift "invalid" rather than aborting.
+		{comparison: comparison{Name: "broken", State: driftInvalid, LocalErr: errors.New("nope")}, runtime: &remote.Status{State: remote.StateRunning, Progress: 100}},
 	}
 	var b bytes.Buffer
 	newTextWriter(&b, &b).WriteStatusTable(entries)
@@ -42,6 +46,7 @@ func TestWriteStatusTable(t *testing.T) {
 		"count", "running", "100%", "in sync",
 		"orders", "not deployed",
 		"legacy", "untracked",
+		"broken", "invalid",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
@@ -100,6 +105,16 @@ func TestWriteStatusBlock(t *testing.T) {
 	notDeployed := render(statusEntry{comparison: comparison{Name: "orders", State: driftNotDeployed}})
 	if !strings.Contains(notDeployed, "Drift: not deployed (local only)") || strings.Contains(notDeployed, "State:") {
 		t.Errorf("not-deployed block should show the spelled-out drift only:\n%s", notDeployed)
+	}
+
+	invalid := render(statusEntry{
+		comparison: comparison{Name: "broken", State: driftInvalid, LocalErr: errors.New("Unexpected token (3:5)")},
+		runtime:    &remote.Status{State: remote.StateRunning, Progress: 100},
+	})
+	for _, want := range []string{"State: running", "Drift: invalid (local source does not compile)", "Unexpected token (3:5)"} {
+		if !strings.Contains(invalid, want) {
+			t.Errorf("invalid block missing %q in:\n%s", want, invalid)
+		}
 	}
 }
 

@@ -35,8 +35,9 @@ func newStatusCmd() *cobra.Command {
 		Long: "Show the runtime state of projections on a KurrentDB environment and how they\n" +
 			"compare to local config.\n\n" +
 			"With no argument, lists every local and deployed projection: running, stopped or\n" +
-			"faulted, progress, and whether each is in sync, drifted, not deployed, or\n" +
-			"untracked. Name a projection for its detail. Pass --json for machine output.",
+			"faulted, progress, and whether each is in sync, drifted, not deployed, untracked,\n" +
+			"or invalid (local source doesn't compile). Name a projection for its detail. Pass\n" +
+			"--json for machine output.",
 		Example: "  gaffer status\n" +
 			"  gaffer status order-count --env staging",
 		Args: maxArgs(1),

@@ -204,7 +204,9 @@ Deploy projections from gaffer.toml to a KurrentDB environment: create the ones 
 
 With no argument, deploys every projection in gaffer.toml; name one to deploy just it. The emit flag is always sent explicitly so an update never clears it. A change to engine version or track-emitted-streams can't be applied in place (it would mean recreating the projection and dropping its state), so deploy refuses it and leaves the projection untouched.
 
-Every projection is compiled before anything is sent to the server; if any fails to compile or has errors that would fault on the server, the whole deploy is refused so a bad projection can't leave a half-applied set. --force skips this check. Pass --json for machine-readable output.
+Every projection is compiled before anything is sent to the server; if any fails to compile or has errors that would fault on the server, the whole deploy is refused so a bad projection can't leave a half-applied set. --force skips this check.
+
+When the plan would change something, deploy shows it and asks to confirm before applying; updating a projection that's currently faulted is flagged, since the update won't clear the fault. --yes skips the prompt; without a terminal (or with --json) deploy won't apply unconfirmed, so pass --yes in scripts. A server that reports itself as production gets a louder confirm and refuses --force (deploy without it and confirm). Pass --json for machine-readable output.
 
 ```
 gaffer deploy [projection] [flags]
@@ -217,6 +219,7 @@ Flags:
       --env string          Environment from gaffer.toml to deploy to
       --force               Skip the preflight compile check and deploy anyway
       --json                Output as JSON
+  -y, --yes                 Skip the confirmation prompt
 ```
 
 ## gaffer diff

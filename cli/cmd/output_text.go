@@ -495,7 +495,14 @@ func (tw *textWriter) deployResultLine(res deployResult, nameWidth int) string {
 		verdict = tw.styles.added.Render("created")
 	case res.Action == actUpdate:
 		marker = tw.styles.added.Render("✓")
-		verdict = tw.styles.added.Render("updated")
+		word := "updated"
+		if res.LogicChange {
+			word = "updated (logic change, continued from checkpoint)"
+		}
+		verdict = tw.styles.added.Render(word)
+	case res.Action == actReset:
+		marker = tw.styles.added.Render("✓")
+		verdict = tw.styles.added.Render("rebuilt (reprocessing from zero)")
 	default:
 		marker = tw.styles.warning.Render("?")
 		verdict = tw.styles.warning.Render("unknown")
@@ -526,6 +533,9 @@ func (tw *textWriter) deploySummaryLine(c deployCounts) string {
 		fmt.Sprintf("%d updated", c.updated),
 		fmt.Sprintf("%d skipped", c.skipped),
 	}
+	if c.rebuilt > 0 {
+		segs = append(segs, fmt.Sprintf("%d rebuilt", c.rebuilt))
+	}
 	if c.refused > 0 {
 		segs = append(segs, tw.styles.warning.Render(fmt.Sprintf("%d refused", c.refused)))
 	}
@@ -543,7 +553,7 @@ func (tw *textWriter) writeDeploySummary(c deployCounts) {
 // writePlanSummary previews what a deploy would change, ahead of the confirm
 // prompt: the per-action counts and a warning for any faulted update target.
 // Planning errors aren't counted here - they surface during the apply phase.
-func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, creates, updates int, prod bool) {
+func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, totals planTotals, prod bool) {
 	if prod {
 		banner := "PRODUCTION"
 		if target != "" {
@@ -551,25 +561,30 @@ func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, create
 		}
 		tw.write("%s\n", tw.styles.errStatus.Render("⚠ "+banner))
 	}
-	skipped, refused := 0, 0
+	skipped, refused, logicContinues := 0, 0, 0
 	for _, it := range plan {
 		if it.err != nil {
 			continue
 		}
-		switch it.action {
-		case actSkip:
+		switch {
+		case it.action == actSkip:
 			skipped++
-		case actRefuse:
+		case it.action == actRefuse:
 			refused++
+		case it.action == actUpdate && it.logicChange:
+			logicContinues++
 		}
 	}
 
 	var segs []string
-	if creates > 0 {
-		segs = append(segs, tw.styles.added.Render(fmt.Sprintf("%d to create", creates)))
+	if totals.creates > 0 {
+		segs = append(segs, tw.styles.added.Render(fmt.Sprintf("%d to create", totals.creates)))
 	}
-	if updates > 0 {
-		segs = append(segs, tw.styles.added.Render(fmt.Sprintf("%d to update", updates)))
+	if totals.updates > 0 {
+		segs = append(segs, tw.styles.added.Render(fmt.Sprintf("%d to update", totals.updates)))
+	}
+	if totals.rebuilds > 0 {
+		segs = append(segs, tw.styles.warning.Render(fmt.Sprintf("%d to rebuild", totals.rebuilds)))
 	}
 	if skipped > 0 {
 		segs = append(segs, tw.styles.pipe.Render(fmt.Sprintf("%d in sync", skipped)))
@@ -584,17 +599,27 @@ func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, create
 	}
 	tw.write("%s\n", tw.styles.heading.Render(heading+":"))
 	tw.write("  %s\n", strings.Join(segs, tw.styles.pipe.Render(" · ")))
-	tw.writeFaultedWarnings(plan)
+	if logicContinues > 0 {
+		tw.write("  %s\n", tw.styles.pipe.Render(fmt.Sprintf(
+			"%d logic change(s) continuing from checkpoint - --reset-on-logic-change to rebuild instead", logicContinues)))
+	}
+	tw.writeApplyWarnings(plan)
 	tw.blank()
 }
 
-// writeFaultedWarnings emits one line per faulted update target. Shared by the
-// interactive plan summary and the non-interactive (--yes) path, so a faulted
-// clobber is surfaced however the deploy is confirmed.
-func (tw *textWriter) writeFaultedWarnings(plan []plannedItem) {
+// writeApplyWarnings emits the per-projection cautions for a plan: an update over
+// a faulted projection (the update won't clear the fault), and a reset of an
+// emitting projection (reprocessing re-emits, duplicating into its target
+// streams). Shared by the interactive plan summary and the non-interactive
+// (--yes) path, so the cautions surface however the deploy is confirmed.
+func (tw *textWriter) writeApplyWarnings(plan []plannedItem) {
 	for _, name := range faultedUpdates(plan) {
 		tw.write("  %s %s\n", tw.styles.warning.Render("⚠"),
 			tw.styles.warning.Render(name+" is faulted; updating won't clear the fault"))
+	}
+	for _, name := range emittingResets(plan) {
+		tw.write("  %s %s\n", tw.styles.warning.Render("⚠"),
+			tw.styles.warning.Render(name+" emits; rebuilding re-emits and may duplicate - use gaffer recreate --delete-emitted for a clean rebuild"))
 	}
 }
 

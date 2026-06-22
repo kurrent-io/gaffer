@@ -47,12 +47,15 @@ func maxNameWidth(names []string) int {
 // deployJSON is the --json shape for one projection. outcome is the verdict:
 // created, updated, skipped, refused, or failed from a deploy run, or invalid
 // when the preflight gate rejected it before any server write. reason is set for
-// refused and invalid, error for failed.
+// refused and invalid, error for failed. logic_change marks an "updated" outcome
+// that continued over a changed query (state kept), so CI can alert on it; a
+// rebuild surfaces as outcome "rebuilt" instead.
 type deployJSON struct {
-	Name    string `json:"name"`
-	Outcome string `json:"outcome"`
-	Reason  string `json:"reason,omitempty"`
-	Error   string `json:"error,omitempty"`
+	Name        string `json:"name"`
+	Outcome     string `json:"outcome"`
+	LogicChange bool   `json:"logic_change,omitempty"`
+	Reason      string `json:"reason,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 type jsonSink struct {
@@ -63,7 +66,7 @@ type jsonSink struct {
 func (s *jsonSink) start(string, int, int) {}
 
 func (s *jsonSink) done(res deployResult) {
-	j := deployJSON{Name: res.Name, Outcome: res.outcome(), Reason: res.Reason}
+	j := deployJSON{Name: res.Name, Outcome: res.outcome(), LogicChange: res.LogicChange, Reason: res.Reason}
 	if res.Err != nil {
 		j.Error = res.Err.Error()
 	}

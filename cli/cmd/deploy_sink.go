@@ -44,9 +44,10 @@ func maxNameWidth(names []string) int {
 	return w
 }
 
-// deployJSON is the --json shape for one projection. outcome is the verdict
-// (created, updated, skipped, refused, failed); reason is set for refused,
-// error for failed.
+// deployJSON is the --json shape for one projection. outcome is the verdict:
+// created, updated, skipped, refused, or failed from a deploy run, or invalid
+// when the preflight gate rejected it before any server write. reason is set for
+// refused and invalid, error for failed.
 type deployJSON struct {
 	Name    string `json:"name"`
 	Outcome string `json:"outcome"`

@@ -19,30 +19,53 @@ import (
 // deploy bounds each projection by it. Shared so the three move together.
 const projectionRPCTimeout = 30 * time.Second
 
+// loadProject finds the project root and loads gaffer.toml, without connecting.
+// Lets a command run local-only work (deploy's preflight compile) before
+// touching the server.
+func loadProject() (cfg *config.Config, root string, err error) {
+	root = project.FindRoot()
+	if root == "" {
+		return nil, "", project.ErrNotInProject
+	}
+	cfg, err = config.Load(project.ConfigPath(root))
+	if err != nil {
+		return nil, "", err
+	}
+	return cfg, root, nil
+}
+
 // connectEnv loads the project, resolves the live env from explicit flags, and
 // connects, returning a remote client and a cleanup to defer. Shared by the
 // server-touching projection commands (diff, status, and deploy).
 func connectEnv(connection, env string) (cfg *config.Config, root string, r *remote.Client, cleanup func(), err error) {
-	root = project.FindRoot()
-	if root == "" {
-		return nil, "", nil, nil, project.ErrNotInProject
-	}
-	cfg, err = config.Load(project.ConfigPath(root))
+	cfg, root, err = loadProject()
 	if err != nil {
 		return nil, "", nil, nil, err
 	}
+	r, cleanup, err = connectResolved(cfg, root, connection, env)
+	if err != nil {
+		return nil, "", nil, nil, err
+	}
+	return cfg, root, r, cleanup, nil
+}
+
+// connectResolved resolves the live env from explicit flags against an
+// already-loaded config and connects. Split from connectEnv so deploy can load
+// the config, run preflight locally, then connect only once the projections are
+// known to be deployable.
+func connectResolved(cfg *config.Config, root, connection, env string) (r *remote.Client, cleanup func(), err error) {
 	resolved, err := resolveLiveEnv(connection, env, cfg)
 	if err != nil {
-		return nil, "", nil, nil, err
+		return nil, nil, err
 	}
 	if resolved.Connection == "" {
-		return nil, "", nil, nil, errors.New("no environment: mark a default [env.<name>], pass --env, or pass --connection")
+		return nil, nil, errors.New("no environment: mark a default [env.<name>], pass --env, or pass --connection")
 	}
 	client, _, err := engine.Connect(resolved.Connection, root, resolved.Name, resolved.OAuth, resolved.Cert)
 	if err != nil {
-		return nil, "", nil, nil, err
+		return nil, nil, err
 	}
-	return cfg, root, remote.New(client), func() { _ = client.Close() }, nil
+	return remote.New(client), func() { _ = client.Close() }, nil
 }
 
 // driftState is how one projection compares between local config and the server.

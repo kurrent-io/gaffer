@@ -12,11 +12,12 @@ import (
 )
 
 type deployOpts struct {
-	Env        string
-	Connection string
-	JSON       bool
-	Force      bool
-	Yes        bool
+	Env                string
+	Connection         string
+	JSON               bool
+	Force              bool
+	Yes                bool
+	ResetOnLogicChange bool
 }
 
 // deployAction is what deploy decides to do with one projection, derived from
@@ -26,25 +27,39 @@ type deployAction string
 const (
 	actCreate deployAction = "create"
 	actUpdate deployAction = "update"
+	actReset  deployAction = "reset" // a logic-change update applied with a rebuild from zero
 	actSkip   deployAction = "skip"
 	actRefuse deployAction = "refuse"
 )
 
-// deployResult is the outcome for one projection. Reason is set only for refuse;
-// Err is set when the create/update RPC (or the pre-compare read) failed.
-type deployResult struct {
-	Name   string
-	Action deployAction
-	Reason string
-	Err    error
+// applies reports whether the action performs a server write (so the apply phase
+// runs it); skip and refuse don't.
+func (a deployAction) applies() bool {
+	return a == actCreate || a == actUpdate || a == actReset
 }
 
-// projectionWriter is the slice of remote.Client the apply step needs. Seaming
-// it lets the orchestration be tested without a live database; *remote.Client
-// satisfies it.
-type projectionWriter interface {
+// deployResult is the outcome for one projection. Reason is set only for refuse;
+// Err is set when the apply RPC (or the pre-compare read) failed. LogicChange
+// marks an update that changed the query, so the rendering can note that
+// continuing keeps state computed by the old logic.
+type deployResult struct {
+	Name        string
+	Action      deployAction
+	Reason      string
+	LogicChange bool
+	Err         error
+}
+
+// projectionManager is the slice of remote.Client the apply step needs: create
+// and update, plus the disable/reset/enable a logic-change rebuild sequences.
+// Seaming it lets the orchestration be tested without a live database;
+// *remote.Client satisfies it.
+type projectionManager interface {
 	Create(ctx context.Context, name, query string, opts remote.CreateOptions) error
 	Update(ctx context.Context, name, query string, opts remote.UpdateOptions) error
+	Disable(ctx context.Context, name string) error
+	Reset(ctx context.Context, name string, writeCheckpoint bool) error
+	Enable(ctx context.Context, name string) error
 }
 
 // outcome is the past-tense verdict for one projection, used as the JSON value
@@ -59,6 +74,8 @@ func (res deployResult) outcome() string {
 		return "created"
 	case actUpdate:
 		return "updated"
+	case actReset:
+		return "rebuilt"
 	case actSkip:
 		return "skipped"
 	case actRefuse:
@@ -70,7 +87,7 @@ func (res deployResult) outcome() string {
 
 // deployCounts tallies outcomes for the summary line and the live progress bar.
 type deployCounts struct {
-	created, updated, skipped, refused, failed int
+	created, updated, rebuilt, skipped, refused, failed int
 }
 
 func (c *deployCounts) add(res deployResult) {
@@ -81,6 +98,8 @@ func (c *deployCounts) add(res deployResult) {
 		c.created++
 	case res.Action == actUpdate:
 		c.updated++
+	case res.Action == actReset:
+		c.rebuilt++
 	case res.Action == actSkip:
 		c.skipped++
 	case res.Action == actRefuse:
@@ -97,10 +116,13 @@ func newDeployCmd() *cobra.Command {
 			"not yet on the server, update the ones whose definition changed, and skip the ones " +
 			"already in sync (matched by content hash).\n\n" +
 			"With no argument, deploys every projection in gaffer.toml; name one to deploy just it. " +
-			"The emit flag is always sent explicitly so an update never clears it. A change to engine " +
-			"version or track-emitted-streams can't be applied in place (it would mean recreating the " +
-			"projection and dropping its state), so deploy refuses it and leaves the projection " +
-			"untouched.\n\n" +
+			"The emit flag is always sent explicitly so an update never clears it.\n\n" +
+			"A changed query is a logic change: the new code may interpret already-processed events " +
+			"differently, so the accumulated state could now be wrong. By default deploy continues from " +
+			"the existing checkpoint (state is kept) and flags the change. Pass --reset-on-logic-change " +
+			"to rebuild instead, reprocessing from zero with the new logic (slower, and an emitting " +
+			"projection re-emits). A change to engine version or track-emitted-streams can't be applied " +
+			"in place; deploy refuses it and points you at gaffer recreate.\n\n" +
 			"Every projection is compiled before anything is sent to the server; if any fails to " +
 			"compile or has errors that would fault on the server, the whole deploy is refused so " +
 			"a bad projection can't leave a half-applied set. --force skips this check.\n\n" +
@@ -126,6 +148,7 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output as JSON")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Skip the preflight compile check and deploy anyway")
 	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip the confirmation prompt")
+	cmd.Flags().BoolVar(&opts.ResetOnLogicChange, "reset-on-logic-change", false, "Rebuild from zero on a logic change instead of continuing from checkpoint")
 	return cmd
 }
 
@@ -183,12 +206,16 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 		return silent(ctx.Err())
 	}
 
+	// --reset-on-logic-change turns each logic-change update into a rebuild from
+	// zero, so the confirm and the apply both treat it as a reset.
+	resolveResets(plan, opts.ResetOnLogicChange)
+
 	// Only a plan that changes something needs the target identity (and
 	// confirmation). Reading server info is a leader round-trip, so skip it on a
 	// no-op deploy.
-	creates, updates := planChangeCounts(plan)
+	totals := planChangeCounts(plan)
 	target, prod := "", false
-	if creates+updates > 0 {
+	if totals.changes() > 0 {
 		// The server's self-reported identity names the target in the confirm and
 		// gates the production tier (it keys on the DB's own flag, never the env
 		// label). Bound the read like the other management calls so a hung
@@ -214,7 +241,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 		return silent(fmt.Errorf("--force is not allowed on production %s: it bypasses safety checks. Deploy without it and confirm the change", targetDesc(target)))
 	}
 
-	if err := confirmPlan(cmd.OutOrStdout(), cmd.ErrOrStderr(), plan, target, creates, updates, opts.Yes, opts.JSON, prod); err != nil {
+	if err := confirmPlan(cmd.OutOrStdout(), cmd.ErrOrStderr(), plan, target, totals, opts.Yes, opts.JSON, prod); err != nil {
 		return err
 	}
 
@@ -259,18 +286,19 @@ func deployNames(cfg *config.Config, name string) ([]string, error) {
 // for the guards); err is a planning failure (the compare/read), kept distinct
 // from an apply failure so the two surface with the right reason.
 type plannedItem struct {
-	name    string
-	cmp     comparison
-	action  deployAction
-	reason  string
-	faulted bool // deployed projection is currently faulted (update items only)
-	err     error
+	name        string
+	cmp         comparison
+	action      deployAction
+	reason      string
+	logicChange bool // an update whose query changed (state may now be wrong)
+	faulted     bool // deployed projection is currently faulted (update items only)
+	err         error
 }
 
 // result is the deployResult for an item that was not (or not yet) applied: a
 // planning error, or a skip/refuse that the apply phase emits verbatim.
 func (p plannedItem) result() deployResult {
-	return deployResult{Name: p.name, Action: p.action, Reason: p.reason, Err: p.err}
+	return deployResult{Name: p.name, Action: p.action, Reason: p.reason, LogicChange: p.logicChange, Err: p.err}
 }
 
 // planAll computes the action for every projection without writing anything -
@@ -322,6 +350,21 @@ func faultedProjections(ctx context.Context, r *remote.Client) map[string]bool {
 	return faulted
 }
 
+// resolveResets promotes each logic-change update to a reset (rebuild from zero)
+// when --reset-on-logic-change is set. The plan computes a logic change as an
+// update; this is where the flag turns it into a rebuild, before the confirm and
+// apply see it. A no-op when the flag is off.
+func resolveResets(plan []plannedItem, resetOnLogicChange bool) {
+	if !resetOnLogicChange {
+		return
+	}
+	for i := range plan {
+		if plan[i].logicChange {
+			plan[i].action = actReset
+		}
+	}
+}
+
 // planOne compares one projection and decides its action, applying nothing. The
 // read is bounded: a management call blocks until its deadline if the projections
 // subsystem is slow, and one stalled projection shouldn't consume the whole
@@ -336,7 +379,15 @@ func planOne(ctx context.Context, r *remote.Client, cfg *config.Config, root, na
 		return plannedItem{name: name, err: err}
 	}
 	action, reason := planAction(cmp)
-	return plannedItem{name: name, cmp: cmp, action: action, reason: reason}
+	return plannedItem{name: name, cmp: cmp, action: action, reason: reason, logicChange: isLogicChange(action, cmp)}
+}
+
+// isLogicChange reports whether an update changes projection logic, meaning the
+// query: the new code folds over old events differently, so the accumulated
+// state may now be wrong. An emit-only update (query unchanged) is just a
+// settings re-assert; a create, refuse or skip is never a logic change.
+func isLogicChange(action deployAction, cmp comparison) bool {
+	return action == actUpdate && cmp.Cmp.QueryDiffers
 }
 
 // applyPlan executes a plan, reporting progress through the sink, and returns how
@@ -354,7 +405,7 @@ func applyPlan(ctx context.Context, plan []plannedItem, sink deploySink, apply f
 		}
 		sink.start(item.name, i+1, total)
 		res := item.result()
-		if item.err == nil && (item.action == actCreate || item.action == actUpdate) {
+		if item.err == nil && item.action.applies() {
 			if err := apply(item); err != nil {
 				res.Err = err
 			}
@@ -367,11 +418,19 @@ func applyPlan(ctx context.Context, plan []plannedItem, sink deploySink, apply f
 	return failed
 }
 
-// applyOne performs one item's create/update, bounded by its own deadline.
+// applyOne performs one item's create/update/reset. Each underlying RPC is
+// bounded separately (a reset issues four), so a multi-step rebuild isn't
+// squeezed into the budget for a single call.
 func applyOne(ctx context.Context, r *remote.Client, item plannedItem) error {
+	return applyAction(ctx, r, item.name, item.action, item.cmp.Local)
+}
+
+// rpc bounds one server call by projectionRPCTimeout, so every step of a
+// multi-step apply gets a full budget rather than sharing one.
+func rpc(ctx context.Context, fn func(context.Context) error) error {
 	ctx, cancel := context.WithTimeout(ctx, projectionRPCTimeout)
 	defer cancel()
-	return applyAction(ctx, r, item.name, item.action, item.cmp.Local)
+	return fn(ctx)
 }
 
 // planAction maps a drift comparison to the action deploy takes. It is pure: the
@@ -402,8 +461,8 @@ func planAction(c comparison) (deployAction, string) {
 }
 
 // recreateReason states which create-time field changed, matching gaffer diff's
-// "remote X, local Y" phrasing. It deliberately stops at the fact: the way to
-// resolve it (a destructive recreate) lands with the guardrails work.
+// "remote X, local Y" phrasing, and points at gaffer recreate (the resolve path,
+// a separate verb since it destroys and rebuilds the projection).
 func recreateReason(c comparison) string {
 	var which string
 	switch {
@@ -416,25 +475,69 @@ func recreateReason(c comparison) string {
 	default:
 		which = fmt.Sprintf("track emitted streams (remote %t, local %t)", c.Deployed.TrackEmittedStreams, c.Local.TrackEmittedStreams)
 	}
-	return which + " can't be changed in place"
+	return which + " can't be changed in place; run gaffer recreate to rebuild it"
 }
 
-// applyAction performs the create or update. Emit is always sent on update
-// (as a non-nil pointer) because the server resets it to false on any update
-// that omits it. A created continuous projection starts enabled server-side, so
-// there is no separate enable step.
-func applyAction(ctx context.Context, w projectionWriter, name string, action deployAction, local *deploy.Descriptor) error {
+// applyAction performs the create, update, or logic-change reset. Emit is always
+// sent on update (as a non-nil pointer) because the server resets it to false on
+// any update that omits it. A created continuous projection starts enabled
+// server-side, so there is no separate enable step.
+func applyAction(ctx context.Context, mgr projectionManager, name string, action deployAction, local *deploy.Descriptor) error {
 	switch action {
 	case actCreate:
-		return w.Create(ctx, name, local.Query, remote.CreateOptions{
-			EngineVersion:       local.EngineVersion,
-			Emit:                local.Emit,
-			TrackEmittedStreams: local.TrackEmittedStreams,
+		return rpc(ctx, func(ctx context.Context) error {
+			return mgr.Create(ctx, name, local.Query, remote.CreateOptions{
+				EngineVersion:       local.EngineVersion,
+				Emit:                local.Emit,
+				TrackEmittedStreams: local.TrackEmittedStreams,
+			})
 		})
 	case actUpdate:
-		emit := local.Emit
-		return w.Update(ctx, name, local.Query, remote.UpdateOptions{Emit: &emit})
+		return rpc(ctx, func(ctx context.Context) error {
+			return mgr.Update(ctx, name, local.Query, remote.UpdateOptions{Emit: emitPtr(local)})
+		})
+	case actReset:
+		return applyReset(ctx, mgr, name, local)
 	default:
 		return nil
 	}
+}
+
+// applyReset rebuilds a projection from zero for a logic change: stop it, update
+// to the new query, reset to the beginning, restart. Update needs the projection
+// stopped; reset rewinds and discards state; the restart reprocesses every event
+// with the new logic. A checkpoint is written at the reset so the restart begins
+// from zero rather than the pre-reset position.
+//
+// Disable (not Abort) is the stop: it writes a checkpoint, so a failure before
+// the reset leaves the projection stopped at a real position rather than mid-
+// batch. The reset overwrites that checkpoint with zero anyway, so the extra
+// write is harmless on the happy path and a safer resting point on a partial
+// failure. There's no auto-rollback, so each step names the state it leaves and
+// the recovery.
+func applyReset(ctx context.Context, mgr projectionManager, name string, local *deploy.Descriptor) error {
+	if err := rpc(ctx, func(ctx context.Context) error { return mgr.Disable(ctx, name) }); err != nil {
+		return fmt.Errorf("stopping for reset (projection untouched): %w", err)
+	}
+	if err := rpc(ctx, func(ctx context.Context) error {
+		return mgr.Update(ctx, name, local.Query, remote.UpdateOptions{Emit: emitPtr(local)})
+	}); err != nil {
+		return fmt.Errorf("updating for reset - the projection is stopped; run `gaffer start %s` to resume it on the old logic: %w", name, err)
+	}
+	if err := rpc(ctx, func(ctx context.Context) error { return mgr.Reset(ctx, name, true) }); err != nil {
+		return fmt.Errorf("resetting - the projection is stopped on the new query but not rewound; finish the rebuild with `gaffer recreate %s`: %w", name, err)
+	}
+	if err := rpc(ctx, func(ctx context.Context) error { return mgr.Enable(ctx, name) }); err != nil {
+		// State is already wiped and the projection is stopped; no auto-rollback.
+		return fmt.Errorf("reset succeeded but the projection failed to restart - run `gaffer start %s` to rebuild it: %w", name, err)
+	}
+	return nil
+}
+
+// emitPtr returns a non-nil pointer to the descriptor's derived emit flag, so an
+// update always sends it explicitly (the server clears emit on any update that
+// omits it).
+func emitPtr(local *deploy.Descriptor) *bool {
+	emit := local.Emit
+	return &emit
 }

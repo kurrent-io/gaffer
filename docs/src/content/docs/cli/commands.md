@@ -202,7 +202,9 @@ Create or update projections on an environment.
 
 Deploy projections from gaffer.toml to a KurrentDB environment: create the ones not yet on the server, update the ones whose definition changed, and skip the ones already in sync (matched by content hash).
 
-With no argument, deploys every projection in gaffer.toml; name one to deploy just it. The emit flag is always sent explicitly so an update never clears it. A change to engine version or track-emitted-streams can't be applied in place (it would mean recreating the projection and dropping its state), so deploy refuses it and leaves the projection untouched.
+With no argument, deploys every projection in gaffer.toml; name one to deploy just it. The emit flag is always sent explicitly so an update never clears it.
+
+A changed query is a logic change: the new code may interpret already-processed events differently, so the accumulated state could now be wrong. By default deploy continues from the existing checkpoint (state is kept) and flags the change. Pass --reset-on-logic-change to rebuild instead, reprocessing from zero with the new logic (slower, and an emitting projection re-emits). A change to engine version or track-emitted-streams can't be applied in place; deploy refuses it and points you at gaffer recreate.
 
 Every projection is compiled before anything is sent to the server; if any fails to compile or has errors that would fault on the server, the whole deploy is refused so a bad projection can't leave a half-applied set. --force skips this check.
 
@@ -215,11 +217,12 @@ gaffer deploy [projection] [flags]
 Flags:
 
 ```
-      --connection string   KurrentDB connection string (overrides --env)
-      --env string          Environment from gaffer.toml to deploy to
-      --force               Skip the preflight compile check and deploy anyway
-      --json                Output as JSON
-  -y, --yes                 Skip the confirmation prompt
+      --connection string       KurrentDB connection string (overrides --env)
+      --env string              Environment from gaffer.toml to deploy to
+      --force                   Skip the preflight compile check and deploy anyway
+      --json                    Output as JSON
+      --reset-on-logic-change   Rebuild from zero on a logic change instead of continuing from checkpoint
+  -y, --yes                     Skip the confirmation prompt
 ```
 
 ## gaffer diff

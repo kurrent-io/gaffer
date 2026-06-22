@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
 	"strings"
@@ -75,30 +76,46 @@ func TestPlanAction(t *testing.T) {
 	}
 }
 
-// fakeWriter records the last create/update so applyAction's option mapping can
-// be asserted without a live database.
+// fakeWriter records calls so applyAction's option mapping and the reset
+// sequence can be asserted without a live database. calls records the method
+// order; failOn makes the named method (create/update/disable/reset/enable)
+// return an error, for mid-sequence failure tests.
 type fakeWriter struct {
 	creates    int
 	updates    int
 	createOpts remote.CreateOptions
 	updateOpts remote.UpdateOptions
 	query      string
+	calls      []string
+	failOn     string
 	err        error
+}
+
+func (f *fakeWriter) step(name string) error {
+	f.calls = append(f.calls, name)
+	if f.failOn == name {
+		return fmt.Errorf("%s failed", name)
+	}
+	return f.err
 }
 
 func (f *fakeWriter) Create(_ context.Context, _, query string, opts remote.CreateOptions) error {
 	f.creates++
 	f.query = query
 	f.createOpts = opts
-	return f.err
+	return f.step("create")
 }
 
 func (f *fakeWriter) Update(_ context.Context, _, query string, opts remote.UpdateOptions) error {
 	f.updates++
 	f.query = query
 	f.updateOpts = opts
-	return f.err
+	return f.step("update")
 }
+
+func (f *fakeWriter) Disable(_ context.Context, _ string) error       { return f.step("disable") }
+func (f *fakeWriter) Reset(_ context.Context, _ string, _ bool) error { return f.step("reset") }
+func (f *fakeWriter) Enable(_ context.Context, _ string) error        { return f.step("enable") }
 
 func TestApplyActionCreateMapsOptions(t *testing.T) {
 	f := &fakeWriter{}
@@ -138,8 +155,112 @@ func TestApplyActionSkipAndRefuseDoNothing(t *testing.T) {
 		if err := applyAction(context.Background(), f, "p", action, &deploy.Descriptor{}); err != nil {
 			t.Fatalf("applyAction(%s): %v", action, err)
 		}
-		if f.creates != 0 || f.updates != 0 {
-			t.Errorf("action %s touched the server: %+v", action, f)
+		if len(f.calls) != 0 {
+			t.Errorf("action %s touched the server: %v", action, f.calls)
+		}
+	}
+}
+
+func TestIsLogicChange(t *testing.T) {
+	queryDrift := comparison{Cmp: deploy.Comparison{QueryDiffers: true}}
+	emitDrift := comparison{Cmp: deploy.Comparison{EmitDiffers: true}}
+	for _, tc := range []struct {
+		name   string
+		action deployAction
+		cmp    comparison
+		want   bool
+	}{
+		{"update with query drift", actUpdate, queryDrift, true},
+		{"update with emit-only drift", actUpdate, emitDrift, false},
+		{"create is never a logic change", actCreate, queryDrift, false},
+		{"refuse is never a logic change", actRefuse, queryDrift, false},
+	} {
+		if got := isLogicChange(tc.action, tc.cmp); got != tc.want {
+			t.Errorf("%s: isLogicChange = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestResolveResets(t *testing.T) {
+	mk := func() []plannedItem {
+		return []plannedItem{
+			{name: "logic", action: actUpdate, logicChange: true},
+			{name: "settings", action: actUpdate, logicChange: false}, // emit-only update
+			{name: "new", action: actCreate},
+			{name: "refused", action: actRefuse},
+		}
+	}
+
+	off := mk()
+	resolveResets(off, false)
+	if off[0].action != actUpdate {
+		t.Errorf("flag off: logic-change should stay update, got %s", off[0].action)
+	}
+
+	on := mk()
+	resolveResets(on, true)
+	if on[0].action != actReset {
+		t.Errorf("flag on: logic-change should become reset, got %s", on[0].action)
+	}
+	if on[1].action != actUpdate {
+		t.Errorf("flag on: settings-only update must NOT become reset, got %s", on[1].action)
+	}
+	if on[2].action != actCreate || on[3].action != actRefuse {
+		t.Error("flag on: create and refuse should be untouched")
+	}
+}
+
+func TestApplyActionResetSequence(t *testing.T) {
+	for _, emit := range []bool{true, false} {
+		f := &fakeWriter{}
+		if err := applyAction(context.Background(), f, "p", actReset, &deploy.Descriptor{Query: "q", Emit: emit}); err != nil {
+			t.Fatalf("applyAction(reset): %v", err)
+		}
+		// stop → update (new query) → reset (rewind) → start.
+		if strings.Join(f.calls, ",") != "disable,update,reset,enable" {
+			t.Errorf("reset sequence = %v, want disable,update,reset,enable", f.calls)
+		}
+		if f.updateOpts.Emit == nil || *f.updateOpts.Emit != emit {
+			t.Errorf("reset update Emit = %v, want %v sent explicitly", f.updateOpts.Emit, emit)
+		}
+	}
+}
+
+func TestApplyActionResetEnableFailure(t *testing.T) {
+	// Enable fails after the reset already wiped state: the error must name the
+	// recovery, since there's no auto-rollback.
+	f := &fakeWriter{failOn: "enable"}
+	err := applyAction(context.Background(), f, "orders", actReset, &deploy.Descriptor{Query: "q"})
+	if err == nil {
+		t.Fatal("expected an error when enable fails after reset")
+	}
+	if !strings.Contains(err.Error(), "gaffer start orders") {
+		t.Errorf("error should name the recovery (gaffer start orders), got: %v", err)
+	}
+}
+
+func TestApplyActionResetMidSequenceFailure(t *testing.T) {
+	// A step failing must stop the sequence (no later steps run) and name the
+	// state the projection is left in, since there's no auto-rollback.
+	for _, tc := range []struct {
+		failOn    string
+		wantCalls string
+		wantMsg   string
+	}{
+		{"disable", "disable", "projection untouched"},
+		{"update", "disable,update", "gaffer start orders"},         // stopped on old logic
+		{"reset", "disable,update,reset", "gaffer recreate orders"}, // stopped, not rewound
+	} {
+		f := &fakeWriter{failOn: tc.failOn}
+		err := applyAction(context.Background(), f, "orders", actReset, &deploy.Descriptor{Query: "q"})
+		if err == nil {
+			t.Fatalf("failOn %s: expected an error", tc.failOn)
+		}
+		if strings.Join(f.calls, ",") != tc.wantCalls {
+			t.Errorf("failOn %s: calls = %v, want %s (should stop at the failure)", tc.failOn, f.calls, tc.wantCalls)
+		}
+		if !strings.Contains(err.Error(), tc.wantMsg) {
+			t.Errorf("failOn %s: error should mention %q, got: %v", tc.failOn, tc.wantMsg, err)
 		}
 	}
 }
@@ -171,6 +292,7 @@ func TestJSONSink(t *testing.T) {
 	s.done(deployResult{Name: "a", Action: actCreate})
 	s.done(deployResult{Name: "b", Action: actRefuse, Reason: "engine version"})
 	s.done(deployResult{Name: "c", Action: actUpdate, Err: errors.New("boom")})
+	s.done(deployResult{Name: "d", Action: actUpdate, LogicChange: true}) // continued over a logic change
 	if err := s.finish(); err != nil {
 		t.Fatalf("finish: %v", err)
 	}
@@ -183,6 +305,7 @@ func TestJSONSink(t *testing.T) {
 		{Name: "a", Outcome: "created"},
 		{Name: "b", Outcome: "refused", Reason: "engine version"},
 		{Name: "c", Outcome: "failed", Error: "boom"},
+		{Name: "d", Outcome: "updated", LogicChange: true},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %d results, want %d:\n%s", len(got), len(want), b.String())

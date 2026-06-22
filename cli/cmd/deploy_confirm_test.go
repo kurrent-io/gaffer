@@ -22,8 +22,7 @@ func noChangePlan() []plannedItem {
 }
 
 func confirm(plan []plannedItem, yes, jsonOut bool) error {
-	creates, updates := planChangeCounts(plan)
-	return confirmPlan(io.Discard, io.Discard, plan, "", creates, updates, yes, jsonOut, false)
+	return confirmPlan(io.Discard, io.Discard, plan, "", planChangeCounts(plan), yes, jsonOut, false)
 }
 
 func TestConfirmPlan(t *testing.T) {
@@ -54,8 +53,8 @@ func TestConfirmPlan(t *testing.T) {
 func TestConfirmPlanYesSkipsOnProd(t *testing.T) {
 	// --yes is an explicit confirmation and proceeds even against production - prod
 	// only blocks the blanket --force bypass, not an explicit --yes.
-	creates, updates := planChangeCounts(changePlan())
-	if err := confirmPlan(io.Discard, io.Discard, changePlan(), "orders-prod", creates, updates, true, false, true); err != nil {
+	plan := changePlan()
+	if err := confirmPlan(io.Discard, io.Discard, plan, "orders-prod", planChangeCounts(plan), true, false, true); err != nil {
 		t.Errorf("--yes should proceed even on production, got %v", err)
 	}
 }
@@ -63,7 +62,7 @@ func TestConfirmPlanYesSkipsOnProd(t *testing.T) {
 func TestConfirmPlanYesWarnsFaulted(t *testing.T) {
 	plan := []plannedItem{{name: "orders", action: actUpdate, faulted: true}}
 	var errOut bytes.Buffer
-	if err := confirmPlan(io.Discard, &errOut, plan, "prod", 0, 1, true, false, false); err != nil {
+	if err := confirmPlan(io.Discard, &errOut, plan, "prod", planChangeCounts(plan), true, false, false); err != nil {
 		t.Fatalf("confirmPlan(--yes): %v", err)
 	}
 	if !strings.Contains(errOut.String(), "orders is faulted") {
@@ -76,13 +75,17 @@ func TestPlanChangeCounts(t *testing.T) {
 		{action: actCreate},
 		{action: actCreate},
 		{action: actUpdate},
+		{action: actReset},
 		{action: actSkip},
 		{action: actRefuse},
 		{action: actCreate, err: errors.New("read fail")}, // planning error: not a change
 	}
-	creates, updates := planChangeCounts(plan)
-	if creates != 2 || updates != 1 {
-		t.Errorf("counts = (%d create, %d update), want (2, 1)", creates, updates)
+	got := planChangeCounts(plan)
+	if got.creates != 2 || got.updates != 1 || got.rebuilds != 1 {
+		t.Errorf("totals = %+v, want creates 2, updates 1, rebuilds 1", got)
+	}
+	if got.changes() != 4 {
+		t.Errorf("changes() = %d, want 4", got.changes())
 	}
 }
 
@@ -139,17 +142,20 @@ func TestDeployTarget(t *testing.T) {
 func TestWritePlanSummary(t *testing.T) {
 	plan := []plannedItem{
 		{name: "a", action: actCreate},
-		{name: "b", action: actUpdate, faulted: true},
+		{name: "b", action: actUpdate, logicChange: true, faulted: true},
+		{name: "e", action: actReset, cmp: comparison{Local: desc("q", 2, true)}}, // emits
 		{name: "c", action: actSkip},
 		{name: "d", action: actRefuse, reason: "engine version"},
 	}
 	var buf bytes.Buffer
-	newTextWriter(&buf, &buf).writePlanSummary(plan, "orders-prod", 1, 1, false)
+	newTextWriter(&buf, &buf).writePlanSummary(plan, "orders-prod", planChangeCounts(plan), false)
 	out := buf.String()
 	for _, want := range []string{
 		"Plan for orders-prod:",
-		"1 to create", "1 to update", "1 in sync", "1 refused",
+		"1 to create", "1 to update", "1 to rebuild", "1 in sync", "1 refused",
+		"logic change(s) continuing from checkpoint",
 		"b is faulted; updating won't clear the fault",
+		"e emits; rebuilding re-emits",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("plan summary missing %q in:\n%s", want, out)
@@ -160,7 +166,7 @@ func TestWritePlanSummary(t *testing.T) {
 	}
 
 	var prodBuf bytes.Buffer
-	newTextWriter(&prodBuf, &prodBuf).writePlanSummary(plan, "orders-prod", 1, 1, true)
+	newTextWriter(&prodBuf, &prodBuf).writePlanSummary(plan, "orders-prod", planChangeCounts(plan), true)
 	if !strings.Contains(prodBuf.String(), "PRODUCTION") {
 		t.Errorf("prod summary should show a production banner:\n%s", prodBuf.String())
 	}

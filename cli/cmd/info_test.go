@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
@@ -38,6 +39,11 @@ func TestRunInfoDegradesOnConfigError(t *testing.T) {
 	var s *silentError
 	if !errors.As(err, &s) {
 		t.Errorf("expected a silent error (degraded body already shown, no fang re-print), got %v", err)
+	}
+	// The non-zero return is what classifies the telemetry outcome: an invalid
+	// projection is a user error, not a success.
+	if got := outcomeFor(err); got != telemetry.OutcomeUserError {
+		t.Errorf("invalid info should record user_error telemetry, got %s", got)
 	}
 	for _, want := range []string{"bad", "invalid local definition", "track_emitted_streams is only valid with engine_version 1"} {
 		if !strings.Contains(out, want) {

@@ -608,21 +608,23 @@ func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, totals
 	// order, so the user sees which ones change and why any are refused. In-sync
 	// projections are counted only, not listed, so they don't drown the signal.
 	// Three columns: name, the coloured verdict, then a dimmed detail.
-	nameWidth, verdictWidth := 0, 0
+	// Collect the listed projections once (planVerdict is the single source for
+	// which list and how), then size the columns and render from the rows.
+	var rows []planPreviewRow
 	for _, it := range plan {
-		if word, _, _ := tw.planVerdict(it); word != "" {
-			nameWidth = max(nameWidth, len(it.name))
-			verdictWidth = max(verdictWidth, len(word))
+		if word, styled, detail := tw.planVerdict(it); word != "" {
+			rows = append(rows, planPreviewRow{it.name, word, styled, detail})
 		}
 	}
-	for _, it := range plan {
-		word, styled, detail := tw.planVerdict(it)
-		if word == "" {
-			continue // in-sync: counted, not listed
-		}
-		line := fmt.Sprintf("  %-*s  %s", nameWidth, it.name, styled)
-		if detail != "" {
-			line += strings.Repeat(" ", verdictWidth-len(word)) + "  " + tw.styles.muted.Render(detail)
+	nameWidth, verdictWidth := 0, 0
+	for _, r := range rows {
+		nameWidth = max(nameWidth, len(r.name))
+		verdictWidth = max(verdictWidth, len(r.word))
+	}
+	for _, r := range rows {
+		line := fmt.Sprintf("  %-*s  %s", nameWidth, r.name, r.styled)
+		if r.detail != "" {
+			line += strings.Repeat(" ", verdictWidth-len(r.word)) + "  " + tw.styles.muted.Render(r.detail)
 		}
 		tw.write("%s\n", line)
 	}
@@ -635,6 +637,10 @@ func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, totals
 	tw.writeApplyWarnings(plan)
 	tw.blank()
 }
+
+// planPreviewRow is one listed projection's rendered columns, collected once so
+// the verdict is styled a single time rather than re-rendered for width sizing.
+type planPreviewRow struct{ name, word, styled, detail string }
 
 // planVerdict is one projection's disposition for the preview: word is the
 // unstyled disposition (returned for column alignment), styled is it in its

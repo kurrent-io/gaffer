@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
@@ -57,7 +58,8 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 	}
 	defer cleanup()
 
-	if cfg.FindProjection(name) == nil {
+	def := cfg.FindProjection(name)
+	if def == nil {
 		return fmt.Errorf("projection %q is not in gaffer.toml; recreate rebuilds from local config", name)
 	}
 
@@ -76,29 +78,23 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 		}
 	}
 
-	cmpCtx, cmpCancel := context.WithTimeout(ctx, projectionRPCTimeout)
-	cmp, err := compareProjection(cmpCtx, r, cfg, root, name)
-	cmpCancel()
+	// Build the descriptor by compiling the local source. recreate creates from
+	// local config and never reads the deployed definition, so it avoids the $ops
+	// stream read that compareProjection needs - matching delete/start/stop, which
+	// only check existence. A hard compile failure leaves nothing to create from,
+	// so refuse even under --no-validate (which only skips the diagnostics gate).
+	source, err := engine.ReadSource(root, def.Entry)
 	if err != nil {
 		return err
 	}
-	target, prod := resolveOperateTarget(ctx, r, opts.Env)
+	local, err := engine.LocalDescriptor(engine.NewProjection(root, cfg, def, source))
+	if err != nil {
+		return fmt.Errorf("projection %q does not compile, so there's nothing to recreate it from: %w", name, err)
+	}
 
-	// A hard compile failure leaves no descriptor to create from, so refuse even
-	// under --no-validate (which only bypasses the diagnostics gate, not a query
-	// that won't compile).
-	if cmp.State == driftInvalid {
-		return fmt.Errorf("projection %q does not compile, so there's nothing to recreate it from: %w", name, cmp.LocalErr)
-	}
-	if cmp.State == driftNotDeployed {
-		return fmt.Errorf("projection %q is not deployed on %s; run gaffer deploy to create it", name, targetDesc(target))
-	}
-	local := cmp.Local
-	if local == nil {
-		// Unreachable: only an untracked projection has a nil Local, and that's
-		// rejected by the gaffer.toml check above. Guard so a future change to
-		// compareProjection can't silently delete with nothing to recreate.
-		return fmt.Errorf("projection %q has no local definition to recreate from", name)
+	target, prod := resolveOperateTarget(ctx, r, opts.Env)
+	if err := requireExists(ctx, r, name, target); err != nil {
+		return err
 	}
 
 	if prod && opts.NoValidate {

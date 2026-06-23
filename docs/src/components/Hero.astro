@@ -1,17 +1,23 @@
 ---
 // Overrides Starlight's default Hero on `template: splash` pages.
 // Renders HeroBackdrop full-bleed behind the gaffer wordmark + subtitle.
+//
+// Scoped to the homepage. Starlight's built-in 404 also uses
+// `template: splash` and injects its own `hero` data, so gating on
+// `hero` alone leaks the full-bleed brand hero onto the 404 (and any
+// future splash page). The site root is the only route with an empty id.
 import HeroBackdrop from './hero/HeroBackdrop.astro';
 import GafferLogomark from '../assets/gaffer-logomark.svg';
 import GafferWordmark from '../assets/gaffer-wordmark.svg';
 
-const { entry } = Astro.locals.starlightRoute;
+const { entry, id } = Astro.locals.starlightRoute;
 const title = entry.data.title;
 const hero = entry.data.hero;
+const isHome = id === '';
 ---
 
 {
-	hero && (
+	isHome && hero && (
 		<div class="gaffer-hero not-content">
 			<HeroBackdrop />
 			<div class="gaffer-hero__overlay">

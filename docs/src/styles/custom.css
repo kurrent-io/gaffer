@@ -151,6 +151,41 @@ header.header {
 	padding-block: 0.5rem;
 }
 
+/* Pin the footer to the bottom of the viewport on short pages so it
+   doesn't float mid-screen. The page frame is min-height: 100vh but the
+   header and sidebar are position: fixed, so nothing stretches the content
+   column - size the content area to the viewport (minus the fixed nav) and
+   let the footer cluster (Starlight's footer + the brand bar) absorb the
+   slack. Long pages overflow it, so the min-height and auto margin are
+   no-ops there. Excludes the homepage, whose full-bleed hero owns the
+   layout. */
+body:not(:has(.gaffer-hero)) .main-pane > main {
+	min-height: calc(100vh - var(--sl-nav-height, 3.5rem));
+	display: flex;
+	flex-direction: column;
+}
+body:not(:has(.gaffer-hero)) .main-pane > main > .content-panel:last-child,
+body:not(:has(.gaffer-hero)) .main-pane > main > .content-panel:last-child > .sl-container {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+}
+/* .sl-container positions content with margin-inline: auto 0 against a
+   max-width. As a flex item that collapses it to its content width and
+   shoves it to the right; force full width so it lays out exactly as it
+   does in block flow (the auto margin then has the same near-zero slack). */
+body:not(:has(.gaffer-hero)) .main-pane > main > .content-panel:last-child > .sl-container {
+	width: 100%;
+}
+/* Push the footer cluster down. `auto` sits on Starlight's <footer>, which
+   isn't the last child (the .gaffer-footer brand bar follows it), but the
+   auto margin absorbs all slack above <footer>, carrying everything after it
+   - the brand bar included - to the bottom as one block. Assumes <footer> and
+   the brand bar are the trailing elements; revisit if that markup changes. */
+body:not(:has(.gaffer-hero)) .main-pane > main > .content-panel:last-child > .sl-container > footer {
+	margin-top: auto;
+}
+
 /* On the homepage, match the content's horizontal padding to the hero
    overlay so body content lines up with the hero edges. */
 body:has(.gaffer-hero) {

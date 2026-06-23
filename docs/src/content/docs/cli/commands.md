@@ -147,16 +147,18 @@ understand which features people use. It is opt-out: enabled by
 default. See https://gaffer.kurrent.io/telemetry/ (and `gaffer config
 telemetry status`) for exactly what is collected and how to turn it off.
 
-## gaffer config telemetry off
+## gaffer config telemetry status
 
-Disable telemetry on this machine.
+Show current telemetry configuration.
 
-Set the user-level telemetry preference to disabled and clear the
-per-install id and salt. Prints the cleared id one last time so you
-can capture it for a deletion request (email privacy@kurrent.io).
+Print the current telemetry state, broken down by source. Use this
+to find which layer (user config, environment variable, or workspace
+gaffer.toml) is enabling or disabling telemetry for this invocation.
+
+Always exits 0.
 
 ```
-gaffer config telemetry off
+gaffer config telemetry status
 ```
 
 ## gaffer config telemetry on
@@ -174,18 +176,16 @@ the command surfaces them so you know what else to change.
 gaffer config telemetry on
 ```
 
-## gaffer config telemetry status
+## gaffer config telemetry off
 
-Show current telemetry configuration.
+Disable telemetry on this machine.
 
-Print the current telemetry state, broken down by source. Use this
-to find which layer (user config, environment variable, or workspace
-gaffer.toml) is enabling or disabling telemetry for this invocation.
-
-Always exits 0.
+Set the user-level telemetry preference to disabled and clear the
+per-install id and salt. Prints the cleared id one last time so you
+can capture it for a deletion request (email privacy@kurrent.io).
 
 ```
-gaffer config telemetry status
+gaffer config telemetry off
 ```
 
 ## gaffer version
@@ -267,6 +267,31 @@ Flags:
       --connection string   KurrentDB connection string (overrides --env)
       --env string          Environment from gaffer.toml to compare against
       --json                Output as JSON
+```
+
+## gaffer recreate
+
+Destroy and rebuild a projection from local config.
+
+Recreate a projection on a KurrentDB environment: stop it, delete it (with its state and checkpoint streams), then create it fresh from gaffer.toml, reprocessing from zero.
+
+For a change deploy can't apply in place (engine version or track-emitted-streams, both create-only), or a clean-slate rebuild of a wedged projection an in-place reset can't fix. The projection must be in gaffer.toml (recreate builds from local config) and already deployed.
+
+Destructive and not reversible, so it always confirms (louder against production); --yes skips the prompt. It compiles the projection first, before anything is deleted, so a broken local definition can't leave you with nothing to rebuild; --no-validate skips that check, though production refuses it. --delete-emitted also removes the streams the projection wrote (off by default; reprocessing otherwise re-emits and may duplicate into them). Pass --json for machine-readable output.
+
+```
+gaffer recreate <projection> [flags]
+```
+
+Flags:
+
+```
+      --connection string   KurrentDB connection string (overrides --env)
+      --delete-emitted      Also delete the streams the projection emitted
+      --env string          Environment from gaffer.toml
+      --json                Output as JSON
+      --no-validate         Skip the preflight compile check and recreate anyway
+  -y, --yes                 Skip the confirmation prompt
 ```
 
 ## gaffer start

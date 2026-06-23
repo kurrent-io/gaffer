@@ -122,7 +122,7 @@ func renderOperate(out io.Writer, jsonOut bool, name, outcome, target string) er
 		_, err = fmt.Fprintln(out, string(b))
 		return err
 	}
-	past := map[string]string{"started": "Started", "stopped": "Stopped", "aborted": "Aborted", "deleted": "Deleted"}[outcome]
+	past := map[string]string{"started": "Started", "stopped": "Stopped", "aborted": "Aborted", "deleted": "Deleted", "recreated": "Recreated"}[outcome]
 	if target != "" {
 		_, err := fmt.Fprintf(out, "%s %s on %s.\n", past, name, target)
 		return err

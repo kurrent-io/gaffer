@@ -69,19 +69,22 @@ func runInfo(name string, asJSON bool) error {
 	return nil
 }
 
-// renderInvalidInfo reports an invalid projection in the degraded style shared
-// with diff/status: the name and the reason, exit 0. With --json it emits a
-// minimal object carrying the error.
+// renderInvalidInfo reports an invalid projection. In text mode it shows the
+// degraded body shared with diff (the projection name + the reason), then returns
+// a silent error so the exit is non-zero - info is a single-projection command
+// that couldn't do its job - without fang re-printing what we already rendered.
+// The non-zero return also classifies the telemetry outcome as a user error
+// rather than success. In --json mode it fails cleanly (non-zero, error on
+// stderr) rather than emitting a partial object whose shape differs from valid
+// info output.
 func renderInvalidInfo(name string, reason error, asJSON bool) error {
 	if asJSON {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(map[string]any{"name": name, "error": reason.Error()})
+		return reason
 	}
 	tw := newTextWriter(os.Stdout, os.Stderr)
 	tw.heading(name)
 	tw.writeInvalidBody(reason)
-	return nil
+	return silent(reason)
 }
 
 func writeInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) error {

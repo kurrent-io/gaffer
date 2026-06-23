@@ -87,22 +87,39 @@ func NewRootCmd() *cobra.Command {
 
 	registerHiddenInvocationFlags(root)
 
-	root.AddCommand(newVersionCmd())
-	root.AddCommand(newInitCmd())
-	root.AddCommand(newScaffoldCmd())
-	root.AddCommand(newDevCmd())
+	// Group commands by workflow in --help rather than one flat alphabetical
+	// list. Order within a group is intentional (e.g. inspect -> sync -> operate),
+	// so turn off cobra's alphabetical sort and add in that order.
+	cobra.EnableCommandSorting = false
+
+	const (
+		grpDevelop     = "develop"
+		grpEnvironment = "environment"
+		grpTools       = "tools"
+	)
+	root.AddGroup(
+		&cobra.Group{ID: grpDevelop, Title: "Develop locally"},
+		&cobra.Group{ID: grpEnvironment, Title: "Deploy & operate"},
+		&cobra.Group{ID: grpTools, Title: "Tools & config"},
+	)
+
+	add := func(group string, cmds ...*cobra.Command) {
+		for _, c := range cmds {
+			c.GroupID = group
+			root.AddCommand(c)
+		}
+	}
+	add(grpDevelop, newInitCmd(), newScaffoldCmd(), newDevCmd(), newInfoCmd())
+	add(grpEnvironment, newDiffCmd(), newStatusCmd(), newDeployCmd(), newStartCmd(), newStopCmd(), newDeleteCmd())
+	add(grpTools, newAuthCmd(), newConfigCmd(), newMCPCmd(), newLSPCmd(), newVersionCmd())
+
+	// manifest is editor-facing: hidden from help, so it needs no group.
 	root.AddCommand(newManifestCmd())
-	root.AddCommand(newInfoCmd())
-	root.AddCommand(newDiffCmd())
-	root.AddCommand(newStatusCmd())
-	root.AddCommand(newDeployCmd())
-	root.AddCommand(newStartCmd())
-	root.AddCommand(newStopCmd())
-	root.AddCommand(newDeleteCmd())
-	root.AddCommand(newAuthCmd())
-	root.AddCommand(newMCPCmd())
-	root.AddCommand(newLSPCmd())
-	root.AddCommand(newConfigCmd())
+
+	// The auto-generated help and completion commands have no group by default;
+	// put them with the other tooling so nothing dangles above the groups.
+	root.SetHelpCommandGroupID(grpTools)
+	root.SetCompletionCommandGroupID(grpTools)
 
 	return root
 }

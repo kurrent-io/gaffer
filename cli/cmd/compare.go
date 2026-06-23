@@ -124,20 +124,12 @@ func compareProjection(ctx context.Context, r *remote.Client, cfg *config.Config
 	// local/deployed columns for the diff; a bad entry leaves nothing to read, so
 	// Local may stay nil (the invalid renderers tolerate that).
 	if cfgErr := cfg.ProjectionConfigError(name); cfgErr != nil {
-		c := comparison{Name: name, State: driftInvalid, LocalErr: cfgErr}
-		if source, srcErr := engine.ReadSource(root, def.Entry); srcErr == nil {
-			partial := engine.PartialDescriptor(engine.NewProjection(root, cfg, def, source))
-			c.Local = &partial
-		}
-		deployedDef, err := r.Read(ctx, name)
-		if err != nil && !errors.Is(err, remote.ErrNotFound) {
-			return comparison{}, err
-		}
-		if err == nil {
-			deployed := deployedDef.Descriptor()
-			c.Deployed = &deployed
-		}
-		return c, nil
+		// There's no valid local definition, so nothing to compile or compare - and
+		// nothing safe to read, since the error may be that the entry escapes the
+		// project root. Surface invalid with just the reason; the invalid renderers
+		// handle a nil Local/Deployed. (No comparison means no misleading "in sync"
+		// from an unset Cmp.)
+		return comparison{Name: name, State: driftInvalid, LocalErr: cfgErr}, nil
 	}
 
 	source, err := engine.ReadSource(root, def.Entry)

@@ -95,6 +95,20 @@ func planChangeCounts(plan []plannedItem) planTotals {
 	return t
 }
 
+// prodWhere names the target for a confirm prompt: the target with "production"
+// prepended when prod, "production" alone when prod with no known target, or just
+// the target otherwise. Empty when nothing is known and not production. Shared by
+// the deploy and operate confirms so the production phrasing stays consistent.
+func prodWhere(target string, prod bool) string {
+	if !prod {
+		return target
+	}
+	if target == "" {
+		return "production"
+	}
+	return "production " + target
+}
+
 // confirmTitle is the yes/no question: the change count and, when known, the
 // target it lands on. A production target is named as such so the prompt reads
 // louder.
@@ -103,15 +117,7 @@ func confirmTitle(n int, target string, prod bool) string {
 	if n != 1 {
 		noun = "changes"
 	}
-	where := target
-	if prod {
-		if where == "" {
-			where = "production"
-		} else {
-			where = "production " + where
-		}
-	}
-	if where != "" {
+	if where := prodWhere(target, prod); where != "" {
 		return fmt.Sprintf("Apply %d %s to %s?", n, noun, where)
 	}
 	return fmt.Sprintf("Apply %d %s?", n, noun)

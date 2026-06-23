@@ -636,7 +636,7 @@ func (tw *textWriter) writePreflightFailures(total int, failures []preflightFail
 			tw.write("    %s\n", tw.styles.errDetail.Render(r))
 		}
 	}
-	tw.write("\n%s\n", tw.styles.pipe.Render("Fix the errors above, or pass --force to deploy anyway."))
+	tw.write("\n%s\n", tw.styles.pipe.Render("Fix the errors above, or pass --no-validate to deploy anyway."))
 }
 
 // diagnosticAnchor is the docs heading slug for a code: github-slugger's

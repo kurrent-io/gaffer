@@ -15,7 +15,7 @@ type deployOpts struct {
 	Env                string
 	Connection         string
 	JSON               bool
-	Force              bool
+	NoValidate         bool
 	Yes                bool
 	ResetOnLogicChange bool
 }
@@ -125,12 +125,12 @@ func newDeployCmd() *cobra.Command {
 			"in place; deploy refuses it and points you at gaffer recreate.\n\n" +
 			"Every projection is compiled before anything is sent to the server; if any fails to " +
 			"compile or has errors that would fault on the server, the whole deploy is refused so " +
-			"a bad projection can't leave a half-applied set. --force skips this check.\n\n" +
+			"a bad projection can't leave a half-applied set. --no-validate skips this check.\n\n" +
 			"When the plan would change something, deploy shows it and asks to confirm before " +
 			"applying; updating a projection that's currently faulted is flagged, since the update " +
 			"won't clear the fault. --yes skips the prompt; without a terminal (or with --json) deploy " +
 			"won't apply unconfirmed, so pass --yes in scripts. A server that reports itself as " +
-			"production gets a louder confirm and refuses --force (deploy without it and confirm). " +
+			"production gets a louder confirm and refuses --no-validate. " +
 			"Pass --json for machine-readable output.",
 		Example: "  gaffer deploy\n" +
 			"  gaffer deploy order-count --env staging",
@@ -146,7 +146,7 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment from gaffer.toml to deploy to")
 	cmd.Flags().StringVar(&opts.Connection, "connection", "", "KurrentDB connection string (overrides --env)")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output as JSON")
-	cmd.Flags().BoolVar(&opts.Force, "force", false, "Skip the preflight compile check and deploy anyway")
+	cmd.Flags().BoolVar(&opts.NoValidate, "no-validate", false, "Skip the preflight compile check and deploy anyway")
 	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip the confirmation prompt")
 	cmd.Flags().BoolVar(&opts.ResetOnLogicChange, "reset-on-logic-change", false, "Rebuild from zero on a logic change instead of continuing from checkpoint")
 	return cmd
@@ -180,7 +180,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	// Preflight gate, before connecting: compile everything locally, unless
 	// bypassed. A failure refuses the whole run - so a bad projection can't leave
 	// the earlier ones already applied - and needs no reachable server.
-	if !opts.Force {
+	if !opts.NoValidate {
 		failures := runPreflight(ctx, root, cfg, names)
 		if ctx.Err() != nil {
 			return silent(ctx.Err())
@@ -227,18 +227,18 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 		// ACL-restricted on a secured server - so any error falls back to baseline
 		// silently (info is nil). Not worth a warning on every deploy, and a real
 		// connection failure surfaces when the apply writes. Trade-off: an
-		// unreadable prod DB drops the prod tier (re-permits --force); the core
+		// unreadable prod DB drops the prod tier (re-permits --no-validate); the core
 		// never-apply-unconfirmed guard still holds.
 		_ = siErr
 		target = deployTarget(opts.Env, info)
 		prod = info.IsProduction()
 	}
 
-	// --force is the blanket (nuclear) bypass; production never accepts it. Refuse
-	// before applying - the projections were already compiled past preflight, but
-	// nothing has been written yet.
-	if prod && opts.Force {
-		return silent(fmt.Errorf("--force is not allowed on production %s: it bypasses safety checks. Deploy without it and confirm the change", targetDesc(target)))
+	// --no-validate skips the preflight compile gate; production never accepts it,
+	// so a prod deploy always validates first. Refuse before applying - nothing has
+	// been written yet.
+	if prod && opts.NoValidate {
+		return silent(fmt.Errorf("--no-validate is not allowed on production %s: it skips the preflight compile check. Deploy without it so projections are validated first", targetDesc(target)))
 	}
 
 	if err := confirmPlan(cmd.OutOrStdout(), cmd.ErrOrStderr(), plan, target, totals, opts.Yes, opts.JSON, prod); err != nil {
@@ -452,7 +452,7 @@ func planAction(c comparison) (deployAction, string) {
 		}
 		return actUpdate, ""
 	case driftInvalid:
-		// Only reachable under --force (preflight otherwise blocks first): the
+		// Only reachable under --no-validate (preflight otherwise blocks first): the
 		// source doesn't compile, so emit is unknown and the projection can't be
 		// applied correctly. Refuse rather than send a wrong definition.
 		return actRefuse, "local source does not compile"

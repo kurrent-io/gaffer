@@ -478,7 +478,7 @@ func recreateReason(c comparison) string {
 	default:
 		which = fmt.Sprintf("track emitted streams (remote %t, local %t)", c.Deployed.TrackEmittedStreams, c.Local.TrackEmittedStreams)
 	}
-	return which + " can't be changed in place; run gaffer recreate to rebuild it"
+	return which + " can't be changed in place, use gaffer recreate"
 }
 
 // applyAction performs the create, update, or logic-change reset. Emit is always

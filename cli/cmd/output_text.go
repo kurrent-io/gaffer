@@ -287,14 +287,15 @@ func (tw *textWriter) WriteDiff(e comparison) {
 // verdict. With nothing deployed there's nothing to compare, so it just notes the
 // state. The compile error follows so the user knows what to fix.
 func (tw *textWriter) writeInvalidDiff(e comparison) {
-	switch {
-	case e.Local == nil:
-		// No readable local definition (e.g. a config error with a bad entry):
-		// nothing to compare, so just note the state; the error follows below.
-		tw.status(tw.styles.warning.Render("invalid local definition"))
-	case e.Deployed == nil:
+	// No readable local definition (e.g. a config error with a bad entry): nothing
+	// to compare, so just the shared invalid body. Same rendering as info.
+	if e.Local == nil {
+		tw.writeInvalidBody(e.LocalErr)
+		return
+	}
+	if e.Deployed == nil {
 		tw.status(tw.styles.warning.Render("not deployed; invalid local definition"))
-	default:
+	} else {
 		tw.detail("Query", tw.queryStatus(e))
 		tw.detail("Engine version", tw.versionStatus(e))
 		tw.detail("Emit", tw.styles.warning.Render("unknown (invalid local definition)"))
@@ -305,6 +306,17 @@ func (tw *textWriter) writeInvalidDiff(e comparison) {
 	if e.LocalErr != nil {
 		tw.blank()
 		tw.write("%s\n", tw.styles.errDetail.Render(e.LocalErr.Error()))
+	}
+}
+
+// writeInvalidBody renders the body of an invalid projection - the "invalid"
+// line and the reason. The caller writes the heading. Shared by info and diff so
+// the invalid presentation stays consistent across the inspection commands.
+func (tw *textWriter) writeInvalidBody(reason error) {
+	tw.status(tw.styles.warning.Render("invalid local definition"))
+	if reason != nil {
+		tw.blank()
+		tw.write("%s\n", tw.styles.errDetail.Render(reason.Error()))
 	}
 }
 

@@ -453,9 +453,9 @@ func planAction(c comparison) (deployAction, string) {
 		return actUpdate, ""
 	case driftInvalid:
 		// The local definition is invalid - it doesn't compile, or carries a
-		// per-projection config error (e.g. track_emitted_streams on v2). Either
-		// way there's no correct definition to send, so refuse, naming the actual
-		// problem when we have it.
+		// per-projection config error (e.g. a missing engine_version or a bad entry
+		// path). Either way there's no correct definition to send, so refuse, naming
+		// the actual problem when we have it.
 		if c.LocalErr != nil {
 			return actRefuse, c.LocalErr.Error()
 		}

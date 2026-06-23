@@ -95,8 +95,9 @@ func leaderOpts() kurrentdb.GenericProjectionOptions {
 // with a read before creating rather than racing a create against the error.
 //
 // EngineVersion 2 with TrackEmittedStreams is rejected by the client before any
-// RPC (V2 does not support tracking emitted streams); deploy validates the
-// combination from config rather than relying on that error.
+// RPC (V2 does not support tracking emitted streams); deploy/recreate preflight
+// catch the combination first via the quirk.trackEmittedStreams.unsupportedOnV2
+// diagnostic, so this client error is only reachable under --no-validate.
 func (c *Client) Create(ctx context.Context, name, query string, opts CreateOptions) error {
 	return classify(c.proj.Create(ctx, name, query, kurrentdb.CreateProjectionOptions{
 		RequiresLeader:      true,

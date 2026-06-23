@@ -63,6 +63,18 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 	}
 	defer session.Destroy()
 
+	// A projection can compile yet carry error-severity diagnostics for a feature
+	// the server rejects or faults on (e.g. a V2-incompatible option). Report it
+	// invalid, matching what deploy/recreate preflight would refuse, rather than a
+	// bare valid:true that contradicts the diagnostic.
+	if errs := engine.ErrorDiagnostics(info.Diagnostics); len(errs) > 0 {
+		return toolResult(map[string]any{
+			"valid":       false,
+			"lastError":   errs[0].Code + ": " + errs[0].Message,
+			"diagnostics": info.Diagnostics,
+		}), nil, nil
+	}
+
 	return toolResult(map[string]any{
 		"valid":           true,
 		"name":            input.Name,

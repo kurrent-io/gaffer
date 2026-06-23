@@ -21,11 +21,19 @@ func Preflight(proj *Projection) ([]gafferruntime.Diagnostic, error) {
 	}
 	defer session.Destroy()
 
+	return ErrorDiagnostics(info.Diagnostics), nil
+}
+
+// ErrorDiagnostics returns the error-severity diagnostics from a compiled
+// projection's set - the ones known to fault on (or be rejected by) the server,
+// such as a V2-incompatible feature. deploy/recreate preflight refuse on these,
+// and validate reports the projection invalid for them.
+func ErrorDiagnostics(diags []gafferruntime.Diagnostic) []gafferruntime.Diagnostic {
 	var errs []gafferruntime.Diagnostic
-	for _, d := range info.Diagnostics {
+	for _, d := range diags {
 		if d.Severity == gafferruntime.DiagnosticSeverityError {
 			errs = append(errs, d)
 		}
 	}
-	return errs, nil
+	return errs
 }

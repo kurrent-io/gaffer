@@ -764,6 +764,7 @@ internal static unsafe class NativeExports {
 				? ms.GetInt64() : ProjectionSessionOptions.DefaultMaxStateSizeBytes,
 			Debug = root.TryGetProperty("debug", out var d) && d.GetBoolean(),
 			IncludeShape = root.TryGetProperty("includeShape", out var inc) && inc.GetBoolean(),
+			TrackEmittedStreams = root.TryGetProperty("trackEmittedStreams", out var tes) && tes.GetBoolean(),
 		};
 	}
 

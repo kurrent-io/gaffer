@@ -432,9 +432,10 @@ func (p Projection) configError() error {
 	if *p.EngineVersion != 1 && *p.EngineVersion != 2 {
 		return fmt.Errorf("projection %q engine_version must be 1 or 2, got %d", p.Name, *p.EngineVersion)
 	}
-	if p.TrackEmittedStreams != nil && *p.EngineVersion != 1 {
-		return fmt.Errorf("projection %q track_emitted_streams is only valid with engine_version 1", p.Name)
-	}
+	// track_emitted_streams + engine_version 2 is no longer rejected here: it's a V2-incompatibility
+	// diagnostic (quirk.trackEmittedStreams.unsupportedOnV2) the runtime emits off the resolved
+	// definition, so info/dev/diff compile and show the analysis while deploy/recreate preflight
+	// refuse on the error severity - the same path bi-state and outputState already take.
 	if p.QuirksVersion != "" && !validQuirksVersion(p.QuirksVersion) {
 		return fmt.Errorf("projection %q quirks_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", p.Name, p.QuirksVersion, "26.1.0")
 	}

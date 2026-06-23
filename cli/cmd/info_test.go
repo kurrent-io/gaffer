@@ -20,12 +20,11 @@ func TestRunInfoDegradesOnConfigError(t *testing.T) {
 		AddProjection("good", infoValidSource).
 		AddProjection("bad", infoValidSource).
 		Save()
-	// Make "bad" config-invalid: track_emitted_streams on engine_version 2 (the
-	// default). The source itself compiles - this is a config error, not a compile
-	// error.
+	// Make "bad" config-invalid: an out-of-range engine_version. The source itself
+	// compiles - this is a config error, not a compile error.
 	for i := range p.Cfg.Projection {
 		if p.Cfg.Projection[i].Name == "bad" {
-			p.Cfg.Projection[i].TrackEmittedStreams = testutil.Ptr(true)
+			p.Cfg.Projection[i].EngineVersion = testutil.Ptr(5)
 		}
 	}
 	p.Save()
@@ -45,9 +44,36 @@ func TestRunInfoDegradesOnConfigError(t *testing.T) {
 	if got := outcomeFor(err); got != telemetry.OutcomeUserError {
 		t.Errorf("invalid info should record user_error telemetry, got %s", got)
 	}
-	for _, want := range []string{"bad", "invalid local definition", "track_emitted_streams is only valid with engine_version 1"} {
+	for _, want := range []string{"bad", "invalid local definition", "must be 1 or 2"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("degraded info missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+// track_emitted_streams on engine_version 2 is no longer a config error - it's a
+// V2-incompatibility diagnostic. So info compiles, shows the full analysis, and
+// reports the diagnostic, rather than degrading. It still exits 0: info displays
+// diagnostics, it doesn't fail on them (deploy/recreate preflight do that).
+func TestRunInfoShowsAnalysisForTrackEmittedStreamsOnV2(t *testing.T) {
+	p := testutil.NewProject(t).AddProjection("tes", infoValidSource).Save()
+	for i := range p.Cfg.Projection {
+		if p.Cfg.Projection[i].Name == "tes" {
+			p.Cfg.Projection[i].EngineVersion = testutil.Ptr(2)
+			p.Cfg.Projection[i].TrackEmittedStreams = testutil.Ptr(true)
+		}
+	}
+	p.Save()
+	t.Chdir(p.Dir)
+
+	var err error
+	out := testutil.CaptureStdout(t, func() { err = runInfo("tes", false) })
+	if err != nil {
+		t.Fatalf("info on a track_emitted_streams v2 projection should compile, got %v", err)
+	}
+	for _, want := range []string{"tes", "v2", "quirk.trackEmittedStreams.unsupportedOnV2"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("info missing %q in:\n%s", want, out)
 		}
 	}
 }

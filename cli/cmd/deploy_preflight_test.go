@@ -97,6 +97,38 @@ func TestRunPreflight(t *testing.T) {
 	}
 }
 
+// A projection that compiles but carries an error-severity diagnostic
+// (track_emitted_streams on v2) is a preflight failure too - the gate that lets
+// deploy/recreate refuse it before any write, distinct from a compile error.
+func TestRunPreflightErrorDiagnostic(t *testing.T) {
+	const valid = `fromAll().when({ $any: function (s, e) { return s; } })`
+	p := testutil.NewProject(t).AddProjection("tes", valid).Save()
+	for i := range p.Cfg.Projection {
+		if p.Cfg.Projection[i].Name == "tes" {
+			p.Cfg.Projection[i].EngineVersion = testutil.Ptr(2)
+			p.Cfg.Projection[i].TrackEmittedStreams = testutil.Ptr(true)
+		}
+	}
+	p.Save()
+
+	failures := runPreflight(context.Background(), p.Dir, p.Cfg, []string{"tes"})
+	if len(failures) != 1 {
+		t.Fatalf("got %d failures, want 1 (the v2 track_emitted_streams projection): %+v", len(failures), failures)
+	}
+	if failures[0].Name != "tes" || failures[0].CompileErr != nil {
+		t.Fatalf("failure = %+v, want tes with no compile error (a diagnostic)", failures[0])
+	}
+	found := false
+	for _, d := range failures[0].Diagnostics {
+		if d.Code == "quirk.trackEmittedStreams.unsupportedOnV2" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected the V2-incompatibility diagnostic, got %+v", failures[0].Diagnostics)
+	}
+}
+
 func TestRunPreflightAllValid(t *testing.T) {
 	const valid = `fromAll().when({ $any: function (s, e) { return s; } })`
 	p := testutil.NewProject(t).

@@ -43,8 +43,19 @@ func addEnvFlags(cmd *cobra.Command, opts *operateOpts) {
 func resolveOperateTarget(ctx context.Context, r *remote.Client, env string) (target string, prod bool) {
 	siCtx, cancel := context.WithTimeout(ctx, projectionRPCTimeout)
 	defer cancel()
-	info, _ := r.ServerInfo(siCtx)
+	info, siErr := r.ServerInfo(siCtx)
+	_ = siErr // advisory: an unreadable $server-info drops to the env label and non-production
 	return deployTarget(env, info), info.IsProduction()
+}
+
+// checkOperable refuses $-prefixed system projections. gaffer doesn't manage
+// them (status/diff/deploy exclude them), and stopping or deleting one - say
+// $by_category - would break the database's standard projections.
+func checkOperable(name string) error {
+	if strings.HasPrefix(name, "$") {
+		return fmt.Errorf("%q is a system projection, which gaffer does not manage", name)
+	}
+	return nil
 }
 
 // requireExists fails with a friendly message when the named projection isn't on
@@ -220,6 +231,10 @@ type opSpec struct {
 // runOperate is the shared start/stop flow: connect, resolve the target, check
 // the projection exists, confirm per the verb's policy, then run the RPC.
 func runOperate(cmd *cobra.Command, name string, opts operateOpts, spec opSpec) error {
+	if err := checkOperable(name); err != nil {
+		return err
+	}
+
 	_, _, r, cleanup, err := connectEnv(opts.Connection, opts.Env)
 	if err != nil {
 		return err

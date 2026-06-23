@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
@@ -21,6 +22,17 @@ func TestOpQuestion(t *testing.T) {
 	} {
 		if got := opQuestion(tc.verb, tc.name, tc.target, tc.prod); got != tc.want {
 			t.Errorf("opQuestion(%q,%q,%q,%v) = %q, want %q", tc.verb, tc.name, tc.target, tc.prod, got, tc.want)
+		}
+	}
+}
+
+func TestCheckOperable(t *testing.T) {
+	if err := checkOperable("order-count"); err != nil {
+		t.Errorf("a normal projection should be operable, got %v", err)
+	}
+	for _, name := range []string{"$by_category", "$streams", "$projections-$all"} {
+		if err := checkOperable(name); err == nil || !strings.Contains(err.Error(), "system projection") {
+			t.Errorf("%s should be refused as a system projection, got %v", name, err)
 		}
 	}
 }

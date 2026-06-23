@@ -196,6 +196,28 @@ Print the gaffer version.
 gaffer version
 ```
 
+## gaffer delete
+
+Delete a projection from an environment.
+
+Delete a projection from a KurrentDB environment: remove it along with its state and checkpoint streams, leaving any streams it emitted in place.
+
+Destructive and not reversible, so it always confirms (louder against production); --yes skips the prompt. --delete-emitted also removes the streams the projection wrote, for a full clean-up. Acts on what's deployed, named directly, so the projection need not be in gaffer.toml. Pass --json for machine-readable output.
+
+```
+gaffer delete <projection> [flags]
+```
+
+Flags:
+
+```
+      --connection string   KurrentDB connection string (overrides --env)
+      --delete-emitted      Also delete the streams the projection emitted
+      --env string          Environment from gaffer.toml
+      --json                Output as JSON
+  -y, --yes                 Skip the confirmation prompt
+```
+
 ## gaffer deploy
 
 Create or update projections on an environment.
@@ -247,6 +269,26 @@ Flags:
       --json                Output as JSON
 ```
 
+## gaffer start
+
+Start (enable) a projection on an environment.
+
+Start a projection on a KurrentDB environment: enable it so it resumes processing from its last checkpoint.
+
+Acts on what's deployed, named directly, so the projection need not be in gaffer.toml. Starting an already-running projection is a no-op on the server. Pass --json for machine-readable output.
+
+```
+gaffer start <projection> [flags]
+```
+
+Flags:
+
+```
+      --connection string   KurrentDB connection string (overrides --env)
+      --env string          Environment from gaffer.toml
+      --json                Output as JSON
+```
+
 ## gaffer status
 
 Show the state of projections on an environment.
@@ -269,5 +311,27 @@ Flags:
       --connection string   KurrentDB connection string (overrides --env)
       --env string          Environment from gaffer.toml
       --json                Output as JSON
+```
+
+## gaffer stop
+
+Stop (disable) a projection on an environment.
+
+Stop a projection on a KurrentDB environment: disable it so it stops processing.
+
+By default it writes a final checkpoint, so a later start resumes from where it stopped. --abort skips that checkpoint, so a later start replays from the last persisted one. Stopping is recoverable (start it again), so it confirms only against production; --yes skips that prompt. Acts on what's deployed, named directly, so the projection need not be in gaffer.toml. Pass --json for machine-readable output.
+
+```
+gaffer stop <projection> [flags]
+```
+
+Flags:
+
+```
+      --abort               Stop without writing a checkpoint (replays since the last one on restart)
+      --connection string   KurrentDB connection string (overrides --env)
+      --env string          Environment from gaffer.toml
+      --json                Output as JSON
+  -y, --yes                 Skip the production confirmation prompt
 ```
 

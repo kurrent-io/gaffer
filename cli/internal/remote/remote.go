@@ -118,8 +118,9 @@ func (c *Client) Update(ctx context.Context, name, query string, opts UpdateOpti
 // set the DeleteOptions flags to remove them too.
 //
 // The projection must be disabled first: deleting an enabled projection is
-// rejected by the server with an unclassified error. Callers Disable (and wait
-// for it to stop) before Delete.
+// rejected by the server with an unclassified error. Disable clears the enabled
+// flag synchronously (the precondition is the flag, not the runtime reaching a
+// stopped state), so callers can Delete immediately after.
 func (c *Client) Delete(ctx context.Context, name string, opts DeleteOptions) error {
 	return classify(c.proj.Delete(ctx, name, kurrentdb.DeleteProjectionOptions{
 		RequiresLeader:         true,

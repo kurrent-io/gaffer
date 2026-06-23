@@ -71,7 +71,7 @@ func TestRenderPreflightFailuresText(t *testing.T) {
 		"2 of 3 projections have errors",
 		"order-count", "Unexpected token",
 		"cart", "quirk.x: faults on the server",
-		"--force",
+		"--no-validate",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text output missing %q in:\n%s", want, out)

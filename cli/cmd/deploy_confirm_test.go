@@ -52,7 +52,7 @@ func TestConfirmPlan(t *testing.T) {
 
 func TestConfirmPlanYesSkipsOnProd(t *testing.T) {
 	// --yes is an explicit confirmation and proceeds even against production - prod
-	// only blocks the blanket --force bypass, not an explicit --yes.
+	// only blocks the --no-validate bypass, not an explicit --yes.
 	plan := changePlan()
 	if err := confirmPlan(io.Discard, io.Discard, plan, "orders-prod", planChangeCounts(plan), true, false, true); err != nil {
 		t.Errorf("--yes should proceed even on production, got %v", err)

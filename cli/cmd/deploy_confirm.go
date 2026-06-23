@@ -34,7 +34,7 @@ func confirmPlan(out, errOut io.Writer, plan []plannedItem, target string, total
 	}
 	// --yes is an explicit confirmation, so it skips the prompt everywhere,
 	// production included; prod only makes the prompt louder when it does fire.
-	// (The blanket bypass that production refuses is --force, handled before this.)
+	// (The bypass that production refuses is --no-validate, handled before this.)
 	if !jsonOut && prompt.Enabled(yes) {
 		newTextWriter(out, out).writePlanSummary(plan, target, totals, prod)
 		ok, err := prompt.Confirm(confirmTitle(totals.changes(), target, prod), false)

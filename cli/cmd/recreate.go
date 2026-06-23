@@ -62,6 +62,12 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 	if def == nil {
 		return fmt.Errorf("projection %q is not in gaffer.toml; recreate rebuilds from local config", name)
 	}
+	// Per-projection config errors are deferred past config.Load; catch the named
+	// projection's here, before the compile gate, so it fails with the clean
+	// config message rather than a downstream compile/session error.
+	if err := cfg.ProjectionConfigError(name); err != nil {
+		return err
+	}
 
 	ctx := cmd.Context()
 

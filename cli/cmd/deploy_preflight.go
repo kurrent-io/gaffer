@@ -46,6 +46,12 @@ func runPreflight(ctx context.Context, root string, cfg *config.Config, names []
 			break
 		}
 		def := cfg.FindProjection(name) // non-nil: deployNames only yields config names
+		// A config-bad projection is refused per-projection in the plan (via
+		// driftInvalid); skip it here so it doesn't fail the all-or-nothing
+		// preflight and abort the deploy of the good projections alongside it.
+		if cfg.ProjectionConfigError(name) != nil {
+			continue
+		}
 		source, err := engine.ReadSource(root, def.Entry)
 		if err != nil {
 			failures = append(failures, preflightFailure{Name: name, CompileErr: err})

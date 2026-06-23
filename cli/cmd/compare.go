@@ -78,17 +78,19 @@ const (
 	driftDrifted     driftState = "drifted"
 	driftNotDeployed driftState = "not-deployed" // in local config, absent on the server
 	driftUntracked   driftState = "untracked"    // on the server, not in local config
-	driftInvalid     driftState = "invalid"      // local source doesn't compile; drift is indeterminate
+	driftInvalid     driftState = "invalid"      // local definition unusable (compile or config error); drift indeterminate
 )
 
 // comparison is the result of comparing one projection's local definition
 // against what's deployed. Local/Deployed are set when that side exists; Cmp is
 // meaningful only when Drifted.
 //
-// LocalErr is set when the local source failed to compile (State is then
-// driftInvalid). Local is still populated with the partial descriptor that needs
-// no compile (query, engine version, track-emitted-streams); emit is unknown, so
-// Cmp's emit dimension and the hash verdict are not meaningful.
+// LocalErr is set when the local definition is unusable - it failed to compile,
+// or carries a per-projection config error (State is then driftInvalid). Local
+// holds the partial descriptor (query, engine version, track-emitted-streams)
+// when it could be built; it may be nil for a config error that leaves nothing to
+// read (e.g. a bad entry). Emit is unknown, so Cmp's emit dimension and the hash
+// verdict are not meaningful.
 type comparison struct {
 	Name     string
 	State    driftState
@@ -113,6 +115,29 @@ func compareProjection(ctx context.Context, r *remote.Client, cfg *config.Config
 		}
 		deployed := deployedDef.Descriptor()
 		return comparison{Name: name, State: driftUntracked, Deployed: &deployed}, nil
+	}
+
+	// A per-projection config error (engine_version, track_emitted_streams, a bad
+	// entry, ...) means there's no valid local definition. Surface it as invalid,
+	// like a compile failure, so status/diff degrade and deploy refuses for this
+	// projection alone rather than failing the whole command. Best-effort fill the
+	// local/deployed columns for the diff; a bad entry leaves nothing to read, so
+	// Local may stay nil (the invalid renderers tolerate that).
+	if cfgErr := cfg.ProjectionConfigError(name); cfgErr != nil {
+		c := comparison{Name: name, State: driftInvalid, LocalErr: cfgErr}
+		if source, srcErr := engine.ReadSource(root, def.Entry); srcErr == nil {
+			partial := engine.PartialDescriptor(engine.NewProjection(root, cfg, def, source))
+			c.Local = &partial
+		}
+		deployedDef, err := r.Read(ctx, name)
+		if err != nil && !errors.Is(err, remote.ErrNotFound) {
+			return comparison{}, err
+		}
+		if err == nil {
+			deployed := deployedDef.Descriptor()
+			c.Deployed = &deployed
+		}
+		return c, nil
 	}
 
 	source, err := engine.ReadSource(root, def.Entry)

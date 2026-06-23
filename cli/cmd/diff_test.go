@@ -89,7 +89,7 @@ func TestWriteDiffInvalid(t *testing.T) {
 	for _, want := range []string{
 		"Query: +1 -0",
 		"Engine version: remote 1, local 2",
-		"Emit: unknown (local source does not compile)",
+		"Emit: unknown (invalid local definition)",
 		"Unexpected identifier 'state'",
 	} {
 		if !strings.Contains(out, want) {
@@ -105,7 +105,7 @@ func TestWriteDiffInvalidNotDeployed(t *testing.T) {
 		Local:    desc("a\n", 2, false),
 		LocalErr: errors.New("Unexpected end of input"),
 	})
-	for _, want := range []string{"not deployed; local source does not compile", "Unexpected end of input"} {
+	for _, want := range []string{"not deployed; invalid local definition", "Unexpected end of input"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}

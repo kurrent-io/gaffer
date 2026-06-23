@@ -287,12 +287,17 @@ func (tw *textWriter) WriteDiff(e comparison) {
 // verdict. With nothing deployed there's nothing to compare, so it just notes the
 // state. The compile error follows so the user knows what to fix.
 func (tw *textWriter) writeInvalidDiff(e comparison) {
-	if e.Deployed == nil {
-		tw.status(tw.styles.warning.Render("not deployed; local source does not compile"))
-	} else {
+	switch {
+	case e.Local == nil:
+		// No readable local definition (e.g. a config error with a bad entry):
+		// nothing to compare, so just note the state; the error follows below.
+		tw.status(tw.styles.warning.Render("invalid local definition"))
+	case e.Deployed == nil:
+		tw.status(tw.styles.warning.Render("not deployed; invalid local definition"))
+	default:
 		tw.detail("Query", tw.queryStatus(e))
 		tw.detail("Engine version", tw.versionStatus(e))
-		tw.detail("Emit", tw.styles.warning.Render("unknown (local source does not compile)"))
+		tw.detail("Emit", tw.styles.warning.Render("unknown (invalid local definition)"))
 		if e.Cmp.TrackEmittedStreamsDiffers {
 			tw.detail("Track emitted streams", tw.flagStatus(true, e.Deployed.TrackEmittedStreams, e.Local.TrackEmittedStreams))
 		}
@@ -371,7 +376,7 @@ func driftBlockText(d driftState) string {
 	case driftUntracked:
 		return "untracked (deployed, not in gaffer.toml)"
 	case driftInvalid:
-		return "invalid (local source does not compile)"
+		return "invalid (local definition)"
 	default:
 		return driftText(d)
 	}

@@ -374,6 +374,10 @@ func (c *Config) FindProjection(name string) *Projection {
 	return nil
 }
 
+// validate runs the structural checks Load gates on. Per-projection rules are
+// deliberately NOT run here - see ProjectionConfigError. A misconfigured
+// projection must not stop the config from loading, or one bad projection blocks
+// every command on every other projection.
 func (c *Config) validate() error {
 	if c.QuirksVersion != "" && !validQuirksVersion(c.QuirksVersion) {
 		return fmt.Errorf("quirks_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", c.QuirksVersion, "26.1.0")
@@ -387,38 +391,57 @@ func (c *Config) validate() error {
 	if err := c.validateEnvs(); err != nil {
 		return err
 	}
+	// Duplicate names are cross-projection and ambiguous (which one does a name
+	// resolve to?), so they stay fatal here rather than deferring per-projection.
 	seen := make(map[string]bool)
 	for _, p := range c.Projection {
-		// Shared with Describe via checkProjection - rule list and
-		// ordering live in validation.go so the loose path can't drift.
-		if _, msg, fail := checkProjection(p); fail {
-			return fmt.Errorf("%s", msg)
-		}
-		// Strict-only checks: engine_version, track_emitted_streams,
-		// duplicate-name. The loose path either doesn't surface them
-		// or handles them post-loop with cross-element state.
-		if p.EngineVersion == nil {
-			return fmt.Errorf("projection %q missing required field: engine_version", p.Name)
-		}
-		if *p.EngineVersion != 1 && *p.EngineVersion != 2 {
-			return fmt.Errorf("projection %q engine_version must be 1 or 2, got %d", p.Name, *p.EngineVersion)
-		}
-		if p.TrackEmittedStreams != nil && *p.EngineVersion != 1 {
-			return fmt.Errorf("projection %q track_emitted_streams is only valid with engine_version 1", p.Name)
-		}
-		if p.QuirksVersion != "" && !validQuirksVersion(p.QuirksVersion) {
-			return fmt.Errorf("projection %q quirks_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", p.Name, p.QuirksVersion, "26.1.0")
+		if p.Name == "" {
+			continue // a nameless projection is caught per-projection, not by name
 		}
 		if seen[p.Name] {
 			return fmt.Errorf("duplicate projection name: %q", p.Name)
 		}
 		seen[p.Name] = true
+	}
+	return nil
+}
 
-		// Iterate in sorted order so error messages are stable.
-		for _, name := range p.FixtureNames() {
-			if _, msg, fail := checkFixture(p.Name, name, p.Fixtures[name]); fail {
-				return fmt.Errorf("%s", msg)
-			}
+// ProjectionConfigError returns the per-projection config-validation error for
+// the named projection, or nil if it's valid (or not in config). Deferred from
+// Load so a misconfigured projection blocks only operations on itself, not the
+// whole project. Callers that resolve a projection by name (and overview
+// commands, per projection) check this before compiling or operating on it.
+func (c *Config) ProjectionConfigError(name string) error {
+	p := c.FindProjection(name)
+	if p == nil {
+		return nil
+	}
+	return p.configError()
+}
+
+// configError returns the first failing per-projection config rule, or nil.
+func (p Projection) configError() error {
+	// Shared with Describe via checkProjection - rule list and ordering live in
+	// validation.go so the loose path can't drift.
+	if _, msg, fail := checkProjection(p); fail {
+		return fmt.Errorf("%s", msg)
+	}
+	if p.EngineVersion == nil {
+		return fmt.Errorf("projection %q missing required field: engine_version", p.Name)
+	}
+	if *p.EngineVersion != 1 && *p.EngineVersion != 2 {
+		return fmt.Errorf("projection %q engine_version must be 1 or 2, got %d", p.Name, *p.EngineVersion)
+	}
+	if p.TrackEmittedStreams != nil && *p.EngineVersion != 1 {
+		return fmt.Errorf("projection %q track_emitted_streams is only valid with engine_version 1", p.Name)
+	}
+	if p.QuirksVersion != "" && !validQuirksVersion(p.QuirksVersion) {
+		return fmt.Errorf("projection %q quirks_version %q must be MAJOR.MINOR.PATCH (e.g. %q)", p.Name, p.QuirksVersion, "26.1.0")
+	}
+	// Iterate in sorted order so error messages are stable.
+	for _, name := range p.FixtureNames() {
+		if _, msg, fail := checkFixture(p.Name, name, p.Fixtures[name]); fail {
+			return fmt.Errorf("%s", msg)
 		}
 	}
 	return nil

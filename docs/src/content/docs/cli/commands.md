@@ -208,7 +208,7 @@ A changed query is a logic change: the new code may interpret already-processed 
 
 Every projection is compiled before anything is sent to the server; if any fails to compile or has errors that would fault on the server, the whole deploy is refused so a bad projection can't leave a half-applied set. --no-validate skips this check.
 
-When the plan would change something, deploy shows it and asks to confirm before applying; updating a projection that's currently faulted is flagged, since the update won't clear the fault. --yes skips the prompt; without a terminal (or with --json) deploy won't apply unconfirmed, so pass --yes in scripts. A server that reports itself as production gets a louder confirm and refuses --no-validate (deploy without it so projections are validated first). Pass --json for machine-readable output.
+When the plan would change something, deploy shows it and asks to confirm before applying; updating a projection that's currently faulted is flagged, since the update won't clear the fault. --yes skips the prompt; without a terminal (or with --json) deploy won't apply unconfirmed, so pass --yes in scripts. A server that reports itself as production gets a louder confirm and refuses --no-validate. Pass --json for machine-readable output.
 
 ```
 gaffer deploy [projection] [flags]

@@ -130,7 +130,7 @@ func newDeployCmd() *cobra.Command {
 			"applying; updating a projection that's currently faulted is flagged, since the update " +
 			"won't clear the fault. --yes skips the prompt; without a terminal (or with --json) deploy " +
 			"won't apply unconfirmed, so pass --yes in scripts. A server that reports itself as " +
-			"production gets a louder confirm and refuses --no-validate (deploy without it so projections are validated first). " +
+			"production gets a louder confirm and refuses --no-validate. " +
 			"Pass --json for machine-readable output.",
 		Example: "  gaffer deploy\n" +
 			"  gaffer deploy order-count --env staging",

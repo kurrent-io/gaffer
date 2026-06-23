@@ -146,13 +146,22 @@ func TestWritePlanSummary(t *testing.T) {
 		{name: "e", action: actReset, cmp: comparison{Local: desc("q", 2, true)}}, // emits
 		{name: "c", action: actSkip},
 		{name: "d", action: actRefuse, reason: "engine version"},
+		{name: "f", action: actCreate, err: errors.New("read failed")}, // couldn't plan
 	}
 	var buf bytes.Buffer
 	newTextWriter(&buf, &buf).writePlanSummary(plan, "orders-prod", planChangeCounts(plan), false)
 	out := buf.String()
 	for _, want := range []string{
 		"Plan for orders-prod:",
-		"1 to create", "1 to update", "1 to rebuild", "1 in sync", "1 refused",
+		// Count line.
+		"1 to create", "1 to update", "1 to rebuild", "1 in sync", "1 failed", "1 refused",
+		// Per-item lines: the verdict word and its dimmed detail column.
+		"create",
+		"update", "logic change, continuing from checkpoint",
+		"rebuild", "reprocessing from zero",
+		"refused", "engine version",
+		"failed", "read failed",
+		// Warnings still surface.
 		"logic change(s) continuing from checkpoint",
 		"b is faulted; updating won't clear the fault",
 		"e emits; rebuilding re-emits",
@@ -160,6 +169,21 @@ func TestWritePlanSummary(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("plan summary missing %q in:\n%s", want, out)
 		}
+	}
+	// In-sync projections are counted, not listed.
+	if strings.Contains(out, "  c ") {
+		t.Errorf("in-sync projection c should not be listed individually:\n%s", out)
+	}
+	// The verdict and its detail share one line (the three-column layout): the
+	// per-item line carries both, the count line's "1 refused" does not.
+	onOneLine := false
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "refused") && strings.Contains(l, "engine version") {
+			onOneLine = true
+		}
+	}
+	if !onOneLine {
+		t.Errorf("refused verdict and its reason should be on one line, in:\n%s", out)
 	}
 	if strings.Contains(out, "PRODUCTION") {
 		t.Errorf("non-prod summary should not show a production banner:\n%s", out)

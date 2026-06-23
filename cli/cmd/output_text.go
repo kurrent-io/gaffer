@@ -59,6 +59,7 @@ const diagnosticsReferenceURL = "https://gaffer.kurrent.io/reference/diagnostics
 type textStyles struct {
 	label     lipgloss.Style
 	pipe      lipgloss.Style
+	muted     lipgloss.Style
 	logLabel  lipgloss.Style
 	emitted   lipgloss.Style
 	processed lipgloss.Style
@@ -85,6 +86,7 @@ func newTextWriter(w, errW io.Writer) *textWriter {
 		styles: textStyles{
 			label:     r.NewStyle().Foreground(lipgloss.Color("6")),
 			pipe:      r.NewStyle().Faint(true).Foreground(lipgloss.Color("6")),
+			muted:     r.NewStyle().Foreground(lipgloss.Color("8")),
 			logLabel:  r.NewStyle().Foreground(lipgloss.Color("4")),
 			emitted:   r.NewStyle(),
 			processed: r.NewStyle().Faint(true).Foreground(lipgloss.Color("2")),
@@ -551,8 +553,9 @@ func (tw *textWriter) writeDeploySummary(c deployCounts) {
 }
 
 // writePlanSummary previews what a deploy would change, ahead of the confirm
-// prompt: the per-action counts and a warning for any faulted update target.
-// Planning errors aren't counted here - they surface during the apply phase.
+// prompt: each changing or failed projection on its own line (name, verdict,
+// detail), then the per-action counts, then any faulted-update or emitting-reset
+// caution. In-sync projections are counted only, not listed.
 func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, totals planTotals, prod bool) {
 	if prod {
 		banner := "PRODUCTION"
@@ -561,12 +564,11 @@ func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, totals
 		}
 		tw.write("%s\n", tw.styles.errStatus.Render("⚠ "+banner))
 	}
-	skipped, refused, logicContinues := 0, 0, 0
+	skipped, refused, logicContinues, errored := 0, 0, 0, 0
 	for _, it := range plan {
-		if it.err != nil {
-			continue
-		}
 		switch {
+		case it.err != nil:
+			errored++
 		case it.action == actSkip:
 			skipped++
 		case it.action == actRefuse:
@@ -589,6 +591,9 @@ func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, totals
 	if skipped > 0 {
 		segs = append(segs, tw.styles.pipe.Render(fmt.Sprintf("%d in sync", skipped)))
 	}
+	if errored > 0 {
+		segs = append(segs, tw.styles.errStatus.Render(fmt.Sprintf("%d failed", errored)))
+	}
 	if refused > 0 {
 		segs = append(segs, tw.styles.warning.Render(fmt.Sprintf("%d refused", refused)))
 	}
@@ -598,6 +603,30 @@ func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, totals
 		heading += " for " + target
 	}
 	tw.write("%s\n", tw.styles.heading.Render(heading+":"))
+
+	// List every projection that does something (or failed to plan), in plan
+	// order, so the user sees which ones change and why any are refused. In-sync
+	// projections are counted only, not listed, so they don't drown the signal.
+	// Three columns: name, the coloured verdict, then a dimmed detail.
+	nameWidth, verdictWidth := 0, 0
+	for _, it := range plan {
+		if word, _, _ := tw.planVerdict(it); word != "" {
+			nameWidth = max(nameWidth, len(it.name))
+			verdictWidth = max(verdictWidth, len(word))
+		}
+	}
+	for _, it := range plan {
+		word, styled, detail := tw.planVerdict(it)
+		if word == "" {
+			continue // in-sync: counted, not listed
+		}
+		line := fmt.Sprintf("  %-*s  %s", nameWidth, it.name, styled)
+		if detail != "" {
+			line += strings.Repeat(" ", verdictWidth-len(word)) + "  " + tw.styles.muted.Render(detail)
+		}
+		tw.write("%s\n", line)
+	}
+
 	tw.write("  %s\n", strings.Join(segs, tw.styles.pipe.Render(" · ")))
 	if logicContinues > 0 {
 		tw.write("  %s\n", tw.styles.pipe.Render(fmt.Sprintf(
@@ -605,6 +634,32 @@ func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, totals
 	}
 	tw.writeApplyWarnings(plan)
 	tw.blank()
+}
+
+// planVerdict is one projection's disposition for the preview: word is the
+// unstyled disposition (returned for column alignment), styled is it in its
+// severity colour, and detail is an optional dimmed explanation for a trailing
+// column - the reason for a refusal (shown in full, since the immutable field and
+// the recreate remedy are the point) or the error for a plan failure. An in-sync
+// projection returns an empty word: it's counted, not listed.
+func (tw *textWriter) planVerdict(it plannedItem) (word, styled, detail string) {
+	switch {
+	case it.err != nil:
+		return "failed", tw.styles.errStatus.Render("failed"), it.err.Error()
+	case it.action == actCreate:
+		return "create", tw.styles.added.Render("create"), ""
+	case it.action == actUpdate:
+		if it.logicChange {
+			return "update", tw.styles.added.Render("update"), "logic change, continuing from checkpoint"
+		}
+		return "update", tw.styles.added.Render("update"), ""
+	case it.action == actReset:
+		return "rebuild", tw.styles.warning.Render("rebuild"), "reprocessing from zero"
+	case it.action == actRefuse:
+		return "refused", tw.styles.warning.Render("refused"), it.reason
+	default:
+		return "", "", ""
+	}
 }
 
 // writeApplyWarnings emits the per-projection cautions for a plan: an update over

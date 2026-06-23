@@ -17,6 +17,16 @@ const site =
 export default defineConfig({
   site,
   output: 'static',
+  // Section landing URLs have no page of their own, so redirect each to the
+  // first item in its sidebar group. Keep these in sync with the `sidebar`
+  // config below. `cli` and `telemetry` have their own index pages and need
+  // no entry here.
+  redirects: {
+    '/getting-started/': '/getting-started/install/',
+    '/extension/': '/extension/vs-code/',
+    '/reference/': '/reference/diagnostics/',
+    '/testing/': '/testing/nodejs/',
+  },
   // The site is fully static, so sessions are never used. Pin the
   // driver to an in-memory LRU so @astrojs/cloudflare doesn't fall
   // back to its KV session binding, which would make Wrangler try

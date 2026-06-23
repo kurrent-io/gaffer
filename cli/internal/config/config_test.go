@@ -60,6 +60,18 @@ func TestLoadEmptyConfig(t *testing.T) {
 	}
 }
 
+// loadOK loads a config that must parse and pass structural validation. Per-
+// projection errors are deferred (see ProjectionConfigError), so they don't fail
+// Load - the tests below assert them through ProjectionConfigError instead.
+func loadOK(t *testing.T, path string) *Config {
+	t.Helper()
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load should succeed (per-projection errors are deferred): %v", err)
+	}
+	return cfg
+}
+
 func TestLoadMissingName(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
@@ -72,9 +84,10 @@ engine_version = 2
 		t.Fatal(err)
 	}
 
-	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for missing name")
+	// A nameless projection isn't addressable by name; its config error surfaces
+	// against the empty name.
+	if got := loadOK(t, path).ProjectionConfigError(""); got == nil || !strings.Contains(got.Error(), "name") {
+		t.Fatalf("expected missing-name error, got %v", got)
 	}
 }
 
@@ -90,9 +103,8 @@ engine_version = 2
 		t.Fatal(err)
 	}
 
-	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for missing entry")
+	if got := loadOK(t, path).ProjectionConfigError("test"); got == nil || !strings.Contains(got.Error(), "entry") {
+		t.Fatalf("expected missing-entry error, got %v", got)
 	}
 }
 
@@ -108,12 +120,8 @@ entry = "test.js"
 		t.Fatal(err)
 	}
 
-	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for missing engine_version")
-	}
-	if !strings.Contains(err.Error(), "engine_version") {
-		t.Errorf("expected engine_version in error, got %q", err.Error())
+	if got := loadOK(t, path).ProjectionConfigError("test"); got == nil || !strings.Contains(got.Error(), "engine_version") {
+		t.Fatalf("expected engine_version error, got %v", got)
 	}
 }
 
@@ -154,9 +162,8 @@ engine_version = 2
 		t.Fatal(err)
 	}
 
-	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for path traversal")
+	if got := loadOK(t, path).ProjectionConfigError("evil"); got == nil || !strings.Contains(got.Error(), "escape project root") {
+		t.Fatalf("expected path-traversal error, got %v", got)
 	}
 }
 
@@ -266,8 +273,8 @@ quirks_version = "26.1"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(path); err == nil {
-		t.Fatal("expected validation error for malformed projection quirks_version")
+	if got := loadOK(t, path).ProjectionConfigError("a"); got == nil || !strings.Contains(got.Error(), "quirks_version") {
+		t.Fatalf("expected malformed projection quirks_version error, got %v", got)
 	}
 }
 
@@ -619,9 +626,8 @@ fixtures."" = "x.json"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Load(path)
-	if err == nil || !strings.Contains(err.Error(), "empty name") {
-		t.Fatalf("expected empty-name error, got %v", err)
+	if got := loadOK(t, path).ProjectionConfigError("p"); got == nil || !strings.Contains(got.Error(), "empty name") {
+		t.Fatalf("expected empty-name error, got %v", got)
 	}
 }
 
@@ -637,9 +643,8 @@ fixtures.empty = ""
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Load(path)
-	if err == nil || !strings.Contains(err.Error(), "empty path") {
-		t.Fatalf("expected empty-path error, got %v", err)
+	if got := loadOK(t, path).ProjectionConfigError("p"); got == nil || !strings.Contains(got.Error(), "empty path") {
+		t.Fatalf("expected empty-path error, got %v", got)
 	}
 }
 
@@ -677,9 +682,8 @@ fixtures.evil = "../outside.json"
 		t.Fatal(err)
 	}
 
-	_, err := Load(path)
-	if err == nil || !strings.Contains(err.Error(), "escape project root") {
-		t.Fatalf("expected path-escape error, got %v", err)
+	if got := loadOK(t, path).ProjectionConfigError("p"); got == nil || !strings.Contains(got.Error(), "escape project root") {
+		t.Fatalf("expected path-escape error, got %v", got)
 	}
 }
 
@@ -911,12 +915,8 @@ engine_version = 0
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for engine_version = 0")
-	}
-	if !strings.Contains(err.Error(), "must be 1 or 2, got 0") {
-		t.Errorf("expected \"must be 1 or 2, got 0\", got %q", err.Error())
+	if got := loadOK(t, path).ProjectionConfigError("test"); got == nil || !strings.Contains(got.Error(), "must be 1 or 2, got 0") {
+		t.Fatalf("expected \"must be 1 or 2, got 0\", got %v", got)
 	}
 }
 
@@ -933,12 +933,37 @@ track_emitted_streams = true
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for track_emitted_streams on engine_version 2")
+	if got := loadOK(t, path).ProjectionConfigError("p"); got == nil || !strings.Contains(got.Error(), "track_emitted_streams is only valid with engine_version 1") {
+		t.Fatalf("expected track_emitted_streams error, got %v", got)
 	}
-	if !strings.Contains(err.Error(), "track_emitted_streams is only valid with engine_version 1") {
-		t.Errorf("unexpected error: %v", err)
+}
+
+func TestProjectionConfigErrorIsolatesBadProjection(t *testing.T) {
+	// The headline behaviour: one misconfigured projection must not stop the
+	// config from loading or block operating on a good sibling.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gaffer.toml")
+	content := `
+[[projection]]
+name = "good"
+entry = "good.js"
+engine_version = 2
+
+[[projection]]
+name = "bad"
+entry = "bad.js"
+engine_version = 2
+track_emitted_streams = true
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadOK(t, path)
+	if got := cfg.ProjectionConfigError("good"); got != nil {
+		t.Errorf("good projection should have no config error, got %v", got)
+	}
+	if got := cfg.ProjectionConfigError("bad"); got == nil || !strings.Contains(got.Error(), "track_emitted_streams") {
+		t.Errorf("bad projection should report its own config error, got %v", got)
 	}
 }
 

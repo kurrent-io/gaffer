@@ -31,6 +31,13 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 	if proj == nil {
 		return toolError("projection %q not found in gaffer.toml", input.Name), nil, nil
 	}
+	// Per-projection config errors are deferred past config.Load, so a bad
+	// projection doesn't block the others. Report it as invalid here rather than
+	// compiling on past it and wrongly reporting valid (the config flags never
+	// reach the runtime).
+	if cfgErr := cfg.ProjectionConfigError(input.Name); cfgErr != nil {
+		return toolResult(map[string]any{"valid": false, "lastError": cfgErr.Error()}), nil, nil
+	}
 
 	source, err := engine.ReadSource(root, proj.Entry)
 	if err != nil {

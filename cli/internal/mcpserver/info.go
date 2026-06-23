@@ -52,6 +52,9 @@ func (s *Server) handleInfo(_ context.Context, _ *mcp.CallToolRequest, in infoIn
 	if proj == nil {
 		return toolError("projection %q not found in gaffer.toml; call list_projections to discover names", name), nil, nil
 	}
+	if cfgErr := cfg.ProjectionConfigError(name); cfgErr != nil {
+		return toolError("%v", cfgErr), nil, nil
+	}
 
 	source, err := engine.ReadSource(root, proj.Entry)
 	if err != nil {

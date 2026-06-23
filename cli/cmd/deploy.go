@@ -452,10 +452,14 @@ func planAction(c comparison) (deployAction, string) {
 		}
 		return actUpdate, ""
 	case driftInvalid:
-		// Only reachable under --no-validate (preflight otherwise blocks first): the
-		// source doesn't compile, so emit is unknown and the projection can't be
-		// applied correctly. Refuse rather than send a wrong definition.
-		return actRefuse, "local source does not compile"
+		// The local definition is invalid - it doesn't compile, or carries a
+		// per-projection config error (e.g. track_emitted_streams on v2). Either
+		// way there's no correct definition to send, so refuse, naming the actual
+		// problem when we have it.
+		if c.LocalErr != nil {
+			return actRefuse, c.LocalErr.Error()
+		}
+		return actRefuse, "local definition is invalid"
 	default:
 		// Untracked never reaches here: deployNames only yields names in config,
 		// so compareProjection returns one of the above. Defensive only.

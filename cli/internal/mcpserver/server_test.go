@@ -213,6 +213,25 @@ func TestValidate_NotFound(t *testing.T) {
 	}
 }
 
+// A per-projection config error must report invalid - not compile past it (the
+// config flags never reach the runtime) and wrongly report valid. Guards against
+// the regression where deferring config errors from Load left this path silent.
+func TestValidate_ConfigError(t *testing.T) {
+	s := setupTestProject(t)
+	writeManifest(t, s.root, &config.Config{
+		Projection: []config.Projection{{
+			Name: "bad", Entry: "projections/bad.js", EngineVersion: ptr(2), TrackEmittedStreams: ptr(true),
+		}},
+	})
+	result := callTool(t, s, validateTool, s.handleValidate, validateInput{Name: "bad"})
+	if result["valid"] != false {
+		t.Fatalf("expected valid=false for a config-bad projection, got %v", result["valid"])
+	}
+	if le, _ := result["lastError"].(string); !strings.Contains(le, "track_emitted_streams") {
+		t.Errorf("expected the config error in lastError, got %v", result["lastError"])
+	}
+}
+
 // --- Run fixture mode ---
 
 func TestRun_Fixture(t *testing.T) {
@@ -1326,7 +1345,9 @@ func TestReloadSurfacesInvalidManifest(t *testing.T) {
 
 	_ = callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
 
-	invalid := "[[projection]]\nname = \"p\"\nentry = \"p.js\"\nengine_version = 5\n"
+	// A structural load failure (malformed TOML) - a per-projection error like a
+	// bad engine_version no longer fails Load, it degrades per-projection.
+	invalid := "[[projection]]\nname = \"p\"\nentry =\n"
 	if err := os.WriteFile(filepath.Join(s.root, "gaffer.toml"), []byte(invalid), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1345,7 +1366,9 @@ func TestProjectlessInvalidManifestSurfaces(t *testing.T) {
 	t.Chdir(dir)
 	s := New("", nil, "test")
 
-	invalid := "[[projection]]\nname = \"p\"\nentry = \"p.js\"\nengine_version = 5\n"
+	// A structural load failure (malformed TOML) - a per-projection error like a
+	// bad engine_version no longer fails Load, it degrades per-projection.
+	invalid := "[[projection]]\nname = \"p\"\nentry =\n"
 	if err := os.WriteFile(filepath.Join(dir, "gaffer.toml"), []byte(invalid), 0o644); err != nil {
 		t.Fatal(err)
 	}

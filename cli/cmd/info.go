@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -24,22 +25,38 @@ func newInfoCmd() *cobra.Command {
 			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
 				telemetry.EmitInfo(cmd.Context(), telemetry.InfoCommandInvokedProperties{Outcome: o})
 			})
-			return runInfo(cmd, args[0], asJSON)
+			return runInfo(args[0], asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Output as JSON")
 	return cmd
 }
 
-func runInfo(cmd *cobra.Command, name string, asJSON bool) error {
-	proj, err := engine.LoadProjection(name)
+func runInfo(name string, asJSON bool) error {
+	cfg, root, err := loadProject()
 	if err != nil {
 		return err
 	}
+	def := cfg.FindProjection(name)
+	if def == nil {
+		return fmt.Errorf("projection %q not found in gaffer.toml", name)
+	}
 
+	// An invalid projection degrades to its name + the reason - the same
+	// presentation as diff/status - rather than a hard error. info is local, so the
+	// name and reason are still useful. A per-projection config error is caught
+	// before compiling; a compile failure after.
+	if cfgErr := cfg.ProjectionConfigError(name); cfgErr != nil {
+		return renderInvalidInfo(name, cfgErr, asJSON)
+	}
+	source, err := engine.ReadSource(root, def.Entry)
+	if err != nil {
+		return err
+	}
+	proj := engine.NewProjection(root, cfg, def, source)
 	session, info, err := engine.CreateSession(proj, false, false)
 	if err != nil {
-		return handleSessionError(cmd, err)
+		return renderInvalidInfo(name, err, asJSON)
 	}
 	defer session.Destroy()
 
@@ -50,6 +67,24 @@ func runInfo(cmd *cobra.Command, name string, asJSON bool) error {
 	tw := newTextWriter(os.Stdout, os.Stderr)
 	tw.WriteInfo(proj, info)
 	return nil
+}
+
+// renderInvalidInfo reports an invalid projection. In text mode it shows the
+// degraded body shared with diff (the projection name + the reason), then returns
+// a silent error so the exit is non-zero - info is a single-projection command
+// that couldn't do its job - without fang re-printing what we already rendered.
+// The non-zero return also classifies the telemetry outcome as a user error
+// rather than success. In --json mode it fails cleanly (non-zero, error on
+// stderr) rather than emitting a partial object whose shape differs from valid
+// info output.
+func renderInvalidInfo(name string, reason error, asJSON bool) error {
+	if asJSON {
+		return reason
+	}
+	tw := newTextWriter(os.Stdout, os.Stderr)
+	tw.heading(name)
+	tw.writeInvalidBody(reason)
+	return silent(reason)
 }
 
 func writeInfoJSON(proj *engine.Projection, info gafferruntime.ProjectionInfo) error {

@@ -36,8 +36,8 @@ func newStatusCmd() *cobra.Command {
 			"compare to local config.\n\n" +
 			"With no argument, lists every local and deployed projection: running, stopped or\n" +
 			"faulted, progress, and whether each is in sync, drifted, not deployed, untracked,\n" +
-			"or invalid (local source doesn't compile). Name a projection for its detail. Pass\n" +
-			"--json for machine output.",
+			"or invalid (local definition doesn't compile or has a config error). Name a\n" +
+			"projection for its detail. Pass --json for machine output.",
 		Example: "  gaffer status\n" +
 			"  gaffer status order-count --env staging",
 		Args: maxArgs(1),

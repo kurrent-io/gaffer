@@ -111,7 +111,7 @@ func TestWriteStatusBlock(t *testing.T) {
 		comparison: comparison{Name: "broken", State: driftInvalid, LocalErr: errors.New("Unexpected token (3:5)")},
 		runtime:    &remote.Status{State: remote.StateRunning, Progress: 100},
 	})
-	for _, want := range []string{"State: running", "Drift: invalid (local source does not compile)", "Unexpected token (3:5)"} {
+	for _, want := range []string{"State: running", "Drift: invalid (local definition)", "Unexpected token (3:5)"} {
 		if !strings.Contains(invalid, want) {
 			t.Errorf("invalid block missing %q in:\n%s", want, invalid)
 		}

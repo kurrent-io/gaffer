@@ -34,6 +34,9 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 	if proj == nil {
 		return toolError("projection %q not found in gaffer.toml", input.Name), nil, nil
 	}
+	if cfgErr := cfg.ProjectionConfigError(input.Name); cfgErr != nil {
+		return toolError("%v", cfgErr), nil, nil
+	}
 
 	source, err := engine.ReadSource(root, proj.Entry)
 	if err != nil {

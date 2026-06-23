@@ -433,6 +433,9 @@ func (s *Server) createSession(cfg *config.Config, root, name string, debug bool
 	if proj == nil {
 		return nil, fmt.Errorf("projection %q not found in gaffer.toml", name)
 	}
+	if err := cfg.ProjectionConfigError(name); err != nil {
+		return nil, err
+	}
 
 	source, err := engine.ReadSource(root, proj.Entry)
 	if err != nil {

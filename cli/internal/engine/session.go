@@ -51,6 +51,11 @@ func LoadProjection(name string) (*Projection, error) {
 	if proj == nil {
 		return nil, fmt.Errorf("projection %q not found in gaffer.toml", name)
 	}
+	// Per-projection config errors are deferred past config.Load (so one bad
+	// projection doesn't block the others), so check the one we're loading here.
+	if err := cfg.ProjectionConfigError(name); err != nil {
+		return nil, err
+	}
 
 	source, err := ReadSource(root, proj.Entry)
 	if err != nil {

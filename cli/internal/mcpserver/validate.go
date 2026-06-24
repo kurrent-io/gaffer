@@ -68,10 +68,12 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 	// invalid, matching what deploy/recreate preflight would refuse, rather than a
 	// bare valid:true that contradicts the diagnostic.
 	if errs := engine.ErrorDiagnostics(info.Diagnostics); len(errs) > 0 {
+		// Same shape as the config-error and compile-error paths above: valid:false
+		// plus lastError (code + message), so every invalid verdict is one shape for
+		// the client. The diagnostic detail lives in lastError, not a separate field.
 		return toolResult(map[string]any{
-			"valid":       false,
-			"lastError":   errs[0].Code + ": " + errs[0].Message,
-			"diagnostics": info.Diagnostics,
+			"valid":     false,
+			"lastError": errs[0].Code + ": " + errs[0].Message,
 		}), nil, nil
 	}
 

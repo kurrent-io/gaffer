@@ -240,19 +240,24 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 		prod = info.IsProduction()
 	}
 
-	// --dry-run reports the plan and applies nothing, so it stops here - before the
-	// production --no-validate refusal and the confirm gate, which both guard the
-	// apply that dry-run never reaches.
-	if opts.DryRun {
-		return renderDryRun(cmd.OutOrStdout(), plan, target, totals, prod, opts.JSON)
-	}
-
 	// --no-validate skips the preflight compile gate; production never accepts it,
 	// so a prod deploy always validates first. Refuse before applying - nothing has
-	// been written yet. exitWith(3) is the guardrail-refusal code, and (unlike the
-	// previous silent wrap) lets fang print the reason instead of swallowing it.
+	// been written yet. Enforced even under --dry-run: this guards the dangerous flag
+	// combination itself, not the write, so a preview of it is refused too rather than
+	// misreporting a plan the real deploy would never run. exitWith(3) is the
+	// guardrail-refusal code, and (unlike the previous silent wrap) lets fang print
+	// the reason instead of swallowing it.
 	if prod && opts.NoValidate {
 		return exitWith(3, fmt.Errorf("--no-validate is not allowed on production %s: it skips the preflight compile check. Deploy without it so projections are validated first", targetDesc(target)))
+	}
+
+	// --dry-run reports the plan and applies nothing, so it stops before the confirm
+	// gate below - an apply-only guardrail a read-only preview needs no answer to (a
+	// non-interactive dry-run must still report drift as exit 2, not refuse as 3). It
+	// does honour the production --no-validate refusal above, which a real deploy with
+	// the same flags would hit before any prompt.
+	if opts.DryRun {
+		return renderDryRun(cmd.OutOrStdout(), plan, target, totals, prod, opts.JSON)
 	}
 
 	if err := confirmPlan(cmd.OutOrStdout(), cmd.ErrOrStderr(), plan, target, totals, opts.Yes, opts.JSON, prod); err != nil {

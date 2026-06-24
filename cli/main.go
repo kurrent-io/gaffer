@@ -153,7 +153,7 @@ func runMain() (exitCode int) {
 	}()
 
 	if err := cmd.Execute(ctx); err != nil {
-		return 1
+		return cmd.ExitCodeFor(err)
 	}
 	return 0
 }

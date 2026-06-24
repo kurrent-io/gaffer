@@ -232,6 +232,8 @@ Every projection is compiled before anything is sent to the server; if any fails
 
 When the plan would change something, deploy shows it and asks to confirm before applying; updating a projection that's currently faulted is flagged, since the update won't clear the fault. --yes skips the prompt; without a terminal (or with --json) deploy won't apply unconfirmed, so pass --yes in scripts. A server that reports itself as production gets a louder confirm and refuses --no-validate. Pass --json for machine-readable output.
 
+--dry-run shows the plan and applies nothing. The exit code is stable for scripts: 0 succeeded (or nothing to do), 1 an error, 2 changes are pending (--dry-run only), 3 refused by a guardrail (confirmation needed but no terminal or --yes, or --no-validate against production).
+
 ```
 gaffer deploy [projection] [flags]
 ```
@@ -240,6 +242,7 @@ Flags:
 
 ```
       --connection string       KurrentDB connection string (overrides --env)
+      --dry-run                 Show the plan and exit without applying (exit 2 if changes are pending)
       --env string              Environment from gaffer.toml to deploy to
       --json                    Output as JSON
       --no-validate             Skip the preflight compile check and deploy anyway

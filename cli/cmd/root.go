@@ -26,6 +26,40 @@ func (e *silentError) Unwrap() error { return e.err }
 // shown the user a more useful message.
 func silent(err error) error { return &silentError{err: err} }
 
+// exitError carries a specific process exit code out to runMain. It composes with
+// silent: wrap silent(...) to also keep fang from reprinting a message the command
+// already rendered. Used for deploy's CI exit-code contract (see exitWith).
+type exitError struct {
+	err  error
+	code int
+}
+
+func (e *exitError) Error() string { return e.err.Error() }
+func (e *exitError) Unwrap() error { return e.err }
+
+// exitWith tags err with a process exit code. The deploy CI contract is: 0 success
+// or no-op, 1 error, 2 changes pending (--dry-run found work), 3 refused by a
+// guardrail (confirmation needed but unavailable, or --no-validate on production).
+// Wrap silent(...) for a code whose message is already on screen (exit 2); pass a
+// plain error for a code whose message fang should print (exit 3).
+func exitWith(code int, err error) error { return &exitError{err: err, code: code} }
+
+// ExitCodeFor maps a command error to a process exit code for runMain, which calls
+// it only on a non-nil error. An explicit exitWith code wins; otherwise a guardrail
+// refusal (confirmation unavailable) is 3 wherever it surfaces - deploy, recreate,
+// or an operate verb - so a non-interactive caller can tell "satisfy the gate and
+// retry" from a genuine failure. Everything else is 1.
+func ExitCodeFor(err error) int {
+	var e *exitError
+	if errors.As(err, &e) {
+		return e.code
+	}
+	if errors.Is(err, errNeedConfirm) || errors.Is(err, errOperateNeedsConfirm) {
+		return 3
+	}
+	return 1
+}
+
 func errorHandler(w io.Writer, styles fang.Styles, err error) {
 	var s *silentError
 	if errors.As(err, &s) {

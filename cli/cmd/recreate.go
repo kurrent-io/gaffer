@@ -103,8 +103,10 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 		return err
 	}
 
+	// exitWith(3) is the guardrail-refusal code, and (unlike a silent wrap) lets fang
+	// print the reason instead of swallowing it.
 	if prod && opts.NoValidate {
-		return silent(fmt.Errorf("--no-validate is not allowed on production %s: it skips the preflight compile check. Recreate without it so the projection is validated first", targetDesc(target)))
+		return exitWith(3, fmt.Errorf("--no-validate is not allowed on production %s: it skips the preflight compile check. Recreate without it so the projection is validated first", targetDesc(target)))
 	}
 
 	// An emitting projection re-emits on the rebuild, duplicating into its target

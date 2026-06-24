@@ -255,6 +255,33 @@ func TestValidate_ErrorDiagnostic(t *testing.T) {
 	}
 }
 
+// When a projection trips more than one error-severity diagnostic, lastError
+// reports all of them, not just the first - a half-reported verdict would hide
+// actionable problems.
+func TestValidate_MultipleErrorDiagnostics(t *testing.T) {
+	s := setupTestProject(t)
+	writeManifest(t, s.root, &config.Config{
+		Projection: []config.Projection{{
+			Name: "both", Entry: "projections/both.js", EngineVersion: ptr(2), TrackEmittedStreams: ptr(true),
+		}},
+	})
+	// bi-state on v2 and track_emitted_streams on v2 both fire as error diagnostics.
+	if err := os.WriteFile(filepath.Join(s.root, "projections/both.js"),
+		[]byte("options({ biState: true });\nfromAll().when({ $any: function (s, e) { return s; } });"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result := callTool(t, s, validateTool, s.handleValidate, validateInput{Name: "both"})
+	if result["valid"] != false {
+		t.Fatalf("expected valid=false, got %v", result["valid"])
+	}
+	le, _ := result["lastError"].(string)
+	for _, want := range []string{"quirk.biState.sharedStateResetOnV2", "quirk.trackEmittedStreams.unsupportedOnV2"} {
+		if !strings.Contains(le, want) {
+			t.Errorf("lastError should report %q, got %v", want, le)
+		}
+	}
+}
+
 // --- Run fixture mode ---
 
 func TestRun_Fixture(t *testing.T) {

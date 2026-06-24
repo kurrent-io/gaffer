@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"strings"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
@@ -63,17 +64,20 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 	}
 	defer session.Destroy()
 
-	// A projection can compile yet carry error-severity diagnostics for a feature
-	// the server rejects or faults on (e.g. a V2-incompatible option). Report it
-	// invalid, matching what deploy/recreate preflight would refuse, rather than a
-	// bare valid:true that contradicts the diagnostic.
+	// The projection compiled but carries error-severity diagnostics for a feature the
+	// server rejects or faults on (e.g. a V2-incompatible option), so it is not
+	// deployable - the same verdict deploy/recreate preflight reach. Report valid:false
+	// with every such diagnostic in lastError (not just the first), so a projection that
+	// trips more than one isn't half-reported. Uses the {valid, lastError} key shape the
+	// config-error and compile-error paths above return.
 	if errs := engine.ErrorDiagnostics(info.Diagnostics); len(errs) > 0 {
-		// Same shape as the config-error and compile-error paths above: valid:false
-		// plus lastError (code + message), so every invalid verdict is one shape for
-		// the client. The diagnostic detail lives in lastError, not a separate field.
+		reasons := make([]string, len(errs))
+		for i, d := range errs {
+			reasons[i] = d.Code + ": " + d.Message
+		}
 		return toolResult(map[string]any{
 			"valid":     false,
-			"lastError": errs[0].Code + ": " + errs[0].Message,
+			"lastError": strings.Join(reasons, "; "),
 		}), nil, nil
 	}
 

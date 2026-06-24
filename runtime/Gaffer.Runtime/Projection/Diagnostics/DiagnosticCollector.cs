@@ -30,6 +30,7 @@ internal static class DiagnosticCollector {
 	// scan could only guess at.
 	private static readonly IDefinitionRule[] DefinitionRules = new IDefinitionRule[] {
 		new BiStateUnsupportedOnV2Rule(),
+		new TrackEmittedStreamsUnsupportedOnV2Rule(),
 	};
 
 	/// <summary>

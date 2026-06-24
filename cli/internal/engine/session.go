@@ -118,6 +118,14 @@ func buildSessionOptions(proj *Projection, debug, includeShape bool) *string {
 		opts["includeShape"] = true
 	}
 
+	// track_emitted_streams is a gaffer.toml field, not a source option, so the runtime
+	// can't see it from the source alone. Pass it through so the resolved definition - and
+	// the V2-incompatibility diagnostic - reflects the effective value, the same flag that
+	// goes to the Create RPC.
+	if proj.Def.TrackEmittedStreams != nil && *proj.Def.TrackEmittedStreams {
+		opts["trackEmittedStreams"] = true
+	}
+
 	// The [database_config] timeouts (and a per-projection execution_timeout)
 	// declare the engine config expected on the deployment target; they are NOT
 	// applied to local runs, because a wall-clock budget measured on a dev

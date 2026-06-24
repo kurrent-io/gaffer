@@ -607,13 +607,32 @@ public class DiagnosticsTests {
 		Assert.Contains(session.Diagnostics!, d => d.Code == "quirk.outputState.noEffectOnV2");
 	}
 
-	// --- engine_version 2: KurrentDB rejects trackEmittedStreams -> throw ---
+	// --- engine_version 2: trackEmittedStreams is unsupported -> error diagnostic, not a throw ---
+	// The projection still compiles (info/dev/diff show the analysis); deploy/recreate preflight
+	// refuse on the error severity.
 
 	[Fact]
-	public void TrackEmittedStreams_OnV2_Throws() {
-		var ex = Assert.Throws<InvalidProjectionException>(() => new ProjectionSession(
-			"options({ trackEmittedStreams: true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options));
-		Assert.Contains("engine version 2", ex.Message);
+	public void TrackEmittedStreams_OnV2_FromSourceOption_Diagnoses() {
+		using var session = new ProjectionSession(
+			"options({ trackEmittedStreams: true });\nfromAll().when({ $any: function (s, e) { return s; } });", Options);
+
+		Assert.NotNull(session.Diagnostics);
+		Assert.Contains(session.Diagnostics!, d =>
+			d.Code == "quirk.trackEmittedStreams.unsupportedOnV2" && d.Severity == DiagnosticSeverity.Error);
+	}
+
+	// gaffer.toml carries track_emitted_streams as an option, not a source call; it merges into the
+	// resolved definition so the same diagnostic fires when the source doesn't set it.
+	[Fact]
+	public void TrackEmittedStreams_OnV2_FromConfigOption_Diagnoses() {
+		using var session = new ProjectionSession(
+			"fromAll().when({ $any: function (s, e) { return s; } });",
+			new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, TrackEmittedStreams = true });
+
+		Assert.True(session.Sources.TrackEmittedStreams);
+		Assert.NotNull(session.Diagnostics);
+		Assert.Contains(session.Diagnostics!, d =>
+			d.Code == "quirk.trackEmittedStreams.unsupportedOnV2" && d.Severity == DiagnosticSeverity.Error);
 	}
 
 	[Fact]
@@ -621,6 +640,8 @@ public class DiagnosticsTests {
 		using var session = new ProjectionSession(
 			"options({ trackEmittedStreams: true });\nfromAll().when({ $any: function (s, e) { return s; } });", V1Options);
 		Assert.True(session.Sources.TrackEmittedStreams);
+		Assert.True(session.Diagnostics is null
+			|| !Array.Exists(session.Diagnostics, d => d.Code == "quirk.trackEmittedStreams.unsupportedOnV2"));
 	}
 
 }

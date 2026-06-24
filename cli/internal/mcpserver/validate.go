@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"strings"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
@@ -62,6 +63,23 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 		return toolError("creating session: %v", err), nil, nil
 	}
 	defer session.Destroy()
+
+	// The projection compiled but carries error-severity diagnostics for a feature the
+	// server rejects or faults on (e.g. a V2-incompatible option), so it is not
+	// deployable - the same verdict deploy/recreate preflight reach. Report valid:false
+	// with every such diagnostic in lastError (not just the first), so a projection that
+	// trips more than one isn't half-reported. Uses the {valid, lastError} key shape the
+	// config-error and compile-error paths above return.
+	if errs := engine.ErrorDiagnostics(info.Diagnostics); len(errs) > 0 {
+		reasons := make([]string, len(errs))
+		for i, d := range errs {
+			reasons[i] = d.Code + ": " + d.Message
+		}
+		return toolResult(map[string]any{
+			"valid":     false,
+			"lastError": strings.Join(reasons, "; "),
+		}), nil, nil
+	}
 
 	return toolResult(map[string]any{
 		"valid":           true,

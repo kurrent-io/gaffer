@@ -220,15 +220,65 @@ func TestValidate_ConfigError(t *testing.T) {
 	s := setupTestProject(t)
 	writeManifest(t, s.root, &config.Config{
 		Projection: []config.Projection{{
-			Name: "bad", Entry: "projections/bad.js", EngineVersion: ptr(2), TrackEmittedStreams: ptr(true),
+			Name: "bad", Entry: "projections/bad.js", EngineVersion: ptr(5),
 		}},
 	})
 	result := callTool(t, s, validateTool, s.handleValidate, validateInput{Name: "bad"})
 	if result["valid"] != false {
 		t.Fatalf("expected valid=false for a config-bad projection, got %v", result["valid"])
 	}
-	if le, _ := result["lastError"].(string); !strings.Contains(le, "track_emitted_streams") {
+	if le, _ := result["lastError"].(string); !strings.Contains(le, "must be 1 or 2") {
 		t.Errorf("expected the config error in lastError, got %v", result["lastError"])
+	}
+}
+
+// A projection that compiles but carries an error-severity diagnostic (a
+// V2-incompatible feature the server rejects) must validate as invalid, surfacing
+// the diagnostic - not a bare valid:true that deploy would then refuse.
+func TestValidate_ErrorDiagnostic(t *testing.T) {
+	s := setupTestProject(t)
+	writeManifest(t, s.root, &config.Config{
+		Projection: []config.Projection{{
+			Name: "tes", Entry: "projections/tes.js", EngineVersion: ptr(2), TrackEmittedStreams: ptr(true),
+		}},
+	})
+	if err := os.WriteFile(filepath.Join(s.root, "projections/tes.js"),
+		[]byte("fromAll().when({ $any: function (s, e) { return s; } });"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result := callTool(t, s, validateTool, s.handleValidate, validateInput{Name: "tes"})
+	if result["valid"] != false {
+		t.Fatalf("expected valid=false for a track_emitted_streams v2 projection, got %v", result["valid"])
+	}
+	if le, _ := result["lastError"].(string); !strings.Contains(le, "quirk.trackEmittedStreams.unsupportedOnV2") {
+		t.Errorf("expected the V2-incompatibility diagnostic in lastError, got %v", result["lastError"])
+	}
+}
+
+// When a projection trips more than one error-severity diagnostic, lastError
+// reports all of them, not just the first - a half-reported verdict would hide
+// actionable problems.
+func TestValidate_MultipleErrorDiagnostics(t *testing.T) {
+	s := setupTestProject(t)
+	writeManifest(t, s.root, &config.Config{
+		Projection: []config.Projection{{
+			Name: "both", Entry: "projections/both.js", EngineVersion: ptr(2), TrackEmittedStreams: ptr(true),
+		}},
+	})
+	// bi-state on v2 and track_emitted_streams on v2 both fire as error diagnostics.
+	if err := os.WriteFile(filepath.Join(s.root, "projections/both.js"),
+		[]byte("options({ biState: true });\nfromAll().when({ $any: function (s, e) { return s; } });"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result := callTool(t, s, validateTool, s.handleValidate, validateInput{Name: "both"})
+	if result["valid"] != false {
+		t.Fatalf("expected valid=false, got %v", result["valid"])
+	}
+	le, _ := result["lastError"].(string)
+	for _, want := range []string{"quirk.biState.sharedStateResetOnV2", "quirk.trackEmittedStreams.unsupportedOnV2"} {
+		if !strings.Contains(le, want) {
+			t.Errorf("lastError should report %q, got %v", want, le)
+		}
 	}
 }
 

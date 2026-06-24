@@ -158,12 +158,14 @@ public sealed class ProjectionSession : IDisposable {
 		// Anything that throws past this point would leak _handler (and its
 		// Jint Engine + BlockingCollection); dispose it on failure.
 		try {
-			_sources = _handler.GetSourceDefinition();
+			// track_emitted_streams can be set in the source via options({trackEmittedStreams}) or
+			// declared in gaffer.toml (carried in on opts); merge both so the resolved definition - and
+			// the V2-incompatibility diagnostic that reads it - reflects how the projection is deployed.
+			_sources = _handler.GetSourceDefinition(opts.TrackEmittedStreams);
 			if (_sources.HandlesDeletedNotifications && !_sources.ByStreams)
 				throw new InvalidProjectionException(
 					"Deleted stream notifications are only supported with foreachStream()") { ProjectionSource = source };
 			ValidateReorderEvents();
-			ValidateTrackEmittedStreams();
 			if (!_sources.AllEvents && _sources.Events != null)
 				_handledEventTypes = new HashSet<string>(_sources.Events, StringComparer.Ordinal);
 
@@ -196,16 +198,6 @@ public sealed class ProjectionSession : IDisposable {
 		if ((_sources.ProcessingLag ?? 0) < 50)
 			throw new InvalidProjectionException(
 				"Event reordering requires processing lag at least of 50ms") { ProjectionSource = _source };
-	}
-
-	// Reproduce KurrentDB's V2 management-layer rejection: trackEmittedStreams is not supported on
-	// engine_version 2 (V2 maintains no emitted-streams catalog), so projection creation throws.
-	// gaffer surfaces the same hard error at session-create off the resolved definition - it's a
-	// refusal, not a silent no-op, so it's a throw rather than a diagnostic (cf. ReorderEvents V1).
-	private void ValidateTrackEmittedStreams() {
-		if (_version == ProjectionVersion.V2 && _sources.TrackEmittedStreams)
-			throw new InvalidProjectionException(
-				"Tracking emitted streams is not supported with engine version 2.") { ProjectionSource = _source };
 	}
 
 	public void Dispose() {
@@ -684,6 +676,13 @@ public sealed class ProjectionSessionOptions {
 
 	/// <summary>Enable Jint debug hooks for breakpoints and stepping. Has performance overhead.</summary>
 	public bool Debug { get; init; }
+
+	/// <summary>
+	/// Whether <c>track_emitted_streams</c> is set for this projection in <c>gaffer.toml</c>. Merged
+	/// with any source-level <c>options({trackEmittedStreams})</c> into the resolved definition, so the
+	/// V2-incompatibility diagnostic fires whichever way the flag was set. Off by default.
+	/// </summary>
+	public bool TrackEmittedStreams { get; init; }
 
 	/// <summary>
 	/// Populate <see cref="ProjectionInfo.Shape"/> by walking the AST

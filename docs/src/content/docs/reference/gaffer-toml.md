@@ -216,7 +216,7 @@ engine_version = 1
 track_emitted_streams = true
 ```
 
-Records the streams a projection emits to, mirroring the KurrentDB V1 projection option of the same name. Bool, optional, and valid only when the projection's `engine_version = 1`. Setting it on a V2 projection is a config error. Like `engine_version`, it is fixed at create time, so `gaffer deploy` refuses an in-place update that changes it.
+Records the streams a projection emits to, mirroring the KurrentDB V1 projection option of the same name. Bool, optional, and valid only when the projection's `engine_version = 1`. Setting it on a V2 projection raises the `quirk.trackEmittedStreams.unsupportedOnV2` diagnostic: `gaffer info`, `dev`, and `diff` still show the projection's analysis, while `gaffer deploy` and `gaffer recreate` refuse it before any write. Like `engine_version`, it is fixed at create time, so `gaffer deploy` refuses an in-place update that changes it.
 
 ### `quirks_version` (per-projection)
 

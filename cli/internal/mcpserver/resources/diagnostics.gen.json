@@ -80,6 +80,16 @@
     "goodExample": "// Run on engine_version 1, or read the $projections-{name}-state stream."
   },
   {
+    "code": "quirk.trackEmittedStreams.unsupportedOnV2",
+    "class": "quirk",
+    "severity": "error",
+    "message": "track_emitted_streams is not supported under engine_version 2: V2 keeps no emitted-streams catalog, so projection creation is rejected. Use engine_version 1.",
+    "docs": "`track_emitted_streams` is not supported under engine_version 2. V2 maintains no emitted-streams catalog, so the KurrentDB management layer rejects creating (or recreating) such a projection. The flag can be set in `gaffer.toml` (`track_emitted_streams = true`) or in the source via `options({ trackEmittedStreams: true })`. Set it only on engine_version 1 projections, or drop it.",
+    "fixedIn": null,
+    "badExample": "options({ trackEmittedStreams: true }); // rejected under engine_version 2\nfromAll().when({\n  Counted(state, event) { return { count: state.count + 1 }; }\n});",
+    "goodExample": "// Run on engine_version 1 if you need emitted-stream tracking, or drop the option.\nfromAll().when({\n  Counted(state, event) { return { count: state.count + 1 }; }\n});"
+  },
+  {
     "code": "usage.linkStreamTo.deprecated",
     "class": "usage",
     "severity": "information",

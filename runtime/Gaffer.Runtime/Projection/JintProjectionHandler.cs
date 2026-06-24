@@ -216,8 +216,13 @@ internal sealed class JintProjectionHandler : IDisposable {
 		}
 	}
 
-	public QuerySources GetSourceDefinition() {
+	// trackEmittedStreams forces the resolved definition's flag on (never off) so a gaffer.toml
+	// track_emitted_streams = true merges with the source's options({trackEmittedStreams}); a
+	// source-set true is preserved when the caller passes false.
+	public QuerySources GetSourceDefinition(bool trackEmittedStreams = false) {
 		_engine.Constraints.Reset();
+		if (trackEmittedStreams)
+			_definitionBuilder.SetTrackEmittedStreams(true);
 		return _definitionBuilder.Build();
 	}
 

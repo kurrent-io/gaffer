@@ -920,7 +920,11 @@ engine_version = 0
 	}
 }
 
-func TestLoadTrackEmittedStreamsRequiresV1(t *testing.T) {
+// track_emitted_streams + engine_version 2 is no longer a config error: it's a
+// V2-incompatibility diagnostic the runtime emits off the resolved definition
+// (quirk.trackEmittedStreams.unsupportedOnV2), so the projection still compiles
+// and deploy/recreate preflight refuse on the error severity.
+func TestLoadTrackEmittedStreamsOnV2NotAConfigError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 	content := `
@@ -933,8 +937,8 @@ track_emitted_streams = true
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := loadOK(t, path).ProjectionConfigError("p"); got == nil || !strings.Contains(got.Error(), "track_emitted_streams is only valid with engine_version 1") {
-		t.Fatalf("expected track_emitted_streams error, got %v", got)
+	if got := loadOK(t, path).ProjectionConfigError("p"); got != nil {
+		t.Fatalf("track_emitted_streams on v2 should not be a config error (it's a runtime diagnostic), got %v", got)
 	}
 }
 
@@ -952,8 +956,7 @@ engine_version = 2
 [[projection]]
 name = "bad"
 entry = "bad.js"
-engine_version = 2
-track_emitted_streams = true
+engine_version = 5
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -962,7 +965,7 @@ track_emitted_streams = true
 	if got := cfg.ProjectionConfigError("good"); got != nil {
 		t.Errorf("good projection should have no config error, got %v", got)
 	}
-	if got := cfg.ProjectionConfigError("bad"); got == nil || !strings.Contains(got.Error(), "track_emitted_streams") {
+	if got := cfg.ProjectionConfigError("bad"); got == nil || !strings.Contains(got.Error(), "must be 1 or 2") {
 		t.Errorf("bad projection should report its own config error, got %v", got)
 	}
 }

@@ -255,6 +255,36 @@ public static class DiagnosticCatalog {
 		FixedIn = null, // result-stream parity planned for a future V2 release
 	};
 
+	/// <summary>
+	/// <c>track_emitted_streams</c> is not supported under engine_version 2: V2 maintains no
+	/// emitted-streams catalog, so the management layer rejects projection creation. Detected off the
+	/// resolved definition - the flag can come from <c>options({trackEmittedStreams:true})</c> in the
+	/// source or from the <c>track_emitted_streams</c> field in <c>gaffer.toml</c>. An error
+	/// diagnostic (not a session throw) so <c>info</c>/<c>dev</c>/<c>diff</c> still compile and show the
+	/// full analysis, while deploy/recreate preflight refuse on the error severity before any write.
+	/// Result-stream parity aside, V2 has no plan to track emitted streams, so <c>FixedIn</c> is null.
+	/// </summary>
+	public static readonly DiagnosticDescriptor TrackEmittedStreamsUnsupportedOnV2 = new() {
+		Code = "quirk.trackEmittedStreams.unsupportedOnV2",
+		Class = DiagnosticClass.Quirk,
+		Severity = DiagnosticSeverity.Error,
+		Message = "track_emitted_streams is not supported under engine_version 2: V2 keeps no emitted-streams catalog, so projection creation is rejected. Use engine_version 1.",
+		Docs = "`track_emitted_streams` is not supported under engine_version 2. V2 maintains no emitted-streams catalog, so the KurrentDB management layer rejects creating (or recreating) such a projection. The flag can be set in `gaffer.toml` (`track_emitted_streams = true`) or in the source via `options({ trackEmittedStreams: true })`. Set it only on engine_version 1 projections, or drop it.",
+		BadExample = """
+		options({ trackEmittedStreams: true }); // rejected under engine_version 2
+		fromAll().when({
+		  Counted(state, event) { return { count: state.count + 1 }; }
+		});
+		""",
+		GoodExample = """
+		// Run on engine_version 1 if you need emitted-stream tracking, or drop the option.
+		fromAll().when({
+		  Counted(state, event) { return { count: state.count + 1 }; }
+		});
+		""",
+		FixedIn = null, // V2 keeps no emitted-streams catalog; no plan to support it
+	};
+
 	// ---------- usage.* : the user's own projection code ----------
 
 	/// <summary><c>linkStreamTo</c> is undocumented in KurrentDB and may be removed.</summary>
@@ -394,6 +424,7 @@ public static class DiagnosticCatalog {
 		BiStateSharedStateResetOnV2,
 		BiStateNonArrayReturn,
 		OutputStateNoEffectOnV2,
+		TrackEmittedStreamsUnsupportedOnV2,
 		LinkStreamToDeprecated,
 		TransformsNotInvoked,
 		OptionsDuplicate,

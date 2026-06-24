@@ -117,8 +117,8 @@ func compareProjection(ctx context.Context, r *remote.Client, cfg *config.Config
 		return comparison{Name: name, State: driftUntracked, Deployed: &deployed}, nil
 	}
 
-	// A per-projection config error (engine_version, track_emitted_streams, a bad
-	// entry, ...) means there's no valid local definition. Surface it as invalid,
+	// A per-projection config error (a missing/invalid engine_version, a bad entry
+	// path, a malformed fixture, ...) means there's no valid local definition. Surface it as invalid,
 	// like a compile failure, so status/diff degrade and deploy refuses for this
 	// projection alone rather than failing the whole command. Best-effort fill the
 	// local/deployed columns for the diff; a bad entry leaves nothing to read, so

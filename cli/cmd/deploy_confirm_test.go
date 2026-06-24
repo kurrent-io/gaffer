@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -48,6 +49,78 @@ func TestConfirmPlan(t *testing.T) {
 			t.Errorf("non-interactive without --yes should fail closed, got %v", err)
 		}
 	}
+}
+
+func TestRenderDryRunExitCodes(t *testing.T) {
+	cases := []struct {
+		name string
+		plan []plannedItem
+		want int // 0 via nil
+	}{
+		{"all in sync", []plannedItem{{name: "a", action: actSkip}}, 0},
+		{"changes pending", []plannedItem{{name: "a", action: actCreate}, {name: "b", action: actSkip}}, 2},
+		{"a refusal blocks", []plannedItem{{name: "a", action: actCreate}, {name: "b", action: actRefuse, reason: "needs recreate"}}, 1},
+		{"a planning error blocks", []plannedItem{{name: "a", action: actCreate}, {name: "b", err: errors.New("read failed")}}, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := renderDryRun(&buf, tc.plan, "", planChangeCounts(tc.plan), false, false)
+			got := 0
+			if err != nil {
+				got = ExitCodeFor(err)
+			}
+			if got != tc.want {
+				t.Errorf("exit code = %d, want %d (err %v)", got, tc.want, err)
+			}
+			if buf.Len() == 0 {
+				t.Error("dry run rendered no plan")
+			}
+		})
+	}
+}
+
+func TestRenderDryRunJSONShape(t *testing.T) {
+	plan := []plannedItem{{name: "a", action: actCreate}, {name: "b", action: actSkip}}
+	var buf bytes.Buffer
+	err := renderDryRun(&buf, plan, "", planChangeCounts(plan), false, true)
+	if got := exitCodeOf(err); got != 2 {
+		t.Fatalf("exit code = %d, want 2", got)
+	}
+	// Same array-of-outcomes schema as a real deploy: each item reports its
+	// would-be outcome (present here as the past-tense verdict).
+	for _, want := range []string{`"name": "a"`, `"outcome": "created"`, `"name": "b"`, `"outcome": "skipped"`} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("dry-run JSON missing %q in:\n%s", want, buf.String())
+		}
+	}
+}
+
+func TestExitCodeFor(t *testing.T) {
+	if got := ExitCodeFor(errors.New("plain")); got != 1 {
+		t.Errorf("plain error should be exit 1, got %d", got)
+	}
+	if got := ExitCodeFor(exitWith(2, silent(errors.New("pending")))); got != 2 {
+		t.Errorf("exitWith(2) should be exit 2, got %d", got)
+	}
+	if got := ExitCodeFor(errNeedConfirm); got != 3 {
+		t.Errorf("errNeedConfirm should be exit 3, got %d", got)
+	}
+	if got := ExitCodeFor(errOperateNeedsConfirm); got != 3 {
+		t.Errorf("errOperateNeedsConfirm should be exit 3, got %d", got)
+	}
+	// A guardrail sentinel still maps to 3 when wrapped (fmt.Errorf %w).
+	if got := ExitCodeFor(fmt.Errorf("deploy: %w", errNeedConfirm)); got != 3 {
+		t.Errorf("wrapped errNeedConfirm should be exit 3, got %d", got)
+	}
+}
+
+// exitCodeOf returns the mapped exit code, or 0 for a nil error.
+func exitCodeOf(err error) int {
+	if err == nil {
+		return 0
+	}
+	return ExitCodeFor(err)
 }
 
 func TestConfirmPlanYesSkipsOnProd(t *testing.T) {

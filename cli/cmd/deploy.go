@@ -18,6 +18,7 @@ type deployOpts struct {
 	NoValidate         bool
 	Yes                bool
 	ResetOnLogicChange bool
+	DryRun             bool
 }
 
 // deployAction is what deploy decides to do with one projection, derived from
@@ -131,7 +132,11 @@ func newDeployCmd() *cobra.Command {
 			"won't clear the fault. --yes skips the prompt; without a terminal (or with --json) deploy " +
 			"won't apply unconfirmed, so pass --yes in scripts. A server that reports itself as " +
 			"production gets a louder confirm and refuses --no-validate. " +
-			"Pass --json for machine-readable output.",
+			"Pass --json for machine-readable output.\n\n" +
+			"--dry-run shows the plan and applies nothing. The exit code is stable for scripts: " +
+			"0 succeeded (or nothing to do), 1 an error, 2 changes are pending (--dry-run only), " +
+			"3 refused by a guardrail (confirmation needed but no terminal or --yes, or " +
+			"--no-validate against production).",
 		Example: "  gaffer deploy\n" +
 			"  gaffer deploy order-count --env staging",
 		Args: maxArgs(1),
@@ -149,6 +154,7 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.NoValidate, "no-validate", false, "Skip the preflight compile check and deploy anyway")
 	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip the confirmation prompt")
 	cmd.Flags().BoolVar(&opts.ResetOnLogicChange, "reset-on-logic-change", false, "Rebuild from zero on a logic change instead of continuing from checkpoint")
+	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Show the plan and exit without applying (exit 2 if changes are pending)")
 	return cmd
 }
 
@@ -236,9 +242,22 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 
 	// --no-validate skips the preflight compile gate; production never accepts it,
 	// so a prod deploy always validates first. Refuse before applying - nothing has
-	// been written yet.
+	// been written yet. Enforced even under --dry-run: this guards the dangerous flag
+	// combination itself, not the write, so a preview of it is refused too rather than
+	// misreporting a plan the real deploy would never run. exitWith(3) is the
+	// guardrail-refusal code, and (unlike the previous silent wrap) lets fang print
+	// the reason instead of swallowing it.
 	if prod && opts.NoValidate {
-		return silent(fmt.Errorf("--no-validate is not allowed on production %s: it skips the preflight compile check. Deploy without it so projections are validated first", targetDesc(target)))
+		return exitWith(3, fmt.Errorf("--no-validate is not allowed on production %s: it skips the preflight compile check. Deploy without it so projections are validated first", targetDesc(target)))
+	}
+
+	// --dry-run reports the plan and applies nothing, so it stops before the confirm
+	// gate below - an apply-only guardrail a read-only preview needs no answer to (a
+	// non-interactive dry-run must still report drift as exit 2, not refuse as 3). It
+	// does honour the production --no-validate refusal above, which a real deploy with
+	// the same flags would hit before any prompt.
+	if opts.DryRun {
+		return renderDryRun(cmd.OutOrStdout(), plan, target, totals, prod, opts.JSON)
 	}
 
 	if err := confirmPlan(cmd.OutOrStdout(), cmd.ErrOrStderr(), plan, target, totals, opts.Yes, opts.JSON, prod); err != nil {

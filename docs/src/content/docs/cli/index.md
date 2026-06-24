@@ -15,7 +15,7 @@ The `gaffer` CLI scaffolds projections, runs them locally against fixtures or li
 | [`gaffer info <name>`](./commands.md#gaffer-info)    | Print the projection's details: source, partitioning, declared fixtures, engine version, matched events, whether it emits events, and any diagnostics. |
 | [`gaffer diff <projection>`](./commands.md#gaffer-diff) | Compare a projection's local definition against what's deployed: in sync, drifted, not deployed, untracked, or invalid (the local definition doesn't compile or has a config error). |
 | [`gaffer status [projection]`](./commands.md#gaffer-status) | Show the runtime state of projections on an environment and how they compare to local config. |
-| [`gaffer deploy [projection]`](./commands.md#gaffer-deploy) | Create or update projections on an environment: create the new ones, update the changed ones, skip the in-sync ones. Compiles every projection locally first and refuses the run if any has errors (`--no-validate` bypasses). Shows the plan and confirms before applying (`--yes` skips); a production server is extra-guarded and refuses `--no-validate`. |
+| [`gaffer deploy [projection]`](./commands.md#gaffer-deploy) | Create or update projections on an environment: create the new ones, update the changed ones, skip the in-sync ones. Compiles every projection locally first and refuses the run if any has errors (`--no-validate` bypasses). Shows the plan and confirms before applying (`--yes` skips); a production server is extra-guarded and refuses `--no-validate`. `--dry-run` shows the plan and applies nothing. Exits with a [stable code](#exit-codes) for CI. |
 | [`gaffer start <projection>`](./commands.md#gaffer-start) | Start (enable) a deployed projection so it resumes from its last checkpoint. |
 | [`gaffer stop <projection>`](./commands.md#gaffer-stop) | Stop (disable) a deployed projection, writing a final checkpoint (`--abort` skips it). |
 | [`gaffer recreate <projection>`](./commands.md#gaffer-recreate) | Destroy and rebuild a deployed projection from local config, reprocessing from zero (`--delete-emitted` also wipes emitted streams). |
@@ -111,6 +111,17 @@ Project-level telemetry is opted out by setting `telemetry = false` at the top o
 - **`--fixture <name>`** / **`--events <path>`**: pick a named fixture from `gaffer.toml`, or point at a JSON events file directly. These offline sources are mutually exclusive with the live ones (`--env` / `--connection`); combining the two is a usage error.
 - **`--yes` / `-y`**: skip interactive prompts and accept defaults. Applies to `gaffer scaffold`, `gaffer dev`, `gaffer deploy`, and the guarded operate verbs (`gaffer delete` and `gaffer recreate` always, `gaffer stop` against production). For `gaffer deploy`, `gaffer delete`, `gaffer recreate`, and a production `gaffer stop` it stands in as the confirmation, so pass it in scripts and CI: without a terminal those refuse to act unless `--yes` is given. See [Interactive mode](#interactive-mode).
 - **`GAFFER_TIMEOUT_MS`** (environment variable): bounds how long a projection may run locally before gaffer treats it as hung, in milliseconds, applied to `gaffer dev` and `gaffer test`. Raise it from the 5000ms default only on slow hardware. The [`[database_config]`](../reference/gaffer-toml.md#database_config) timeouts declare the server's configuration and do not affect local runs.
+
+## Exit codes
+
+`gaffer deploy` uses a stable exit code so a pipeline can branch on the result:
+
+- **`0`** — succeeded, or nothing to do (everything already in sync).
+- **`1`** — an error: a projection failed to compile, a server call failed, or the plan has a projection deploy can't apply in place (a refusal).
+- **`2`** — changes are pending. Only `--dry-run` returns this; it means the plan has work to apply.
+- **`3`** — refused by a guardrail: confirmation was needed but there was no terminal and no `--yes`, or `--no-validate` was used against production. Re-run satisfying the guardrail. `gaffer recreate`, `gaffer start`, `gaffer stop`, and `gaffer delete` also exit `3` when a guarded action can't confirm non-interactively.
+
+A typical CI check is `gaffer deploy --dry-run`: exit `0` means in sync, `2` means drift to apply, `1` means something needs attention.
 
 ## Telemetry
 

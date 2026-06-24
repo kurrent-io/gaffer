@@ -56,6 +56,37 @@ func confirmPlan(out, errOut io.Writer, plan []plannedItem, target string, total
 	return errNeedConfirm
 }
 
+// renderDryRun shows the plan and applies nothing, returning the CI exit code as
+// an error: nil (exit 0) when everything is in sync, exit 2 when changes are
+// pending so a pipeline can branch on drift, and exit 1 when a projection failed
+// to plan or is refused (deploy can't apply it in place - e.g. an engine-version
+// change needing recreate). The plan is already on screen, so the non-zero codes
+// wrap a silent error and fang prints nothing more. The JSON mirrors a real
+// deploy's shape (each item's would-be outcome), so the schema is the same either way.
+func renderDryRun(out io.Writer, plan []plannedItem, target string, totals planTotals, prod, jsonOut bool) error {
+	if jsonOut {
+		sink := &jsonSink{w: out, results: []deployJSON{}}
+		for _, it := range plan {
+			sink.done(it.result())
+		}
+		if err := sink.finish(); err != nil {
+			return err
+		}
+	} else {
+		newTextWriter(out, out).writePlanSummary(plan, target, totals, prod)
+	}
+
+	for _, it := range plan {
+		if it.err != nil || it.action == actRefuse {
+			return exitWith(1, silent(errors.New("dry run: some projections can't be deployed")))
+		}
+	}
+	if totals.changes() > 0 {
+		return exitWith(2, silent(errors.New("dry run: changes pending")))
+	}
+	return nil
+}
+
 // deployTarget names the deploy target for the confirm: the server's
 // self-reported cluster name when it has one (authoritative), else the env name
 // the user selected, else empty.

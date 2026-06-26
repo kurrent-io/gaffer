@@ -94,7 +94,7 @@ func TestFeedAndGetState(t *testing.T) {
 // the process ("invalid pointer found on stack"). Unlike the concurrent-GC
 // test below, this fails immediately and regardless of scheduling or -race.
 func TestSessionHandleIsNotPointer(t *testing.T) {
-	f, ok := reflect.TypeOf(Session{}).FieldByName("handle")
+	f, ok := reflect.TypeFor[Session]().FieldByName("handle")
 	if !ok {
 		t.Fatal("Session has no handle field")
 	}
@@ -660,7 +660,7 @@ func TestFeedResultProcessed(t *testing.T) {
 	if len(result.State) == 0 || string(result.State) == "null" {
 		t.Fatal("expected non-null state")
 	}
-	var state map[string]interface{}
+	var state map[string]any
 	if err := json.Unmarshal(result.State, &state); err != nil {
 		t.Fatalf("failed to parse state: %v", err)
 	}

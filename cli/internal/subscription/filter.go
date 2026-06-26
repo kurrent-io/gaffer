@@ -10,7 +10,7 @@ import (
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 )
 
-func buildFilter(info gafferruntime.ProjectionInfo, engineVersion int) *kurrentdb.SubscriptionFilter {
+func buildFilter(info gafferruntime.ProjectionInfo) *kurrentdb.SubscriptionFilter {
 	sourceFilter := buildSourceFilter(info)
 
 	// AllEvents is set by a $any handler; in that case every event
@@ -102,7 +102,7 @@ func BuildSubscribeOptions(info gafferruntime.ProjectionInfo, engineVersion int)
 		MaxSearchWindow:    10000,
 		CheckpointInterval: 10,
 	}
-	if filter := buildFilter(info, engineVersion); filter != nil {
+	if filter := buildFilter(info); filter != nil {
 		opts.Filter = filter
 	}
 	return opts

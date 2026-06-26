@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
@@ -16,8 +15,10 @@ import (
 // projectionRPCTimeout bounds a single projection management call. The
 // projections subsystem replies with nothing while it is still starting, so an
 // unbounded call would hang; diff and status bound the whole command by it,
-// deploy bounds each projection by it. Shared so the three move together.
-const projectionRPCTimeout = 30 * time.Second
+// deploy bounds each projection by it. Defined once in internal/deploy (the
+// rebuild/recreate sequences there bound each step by it) so they all move
+// together.
+const projectionRPCTimeout = deploy.RPCTimeout
 
 // loadProject finds the project root and loads gaffer.toml, without connecting.
 // Lets a command run local-only work (deploy's preflight compile) before
@@ -34,19 +35,29 @@ func loadProject() (cfg *config.Config, root string, err error) {
 	return cfg, root, nil
 }
 
+// liveConn is a connected live target: the loaded project (cfg/root), the remote
+// client, and the cleanup to defer. Returned as a struct rather than a five-value
+// tuple so callers take the fields they need without positional discards.
+type liveConn struct {
+	cfg     *config.Config
+	root    string
+	r       *remote.Client
+	cleanup func()
+}
+
 // connectEnv loads the project, resolves the live env from explicit flags, and
-// connects, returning a remote client and a cleanup to defer. Shared by the
-// server-touching projection commands (diff, status, and deploy).
-func connectEnv(connection, env string) (cfg *config.Config, root string, r *remote.Client, cleanup func(), err error) {
-	cfg, root, err = loadProject()
+// connects. Shared by the server-touching projection commands (diff, status,
+// recreate, and the operate verbs).
+func connectEnv(connection, env string) (liveConn, error) {
+	cfg, root, err := loadProject()
 	if err != nil {
-		return nil, "", nil, nil, err
+		return liveConn{}, err
 	}
-	r, cleanup, err = connectResolved(cfg, root, connection, env)
+	r, cleanup, err := connectResolved(cfg, root, connection, env)
 	if err != nil {
-		return nil, "", nil, nil, err
+		return liveConn{}, err
 	}
-	return cfg, root, r, cleanup, nil
+	return liveConn{cfg: cfg, root: root, r: r, cleanup: cleanup}, nil
 }
 
 // connectResolved resolves the live env from explicit flags against an
@@ -66,6 +77,18 @@ func connectResolved(cfg *config.Config, root, connection, env string) (r *remot
 		return nil, nil, err
 	}
 	return remote.New(client), func() { _ = client.Close() }, nil
+}
+
+// refuseNoValidateOnProd is the single source of the production --no-validate
+// guardrail, shared by deploy and recreate so the message and exit code stay in
+// lockstep. --no-validate skips the preflight compile gate; production never
+// accepts it, so a prod deploy/recreate always validates first. exitWith(3) is
+// the guardrail-refusal code, and (unlike a silent wrap) lets fang print the
+// reason instead of swallowing it. verb names the command ("Deploy"/"Recreate")
+// and subject reads in "so <subject> are/is validated first".
+func refuseNoValidateOnProd(verb, subject, target string) error {
+	return exitWith(3, fmt.Errorf("--no-validate is not allowed on production %s: it skips the preflight compile check. %s without it so %s validated first",
+		targetDesc(target), verb, subject))
 }
 
 // driftState is how one projection compares between local config and the server.

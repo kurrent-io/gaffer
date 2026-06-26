@@ -56,11 +56,12 @@ func newStatusCmd() *cobra.Command {
 }
 
 func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
-	cfg, root, r, cleanup, err := connectEnv(opts.Connection, opts.Env)
+	conn, err := connectEnv(opts.Connection, opts.Env)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
+	defer conn.cleanup()
+	cfg, root, r := conn.cfg, conn.root, conn.r
 
 	// remote calls block until their context deadline if the projections
 	// subsystem doesn't respond, so bound them rather than hang the command.

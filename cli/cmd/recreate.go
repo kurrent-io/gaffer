@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
@@ -52,11 +53,12 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 		return err
 	}
 
-	cfg, root, r, cleanup, err := connectEnv(opts.Connection, opts.Env)
+	conn, err := connectEnv(opts.Connection, opts.Env)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
+	defer conn.cleanup()
+	cfg, root, r := conn.cfg, conn.root, conn.r
 
 	def := cfg.FindProjection(name)
 	if def == nil {
@@ -103,10 +105,10 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 		return err
 	}
 
-	// exitWith(3) is the guardrail-refusal code, and (unlike a silent wrap) lets fang
-	// print the reason instead of swallowing it.
+	// The production --no-validate guardrail is defined once (shared with deploy) so
+	// its message and exit code can't drift.
 	if prod && opts.NoValidate {
-		return exitWith(3, fmt.Errorf("--no-validate is not allowed on production %s: it skips the preflight compile check. Recreate without it so the projection is validated first", targetDesc(target)))
+		return refuseNoValidateOnProd("Recreate", "the projection is", target)
 	}
 
 	// An emitting projection re-emits on the rebuild, duplicating into its target
@@ -122,29 +124,27 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 		return err
 	}
 
-	// Disable -> Delete -> Create, each RPC bounded separately. The destroy
-	// precedes the create, so a failure after Delete leaves the projection gone:
-	// name the recovery rather than a bare error.
-	if err := rpc(ctx, func(ctx context.Context) error { return r.Disable(ctx, name) }); err != nil {
-		return fmt.Errorf("could not stop %s before recreating: %w", name, err)
-	}
-	if err := rpc(ctx, func(ctx context.Context) error {
-		return r.Delete(ctx, name, remote.DeleteOptions{
-			DeleteStateStream:      true,
-			DeleteCheckpointStream: true,
-			DeleteEmittedStreams:   opts.DeleteEmitted,
-		})
+	// The destructive Disable -> Delete -> Create sequence, its ordering and
+	// recovery messages, live in internal/deploy (shared in shape with deploy's
+	// rebuild); here we only bind each step to the client and its option mapping.
+	if err := deploy.Recreate(ctx, name, deploy.RecreateSteps{
+		Disable: func(ctx context.Context) error { return r.Disable(ctx, name) },
+		Delete: func(ctx context.Context) error {
+			return r.Delete(ctx, name, remote.DeleteOptions{
+				DeleteStateStream:      true,
+				DeleteCheckpointStream: true,
+				DeleteEmittedStreams:   opts.DeleteEmitted,
+			})
+		},
+		Create: func(ctx context.Context) error {
+			return r.Create(ctx, name, local.Query, remote.CreateOptions{
+				EngineVersion:       local.EngineVersion,
+				Emit:                local.Emit,
+				TrackEmittedStreams: local.TrackEmittedStreams,
+			})
+		},
 	}); err != nil {
-		return fmt.Errorf("could not delete %s before recreating: %w", name, err)
-	}
-	if err := rpc(ctx, func(ctx context.Context) error {
-		return r.Create(ctx, name, local.Query, remote.CreateOptions{
-			EngineVersion:       local.EngineVersion,
-			Emit:                local.Emit,
-			TrackEmittedStreams: local.TrackEmittedStreams,
-		})
-	}); err != nil {
-		return fmt.Errorf("%s was deleted but recreating it failed - re-run gaffer recreate %s, or gaffer deploy %s: %w", name, name, name, err)
+		return err
 	}
 
 	return renderOperate(cmd.OutOrStdout(), opts.JSON, name, "recreated", target)

@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
 
 // hangGuardHint is appended to local timeout errors so a user knows which lever
@@ -176,21 +176,10 @@ func displayJSON(raw json.RawMessage) string {
 	return string(raw)
 }
 
+// numberPrinter groups integers with thousands separators. Pinned to English so
+// the separator stays a comma regardless of the host locale.
+var numberPrinter = message.NewPrinter(language.English)
+
 func formatNumber(n int) string {
-	s := strconv.Itoa(n)
-	if len(s) <= 3 {
-		return s
-	}
-	var b strings.Builder
-	offset := len(s) % 3
-	if offset > 0 {
-		b.WriteString(s[:offset])
-	}
-	for i := offset; i < len(s); i += 3 {
-		if b.Len() > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(s[i : i+3])
-	}
-	return b.String()
+	return numberPrinter.Sprintf("%d", n)
 }

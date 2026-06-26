@@ -95,11 +95,12 @@ const ledgerScanLimit = 256
 //
 // Outcomes: the latest entry; ErrNoLedger if the projection exists but no tool
 // entry is present within the scan window (untracked, or buried under only
-// metadata-less lifecycle events); or ErrNotFound if the projection is gone -
-// either its stream is absent (a backward read surfaces that at the first Recv) or
-// its latest state is a tombstone, kept consistent with Read so a caller (e.g.
-// orphan detection) doesn't mistake a deleted projection for a tracked one. A
-// genuinely undecodable definition or metadata blob is surfaced, not swallowed.
+// metadata-less lifecycle events); ErrNotFound if the projection is gone - either
+// its stream is absent (a backward read surfaces that at the first Recv) or its
+// latest state is a tombstone, kept consistent with Read so a caller (e.g. orphan
+// detection) doesn't mistake a deleted projection for a tracked one; or
+// ErrMalformedLedger if its tool metadata won't decode - surfaced distinctly, not
+// swallowed as "no ledger", so a caller can flag that one projection and continue.
 func (c *Client) ReadLedger(ctx context.Context, name string) (*Ledger, error) {
 	stream, err := c.db.ReadStream(ctx, projectionStreamPrefix+name, kurrentdb.ReadStreamOptions{
 		Direction:      kurrentdb.Backwards,
@@ -140,7 +141,7 @@ func readLedger(next func() (*kurrentdb.ResolvedEvent, error), name string) (*Le
 		}
 		l, err := parseLedger(ev.Event.UserMetadata, ev.Event.CreatedDate)
 		if err != nil {
-			return nil, fmt.Errorf("decode tool metadata for %q: %w", name, err)
+			return nil, fmt.Errorf("%w for %q: %v", ErrMalformedLedger, name, err)
 		}
 		if l != nil {
 			return l, nil

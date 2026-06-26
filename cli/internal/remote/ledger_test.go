@@ -125,8 +125,9 @@ func TestReadLedgerTombstonedIsNotFound(t *testing.T) {
 }
 
 func TestReadLedgerSurfacesBadMetadata(t *testing.T) {
-	// A live projection whose newest tool metadata won't decode: surface it, don't
-	// scan past to ErrNoLedger.
+	// A live projection whose newest tool metadata won't decode: surfaced as
+	// ErrMalformedLedger (distinct from ErrNoLedger), so a caller can flag the one
+	// projection and carry on rather than aborting.
 	bad := &kurrentdb.ResolvedEvent{Event: &kurrentdb.RecordedEvent{
 		EventType:    projectionUpdatedType,
 		Data:         []byte(liveState),
@@ -134,8 +135,11 @@ func TestReadLedgerSurfacesBadMetadata(t *testing.T) {
 		CreatedDate:  ledgerTime,
 	}}
 	_, err := readLedger(recvSeq(recvStep{ev: bad}), "orders")
-	if err == nil || errors.Is(err, ErrNoLedger) {
-		t.Fatalf("err = %v, want a surfaced decode error (not ErrNoLedger)", err)
+	if !errors.Is(err, ErrMalformedLedger) {
+		t.Fatalf("err = %v, want ErrMalformedLedger", err)
+	}
+	if errors.Is(err, ErrNoLedger) {
+		t.Fatal("a malformed entry must not classify as ErrNoLedger")
 	}
 }
 

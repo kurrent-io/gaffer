@@ -43,6 +43,25 @@ func EscapesRoot(rel string) bool {
 	return cleaned == ".." || strings.HasPrefix(cleaned, "../")
 }
 
+// IsAbsolute reports whether p is absolute in any host-independent
+// sense: a host-OS absolute path, a slash-absolute path after
+// backslash normalisation, or a Windows drive-letter form. Detection
+// is host-OS-independent so a Linux server still rejects a Windows-
+// shaped absolute path (e.g. "C:\foo") that filepath.IsAbs misses.
+//
+// EscapesRoot only catches `..` traversal on a *relative* path, so
+// callers gating "must stay under root" need this too: an absolute
+// path neither equals ".." nor is "../"-prefixed once cleaned.
+func IsAbsolute(p string) bool {
+	if HasWindowsDrivePrefix(p) {
+		return true
+	}
+	if filepath.IsAbs(p) {
+		return true
+	}
+	return path.IsAbs(strings.ReplaceAll(p, "\\", "/"))
+}
+
 // ResolveAncestorSymlinks walks up to the deepest existing ancestor
 // of p, EvalSymlinks-resolves it, then rejoins the missing-suffix
 // portion. Necessary because filepath.EvalSymlinks errors out on

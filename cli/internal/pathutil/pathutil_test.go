@@ -56,6 +56,31 @@ func TestEscapesRoot(t *testing.T) {
 	}
 }
 
+func TestIsAbsolute(t *testing.T) {
+	cases := []struct {
+		input string
+		want  bool
+	}{
+		{"foo.js", false},
+		{"projections/foo.js", false},
+		{"../foo.js", false}, // escape, not absolute
+		{"..hidden.js", false},
+		{"/etc/passwd", true},
+		{"/foo", true},
+		{"\\\\server\\share", true}, // backslash-absolute, normalised
+		{"C:\\foo", true},           // Windows drive-letter
+		{"c:foo", true},             // drive-relative
+		{"C:/foo", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			if got := IsAbsolute(tc.input); got != tc.want {
+				t.Errorf("IsAbsolute(%q) = %v, want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolveAncestorSymlinks_LeafExists(t *testing.T) {
 	dir := t.TempDir()
 	resolved, err := ResolveAncestorSymlinks(dir)

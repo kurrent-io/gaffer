@@ -35,19 +35,29 @@ func loadProject() (cfg *config.Config, root string, err error) {
 	return cfg, root, nil
 }
 
+// liveConn is a connected live target: the loaded project (cfg/root), the remote
+// client, and the cleanup to defer. Returned as a struct rather than a five-value
+// tuple so callers take the fields they need without positional discards.
+type liveConn struct {
+	cfg     *config.Config
+	root    string
+	r       *remote.Client
+	cleanup func()
+}
+
 // connectEnv loads the project, resolves the live env from explicit flags, and
-// connects, returning a remote client and a cleanup to defer. Shared by the
-// server-touching projection commands (diff, status, and deploy).
-func connectEnv(connection, env string) (cfg *config.Config, root string, r *remote.Client, cleanup func(), err error) {
-	cfg, root, err = loadProject()
+// connects. Shared by the server-touching projection commands (diff, status,
+// recreate, and the operate verbs).
+func connectEnv(connection, env string) (liveConn, error) {
+	cfg, root, err := loadProject()
 	if err != nil {
-		return nil, "", nil, nil, err
+		return liveConn{}, err
 	}
-	r, cleanup, err = connectResolved(cfg, root, connection, env)
+	r, cleanup, err := connectResolved(cfg, root, connection, env)
 	if err != nil {
-		return nil, "", nil, nil, err
+		return liveConn{}, err
 	}
-	return cfg, root, r, cleanup, nil
+	return liveConn{cfg: cfg, root: root, r: r, cleanup: cleanup}, nil
 }
 
 // connectResolved resolves the live env from explicit flags against an

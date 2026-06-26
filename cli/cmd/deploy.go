@@ -224,26 +224,14 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 
 	// Only a plan that changes something needs the target identity (and
 	// confirmation). Reading server info is a leader round-trip, so skip it on a
-	// no-op deploy.
+	// no-op deploy. The same bounded $server-info read the operate verbs use names
+	// the target in the confirm and gates the production tier (keyed on the DB's
+	// own flag, never the env label); an unreadable $server-info falls back to the
+	// env label and non-production.
 	totals := planChangeCounts(plan)
 	target, prod := "", false
 	if totals.changes() > 0 {
-		// The server's self-reported identity names the target in the confirm and
-		// gates the production tier (it keys on the DB's own flag, never the env
-		// label). Bound the read like the other management calls so a hung
-		// $server-info can't stall the deploy.
-		siCtx, siCancel := context.WithTimeout(ctx, projectionRPCTimeout)
-		info, siErr := r.ServerInfo(siCtx)
-		siCancel()
-		// $server-info is advisory and often unreadable - absent on most DBs, or
-		// ACL-restricted on a secured server - so any error falls back to baseline
-		// silently (info is nil). Not worth a warning on every deploy, and a real
-		// connection failure surfaces when the apply writes. Trade-off: an
-		// unreadable prod DB drops the prod tier (re-permits --no-validate); the core
-		// never-apply-unconfirmed guard still holds.
-		_ = siErr
-		target = deployTarget(opts.Env, info)
-		prod = info.IsProduction()
+		target, prod = resolveOperateTarget(ctx, r, opts.Env)
 	}
 
 	// Refuse the prod --no-validate combination before applying - nothing has been

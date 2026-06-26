@@ -53,11 +53,12 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 		return err
 	}
 
-	cfg, root, r, cleanup, err := connectEnv(opts.Connection, opts.Env)
+	conn, err := connectEnv(opts.Connection, opts.Env)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
+	defer conn.cleanup()
+	cfg, root, r := conn.cfg, conn.root, conn.r
 
 	def := cfg.FindProjection(name)
 	if def == nil {

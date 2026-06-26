@@ -78,7 +78,7 @@ func (s RebuildSteps) validate() error {
 // the recovery.
 func Rebuild(ctx context.Context, name string, s RebuildSteps) error {
 	if err := s.validate(); err != nil {
-		return err
+		return fmt.Errorf("rebuild %s: %w", name, err)
 	}
 	if err := bound(ctx, s.Disable); err != nil {
 		return fmt.Errorf("stopping for reset (projection untouched): %w", err)
@@ -119,7 +119,7 @@ func (s RecreateSteps) validate() error {
 // bare error. There's no auto-rollback.
 func Recreate(ctx context.Context, name string, s RecreateSteps) error {
 	if err := s.validate(); err != nil {
-		return err
+		return fmt.Errorf("recreate %s: %w", name, err)
 	}
 	if err := bound(ctx, s.Disable); err != nil {
 		return fmt.Errorf("could not stop %s before recreating: %w", name, err)

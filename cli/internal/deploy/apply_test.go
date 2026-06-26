@@ -138,8 +138,8 @@ func TestNilStepRejectedBeforeAnyCall(t *testing.T) {
 		s := r.rebuildSteps()
 		s.Reset = nil
 		err := Rebuild(context.Background(), "orders", s)
-		if err == nil || !strings.Contains(err.Error(), "reset step is not wired") {
-			t.Fatalf("want 'reset step is not wired', got: %v", err)
+		if err == nil || !strings.Contains(err.Error(), "reset step is not wired") || !strings.Contains(err.Error(), "rebuild orders") {
+			t.Fatalf("want 'rebuild orders: reset step is not wired', got: %v", err)
 		}
 		if len(r.calls) != 0 {
 			t.Errorf("no step should run when one is unwired, ran: %v", r.calls)
@@ -150,8 +150,8 @@ func TestNilStepRejectedBeforeAnyCall(t *testing.T) {
 		s := r.recreateSteps()
 		s.Create = nil
 		err := Recreate(context.Background(), "orders", s)
-		if err == nil || !strings.Contains(err.Error(), "create step is not wired") {
-			t.Fatalf("want 'create step is not wired', got: %v", err)
+		if err == nil || !strings.Contains(err.Error(), "create step is not wired") || !strings.Contains(err.Error(), "recreate orders") {
+			t.Fatalf("want 'recreate orders: create step is not wired', got: %v", err)
 		}
 		if len(r.calls) != 0 {
 			t.Errorf("no step should run when one is unwired, ran: %v", r.calls)

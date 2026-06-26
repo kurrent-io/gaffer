@@ -136,7 +136,13 @@ func newDeployCmd() *cobra.Command {
 			"--dry-run shows the plan and applies nothing. The exit code is stable for scripts: " +
 			"0 succeeded (or nothing to do), 1 an error, 2 changes are pending (--dry-run only), " +
 			"3 refused by a guardrail (confirmation needed but no terminal or --yes, or " +
-			"--no-validate against production).",
+			"--no-validate against production).\n\n" +
+			"Each create or update records tool metadata on the projection for attribution: the " +
+			"tool and version, the source revision, and the acting identity. The revision is the " +
+			"project's git commit, suffixed +changes when the tree is dirty; the actor is the user " +
+			"gaffer connects as. For CI, the GAFFER_REVISION and GAFFER_ACTOR environment variables " +
+			"override them (to record the canonical commit or the pipeline identity). A KurrentDB " +
+			"that predates the feature ignores the metadata and deploy is unaffected.",
 		Example: "  gaffer deploy\n" +
 			"  gaffer deploy order-count --env staging",
 		Args: maxArgs(1),
@@ -264,9 +270,12 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 		return err
 	}
 
+	// The tool-metadata gaffer stamps on every create/update this deploy makes.
+	ledger := deployLedger(opts, cfg, root)
+
 	sink := newDeploySink(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts.JSON, names, ctx, cancel)
 	failed := applyPlan(ctx, plan, sink, func(item plannedItem) error {
-		return applyOne(ctx, r, item)
+		return applyOne(ctx, r, item, ledger)
 	})
 	if ferr := sink.finish(); ferr != nil {
 		return ferr
@@ -443,8 +452,8 @@ func applyPlan(ctx context.Context, plan []plannedItem, sink deploySink, apply f
 // applyOne performs one item's create/update/reset. Each underlying RPC is
 // bounded separately (a reset issues four), so a multi-step rebuild isn't
 // squeezed into the budget for a single call.
-func applyOne(ctx context.Context, r *remote.Client, item plannedItem) error {
-	return applyAction(ctx, r, item.name, item.action, item.cmp.Local)
+func applyOne(ctx context.Context, r *remote.Client, item plannedItem, ledger remote.Ledger) error {
+	return applyAction(ctx, r, item.name, item.action, item.cmp.Local, ledger)
 }
 
 // rpc bounds one server call by projectionRPCTimeout, so every step of a
@@ -508,7 +517,7 @@ func recreateReason(c comparison) string {
 // sent on update (as a non-nil pointer) because the server resets it to false on
 // any update that omits it. A created continuous projection starts enabled
 // server-side, so there is no separate enable step.
-func applyAction(ctx context.Context, mgr projectionManager, name string, action deployAction, local *deploy.Descriptor) error {
+func applyAction(ctx context.Context, mgr projectionManager, name string, action deployAction, local *deploy.Descriptor, ledger remote.Ledger) error {
 	switch action {
 	case actCreate:
 		return rpc(ctx, func(ctx context.Context) error {
@@ -516,14 +525,15 @@ func applyAction(ctx context.Context, mgr projectionManager, name string, action
 				EngineVersion:       local.EngineVersion,
 				Emit:                local.Emit,
 				TrackEmittedStreams: local.TrackEmittedStreams,
+				Ledger:              &ledger,
 			})
 		})
 	case actUpdate:
 		return rpc(ctx, func(ctx context.Context) error {
-			return mgr.Update(ctx, name, local.Query, remote.UpdateOptions{Emit: emitPtr(local)})
+			return mgr.Update(ctx, name, local.Query, remote.UpdateOptions{Emit: emitPtr(local), Ledger: &ledger})
 		})
 	case actReset:
-		return applyReset(ctx, mgr, name, local)
+		return applyReset(ctx, mgr, name, local, ledger)
 	default:
 		return nil
 	}
@@ -541,12 +551,12 @@ func applyAction(ctx context.Context, mgr projectionManager, name string, action
 // write is harmless on the happy path and a safer resting point on a partial
 // failure. There's no auto-rollback, so each step names the state it leaves and
 // the recovery.
-func applyReset(ctx context.Context, mgr projectionManager, name string, local *deploy.Descriptor) error {
+func applyReset(ctx context.Context, mgr projectionManager, name string, local *deploy.Descriptor, ledger remote.Ledger) error {
 	if err := rpc(ctx, func(ctx context.Context) error { return mgr.Disable(ctx, name) }); err != nil {
 		return fmt.Errorf("stopping for reset (projection untouched): %w", err)
 	}
 	if err := rpc(ctx, func(ctx context.Context) error {
-		return mgr.Update(ctx, name, local.Query, remote.UpdateOptions{Emit: emitPtr(local)})
+		return mgr.Update(ctx, name, local.Query, remote.UpdateOptions{Emit: emitPtr(local), Ledger: &ledger})
 	}); err != nil {
 		return fmt.Errorf("updating for reset - the projection is stopped; run `gaffer start %s` to resume it on the old logic: %w", name, err)
 	}

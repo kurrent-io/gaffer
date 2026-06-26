@@ -29,6 +29,17 @@ var (
 	ErrUnavailable = errors.New("KurrentDB unavailable")
 	// ErrAccessDenied: the request was rejected for authentication or ACL reasons.
 	ErrAccessDenied = errors.New("access denied")
+	// ErrNoLedger: the projection carries no tool metadata within the scan window
+	// (never written by a participating tool, or only metadata-less lifecycle
+	// events). Callers degrade to definition-only behaviour. Distinct from
+	// ErrNotFound, which means the projection itself is absent.
+	ErrNoLedger = errors.New("no tool metadata")
+	// ErrMalformedLedger: the projection has tool metadata that doesn't decode
+	// (server corruption, or a format this gaffer is too old to read). Surfaced
+	// distinctly - not as a swallowed ErrNoLedger, nor as a fatal error - so a
+	// caller can flag the one projection and carry on with the rest rather than
+	// failing the whole command (cf. the driftInvalid local-definition state).
+	ErrMalformedLedger = errors.New("malformed tool metadata")
 )
 
 // classify maps a projection-operation error to a typed sentinel where it

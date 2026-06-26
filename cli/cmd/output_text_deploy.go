@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // deployResultLine renders one projection's verdict: a status marker, the name
@@ -149,7 +150,7 @@ func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, totals
 	}
 	nameWidth, verdictWidth := 0, 0
 	for _, r := range rows {
-		nameWidth = max(nameWidth, len(r.name))
+		nameWidth = max(nameWidth, utf8.RuneCountInString(r.name))
 		verdictWidth = max(verdictWidth, len(r.word))
 	}
 	for _, r := range rows {

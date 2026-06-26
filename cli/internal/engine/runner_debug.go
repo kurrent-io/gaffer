@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"maps"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 )
@@ -65,7 +66,7 @@ func (r *Runner) doStep(fn func() error) error {
 	// false on error also lets the caller's next Paused() guard reject cleanly
 	// rather than re-entering here and failing again.
 	r.mu.Lock()
-	r.paused = false
+	r.control.paused = false
 	r.mu.Unlock()
 	return fn()
 }
@@ -86,6 +87,20 @@ func (r *Runner) StepOut() error {
 	return r.doStep(func() error { return r.debug.Session.StepOut() })
 }
 
+// Pause requests the engine pause at the next step. Like the step verbs it
+// funnels through the Runner so the paused bookkeeping has a single owner: the
+// request itself does not park the engine, so paused stays false until the
+// pause actually lands and the OnBreak handler flips it true. Routing through
+// here (rather than the raw session) keeps the DAP/MCP control verbs uniform.
+//
+// Safe to call when debug is disabled (no-op).
+func (r *Runner) Pause() error {
+	if r.debug == nil {
+		return nil
+	}
+	return r.debug.Session.Pause()
+}
+
 // Drain releases a Feed blocked at a breakpoint or the break_at pause so it
 // can run to completion and the feed goroutine can exit. It is terminal: it
 // sets the draining flag under the lock, so any break that fires afterwards -
@@ -102,13 +117,13 @@ func (r *Runner) Drain() {
 		return
 	}
 	r.mu.Lock()
-	r.draining = true
-	r.breakAtStep = 0
-	wasPaused := r.paused
+	r.control.draining = true
+	r.control.breakAtStep = 0
+	wasPaused := r.control.paused
 	// Clear paused now we're resuming, so a later Paused() read (e.g. the DAP
 	// adapter's ensurePaused guard, or a follow-up Drain) doesn't see a stale
 	// true and act on an already running engine.
-	r.paused = false
+	r.control.paused = false
 	r.mu.Unlock()
 
 	// Errors are discarded: Drain is terminal teardown, so there's nothing
@@ -132,7 +147,11 @@ func (r *Runner) Destroy() {
 	}
 }
 
-// Inspection methods - safe to call while paused at a breakpoint
+// Inspection methods. These cross into the runtime session, which is not
+// thread-safe, so they are safe only while the engine is paused at a
+// breakpoint (the feed goroutine parked inside Feed). They deliberately take
+// no lock - r.mu would not make the FFI call safe and could deadlock against
+// the parked feed goroutine. See the Runner doc comment for the full invariant.
 
 func (r *Runner) Evaluate(expression string) (*gafferruntime.DebugVariable, error) {
 	if r.debug == nil {
@@ -162,22 +181,26 @@ func (r *Runner) GetVariables(variablesReference int) ([]gafferruntime.DebugVari
 	return r.debug.Session.GetVariables(variablesReference)
 }
 
+// CollectState reads the per-partition state out of the session. Safe only
+// while the engine is paused (see the Runner doc comment): it snapshots the
+// partition set under r.mu, then releases the lock before the session FFI call
+// so a slow GetResult (which can run V1 transform JS) doesn't block the trivial
+// Runner accessors on the feed goroutine's path.
 func (r *Runner) CollectState() (StateSummary, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.collectStateLocked()
-}
-
-func (r *Runner) collectStateLocked() (StateSummary, error) {
 	if r.session == nil {
 		return StateSummary{}, nil
 	}
-	return CollectState(r.session, r.info, r.partitions)
+	r.mu.Lock()
+	partitions := maps.Clone(r.run.partitions)
+	r.mu.Unlock()
+	return CollectState(r.session, r.info, partitions)
 }
 
+// GetPartitionState reads a single partition's state and (if defined) its
+// transform result. Safe only while the engine is paused (see the Runner doc
+// comment). session and info are immutable after construction, so no lock is
+// needed; the call crosses into the session under the pause invariant.
 func (r *Runner) GetPartitionState(partition string) (state *string, result *string, err error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.session == nil {
 		return nil, nil, nil
 	}

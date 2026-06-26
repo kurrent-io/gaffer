@@ -25,6 +25,17 @@ func mustSetupDebugSession(t *testing.T) (*DebugAdapter, *engine.Runner, net.Con
 
 func mustSetupDebugSessionSource(t *testing.T, source string) (*DebugAdapter, *engine.Runner, net.Conn, *bufio.Reader) {
 	t.Helper()
+	adapter, runner, conn, reader := mustSetupDebugSessionUnbound(t, source)
+	adapter.SetRunner(runner)
+	return adapter, runner, conn, reader
+}
+
+// mustSetupDebugSessionUnbound is mustSetupDebugSessionSource without the
+// SetRunner call, so a test can bind the runner after the configuration
+// sequence to exercise the Serve-before-bind ordering. The initialize
+// handshake doesn't touch the runner, so leaving it unbound here is safe.
+func mustSetupDebugSessionUnbound(t *testing.T, source string) (*DebugAdapter, *engine.Runner, net.Conn, *bufio.Reader) {
+	t.Helper()
 	opts := testDebugOpts
 	session, err := gafferruntime.NewSession(source, &opts)
 	if err != nil {
@@ -44,7 +55,6 @@ func mustSetupDebugSessionSource(t *testing.T, source string) (*DebugAdapter, *e
 			OnBreak: adapter.HandleBreak,
 		},
 	})
-	adapter.SetRunner(runner)
 
 	handler := adapter.Handler()
 	srv, err := NewServer("127.0.0.1:0", handler)
@@ -836,6 +846,60 @@ func TestAdapter_StartPausedIfNoBreakpoints_PausesWhenNoBreakpointsSet(t *testin
 		},
 	})
 	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	feedDone := make(chan struct{})
+	go func() {
+		runner.ProcessOne(testFeedEvent)
+		close(feedDone)
+	}()
+
+	msg := readMessage(t, conn, reader)
+	stopped, ok := msg.(*godap.StoppedEvent)
+	if !ok {
+		t.Fatalf("expected StoppedEvent at entry, got %T", msg)
+	}
+	if stopped.Body.Reason != "entry" {
+		t.Fatalf("expected entry reason, got %s", stopped.Body.Reason)
+	}
+
+	sendRequest(t, conn, &godap.ContinueRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 3, Type: "request"},
+			Command:         "continue",
+		},
+		Arguments: godap.ContinueArguments{ThreadId: 1},
+	})
+	readMessage(t, conn, reader) // ContinueResponse
+	readMessage(t, conn, reader) // ContinuedEvent
+
+	select {
+	case <-feedDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for feed to complete after continue")
+	}
+}
+
+func TestAdapter_StartPausedIfNoBreakpoints_SurvivesConfigurationDoneBeforeRunnerBound(t *testing.T) {
+	// Regression: dev.go starts the DAP server before binding the runner, so a
+	// fast editor can complete configurationDone while a.runner is still nil.
+	// The armed entry pause must survive that ordering (SetRunner applies it),
+	// not be silently dropped - entryPausePending only labels a break, it can't
+	// cause one.
+	adapter, runner, conn, reader := mustSetupDebugSessionUnbound(t,
+		"fromAll().when({\n$init() { return { count: 0 }; },\nItemAdded(s, e) {\ns.count++;\nreturn s;\n}\n})")
+	adapter.SetStartPausedIfNoBreakpoints(true)
+
+	// configurationDone arrives before the runner is bound.
+	sendRequest(t, conn, &godap.ConfigurationDoneRequest{
+		Request: godap.Request{
+			ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+			Command:         "configurationDone",
+		},
+	})
+	readMessage(t, conn, reader) // ConfigurationDoneResponse
+
+	// Now bind the runner, as dev.go's loop does after Serve has started.
+	adapter.SetRunner(runner)
 
 	feedDone := make(chan struct{})
 	go func() {

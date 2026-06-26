@@ -547,6 +547,9 @@ func runDevDebug(
 	adapter := dapserver.NewDebugAdapter(session, sourcePath, absRoot)
 	adapter.SetStartPausedIfNoBreakpoints(opts.StartPausedIfNoBreakpoints)
 	adapter.SetFixtureMode(opts.Events != "")
+	// Once this function returns, no further restart will be acked; release
+	// any handleRestart still blocked waiting so the read goroutine can exit.
+	defer adapter.Shutdown()
 
 	addr := fmt.Sprintf("127.0.0.1:%d", opts.DebugPort)
 	srv, err := dapserver.NewServer(addr, adapter.Handler())

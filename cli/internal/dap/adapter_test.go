@@ -420,6 +420,32 @@ func TestAdapter_SendTerminated(t *testing.T) {
 	}
 }
 
+func TestAdapter_HandleRestart_UnblocksOnShutdown(t *testing.T) {
+	adapter, _, _, _ := mustSetupDebugSession(t)
+
+	// No dev.go loop here to AckRestart - simulate the main loop having
+	// already exited. handleRestart must not pin the read goroutine;
+	// Shutdown releases it.
+	done := make(chan struct{})
+	go func() {
+		adapter.handleRestart(adapter.server, &godap.RestartRequest{
+			Request: godap.Request{
+				ProtocolMessage: godap.ProtocolMessage{Seq: 2, Type: "request"},
+				Command:         "restart",
+			},
+		})
+		close(done)
+	}()
+
+	adapter.Shutdown()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handleRestart pinned after Shutdown")
+	}
+}
+
 func TestAdapter_HandleRestart_BlocksUntilAcked(t *testing.T) {
 	adapter, _, conn, reader := mustSetupDebugSession(t)
 

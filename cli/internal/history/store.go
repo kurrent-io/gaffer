@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -231,7 +231,7 @@ func extractResultFields(resultJSON string) (status, partition string, hasEmit, 
 		seen[d.Code] = true
 		codes = append(codes, d.Code)
 	}
-	sort.Strings(codes)
+	slices.Sort(codes)
 	// Quirk codes are dot-namespaced identifiers (e.g. quirk.serialize.rawString)
 	// with no commas, so a comma-joined string round-trips without the
 	// fallible JSON encode/decode (and the swallowed errors it would invite).

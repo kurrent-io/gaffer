@@ -3,7 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -86,10 +87,5 @@ func (c *Config) DefaultEnvConnection() string {
 
 // EnvNames returns the configured env names in sorted order.
 func (c *Config) EnvNames() []string {
-	names := make([]string, 0, len(c.Env))
-	for n := range c.Env {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return names
+	return slices.Sorted(maps.Keys(c.Env))
 }

@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	gitignore "github.com/sabhiram/go-gitignore"
@@ -134,7 +134,7 @@ func WalkConfigs(ctx context.Context, root string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(found)
+	slices.Sort(found)
 	return found, nil
 }
 

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -149,7 +149,7 @@ func collectStatus(ctx context.Context, r *remote.Client, cfg *config.Config, ro
 			untracked = append(untracked, deployed[i].Name)
 		}
 	}
-	sort.Strings(untracked)
+	slices.Sort(untracked)
 	for _, n := range untracked {
 		rt := byName[n]
 		entries = append(entries, statusEntry{

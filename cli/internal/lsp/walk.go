@@ -123,7 +123,7 @@ func (s *Server) registerFileWatcher(ctx context.Context) {
 // so that a [Changed, Deleted] burst for the same URI applies in
 // the order the editor reported - otherwise an async Changed could
 // re-seed the URI after a synchronous Deleted closed it.
-func (s *Server) handleDidChangeWatchedFiles(_ context.Context, req *jsonrpc2.Request) (interface{}, error) {
+func (s *Server) handleDidChangeWatchedFiles(_ context.Context, req *jsonrpc2.Request) (any, error) {
 	if req.Params == nil {
 		return nil, nil
 	}

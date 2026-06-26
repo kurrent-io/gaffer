@@ -69,7 +69,7 @@ const (
 // fields stay in the wire JSON without forcing us to commit to a
 // shape. InitOptions is held as json.RawMessage so the eventual
 // consumer can decode just-in-time, preserving forward compat and
-// avoiding integer-as-float64 coercion that map[string]interface{}
+// avoiding integer-as-float64 coercion that map[string]any
 // would force.
 type InitializeParams struct {
 	ProcessID        *int               `json:"processId,omitempty"`
@@ -217,9 +217,9 @@ type Range struct {
 // activates a CodeLens. Arguments is opaque - the editor extension
 // passes it through to its registered handler verbatim.
 type Command struct {
-	Title     string        `json:"title"`
-	Command   string        `json:"command"`
-	Arguments []interface{} `json:"arguments,omitempty"`
+	Title     string `json:"title"`
+	Command   string `json:"command"`
+	Arguments []any  `json:"arguments,omitempty"`
 }
 
 // CodeLens is a clickable annotation rendered inline in the editor.
@@ -358,9 +358,9 @@ type DidChangeWatchedFilesParams struct {
 // ServerCapabilities - LSP routes file watching through the editor,
 // and the editor wants the pattern set at runtime).
 type Registration struct {
-	ID              string      `json:"id"`
-	Method          string      `json:"method"`
-	RegisterOptions interface{} `json:"registerOptions,omitempty"`
+	ID              string `json:"id"`
+	Method          string `json:"method"`
+	RegisterOptions any    `json:"registerOptions,omitempty"`
 }
 
 // RegistrationParams is the payload for the server->client

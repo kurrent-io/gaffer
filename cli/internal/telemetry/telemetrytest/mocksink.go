@@ -6,6 +6,7 @@ package telemetrytest
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"time"
 
@@ -71,9 +72,7 @@ func (s *MockSink) SetDelay(d time.Duration) {
 func (s *MockSink) Envelopes() []*telemetry.Envelope {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]*telemetry.Envelope, len(s.envs))
-	copy(out, s.envs)
-	return out
+	return slices.Clone(s.envs)
 }
 
 // Len returns the number of envelopes recorded. Cheaper than Envelopes()

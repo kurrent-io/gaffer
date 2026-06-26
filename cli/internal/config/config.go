@@ -3,11 +3,12 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -142,12 +143,7 @@ func (p *Projection) FindFixture(name string) (string, bool) {
 // FixtureNames returns the declared fixture names in alphabetical order
 // (TOML map iteration is unordered).
 func (p *Projection) FixtureNames() []string {
-	names := make([]string, 0, len(p.Fixtures))
-	for n := range p.Fixtures {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return names
+	return slices.Sorted(maps.Keys(p.Fixtures))
 }
 
 // ProjectionCount returns the number of projections declared in the
@@ -290,7 +286,7 @@ func checkRemovedKeys(md toml.MetaData) error {
 	if len(msgs) == 0 {
 		return nil
 	}
-	sort.Strings(msgs)
+	slices.Sort(msgs)
 	return errors.New(strings.Join(msgs, "\n"))
 }
 
@@ -459,11 +455,7 @@ var envNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 // connection. Env names are iterated in sorted order so error messages
 // are stable regardless of map iteration order.
 func (c *Config) validateEnvs() error {
-	names := make([]string, 0, len(c.Env))
-	for name := range c.Env {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(c.Env))
 
 	var defaults []string
 	for _, name := range names {

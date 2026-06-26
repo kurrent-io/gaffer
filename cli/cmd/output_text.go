@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -924,11 +925,7 @@ func (tw *textWriter) statsLine(stats engine.EventStats) {
 	if tw.showSkipped && stats.Skipped > 0 {
 		tw.write("%s events skipped\n", gold(formatNumber(stats.Skipped)))
 		// Stable order so rerun output diffs cleanly.
-		reasons := make([]string, 0, len(stats.SkippedByReason))
-		for r := range stats.SkippedByReason {
-			reasons = append(reasons, r)
-		}
-		sort.Strings(reasons)
+		reasons := slices.Sorted(maps.Keys(stats.SkippedByReason))
 		for _, r := range reasons {
 			tw.write("  %s %s\n", gold(formatNumber(stats.SkippedByReason[r])), describeSkipReason(r))
 		}
@@ -945,11 +942,7 @@ func (tw *textWriter) statsLine(stats engine.EventStats) {
 		seen[c] = true
 	}
 	if len(seen) > 0 {
-		codes := make([]string, 0, len(seen))
-		for c := range seen {
-			codes = append(codes, c)
-		}
-		sort.Strings(codes)
+		codes := slices.Sorted(maps.Keys(seen))
 		noun := "quirks"
 		if len(codes) == 1 {
 			noun = "quirk"

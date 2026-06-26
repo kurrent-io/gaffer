@@ -2,9 +2,7 @@ package oauth
 
 import (
 	"context"
-	"crypto/rand"
 	_ "embed"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -51,10 +49,9 @@ func Login(ctx context.Context, c Config, openBrowser func(authURL string) error
 	}
 
 	verifier := oauth2.GenerateVerifier()
-	state, err := randomState()
-	if err != nil {
-		return nil, err
-	}
+	// GenerateVerifier yields a high-entropy URL-safe string; it's the
+	// PKCE verifier generator but serves equally as a CSRF state nonce.
+	state := oauth2.GenerateVerifier()
 
 	authOpts := []oauth2.AuthCodeOption{oauth2.AccessTypeOffline, oauth2.S256ChallengeOption(verifier)}
 	if c.Audience != "" {
@@ -132,12 +129,4 @@ func listenLoopback() (net.Listener, int, error) {
 		lastErr = err
 	}
 	return nil, 0, fmt.Errorf("no loopback callback port free %v; free one and retry: %w", callbackPorts, lastErr)
-}
-
-func randomState() (string, error) {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
 }

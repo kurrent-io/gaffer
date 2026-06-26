@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -46,7 +47,10 @@ func Discover(ctx context.Context, issuer string) (Endpoints, error) {
 	}
 
 	var eps Endpoints
-	if err := json.NewDecoder(resp.Body).Decode(&eps); err != nil {
+	// Cap the body so a hostile or broken issuer can't stream an
+	// unbounded discovery document into memory (matches updatecheck's
+	// 1 MiB cap on the registry response).
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&eps); err != nil {
 		return Endpoints{}, fmt.Errorf("oidc discovery: decode %s: %w", docURL, err)
 	}
 	if eps.TokenEndpoint == "" {

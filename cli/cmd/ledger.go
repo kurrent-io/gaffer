@@ -51,7 +51,7 @@ func gitRevision(dir string) string {
 }
 
 func git(dir string, args ...string) (string, error) {
-	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output() //nolint:gosec // git with controlled args
 	if err != nil {
 		return "", err
 	}

@@ -99,7 +99,7 @@ func Scaffold(
 		return nil, fmt.Errorf("creating directory: %w", err)
 	}
 
-	if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil { //nolint:gosec // scaffolded projection source is not secret
 		return nil, fmt.Errorf("writing file: %w", err)
 	}
 

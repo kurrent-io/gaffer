@@ -107,7 +107,7 @@ func leaderOpts() kurrentdb.GenericProjectionOptions {
 func (c *Client) Create(ctx context.Context, name, query string, opts CreateOptions) error {
 	return classify(c.proj.Create(ctx, name, query, kurrentdb.CreateProjectionOptions{
 		RequiresLeader:      true,
-		EngineVersion:       kurrentdb.ProjectionEngineVersion(opts.EngineVersion),
+		EngineVersion:       kurrentdb.ProjectionEngineVersion(opts.EngineVersion), //nolint:gosec // engine_version is validated to 1 or 2
 		Emit:                opts.Emit,
 		TrackEmittedStreams: opts.TrackEmittedStreams,
 		Metadata:            ledgerMetadata(opts.Ledger),

@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -168,6 +169,27 @@ func (s *Server) requireSession() (*activeSession, *mcp.CallToolResult) {
 		return nil, toolError("no active session - call run first")
 	}
 	return s.session, nil
+}
+
+// compileProjection runs the shared engine compile preamble (find,
+// config-error, read source, create session) for a named projection and
+// records a runtime projection error into projection_errors_seen
+// consistently across every tool - the classification that previously
+// drifted (events.go recorded on any CreateSession failure; the others
+// only on a gafferruntime.ProjectionError). The typed error from
+// engine.CompileNamed is returned for the caller to shape into its own
+// result (toolError vs the valid:false report); the caller owns
+// CompileResult.Session and must Destroy it.
+func (s *Server) compileProjection(cfg *config.Config, root, name string, debug bool) (*engine.CompileResult, error) {
+	res, err := engine.CompileNamed(cfg, root, name, debug, false)
+	if err != nil {
+		var projErr gafferruntime.ProjectionError
+		if errors.As(err, &projErr) {
+			s.recordProjectionError(err)
+		}
+		return nil, err
+	}
+	return res, nil
 }
 
 func New(root string, cfg *config.Config, version string) *Server {
@@ -428,24 +450,12 @@ func (s *Server) closeSession() {
 func (s *Server) createSession(cfg *config.Config, root, name string, debug bool) (*activeSession, error) {
 	s.closeSession()
 
-	proj := cfg.FindProjection(name)
-	if proj == nil {
-		return nil, fmt.Errorf("projection %q not found in gaffer.toml", name)
-	}
-	if err := cfg.ProjectionConfigError(name); err != nil {
-		return nil, err
-	}
-
-	source, err := engine.ReadSource(root, proj.Entry)
+	compiled, err := s.compileProjection(cfg, root, name, debug)
 	if err != nil {
 		return nil, err
 	}
-
-	lp := engine.NewProjection(root, cfg, proj, source)
-	runtime, info, err := engine.CreateSession(lp, debug, false)
-	if err != nil {
-		return nil, err
-	}
+	lp := compiled.Projection
+	runtime, info := compiled.Session, compiled.Info
 
 	store, err := history.New()
 	if err != nil {

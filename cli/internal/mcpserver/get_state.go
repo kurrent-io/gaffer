@@ -10,6 +10,7 @@ import (
 var getStateTool = &mcp.Tool{
 	Name:        "get_state",
 	Description: "Get the current projection state from the active session. Returns state per partition (or global state if unpartitioned), shared state if biState, and result if transforms are defined.",
+	Annotations: readOnlyHints(),
 }
 
 type getStateInput struct {

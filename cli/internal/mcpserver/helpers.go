@@ -60,6 +60,19 @@ func extractState(resultJSON string) json.RawMessage {
 	return obj.State
 }
 
+// readOnlyHints is the annotation shared by the query tools - the
+// get_*/list_* readers and validate. None of them create or mutate a
+// session, write files, or change server-side state, so a client can
+// surface them without a write-confirmation gate; repeating a call has no
+// additional effect, so they are idempotent too. Reading from KurrentDB
+// (as list_events does) is still read-only.
+func readOnlyHints() *mcp.ToolAnnotations {
+	return &mcp.ToolAnnotations{
+		ReadOnlyHint:   true,
+		IdempotentHint: true,
+	}
+}
+
 func toolResult(data any) *mcp.CallToolResult {
 	jsonBytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {

@@ -9,10 +9,7 @@ import (
 var versionTool = &mcp.Tool{
 	Name:        "get_version",
 	Description: "Return the gaffer CLI version string. Mirrors `gaffer version`.",
-	Annotations: &mcp.ToolAnnotations{
-		ReadOnlyHint:   true,
-		IdempotentHint: true,
-	},
+	Annotations: readOnlyHints(),
 }
 
 type versionInput struct{}

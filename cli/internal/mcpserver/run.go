@@ -36,60 +36,80 @@ func (s *Server) handleRun(ctx context.Context, _ *mcp.CallToolRequest, input ru
 		return r, nil, nil
 	}
 
+	prep := s.prepareRun(cfg, root, input)
+	if !prep.block {
+		return prep.result, nil, nil
+	}
+
+	// Lock-free phase: prepareRun released s.mu so waitForBreak can block.
+	wr := s.waitForBreak(ctx, prep.sess, defaultDebugTimeout)
+
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.handleWaitResult(prep.sess, wr)
+}
+
+// runPrep is the outcome of the locked pre-block phase. Exactly one of
+// the fields is meaningful: result holds a terminal tool response (error
+// or the synchronous fixture summary); block==true with a non-nil sess
+// means the caller must waitForBreak on sess after the lock is released.
+type runPrep struct {
+	result *mcp.CallToolResult
+	sess   *activeSession
+	block  bool
+}
+
+// prepareRun runs the entire under-lock phase of a run: create the
+// session, set breakpoints, and dispatch to the fixture / live / debug
+// path. The single defer s.mu.Unlock() bounds the critical section, so no
+// branch can return with the mutex held. The two blocking paths (live and
+// fixture-debug) start the background feed, then return block==true so the
+// caller waits for a break with the lock released; the synchronous fixture
+// path runs to completion under the lock and returns its summary as result.
+func (s *Server) prepareRun(cfg *config.Config, root string, input runInput) runPrep {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	debug := len(input.Breakpoints) > 0 || input.BreakAt > 0
 
 	sess, err := s.createSession(cfg, root, input.Name, debug)
 	if err != nil {
-		s.mu.Unlock()
 		var projErr gafferruntime.ProjectionError
 		if errors.As(err, &projErr) {
 			// Compile-time projection failure (invalid source,
-			// compilation timeout). Feed projection_errors_seen
-			// alongside the tool response so the session's
-			// telemetry reflects user code didn't compile.
-			s.recordProjectionError(err)
-			return toolResult(map[string]any{
+			// compilation timeout). createSession already fed
+			// projection_errors_seen via compileProjection; surface
+			// the classified error so the response reflects that the
+			// user's code didn't compile.
+			return runPrep{result: toolResult(map[string]any{
 				"lastError": classifyError(err),
-			}), nil, nil
+			})}
 		}
-		return toolError("%v", err), nil, nil
+		return runPrep{result: toolError("%v", err)}
 	}
 
 	if debug {
 		if err := s.setupBreakpoints(sess, input.Breakpoints); err != nil {
-			s.mu.Unlock()
-			return toolError("%v", err), nil, nil
+			return runPrep{result: toolError("%v", err)}
 		}
 	}
 
 	if input.Events == "" {
 		if err := s.startLiveMode(sess, input.BreakAt, cfg, root, input.Env); err != nil {
-			s.mu.Unlock()
-			return toolError("%v", err), nil, nil
+			return runPrep{result: toolError("%v", err)}
 		}
-		s.mu.Unlock()
-		wr := s.waitForBreak(ctx, sess, defaultDebugTimeout)
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		return s.handleWaitResult(sess, wr)
+		return runPrep{sess: sess, block: true}
 	}
 
 	if debug {
 		if err := s.runFixtureDebugMode(sess, root, input.Events, input.BreakAt); err != nil {
-			s.mu.Unlock()
-			return toolError("%v", err), nil, nil
+			return runPrep{result: toolError("%v", err)}
 		}
-		s.mu.Unlock()
-		wr := s.waitForBreak(ctx, sess, defaultDebugTimeout)
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		return s.handleWaitResult(sess, wr)
+		return runPrep{sess: sess, block: true}
 	}
 
-	defer s.mu.Unlock()
-	return s.runFixtureMode(sess, root, input.Events)
+	result, _, _ := s.runFixtureMode(sess, root, input.Events)
+	return runPrep{result: result}
 }
 
 func (s *Server) setupBreakpoints(sess *activeSession, breakpoints []breakpointInput) error {

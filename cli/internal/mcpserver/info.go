@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -17,10 +16,7 @@ var infoTool = &mcp.Tool{
 		"Mirrors `gaffer info <name> --json`. When the project has a single " +
 		"configured projection, `name` may be omitted; call list_projections " +
 		"to discover names otherwise.",
-	Annotations: &mcp.ToolAnnotations{
-		ReadOnlyHint:   true,
-		IdempotentHint: true,
-	},
+	Annotations: readOnlyHints(),
 }
 
 type infoInput struct {
@@ -48,29 +44,17 @@ func (s *Server) handleInfo(_ context.Context, _ *mcp.CallToolRequest, in infoIn
 		}
 	}
 
-	proj := cfg.FindProjection(name)
-	if proj == nil {
-		return toolError("projection %q not found in gaffer.toml; call list_projections to discover names", name), nil, nil
-	}
-	if cfgErr := cfg.ProjectionConfigError(name); cfgErr != nil {
-		return toolError("%v", cfgErr), nil, nil
-	}
-
-	source, err := engine.ReadSource(root, proj.Entry)
+	compiled, err := s.compileProjection(cfg, root, name, false)
 	if err != nil {
-		return toolError("%v", err), nil, nil
-	}
-
-	lp := engine.NewProjection(root, cfg, proj, source)
-	session, info, err := engine.CreateSession(lp, false, false)
-	if err != nil {
-		var projErr gafferruntime.ProjectionError
-		if errors.As(err, &projErr) {
-			s.recordProjectionError(err)
+		var notFound engine.ProjectionNotFoundError
+		if errors.As(err, &notFound) {
+			return toolError("projection %q not found in gaffer.toml; call list_projections to discover names", name), nil, nil
 		}
+		// compileProjection already recorded a runtime projection error
+		// into projection_errors_seen; every other phase is surfaced bare.
 		return toolError("%v", err), nil, nil
 	}
-	defer session.Destroy()
+	defer compiled.Session.Destroy()
 
-	return toolResult(cliout.BuildInfoJSON(lp, info)), nil, nil
+	return toolResult(cliout.BuildInfoJSON(compiled.Projection, compiled.Info)), nil, nil
 }

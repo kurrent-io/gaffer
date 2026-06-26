@@ -9,6 +9,7 @@ import (
 var getStepTool = &mcp.Tool{
 	Name:        "get_step",
 	Description: "Get full detail for a specific step in the active session's history. Returns the event, status, state, emitted events, logs, and any runtime quirks that fired (diagnostics; cross-reference each code against the gaffer://docs/quirks resource).",
+	Annotations: readOnlyHints(),
 }
 
 type getStepInput struct {

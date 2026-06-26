@@ -28,6 +28,24 @@ func bound(ctx context.Context, s Step) error {
 	return s(ctx)
 }
 
+type namedStep struct {
+	name string
+	step Step
+}
+
+// validateSteps refuses a sequence whose steps aren't fully wired, before any of
+// them run. Rebuild and Recreate are destructive, so a nil step caught mid-flight
+// (a panic, or a failure after Delete) could strand a half-rebuilt projection; a
+// wiring gap is a programming error and should surface before the first call.
+func validateSteps(steps ...namedStep) error {
+	for _, s := range steps {
+		if s.step == nil {
+			return fmt.Errorf("%s step is not wired", s.name)
+		}
+	}
+	return nil
+}
+
 // RebuildSteps are the calls of a logic-change rebuild, in the order Rebuild
 // runs them.
 type RebuildSteps struct {
@@ -35,6 +53,15 @@ type RebuildSteps struct {
 	Update  Step
 	Reset   Step
 	Enable  Step
+}
+
+func (s RebuildSteps) validate() error {
+	return validateSteps(
+		namedStep{"disable", s.Disable},
+		namedStep{"update", s.Update},
+		namedStep{"reset", s.Reset},
+		namedStep{"enable", s.Enable},
+	)
 }
 
 // Rebuild rebuilds a projection from zero for a logic change: stop it, update to
@@ -50,6 +77,9 @@ type RebuildSteps struct {
 // failure. There's no auto-rollback, so each step names the state it leaves and
 // the recovery.
 func Rebuild(ctx context.Context, name string, s RebuildSteps) error {
+	if err := s.validate(); err != nil {
+		return err
+	}
 	if err := bound(ctx, s.Disable); err != nil {
 		return fmt.Errorf("stopping for reset (projection untouched): %w", err)
 	}
@@ -74,12 +104,23 @@ type RecreateSteps struct {
 	Create  Step
 }
 
+func (s RecreateSteps) validate() error {
+	return validateSteps(
+		namedStep{"disable", s.Disable},
+		namedStep{"delete", s.Delete},
+		namedStep{"create", s.Create},
+	)
+}
+
 // Recreate destroys a projection and rebuilds it from local config: stop it,
 // delete it (with its state and checkpoint streams), then create it fresh,
 // reprocessing from zero. The destroy precedes the create, so a failure after
 // Delete leaves the projection gone: each step names the recovery rather than a
 // bare error. There's no auto-rollback.
 func Recreate(ctx context.Context, name string, s RecreateSteps) error {
+	if err := s.validate(); err != nil {
+		return err
+	}
 	if err := bound(ctx, s.Disable); err != nil {
 		return fmt.Errorf("could not stop %s before recreating: %w", name, err)
 	}

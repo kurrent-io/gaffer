@@ -129,6 +129,36 @@ func TestRecreateCreateFailureNamesBothRecoveries(t *testing.T) {
 	}
 }
 
+func TestNilStepRejectedBeforeAnyCall(t *testing.T) {
+	// A wiring gap (a nil step) must be refused before any step runs: these
+	// sequences are destructive, so a nil caught mid-flight could strand a
+	// half-rebuilt projection.
+	t.Run("rebuild", func(t *testing.T) {
+		r := &recorder{}
+		s := r.rebuildSteps()
+		s.Reset = nil
+		err := Rebuild(context.Background(), "orders", s)
+		if err == nil || !strings.Contains(err.Error(), "reset step is not wired") {
+			t.Fatalf("want 'reset step is not wired', got: %v", err)
+		}
+		if len(r.calls) != 0 {
+			t.Errorf("no step should run when one is unwired, ran: %v", r.calls)
+		}
+	})
+	t.Run("recreate", func(t *testing.T) {
+		r := &recorder{}
+		s := r.recreateSteps()
+		s.Create = nil
+		err := Recreate(context.Background(), "orders", s)
+		if err == nil || !strings.Contains(err.Error(), "create step is not wired") {
+			t.Fatalf("want 'create step is not wired', got: %v", err)
+		}
+		if len(r.calls) != 0 {
+			t.Errorf("no step should run when one is unwired, ran: %v", r.calls)
+		}
+	})
+}
+
 func TestRecreateReason(t *testing.T) {
 	for _, tc := range []struct {
 		name            string

@@ -99,7 +99,7 @@ func runScaffold(cmd *cobra.Command, args []string, opts *scaffoldOpts) error {
 		return err
 	}
 
-	fmt.Printf("Created %s\n", result.RelPath)
+	fmt.Fprintf(cmd.OutOrStdout(), "Created %s\n", result.RelPath)
 	return nil
 }
 

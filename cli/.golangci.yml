@@ -31,6 +31,8 @@ linters:
 
     forbidigo:
       forbid:
+        - pattern: '^(fmt\.Print(|f|ln)|print|println)$'
+          msg: Write to the command's output stream (cmd.Print/Println), not stdout.
         - pattern: '^sort\.(Strings|Ints|Float64s|Slice|SliceStable)$'
           msg: Use slices.Sort / slices.SortFunc (go 1.21+), not sort.*
 

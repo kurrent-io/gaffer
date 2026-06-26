@@ -74,7 +74,7 @@ func (c *Client) emit(env *Envelope) {
 				c.errLog(fmt.Errorf("gaffer telemetry: sink panicked: %v", r))
 			}
 		}()
-		ctx, cancel := context.WithTimeout(context.Background(), c.perSendTimeout)
+		ctx, cancel := context.WithTimeout(c.sendCtx, c.perSendTimeout)
 		defer cancel()
 		if err := c.sink.Send(ctx, env); err != nil {
 			c.errLog(fmt.Errorf("gaffer telemetry: send failed: %w", err))
@@ -116,6 +116,10 @@ func (c *Client) Flush(ctx context.Context) error {
 	c.mu.Lock()
 	c.closed = true
 	c.mu.Unlock()
+	// Release the send context on every path (clean or timed-out) so it
+	// doesn't leak. CancelFunc is idempotent, so the timeout branch's
+	// explicit cancel below is harmless.
+	defer c.cancel()
 
 	done := make(chan struct{})
 	go func() {
@@ -128,13 +132,19 @@ func (c *Client) Flush(ctx context.Context) error {
 	case <-done:
 	case <-ctx.Done():
 		err = fmt.Errorf("telemetry flush: %w", ctx.Err())
+		// Cancel the client send context so in-flight sends abandon
+		// their per-send budget and return now, rather than leaving the
+		// waiter goroutine blocked on wg.Wait until each one drains on
+		// its own. Then wait for the (now-prompt) drain so Close still
+		// happens after the WaitGroup empties - the Sink.Close contract
+		// requires it, and a buffered sink that frees shared state in
+		// Close would otherwise race a Send still in flight.
+		c.cancel()
+		<-done
 	}
-	// Close the sink whether or not we drained cleanly. In-flight
-	// goroutines (if any) hold their own references and finish on their
-	// per-send budget; the OS will reap their fds when the process
-	// exits regardless. Close lets a sink that has its own resources
-	// (a future buffered sink, the http transport's idle pool) release
-	// them while we're still in user code.
+	// Close the sink after the drain. Releases sink-held resources (a
+	// future buffered sink's flush buffer, the http transport's idle
+	// pool) while we're still in user code.
 	if closeErr := c.sink.Close(ctx); closeErr != nil && err == nil {
 		err = fmt.Errorf("telemetry sink close: %w", closeErr)
 	}

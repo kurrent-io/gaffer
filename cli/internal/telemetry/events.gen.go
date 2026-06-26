@@ -28,15 +28,14 @@ type Event interface {
 	isEvent()
 }
 
-// RawCount holds an unbucketed integer that bucket-rounds at marshal time to
-// one of {0, 1, 2, 10, 100, 1000}. Producers store the raw count; the bucket
-// math is applied at the JSON boundary so call sites never have to know the
-// scheme.
+// RawCount holds an unbucketed integer that bucket-rounds at marshal
+// time to one of the #BucketCount boundaries. Producers store the raw
+// count; the bucket math is applied at the JSON boundary so call sites
+// never have to know the scheme.
 type RawCount int
 
-// MarshalJSON applies the bucket lookup: 0 / 1 / 2 / 10 / 100 / 1000 for the
-// half-open intervals (-inf, 1) / [1, 2) / [2, 10) / [10, 100) / [100, 1000)
-// / [1000, +inf). Negative values clamp to 0.
+// MarshalJSON rounds n down to the nearest schema bucket
+// (#BucketCount lower bounds). Negative values clamp to 0.
 func (r RawCount) MarshalJSON() ([]byte, error) {
 	switch n := int(r); {
 	case n < 1:
@@ -56,15 +55,13 @@ func (r RawCount) MarshalJSON() ([]byte, error) {
 
 var _ json.Marshaler = RawCount(0)
 
-// RawDuration is the duration counterpart to RawCount: unbucketed ms held by
-// producers, bucket-rounded at marshal time to one of {0, 10, 100, 1000,
-// 10000, 60000, 600000} per #DurationBucket in the schema.
+// RawDuration is the duration counterpart to RawCount: unbucketed ms
+// held by producers, bucket-rounded at marshal time to one of the
+// #DurationBucket boundaries.
 type RawDuration int
 
-// MarshalJSON applies the duration bucket lookup: 0 / 10 / 100 / 1000 /
-// 10000 / 60000 / 600000 for the half-open intervals (-inf, 10) / [10, 100)
-// / [100, 1000) / [1000, 10000) / [10000, 60000) / [60000, 600000) /
-// [600000, +inf). Negative values clamp to 0.
+// MarshalJSON rounds ms down to the nearest schema bucket
+// (#DurationBucket lower bounds). Negative values clamp to 0.
 func (r RawDuration) MarshalJSON() ([]byte, error) {
 	switch ms := int(r); {
 	case ms < 10:

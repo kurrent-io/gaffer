@@ -557,6 +557,21 @@ func emitFile(w io.Writer, root cue.Value) error {
 
 	mustWrite(w, fileHeader)
 
+	bucketCount, err := readIntEnum(root, "BucketCount")
+	if err != nil {
+		return err
+	}
+	emitRawBucket(w, "RawCount", "BucketCount", "n",
+		"RawCount holds an unbucketed integer that bucket-rounds at marshal\ntime to one of the #BucketCount boundaries. Producers store the raw\ncount; the bucket math is applied at the JSON boundary so call sites\nnever have to know the scheme.",
+		bucketCount)
+	durationBucket, err := readIntEnum(root, "DurationBucket")
+	if err != nil {
+		return err
+	}
+	emitRawBucket(w, "RawDuration", "DurationBucket", "ms",
+		"RawDuration is the duration counterpart to RawCount: unbucketed ms\nheld by producers, bucket-rounded at marshal time to one of the\n#DurationBucket boundaries.",
+		durationBucket)
+
 	for _, name := range stringEnums {
 		members, err := readStringEnum(root, name)
 		if err != nil {
@@ -715,64 +730,6 @@ type Event interface {
 	isEvent()
 }
 
-// RawCount holds an unbucketed integer that bucket-rounds at marshal time to
-// one of {0, 1, 2, 10, 100, 1000}. Producers store the raw count; the bucket
-// math is applied at the JSON boundary so call sites never have to know the
-// scheme.
-type RawCount int
-
-// MarshalJSON applies the bucket lookup: 0 / 1 / 2 / 10 / 100 / 1000 for the
-// half-open intervals (-inf, 1) / [1, 2) / [2, 10) / [10, 100) / [100, 1000)
-// / [1000, +inf). Negative values clamp to 0.
-func (r RawCount) MarshalJSON() ([]byte, error) {
-	switch n := int(r); {
-	case n < 1:
-		return []byte("0"), nil
-	case n < 2:
-		return []byte("1"), nil
-	case n < 10:
-		return []byte("2"), nil
-	case n < 100:
-		return []byte("10"), nil
-	case n < 1000:
-		return []byte("100"), nil
-	default:
-		return []byte("1000"), nil
-	}
-}
-
-var _ json.Marshaler = RawCount(0)
-
-// RawDuration is the duration counterpart to RawCount: unbucketed ms held by
-// producers, bucket-rounded at marshal time to one of {0, 10, 100, 1000,
-// 10000, 60000, 600000} per #DurationBucket in the schema.
-type RawDuration int
-
-// MarshalJSON applies the duration bucket lookup: 0 / 10 / 100 / 1000 /
-// 10000 / 60000 / 600000 for the half-open intervals (-inf, 10) / [10, 100)
-// / [100, 1000) / [1000, 10000) / [10000, 60000) / [60000, 600000) /
-// [600000, +inf). Negative values clamp to 0.
-func (r RawDuration) MarshalJSON() ([]byte, error) {
-	switch ms := int(r); {
-	case ms < 10:
-		return []byte("0"), nil
-	case ms < 100:
-		return []byte("10"), nil
-	case ms < 1000:
-		return []byte("100"), nil
-	case ms < 10000:
-		return []byte("1000"), nil
-	case ms < 60000:
-		return []byte("10000"), nil
-	case ms < 600000:
-		return []byte("60000"), nil
-	default:
-		return []byte("600000"), nil
-	}
-}
-
-var _ json.Marshaler = RawDuration(0)
-
 `
 
 func emitStringEnum(w io.Writer, name string, members []string) {
@@ -782,6 +739,36 @@ func emitStringEnum(w io.Writer, name string, members []string) {
 		fmt.Fprintf(w, "\t%s %s = %q\n", enumConst(name, m), name, m)
 	}
 	fmt.Fprint(w, ")\n\n")
+}
+
+// emitRawBucket generates a RawCount/RawDuration-style type: an unbucketed
+// int that bucket-rounds at MarshalJSON time to one of the sorted boundaries.
+// The boundaries are the lower bounds of the half-open intervals, so a value
+// v marshals to the largest boundary b with b <= v (negatives clamp to the
+// first boundary, which the schema fixes at 0). Generating the switch arms
+// from the CUE disjunction keeps the rounding in step with the schema - a
+// hardcoded blob silently desynced when a boundary moved.
+func emitRawBucket(w io.Writer, typeName, defName, valueName, doc string, boundaries []int64) {
+	if len(boundaries) < 2 {
+		log.Fatalf("emitRawBucket %s: need at least 2 boundaries, got %v", typeName, boundaries)
+	}
+	if boundaries[0] != 0 {
+		log.Fatalf("emitRawBucket %s: first boundary must be 0 (negatives clamp to it), got %d", typeName, boundaries[0])
+	}
+	emitDoc(w, doc)
+	fmt.Fprintf(w, "type %s int\n\n", typeName)
+	fmt.Fprintf(w, "// MarshalJSON rounds %s down to the nearest schema bucket\n", valueName)
+	fmt.Fprintf(w, "// (#%s lower bounds). Negative values clamp to %d.\n", defName, boundaries[0])
+	fmt.Fprintf(w, "func (r %s) MarshalJSON() ([]byte, error) {\n", typeName)
+	fmt.Fprintf(w, "\tswitch %s := int(r); {\n", valueName)
+	for i := 0; i < len(boundaries)-1; i++ {
+		fmt.Fprintf(w, "\tcase %s < %d:\n", valueName, boundaries[i+1])
+		fmt.Fprintf(w, "\t\treturn []byte(%q), nil\n", fmt.Sprintf("%d", boundaries[i]))
+	}
+	fmt.Fprintf(w, "\tdefault:\n")
+	fmt.Fprintf(w, "\t\treturn []byte(%q), nil\n", fmt.Sprintf("%d", boundaries[len(boundaries)-1]))
+	fmt.Fprint(w, "\t}\n}\n\n")
+	fmt.Fprintf(w, "var _ json.Marshaler = %s(0)\n\n", typeName)
 }
 
 func emitIntEnum(w io.Writer, name string, members []int64) {

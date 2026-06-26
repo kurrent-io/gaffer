@@ -117,10 +117,13 @@ func (f *fakeWriter) Disable(_ context.Context, _ string) error       { return f
 func (f *fakeWriter) Reset(_ context.Context, _ string, _ bool) error { return f.step("reset") }
 func (f *fakeWriter) Enable(_ context.Context, _ string) error        { return f.step("enable") }
 
+// testLedger is the tool metadata applyAction threads onto each write.
+var testLedger = remote.Ledger{Tool: remote.ToolName, ToolVersion: "1.2.3-test", Operation: remote.OpDeploy}
+
 func TestApplyActionCreateMapsOptions(t *testing.T) {
 	f := &fakeWriter{}
 	local := &deploy.Descriptor{Query: "q", EngineVersion: 1, Emit: true, TrackEmittedStreams: true}
-	if err := applyAction(context.Background(), f, "p", actCreate, local); err != nil {
+	if err := applyAction(context.Background(), f, "p", actCreate, local, testLedger); err != nil {
 		t.Fatalf("applyAction: %v", err)
 	}
 	if f.creates != 1 || f.query != "q" {
@@ -129,12 +132,15 @@ func TestApplyActionCreateMapsOptions(t *testing.T) {
 	if f.createOpts.EngineVersion != 1 || !f.createOpts.Emit || !f.createOpts.TrackEmittedStreams {
 		t.Errorf("create opts = %+v; want EV1 emit+TES true", f.createOpts)
 	}
+	if f.createOpts.Ledger == nil || *f.createOpts.Ledger != testLedger {
+		t.Errorf("create ledger = %+v; want %+v threaded through", f.createOpts.Ledger, testLedger)
+	}
 }
 
 func TestApplyActionUpdateAlwaysSendsEmit(t *testing.T) {
 	for _, emit := range []bool{true, false} {
 		f := &fakeWriter{}
-		if err := applyAction(context.Background(), f, "p", actUpdate, &deploy.Descriptor{Query: "q", Emit: emit}); err != nil {
+		if err := applyAction(context.Background(), f, "p", actUpdate, &deploy.Descriptor{Query: "q", Emit: emit}, testLedger); err != nil {
 			t.Fatalf("applyAction: %v", err)
 		}
 		if f.updates != 1 {
@@ -146,13 +152,16 @@ func TestApplyActionUpdateAlwaysSendsEmit(t *testing.T) {
 		if *f.updateOpts.Emit != emit {
 			t.Errorf("update Emit = %v, want %v", *f.updateOpts.Emit, emit)
 		}
+		if f.updateOpts.Ledger == nil || *f.updateOpts.Ledger != testLedger {
+			t.Errorf("update ledger = %+v; want %+v threaded through", f.updateOpts.Ledger, testLedger)
+		}
 	}
 }
 
 func TestApplyActionSkipAndRefuseDoNothing(t *testing.T) {
 	for _, action := range []deployAction{actSkip, actRefuse} {
 		f := &fakeWriter{}
-		if err := applyAction(context.Background(), f, "p", action, &deploy.Descriptor{}); err != nil {
+		if err := applyAction(context.Background(), f, "p", action, &deploy.Descriptor{}, testLedger); err != nil {
 			t.Fatalf("applyAction(%s): %v", action, err)
 		}
 		if len(f.calls) != 0 {
@@ -213,7 +222,7 @@ func TestResolveResets(t *testing.T) {
 func TestApplyActionResetSequence(t *testing.T) {
 	for _, emit := range []bool{true, false} {
 		f := &fakeWriter{}
-		if err := applyAction(context.Background(), f, "p", actReset, &deploy.Descriptor{Query: "q", Emit: emit}); err != nil {
+		if err := applyAction(context.Background(), f, "p", actReset, &deploy.Descriptor{Query: "q", Emit: emit}, testLedger); err != nil {
 			t.Fatalf("applyAction(reset): %v", err)
 		}
 		// stop → update (new query) → reset (rewind) → start.
@@ -223,6 +232,9 @@ func TestApplyActionResetSequence(t *testing.T) {
 		if f.updateOpts.Emit == nil || *f.updateOpts.Emit != emit {
 			t.Errorf("reset update Emit = %v, want %v sent explicitly", f.updateOpts.Emit, emit)
 		}
+		if f.updateOpts.Ledger == nil || *f.updateOpts.Ledger != testLedger {
+			t.Errorf("reset update ledger = %+v; want %+v stamped on the reset's update", f.updateOpts.Ledger, testLedger)
+		}
 	}
 }
 
@@ -230,7 +242,7 @@ func TestApplyActionResetEnableFailure(t *testing.T) {
 	// Enable fails after the reset already wiped state: the error must name the
 	// recovery, since there's no auto-rollback.
 	f := &fakeWriter{failOn: "enable"}
-	err := applyAction(context.Background(), f, "orders", actReset, &deploy.Descriptor{Query: "q"})
+	err := applyAction(context.Background(), f, "orders", actReset, &deploy.Descriptor{Query: "q"}, testLedger)
 	if err == nil {
 		t.Fatal("expected an error when enable fails after reset")
 	}
@@ -252,7 +264,7 @@ func TestApplyActionResetMidSequenceFailure(t *testing.T) {
 		{"reset", "disable,update,reset", "gaffer recreate orders"}, // stopped, not rewound
 	} {
 		f := &fakeWriter{failOn: tc.failOn}
-		err := applyAction(context.Background(), f, "orders", actReset, &deploy.Descriptor{Query: "q"})
+		err := applyAction(context.Background(), f, "orders", actReset, &deploy.Descriptor{Query: "q"}, testLedger)
 		if err == nil {
 			t.Fatalf("failOn %s: expected an error", tc.failOn)
 		}

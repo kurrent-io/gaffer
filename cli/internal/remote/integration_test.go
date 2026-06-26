@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -243,6 +244,95 @@ func TestIntegration_FaultedProjection(t *testing.T) {
 	waitForStatus(t, ctx, c, name, "faulted with a reason", func(st Status) bool {
 		return st.State == StateFaulted && st.FaultReason != ""
 	})
+}
+
+// TestIntegration_Ledger is the live round-trip for the deploy ledger. It needs a
+// metadata-capable server (the engine caller-metadata change, master / nightly), so
+// it's gated on GAFFER_TEST_LEDGER - against a release that ignores the field the
+// round-trip assertions can't hold. Run locally with that set and KURRENTDB_URL
+// pointed at the nightly; CI exercises it once a metadata-capable image is wired in.
+func TestIntegration_Ledger(t *testing.T) {
+	if os.Getenv("GAFFER_TEST_LEDGER") == "" {
+		t.Skip("set GAFFER_TEST_LEDGER and point KURRENTDB_URL at a metadata-capable KurrentDB (master/nightly)")
+	}
+	c := connectClient(t)
+	ctx := testContext(t)
+	name := "ledgerit" + testutil.TestSuffix()
+	t.Cleanup(cleanupProjection(c, name))
+
+	// Create stamps a full ledger; ReadLedger returns it with the event's write
+	// time and the caller keys intact alongside the server's synthetic $ keys.
+	create := Ledger{Tool: ToolName, ToolVersion: "1.2.3", Operation: OpDeploy, Revision: "abc123+changes", Actor: "admin"}
+	if err := c.Create(ctx, name, countQuery, CreateOptions{EngineVersion: 2, Ledger: &create}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := c.ReadLedger(ctx, name)
+	if err != nil {
+		t.Fatalf("ReadLedger after create: %v", err)
+	}
+	if got.Tool != ToolName || got.ToolVersion != "1.2.3" || got.Operation != OpDeploy || got.Revision != "abc123+changes" || got.Actor != "admin" {
+		t.Errorf("ReadLedger = %+v, want the create ledger round-tripped", got)
+	}
+	if got.Time.IsZero() {
+		t.Error("ReadLedger Time is zero; want the event's write time")
+	}
+
+	// Update writes a newer ledger; ReadLedger returns the latest.
+	update := Ledger{Tool: ToolName, ToolVersion: "1.2.4", Operation: OpDeploy, Revision: "def456", Actor: "bob"}
+	if err := c.Update(ctx, name, countQuery, UpdateOptions{Emit: testutil.Ptr(false), Ledger: &update}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	got, err = c.ReadLedger(ctx, name)
+	if err != nil {
+		t.Fatalf("ReadLedger after update: %v", err)
+	}
+	if got.Revision != "def456" || got.Actor != "bob" || got.ToolVersion != "1.2.4" {
+		t.Errorf("ReadLedger = %+v, want the update ledger (the newest tool entry)", got)
+	}
+
+	// The keystone assumption: lifecycle ops write metadata-less $ProjectionUpdated
+	// events. After a disable+enable, ReadLedger must scan past them and still
+	// return the last deploy's ledger - not ErrNoLedger, not a stale create.
+	if err := c.Disable(ctx, name); err != nil {
+		t.Fatalf("Disable: %v", err)
+	}
+	waitForState(t, ctx, c, name, StateStopped)
+	if err := c.Enable(ctx, name); err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+	waitForState(t, ctx, c, name, StateRunning)
+	got, err = c.ReadLedger(ctx, name)
+	if err != nil {
+		t.Fatalf("ReadLedger after lifecycle ops: %v (lifecycle writes must not bury the ledger)", err)
+	}
+	if got.Revision != "def456" || got.Actor != "bob" {
+		t.Errorf("ReadLedger after lifecycle = %+v, want the last deploy's ledger (scan past metadata-less writes)", got)
+	}
+}
+
+// TestIntegration_LedgerAbsent pins the degraded outcomes on a metadata-capable
+// server: a projection deployed without a ledger reads back ErrNoLedger, and a
+// missing projection reads back ErrNotFound (kept distinct).
+func TestIntegration_LedgerAbsent(t *testing.T) {
+	if os.Getenv("GAFFER_TEST_LEDGER") == "" {
+		t.Skip("set GAFFER_TEST_LEDGER and point KURRENTDB_URL at a metadata-capable KurrentDB (master/nightly)")
+	}
+	c := connectClient(t)
+	ctx := testContext(t)
+	name := "ledgerit" + testutil.TestSuffix()
+	t.Cleanup(cleanupProjection(c, name))
+
+	if err := c.Create(ctx, name, countQuery, CreateOptions{}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := c.ReadLedger(ctx, name); !errors.Is(err, ErrNoLedger) {
+		t.Errorf("ReadLedger on a ledger-less projection = %v, want ErrNoLedger", err)
+	}
+
+	missing := "ledgerit_missing" + testutil.TestSuffix()
+	if _, err := c.ReadLedger(ctx, missing); !errors.Is(err, ErrNotFound) {
+		t.Errorf("ReadLedger on a missing projection = %v, want ErrNotFound", err)
+	}
 }
 
 func TestIntegration_NotFound(t *testing.T) {

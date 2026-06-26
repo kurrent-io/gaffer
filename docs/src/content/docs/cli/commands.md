@@ -234,6 +234,8 @@ When the plan would change something, deploy shows it and asks to confirm before
 
 --dry-run shows the plan and applies nothing. The exit code is stable for scripts: 0 succeeded (or nothing to do), 1 an error, 2 changes are pending (--dry-run only), 3 refused by a guardrail (confirmation needed but no terminal or --yes, or --no-validate against production).
 
+Each create or update records tool metadata on the projection for attribution: the tool and version, the source revision, and the acting identity. The revision is the project's git commit, suffixed +changes when the tree is dirty; the actor is the user gaffer connects as. For CI, the GAFFER_REVISION and GAFFER_ACTOR environment variables override them (to record the canonical commit or the pipeline identity). A KurrentDB that predates the feature ignores the metadata and deploy is unaffected.
+
 ```
 gaffer deploy [projection] [flags]
 ```

@@ -63,6 +63,9 @@ type CreateOptions struct {
 	EngineVersion       int
 	Emit                bool
 	TrackEmittedStreams bool
+	// Ledger, when set, stamps gaffer's tool metadata onto the create's
+	// $ProjectionUpdated event. nil writes no caller properties.
+	Ledger *Ledger
 }
 
 // UpdateOptions carries the update-time settings. Emit is a pointer because the
@@ -70,6 +73,9 @@ type CreateOptions struct {
 // sends it explicitly; nil leaves the server's current value untouched.
 type UpdateOptions struct {
 	Emit *bool
+	// Ledger, when set, stamps gaffer's tool metadata onto the update's
+	// $ProjectionUpdated event. nil writes no caller properties.
+	Ledger *Ledger
 }
 
 // DeleteOptions selects which derived streams a delete also removes. All default
@@ -104,6 +110,7 @@ func (c *Client) Create(ctx context.Context, name, query string, opts CreateOpti
 		EngineVersion:       kurrentdb.ProjectionEngineVersion(opts.EngineVersion),
 		Emit:                opts.Emit,
 		TrackEmittedStreams: opts.TrackEmittedStreams,
+		Metadata:            ledgerMetadata(opts.Ledger),
 	}))
 }
 
@@ -112,6 +119,7 @@ func (c *Client) Update(ctx context.Context, name, query string, opts UpdateOpti
 	return classify(c.proj.Update(ctx, name, query, kurrentdb.UpdateProjectionOptions{
 		RequiresLeader: true,
 		Emit:           opts.Emit,
+		Metadata:       ledgerMetadata(opts.Ledger),
 	}))
 }
 

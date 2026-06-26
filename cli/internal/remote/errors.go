@@ -29,6 +29,11 @@ var (
 	ErrUnavailable = errors.New("KurrentDB unavailable")
 	// ErrAccessDenied: the request was rejected for authentication or ACL reasons.
 	ErrAccessDenied = errors.New("access denied")
+	// ErrNoLedger: the projection carries no tool metadata within the scan window
+	// (never written by a participating tool, or only metadata-less lifecycle
+	// events). Callers degrade to definition-only behaviour. Distinct from
+	// ErrNotFound, which means the projection itself is absent.
+	ErrNoLedger = errors.New("no tool metadata")
 )
 
 // classify maps a projection-operation error to a typed sentinel where it

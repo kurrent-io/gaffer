@@ -146,6 +146,38 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 	return client, authInvalidated, nil
 }
 
+// Principal best-effort reports the identity gaffer authenticates as for an env,
+// for attribution (the deploy ledger's actor). It mirrors the credential
+// precedence in Connect: an OAuth env uses the client-credentials grant, so the
+// principal is the client_id (the service identity); otherwise basic auth, whose
+// username is KURRENTDB_USERNAME (the .env overlay) or the connection string's
+// userinfo. A cert-only or anonymous env, or any resolution failure, yields "" -
+// attribution is best-effort and never blocks a deploy.
+func Principal(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig) string {
+	if oauthCfg != nil {
+		return oauthCfg.ClientID
+	}
+	if err := envvar.Load(projectRoot); err != nil {
+		return ""
+	}
+	overlay, err := envvar.Overlay(projectRoot, envName)
+	if err != nil {
+		return ""
+	}
+	if username, _ := envvar.Credentials(overlay); username != "" {
+		return username
+	}
+	expanded, err := envvar.Expand(connStr, overlay)
+	if err != nil {
+		return ""
+	}
+	dbConfig, err := kurrentdb.ParseConnectionString(expanded)
+	if err != nil {
+		return ""
+	}
+	return dbConfig.Username
+}
+
 // resolveCertPath expands ${VAR} references in a cert path (using the same
 // overlay as the connection string) and resolves a relative result against the
 // project root. An absolute path or empty string is returned unchanged.

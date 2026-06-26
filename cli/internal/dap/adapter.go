@@ -421,7 +421,15 @@ func (a *DebugAdapter) handleContinue(s *Server, req *godap.ContinueRequest) {
 }
 
 func (a *DebugAdapter) handlePause(s *Server, req *godap.PauseRequest) {
-	if err := a.session.Pause(); err != nil {
+	// runner is bound after the server starts serving, so a pause arriving
+	// before the run loop binds it has nothing to drive. (Old code reached the
+	// constructor-set session directly; routing through the runner reintroduces
+	// this window, so guard it.)
+	if a.runner == nil {
+		s.Send(NewErrorResponse(req.Seq, req.Command, "session is not ready"))
+		return
+	}
+	if err := a.runner.Pause(); err != nil {
 		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
 		return
 	}
@@ -566,12 +574,13 @@ func (a *DebugAdapter) handleConfigurationDone(s *Server, req *godap.Configurati
 		a.entryPausePending = true
 	}
 	a.mu.Unlock()
-	if pauseAtEntry {
+	if pauseAtEntry && a.runner != nil {
 		// Unlike handlePause, the entry pause can't ride an error response: this
 		// is the configurationDone request, and a pause failure shouldn't fail
 		// config completion. Surface it on the console instead. (Pause only
-		// fails on a dead session, so this is a safety net.)
-		a.reportDebugError("pause", a.session.Pause())
+		// fails on a dead session, so this is a safety net.) Guard the runner
+		// like handlePause: it's bound after the server starts serving.
+		a.reportDebugError("pause", a.runner.Pause())
 	}
 
 	resp := &godap.ConfigurationDoneResponse{}

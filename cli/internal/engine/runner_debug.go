@@ -87,6 +87,20 @@ func (r *Runner) StepOut() error {
 	return r.doStep(func() error { return r.debug.Session.StepOut() })
 }
 
+// Pause requests the engine pause at the next step. Like the step verbs it
+// funnels through the Runner so the paused bookkeeping has a single owner: the
+// request itself does not park the engine, so paused stays false until the
+// pause actually lands and the OnBreak handler flips it true. Routing through
+// here (rather than the raw session) keeps the DAP/MCP control verbs uniform.
+//
+// Safe to call when debug is disabled (no-op).
+func (r *Runner) Pause() error {
+	if r.debug == nil {
+		return nil
+	}
+	return r.debug.Session.Pause()
+}
+
 // Drain releases a Feed blocked at a breakpoint or the break_at pause so it
 // can run to completion and the feed goroutine can exit. It is terminal: it
 // sets the draining flag under the lock, so any break that fires afterwards -

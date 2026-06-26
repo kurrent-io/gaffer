@@ -136,5 +136,5 @@ Do not use LINQ extension methods on arrays in runtime code (AsEnumerable, Selec
 ## Conventions
 
 - C#: .editorconfig matching KurrentDB (tabs, K&R braces, file-scoped namespaces)
-- Go: golangci-lint with all linters enabled, goimports + gofumpt formatting
+- Go: golangci-lint with a curated, high-signal linter set (defined per module in `.golangci.yml`), goimports + gofumpt formatting
 - JS/TS (bindings/js, testing/js, editors/vscode): prettier + eslint, tabs

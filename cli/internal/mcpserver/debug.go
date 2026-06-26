@@ -201,29 +201,7 @@ var debugContinueTool = &mcp.Tool{
 type debugContinueInput struct{}
 
 func (s *Server) handleDebugContinue(ctx context.Context, _ *mcp.CallToolRequest, _ debugContinueInput) (*mcp.CallToolResult, any, error) {
-	s.mu.Lock()
-
-	if s.session == nil {
-		s.mu.Unlock()
-		return toolError("no active session"), nil, nil
-	}
-	if !s.session.runner.Paused() {
-		s.mu.Unlock()
-		return toolError("session is not paused"), nil, nil
-	}
-
-	sess := s.session
-	if err := sess.runner.Continue(); err != nil {
-		s.mu.Unlock()
-		return toolError("continue failed: %v", err), nil, nil
-	}
-	s.mu.Unlock()
-
-	wr := s.waitForBreak(ctx, sess, defaultDebugTimeout)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.handleWaitResult(sess, wr)
+	return s.doResume(ctx, "continue", func(r *engine.Runner) error { return r.Continue() })
 }
 
 func (s *Server) collectDebugContext(sess *activeSession, info gafferruntime.BreakInfo) map[string]any {
@@ -287,18 +265,22 @@ var stepOutTool = &mcp.Tool{
 type debugStepInput struct{}
 
 func (s *Server) handleStepOver(ctx context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
-	return s.doStep(ctx, func(r *engine.Runner) error { return r.StepOver() })
+	return s.doResume(ctx, "step", func(r *engine.Runner) error { return r.StepOver() })
 }
 
 func (s *Server) handleStepInto(ctx context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
-	return s.doStep(ctx, func(r *engine.Runner) error { return r.StepInto() })
+	return s.doResume(ctx, "step", func(r *engine.Runner) error { return r.StepInto() })
 }
 
 func (s *Server) handleStepOut(ctx context.Context, _ *mcp.CallToolRequest, _ debugStepInput) (*mcp.CallToolResult, any, error) {
-	return s.doStep(ctx, func(r *engine.Runner) error { return r.StepOut() })
+	return s.doResume(ctx, "step", func(r *engine.Runner) error { return r.StepOut() })
 }
 
-func (s *Server) doStep(ctx context.Context, stepFn func(*engine.Runner) error) (*mcp.CallToolResult, any, error) {
+// doResume drives the four resume paths (continue + the three steps): lock,
+// guard that a paused session exists, run the resume action, release the
+// lock, waitForBreak, then re-lock for handleWaitResult. verb names the
+// action in the failure message ("continue failed" / "step failed").
+func (s *Server) doResume(ctx context.Context, verb string, resume func(*engine.Runner) error) (*mcp.CallToolResult, any, error) {
 	s.mu.Lock()
 
 	if s.session == nil {
@@ -311,9 +293,9 @@ func (s *Server) doStep(ctx context.Context, stepFn func(*engine.Runner) error) 
 	}
 
 	sess := s.session
-	if err := stepFn(sess.runner); err != nil {
+	if err := resume(sess.runner); err != nil {
 		s.mu.Unlock()
-		return toolError("step failed: %v", err), nil, nil
+		return toolError("%s failed: %v", verb, err), nil, nil
 	}
 	s.mu.Unlock()
 

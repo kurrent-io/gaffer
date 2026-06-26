@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"sync/atomic"
 
@@ -174,7 +175,8 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 		// A throwing quirk (e.g. event.body cast, non-finite serialize) faults the
 		// event but still carries its diagnostics on the error - surface them too.
 		if r.onDiagnostic != nil {
-			if pe, ok := err.(gafferruntime.ProjectionError); ok {
+			var pe gafferruntime.ProjectionError
+			if errors.As(err, &pe) {
 				for _, d := range pe.ErrorDiagnostics() {
 					r.onDiagnostic(d.Code)
 				}

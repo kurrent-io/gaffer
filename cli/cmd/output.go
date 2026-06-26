@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -54,78 +55,89 @@ type fatalError struct {
 
 func toFatalError(err error, sourcePath string) fatalError {
 	fe := fatalError{File: sourcePath}
-	switch e := err.(type) {
-	case *gafferruntime.InvalidProjectionError:
-		fe.Code = e.ErrorCode()
-		fe.Description = e.ErrorDescription()
-		fe.CompatCode = e.CompatCode
-		fe.CompatDescription = e.CompatDescription
-		fe.CompatFixedIn = e.CompatFixedIn
-		if e.Location != nil {
-			fe.Line = &e.Location.Line
-			fe.Column = &e.Location.Column
+	var (
+		invalidProj  *gafferruntime.InvalidProjectionError
+		handlerErr   *gafferruntime.ProjectionHandlerError
+		transformErr *gafferruntime.ProjectionTransformError
+		execTimeout  *gafferruntime.ExecutionTimeoutError
+		compTimeout  *gafferruntime.CompilationTimeoutError
+		malformedEvt *gafferruntime.MalformedEventError
+		invalidArg   *gafferruntime.InvalidArgumentError
+		stateSerErr  *gafferruntime.StateSerializationError
+		projErr      gafferruntime.ProjectionError
+	)
+	switch {
+	case errors.As(err, &invalidProj):
+		fe.Code = invalidProj.ErrorCode()
+		fe.Description = invalidProj.ErrorDescription()
+		fe.CompatCode = invalidProj.CompatCode
+		fe.CompatDescription = invalidProj.CompatDescription
+		fe.CompatFixedIn = invalidProj.CompatFixedIn
+		if invalidProj.Location != nil {
+			fe.Line = &invalidProj.Location.Line
+			fe.Column = &invalidProj.Location.Column
 		}
-	case *gafferruntime.ProjectionHandlerError:
-		fe.Code = e.ErrorCode()
-		fe.Description = e.ErrorDescription()
-		fe.JsStack = e.JsStack
-		fe.EventID = formatEventID(e.Event)
-		fe.CompatCode = e.CompatCode
-		fe.CompatDescription = e.CompatDescription
-		fe.CompatFixedIn = e.CompatFixedIn
-		if e.Location != nil {
-			fe.Line = &e.Location.Line
-			fe.Column = &e.Location.Column
+	case errors.As(err, &handlerErr):
+		fe.Code = handlerErr.ErrorCode()
+		fe.Description = handlerErr.ErrorDescription()
+		fe.JsStack = handlerErr.JsStack
+		fe.EventID = formatEventID(handlerErr.Event)
+		fe.CompatCode = handlerErr.CompatCode
+		fe.CompatDescription = handlerErr.CompatDescription
+		fe.CompatFixedIn = handlerErr.CompatFixedIn
+		if handlerErr.Location != nil {
+			fe.Line = &handlerErr.Location.Line
+			fe.Column = &handlerErr.Location.Column
 		}
-	case *gafferruntime.ProjectionTransformError:
-		fe.Code = e.ErrorCode()
-		fe.Description = e.ErrorDescription()
-		fe.JsStack = e.JsStack
-		fe.CompatCode = e.CompatCode
-		fe.CompatDescription = e.CompatDescription
-		fe.CompatFixedIn = e.CompatFixedIn
-		if e.Location != nil {
-			fe.Line = &e.Location.Line
-			fe.Column = &e.Location.Column
+	case errors.As(err, &transformErr):
+		fe.Code = transformErr.ErrorCode()
+		fe.Description = transformErr.ErrorDescription()
+		fe.JsStack = transformErr.JsStack
+		fe.CompatCode = transformErr.CompatCode
+		fe.CompatDescription = transformErr.CompatDescription
+		fe.CompatFixedIn = transformErr.CompatFixedIn
+		if transformErr.Location != nil {
+			fe.Line = &transformErr.Location.Line
+			fe.Column = &transformErr.Location.Column
 		}
-	case *gafferruntime.ExecutionTimeoutError:
-		fe.Code = e.ErrorCode()
+	case errors.As(err, &execTimeout):
+		fe.Code = execTimeout.ErrorCode()
 		fe.Description = fmt.Sprintf("%s (elapsed %dms, allowed %dms). %s",
-			e.ErrorDescription(), e.ElapsedMs, e.AllowedMs, hangGuardHint)
-		fe.EventID = formatEventID(e.Event)
-		fe.CompatCode = e.CompatCode
-		fe.CompatDescription = e.CompatDescription
-		fe.CompatFixedIn = e.CompatFixedIn
-	case *gafferruntime.CompilationTimeoutError:
-		fe.Code = e.ErrorCode()
+			execTimeout.ErrorDescription(), execTimeout.ElapsedMs, execTimeout.AllowedMs, hangGuardHint)
+		fe.EventID = formatEventID(execTimeout.Event)
+		fe.CompatCode = execTimeout.CompatCode
+		fe.CompatDescription = execTimeout.CompatDescription
+		fe.CompatFixedIn = execTimeout.CompatFixedIn
+	case errors.As(err, &compTimeout):
+		fe.Code = compTimeout.ErrorCode()
 		fe.Description = fmt.Sprintf("%s (elapsed %dms, allowed %dms). %s",
-			e.ErrorDescription(), e.ElapsedMs, e.AllowedMs, hangGuardHint)
-		fe.CompatCode = e.CompatCode
-		fe.CompatDescription = e.CompatDescription
-		fe.CompatFixedIn = e.CompatFixedIn
-	case *gafferruntime.MalformedEventError:
-		fe.Code = e.ErrorCode()
-		fe.Description = e.ErrorDescription()
-		fe.EventID = formatEventID(e.Event)
-		fe.CompatCode = e.CompatCode
-		fe.CompatDescription = e.CompatDescription
-		fe.CompatFixedIn = e.CompatFixedIn
-	case *gafferruntime.InvalidArgumentError:
-		fe.Code = e.ErrorCode()
-		fe.Description = e.ErrorDescription()
-		fe.CompatCode = e.CompatCode
-		fe.CompatDescription = e.CompatDescription
-		fe.CompatFixedIn = e.CompatFixedIn
-	case *gafferruntime.StateSerializationError:
-		fe.Code = e.ErrorCode()
-		fe.Description = e.ErrorDescription()
-		fe.EventID = formatEventID(e.Event)
-		fe.CompatCode = e.CompatCode
-		fe.CompatDescription = e.CompatDescription
-		fe.CompatFixedIn = e.CompatFixedIn
-	case gafferruntime.ProjectionError:
-		fe.Code = e.ErrorCode()
-		fe.Description = e.ErrorDescription()
+			compTimeout.ErrorDescription(), compTimeout.ElapsedMs, compTimeout.AllowedMs, hangGuardHint)
+		fe.CompatCode = compTimeout.CompatCode
+		fe.CompatDescription = compTimeout.CompatDescription
+		fe.CompatFixedIn = compTimeout.CompatFixedIn
+	case errors.As(err, &malformedEvt):
+		fe.Code = malformedEvt.ErrorCode()
+		fe.Description = malformedEvt.ErrorDescription()
+		fe.EventID = formatEventID(malformedEvt.Event)
+		fe.CompatCode = malformedEvt.CompatCode
+		fe.CompatDescription = malformedEvt.CompatDescription
+		fe.CompatFixedIn = malformedEvt.CompatFixedIn
+	case errors.As(err, &invalidArg):
+		fe.Code = invalidArg.ErrorCode()
+		fe.Description = invalidArg.ErrorDescription()
+		fe.CompatCode = invalidArg.CompatCode
+		fe.CompatDescription = invalidArg.CompatDescription
+		fe.CompatFixedIn = invalidArg.CompatFixedIn
+	case errors.As(err, &stateSerErr):
+		fe.Code = stateSerErr.ErrorCode()
+		fe.Description = stateSerErr.ErrorDescription()
+		fe.EventID = formatEventID(stateSerErr.Event)
+		fe.CompatCode = stateSerErr.CompatCode
+		fe.CompatDescription = stateSerErr.CompatDescription
+		fe.CompatFixedIn = stateSerErr.CompatFixedIn
+	case errors.As(err, &projErr):
+		fe.Code = projErr.ErrorCode()
+		fe.Description = projErr.ErrorDescription()
 	default:
 		fe.Code = "unexpected-error"
 		fe.Description = err.Error()

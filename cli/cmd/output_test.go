@@ -1156,6 +1156,26 @@ func TestToFatalError_GenericError(t *testing.T) {
 	}
 }
 
+func TestToFatalError_WrappedError(t *testing.T) {
+	inner := &gafferruntime.ProjectionHandlerError{
+		Desc:     "Cannot read property 'x' of undefined",
+		JsStack:  "at line 10",
+		Location: &gafferruntime.JsLocation{Line: 10, Column: 3},
+		Event:    gafferruntime.EventContext{EventType: "ItemAdded", StreamID: "s-1", SequenceNumber: 5},
+		Msg:      "handler threw",
+	}
+	err := fmt.Errorf("feeding event: %w", inner)
+
+	fe := toFatalError(err, "/p.js")
+
+	testutil.AssertEqual(t, "code", "handler-error", fe.Code)
+	testutil.AssertEqual(t, "jsStack", "at line 10", fe.JsStack)
+	testutil.AssertEqual(t, "eventId", "5@s-1", fe.EventID)
+	if fe.Line == nil || *fe.Line != 10 {
+		t.Errorf("expected line=10, got %v", fe.Line)
+	}
+}
+
 func TestJSONWriter_WriteFatalError(t *testing.T) {
 	var buf bytes.Buffer
 	jw := newJSONWriter(&buf)

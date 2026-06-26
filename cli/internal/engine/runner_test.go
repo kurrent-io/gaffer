@@ -107,6 +107,28 @@ func TestRunner_ProcessOne_Error(t *testing.T) {
 	}
 }
 
+func TestRunner_ProcessOne_WrappedError_SurfacesDiagnostics(t *testing.T) {
+	inner := &mockProjectionError{
+		code:        "handler-error",
+		description: "boom",
+		diagnostics: []gafferruntime.Diagnostic{{Code: "quirk-a"}, {Code: "quirk-b"}},
+	}
+	var seen []string
+	r := NewRunner(RunnerConfig{
+		Feed:         func(string) (*gafferruntime.FeedResult, error) { return nil, fmt.Errorf("feeding event: %w", inner) },
+		OnDiagnostic: func(code string) { seen = append(seen, code) },
+	})
+
+	stop := r.ProcessOne(testutil.Event("Bad", "s-1", 0))
+
+	if !stop {
+		t.Error("expected stop=true")
+	}
+	if len(seen) != 2 || seen[0] != "quirk-a" || seen[1] != "quirk-b" {
+		t.Errorf("diagnostics: got %v, want [quirk-a quirk-b]", seen)
+	}
+}
+
 func TestRunner_ProcessOne_NilWriter(t *testing.T) {
 	r := NewRunner(RunnerConfig{
 		Feed:    func(string) (*gafferruntime.FeedResult, error) { return processedResult(""), nil },

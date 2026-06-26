@@ -116,6 +116,7 @@ func TestFormatNumber(t *testing.T) {
 		{1247, "1,247"},
 		{10000, "10,000"},
 		{1000000, "1,000,000"},
+		{-1000, "-1,000"},
 	}
 	for _, tt := range tests {
 		got := formatNumber(tt.input)

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // deploySink consumes the deploy run's progress. start fires before a
@@ -32,13 +34,13 @@ func newDeploySink(w, errW io.Writer, jsonOut bool, names []string, ctx context.
 	return newPlainSink(w, errW, names)
 }
 
-// maxNameWidth is the column width the name is padded to so verdicts align,
-// known up front because every name is resolved before the run starts.
+// maxNameWidth is the display-cell width the name is padded to so verdicts
+// align, known up front because every name is resolved before the run starts.
 func maxNameWidth(names []string) int {
 	w := 0
 	for _, n := range names {
-		if len(n) > w {
-			w = len(n)
+		if cw := lipgloss.Width(n); cw > w {
+			w = cw
 		}
 	}
 	return w

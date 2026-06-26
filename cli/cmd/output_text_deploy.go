@@ -3,7 +3,8 @@ package cmd
 import (
 	"fmt"
 	"strings"
-	"unicode/utf8"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // deployResultLine renders one projection's verdict: a status marker, the name
@@ -12,7 +13,7 @@ import (
 // place it. Created/updated read green, skipped faint, refused a warning, a
 // failed RPC red.
 func (tw *textWriter) deployResultLine(res deployResult, nameWidth int) string {
-	name := fmt.Sprintf("%-*s", nameWidth, res.Name)
+	name := padCells(res.Name, nameWidth)
 	var marker, verdict string
 	switch {
 	case res.Err != nil:
@@ -51,11 +52,11 @@ func (tw *textWriter) deployResultLine(res deployResult, nameWidth int) string {
 func (tw *textWriter) deployRowLine(row deployRow, spin string, nameWidth int) string {
 	switch row.status {
 	case rowActive:
-		return fmt.Sprintf("  %s %-*s  %s", spin, nameWidth, row.name, tw.styles.label.Render("deploying"))
+		return fmt.Sprintf("  %s %s  %s", spin, padCells(row.name, nameWidth), tw.styles.label.Render("deploying"))
 	case rowDone:
 		return tw.deployResultLine(row.res, nameWidth)
 	default:
-		return fmt.Sprintf("  %s %s", tw.styles.pipe.Render("·"), tw.styles.pipe.Render(fmt.Sprintf("%-*s", nameWidth, row.name)))
+		return fmt.Sprintf("  %s %s", tw.styles.pipe.Render("·"), tw.styles.pipe.Render(padCells(row.name, nameWidth)))
 	}
 }
 
@@ -150,11 +151,11 @@ func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, totals
 	}
 	nameWidth, verdictWidth := 0, 0
 	for _, r := range rows {
-		nameWidth = max(nameWidth, utf8.RuneCountInString(r.name))
+		nameWidth = max(nameWidth, lipgloss.Width(r.name))
 		verdictWidth = max(verdictWidth, len(r.word))
 	}
 	for _, r := range rows {
-		line := fmt.Sprintf("  %-*s  %s", nameWidth, r.name, r.styled)
+		line := fmt.Sprintf("  %s  %s", padCells(r.name, nameWidth), r.styled)
 		if r.detail != "" {
 			line += strings.Repeat(" ", verdictWidth-len(r.word)) + "  " + tw.styles.muted.Render(r.detail)
 		}

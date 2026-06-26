@@ -12,6 +12,14 @@ import (
 
 const indentSize = 3
 
+// padCells left-aligns s in a field of the given display-cell width, padding on
+// the right with spaces. It measures with lipgloss.Width (terminal cell width)
+// rather than fmt's %-*s (which counts runes), so names with full-width or
+// combining characters still align.
+func padCells(s string, width int) string {
+	return s + strings.Repeat(" ", max(0, width-lipgloss.Width(s)))
+}
+
 type field struct{ label, value string }
 
 type textWriter struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"time"
 )
 
 // maxStackFrames caps the goroutine stack captured during panic-recover.
@@ -97,8 +98,27 @@ func (c *Client) tryAddInflight() bool {
 	return true
 }
 
-// Flush waits for all in-flight sends to complete or for ctx to expire.
-// Returns nil on clean drain, a wrapped ctx.Err() on timeout.
+// flushCancelGrace bounds how long a timed-out Flush waits for in-flight
+// sends to abort after cancelling them. A cancellation-aware Sink.Send
+// returns near-instantly once the send context is cancelled, so this only
+// has to cover goroutine teardown. A sink that ignores cancellation can't
+// extend it: Flush returns the timeout error after the grace and skips
+// Close, since at process exit abandoning a pathological sink's resources
+// beats hanging the process.
+const flushCancelGrace = 100 * time.Millisecond
+
+// Flush waits for all in-flight sends to complete or for ctx to expire,
+// then closes the sink. Returns nil on clean drain, a wrapped ctx.Err()
+// on timeout.
+//
+// Flush itself never blocks indefinitely - the contract is that it is
+// bounded by ctx. On the clean path it waits for the drain and then
+// closes the sink (after the drain, per the Sink.Close contract). On the
+// timeout path it cancels the client send context so in-flight sends
+// abort, waits a short bounded grace (flushCancelGrace) for the now-prompt
+// drain, and - only if it drains within the grace - closes the sink after
+// it. A sink that ignores cancellation past the grace is abandoned without
+// Close so the process can always exit.
 //
 // Idempotent. First call closes the client (subsequent emits become
 // no-ops); later calls wait again on whatever's outstanding (typically
@@ -127,26 +147,38 @@ func (c *Client) Flush(ctx context.Context) error {
 		close(done)
 	}()
 
-	var err error
 	select {
 	case <-done:
 	case <-ctx.Done():
-		err = fmt.Errorf("telemetry flush: %w", ctx.Err())
-		// Cancel the client send context so in-flight sends abandon
-		// their per-send budget and return now, rather than leaving the
-		// waiter goroutine blocked on wg.Wait until each one drains on
-		// its own. Then wait for the (now-prompt) drain so Close still
-		// happens after the WaitGroup empties - the Sink.Close contract
-		// requires it, and a buffered sink that frees shared state in
-		// Close would otherwise race a Send still in flight.
+		// Cancel the client send context so in-flight sends abandon their
+		// per-send budget and return now, rather than draining on their
+		// own. Then wait a short bounded grace for that drain so Close
+		// still happens after the WaitGroup empties (the Sink.Close
+		// contract; a buffered sink freeing shared state in Close would
+		// otherwise race a Send still in flight). If the grace elapses -
+		// a sink ignoring cancellation - skip Close and return the
+		// timeout: at process exit, never block.
 		c.cancel()
-		<-done
+		grace := time.NewTimer(flushCancelGrace)
+		defer grace.Stop()
+		select {
+		case <-done:
+		case <-grace.C:
+			return fmt.Errorf("telemetry flush: %w", ctx.Err())
+		}
+		// Drained within the grace; fall through to Close, then report
+		// the timeout (we still exceeded the caller's deadline).
+		err := fmt.Errorf("telemetry flush: %w", ctx.Err())
+		if closeErr := c.sink.Close(ctx); closeErr != nil {
+			err = fmt.Errorf("%w; telemetry sink close: %w", err, closeErr)
+		}
+		return err
 	}
-	// Close the sink after the drain. Releases sink-held resources (a
-	// future buffered sink's flush buffer, the http transport's idle
+	// Clean drain. Close the sink after it. Releases sink-held resources
+	// (a future buffered sink's flush buffer, the http transport's idle
 	// pool) while we're still in user code.
-	if closeErr := c.sink.Close(ctx); closeErr != nil && err == nil {
-		err = fmt.Errorf("telemetry sink close: %w", closeErr)
+	if closeErr := c.sink.Close(ctx); closeErr != nil {
+		return fmt.Errorf("telemetry sink close: %w", closeErr)
 	}
-	return err
+	return nil
 }

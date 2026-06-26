@@ -22,7 +22,7 @@ func TestHandleCodeLens_IncrementsCounter(t *testing.T) {
 	// nil params path: handler returns []CodeLens{} early. The
 	// counter bump must precede the early-return so requests with
 	// empty params still appear in the data.
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if _, err := s.handleCodeLens(&jsonrpc2.Request{}); err != nil {
 			t.Fatalf("call %d: %v", i, err)
 		}
@@ -38,7 +38,7 @@ func TestPublishDiagnostics_IncrementsCounter(t *testing.T) {
 	// notification but the counter still records the attempt.
 	// "DiagnosticPublishCount" reflects parse-pipeline activity,
 	// not bytes-on-wire.
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		s.publishDiagnostics("file:///does/not/matter.toml", nil)
 	}
 	if got := s.Stats().DiagnosticPublishCount; got != 2 {

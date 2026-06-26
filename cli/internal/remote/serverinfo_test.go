@@ -11,8 +11,6 @@ func serverInfoEvent(data string) *kurrentdb.ResolvedEvent {
 	return &kurrentdb.ResolvedEvent{Event: &kurrentdb.RecordedEvent{EventType: serverInfoType, Data: []byte(data)}}
 }
 
-func boolp(b bool) *bool { return &b }
-
 func TestReadServerInfoProduction(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -21,10 +19,10 @@ func TestReadServerInfoProduction(t *testing.T) {
 		wantProd *bool
 		wantIs   bool
 	}{
-		{"production true", `{"name":"orders-prod","production":true}`, "orders-prod", boolp(true), true},
-		{"production false", `{"name":"staging","production":false}`, "staging", boolp(false), false},
+		{"production true", `{"name":"orders-prod","production":true}`, "orders-prod", new(true), true},
+		{"production false", `{"name":"staging","production":false}`, "staging", new(false), false},
 		{"production unset", `{"name":"dev"}`, "dev", nil, false},
-		{"name unset", `{"production":true}`, "", boolp(true), true},
+		{"name unset", `{"production":true}`, "", new(true), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := readServerInfo(recvSeq(recvStep{ev: serverInfoEvent(tc.data)}))

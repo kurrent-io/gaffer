@@ -123,11 +123,8 @@ func WalkConfigs(ctx context.Context, root string) ([]string, error) {
 		if matcher != nil && matcher.MatchesPath(rel) {
 			return nil
 		}
-		for _, name := range configFileNames {
-			if d.Name() == name {
-				found = append(found, path)
-				break
-			}
+		if slices.Contains(configFileNames, d.Name()) {
+			found = append(found, path)
 		}
 		return nil
 	})

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -176,7 +177,7 @@ func displayJSON(raw json.RawMessage) string {
 }
 
 func formatNumber(n int) string {
-	s := fmt.Sprintf("%d", n)
+	s := strconv.Itoa(n)
 	if len(s) <= 3 {
 		return s
 	}

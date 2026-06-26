@@ -50,7 +50,7 @@ func newClientConn(ctx context.Context, stream io.ReadWriteCloser) *jsonrpc2.Con
 		ctx,
 		jsonrpc2.NewBufferedStream(stream, jsonrpc2.VSCodeObjectCodec{}),
 		// Server-initiated messages aren't expected in V1.
-		jsonrpc2.HandlerWithError(func(_ context.Context, _ *jsonrpc2.Conn, _ *jsonrpc2.Request) (interface{}, error) {
+		jsonrpc2.HandlerWithError(func(_ context.Context, _ *jsonrpc2.Conn, _ *jsonrpc2.Request) (any, error) {
 			return nil, nil
 		}),
 	)

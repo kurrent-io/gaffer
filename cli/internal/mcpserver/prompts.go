@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -77,7 +78,7 @@ func (s *Server) handleWriteProjectionPrompt(_ context.Context, req *mcp.GetProm
 	}
 
 	return &mcp.GetPromptResult{
-		Description: fmt.Sprintf("Write a projection: %s", requirements),
+		Description: "Write a projection: " + requirements,
 		Messages: []*mcp.PromptMessage{
 			{Role: "user", Content: &mcp.TextContent{Text: sb.String()}},
 		},
@@ -93,7 +94,7 @@ func (s *Server) handleFixProjectionPrompt(_ context.Context, req *mcp.GetPrompt
 		return nil, fmt.Errorf("loading gaffer.toml: %w", err)
 	}
 	if cfg == nil {
-		return nil, fmt.Errorf("no gaffer project found - fix-projection needs a project; run gaffer init first")
+		return nil, errors.New("no gaffer project found - fix-projection needs a project; run gaffer init first")
 	}
 
 	proj := cfg.FindProjection(name)
@@ -139,7 +140,7 @@ func (s *Server) handleFixProjectionPrompt(_ context.Context, req *mcp.GetPrompt
 	}
 
 	return &mcp.GetPromptResult{
-		Description: fmt.Sprintf("Fix projection: %s", name),
+		Description: "Fix projection: " + name,
 		Messages: []*mcp.PromptMessage{
 			{Role: "user", Content: &mcp.TextContent{Text: sb.String()}},
 		},
@@ -158,7 +159,7 @@ func hasV1Projections(cfg *config.Config) bool {
 func mustReadEmbed(path string) []byte {
 	data, err := embeddedResources.ReadFile(path)
 	if err != nil {
-		panic(fmt.Sprintf("missing embedded resource: %s", path))
+		panic("missing embedded resource: " + path)
 	}
 	return data
 }

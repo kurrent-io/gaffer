@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -47,7 +48,7 @@ func TestClassifyError_WrappedProjectionError(t *testing.T) {
 }
 
 func TestClassifyError_GenericError(t *testing.T) {
-	err := fmt.Errorf("something broke")
+	err := errors.New("something broke")
 	fe := ClassifyError(err)
 
 	if fe.Code != "unexpected-error" {

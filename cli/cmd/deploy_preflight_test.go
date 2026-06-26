@@ -105,8 +105,8 @@ func TestRunPreflightErrorDiagnostic(t *testing.T) {
 	p := testutil.NewProject(t).AddProjection("tes", valid).Save()
 	for i := range p.Cfg.Projection {
 		if p.Cfg.Projection[i].Name == "tes" {
-			p.Cfg.Projection[i].EngineVersion = testutil.Ptr(2)
-			p.Cfg.Projection[i].TrackEmittedStreams = testutil.Ptr(true)
+			p.Cfg.Projection[i].EngineVersion = new(2)
+			p.Cfg.Projection[i].TrackEmittedStreams = new(true)
 		}
 	}
 	p.Save()

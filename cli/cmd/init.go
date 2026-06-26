@@ -20,13 +20,13 @@ func newInitCmd() *cobra.Command {
 			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
 				telemetry.EmitInit(cmd.Context(), telemetry.InitCommandInvokedProperties{Outcome: o})
 			})
-			return runInit()
+			return runInit(cmd)
 		},
 	}
 	return cmd
 }
 
-func runInit() error {
+func runInit(cmd *cobra.Command) error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return err
@@ -34,6 +34,6 @@ func runInit() error {
 	if _, err := config.InitProject(dir); err != nil {
 		return err
 	}
-	fmt.Println("Initialized gaffer project")
+	fmt.Fprintln(cmd.OutOrStdout(), "Initialized gaffer project")
 	return nil
 }

@@ -56,7 +56,7 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 	// so it never clobbers shell vars) keeps Connect self-contained for
 	// callers and tests that reach it without the startup path.
 	if err := envvar.Load(projectRoot); err != nil {
-		return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+		return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 	}
 
 	// Read the .env.<envName> overlay once and share it across connection
@@ -64,7 +64,7 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 	// the file is parsed a single time.
 	overlay, err := envvar.Overlay(projectRoot, envName)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+		return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 	}
 
 	// Interpolate ${VAR} (e.g. credentials kept out of the committed
@@ -73,7 +73,7 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 	// over the base .env for this target.
 	connStr, err = envvar.Expand(connStr, overlay)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+		return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 	}
 
 	redacted := RedactConnection(connStr)
@@ -103,7 +103,7 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 			if errors.As(err, &authErr) {
 				return nil, nil, err
 			}
-			return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+			return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 		}
 		dbConfig.CredentialsProvider = provider
 	} else if username, password := envvar.Credentials(overlay); username != "" {
@@ -122,11 +122,11 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 		}
 		certFile, err := resolveCertPath(certCfg.CertFile, projectRoot, overlay)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+			return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 		}
 		keyFile, err := resolveCertPath(certCfg.KeyFile, projectRoot, overlay)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, err)
+			return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 		}
 		// Guard against a ${VAR} that expands to empty: a half-set pair would
 		// silently disable the cert (the client loads it only when both are set)

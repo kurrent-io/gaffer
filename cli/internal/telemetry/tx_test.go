@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 func TestBeginDev_NoClientReturnsNil(t *testing.T) {
@@ -42,7 +44,7 @@ func TestDevTx_EndMustBeDirectDeferShape(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
-	props := envs[0].Events[0].(CommandInvoked).Properties.(DevCommandInvokedProperties)
+	props := testutil.MustType[DevCommandInvokedProperties](t, testutil.MustType[CommandInvoked](t, envs[0].Events[0]).Properties)
 	if props.Outcome != OutcomeInternalError {
 		t.Errorf("direct-defer shape: Outcome = %q, want internal_error", props.Outcome)
 	}
@@ -67,7 +69,7 @@ func TestMCPTx_EndMustBeDirectDeferShape(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
-	props := envs[0].Events[0].(CommandInvoked).Properties.(MCPCommandInvokedProperties)
+	props := testutil.MustType[MCPCommandInvokedProperties](t, testutil.MustType[CommandInvoked](t, envs[0].Events[0]).Properties)
 	if props.Outcome != OutcomeInternalError {
 		t.Errorf("direct-defer shape: Outcome = %q, want internal_error", props.Outcome)
 	}
@@ -86,7 +88,7 @@ func TestLSPTx_EndMustBeDirectDeferShape(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
-	props := envs[0].Events[0].(CommandInvoked).Properties.(LSPCommandInvokedProperties)
+	props := testutil.MustType[LSPCommandInvokedProperties](t, testutil.MustType[CommandInvoked](t, envs[0].Events[0]).Properties)
 	if props.Outcome != OutcomeInternalError {
 		t.Errorf("direct-defer shape: Outcome = %q, want internal_error", props.Outcome)
 	}
@@ -105,7 +107,7 @@ func TestDebugTx_EndMustBeDirectDeferShape(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
-	props := envs[0].Events[0].(CommandInvoked).Properties.(DebugCommandInvokedProperties)
+	props := testutil.MustType[DebugCommandInvokedProperties](t, testutil.MustType[CommandInvoked](t, envs[0].Events[0]).Properties)
 	if props.Outcome != OutcomeInternalError {
 		t.Errorf("direct-defer shape: Outcome = %q, want internal_error", props.Outcome)
 	}
@@ -143,7 +145,7 @@ func TestDevTx_EndStampsBaseAndEmitsOnHappyPath(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
-	props := envs[0].Events[0].(CommandInvoked).Properties.(DevCommandInvokedProperties)
+	props := testutil.MustType[DevCommandInvokedProperties](t, testutil.MustType[CommandInvoked](t, envs[0].Events[0]).Properties)
 	if props.Command != CommandNameDev {
 		t.Errorf("Command = %q, want dev", props.Command)
 	}
@@ -167,7 +169,7 @@ func TestDevTx_EndCtxCancelledMapsToUserInterrupt(t *testing.T) {
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	props := mock.Envelopes()[0].Events[0].(CommandInvoked).Properties.(DevCommandInvokedProperties)
+	props := testutil.MustType[DevCommandInvokedProperties](t, testutil.MustType[CommandInvoked](t, mock.Envelopes()[0].Events[0]).Properties)
 	if props.Outcome != OutcomeUserInterrupt {
 		t.Errorf("Outcome = %q, want user_interrupt", props.Outcome)
 	}
@@ -188,7 +190,7 @@ func TestDevTx_EndPanicMapsToInternalError(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
-	props := envs[0].Events[0].(CommandInvoked).Properties.(DevCommandInvokedProperties)
+	props := testutil.MustType[DevCommandInvokedProperties](t, testutil.MustType[CommandInvoked](t, envs[0].Events[0]).Properties)
 	if props.Outcome != OutcomeInternalError {
 		t.Errorf("Outcome = %q, want internal_error", props.Outcome)
 	}
@@ -207,7 +209,7 @@ func TestDevTx_ExplicitSetOutcomeWins(t *testing.T) {
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	props := mock.Envelopes()[0].Events[0].(CommandInvoked).Properties.(DevCommandInvokedProperties)
+	props := testutil.MustType[DevCommandInvokedProperties](t, testutil.MustType[CommandInvoked](t, mock.Envelopes()[0].Events[0]).Properties)
 	if props.Outcome != OutcomeDBDisconnect {
 		t.Errorf("Outcome = %q, want db_disconnect (explicit wins)", props.Outcome)
 	}
@@ -224,7 +226,7 @@ func TestDevTx_SettersAccumulateThroughEnd(t *testing.T) {
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	props := mock.Envelopes()[0].Events[0].(CommandInvoked).Properties.(DevCommandInvokedProperties)
+	props := testutil.MustType[DevCommandInvokedProperties](t, testutil.MustType[CommandInvoked](t, mock.Envelopes()[0].Events[0]).Properties)
 	if props.ProjectionCount == nil || *props.ProjectionCount != 3 {
 		t.Errorf("ProjectionCount = %v, want &3", props.ProjectionCount)
 	}

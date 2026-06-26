@@ -2,7 +2,7 @@ package lsp
 
 import (
 	"reflect"
-	"sort"
+	"slices"
 	"sync"
 	"testing"
 )
@@ -173,7 +173,7 @@ func TestDocumentStore_OpenURIsReturnsMemorySourcedOnly(t *testing.T) {
 
 	got := s.OpenURIs()
 	want := []string{"file:///mem-a.toml", "file:///mem-b.toml"}
-	sort.Strings(want)
+	slices.Sort(want)
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("OpenURIs: got %v want %v", got, want)
 	}
@@ -248,19 +248,19 @@ func TestDocumentStore_ConcurrentMutationsRace(t *testing.T) {
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < N; i++ {
+		for range N {
 			_, _ = s.Change("file:///shared.toml", "x")
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		for i := 0; i < N; i++ {
+		for range N {
 			_, _ = s.Get("file:///shared.toml")
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		for i := 0; i < N; i++ {
+		for range N {
 			_ = s.OpenURIs()
 		}
 	}()

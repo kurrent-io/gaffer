@@ -132,7 +132,7 @@ func TestDebugTeeSink_ConcurrentSendDoesNotInterleave(t *testing.T) {
 	const n = 32
 	var wg sync.WaitGroup
 	wg.Add(n)
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			defer wg.Done()
 			_ = d.Send(context.Background(), env)
@@ -148,10 +148,7 @@ func TestDebugTeeSink_ConcurrentSendDoesNotInterleave(t *testing.T) {
 	}
 	for i, line := range lines {
 		if !strings.HasPrefix(line, "gaffer-telemetry: ") {
-			cut := len(line)
-			if cut > 64 {
-				cut = 64
-			}
+			cut := min(len(line), 64)
 			t.Fatalf("line %d torn: %q", i, line[:cut])
 		}
 	}

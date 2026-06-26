@@ -187,12 +187,12 @@ func TestFindProjection(t *testing.T) {
 func TestEffectiveEngineVersion(t *testing.T) {
 	cfg := &Config{}
 
-	p := Projection{Name: "a", Entry: "a.js", EngineVersion: ptr(2)}
+	p := Projection{Name: "a", Entry: "a.js", EngineVersion: new(2)}
 	if got := cfg.EffectiveEngineVersion(&p); got != 2 {
 		t.Fatalf("expected per-projection 2, got %d", got)
 	}
 
-	p.EngineVersion = ptr(1)
+	p.EngineVersion = new(1)
 	if got := cfg.EffectiveEngineVersion(&p); got != 1 {
 		t.Fatalf("expected per-projection 1, got %d", got)
 	}
@@ -738,7 +738,7 @@ func TestSaveAndReload(t *testing.T) {
 
 	cfg := &Config{
 		Projection: []Projection{
-			{Name: "test", Entry: "test.js", EngineVersion: ptr(1)},
+			{Name: "test", Entry: "test.js", EngineVersion: new(1)},
 		},
 	}
 
@@ -768,7 +768,7 @@ func TestSave_Atomic(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gaffer.toml")
 
-	first := &Config{Projection: []Projection{{Name: "first", Entry: "first.js", EngineVersion: ptr(2)}}}
+	first := &Config{Projection: []Projection{{Name: "first", Entry: "first.js", EngineVersion: new(2)}}}
 	if err := Save(path, first); err != nil {
 		t.Fatal(err)
 	}
@@ -779,7 +779,7 @@ func TestSave_Atomic(t *testing.T) {
 	if err := os.Chmod(path, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	second := &Config{Projection: []Projection{{Name: "second", Entry: "second.js", EngineVersion: ptr(2)}}}
+	second := &Config{Projection: []Projection{{Name: "second", Entry: "second.js", EngineVersion: new(2)}}}
 	if err := Save(path, second); err != nil {
 		t.Fatal(err)
 	}
@@ -827,7 +827,7 @@ func TestSaveAndReload_Fixtures(t *testing.T) {
 			{
 				Name:          "checkout",
 				Entry:         "checkout.js",
-				EngineVersion: ptr(2),
+				EngineVersion: new(2),
 				Fixtures: map[string]string{
 					"happy": "fixtures/orders.json",
 					"full":  "fixtures/orders-full.json",
@@ -1268,5 +1268,3 @@ connection = "esdb://localhost:2113"
 		t.Errorf("unexpected error: %v", err)
 	}
 }
-
-func ptr[T any](v T) *T { return &v }

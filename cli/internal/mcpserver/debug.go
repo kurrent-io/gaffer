@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"maps"
 	"time"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -262,9 +263,7 @@ func (s *Server) collectDebugContext(sess *activeSession, info gafferruntime.Bre
 	}
 
 	state, stateErr := sess.runner.CollectState()
-	for k, v := range state.ToMap() {
-		result[k] = v
-	}
+	maps.Copy(result, state.ToMap())
 	putStateError(result, stateErr)
 
 	return result

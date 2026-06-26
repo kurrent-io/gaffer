@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	_ "embed"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -84,9 +85,9 @@ func Login(ctx context.Context, c Config, openBrowser func(authURL string) error
 			}
 			send(callback{err: fmt.Errorf("authorization failed: %s", authErr)}, "Authorization failed. You can close this window.", http.StatusBadRequest)
 		case q.Get("state") != state:
-			send(callback{err: fmt.Errorf("state mismatch (possible CSRF)")}, "State mismatch. You can close this window.", http.StatusBadRequest)
+			send(callback{err: errors.New("state mismatch (possible CSRF)")}, "State mismatch. You can close this window.", http.StatusBadRequest)
 		case q.Get("code") == "":
-			send(callback{err: fmt.Errorf("no authorization code in callback")}, "Missing code. You can close this window.", http.StatusBadRequest)
+			send(callback{err: errors.New("no authorization code in callback")}, "Missing code. You can close this window.", http.StatusBadRequest)
 		default:
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_, _ = fmt.Fprint(w, successPage)

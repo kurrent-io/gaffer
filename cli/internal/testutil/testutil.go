@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -19,9 +20,22 @@ var update = flag.Bool("update", false, "update golden files")
 
 // Ptr returns a pointer to v, for building option structs whose fields are
 // pointers to distinguish "unset" from a zero value.
-func Ptr[T any](v T) *T { return &v }
+//
+//go:fix inline
+func Ptr[T any](v T) *T { return new(v) }
 
 // --- Assertions ---
+
+// MustType asserts v is of type T, failing the test if not. Lets tests
+// assert dynamic values without an unchecked type assertion.
+func MustType[T any](tb testing.TB, v any) T {
+	tb.Helper()
+	x, ok := v.(T)
+	if !ok {
+		tb.Fatalf("expected %s, got %T", reflect.TypeFor[T](), v)
+	}
+	return x
+}
 
 func AssertEqual[T comparable](t *testing.T, name string, want, got T) {
 	t.Helper()

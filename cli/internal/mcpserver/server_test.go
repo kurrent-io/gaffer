@@ -11,6 +11,7 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/history"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -81,8 +82,8 @@ func setupTestProject(t *testing.T) *Server {
 
 	cfg := &config.Config{
 		Projection: []config.Projection{
-			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)},
-			{Name: "broken", Entry: "projections/broken.js", EngineVersion: ptr(2)},
+			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)},
+			{Name: "broken", Entry: "projections/broken.js", EngineVersion: new(2)},
 		},
 	}
 
@@ -113,7 +114,7 @@ func setupTestProjectWithEnv(t *testing.T) *Server {
 			"local": {Connection: "kurrentdb://localhost:2113?tls=false", Default: true},
 		},
 		Projection: []config.Projection{
-			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)},
+			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)},
 		},
 	}
 	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
@@ -154,10 +155,10 @@ func callTool[In, Out any](t *testing.T, s *Server, tool *mcp.Tool, handler func
 		t.Fatalf("%s returned protocol error: %v", tool.Name, err)
 	}
 	if result.IsError {
-		t.Fatalf("%s returned tool error: %s", tool.Name, result.Content[0].(*mcp.TextContent).Text)
+		t.Fatalf("%s returned tool error: %s", tool.Name, testutil.MustType[*mcp.TextContent](t, result.Content[0]).Text)
 	}
 	var data map[string]any
-	text := result.Content[0].(*mcp.TextContent).Text
+	text := testutil.MustType[*mcp.TextContent](t, result.Content[0]).Text
 	if err := json.Unmarshal([]byte(text), &data); err != nil {
 		t.Fatalf("%s: failed to parse result JSON: %v", tool.Name, err)
 	}
@@ -173,7 +174,7 @@ func callToolExpectError[In, Out any](t *testing.T, handler func(context.Context
 	if !result.IsError {
 		t.Fatal("expected tool error, got success")
 	}
-	return result.Content[0].(*mcp.TextContent).Text
+	return testutil.MustType[*mcp.TextContent](t, result.Content[0]).Text
 }
 
 // --- List projections ---
@@ -182,7 +183,7 @@ func TestListProjections(t *testing.T) {
 	s := setupTestProject(t)
 	result := callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
 
-	projections := result["projections"].([]any)
+	projections := testutil.MustType[[]any](t, result["projections"])
 	if len(projections) != 2 {
 		t.Fatalf("expected 2 projections, got %d", len(projections))
 	}
@@ -220,7 +221,7 @@ func TestValidate_ConfigError(t *testing.T) {
 	s := setupTestProject(t)
 	writeManifest(t, s.root, &config.Config{
 		Projection: []config.Projection{{
-			Name: "bad", Entry: "projections/bad.js", EngineVersion: ptr(5),
+			Name: "bad", Entry: "projections/bad.js", EngineVersion: new(5),
 		}},
 	})
 	result := callTool(t, s, validateTool, s.handleValidate, validateInput{Name: "bad"})
@@ -239,7 +240,7 @@ func TestValidate_ErrorDiagnostic(t *testing.T) {
 	s := setupTestProject(t)
 	writeManifest(t, s.root, &config.Config{
 		Projection: []config.Projection{{
-			Name: "tes", Entry: "projections/tes.js", EngineVersion: ptr(2), TrackEmittedStreams: ptr(true),
+			Name: "tes", Entry: "projections/tes.js", EngineVersion: new(2), TrackEmittedStreams: new(true),
 		}},
 	})
 	if err := os.WriteFile(filepath.Join(s.root, "projections/tes.js"),
@@ -262,7 +263,7 @@ func TestValidate_MultipleErrorDiagnostics(t *testing.T) {
 	s := setupTestProject(t)
 	writeManifest(t, s.root, &config.Config{
 		Projection: []config.Projection{{
-			Name: "both", Entry: "projections/both.js", EngineVersion: ptr(2), TrackEmittedStreams: ptr(true),
+			Name: "both", Entry: "projections/both.js", EngineVersion: new(2), TrackEmittedStreams: new(true),
 		}},
 	})
 	// bi-state on v2 and track_emitted_streams on v2 both fire as error diagnostics.
@@ -294,11 +295,11 @@ func TestRun_Fixture(t *testing.T) {
 	if result["completed"] != true {
 		t.Errorf("expected completed=true, got %v", result["completed"])
 	}
-	if result["processed"].(float64) != 5 {
+	if testutil.MustType[float64](t, result["processed"]) != 5 {
 		t.Errorf("expected processed=5, got %v", result["processed"])
 	}
 
-	partitions := result["partitions"].(map[string]any)
+	partitions := testutil.MustType[map[string]any](t, result["partitions"])
 	if len(partitions) != 3 {
 		t.Errorf("expected 3 partitions, got %d", len(partitions))
 	}
@@ -379,7 +380,7 @@ func TestFormatStep_PromotesDiagnostics(t *testing.T) {
 	if !ok || len(diags) != 1 {
 		t.Fatalf("expected 1 promoted diagnostic, got %v", formatStep(withDiag)["diagnostics"])
 	}
-	if code := diags[0].(map[string]any)["code"]; code != "quirk.serialize.rawString" {
+	if code := testutil.MustType[map[string]any](t, diags[0])["code"]; code != "quirk.serialize.rawString" {
 		t.Errorf("promoted diagnostic code = %v, want quirk.serialize.rawString", code)
 	}
 
@@ -406,7 +407,7 @@ func TestGetTimeline(t *testing.T) {
 
 	result := callTool(t, s, getTimelineTool, s.handleGetTimeline, getTimelineInput{})
 
-	entries := result["entries"].([]any)
+	entries := testutil.MustType[[]any](t, result["entries"])
 	if len(entries) != 5 {
 		t.Fatalf("expected 5 entries, got %d", len(entries))
 	}
@@ -422,7 +423,7 @@ func TestGetTimeline_NoSteps(t *testing.T) {
 
 	result := callTool(t, s, getTimelineTool, s.handleGetTimeline, getTimelineInput{})
 
-	entries := result["entries"].([]any)
+	entries := testutil.MustType[[]any](t, result["entries"])
 	if len(entries) != 0 {
 		t.Fatalf("expected 0 entries, got %d", len(entries))
 	}
@@ -437,7 +438,7 @@ func TestGetTimeline_PartitionFilter(t *testing.T) {
 
 	result := callTool(t, s, getTimelineTool, s.handleGetTimeline, getTimelineInput{Partition: "order-1"})
 
-	entries := result["entries"].([]any)
+	entries := testutil.MustType[[]any](t, result["entries"])
 	if len(entries) != 3 {
 		t.Fatalf("expected 3 entries for order-1, got %d", len(entries))
 	}
@@ -449,7 +450,7 @@ func TestGetHistory(t *testing.T) {
 
 	result := callTool(t, s, getHistoryTool, s.handleGetHistory, getHistoryInput{From: 1, To: 3})
 
-	steps := result["steps"].([]any)
+	steps := testutil.MustType[[]any](t, result["steps"])
 	if len(steps) != 3 {
 		t.Fatalf("expected 3 steps, got %d", len(steps))
 	}
@@ -486,7 +487,7 @@ func TestScaffold(t *testing.T) {
 	}
 
 	// File should exist
-	path := filepath.Join(s.root, result["created"].(string))
+	path := filepath.Join(s.root, testutil.MustType[string](t, result["created"]))
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("expected file at %s: %v", path, err)
 	}
@@ -636,7 +637,7 @@ func TestRun_Breakpoints(t *testing.T) {
 	}
 
 	// Continue past all breakpoints until completed
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		contResult := callTool(t, s, debugContinueTool, s.handleDebugContinue, debugContinueInput{})
 		if contResult["completed"] == true {
 			return
@@ -681,7 +682,7 @@ func TestStepOver(t *testing.T) {
 	stepResult := callTool(t, s, stepOverTool, s.handleStepOver, debugStepInput{})
 
 	if stepResult["paused"] == true {
-		bp := stepResult["breakpoint"].(map[string]any)
+		bp := testutil.MustType[map[string]any](t, stepResult["breakpoint"])
 		if bp["reason"] != "step" {
 			t.Errorf("expected reason=step, got %v", bp["reason"])
 		}
@@ -704,7 +705,7 @@ func TestStepInto(t *testing.T) {
 	stepResult := callTool(t, s, stepIntoTool, s.handleStepInto, debugStepInput{})
 
 	if stepResult["paused"] == true {
-		bp := stepResult["breakpoint"].(map[string]any)
+		bp := testutil.MustType[map[string]any](t, stepResult["breakpoint"])
 		if bp["reason"] != "step" {
 			t.Errorf("expected reason=step, got %v", bp["reason"])
 		}
@@ -729,7 +730,7 @@ func TestStepOut(t *testing.T) {
 	stepResult := callTool(t, s, stepOutTool, s.handleStepOut, debugStepInput{})
 
 	if stepResult["paused"] == true {
-		bp := stepResult["breakpoint"].(map[string]any)
+		bp := testutil.MustType[map[string]any](t, stepResult["breakpoint"])
 		if bp["reason"] != "step" {
 			t.Errorf("expected reason=step, got %v", bp["reason"])
 		}
@@ -801,7 +802,7 @@ func TestConcurrentRunStop(t *testing.T) {
 		guard(func() { _, _, _ = s.handleStop(context.Background(), nil, stopInput{}) })
 	}
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		var wg sync.WaitGroup
 		wg.Add(3)
 		go func() {
@@ -962,7 +963,7 @@ func TestWriteProjectionPrompt(t *testing.T) {
 	if len(result.Messages) != 1 {
 		t.Fatal("expected 1 message")
 	}
-	text := result.Messages[0].Content.(*mcp.TextContent).Text
+	text := testutil.MustType[*mcp.TextContent](t, result.Messages[0].Content).Text
 	for _, want := range []string{
 		"count all OrderPlaced events",
 		"## Requirements",
@@ -989,7 +990,7 @@ func TestFixProjectionPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := result.Messages[0].Content.(*mcp.TextContent).Text
+	text := testutil.MustType[*mcp.TextContent](t, result.Messages[0].Content).Text
 	for _, want := range []string{
 		"Fix the projection `order-count`",
 		"## Problem",
@@ -1090,12 +1091,12 @@ func TestRun_ReplacesSession_FreshHistory(t *testing.T) {
 	s := setupTestProject(t)
 
 	r1 := callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
-	if r1["processed"].(float64) != 5 {
+	if testutil.MustType[float64](t, r1["processed"]) != 5 {
 		t.Fatalf("first run: expected 5 processed, got %v", r1["processed"])
 	}
 
 	r2 := callTool(t, s, runTool, s.handleRun, runInput{Name: "order-count", Events: "fixtures/orders.json"})
-	if r2["processed"].(float64) != 5 {
+	if testutil.MustType[float64](t, r2["processed"]) != 5 {
 		t.Errorf("second run: expected 5 processed (fresh), got %v", r2["processed"])
 	}
 }
@@ -1212,7 +1213,7 @@ func TestInfo_ErrorsWhenNoProjections(t *testing.T) {
 func TestInfo_DefaultsWhenSingleProjection(t *testing.T) {
 	s := setupTestProject(t)
 	writeManifest(t, s.root, &config.Config{
-		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)}},
 	})
 
 	result := callTool(t, s, infoTool, s.handleInfo, infoInput{})
@@ -1318,7 +1319,7 @@ func TestProjectlessLazyResolveAfterInit(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)}},
 	}
 	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
 		t.Fatal(err)
@@ -1342,7 +1343,7 @@ func TestProjectlessReloadAfterInit(t *testing.T) {
 
 	cfgPath := filepath.Join(dir, "gaffer.toml")
 	if err := config.Save(cfgPath, &config.Config{
-		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1353,8 +1354,8 @@ func TestProjectlessReloadAfterInit(t *testing.T) {
 
 	if err := config.Save(cfgPath, &config.Config{
 		Projection: []config.Projection{
-			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)},
-			{Name: "totals", Entry: "projections/totals.js", EngineVersion: ptr(2)},
+			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)},
+			{Name: "totals", Entry: "projections/totals.js", EngineVersion: new(2)},
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -1378,7 +1379,7 @@ func TestReloadPicksUpManifestEdits(t *testing.T) {
 	}
 
 	writeManifest(t, s.root, &config.Config{
-		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)}},
 	})
 
 	after := callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
@@ -1456,7 +1457,7 @@ func TestConfigResourceReadsInvalidManifest(t *testing.T) {
 func writeProject(t *testing.T, dir string) {
 	t.Helper()
 	cfg := &config.Config{
-		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)}},
 	}
 	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
 		t.Fatal(err)
@@ -1632,5 +1633,3 @@ func TestStartedInProjectStableAcrossLazyResolve(t *testing.T) {
 		t.Error("StartedInProject() must stay false after a lazy resolve")
 	}
 }
-
-func ptr[T any](v T) *T { return &v }

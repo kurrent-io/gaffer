@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"sync"
 	"sync/atomic"
 
@@ -241,9 +242,7 @@ func (r *Runner) Stats() EventStats {
 	// against further ProcessOne increments.
 	if len(r.stats.SkippedByReason) > 0 {
 		cp := make(map[string]int, len(r.stats.SkippedByReason))
-		for k, v := range r.stats.SkippedByReason {
-			cp[k] = v
-		}
+		maps.Copy(cp, r.stats.SkippedByReason)
 		s.SkippedByReason = cp
 	} else {
 		s.SkippedByReason = nil
@@ -255,9 +254,7 @@ func (r *Runner) Partitions() map[string]bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	cp := make(map[string]bool, len(r.partitions))
-	for k, v := range r.partitions {
-		cp[k] = v
-	}
+	maps.Copy(cp, r.partitions)
 	return cp
 }
 

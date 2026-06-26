@@ -184,7 +184,7 @@ func TestEviction(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, _ = s.Insert(testEvent, testResult)
 	}
 
@@ -319,9 +319,7 @@ func TestConcurrentInsertAndQuery(t *testing.T) {
 	stop := make(chan struct{})
 	insertErr := make(chan error, 1)
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			select {
 			case <-stop:
@@ -337,9 +335,9 @@ func TestConcurrentInsertAndQuery(t *testing.T) {
 				runtime.Gosched()
 			}
 		}
-	}()
+	})
 
-	for i := 0; i < 2000; i++ {
+	for i := range 2000 {
 		if _, err := s.TimelineFiltered(1, 100, ""); err != nil {
 			close(stop)
 			wg.Wait()

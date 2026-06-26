@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"io"
+	"maps"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/cliout"
@@ -51,10 +52,10 @@ func (jw *jsonWriter) WriteEvent(event eventInfo) {
 		"eventType":      event.EventType,
 	}
 	if hasContent(event.Data) {
-		line["data"] = json.RawMessage(event.Data)
+		line["data"] = event.Data
 	}
 	if hasContent(event.Metadata) {
-		line["metadata"] = json.RawMessage(event.Metadata)
+		line["metadata"] = event.Metadata
 	}
 	jw.writeLine(line)
 }
@@ -71,7 +72,7 @@ func (jw *jsonWriter) WriteResult(eventID string, result *gafferruntime.FeedResu
 			line["partition"] = result.Partition
 		}
 		if hasContent(result.State) {
-			line["state"] = json.RawMessage(result.State)
+			line["state"] = result.State
 		}
 		line["emitted"] = mapEmitted(result.Emitted)
 		if len(result.Logs) > 0 {
@@ -159,9 +160,7 @@ func (jw *jsonWriter) WriteSummary(stats engine.EventStats, state engine.StateSu
 		"errors":    stats.Errors,
 	}
 
-	for k, v := range state.ToMap() {
-		line[k] = v
-	}
+	maps.Copy(line, state.ToMap())
 
 	jw.writeLine(line)
 }

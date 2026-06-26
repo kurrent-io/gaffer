@@ -40,7 +40,7 @@ func newVersionCmd() *cobra.Command {
 			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
 				telemetry.EmitVersion(cmd.Context(), telemetry.VersionCommandInvokedProperties{Outcome: o})
 			})
-			fmt.Println(Version)
+			fmt.Fprintln(cmd.OutOrStdout(), Version)
 			return nil
 		},
 	}

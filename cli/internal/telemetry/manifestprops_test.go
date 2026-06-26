@@ -21,8 +21,8 @@ func TestManifestFeaturesOf_AllSections(t *testing.T) {
 			"local": {Connection: "esdb://localhost:2113", Default: true},
 		},
 		Projection: []config.Projection{
-			{Name: "p1", Entry: "p1.js", EngineVersion: intPtr(2), Fixtures: map[string]string{"f": "f.json"}},
-			{Name: "p2", Entry: "p2.js", EngineVersion: intPtr(2)},
+			{Name: "p1", Entry: "p1.js", EngineVersion: new(2), Fixtures: map[string]string{"f": "f.json"}},
+			{Name: "p2", Entry: "p2.js", EngineVersion: new(2)},
 		},
 	}
 	got := ManifestFeaturesOf(cfg)
@@ -47,7 +47,7 @@ func TestManifestFeaturesOf_TrackEmittedStreams(t *testing.T) {
 	track := true
 	cfg := &config.Config{
 		Projection: []config.Projection{
-			{Name: "p", Entry: "p.js", EngineVersion: intPtr(1), TrackEmittedStreams: &track},
+			{Name: "p", Entry: "p.js", EngineVersion: new(1), TrackEmittedStreams: &track},
 		},
 	}
 	got := ManifestFeaturesOf(cfg)
@@ -96,7 +96,7 @@ func TestManifestFeaturesOf_PerProjectionOverridesCount(t *testing.T) {
 			{
 				Name:             "p",
 				Entry:            "p.js",
-				EngineVersion:    intPtr(2),
+				EngineVersion:    new(2),
 				QuirksVersion:    "26.1.0",
 				ExecutionTimeout: &timeout,
 			},

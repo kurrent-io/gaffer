@@ -293,7 +293,7 @@ func TestStore_ConcurrentFirstWrites(t *testing.T) {
 	}
 	results := make(chan result, n)
 	stores := make([]*Store, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		s, err := Load(dir)
 		if err != nil {
 			t.Fatalf("Load %d: %v", i, err)
@@ -302,16 +302,14 @@ func TestStore_ConcurrentFirstWrites(t *testing.T) {
 	}
 	start := make(chan struct{})
 	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
-		i := i
+	for i := range n {
+
 		label := string('a' + rune(i))
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			stores[i].SetSection("telemetry", map[string]any{"id": label})
 			<-start
 			results <- result{label, stores[i].Save()}
-		}()
+		})
 	}
 	close(start)
 	wg.Wait()

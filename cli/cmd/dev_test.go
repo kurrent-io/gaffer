@@ -87,7 +87,7 @@ func TestFinalizeRun_SourceError(t *testing.T) {
 	var stderr bytes.Buffer
 	err := finalizeRun(ctx, false, srcErr, r, &stderr)
 
-	if err != srcErr {
+	if !errors.Is(err, srcErr) {
 		t.Errorf("expected source error returned, got %v", err)
 	}
 }

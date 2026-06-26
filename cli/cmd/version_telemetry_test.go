@@ -8,6 +8,7 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry/telemetrytest"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 // testIdentity is a fixed deterministic identity injected into Clients
@@ -113,7 +114,7 @@ func TestManifest_EmitsCommandInvoked(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
-	props := envs[0].Events[0].(telemetry.CommandInvoked).Properties.(telemetry.ManifestCommandInvokedProperties)
+	props := testutil.MustType[telemetry.ManifestCommandInvokedProperties](t, testutil.MustType[telemetry.CommandInvoked](t, envs[0].Events[0]).Properties)
 	if props.Command != telemetry.CommandNameManifest {
 		t.Errorf("Command = %q, want manifest", props.Command)
 	}
@@ -134,7 +135,7 @@ func TestManifest_StampsManifestPropsWhenInProject(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
-	props := envs[0].Events[0].(telemetry.CommandInvoked).Properties.(telemetry.ManifestCommandInvokedProperties)
+	props := testutil.MustType[telemetry.ManifestCommandInvokedProperties](t, testutil.MustType[telemetry.CommandInvoked](t, envs[0].Events[0]).Properties)
 	if len(props.ManifestFeaturesUsed) == 0 {
 		t.Error("ManifestFeaturesUsed empty; expected 'projections' / 'fixtures' from setupIntegrationProject")
 	}
@@ -160,7 +161,7 @@ func TestManifest_OmitsManifestPropsOutsideProject(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
-	props := envs[0].Events[0].(telemetry.CommandInvoked).Properties.(telemetry.ManifestCommandInvokedProperties)
+	props := testutil.MustType[telemetry.ManifestCommandInvokedProperties](t, testutil.MustType[telemetry.CommandInvoked](t, envs[0].Events[0]).Properties)
 	if len(props.ManifestFeaturesUsed) != 0 {
 		t.Errorf("ManifestFeaturesUsed = %v, want empty outside project", props.ManifestFeaturesUsed)
 	}
@@ -236,7 +237,7 @@ func TestInit_EmitsUserErrorOnRunEFailure(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
-	props := envs[0].Events[0].(telemetry.CommandInvoked).Properties.(telemetry.InitCommandInvokedProperties)
+	props := testutil.MustType[telemetry.InitCommandInvokedProperties](t, testutil.MustType[telemetry.CommandInvoked](t, envs[0].Events[0]).Properties)
 	if props.Command != telemetry.CommandNameInit {
 		t.Errorf("Command = %q, want init", props.Command)
 	}

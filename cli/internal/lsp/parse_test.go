@@ -27,7 +27,7 @@ type notifyCapture struct {
 	calls []capturedNotify
 }
 
-func (n *notifyCapture) handler(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) (interface{}, error) {
+func (n *notifyCapture) handler(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) (any, error) {
 	if !req.Notif {
 		return nil, nil
 	}

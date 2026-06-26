@@ -10,7 +10,7 @@ import (
 
 func preflightProj(source string, engineVersion int) *Projection {
 	cfg := &config.Config{}
-	def := &config.Projection{Name: "p", Entry: "p.js", EngineVersion: ptr(engineVersion)}
+	def := &config.Projection{Name: "p", Entry: "p.js", EngineVersion: new(engineVersion)}
 	return NewProjection("/tmp", cfg, def, source)
 }
 

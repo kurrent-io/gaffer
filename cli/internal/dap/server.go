@@ -3,6 +3,7 @@ package dap
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -96,7 +97,7 @@ type Server struct {
 func (s *Server) Stats() Stats {
 	var protoErr error
 	if v := s.protocolErr.Load(); v != nil {
-		protoErr = v.(error)
+		protoErr, _ = v.(error)
 	}
 	return Stats{
 		BreakpointCount: int(s.stats.breakpoints.Load()),
@@ -246,7 +247,7 @@ func (s *Server) readLoop(reader *bufio.Reader) error {
 	for {
 		data, err := godap.ReadBaseMessage(reader)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return fmt.Errorf("dap: read: %w", err)

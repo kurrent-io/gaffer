@@ -243,7 +243,7 @@ func TestToMap_Unpartitioned(t *testing.T) {
 	if !ok {
 		t.Fatal("expected state key")
 	}
-	if string(state.(json.RawMessage)) != `{"count":5}` {
+	if string(testutil.MustType[json.RawMessage](t, state)) != `{"count":5}` {
 		t.Errorf("state: got %s", state)
 	}
 	if _, ok := m["partitions"]; ok {
@@ -300,7 +300,7 @@ func TestToMap_WithTransforms(t *testing.T) {
 	if !ok {
 		t.Fatal("expected result key")
 	}
-	if string(result.(json.RawMessage)) != `{"doubled":6}` {
+	if string(testutil.MustType[json.RawMessage](t, result)) != `{"doubled":6}` {
 		t.Errorf("result: got %s", result)
 	}
 }
@@ -334,7 +334,7 @@ func TestToMap_BiStateWithSharedState(t *testing.T) {
 	if !ok {
 		t.Fatal("expected sharedState key")
 	}
-	if string(shared.(json.RawMessage)) != `{"total":10}` {
+	if string(testutil.MustType[json.RawMessage](t, shared)) != `{"total":10}` {
 		t.Errorf("sharedState: got %s", shared)
 	}
 }

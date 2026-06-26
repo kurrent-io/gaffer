@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 func TestEmitException_NilClientIsNoop(t *testing.T) {
@@ -76,7 +78,7 @@ func TestEmitException_StampsCurrentCommand(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
-	props := envs[0].Events[0].(Exception).Properties
+	props := testutil.MustType[Exception](t, envs[0].Events[0]).Properties
 	if props.Command == nil {
 		t.Fatal("Command = nil, expected dev")
 	}
@@ -92,7 +94,7 @@ func TestEmitException_OmitsCommandWhenUnset(t *testing.T) {
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	props := mock.Envelopes()[0].Events[0].(Exception).Properties
+	props := testutil.MustType[Exception](t, mock.Envelopes()[0].Events[0]).Properties
 	if props.Command != nil {
 		t.Errorf("Command = %q, want nil when no command in flight", *props.Command)
 	}
@@ -112,7 +114,7 @@ func TestEmitException_RuntimeErrorGetsVerbatimMessage(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
-	ex := envs[0].Events[0].(Exception)
+	ex := testutil.MustType[Exception](t, envs[0].Events[0])
 	if ex.Properties.Phase != ExceptionPhaseEventProcessing {
 		t.Errorf("phase = %q, want event_processing", ex.Properties.Phase)
 	}
@@ -143,7 +145,7 @@ func TestEmitException_StringPanicIsUnsanitized(t *testing.T) {
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	entry := mock.Envelopes()[0].Events[0].(Exception).Properties.Exceptions[0]
+	entry := testutil.MustType[Exception](t, mock.Envelopes()[0].Events[0]).Properties.Exceptions[0]
 	if entry.Type != "string" {
 		t.Errorf("Type = %q, want string", entry.Type)
 	}
@@ -164,7 +166,7 @@ func TestEmitException_ErrorPanicIsUnsanitized(t *testing.T) {
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	entry := mock.Envelopes()[0].Events[0].(Exception).Properties.Exceptions[0]
+	entry := testutil.MustType[Exception](t, mock.Envelopes()[0].Events[0]).Properties.Exceptions[0]
 	if entry.Type != "error" {
 		t.Errorf("Type = %q, want error", entry.Type)
 	}
@@ -179,7 +181,7 @@ func TestEmitException_PhasePropagates(t *testing.T) {
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	got := mock.Envelopes()[0].Events[0].(Exception).Properties.Phase
+	got := testutil.MustType[Exception](t, mock.Envelopes()[0].Events[0]).Properties.Phase
 	if got != ExceptionPhaseStartup {
 		t.Errorf("phase = %q, want startup", got)
 	}
@@ -230,7 +232,7 @@ func triggerTypeAssertionError() (r any) {
 		r = recover()
 	}()
 	var i any = "hello"
-	_ = i.(int) // panics with *runtime.TypeAssertionError
+	_ = i.(int) //nolint:forcetypeassert // the panic is the behaviour under test
 	return nil
 }
 
@@ -249,7 +251,7 @@ func TestEmitException_TypeAssertionErrorIsUnsanitized(t *testing.T) {
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	entry := mock.Envelopes()[0].Events[0].(Exception).Properties.Exceptions[0]
+	entry := testutil.MustType[Exception](t, mock.Envelopes()[0].Events[0]).Properties.Exceptions[0]
 	if entry.Type != "RuntimeError" {
 		t.Errorf("Type = %q, want RuntimeError (runtime.Error interface still flags Type)", entry.Type)
 	}
@@ -269,7 +271,7 @@ func TestEmitException_TypedNonErrorPanicGetsPanicLabel(t *testing.T) {
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	entry := mock.Envelopes()[0].Events[0].(Exception).Properties.Exceptions[0]
+	entry := testutil.MustType[Exception](t, mock.Envelopes()[0].Events[0]).Properties.Exceptions[0]
 	if entry.Type != "panic" {
 		t.Errorf("Type = %q, want panic (user-chosen type name must not leak)", entry.Type)
 	}

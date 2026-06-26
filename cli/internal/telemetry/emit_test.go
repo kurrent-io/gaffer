@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 // testIdentity is a fixed in-package value so emit tests can assert on
@@ -183,7 +185,7 @@ func TestEmit_VariantSelectsCorrectPropertiesType(t *testing.T) {
 			if len(envs) != 1 {
 				t.Fatalf("envelopes = %d, want 1", len(envs))
 			}
-			ci := envs[0].Events[0].(CommandInvoked)
+			ci := testutil.MustType[CommandInvoked](t, envs[0].Events[0])
 			// Discriminate on the embedded base.Command rather
 			// than the variant type so the test stays open to
 			// per-variant fields without restructuring.
@@ -217,7 +219,7 @@ func TestEmit_OutcomePropagates(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatalf("envelopes = %d, want 1", len(envs))
 	}
-	props := envs[0].Events[0].(CommandInvoked).Properties.(InitCommandInvokedProperties)
+	props := testutil.MustType[InitCommandInvokedProperties](t, testutil.MustType[CommandInvoked](t, envs[0].Events[0]).Properties)
 	if props.Outcome != OutcomeUserError {
 		t.Errorf("Outcome = %q, want user_error", props.Outcome)
 	}
@@ -236,7 +238,7 @@ func TestEmitManifest_PopulatesOptionalFields(t *testing.T) {
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	props := mock.Envelopes()[0].Events[0].(CommandInvoked).Properties.(ManifestCommandInvokedProperties)
+	props := testutil.MustType[ManifestCommandInvokedProperties](t, testutil.MustType[CommandInvoked](t, mock.Envelopes()[0].Events[0]).Properties)
 	if len(props.ManifestFeaturesUsed) != 2 {
 		t.Errorf("FeaturesUsed = %v, want 2 items", props.ManifestFeaturesUsed)
 	}
@@ -254,7 +256,7 @@ func TestEmitManifest_OptionalFieldsAbsentByDefault(t *testing.T) {
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	props := mock.Envelopes()[0].Events[0].(CommandInvoked).Properties.(ManifestCommandInvokedProperties)
+	props := testutil.MustType[ManifestCommandInvokedProperties](t, testutil.MustType[CommandInvoked](t, mock.Envelopes()[0].Events[0]).Properties)
 	if props.ManifestFeaturesUsed != nil {
 		t.Errorf("FeaturesUsed = %v, want nil", props.ManifestFeaturesUsed)
 	}

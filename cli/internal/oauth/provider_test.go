@@ -17,6 +17,8 @@ import (
 
 	"github.com/99designs/keyring"
 	"golang.org/x/oauth2"
+
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 // fakeIDP serves OIDC discovery plus a token endpoint that echoes the grant
@@ -111,7 +113,8 @@ func TestWithHTTPClient(t *testing.T) {
 	}
 
 	get := func(ctx context.Context) error {
-		resp, err := ctx.Value(oauth2.HTTPClient).(*http.Client).Get(srv.URL)
+		client := testutil.MustType[*http.Client](t, ctx.Value(oauth2.HTTPClient))
+		resp, err := client.Get(srv.URL)
 		if err != nil {
 			return err
 		}

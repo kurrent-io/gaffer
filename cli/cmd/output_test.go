@@ -242,7 +242,7 @@ func TestJSONWriter_WriteInfo_QuirksVersion_Set(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	proj := line["projection"].(map[string]any)
+	proj := testutil.MustType[map[string]any](t, line["projection"])
 	testutil.AssertEqual(t, "quirksVersion", "26.1.0", proj["quirksVersion"])
 }
 
@@ -256,7 +256,7 @@ func TestJSONWriter_WriteInfo_QuirksVersion_NullWhenUnset(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	proj := line["projection"].(map[string]any)
+	proj := testutil.MustType[map[string]any](t, line["projection"])
 	v, ok := proj["quirksVersion"]
 	if !ok {
 		t.Fatal("expected quirksVersion to be present (as null) when empty")
@@ -641,7 +641,7 @@ func TestJSONWriter_WriteResult_Diagnostics(t *testing.T) {
 	if !ok || len(diags) != 1 {
 		t.Fatalf("expected 1 diagnostic, got %v", line["diagnostics"])
 	}
-	d := diags[0].(map[string]any)
+	d := testutil.MustType[map[string]any](t, diags[0])
 	testutil.AssertEqual(t, "code", "quirk.log.multiParam", d["code"])
 }
 
@@ -774,7 +774,7 @@ func TestJSONWriter_WriteInfo_OmitsEmptyDiagnostics(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	proj := line["projection"].(map[string]any)
+	proj := testutil.MustType[map[string]any](t, line["projection"])
 	if _, ok := proj["diagnostics"]; ok {
 		t.Error("expected diagnostics to be omitted when empty")
 	}

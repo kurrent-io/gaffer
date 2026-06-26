@@ -5,6 +5,7 @@ linters:
     - revive
     - forbidigo
     - errorlint
+    - forcetypeassert
     - intrange
     - modernize
     - bodyclose

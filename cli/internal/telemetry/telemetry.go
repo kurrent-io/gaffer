@@ -199,7 +199,8 @@ func (c *Client) currentCommandName() CommandName {
 	if v == nil {
 		return ""
 	}
-	return v.(CommandName)
+	cn, _ := v.(CommandName)
+	return cn
 }
 
 // ExceptionPhase returns the right phase to stamp on an exception

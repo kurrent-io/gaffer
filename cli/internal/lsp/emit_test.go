@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 func TestLiveDebugTarget(t *testing.T) {
@@ -47,10 +48,10 @@ func TestEmitCodeLenses_EnvGating(t *testing.T) {
 		return CodeLens{}, false
 	}
 	debugEnv := func(l CodeLens) string {
-		return l.Command.Arguments[0].(projectionArgs).Env
+		return testutil.MustType[projectionArgs](t, l.Command.Arguments[0]).Env
 	}
 	pickArgs := func(l CodeLens) projectionPickArgs {
-		return l.Command.Arguments[0].(projectionPickArgs)
+		return testutil.MustType[projectionPickArgs](t, l.Command.Arguments[0])
 	}
 
 	t.Run("no env, no fixture: no lenses", func(t *testing.T) {

@@ -576,9 +576,13 @@ func runDevDebug(
 	// Report the actual bound port, not opts.DebugPort - the latter is
 	// the requested port (often 0 for OS-pick) and the editor needs to
 	// know the real port to attach to.
-	boundAddr := srv.Addr().(*net.TCPAddr)
+	boundAddr := srv.Addr()
 	_, _ = fmt.Fprintf(os.Stderr, "Debug server listening on %s\nWaiting for editor to attach...\n", boundAddr)
-	writer.WriteDebugListening(boundAddr.String(), boundAddr.Port)
+	port := 0
+	if tcpAddr, ok := boundAddr.(*net.TCPAddr); ok {
+		port = tcpAddr.Port
+	}
+	writer.WriteDebugListening(boundAddr.String(), port)
 
 	go func() {
 		_ = srv.Serve()

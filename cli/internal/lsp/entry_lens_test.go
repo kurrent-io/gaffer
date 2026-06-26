@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/sourcegraph/jsonrpc2"
+
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 func TestServer_CodeLensOnEntryScriptFromCachedToml(t *testing.T) {
@@ -71,7 +73,7 @@ default = true
 		if l.Command == nil {
 			t.Fatalf("lens missing command: %+v", l)
 		}
-		args := l.Command.Arguments[0].(map[string]any)
+		args := testutil.MustType[map[string]any](t, l.Command.Arguments[0])
 		if args["configURI"] != tomlURI {
 			t.Errorf("intent %q configURI: got %v want %q", l.Data.Intent, args["configURI"], tomlURI)
 		}

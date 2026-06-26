@@ -97,7 +97,7 @@ type Server struct {
 func (s *Server) Stats() Stats {
 	var protoErr error
 	if v := s.protocolErr.Load(); v != nil {
-		protoErr = v.(error)
+		protoErr, _ = v.(error)
 	}
 	return Stats{
 		BreakpointCount: int(s.stats.breakpoints.Load()),

@@ -17,6 +17,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 func TestPlanAction(t *testing.T) {
@@ -499,7 +500,7 @@ func TestTeaModelTransitions(t *testing.T) {
 	}
 
 	started, _ := m.Update(deployStartMsg{name: "alpha"})
-	m = started.(teaModel)
+	m = testutil.MustType[teaModel](t, started)
 	if m.rows[0].status != rowActive {
 		t.Fatalf("alpha status = %v, want active", m.rows[0].status)
 	}
@@ -510,7 +511,7 @@ func TestTeaModelTransitions(t *testing.T) {
 	// Finishing a row commits it to scrollback (a tea.Println command) and drops
 	// it from the live window. Not the last row, so no quit yet.
 	finished, cmd := m.Update(deployDoneMsg{res: deployResult{Name: "alpha", Action: actCreate}})
-	m = finished.(teaModel)
+	m = testutil.MustType[teaModel](t, finished)
 	if m.committed != 1 || m.counts.created != 1 {
 		t.Errorf("after done: committed=%d created=%d", m.committed, m.counts.created)
 	}
@@ -527,7 +528,7 @@ func TestTeaModelTransitions(t *testing.T) {
 	// Finishing the last row commits it and quits, in one command, so the final
 	// line can't be lost to a quit that races the print.
 	last, cmd := m.Update(deployDoneMsg{res: deployResult{Name: "beta", Action: actSkip}})
-	m = last.(teaModel)
+	m = testutil.MustType[teaModel](t, last)
 	if m.committed != 2 {
 		t.Errorf("committed = %d after the last row, want 2", m.committed)
 	}
@@ -583,9 +584,9 @@ func TestTeaModelPagingShrinksAfterCommit(t *testing.T) {
 	}
 	for _, n := range []string{"alpha", "bravo"} {
 		started, _ := m.Update(deployStartMsg{name: n})
-		m = started.(teaModel)
+		m = testutil.MustType[teaModel](t, started)
 		done, _ := m.Update(deployDoneMsg{res: deployResult{Name: n, Action: actCreate}})
-		m = done.(teaModel)
+		m = testutil.MustType[teaModel](t, done)
 	}
 	if m.committed != 2 {
 		t.Fatalf("committed = %d, want 2", m.committed)
@@ -601,13 +602,13 @@ func TestTeaModelCommitsContiguousPrefix(t *testing.T) {
 	m := newTestTeaModel("alpha", "bravo", "charlie")
 
 	early, _ := m.Update(deployDoneMsg{res: deployResult{Name: "bravo", Action: actSkip}})
-	m = early.(teaModel)
+	m = testutil.MustType[teaModel](t, early)
 	if m.committed != 0 {
 		t.Errorf("committed = %d; nothing should commit while the front row is unfinished", m.committed)
 	}
 
 	flush, cmd := m.Update(deployDoneMsg{res: deployResult{Name: "alpha", Action: actCreate}})
-	m = flush.(teaModel)
+	m = testutil.MustType[teaModel](t, flush)
 	if m.committed != 2 {
 		t.Errorf("committed = %d; finishing alpha should flush alpha+bravo", m.committed)
 	}
@@ -620,7 +621,7 @@ func TestTeaModelResize(t *testing.T) {
 	m := newTestTeaModel("alpha", "bravo", "charlie", "delta", "echo", "foxtrot")
 
 	small, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 6})
-	m = small.(teaModel)
+	m = testutil.MustType[teaModel](t, small)
 	if m.height != 6 {
 		t.Fatalf("height = %d after resize, want 6", m.height)
 	}
@@ -629,7 +630,7 @@ func TestTeaModelResize(t *testing.T) {
 	}
 
 	big, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 100})
-	m = big.(teaModel)
+	m = testutil.MustType[teaModel](t, big)
 	if strings.Contains(m.View(), "more") {
 		t.Errorf("should not page once the terminal is tall enough:\n%s", m.View())
 	}

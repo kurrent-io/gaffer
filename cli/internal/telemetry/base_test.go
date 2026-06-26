@@ -323,6 +323,8 @@ func TestClient_FlushCallsSinkClose(t *testing.T) {
 }
 
 func TestClient_FlushCallsCloseEvenOnTimeout(t *testing.T) {
+	// Cancellable sink: on timeout Flush cancels the send context, the
+	// send returns within the grace, so Close still runs after the drain.
 	cs := &closeCountingSink{mock: newMockSink()}
 	cs.mock.SetDelay(500 * time.Millisecond)
 	c := New(WithSink(cs))
@@ -331,7 +333,53 @@ func TestClient_FlushCallsCloseEvenOnTimeout(t *testing.T) {
 	defer cancel()
 	_ = c.Flush(ctx)
 	if cs.closeCnt.Load() != 1 {
-		t.Errorf("close count = %d, want 1 (Close runs on timeout path too)", cs.closeCnt.Load())
+		t.Errorf("close count = %d, want 1 (Close runs after the drain on the cancellable timeout path)", cs.closeCnt.Load())
+	}
+}
+
+// blockingUncancellableSink ignores ctx in Send: it blocks until release
+// is closed, modelling a sink that doesn't honour cancellation. Close
+// records whether it was called.
+type blockingUncancellableSink struct {
+	release  chan struct{}
+	closeCnt atomic.Int32
+}
+
+func (s *blockingUncancellableSink) Send(_ context.Context, _ *Envelope) error {
+	<-s.release
+	return nil
+}
+
+func (s *blockingUncancellableSink) Close(context.Context) error {
+	s.closeCnt.Add(1)
+	return nil
+}
+
+func TestClient_FlushTimeoutReturnsEvenIfSendIgnoresCancel(t *testing.T) {
+	// A sink whose Send blocks and ignores cancellation must not hang the
+	// process-exit Flush: after cancelling, Flush waits only the bounded
+	// grace, then returns the timeout and skips Close.
+	sink := &blockingUncancellableSink{release: make(chan struct{})}
+	defer close(sink.release) // unblock the leaked send so the test goroutine exits
+	c := New(WithSink(sink))
+	c.emit(&Envelope{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err := c.Flush(ctx)
+	elapsed := time.Since(start)
+
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Flush err = %v, want DeadlineExceeded", err)
+	}
+	// ctx deadline (20ms) + grace (100ms) + slack; nowhere near a blocked
+	// send's lifetime (which never ends here).
+	if elapsed > time.Second {
+		t.Errorf("Flush took %v, want bounded return (a blocking uncancellable send must not hang Flush)", elapsed)
+	}
+	if got := sink.closeCnt.Load(); got != 0 {
+		t.Errorf("close count = %d, want 0 (Close skipped when the send never drains)", got)
 	}
 }
 

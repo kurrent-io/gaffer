@@ -8,7 +8,7 @@ import (
 )
 
 func TestBuildFilter_FromAll_NoEvents(t *testing.T) {
-	filter := buildFilter(gafferruntime.ProjectionInfo{AllStreams: true}, 2)
+	filter := buildFilter(gafferruntime.ProjectionInfo{AllStreams: true})
 	if filter != nil {
 		t.Error("expected nil filter for fromAll with no event filter")
 	}
@@ -18,7 +18,7 @@ func TestBuildFilter_FromAll_WithEvents(t *testing.T) {
 	filter := buildFilter(gafferruntime.ProjectionInfo{
 		AllStreams: true,
 		Events:     []string{"OrderPlaced", "OrderShipped"},
-	}, 2)
+	})
 
 	if filter == nil {
 		t.Fatal("expected filter")
@@ -41,7 +41,7 @@ func TestBuildFilter_FromAll_AllEvents_NoFilter(t *testing.T) {
 		AllStreams: true,
 		AllEvents:  true,
 		Events:     []string{"$UserCreated", "$ProjectionCreated"},
-	}, 2)
+	})
 
 	if filter != nil {
 		t.Errorf("expected nil filter (AllEvents=true), got %+v", filter)
@@ -53,7 +53,7 @@ func TestBuildFilter_FromAll_WithEvents_DeleteHandler(t *testing.T) {
 		AllStreams:                  true,
 		Events:                      []string{"OrderPlaced"},
 		HandlesDeletedNotifications: true,
-	}, 2)
+	})
 
 	if filter == nil {
 		t.Fatal("expected filter")
@@ -66,7 +66,7 @@ func TestBuildFilter_FromAll_WithEvents_DeleteHandler(t *testing.T) {
 func TestBuildFilter_FromCategory(t *testing.T) {
 	filter := buildFilter(gafferruntime.ProjectionInfo{
 		Categories: []string{"order"},
-	}, 2)
+	})
 
 	if filter == nil {
 		t.Fatal("expected filter")
@@ -82,7 +82,7 @@ func TestBuildFilter_FromCategory(t *testing.T) {
 func TestBuildFilter_FromStreams(t *testing.T) {
 	filter := buildFilter(gafferruntime.ProjectionInfo{
 		Streams: []string{"order-1", "cart-1"},
-	}, 2)
+	})
 
 	if filter == nil {
 		t.Fatal("expected filter")
@@ -98,7 +98,7 @@ func TestBuildFilter_FromStreams(t *testing.T) {
 func TestBuildFilter_FromCategoryMultiArg(t *testing.T) {
 	filter := buildFilter(gafferruntime.ProjectionInfo{
 		Streams: []string{"$ce-order", "$ce-cart"},
-	}, 2)
+	})
 
 	if filter == nil {
 		t.Fatal("expected filter")

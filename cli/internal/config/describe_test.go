@@ -258,6 +258,44 @@ entry = "../escape.js"
 	}
 }
 
+func TestDescribe_ProjectionEntryAbsoluteRejected(t *testing.T) {
+	// An absolute entry escapes the root just as `..` does, but
+	// EscapesRoot only catches relative `..`. The load path must
+	// reject it under the same rule, matching the scaffold gate.
+	path := describeFile(t, `[[projection]]
+name = "p"
+entry = "/etc/passwd"
+`)
+	desc, err := Describe(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := desc.Projections[0].Diagnostic
+	if d == nil || d.Rule != RuleProjectionEntryEscapesRoot {
+		t.Fatalf("expected entry-escapes diagnostic for absolute path, got %+v", d)
+	}
+}
+
+func TestDescribe_FixtureAbsolutePathRejected(t *testing.T) {
+	path := describeFile(t, `[[projection]]
+name = "p"
+entry = "p.js"
+fixtures.evil = "/etc/passwd"
+`)
+	desc, err := Describe(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := desc.Projections[0]
+	if len(p.Fixtures) != 1 {
+		t.Fatalf("expected 1 fixture, got %d", len(p.Fixtures))
+	}
+	fx := p.Fixtures[0]
+	if fx.Diagnostic == nil || fx.Diagnostic.Rule != RuleFixturePathEscapesRoot {
+		t.Fatalf("expected path-escapes diagnostic for absolute fixture, got %+v", fx.Diagnostic)
+	}
+}
+
 func TestDescribe_ParseErrorBecomesFileLevelDiagnostic(t *testing.T) {
 	// Syntactically broken TOML - we don't get projections, but we
 	// surface a file-level parse error at line 1 so the editor

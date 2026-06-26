@@ -311,11 +311,7 @@ func (s *Server) dispatch(msg godap.Message) {
 		}
 	case *godap.SetBreakpointsRequest:
 		s.stats.breakpoints.Add(1)
-		if s.handler.OnSetBreakpoints != nil {
-			s.handler.OnSetBreakpoints(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnSetBreakpoints)
 	case *godap.SetExceptionBreakpointsRequest:
 		if s.handler.OnSetExceptionBreakpoints != nil {
 			s.handler.OnSetExceptionBreakpoints(s, req)
@@ -325,46 +321,22 @@ func (s *Server) dispatch(msg godap.Message) {
 			s.Send(resp)
 		}
 	case *godap.ContinueRequest:
-		if s.handler.OnContinue != nil {
-			s.handler.OnContinue(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnContinue)
 	case *godap.PauseRequest:
 		s.stats.pauses.Add(1)
-		if s.handler.OnPause != nil {
-			s.handler.OnPause(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnPause)
 	case *godap.RestartRequest:
 		s.stats.restarts.Add(1)
-		if s.handler.OnRestart != nil {
-			s.handler.OnRestart(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnRestart)
 	case *godap.NextRequest:
 		s.stats.steps.Add(1)
-		if s.handler.OnNext != nil {
-			s.handler.OnNext(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnNext)
 	case *godap.StepInRequest:
 		s.stats.steps.Add(1)
-		if s.handler.OnStepIn != nil {
-			s.handler.OnStepIn(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnStepIn)
 	case *godap.StepOutRequest:
 		s.stats.steps.Add(1)
-		if s.handler.OnStepOut != nil {
-			s.handler.OnStepOut(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnStepOut)
 	case *godap.ThreadsRequest:
 		if s.handler.OnThreads != nil {
 			s.handler.OnThreads(s, req)
@@ -372,52 +344,38 @@ func (s *Server) dispatch(msg godap.Message) {
 			s.Send(s.defaultThreadsResponse(req))
 		}
 	case *godap.StackTraceRequest:
-		if s.handler.OnStackTrace != nil {
-			s.handler.OnStackTrace(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnStackTrace)
 	case *godap.ScopesRequest:
-		if s.handler.OnScopes != nil {
-			s.handler.OnScopes(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnScopes)
 	case *godap.VariablesRequest:
-		if s.handler.OnVariables != nil {
-			s.handler.OnVariables(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnVariables)
 	case *godap.EvaluateRequest:
-		if s.handler.OnEvaluate != nil {
-			s.handler.OnEvaluate(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnEvaluate)
 	case *GafferGotoRequest:
-		if s.handler.OnGafferGoto != nil {
-			s.handler.OnGafferGoto(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnGafferGoto)
 	case *GafferTimelineRequest:
-		if s.handler.OnGafferTimeline != nil {
-			s.handler.OnGafferTimeline(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnGafferTimeline)
 	case *GafferPartitionStateRequest:
-		if s.handler.OnGafferPartitionState != nil {
-			s.handler.OnGafferPartitionState(s, req)
-		} else {
-			s.Send(NewErrorResponse(req.Seq, req.Command, "not implemented"))
-		}
+		dispatch1(s, req, s.handler.OnGafferPartitionState)
 	default:
 		if req, ok := msg.(godap.RequestMessage); ok {
 			s.Send(NewErrorResponse(req.GetSeq(), req.GetRequest().Command, "not supported"))
 		}
 	}
+}
+
+// dispatch1 routes a request to its handler, or sends the standard
+// not-implemented error when no handler is registered. It collapses the
+// ~12 dispatch arms whose else-body was an identical not-implemented
+// response; arms with a different default (a typed default response) keep
+// their explicit if/else, and per-verb stats bumps stay at the case head.
+func dispatch1[T godap.RequestMessage](s *Server, req T, h func(*Server, T)) {
+	if h != nil {
+		h(s, req)
+		return
+	}
+	r := req.GetRequest()
+	s.Send(NewErrorResponse(req.GetSeq(), r.Command, "not implemented"))
 }
 
 func (s *Server) handleInitialize(req *godap.InitializeRequest) {

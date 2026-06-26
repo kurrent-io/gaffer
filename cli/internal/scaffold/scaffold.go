@@ -128,30 +128,17 @@ func validateRelPath(userInput string) (string, error) {
 	if strings.TrimSpace(userInput) == "" {
 		return "", errors.New("projection path is required")
 	}
-	// Reject Windows drive-letter forms before any normalisation.
-	// On non-Windows hosts filepath.IsAbs doesn't recognise them,
-	// and after backslash normalisation path.IsAbs doesn't either,
-	// so an LLM-supplied "C:\..." could otherwise scaffold into
-	// `<root>/C:/...` on a Linux server.
-	if pathutil.HasWindowsDrivePrefix(userInput) {
-		return "", fmt.Errorf(
-			"projection path %q must be relative to the project root",
-			userInput,
-		)
-	}
-	if filepath.IsAbs(userInput) {
+	// Reject every absolute form (host-OS absolute, slash-absolute,
+	// Windows drive-letter) before normalisation. On non-Windows
+	// hosts an LLM-supplied "C:\..." could otherwise scaffold into
+	// `<root>/C:/...`.
+	if pathutil.IsAbsolute(userInput) {
 		return "", fmt.Errorf(
 			"projection path %q must be relative to the project root",
 			userInput,
 		)
 	}
 	normalised := strings.ReplaceAll(userInput, "\\", "/")
-	if path.IsAbs(normalised) {
-		return "", fmt.Errorf(
-			"projection path %q must be relative to the project root",
-			userInput,
-		)
-	}
 	if pathutil.EscapesRoot(normalised) {
 		return "", fmt.Errorf("projection path %q is outside the project root", userInput)
 	}

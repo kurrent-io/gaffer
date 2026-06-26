@@ -182,7 +182,7 @@ Lookup key for `gaffer dev <name>`, `gaffer info <name>`, the VS Code lens, and 
 entry = "projections/order-count.js"
 ```
 
-Path to the projection's JavaScript source file, relative to the project root. Required.
+Path to the projection's JavaScript source file, relative to the project root. Required. Absolute paths (and paths that escape the project root) are rejected.
 
 ### `fixtures.<name>`
 
@@ -191,7 +191,7 @@ fixtures.happy = "fixtures/orders.json"
 fixtures.full = "fixtures/orders-full.json"
 ```
 
-Named JSON events files. Run with `gaffer dev <name> --fixture happy`. Path is relative to the project root.
+Named JSON events files. Run with `gaffer dev <name> --fixture happy`. Path is relative to the project root; absolute paths (and paths that escape the project root) are rejected.
 
 Optional. Add one entry per scenario you want to re-run.
 

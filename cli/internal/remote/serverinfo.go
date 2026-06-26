@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 )
@@ -57,10 +56,11 @@ func (c *Client) ServerInfo(ctx context.Context) (*ServerInfo, error) {
 		ResolveLinkTos: true,
 	}, serverInfoScanLimit)
 	if err != nil {
-		if errors.Is(classify(err), ErrNotFound) {
+		cerr := classify(err)
+		if errors.Is(cerr, ErrNotFound) {
 			return nil, nil
 		}
-		return nil, classify(err)
+		return nil, cerr
 	}
 	defer stream.Close()
 	return readServerInfo(stream.Recv)
@@ -70,23 +70,19 @@ func (c *Client) ServerInfo(ctx context.Context) (*ServerInfo, error) {
 // stream or no such event yields nil (no info), not an error. Split from
 // ServerInfo so the loop is testable without a live read stream.
 func readServerInfo(next func() (*kurrentdb.ResolvedEvent, error)) (*ServerInfo, error) {
-	for {
-		ev, err := next()
-		if errors.Is(err, io.EOF) {
+	si, found, err := scanLatest(next, serverInfoType, parseServerInfo)
+	if err != nil {
+		// A mid-stream not-found (e.g. the stream truncated under us) is
+		// the absent-stream case: baseline, not an error.
+		if errors.Is(err, ErrNotFound) {
 			return nil, nil
 		}
-		if err != nil {
-			if errors.Is(classify(err), ErrNotFound) {
-				return nil, nil
-			}
-			return nil, classify(err)
-		}
-		// Guard a degenerate (nil, nil) and a resolved link with no event.
-		if ev == nil || ev.Event == nil || ev.Event.EventType != serverInfoType {
-			continue
-		}
-		return parseServerInfo(ev.Event.Data)
+		return nil, err
 	}
+	if !found {
+		return nil, nil
+	}
+	return si, nil
 }
 
 func parseServerInfo(data []byte) (*ServerInfo, error) {

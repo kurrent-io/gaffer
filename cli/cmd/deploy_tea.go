@@ -10,8 +10,9 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/mattn/go-isatty"
 	"golang.org/x/term"
+
+	"github.com/kurrent-io/gaffer/cli/internal/ttyutil"
 )
 
 // terminalFile returns w as an *os.File if it is one, so the terminal probes
@@ -29,7 +30,7 @@ func terminalFile(w io.Writer) (*os.File, bool) {
 // uses, plus the stdin check the interactive input needs.
 func interactiveWriter(w io.Writer) bool {
 	f, ok := terminalFile(w)
-	return ok && isatty.IsTerminal(f.Fd()) && isatty.IsTerminal(os.Stdin.Fd())
+	return ok && ttyutil.IsTerminal(f) && ttyutil.IsTerminal(os.Stdin)
 }
 
 // Messages driving the deploy view: a projection's RPC began or finished. The

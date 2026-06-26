@@ -3,6 +3,7 @@ package history
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -191,7 +192,7 @@ func scanStep(row *sql.Row) (*Step, error) {
 		&step.EventType, &step.StreamID, &step.Status,
 		&step.Partition, &step.HasEmit, &step.HasLog,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

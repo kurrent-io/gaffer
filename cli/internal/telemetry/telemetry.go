@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"context"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -35,6 +36,13 @@ type Client struct {
 	mu     sync.Mutex
 	closed bool
 	wg     sync.WaitGroup
+
+	// sendCtx bounds every in-flight send; cancel fires it. A timed-out
+	// Flush cancels it so blocked sends return promptly rather than
+	// leaving the drain (and the Flush waiter) pending until each send's
+	// own per-send budget elapses.
+	sendCtx context.Context
+	cancel  context.CancelFunc
 
 	// errLog receives in-flight transport / sink errors. Defaults to
 	// a no-op; tests and the GAFFER_TELEMETRY_DEBUG=1 debug-tee
@@ -239,6 +247,9 @@ func New(opts ...Option) *Client {
 		userAgent:      defaultUserAgent,
 		startTime:      time.Now(),
 	}
+	// cancel is stored for Flush to call (it defers it on every path);
+	// gosec can't see the deferred call across the struct field.
+	c.sendCtx, c.cancel = context.WithCancel(context.Background()) //nolint:gosec // cancel is invoked in Flush
 	for _, opt := range opts {
 		opt(c)
 	}

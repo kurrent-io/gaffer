@@ -76,28 +76,55 @@ func (c *Client) Read(ctx context.Context, name string) (*Definition, error) {
 	return readDefinition(stream.Recv, name)
 }
 
+// scanLatest walks a backwards event stream newest-first for the first event
+// of wantType, decodes it with parse, and returns (value, true, nil). It
+// returns (zero, false, nil) when the stream exhausts (io.EOF) without a
+// match, and (zero, false, classify(err)) on any other read error. Callers
+// own the not-found policy: map !found to a sentinel, or to a nil result.
+//
+// next is the stream's Recv. Split out so the loop is exercised in tests
+// without a live read stream, and shared by Read and ServerInfo, which
+// differ only in their terminal cases.
+func scanLatest[T any](next func() (*kurrentdb.ResolvedEvent, error), wantType string, parse func([]byte) (T, error)) (T, bool, error) {
+	var zero T
+	for {
+		ev, err := next()
+		if errors.Is(err, io.EOF) {
+			return zero, false, nil
+		}
+		if err != nil {
+			return zero, false, classify(err)
+		}
+		// A non-error Recv yields a non-nil event in practice; guard ev anyway so
+		// an injected next that returns (nil, nil) skips rather than panics. ev.Event
+		// is nil for a resolved link with no underlying event.
+		if ev == nil || ev.Event == nil || ev.Event.EventType != wantType {
+			continue
+		}
+		v, err := parse(ev.Event.Data)
+		if err != nil {
+			return zero, false, err
+		}
+		return v, true, nil
+	}
+}
+
 // readDefinition walks events newest-first until it finds a $ProjectionUpdated,
 // decodes it, and returns the definition. A missing stream surfaces as an error
 // from next (classified to ErrNotFound); exhausting the stream without a state
 // event, or a tombstoned state, is ErrNotFound. Split from Read so the loop is
 // testable without a live read stream.
 func readDefinition(next func() (*kurrentdb.ResolvedEvent, error), name string) (*Definition, error) {
-	for {
-		ev, err := next()
-		if errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("%w: %s", ErrNotFound, name)
-		}
-		if err != nil {
-			return nil, classify(err)
-		}
-		// A non-error Recv yields a non-nil event in practice; guard ev anyway so
-		// an injected next that returns (nil, nil) skips rather than panics. ev.Event
-		// is nil for a resolved link with no underlying event.
-		if ev == nil || ev.Event == nil || ev.Event.EventType != projectionUpdatedType {
-			continue
-		}
-		return parseDefinition(ev.Event.Data, name)
+	def, found, err := scanLatest(next, projectionUpdatedType, func(data []byte) (*Definition, error) {
+		return parseDefinition(data, name)
+	})
+	if err != nil {
+		return nil, err
 	}
+	if !found {
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, name)
+	}
+	return def, nil
 }
 
 func parseDefinition(data []byte, name string) (*Definition, error) {

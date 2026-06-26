@@ -143,7 +143,9 @@ func fileSizeBucket(bytes int) FileSizeBucket {
 // deterministic types, or a hand-rolled struct walker). Adding a
 // map silently breaks dedupe.
 func shapeContentHash(props ProjectionShapeProperties) [32]byte {
-	b, _ := json.Marshal(props)
+	// props has no maps/channels/funcs and RawCount/RawDuration.MarshalJSON
+	// never return an error, so this marshal cannot fail.
+	b, _ := json.Marshal(props) //nolint:errchkjson // infallible per the no-maps invariant above
 	return sha256.Sum256(b)
 }
 

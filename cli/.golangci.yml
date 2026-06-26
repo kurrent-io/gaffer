@@ -5,6 +5,7 @@ linters:
     - revive
     - forbidigo
     - errorlint
+    - errchkjson
     - forcetypeassert
     - intrange
     - modernize

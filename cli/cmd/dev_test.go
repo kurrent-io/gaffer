@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
@@ -47,8 +48,15 @@ func TestFinalizeRun_Interrupted(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	r := engine.NewRunner(engine.RunnerConfig{})
-	r.SetFaulted(true)
+	r := engine.NewRunner(engine.RunnerConfig{
+		Feed: func(string) (*gafferruntime.FeedResult, error) {
+			return nil, errors.New("boom")
+		},
+	})
+	r.ProcessOne("{}") // fault the runner via the real error path
+	if !r.Faulted() {
+		t.Fatal("setup: expected runner to be faulted")
+	}
 
 	var stderr bytes.Buffer
 	err := finalizeRun(ctx, false, nil, r, &stderr)

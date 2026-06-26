@@ -62,8 +62,12 @@ type RunnerConfig struct {
 //     did. Callers must only invoke them while Paused() is true. r.mu is used
 //     only to snapshot Runner fields the FFI call needs (e.g. the partition
 //     set), then released before crossing into the session.
+//
+// The mutable state is split into two concerns, both guarded by r.mu: run
+// holds what processing produces (stats, partitions, fault, status), control
+// holds the debug pause/break wiring. step is an atomic.Int64 read lock-free
+// (see Step), deliberately outside the mutex.
 type Runner struct {
-	mu            sync.Mutex
 	feed          FeedFn
 	session       *gafferruntime.Session
 	info          gafferruntime.ProjectionInfo
@@ -73,12 +77,29 @@ type Runner struct {
 	debug         *DebugConfig
 	onDiagnostic  func(code string)
 
-	stats       EventStats
-	partitions  map[string]bool
-	faulted     bool
-	lastError   error
-	step        atomic.Int64
-	status      string
+	step atomic.Int64
+
+	mu      sync.Mutex
+	run     runState
+	control debugControl
+}
+
+// runState is the Runner's per-run progress, mutated as events are processed
+// and read back by the front-ends. Guarded by Runner.mu.
+type runState struct {
+	stats      EventStats
+	partitions map[string]bool
+	faulted    bool
+	lastError  error
+	// status is externally driven: the MCP and dev front-ends set it from the
+	// source lifecycle (running, caught_up, completed, ...), which the Runner
+	// does not observe itself. Stored here only so a single reader sees a
+	// consistent value.
+	status string
+}
+
+// debugControl is the Runner's debug pause/break wiring. Guarded by Runner.mu.
+type debugControl struct {
 	paused      bool
 	pausedEvent string
 	breakAtStep int64
@@ -113,7 +134,7 @@ func NewRunner(cfg RunnerConfig) *Runner {
 		history:       cfg.History,
 		debug:         cfg.Debug,
 		onDiagnostic:  cfg.OnDiagnostic,
-		partitions:    make(map[string]bool),
+		run:           runState{partitions: make(map[string]bool)},
 	}
 	if r.debug != nil && r.debug.OnBreak != nil {
 		r.debug.Session.OnBreak(func(info gafferruntime.BreakInfo) {
@@ -126,13 +147,13 @@ func NewRunner(cfg RunnerConfig) *Runner {
 			// step the break_at pause converts into - so the blocked
 			// Feed returns and the feed goroutine can exit. The resume
 			// error is irrelevant: the session is going away.
-			if r.draining {
-				r.paused = false
+			if r.control.draining {
+				r.control.paused = false
 				r.mu.Unlock()
 				go func() { _ = r.debug.Session.Continue() }()
 				return
 			}
-			if info.Reason == "pause" && r.breakAtStep > 0 {
+			if info.Reason == "pause" && r.control.breakAtStep > 0 {
 				r.mu.Unlock()
 				// Auto-step off the pause-breakpoint to land at the break_at
 				// target with full context. Must run on its own goroutine -
@@ -146,7 +167,7 @@ func NewRunner(cfg RunnerConfig) *Runner {
 				}()
 				return
 			}
-			r.paused = true
+			r.control.paused = true
 			r.mu.Unlock()
 			r.debug.OnBreak(info)
 		})
@@ -159,8 +180,8 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 	step := r.step.Add(1)
 	var pauseErr error
 	if r.debug != nil {
-		r.pausedEvent = eventJSON
-		if r.breakAtStep > 0 && step == r.breakAtStep {
+		r.control.pausedEvent = eventJSON
+		if r.control.breakAtStep > 0 && step == r.control.breakAtStep {
 			pauseErr = r.debug.Session.Pause()
 		}
 	}
@@ -181,7 +202,7 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 
 	r.mu.Lock()
 	if r.debug != nil {
-		r.pausedEvent = ""
+		r.control.pausedEvent = ""
 	}
 
 	if err != nil {
@@ -189,9 +210,9 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 		if r.history != nil {
 			_, _ = r.history.Insert(eventJSON, `{"status":"error"}`)
 		}
-		r.stats.Errors++
-		r.faulted = true
-		r.lastError = err
+		r.run.stats.Errors++
+		r.run.faulted = true
+		r.run.lastError = err
 		r.mu.Unlock()
 		// A throwing quirk (e.g. event.body cast, non-finite serialize) faults the
 		// event but still carries its diagnostics on the error - surface them too.
@@ -225,19 +246,19 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 	}
 
 	if result.Status == "skipped" {
-		r.stats.Skipped++
-		if r.stats.SkippedByReason == nil {
-			r.stats.SkippedByReason = make(map[string]int)
+		r.run.stats.Skipped++
+		if r.run.stats.SkippedByReason == nil {
+			r.run.stats.SkippedByReason = make(map[string]int)
 		}
 		reason := result.SkipReason
 		if reason == "" {
 			reason = "unknown"
 		}
-		r.stats.SkippedByReason[reason]++
+		r.run.stats.SkippedByReason[reason]++
 	} else {
-		r.stats.Handled++
+		r.run.stats.Handled++
 		if result.Partition != "" {
-			r.partitions[result.Partition] = true
+			r.run.partitions[result.Partition] = true
 		}
 	}
 	r.mu.Unlock()
@@ -253,82 +274,88 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 	return false
 }
 
-// Read accessors
+// Run-state accessors. These read back what processing has produced; the run
+// state is driven internally by ProcessOne, with the exception of status (set
+// by the front-ends from the source lifecycle) and the fault clear on a
+// no-op interrupt.
 
 func (r *Runner) Stats() EventStats {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	s := r.stats
-	// Snapshot the map so the caller can iterate without racing
-	// against further ProcessOne increments.
-	if len(r.stats.SkippedByReason) > 0 {
-		cp := make(map[string]int, len(r.stats.SkippedByReason))
-		maps.Copy(cp, r.stats.SkippedByReason)
-		s.SkippedByReason = cp
-	} else {
-		s.SkippedByReason = nil
-	}
+	s := r.run.stats
+	// Snapshot the map so the caller can iterate without racing against
+	// further ProcessOne increments. Clone returns nil for a nil/empty
+	// source, preserving the nil-vs-empty distinction callers may check.
+	s.SkippedByReason = maps.Clone(r.run.stats.SkippedByReason)
 	return s
 }
 
 func (r *Runner) Partitions() map[string]bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	cp := make(map[string]bool, len(r.partitions))
-	maps.Copy(cp, r.partitions)
-	return cp
+	return maps.Clone(r.run.partitions)
 }
 
 func (r *Runner) Faulted() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.faulted
+	return r.run.faulted
+}
+
+// ClearFault clears the recorded fault flag. Used on a no-op interrupt (a
+// cancelled run that never caught up) so the teardown doesn't report a failure
+// the user chose. The fault is only ever set internally by ProcessOne.
+func (r *Runner) ClearFault() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.run.faulted = false
 }
 
 func (r *Runner) LastError() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.lastError
+	return r.run.lastError
 }
 
 func (r *Runner) Step() int64 {
 	return r.step.Load()
 }
 
-func (r *Runner) SetFaulted(v bool) {
+// Status returns the externally-driven run status (see runState.status).
+func (r *Runner) Status() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.faulted = v
+	return r.run.status
 }
+
+// SetStatus records the run status. The Runner doesn't observe the source
+// lifecycle, so the front-ends drive this from their run loop.
+func (r *Runner) SetStatus(s string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.run.status = s
+}
+
+// Debug-control accessors.
 
 func (r *Runner) Paused() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.paused
+	return r.control.paused
 }
 
 func (r *Runner) PausedEvent() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.pausedEvent
+	return r.control.pausedEvent
 }
 
-func (r *Runner) Status() string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.status
-}
-
-func (r *Runner) SetStatus(s string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.status = s
-}
-
+// SetBreakAtStep arms a one-shot pause at the given 1-based step. The break is
+// handled internally by ProcessOne and the OnBreak wiring.
 func (r *Runner) SetBreakAtStep(step int64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.breakAtStep = step
+	r.control.breakAtStep = step
 }
 
 func (r *Runner) Info() gafferruntime.ProjectionInfo {

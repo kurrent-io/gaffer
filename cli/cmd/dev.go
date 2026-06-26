@@ -945,7 +945,7 @@ func runErrorCode(err error) (string, bool) {
 func finalizeRun(ctx context.Context, caughtUp bool, srcErr error, r *engine.Runner, stderr io.Writer) error {
 	if ctx.Err() != nil && !caughtUp {
 		_, _ = fmt.Fprint(stderr, "Interrupted\n\n")
-		r.SetFaulted(false)
+		r.ClearFault()
 		return nil
 	}
 	return srcErr

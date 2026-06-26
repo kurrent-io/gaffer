@@ -66,7 +66,7 @@ func (r *Runner) doStep(fn func() error) error {
 	// false on error also lets the caller's next Paused() guard reject cleanly
 	// rather than re-entering here and failing again.
 	r.mu.Lock()
-	r.paused = false
+	r.control.paused = false
 	r.mu.Unlock()
 	return fn()
 }
@@ -103,13 +103,13 @@ func (r *Runner) Drain() {
 		return
 	}
 	r.mu.Lock()
-	r.draining = true
-	r.breakAtStep = 0
-	wasPaused := r.paused
+	r.control.draining = true
+	r.control.breakAtStep = 0
+	wasPaused := r.control.paused
 	// Clear paused now we're resuming, so a later Paused() read (e.g. the DAP
 	// adapter's ensurePaused guard, or a follow-up Drain) doesn't see a stale
 	// true and act on an already running engine.
-	r.paused = false
+	r.control.paused = false
 	r.mu.Unlock()
 
 	// Errors are discarded: Drain is terminal teardown, so there's nothing
@@ -177,7 +177,7 @@ func (r *Runner) CollectState() (StateSummary, error) {
 		return StateSummary{}, nil
 	}
 	r.mu.Lock()
-	partitions := maps.Clone(r.partitions)
+	partitions := maps.Clone(r.run.partitions)
 	r.mu.Unlock()
 	return CollectState(r.session, r.info, partitions)
 }

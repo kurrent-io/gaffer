@@ -55,6 +55,11 @@ type DebugAdapter struct {
 	// readiness, not a fire-and-forget.
 	restartReqCh chan struct{}
 	restartAckCh chan struct{}
+	// shutdownCh is closed once dev.go's loop has exited for good. A restart
+	// accepted after that point will never be acked, so handleRestart selects
+	// on it too rather than blocking the read goroutine forever.
+	shutdownCh   chan struct{}
+	shutdownOnce sync.Once
 }
 
 // NewDebugAdapter creates an adapter that bridges a DAP server to an engine Runner.
@@ -69,6 +74,7 @@ func NewDebugAdapter(session *gafferruntime.Session, sourcePath, remoteRoot stri
 		readyCh:      make(chan struct{}),
 		restartReqCh: make(chan struct{}, 1),
 		restartAckCh: make(chan struct{}),
+		shutdownCh:   make(chan struct{}),
 	}
 }
 
@@ -601,12 +607,28 @@ func (a *DebugAdapter) handleRestart(s *Server, req *godap.RestartRequest) {
 	default:
 		// Already pending - dev.go will pick this one up too.
 	}
-	<-a.restartAckCh
+	select {
+	case <-a.restartAckCh:
+	case <-a.shutdownCh:
+		// dev.go's loop has exited and will never ack this restart.
+		// Answer the request so the client isn't left waiting on a
+		// response that will never come, then return rather than pin
+		// the read goroutine.
+		s.Send(NewErrorResponse(req.Seq, req.Command, "restart unavailable: session is shutting down"))
+		return
+	}
 
 	resp := &godap.RestartResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
 	s.Send(resp)
 	s.Send(&godap.InitializedEvent{Event: NewEvent("initialized")})
+}
+
+// Shutdown signals that no further restarts will be acked, releasing any
+// handleRestart blocked on AckRestart. Idempotent; dev.go defers it so every
+// exit path frees a pending restart.
+func (a *DebugAdapter) Shutdown() {
+	a.shutdownOnce.Do(func() { close(a.shutdownCh) })
 }
 
 // RestartRequested returns a channel that receives whenever the editor
@@ -617,10 +639,14 @@ func (a *DebugAdapter) RestartRequested() <-chan struct{} {
 }
 
 // AckRestart unblocks handleRestart once dev.go has finished tearing
-// down the old session and bound a new one. Pairs with the receive
-// in handleRestart.
+// down the old session and bound a new one. It's a no-op once the
+// adapter has shut down (handleRestart has stopped waiting), so it
+// never blocks on a departed receiver.
 func (a *DebugAdapter) AckRestart() {
-	a.restartAckCh <- struct{}{}
+	select {
+	case a.restartAckCh <- struct{}{}:
+	case <-a.shutdownCh:
+	}
 }
 
 // ResetForRestart clears per-session adapter state so the next

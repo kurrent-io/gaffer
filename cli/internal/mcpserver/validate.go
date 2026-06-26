@@ -29,33 +29,29 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	proj := cfg.FindProjection(input.Name)
-	if proj == nil {
-		return toolError("projection %q not found in gaffer.toml", input.Name), nil, nil
-	}
-	// Per-projection config errors are deferred past config.Load, so a bad
-	// projection doesn't block the others. Report it as invalid here rather than
-	// compiling on past it and wrongly reporting valid (the config flags never
-	// reach the runtime).
-	if cfgErr := cfg.ProjectionConfigError(input.Name); cfgErr != nil {
-		return toolResult(map[string]any{"valid": false, "lastError": cfgErr.Error()}), nil, nil
-	}
-
-	source, err := engine.ReadSource(root, proj.Entry)
+	compiled, err := s.compileProjection(cfg, root, input.Name, false)
 	if err != nil {
-		return toolError("%v", err), nil, nil
-	}
-
-	lp := engine.NewProjection(root, cfg, proj, source)
-	session, info, err := engine.CreateSession(lp, false, false)
-	if err != nil {
+		var notFound engine.ProjectionNotFoundError
+		if errors.As(err, &notFound) {
+			return toolError("%v", err), nil, nil
+		}
+		var srcErr engine.SourceReadError
+		if errors.As(err, &srcErr) {
+			return toolError("%v", err), nil, nil
+		}
+		// A static config error reports valid:false with the raw reason;
+		// the config flags never reach the runtime so there's nothing to
+		// classify. Checked before the runtime ProjectionError so a config
+		// failure isn't run through classifyError.
+		var cfgErr engine.ProjectionConfigError
+		if errors.As(err, &cfgErr) {
+			return toolResult(map[string]any{"valid": false, "lastError": cfgErr.Error()}), nil, nil
+		}
+		// Compile-time projection failure: compileProjection already fed
+		// projection_errors_seen; report valid:false with the classified
+		// error.
 		var projErr gafferruntime.ProjectionError
 		if errors.As(err, &projErr) {
-			// Same shape as handleRun: compile-time projection
-			// failures feed projection_errors_seen so the
-			// session's telemetry reflects user code didn't
-			// compile.
-			s.recordProjectionError(err)
 			return toolResult(map[string]any{
 				"valid":     false,
 				"lastError": classifyError(err),
@@ -63,7 +59,9 @@ func (s *Server) handleValidate(_ context.Context, _ *mcp.CallToolRequest, input
 		}
 		return toolError("creating session: %v", err), nil, nil
 	}
-	defer session.Destroy()
+	proj := compiled.Projection.Def
+	info := compiled.Info
+	defer compiled.Session.Destroy()
 
 	// The projection compiled but carries error-severity diagnostics for a feature the
 	// server rejects or faults on (e.g. a V2-incompatible option), so it is not

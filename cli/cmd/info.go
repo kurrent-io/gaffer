@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -37,35 +37,32 @@ func runInfo(name string, asJSON bool) error {
 	if err != nil {
 		return err
 	}
-	def := cfg.FindProjection(name)
-	if def == nil {
-		return fmt.Errorf("projection %q not found in gaffer.toml", name)
-	}
 
 	// An invalid projection degrades to its name + the reason - the same
 	// presentation as diff/status - rather than a hard error. info is local, so the
-	// name and reason are still useful. A per-projection config error is caught
-	// before compiling; a compile failure after.
-	if cfgErr := cfg.ProjectionConfigError(name); cfgErr != nil {
-		return renderInvalidInfo(name, cfgErr, asJSON)
-	}
-	source, err := engine.ReadSource(root, def.Entry)
+	// name and reason are still useful. A per-projection config error and a
+	// compile failure both degrade; a not-found name or unreadable source file
+	// is a hard error.
+	compiled, err := engine.CompileNamed(cfg, root, name, false, false)
 	if err != nil {
-		return err
-	}
-	proj := engine.NewProjection(root, cfg, def, source)
-	session, info, err := engine.CreateSession(proj, false, false)
-	if err != nil {
+		var notFound engine.ProjectionNotFoundError
+		if errors.As(err, &notFound) {
+			return err
+		}
+		var srcErr engine.SourceReadError
+		if errors.As(err, &srcErr) {
+			return err
+		}
 		return renderInvalidInfo(name, err, asJSON)
 	}
-	defer session.Destroy()
+	defer compiled.Session.Destroy()
 
 	if asJSON {
-		return writeInfoJSON(proj, info)
+		return writeInfoJSON(compiled.Projection, compiled.Info)
 	}
 
 	tw := newTextWriter(os.Stdout, os.Stderr)
-	tw.WriteInfo(proj, info)
+	tw.WriteInfo(compiled.Projection, compiled.Info)
 	return nil
 }
 

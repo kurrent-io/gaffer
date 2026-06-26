@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -31,30 +32,22 @@ func (s *Server) handleListEvents(ctx context.Context, _ *mcp.CallToolRequest, i
 		return r, nil, nil
 	}
 
-	proj := cfg.FindProjection(input.Name)
-	if proj == nil {
-		return toolError("projection %q not found in gaffer.toml", input.Name), nil, nil
-	}
-	if cfgErr := cfg.ProjectionConfigError(input.Name); cfgErr != nil {
-		return toolError("%v", cfgErr), nil, nil
-	}
-
-	source, err := engine.ReadSource(root, proj.Entry)
+	compiled, err := s.compileProjection(cfg, root, input.Name, false)
 	if err != nil {
+		// A runtime compile failure was already fed into
+		// projection_errors_seen by compileProjection (now classified
+		// the same as run/validate/info, not on every CreateSession
+		// error); phrase it as a compile failure. The find / config /
+		// source phases surface bare.
+		var projErr gafferruntime.ProjectionError
+		if errors.As(err, &projErr) {
+			return toolError("compiling projection: %v", err), nil, nil
+		}
 		return toolError("%v", err), nil, nil
 	}
-
-	lp := engine.NewProjection(root, cfg, proj, source)
-	session, info, err := engine.CreateSession(lp, false, false)
-	if err != nil {
-		// CreateSession only fails on FFI projection errors here
-		// (compile, invalid argument, ...). Feed
-		// projection_errors_seen so the session reflects that the
-		// projection didn't compile.
-		s.recordProjectionError(err)
-		return toolError("compiling projection: %v", err), nil, nil
-	}
-	defer session.Destroy()
+	defer compiled.Session.Destroy()
+	proj := compiled.Projection.Def
+	info := compiled.Info
 
 	client, err := s.connectToKurrentDB(cfg, root, input.Env)
 	if err != nil {

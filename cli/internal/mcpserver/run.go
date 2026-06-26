@@ -77,10 +77,10 @@ func (s *Server) prepareRun(cfg *config.Config, root string, input runInput) run
 		var projErr gafferruntime.ProjectionError
 		if errors.As(err, &projErr) {
 			// Compile-time projection failure (invalid source,
-			// compilation timeout). Feed projection_errors_seen
-			// alongside the tool response so the session's
-			// telemetry reflects user code didn't compile.
-			s.recordProjectionError(err)
+			// compilation timeout). createSession already fed
+			// projection_errors_seen via compileProjection; surface
+			// the classified error so the response reflects that the
+			// user's code didn't compile.
 			return runPrep{result: toolResult(map[string]any{
 				"lastError": classifyError(err),
 			})}

@@ -42,6 +42,26 @@ type RunnerConfig struct {
 	OnDiagnostic func(code string)
 }
 
+// Runner drives a projection session over an event source and exposes the
+// run-state and debug-control surface the CLI, MCP and DAP front-ends consume.
+//
+// Two distinct guarantees protect concurrent access, and they are not the same
+// mechanism:
+//
+//   - r.mu guards the Runner's own mutable fields (stats, partitions, faulted,
+//     status, paused, ...). It does NOT make the underlying runtime session
+//     safe to touch from another goroutine.
+//
+//   - The pause invariant guards the session. The runtime session is not
+//     thread-safe (see bindings/go), so cross-goroutine inspection is only
+//     safe while the engine is paused: the feed goroutine is parked inside
+//     Feed at a breakpoint and a second goroutine (DAP/MCP command loop) reads
+//     state. The inspection methods (Evaluate, GetCallStack, GetScopes,
+//     GetVariables, CollectState, GetPartitionState) rely on this - they do not
+//     hold r.mu across the FFI call, and could not make the FFI safe if they
+//     did. Callers must only invoke them while Paused() is true. r.mu is used
+//     only to snapshot Runner fields the FFI call needs (e.g. the partition
+//     set), then released before crossing into the session.
 type Runner struct {
 	mu            sync.Mutex
 	feed          FeedFn

@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"maps"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 )
@@ -132,7 +133,11 @@ func (r *Runner) Destroy() {
 	}
 }
 
-// Inspection methods - safe to call while paused at a breakpoint
+// Inspection methods. These cross into the runtime session, which is not
+// thread-safe, so they are safe only while the engine is paused at a
+// breakpoint (the feed goroutine parked inside Feed). They deliberately take
+// no lock - r.mu would not make the FFI call safe and could deadlock against
+// the parked feed goroutine. See the Runner doc comment for the full invariant.
 
 func (r *Runner) Evaluate(expression string) (*gafferruntime.DebugVariable, error) {
 	if r.debug == nil {
@@ -162,22 +167,26 @@ func (r *Runner) GetVariables(variablesReference int) ([]gafferruntime.DebugVari
 	return r.debug.Session.GetVariables(variablesReference)
 }
 
+// CollectState reads the per-partition state out of the session. Safe only
+// while the engine is paused (see the Runner doc comment): it snapshots the
+// partition set under r.mu, then releases the lock before the session FFI call
+// so a slow GetResult (which can run V1 transform JS) doesn't block the trivial
+// Runner accessors on the feed goroutine's path.
 func (r *Runner) CollectState() (StateSummary, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.collectStateLocked()
-}
-
-func (r *Runner) collectStateLocked() (StateSummary, error) {
 	if r.session == nil {
 		return StateSummary{}, nil
 	}
-	return CollectState(r.session, r.info, r.partitions)
+	r.mu.Lock()
+	partitions := maps.Clone(r.partitions)
+	r.mu.Unlock()
+	return CollectState(r.session, r.info, partitions)
 }
 
+// GetPartitionState reads a single partition's state and (if defined) its
+// transform result. Safe only while the engine is paused (see the Runner doc
+// comment). session and info are immutable after construction, so no lock is
+// needed; the call crosses into the session under the pause invariant.
 func (r *Runner) GetPartitionState(partition string) (state *string, result *string, err error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.session == nil {
 		return nil, nil, nil
 	}

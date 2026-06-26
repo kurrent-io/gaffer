@@ -233,7 +233,10 @@ func (w *dapEventWriter) OnEvent(eventJSON string) {
 }
 
 func (w *dapEventWriter) OnResult(eventID string, result *gafferruntime.FeedResult) {
-	resultJSON, _ := json.Marshal(result)
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		resultJSON = []byte("null")
+	}
 
 	w.adapter.mu.Lock()
 	inspect := w.adapter.inspect
@@ -854,11 +857,15 @@ func (a *DebugAdapter) handleGafferGoto(s *Server, req *GafferGotoRequest) {
 		return
 	}
 
-	body, _ := json.Marshal(map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"step":   step.Index,
 		"event":  json.RawMessage(step.EventJSON),
 		"result": json.RawMessage(step.ResultJSON),
 	})
+	if err != nil {
+		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
+		return
+	}
 
 	resp := &GafferGotoResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
@@ -873,7 +880,11 @@ func (a *DebugAdapter) handleGafferTimeline(s *Server, req *GafferTimelineReques
 		return
 	}
 
-	body, _ := json.Marshal(entries)
+	body, err := json.Marshal(entries)
+	if err != nil {
+		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
+		return
+	}
 
 	resp := &GafferTimelineResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
@@ -892,14 +903,18 @@ func (a *DebugAdapter) handleGafferPartitionState(s *Server, req *GafferPartitio
 		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
 		return
 	}
-	if state != nil {
+	if state != nil && len(*state) > 0 {
 		body["state"] = json.RawMessage(*state)
 	}
-	if result != nil {
+	if result != nil && len(*result) > 0 {
 		body["result"] = json.RawMessage(*result)
 	}
 
-	respBody, _ := json.Marshal(body)
+	respBody, err := json.Marshal(body)
+	if err != nil {
+		s.Send(NewErrorResponse(req.Seq, req.Command, err.Error()))
+		return
+	}
 	resp := &GafferPartitionStateResponse{}
 	resp.Response = NewResponse(req.Seq, req.Command)
 	resp.Body = respBody

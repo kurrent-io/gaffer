@@ -393,8 +393,10 @@ func runDev(cmd *cobra.Command, args []string, opts *devOpts, dapStats *dapserve
 
 	var writer outputWriter
 	var tw *textWriter
+	var jw *jsonWriter
 	if opts.JSON {
-		writer = newJSONWriter(os.Stdout)
+		jw = newJSONWriter(os.Stdout)
+		writer = jw
 	} else {
 		tw = newTextWriter(os.Stdout, os.Stderr)
 		// Fixture mode: surface skipped events + reasons. The user
@@ -407,10 +409,20 @@ func runDev(cmd *cobra.Command, args []string, opts *devOpts, dapStats *dapserve
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
 
+	var runErr error
 	if opts.Debug {
-		return proj, runDevDebug(ctx, stop, proj, sourcePath, writer, tw, opts, dapStats, obs)
+		runErr = runDevDebug(ctx, stop, proj, sourcePath, writer, tw, opts, dapStats, obs)
+	} else {
+		runErr = runDevSingle(ctx, stop, proj, sourcePath, writer, tw, opts, obs)
 	}
-	return proj, runDevSingle(ctx, stop, proj, sourcePath, writer, tw, opts, obs)
+	// A failure writing the --json stream (e.g. a broken pipe to the editor)
+	// must surface as a non-zero exit rather than a silent partial stream.
+	if runErr == nil && jw != nil {
+		if err := jw.Err(); err != nil {
+			runErr = fmt.Errorf("writing json output: %w", err)
+		}
+	}
+	return proj, runErr
 }
 
 // runDevSingle handles the non-debug path: one engine.Session, one

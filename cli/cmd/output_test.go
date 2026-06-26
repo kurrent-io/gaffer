@@ -53,6 +53,26 @@ func TestJSONWriterRunError(t *testing.T) {
 	}
 }
 
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("pipe closed") }
+
+func TestJSONWriter_Err_RecordsAndRetainsFirstWriteFailure(t *testing.T) {
+	jw := newJSONWriter(failingWriter{})
+
+	jw.WriteRunError("db_disconnect", "lost")
+	first := jw.Err()
+	if first == nil {
+		t.Fatal("expected Err to record the write failure")
+	}
+
+	// Subsequent writes short-circuit and keep the first error.
+	jw.WriteAuthRequired("prod")
+	if !errors.Is(jw.Err(), first) {
+		t.Errorf("expected the first error to be retained, got %v", jw.Err())
+	}
+}
+
 func TestRunErrorCode(t *testing.T) {
 	if code, ok := runErrorCode(fmt.Errorf("%w: dropped", engine.ErrDBDisconnect)); !ok || code != "db_disconnect" {
 		t.Errorf("disconnect: got (%q, %v)", code, ok)

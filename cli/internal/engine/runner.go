@@ -199,8 +199,9 @@ func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 	}
 
 	if r.history != nil {
-		resultJSON, _ := json.Marshal(result)
-		_, _ = r.history.Insert(eventJSON, string(resultJSON))
+		if resultJSON, err := json.Marshal(result); err == nil {
+			_, _ = r.history.Insert(eventJSON, string(resultJSON))
+		}
 	}
 
 	if result.Status == "skipped" {

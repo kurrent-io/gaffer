@@ -12,6 +12,7 @@ import (
 
 type jsonWriter struct {
 	enc *json.Encoder
+	err error
 }
 
 func newJSONWriter(w io.Writer) *jsonWriter {
@@ -21,8 +22,17 @@ func newJSONWriter(w io.Writer) *jsonWriter {
 }
 
 func (jw *jsonWriter) writeLine(v any) {
-	_ = jw.enc.Encode(v)
+	// The --json stream is the editor contract, so a broken pipe or encode
+	// failure must not vanish. Record the first error and stop writing;
+	// the command surfaces it via Err so the run exits non-zero.
+	if jw.err != nil {
+		return
+	}
+	jw.err = jw.enc.Encode(v)
 }
+
+// Err returns the first error encountered while writing the JSON stream, if any.
+func (jw *jsonWriter) Err() error { return jw.err }
 
 func (jw *jsonWriter) WriteInfo(proj *engine.Projection, info gafferruntime.ProjectionInfo) {
 	// BuildInfoCore gives the dev stream the same source / categories /

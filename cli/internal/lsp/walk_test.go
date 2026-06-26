@@ -170,7 +170,10 @@ func TestServer_InitializedRegistersFileWatcher(t *testing.T) {
 		}
 		// registerOptions arrives as a generic JSON object; round-trip
 		// to extract the pattern.
-		raw, _ := json.Marshal(reg.RegisterOptions)
+		raw, err := json.Marshal(reg.RegisterOptions)
+		if err != nil {
+			t.Fatalf("marshal registerOptions: %v", err)
+		}
 		var opts DidChangeWatchedFilesRegistrationOptions
 		if err := json.Unmarshal(raw, &opts); err != nil {
 			t.Fatalf("registerOptions: %v", err)

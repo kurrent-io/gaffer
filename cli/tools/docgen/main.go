@@ -1,7 +1,7 @@
 // docgen generates a single Markdown reference page covering every
 // visible gaffer subcommand, for inclusion in the user-facing docs.
 //
-//	go run ./cmd/docgen <output-file>
+//	go run ./tools/docgen <output-file>
 //
 // Hidden commands and flags are skipped. The root `gaffer` command is
 // not emitted; its short description is assumed to live in the page's

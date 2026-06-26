@@ -2,7 +2,8 @@ package cmd
 
 import (
 	"errors"
-	"sort"
+	"maps"
+	"slices"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
@@ -260,12 +261,7 @@ func (t *projErrTracker) Sorted() []telemetry.ProjectionOutcome {
 	if t == nil || len(t.seen) == 0 {
 		return nil
 	}
-	out := make([]telemetry.ProjectionOutcome, 0, len(t.seen))
-	for k := range t.seen {
-		out = append(out, k)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out
+	return slices.Sorted(maps.Keys(t.seen))
 }
 
 // last returns the lexically-last recorded outcome, used by
@@ -311,10 +307,5 @@ func (t *diagSeenTracker) Sorted() []string {
 	if t == nil || len(t.seen) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(t.seen))
-	for k := range t.seen {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
+	return slices.Sorted(maps.Keys(t.seen))
 }

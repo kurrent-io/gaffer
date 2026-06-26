@@ -3,6 +3,7 @@ package subscription
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
@@ -17,8 +18,7 @@ func buildFilter(info gafferruntime.ProjectionInfo, engineVersion int) *kurrentd
 	// still populated with the specific handler names regardless,
 	// so the AllEvents check has to come before the len(Events) one.
 	if info.AllStreams && !info.AllEvents && len(info.Events) > 0 {
-		prefixes := make([]string, len(info.Events))
-		copy(prefixes, info.Events)
+		prefixes := slices.Clone(info.Events)
 		if info.HandlesDeletedNotifications {
 			prefixes = append(prefixes, "$streamDeleted", "$metadata")
 		}

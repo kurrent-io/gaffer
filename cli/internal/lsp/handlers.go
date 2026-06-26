@@ -12,7 +12,7 @@ import (
 
 // handle dispatches a single JSON-RPC message to the right method.
 // jsonrpc2.HandlerWithError takes care of error/result wrapping.
-func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) (interface{}, error) {
+func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) (any, error) {
 	switch req.Method {
 	case MethodInitialize:
 		return s.handleInitialize(ctx, req)
@@ -63,7 +63,7 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 	}
 }
 
-func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (interface{}, error) {
+func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.initialized {
@@ -105,7 +105,7 @@ func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (int
 	}, nil
 }
 
-func (s *Server) handleDidOpen(_ context.Context, req *jsonrpc2.Request) (interface{}, error) {
+func (s *Server) handleDidOpen(_ context.Context, req *jsonrpc2.Request) (any, error) {
 	params, jerr := decodeParams[DidOpenTextDocumentParams](req, "didOpen")
 	if jerr != nil {
 		return nil, jerr
@@ -123,7 +123,7 @@ func (s *Server) handleDidOpen(_ context.Context, req *jsonrpc2.Request) (interf
 	return nil, nil
 }
 
-func (s *Server) handleDidChange(_ context.Context, req *jsonrpc2.Request) (interface{}, error) {
+func (s *Server) handleDidChange(_ context.Context, req *jsonrpc2.Request) (any, error) {
 	params, jerr := decodeParams[DidChangeTextDocumentParams](req, "didChange")
 	if jerr != nil {
 		return nil, jerr
@@ -164,7 +164,7 @@ func (s *Server) handleDidChange(_ context.Context, req *jsonrpc2.Request) (inte
 	return nil, nil
 }
 
-func (s *Server) handleDidClose(req *jsonrpc2.Request) (interface{}, error) {
+func (s *Server) handleDidClose(req *jsonrpc2.Request) (any, error) {
 	params, jerr := decodeParams[DidCloseTextDocumentParams](req, "didClose")
 	if jerr != nil {
 		return nil, jerr
@@ -198,7 +198,7 @@ func (s *Server) handleDidClose(req *jsonrpc2.Request) (interface{}, error) {
 	return nil, nil
 }
 
-func (s *Server) handleCodeLens(req *jsonrpc2.Request) (interface{}, error) {
+func (s *Server) handleCodeLens(req *jsonrpc2.Request) (any, error) {
 	s.stats.codeLensRequests.Add(1)
 	if req.Params == nil {
 		return []CodeLens{}, nil
@@ -221,7 +221,7 @@ func (s *Server) handleCodeLens(req *jsonrpc2.Request) (interface{}, error) {
 	return emitEntryScriptLenses(s.docs.AllParses(), uri), nil
 }
 
-func (s *Server) handleWorkspaceSymbol(req *jsonrpc2.Request) (interface{}, error) {
+func (s *Server) handleWorkspaceSymbol(req *jsonrpc2.Request) (any, error) {
 	// Empty params is a legal "give me everything" query. Our
 	// catalogue (one entry per projection) is small enough that
 	// the client can do its own filtering on the result; we
@@ -240,7 +240,7 @@ func (s *Server) handleWorkspaceSymbol(req *jsonrpc2.Request) (interface{}, erro
 // and the projection's fixture names. Lookup is by configURI +
 // name; missing config or missing projection both surface as
 // "config has nothing to say" - the editor falls back to live.
-func (s *Server) handleProjectionDetails(req *jsonrpc2.Request) (interface{}, error) {
+func (s *Server) handleProjectionDetails(req *jsonrpc2.Request) (any, error) {
 	params, jerr := decodeParams[ProjectionDetailsParams](req, "projectionDetails")
 	if jerr != nil {
 		return nil, jerr
@@ -278,7 +278,7 @@ func (s *Server) handleProjectionDetails(req *jsonrpc2.Request) (interface{}, er
 	return ProjectionDetailsResult{Fixtures: []string{}}, nil
 }
 
-func (s *Server) handleShutdown() (interface{}, error) {
+func (s *Server) handleShutdown() (any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.shutdownReq = true

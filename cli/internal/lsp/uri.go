@@ -77,19 +77,12 @@ func samePath(a, b string) bool {
 func rangeToLSP(r config.SourceRange) Range {
 	return Range{
 		Start: Position{
-			Line:      max0(r.StartLine - 1),
-			Character: max0(r.StartCol),
+			Line:      max(0, r.StartLine-1),
+			Character: max(0, r.StartCol),
 		},
 		End: Position{
-			Line:      max0(r.EndLine - 1),
-			Character: max0(r.EndCol),
+			Line:      max(0, r.EndLine-1),
+			Character: max(0, r.EndCol),
 		},
 	}
-}
-
-func max0(x int) int {
-	if x < 0 {
-		return 0
-	}
-	return x
 }

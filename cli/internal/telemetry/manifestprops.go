@@ -1,7 +1,8 @@
 package telemetry
 
 import (
-	"sort"
+	"maps"
+	"slices"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 )
@@ -79,10 +80,5 @@ func ManifestFeaturesOf(c *config.Config) []string {
 	if hasFixtures {
 		features["fixtures"] = struct{}{}
 	}
-	out := make([]string, 0, len(features))
-	for k := range features {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
+	return slices.Sorted(maps.Keys(features))
 }

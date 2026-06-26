@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -121,9 +122,7 @@ func (s *Server) ProjectionErrors() []error {
 	if len(s.projErrs) == 0 {
 		return nil
 	}
-	out := make([]error, len(s.projErrs))
-	copy(out, s.projErrs)
-	return out
+	return slices.Clone(s.projErrs)
 }
 
 // recordProjectionError stashes a runner fault so the cobra wrapper

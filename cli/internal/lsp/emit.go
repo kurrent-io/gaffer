@@ -69,7 +69,7 @@ func emitCodeLenses(desc config.Description, uri string) []CodeLens {
 				Command: &Command{
 					Title:   "Debug",
 					Command: CommandDebugProjection,
-					Arguments: []interface{}{
+					Arguments: []any{
 						projectionArgs{Name: p.Name, ConfigURI: uri, Env: target},
 					},
 				},
@@ -97,7 +97,7 @@ func emitCodeLenses(desc config.Description, uri string) []CodeLens {
 				Command: &Command{
 					Title:   "Debug",
 					Command: CommandDebugProjection,
-					Arguments: []interface{}{
+					Arguments: []any{
 						projectionArgs{Name: p.Name, ConfigURI: uri, Fixture: fx.Name},
 					},
 				},
@@ -110,7 +110,7 @@ func emitCodeLenses(desc config.Description, uri string) []CodeLens {
 				Command: &Command{
 					Title:   "Debug from...",
 					Command: CommandDebugProjectionPick,
-					Arguments: []interface{}{
+					Arguments: []any{
 						projectionPickArgs{
 							Name:         p.Name,
 							ConfigURI:    uri,
@@ -218,7 +218,7 @@ func emitEntryScriptLenses(parses []parseResult, uri string) []CodeLens {
 				Command: &Command{
 					Title:   `Debug "` + p.Name + `"`,
 					Command: CommandDebugProjection,
-					Arguments: []interface{}{
+					Arguments: []any{
 						projectionArgs{Name: p.Name, ConfigURI: tomlURI, Env: liveTarget},
 					},
 				},
@@ -238,7 +238,7 @@ func emitEntryScriptLenses(parses []parseResult, uri string) []CodeLens {
 				Command: &Command{
 					Title:   `Debug "` + p.Name + `" from...`,
 					Command: CommandDebugProjectionPick,
-					Arguments: []interface{}{
+					Arguments: []any{
 						projectionPickArgs{
 							Name:         p.Name,
 							ConfigURI:    tomlURI,

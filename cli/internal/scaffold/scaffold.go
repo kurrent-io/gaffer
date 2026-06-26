@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
@@ -16,9 +17,7 @@ var supportedExtensions = []string{".js"}
 
 // ListExtensions returns a copy of the allowlist for help-text rendering.
 func ListExtensions() []string {
-	out := make([]string, len(supportedExtensions))
-	copy(out, supportedExtensions)
-	return out
+	return slices.Clone(supportedExtensions)
 }
 
 // IsSupported reports whether ext is in the allowlist.

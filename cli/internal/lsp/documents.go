@@ -2,7 +2,7 @@ package lsp
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
@@ -164,7 +164,7 @@ func (s *documentStore) OpenURIs() []string {
 			out = append(out, uri)
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

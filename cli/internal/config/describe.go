@@ -3,9 +3,10 @@ package config
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"github.com/BurntSushi/toml"
 
@@ -219,11 +220,7 @@ func describeProjection(
 	// Iterate fixtures in alphabetical order to match
 	// FixtureNames()'s contract. Stable across runs regardless of
 	// Go map iteration randomness.
-	names := make([]string, 0, len(p.Fixtures))
-	for name := range p.Fixtures {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(p.Fixtures))
 
 	for _, name := range names {
 		entry.Fixtures = append(entry.Fixtures, describeFixture(

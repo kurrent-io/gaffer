@@ -16,6 +16,9 @@ linters:
     - unconvert
     - copyloopvar
     - misspell
+    - gosec
+    - contextcheck
+    - noctx
 
   settings:
     revive:

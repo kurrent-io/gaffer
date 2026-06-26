@@ -78,9 +78,19 @@ func NewDebugAdapter(session *gafferruntime.Session, sourcePath, remoteRoot stri
 	}
 }
 
-// SetRunner connects the adapter to the engine runner.
+// SetRunner connects the adapter to the engine runner. dev.go starts the DAP
+// server before binding the runner, so configurationDone can arm an entry pause
+// while a.runner is still nil; apply that armed pause here so it can't be lost
+// to the bind race. The pending flag is left set for HandleBreak to consume (it
+// labels the resulting break as the entry pause).
 func (a *DebugAdapter) SetRunner(r *engine.Runner) {
+	a.mu.Lock()
 	a.runner = r
+	pauseAtEntry := a.entryPausePending
+	a.mu.Unlock()
+	if pauseAtEntry && r != nil {
+		a.reportDebugError("pause", r.Pause())
+	}
 }
 
 // SetStartPausedIfNoBreakpoints enables an entry pause when no breakpoints
@@ -570,17 +580,21 @@ func (a *DebugAdapter) handleConfigurationDone(s *Server, req *godap.Configurati
 	// that will never arrive. (UI-1583)
 	a.mu.Lock()
 	pauseAtEntry := a.startPausedIfNoBreakpoints && a.breakpointCount == 0
+	var runner *engine.Runner
 	if pauseAtEntry {
 		a.entryPausePending = true
+		runner = a.runner
 	}
 	a.mu.Unlock()
-	if pauseAtEntry && a.runner != nil {
+	if pauseAtEntry && runner != nil {
 		// Unlike handlePause, the entry pause can't ride an error response: this
 		// is the configurationDone request, and a pause failure shouldn't fail
 		// config completion. Surface it on the console instead. (Pause only
-		// fails on a dead session, so this is a safety net.) Guard the runner
-		// like handlePause: it's bound after the server starts serving.
-		a.reportDebugError("pause", a.runner.Pause())
+		// fails on a dead session, so this is a safety net.) If the runner isn't
+		// bound yet, the flag stays armed and SetRunner applies the pause when it
+		// binds - reading a.runner under the same lock that arms the flag means
+		// exactly one of the two paths ever fires the pause.
+		a.reportDebugError("pause", runner.Pause())
 	}
 
 	resp := &godap.ConfigurationDoneResponse{}

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/kurrent-io/gaffer/cli/internal/styledbox"
+	"github.com/kurrent-io/gaffer/cli/internal/ttyutil"
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
 
@@ -211,24 +212,19 @@ func IsTTYCheckForTesting(fn func(io.Writer) bool) (restore func()) {
 
 // isTTY reports whether w is backed by a terminal. Returns false for
 // any non-*os.File (bytes.Buffer in tests, io.MultiWriter, etc.) and
-// for *os.File pointing at a pipe, regular file, or /dev/null. Uses
-// the char-device bit on the file's Mode - matches `git`,
-// `kubectl`, and most CLIs' "am I piped?" check; portable across
-// Linux / macOS / Windows console handles without a TTY-detection
-// dependency.
+// for *os.File pointing at a pipe, regular file, or /dev/null. The
+// leaf terminal check is shared via ttyutil so it can't disagree with
+// the prompt / update-check / deploy gates on edge cases (cygwin/msys
+// ptys).
 //
 // Package-level var so tests can override (test stderr is a
-// bytes.Buffer that'd never trip the char-device check otherwise).
+// bytes.Buffer that'd never satisfy the terminal check otherwise).
 var isTTY = func(w io.Writer) bool {
 	f, ok := w.(*os.File)
 	if !ok {
 		return false
 	}
-	stat, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return stat.Mode()&os.ModeCharDevice != 0
+	return ttyutil.IsTerminal(f)
 }
 
 // EnsureIdentity is the composition entry point: opt-out check,

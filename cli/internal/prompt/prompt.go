@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/charmbracelet/huh"
-	"github.com/mattn/go-isatty"
+	"github.com/kurrent-io/gaffer/cli/internal/ttyutil"
 )
 
 // ErrCancelled is returned when the user aborts a prompt (Ctrl+C / Esc).
@@ -31,8 +31,8 @@ var ErrCancelled = errors.New("cancelled")
 // decision, not this gate's.
 func Enabled(yes bool) bool {
 	return !yes &&
-		isatty.IsTerminal(os.Stdin.Fd()) &&
-		isatty.IsTerminal(os.Stderr.Fd())
+		ttyutil.IsTerminal(os.Stdin) &&
+		ttyutil.IsTerminal(os.Stderr)
 }
 
 // Option pairs a display label with the value returned when chosen.

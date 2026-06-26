@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/fang"
-	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
+	"github.com/kurrent-io/gaffer/cli/internal/ttyutil"
 	"github.com/kurrent-io/gaffer/cli/internal/updatecheck"
 )
 
@@ -110,7 +110,7 @@ func NewRootCmd() *cobra.Command {
 			// gaffer non-interactively. Start is nil-safe when no
 			// Client was stashed on ctx - the cmd test harness
 			// exercises that branch.
-			quiet := !isatty.IsTerminal(os.Stderr.Fd()) || emitsStructuredOutput(cmd)
+			quiet := !ttyutil.IsTerminal(os.Stderr) || emitsStructuredOutput(cmd)
 			updatecheck.FromCtx(cmd.Context()).Start(noUpdateCheck, quiet)
 			return nil
 		},

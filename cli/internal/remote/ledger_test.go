@@ -14,11 +14,17 @@ import (
 
 var ledgerTime = time.Date(2026, 6, 26, 10, 0, 0, 0, time.UTC)
 
-// ledgerEvent is a $ProjectionUpdated carrying the given metadata JSON, the shape
-// the server synthesises on read (caller keys at the top level).
+// liveState is a non-tombstone persisted-state, the event data readLedger's gate
+// (parseDefinition) reads to confirm the projection isn't deleted.
+const liveState = `{"query":"fromAll()","enabled":true}`
+
+// ledgerEvent is a $ProjectionUpdated carrying the given metadata JSON (the shape
+// the server synthesises on read, caller keys at the top level) over a live
+// persisted-state.
 func ledgerEvent(metadata string) *kurrentdb.ResolvedEvent {
 	return &kurrentdb.ResolvedEvent{Event: &kurrentdb.RecordedEvent{
 		EventType:    projectionUpdatedType,
+		Data:         []byte(liveState),
 		UserMetadata: []byte(metadata),
 		CreatedDate:  ledgerTime,
 	}}
@@ -32,9 +38,9 @@ const (
 )
 
 func TestParseLedger(t *testing.T) {
-	l, ok := parseLedger([]byte(gafferMetadata), ledgerTime)
-	if !ok {
-		t.Fatal("parseLedger: ok=false for a tool entry")
+	l, err := parseLedger([]byte(gafferMetadata), ledgerTime)
+	if err != nil || l == nil {
+		t.Fatalf("parseLedger: l=%v err=%v for a tool entry", l, err)
 	}
 	if l.Tool != "Gaffer" || l.ToolVersion != "1.2.3" || l.Operation != "deploy" {
 		t.Errorf("core fields = %+v", l)
@@ -49,9 +55,9 @@ func TestParseLedger(t *testing.T) {
 
 func TestParseLedgerOmittedOptionalFields(t *testing.T) {
 	// A foreign tool that writes only the required keys (no revision/actor).
-	l, ok := parseLedger([]byte(`{"tool":"KurrentDB Admin UI","tool_version":"26.2.0","operation":"create"}`), ledgerTime)
-	if !ok {
-		t.Fatal("parseLedger: ok=false")
+	l, err := parseLedger([]byte(`{"tool":"KurrentDB Admin UI","tool_version":"26.2.0","operation":"create"}`), ledgerTime)
+	if err != nil || l == nil {
+		t.Fatalf("parseLedger: l=%v err=%v", l, err)
 	}
 	if l.Tool != "KurrentDB Admin UI" {
 		t.Errorf("Tool = %q", l.Tool)
@@ -61,16 +67,26 @@ func TestParseLedgerOmittedOptionalFields(t *testing.T) {
 	}
 }
 
-func TestParseLedgerRejectsNonTool(t *testing.T) {
+func TestParseLedgerSkipsNonToolEntries(t *testing.T) {
+	// Not a tool entry, but not an error either: the scan should walk past these.
 	for name, md := range map[string]string{
 		"synthetic-only": syntheticMetadata,
 		"empty":          "",
-		"bad json":       `{not json`,
 		"empty object":   `{}`,
 	} {
-		if _, ok := parseLedger([]byte(md), ledgerTime); ok {
-			t.Errorf("%s: parseLedger ok=true, want rejected", name)
+		l, err := parseLedger([]byte(md), ledgerTime)
+		if l != nil || err != nil {
+			t.Errorf("%s: parseLedger = (%v, %v), want (nil, nil) to skip", name, l, err)
 		}
+	}
+}
+
+func TestParseLedgerSurfacesBadJSON(t *testing.T) {
+	// A non-empty blob that won't decode is a real anomaly (the server always
+	// synthesises JSON), surfaced rather than mistaken for "no tool entry".
+	l, err := parseLedger([]byte(`{not json`), ledgerTime)
+	if err == nil {
+		t.Errorf("parseLedger on bad JSON = (%v, nil), want an error surfaced", l)
 	}
 }
 
@@ -84,7 +100,7 @@ func TestReadLedgerSkipsLifecycleToNewestToolEntry(t *testing.T) {
 		recvStep{ev: &kurrentdb.ResolvedEvent{Event: &kurrentdb.RecordedEvent{EventType: "$metadata"}}}, // other type
 		recvStep{ev: ledgerEvent(gafferMetadata)},
 	)
-	l, err := readLedger(next)
+	l, err := readLedger(next, "orders")
 	if err != nil {
 		t.Fatalf("readLedger: %v", err)
 	}
@@ -93,12 +109,42 @@ func TestReadLedgerSkipsLifecycleToNewestToolEntry(t *testing.T) {
 	}
 }
 
+func TestReadLedgerTombstonedIsNotFound(t *testing.T) {
+	// The newest state marks the projection deleted: ErrNotFound, consistent with
+	// Read, even though older events still carry a tool entry.
+	tombstone := &kurrentdb.ResolvedEvent{Event: &kurrentdb.RecordedEvent{
+		EventType:    projectionUpdatedType,
+		Data:         []byte(`{"query":"fromAll()","deleted":true}`),
+		UserMetadata: []byte(syntheticMetadata),
+		CreatedDate:  ledgerTime,
+	}}
+	next := recvSeq(recvStep{ev: tombstone}, recvStep{ev: ledgerEvent(gafferMetadata)})
+	if _, err := readLedger(next, "orders"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound for a tombstoned projection", err)
+	}
+}
+
+func TestReadLedgerSurfacesBadMetadata(t *testing.T) {
+	// A live projection whose newest tool metadata won't decode: surface it, don't
+	// scan past to ErrNoLedger.
+	bad := &kurrentdb.ResolvedEvent{Event: &kurrentdb.RecordedEvent{
+		EventType:    projectionUpdatedType,
+		Data:         []byte(liveState),
+		UserMetadata: []byte(`{not json`),
+		CreatedDate:  ledgerTime,
+	}}
+	_, err := readLedger(recvSeq(recvStep{ev: bad}), "orders")
+	if err == nil || errors.Is(err, ErrNoLedger) {
+		t.Fatalf("err = %v, want a surfaced decode error (not ErrNoLedger)", err)
+	}
+}
+
 func TestReadLedgerClassifiesReadError(t *testing.T) {
 	// A failure partway through the scan must surface the typed sentinel, not be
 	// mistaken for ErrNoLedger (which would tell a caller "degrade" when the truth
 	// is "couldn't read").
 	next := recvSeq(recvStep{err: status.New(codes.Unavailable, "boom").Err()})
-	_, err := readLedger(next)
+	_, err := readLedger(next, "orders")
 	if !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("err = %v, want ErrUnavailable", err)
 	}
@@ -112,7 +158,7 @@ func TestReadLedgerAbsentStreamIsNotFound(t *testing.T) {
 	// Recv (not io.EOF). ReadLedger keeps that distinct from ErrNoLedger so a caller
 	// can tell "projection gone" from "exists but untracked".
 	next := recvSeq(recvStep{err: status.New(codes.NotFound, "stream not found").Err()})
-	_, err := readLedger(next)
+	_, err := readLedger(next, "orders")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
@@ -126,13 +172,13 @@ func TestReadLedgerNoToolEntryIsErrNoLedger(t *testing.T) {
 		recvStep{ev: ledgerEvent(syntheticMetadata)},
 		recvStep{ev: ledgerEvent(syntheticMetadata)},
 	)
-	if _, err := readLedger(next); !errors.Is(err, ErrNoLedger) {
+	if _, err := readLedger(next, "orders"); !errors.Is(err, ErrNoLedger) {
 		t.Fatalf("err = %v, want ErrNoLedger", err)
 	}
 }
 
 func TestReadLedgerEmptyStreamIsErrNoLedger(t *testing.T) {
-	if _, err := readLedger(recvSeq()); !errors.Is(err, ErrNoLedger) {
+	if _, err := readLedger(recvSeq(), "orders"); !errors.Is(err, ErrNoLedger) {
 		t.Fatalf("err = %v, want ErrNoLedger", err)
 	}
 }
@@ -177,9 +223,9 @@ func TestLedgerMetadataRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	out, ok := parseLedger(raw, ledgerTime)
-	if !ok {
-		t.Fatal("parseLedger: ok=false")
+	out, err := parseLedger(raw, ledgerTime)
+	if err != nil || out == nil {
+		t.Fatalf("parseLedger: out=%v err=%v", out, err)
 	}
 	if out.Tool != in.Tool || out.ToolVersion != in.ToolVersion || out.Operation != in.Operation || out.Revision != in.Revision || out.Actor != in.Actor {
 		t.Errorf("round-trip mismatch:\n in  %+v\n out %+v", in, out)

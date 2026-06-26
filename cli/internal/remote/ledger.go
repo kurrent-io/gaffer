@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"time"
 
@@ -92,12 +93,13 @@ const ledgerScanLimit = 256
 // marker for ownership decisions is Tool == ToolName). Requires admin/$ops read
 // access.
 //
-// Three outcomes: the latest entry; ErrNoLedger if the projection exists but no
-// tool entry is present within the scan window (untracked, or buried under only
-// metadata-less lifecycle events); or ErrNotFound if the projection's stream is
-// absent - on a backward read a missing stream surfaces at the first Recv, kept
-// distinct from existing-but-untracked so a caller (e.g. orphan detection) can
-// tell "gone" from "not ours".
+// Outcomes: the latest entry; ErrNoLedger if the projection exists but no tool
+// entry is present within the scan window (untracked, or buried under only
+// metadata-less lifecycle events); or ErrNotFound if the projection is gone -
+// either its stream is absent (a backward read surfaces that at the first Recv) or
+// its latest state is a tombstone, kept consistent with Read so a caller (e.g.
+// orphan detection) doesn't mistake a deleted projection for a tracked one. A
+// genuinely undecodable definition or metadata blob is surfaced, not swallowed.
 func (c *Client) ReadLedger(ctx context.Context, name string) (*Ledger, error) {
 	stream, err := c.db.ReadStream(ctx, projectionStreamPrefix+name, kurrentdb.ReadStreamOptions{
 		Direction:      kurrentdb.Backwards,
@@ -108,18 +110,21 @@ func (c *Client) ReadLedger(ctx context.Context, name string) (*Ledger, error) {
 		return nil, classify(err)
 	}
 	defer stream.Close()
-	return readLedger(stream.Recv)
+	return readLedger(stream.Recv, name)
 }
 
 // readLedger walks events newest-first and returns the first $ProjectionUpdated
 // whose metadata carries a tool key, skipping metadata-less lifecycle events.
-// Exhausting the window without one is ErrNoLedger. Split from ReadLedger so the
-// loop is testable without a live read stream, mirroring readDefinition.
-func readLedger(next func() (*kurrentdb.ResolvedEvent, error)) (*Ledger, error) {
+// Exhausting the window without one is ErrNoLedger. The newest definition event
+// gates the read via parseDefinition: a tombstoned projection is ErrNotFound
+// (matching Read), and an undecodable state surfaces rather than being read past.
+// Split from ReadLedger so the loop is testable without a live read stream.
+func readLedger(next func() (*kurrentdb.ResolvedEvent, error), name string) (*Ledger, error) {
+	checkedState := false
 	for {
 		ev, err := next()
 		if errors.Is(err, io.EOF) {
-			return nil, ErrNoLedger
+			return nil, fmt.Errorf("%w: %s", ErrNoLedger, name)
 		}
 		if err != nil {
 			return nil, classify(err)
@@ -127,28 +132,40 @@ func readLedger(next func() (*kurrentdb.ResolvedEvent, error)) (*Ledger, error) 
 		if ev == nil || ev.Event == nil || ev.Event.EventType != projectionUpdatedType {
 			continue
 		}
-		if l, ok := parseLedger(ev.Event.UserMetadata, ev.Event.CreatedDate); ok {
+		if !checkedState {
+			checkedState = true
+			if _, err := parseDefinition(ev.Event.Data, name); err != nil {
+				return nil, err
+			}
+		}
+		l, err := parseLedger(ev.Event.UserMetadata, ev.Event.CreatedDate)
+		if err != nil {
+			return nil, fmt.Errorf("decode tool metadata for %q: %w", name, err)
+		}
+		if l != nil {
 			return l, nil
 		}
 	}
 }
 
-// parseLedger decodes one event's metadata JSON into a Ledger, reporting ok=false
-// when it isn't a tool entry: empty/absent metadata, non-JSON, or no tool key (a
-// metadata-less lifecycle event carries only the server's synthetic $ keys). The
-// server synthesises property metadata back to JSON on read with caller keys at
-// the top level, so a plain object decode suffices.
-func parseLedger(metadata []byte, created time.Time) (*Ledger, bool) {
+// parseLedger decodes one event's metadata JSON into a Ledger, or (nil, nil) when
+// it isn't a tool entry: empty/absent metadata, or no tool key (a metadata-less
+// lifecycle event carries only the server's synthetic $ keys). A non-empty blob
+// that fails to decode is returned as an error, not silently skipped - the server
+// synthesises property metadata back to JSON, so a decode failure is a real
+// anomaly, not an absence. The caller's keys sit at the top level, so a plain
+// object decode suffices.
+func parseLedger(metadata []byte, created time.Time) (*Ledger, error) {
 	if len(metadata) == 0 {
-		return nil, false
+		return nil, nil
 	}
 	var raw map[string]any
 	if err := json.Unmarshal(metadata, &raw); err != nil {
-		return nil, false
+		return nil, err
 	}
 	tool := stringField(raw, ledgerKeyTool)
 	if tool == "" {
-		return nil, false
+		return nil, nil
 	}
 	return &Ledger{
 		Tool:        tool,
@@ -157,7 +174,7 @@ func parseLedger(metadata []byte, created time.Time) (*Ledger, bool) {
 		Revision:    stringField(raw, ledgerKeyRevision),
 		Actor:       stringField(raw, ledgerKeyActor),
 		Time:        created,
-	}, true
+	}, nil
 }
 
 func stringField(m map[string]any, key string) string {

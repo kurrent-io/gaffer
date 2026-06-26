@@ -13,6 +13,7 @@ import (
 var validateTool = &mcp.Tool{
 	Name:        "validate",
 	Description: "Compile and check a projection without running it. Returns whether the source is valid and projection metadata (source type, events, partitioning). Does not create or affect any session.",
+	Annotations: readOnlyHints(),
 }
 
 type validateInput struct {

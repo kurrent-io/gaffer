@@ -17,10 +17,7 @@ var infoTool = &mcp.Tool{
 		"Mirrors `gaffer info <name> --json`. When the project has a single " +
 		"configured projection, `name` may be omitted; call list_projections " +
 		"to discover names otherwise.",
-	Annotations: &mcp.ToolAnnotations{
-		ReadOnlyHint:   true,
-		IdempotentHint: true,
-	},
+	Annotations: readOnlyHints(),
 }
 
 type infoInput struct {

@@ -10,6 +10,7 @@ import (
 var getHistoryTool = &mcp.Tool{
 	Name:        "get_history",
 	Description: "Get state snapshots and a compact step summary between two steps. Returns the projection state before the range, the state after the range, and timeline entries (including the codes of any runtime quirks that fired) for each step in between. Use get_step for full event/result detail at a specific step.",
+	Annotations: readOnlyHints(),
 }
 
 type getHistoryInput struct {

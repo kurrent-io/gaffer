@@ -9,6 +9,7 @@ import (
 var getTimelineTool = &mcp.Tool{
 	Name:        "get_timeline",
 	Description: "Get a compact overview of a range of steps. Returns step number, event type, stream ID, status, emit/log flags, and the codes of any runtime quirks that fired (quirks) for each step. Use this to scan for interesting steps - including fired quirks - then drill in with get_step.",
+	Annotations: readOnlyHints(),
 }
 
 type getTimelineInput struct {

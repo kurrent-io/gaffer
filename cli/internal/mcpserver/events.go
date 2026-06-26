@@ -16,6 +16,7 @@ import (
 var listEventsTool = &mcp.Tool{
 	Name:        "list_events",
 	Description: "Discover what event types a projection processes by sampling real events from KurrentDB. Uses the projection's source definition to read from the right streams/categories. Returns event types with counts and one example body per type. Requires a KurrentDB connection in gaffer.toml.",
+	Annotations: readOnlyHints(),
 }
 
 type listEventsInput struct {

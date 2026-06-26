@@ -9,6 +9,7 @@ import (
 var listProjectionsTool = &mcp.Tool{
 	Name:        "list_projections",
 	Description: "List all projections defined in the project's gaffer.toml.",
+	Annotations: readOnlyHints(),
 }
 
 type listProjectionsInput struct{}

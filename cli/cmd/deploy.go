@@ -246,15 +246,13 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 		prod = info.IsProduction()
 	}
 
-	// --no-validate skips the preflight compile gate; production never accepts it,
-	// so a prod deploy always validates first. Refuse before applying - nothing has
-	// been written yet. Enforced even under --dry-run: this guards the dangerous flag
-	// combination itself, not the write, so a preview of it is refused too rather than
-	// misreporting a plan the real deploy would never run. exitWith(3) is the
-	// guardrail-refusal code, and (unlike the previous silent wrap) lets fang print
-	// the reason instead of swallowing it.
+	// Refuse the prod --no-validate combination before applying - nothing has been
+	// written yet. Enforced even under --dry-run: this guards the dangerous flag
+	// combination itself, not the write, so a preview of it is refused too rather
+	// than misreporting a plan the real deploy would never run. The guardrail is
+	// defined once (shared with recreate) so its message and exit code can't drift.
 	if prod && opts.NoValidate {
-		return exitWith(3, fmt.Errorf("--no-validate is not allowed on production %s: it skips the preflight compile check. Deploy without it so projections are validated first", targetDesc(target)))
+		return refuseNoValidateOnProd("Deploy", "projections are", target)
 	}
 
 	// --dry-run reports the plan and applies nothing, so it stops before the confirm
@@ -476,7 +474,7 @@ func planAction(c comparison) (deployAction, string) {
 		return actSkip, ""
 	case driftDrifted:
 		if c.Cmp.EngineVersionDiffers || c.Cmp.TrackEmittedStreamsDiffers {
-			return actRefuse, recreateReason(c)
+			return actRefuse, deploy.RecreateReason(c.Cmp, *c.Local, *c.Deployed)
 		}
 		return actUpdate, ""
 	case driftInvalid:
@@ -493,24 +491,6 @@ func planAction(c comparison) (deployAction, string) {
 		// so compareProjection returns one of the above. Defensive only.
 		return actRefuse, "not in gaffer.toml"
 	}
-}
-
-// recreateReason states which create-time field changed, matching gaffer diff's
-// "remote X, local Y" phrasing, and points at gaffer recreate (the resolve path,
-// a separate verb since it destroys and rebuilds the projection).
-func recreateReason(c comparison) string {
-	var which string
-	switch {
-	case c.Cmp.EngineVersionDiffers && c.Cmp.TrackEmittedStreamsDiffers:
-		which = fmt.Sprintf("engine version (remote %d, local %d) and track emitted streams (remote %t, local %t)",
-			c.Deployed.EngineVersion, c.Local.EngineVersion,
-			c.Deployed.TrackEmittedStreams, c.Local.TrackEmittedStreams)
-	case c.Cmp.EngineVersionDiffers:
-		which = fmt.Sprintf("engine version (remote %d, local %d)", c.Deployed.EngineVersion, c.Local.EngineVersion)
-	default:
-		which = fmt.Sprintf("track emitted streams (remote %t, local %t)", c.Deployed.TrackEmittedStreams, c.Local.TrackEmittedStreams)
-	}
-	return which + " can't be changed in place, use gaffer recreate"
 }
 
 // applyAction performs the create, update, or logic-change reset. Emit is always
@@ -533,41 +513,21 @@ func applyAction(ctx context.Context, mgr projectionManager, name string, action
 			return mgr.Update(ctx, name, local.Query, remote.UpdateOptions{Emit: emitPtr(local), Ledger: &ledger})
 		})
 	case actReset:
-		return applyReset(ctx, mgr, name, local, ledger)
+		// The destructive Disable -> Update -> Reset -> Enable sequence, its
+		// ordering and recovery messages, live in internal/deploy; here we only bind
+		// each step to the client and its option mapping. emitPtr keeps the update's
+		// explicit-emit guarantee.
+		return deploy.Rebuild(ctx, name, deploy.RebuildSteps{
+			Disable: func(ctx context.Context) error { return mgr.Disable(ctx, name) },
+			Update: func(ctx context.Context) error {
+				return mgr.Update(ctx, name, local.Query, remote.UpdateOptions{Emit: emitPtr(local), Ledger: &ledger})
+			},
+			Reset:  func(ctx context.Context) error { return mgr.Reset(ctx, name, true) },
+			Enable: func(ctx context.Context) error { return mgr.Enable(ctx, name) },
+		})
 	default:
 		return nil
 	}
-}
-
-// applyReset rebuilds a projection from zero for a logic change: stop it, update
-// to the new query, reset to the beginning, restart. Update needs the projection
-// stopped; reset rewinds and discards state; the restart reprocesses every event
-// with the new logic. A checkpoint is written at the reset so the restart begins
-// from zero rather than the pre-reset position.
-//
-// Disable (not Abort) is the stop: it writes a checkpoint, so a failure before
-// the reset leaves the projection stopped at a real position rather than mid-
-// batch. The reset overwrites that checkpoint with zero anyway, so the extra
-// write is harmless on the happy path and a safer resting point on a partial
-// failure. There's no auto-rollback, so each step names the state it leaves and
-// the recovery.
-func applyReset(ctx context.Context, mgr projectionManager, name string, local *deploy.Descriptor, ledger remote.Ledger) error {
-	if err := rpc(ctx, func(ctx context.Context) error { return mgr.Disable(ctx, name) }); err != nil {
-		return fmt.Errorf("stopping for reset (projection untouched): %w", err)
-	}
-	if err := rpc(ctx, func(ctx context.Context) error {
-		return mgr.Update(ctx, name, local.Query, remote.UpdateOptions{Emit: emitPtr(local), Ledger: &ledger})
-	}); err != nil {
-		return fmt.Errorf("updating for reset - the projection is stopped; run `gaffer start %s` to resume it on the old logic: %w", name, err)
-	}
-	if err := rpc(ctx, func(ctx context.Context) error { return mgr.Reset(ctx, name, true) }); err != nil {
-		return fmt.Errorf("resetting - the projection is stopped on the new query but not rewound; finish the rebuild with `gaffer recreate %s`: %w", name, err)
-	}
-	if err := rpc(ctx, func(ctx context.Context) error { return mgr.Enable(ctx, name) }); err != nil {
-		// State is already wiped and the projection is stopped; no auto-rollback.
-		return fmt.Errorf("reset succeeded but the projection failed to restart - run `gaffer start %s` to rebuild it: %w", name, err)
-	}
-	return nil
 }
 
 // emitPtr returns a non-nil pointer to the descriptor's derived emit flag, so an

@@ -8,7 +8,9 @@
 package pathutil
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -63,7 +65,7 @@ func ResolveAncestorSymlinks(p string) (string, error) {
 				return resolved, nil
 			}
 			return filepath.Join(resolved, suffix), nil
-		} else if !os.IsNotExist(err) {
+		} else if !errors.Is(err, fs.ErrNotExist) {
 			return "", err
 		}
 		parent := filepath.Dir(p)

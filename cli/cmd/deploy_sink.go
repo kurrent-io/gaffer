@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"unicode/utf8"
 )
 
 // deploySink consumes the deploy run's progress. start fires before a
@@ -37,8 +38,8 @@ func newDeploySink(w, errW io.Writer, jsonOut bool, names []string, ctx context.
 func maxNameWidth(names []string) int {
 	w := 0
 	for _, n := range names {
-		if len(n) > w {
-			w = len(n)
+		if rw := utf8.RuneCountInString(n); rw > w {
+			w = rw
 		}
 	}
 	return w

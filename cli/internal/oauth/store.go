@@ -55,7 +55,7 @@ func newTokenStore(kr keyring.Keyring) *TokenStore { return &TokenStore{kr: kr} 
 
 // Save stores the token for identity, replacing any existing one.
 func (s *TokenStore) Save(identity string, tok *oauth2.Token) error {
-	data, err := json.Marshal(tok)
+	data, err := json.Marshal(tok) //nolint:gosec // the token must be serialised to persist it
 	if err != nil {
 		return fmt.Errorf("encode token: %w", err)
 	}
@@ -135,7 +135,7 @@ func filePassword(keyringDir string) keyring.PromptFunc {
 		// to prompt on, and TerminalPrompt would write to stdout - corrupting
 		// the LSP/DAP protocol stream - before failing opaquely. Fail fast with
 		// guidance instead.
-		if !term.IsTerminal(int(os.Stdin.Fd())) {
+		if !term.IsTerminal(int(os.Stdin.Fd())) { //nolint:gosec // term takes an int fd; fds are small, no overflow
 			return "", fmt.Errorf("%w: set GAFFER_KEYRING_PASSWORD, or run `gaffer auth` from a terminal", ErrKeyringLocked)
 		}
 		prompt := "Enter passphrase to unlock gaffer's stored credentials"

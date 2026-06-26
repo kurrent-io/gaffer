@@ -13,7 +13,7 @@ func (s *Server) startLiveSubscription(sess *activeSession, cfg *config.Config, 
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // cancel is stored in sess.cancel and called by closeSession
 	sess.cancel = cancel
 	sess.live = true
 	sess.runner.SetStatus("running")

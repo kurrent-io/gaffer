@@ -222,7 +222,7 @@ func initialHeight(w io.Writer) int {
 	if !ok {
 		return 0
 	}
-	if _, h, err := term.GetSize(int(f.Fd())); err == nil {
+	if _, h, err := term.GetSize(int(f.Fd())); err == nil { //nolint:gosec // term takes an int fd; fds are small, no overflow
 		return h
 	}
 	return 0

@@ -15,6 +15,7 @@ linters:
     - unconvert
     - copyloopvar
     - misspell
+    - gosec
 
   settings:
     revive:
@@ -49,6 +50,10 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      - path: _test\.go|internal/testutil/|tools/
+        linters:
+          - gosec
 
 formatters:
   enable:

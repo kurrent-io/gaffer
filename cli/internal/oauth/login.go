@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"golang.org/x/oauth2"
 )
@@ -98,7 +99,7 @@ func Login(ctx context.Context, c Config, openBrowser func(authURL string) error
 		}
 	})
 
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(listener) }()
 	defer func() { _ = srv.Close() }()
 

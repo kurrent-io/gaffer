@@ -61,7 +61,7 @@ func openSourceDiff(name, remoteQuery, local string, out, errOut io.Writer) erro
 	}
 
 	args := append(append([]string{}, argv[1:]...), remotePath, localPath)
-	c := exec.Command(argv[0], args...)
+	c := exec.Command(argv[0], args...) //nolint:gosec // argv is the user's configured diff command
 	c.Stdout = out
 	c.Stderr = errOut
 	// A diff tool that ran and exited non-zero is reporting "files differ" (git

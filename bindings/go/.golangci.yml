@@ -1,7 +1,24 @@
 version: "2"
 
 linters:
-  enable-all: true
+  enable:
+    - revive
+    - forbidigo
+    - errorlint
+    - forcetypeassert
+    - errchkjson
+    - intrange
+    - modernize
+    - bodyclose
+    - nilerr
+    - perfsprint
+    - usetesting
+    - unconvert
+    - copyloopvar
+    - misspell
+    - gosec
+    - contextcheck
+    - noctx
 
   settings:
     revive:
@@ -15,10 +32,22 @@ linters:
         - name: empty-block
         - name: unreachable-code
         - name: unexported-return
+        - name: use-any
 
-    exhaustruct:
-      exclude:
-        - 'testing\.T'
+    forbidigo:
+      forbid:
+        - pattern: '^(fmt\.Print(|f|ln)|print|println)$'
+          msg: Do not commit print statements.
+        - pattern: '^sort\.(Strings|Ints|Float64s|Slice|SliceStable)$'
+          msg: Use slices.Sort / slices.SortFunc (go 1.21+), not sort.*
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
 
 formatters:
   enable:

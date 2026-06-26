@@ -265,15 +265,21 @@ func assertFixtureError(t *testing.T, err error, expected *fixtureError) {
 
 func assertJSONEqual(t *testing.T, label, expected, actual string) {
 	t.Helper()
-	var exp, act interface{}
+	var exp, act any
 	if err := json.Unmarshal([]byte(expected), &exp); err != nil {
 		t.Fatalf("%s: invalid expected JSON: %v", label, err)
 	}
 	if err := json.Unmarshal([]byte(actual), &act); err != nil {
 		t.Fatalf("%s: invalid actual JSON: %v", label, err)
 	}
-	expNorm, _ := json.Marshal(exp)
-	actNorm, _ := json.Marshal(act)
+	expNorm, err := json.Marshal(exp)
+	if err != nil {
+		t.Fatalf("%s: marshal expected: %v", label, err)
+	}
+	actNorm, err := json.Marshal(act)
+	if err != nil {
+		t.Fatalf("%s: marshal actual: %v", label, err)
+	}
 	if string(expNorm) != string(actNorm) {
 		t.Fatalf("%s:\n  expected: %s\n  actual:   %s", label, expNorm, actNorm)
 	}
@@ -290,8 +296,14 @@ func assertSourcesMatch(t *testing.T, sourcesJSON string, expected map[string]js
 		if !ok {
 			t.Fatalf("sources missing key %q", key)
 		}
-		expNorm, _ := json.Marshal(json.RawMessage(expVal))
-		actNorm, _ := json.Marshal(json.RawMessage(actVal))
+		expNorm, err := json.Marshal(expVal)
+		if err != nil {
+			t.Fatalf("sources[%s]: marshal expected: %v", key, err)
+		}
+		actNorm, err := json.Marshal(actVal)
+		if err != nil {
+			t.Fatalf("sources[%s]: marshal actual: %v", key, err)
+		}
 		if string(expNorm) != string(actNorm) {
 			t.Fatalf("sources[%s]:\n  expected: %s\n  actual:   %s", key, expNorm, actNorm)
 		}

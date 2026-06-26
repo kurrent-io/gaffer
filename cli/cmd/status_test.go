@@ -52,7 +52,7 @@ func TestWriteStatusTable(t *testing.T) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
 	}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		if line != strings.TrimRight(line, " ") {
 			t.Errorf("row has trailing whitespace: %q", line)
 		}
@@ -61,7 +61,7 @@ func TestWriteStatusTable(t *testing.T) {
 	// The count row's cells must appear left-to-right in column order, so a
 	// column swap is caught (substring presence alone wouldn't).
 	var countLine string
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(line, "count") {
 			countLine = line
 			break

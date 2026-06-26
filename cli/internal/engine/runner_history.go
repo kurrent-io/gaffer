@@ -1,7 +1,7 @@
 package engine
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 )
@@ -10,35 +10,35 @@ import (
 
 func (r *Runner) GetStep(step int64) (*history.Step, error) {
 	if r.history == nil {
-		return nil, fmt.Errorf("no history store")
+		return nil, errors.New("no history store")
 	}
 	return r.history.Get(step)
 }
 
 func (r *Runner) Timeline(from, to int64) ([]history.TimelineEntry, error) {
 	if r.history == nil {
-		return nil, fmt.Errorf("no history store")
+		return nil, errors.New("no history store")
 	}
 	return r.history.Timeline(from, to)
 }
 
 func (r *Runner) TimelineFiltered(from, to int64, partition string) ([]history.TimelineEntry, error) {
 	if r.history == nil {
-		return nil, fmt.Errorf("no history store")
+		return nil, errors.New("no history store")
 	}
 	return r.history.TimelineFiltered(from, to, partition)
 }
 
 func (r *Runner) HistoryRange() (min, max int64, err error) {
 	if r.history == nil {
-		return 0, 0, fmt.Errorf("no history store")
+		return 0, 0, errors.New("no history store")
 	}
 	return r.history.Range()
 }
 
 func (r *Runner) HistoryCount() (int64, error) {
 	if r.history == nil {
-		return 0, fmt.Errorf("no history store")
+		return 0, errors.New("no history store")
 	}
 	return r.history.Count()
 }

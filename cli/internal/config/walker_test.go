@@ -2,10 +2,11 @@ package config
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
+	"slices"
 	"testing"
 )
 
@@ -65,7 +66,7 @@ func TestWalkConfigs_FindsNestedConfigs(t *testing.T) {
 		filepath.Join(dir, "a", "gaffer.toml"),
 		filepath.Join(dir, "b", "c", "gaffer.toml"),
 	}
-	sort.Strings(want)
+	slices.Sort(want)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -131,7 +132,7 @@ func TestWalkConfigs_HonorsRootGitignore(t *testing.T) {
 		filepath.Join(dir, "gaffer.toml"),
 		filepath.Join(dir, "src", "gaffer.toml"),
 	}
-	sort.Strings(want)
+	slices.Sort(want)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -294,7 +295,7 @@ func TestWalkConfigs_DeterministicOrder(t *testing.T) {
 func TestWalkConfigs_RespectsContextCancellation(t *testing.T) {
 	dir := t.TempDir()
 	// Some content so the walker has work to do.
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		touch(t, filepath.Join(dir, "sub", "x", "y", "file.txt"))
 	}
 	touch(t, filepath.Join(dir, "gaffer.toml"))
@@ -306,7 +307,7 @@ func TestWalkConfigs_RespectsContextCancellation(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from cancelled context, got nil")
 	}
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 }
@@ -324,14 +325,7 @@ func TestWalkConfigs_ReturnsAbsolutePaths(t *testing.T) {
 	dir := t.TempDir()
 	touch(t, filepath.Join(dir, "gaffer.toml"))
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(cwd) })
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
+	t.Chdir(dir)
 
 	got, err := WalkConfigs(context.Background(), ".")
 	if err != nil {

@@ -662,7 +662,7 @@ func producesQuit(cmd tea.Cmd) bool {
 	}
 	rv := reflect.ValueOf(msg)
 	if rv.Kind() == reflect.Slice {
-		for i := 0; i < rv.Len(); i++ {
+		for i := range rv.Len() {
 			if c, ok := rv.Index(i).Interface().(tea.Cmd); ok && producesQuit(c) {
 				return true
 			}

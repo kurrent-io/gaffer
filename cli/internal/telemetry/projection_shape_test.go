@@ -9,10 +9,6 @@ import (
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 )
 
-// intPtr is a one-line helper for the *int fields in the binding
-// shape. Keeps the test setup readable.
-func intPtr(n int) *int { return &n }
-
 // rawShape returns a populated raw FFI shape covering every field
 // kind translation should hit (bool, int, *int, FileSize bucket).
 // Tests narrow or replace fields per case.
@@ -27,9 +23,9 @@ func rawShape() *gafferruntime.ProjectionShape {
 			DistinctEventNames: 4,
 		},
 		BuiltinCounts: gafferruntime.ProjectionShapeBuiltinCounts{
-			FromAll: intPtr(1),
-			When:    intPtr(1),
-			Emit:    intPtr(3),
+			FromAll: new(1),
+			When:    new(1),
+			Emit:    new(3),
 		},
 	}
 }
@@ -119,11 +115,11 @@ func TestShapeContentHash_BucketCollapsesSubBucketChanges(t *testing.T) {
 	// reason translate happens before hash.
 	a := translateShape(&gafferruntime.ProjectionShape{
 		Parsable:      true,
-		BuiltinCounts: gafferruntime.ProjectionShapeBuiltinCounts{FromAll: intPtr(2)},
+		BuiltinCounts: gafferruntime.ProjectionShapeBuiltinCounts{FromAll: new(2)},
 	}, "x")
 	b := translateShape(&gafferruntime.ProjectionShape{
 		Parsable:      true,
-		BuiltinCounts: gafferruntime.ProjectionShapeBuiltinCounts{FromAll: intPtr(9)},
+		BuiltinCounts: gafferruntime.ProjectionShapeBuiltinCounts{FromAll: new(9)},
 	}, "x")
 	// Note: the test asserts the bucketed JSON wire form is
 	// identical. The hashes match because RawCount.MarshalJSON
@@ -177,7 +173,7 @@ func TestEmitProjectionShape_EmitsOnFirstEncounter(t *testing.T) {
 
 func TestEmitProjectionShape_DedupesUnchangedShape(t *testing.T) {
 	ctx, c, mock := emitTestSetup(t)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		EmitProjectionShape(ctx, "/proj/a.js", gafferruntime.ProjectionInfo{Shape: rawShape()})
 	}
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
@@ -196,7 +192,7 @@ func TestEmitProjectionShape_ReEmitsOnShapeDrift(t *testing.T) {
 	// Mutate: add a builtin call. New shape hashes differently;
 	// dedupe must NOT suppress.
 	drift := rawShape()
-	drift.BuiltinCounts.OutputState = intPtr(1)
+	drift.BuiltinCounts.OutputState = new(1)
 	EmitProjectionShape(ctx, "/proj/a.js", gafferruntime.ProjectionInfo{Shape: drift})
 
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
@@ -224,7 +220,7 @@ func TestShapeCacheEviction_RespectsCap(t *testing.T) {
 	// Exercise the FIFO eviction explicitly: insert cap+1
 	// distinct entries; assert size stays at cap.
 	c := &Client{}
-	for i := 0; i < shapeCacheCap+5; i++ {
+	for i := range shapeCacheCap + 5 {
 		// Synthesise unique projection IDs and unique hashes so
 		// each iteration adds a new entry rather than dedup-hits.
 		id := fakeProjectionID(i)
@@ -249,7 +245,7 @@ func TestShapeCacheEviction_FIFOOrder(t *testing.T) {
 	// and a fresh entry replaced it.
 	c := &Client{}
 	first := fakeProjectionID(0)
-	for i := 0; i < shapeCacheCap+1; i++ {
+	for i := range shapeCacheCap + 1 {
 		var hash [32]byte
 		hash[0] = byte(i % 256)
 		hash[1] = byte((i / 256) % 256)
@@ -288,7 +284,7 @@ func TestShapeChangedAndRecord_ConcurrentSafety(t *testing.T) {
 	const n = 200
 	var wg sync.WaitGroup
 	wg.Add(n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		go func(i int) {
 			defer wg.Done()
 			var hash [32]byte

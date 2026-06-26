@@ -234,7 +234,7 @@ func TestClassifyMCPOutcome_ProjectionFaultBeatsProtocolError(t *testing.T) {
 	tr := newProjErrTracker()
 	tr.Record(&gafferruntime.ProjectionHandlerError{})
 
-	got := classifyMCPOutcome(fmt.Errorf("session ended"), tr)
+	got := classifyMCPOutcome(errors.New("session ended"), tr)
 	if got != telemetry.Outcome(telemetry.ProjectionOutcomeProjectionUserThrow) {
 		t.Errorf("got %q, want projection_user_throw", got)
 	}
@@ -243,7 +243,7 @@ func TestClassifyMCPOutcome_ProjectionFaultBeatsProtocolError(t *testing.T) {
 func TestClassifyMCPOutcome_FallbackIsProtocolError(t *testing.T) {
 	// Generic non-nil runErr with no structural / projection signal
 	// is the legitimate mcp_protocol_error case.
-	got := classifyMCPOutcome(fmt.Errorf("mcp framing went wrong"), newProjErrTracker())
+	got := classifyMCPOutcome(errors.New("mcp framing went wrong"), newProjErrTracker())
 	if got != telemetry.OutcomeMCPProtocolError {
 		t.Errorf("got %q, want mcp_protocol_error", got)
 	}
@@ -266,7 +266,7 @@ func TestClassifyLSPOutcome_StructuralBeatsProtocolError(t *testing.T) {
 }
 
 func TestClassifyLSPOutcome_FallbackIsProtocolError(t *testing.T) {
-	got := classifyLSPOutcome(fmt.Errorf("jsonrpc framing went wrong"))
+	got := classifyLSPOutcome(errors.New("jsonrpc framing went wrong"))
 	if got != telemetry.OutcomeLSPProtocolError {
 		t.Errorf("got %q, want lsp_protocol_error", got)
 	}

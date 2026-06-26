@@ -30,7 +30,7 @@ type clientStub struct {
 	requests []capturedRequest
 }
 
-func (c *clientStub) handler(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) (interface{}, error) {
+func (c *clientStub) handler(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) (any, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var raw json.RawMessage

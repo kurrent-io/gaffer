@@ -229,7 +229,7 @@ func triggerTypeAssertionError() (r any) {
 	defer func() {
 		r = recover()
 	}()
-	var i interface{} = "hello"
+	var i any = "hello"
 	_ = i.(int) // panics with *runtime.TypeAssertionError
 	return nil
 }

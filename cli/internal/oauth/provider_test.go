@@ -241,13 +241,11 @@ func TestPersistingSourceConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, n)
 	for range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if _, err := ts.Token(); err != nil {
 				errs <- err
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)

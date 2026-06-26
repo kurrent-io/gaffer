@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
@@ -27,7 +28,7 @@ type Breakpoint struct {
 // SetBreakpoints clears existing breakpoints and sets new ones.
 func (r *Runner) SetBreakpoints(breakpoints []Breakpoint) ([]*gafferruntime.SnappedBreakpoint, error) {
 	if r.debug == nil {
-		return nil, fmt.Errorf("debug not enabled")
+		return nil, errors.New("debug not enabled")
 	}
 	if err := r.debug.Session.ClearBreakpoints(); err != nil {
 		return nil, fmt.Errorf("clearing breakpoints: %w", err)
@@ -135,28 +136,28 @@ func (r *Runner) Destroy() {
 
 func (r *Runner) Evaluate(expression string) (*gafferruntime.DebugVariable, error) {
 	if r.debug == nil {
-		return nil, fmt.Errorf("debug not enabled")
+		return nil, errors.New("debug not enabled")
 	}
 	return r.debug.Session.Evaluate(expression)
 }
 
 func (r *Runner) GetCallStack() ([]gafferruntime.DebugCallFrame, error) {
 	if r.debug == nil {
-		return nil, fmt.Errorf("debug not enabled")
+		return nil, errors.New("debug not enabled")
 	}
 	return r.debug.Session.GetCallStack()
 }
 
 func (r *Runner) GetScopes(frameID int) ([]gafferruntime.DebugScopeInfo, error) {
 	if r.debug == nil {
-		return nil, fmt.Errorf("debug not enabled")
+		return nil, errors.New("debug not enabled")
 	}
 	return r.debug.Session.GetScopes(frameID)
 }
 
 func (r *Runner) GetVariables(variablesReference int) ([]gafferruntime.DebugVariable, error) {
 	if r.debug == nil {
-		return nil, fmt.Errorf("debug not enabled")
+		return nil, errors.New("debug not enabled")
 	}
 	return r.debug.Session.GetVariables(variablesReference)
 }

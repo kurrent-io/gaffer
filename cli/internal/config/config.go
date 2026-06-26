@@ -226,10 +226,10 @@ func Load(path string) (*Config, error) {
 	// instead of a downstream "no environments" / "missing
 	// engine_version" error that doesn't name the cause.
 	if err := checkRemovedKeys(md); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrManifestValidate, err)
+		return nil, fmt.Errorf("%w: %w", ErrManifestValidate, err)
 	}
 	if err := cfg.validate(); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrManifestValidate, err)
+		return nil, fmt.Errorf("%w: %w", ErrManifestValidate, err)
 	}
 	return cfg, nil
 }
@@ -251,7 +251,7 @@ func decode(data []byte) (*Config, toml.MetaData, error) {
 	var cfg Config
 	md, err := toml.Decode(string(data), &cfg)
 	if err != nil {
-		return nil, md, fmt.Errorf("%w: %s", ErrManifestParse, err)
+		return nil, md, fmt.Errorf("%w: %w", ErrManifestParse, err)
 	}
 	return &cfg, md, nil
 }

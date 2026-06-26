@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
-	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -100,8 +99,8 @@ func TestUpdatePassesEmit(t *testing.T) {
 		emit *bool
 	}{
 		{"nil leaves emit untouched", nil},
-		{"explicit true", testutil.Ptr(true)},
-		{"explicit false", testutil.Ptr(false)},
+		{"explicit true", new(true)},
+		{"explicit false", new(false)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeProjAPI{}

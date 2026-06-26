@@ -6,6 +6,7 @@ import (
 	"io"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -340,7 +341,7 @@ func (tw *textWriter) queryStatus(e comparison) string {
 
 func (tw *textWriter) versionStatus(e comparison) string {
 	if !e.Cmp.EngineVersionDiffers {
-		return tw.styles.added.Render(fmt.Sprintf("%d", e.Local.EngineVersion))
+		return tw.styles.added.Render(strconv.Itoa(e.Local.EngineVersion))
 	}
 	return tw.styles.warning.Render(fmt.Sprintf("remote %d, local %d", e.Deployed.EngineVersion, e.Local.EngineVersion))
 }
@@ -422,7 +423,7 @@ func (tw *textWriter) WriteStatusTable(entries []statusEntry) {
 	}
 	// Trim the column padding the last cell leaves as trailing whitespace (plain
 	// in piped output; invisible inside the colour codes on a terminal).
-	for _, line := range strings.Split(strings.TrimRight(t.String(), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(t.String(), "\n"), "\n") {
 		tw.write("%s\n", strings.TrimRight(line, " "))
 	}
 	for _, e := range entries {
@@ -913,7 +914,7 @@ func (tw *textWriter) writeCompatBlock(out io.Writer, fe fatalError) {
 
 func (tw *textWriter) statsLine(stats engine.EventStats) {
 	gold := tw.styles.skipped.Bold(true).Render
-	line := fmt.Sprintf("%s events processed", gold(formatNumber(stats.Handled)))
+	line := gold(formatNumber(stats.Handled)) + " events processed"
 	if stats.Errors > 0 {
 		line += fmt.Sprintf(", %s errors", gold(formatNumber(stats.Errors)))
 	}

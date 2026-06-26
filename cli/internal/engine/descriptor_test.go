@@ -19,11 +19,11 @@ func TestLocalDescriptor(t *testing.T) {
 	}{
 		{"emitting projection", emitting, 2, nil, true},
 		{"non-emitting projection", plain, 2, nil, false},
-		{"track emitted streams from config", plain, 1, ptr(true), false}, // track is V1-only
+		{"track emitted streams from config", plain, 1, new(true), false}, // track is V1-only
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{}
-			def := &config.Projection{Name: "p", Entry: "p.js", EngineVersion: ptr(tc.engine), TrackEmittedStreams: tc.track}
+			def := &config.Projection{Name: "p", Entry: "p.js", EngineVersion: new(tc.engine), TrackEmittedStreams: tc.track}
 			proj := NewProjection("/tmp", cfg, def, tc.source)
 
 			desc, err := LocalDescriptor(proj)
@@ -51,7 +51,7 @@ func TestPartialDescriptor(t *testing.T) {
 	// returns the query, engine version and track-emitted-streams regardless.
 	const broken = `fromAll().when({ $any: function (s, e) { retrn s; } })`
 	cfg := &config.Config{}
-	def := &config.Projection{Name: "p", Entry: "p.js", EngineVersion: ptr(1), TrackEmittedStreams: ptr(true)}
+	def := &config.Projection{Name: "p", Entry: "p.js", EngineVersion: new(1), TrackEmittedStreams: new(true)}
 	proj := NewProjection("/tmp", cfg, def, broken)
 
 	d := PartialDescriptor(proj)

@@ -81,8 +81,8 @@ func setupTestProject(t *testing.T) *Server {
 
 	cfg := &config.Config{
 		Projection: []config.Projection{
-			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)},
-			{Name: "broken", Entry: "projections/broken.js", EngineVersion: ptr(2)},
+			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)},
+			{Name: "broken", Entry: "projections/broken.js", EngineVersion: new(2)},
 		},
 	}
 
@@ -113,7 +113,7 @@ func setupTestProjectWithEnv(t *testing.T) *Server {
 			"local": {Connection: "kurrentdb://localhost:2113?tls=false", Default: true},
 		},
 		Projection: []config.Projection{
-			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)},
+			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)},
 		},
 	}
 	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
@@ -220,7 +220,7 @@ func TestValidate_ConfigError(t *testing.T) {
 	s := setupTestProject(t)
 	writeManifest(t, s.root, &config.Config{
 		Projection: []config.Projection{{
-			Name: "bad", Entry: "projections/bad.js", EngineVersion: ptr(5),
+			Name: "bad", Entry: "projections/bad.js", EngineVersion: new(5),
 		}},
 	})
 	result := callTool(t, s, validateTool, s.handleValidate, validateInput{Name: "bad"})
@@ -239,7 +239,7 @@ func TestValidate_ErrorDiagnostic(t *testing.T) {
 	s := setupTestProject(t)
 	writeManifest(t, s.root, &config.Config{
 		Projection: []config.Projection{{
-			Name: "tes", Entry: "projections/tes.js", EngineVersion: ptr(2), TrackEmittedStreams: ptr(true),
+			Name: "tes", Entry: "projections/tes.js", EngineVersion: new(2), TrackEmittedStreams: new(true),
 		}},
 	})
 	if err := os.WriteFile(filepath.Join(s.root, "projections/tes.js"),
@@ -262,7 +262,7 @@ func TestValidate_MultipleErrorDiagnostics(t *testing.T) {
 	s := setupTestProject(t)
 	writeManifest(t, s.root, &config.Config{
 		Projection: []config.Projection{{
-			Name: "both", Entry: "projections/both.js", EngineVersion: ptr(2), TrackEmittedStreams: ptr(true),
+			Name: "both", Entry: "projections/both.js", EngineVersion: new(2), TrackEmittedStreams: new(true),
 		}},
 	})
 	// bi-state on v2 and track_emitted_streams on v2 both fire as error diagnostics.
@@ -636,7 +636,7 @@ func TestRun_Breakpoints(t *testing.T) {
 	}
 
 	// Continue past all breakpoints until completed
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		contResult := callTool(t, s, debugContinueTool, s.handleDebugContinue, debugContinueInput{})
 		if contResult["completed"] == true {
 			return
@@ -801,7 +801,7 @@ func TestConcurrentRunStop(t *testing.T) {
 		guard(func() { _, _, _ = s.handleStop(context.Background(), nil, stopInput{}) })
 	}
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		var wg sync.WaitGroup
 		wg.Add(3)
 		go func() {
@@ -1212,7 +1212,7 @@ func TestInfo_ErrorsWhenNoProjections(t *testing.T) {
 func TestInfo_DefaultsWhenSingleProjection(t *testing.T) {
 	s := setupTestProject(t)
 	writeManifest(t, s.root, &config.Config{
-		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)}},
 	})
 
 	result := callTool(t, s, infoTool, s.handleInfo, infoInput{})
@@ -1318,7 +1318,7 @@ func TestProjectlessLazyResolveAfterInit(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)}},
 	}
 	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
 		t.Fatal(err)
@@ -1342,7 +1342,7 @@ func TestProjectlessReloadAfterInit(t *testing.T) {
 
 	cfgPath := filepath.Join(dir, "gaffer.toml")
 	if err := config.Save(cfgPath, &config.Config{
-		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1353,8 +1353,8 @@ func TestProjectlessReloadAfterInit(t *testing.T) {
 
 	if err := config.Save(cfgPath, &config.Config{
 		Projection: []config.Projection{
-			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)},
-			{Name: "totals", Entry: "projections/totals.js", EngineVersion: ptr(2)},
+			{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)},
+			{Name: "totals", Entry: "projections/totals.js", EngineVersion: new(2)},
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -1378,7 +1378,7 @@ func TestReloadPicksUpManifestEdits(t *testing.T) {
 	}
 
 	writeManifest(t, s.root, &config.Config{
-		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)}},
 	})
 
 	after := callTool(t, s, listProjectionsTool, s.handleListProjections, listProjectionsInput{})
@@ -1456,7 +1456,7 @@ func TestConfigResourceReadsInvalidManifest(t *testing.T) {
 func writeProject(t *testing.T, dir string) {
 	t.Helper()
 	cfg := &config.Config{
-		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: ptr(2)}},
+		Projection: []config.Projection{{Name: "order-count", Entry: "projections/order-count.js", EngineVersion: new(2)}},
 	}
 	if err := config.Save(filepath.Join(dir, "gaffer.toml"), cfg); err != nil {
 		t.Fatal(err)
@@ -1632,5 +1632,3 @@ func TestStartedInProjectStableAcrossLazyResolve(t *testing.T) {
 		t.Error("StartedInProject() must stay false after a lazy resolve")
 	}
 }
-
-func ptr[T any](v T) *T { return &v }

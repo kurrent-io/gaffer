@@ -250,7 +250,7 @@ func TestWritePlanSummary(t *testing.T) {
 	// The verdict and its detail share one line (the three-column layout): the
 	// per-item line carries both, the count line's "1 refused" does not.
 	onOneLine := false
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.Contains(l, "refused") && strings.Contains(l, "engine version") {
 			onOneLine = true
 		}

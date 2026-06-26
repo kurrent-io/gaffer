@@ -24,7 +24,7 @@ func TestRunInfoDegradesOnConfigError(t *testing.T) {
 	// compiles - this is a config error, not a compile error.
 	for i := range p.Cfg.Projection {
 		if p.Cfg.Projection[i].Name == "bad" {
-			p.Cfg.Projection[i].EngineVersion = testutil.Ptr(5)
+			p.Cfg.Projection[i].EngineVersion = new(5)
 		}
 	}
 	p.Save()
@@ -59,8 +59,8 @@ func TestRunInfoShowsAnalysisForTrackEmittedStreamsOnV2(t *testing.T) {
 	p := testutil.NewProject(t).AddProjection("tes", infoValidSource).Save()
 	for i := range p.Cfg.Projection {
 		if p.Cfg.Projection[i].Name == "tes" {
-			p.Cfg.Projection[i].EngineVersion = testutil.Ptr(2)
-			p.Cfg.Projection[i].TrackEmittedStreams = testutil.Ptr(true)
+			p.Cfg.Projection[i].EngineVersion = new(2)
+			p.Cfg.Projection[i].TrackEmittedStreams = new(true)
 		}
 	}
 	p.Save()

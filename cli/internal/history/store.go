@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	// Registers the sqlite driver with database/sql.
 	_ "modernc.org/sqlite"
 )
 

@@ -65,7 +65,7 @@ func TestNoticeText_AdvertisesPrimaryEnvVar(t *testing.T) {
 func TestNoticeText_OptOutBlockShape(t *testing.T) {
 	rendered := renderedNotice(t)
 	var trimmed strings.Builder
-	for _, line := range strings.Split(rendered, "\n") {
+	for line := range strings.SplitSeq(rendered, "\n") {
 		trimmed.WriteString(strings.TrimLeft(strings.TrimRight(line, " "), " "))
 		trimmed.WriteByte('\n')
 	}

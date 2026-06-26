@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -362,7 +361,7 @@ entry = "p.js"
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := Describe(ctx, path)
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 }
@@ -630,14 +629,7 @@ name = "p"
 entry = "p.js"
 `)
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(cwd) })
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
+	t.Chdir(dir)
 
 	desc, err := Describe(context.Background(), "./gaffer.toml")
 	if err != nil {

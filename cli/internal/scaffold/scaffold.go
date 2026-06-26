@@ -1,6 +1,7 @@
 package scaffold
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -22,12 +23,7 @@ func ListExtensions() []string {
 
 // IsSupported reports whether ext is in the allowlist.
 func IsSupported(ext string) bool {
-	for _, e := range supportedExtensions {
-		if ext == e {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(supportedExtensions, ext)
 }
 
 type Result struct {
@@ -68,7 +64,7 @@ func Scaffold(
 		name = strings.TrimSuffix(path.Base(cleanRel), path.Ext(cleanRel))
 	}
 	if strings.TrimSpace(name) == "" {
-		return nil, fmt.Errorf("projection name is required")
+		return nil, errors.New("projection name is required")
 	}
 	if cfg.FindProjection(name) != nil {
 		return nil, fmt.Errorf("projection %q already exists in gaffer.toml", name)
@@ -130,7 +126,7 @@ func Scaffold(
 // what they actually typed, not the normalised form.
 func validateRelPath(userInput string) (string, error) {
 	if strings.TrimSpace(userInput) == "" {
-		return "", fmt.Errorf("projection path is required")
+		return "", errors.New("projection path is required")
 	}
 	// Reject Windows drive-letter forms before any normalisation.
 	// On non-Windows hosts filepath.IsAbs doesn't recognise them,
@@ -214,7 +210,7 @@ func GenerateSource(source, partition string, emit bool) (string, error) {
 		// rejects it on a single stream (fromStream). Catch it here so
 		// scaffold can't emit a projection that only fails at run time.
 		if strings.HasPrefix(source, "stream:") {
-			return "", fmt.Errorf("per-stream partitioning is not supported with a single-stream source; use 'all' or 'category:<name>', or partition 'none'")
+			return "", errors.New("per-stream partitioning is not supported with a single-stream source; use 'all' or 'category:<name>', or partition 'none'")
 		}
 		sb.WriteString("  .foreachStream()\n")
 	case "none":

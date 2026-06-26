@@ -19,7 +19,9 @@ var update = flag.Bool("update", false, "update golden files")
 
 // Ptr returns a pointer to v, for building option structs whose fields are
 // pointers to distinguish "unset" from a zero value.
-func Ptr[T any](v T) *T { return &v }
+//
+//go:fix inline
+func Ptr[T any](v T) *T { return new(v) }
 
 // --- Assertions ---
 

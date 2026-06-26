@@ -42,14 +42,7 @@ func setupIntegrationProject(t *testing.T) string {
 
 func chdirTo(t *testing.T, dir string) {
 	t.Helper()
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(orig) })
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
+	t.Chdir(dir)
 }
 
 func TestDev_FixtureJSON(t *testing.T) {

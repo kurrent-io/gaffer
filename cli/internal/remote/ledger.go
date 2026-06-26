@@ -141,7 +141,7 @@ func readLedger(next func() (*kurrentdb.ResolvedEvent, error), name string) (*Le
 		}
 		l, err := parseLedger(ev.Event.UserMetadata, ev.Event.CreatedDate)
 		if err != nil {
-			return nil, fmt.Errorf("%w for %q: %v", ErrMalformedLedger, name, err)
+			return nil, fmt.Errorf("%w for %q: %w", ErrMalformedLedger, name, err)
 		}
 		if l != nil {
 			return l, nil

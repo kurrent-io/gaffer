@@ -127,7 +127,7 @@ func resolveDevName(cmd *cobra.Command, args []string, opts *devOpts) (string, e
 			names = append(names, prompt.Opt(p.Name))
 		}
 		if len(names) == 0 {
-			return "", fmt.Errorf("no projections declared in gaffer.toml")
+			return "", errors.New("no projections declared in gaffer.toml")
 		}
 		return prompt.Select("Projection", names, names[0].Value)
 	})
@@ -485,7 +485,7 @@ func runDevSingle(
 			writer.WriteFatalError(toFatalError(lastErr, sourcePath))
 		}
 		recordProjectionFault(r, obs.onProjectionError)
-		return silent(fmt.Errorf("projection faulted"))
+		return silent(errors.New("projection faulted"))
 	}
 	return nil
 }
@@ -788,7 +788,7 @@ func runDevDebug(
 				writer.WriteFatalError(toFatalError(lastErr, sourcePath))
 				recordProjectionFault(r, obs.onProjectionError)
 			}
-			return silent(fmt.Errorf("projection faulted"))
+			return silent(errors.New("projection faulted"))
 		}
 		return nil
 	}
@@ -943,7 +943,7 @@ func noSourceErr(cfg *config.Config) error {
 			strings.Join(cfg.EnvNames(), ", "),
 		)
 	}
-	return fmt.Errorf("no event source: use --fixture <name>, --events <path>, or add an [env.<name>] to gaffer.toml")
+	return errors.New("no event source: use --fixture <name>, --events <path>, or add an [env.<name>] to gaffer.toml")
 }
 
 // resolveConnection determines the live target for a dev run, returning

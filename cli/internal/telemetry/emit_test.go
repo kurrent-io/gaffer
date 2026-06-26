@@ -93,7 +93,7 @@ func TestEmitVersion_BuildsEnvelope(t *testing.T) {
 	if ci.Name != "command_invoked" {
 		t.Errorf("event name = %q, want command_invoked", ci.Name)
 	}
-	if !timestampPattern.MatchString(string(ci.Timestamp)) {
+	if !timestampPattern.MatchString(ci.Timestamp) {
 		t.Errorf("timestamp %q doesn't match RFC 3339 ms pattern", ci.Timestamp)
 	}
 	props, ok := ci.Properties.(VersionCommandInvokedProperties)

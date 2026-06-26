@@ -19,7 +19,7 @@ func TestStats_ZeroBeforeActivity(t *testing.T) {
 
 func TestStats_BreakpointsBumpedOnSetBreakpoints(t *testing.T) {
 	s := &Server{}
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		s.dispatch(&godap.SetBreakpointsRequest{})
 	}
 	if got := s.Stats().BreakpointCount; got != 4 {

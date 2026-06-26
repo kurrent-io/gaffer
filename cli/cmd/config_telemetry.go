@@ -97,7 +97,7 @@ func invocationFromCmd(cmd *cobra.Command) telemetry.Invocation {
 		return ""
 	}
 	return telemetry.Invocation{
-		InvokerID:  telemetry.UUID(get("invoker-id")),
+		InvokerID:  get("invoker-id"),
 		InvokedBy:  telemetry.InvokedBy(get("invoked-by")),
 		InvokedVia: telemetry.InvokedVia(get("invoked-via")),
 	}

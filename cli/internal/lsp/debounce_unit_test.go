@@ -53,7 +53,6 @@ func TestDebouncer_DrainStopsAllPending(t *testing.T) {
 	d := newDebouncer(50 * time.Millisecond)
 	var total atomic.Int32
 	for _, k := range []string{"a", "b", "c"} {
-		k := k
 		d.schedule(k, func() { _ = k; total.Add(1) })
 	}
 	d.drain()
@@ -67,7 +66,7 @@ func TestDebouncer_PerKeyIndependence(t *testing.T) {
 	// Bursting on key A doesn't delay B's fire.
 	d := newDebouncer(50 * time.Millisecond)
 	var firedA, firedB atomic.Int32
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		d.schedule("a", func() { firedA.Add(1) })
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -92,10 +91,10 @@ func TestDebouncer_LateCallbackBailsOnIdentityCheck(t *testing.T) {
 	const itersPerGoroutine = 10
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
-	for g := 0; g < goroutines; g++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
-			for i := 0; i < itersPerGoroutine; i++ {
+			for range itersPerGoroutine {
 				d.schedule("k", func() { fired.Add(1) })
 			}
 		}()

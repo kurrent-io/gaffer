@@ -3,7 +3,6 @@ package lsp
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"strings"
 
@@ -58,7 +57,7 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 		// For requests it surfaces as a proper JSON-RPC error.
 		return nil, &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeMethodNotFound,
-			Message: fmt.Sprintf("method not implemented: %s", req.Method),
+			Message: "method not implemented: " + req.Method,
 		}
 	}
 }

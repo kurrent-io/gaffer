@@ -5,6 +5,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -156,7 +157,7 @@ func promptEngineVersion(current int) (int, error) {
 			{Label: "2 (recommended)", Value: "2"},
 			{Label: "1", Value: "1"},
 		},
-		fmt.Sprint(current),
+		strconv.Itoa(current),
 	)
 	if err != nil {
 		return 0, err
@@ -230,7 +231,7 @@ func sourceKind(source string) string {
 // resolveScaffoldRelPath and scaffold.Scaffold.
 func validateScaffoldPath(p string) error {
 	if strings.TrimSpace(p) == "" {
-		return fmt.Errorf("a path is required")
+		return errors.New("a path is required")
 	}
 	if !scaffold.IsSupported(filepath.Ext(p)) {
 		return fmt.Errorf("path must end in %s", strings.Join(scaffold.ListExtensions(), ", "))

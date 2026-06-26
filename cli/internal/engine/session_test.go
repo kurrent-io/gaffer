@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -108,7 +109,7 @@ func TestLoadEvents_FileNotFound(t *testing.T) {
 
 func TestBuildSessionOptions_EngineVersionFromProjection(t *testing.T) {
 	cfg := &config.Config{}
-	def := &config.Projection{EngineVersion: ptr(1)}
+	def := &config.Projection{EngineVersion: new(1)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	opts := buildSessionOptions(proj, false, false)
@@ -137,7 +138,7 @@ func TestBuildSessionOptions_ConfigTimeoutsNotApplied(t *testing.T) {
 		CompilationTimeout: &dbTimeout,
 		ExecutionTimeout:   &dbTimeout,
 	}}
-	def := &config.Projection{EngineVersion: ptr(2), ExecutionTimeout: &projTimeout}
+	def := &config.Projection{EngineVersion: new(2), ExecutionTimeout: &projTimeout}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	var m map[string]any
@@ -155,7 +156,7 @@ func TestBuildSessionOptions_ConfigTimeoutsNotApplied(t *testing.T) {
 func TestBuildSessionOptions_HangGuardFromEnv(t *testing.T) {
 	t.Setenv(EnvTimeoutMs, "12000")
 	cfg := &config.Config{}
-	def := &config.Projection{EngineVersion: ptr(2)}
+	def := &config.Projection{EngineVersion: new(2)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	var m map[string]any
@@ -174,7 +175,7 @@ func TestBuildSessionOptions_HangGuardIgnoresBadEnv(t *testing.T) {
 	for _, v := range []string{"0", "-1", "soon", "9999999999"} {
 		t.Run(v, func(t *testing.T) {
 			t.Setenv(EnvTimeoutMs, v)
-			proj := NewProjection("/tmp", &config.Config{}, &config.Projection{EngineVersion: ptr(2)}, "")
+			proj := NewProjection("/tmp", &config.Config{}, &config.Projection{EngineVersion: new(2)}, "")
 			var m map[string]any
 			if err := json.Unmarshal([]byte(*buildSessionOptions(proj, false, false)), &m); err != nil {
 				t.Fatal(err)
@@ -191,7 +192,7 @@ func TestBuildSessionOptions_HangGuardIgnoresBadEnv(t *testing.T) {
 func TestBuildSessionOptions_QuirksVersionPassedThroughWhenSet(t *testing.T) {
 	t.Setenv("GAFFER_QUIRKS_VERSION", "")
 	cfg := &config.Config{QuirksVersion: "26.1.0"}
-	def := &config.Projection{Name: "p", Entry: "p.js", EngineVersion: ptr(2)}
+	def := &config.Projection{Name: "p", Entry: "p.js", EngineVersion: new(2)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	opts := buildSessionOptions(proj, false, false)
@@ -210,7 +211,7 @@ func TestBuildSessionOptions_QuirksVersionPassedThroughWhenSet(t *testing.T) {
 func TestBuildSessionOptions_QuirksVersionOmittedWhenUnset(t *testing.T) {
 	t.Setenv("GAFFER_QUIRKS_VERSION", "")
 	cfg := &config.Config{}
-	def := &config.Projection{Name: "p", Entry: "p.js", EngineVersion: ptr(2)}
+	def := &config.Projection{Name: "p", Entry: "p.js", EngineVersion: new(2)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	opts := buildSessionOptions(proj, false, false)
@@ -225,7 +226,7 @@ func TestBuildSessionOptions_QuirksVersionOmittedWhenUnset(t *testing.T) {
 
 func TestBuildSessionOptions_AlwaysIncludesEngineVersion(t *testing.T) {
 	cfg := &config.Config{}
-	def := &config.Projection{EngineVersion: ptr(2)}
+	def := &config.Projection{EngineVersion: new(2)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	opts := buildSessionOptions(proj, false, false)
@@ -248,7 +249,7 @@ func TestBuildSessionOptions_MaxStateSizeFromDatabaseConfig(t *testing.T) {
 	t.Setenv(EnvTimeoutMs, "")
 	maxState := int64(8388608)
 	cfg := &config.Config{DatabaseConfig: &config.DatabaseConfig{MaxStateSize: &maxState}}
-	def := &config.Projection{EngineVersion: ptr(2)}
+	def := &config.Projection{EngineVersion: new(2)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	var m map[string]any
@@ -262,7 +263,7 @@ func TestBuildSessionOptions_MaxStateSizeFromDatabaseConfig(t *testing.T) {
 
 func TestBuildSessionOptions_MaxStateSizeOmittedWhenUnset(t *testing.T) {
 	cfg := &config.Config{}
-	def := &config.Projection{EngineVersion: ptr(2)}
+	def := &config.Projection{EngineVersion: new(2)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	opts := buildSessionOptions(proj, false, false)
@@ -279,7 +280,7 @@ func TestBuildSessionOptions_MaxStateSizeOmittedWhenUnset(t *testing.T) {
 func TestBuildSessionOptions_MaxStateSizeOmittedWhenNonPositive(t *testing.T) {
 	zero := int64(0)
 	cfg := &config.Config{DatabaseConfig: &config.DatabaseConfig{MaxStateSize: &zero}}
-	def := &config.Projection{EngineVersion: ptr(2)}
+	def := &config.Projection{EngineVersion: new(2)}
 	proj := NewProjection("/tmp", cfg, def, "")
 
 	opts := buildSessionOptions(proj, false, false)
@@ -319,7 +320,7 @@ func TestReadSource_MissingFile(t *testing.T) {
 
 func TestNewProjection_SetsFields(t *testing.T) {
 	cfg := &config.Config{Env: map[string]config.Env{"local": {Connection: "esdb://localhost:2113", Default: true}}}
-	def := &config.Projection{Name: "counts", Entry: "counts.js", EngineVersion: ptr(1)}
+	def := &config.Projection{Name: "counts", Entry: "counts.js", EngineVersion: new(1)}
 
 	p := NewProjection("/project", cfg, def, "fromAll().when({})")
 
@@ -343,7 +344,7 @@ func TestNewProjection_SetsFields(t *testing.T) {
 func TestNewProjection_EngineVersionFromProjection(t *testing.T) {
 	// engine_version is per-projection; there is no top-level fallback.
 	cfg := &config.Config{}
-	def := &config.Projection{Name: "test", Entry: "test.js", EngineVersion: ptr(2)}
+	def := &config.Projection{Name: "test", Entry: "test.js", EngineVersion: new(2)}
 
 	p := NewProjection("/project", cfg, def, "source")
 
@@ -354,7 +355,7 @@ func TestNewProjection_EngineVersionFromProjection(t *testing.T) {
 
 func TestCreateSession_ValidSource(t *testing.T) {
 	cfg := &config.Config{}
-	def := &config.Projection{Name: "test", Entry: "test.js", EngineVersion: ptr(2)}
+	def := &config.Projection{Name: "test", Entry: "test.js", EngineVersion: new(2)}
 	proj := NewProjection("/tmp", cfg, def, `fromAll().when({$init() { return {}; }})`)
 
 	session, sources, err := CreateSession(proj, false, false)
@@ -394,14 +395,7 @@ engine_version = 2
 		t.Fatal(err)
 	}
 
-	prev, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(prev) })
+	t.Chdir(dir)
 
 	p, err := LoadProjection("counts")
 	if err != nil {
@@ -425,17 +419,10 @@ engine_version = 2
 func TestLoadProjection_NotInProject(t *testing.T) {
 	dir := t.TempDir()
 
-	prev, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(prev) })
+	t.Chdir(dir)
 
-	_, err = LoadProjection("anything")
-	if err != project.ErrNotInProject {
+	_, err := LoadProjection("anything")
+	if !errors.Is(err, project.ErrNotInProject) {
 		t.Errorf("expected ErrNotInProject, got %v", err)
 	}
 }
@@ -452,19 +439,10 @@ engine_version = 2
 		t.Fatal(err)
 	}
 
-	prev, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(prev) })
+	t.Chdir(dir)
 
-	_, err = LoadProjection("missing")
+	_, err := LoadProjection("missing")
 	if err == nil {
 		t.Fatal("expected error for missing projection")
 	}
 }
-
-func ptr[T any](v T) *T { return &v }

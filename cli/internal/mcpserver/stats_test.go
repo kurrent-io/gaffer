@@ -32,7 +32,7 @@ func TestTrackedTool_BumpsCounter(t *testing.T) {
 	s := setupTestProject(t)
 	wrapped := trackedTool(s, s.handleListProjections)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_, _, err := wrapped(context.Background(), nil, listProjectionsInput{})
 		if err != nil {
 			t.Fatalf("call %d: %v", i, err)
@@ -53,7 +53,7 @@ func TestTrackedResource_BumpsCounter(t *testing.T) {
 	wrapped := s.trackedResource(s.handleConfigResource)
 
 	req := &mcp.ReadResourceRequest{Params: &mcp.ReadResourceParams{URI: "gaffer://project/config"}}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if _, err := wrapped(context.Background(), req); err != nil {
 			t.Fatalf("call %d: %v", i, err)
 		}

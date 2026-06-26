@@ -127,7 +127,7 @@ func TestClient_EmitMany(t *testing.T) {
 	mock := newMockSink()
 	c := New(WithSink(mock))
 	const n = 50
-	for i := 0; i < n; i++ {
+	for range n {
 		c.emit(&Envelope{SchemaVersion: EnvelopeSchemaVersion1, EmitterID: "y"})
 	}
 	if err := c.Flush(timeoutCtx(t, time.Second)); err != nil {
@@ -194,7 +194,7 @@ func TestClient_EmitAfterFlushIsDropped(t *testing.T) {
 // instant and runs many iterations to stress the window.
 func TestClient_EmitFlushRaceStress(t *testing.T) {
 	const iters = 200
-	for i := 0; i < iters; i++ {
+	for i := range iters {
 		mock := newMockSink()
 		c := New(WithSink(mock))
 

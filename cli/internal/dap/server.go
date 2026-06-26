@@ -3,6 +3,7 @@ package dap
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -246,7 +247,7 @@ func (s *Server) readLoop(reader *bufio.Reader) error {
 	for {
 		data, err := godap.ReadBaseMessage(reader)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return fmt.Errorf("dap: read: %w", err)

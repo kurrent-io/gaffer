@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -83,7 +84,7 @@ func TestRunner_ProcessOne_Skipped(t *testing.T) {
 func TestRunner_ProcessOne_Error(t *testing.T) {
 	w := &recordingWriter{}
 	r := NewRunner(RunnerConfig{
-		Feed:    func(string) (*gafferruntime.FeedResult, error) { return nil, fmt.Errorf("boom") },
+		Feed:    func(string) (*gafferruntime.FeedResult, error) { return nil, errors.New("boom") },
 		Writer:  w,
 		History: nil,
 	})
@@ -199,7 +200,7 @@ func TestRunner_ProcessOne_RecordsErrorInHistory(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	r := NewRunner(RunnerConfig{
-		Feed:    func(string) (*gafferruntime.FeedResult, error) { return nil, fmt.Errorf("boom") },
+		Feed:    func(string) (*gafferruntime.FeedResult, error) { return nil, errors.New("boom") },
 		Writer:  nil,
 		History: store,
 	})
@@ -451,7 +452,7 @@ func TestFixtureSource_Run_ContextCancelled(t *testing.T) {
 		return false
 	})
 
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Errorf("expected context.Canceled, got %v", err)
 	}
 	if called {

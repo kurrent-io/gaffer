@@ -132,25 +132,25 @@ func (s StateSummary) ToMap() map[string]any {
 		for name, ps := range s.Partitions {
 			pd := map[string]any{}
 			if len(ps.State) > 0 {
-				pd["state"] = json.RawMessage(ps.State)
+				pd["state"] = ps.State
 			}
 			if s.HasTransforms && len(ps.Result) > 0 {
-				pd["result"] = json.RawMessage(ps.Result)
+				pd["result"] = ps.Result
 			}
 			partitions[name] = pd
 		}
 		result["partitions"] = partitions
 	} else {
 		if len(s.State) > 0 {
-			result["state"] = json.RawMessage(s.State)
+			result["state"] = s.State
 		}
 		if s.HasTransforms && len(s.Result) > 0 {
-			result["result"] = json.RawMessage(s.Result)
+			result["result"] = s.Result
 		}
 	}
 
 	if s.HasBiState && len(s.SharedState) > 0 {
-		result["sharedState"] = json.RawMessage(s.SharedState)
+		result["sharedState"] = s.SharedState
 	}
 
 	return result

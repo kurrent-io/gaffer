@@ -251,7 +251,7 @@ func TestDeriveID_NoCollisionsInSyntheticSet(t *testing.T) {
 	// accidentally truncates further or breaks the HMAC keying.
 	salt := "deadbeef-cafe-0000-0000-000000000000"
 	seen := make(map[string]struct{}, 10_000)
-	for i := 0; i < 10_000; i++ {
+	for i := range 10_000 {
 		path := fmt.Sprintf("/projects/p%d/projection.js", i)
 		id := deriveID(salt, path)
 		if _, dup := seen[id]; dup {

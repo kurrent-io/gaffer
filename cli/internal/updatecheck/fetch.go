@@ -3,6 +3,7 @@ package updatecheck
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -87,7 +88,7 @@ func (f NpmFetcher) Latest(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("parse body: %w", err)
 	}
 	if payload.Version == "" {
-		return "", fmt.Errorf("registry response missing version field")
+		return "", errors.New("registry response missing version field")
 	}
 	return payload.Version, nil
 }

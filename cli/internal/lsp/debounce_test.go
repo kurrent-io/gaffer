@@ -303,7 +303,7 @@ func TestServer_DidChangeDebounceIsPerURI(t *testing.T) {
 	// Burst URI A but leave URI B alone. After A's debounce
 	// fires, both should have advanced by exactly one - A from
 	// the burst, B from its single change.
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		_ = conn.Notify(ctx, MethodDidChange, &DidChangeTextDocumentParams{
 			TextDocument:   VersionedTextDocumentIdentifier{URI: uriA, Version: i + 2},
 			ContentChanges: []TextDocumentContentChangeEvent{{Text: "engine_version = 2"}},

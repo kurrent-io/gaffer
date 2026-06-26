@@ -75,8 +75,8 @@ func Snapshot() {
 	env := os.Environ()
 	m := make(map[string]string, len(env))
 	for _, kv := range env {
-		if i := strings.IndexByte(kv, '='); i >= 0 {
-			m[kv[:i]] = kv[i+1:]
+		if before, after, ok := strings.Cut(kv, "="); ok {
+			m[before] = after
 		}
 	}
 	shellEnv = m

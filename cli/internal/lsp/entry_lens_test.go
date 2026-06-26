@@ -71,7 +71,7 @@ default = true
 		if l.Command == nil {
 			t.Fatalf("lens missing command: %+v", l)
 		}
-		args := l.Command.Arguments[0].(map[string]interface{})
+		args := l.Command.Arguments[0].(map[string]any)
 		if args["configURI"] != tomlURI {
 			t.Errorf("intent %q configURI: got %v want %q", l.Data.Intent, args["configURI"], tomlURI)
 		}
@@ -232,7 +232,7 @@ func TestServer_CodeLensRefreshErrorIsLogged(t *testing.T) {
 	conn := jsonrpc2.NewConn(
 		ctx,
 		jsonrpc2.NewBufferedStream(cli, jsonrpc2.VSCodeObjectCodec{}),
-		jsonrpc2.HandlerWithError(func(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) (interface{}, error) {
+		jsonrpc2.HandlerWithError(func(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) (any, error) {
 			if req.Method == MethodCodeLensRefresh {
 				return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeMethodNotFound, Message: "not supported"}
 			}

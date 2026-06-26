@@ -111,14 +111,8 @@ func (s *Server) handleDidOpen(_ context.Context, req *jsonrpc2.Request) (any, e
 	}
 	s.docs.Open(params.TextDocument.URI, params.TextDocument.Text)
 	// didOpen drives the first parse - users expect immediate
-	// feedback when a file opens, not a 250ms wait. Cancel any
-	// stale debounce from a previous Open/Change cycle so two
-	// parses don't race.
-	s.debouncer.cancel(params.TextDocument.URI)
-	uri := params.TextDocument.URI
-	s.spawnWithCtx(func(runCtx context.Context) {
-		s.parseAndPublish(runCtx, uri)
-	})
+	// feedback when a file opens, not a debounce-window wait.
+	s.triggerParse(params.TextDocument.URI, true)
 	return nil, nil
 }
 
@@ -144,23 +138,44 @@ func (s *Server) handleDidChange(_ context.Context, req *jsonrpc2.Request) (any,
 		log.Printf("lsp: dropping didChange: %v", err)
 		return nil, nil
 	}
+	// didChange debounces - rapid keystrokes collapse to one parse
+	// per quiet window.
+	s.triggerParse(params.TextDocument.URI, false)
+	return nil, nil
+}
+
+// triggerParse drives a parse-and-publish for uri, either immediately
+// (didOpen, on file open) or on the debouncer (didChange, coalescing
+// rapid keystrokes). The immediate path also cancels any pending
+// debounce so an in-flight keystroke timer can't race the open parse.
+// Both paths bind the work to the active Run's runCtx and become a
+// no-op once Run has wound down.
+//
+// The debounced callback is intentionally NOT tracked by s.wg.
+// AfterFunc runs it in a goroutine the debouncer owns; tracking it
+// would force schedule to .Add(1) and the callback to .Done(), but a
+// callback that bails on its own identity check (because a later
+// schedule cancelled it) would never run Done. Late callbacks instead
+// rely on runCtx cancellation - parseAndPublish returns promptly when
+// ctx is done, so the wg drain doesn't need to wait on them. The
+// immediate path goes through spawnWithCtx, which IS wg-tracked.
+func (s *Server) triggerParse(uri string, immediate bool) {
+	if immediate {
+		// Cancel any stale debounce from a previous Open/Change cycle
+		// so two parses don't race.
+		s.debouncer.cancel(uri)
+		s.spawnWithCtx(func(runCtx context.Context) {
+			s.parseAndPublish(runCtx, uri)
+		})
+		return
+	}
 	_, runCtx := s.snapshotRunState()
 	if runCtx == nil {
-		return nil, nil
+		return
 	}
-	uri := params.TextDocument.URI
-	// The debounce callback is intentionally NOT tracked by s.wg.
-	// AfterFunc runs the callback in a goroutine the debouncer
-	// owns; tracking it would force schedule to .Add(1) and the
-	// callback to .Done(), but a callback that bails on its own
-	// identity check (because schedule cancelled it) would never
-	// run Done. Late callbacks instead rely on runCtx
-	// cancellation - parseAndPublish returns promptly when ctx is
-	// done, so the wg drain doesn't need to wait on them.
 	s.debouncer.schedule(uri, func() {
 		s.parseAndPublish(runCtx, uri)
 	})
-	return nil, nil
 }
 
 func (s *Server) handleDidClose(req *jsonrpc2.Request) (any, error) {

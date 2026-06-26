@@ -137,7 +137,7 @@ describe("POST /v1/ingest", () => {
 
 		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
-		const [url, init] = fetchMock.mock.calls[0]!;
+		const [url, init] = fetchMock.mock.calls[0];
 		expect(url).toBe("https://eu.i.posthog.com/batch");
 		expect(init?.method).toBe("POST");
 		const body = JSON.parse(init?.body as string);

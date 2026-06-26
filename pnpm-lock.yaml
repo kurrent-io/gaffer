@@ -226,18 +226,27 @@ importers:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.16.7
         version: 0.16.7(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@types/node@25.9.1)(vite@8.0.16(@types/node@25.9.1)(esbuild@0.27.7)(yaml@2.9.0)))
+      '@eslint/js':
+        specifier: ^10.0.1
+        version: 10.0.1(eslint@10.4.0)
       '@kurrent/gaffer-telemetry':
         specifier: workspace:*
         version: link:..
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
+      eslint:
+        specifier: ^10.4.0
+        version: 10.4.0
       prettier:
         specifier: ^3.8.3
         version: 3.8.3
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+      typescript-eslint:
+        specifier: ^8.59.4
+        version: 8.59.4(eslint@10.4.0)(typescript@6.0.3)
       vitest:
         specifier: ^4.1.7
         version: 4.1.7(@types/node@25.9.1)(vite@8.0.16(@types/node@25.9.1)(esbuild@0.27.7)(yaml@2.9.0))

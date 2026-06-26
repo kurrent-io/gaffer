@@ -292,7 +292,7 @@ describe("translateEnvelope", () => {
 			],
 		};
 		const result = translateEnvelope(env, testSessionId, testDeployedAt);
-		const props = result[0]!.properties;
+		const props = result[0].properties;
 		expect(props.event_catchall_handler).toBe(true);
 		expect(props.init_handler).toBe(false);
 		expect(props.deleted_handler).toBe(true);

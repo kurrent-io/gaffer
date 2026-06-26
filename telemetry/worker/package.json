@@ -8,8 +8,8 @@
 	"scripts": {
 		"gen-types": "wrangler types --env staging",
 		"build": "pnpm run gen-types",
-		"check": "pnpm run build && prettier --check . && tsc --noEmit",
-		"fix": "prettier --write .",
+		"check": "pnpm run build && eslint . && prettier --check . && tsc --noEmit",
+		"fix": "eslint --fix . && prettier --write .",
 		"test": "pnpm run build && vitest run && wrangler deploy --env staging --dry-run --outdir=.wrangler/dryrun",
 		"dev": "wrangler dev --env staging",
 		"deploy:staging": "wrangler deploy --env staging",
@@ -20,10 +20,13 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.16.7",
+		"@eslint/js": "^10.0.1",
 		"@kurrent/gaffer-telemetry": "workspace:*",
 		"@types/node": "^25.9.1",
+		"eslint": "^10.4.0",
 		"prettier": "^3.8.3",
 		"typescript": "^6.0.3",
+		"typescript-eslint": "^8.59.4",
 		"vitest": "^4.1.7",
 		"wrangler": "^4.93.0"
 	}

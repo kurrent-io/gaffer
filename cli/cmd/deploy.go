@@ -44,7 +44,8 @@ func (a deployAction) applies() bool {
 // marks an update that changed the query, so the rendering can note that
 // continuing keeps state computed by the old logic. ExternalChange marks an apply
 // whose deployed definition was changed outside gaffer since its last deploy, so
-// the rendering can caution that deploying overwrites that change.
+// the rendering can caution that deploying overwrites that change; it's cleared
+// when the apply fails, since nothing was then overwritten.
 type deployResult struct {
 	Name           string
 	Action         deployAction
@@ -430,6 +431,9 @@ func applyPlan(ctx context.Context, plan []plannedItem, sink deploySink, apply f
 		if item.err == nil && item.action.applies() {
 			if err := apply(item); err != nil {
 				res.Err = err
+				// The apply failed, so nothing was overwritten - don't keep claiming
+				// it did via external_change.
+				res.ExternalChange = false
 			}
 		}
 		if res.Err != nil || res.Action == actRefuse {

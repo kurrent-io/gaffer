@@ -201,12 +201,21 @@ func (tw *textWriter) planVerdict(it plannedItem) (word, styled, detail string) 
 	}
 }
 
-// writeApplyWarnings emits the per-projection cautions for a plan: an update over
-// a faulted projection (the update won't clear the fault), and a reset of an
+// writeApplyWarnings emits the per-projection cautions for a plan: a deploy over a
+// projection changed outside gaffer (deploying overwrites that change), an update
+// over a faulted projection (the update won't clear the fault), and a reset of an
 // emitting projection (reprocessing re-emits, duplicating into its target
 // streams). Shared by the interactive plan summary and the non-interactive
 // (--yes) path, so the cautions surface however the deploy is confirmed.
 func (tw *textWriter) writeApplyWarnings(plan []plannedItem) {
+	for _, ec := range externallyChangedTargets(plan) {
+		by := ""
+		if ec.tool != "" {
+			by = " (by " + ec.tool + ")"
+		}
+		msg := ec.name + " was changed outside gaffer" + by + " since its last deploy; deploying overwrites it"
+		tw.write("  %s %s\n", tw.styles.warning.Render("⚠"), tw.styles.warning.Render(msg))
+	}
 	for _, name := range faultedUpdates(plan) {
 		tw.write("  %s %s\n", tw.styles.warning.Render("⚠"),
 			tw.styles.warning.Render(name+" is faulted; updating won't clear the fault"))

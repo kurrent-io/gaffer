@@ -167,6 +167,30 @@ func faultedUpdates(plan []plannedItem) []string {
 	return names
 }
 
+// externalChangeTarget is an apply target whose deployed definition was changed
+// outside gaffer since its last deploy. tool names the other tool when one made
+// the change (changed-by-tool); empty for a bare/metadata-less server write.
+type externalChangeTarget struct{ name, tool string }
+
+// externallyChangedTargets names the apply targets (updates and rebuilds) whose
+// deployed definition was changed outside gaffer since gaffer last deployed it, so
+// the plan can caution that deploying overwrites that out-of-band change. Only
+// applying items qualify; a refusal won't overwrite anything.
+func externallyChangedTargets(plan []plannedItem) []externalChangeTarget {
+	var out []externalChangeTarget
+	for _, it := range plan {
+		if it.err != nil || !it.action.applies() || !it.cmp.externallyChanged() {
+			continue
+		}
+		var tool string
+		if it.cmp.attribution() == attrChangedByTool && it.cmp.Ledger != nil {
+			tool = it.cmp.Ledger.Tool
+		}
+		out = append(out, externalChangeTarget{it.name, tool})
+	}
+	return out
+}
+
 // emittingResets names the reset targets that emit, so the confirm can warn that
 // reprocessing re-emits (duplicating into the target streams), since reset can't
 // clean emitted streams - gaffer recreate --delete-emitted can.

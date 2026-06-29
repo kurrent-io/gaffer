@@ -457,6 +457,32 @@ func TestApplyPlan(t *testing.T) {
 	}
 }
 
+func TestApplyPlanClearsExternalChangeOnFailure(t *testing.T) {
+	// A successful apply over an external change keeps external_change; a failed one
+	// drops it, since the failed apply overwrote nothing.
+	plan := []plannedItem{
+		{name: "ok", action: actUpdate, cmp: changedServer()},
+		{name: "boom", action: actUpdate, cmp: changedServer()},
+	}
+	sink := &recordingSink{}
+	applyPlan(context.Background(), plan, sink, func(item plannedItem) error {
+		if item.name == "boom" {
+			return errors.New("apply failed")
+		}
+		return nil
+	})
+	byName := map[string]deployResult{}
+	for _, r := range sink.results {
+		byName[r.Name] = r
+	}
+	if !byName["ok"].ExternalChange {
+		t.Error("a successful apply over an external change should keep external_change")
+	}
+	if byName["boom"].ExternalChange {
+		t.Error("a failed apply overwrote nothing, so external_change should be cleared")
+	}
+}
+
 func TestApplyPlanStopsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	plan := []plannedItem{{name: "a", action: actCreate}, {name: "b", action: actCreate}, {name: "c", action: actCreate}}

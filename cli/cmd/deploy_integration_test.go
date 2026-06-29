@@ -160,3 +160,51 @@ func TestDeployReset_Integration(t *testing.T) {
 	}
 	waitRunning(t, r, name)
 }
+
+// TestDeployExternalChange_Integration drives the surface-don't-refuse behaviour
+// against a live, metadata-capable server: a projection changed outside gaffer
+// since its last deploy still deploys, but carries external_change; a projection
+// changed only locally (gaffer's deploy still on the server) does not. Gated on
+// GAFFER_TEST_LEDGER (a release that ignores the metadata can't carry the flag).
+func TestDeployExternalChange_Integration(t *testing.T) {
+	if os.Getenv("GAFFER_TEST_LEDGER") == "" {
+		t.Skip("set GAFFER_TEST_LEDGER and point KURRENTDB_URL at a metadata-capable KurrentDB (master/nightly)")
+	}
+	r := diffSetupClient(t)
+	ctx := context.Background()
+	suffix := testutil.TestSuffix()
+	srv := "depextsrv" + suffix     // changed on the server, out of band
+	ahead := "depextahead" + suffix // changed only locally
+	const v1 = "fromAll().when({ $any: function (s, e) { return s; } })\n"
+	const v2 = "fromAll().when({ $any: function (s, e) { return e; } })\n" // compiles, query differs
+
+	p := testutil.NewProject(t).
+		WithConnection(testutil.ConnectionString()).
+		AddProjection(srv, v1).
+		AddProjection(ahead, v1).
+		Save()
+	chdirTo(t, p.Dir)
+	cleanupRemote(t, r, srv)
+	cleanupRemote(t, r, ahead)
+
+	// Initial gaffer deploy stamps the ledger baseline (v1) on both.
+	runDeployJSON(t)
+
+	// srv: a metadata-less write changes the deployed definition, so it no longer
+	// matches gaffer's baseline - changed on the server.
+	if err := r.Update(ctx, srv, v2, remote.UpdateOptions{Emit: testutil.Ptr(false)}); err != nil {
+		t.Fatalf("external update %s: %v", srv, err)
+	}
+	// ahead: only the local source moves; the server still holds gaffer's deploy.
+	if err := os.WriteFile(filepath.Join(p.Dir, "projections", ahead+".js"), []byte(v2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	results := runDeployJSON(t)
+	if got := deployOutcome(t, results, srv); got.Outcome != "updated" || !got.ExternalChange {
+		t.Errorf("%s = %+v; want updated carrying external_change", srv, got)
+	}
+	if got := deployOutcome(t, results, ahead); got.ExternalChange {
+		t.Errorf("%s should not carry external_change (local-only edit): %+v", ahead, got)
+	}
+}

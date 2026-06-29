@@ -51,13 +51,16 @@ func maxNameWidth(names []string) int {
 // when the preflight gate rejected it before any server write. reason is set for
 // refused and invalid, error for failed. logic_change marks an "updated" outcome
 // that continued over a changed query (state kept), so CI can alert on it; a
-// rebuild surfaces as outcome "rebuilt" instead.
+// rebuild surfaces as outcome "rebuilt" instead. external_change marks an apply
+// whose deployed definition had been changed outside gaffer since its last deploy
+// (so the apply overwrote that change), again so CI can alert.
 type deployJSON struct {
-	Name        string `json:"name"`
-	Outcome     string `json:"outcome"`
-	LogicChange bool   `json:"logic_change,omitempty"`
-	Reason      string `json:"reason,omitempty"`
-	Error       string `json:"error,omitempty"`
+	Name           string `json:"name"`
+	Outcome        string `json:"outcome"`
+	LogicChange    bool   `json:"logic_change,omitempty"`
+	ExternalChange bool   `json:"external_change,omitempty"`
+	Reason         string `json:"reason,omitempty"`
+	Error          string `json:"error,omitempty"`
 }
 
 type jsonSink struct {
@@ -68,7 +71,7 @@ type jsonSink struct {
 func (s *jsonSink) start(string, int, int) {}
 
 func (s *jsonSink) done(res deployResult) {
-	j := deployJSON{Name: res.Name, Outcome: res.outcome(), LogicChange: res.LogicChange, Reason: res.Reason}
+	j := deployJSON{Name: res.Name, Outcome: res.outcome(), LogicChange: res.LogicChange, ExternalChange: res.ExternalChange, Reason: res.Reason}
 	if res.Err != nil {
 		j.Error = res.Err.Error()
 	}

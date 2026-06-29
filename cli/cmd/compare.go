@@ -205,6 +205,21 @@ func (c comparison) attribution() attribution {
 	return attrChangedServer
 }
 
+// externallyChanged reports whether the deployed definition was changed outside
+// gaffer since gaffer last deployed it - a metadata-less/direct write
+// (changed-server) or another tool's deploy (changed-by-tool). deploy surfaces
+// this so an update doesn't silently revert an out-of-band change without saying
+// so. attrLocalAhead (server still holds gaffer's last deploy) and attrNone (no
+// ledger to tell) are not external changes.
+func (c comparison) externallyChanged() bool {
+	switch c.attribution() {
+	case attrChangedServer, attrChangedByTool:
+		return true
+	default:
+		return false
+	}
+}
+
 // ledgerJSON is the machine view of the latest tool entry behind a deployed
 // projection - the --json `lastWrite`, the tool attribution (who) behind an owner
 // or attribution verdict. The when is the top-level `lastDeployed`, which is event

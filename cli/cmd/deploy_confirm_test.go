@@ -174,6 +174,74 @@ func TestFaultedUpdates(t *testing.T) {
 	}
 }
 
+// drift comparisons for the external-change cases: all are drifted updates; what
+// differs is the ledger and whether the deployed def still matches the baseline.
+func changedServer() comparison { // a metadata-less/direct write changed gaffer's deploy
+	return comparison{State: driftDrifted, Ledger: ledgerEntry(remote.ToolName, ""), Deployed: desc("a", 2, false), DeployBaseline: desc("b", 2, false)}
+}
+
+func changedByTool() comparison { // another tool is the current deployer
+	return comparison{State: driftDrifted, Ledger: ledgerEntry("KurrentDB Embedded UI", ""), Deployed: desc("a", 2, false), DeployBaseline: desc("a", 2, false)}
+}
+
+func localAhead() comparison { // server still holds gaffer's last deploy - not external
+	return comparison{State: driftDrifted, Ledger: ledgerEntry(remote.ToolName, ""), Deployed: desc("a", 2, false), DeployBaseline: desc("a", 2, false)}
+}
+
+func TestExternallyChangedTargets(t *testing.T) {
+	plan := []plannedItem{
+		{name: "srv", action: actUpdate, cmp: changedServer()},
+		{name: "tool", action: actUpdate, cmp: changedByTool()},
+		{name: "ahead", action: actUpdate, cmp: localAhead()},                                                      // not external
+		{name: "noledger", action: actUpdate, cmp: comparison{State: driftDrifted, Deployed: desc("a", 2, false)}}, // attrNone
+		{name: "refused", action: actRefuse, cmp: changedServer()},                                                 // won't apply, so not flagged
+		{name: "errored", err: errors.New("x"), cmp: changedServer()},
+	}
+	got := externallyChangedTargets(plan)
+	if len(got) != 2 {
+		t.Fatalf("got %d targets, want 2: %+v", len(got), got)
+	}
+	if got[0].name != "srv" || got[0].tool != "" {
+		t.Errorf("changed-server target = %+v; want {srv, \"\"}", got[0])
+	}
+	if got[1].name != "tool" || got[1].tool != "KurrentDB Embedded UI" {
+		t.Errorf("changed-by-tool target = %+v; want {tool, KurrentDB Embedded UI}", got[1])
+	}
+}
+
+func TestWriteApplyWarningsExternalChange(t *testing.T) {
+	var b bytes.Buffer
+	newTextWriter(&b, &b).writeApplyWarnings([]plannedItem{
+		{name: "srv", action: actUpdate, cmp: changedServer()},
+		{name: "tool", action: actUpdate, cmp: changedByTool()},
+		{name: "ahead", action: actUpdate, cmp: localAhead()},
+	})
+	out := b.String()
+	if !strings.Contains(out, "srv was changed outside gaffer since its last deploy; deploying overwrites it") {
+		t.Errorf("missing changed-server caution:\n%s", out)
+	}
+	if !strings.Contains(out, "tool was changed outside gaffer (by KurrentDB Embedded UI) since its last deploy; deploying overwrites it") {
+		t.Errorf("missing changed-by-tool caution:\n%s", out)
+	}
+	if strings.Contains(out, "ahead") {
+		t.Errorf("local-ahead should not be cautioned:\n%s", out)
+	}
+}
+
+func TestDeployResultExternalChange(t *testing.T) {
+	// An applied update over an external change carries the flag; local-ahead and a
+	// non-applying refusal don't.
+	if r := (plannedItem{name: "srv", action: actUpdate, cmp: changedServer()}).result(); !r.ExternalChange {
+		t.Error("changed-server update should set ExternalChange")
+	}
+	if r := (plannedItem{name: "ahead", action: actUpdate, cmp: localAhead()}).result(); r.ExternalChange {
+		t.Error("local-ahead update should not set ExternalChange")
+	}
+	if r := (plannedItem{name: "refused", action: actRefuse, cmp: changedServer()}).result(); r.ExternalChange {
+		t.Error("a refusal applies nothing, so it should not set ExternalChange")
+	}
+}
+
 func TestConfirmTitle(t *testing.T) {
 	for _, tc := range []struct {
 		n      int

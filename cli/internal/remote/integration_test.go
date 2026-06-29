@@ -266,7 +266,7 @@ func TestIntegration_Ledger(t *testing.T) {
 	if err := c.Create(ctx, name, countQuery, CreateOptions{EngineVersion: 2, Ledger: &create}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	got, err := c.ReadLedger(ctx, name)
+	got, def, err := c.ReadLedger(ctx, name)
 	if err != nil {
 		t.Fatalf("ReadLedger after create: %v", err)
 	}
@@ -276,13 +276,18 @@ func TestIntegration_Ledger(t *testing.T) {
 	if got.Time.IsZero() {
 		t.Error("ReadLedger Time is zero; want the event's write time")
 	}
+	// The returned definition is the baseline (what this entry deployed) drift
+	// attribution compares the current deployed definition against.
+	if def == nil || def.Query != countQuery {
+		t.Errorf("ReadLedger definition = %+v, want the deployed query %q", def, countQuery)
+	}
 
 	// Update writes a newer ledger; ReadLedger returns the latest.
 	update := Ledger{Tool: ToolName, ToolVersion: "1.2.4", Operation: OpDeploy, Revision: "def456", Actor: "bob"}
 	if err := c.Update(ctx, name, countQuery, UpdateOptions{Emit: testutil.Ptr(false), Ledger: &update}); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	got, err = c.ReadLedger(ctx, name)
+	got, _, err = c.ReadLedger(ctx, name)
 	if err != nil {
 		t.Fatalf("ReadLedger after update: %v", err)
 	}
@@ -301,7 +306,7 @@ func TestIntegration_Ledger(t *testing.T) {
 		t.Fatalf("Enable: %v", err)
 	}
 	waitForState(t, ctx, c, name, StateRunning)
-	got, err = c.ReadLedger(ctx, name)
+	got, _, err = c.ReadLedger(ctx, name)
 	if err != nil {
 		t.Fatalf("ReadLedger after lifecycle ops: %v (lifecycle writes must not bury the ledger)", err)
 	}
@@ -325,12 +330,12 @@ func TestIntegration_LedgerAbsent(t *testing.T) {
 	if err := c.Create(ctx, name, countQuery, CreateOptions{}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if _, err := c.ReadLedger(ctx, name); !errors.Is(err, ErrNoLedger) {
+	if _, _, err := c.ReadLedger(ctx, name); !errors.Is(err, ErrNoLedger) {
 		t.Errorf("ReadLedger on a ledger-less projection = %v, want ErrNoLedger", err)
 	}
 
 	missing := "ledgerit_missing" + testutil.TestSuffix()
-	if _, err := c.ReadLedger(ctx, missing); !errors.Is(err, ErrNotFound) {
+	if _, _, err := c.ReadLedger(ctx, missing); !errors.Is(err, ErrNotFound) {
 		t.Errorf("ReadLedger on a missing projection = %v, want ErrNotFound", err)
 	}
 }

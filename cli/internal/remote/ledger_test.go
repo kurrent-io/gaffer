@@ -55,11 +55,11 @@ func TestParseLedger(t *testing.T) {
 
 func TestParseLedgerOmittedOptionalFields(t *testing.T) {
 	// A foreign tool that writes only the required keys (no revision/actor).
-	l, err := parseLedger([]byte(`{"tool":"KurrentDB Admin UI","tool_version":"26.2.0","operation":"create"}`), ledgerTime)
+	l, err := parseLedger([]byte(`{"tool":"KurrentDB Embedded UI","tool_version":"26.2.0","operation":"create"}`), ledgerTime)
 	if err != nil || l == nil {
 		t.Fatalf("parseLedger: l=%v err=%v", l, err)
 	}
-	if l.Tool != "KurrentDB Admin UI" {
+	if l.Tool != "KurrentDB Embedded UI" {
 		t.Errorf("Tool = %q", l.Tool)
 	}
 	if l.Revision != "" || l.Actor != "" {
@@ -100,7 +100,7 @@ func TestReadLedgerSkipsLifecycleToNewestToolEntry(t *testing.T) {
 		recvStep{ev: &kurrentdb.ResolvedEvent{Event: &kurrentdb.RecordedEvent{EventType: "$metadata"}}}, // other type
 		recvStep{ev: ledgerEvent(gafferMetadata)},
 	)
-	l, err := readLedger(next, "orders")
+	l, _, err := readLedger(next, "orders")
 	if err != nil {
 		t.Fatalf("readLedger: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestReadLedgerTombstonedIsNotFound(t *testing.T) {
 		CreatedDate:  ledgerTime,
 	}}
 	next := recvSeq(recvStep{ev: tombstone}, recvStep{ev: ledgerEvent(gafferMetadata)})
-	if _, err := readLedger(next, "orders"); !errors.Is(err, ErrNotFound) {
+	if _, _, err := readLedger(next, "orders"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound for a tombstoned projection", err)
 	}
 }
@@ -134,7 +134,7 @@ func TestReadLedgerSurfacesBadMetadata(t *testing.T) {
 		UserMetadata: []byte(`{not json`),
 		CreatedDate:  ledgerTime,
 	}}
-	_, err := readLedger(recvSeq(recvStep{ev: bad}), "orders")
+	_, _, err := readLedger(recvSeq(recvStep{ev: bad}), "orders")
 	if !errors.Is(err, ErrMalformedLedger) {
 		t.Fatalf("err = %v, want ErrMalformedLedger", err)
 	}
@@ -148,7 +148,7 @@ func TestReadLedgerClassifiesReadError(t *testing.T) {
 	// mistaken for ErrNoLedger (which would tell a caller "degrade" when the truth
 	// is "couldn't read").
 	next := recvSeq(recvStep{err: status.New(codes.Unavailable, "boom").Err()})
-	_, err := readLedger(next, "orders")
+	_, _, err := readLedger(next, "orders")
 	if !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("err = %v, want ErrUnavailable", err)
 	}
@@ -162,7 +162,7 @@ func TestReadLedgerAbsentStreamIsNotFound(t *testing.T) {
 	// Recv (not io.EOF). ReadLedger keeps that distinct from ErrNoLedger so a caller
 	// can tell "projection gone" from "exists but untracked".
 	next := recvSeq(recvStep{err: status.New(codes.NotFound, "stream not found").Err()})
-	_, err := readLedger(next, "orders")
+	_, _, err := readLedger(next, "orders")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
@@ -176,13 +176,13 @@ func TestReadLedgerNoToolEntryIsErrNoLedger(t *testing.T) {
 		recvStep{ev: ledgerEvent(syntheticMetadata)},
 		recvStep{ev: ledgerEvent(syntheticMetadata)},
 	)
-	if _, err := readLedger(next, "orders"); !errors.Is(err, ErrNoLedger) {
+	if _, _, err := readLedger(next, "orders"); !errors.Is(err, ErrNoLedger) {
 		t.Fatalf("err = %v, want ErrNoLedger", err)
 	}
 }
 
 func TestReadLedgerEmptyStreamIsErrNoLedger(t *testing.T) {
-	if _, err := readLedger(recvSeq(), "orders"); !errors.Is(err, ErrNoLedger) {
+	if _, _, err := readLedger(recvSeq(), "orders"); !errors.Is(err, ErrNoLedger) {
 		t.Fatalf("err = %v, want ErrNoLedger", err)
 	}
 }

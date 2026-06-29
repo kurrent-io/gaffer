@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	"google.golang.org/grpc/codes"
@@ -130,6 +131,20 @@ func TestReadDefinitionSkipsNonStateEvents(t *testing.T) {
 	}
 	if got.Query != "q" {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestReadDefinitionCapturesEventTime(t *testing.T) {
+	// The last-write time comes from the event's CreatedDate, so it's available
+	// even for a projection carrying no tool metadata.
+	when := time.Date(2026, 6, 29, 9, 38, 0, 0, time.UTC)
+	ev := &kurrentdb.ResolvedEvent{Event: &kurrentdb.RecordedEvent{EventType: projectionUpdatedType, Data: []byte(`{"query":"q"}`), CreatedDate: when}}
+	got, err := readDefinition(recvSeq(recvStep{ev: ev}), "orders")
+	if err != nil {
+		t.Fatalf("readDefinition: %v", err)
+	}
+	if !got.Time.Equal(when) {
+		t.Fatalf("Time = %v, want the event CreatedDate %v", got.Time, when)
 	}
 }
 

@@ -70,7 +70,9 @@ func (c *Client) ServerInfo(ctx context.Context) (*ServerInfo, error) {
 // stream or no such event yields nil (no info), not an error. Split from
 // ServerInfo so the loop is testable without a live read stream.
 func readServerInfo(next func() (*kurrentdb.ResolvedEvent, error)) (*ServerInfo, error) {
-	si, found, err := scanLatest(next, serverInfoType, parseServerInfo)
+	si, found, err := scanLatest(next, serverInfoType, func(e *kurrentdb.RecordedEvent) (*ServerInfo, error) {
+		return parseServerInfo(e.Data)
+	})
 	if err != nil {
 		// A mid-stream not-found (e.g. the stream truncated under us) is
 		// the absent-stream case: baseline, not an error.

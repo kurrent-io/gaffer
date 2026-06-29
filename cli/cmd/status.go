@@ -37,7 +37,17 @@ func newStatusCmd() *cobra.Command {
 			"With no argument, lists every local and deployed projection: running, stopped or\n" +
 			"faulted, progress, and whether each is in sync, drifted, not deployed, untracked,\n" +
 			"or invalid (local definition doesn't compile or has a config error). Name a\n" +
-			"projection for its detail. Pass --json for machine output.",
+			"projection for its detail. Pass --json for machine output.\n\n" +
+			"When a projection carries deploy metadata, status shows when and via which tool\n" +
+			"it was last deployed. A projection on the server but not in gaffer.toml shows as\n" +
+			"an orphan when gaffer deployed it (a deletion candidate), otherwise as plain\n" +
+			"untracked with its deploying tool named. A drifted projection is marked local\n" +
+			"ahead (you edited local since deploying) or changed externally (a tool or a\n" +
+			"direct write changed the server since). Naming a projection adds the deployer\n" +
+			"and source revision.\n\n" +
+			"The last-deploy date comes from the event itself, so it shows even without\n" +
+			"metadata, where it is the time of the last write. Against a server without the\n" +
+			"metadata, status falls back to plain untracked or drifted.",
 		Example: "  gaffer status\n" +
 			"  gaffer status order-count --env staging",
 		Args: maxArgs(1),
@@ -152,19 +162,32 @@ func collectStatus(ctx context.Context, r *remote.Client, cfg *config.Config, ro
 	}
 	slices.Sort(untracked)
 	for _, n := range untracked {
+		// Route through compareProjection (its not-in-config branch) so an untracked
+		// projection's ledger read and ownership classification follow the same path
+		// as the tracked ones, rather than being re-derived here.
+		cmp, err := compareProjection(ctx, r, cfg, root, n)
+		if errors.Is(err, remote.ErrNotFound) {
+			// Deleted between the List above and this read - a benign race, so skip
+			// it rather than failing the whole overview.
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
 		rt := byName[n]
-		entries = append(entries, statusEntry{
-			comparison: comparison{Name: n, State: driftUntracked},
-			runtime:    &rt,
-		})
+		entries = append(entries, statusEntry{comparison: cmp, runtime: &rt})
 	}
 	return entries, nil
 }
 
 type statusJSON struct {
-	Name    string             `json:"name"`
-	Drift   string             `json:"drift"`
-	Runtime *statusRuntimeJSON `json:"runtime,omitempty"`
+	Name         string             `json:"name"`
+	Drift        string             `json:"drift"`
+	Owner        string             `json:"owner"`
+	Attribution  string             `json:"attribution,omitempty"`
+	LastDeployed string             `json:"lastDeployed,omitempty"`
+	LastWrite    *ledgerJSON        `json:"lastWrite,omitempty"`
+	Runtime      *statusRuntimeJSON `json:"runtime,omitempty"`
 	// Error is the compile error, present only when drift is invalid, so a
 	// machine consumer sees why a projection is invalid, not just that it is.
 	Error string `json:"error,omitempty"`
@@ -180,7 +203,7 @@ type statusRuntimeJSON struct {
 func renderStatusJSON(w io.Writer, entries []statusEntry) error {
 	out := make([]statusJSON, 0, len(entries))
 	for _, e := range entries {
-		j := statusJSON{Name: e.Name, Drift: string(e.State)}
+		j := statusJSON{Name: e.Name, Drift: string(e.State), Owner: string(e.owner()), Attribution: string(e.attribution()), LastDeployed: e.lastDeployedJSON(), LastWrite: e.lastWrite()}
 		if e.State == driftInvalid && e.LocalErr != nil {
 			j.Error = e.LocalErr.Error()
 		}

@@ -93,22 +93,27 @@ const ledgerScanLimit = 256
 // marker for ownership decisions is Tool == ToolName). Requires admin/$ops read
 // access.
 //
-// Outcomes: the latest entry; ErrNoLedger if the projection exists but no tool
-// entry is present within the scan window (untracked, or buried under only
-// metadata-less lifecycle events); ErrNotFound if the projection is gone - either
-// its stream is absent (a backward read surfaces that at the first Recv) or its
-// latest state is a tombstone, kept consistent with Read so a caller (e.g. orphan
-// detection) doesn't mistake a deleted projection for a tracked one; or
+// It also returns the definition stamped on that tool entry's event - the
+// definition the tool deployed, which a caller compares against the current
+// deployed definition to attribute drift ("did the server change since my last
+// deploy?"). nil alongside any error.
+//
+// Outcomes: the latest entry (+ its definition); ErrNoLedger if the projection
+// exists but no tool entry is present within the scan window (untracked, or buried
+// under only metadata-less lifecycle events); ErrNotFound if the projection is gone
+// - either its stream is absent (a backward read surfaces that at the first Recv)
+// or its latest state is a tombstone, kept consistent with Read so a caller (e.g.
+// orphan detection) doesn't mistake a deleted projection for a tracked one; or
 // ErrMalformedLedger if its tool metadata won't decode - surfaced distinctly, not
 // swallowed as "no ledger", so a caller can flag that one projection and continue.
-func (c *Client) ReadLedger(ctx context.Context, name string) (*Ledger, error) {
+func (c *Client) ReadLedger(ctx context.Context, name string) (*Ledger, *Definition, error) {
 	stream, err := c.db.ReadStream(ctx, projectionStreamPrefix+name, kurrentdb.ReadStreamOptions{
 		Direction:      kurrentdb.Backwards,
 		From:           kurrentdb.End{},
 		RequiresLeader: true,
 	}, ledgerScanLimit)
 	if err != nil {
-		return nil, classify(err)
+		return nil, nil, classify(err)
 	}
 	defer stream.Close()
 	return readLedger(stream.Recv, name)
@@ -120,15 +125,15 @@ func (c *Client) ReadLedger(ctx context.Context, name string) (*Ledger, error) {
 // gates the read via parseDefinition: a tombstoned projection is ErrNotFound
 // (matching Read), and an undecodable state surfaces rather than being read past.
 // Split from ReadLedger so the loop is testable without a live read stream.
-func readLedger(next func() (*kurrentdb.ResolvedEvent, error), name string) (*Ledger, error) {
+func readLedger(next func() (*kurrentdb.ResolvedEvent, error), name string) (*Ledger, *Definition, error) {
 	checkedState := false
 	for {
 		ev, err := next()
 		if errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("%w: %s", ErrNoLedger, name)
+			return nil, nil, fmt.Errorf("%w: %s", ErrNoLedger, name)
 		}
 		if err != nil {
-			return nil, classify(err)
+			return nil, nil, classify(err)
 		}
 		if ev == nil || ev.Event == nil || ev.Event.EventType != projectionUpdatedType {
 			continue
@@ -136,15 +141,22 @@ func readLedger(next func() (*kurrentdb.ResolvedEvent, error), name string) (*Le
 		if !checkedState {
 			checkedState = true
 			if _, err := parseDefinition(ev.Event.Data, name); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 		l, err := parseLedger(ev.Event.UserMetadata, ev.Event.CreatedDate)
 		if err != nil {
-			return nil, fmt.Errorf("%w for %q: %w", ErrMalformedLedger, name, err)
+			return nil, nil, fmt.Errorf("%w for %q: %w", ErrMalformedLedger, name, err)
 		}
 		if l != nil {
-			return l, nil
+			// The definition on this tool-stamped event is what the entry deployed -
+			// the baseline a caller hashes against the current deployed definition to
+			// tell a local-only edit from a change made on the server since.
+			def, err := parseDefinition(ev.Event.Data, name)
+			if err != nil {
+				return nil, nil, err
+			}
+			return l, def, nil
 		}
 	}
 }

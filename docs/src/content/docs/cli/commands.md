@@ -260,7 +260,9 @@ Compare a projection's local definition against what's deployed on KurrentDB.
 
 Reports one of five states: in sync, drifted, not deployed (local only), untracked (on the server but absent from gaffer.toml), or invalid. Invalid means the local definition can't be used - it doesn't compile, or has a config error such as track_emitted_streams on engine version 2; the source and config still diff where possible, but emit is unknown.
 
-When the query differs, the source is shown in an external diff viewer (git diff --no-index by default; set GAFFER_EXTERNAL_DIFF to override). Pass --json for machine-readable output.
+When the query differs, the source is shown in an external diff viewer (git diff --no-index by default; set GAFFER_EXTERNAL_DIFF to override).
+
+When deploy metadata is present, a drifted projection is attributed as local ahead (you edited local since deploying) or changed externally (a tool or a direct write changed the server since). An untracked projection is shown as an orphan when gaffer deployed it, otherwise as plain untracked. The provenance block names the tool, deployer, and revision behind it. Pass --json for machine-readable output, which splits changed externally into changed-by-tool and changed-server and carries the owner (including foreign).
 
 ```
 gaffer diff <projection> [flags]
@@ -330,6 +332,18 @@ With no argument, lists every local and deployed projection: running, stopped or
 faulted, progress, and whether each is in sync, drifted, not deployed, untracked,
 or invalid (local definition doesn't compile or has a config error). Name a
 projection for its detail. Pass --json for machine output.
+
+When a projection carries deploy metadata, status shows when and via which tool
+it was last deployed. A projection on the server but not in gaffer.toml shows as
+an orphan when gaffer deployed it (a deletion candidate), otherwise as plain
+untracked with its deploying tool named. A drifted projection is marked local
+ahead (you edited local since deploying) or changed externally (a tool or a
+direct write changed the server since). Naming a projection adds the deployer
+and source revision.
+
+The last-deploy date comes from the event itself, so it shows even without
+metadata, where it is the time of the last write. Against a server without the
+metadata, status falls back to plain untracked or drifted.
 
 ```
 gaffer status [projection] [flags]

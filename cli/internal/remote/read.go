@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 )
@@ -33,6 +34,11 @@ type Definition struct {
 	Emit                bool   // emitEnabled; absent means false
 	TrackEmittedStreams bool   // absent means false
 	Enabled             bool
+	// Time is when this definition was written: the $ProjectionUpdated event's
+	// CreatedDate. It's event metadata, not part of the persisted-state DTO, so it's
+	// available even for a projection carrying no tool metadata - the last-deploy/write
+	// time status shows when there's no ledger to read it from.
+	Time time.Time
 }
 
 // persistedState is the subset of the server's PersistedState DTO gaffer reads
@@ -85,7 +91,7 @@ func (c *Client) Read(ctx context.Context, name string) (*Definition, error) {
 // next is the stream's Recv. Split out so the loop is exercised in tests
 // without a live read stream, and shared by Read and ServerInfo, which
 // differ only in their terminal cases.
-func scanLatest[T any](next func() (*kurrentdb.ResolvedEvent, error), wantType string, parse func([]byte) (T, error)) (T, bool, error) {
+func scanLatest[T any](next func() (*kurrentdb.ResolvedEvent, error), wantType string, parse func(*kurrentdb.RecordedEvent) (T, error)) (T, bool, error) {
 	var zero T
 	for {
 		ev, err := next()
@@ -101,7 +107,7 @@ func scanLatest[T any](next func() (*kurrentdb.ResolvedEvent, error), wantType s
 		if ev == nil || ev.Event == nil || ev.Event.EventType != wantType {
 			continue
 		}
-		v, err := parse(ev.Event.Data)
+		v, err := parse(ev.Event)
 		if err != nil {
 			return zero, false, err
 		}
@@ -115,8 +121,13 @@ func scanLatest[T any](next func() (*kurrentdb.ResolvedEvent, error), wantType s
 // event, or a tombstoned state, is ErrNotFound. Split from Read so the loop is
 // testable without a live read stream.
 func readDefinition(next func() (*kurrentdb.ResolvedEvent, error), name string) (*Definition, error) {
-	def, found, err := scanLatest(next, projectionUpdatedType, func(data []byte) (*Definition, error) {
-		return parseDefinition(data, name)
+	def, found, err := scanLatest(next, projectionUpdatedType, func(e *kurrentdb.RecordedEvent) (*Definition, error) {
+		d, err := parseDefinition(e.Data, name)
+		if err != nil {
+			return nil, err
+		}
+		d.Time = e.CreatedDate
+		return d, nil
 	})
 	if err != nil {
 		return nil, err

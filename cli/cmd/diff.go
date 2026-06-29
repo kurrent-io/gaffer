@@ -26,8 +26,14 @@ func newDiffCmd() *cobra.Command {
 			"track_emitted_streams on engine version 2; the source and config still diff where " +
 			"possible, but emit is unknown.\n\n" +
 			"When the query differs, the source is shown in an external diff viewer (git diff " +
-			"--no-index by default; set GAFFER_EXTERNAL_DIFF to override). Pass --json for " +
-			"machine-readable output.",
+			"--no-index by default; set GAFFER_EXTERNAL_DIFF to override).\n\n" +
+			"When deploy metadata is present, a drifted projection is attributed as local " +
+			"ahead (you edited local since deploying) or changed externally (a tool or a " +
+			"direct write changed the server since). An untracked projection is shown as an " +
+			"orphan when gaffer deployed it, otherwise as plain untracked. The provenance " +
+			"block names the tool, deployer, and revision behind it. Pass --json for " +
+			"machine-readable output, which splits changed externally into changed-by-tool " +
+			"and changed-server and carries the owner (including foreign).",
 		Example: "  gaffer diff order-count\n" +
 			"  gaffer diff order-count --env staging",
 		Args: exactArgs(1),
@@ -79,6 +85,10 @@ func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
 type diffJSON struct {
 	Name         string       `json:"name"`
 	Drift        string       `json:"drift"`
+	Owner        string       `json:"owner"`
+	Attribution  string       `json:"attribution,omitempty"`
+	LastDeployed string       `json:"lastDeployed,omitempty"`
+	LastWrite    *ledgerJSON  `json:"lastWrite,omitempty"`
 	LocalHash    string       `json:"localHash,omitempty"`
 	DeployedHash string       `json:"deployedHash,omitempty"`
 	Changes      *changesJSON `json:"changes,omitempty"`
@@ -93,7 +103,7 @@ type changesJSON struct {
 }
 
 func renderDiffJSON(w io.Writer, e comparison) error {
-	j := diffJSON{Name: e.Name, Drift: string(e.State)}
+	j := diffJSON{Name: e.Name, Drift: string(e.State), Owner: string(e.owner()), Attribution: string(e.attribution()), LastDeployed: e.lastDeployedJSON(), LastWrite: e.lastWrite()}
 	// A local hash needs emit, which an invalid (uncompilable) projection can't
 	// provide, so omit it and report the compile error instead.
 	if e.Local != nil && e.State != driftInvalid {

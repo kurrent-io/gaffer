@@ -42,13 +42,16 @@ func (a deployAction) applies() bool {
 // deployResult is the outcome for one projection. Reason is set only for refuse;
 // Err is set when the apply RPC (or the pre-compare read) failed. LogicChange
 // marks an update that changed the query, so the rendering can note that
-// continuing keeps state computed by the old logic.
+// continuing keeps state computed by the old logic. ExternalChange marks an apply
+// whose deployed definition was changed outside gaffer since its last deploy, so
+// the rendering can caution that deploying overwrites that change.
 type deployResult struct {
-	Name        string
-	Action      deployAction
-	Reason      string
-	LogicChange bool
-	Err         error
+	Name           string
+	Action         deployAction
+	Reason         string
+	LogicChange    bool
+	ExternalChange bool
+	Err            error
 }
 
 // projectionManager is the slice of remote.Client the apply step needs: create
@@ -129,7 +132,9 @@ func newDeployCmd() *cobra.Command {
 			"a bad projection can't leave a half-applied set. --no-validate skips this check.\n\n" +
 			"When the plan would change something, deploy shows it and asks to confirm before " +
 			"applying; updating a projection that's currently faulted is flagged, since the update " +
-			"won't clear the fault. --yes skips the prompt; without a terminal (or with --json) deploy " +
+			"won't clear the fault, and so is one whose deployed definition was changed outside gaffer " +
+			"since its last deploy (deploying overwrites it). --yes skips the prompt; " +
+			"without a terminal (or with --json) deploy " +
 			"won't apply unconfirmed, so pass --yes in scripts. A server that reports itself as " +
 			"production gets a louder confirm and refuses --no-validate. " +
 			"Pass --json for machine-readable output.\n\n" +
@@ -315,7 +320,7 @@ func (p plannedItem) result() deployResult {
 	// LogicChange marks a continued logic change (an update that kept state). A
 	// reset rebuilds, so it reports outcome "rebuilt", not a logic-change flag -
 	// drop the flag once the item is no longer an update.
-	return deployResult{Name: p.name, Action: p.action, Reason: p.reason, LogicChange: p.logicChange && p.action == actUpdate, Err: p.err}
+	return deployResult{Name: p.name, Action: p.action, Reason: p.reason, LogicChange: p.logicChange && p.action == actUpdate, ExternalChange: p.action.applies() && p.cmp.externallyChanged(), Err: p.err}
 }
 
 // planAll computes the action for every projection without writing anything -

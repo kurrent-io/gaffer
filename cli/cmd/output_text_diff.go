@@ -15,9 +15,9 @@ func (tw *textWriter) WriteDiff(e comparison) {
 	tw.heading(e.Name)
 	switch e.State {
 	case driftNotDeployed:
-		tw.status(tw.styles.warning.Render("not deployed (local only)"))
+		tw.status(tw.styles.muted.Render("not deployed (local only)"))
 	case driftUntracked:
-		tw.status(tw.styles.warning.Render("untracked (deployed, not in gaffer.toml)"))
+		tw.status(tw.driftStyle(e).Render(driftVerdict(e) + " (deployed, not in gaffer.toml)"))
 	case driftInvalid:
 		tw.writeInvalidDiff(e)
 	default:
@@ -28,7 +28,13 @@ func (tw *textWriter) WriteDiff(e comparison) {
 		if e.Cmp.TrackEmittedStreamsDiffers {
 			tw.detail("Track emitted streams", tw.flagStatus(true, e.Deployed.TrackEmittedStreams, e.Local.TrackEmittedStreams))
 		}
+		// Attribute the drift when the ledger allows it (local edit vs a server-side change).
+		if e.State == driftDrifted {
+			tw.detail("Drift", tw.driftStyle(e).Render(driftVerdict(e)))
+		}
 	}
+	// Who last deployed it and from where, when the ledger has it.
+	tw.writeLedgerProvenance(e)
 }
 
 // writeInvalidDiff renders a diff whose local source doesn't compile: the

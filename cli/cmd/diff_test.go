@@ -6,8 +6,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
+	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
 func desc(query string, engineVersion int, emit bool) *deploy.Descriptor {
@@ -112,6 +114,28 @@ func TestWriteDiffInvalidNotDeployed(t *testing.T) {
 	}
 }
 
+func TestWriteDiffLedger(t *testing.T) {
+	// Untracked carrying gaffer's tool entry renders as an orphan, with provenance.
+	orphan := renderWriteDiff(comparison{Name: "legacy", State: driftUntracked, Deployed: desc("q", 2, false), Ledger: ledgerEntry(remote.ToolName, "admin")})
+	for _, want := range []string{"orphan (deployed, not in gaffer.toml)", "Deployed via: Gaffer", "Last deploy: 2026-06-29"} {
+		if !strings.Contains(orphan, want) {
+			t.Errorf("orphan render missing %q:\n%s", want, orphan)
+		}
+	}
+	// A drifted projection whose deployed def still matches my last gaffer deploy:
+	// verdict "local ahead", with the deployer/date in the provenance block.
+	localAhead := renderWriteDiff(comparison{
+		Name: "count", State: driftDrifted, Cmp: deploy.Comparison{QueryDiffers: true},
+		Deployed: desc("a\n", 1, false), Local: desc("b\n", 1, false),
+		Ledger: ledgerEntry(remote.ToolName, "admin"), DeployBaseline: desc("a\n", 1, false),
+	})
+	for _, want := range []string{"Drift: local ahead", "Deployer: admin", "Last deploy: 2026-06-29"} {
+		if !strings.Contains(localAhead, want) {
+			t.Errorf("local-ahead render missing %q:\n%s", want, localAhead)
+		}
+	}
+}
+
 func TestRenderDiffJSON(t *testing.T) {
 	decode := func(e comparison) diffJSON {
 		t.Helper()
@@ -143,8 +167,30 @@ func TestRenderDiffJSON(t *testing.T) {
 	}
 
 	untracked := decode(comparison{Name: "u", State: driftUntracked, Deployed: desc("q", 2, false)})
-	if untracked.Drift != "untracked" || untracked.LocalHash != "" || untracked.DeployedHash == "" || untracked.Changes != nil {
-		t.Errorf("untracked = %+v; want deployed hash only", untracked)
+	if untracked.Drift != "untracked" || untracked.Owner != "unknown" || untracked.LocalHash != "" || untracked.DeployedHash == "" || untracked.Changes != nil {
+		t.Errorf("untracked = %+v; want deployed hash only, owner unknown", untracked)
+	}
+
+	// Metadata-less but deployed: lastDeployed (event time) is present, lastWrite isn't.
+	adhoc := decode(comparison{Name: "a", State: driftUntracked, Deployed: desc("q", 2, false), DeployedAt: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)})
+	if adhoc.LastDeployed == "" || adhoc.LastWrite != nil {
+		t.Errorf("adhoc = %+v (lastWrite %+v); want deploy time + no last-write", adhoc, adhoc.LastWrite)
+	}
+
+	// An orphan (untracked, gaffer's tool entry) carries owner + deploy time + the tool.
+	orphan := decode(comparison{Name: "o", State: driftUntracked, Deployed: desc("q", 2, false), Ledger: ledgerEntry(remote.ToolName, "admin")})
+	if orphan.Owner != "orphan" || orphan.LastDeployed == "" || orphan.LastWrite == nil || orphan.LastWrite.Tool != remote.ToolName || orphan.LastWrite.Actor != "admin" {
+		t.Errorf("orphan = %+v (lastWrite %+v); want owner orphan + deploy time + gaffer last-write", orphan, orphan.LastWrite)
+	}
+
+	// A drifted projection still matching my last deploy attributes to a local edit.
+	localAhead := decode(comparison{
+		Name: "la", State: driftDrifted, Cmp: deploy.Comparison{QueryDiffers: true},
+		Local: desc("x", 2, false), Deployed: desc("y", 2, false),
+		Ledger: ledgerEntry(remote.ToolName, "admin"), DeployBaseline: desc("y", 2, false),
+	})
+	if localAhead.Attribution != "local-ahead" || localAhead.Owner != "in-config" || localAhead.LastWrite == nil {
+		t.Errorf("local-ahead = %+v; want attribution local-ahead, owner in-config", localAhead)
 	}
 
 	// Invalid: report the compile error and the deployed hash, but no local hash

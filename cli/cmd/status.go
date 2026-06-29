@@ -166,6 +166,11 @@ func collectStatus(ctx context.Context, r *remote.Client, cfg *config.Config, ro
 		// projection's ledger read and ownership classification follow the same path
 		// as the tracked ones, rather than being re-derived here.
 		cmp, err := compareProjection(ctx, r, cfg, root, n)
+		if errors.Is(err, remote.ErrNotFound) {
+			// Deleted between the List above and this read - a benign race, so skip
+			// it rather than failing the whole overview.
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}

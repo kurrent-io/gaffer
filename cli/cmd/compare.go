@@ -273,7 +273,10 @@ func compareProjection(ctx context.Context, r *remote.Client, cfg *config.Config
 	if def == nil {
 		deployedDef, err := r.Read(ctx, name)
 		if errors.Is(err, remote.ErrNotFound) {
-			return comparison{}, fmt.Errorf("projection %q is not in gaffer.toml or deployed on the server", name)
+			// Wrap ErrNotFound so a caller can tell this apart: gaffer diff <name>
+			// reports it, but gaffer status treats a projection that vanished between
+			// its List and this read as a benign race and skips it.
+			return comparison{}, fmt.Errorf("%w: %q is not in gaffer.toml or deployed on the server", remote.ErrNotFound, name)
 		}
 		if err != nil {
 			return comparison{}, err

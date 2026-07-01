@@ -276,6 +276,43 @@ Flags:
       --json                Output as JSON
 ```
 
+## gaffer history
+
+Show a deployed projection's history.
+
+Show the history of a deployed projection: every operation on it, newest
+first, with who made it and how.
+
+Each entry is one write to the projection on the server. An entry carrying
+gaffer metadata shows the operation (deploy, rollback, reset), the actor, and the
+source revision. An entry with no gaffer metadata is attributed by what changed:
+edited externally when the definition was changed outside gaffer, changed by
+another tool when it carries that tool's metadata, enabled/disabled for a
+lifecycle change, or reconfigured when a checkpoint setting moved. A content hash
+identifies the deployed definition, so a reverted definition is recognisable at a
+glance.
+
+On a terminal this opens an interactive timeline, the selected entry's detail
+alongside; move with the arrow keys (g/G to jump to the ends, q to quit), and a
+reverted definition is drawn as a branch back to the deploy it matched. Piped or
+with --json it prints the latest entries (--limit, default 100, or --all).
+Against a server without gaffer metadata it degrades to the history with
+timestamps and content hashes only.
+
+```
+gaffer history <projection> [flags]
+```
+
+Flags:
+
+```
+      --all                 Show all entries, ignoring --limit (piped / --json only)
+      --connection string   KurrentDB connection string (overrides --env)
+      --env string          Environment from gaffer.toml
+      --json                Output as JSON
+      --limit int           Maximum entries to show (piped / --json only) (default 100)
+```
+
 ## gaffer recreate
 
 Destroy and rebuild a projection from local config.

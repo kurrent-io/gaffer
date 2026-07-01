@@ -208,7 +208,7 @@ func operationWidth(versions []historyVersion) int {
 	const cap = 18 // fits "edited externally"
 	w := 0
 	for _, hv := range versions {
-		if l := len(hv.eventLabel()); l > w {
+		if l := lipgloss.Width(hv.eventLabel()); l > w {
 			w = l
 		}
 	}

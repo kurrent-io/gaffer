@@ -158,7 +158,8 @@ const (
 // short content hash and how it was classified against the older adjacent version.
 type historyVersion struct {
 	remote.Version
-	Hash          string            // short content hash of the definition at this version
+	Hash          string            // short content hash, for display
+	contentKey    string            // full content hash, for revert matching (avoids short-hash prefix collisions)
 	Kind          versionKind       // how this version came to be
 	Tool          string            // the tool name, for kindChangedByTool
 	Change        deploy.Comparison // dimensions that changed vs the older version, when edited externally
@@ -236,7 +237,8 @@ func classifyHistory(versions []remote.Version) []historyVersion {
 		v := versions[i]
 		hv := historyVersion{Version: v}
 		if v.Definition != nil {
-			hv.Hash = shortHash(v.Definition.Descriptor().Hash())
+			hv.contentKey = v.Definition.Descriptor().Hash()
+			hv.Hash = shortHash(hv.contentKey)
 		}
 		var prev *remote.Version
 		if i+1 < len(versions) {

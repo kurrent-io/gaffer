@@ -13,6 +13,7 @@ import (
 func graphOf(hashes ...string) historyGraph {
 	vs := make([]historyVersion, len(hashes))
 	for i, h := range hashes {
+		vs[i].contentKey = h
 		vs[i].Hash = h
 	}
 	return computeHistoryGraph(vs)

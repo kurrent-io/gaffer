@@ -580,7 +580,7 @@ func (m historyModel) governingContent(i int) *historyVersion {
 // newer one, so the original occurrence of a content is not a match.
 func (m historyModel) matchesEarlier(i int) bool {
 	for j := i + 1; j < len(m.versions); j++ {
-		if !m.versions[j].stateChange() && m.versions[j].Hash != "" && m.versions[j].Hash == m.versions[i].Hash {
+		if !m.versions[j].stateChange() && m.versions[j].contentKey != "" && m.versions[j].contentKey == m.versions[i].contentKey {
 			return true
 		}
 	}

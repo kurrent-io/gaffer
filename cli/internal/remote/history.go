@@ -64,11 +64,16 @@ func (c *Client) ReadHistory(ctx context.Context, name string, before int64, cou
 	if limit <= 0 || limit > historyHardCap {
 		limit = historyHardCap
 	}
+	// Read the event budget at the hard cap, not `limit`: the loop counts
+	// $ProjectionUpdated versions and skips any other event type, so bounding the
+	// server read by the version count would let a skipped event steal from the
+	// budget and return a short (or empty, tripping false exhaustion) page. The
+	// stream is consumed lazily and closed once `limit` versions are in hand.
 	stream, err := c.db.ReadStream(ctx, projectionStreamPrefix+name, kurrentdb.ReadStreamOptions{
 		Direction:      kurrentdb.Backwards,
 		From:           from,
 		RequiresLeader: true,
-	}, uint64(limit))
+	}, uint64(historyHardCap))
 	if err != nil {
 		return nil, 0, classify(err)
 	}

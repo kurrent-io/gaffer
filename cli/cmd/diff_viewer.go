@@ -10,40 +10,22 @@ import (
 	"strings"
 )
 
-// resolveDiffCommand returns the external diff command (argv prefix, before the
-// two file paths) and whether one is available. Precedence:
-//   - GAFFER_EXTERNAL_DIFF (split on spaces) for an explicit override;
-//   - `git diff --no-index`, which honours the user's git diff configuration
-//     (GIT_EXTERNAL_DIFF, diff.external, pager, colour) where git is installed;
-//   - `diff -u` as a last resort.
-//
-// ok is false when none is available, so the caller can fall back to a hint
-// rather than dumping the source.
-func resolveDiffCommand(getenv func(string) string, lookPath func(string) (string, error)) (argv []string, ok bool) {
+// externalDiffCommand returns the user's opt-in external diff command (the
+// argv prefix, before the two file paths), from GAFFER_EXTERNAL_DIFF split on
+// spaces. The default query diff renders in-process (WriteQueryDiff); the
+// external viewer is the escape hatch for tools like delta or difftastic.
+func externalDiffCommand(getenv func(string) string) (argv []string, ok bool) {
 	if custom := strings.TrimSpace(getenv("GAFFER_EXTERNAL_DIFF")); custom != "" {
 		return strings.Fields(custom), true
-	}
-	if _, err := lookPath("git"); err == nil {
-		return []string{"git", "diff", "--no-index"}, true
-	}
-	if _, err := lookPath("diff"); err == nil {
-		return []string{"diff", "-u"}, true
 	}
 	return nil, false
 }
 
-// openSourceDiff renders the remote (deployed) vs local query through an
-// external diff viewer. The two queries are written to temp files (named for
-// readable diff headers) and the viewer is run with stdout/stderr inherited so
-// it pages and colours itself. With no viewer available it prints a hint instead
-// of dumping the source.
-func openSourceDiff(name, remoteQuery, local string, out, errOut io.Writer) error {
-	argv, ok := resolveDiffCommand(os.Getenv, exec.LookPath)
-	if !ok {
-		_, _ = fmt.Fprintf(errOut, "%s: query differs - set GAFFER_EXTERNAL_DIFF or install git to view the source diff\n", name)
-		return nil
-	}
-
+// openSourceDiff renders the remote (deployed) vs local query through the
+// user's external diff viewer. The two queries are written to temp files
+// (named for readable diff headers) and the viewer is run with stdout/stderr
+// inherited so it pages and colours itself.
+func openSourceDiff(argv []string, name, remoteQuery, local string, out, errOut io.Writer) error {
 	dir, err := os.MkdirTemp("", "gaffer-diff-")
 	if err != nil {
 		return err

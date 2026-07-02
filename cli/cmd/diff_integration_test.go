@@ -130,23 +130,36 @@ func TestDiff_Integration_Viewer(t *testing.T) {
 		t.Fatalf("rewrite: %v", err)
 	}
 
-	// A no-op external diff that echoes its file-path args, so we can confirm the
-	// viewer ran with the two temp files rather than depending on git's output.
-	t.Setenv("GAFFER_EXTERNAL_DIFF", "echo")
+	runDiffText := func(t *testing.T) string {
+		t.Helper()
+		root := NewRootCmd()
+		root.SetArgs([]string{"diff", name})
+		root.SetErr(os.Stderr)
+		return testutil.CaptureStdout(t, func() {
+			if err := ExecuteRoot(context.Background(), root); err != nil {
+				t.Fatalf("diff: %v", err)
+			}
+		})
+	}
 
-	root := NewRootCmd()
-	root.SetArgs([]string{"diff", name})
-	root.SetErr(os.Stderr)
-	out := testutil.CaptureStdout(t, func() {
-		if err := ExecuteRoot(context.Background(), root); err != nil {
-			t.Fatalf("diff: %v", err)
+	t.Run("inline by default", func(t *testing.T) {
+		t.Setenv("GAFFER_EXTERNAL_DIFF", "") // isolate from the invoking shell
+		out := runDiffText(t)
+		if !strings.Contains(out, name) || !strings.Contains(out, "Query: +") {
+			t.Errorf("missing styled drift summary in:\n%s", out)
+		}
+		if !strings.Contains(out, "+ // edited") {
+			t.Errorf("missing the inline query diff (the added local line) in:\n%s", out)
 		}
 	})
 
-	if !strings.Contains(out, name) || !strings.Contains(out, "Query: +") {
-		t.Errorf("missing styled drift summary in:\n%s", out)
-	}
-	if !strings.Contains(out, ".remote") || !strings.Contains(out, ".local") {
-		t.Errorf("viewer was not invoked with the two temp files:\n%s", out)
-	}
+	t.Run("external viewer opt-in", func(t *testing.T) {
+		// A no-op external diff that echoes its file-path args, so we can confirm
+		// the viewer ran with the two temp files rather than depending on git.
+		t.Setenv("GAFFER_EXTERNAL_DIFF", "echo")
+		out := runDiffText(t)
+		if !strings.Contains(out, ".remote") || !strings.Contains(out, ".local") {
+			t.Errorf("viewer was not invoked with the two temp files:\n%s", out)
+		}
+	})
 }

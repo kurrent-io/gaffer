@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 )
 
 type diffOpts struct {
@@ -25,8 +28,10 @@ func newDiffCmd() *cobra.Command {
 			"definition can't be used - it doesn't compile, or has a config error such as " +
 			"track_emitted_streams on engine version 2; the source and config still diff where " +
 			"possible, but emit is unknown.\n\n" +
-			"When the query differs, the source is shown in an external diff viewer (git diff " +
-			"--no-index by default; set GAFFER_EXTERNAL_DIFF to override).\n\n" +
+			"When the query differs, the source diff is rendered inline: every line of both " +
+			"sides with the changes marked, and the span that changed within a line " +
+			"highlighted. Set GAFFER_EXTERNAL_DIFF to open an external viewer instead (e.g. " +
+			"git diff, delta, difft).\n\n" +
 			"When deploy metadata is present, a drifted projection is attributed as local " +
 			"ahead (you edited local since deploying) or changed externally (a tool or a " +
 			"direct write changed the server since). An untracked projection is shown as an " +
@@ -67,12 +72,17 @@ func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
 	if opts.JSON {
 		return renderDiffJSON(cmd.OutOrStdout(), entry)
 	}
-	newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr()).WriteDiff(entry)
+	tw := newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr())
+	tw.WriteDiff(entry)
 	// The query is read from source, not compiled, so the source diff is still
-	// worth opening when the local projection is invalid (its whole point is
+	// worth showing when the local projection is invalid (its whole point is
 	// comparing source to what's deployed). Both sides must exist and differ.
-	if entry.Cmp.QueryDiffers && entry.Deployed != nil && (entry.State == driftDrifted || entry.State == driftInvalid) {
-		return openSourceDiff(entry.Name, entry.Deployed.CanonicalQuery(), entry.Local.CanonicalQuery(), cmd.OutOrStdout(), cmd.ErrOrStderr())
+	if entry.Cmp.QueryDiffers && entry.Deployed != nil && entry.Local != nil && (entry.State == driftDrifted || entry.State == driftInvalid) {
+		if argv, ok := externalDiffCommand(os.Getenv); ok {
+			return openSourceDiff(argv, entry.Name, entry.Deployed.CanonicalQuery(), entry.Local.CanonicalQuery(), cmd.OutOrStdout(), cmd.ErrOrStderr())
+		}
+		tw.blank()
+		tw.WriteQueryDiff(deploy.LineDiff(entry.Deployed.Query, entry.Local.Query))
 	}
 	return nil
 }

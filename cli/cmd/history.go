@@ -81,7 +81,10 @@ func runHistory(cmd *cobra.Command, name string, opts historyOpts) error {
 	// the footer's env/target labels - it can't fail now that the connect succeeded.
 	if !opts.JSON && interactiveWriter(cmd.OutOrStdout()) {
 		resolved, _ := resolveLiveEnv(opts.Connection, opts.Env, conn.cfg)
-		return runHistoryTUI(cmd, conn.r, name, resolved.Name, redactConnection(resolved.Connection))
+		// The ledger a timeline-applied rollback stamps; resolved once here, so
+		// the modal's confirm doesn't pay the actor/revision lookups per apply.
+		ledger := toolLedger(opts.Connection, opts.Env, remote.OpRollback, conn.cfg, conn.root)
+		return runHistoryTUI(cmd, conn.r, name, resolved.Name, redactConnection(resolved.Connection), ledger)
 	}
 
 	// remote calls block until their context deadline if the projections

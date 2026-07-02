@@ -25,8 +25,13 @@ const historyPageSize = 50
 const historyLoadThreshold = 10
 
 // historyLoadedMsg carries a fetched page (older versions) back into the model.
+// gen is the load generation the page was fired under: a rollback reload
+// replaces the whole window and bumps the generation, so a page requested
+// against the old window is discarded instead of appending pre-rollback
+// versions (with a hole where the new head entry sits) onto the fresh one.
 type historyLoadedMsg struct {
 	versions []remote.Version
+	gen      int
 	err      error
 }
 
@@ -44,6 +49,7 @@ type historyModel struct {
 	client  *remote.Client
 	baseCtx context.Context //nolint:containedctx // the picker outlives a single RPC; each page derives a bounded ctx from this
 	total   int64
+	ledger  remote.Ledger // stamped on a rollback applied from the timeline
 
 	raw       []remote.Version // accumulated, newest-first
 	versions  []historyVersion // classified view of raw
@@ -52,6 +58,7 @@ type historyModel struct {
 	loading   bool
 	exhausted bool // a paged read came back empty, so the whole stream is loaded
 	loadErr   error
+	loadGen   int // current load generation; pages from an older one are stale
 
 	cursor int
 	top    int // index of the first visible row
@@ -59,7 +66,11 @@ type historyModel struct {
 	height int
 
 	diffOpen   bool // the diff modal is up, showing the selected entry's change
-	diffScroll int  // the modal body's scroll offset
+	diffScroll int  // the open modal body's scroll offset (diff or rollback)
+
+	rbOpen bool  // the rollback confirm modal is up for the selected entry
+	rbBusy bool  // the rollback update is in flight; keys are dead until it lands
+	rbErr  error // the last failed apply, shown in the modal for a retry
 }
 
 // historyStyles is the charm-palette chrome around the timeline: the footer status
@@ -135,6 +146,11 @@ func (m historyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	case historyLoadedMsg:
+		if msg.gen != m.loadGen {
+			// Fired against a window a reload has since replaced; appending it
+			// would punch a hole in the fresh one (or falsely mark it exhausted).
+			return m, nil
+		}
 		m.loading = false
 		if msg.err != nil {
 			m.loadErr = msg.err
@@ -163,6 +179,40 @@ func (m historyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, nil
+	case rollbackAppliedMsg:
+		if msg.err != nil {
+			m.rbBusy = false
+			m.rbErr = msg.err
+			return m, nil
+		}
+		// The rollback landed; refresh from the head so the new entry shows on
+		// top. rbBusy stays up until the reload lands - the modal reads
+		// "rolling back…" over a stale timeline rather than accepting keys.
+		cmd := m.reloadHistory()
+		return m, cmd
+	case historyReloadedMsg:
+		m.rbBusy = false
+		m.rbOpen = false
+		m.diffScroll = 0
+		if msg.err != nil {
+			// The rollback applied but the refresh failed: keep the stale
+			// timeline and surface the load failure on the footer.
+			m.loadErr = msg.err
+			return m, nil
+		}
+		// The window is replaced wholesale; a page load still in flight was
+		// requested against the old window, so invalidate it.
+		m.loadGen++
+		m.loadErr = nil
+		m.raw = msg.versions
+		m.versions = collapseHistory(classifyHistory(m.raw))
+		m.graph = computeHistoryGraph(m.versions)
+		m.ow = operationWidth(m.versions)
+		m.total = msg.total
+		m.cursor, m.top = 0, 0
+		m.exhausted = false
+		m.loading = false
+		return m, nil
 	default:
 		return m, nil
 	}
@@ -170,6 +220,9 @@ func (m historyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m historyModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+	if m.rbOpen {
+		return m.handleRollbackKey(key)
+	}
 	if m.diffOpen {
 		return m.handleDiffKey(key)
 	}
@@ -187,6 +240,13 @@ func (m historyModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// bottom.
 		cmd := m.ensureBaseline()
 		return m, cmd
+	case "r":
+		if len(m.versions) == 0 {
+			return m, nil
+		}
+		m.rbOpen = true
+		m.diffScroll = 0
+		return m, nil
 	case "pgup":
 		m.cursor = max(0, m.cursor-m.visibleVersions())
 	case "pgdown":
@@ -295,12 +355,12 @@ func (m *historyModel) loadPage(force bool) tea.Cmd {
 		return nil
 	}
 	m.loading = true
-	client, name, base := m.client, m.name, m.baseCtx
+	client, name, base, gen := m.client, m.name, m.baseCtx, m.loadGen
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(base, projectionRPCTimeout)
 		defer cancel()
 		vs, _, err := client.ReadHistory(ctx, name, oldest, historyPageSize)
-		return historyLoadedMsg{versions: vs, err: err}
+		return historyLoadedMsg{versions: vs, gen: gen, err: err}
 	}
 }
 
@@ -340,7 +400,10 @@ func (m historyModel) View() string {
 	}
 	rows = append(rows, panes, m.footer())
 	view := lipgloss.JoinVertical(lipgloss.Left, rows...)
-	if m.diffOpen {
+	switch {
+	case m.rbOpen:
+		view = centerOverlay(m.rollbackModal(), view, m.width, m.height)
+	case m.diffOpen:
 		// The timeline stays visible around the modal (crush-style, no scrim);
 		// the app footer below it keeps the projection and position in view.
 		view = centerOverlay(m.diffModal(), view, m.width, m.height)
@@ -703,6 +766,8 @@ func (m historyModel) footer() string {
 
 	var right string
 	switch {
+	case m.rbBusy:
+		right = m.hs.barDim.Render(" rolling back… ")
 	case m.loadErr != nil:
 		right = m.hs.badgeWarn.Render("load failed")
 	case m.loading:
@@ -714,7 +779,7 @@ func (m historyModel) footer() string {
 		right += m.hs.badgeConn.Render(m.connLabel)
 	}
 
-	controls := m.hs.barDim.Render("↑↓ move · d diff · g/G jump · q quit")
+	controls := m.hs.barDim.Render("↑↓/g/G move · d diff · r rollback · q quit")
 	lw, rw, cw := lipgloss.Width(left), lipgloss.Width(right), lipgloss.Width(controls)
 	// Drop the controls when there isn't room for them plus a gap each side.
 	if lw+rw+cw+4 > m.width {
@@ -750,8 +815,9 @@ func truncate(s string, w int) string {
 }
 
 // runHistoryTUI reads the first page, then runs the interactive timeline on the
-// alt screen, paging older versions in on demand.
-func runHistoryTUI(cmd *cobra.Command, r *remote.Client, name, envLabel, connLabel string) error {
+// alt screen, paging older versions in on demand. ledger is stamped on a
+// rollback applied from the timeline.
+func runHistoryTUI(cmd *cobra.Command, r *remote.Client, name, envLabel, connLabel string, ledger remote.Ledger) error {
 	ctx, cancel := context.WithTimeout(cmd.Context(), projectionRPCTimeout)
 	versions, total, err := r.ReadHistory(ctx, name, -1, historyPageSize)
 	cancel()
@@ -772,6 +838,7 @@ func runHistoryTUI(cmd *cobra.Command, r *remote.Client, name, envLabel, connLab
 		client:    r,
 		baseCtx:   cmd.Context(),
 		total:     total,
+		ledger:    ledger,
 		raw:       versions,
 		versions:  collapseHistory(classifyHistory(versions)),
 	}

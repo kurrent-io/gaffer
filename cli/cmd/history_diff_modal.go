@@ -32,24 +32,35 @@ func (m historyModel) diffMaxScroll() int {
 	return max(0, len(body)-m.diffBodyHeight())
 }
 
+// modalInnerWidth is the content width inside the modal box: the outer width
+// minus the border and one cell of padding each side.
+func (m historyModel) modalInnerWidth() int {
+	w, _ := m.diffModalSize()
+	return w - 4
+}
+
 // diffModal renders the diff overlay for the selected entry: a bordered box
 // with the entry named in the title, the scalar dimensions that moved, and the
 // aligned query diff (the same rows gaffer diff prints). The box shrinks to
 // its content - a two-line change is a small dialog, not a full screen of
 // blank rows - and scrolls when the diff outgrows the screen.
 func (m historyModel) diffModal() string {
-	w, _ := m.diffModalSize()
-	innerW := w - 4 // border and one cell of padding each side
+	innerW := m.modalInnerWidth()
 	d := historyDiffAt(m.versions, m.cursor, m.morePages())
+	return m.modalFrame(m.diffModalTitle(d, innerW), m.diffModalBody(d, innerW),
+		"↑↓ scrub · pgup/pgdn scroll · esc close")
+}
 
-	title := m.diffModalTitle(d, innerW)
-	body := m.diffModalBody(d, innerW)
+// modalFrame windows the body by the current scroll and wraps title, body, and
+// hint in the shared bordered overlay box - one frame for the diff and rollback
+// modals so their size, scrolling, and chrome can't drift apart.
+func (m historyModel) modalFrame(title string, body []string, hint string) string {
+	w, _ := m.diffModalSize()
+	innerW := m.modalInnerWidth()
 
 	visible := min(len(body), m.diffBodyHeight())
 	from := min(m.diffScroll, len(body)-visible)
 	window := body[from : from+visible]
-
-	hint := "↑↓ scrub · pgup/pgdn scroll · esc close"
 	if len(body) > visible {
 		hint = fmt.Sprintf("%d-%d of %d · %s", from+1, from+visible, len(body), hint)
 	}

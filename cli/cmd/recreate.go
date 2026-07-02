@@ -124,6 +124,10 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 		return err
 	}
 
+	// The tool-metadata stamped on the rebuild's create, so history attributes
+	// the recreate to gaffer instead of showing anonymous lifecycle steps.
+	ledger := toolLedger(opts.Connection, opts.Env, remote.OpRecreate, cfg, root)
+
 	// The destructive Disable -> Delete -> Create sequence, its ordering and
 	// recovery messages, live in internal/deploy (shared in shape with deploy's
 	// rebuild); here we only bind each step to the client and its option mapping.
@@ -141,6 +145,7 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 				EngineVersion:       local.EngineVersion,
 				Emit:                local.Emit,
 				TrackEmittedStreams: local.TrackEmittedStreams,
+				Ledger:              &ledger,
 			})
 		},
 	}); err != nil {

@@ -44,10 +44,12 @@ func newHistoryCmd() *cobra.Command {
 			"glance.\n\n" +
 			"On a terminal this opens an interactive timeline, the selected entry's detail\n" +
 			"alongside; move with the arrow keys (g/G to jump to the ends, q to quit), and a\n" +
-			"reverted definition is drawn as a branch back to the deploy it matched. Piped or\n" +
-			"with --json it prints the latest entries (--limit, default 100, or --all).\n" +
-			"Against a server without gaffer metadata it degrades to the history with\n" +
-			"timestamps and content hashes only.",
+			"reverted definition is drawn as a branch back to the deploy it matched. Press d\n" +
+			"to see the change an entry introduced as a source diff against the version\n" +
+			"before it; the arrows keep working under the diff, walking the definition's\n" +
+			"evolution entry by entry. Piped or with --json it prints the latest entries\n" +
+			"(--limit, default 100, or --all). Against a server without gaffer metadata it\n" +
+			"degrades to the history with timestamps and content hashes only.",
 		Example: "  gaffer history order-count\n" +
 			"  gaffer history order-count --env staging\n" +
 			"  gaffer history order-count --json",

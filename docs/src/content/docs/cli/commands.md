@@ -294,10 +294,12 @@ glance.
 
 On a terminal this opens an interactive timeline, the selected entry's detail
 alongside; move with the arrow keys (g/G to jump to the ends, q to quit), and a
-reverted definition is drawn as a branch back to the deploy it matched. Piped or
-with --json it prints the latest entries (--limit, default 100, or --all).
-Against a server without gaffer metadata it degrades to the history with
-timestamps and content hashes only.
+reverted definition is drawn as a branch back to the deploy it matched. Press d
+to see the change an entry introduced as a source diff against the version
+before it; the arrows keep working under the diff, walking the definition's
+evolution entry by entry. Piped or with --json it prints the latest entries
+(--limit, default 100, or --all). Against a server without gaffer metadata it
+degrades to the history with timestamps and content hashes only.
 
 ```
 gaffer history <projection> [flags]

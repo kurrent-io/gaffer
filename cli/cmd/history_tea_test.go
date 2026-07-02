@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -190,12 +191,27 @@ func TestHistoryScrollSetsLoading(t *testing.T) {
 	}
 }
 
+func TestHistoryEmptyPageClearsStaleLoadError(t *testing.T) {
+	// A successful empty page (stream exhausted) must clear an earlier failure,
+	// or the footer keeps showing "load failed" for the rest of the session.
+	m := newTestHistoryModel(sampleHistory(), 100, 20)
+	m.loadErr = errors.New("transient read failure")
+	nm, _ := m.Update(historyLoadedMsg{versions: nil})
+	m = asModel(t, nm)
+	if m.loadErr != nil {
+		t.Errorf("loadErr = %v after a successful empty page, want cleared", m.loadErr)
+	}
+	if !m.exhausted {
+		t.Error("empty page should still mark the stream exhausted")
+	}
+}
+
 func TestHistoryEmptyPageStopsPaging(t *testing.T) {
 	// An empty page must set exhausted so a gap of non-state events doesn't make
 	// every keypress re-fetch the same window forever.
 	m := newTestHistoryModel(sampleHistory(), 100, 20)
 	m.cursor = len(m.versions) - 1 // at the bottom, where paging would fire
-	if cmd := m.maybeLoadMore(); cmd == nil {
+	if cmd := m.loadPage(false); cmd == nil {
 		t.Fatal("should page when older versions remain (oldest > 0)")
 	}
 	m.loading = false
@@ -204,7 +220,7 @@ func TestHistoryEmptyPageStopsPaging(t *testing.T) {
 	if !m.exhausted {
 		t.Fatal("an empty page should mark the stream exhausted")
 	}
-	if cmd := m.maybeLoadMore(); cmd != nil {
+	if cmd := m.loadPage(false); cmd != nil {
 		t.Error("exhausted: must not page again")
 	}
 }

@@ -600,13 +600,9 @@ func (m historyModel) detail(hv historyVersion, width int) string {
 			b.WriteByte('\n')
 		}
 	}
-	if len(hv.Absorbed) > 0 {
-		step := " step"
-		if len(hv.Absorbed) > 1 {
-			step = " steps"
-		}
-		b.WriteString(m.tw.styles.dim.Render(truncate("⟳ reprocessed from zero", width)) + "\n")
-		b.WriteString(m.tw.styles.dim.Render(truncate("  folds the "+absorbedSummary(hv.Absorbed)+step, width)) + "\n")
+	if hv.Kind == kindRecreate {
+		b.WriteString(strings.Repeat(" ", labelW) + m.tw.styles.dim.Render(truncate("⟳ reprocessed from zero", max(1, width-labelW))))
+		b.WriteByte('\n')
 	}
 	switch hv.Kind {
 	case kindEditedExternally:

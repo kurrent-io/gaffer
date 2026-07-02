@@ -114,9 +114,6 @@ func TestCollapseHistoryFoldsRecreate(t *testing.T) {
 	if hist[0].Absorbed[0].Kind != kindDeleted || hist[0].Absorbed[1].Kind != kindDisabled {
 		t.Errorf("absorbed = %q, %q, want deleted then disabled", hist[0].Absorbed[0].Kind, hist[0].Absorbed[1].Kind)
 	}
-	if got := absorbedSummary(hist[0].Absorbed); got != "disable + delete" {
-		t.Errorf("absorbedSummary = %q, want action order 'disable + delete'", got)
-	}
 	if absorbedCount(hist) != 2 {
 		t.Errorf("absorbedCount = %d, want 2", absorbedCount(hist))
 	}

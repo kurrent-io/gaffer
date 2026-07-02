@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -305,22 +304,6 @@ func absorbedCount(versions []historyVersion) int64 {
 		n += int64(len(hv.Absorbed))
 	}
 	return n
-}
-
-// absorbedSummary names a recreate's folded steps in action order (disable, then
-// delete). The rewritten variant is the disable that found the projection already
-// disabled, so it reads as the disable step it was.
-func absorbedSummary(absorbed []historyVersion) string {
-	names := make([]string, 0, len(absorbed))
-	for i := len(absorbed) - 1; i >= 0; i-- {
-		switch absorbed[i].Kind {
-		case kindDisabled, kindRewritten:
-			names = append(names, "disable")
-		case kindDeleted:
-			names = append(names, "delete")
-		}
-	}
-	return strings.Join(names, " + ")
 }
 
 // classifyVersion attributes one version. A gaffer entry names its operation; a

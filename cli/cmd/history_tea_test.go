@@ -244,8 +244,11 @@ func TestHistoryRecreateDetailAndFooter(t *testing.T) {
 	}, 100, 20)
 	m.total = 4
 	out := m.View()
-	if !strings.Contains(out, "reprocessed from zero") || !strings.Contains(out, "folds the disable + delete steps") {
-		t.Errorf("detail should name the folded steps\n%s", out)
+	if !strings.Contains(out, "reprocessed from zero") {
+		t.Errorf("detail should note the reprocess\n%s", out)
+	}
+	if strings.Contains(out, "folds") {
+		t.Errorf("detail should not mention the fold mechanics\n%s", out)
 	}
 	if !strings.Contains(out, "1 of 2") {
 		t.Errorf("footer should discount the 2 folded bookends (want 1 of 2)\n%s", out)

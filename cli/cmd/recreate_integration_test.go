@@ -75,12 +75,16 @@ func TestRecreate_Integration(t *testing.T) {
 			t.Errorf("after recreate: enabled=%v query=%q, want enabled with the count query", def.Enabled, def.Query)
 		}
 		// The rebuild's create is stamped, so history attributes it to gaffer.
-		l, _, err := r.ReadLedger(ctx, name)
-		if err != nil {
-			t.Fatalf("read ledger after recreate: %v", err)
-		}
-		if l.Tool != remote.ToolName || l.Operation != remote.OpRecreate {
-			t.Errorf("ledger after recreate = tool %q operation %q, want %s/%s", l.Tool, l.Operation, remote.ToolName, remote.OpRecreate)
+		// Gated like the other ledger assertions: a release that ignores the
+		// metadata field can't carry it.
+		if os.Getenv("GAFFER_TEST_LEDGER") != "" {
+			l, _, err := r.ReadLedger(ctx, name)
+			if err != nil {
+				t.Fatalf("read ledger after recreate: %v", err)
+			}
+			if l.Tool != remote.ToolName || l.Operation != remote.OpRecreate {
+				t.Errorf("ledger after recreate = tool %q operation %q, want %s/%s", l.Tool, l.Operation, remote.ToolName, remote.OpRecreate)
+			}
 		}
 	})
 

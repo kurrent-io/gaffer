@@ -147,8 +147,13 @@ func (m historyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.exhausted = true
 			return m, nil
 		}
+		// Recollapse over the full raw slice: a recreate at the old page boundary
+		// folds its bookends as they arrive. Folding only ever consumes rows from
+		// the newly-loaded older tail (a create is newer than its bookends, and an
+		// adjacent loaded bookend folds immediately), so no displayed row vanishes
+		// and the cursor index stays on the same row.
 		m.raw = append(m.raw, msg.versions...)
-		m.versions = classifyHistory(m.raw)
+		m.versions = collapseHistory(classifyHistory(m.raw))
 		m.graph = computeHistoryGraph(m.versions)
 		m.ow = operationWidth(m.versions)
 		if m.diffOpen {
@@ -595,6 +600,14 @@ func (m historyModel) detail(hv historyVersion, width int) string {
 			b.WriteByte('\n')
 		}
 	}
+	if len(hv.Absorbed) > 0 {
+		step := " step"
+		if len(hv.Absorbed) > 1 {
+			step = " steps"
+		}
+		b.WriteString(m.tw.styles.dim.Render(truncate("⟳ reprocessed from zero", width)) + "\n")
+		b.WriteString(m.tw.styles.dim.Render(truncate("  folds the "+absorbedSummary(hv.Absorbed)+step, width)) + "\n")
+	}
 	switch hv.Kind {
 	case kindEditedExternally:
 		b.WriteString(m.tw.styles.warning.Render(truncate("⚠ "+changeSummary(hv.Change)+" outside gaffer", width)) + "\n")
@@ -646,7 +659,7 @@ func (m historyModel) detailTitle(hv historyVersion) lipgloss.Style {
 	switch hv.Kind {
 	case kindEditedExternally, kindChangedByTool, kindDeleted, kindUnreadable:
 		return m.hs.titleWarn
-	case kindDeploy, kindRollback, kindReset:
+	case kindDeploy, kindRollback, kindReset, kindRecreate:
 		return m.hs.titleAccent
 	default:
 		return m.hs.titleMuted
@@ -687,7 +700,9 @@ func (m historyModel) matchesEarlier(i int) bool {
 func (m historyModel) footer() string {
 	left := m.hs.tag.Render("HISTORY") + m.hs.barName.Render(" "+m.name+" ")
 	if m.total > 0 && m.cursor < len(m.versions) {
-		left += m.hs.barDim.Render(fmt.Sprintf("%d of %d ", m.cursor+1, m.total))
+		// The server total counts stream writes; discount the folded recreate
+		// bookends so a fully-scrolled cursor can reach "N of N".
+		left += m.hs.barDim.Render(fmt.Sprintf("%d of %d ", m.cursor+1, m.total-absorbedCount(m.versions)))
 	}
 
 	var right string
@@ -762,7 +777,7 @@ func runHistoryTUI(cmd *cobra.Command, r *remote.Client, name, envLabel, connLab
 		baseCtx:   cmd.Context(),
 		total:     total,
 		raw:       versions,
-		versions:  classifyHistory(versions),
+		versions:  collapseHistory(classifyHistory(versions)),
 	}
 	m.graph = computeHistoryGraph(m.versions)
 	m.ow = operationWidth(m.versions)

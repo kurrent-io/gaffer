@@ -49,9 +49,9 @@ func newStatusCmd() *cobra.Command {
 			"metadata, where it is the time of the last write. Against a server without the\n" +
 			"metadata, status falls back to plain untracked or drifted.\n\n" +
 			"When gaffer.toml declares a [database_config], status also checks the target\n" +
-			"node's live engine settings and warns on a divergence - the fixtures and local\n" +
-			"runs assumed the declared values. Advisory only: a server that doesn't expose\n" +
-			"its options (or refuses the read) skips the check silently.",
+			"node's live engine settings and warns on a divergence, since the fixtures and\n" +
+			"local runs assumed the declared values. Advisory only: a server that doesn't\n" +
+			"expose its options (or refuses the read) skips the check silently.",
 		Example: "  gaffer status\n" +
 			"  gaffer status order-count --env staging",
 		Args: maxArgs(1),

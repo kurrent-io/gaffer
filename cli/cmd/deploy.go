@@ -150,7 +150,7 @@ func newDeployCmd() *cobra.Command {
 			"override them (to record the canonical commit or the pipeline identity). A KurrentDB " +
 			"that predates the feature ignores the metadata and deploy is unaffected.\n\n" +
 			"When gaffer.toml declares a [database_config], deploy also checks the target node's " +
-			"live engine settings and warns on a divergence before anything is applied - the " +
+			"live engine settings and warns on a divergence before anything is applied, since the " +
 			"fixtures and local runs assumed the declared values. Advisory only: a server that " +
 			"doesn't expose its options (or refuses the read) skips the check silently.",
 		Example: "  gaffer deploy\n" +

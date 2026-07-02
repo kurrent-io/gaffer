@@ -82,7 +82,7 @@ func TestResolveActorEnvOverride(t *testing.T) {
 	// GAFFER_ACTOR overrides the connection-derived principal. (The derived path is
 	// covered by engine.Principal's own tests.)
 	t.Setenv("GAFFER_ACTOR", "ci-bot")
-	if got := resolveActor(deployOpts{}, nil, ""); got != "ci-bot" {
+	if got := resolveActor("", "", nil, ""); got != "ci-bot" {
 		t.Errorf("got %q, want ci-bot", got)
 	}
 }

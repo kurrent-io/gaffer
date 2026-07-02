@@ -40,10 +40,12 @@ func (tw *textWriter) WriteHistory(name string, versions []historyVersion, total
 			tw.write("%s\n", strings.TrimRight(c, " "))
 		}
 	}
-	if total > int64(len(versions)) {
+	// total counts stream writes; folded bookends aren't rows, so discount them
+	// or a fully-shown history would claim entries remain.
+	if displayTotal := total - absorbedCount(versions); displayTotal > int64(len(versions)) {
 		tw.blank()
 		tw.write("%s\n", tw.styles.pipe.Render(fmt.Sprintf(
-			"Showing %d of %d entries. Pass --all or --limit to see more.", len(versions), total)))
+			"Showing %d of %d entries. Pass --all or --limit to see more.", len(versions), displayTotal)))
 	}
 }
 
@@ -128,7 +130,7 @@ func (tw *textWriter) historyKindStyle(hv historyVersion) lipgloss.Style {
 		return tw.styles.added
 	case kindEditedExternally, kindChangedByTool, kindUnreadable:
 		return tw.styles.warning
-	case kindDeploy, kindRollback, kindReset:
+	case kindDeploy, kindRollback, kindReset, kindRecreate:
 		return tw.styles.label
 	case kindRewritten:
 		return tw.styles.dim
@@ -139,6 +141,8 @@ func (tw *textWriter) historyKindStyle(hv historyVersion) lipgloss.Style {
 
 // historyGlyph shows the run state at this point: a cross for a deleted (gone)
 // projection, a filled dot when enabled (running), a hollow dot when disabled.
+// A recreate keeps the plain dot; the rail below it carries the termination cap
+// (see graphPainter.railGutter), marking where the old line ended.
 func historyGlyph(hv historyVersion) string {
 	switch {
 	case hv.Deleted:

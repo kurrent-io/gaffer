@@ -23,7 +23,10 @@ func newRecreateCmd() *cobra.Command {
 		Use:   "recreate <projection>",
 		Short: "Destroy and rebuild a projection from local config",
 		Long: "Recreate a projection on a KurrentDB environment: disable it, delete it (with its state and " +
-			"checkpoint streams), then create it fresh from gaffer.toml, reprocessing from zero.\n\n" +
+			"checkpoint streams), then create it fresh from gaffer.toml, reprocessing from zero. The " +
+			"create records the same tool metadata deploy stamps (tool and version, source revision, " +
+			"acting identity), so gaffer history shows the whole rebuild as a single recreate entry; " +
+			"a KurrentDB that predates the feature ignores the metadata and recreate is unaffected.\n\n" +
 			"For a change deploy can't apply in place (engine version or track-emitted-streams, both " +
 			"create-only), or a clean-slate rebuild of a wedged projection an in-place reset can't fix. " +
 			"The projection must be in gaffer.toml (recreate builds from local config) and already " +
@@ -124,6 +127,10 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 		return err
 	}
 
+	// The tool-metadata stamped on the rebuild's create, so history attributes
+	// the recreate to gaffer instead of showing anonymous lifecycle steps.
+	ledger := toolLedger(opts.Connection, opts.Env, remote.OpRecreate, cfg, root)
+
 	// The destructive Disable -> Delete -> Create sequence, its ordering and
 	// recovery messages, live in internal/deploy (shared in shape with deploy's
 	// rebuild); here we only bind each step to the client and its option mapping.
@@ -141,6 +148,7 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 				EngineVersion:       local.EngineVersion,
 				Emit:                local.Emit,
 				TrackEmittedStreams: local.TrackEmittedStreams,
+				Ledger:              &ledger,
 			})
 		},
 	}); err != nil {

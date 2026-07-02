@@ -29,11 +29,13 @@ const (
 )
 
 // Operation values gaffer records. The keystone always writes OpDeploy (a
-// logic-change reset is still a deploy); rollback lands with that feature.
+// logic-change reset is still a deploy); recreate stamps OpRecreate on its
+// create; rollback lands with that feature.
 const (
 	OpDeploy   = "deploy"
 	OpRollback = "rollback"
 	OpReset    = "reset"
+	OpRecreate = "recreate"
 )
 
 // Ledger is one entry in the shared tool-metadata convention, stamped onto a

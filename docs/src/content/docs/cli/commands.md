@@ -326,8 +326,10 @@ Show the history of a deployed projection: every operation on it, newest
 first, with who made it and how.
 
 Each entry is one write to the projection on the server. An entry carrying
-gaffer metadata shows the operation (deploy, rollback, reset), the actor, and the
-source revision. An entry with no gaffer metadata is attributed by what changed:
+gaffer metadata shows the operation (deploy, rollback, reset, recreate), the
+actor, and the source revision. A recreate shows as a single entry with its
+disable and delete steps folded in; --json keeps every write as its own entry.
+An entry with no gaffer metadata is attributed by what changed:
 edited externally when the definition was changed outside gaffer, changed by
 another tool when it carries that tool's metadata, enabled/disabled for a
 lifecycle change, or reconfigured when a checkpoint setting moved. A content hash
@@ -361,7 +363,7 @@ Flags:
 
 Destroy and rebuild a projection from local config.
 
-Recreate a projection on a KurrentDB environment: disable it, delete it (with its state and checkpoint streams), then create it fresh from gaffer.toml, reprocessing from zero.
+Recreate a projection on a KurrentDB environment: disable it, delete it (with its state and checkpoint streams), then create it fresh from gaffer.toml, reprocessing from zero. The create records the same tool metadata deploy stamps (tool and version, source revision, acting identity), so gaffer history shows the whole rebuild as a single recreate entry; a KurrentDB that predates the feature ignores the metadata and recreate is unaffected.
 
 For a change deploy can't apply in place (engine version or track-emitted-streams, both create-only), or a clean-slate rebuild of a wedged projection an in-place reset can't fix. The projection must be in gaffer.toml (recreate builds from local config) and already deployed.
 

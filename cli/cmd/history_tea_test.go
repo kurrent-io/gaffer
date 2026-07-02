@@ -22,7 +22,7 @@ func newTestHistoryModel(raw []remote.Version, w, h int) historyModel {
 		hs:        newHistoryStyles(io.Discard),
 		total:     12,
 		raw:       raw,
-		versions:  classifyHistory(raw),
+		versions:  collapseHistory(classifyHistory(raw)),
 		width:     w,
 		height:    h,
 	}
@@ -203,6 +203,58 @@ func TestHistoryEmptyPageClearsStaleLoadError(t *testing.T) {
 	}
 	if !m.exhausted {
 		t.Error("empty page should still mark the stream exhausted")
+	}
+}
+
+func TestHistoryFoldsRecreateBookendsAcrossPages(t *testing.T) {
+	// A recreate at the bottom of the loaded window folds its bookends when the
+	// next page brings them in: the tombstone and disable never appear as rows,
+	// and the rows already on screen keep their indices.
+	m := newTestHistoryModel([]remote.Version{
+		ver(4, "q", true, gafferLedger(remote.OpRecreate)),
+	}, 100, 20)
+	if len(m.versions) != 1 || len(m.versions[0].Absorbed) != 0 {
+		t.Fatalf("precondition: want the bare recreate row, got %d rows", len(m.versions))
+	}
+	nm, _ := m.Update(historyLoadedMsg{versions: []remote.Version{
+		tombstone(3, "q"),
+		ver(2, "q", false, nil),
+		ver(1, "q", true, gafferLedger(remote.OpDeploy)),
+	}})
+	m = asModel(t, nm)
+	if len(m.versions) != 2 {
+		t.Fatalf("got %d rows after the page, want 2 (recreate + deploy): %v", len(m.versions), kinds(m.versions))
+	}
+	if m.versions[0].Kind != kindRecreate || len(m.versions[0].Absorbed) != 2 {
+		t.Errorf("row 0 = %q with %d absorbed, want recreate folding both bookends", m.versions[0].Kind, len(m.versions[0].Absorbed))
+	}
+	if m.versions[1].Kind != kindDeploy {
+		t.Errorf("row 1 = %q, want the deploy", m.versions[1].Kind)
+	}
+}
+
+func TestHistoryRecreateDetailAndFooter(t *testing.T) {
+	// A collapsed recreate: the detail panel names the folded steps, and the
+	// footer discounts them so the position can reach "N of N".
+	m := newTestHistoryModel([]remote.Version{
+		ver(3, "q", true, gafferLedger(remote.OpRecreate)),
+		tombstone(2, "q"),
+		ver(1, "q", false, nil),
+		ver(0, "q", true, gafferLedger(remote.OpDeploy)),
+	}, 100, 20)
+	m.total = 4
+	out := m.View()
+	if !strings.Contains(out, "reprocessed from zero") {
+		t.Errorf("detail should note the reprocess\n%s", out)
+	}
+	if n := strings.Count(out, "┬"); n != 1 {
+		t.Errorf("the rail below a recreate should carry exactly one termination cap, got %d\n%s", n, out)
+	}
+	if strings.Contains(out, "folds") {
+		t.Errorf("detail should not mention the fold mechanics\n%s", out)
+	}
+	if !strings.Contains(out, "1 of 2") {
+		t.Errorf("footer should discount the 2 folded bookends (want 1 of 2)\n%s", out)
 	}
 }
 

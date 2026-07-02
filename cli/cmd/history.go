@@ -35,8 +35,10 @@ func newHistoryCmd() *cobra.Command {
 		Long: "Show the history of a deployed projection: every operation on it, newest\n" +
 			"first, with who made it and how.\n\n" +
 			"Each entry is one write to the projection on the server. An entry carrying\n" +
-			"gaffer metadata shows the operation (deploy, rollback, reset), the actor, and the\n" +
-			"source revision. An entry with no gaffer metadata is attributed by what changed:\n" +
+			"gaffer metadata shows the operation (deploy, rollback, reset, recreate), the\n" +
+			"actor, and the source revision. A recreate shows as a single entry with its\n" +
+			"disable and delete steps folded in; --json keeps every write as its own entry.\n" +
+			"An entry with no gaffer metadata is attributed by what changed:\n" +
 			"edited externally when the definition was changed outside gaffer, changed by\n" +
 			"another tool when it carries that tool's metadata, enabled/disabled for a\n" +
 			"lifecycle change, or reconfigured when a checkpoint setting moved. A content hash\n" +
@@ -107,15 +109,39 @@ func runHistory(cmd *cobra.Command, name string, opts historyOpts) error {
 		return err
 	}
 	hist := classifyHistory(versions)
-	if limit > 0 && len(hist) > limit {
-		hist = hist[:limit]
-	}
 
 	if opts.JSON {
+		// --json stays uncollapsed - one object per stream write - so its limit
+		// counts raw entries.
+		if limit > 0 && len(hist) > limit {
+			hist = hist[:limit]
+		}
 		return renderHistoryJSON(cmd.OutOrStdout(), hist)
 	}
-	newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr()).WriteHistory(name, hist, total)
+	newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr()).WriteHistory(name, historyRows(hist, limit), total)
 	return nil
+}
+
+// historyRows prepares the human timeline under --limit: fold first, then trim,
+// so a recreate's bookends never count toward the limit only to be folded away.
+// The window may carry one extra row beyond the limit - the classification
+// baseline readLimit adds. Folding runs over the full window so a baseline that
+// is itself a bookend folds into the last entry; a baseline that survives is
+// dropped, since it exists only to classify the row above it and, metadata-less,
+// would display as a bogus "rewritten" with nothing older in view. A window with
+// folds can still show fewer than limit rows (the read is bounded); the
+// Showing-N-of-M tail points at --limit/--all for the rest.
+func historyRows(hist []historyVersion, limit int) []historyVersion {
+	rows := collapseHistory(hist)
+	if limit > 0 && len(hist) > limit {
+		if last := rows[len(rows)-1]; last.Number == hist[len(hist)-1].Number {
+			rows = rows[:len(rows)-1]
+		}
+	}
+	if limit > 0 && len(rows) > limit {
+		rows = rows[:limit]
+	}
+	return rows
 }
 
 // redactConnection reduces a connection string to its host(s) for display,
@@ -145,6 +171,7 @@ const (
 	kindDeploy           versionKind = "deploy"
 	kindRollback         versionKind = "rollback"
 	kindReset            versionKind = "reset"
+	kindRecreate         versionKind = "recreate"
 	kindChangedByTool    versionKind = "changed by"        // + tool name
 	kindEditedExternally versionKind = "edited externally" // metadata-less, definition changed
 	kindEnabled          versionKind = "enabled"           // metadata-less, only the enabled flag flipped on
@@ -167,6 +194,7 @@ type historyVersion struct {
 	Change        deploy.Comparison // dimensions that changed vs the older version, when edited externally
 	HasChange     bool              // whether Change is meaningful
 	ConfigChanges []configChange    // knobs that moved vs the older version, when reconfigured
+	Absorbed      []historyVersion  // a recreate's folded bookend writes (tombstone, then the disable)
 }
 
 // external reports whether this version changed the definition outside gaffer -
@@ -255,6 +283,40 @@ func classifyHistory(versions []remote.Version) []historyVersion {
 	return out
 }
 
+// collapseHistory folds a recreate's bookend writes into its stamped create row
+// for the human timeline: the delete tombstone directly below it, then the
+// disable write directly below that (a disabled flip, or a rewritten no-op when
+// the projection was already disabled). Recreate's steps write consecutively, so
+// only the exact adjacent pattern folds - anything interleaved stays a visible
+// row - and a recreate whose bookends sit on an unloaded page folds them when
+// they arrive. --json stays uncollapsed: every stream write remains an entry.
+func collapseHistory(versions []historyVersion) []historyVersion {
+	out := make([]historyVersion, 0, len(versions))
+	for i := 0; i < len(versions); i++ {
+		hv := versions[i]
+		if hv.Kind == kindRecreate && i+1 < len(versions) && versions[i+1].Kind == kindDeleted {
+			hv.Absorbed = append(hv.Absorbed, versions[i+1])
+			i++
+			if i+1 < len(versions) && (versions[i+1].Kind == kindDisabled || versions[i+1].Kind == kindRewritten) {
+				hv.Absorbed = append(hv.Absorbed, versions[i+1])
+				i++
+			}
+		}
+		out = append(out, hv)
+	}
+	return out
+}
+
+// absorbedCount is how many raw entries the collapsed view folded away, for
+// adjusting a total that counts stream writes down to displayed rows.
+func absorbedCount(versions []historyVersion) int64 {
+	var n int64
+	for _, hv := range versions {
+		n += int64(len(hv.Absorbed))
+	}
+	return n
+}
+
 // classifyVersion attributes one version. A gaffer entry names its operation; a
 // foreign entry is changed-by-tool; a metadata-less version is read from how its
 // definition moved against prev (the older adjacent version), which may be nil for
@@ -276,6 +338,8 @@ func classifyVersion(v remote.Version, prev *remote.Version) (versionKind, strin
 				return kindRollback, "", deploy.Comparison{}, false
 			case remote.OpReset:
 				return kindReset, "", deploy.Comparison{}, false
+			case remote.OpRecreate:
+				return kindRecreate, "", deploy.Comparison{}, false
 			default:
 				return kindDeploy, "", deploy.Comparison{}, false
 			}

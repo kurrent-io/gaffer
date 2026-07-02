@@ -263,7 +263,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	}
 
 	// The tool-metadata gaffer stamps on every create/update this deploy makes.
-	ledger := deployLedger(opts, cfg, root)
+	ledger := toolLedger(opts.Connection, opts.Env, remote.OpDeploy, cfg, root)
 
 	sink := newDeploySink(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts.JSON, names, ctx, cancel)
 	failed := applyPlan(ctx, plan, sink, func(item plannedItem) error {

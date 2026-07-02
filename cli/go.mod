@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	github.com/99designs/keyring v1.2.2
 	github.com/BurntSushi/toml v1.6.0
+	github.com/aymanbagabas/go-udiff v0.4.1
 	github.com/charmbracelet/bubbles v0.21.1-0.20250623103423-23b8fd6302d7
 	github.com/charmbracelet/bubbletea v1.3.6
 	github.com/charmbracelet/fang v1.0.0

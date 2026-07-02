@@ -341,7 +341,9 @@ alongside; move with the arrow keys (g/G to jump to the ends, q to quit), and a
 reverted definition is drawn as a branch back to the deploy it matched. Press d
 to see the change an entry introduced as a source diff against the version
 before it; the arrows keep working under the diff, walking the definition's
-evolution entry by entry. Piped or with --json it prints the latest entries
+evolution entry by entry. Press r to roll back to the selected version: a
+confirm shows what would change (see gaffer rollback), and an applied rollback
+reloads the timeline with the new entry on top. Piped or with --json it prints the latest entries
 (--limit, default 100, or --all). Against a server without gaffer metadata it
 degrades to the history with timestamps and content hashes only.
 
@@ -381,6 +383,29 @@ Flags:
       --env string          Environment from gaffer.toml
       --json                Output as JSON
       --no-validate         Skip the preflight compile check and recreate anyway
+  -y, --yes                 Skip the confirmation prompt
+```
+
+## gaffer rollback
+
+Roll a projection back to a version from its history.
+
+Roll a projection back to a prior version from its history: redeploy that version's definition (query and emit) in place, stamped as a rollback in the deploy ledger.
+
+The target is named by its content hash, from gaffer history's hash column; any unique prefix of at least 4 characters works. Rolling back changes only the deployed definition: processing continues from the current checkpoint, so state built by the newer query is kept (rebuild from zero with gaffer recreate if it must go), and your local files are untouched, so gaffer diff shows the rollback as drift until you reconcile local. A version whose engine version or emitted-stream tracking differs from what's deployed can't be applied in place; update local config and use gaffer recreate instead.
+
+Acts on what's deployed, named directly, so the projection need not be in gaffer.toml. It always confirms, showing the change as a diff first (louder against production); --yes skips the prompt. Pass --json for machine-readable output.
+
+```
+gaffer rollback <projection> <hash> [flags]
+```
+
+Flags:
+
+```
+      --connection string   KurrentDB connection string (overrides --env)
+      --env string          Environment from gaffer.toml
+      --json                Output as JSON
   -y, --yes                 Skip the confirmation prompt
 ```
 

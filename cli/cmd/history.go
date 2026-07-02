@@ -49,7 +49,9 @@ func newHistoryCmd() *cobra.Command {
 			"reverted definition is drawn as a branch back to the deploy it matched. Press d\n" +
 			"to see the change an entry introduced as a source diff against the version\n" +
 			"before it; the arrows keep working under the diff, walking the definition's\n" +
-			"evolution entry by entry. Piped or with --json it prints the latest entries\n" +
+			"evolution entry by entry. Press r to roll back to the selected version: a\n" +
+			"confirm shows what would change (see gaffer rollback), and an applied rollback\n" +
+			"reloads the timeline with the new entry on top. Piped or with --json it prints the latest entries\n" +
 			"(--limit, default 100, or --all). Against a server without gaffer metadata it\n" +
 			"degrades to the history with timestamps and content hashes only.",
 		Example: "  gaffer history order-count\n" +
@@ -81,7 +83,10 @@ func runHistory(cmd *cobra.Command, name string, opts historyOpts) error {
 	// the footer's env/target labels - it can't fail now that the connect succeeded.
 	if !opts.JSON && interactiveWriter(cmd.OutOrStdout()) {
 		resolved, _ := resolveLiveEnv(opts.Connection, opts.Env, conn.cfg)
-		return runHistoryTUI(cmd, conn.r, name, resolved.Name, redactConnection(resolved.Connection))
+		// The ledger a timeline-applied rollback stamps; resolved once here, so
+		// the modal's confirm doesn't pay the actor/revision lookups per apply.
+		ledger := toolLedger(opts.Connection, opts.Env, remote.OpRollback, conn.cfg, conn.root)
+		return runHistoryTUI(cmd, conn.r, name, resolved.Name, redactConnection(resolved.Connection), ledger)
 	}
 
 	// remote calls block until their context deadline if the projections

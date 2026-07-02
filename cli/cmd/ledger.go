@@ -10,17 +10,17 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
-// deployLedger builds the tool metadata stamped on every create/update this deploy
-// makes: always tool/version/operation, plus best-effort revision (source
-// provenance) and actor (the identity gaffer connects as). Empty best-effort fields
-// are dropped on the wire by Ledger.metadata.
-func deployLedger(opts deployOpts, cfg *config.Config, root string) remote.Ledger {
+// toolLedger builds the tool metadata stamped on a create/update gaffer makes:
+// always tool/version and the given operation, plus best-effort revision (source
+// provenance) and actor (the identity gaffer connects as for connection/env).
+// Empty best-effort fields are dropped on the wire by Ledger.metadata.
+func toolLedger(connection, env, operation string, cfg *config.Config, root string) remote.Ledger {
 	return remote.Ledger{
 		Tool:        remote.ToolName,
 		ToolVersion: Version,
-		Operation:   remote.OpDeploy,
+		Operation:   operation,
 		Revision:    resolveRevision(root),
-		Actor:       resolveActor(opts, cfg, root),
+		Actor:       resolveActor(connection, env, cfg, root),
 	}
 }
 
@@ -64,11 +64,11 @@ func git(dir string, args ...string) (string, error) {
 // resolved. GAFFER_ACTOR overrides it - a CI-only knob for the pipeline/human
 // identity, since the connection there is usually a service account. Client-asserted
 // attribution, not a verified claim.
-func resolveActor(opts deployOpts, cfg *config.Config, root string) string {
+func resolveActor(connection, env string, cfg *config.Config, root string) string {
 	if a := os.Getenv("GAFFER_ACTOR"); a != "" {
 		return a
 	}
-	resolved, err := resolveLiveEnv(opts.Connection, opts.Env, cfg)
+	resolved, err := resolveLiveEnv(connection, env, cfg)
 	if err != nil {
 		return ""
 	}

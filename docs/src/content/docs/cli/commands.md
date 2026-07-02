@@ -363,7 +363,7 @@ Flags:
 
 Destroy and rebuild a projection from local config.
 
-Recreate a projection on a KurrentDB environment: disable it, delete it (with its state and checkpoint streams), then create it fresh from gaffer.toml, reprocessing from zero.
+Recreate a projection on a KurrentDB environment: disable it, delete it (with its state and checkpoint streams), then create it fresh from gaffer.toml, reprocessing from zero. The create records the same tool metadata deploy stamps (tool and version, source revision, acting identity), so gaffer history shows the whole rebuild as a single recreate entry; a KurrentDB that predates the feature ignores the metadata and recreate is unaffected.
 
 For a change deploy can't apply in place (engine version or track-emitted-streams, both create-only), or a clean-slate rebuild of a wedged projection an in-place reset can't fix. The projection must be in gaffer.toml (recreate builds from local config) and already deployed.
 

@@ -33,12 +33,37 @@ type Definition struct {
 	Mode                string // e.g. Continuous
 	Emit                bool   // emitEnabled; absent means false
 	TrackEmittedStreams bool   // absent means false
-	Enabled             bool
+	// Enabled is the projection's lifecycle state. The server serialises persisted
+	// state with DefaultValueHandling.Ignore and `enabled` is a non-nullable bool,
+	// so it's written only when true and omitted when false - absent unambiguously
+	// means disabled, the canonical false the server itself reads back from the
+	// latest $ProjectionUpdated.
+	Enabled bool
+	// Config holds the projection's checkpoint/perf tuning knobs. They are NOT part
+	// of the Descriptor (gaffer can't set them over gRPC, so they're not deploy
+	// content and never count as drift), but history tracks them so an operator's
+	// config change reads as a `reconfigured` audit event rather than an opaque one.
+	Config Config
 	// Time is when this definition was written: the $ProjectionUpdated event's
 	// CreatedDate. It's event metadata, not part of the persisted-state DTO, so it's
 	// available even for a projection carrying no tool metadata - the last-deploy/write
 	// time status shows when there's no ledger to read it from.
 	Time time.Time
+}
+
+// Config is a projection's checkpoint/performance tuning, settable only via the
+// server's HTTP config endpoint (never gaffer's gRPC deploy), so it's audit
+// context, not deploy content. All fields are comparable, so two Configs compare
+// with ==. An absent optional knob decodes to zero.
+type Config struct {
+	CheckpointHandledThreshold        int
+	CheckpointUnhandledBytesThreshold int
+	PendingEventsThreshold            int
+	MaxWriteBatchLength               int
+	CheckpointAfterMs                 int
+	MaxAllowedWritesInFlight          int
+	ProjectionExecutionTimeout        int
+	CheckpointsDisabled               bool
 }
 
 // persistedState is the subset of the server's PersistedState DTO gaffer reads
@@ -57,9 +82,18 @@ type persistedState struct {
 	Mode                string `json:"mode"`
 	EmitEnabled         *bool  `json:"emitEnabled"`
 	TrackEmittedStreams *bool  `json:"trackEmittedStreams"`
-	Enabled             bool   `json:"enabled"`
+	Enabled             bool   `json:"enabled"` // absent means false (disabled); see Definition.Enabled
 	Deleted             bool   `json:"deleted"`
 	Deleting            bool   `json:"deleting"`
+
+	CheckpointHandledThreshold        int  `json:"checkpointHandledThreshold"`
+	CheckpointUnhandledBytesThreshold int  `json:"checkpointUnhandledBytesThreshold"`
+	PendingEventsThreshold            int  `json:"pendingEventsThreshold"`
+	MaxWriteBatchLength               int  `json:"maxWriteBatchLength"`
+	CheckpointAfterMs                 int  `json:"checkpointAfterMs"`
+	MaxAllowedWritesInFlight          int  `json:"maxAllowedWritesInFlight"`
+	ProjectionExecutionTimeout        int  `json:"projectionExecutionTimeout"`
+	CheckpointsDisabled               bool `json:"checkpointsDisabled"`
 }
 
 // Read returns the deployed definition of a projection, or ErrNotFound if it is
@@ -138,15 +172,28 @@ func readDefinition(next func() (*kurrentdb.ResolvedEvent, error), name string) 
 	return def, nil
 }
 
+// parseDefinition decodes a persisted-state blob, treating a tombstone as absent:
+// a deleted or in-flight-deleting projection still has a persisted-state stream,
+// but callers here must not diff or update it, so it maps to ErrNotFound.
 func parseDefinition(data []byte, name string) (*Definition, error) {
+	def, deleted, err := parseDefinitionState(data, name)
+	if err != nil {
+		return nil, err
+	}
+	if deleted {
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, name)
+	}
+	return def, nil
+}
+
+// parseDefinitionState decodes a persisted-state blob into a Definition and
+// reports whether it is a tombstone (deleted or in-flight deleting), without
+// treating that as an error. parseDefinition maps a tombstone to ErrNotFound;
+// history keeps it as a Deleted version, since a delete is a real audit event.
+func parseDefinitionState(data []byte, name string) (*Definition, bool, error) {
 	var ps persistedState
 	if err := json.Unmarshal(data, &ps); err != nil {
-		return nil, fmt.Errorf("decode persisted state for %q: %w", name, err)
-	}
-	// A deleted or in-flight-deleting projection still has a persisted-state
-	// stream; treat it as absent so callers do not diff or update a tombstone.
-	if ps.Deleted || ps.Deleting {
-		return nil, fmt.Errorf("%w: %s", ErrNotFound, name)
+		return nil, false, fmt.Errorf("decode persisted state for %q: %w", name, err)
 	}
 	engineVersion := ps.EngineVersion
 	if engineVersion == 0 {
@@ -159,5 +206,15 @@ func parseDefinition(data []byte, name string) (*Definition, error) {
 		Emit:                ps.EmitEnabled != nil && *ps.EmitEnabled,
 		TrackEmittedStreams: ps.TrackEmittedStreams != nil && *ps.TrackEmittedStreams,
 		Enabled:             ps.Enabled,
-	}, nil
+		Config: Config{
+			CheckpointHandledThreshold:        ps.CheckpointHandledThreshold,
+			CheckpointUnhandledBytesThreshold: ps.CheckpointUnhandledBytesThreshold,
+			PendingEventsThreshold:            ps.PendingEventsThreshold,
+			MaxWriteBatchLength:               ps.MaxWriteBatchLength,
+			CheckpointAfterMs:                 ps.CheckpointAfterMs,
+			MaxAllowedWritesInFlight:          ps.MaxAllowedWritesInFlight,
+			ProjectionExecutionTimeout:        ps.ProjectionExecutionTimeout,
+			CheckpointsDisabled:               ps.CheckpointsDisabled,
+		},
+	}, ps.Deleted || ps.Deleting, nil
 }

@@ -23,6 +23,11 @@ func TestParseDefinition(t *testing.T) {
 			want: Definition{Query: "fromAll()", EngineVersion: 2, Mode: "Continuous", Emit: true, TrackEmittedStreams: true, Enabled: true},
 		},
 		{
+			name: "absent enabled means disabled (omitted-when-false on the wire)",
+			json: `{"query":"q"}`,
+			want: Definition{Query: "q", EngineVersion: 1, Enabled: false},
+		},
+		{
 			name: "omitted fields take documented defaults",
 			json: `{"query":"fromAll()"}`,
 			want: Definition{Query: "fromAll()", EngineVersion: 1}, // absent engineVersion => 1, bools => false

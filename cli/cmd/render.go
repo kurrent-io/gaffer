@@ -62,6 +62,8 @@ type textStyles struct {
 	label     lipgloss.Style
 	pipe      lipgloss.Style
 	muted     lipgloss.Style
+	dim       lipgloss.Style
+	faded     lipgloss.Style
 	logLabel  lipgloss.Style
 	emitted   lipgloss.Style
 	processed lipgloss.Style
@@ -89,6 +91,8 @@ func newTextWriter(w, errW io.Writer) *textWriter {
 			label:     r.NewStyle().Foreground(lipgloss.Color("6")),
 			pipe:      r.NewStyle().Faint(true).Foreground(lipgloss.Color("6")),
 			muted:     r.NewStyle().Foreground(lipgloss.Color("8")),
+			dim:       r.NewStyle().Faint(true),
+			faded:     r.NewStyle().Faint(true).Foreground(lipgloss.Color("240")),
 			logLabel:  r.NewStyle().Foreground(lipgloss.Color("4")),
 			emitted:   r.NewStyle(),
 			processed: r.NewStyle().Faint(true).Foreground(lipgloss.Color("2")),

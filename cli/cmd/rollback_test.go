@@ -82,6 +82,29 @@ func TestMatchAndResolveHashes(t *testing.T) {
 	})
 }
 
+func TestScanSettled(t *testing.T) {
+	full := strings.Repeat("ab", 32)
+	one := map[string]*remote.Definition{full: {}}
+	two := map[string]*remote.Definition{full: {}, strings.Repeat("cd", 32): {}}
+	for _, tc := range []struct {
+		name    string
+		prefix  string
+		matches map[string]*remote.Definition
+		want    bool
+	}{
+		{"full hash with a match is exact", full, one, true},
+		{"full hash with no match keeps scanning", full, map[string]*remote.Definition{}, false},
+		{"prefix with one match keeps scanning for ambiguity", "abab", one, false},
+		{"two distinct matches are already ambiguous", "abab", two, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := scanSettled(tc.prefix, tc.matches); got != tc.want {
+				t.Errorf("scanSettled = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRollbackRefusal(t *testing.T) {
 	for _, tc := range []struct {
 		name string

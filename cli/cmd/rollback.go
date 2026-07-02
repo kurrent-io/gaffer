@@ -172,6 +172,9 @@ func findByHash(ctx context.Context, r *remote.Client, name, prefix string) (*ro
 			break
 		}
 		matchHashes(versions, prefix, matches)
+		if scanSettled(prefix, matches) {
+			break
+		}
 		oldest := versions[len(versions)-1].Number
 		if oldest <= 0 {
 			break
@@ -179,6 +182,14 @@ func findByHash(ctx context.Context, r *remote.Client, name, prefix string) (*ro
 		before = oldest
 	}
 	return resolveHashMatches(matches, prefix, name)
+}
+
+// scanSettled reports whether older pages could still change the outcome: a
+// full hash is exact, so one match settles it, and a second distinct content
+// already proves the prefix ambiguous - either way the scan can stop early
+// rather than paging a large history to its start.
+func scanSettled(prefix string, matches map[string]*remote.Definition) bool {
+	return (len(prefix) == 64 && len(matches) > 0) || len(matches) > 1
 }
 
 // matchHashes collects the distinct contents in a page whose hash carries the

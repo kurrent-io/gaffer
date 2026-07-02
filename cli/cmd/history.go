@@ -110,17 +110,28 @@ func runHistory(cmd *cobra.Command, name string, opts historyOpts) error {
 		return err
 	}
 	hist := classifyHistory(versions)
-	if limit > 0 && len(hist) > limit {
-		hist = hist[:limit]
-	}
 
 	if opts.JSON {
+		// --json stays uncollapsed - one object per stream write - so its limit
+		// counts raw entries.
+		if limit > 0 && len(hist) > limit {
+			hist = hist[:limit]
+		}
 		return renderHistoryJSON(cmd.OutOrStdout(), hist)
 	}
-	// The human timeline folds a recreate's bookend writes into its entry; the
-	// JSON path above stays uncollapsed, one object per stream write.
-	newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr()).WriteHistory(name, collapseHistory(hist), total)
+	newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr()).WriteHistory(name, historyRows(hist, limit), total)
 	return nil
+}
+
+// historyRows prepares the human timeline under --limit: fold first, then trim,
+// so a recreate's bookends never count toward the limit only to be folded away,
+// dropping rows the window had room for.
+func historyRows(hist []historyVersion, limit int) []historyVersion {
+	rows := collapseHistory(hist)
+	if limit > 0 && len(rows) > limit {
+		rows = rows[:limit]
+	}
+	return rows
 }
 
 // redactConnection reduces a connection string to its host(s) for display,

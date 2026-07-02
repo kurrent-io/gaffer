@@ -143,6 +143,22 @@ func TestCollapseHistoryAlreadyDisabled(t *testing.T) {
 	}
 }
 
+func TestHistoryRowsFoldsBeforeLimit(t *testing.T) {
+	// --limit counts displayed rows on the human timeline: folding first means a
+	// recreate's bookends can't eat the limit and then vanish, dropping rows the
+	// read window had room for (here the deploy).
+	hist := classifyHistory([]remote.Version{
+		ver(3, "q", true, gafferLedger(remote.OpRecreate)),
+		tombstone(2, "q"),
+		ver(1, "q", false, nil),
+		ver(0, "q", true, gafferLedger(remote.OpDeploy)),
+	})
+	rows := historyRows(hist, 2)
+	if len(rows) != 2 || rows[0].Kind != kindRecreate || rows[1].Kind != kindDeploy {
+		t.Fatalf("rows = %v, want [recreate deploy]", kinds(rows))
+	}
+}
+
 func TestCollapseHistoryConsecutiveRecreates(t *testing.T) {
 	// Two recreates back to back: each folds its own bookends, and the skip-ahead
 	// lands exactly on the next recreate rather than eating into its sequence.

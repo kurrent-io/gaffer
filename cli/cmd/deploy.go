@@ -148,7 +148,11 @@ func newDeployCmd() *cobra.Command {
 			"project's git commit, suffixed +changes when the tree is dirty; the actor is the user " +
 			"gaffer connects as. For CI, the GAFFER_REVISION and GAFFER_ACTOR environment variables " +
 			"override them (to record the canonical commit or the pipeline identity). A KurrentDB " +
-			"that predates the feature ignores the metadata and deploy is unaffected.",
+			"that predates the feature ignores the metadata and deploy is unaffected.\n\n" +
+			"When gaffer.toml declares a [database_config], deploy also checks the target node's " +
+			"live engine settings and warns on a divergence before anything is applied - the " +
+			"fixtures and local runs assumed the declared values. Advisory only: a server that " +
+			"doesn't expose its options (or refuses the read) skips the check silently.",
 		Example: "  gaffer deploy\n" +
 			"  gaffer deploy order-count --env staging",
 		Args: maxArgs(1),

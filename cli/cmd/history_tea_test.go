@@ -247,6 +247,9 @@ func TestHistoryRecreateDetailAndFooter(t *testing.T) {
 	if !strings.Contains(out, "reprocessed from zero") {
 		t.Errorf("detail should note the reprocess\n%s", out)
 	}
+	if !strings.Contains(out, "⟳ recreate") {
+		t.Errorf("a recreate should carry the cycle glyph\n%s", out)
+	}
 	if strings.Contains(out, "folds") {
 		t.Errorf("detail should not mention the fold mechanics\n%s", out)
 	}

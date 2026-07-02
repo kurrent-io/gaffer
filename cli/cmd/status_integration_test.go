@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
@@ -22,11 +23,30 @@ func runStatusJSON(t *testing.T, args ...string) []statusJSON {
 			t.Fatalf("status: %v", err)
 		}
 	})
-	var got []statusJSON
-	if err := json.Unmarshal([]byte(out), &got); err != nil {
+	var report statusReportJSON
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
 		t.Fatalf("unmarshal status json: %v\n%s", err, out)
 	}
-	return got
+	return report.Projections
+}
+
+// runStatusReportJSON is runStatusJSON keeping the whole envelope, for the
+// env-level fields alongside the projections.
+func runStatusReportJSON(t *testing.T, args ...string) statusReportJSON {
+	t.Helper()
+	root := NewRootCmd()
+	root.SetArgs(append([]string{"status", "--json"}, args...))
+	root.SetErr(os.Stderr)
+	out := testutil.CaptureStdout(t, func() {
+		if err := ExecuteRoot(context.Background(), root); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	var report statusReportJSON
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("unmarshal status json: %v\n%s", err, out)
+	}
+	return report
 }
 
 func TestStatus_Integration(t *testing.T) {
@@ -96,6 +116,28 @@ func TestStatus_Integration(t *testing.T) {
 		got := runStatusJSON(t, notDeployed)
 		if len(got) != 1 || got[0].Drift != "not-deployed" || got[0].Runtime != nil {
 			t.Fatalf("got %+v, want not-deployed with no runtime", got)
+		}
+	})
+
+	t.Run("config drift reaches the json envelope", func(t *testing.T) {
+		// A [database_config] whose max_state_size can't match any real server
+		// makes the drift check fire against the live /info/options read.
+		toml := filepath.Join(p.Dir, "gaffer.toml")
+		orig, err := os.ReadFile(toml)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.WriteFile(toml, orig, 0o644) //nolint:errcheck // best-effort restore
+		if err := os.WriteFile(toml, append(orig, []byte("\n[database_config]\nmax_state_size = 1\n")...), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		report := runStatusReportJSON(t)
+		if len(report.ConfigDrift) != 1 || report.ConfigDrift[0].Knob != "max_state_size" || report.ConfigDrift[0].Local != 1 {
+			t.Fatalf("configDrift = %+v, want the max_state_size divergence", report.ConfigDrift)
+		}
+		if report.ConfigDrift[0].Server <= 0 {
+			t.Errorf("server value = %d, want the node's live cap", report.ConfigDrift[0].Server)
 		}
 	})
 }

@@ -221,13 +221,17 @@ func TestRenderStatusJSON(t *testing.T) {
 		{comparison: comparison{Name: "adhoc", State: driftUntracked, DeployedAt: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)}, runtime: &remote.Status{State: remote.StateRunning}},
 	}
 	var b bytes.Buffer
-	if err := renderStatusJSON(&b, entries); err != nil {
+	if err := renderStatusJSON(&b, entries, nil); err != nil {
 		t.Fatalf("renderStatusJSON: %v", err)
 	}
-	var got []statusJSON
-	if err := json.Unmarshal(b.Bytes(), &got); err != nil {
+	var report statusReportJSON
+	if err := json.Unmarshal(b.Bytes(), &report); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, b.String())
 	}
+	if report.ConfigDrift != nil {
+		t.Errorf("configDrift = %+v, want omitted when there's nothing to report", report.ConfigDrift)
+	}
+	got := report.Projections
 	if len(got) != 5 {
 		t.Fatalf("want 5 entries, got %d", len(got))
 	}

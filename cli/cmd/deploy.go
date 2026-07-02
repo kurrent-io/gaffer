@@ -217,6 +217,12 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	}
 	defer cleanup()
 
+	// The [database_config] drift check runs in the background so its HTTP
+	// round-trip overlaps the planning RPCs; drained before the confirm, so an
+	// operator sees the target's engine config diverging before applying.
+	resolved, _ := resolveLiveEnv(opts.Connection, opts.Env, cfg)
+	driftCh := startConfigDriftCheck(cmd.Context(), cfg, root, resolved.Name, resolved.Connection)
+
 	// Plan first (reads only), so the whole run is known before any write - the
 	// basis for the confirm gate and, later, --dry-run.
 	plan := planAll(ctx, r, cfg, root, names)
@@ -248,6 +254,12 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	if prod && opts.NoValidate {
 		return refuseNoValidateOnProd("Deploy", "projections are", target)
 	}
+
+	// The engine-config warning lands before the dry-run render and the confirm
+	// alike: fixtures and local runs assumed the declared config, so a diverging
+	// target is worth seeing before any decision. Stderr, so a --json consumer's
+	// stdout payload stays clean while the warning still reaches CI logs.
+	writeConfigDriftWarnings(cmd.ErrOrStderr(), <-driftCh)
 
 	// --dry-run reports the plan and applies nothing, so it stops before the confirm
 	// gate below - an apply-only guardrail a read-only preview needs no answer to (a

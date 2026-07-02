@@ -131,9 +131,15 @@ func (p graphPainter) nodePad(i int) string {
 // Below a collapsed recreate the spine leads with a termination cap (┬) instead of
 // the plain rail: the fold removed the tombstone whose gap used to show the break
 // (see spineBlank), so the cap marks where the old line ended and the rebuild began.
-func (p graphPainter) railGutter(i int) string {
+func (p graphPainter) railGutter(i int) string { return p.rail(i, true) }
+
+// railSpacer is railGutter without the recreate cap, for a gap's later rail lines:
+// the cap sits on the first line only, the old line continuing plain beneath it.
+func (p graphPainter) railSpacer(i int) string { return p.rail(i, false) }
+
+func (p graphPainter) rail(i int, seam bool) string {
 	spine := "│"
-	if p.versions[i].Kind == kindRecreate {
+	if seam && p.versions[i].Kind == kindRecreate {
 		spine = "┬"
 	}
 	if p.g.maxLane() == 0 {

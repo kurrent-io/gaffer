@@ -247,8 +247,8 @@ func TestHistoryRecreateDetailAndFooter(t *testing.T) {
 	if !strings.Contains(out, "reprocessed from zero") {
 		t.Errorf("detail should note the reprocess\n%s", out)
 	}
-	if !strings.Contains(out, "┬") {
-		t.Errorf("the rail below a recreate should carry the termination cap\n%s", out)
+	if n := strings.Count(out, "┬"); n != 1 {
+		t.Errorf("the rail below a recreate should carry exactly one termination cap, got %d\n%s", n, out)
 	}
 	if strings.Contains(out, "folds") {
 		t.Errorf("detail should not mention the fold mechanics\n%s", out)

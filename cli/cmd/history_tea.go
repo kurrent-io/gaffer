@@ -454,7 +454,7 @@ func (m historyModel) timeline(width, height int) string {
 				emit("  " + c)
 			}
 			if !last && len(cons) == 0 {
-				emit("  " + gp.railGutter(i)) // spacer so the next node has breathing room
+				emit("  " + gp.railSpacer(i)) // spacer so the next node has breathing room
 			}
 			continue
 		}

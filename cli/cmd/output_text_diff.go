@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/charmbracelet/lipgloss"
+
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 )
 
@@ -112,4 +114,58 @@ func enabledStr(b bool) string {
 		return "enabled"
 	}
 	return "disabled"
+}
+
+// WriteQueryDiff renders the aligned query diff inline: dual line-number
+// gutters (remote then local), a +/- marker, and every line of both sides with
+// the changes in place. The span that changed within a paired line renders
+// reversed, so a one-token edit is findable without reading the whole pair.
+func (tw *textWriter) WriteQueryDiff(lines []deploy.DiffLine) {
+	maxOld, maxNew := 1, 1
+	for _, dl := range lines {
+		maxOld = max(maxOld, dl.OldN)
+		maxNew = max(maxNew, dl.NewN)
+	}
+	ow, nw := len(strconv.Itoa(maxOld)), len(strconv.Itoa(maxNew))
+	for _, dl := range lines {
+		oldN, newN := "", ""
+		if dl.OldN > 0 {
+			oldN = strconv.Itoa(dl.OldN)
+		}
+		if dl.NewN > 0 {
+			newN = strconv.Itoa(dl.NewN)
+		}
+		gutter := tw.styles.dim.Render(fmt.Sprintf("%*s %*s", ow, oldN, nw, newN))
+		switch {
+		case dl.Kind == deploy.LineRemoved:
+			tw.write("%s %s\n", gutter, tw.diffLineText(dl, "-", tw.styles.diffRemoved, tw.styles.diffRemovedEmph))
+		case dl.Kind == deploy.LineAdded:
+			tw.write("%s %s\n", gutter, tw.diffLineText(dl, "+", tw.styles.diffAdded, tw.styles.diffAddedEmph))
+		case dl.Text == "":
+			// A blank equal line carries no padding after the gutter - trailing
+			// spaces we add are noise to whitespace-sensitive consumers. Trailing
+			// spaces inside a line are source content and always kept.
+			tw.write("%s\n", gutter)
+		default:
+			tw.write("%s   %s\n", gutter, dl.Text)
+		}
+	}
+}
+
+// diffLineText is a changed line with its marker, washed in the line tint,
+// the emphasised span in the stronger tint. The span wash is skipped when it
+// is unset (an unpaired line) or covers the entire line (a full rewrite -
+// emphasising everything highlights nothing). A blank line is its bare
+// marker, no trailing pad.
+func (tw *textWriter) diffLineText(dl deploy.DiffLine, marker string, line, emph lipgloss.Style) string {
+	if dl.Text == "" {
+		return line.Render(marker)
+	}
+	whole := dl.EmphFrom == 0 && dl.EmphTo == len(dl.Text)
+	if dl.EmphFrom >= dl.EmphTo || whole {
+		return line.Render(marker + " " + dl.Text)
+	}
+	return line.Render(marker+" "+dl.Text[:dl.EmphFrom]) +
+		emph.Render(dl.Text[dl.EmphFrom:dl.EmphTo]) +
+		line.Render(dl.Text[dl.EmphTo:])
 }

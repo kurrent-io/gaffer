@@ -260,7 +260,7 @@ Compare a projection's local definition against what's deployed on KurrentDB.
 
 Reports one of five states: in sync, drifted, not deployed (local only), untracked (on the server but absent from gaffer.toml), or invalid. Invalid means the local definition can't be used - it doesn't compile, or has a config error such as track_emitted_streams on engine version 2; the source and config still diff where possible, but emit is unknown.
 
-When the query differs, the source is shown in an external diff viewer (git diff --no-index by default; set GAFFER_EXTERNAL_DIFF to override).
+When the query differs, the source diff is rendered inline: every line of both sides with the changes marked, and the span that changed within a line highlighted. Set GAFFER_EXTERNAL_DIFF to open an external viewer instead (e.g. git diff, delta, difft).
 
 When deploy metadata is present, a drifted projection is attributed as local ahead (you edited local since deploying) or changed externally (a tool or a direct write changed the server since). An untracked projection is shown as an orphan when gaffer deployed it, otherwise as plain untracked. The provenance block names the tool, deployer, and revision behind it. Pass --json for machine-readable output, which splits changed externally into changed-by-tool and changed-server and carries the owner (including foreign).
 

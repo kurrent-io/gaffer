@@ -195,7 +195,7 @@ func TestHistoryEmptyPageStopsPaging(t *testing.T) {
 	// every keypress re-fetch the same window forever.
 	m := newTestHistoryModel(sampleHistory(), 100, 20)
 	m.cursor = len(m.versions) - 1 // at the bottom, where paging would fire
-	if cmd := m.maybeLoadMore(); cmd == nil {
+	if cmd := m.loadPage(false); cmd == nil {
 		t.Fatal("should page when older versions remain (oldest > 0)")
 	}
 	m.loading = false
@@ -204,7 +204,7 @@ func TestHistoryEmptyPageStopsPaging(t *testing.T) {
 	if !m.exhausted {
 		t.Fatal("an empty page should mark the stream exhausted")
 	}
-	if cmd := m.maybeLoadMore(); cmd != nil {
+	if cmd := m.loadPage(false); cmd != nil {
 		t.Error("exhausted: must not page again")
 	}
 }

@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
@@ -56,6 +57,9 @@ type historyModel struct {
 	top    int // index of the first visible row
 	width  int
 	height int
+
+	diffOpen   bool // the diff modal is up, showing the selected entry's change
+	diffScroll int  // the modal body's scroll offset
 }
 
 // historyStyles is the charm-palette chrome around the timeline: the footer status
@@ -142,10 +146,17 @@ func (m historyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.exhausted = true
 			return m, nil
 		}
+		m.loadErr = nil // a page landed; a stale failure shouldn't keep reporting
 		m.raw = append(m.raw, msg.versions...)
 		m.versions = classifyHistory(m.raw)
 		m.graph = computeHistoryGraph(m.versions)
 		m.ow = operationWidth(m.versions)
+		if m.diffOpen {
+			// The modal may still be waiting on its baseline; keep paging until
+			// it's in view or the stream is exhausted.
+			cmd := m.ensureBaseline()
+			return m, cmd
+		}
 		return m, nil
 	default:
 		return m, nil
@@ -153,9 +164,73 @@ func (m historyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m historyModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	key := msg.String()
+	if m.diffOpen {
+		return m.handleDiffKey(key)
+	}
+	switch key {
 	case "q", "esc", "ctrl+c":
 		return m, tea.Quit
+	case "d":
+		if len(m.versions) == 0 {
+			return m, nil
+		}
+		m.diffOpen = true
+		m.diffScroll = 0
+		// The baseline may sit on an unloaded page; fetch it now rather than
+		// leaving the modal on its loading message until the cursor nears the
+		// bottom.
+		cmd := m.ensureBaseline()
+		return m, cmd
+	case "pgup":
+		m.cursor = max(0, m.cursor-m.visibleVersions())
+	case "pgdown":
+		m.cursor = min(len(m.versions)-1, m.cursor+m.visibleVersions())
+	default:
+		m.moveCursor(key)
+	}
+	m.top = clampTop(m.top, m.cursor, m.visibleVersions())
+	// Sequence the call before the return: loadPage mutates m (loading) through
+	// its pointer receiver, and a bare `return m, m.loadPage(...)` would copy m
+	// into the result before that mutation lands, dropping the loading flag.
+	cmd := m.loadPage(false)
+	return m, cmd
+}
+
+// handleDiffKey is the modal's key map: the arrows scrub the timeline selection
+// underneath (the diff re-renders for each entry), page keys scroll the diff
+// body, and esc/d/q close back to the timeline at the same position.
+func (m historyModel) handleDiffKey(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "q", "esc", "d":
+		m.diffOpen = false
+		m.diffScroll = 0
+		return m, nil
+	case "pgup":
+		m.diffScroll = max(0, m.diffScroll-m.diffBodyHeight())
+		return m, nil
+	case "pgdown":
+		// Clamped to the last useful offset, or repeated pgdowns would bank
+		// dead offset that pgup has to unwind before anything moves on screen.
+		m.diffScroll = min(m.diffScroll+m.diffBodyHeight(), m.diffMaxScroll())
+		return m, nil
+	}
+	if m.moveCursor(key) {
+		m.diffScroll = 0
+		m.top = clampTop(m.top, m.cursor, m.visibleVersions())
+		cmd := m.ensureBaseline()
+		return m, cmd
+	}
+	return m, nil
+}
+
+// moveCursor applies a single-step or jump movement key to the selection,
+// reporting whether the key was a movement key - the one place the scrub key
+// set is defined, so the timeline and the modal can't drift apart.
+func (m *historyModel) moveCursor(key string) bool {
+	switch key {
 	case "up", "k":
 		m.cursor = max(0, m.cursor-1)
 	case "down", "j":
@@ -163,18 +238,21 @@ func (m historyModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "g", "home":
 		m.cursor = 0
 	case "G", "end":
-		m.cursor = len(m.versions) - 1
-	case "pgup":
-		m.cursor = max(0, m.cursor-m.visibleVersions())
-	case "pgdown":
-		m.cursor = min(len(m.versions)-1, m.cursor+m.visibleVersions())
+		m.cursor = max(0, len(m.versions)-1)
+	default:
+		return false
 	}
-	m.top = clampTop(m.top, m.cursor, m.visibleVersions())
-	// Sequence the call before the return: maybeLoadMore mutates m (loading) through
-	// its pointer receiver, and a bare `return m, m.maybeLoadMore()` would copy m into
-	// the result before that mutation lands, dropping the loading flag.
-	cmd := m.maybeLoadMore()
-	return m, cmd
+	return true
+}
+
+// ensureBaseline starts a page load when the selected entry's diff baseline is
+// on an unloaded page, regardless of where the cursor sits; alongside it the
+// ordinary near-the-bottom paging still applies.
+func (m *historyModel) ensureBaseline() tea.Cmd {
+	if historyDiffAt(m.versions, m.cursor, m.morePages()).state == diffBaselineUnloaded {
+		return m.loadPage(true)
+	}
+	return m.loadPage(false)
 }
 
 // clampTop scrolls the visible window the least it must to keep the cursor in
@@ -192,15 +270,23 @@ func clampTop(top, cursor, height int) int {
 	return top
 }
 
-// maybeLoadMore fetches the next older page when the cursor nears the bottom of
-// what's loaded and older versions remain. The oldest loaded version's number
-// being zero means the whole stream is in view, so there's nothing more to pull.
-func (m *historyModel) maybeLoadMore() tea.Cmd {
+// morePages reports whether older history exists beyond the loaded window, so
+// a missing diff baseline means "not loaded yet" rather than "first version".
+func (m historyModel) morePages() bool {
+	return !m.exhausted && len(m.raw) > 0 && m.raw[len(m.raw)-1].Number > 0
+}
+
+// loadPage fetches the next older page when the cursor nears the bottom of
+// what's loaded and older versions remain; force skips the near-the-bottom
+// check, for the diff modal chasing a baseline on an unloaded page. The oldest
+// loaded version's number being zero means the whole stream is in view, so
+// there's nothing more to pull.
+func (m *historyModel) loadPage(force bool) tea.Cmd {
 	if m.loading || m.exhausted || len(m.raw) == 0 {
 		return nil
 	}
 	oldest := m.raw[len(m.raw)-1].Number
-	if oldest <= 0 || m.cursor < len(m.versions)-historyLoadThreshold {
+	if oldest <= 0 || (!force && m.cursor < len(m.versions)-historyLoadThreshold) {
 		return nil
 	}
 	m.loading = true
@@ -248,7 +334,13 @@ func (m historyModel) View() string {
 		rows = append(rows, "")
 	}
 	rows = append(rows, panes, m.footer())
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+	view := lipgloss.JoinVertical(lipgloss.Left, rows...)
+	if m.diffOpen {
+		// The timeline stays visible around the modal (crush-style, no scrim);
+		// the app footer below it keeps the projection and position in view.
+		view = centerOverlay(m.diffModal(), view, m.width, m.height)
+	}
+	return view
 }
 
 // paneWidths splits the row into the timeline and the detail panel, separated by
@@ -611,7 +703,7 @@ func (m historyModel) footer() string {
 		right += m.hs.badgeConn.Render(m.connLabel)
 	}
 
-	controls := m.hs.barDim.Render("↑↓ move · g/G jump · q quit")
+	controls := m.hs.barDim.Render("↑↓ move · d diff · g/G jump · q quit")
 	lw, rw, cw := lipgloss.Width(left), lipgloss.Width(right), lipgloss.Width(controls)
 	// Drop the controls when there isn't room for them plus a gap each side.
 	if lw+rw+cw+4 > m.width {
@@ -619,8 +711,11 @@ func (m historyModel) footer() string {
 	}
 	free := max(0, m.width-lw-rw-cw)
 	lead := free / 2
-	return left + m.hs.bar.Render(strings.Repeat(" ", lead)) + controls +
+	bar := left + m.hs.bar.Render(strings.Repeat(" ", lead)) + controls +
 		m.hs.bar.Render(strings.Repeat(" ", free-lead)) + right
+	// On a terminal narrower than the pills themselves the bar would overflow
+	// and stretch every frame line to its width; cut it at the edge instead.
+	return ansi.Truncate(bar, m.width, "")
 }
 
 // truncate cuts a plain (unstyled) string to w display cells, with an ellipsis
@@ -656,6 +751,7 @@ func runHistoryTUI(cmd *cobra.Command, r *remote.Client, name, envLabel, connLab
 		return err
 	}
 	tw := newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr())
+	tw.warmBackground()
 	m := historyModel{
 		name:      name,
 		envLabel:  envLabel,

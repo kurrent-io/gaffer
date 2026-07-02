@@ -26,6 +26,7 @@ type textWriter struct {
 	prefixed
 	w      io.Writer
 	errW   io.Writer
+	r      *lipgloss.Renderer
 	line   prefixed
 	corner prefixed
 	styles textStyles
@@ -95,6 +96,7 @@ func newTextWriter(w, errW io.Writer) *textWriter {
 	tw := &textWriter{
 		w:     w,
 		errW:  errW,
+		r:     r,
 		links: r.ColorProfile() != termenv.Ascii,
 		styles: textStyles{
 			label:     r.NewStyle().Foreground(lipgloss.Color("6")),
@@ -126,6 +128,16 @@ func newTextWriter(w, errW io.Writer) *textWriter {
 	tw.line = prefixed{tw: tw, pfx: tw.ind("│")}
 	tw.corner = prefixed{tw: tw, pfx: tw.styles.pipe.Render("╰") + " "}
 	return tw
+}
+
+// warmBackground resolves the terminal's light/dark background now, while
+// stdin is still ours. The adaptive diff tints trigger the detection lazily on
+// first render, via an OSC query the terminal answers on stdin - inside a
+// running bubbletea program that reply never arrives (the program owns the tty
+// in raw mode), so the first render would stall on the query timeout (~5s)
+// and then guess. Call before handing the terminal to bubbletea.
+func (tw *textWriter) warmBackground() {
+	tw.r.HasDarkBackground()
 }
 
 func (tw *textWriter) ind(lead ...string) string {

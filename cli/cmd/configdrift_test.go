@@ -13,29 +13,26 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
-func i64(v int64) *int64 { return &v }
-func iptr(v int) *int    { return &v }
-
 func TestConfigDriftItems(t *testing.T) {
 	node := &remote.NodeProjectionOptions{
-		CompilationTimeoutMs: i64(500),
-		ExecutionTimeoutMs:   i64(250),
-		MaxStateSizeBytes:    i64(16777216),
+		CompilationTimeoutMs: new(int64(500)),
+		ExecutionTimeoutMs:   new(int64(250)),
+		MaxStateSizeBytes:    new(int64(16777216)),
 	}
 
 	t.Run("nothing declared or no node reads as clean", func(t *testing.T) {
 		if got := configDriftItems(nil, node); got != nil {
 			t.Errorf("nil config = %v, want nothing", got)
 		}
-		if got := configDriftItems(&config.DatabaseConfig{MaxStateSize: i64(1)}, nil); got != nil {
+		if got := configDriftItems(&config.DatabaseConfig{MaxStateSize: new(int64(1))}, nil); got != nil {
 			t.Errorf("nil node = %v, want nothing", got)
 		}
 	})
 
 	t.Run("only declared and diverging knobs report", func(t *testing.T) {
 		dc := &config.DatabaseConfig{
-			CompilationTimeout: iptr(500),     // matches: silent
-			MaxStateSize:       i64(33554432), // diverges: reported
+			CompilationTimeout: new(500),             // matches: silent
+			MaxStateSize:       new(int64(33554432)), // diverges: reported
 			// execution_timeout undeclared: silent even though the server reports it
 		}
 		got := configDriftItems(dc, node)
@@ -48,21 +45,21 @@ func TestConfigDriftItems(t *testing.T) {
 	})
 
 	t.Run("a knob the server doesn't report is silent", func(t *testing.T) {
-		dc := &config.DatabaseConfig{ExecutionTimeout: iptr(9999)}
+		dc := &config.DatabaseConfig{ExecutionTimeout: new(9999)}
 		if got := configDriftItems(dc, &remote.NodeProjectionOptions{}); got != nil {
 			t.Errorf("items = %v, want nothing when the option is absent", got)
 		}
 	})
 
 	t.Run("non-positive max_state_size declares the default, not a value", func(t *testing.T) {
-		dc := &config.DatabaseConfig{MaxStateSize: i64(0)}
+		dc := &config.DatabaseConfig{MaxStateSize: new(int64(0))}
 		if got := configDriftItems(dc, node); got != nil {
 			t.Errorf("items = %v, want nothing for the use-the-default sentinel", got)
 		}
 	})
 
 	t.Run("timeout text joins the unit", func(t *testing.T) {
-		dc := &config.DatabaseConfig{ExecutionTimeout: iptr(700)}
+		dc := &config.DatabaseConfig{ExecutionTimeout: new(700)}
 		got := configDriftItems(dc, node)
 		if len(got) != 1 || got[0].text() != "execution_timeout is 250ms on the server, 700ms in gaffer.toml" {
 			t.Fatalf("items = %+v", got)
@@ -83,7 +80,7 @@ func TestStartConfigDriftCheck(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		cfg := &config.Config{DatabaseConfig: &config.DatabaseConfig{MaxStateSize: i64(1024)}}
+		cfg := &config.Config{DatabaseConfig: &config.DatabaseConfig{MaxStateSize: new(int64(1024))}}
 		conn := "kurrentdb://" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
 		got := <-startConfigDriftCheck(context.Background(), cfg, t.TempDir(), "", conn)
 		if len(got) != 1 || got[0].Knob != "max_state_size" {
@@ -92,7 +89,7 @@ func TestStartConfigDriftCheck(t *testing.T) {
 	})
 
 	t.Run("an unreachable target reads as nothing", func(t *testing.T) {
-		cfg := &config.Config{DatabaseConfig: &config.DatabaseConfig{MaxStateSize: i64(1024)}}
+		cfg := &config.Config{DatabaseConfig: &config.DatabaseConfig{MaxStateSize: new(int64(1024))}}
 		if got := <-startConfigDriftCheck(context.Background(), cfg, t.TempDir(), "", "kurrentdb://127.0.0.1:1?tls=false"); got != nil {
 			t.Errorf("got %v, want nil on fetch failure", got)
 		}

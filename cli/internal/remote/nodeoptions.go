@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -81,11 +82,11 @@ func nodeOptionsEndpoint(connection string) (endpoint, user, pass string, insecu
 	if err != nil {
 		// The connection string can carry credentials (url.Error embeds the
 		// URL), so the error is described, never wrapped.
-		return "", "", "", false, fmt.Errorf("unparsable connection string")
+		return "", "", "", false, errors.New("unparsable connection string")
 	}
 	host, _, _ := strings.Cut(u.Host, ",")
 	if host == "" {
-		return "", "", "", false, fmt.Errorf("connection string has no host")
+		return "", "", "", false, errors.New("connection string has no host")
 	}
 	if _, _, err := net.SplitHostPort(host); err != nil {
 		// JoinHostPort re-brackets a host containing colons, so a bracketed

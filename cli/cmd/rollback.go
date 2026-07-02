@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -212,7 +212,7 @@ func resolveHashMatches(matches map[string]*remote.Definition, prefix, name stri
 	for h := range matches {
 		hashes = append(hashes, shortHash(h))
 	}
-	sort.Strings(hashes)
+	slices.Sort(hashes)
 	return nil, fmt.Errorf("%q matches %d different versions (%s); give more characters", prefix, len(matches), strings.Join(hashes, ", "))
 }
 

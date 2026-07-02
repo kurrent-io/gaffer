@@ -141,8 +141,8 @@ func TestWriteRollbackPreview(t *testing.T) {
 	out := b.String()
 	for _, want := range []string{
 		shortHash(current.Hash()), shortHash(target.Hash()), // the hash movement
-		"emit disabled → enabled",   // the scalar flip
-		"fromAll", "fromStream",     // both sides of the query diff
+		"emit disabled → enabled", // the scalar flip
+		"fromAll", "fromStream",   // both sides of the query diff
 		"state built by the newer",  // state caution
 		"local files are untouched", // drift caution
 	} {

@@ -211,7 +211,7 @@ func (m historyModel) rollbackModalBody(rb historyRollback, width int) []string 
 		// rather than truncating the actionable tail off.
 		var rows []string
 		msg := rollbackRefusal(rb.cmp, rb.sel.contentKey, m.name).Error()
-		for _, line := range strings.Split(lipgloss.NewStyle().Width(width).Render(msg), "\n") {
+		for line := range strings.SplitSeq(lipgloss.NewStyle().Width(width).Render(msg), "\n") {
 			rows = append(rows, m.tw.styles.warning.Render(line))
 		}
 		return rows

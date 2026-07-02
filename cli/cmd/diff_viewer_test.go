@@ -34,6 +34,20 @@ func TestExternalDiffCommand(t *testing.T) {
 	})
 }
 
+func TestOpenSourceDiffExitCodes(t *testing.T) {
+	// Exit 1 is "files differ" (always true here) and tolerated; anything higher
+	// is the viewer reporting real trouble and must surface.
+	if err := openSourceDiff([]string{"sh", "-c", "exit 1"}, "p", "a\n", "b\n", io.Discard, io.Discard); err != nil {
+		t.Errorf("exit 1 should be tolerated: %v", err)
+	}
+	if err := openSourceDiff([]string{"sh", "-c", "exit 2"}, "p", "a\n", "b\n", io.Discard, io.Discard); err == nil {
+		t.Error("exit 2 should surface as an error")
+	}
+	if err := openSourceDiff([]string{"gaffer-no-such-viewer"}, "p", "a\n", "b\n", io.Discard, io.Discard); err == nil {
+		t.Error("a missing viewer binary should surface as an error")
+	}
+}
+
 func TestWriteQueryDiff(t *testing.T) {
 	// Eleven lines on each side, so the gutters mix one- and two-digit numbers
 	// and single digits must right-align. Assertions are on raw lines: the

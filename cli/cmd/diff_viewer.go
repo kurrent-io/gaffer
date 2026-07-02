@@ -46,14 +46,21 @@ func openSourceDiff(argv []string, name, remoteQuery, local string, out, errOut 
 	c := exec.Command(argv[0], args...) //nolint:gosec // argv is the user's configured diff command
 	c.Stdout = out
 	c.Stderr = errOut
-	// A diff tool that ran and exited non-zero is reporting "files differ" (git
-	// diff --no-index and diff -u use exit 1), which is always the case here, so
-	// the exit status isn't a failure. A start failure (a misconfigured
-	// GAFFER_EXTERNAL_DIFF, a missing binary) is real and surfaced.
+	// Exit 1 is the diff convention for "files differ" (git diff --no-index,
+	// diff -u, delta), which is always the case here, so it isn't a failure.
+	// Anything else non-zero is the tool reporting real trouble (POSIX diff uses
+	// 2, git uses higher codes for usage errors), and a start failure (a
+	// misconfigured GAFFER_EXTERNAL_DIFF, a missing binary) is surfaced as-is.
 	err = c.Run()
 	var exitErr *exec.ExitError
-	if err != nil && !errors.As(err, &exitErr) {
+	switch {
+	case err == nil:
+		return nil
+	case errors.As(err, &exitErr) && exitErr.ExitCode() == 1:
+		return nil
+	case errors.As(err, &exitErr):
+		return fmt.Errorf("diff viewer %q exited with status %d", argv[0], exitErr.ExitCode())
+	default:
 		return fmt.Errorf("running diff viewer %q: %w", argv[0], err)
 	}
-	return nil
 }

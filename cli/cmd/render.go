@@ -74,6 +74,15 @@ type textStyles struct {
 	errDetail lipgloss.Style
 	heading   lipgloss.Style
 	info      lipgloss.Style
+
+	// Query-diff line tints: a muted background wash over a changed line, a
+	// stronger wash on the span that changed within it. The text keeps its own
+	// foreground - the background carries the meaning, so the diff reads
+	// quietly (delta-style) rather than as blocks of solid colour.
+	diffRemoved     lipgloss.Style
+	diffRemovedEmph lipgloss.Style
+	diffAdded       lipgloss.Style
+	diffAddedEmph   lipgloss.Style
 }
 
 type prefixed struct {
@@ -103,6 +112,14 @@ func newTextWriter(w, errW io.Writer) *textWriter {
 			errDetail: r.NewStyle().Foreground(lipgloss.Color("1")),
 			heading:   r.NewStyle().Bold(true),
 			info:      r.NewStyle().Foreground(lipgloss.Color("4")),
+
+			// Hex tints: a quiet wash for the line, a clearly brighter one for the
+			// changed span - the 256-palette's dark steps are too coarse to give
+			// both. lipgloss degrades them to the nearest 256-colour off truecolor.
+			diffRemoved:     r.NewStyle().Background(lipgloss.AdaptiveColor{Light: "#ffe0e0", Dark: "#3a181b"}),
+			diffRemovedEmph: r.NewStyle().Background(lipgloss.AdaptiveColor{Light: "#ffafaf", Dark: "#8a2a30"}),
+			diffAdded:       r.NewStyle().Background(lipgloss.AdaptiveColor{Light: "#e2f4e2", Dark: "#16301d"}),
+			diffAddedEmph:   r.NewStyle().Background(lipgloss.AdaptiveColor{Light: "#a6e2a6", Dark: "#2e7d3c"}),
 		},
 	}
 	tw.prefixed = prefixed{tw: tw, pfx: tw.ind()}

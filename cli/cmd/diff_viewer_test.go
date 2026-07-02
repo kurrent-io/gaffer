@@ -103,33 +103,28 @@ func TestWriteQueryDiffEqualQueries(t *testing.T) {
 }
 
 // TestDiffLineTextEmphasis exercises the styled path with a colour profile
-// forced on (a test buffer resolves to Ascii, where Reverse is a no-op and
-// the branches are indistinguishable).
+// forced on (a test buffer resolves to Ascii, where the tints are no-ops and
+// the branches are indistinguishable). The line wash and the span wash are
+// distinct backgrounds; the span's must appear only for a genuine mid-line
+// emphasis.
 func TestDiffLineTextEmphasis(t *testing.T) {
 	tw := newTextWriter(io.Discard, io.Discard)
 	r := lipgloss.NewRenderer(io.Discard)
-	r.SetColorProfile(termenv.ANSI)
-	style := r.NewStyle().Foreground(lipgloss.Color("2"))
-	// SGR 7 may combine with the colour in either order ("[7;32m", "[32;7m").
-	reversed := func(s string) bool {
-		for _, seq := range []string{"[7m", "[7;", ";7m", ";7;"} {
-			if strings.Contains(s, seq) {
-				return true
-			}
-		}
-		return false
-	}
+	r.SetColorProfile(termenv.ANSI256)
+	line := r.NewStyle().Background(lipgloss.Color("52"))
+	emph := r.NewStyle().Background(lipgloss.Color("88"))
+	const lineBg, emphBg = "48;5;52", "48;5;88"
 
-	if out := tw.diffLineText(deploy.DiffLine{Text: "count(2)", EmphFrom: 6, EmphTo: 7}, "+", style); !reversed(out) {
-		t.Errorf("paired span not reversed: %q", out)
+	if out := tw.diffLineText(deploy.DiffLine{Text: "count(2)", EmphFrom: 6, EmphTo: 7}, "+", line, emph); !strings.Contains(out, emphBg) || !strings.Contains(out, lineBg) {
+		t.Errorf("paired span should wash the span in the emphasis tint over the line tint: %q", out)
 	}
-	if out := tw.diffLineText(deploy.DiffLine{Text: "xyz", EmphFrom: 0, EmphTo: 3}, "+", style); reversed(out) {
-		t.Errorf("whole-line span should not reverse: %q", out)
+	if out := tw.diffLineText(deploy.DiffLine{Text: "xyz", EmphFrom: 0, EmphTo: 3}, "+", line, emph); strings.Contains(out, emphBg) {
+		t.Errorf("whole-line span should keep the line tint only: %q", out)
 	}
-	if out := tw.diffLineText(deploy.DiffLine{Text: "xyz"}, "-", style); reversed(out) {
-		t.Errorf("unset span should not reverse: %q", out)
+	if out := tw.diffLineText(deploy.DiffLine{Text: "xyz"}, "-", line, emph); strings.Contains(out, emphBg) {
+		t.Errorf("unset span should keep the line tint only: %q", out)
 	}
-	if out := tw.diffLineText(deploy.DiffLine{Text: ""}, "-", style); reversed(out) || strings.Contains(out, "- ") {
-		t.Errorf("blank line should be its bare marker: %q", out)
+	if out := tw.diffLineText(deploy.DiffLine{Text: ""}, "-", line, emph); strings.Contains(out, emphBg) || strings.Contains(out, "- ") {
+		t.Errorf("blank line should be its bare tinted marker: %q", out)
 	}
 }

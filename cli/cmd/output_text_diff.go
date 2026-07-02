@@ -138,9 +138,9 @@ func (tw *textWriter) WriteQueryDiff(lines []deploy.DiffLine) {
 		gutter := tw.styles.dim.Render(fmt.Sprintf("%*s %*s", ow, oldN, nw, newN))
 		switch {
 		case dl.Kind == deploy.LineRemoved:
-			tw.write("%s %s\n", gutter, tw.diffLineText(dl, "-", tw.styles.errDetail))
+			tw.write("%s %s\n", gutter, tw.diffLineText(dl, "-", tw.styles.diffRemoved, tw.styles.diffRemovedEmph))
 		case dl.Kind == deploy.LineAdded:
-			tw.write("%s %s\n", gutter, tw.diffLineText(dl, "+", tw.styles.added))
+			tw.write("%s %s\n", gutter, tw.diffLineText(dl, "+", tw.styles.diffAdded, tw.styles.diffAddedEmph))
 		case dl.Text == "":
 			// A blank equal line carries no padding after the gutter - trailing
 			// spaces we add are noise to whitespace-sensitive consumers. Trailing
@@ -152,19 +152,20 @@ func (tw *textWriter) WriteQueryDiff(lines []deploy.DiffLine) {
 	}
 }
 
-// diffLineText is a changed line with its marker, coloured whole, the
-// emphasised span reversed. No reverse when the span is unset (an unpaired
-// line) or covers the entire line (a full rewrite - reversing everything
-// highlights nothing). A blank line is its bare marker, no trailing pad.
-func (tw *textWriter) diffLineText(dl deploy.DiffLine, marker string, style lipgloss.Style) string {
+// diffLineText is a changed line with its marker, washed in the line tint,
+// the emphasised span in the stronger tint. The span wash is skipped when it
+// is unset (an unpaired line) or covers the entire line (a full rewrite -
+// emphasising everything highlights nothing). A blank line is its bare
+// marker, no trailing pad.
+func (tw *textWriter) diffLineText(dl deploy.DiffLine, marker string, line, emph lipgloss.Style) string {
 	if dl.Text == "" {
-		return style.Render(marker)
+		return line.Render(marker)
 	}
 	whole := dl.EmphFrom == 0 && dl.EmphTo == len(dl.Text)
 	if dl.EmphFrom >= dl.EmphTo || whole {
-		return style.Render(marker + " " + dl.Text)
+		return line.Render(marker + " " + dl.Text)
 	}
-	return style.Render(marker+" "+dl.Text[:dl.EmphFrom]) +
-		style.Reverse(true).Render(dl.Text[dl.EmphFrom:dl.EmphTo]) +
-		style.Render(dl.Text[dl.EmphTo:])
+	return line.Render(marker+" "+dl.Text[:dl.EmphFrom]) +
+		emph.Render(dl.Text[dl.EmphFrom:dl.EmphTo]) +
+		line.Render(dl.Text[dl.EmphTo:])
 }

@@ -326,8 +326,10 @@ Show the history of a deployed projection: every operation on it, newest
 first, with who made it and how.
 
 Each entry is one write to the projection on the server. An entry carrying
-gaffer metadata shows the operation (deploy, rollback, reset), the actor, and the
-source revision. An entry with no gaffer metadata is attributed by what changed:
+gaffer metadata shows the operation (deploy, rollback, reset, recreate), the
+actor, and the source revision. A recreate shows as a single entry with its
+disable and delete steps folded in; --json keeps every write as its own entry.
+An entry with no gaffer metadata is attributed by what changed:
 edited externally when the definition was changed outside gaffer, changed by
 another tool when it carries that tool's metadata, enabled/disabled for a
 lifecycle change, or reconfigured when a checkpoint setting moved. A content hash

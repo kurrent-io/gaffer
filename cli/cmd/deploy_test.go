@@ -247,8 +247,8 @@ func TestApplyActionResetEnableFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error when enable fails after reset")
 	}
-	if !strings.Contains(err.Error(), "gaffer start orders") {
-		t.Errorf("error should name the recovery (gaffer start orders), got: %v", err)
+	if !strings.Contains(err.Error(), "gaffer enable orders") {
+		t.Errorf("error should name the recovery (gaffer enable orders), got: %v", err)
 	}
 }
 
@@ -261,7 +261,7 @@ func TestApplyActionResetMidSequenceFailure(t *testing.T) {
 		wantMsg   string
 	}{
 		{"disable", "disable", "projection untouched"},
-		{"update", "disable,update", "gaffer start orders"},         // stopped on old logic
+		{"update", "disable,update", "gaffer enable orders"},        // stopped on old logic
 		{"reset", "disable,update,reset", "gaffer recreate orders"}, // stopped, not rewound
 	} {
 		f := &fakeWriter{failOn: tc.failOn}

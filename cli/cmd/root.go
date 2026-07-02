@@ -144,7 +144,7 @@ func NewRootCmd() *cobra.Command {
 		}
 	}
 	add(grpDevelop, newInitCmd(), newScaffoldCmd(), newDevCmd(), newInfoCmd())
-	add(grpEnvironment, newDiffCmd(), newStatusCmd(), newHistoryCmd(), newDeployCmd(), newStartCmd(), newStopCmd(), newRecreateCmd(), newDeleteCmd())
+	add(grpEnvironment, newDiffCmd(), newStatusCmd(), newHistoryCmd(), newDeployCmd(), newEnableCmd(), newDisableCmd(), newRecreateCmd(), newDeleteCmd())
 	add(grpTools, newAuthCmd(), newConfigCmd(), newMCPCmd(), newLSPCmd(), newVersionCmd())
 
 	// manifest is editor-facing: hidden from help, so it needs no group.

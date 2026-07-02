@@ -22,7 +22,7 @@ func newRecreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "recreate <projection>",
 		Short: "Destroy and rebuild a projection from local config",
-		Long: "Recreate a projection on a KurrentDB environment: stop it, delete it (with its state and " +
+		Long: "Recreate a projection on a KurrentDB environment: disable it, delete it (with its state and " +
 			"checkpoint streams), then create it fresh from gaffer.toml, reprocessing from zero.\n\n" +
 			"For a change deploy can't apply in place (engine version or track-emitted-streams, both " +
 			"create-only), or a clean-slate rebuild of a wedged projection an in-place reset can't fix. " +
@@ -88,7 +88,7 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 
 	// Build the descriptor by compiling the local source. recreate creates from
 	// local config and never reads the deployed definition, so it avoids the $ops
-	// stream read that compareProjection needs - matching delete/start/stop, which
+	// stream read that compareProjection needs - matching delete/enable/disable, which
 	// only check existence. A hard compile failure leaves nothing to create from,
 	// so refuse even under --no-validate (which only skips the diagnostics gate).
 	source, err := engine.ReadSource(root, def.Entry)

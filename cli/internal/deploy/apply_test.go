@@ -38,7 +38,7 @@ func TestRebuildHappyPath(t *testing.T) {
 	if err := Rebuild(context.Background(), "orders", r.rebuildSteps()); err != nil {
 		t.Fatalf("Rebuild: %v", err)
 	}
-	// stop -> update (new query) -> reset (rewind) -> start.
+	// disable -> update (new query) -> reset (rewind) -> enable.
 	if got := strings.Join(r.calls, ","); got != "disable,update,reset,enable" {
 		t.Errorf("rebuild sequence = %q, want disable,update,reset,enable", got)
 	}
@@ -53,9 +53,9 @@ func TestRebuildMidSequenceFailure(t *testing.T) {
 		wantMsg   string
 	}{
 		{"disable", "disable", "projection untouched"},
-		{"update", "disable,update", "gaffer start orders"},         // stopped on old logic
+		{"update", "disable,update", "gaffer enable orders"},        // stopped on old logic
 		{"reset", "disable,update,reset", "gaffer recreate orders"}, // stopped, not rewound
-		{"enable", "disable,update,reset,enable", "gaffer start orders"},
+		{"enable", "disable,update,reset,enable", "gaffer enable orders"},
 	} {
 		r := &recorder{failOn: tc.failOn}
 		err := Rebuild(context.Background(), "orders", r.rebuildSteps())
@@ -93,7 +93,7 @@ func TestRecreateMidSequenceFailure(t *testing.T) {
 		wantCalls string
 		wantMsg   string
 	}{
-		{"disable", "disable", "could not stop orders before recreating"},
+		{"disable", "disable", "could not disable orders before recreating"},
 		{"delete", "disable,delete", "could not delete orders before recreating"},
 		{"create", "disable,delete,create", "orders was deleted but recreating it failed"},
 	} {

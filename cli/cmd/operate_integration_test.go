@@ -51,7 +51,7 @@ func waitState(t *testing.T, r *remote.Client, name string, want remote.State) {
 	t.Fatalf("projection %s never reached %s: %+v", name, want, last)
 }
 
-// TestOperate_Integration drives start / stop / abort / delete against a live
+// TestOperate_Integration drives enable / disable / abort / delete against a live
 // KurrentDB: each verb's RPC has to land on a real server and leave the
 // projection in the expected state, and delete has to remove it.
 func TestOperate_Integration(t *testing.T) {
@@ -80,22 +80,22 @@ func TestOperate_Integration(t *testing.T) {
 	p := testutil.NewProject(t).WithConnection(testutil.ConnectionString()).Save()
 	chdirTo(t, p.Dir)
 
-	t.Run("stop", func(t *testing.T) {
-		if got := runOperateJSON(t, "stop", name); got.Outcome != "stopped" {
-			t.Fatalf("stop outcome = %q, want stopped", got.Outcome)
+	t.Run("disable", func(t *testing.T) {
+		if got := runOperateJSON(t, "disable", name); got.Outcome != "disabled" {
+			t.Fatalf("disable outcome = %q, want disabled", got.Outcome)
 		}
 		waitState(t, r, name, remote.StateStopped)
 	})
 
-	t.Run("start", func(t *testing.T) {
-		if got := runOperateJSON(t, "start", name); got.Outcome != "started" {
-			t.Fatalf("start outcome = %q, want started", got.Outcome)
+	t.Run("enable", func(t *testing.T) {
+		if got := runOperateJSON(t, "enable", name); got.Outcome != "enabled" {
+			t.Fatalf("enable outcome = %q, want enabled", got.Outcome)
 		}
 		waitState(t, r, name, remote.StateRunning)
 	})
 
-	t.Run("stop --abort", func(t *testing.T) {
-		if got := runOperateJSON(t, "stop", name, "--abort"); got.Outcome != "aborted" {
+	t.Run("disable --abort", func(t *testing.T) {
+		if got := runOperateJSON(t, "disable", name, "--abort"); got.Outcome != "aborted" {
 			t.Fatalf("abort outcome = %q, want aborted", got.Outcome)
 		}
 		waitState(t, r, name, remote.StateStopped)
@@ -124,12 +124,12 @@ func TestOperate_Integration(t *testing.T) {
 
 	t.Run("missing projection reports not deployed", func(t *testing.T) {
 		root := NewRootCmd()
-		root.SetArgs([]string{"stop", "nope" + suffix})
+		root.SetArgs([]string{"disable", "nope" + suffix})
 		root.SetOut(io.Discard)
 		root.SetErr(io.Discard)
 		err := ExecuteRoot(context.Background(), root)
 		if err == nil || !strings.Contains(err.Error(), "not deployed") {
-			t.Errorf("stop of a missing projection should report 'not deployed', got: %v", err)
+			t.Errorf("disable of a missing projection should report 'not deployed', got: %v", err)
 		}
 	})
 }

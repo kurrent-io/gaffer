@@ -15,10 +15,10 @@ func TestOpQuestion(t *testing.T) {
 		prod               bool
 		want               string
 	}{
-		{"Stop", "orders", "cluster-x", false, "Stop orders on cluster-x?"},
+		{"Disable", "orders", "cluster-x", false, "Disable orders on cluster-x?"},
 		{"Delete", "orders", "cluster-x", true, "Delete orders on production cluster-x?"},
 		{"Delete", "orders", "", true, "Delete orders on production?"},
-		{"Start", "orders", "", false, "Start orders?"},
+		{"Enable", "orders", "", false, "Enable orders?"},
 	} {
 		if got := opQuestion(tc.verb, tc.name, tc.target, tc.prod); got != tc.want {
 			t.Errorf("opQuestion(%q,%q,%q,%v) = %q, want %q", tc.verb, tc.name, tc.target, tc.prod, got, tc.want)
@@ -64,10 +64,10 @@ func TestRenderOperate(t *testing.T) {
 		name, outcome, target string
 		want                  string
 	}{
-		{true, "orders", "stopped", "cluster-x", `{"name":"orders","outcome":"stopped"}` + "\n"},
-		{false, "orders", "stopped", "cluster-x", "Stopped orders on cluster-x.\n"},
+		{true, "orders", "disabled", "cluster-x", `{"name":"orders","outcome":"disabled"}` + "\n"},
+		{false, "orders", "disabled", "cluster-x", "Disabled orders on cluster-x.\n"},
 		{false, "orders", "deleted", "", "Deleted orders.\n"},
-		{false, "orders", "started", "staging", "Started orders on staging.\n"},
+		{false, "orders", "enabled", "staging", "Enabled orders on staging.\n"},
 	} {
 		var b bytes.Buffer
 		if err := renderOperate(&b, tc.jsonOut, tc.name, tc.outcome, tc.target); err != nil {

@@ -84,14 +84,14 @@ func Rebuild(ctx context.Context, name string, s RebuildSteps) error {
 		return fmt.Errorf("stopping for reset (projection untouched): %w", err)
 	}
 	if err := bound(ctx, s.Update); err != nil {
-		return fmt.Errorf("updating for reset - the projection is stopped; run `gaffer start %s` to resume it on the old logic: %w", name, err)
+		return fmt.Errorf("updating for reset - the projection is stopped; run `gaffer enable %s` to resume it on the old logic: %w", name, err)
 	}
 	if err := bound(ctx, s.Reset); err != nil {
 		return fmt.Errorf("resetting - the projection is stopped on the new query but not rewound; finish the rebuild with `gaffer recreate %s`: %w", name, err)
 	}
 	if err := bound(ctx, s.Enable); err != nil {
 		// State is already wiped and the projection is stopped; no auto-rollback.
-		return fmt.Errorf("reset succeeded but the projection failed to restart - run `gaffer start %s` to rebuild it: %w", name, err)
+		return fmt.Errorf("reset succeeded but the projection failed to restart - run `gaffer enable %s` to rebuild it: %w", name, err)
 	}
 	return nil
 }
@@ -122,7 +122,7 @@ func Recreate(ctx context.Context, name string, s RecreateSteps) error {
 		return fmt.Errorf("recreate %s: %w", name, err)
 	}
 	if err := bound(ctx, s.Disable); err != nil {
-		return fmt.Errorf("could not stop %s before recreating: %w", name, err)
+		return fmt.Errorf("could not disable %s before recreating: %w", name, err)
 	}
 	if err := bound(ctx, s.Delete); err != nil {
 		return fmt.Errorf("could not delete %s before recreating: %w", name, err)

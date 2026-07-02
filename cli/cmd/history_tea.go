@@ -140,13 +140,13 @@ func (m historyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadErr = msg.err
 			return m, nil
 		}
+		m.loadErr = nil // the read succeeded (empty page included); a stale failure shouldn't keep reporting
 		if len(msg.versions) == 0 {
 			// A window below the oldest loaded version held no further state events,
 			// so there's nothing more to page; stop, or every keypress re-fetches it.
 			m.exhausted = true
 			return m, nil
 		}
-		m.loadErr = nil // a page landed; a stale failure shouldn't keep reporting
 		m.raw = append(m.raw, msg.versions...)
 		m.versions = classifyHistory(m.raw)
 		m.graph = computeHistoryGraph(m.versions)

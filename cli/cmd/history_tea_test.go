@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -187,6 +188,21 @@ func TestHistoryScrollSetsLoading(t *testing.T) {
 	}
 	if !asModel(t, next).loading {
 		t.Error("the returned model should carry loading=true")
+	}
+}
+
+func TestHistoryEmptyPageClearsStaleLoadError(t *testing.T) {
+	// A successful empty page (stream exhausted) must clear an earlier failure,
+	// or the footer keeps showing "load failed" for the rest of the session.
+	m := newTestHistoryModel(sampleHistory(), 100, 20)
+	m.loadErr = errors.New("transient read failure")
+	nm, _ := m.Update(historyLoadedMsg{versions: nil})
+	m = asModel(t, nm)
+	if m.loadErr != nil {
+		t.Errorf("loadErr = %v after a successful empty page, want cleared", m.loadErr)
+	}
+	if !m.exhausted {
+		t.Error("empty page should still mark the stream exhausted")
 	}
 }
 

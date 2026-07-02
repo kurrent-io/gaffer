@@ -123,10 +123,21 @@ func runHistory(cmd *cobra.Command, name string, opts historyOpts) error {
 }
 
 // historyRows prepares the human timeline under --limit: fold first, then trim,
-// so a recreate's bookends never count toward the limit only to be folded away,
-// dropping rows the window had room for.
+// so a recreate's bookends never count toward the limit only to be folded away.
+// The window may carry one extra row beyond the limit - the classification
+// baseline readLimit adds. Folding runs over the full window so a baseline that
+// is itself a bookend folds into the last entry; a baseline that survives is
+// dropped, since it exists only to classify the row above it and, metadata-less,
+// would display as a bogus "rewritten" with nothing older in view. A window with
+// folds can still show fewer than limit rows (the read is bounded); the
+// Showing-N-of-M tail points at --limit/--all for the rest.
 func historyRows(hist []historyVersion, limit int) []historyVersion {
 	rows := collapseHistory(hist)
+	if limit > 0 && len(hist) > limit {
+		if last := rows[len(rows)-1]; last.Number == hist[len(hist)-1].Number {
+			rows = rows[:len(rows)-1]
+		}
+	}
 	if limit > 0 && len(rows) > limit {
 		rows = rows[:limit]
 	}

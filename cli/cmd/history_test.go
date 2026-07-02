@@ -140,20 +140,57 @@ func TestCollapseHistoryAlreadyDisabled(t *testing.T) {
 	}
 }
 
-func TestHistoryRowsFoldsBeforeLimit(t *testing.T) {
-	// --limit counts displayed rows on the human timeline: folding first means a
-	// recreate's bookends can't eat the limit and then vanish, dropping rows the
-	// read window had room for (here the deploy).
-	hist := classifyHistory([]remote.Version{
-		ver(3, "q", true, gafferLedger(remote.OpRecreate)),
-		tombstone(2, "q"),
-		ver(1, "q", false, nil),
-		ver(0, "q", true, gafferLedger(remote.OpDeploy)),
+func TestHistoryRows(t *testing.T) {
+	// historyRows receives what runHistory read: up to limit+1 classified rows,
+	// the extra being the classification baseline.
+	t.Run("folds before the limit and absorbs a bookend baseline", func(t *testing.T) {
+		// --limit 2 reads 3 rows; the fold runs over the full window, so the
+		// baseline tombstone folds into the recreate instead of eating the limit.
+		hist := classifyHistory([]remote.Version{
+			ver(3, "q", true, gafferLedger(remote.OpRecreate)),
+			tombstone(2, "q"),
+			ver(1, "q", false, nil),
+		})
+		rows := historyRows(hist, 2)
+		if len(rows) != 1 || rows[0].Kind != kindRecreate || len(rows[0].Absorbed) != 2 {
+			t.Fatalf("rows = %v (absorbed %d), want one fully-folded recreate", kinds(rows), len(rows[0].Absorbed))
+		}
 	})
-	rows := historyRows(hist, 2)
-	if len(rows) != 2 || rows[0].Kind != kindRecreate || rows[1].Kind != kindDeploy {
-		t.Fatalf("rows = %v, want [recreate deploy]", kinds(rows))
-	}
+	t.Run("drops a surviving baseline", func(t *testing.T) {
+		// --limit 3 reads 4 rows; the fold shrinks the window below the limit, so
+		// the trim alone would leak the baseline - a metadata-less row that, with
+		// nothing older in view, classifies as a bogus rewritten.
+		hist := classifyHistory([]remote.Version{
+			ver(4, "q", true, gafferLedger(remote.OpRecreate)),
+			tombstone(3, "q"),
+			ver(2, "q", false, nil),
+			ver(1, "q", true, nil), // baseline: metadata-less, would show "rewritten"
+		})
+		rows := historyRows(hist, 3)
+		if len(rows) != 1 || rows[0].Kind != kindRecreate {
+			t.Fatalf("rows = %v, want the baseline dropped, not displayed", kinds(rows))
+		}
+	})
+	t.Run("plain window trims to the limit", func(t *testing.T) {
+		hist := classifyHistory([]remote.Version{
+			ver(3, "a", true, gafferLedger(remote.OpDeploy)),
+			ver(2, "b", true, gafferLedger(remote.OpDeploy)),
+			ver(1, "c", true, gafferLedger(remote.OpDeploy)),
+		})
+		rows := historyRows(hist, 2)
+		if len(rows) != 2 || rows[0].Number != 3 || rows[1].Number != 2 {
+			t.Fatalf("rows = %v, want the two newest deploys", kinds(rows))
+		}
+	})
+	t.Run("no limit keeps everything", func(t *testing.T) {
+		hist := classifyHistory([]remote.Version{
+			ver(1, "a", true, gafferLedger(remote.OpDeploy)),
+			ver(0, "b", true, gafferLedger(remote.OpDeploy)),
+		})
+		if rows := historyRows(hist, 0); len(rows) != 2 {
+			t.Fatalf("rows = %v, want both", kinds(rows))
+		}
+	})
 }
 
 func TestCollapseHistoryConsecutiveRecreates(t *testing.T) {

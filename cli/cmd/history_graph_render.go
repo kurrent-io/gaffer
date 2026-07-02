@@ -127,16 +127,27 @@ func (p graphPainter) nodePad(i int) string {
 // the live spine plus each lane's vertical still open across the gap. A lane forking
 // at this gap is drawn on its own connector line below, so it's omitted here. In a
 // linear view this collapses to the run-state-tinted spine of the pre-branch layout.
+//
+// Below a collapsed recreate the spine leads with a termination cap (┬) instead of
+// the plain rail: the fold removed the tombstone whose gap used to show the break
+// (see spineBlank), so the cap marks where the old line ended and the rebuild began.
 func (p graphPainter) railGutter(i int) string {
+	spine := "│"
+	if p.versions[i].Kind == kindRecreate {
+		spine = "┬"
+	}
 	if p.g.maxLane() == 0 {
 		if p.spineBlank(i) {
 			return " "
 		}
-		return p.tw.historyRunStyle(p.versions[i+1]).Render("│")
+		return p.tw.historyRunStyle(p.versions[i+1]).Render(spine)
 	}
 	cells := p.blank()
 	if !p.spineBlank(i) {
 		cells[0] = p.vert(0, i, false)
+		if spine != "│" && !p.bridged(0, i, false) {
+			cells[0] = p.liveStyle(i).Render(spine)
+		}
 	}
 	for _, s := range p.g.spans {
 		if s.lane > 0 && s.top != i && s.top <= i && s.bottom >= i+1 {

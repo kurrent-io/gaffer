@@ -140,14 +140,13 @@ func (tw *textWriter) historyKindStyle(hv historyVersion) lipgloss.Style {
 }
 
 // historyGlyph shows the run state at this point: a cross for a deleted (gone)
-// projection, a cycle for a recreate (torn down and rebuilt in one entry), a
-// filled dot when enabled (running), a hollow dot when disabled.
+// projection, a filled dot when enabled (running), a hollow dot when disabled.
+// A recreate keeps the plain dot; the rail below it carries the termination cap
+// (see graphPainter.railGutter), marking where the old line ended.
 func historyGlyph(hv historyVersion) string {
 	switch {
 	case hv.Deleted:
 		return "✗"
-	case hv.Kind == kindRecreate:
-		return "⟳"
 	case hv.enabled():
 		return "●"
 	default:

@@ -121,7 +121,7 @@ Project-level telemetry is opted out by setting `telemetry = false` at the top o
 - **`0`** — succeeded, or nothing to do (everything already in sync).
 - **`1`** — an error: a projection failed to compile, a server call failed, or the plan has a projection deploy can't apply in place (a refusal).
 - **`2`** — changes are pending. Only `--dry-run` returns this; it means the plan has work to apply.
-- **`3`** — refused by a guardrail: confirmation was needed but there was no terminal and no `--yes`, or `--no-validate` was used against production. Re-run satisfying the guardrail. `gaffer recreate`, `gaffer enable`, `gaffer disable`, and `gaffer delete` also exit `3` when a guarded action can't confirm non-interactively.
+- **`3`** — refused by a guardrail: confirmation was needed but there was no terminal and no `--yes`, or `--no-validate` was used against production. Re-run satisfying the guardrail. `gaffer recreate`, `gaffer disable`, and `gaffer delete` also exit `3` when a guarded action can't confirm non-interactively (`gaffer enable` has no guarded action, so it never does).
 
 A typical CI check is `gaffer deploy --dry-run`: exit `0` means in sync, `2` means drift to apply, `1` means something needs attention.
 

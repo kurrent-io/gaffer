@@ -78,13 +78,13 @@ func FetchNodeOptions(ctx context.Context, connection string) (*NodeProjectionOp
 // credentials. A multi-host list is asked via its first host; a host without a
 // port gets the default 2113.
 func nodeOptionsEndpoint(connection string) (endpoint, user, pass string, insecure bool, err error) {
-	u, err := url.Parse(connection)
+	u, err := url.Parse(firstHostConnection(connection))
 	if err != nil {
 		// The connection string can carry credentials (url.Error embeds the
 		// URL), so the error is described, never wrapped.
 		return "", "", "", false, errors.New("unparsable connection string")
 	}
-	host, _, _ := strings.Cut(u.Host, ",")
+	host := u.Host
 	if host == "" {
 		return "", "", "", false, errors.New("connection string has no host")
 	}
@@ -106,6 +106,22 @@ func nodeOptionsEndpoint(connection string) (endpoint, user, pass string, insecu
 		pass, _ = u.User.Password()
 	}
 	return scheme + "://" + host + "/info/options", user, pass, insecure, nil
+}
+
+// firstHostConnection reduces a multi-host connection string to its first host
+// before URL parsing: url.Parse's tolerance of a comma-separated authority
+// varies by Go version, so the cut happens at the string level - from the
+// first comma up to the path or query.
+func firstHostConnection(connection string) string {
+	comma := strings.Index(connection, ",")
+	if comma < 0 {
+		return connection
+	}
+	rest := connection[comma:]
+	if end := strings.IndexAny(rest, "/?"); end >= 0 {
+		return connection[:comma] + rest[end:]
+	}
+	return connection[:comma]
 }
 
 // parseNodeOptions extracts the projection knobs from the /info/options

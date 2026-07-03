@@ -31,21 +31,33 @@ fi
 
 dotnet_source=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' global.json | head -1 | grep -o '[0-9][^"]*' || true)
 dotnet_container=$(dockerfile_arg DOTNET_SDK_VERSION)
-if [[ "$dotnet_source" != "$dotnet_container" ]]; then
-	mismatch "dotnet SDK is ${dotnet_source:-unset} in global.json but $dotnet_container in the devcontainer Dockerfile"
+if [[ -z "$dotnet_source" ]]; then
+	mismatch "global.json is missing its sdk version"
+elif [[ "$dotnet_source" != "$dotnet_container" ]]; then
+	mismatch "dotnet SDK is $dotnet_source in global.json but $dotnet_container in the devcontainer Dockerfile"
 fi
 
 node_source=$(tr -d '[:space:]' <.nvmrc)
 node_container=$(dockerfile_arg NODE_VERSION)
-if [[ "$node_source" != "$node_container" ]]; then
-	mismatch "Node is ${node_source:-unset} in .nvmrc but $node_container in the devcontainer Dockerfile"
+if [[ -z "$node_source" ]]; then
+	mismatch ".nvmrc is empty"
+elif [[ "$node_source" != "$node_container" ]]; then
+	mismatch "Node is $node_source in .nvmrc but $node_container in the devcontainer Dockerfile"
+fi
+
+# The version-file indirections only hold while no workflow reintroduces a
+# literal pin (node-version: 22, dotnet-version: "10.x"). The -file input
+# variants don't match: the colon follows "version" directly only in the
+# literal forms.
+if grep -n '\(go\|node\|dotnet\)-version:' .github/workflows/*.yml; then
+	mismatch "workflows must pin via version files (go.work, global.json, .nvmrc), not literal versions"
 fi
 
 # Every setup-just step must carry a just-version pin (an unpinned step
 # floats to the latest release), and every pin must match the Dockerfile.
 just_container=$(dockerfile_arg JUST_VERSION)
-setup_count=$(grep -hc 'extractions/setup-just@' .github/workflows/*.yml | awk '{n += $1} END {print n + 0}' || true)
-pin_count=$(grep -hc 'just-version:' .github/workflows/*.yml | awk '{n += $1} END {print n + 0}' || true)
+setup_count=$(grep -hc 'uses:[[:space:]]*extractions/setup-just@' .github/workflows/*.yml | awk '{n += $1} END {print n + 0}' || true)
+pin_count=$(grep -hc '^[[:space:]]*just-version:' .github/workflows/*.yml | awk '{n += $1} END {print n + 0}' || true)
 if [[ "$setup_count" != "$pin_count" ]]; then
 	mismatch "$setup_count setup-just steps but $pin_count just-version pins in the workflows"
 fi
@@ -53,6 +65,6 @@ while read -r version; do
 	if [[ "$version" != "$just_container" ]]; then
 		mismatch "a workflow pins just $version but the devcontainer Dockerfile has $just_container"
 	fi
-done < <(sed -n 's/.*just-version:[[:space:]]*//p' .github/workflows/*.yml)
+done < <(sed -n 's/^[[:space:]]*just-version:[[:space:]]*//p' .github/workflows/*.yml)
 
 exit "$status"

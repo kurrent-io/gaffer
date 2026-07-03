@@ -12,6 +12,11 @@ SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 # tarball. The weekly prebuild pushes ghcr.io/.../gaffer-devcontainer:latest
 # unattended, so without this a compromise of any upstream endpoint would
 # propagate straight to every developer. Bump these in a reviewed PR.
+# Each version is a copy of its source of truth - go.work's toolchain
+# directive, global.json, .nvmrc; JUST_VERSION is authoritative and the
+# workflows' setup-just pins copy it. tools/check-toolchain-pins.sh fails
+# CI when any pair drifts, so bump the source and this file together
+# (with fresh tarball checksums).
 ARG TARGETARCH
 ARG JUST_VERSION=1.52.0
 ARG DOTNET_SDK_VERSION=10.0.301

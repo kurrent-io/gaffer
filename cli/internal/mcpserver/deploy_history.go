@@ -20,7 +20,7 @@ var deployHistoryTool = &mcp.Tool{
 		"every write, newest first, one entry per stream write (uncollapsed), with actor, " +
 		"tool, timestamps, and content hashes. Mirrors `gaffer history --json`; the " +
 		"response echoes the resolved env. kind is one of: deploy, rollback, reset, " +
-		"recreate, changed by (another tool - see the tool field), edited externally, " +
+		"recreate, changed-by (another tool - see the tool field), edited-externally, " +
 		"enabled, disabled, reconfigured, rewritten (a no-op rewrite), created, deleted " +
 		"(a tombstone), unreadable. A contentHash identifies the deployed definition, so " +
 		"reverts are recognisable and rollback targets can be picked by hash. Page older " +

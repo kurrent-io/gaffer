@@ -280,7 +280,7 @@ func applyPlan(ctx context.Context, plan []drift.PlanItem, sink deploySink, appl
 			if err := apply(item); err != nil {
 				res.Err = err
 				// The apply failed, so nothing was overwritten - don't keep claiming
-				// it did via external_change.
+				// it did via externalChange.
 				res.ExternalChange = false
 			}
 		}

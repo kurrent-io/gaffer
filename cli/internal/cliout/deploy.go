@@ -8,9 +8,9 @@ import (
 // outcome is the verdict: created, updated, rebuilt, skipped, refused, or
 // failed from a deploy run, or invalid when the preflight gate rejected it
 // before any server write. reason is set for refused and invalid, error for
-// failed. logic_change marks an "updated" outcome that continued over a
+// failed. logicChange marks an "updated" outcome that continued over a
 // changed query (state kept), so CI can alert on it; a rebuild surfaces as
-// outcome "rebuilt" instead. external_change marks an apply whose deployed
+// outcome "rebuilt" instead. externalChange marks an apply whose deployed
 // definition had been changed outside gaffer since its last deploy (so the
 // apply overwrote that change), again so CI can alert. Shared by
 // `gaffer deploy --json` (including --dry-run, where outcome is the would-be
@@ -18,8 +18,8 @@ import (
 type DeployJSON struct {
 	Name           string `json:"name"`
 	Outcome        string `json:"outcome"`
-	LogicChange    bool   `json:"logic_change,omitempty"`
-	ExternalChange bool   `json:"external_change,omitempty"`
+	LogicChange    bool   `json:"logicChange,omitempty"`
+	ExternalChange bool   `json:"externalChange,omitempty"`
 	Reason         string `json:"reason,omitempty"`
 	Error          string `json:"error,omitempty"`
 }

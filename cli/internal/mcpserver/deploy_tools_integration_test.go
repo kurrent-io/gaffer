@@ -149,7 +149,7 @@ func TestIntegration_DeployTools(t *testing.T) {
 		t.Fatalf("head page: expected 1 entry under limit=1, got %d", len(versions))
 	}
 	head := versions[0].(map[string]any)
-	if head["version"].(float64) != 1 || head["kind"] != "edited externally" {
+	if head["version"].(float64) != 1 || head["kind"] != "edited-externally" {
 		t.Fatalf("head page entry = %v, want version 1 classified against the baseline", head)
 	}
 	if hist["total"].(float64) != 2 {

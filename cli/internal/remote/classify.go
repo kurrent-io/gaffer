@@ -18,8 +18,8 @@ const (
 	KindRollback         VersionKind = "rollback"
 	KindReset            VersionKind = "reset"
 	KindRecreate         VersionKind = "recreate"
-	KindChangedByTool    VersionKind = "changed by"        // + tool name
-	KindEditedExternally VersionKind = "edited externally" // metadata-less, definition changed
+	KindChangedByTool    VersionKind = "changed-by"        // + tool name
+	KindEditedExternally VersionKind = "edited-externally" // metadata-less, definition changed
 	KindEnabled          VersionKind = "enabled"           // metadata-less, only the enabled flag flipped on
 	KindDisabled         VersionKind = "disabled"          // metadata-less, only the enabled flag flipped off
 	KindReconfigured     VersionKind = "reconfigured"      // metadata-less, content + enabled unchanged, a config knob moved

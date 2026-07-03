@@ -198,7 +198,8 @@ func (hv historyVersion) operationLabel() string {
 }
 
 // eventLabel is the human label for the row's kind, with the tool name folded in
-// for a foreign write.
+// for a foreign write. The hyphenated wire tokens (the --json / MCP values)
+// read as words here.
 func (hv historyVersion) eventLabel() string {
 	switch hv.Kind {
 	case remote.KindChangedByTool:
@@ -206,6 +207,8 @@ func (hv historyVersion) eventLabel() string {
 			return "changed by " + hv.Tool
 		}
 		return "changed externally"
+	case remote.KindEditedExternally:
+		return "edited externally"
 	case remote.KindUnreadable:
 		return "unreadable metadata"
 	default:

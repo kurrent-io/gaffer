@@ -152,19 +152,19 @@ func TestDeployReset_Integration(t *testing.T) {
 	}
 
 	// A query change without the flag is the default continue: outcome "updated"
-	// carrying logic_change, projection still running.
+	// carrying logicChange, projection still running.
 	if err := os.WriteFile(source, []byte(v3), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if got := deployOutcome(t, runDeployJSON(t), name); got.Outcome != "updated" || !got.LogicChange {
-		t.Errorf("continue deploy = %+v, want updated with logic_change", got)
+		t.Errorf("continue deploy = %+v, want updated with logicChange", got)
 	}
 	waitRunning(t, r, name)
 }
 
 // TestDeployExternalChange_Integration drives the surface-don't-refuse behaviour
 // against a live, metadata-capable server: a projection changed outside gaffer
-// since its last deploy still deploys, but carries external_change; a projection
+// since its last deploy still deploys, but carries externalChange; a projection
 // changed only locally (gaffer's deploy still on the server) does not. Gated on
 // GAFFER_TEST_LEDGER (a release that ignores the metadata can't carry the flag).
 func TestDeployExternalChange_Integration(t *testing.T) {
@@ -203,9 +203,9 @@ func TestDeployExternalChange_Integration(t *testing.T) {
 
 	results := runDeployJSON(t)
 	if got := deployOutcome(t, results, srv); got.Outcome != "updated" || !got.ExternalChange {
-		t.Errorf("%s = %+v; want updated carrying external_change", srv, got)
+		t.Errorf("%s = %+v; want updated carrying externalChange", srv, got)
 	}
 	if got := deployOutcome(t, results, ahead); got.ExternalChange {
-		t.Errorf("%s should not carry external_change (local-only edit): %+v", ahead, got)
+		t.Errorf("%s should not carry externalChange (local-only edit): %+v", ahead, got)
 	}
 }

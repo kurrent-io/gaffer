@@ -229,7 +229,7 @@ func TestJSONSink(t *testing.T) {
 func TestJSONSinkResetOmitsLogicChange(t *testing.T) {
 	// A promoted reset still carries logicChange on the plan item, but the result
 	// must not leak it into JSON: a rebuild is signalled by outcome "rebuilt", not
-	// logic_change (which means "continued over a logic change").
+	// logicChange (which means "continued over a logic change").
 	var b bytes.Buffer
 	s := &jsonSink{w: &b}
 	s.done((drift.PlanItem{Name: "e", Action: drift.ActionReset, LogicChange: true}).Result())
@@ -241,7 +241,7 @@ func TestJSONSinkResetOmitsLogicChange(t *testing.T) {
 		t.Fatalf("unmarshal: %v\n%s", err, b.String())
 	}
 	if len(got) != 1 || got[0].Outcome != "rebuilt" || got[0].LogicChange {
-		t.Errorf("reset JSON = %+v, want outcome rebuilt with logic_change false", got)
+		t.Errorf("reset JSON = %+v, want outcome rebuilt with logicChange false", got)
 	}
 }
 
@@ -354,7 +354,7 @@ func TestApplyPlan(t *testing.T) {
 }
 
 func TestApplyPlanClearsExternalChangeOnFailure(t *testing.T) {
-	// A successful apply over an external change keeps external_change; a failed one
+	// A successful apply over an external change keeps externalChange; a failed one
 	// drops it, since the failed apply overwrote nothing.
 	plan := []drift.PlanItem{
 		{Name: "ok", Action: drift.ActionUpdate, Cmp: changedServer()},
@@ -372,10 +372,10 @@ func TestApplyPlanClearsExternalChangeOnFailure(t *testing.T) {
 		byName[r.Name] = r
 	}
 	if !byName["ok"].ExternalChange {
-		t.Error("a successful apply over an external change should keep external_change")
+		t.Error("a successful apply over an external change should keep externalChange")
 	}
 	if byName["boom"].ExternalChange {
-		t.Error("a failed apply overwrote nothing, so external_change should be cleared")
+		t.Error("a failed apply overwrote nothing, so externalChange should be cleared")
 	}
 }
 

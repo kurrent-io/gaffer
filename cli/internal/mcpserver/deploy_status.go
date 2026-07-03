@@ -12,11 +12,16 @@ import (
 var deployStatusTool = &mcp.Tool{
 	Name: "deploy_status",
 	Description: "Show the state of projections deployed to a KurrentDB environment and how " +
-		"each compares to local config: runtime state and progress, the drift verdict " +
-		"(in-sync / drifted / not-deployed / untracked / invalid), who owns and last " +
-		"deployed it, and - when gaffer.toml declares a [database_config] - any divergence " +
-		"from the target node's live engine settings (configDrift). Mirrors " +
-		"`gaffer status --json`. Omit `name` to list every local and deployed projection.",
+		"each compares to local config. Mirrors `gaffer status --json`; the response echoes " +
+		"the resolved env. Omit `name` to list every local and deployed projection. Per " +
+		"projection: drift is in-sync / drifted / not-deployed / untracked / invalid; owner " +
+		"is in-config / orphan (gaffer-deployed but no longer in gaffer.toml - a deletion " +
+		"candidate) / foreign (another tool's) / unknown (no readable metadata); attribution " +
+		"appears only on drifted rows - local-ahead (local edited since gaffer's deploy), " +
+		"changed-by-tool, or changed-server. runtime.progress is a percentage (0-100; " +
+		"negative means the server couldn't report it). configDrift lists [database_config] " +
+		"knobs diverging from the target node's live engine settings; it is node-level, not " +
+		"per-projection, so it appears even when `name` scopes the report.",
 	Annotations: readOnlyHints(),
 }
 
@@ -64,5 +69,7 @@ func (s *Server) handleDeployStatus(ctx context.Context, _ *mcp.CallToolRequest,
 			return toolError("%v", err), nil, nil
 		}
 	}
-	return toolResult(cliout.BuildStatusReport(entries, <-driftCh)), nil, nil
+	report := cliout.BuildStatusReport(entries, <-driftCh)
+	report.Env = env.Name
+	return toolResult(report), nil, nil
 }

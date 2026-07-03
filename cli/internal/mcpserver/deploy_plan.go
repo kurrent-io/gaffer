@@ -80,6 +80,7 @@ func (s *Server) handleDeployPlan(ctx context.Context, _ *mcp.CallToolRequest, i
 	}
 
 	result := map[string]any{
+		"env": env.Name,
 		// The same per-item array a `gaffer deploy --dry-run --json` emits;
 		// outcome is the would-be verdict.
 		"plan":    cliout.BuildPlanJSON(plan),

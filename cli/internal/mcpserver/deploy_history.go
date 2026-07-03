@@ -17,13 +17,16 @@ const deployHistoryDefaultLimit = 100
 var deployHistoryTool = &mcp.Tool{
 	Name: "deploy_history",
 	Description: "Read a deployed projection's audit history from a KurrentDB environment: " +
-		"every write, newest first, classified as deploy / rollback / reset / recreate / " +
-		"edited externally / changed by another tool / enabled / disabled / reconfigured, " +
-		"with actor, tool, timestamps, and content hashes. Mirrors `gaffer history --json` " +
-		"(one entry per stream write, uncollapsed). A contentHash identifies the deployed " +
-		"definition, so reverts are recognisable and rollback targets can be picked by " +
-		"hash. Page older entries by passing the previous page's oldest `version` as " +
-		"`before`.",
+		"every write, newest first, one entry per stream write (uncollapsed), with actor, " +
+		"tool, timestamps, and content hashes. Mirrors `gaffer history --json`; the " +
+		"response echoes the resolved env. kind is one of: deploy, rollback, reset, " +
+		"recreate, changed by (another tool - see the tool field), edited externally, " +
+		"enabled, disabled, reconfigured, rewritten (a no-op rewrite), created, deleted " +
+		"(a tombstone), unreadable. A contentHash identifies the deployed definition, so " +
+		"reverts are recognisable and rollback targets can be picked by hash. Page older " +
+		"entries by passing the previous page's oldest `version` as `before`; `total` " +
+		"(the projection's total write count) is present only on the first (head) page " +
+		"and omitted on paged calls.",
 	Annotations: readOnlyHints(),
 }
 
@@ -47,7 +50,7 @@ func (s *Server) handleDeployHistory(ctx context.Context, _ *mcp.CallToolRequest
 		return toolError("name required: pass the projection to read history for"), nil, nil
 	}
 
-	client, _, cleanup, err := s.connectRemote(cfg, root, in.Env)
+	client, env, cleanup, err := s.connectRemote(cfg, root, in.Env)
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}
@@ -91,6 +94,7 @@ func (s *Server) handleDeployHistory(ctx context.Context, _ *mcp.CallToolRequest
 	}
 
 	result := map[string]any{
+		"env":      env.Name,
 		"versions": cliout.BuildHistoryJSON(classified),
 	}
 	// The stream's total write count is known only on a head read; a paged

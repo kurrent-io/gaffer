@@ -65,7 +65,14 @@ func TestIntegration_DeployTools(t *testing.T) {
 		t.Fatalf("expected changes=1, got %v", plan["changes"])
 	}
 
+	if plan["env"] != "default" {
+		t.Fatalf("expected the resolved env echoed, got %v", plan["env"])
+	}
+
 	status := callTool(t, s, deployStatusTool, s.handleDeployStatus, deployStatusInput{Name: name})
+	if status["env"] != "default" {
+		t.Fatalf("expected the resolved env echoed, got %v", status["env"])
+	}
 	projs := status["projections"].([]any)
 	if len(projs) != 1 {
 		t.Fatalf("expected 1 status entry, got %d", len(projs))
@@ -109,6 +116,9 @@ func TestIntegration_DeployTools(t *testing.T) {
 	}
 
 	hist := callTool(t, s, deployHistoryTool, s.handleDeployHistory, deployHistoryInput{Name: name})
+	if hist["env"] != "default" {
+		t.Fatalf("expected the resolved env echoed, got %v", hist["env"])
+	}
 	versions := hist["versions"].([]any)
 	if len(versions) != 1 {
 		t.Fatalf("expected 1 history entry, got %d", len(versions))

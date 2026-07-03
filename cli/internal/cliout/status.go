@@ -48,6 +48,10 @@ type LedgerJSON struct {
 // clean, not declared, or unreadable - absence is "nothing to report", not
 // "in sync".
 type StatusReportJSON struct {
+	// Env is the resolved environment name, set by the MCP tool so each
+	// response is self-describing in multi-env workflows. The CLI leaves it
+	// empty (omitted) - the invocation already names the env there.
+	Env         string            `json:"env,omitempty"`
 	Projections []StatusJSON      `json:"projections"`
 	ConfigDrift []ConfigDriftJSON `json:"configDrift,omitempty"`
 }

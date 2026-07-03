@@ -567,7 +567,7 @@ func (m historyModel) nodeLine(i int, sel bool, stage rowStage, width int) strin
 		hashStyle = m.tw.styles.label
 	}
 	hash := strings.Repeat(" ", historyHashWidth)
-	if !hv.stateChange() {
+	if !hv.StateChange() {
 		hash = hashStyle.Render(padCells(hv.Hash, historyHashWidth))
 	}
 	if stage == stageHash {
@@ -649,12 +649,12 @@ func (m historyModel) detail(hv historyVersion, width int) string {
 	}
 	if !hv.Deleted { // a tombstone's title already says "deleted"
 		state := "disabled"
-		if hv.enabled() {
+		if hv.Enabled() {
 			state = "enabled"
 		}
 		field("state", state)
 	}
-	if !hv.stateChange() && hv.Hash != "" {
+	if !hv.StateChange() && hv.Hash != "" {
 		b.WriteString(m.hs.fieldKey.Render(padCells("content", labelW)))
 		b.WriteString(m.hs.fieldHash.Render(hv.Hash))
 		b.WriteByte('\n')
@@ -663,14 +663,14 @@ func (m historyModel) detail(hv historyVersion, width int) string {
 			b.WriteByte('\n')
 		}
 	}
-	if hv.Kind == kindRecreate {
+	if hv.Kind == remote.KindRecreate {
 		b.WriteString(strings.Repeat(" ", labelW) + m.tw.styles.dim.Render(truncate("⟳ reprocessed from zero", max(1, width-labelW))))
 		b.WriteByte('\n')
 	}
 	switch hv.Kind {
-	case kindEditedExternally:
+	case remote.KindEditedExternally:
 		b.WriteString(m.tw.styles.warning.Render(truncate("⚠ "+changeSummary(hv.Change)+" outside gaffer", width)) + "\n")
-	case kindUnreadable:
+	case remote.KindUnreadable:
 		b.WriteString(m.tw.styles.warning.Render(truncate("⚠ deploy metadata could not be read", width)) + "\n")
 	}
 
@@ -716,9 +716,9 @@ func (m historyModel) detail(hv historyVersion, width int) string {
 // for a lifecycle event.
 func (m historyModel) detailTitle(hv historyVersion) lipgloss.Style {
 	switch hv.Kind {
-	case kindEditedExternally, kindChangedByTool, kindDeleted, kindUnreadable:
+	case remote.KindEditedExternally, remote.KindChangedByTool, remote.KindDeleted, remote.KindUnreadable:
 		return m.hs.titleWarn
-	case kindDeploy, kindRollback, kindReset, kindRecreate:
+	case remote.KindDeploy, remote.KindRollback, remote.KindReset, remote.KindRecreate:
 		return m.hs.titleAccent
 	default:
 		return m.hs.titleMuted
@@ -731,7 +731,7 @@ func (m historyModel) detailTitle(hv historyVersion) lipgloss.Style {
 // view (a history of only state changes).
 func (m historyModel) governingContent(i int) *historyVersion {
 	for j := i; j < len(m.versions); j++ {
-		if !m.versions[j].stateChange() {
+		if !m.versions[j].StateChange() {
 			return &m.versions[j]
 		}
 	}
@@ -744,7 +744,7 @@ func (m historyModel) governingContent(i int) *historyVersion {
 // newer one, so the original occurrence of a content is not a match.
 func (m historyModel) matchesEarlier(i int) bool {
 	for j := i + 1; j < len(m.versions); j++ {
-		if !m.versions[j].stateChange() && m.versions[j].contentKey != "" && m.versions[j].contentKey == m.versions[i].contentKey {
+		if !m.versions[j].StateChange() && m.versions[j].ContentHash != "" && m.versions[j].ContentHash == m.versions[i].ContentHash {
 			return true
 		}
 	}

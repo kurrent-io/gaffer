@@ -122,7 +122,7 @@ func TestHistoryRollbackModalFlow(t *testing.T) {
 	if m.rbOpen || m.rbBusy {
 		t.Errorf("reload should close the modal (open=%v busy=%v)", m.rbOpen, m.rbBusy)
 	}
-	if m.cursor != 0 || len(m.versions) != 4 || m.versions[0].Kind != kindRollback {
+	if m.cursor != 0 || len(m.versions) != 4 || m.versions[0].Kind != remote.KindRollback {
 		t.Errorf("cursor=%d rows=%d head=%v, want the new rollback entry selected on top", m.cursor, len(m.versions), m.versions[0].Kind)
 	}
 	if m.total != 5 {

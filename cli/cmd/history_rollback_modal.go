@@ -44,12 +44,12 @@ type historyRollback struct {
 // current -> selected: what applying the rollback would change.
 func historyRollbackAt(versions []historyVersion, i int) historyRollback {
 	sel := versions[i]
-	if sel.stateChange() || sel.Definition == nil {
+	if sel.StateChange() || sel.Definition == nil {
 		return historyRollback{state: rbNoTarget, sel: sel}
 	}
 	var cur *historyVersion
 	for j := range versions {
-		if !versions[j].stateChange() && versions[j].Definition != nil {
+		if !versions[j].StateChange() && versions[j].Definition != nil {
 			cur = &versions[j]
 			break
 		}
@@ -57,7 +57,7 @@ func historyRollbackAt(versions []historyVersion, i int) historyRollback {
 	if cur == nil {
 		return historyRollback{state: rbNoTarget, sel: sel}
 	}
-	if cur.contentKey == sel.contentKey {
+	if cur.ContentHash == sel.ContentHash {
 		return historyRollback{state: rbCurrent, sel: sel, cur: cur}
 	}
 	cmp := deploy.Compare(sel.Definition.Descriptor(), cur.Definition.Descriptor())
@@ -180,7 +180,7 @@ func (m historyModel) rollbackModalTitle(rb historyRollback, width int) string {
 	lead := m.tw.historyRunStyle(hv).Render(historyGlyph(hv)) + " " +
 		m.tw.styles.label.Render("roll back to")
 	var parts []string
-	if !hv.stateChange() && hv.Hash != "" {
+	if !hv.StateChange() && hv.Hash != "" {
 		parts = append(parts, hv.Hash)
 	}
 	if rb.cur != nil && rb.state != rbCurrent {
@@ -210,7 +210,7 @@ func (m historyModel) rollbackModalBody(rb historyRollback, width int) []string 
 		// The refusal names the dimension and the recreate escape; wrap it
 		// rather than truncating the actionable tail off.
 		var rows []string
-		msg := rollbackRefusal(rb.cmp, rb.sel.contentKey, m.name).Error()
+		msg := rollbackRefusal(rb.cmp, rb.sel.ContentHash, m.name).Error()
 		for line := range strings.SplitSeq(lipgloss.NewStyle().Width(width).Render(msg), "\n") {
 			rows = append(rows, m.tw.styles.warning.Render(line))
 		}

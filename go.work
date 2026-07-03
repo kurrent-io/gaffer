@@ -1,5 +1,12 @@
 go 1.26.1
 
+// The single source of truth for the Go toolchain version. CI resolves it
+// via setup-go's go-version-file, the go command self-selects it locally
+// (GOTOOLCHAIN=auto), and .devcontainer/Dockerfile's GO_VERSION must match
+// it (enforced by scripts/check-toolchain-pins.sh in CI). Bump it here and
+// in the Dockerfile (with fresh tarball checksums) together.
+toolchain go1.26.4
+
 use (
 	./bindings/go
 	./cli

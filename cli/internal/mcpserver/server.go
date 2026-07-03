@@ -225,6 +225,9 @@ func New(root string, cfg *config.Config, version string) *Server {
 	mcp.AddTool(s.mcp, stepIntoTool, trackedTool(s, s.handleStepInto))
 	mcp.AddTool(s.mcp, stepOutTool, trackedTool(s, s.handleStepOut))
 	mcp.AddTool(s.mcp, listEventsTool, trackedTool(s, s.handleListEvents))
+	mcp.AddTool(s.mcp, deployStatusTool, trackedTool(s, s.handleDeployStatus))
+	mcp.AddTool(s.mcp, deployPlanTool, trackedTool(s, s.handleDeployPlan))
+	mcp.AddTool(s.mcp, deployHistoryTool, trackedTool(s, s.handleDeployHistory))
 	mcp.AddTool(s.mcp, infoTool, trackedTool(s, s.handleInfo))
 	mcp.AddTool(s.mcp, initTool, trackedTool(s, s.handleInit))
 	mcp.AddTool(s.mcp, versionTool, trackedTool(s, s.handleVersion))
@@ -253,7 +256,10 @@ func instructionsFor(cfg *config.Config) string {
 		"Workflow: list_projections to see what exists, get_projection_info to inspect a single one, " +
 		"scaffold to create new ones, run with fixture events to test, " +
 		"get_timeline/get_step to inspect results, debug with break_at to pause and " +
-		"evaluate expressions. Each run replaces the previous session."
+		"evaluate expressions. Each run replaces the previous session. " +
+		"For deployed environments (read-only): deploy_status shows live state and drift, " +
+		"deploy_plan previews what a deploy would change, deploy_history reads a " +
+		"projection's audit log."
 }
 
 // resolveRoot finds the project root. With an override it walks up from

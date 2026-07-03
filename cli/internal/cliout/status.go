@@ -18,9 +18,11 @@ type StatusJSON struct {
 	LastDeployed string             `json:"lastDeployed,omitempty"`
 	LastWrite    *LedgerJSON        `json:"lastWrite,omitempty"`
 	Runtime      *StatusRuntimeJSON `json:"runtime,omitempty"`
-	// Error is the compile error, present only when drift is invalid, so a
-	// machine consumer sees why a projection is invalid, not just that it is.
-	Error string `json:"error,omitempty"`
+	// Reason is the compile or config error, present only when drift is
+	// invalid, so a machine consumer sees why a projection is invalid, not
+	// just that it is. Named like the deploy verdict's reason - both explain
+	// a verdict - where error is reserved for a failed operation.
+	Reason string `json:"reason,omitempty"`
 }
 
 // StatusRuntimeJSON is the deployed projection's live state.
@@ -80,7 +82,7 @@ func BuildStatusReport(entries []drift.StatusEntry, items []drift.ConfigDrift) S
 			LastWrite:    BuildLedgerJSON(e.Comparison),
 		}
 		if e.State == drift.Invalid && e.LocalErr != nil {
-			j.Error = e.LocalErr.Error()
+			j.Reason = e.LocalErr.Error()
 		}
 		if e.Runtime != nil {
 			j.Runtime = &StatusRuntimeJSON{

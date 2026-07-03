@@ -91,7 +91,7 @@ func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
 
 // diffJSON is the --json shape for one projection. drift is the verdict (one of
 // in-sync, drifted, not-deployed, untracked, invalid), matching gaffer status;
-// changes names the dimensions that differ, present only when drifted. error is
+// changes names the dimensions that differ, present only when drifted. reason is
 // the compile failure, present only when invalid (the local hash is then omitted
 // because emit can't be derived).
 type diffJSON struct {
@@ -104,7 +104,7 @@ type diffJSON struct {
 	LocalHash    string             `json:"localHash,omitempty"`
 	DeployedHash string             `json:"deployedHash,omitempty"`
 	Changes      *changesJSON       `json:"changes,omitempty"`
-	Error        string             `json:"error,omitempty"`
+	Reason       string             `json:"reason,omitempty"`
 }
 
 type changesJSON struct {
@@ -125,7 +125,7 @@ func renderDiffJSON(w io.Writer, e drift.Comparison) error {
 		j.DeployedHash = e.Deployed.Hash()
 	}
 	if e.State == drift.Invalid && e.LocalErr != nil {
-		j.Error = e.LocalErr.Error()
+		j.Reason = e.LocalErr.Error()
 	}
 	if e.State == drift.Drifted {
 		j.Changes = &changesJSON{

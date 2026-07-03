@@ -201,7 +201,7 @@ func TestRenderDiffJSON(t *testing.T) {
 		Local: desc("q", 2, false), Deployed: desc("q", 2, false),
 		LocalErr: errors.New("boom"),
 	})
-	if invalid.Drift != "invalid" || invalid.Error != "boom" || invalid.LocalHash != "" || invalid.DeployedHash == "" || invalid.Changes != nil {
+	if invalid.Drift != "invalid" || invalid.Reason != "boom" || invalid.LocalHash != "" || invalid.DeployedHash == "" || invalid.Changes != nil {
 		t.Errorf("invalid = %+v; want error + deployed hash only", invalid)
 	}
 }

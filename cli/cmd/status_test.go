@@ -241,10 +241,10 @@ func TestRenderStatusJSON(t *testing.T) {
 	if got[0].Drift != "in-sync" || got[0].Owner != "in-config" || got[0].Runtime == nil || got[0].Runtime.State != "running" {
 		t.Errorf("count entry = %+v", got[0])
 	}
-	if got[1].Drift != "not-deployed" || got[1].Owner != "in-config" || got[1].Runtime != nil || got[1].Error != "" {
+	if got[1].Drift != "not-deployed" || got[1].Owner != "in-config" || got[1].Runtime != nil || got[1].Reason != "" {
 		t.Errorf("orders should carry drift only, got %+v", got[1])
 	}
-	if got[2].Drift != "invalid" || got[2].Error != "Unexpected token (3:5)" {
+	if got[2].Drift != "invalid" || got[2].Reason != "Unexpected token (3:5)" {
 		t.Errorf("broken entry should carry the compile error, got %+v", got[2])
 	}
 	// The orphan carries its ownership, the deploy time, and the tool behind it.

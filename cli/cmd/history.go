@@ -97,6 +97,12 @@ func runHistory(cmd *cobra.Command, name string, opts historyOpts) error {
 	if opts.All {
 		limit = 0 // ReadHistory reads up to its hard cap
 	}
+	// The baseline over-read below asks for limit+1, and ReadHistory clamps
+	// anything above its hard cap - a --limit at the cap would silently lose
+	// the baseline and misclassify the listing's oldest row as "rewritten".
+	if limit >= remote.HistoryHardCap {
+		limit = remote.HistoryHardCap - 1
+	}
 	// Read one extra version beyond the display limit: the oldest shown row is
 	// classified against its predecessor, so without the extra the bottom row of a
 	// bounded listing would always fall back to "rewritten". The extra is the

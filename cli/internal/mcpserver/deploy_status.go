@@ -31,11 +31,11 @@ func (s *Server) handleDeployStatus(ctx context.Context, _ *mcp.CallToolRequest,
 		return r, nil, nil
 	}
 
-	// Comparing local definitions compiles them, so serialize against the
-	// session-owning tools like every other compiling handler.
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	// No s.mu: comparing local definitions compiles them into throwaway
+	// engine sessions that never touch s.session, and the live-run feed
+	// goroutine already drives the FFI concurrently with locked handlers.
+	// Holding the server mutex across a WAN dial plus bounded reads would
+	// block every session tool behind network latency for no protection.
 	client, env, cleanup, err := s.connectRemote(cfg, root, in.Env)
 	if err != nil {
 		return toolError("%v", err), nil, nil

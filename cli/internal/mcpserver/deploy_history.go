@@ -57,6 +57,13 @@ func (s *Server) handleDeployHistory(ctx context.Context, _ *mcp.CallToolRequest
 	if limit <= 0 {
 		limit = deployHistoryDefaultLimit
 	}
+	// The baseline over-read below asks for limit+1, and ReadHistory clamps
+	// anything above its hard cap - a limit at the cap would silently lose the
+	// baseline and misclassify the page's oldest entry as "rewritten". Keep
+	// the display limit below the cap so the baseline always fits.
+	if limit >= remote.HistoryHardCap {
+		limit = remote.HistoryHardCap - 1
+	}
 	before := int64(-1) // head read
 	if in.Before != nil {
 		before = *in.Before

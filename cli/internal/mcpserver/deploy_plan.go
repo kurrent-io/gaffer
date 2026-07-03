@@ -51,11 +51,10 @@ func (s *Server) handleDeployPlan(ctx context.Context, _ *mcp.CallToolRequest, i
 		return toolResult(map[string]any{"plan": []cliout.DeployJSON{}, "changes": 0}), nil, nil
 	}
 
-	// Planning compiles the local definitions, so serialize against the
-	// session-owning tools like every other compiling handler.
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	// No s.mu: planning compiles the local definitions into throwaway engine
+	// sessions that never touch s.session (see deploy_status), and holding
+	// the server mutex across per-projection remote reads - up to the RPC
+	// timeout each - would block every session tool behind network latency.
 	client, env, cleanup, err := s.connectRemote(cfg, root, in.Env)
 	if err != nil {
 		return toolError("%v", err), nil, nil

@@ -29,7 +29,7 @@ func TestReadHistoryNewestFirstWithTotal(t *testing.T) {
 		recvStep{ev: versionEvent(6, `{"query":"v6"}`, syntheticMetadata)},
 		recvStep{ev: versionEvent(5, `{"query":"v5"}`, "")},
 	)
-	versions, total, err := readHistory(next, "orders", true, historyHardCap)
+	versions, total, err := readHistory(next, "orders", true, HistoryHardCap)
 	if err != nil {
 		t.Fatalf("readHistory: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestReadHistoryNewestFirstWithTotal(t *testing.T) {
 func TestReadHistoryPagedReadHasNoTotal(t *testing.T) {
 	// A paged read (not from the head) can't see the head, so total is -1.
 	next := recvSeq(recvStep{ev: versionEvent(3, `{"query":"v3"}`, "")})
-	_, total, err := readHistory(next, "orders", false, historyHardCap)
+	_, total, err := readHistory(next, "orders", false, HistoryHardCap)
 	if err != nil {
 		t.Fatalf("readHistory: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestReadHistoryKeepsTombstoneAsDeletedVersion(t *testing.T) {
 		recvStep{ev: versionEvent(2, `{"query":"v2","deleted":true}`, gafferMetadata)},
 		recvStep{ev: versionEvent(1, `{"query":"v1"}`, gafferMetadata)},
 	)
-	versions, _, err := readHistory(next, "orders", true, historyHardCap)
+	versions, _, err := readHistory(next, "orders", true, HistoryHardCap)
 	if err != nil {
 		t.Fatalf("readHistory: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestReadHistorySkipsNonStateEvents(t *testing.T) {
 		recvStep{ev: &kurrentdb.ResolvedEvent{Event: nil}}, // link with no event
 		recvStep{ev: versionEvent(4, `{"query":"v4"}`, "")},
 	)
-	versions, _, err := readHistory(next, "orders", true, historyHardCap)
+	versions, _, err := readHistory(next, "orders", true, HistoryHardCap)
 	if err != nil {
 		t.Fatalf("readHistory: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestReadHistoryMalformedMetadataFlagsVersionNotAbort(t *testing.T) {
 		recvStep{ev: versionEvent(1, `{"query":"v1"}`, "{not json")},
 		recvStep{ev: versionEvent(0, `{"query":"v0"}`, gafferMetadata)},
 	)
-	versions, _, err := readHistory(next, "orders", true, historyHardCap)
+	versions, _, err := readHistory(next, "orders", true, HistoryHardCap)
 	if err != nil {
 		t.Fatalf("readHistory aborted on a malformed entry: %v", err)
 	}
@@ -141,14 +141,14 @@ func TestReadHistoryMalformedMetadataFlagsVersionNotAbort(t *testing.T) {
 func TestReadHistoryMalformedStateAborts(t *testing.T) {
 	// A persisted-state that won't decode is fatal: there's no definition to place.
 	next := recvSeq(recvStep{ev: versionEvent(1, "{not json", "")})
-	if _, _, err := readHistory(next, "orders", true, historyHardCap); err == nil {
+	if _, _, err := readHistory(next, "orders", true, HistoryHardCap); err == nil {
 		t.Fatal("want a decode error on malformed persisted state, got nil")
 	}
 }
 
 func TestReadHistoryClassifiesReadError(t *testing.T) {
 	next := recvSeq(recvStep{err: status.New(codes.NotFound, "stream not found").Err()})
-	if _, _, err := readHistory(next, "orders", true, historyHardCap); !errors.Is(err, ErrNotFound) {
+	if _, _, err := readHistory(next, "orders", true, HistoryHardCap); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 }
@@ -156,7 +156,7 @@ func TestReadHistoryClassifiesReadError(t *testing.T) {
 func TestReadHistoryCapturesEventTime(t *testing.T) {
 	when := time.Date(2026, 6, 28, 14, 32, 0, 0, time.UTC)
 	ev := &kurrentdb.ResolvedEvent{Event: &kurrentdb.RecordedEvent{EventType: projectionUpdatedType, EventNumber: 0, Data: []byte(`{"query":"q"}`), CreatedDate: when}}
-	versions, _, err := readHistory(recvSeq(recvStep{ev: ev}), "orders", true, historyHardCap)
+	versions, _, err := readHistory(recvSeq(recvStep{ev: ev}), "orders", true, HistoryHardCap)
 	if err != nil {
 		t.Fatalf("readHistory: %v", err)
 	}

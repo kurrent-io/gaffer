@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
+	"github.com/kurrent-io/gaffer/cli/internal/drift"
 )
 
 type diffOpts struct {
@@ -64,7 +65,7 @@ func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
 	// subsystem doesn't respond, so bound the read rather than hang the command.
 	ctx, cancel := context.WithTimeout(cmd.Context(), projectionRPCTimeout)
 	defer cancel()
-	entry, err := compareProjection(ctx, r, cfg, root, name)
+	entry, err := drift.Compare(ctx, r, cfg, root, name)
 	if err != nil {
 		return err
 	}
@@ -77,7 +78,7 @@ func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
 	// The query is read from source, not compiled, so the source diff is still
 	// worth showing when the local projection is invalid (its whole point is
 	// comparing source to what's deployed). Both sides must exist and differ.
-	if entry.Cmp.QueryDiffers && entry.Deployed != nil && entry.Local != nil && (entry.State == driftDrifted || entry.State == driftInvalid) {
+	if entry.Cmp.QueryDiffers && entry.Deployed != nil && entry.Local != nil && (entry.State == drift.Drifted || entry.State == drift.Invalid) {
 		if argv, ok := externalDiffCommand(os.Getenv); ok {
 			return openSourceDiff(argv, entry.Name, entry.Deployed.CanonicalQuery(), entry.Local.CanonicalQuery(), cmd.OutOrStdout(), cmd.ErrOrStderr())
 		}
@@ -112,20 +113,20 @@ type changesJSON struct {
 	TrackEmittedStreams bool `json:"trackEmittedStreams"`
 }
 
-func renderDiffJSON(w io.Writer, e comparison) error {
-	j := diffJSON{Name: e.Name, Drift: string(e.State), Owner: string(e.owner()), Attribution: string(e.attribution()), LastDeployed: e.lastDeployedJSON(), LastWrite: e.lastWrite()}
+func renderDiffJSON(w io.Writer, e drift.Comparison) error {
+	j := diffJSON{Name: e.Name, Drift: string(e.State), Owner: string(e.Owner()), Attribution: string(e.Attribution()), LastDeployed: lastDeployedJSON(e), LastWrite: lastWrite(e)}
 	// A local hash needs emit, which an invalid (uncompilable) projection can't
 	// provide, so omit it and report the compile error instead.
-	if e.Local != nil && e.State != driftInvalid {
+	if e.Local != nil && e.State != drift.Invalid {
 		j.LocalHash = e.Local.Hash()
 	}
 	if e.Deployed != nil {
 		j.DeployedHash = e.Deployed.Hash()
 	}
-	if e.State == driftInvalid && e.LocalErr != nil {
+	if e.State == drift.Invalid && e.LocalErr != nil {
 		j.Error = e.LocalErr.Error()
 	}
-	if e.State == driftDrifted {
+	if e.State == drift.Drifted {
 		j.Changes = &changesJSON{
 			Query:               e.Cmp.QueryDiffers,
 			EngineVersion:       e.Cmp.EngineVersionDiffers,

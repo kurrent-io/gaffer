@@ -8,21 +8,22 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
 // changePlan has c creates and u updates (the rest skips), so the change count
 // is c+u. confirm tests pass the same counts confirmPlan's caller would.
-func changePlan() []plannedItem {
-	return []plannedItem{{name: "a", action: actCreate}, {name: "b", action: actSkip}}
+func changePlan() []drift.PlanItem {
+	return []drift.PlanItem{{Name: "a", Action: drift.ActionCreate}, {Name: "b", Action: drift.ActionSkip}}
 }
 
-func noChangePlan() []plannedItem {
-	return []plannedItem{{name: "a", action: actSkip}, {name: "b", action: actRefuse, reason: "x"}}
+func noChangePlan() []drift.PlanItem {
+	return []drift.PlanItem{{Name: "a", Action: drift.ActionSkip}, {Name: "b", Action: drift.ActionRefuse, Reason: "x"}}
 }
 
-func confirm(plan []plannedItem, yes, jsonOut bool) error {
+func confirm(plan []drift.PlanItem, yes, jsonOut bool) error {
 	return confirmPlan(io.Discard, io.Discard, plan, "", planChangeCounts(plan), yes, jsonOut, false)
 }
 
@@ -54,13 +55,13 @@ func TestConfirmPlan(t *testing.T) {
 func TestRenderDryRunExitCodes(t *testing.T) {
 	cases := []struct {
 		name string
-		plan []plannedItem
+		plan []drift.PlanItem
 		want int // 0 via nil
 	}{
-		{"all in sync", []plannedItem{{name: "a", action: actSkip}}, 0},
-		{"changes pending", []plannedItem{{name: "a", action: actCreate}, {name: "b", action: actSkip}}, 2},
-		{"a refusal blocks", []plannedItem{{name: "a", action: actCreate}, {name: "b", action: actRefuse, reason: "needs recreate"}}, 1},
-		{"a planning error blocks", []plannedItem{{name: "a", action: actCreate}, {name: "b", err: errors.New("read failed")}}, 1},
+		{"all in sync", []drift.PlanItem{{Name: "a", Action: drift.ActionSkip}}, 0},
+		{"changes pending", []drift.PlanItem{{Name: "a", Action: drift.ActionCreate}, {Name: "b", Action: drift.ActionSkip}}, 2},
+		{"a refusal blocks", []drift.PlanItem{{Name: "a", Action: drift.ActionCreate}, {Name: "b", Action: drift.ActionRefuse, Reason: "needs recreate"}}, 1},
+		{"a planning error blocks", []drift.PlanItem{{Name: "a", Action: drift.ActionCreate}, {Name: "b", Err: errors.New("read failed")}}, 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -81,7 +82,7 @@ func TestRenderDryRunExitCodes(t *testing.T) {
 }
 
 func TestRenderDryRunJSONShape(t *testing.T) {
-	plan := []plannedItem{{name: "a", action: actCreate}, {name: "b", action: actSkip}}
+	plan := []drift.PlanItem{{Name: "a", Action: drift.ActionCreate}, {Name: "b", Action: drift.ActionSkip}}
 	var buf bytes.Buffer
 	err := renderDryRun(&buf, plan, "", planChangeCounts(plan), false, true)
 	if got := exitCodeOf(err); got != 2 {
@@ -133,7 +134,7 @@ func TestConfirmPlanYesSkipsOnProd(t *testing.T) {
 }
 
 func TestConfirmPlanYesWarnsFaulted(t *testing.T) {
-	plan := []plannedItem{{name: "orders", action: actUpdate, faulted: true}}
+	plan := []drift.PlanItem{{Name: "orders", Action: drift.ActionUpdate, Faulted: true}}
 	var errOut bytes.Buffer
 	if err := confirmPlan(io.Discard, &errOut, plan, "prod", planChangeCounts(plan), true, false, false); err != nil {
 		t.Fatalf("confirmPlan(--yes): %v", err)
@@ -144,14 +145,14 @@ func TestConfirmPlanYesWarnsFaulted(t *testing.T) {
 }
 
 func TestPlanChangeCounts(t *testing.T) {
-	plan := []plannedItem{
-		{action: actCreate},
-		{action: actCreate},
-		{action: actUpdate},
-		{action: actReset},
-		{action: actSkip},
-		{action: actRefuse},
-		{action: actCreate, err: errors.New("read fail")}, // planning error: not a change
+	plan := []drift.PlanItem{
+		{Action: drift.ActionCreate},
+		{Action: drift.ActionCreate},
+		{Action: drift.ActionUpdate},
+		{Action: drift.ActionReset},
+		{Action: drift.ActionSkip},
+		{Action: drift.ActionRefuse},
+		{Action: drift.ActionCreate, Err: errors.New("read fail")}, // planning error: not a change
 	}
 	got := planChangeCounts(plan)
 	if got.creates != 2 || got.updates != 1 || got.rebuilds != 1 {
@@ -163,11 +164,11 @@ func TestPlanChangeCounts(t *testing.T) {
 }
 
 func TestFaultedUpdates(t *testing.T) {
-	plan := []plannedItem{
-		{name: "a", action: actUpdate, faulted: true},
-		{name: "b", action: actUpdate, faulted: false},
-		{name: "c", action: actCreate, faulted: true}, // create can't be faulted (not deployed)
-		{name: "d", action: actUpdate, faulted: true, err: errors.New("x")},
+	plan := []drift.PlanItem{
+		{Name: "a", Action: drift.ActionUpdate, Faulted: true},
+		{Name: "b", Action: drift.ActionUpdate, Faulted: false},
+		{Name: "c", Action: drift.ActionCreate, Faulted: true}, // create can't be faulted (not deployed)
+		{Name: "d", Action: drift.ActionUpdate, Faulted: true, Err: errors.New("x")},
 	}
 	if got := faultedUpdates(plan); strings.Join(got, ",") != "a" {
 		t.Errorf("faultedUpdates = %v, want [a]", got)
@@ -176,26 +177,26 @@ func TestFaultedUpdates(t *testing.T) {
 
 // drift comparisons for the external-change cases: all are drifted updates; what
 // differs is the ledger and whether the deployed def still matches the baseline.
-func changedServer() comparison { // a metadata-less/direct write changed gaffer's deploy
-	return comparison{State: driftDrifted, Ledger: ledgerEntry(remote.ToolName, ""), Deployed: desc("a", 2, false), DeployBaseline: desc("b", 2, false)}
+func changedServer() drift.Comparison { // a metadata-less/direct write changed gaffer's deploy
+	return drift.Comparison{State: drift.Drifted, Ledger: ledgerEntry(remote.ToolName, ""), Deployed: desc("a", 2, false), DeployBaseline: desc("b", 2, false)}
 }
 
-func changedByTool() comparison { // another tool is the current deployer
-	return comparison{State: driftDrifted, Ledger: ledgerEntry("KurrentDB Embedded UI", ""), Deployed: desc("a", 2, false), DeployBaseline: desc("a", 2, false)}
+func changedByTool() drift.Comparison { // another tool is the current deployer
+	return drift.Comparison{State: drift.Drifted, Ledger: ledgerEntry("KurrentDB Embedded UI", ""), Deployed: desc("a", 2, false), DeployBaseline: desc("a", 2, false)}
 }
 
-func localAhead() comparison { // server still holds gaffer's last deploy - not external
-	return comparison{State: driftDrifted, Ledger: ledgerEntry(remote.ToolName, ""), Deployed: desc("a", 2, false), DeployBaseline: desc("a", 2, false)}
+func localAhead() drift.Comparison { // server still holds gaffer's last deploy - not external
+	return drift.Comparison{State: drift.Drifted, Ledger: ledgerEntry(remote.ToolName, ""), Deployed: desc("a", 2, false), DeployBaseline: desc("a", 2, false)}
 }
 
 func TestExternallyChangedTargets(t *testing.T) {
-	plan := []plannedItem{
-		{name: "srv", action: actUpdate, cmp: changedServer()},
-		{name: "tool", action: actUpdate, cmp: changedByTool()},
-		{name: "ahead", action: actUpdate, cmp: localAhead()},                                                      // not external
-		{name: "noledger", action: actUpdate, cmp: comparison{State: driftDrifted, Deployed: desc("a", 2, false)}}, // attrNone
-		{name: "refused", action: actRefuse, cmp: changedServer()},                                                 // won't apply, so not flagged
-		{name: "errored", err: errors.New("x"), cmp: changedServer()},
+	plan := []drift.PlanItem{
+		{Name: "srv", Action: drift.ActionUpdate, Cmp: changedServer()},
+		{Name: "tool", Action: drift.ActionUpdate, Cmp: changedByTool()},
+		{Name: "ahead", Action: drift.ActionUpdate, Cmp: localAhead()},                                                             // not external
+		{Name: "noledger", Action: drift.ActionUpdate, Cmp: drift.Comparison{State: drift.Drifted, Deployed: desc("a", 2, false)}}, // drift.AttrNone
+		{Name: "refused", Action: drift.ActionRefuse, Cmp: changedServer()},                                                        // won't apply, so not flagged
+		{Name: "errored", Err: errors.New("x"), Cmp: changedServer()},
 	}
 	got := externallyChangedTargets(plan)
 	if len(got) != 2 {
@@ -211,10 +212,10 @@ func TestExternallyChangedTargets(t *testing.T) {
 
 func TestWriteApplyWarningsExternalChange(t *testing.T) {
 	var b bytes.Buffer
-	newTextWriter(&b, &b).writeApplyWarnings([]plannedItem{
-		{name: "srv", action: actUpdate, cmp: changedServer()},
-		{name: "tool", action: actUpdate, cmp: changedByTool()},
-		{name: "ahead", action: actUpdate, cmp: localAhead()},
+	newTextWriter(&b, &b).writeApplyWarnings([]drift.PlanItem{
+		{Name: "srv", Action: drift.ActionUpdate, Cmp: changedServer()},
+		{Name: "tool", Action: drift.ActionUpdate, Cmp: changedByTool()},
+		{Name: "ahead", Action: drift.ActionUpdate, Cmp: localAhead()},
 	})
 	out := b.String()
 	if !strings.Contains(out, "srv was changed outside gaffer since its last deploy; deploying overwrites it") {
@@ -231,13 +232,13 @@ func TestWriteApplyWarningsExternalChange(t *testing.T) {
 func TestDeployResultExternalChange(t *testing.T) {
 	// An applied update over an external change carries the flag; local-ahead and a
 	// non-applying refusal don't.
-	if r := (plannedItem{name: "srv", action: actUpdate, cmp: changedServer()}).result(); !r.ExternalChange {
+	if r := planResult(drift.PlanItem{Name: "srv", Action: drift.ActionUpdate, Cmp: changedServer()}); !r.ExternalChange {
 		t.Error("changed-server update should set ExternalChange")
 	}
-	if r := (plannedItem{name: "ahead", action: actUpdate, cmp: localAhead()}).result(); r.ExternalChange {
+	if r := planResult(drift.PlanItem{Name: "ahead", Action: drift.ActionUpdate, Cmp: localAhead()}); r.ExternalChange {
 		t.Error("local-ahead update should not set ExternalChange")
 	}
-	if r := (plannedItem{name: "refused", action: actRefuse, cmp: changedServer()}).result(); r.ExternalChange {
+	if r := planResult(drift.PlanItem{Name: "refused", Action: drift.ActionRefuse, Cmp: changedServer()}); r.ExternalChange {
 		t.Error("a refusal applies nothing, so it should not set ExternalChange")
 	}
 }
@@ -281,13 +282,13 @@ func TestDeployTarget(t *testing.T) {
 }
 
 func TestWritePlanSummary(t *testing.T) {
-	plan := []plannedItem{
-		{name: "a", action: actCreate},
-		{name: "b", action: actUpdate, logicChange: true, faulted: true},
-		{name: "e", action: actReset, cmp: comparison{Local: desc("q", 2, true)}}, // emits
-		{name: "c", action: actSkip},
-		{name: "d", action: actRefuse, reason: "engine version"},
-		{name: "f", action: actCreate, err: errors.New("read failed")}, // couldn't plan
+	plan := []drift.PlanItem{
+		{Name: "a", Action: drift.ActionCreate},
+		{Name: "b", Action: drift.ActionUpdate, LogicChange: true, Faulted: true},
+		{Name: "e", Action: drift.ActionReset, Cmp: drift.Comparison{Local: desc("q", 2, true)}}, // emits
+		{Name: "c", Action: drift.ActionSkip},
+		{Name: "d", Action: drift.ActionRefuse, Reason: "engine version"},
+		{Name: "f", Action: drift.ActionCreate, Err: errors.New("read failed")}, // couldn't plan
 	}
 	var buf bytes.Buffer
 	newTextWriter(&buf, &buf).writePlanSummary(plan, "orders-prod", planChangeCounts(plan), false)

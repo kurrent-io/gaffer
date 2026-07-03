@@ -38,7 +38,7 @@ var (
 	// (server corruption, or a format this gaffer is too old to read). Surfaced
 	// distinctly - not as a swallowed ErrNoLedger, nor as a fatal error - so a
 	// caller can flag the one projection and carry on with the rest rather than
-	// failing the whole command (cf. the driftInvalid local-definition state).
+	// failing the whole command (cf. the drift.Invalid local-definition state).
 	ErrMalformedLedger = errors.New("malformed tool metadata")
 )
 

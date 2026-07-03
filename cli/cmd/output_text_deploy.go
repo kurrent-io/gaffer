@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/kurrent-io/gaffer/cli/internal/drift"
 )
 
 // deployResultLine renders one projection's verdict: a status marker, the name
@@ -19,23 +21,23 @@ func (tw *textWriter) deployResultLine(res deployResult, nameWidth int) string {
 	case res.Err != nil:
 		marker = tw.styles.errStatus.Render("✗")
 		verdict = tw.styles.errDetail.Render("failed: " + res.Err.Error())
-	case res.Action == actRefuse:
+	case res.Action == drift.ActionRefuse:
 		marker = tw.styles.warning.Render("✗")
 		verdict = tw.styles.warning.Render("refused (" + res.Reason + ")")
-	case res.Action == actSkip:
+	case res.Action == drift.ActionSkip:
 		marker = tw.styles.pipe.Render("·")
 		verdict = tw.styles.pipe.Render("skipped (in sync)")
-	case res.Action == actCreate:
+	case res.Action == drift.ActionCreate:
 		marker = tw.styles.added.Render("✓")
 		verdict = tw.styles.added.Render("created")
-	case res.Action == actUpdate:
+	case res.Action == drift.ActionUpdate:
 		marker = tw.styles.added.Render("✓")
 		word := "updated"
 		if res.LogicChange {
 			word = "updated (logic change, continued from checkpoint)"
 		}
 		verdict = tw.styles.added.Render(word)
-	case res.Action == actReset:
+	case res.Action == drift.ActionReset:
 		marker = tw.styles.added.Render("✓")
 		verdict = tw.styles.added.Render("rebuilt (reprocessing from zero)")
 	default:
@@ -89,7 +91,7 @@ func (tw *textWriter) writeDeploySummary(c deployCounts) {
 // prompt: each changing or failed projection on its own line (name, verdict,
 // detail), then the per-action counts, then any faulted-update or emitting-reset
 // caution. In-sync projections are counted only, not listed.
-func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, totals planTotals, prod bool) {
+func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, totals planTotals, prod bool) {
 	if prod {
 		banner := "PRODUCTION"
 		if target != "" {
@@ -100,13 +102,13 @@ func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, totals
 	skipped, refused, logicContinues, errored := 0, 0, 0, 0
 	for _, it := range plan {
 		switch {
-		case it.err != nil:
+		case it.Err != nil:
 			errored++
-		case it.action == actSkip:
+		case it.Action == drift.ActionSkip:
 			skipped++
-		case it.action == actRefuse:
+		case it.Action == drift.ActionRefuse:
 			refused++
-		case it.action == actUpdate && it.logicChange:
+		case it.Action == drift.ActionUpdate && it.LogicChange:
 			logicContinues++
 		}
 	}
@@ -146,7 +148,7 @@ func (tw *textWriter) writePlanSummary(plan []plannedItem, target string, totals
 	var rows []planPreviewRow
 	for _, it := range plan {
 		if word, styled, detail := tw.planVerdict(it); word != "" {
-			rows = append(rows, planPreviewRow{it.name, word, styled, detail})
+			rows = append(rows, planPreviewRow{it.Name, word, styled, detail})
 		}
 	}
 	nameWidth, verdictWidth := 0, 0
@@ -181,21 +183,21 @@ type planPreviewRow struct{ name, word, styled, detail string }
 // column - the reason for a refusal (shown in full, since the immutable field and
 // the recreate remedy are the point) or the error for a plan failure. An in-sync
 // projection returns an empty word: it's counted, not listed.
-func (tw *textWriter) planVerdict(it plannedItem) (word, styled, detail string) {
+func (tw *textWriter) planVerdict(it drift.PlanItem) (word, styled, detail string) {
 	switch {
-	case it.err != nil:
-		return "failed", tw.styles.errStatus.Render("failed"), it.err.Error()
-	case it.action == actCreate:
+	case it.Err != nil:
+		return "failed", tw.styles.errStatus.Render("failed"), it.Err.Error()
+	case it.Action == drift.ActionCreate:
 		return "create", tw.styles.added.Render("create"), ""
-	case it.action == actUpdate:
-		if it.logicChange {
+	case it.Action == drift.ActionUpdate:
+		if it.LogicChange {
 			return "update", tw.styles.added.Render("update"), "logic change, continuing from checkpoint"
 		}
 		return "update", tw.styles.added.Render("update"), ""
-	case it.action == actReset:
+	case it.Action == drift.ActionReset:
 		return "rebuild", tw.styles.warning.Render("rebuild"), "reprocessing from zero"
-	case it.action == actRefuse:
-		return "refused", tw.styles.warning.Render("refused"), it.reason
+	case it.Action == drift.ActionRefuse:
+		return "refused", tw.styles.warning.Render("refused"), it.Reason
 	default:
 		return "", "", ""
 	}
@@ -207,7 +209,7 @@ func (tw *textWriter) planVerdict(it plannedItem) (word, styled, detail string) 
 // emitting projection (reprocessing re-emits, duplicating into its target
 // streams). Shared by the interactive plan summary and the non-interactive
 // (--yes) path, so the cautions surface however the deploy is confirmed.
-func (tw *textWriter) writeApplyWarnings(plan []plannedItem) {
+func (tw *textWriter) writeApplyWarnings(plan []drift.PlanItem) {
 	for _, ec := range externallyChangedTargets(plan) {
 		by := ""
 		if ec.tool != "" {

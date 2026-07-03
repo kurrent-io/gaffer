@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
@@ -28,7 +29,7 @@ func (t planTotals) changes() int { return t.creates + t.updates + t.rebuilds }
 // clean abort), or errNeedConfirm when it can't ask (non-interactive or --json)
 // and --yes wasn't given. A plan that only skips or refuses changes nothing, so
 // it proceeds without asking.
-func confirmPlan(out, errOut io.Writer, plan []plannedItem, target string, totals planTotals, yes, jsonOut, prod bool) error {
+func confirmPlan(out, errOut io.Writer, plan []drift.PlanItem, target string, totals planTotals, yes, jsonOut, prod bool) error {
 	if totals.changes() == 0 {
 		return nil
 	}
@@ -63,11 +64,11 @@ func confirmPlan(out, errOut io.Writer, plan []plannedItem, target string, total
 // change needing recreate). The plan is already on screen, so the non-zero codes
 // wrap a silent error and fang prints nothing more. The JSON mirrors a real
 // deploy's shape (each item's would-be outcome), so the schema is the same either way.
-func renderDryRun(out io.Writer, plan []plannedItem, target string, totals planTotals, prod, jsonOut bool) error {
+func renderDryRun(out io.Writer, plan []drift.PlanItem, target string, totals planTotals, prod, jsonOut bool) error {
 	if jsonOut {
 		sink := &jsonSink{w: out, results: []deployJSON{}}
 		for _, it := range plan {
-			sink.done(it.result())
+			sink.done(planResult(it))
 		}
 		if err := sink.finish(); err != nil {
 			return err
@@ -77,7 +78,7 @@ func renderDryRun(out io.Writer, plan []plannedItem, target string, totals planT
 	}
 
 	for _, it := range plan {
-		if it.err != nil || it.action == actRefuse {
+		if it.Err != nil || it.Action == drift.ActionRefuse {
 			return exitWith(1, silent(errors.New("dry run: some projections can't be deployed")))
 		}
 	}
@@ -108,18 +109,18 @@ func targetDesc(target string) string {
 
 // planChangeCounts tallies the changes the plan would apply, by kind. Skips,
 // refusals and planning errors change nothing and aren't counted.
-func planChangeCounts(plan []plannedItem) planTotals {
+func planChangeCounts(plan []drift.PlanItem) planTotals {
 	var t planTotals
 	for _, it := range plan {
-		if it.err != nil {
+		if it.Err != nil {
 			continue
 		}
-		switch it.action {
-		case actCreate:
+		switch it.Action {
+		case drift.ActionCreate:
 			t.creates++
-		case actUpdate:
+		case drift.ActionUpdate:
 			t.updates++
-		case actReset:
+		case drift.ActionReset:
 			t.rebuilds++
 		}
 	}
@@ -157,11 +158,11 @@ func confirmTitle(n int, target string, prod bool) string {
 // faultedUpdates names the update targets currently faulted on the server, so
 // the confirm can warn that updating won't clear the fault. A reset (rebuild) of
 // a faulted projection isn't flagged - rebuilding from zero does clear it.
-func faultedUpdates(plan []plannedItem) []string {
+func faultedUpdates(plan []drift.PlanItem) []string {
 	var names []string
 	for _, it := range plan {
-		if it.err == nil && it.action == actUpdate && it.faulted {
-			names = append(names, it.name)
+		if it.Err == nil && it.Action == drift.ActionUpdate && it.Faulted {
+			names = append(names, it.Name)
 		}
 	}
 	return names
@@ -176,17 +177,17 @@ type externalChangeTarget struct{ name, tool string }
 // deployed definition was changed outside gaffer since gaffer last deployed it, so
 // the plan can caution that deploying overwrites that out-of-band change. Only
 // applying items qualify; a refusal won't overwrite anything.
-func externallyChangedTargets(plan []plannedItem) []externalChangeTarget {
+func externallyChangedTargets(plan []drift.PlanItem) []externalChangeTarget {
 	var out []externalChangeTarget
 	for _, it := range plan {
-		if it.err != nil || !it.action.applies() || !it.cmp.externallyChanged() {
+		if it.Err != nil || !it.Action.Applies() || !it.Cmp.ExternallyChanged() {
 			continue
 		}
 		var tool string
-		if it.cmp.attribution() == attrChangedByTool && it.cmp.Ledger != nil {
-			tool = it.cmp.Ledger.Tool
+		if it.Cmp.Attribution() == drift.AttrChangedByTool && it.Cmp.Ledger != nil {
+			tool = it.Cmp.Ledger.Tool
 		}
-		out = append(out, externalChangeTarget{it.name, tool})
+		out = append(out, externalChangeTarget{it.Name, tool})
 	}
 	return out
 }
@@ -194,11 +195,11 @@ func externallyChangedTargets(plan []plannedItem) []externalChangeTarget {
 // emittingResets names the reset targets that emit, so the confirm can warn that
 // reprocessing re-emits (duplicating into the target streams), since reset can't
 // clean emitted streams - gaffer recreate --delete-emitted can.
-func emittingResets(plan []plannedItem) []string {
+func emittingResets(plan []drift.PlanItem) []string {
 	var names []string
 	for _, it := range plan {
-		if it.err == nil && it.action == actReset && it.cmp.Local != nil && it.cmp.Local.Emit {
-			names = append(names, it.name)
+		if it.Err == nil && it.Action == drift.ActionReset && it.Cmp.Local != nil && it.Cmp.Local.Emit {
+			names = append(names, it.Name)
 		}
 	}
 	return names

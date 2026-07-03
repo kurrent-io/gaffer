@@ -8,6 +8,7 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
+	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
@@ -21,24 +22,6 @@ type deployOpts struct {
 	DryRun             bool
 }
 
-// deployAction is what deploy decides to do with one projection, derived from
-// its drift comparison by planAction.
-type deployAction string
-
-const (
-	actCreate deployAction = "create"
-	actUpdate deployAction = "update"
-	actReset  deployAction = "reset" // a logic-change update applied with a rebuild from zero
-	actSkip   deployAction = "skip"
-	actRefuse deployAction = "refuse"
-)
-
-// applies reports whether the action performs a server write (so the apply phase
-// runs it); skip and refuse don't.
-func (a deployAction) applies() bool {
-	return a == actCreate || a == actUpdate || a == actReset
-}
-
 // deployResult is the outcome for one projection. Reason is set only for refuse;
 // Err is set when the apply RPC (or the pre-compare read) failed. LogicChange
 // marks an update that changed the query, so the rendering can note that
@@ -48,11 +31,20 @@ func (a deployAction) applies() bool {
 // when the apply fails, since nothing was then overwritten.
 type deployResult struct {
 	Name           string
-	Action         deployAction
+	Action         drift.Action
 	Reason         string
 	LogicChange    bool
 	ExternalChange bool
 	Err            error
+}
+
+// planResult is the deployResult for an item that was not (or not yet) applied: a
+// planning error, or a skip/refuse that the apply phase emits verbatim.
+func planResult(p drift.PlanItem) deployResult {
+	// LogicChange marks a continued logic change (an update that kept state). A
+	// reset rebuilds, so it reports outcome "rebuilt", not a logic-change flag -
+	// drop the flag once the item is no longer an update.
+	return deployResult{Name: p.Name, Action: p.Action, Reason: p.Reason, LogicChange: p.LogicChange && p.Action == drift.ActionUpdate, ExternalChange: p.Action.Applies() && p.Cmp.ExternallyChanged(), Err: p.Err}
 }
 
 // projectionManager is the slice of remote.Client the apply step needs: create
@@ -75,15 +67,15 @@ func (res deployResult) outcome() string {
 		return "failed"
 	}
 	switch res.Action {
-	case actCreate:
+	case drift.ActionCreate:
 		return "created"
-	case actUpdate:
+	case drift.ActionUpdate:
 		return "updated"
-	case actReset:
+	case drift.ActionReset:
 		return "rebuilt"
-	case actSkip:
+	case drift.ActionSkip:
 		return "skipped"
-	case actRefuse:
+	case drift.ActionRefuse:
 		return "refused"
 	default:
 		return "unknown"
@@ -99,15 +91,15 @@ func (c *deployCounts) add(res deployResult) {
 	switch {
 	case res.Err != nil:
 		c.failed++
-	case res.Action == actCreate:
+	case res.Action == drift.ActionCreate:
 		c.created++
-	case res.Action == actUpdate:
+	case res.Action == drift.ActionUpdate:
 		c.updated++
-	case res.Action == actReset:
+	case res.Action == drift.ActionReset:
 		c.rebuilt++
-	case res.Action == actSkip:
+	case res.Action == drift.ActionSkip:
 		c.skipped++
-	case res.Action == actRefuse:
+	case res.Action == drift.ActionRefuse:
 		c.refused++
 	}
 }
@@ -225,18 +217,18 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	// round-trip overlaps the planning RPCs; drained before the confirm, so an
 	// operator sees the target's engine config diverging before applying.
 	resolved, _ := resolveLiveEnv(opts.Connection, opts.Env, cfg)
-	driftCh := startConfigDriftCheck(cmd.Context(), cfg, root, resolved.Name, resolved.Connection)
+	driftCh := drift.StartConfigDriftCheck(cmd.Context(), cfg, root, resolved.Name, resolved.Connection)
 
 	// Plan first (reads only), so the whole run is known before any write - the
-	// basis for the confirm gate and, later, --dry-run.
-	plan := planAll(ctx, r, cfg, root, names)
+	// basis for the confirm gate and --dry-run.
+	plan := drift.PlanAll(ctx, r, cfg, root, names)
 	if ctx.Err() != nil {
 		return silent(ctx.Err())
 	}
 
 	// --reset-on-logic-change turns each logic-change update into a rebuild from
 	// zero, so the confirm and the apply both treat it as a reset.
-	resolveResets(plan, opts.ResetOnLogicChange)
+	drift.ResolveResets(plan, opts.ResetOnLogicChange)
 
 	// Only a plan that changes something needs the target identity (and
 	// confirmation). Reading server info is a leader round-trip, so skip it on a
@@ -282,7 +274,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	ledger := toolLedger(opts.Connection, opts.Env, remote.OpDeploy, cfg, root)
 
 	sink := newDeploySink(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts.JSON, names, ctx, cancel)
-	failed := applyPlan(ctx, plan, sink, func(item plannedItem) error {
+	failed := applyPlan(ctx, plan, sink, func(item drift.PlanItem) error {
 		return applyOne(ctx, r, item, ledger)
 	})
 	if ferr := sink.finish(); ferr != nil {
@@ -317,134 +309,22 @@ func deployNames(cfg *config.Config, name string) ([]string, error) {
 	return names, nil
 }
 
-// plannedItem is one projection's planned action, computed by the plan phase
-// before any write. cmp carries the comparison (Local for the apply, Deployed
-// for the guards); err is a planning failure (the compare/read), kept distinct
-// from an apply failure so the two surface with the right reason.
-type plannedItem struct {
-	name        string
-	cmp         comparison
-	action      deployAction
-	reason      string
-	logicChange bool // an update whose query changed (state may now be wrong)
-	faulted     bool // deployed projection is currently faulted (update items only)
-	err         error
-}
-
-// result is the deployResult for an item that was not (or not yet) applied: a
-// planning error, or a skip/refuse that the apply phase emits verbatim.
-func (p plannedItem) result() deployResult {
-	// LogicChange marks a continued logic change (an update that kept state). A
-	// reset rebuilds, so it reports outcome "rebuilt", not a logic-change flag -
-	// drop the flag once the item is no longer an update.
-	return deployResult{Name: p.name, Action: p.action, Reason: p.reason, LogicChange: p.logicChange && p.action == actUpdate, ExternalChange: p.action.applies() && p.cmp.externallyChanged(), Err: p.err}
-}
-
-// planAll computes the action for every projection without writing anything -
-// the read-only first half of deploy, shared with the confirm gate (and, later,
-// --dry-run). Stops early on an interrupt; a per-projection compare failure is
-// carried on the item, not fatal, so the rest of the plan still forms.
-func planAll(ctx context.Context, r *remote.Client, cfg *config.Config, root string, names []string) []plannedItem {
-	plan := make([]plannedItem, 0, len(names))
-	updates := false
-	for _, name := range names {
-		if ctx.Err() != nil {
-			break
-		}
-		item := planOne(ctx, r, cfg, root, name)
-		updates = updates || item.action == actUpdate
-		plan = append(plan, item)
-	}
-	// Faulted status only matters for update targets (to warn before clobbering),
-	// so list once only when the plan actually updates something - a no-op
-	// (all in sync) or create-only deploy skips the leader List entirely.
-	if updates {
-		faulted := faultedProjections(ctx, r)
-		for i := range plan {
-			if plan[i].action == actUpdate && faulted[plan[i].name] {
-				plan[i].faulted = true
-			}
-		}
-	}
-	return plan
-}
-
-// faultedProjections lists deployed projections once and returns the set
-// currently faulted, so the plan can flag a faulted update target without a
-// status call per projection. Best-effort: a list failure yields an empty set
-// (no faulted warnings) rather than failing the plan.
-func faultedProjections(ctx context.Context, r *remote.Client) map[string]bool {
-	ctx, cancel := context.WithTimeout(ctx, projectionRPCTimeout)
-	defer cancel()
-	statuses, err := r.List(ctx)
-	if err != nil {
-		return nil
-	}
-	faulted := make(map[string]bool)
-	for i := range statuses {
-		if statuses[i].State == remote.StateFaulted {
-			faulted[statuses[i].Name] = true
-		}
-	}
-	return faulted
-}
-
-// resolveResets promotes each logic-change update to a reset (rebuild from zero)
-// when --reset-on-logic-change is set. The plan computes a logic change as an
-// update; this is where the flag turns it into a rebuild, before the confirm and
-// apply see it. A no-op when the flag is off.
-func resolveResets(plan []plannedItem, resetOnLogicChange bool) {
-	if !resetOnLogicChange {
-		return
-	}
-	for i := range plan {
-		if plan[i].logicChange {
-			plan[i].action = actReset
-		}
-	}
-}
-
-// planOne compares one projection and decides its action, applying nothing. The
-// read is bounded: a management call blocks until its deadline if the projections
-// subsystem is slow, and one stalled projection shouldn't consume the whole
-// plan's budget. The faulted flag is filled in by planAll afterwards, only when
-// the plan turns out to have updates.
-func planOne(ctx context.Context, r *remote.Client, cfg *config.Config, root, name string) plannedItem {
-	ctx, cancel := context.WithTimeout(ctx, projectionRPCTimeout)
-	defer cancel()
-
-	cmp, err := compareProjection(ctx, r, cfg, root, name)
-	if err != nil {
-		return plannedItem{name: name, err: err}
-	}
-	action, reason := planAction(cmp)
-	return plannedItem{name: name, cmp: cmp, action: action, reason: reason, logicChange: isLogicChange(action, cmp)}
-}
-
-// isLogicChange reports whether an update changes projection logic, meaning the
-// query: the new code folds over old events differently, so the accumulated
-// state may now be wrong. An emit-only update (query unchanged) is just a
-// settings re-assert; a create, refuse or skip is never a logic change.
-func isLogicChange(action deployAction, cmp comparison) bool {
-	return action == actUpdate && cmp.Cmp.QueryDiffers
-}
-
 // applyPlan executes a plan, reporting progress through the sink, and returns how
 // many failed (an apply error) or were refused. It applies only create/update
 // items; skip/refuse/planning-error items stream their verdict unchanged. It
 // continues past a failure so the summary is complete; the caller turns a
 // non-zero count into a non-zero exit. The apply itself is a parameter so the
 // loop's accounting and event order are testable without a live database.
-func applyPlan(ctx context.Context, plan []plannedItem, sink deploySink, apply func(plannedItem) error) (failed int) {
+func applyPlan(ctx context.Context, plan []drift.PlanItem, sink deploySink, apply func(drift.PlanItem) error) (failed int) {
 	total := len(plan)
 	for i := range plan {
 		item := plan[i]
 		if ctx.Err() != nil {
 			break
 		}
-		sink.start(item.name, i+1, total)
-		res := item.result()
-		if item.err == nil && item.action.applies() {
+		sink.start(item.Name, i+1, total)
+		res := planResult(item)
+		if item.Err == nil && item.Action.Applies() {
 			if err := apply(item); err != nil {
 				res.Err = err
 				// The apply failed, so nothing was overwritten - don't keep claiming
@@ -452,7 +332,7 @@ func applyPlan(ctx context.Context, plan []plannedItem, sink deploySink, apply f
 				res.ExternalChange = false
 			}
 		}
-		if res.Err != nil || res.Action == actRefuse {
+		if res.Err != nil || res.Action == drift.ActionRefuse {
 			failed++
 		}
 		sink.done(res)
@@ -463,8 +343,8 @@ func applyPlan(ctx context.Context, plan []plannedItem, sink deploySink, apply f
 // applyOne performs one item's create/update/reset. Each underlying RPC is
 // bounded separately (a reset issues four), so a multi-step rebuild isn't
 // squeezed into the budget for a single call.
-func applyOne(ctx context.Context, r *remote.Client, item plannedItem, ledger remote.Ledger) error {
-	return applyAction(ctx, r, item.name, item.action, item.cmp.Local, ledger)
+func applyOne(ctx context.Context, r *remote.Client, item drift.PlanItem, ledger remote.Ledger) error {
+	return applyAction(ctx, r, item.Name, item.Action, item.Cmp.Local, ledger)
 }
 
 // rpc bounds one server call by projectionRPCTimeout, so every step of a
@@ -475,44 +355,13 @@ func rpc(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
 
-// planAction maps a drift comparison to the action deploy takes. It is pure: the
-// reason string is non-empty only for refuse. Engine version and
-// track-emitted-streams are create-time-only (no update path), so a drift in
-// either forces a destructive recreate that deploy refuses rather than performs.
-func planAction(c comparison) (deployAction, string) {
-	switch c.State {
-	case driftNotDeployed:
-		return actCreate, ""
-	case driftInSync:
-		return actSkip, ""
-	case driftDrifted:
-		if c.Cmp.EngineVersionDiffers || c.Cmp.TrackEmittedStreamsDiffers {
-			return actRefuse, deploy.RecreateReason(c.Cmp, *c.Local, *c.Deployed)
-		}
-		return actUpdate, ""
-	case driftInvalid:
-		// The local definition is invalid - it doesn't compile, or carries a
-		// per-projection config error (e.g. a missing engine_version or a bad entry
-		// path). Either way there's no correct definition to send, so refuse, naming
-		// the actual problem when we have it.
-		if c.LocalErr != nil {
-			return actRefuse, c.LocalErr.Error()
-		}
-		return actRefuse, "local definition is invalid"
-	default:
-		// Untracked never reaches here: deployNames only yields names in config,
-		// so compareProjection returns one of the above. Defensive only.
-		return actRefuse, "not in gaffer.toml"
-	}
-}
-
 // applyAction performs the create, update, or logic-change reset. Emit is always
 // sent on update (as a non-nil pointer) because the server resets it to false on
 // any update that omits it. A created continuous projection starts enabled
 // server-side, so there is no separate enable step.
-func applyAction(ctx context.Context, mgr projectionManager, name string, action deployAction, local *deploy.Descriptor, ledger remote.Ledger) error {
+func applyAction(ctx context.Context, mgr projectionManager, name string, action drift.Action, local *deploy.Descriptor, ledger remote.Ledger) error {
 	switch action {
-	case actCreate:
+	case drift.ActionCreate:
 		return rpc(ctx, func(ctx context.Context) error {
 			return mgr.Create(ctx, name, local.Query, remote.CreateOptions{
 				EngineVersion:       local.EngineVersion,
@@ -521,11 +370,11 @@ func applyAction(ctx context.Context, mgr projectionManager, name string, action
 				Ledger:              &ledger,
 			})
 		})
-	case actUpdate:
+	case drift.ActionUpdate:
 		return rpc(ctx, func(ctx context.Context) error {
 			return mgr.Update(ctx, name, local.Query, remote.UpdateOptions{Emit: emitPtr(local), Ledger: &ledger})
 		})
-	case actReset:
+	case drift.ActionReset:
 		// The destructive Disable -> Update -> Reset -> Enable sequence, its
 		// ordering and recovery messages, live in internal/deploy; here we only bind
 		// each step to the client and its option mapping. emitPtr keeps the update's

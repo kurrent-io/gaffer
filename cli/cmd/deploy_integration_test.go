@@ -14,11 +14,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
-func runDeployJSON(t *testing.T, args ...string) []deployJSON {
+func runDeployJSON(t *testing.T, args ...string) []cliout.DeployJSON {
 	t.Helper()
 	root := NewRootCmd()
 	root.SetArgs(append([]string{"deploy", "--json", "--yes"}, args...))
@@ -28,14 +29,14 @@ func runDeployJSON(t *testing.T, args ...string) []deployJSON {
 			t.Fatalf("deploy: %v", err)
 		}
 	})
-	var got []deployJSON
+	var got []cliout.DeployJSON
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("unmarshal deploy json: %v\n%s", err, out)
 	}
 	return got
 }
 
-func deployOutcome(t *testing.T, results []deployJSON, name string) deployJSON {
+func deployOutcome(t *testing.T, results []cliout.DeployJSON, name string) cliout.DeployJSON {
 	t.Helper()
 	for _, r := range results {
 		if r.Name == name {
@@ -43,7 +44,7 @@ func deployOutcome(t *testing.T, results []deployJSON, name string) deployJSON {
 		}
 	}
 	t.Fatalf("no deploy result for %q in %+v", name, results)
-	return deployJSON{}
+	return cliout.DeployJSON{}
 }
 
 // waitRunning polls until the projection is enabled and running (not stopped or

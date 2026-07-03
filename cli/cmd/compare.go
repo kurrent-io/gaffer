@@ -3,11 +3,9 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
-	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
@@ -90,29 +88,4 @@ func connectResolved(cfg *config.Config, root, connection, env string) (r *remot
 func refuseNoValidateOnProd(verb, subject, target string) error {
 	return exitWith(3, fmt.Errorf("--no-validate is not allowed on production %s: it skips the preflight compile check. %s without it so %s validated first",
 		targetDesc(target), verb, subject))
-}
-
-// ledgerJSON is the machine view of the latest tool entry behind a deployed
-// projection - the --json `lastWrite`, the tool attribution (who) behind an owner
-// or attribution verdict. The when is the top-level `lastDeployed`, which is event
-// time and present with or without a tool entry, so it's not duplicated here.
-type ledgerJSON struct {
-	Tool  string `json:"tool"`
-	Actor string `json:"actor,omitempty"`
-}
-
-func lastWrite(c drift.Comparison) *ledgerJSON {
-	if c.Ledger == nil {
-		return nil
-	}
-	return &ledgerJSON{Tool: c.Ledger.Tool, Actor: c.Ledger.Actor}
-}
-
-// lastDeployedJSON is LastDeployTime formatted for --json, or "" (omitted) when
-// not deployed.
-func lastDeployedJSON(c drift.Comparison) string {
-	if at := c.LastDeployTime(); !at.IsZero() {
-		return at.Format(time.RFC3339)
-	}
-	return ""
 }

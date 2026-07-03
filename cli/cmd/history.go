@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
@@ -262,63 +262,12 @@ func shortHash(h string) string {
 	return h
 }
 
-// historyJSON is the --json shape for one version. external is the out-of-band
-// flag (edited outside gaffer); kind is the classification; the tool fields are
-// present only when the version carried metadata.
-type historyJSON struct {
-	Version       int64              `json:"version"`
-	Time          string             `json:"time"`
-	ContentHash   string             `json:"contentHash"`
-	Kind          string             `json:"kind"`
-	Enabled       bool               `json:"enabled"`
-	External      bool               `json:"external"`
-	StateChange   bool               `json:"stateChange,omitempty"`
-	Deleted       bool               `json:"deleted,omitempty"`
-	Tool          string             `json:"tool,omitempty"`
-	ToolVersion   string             `json:"toolVersion,omitempty"`
-	Operation     string             `json:"operation,omitempty"`
-	Actor         string             `json:"actor,omitempty"`
-	Revision      string             `json:"revision,omitempty"`
-	ConfigChanges []configChangeJSON `json:"configChanges,omitempty"`
-}
-
-type configChangeJSON struct {
-	Knob string `json:"knob"`
-	From string `json:"from"`
-	To   string `json:"to"`
-}
-
 func renderHistoryJSON(w io.Writer, versions []historyVersion) error {
-	out := make([]historyJSON, 0, len(versions))
-	for _, hv := range versions {
-		j := historyJSON{
-			Version:     hv.Number,
-			ContentHash: "",
-			Kind:        string(hv.Kind),
-			Enabled:     hv.Enabled(),
-			External:    hv.External(),
-			StateChange: hv.StateChange(),
-			Deleted:     hv.Deleted,
-		}
-		if hv.Definition != nil {
-			j.ContentHash = hv.ContentHash
-			if !hv.Definition.Time.IsZero() {
-				j.Time = hv.Definition.Time.Format(time.RFC3339)
-			}
-		}
-		if hv.Ledger != nil {
-			j.Tool = hv.Ledger.Tool
-			j.ToolVersion = hv.Ledger.ToolVersion
-			j.Operation = hv.Ledger.Operation
-			j.Actor = hv.Ledger.Actor
-			j.Revision = hv.Ledger.Revision
-		}
-		for _, cc := range hv.ConfigChanges {
-			j.ConfigChanges = append(j.ConfigChanges, configChangeJSON{Knob: cc.Label, From: cc.From, To: cc.To})
-		}
-		out = append(out, j)
+	classified := make([]remote.ClassifiedVersion, len(versions))
+	for i, hv := range versions {
+		classified[i] = hv.ClassifiedVersion
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(out)
+	return enc.Encode(cliout.BuildHistoryJSON(classified))
 }

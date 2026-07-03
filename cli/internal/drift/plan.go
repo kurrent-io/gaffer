@@ -104,6 +104,54 @@ func ResolveResets(plan []PlanItem, resetOnLogicChange bool) {
 	}
 }
 
+// Result is the outcome for one projection. Reason is set only for refuse;
+// Err is set when the apply RPC (or the pre-compare read) failed. LogicChange
+// marks an update that changed the query, so the rendering can note that
+// continuing keeps state computed by the old logic. ExternalChange marks an apply
+// whose deployed definition was changed outside gaffer since its last deploy, so
+// the rendering can caution that deploying overwrites that change; the apply
+// phase clears it when the apply fails, since nothing was then overwritten.
+type Result struct {
+	Name           string
+	Action         Action
+	Reason         string
+	LogicChange    bool
+	ExternalChange bool
+	Err            error
+}
+
+// Outcome is the past-tense verdict for one projection, used as the JSON value
+// and the text word. A failure (Err set) reads as "failed" regardless of which
+// action was attempted.
+func (r Result) Outcome() string {
+	if r.Err != nil {
+		return "failed"
+	}
+	switch r.Action {
+	case ActionCreate:
+		return "created"
+	case ActionUpdate:
+		return "updated"
+	case ActionReset:
+		return "rebuilt"
+	case ActionSkip:
+		return "skipped"
+	case ActionRefuse:
+		return "refused"
+	default:
+		return "unknown"
+	}
+}
+
+// Result is the outcome for an item that was not (or not yet) applied: a
+// planning error, or a skip/refuse that the apply phase emits verbatim.
+func (p PlanItem) Result() Result {
+	// LogicChange marks a continued logic change (an update that kept state). A
+	// reset rebuilds, so it reports outcome "rebuilt", not a logic-change flag -
+	// drop the flag once the item is no longer an update.
+	return Result{Name: p.Name, Action: p.Action, Reason: p.Reason, LogicChange: p.LogicChange && p.Action == ActionUpdate, ExternalChange: p.Action.Applies() && p.Cmp.ExternallyChanged(), Err: p.Err}
+}
+
 // PlanOne compares one projection and decides its action, applying nothing. The
 // read is bounded: a management call blocks until its deadline if the projections
 // subsystem is slow, and one stalled projection shouldn't consume the whole

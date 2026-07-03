@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 )
 
@@ -27,7 +28,7 @@ func TestRenderStatusJSONCarriesConfigDrift(t *testing.T) {
 	if err := renderStatusJSON(&b, nil, items); err != nil {
 		t.Fatal(err)
 	}
-	var report statusReportJSON
+	var report cliout.StatusReportJSON
 	if err := json.Unmarshal(b.Bytes(), &report); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, b.String())
 	}

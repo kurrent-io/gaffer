@@ -14,7 +14,7 @@ import (
 // without a trailing newline so both the plain sink and the interactive view can
 // place it. Created/updated read green, skipped faint, refused a warning, a
 // failed RPC red.
-func (tw *textWriter) deployResultLine(res deployResult, nameWidth int) string {
+func (tw *textWriter) deployResultLine(res drift.Result, nameWidth int) string {
 	name := padCells(res.Name, nameWidth)
 	var marker, verdict string
 	switch {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
@@ -76,9 +77,9 @@ func runPreflight(ctx context.Context, root string, cfg *config.Config, names []
 // deploy sink.
 func renderPreflightFailures(w io.Writer, jsonOut bool, total int, failures []preflightFailure) error {
 	if jsonOut {
-		out := make([]deployJSON, len(failures))
+		out := make([]cliout.DeployJSON, len(failures))
 		for i, f := range failures {
-			out[i] = deployJSON{Name: f.Name, Outcome: "invalid", Reason: strings.Join(f.reasons(), "; ")}
+			out[i] = cliout.DeployJSON{Name: f.Name, Outcome: "invalid", Reason: strings.Join(f.reasons(), "; ")}
 		}
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")

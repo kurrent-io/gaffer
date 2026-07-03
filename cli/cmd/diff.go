@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 )
@@ -94,16 +95,16 @@ func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
 // the compile failure, present only when invalid (the local hash is then omitted
 // because emit can't be derived).
 type diffJSON struct {
-	Name         string       `json:"name"`
-	Drift        string       `json:"drift"`
-	Owner        string       `json:"owner"`
-	Attribution  string       `json:"attribution,omitempty"`
-	LastDeployed string       `json:"lastDeployed,omitempty"`
-	LastWrite    *ledgerJSON  `json:"lastWrite,omitempty"`
-	LocalHash    string       `json:"localHash,omitempty"`
-	DeployedHash string       `json:"deployedHash,omitempty"`
-	Changes      *changesJSON `json:"changes,omitempty"`
-	Error        string       `json:"error,omitempty"`
+	Name         string             `json:"name"`
+	Drift        string             `json:"drift"`
+	Owner        string             `json:"owner"`
+	Attribution  string             `json:"attribution,omitempty"`
+	LastDeployed string             `json:"lastDeployed,omitempty"`
+	LastWrite    *cliout.LedgerJSON `json:"lastWrite,omitempty"`
+	LocalHash    string             `json:"localHash,omitempty"`
+	DeployedHash string             `json:"deployedHash,omitempty"`
+	Changes      *changesJSON       `json:"changes,omitempty"`
+	Error        string             `json:"error,omitempty"`
 }
 
 type changesJSON struct {
@@ -114,7 +115,7 @@ type changesJSON struct {
 }
 
 func renderDiffJSON(w io.Writer, e drift.Comparison) error {
-	j := diffJSON{Name: e.Name, Drift: string(e.State), Owner: string(e.Owner()), Attribution: string(e.Attribution()), LastDeployed: lastDeployedJSON(e), LastWrite: lastWrite(e)}
+	j := diffJSON{Name: e.Name, Drift: string(e.State), Owner: string(e.Owner()), Attribution: string(e.Attribution()), LastDeployed: cliout.LastDeployedJSON(e), LastWrite: cliout.BuildLedgerJSON(e)}
 	// A local hash needs emit, which an invalid (uncompilable) projection can't
 	// provide, so omit it and report the compile error instead.
 	if e.Local != nil && e.State != drift.Invalid {

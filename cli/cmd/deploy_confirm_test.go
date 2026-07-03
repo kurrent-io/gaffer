@@ -232,13 +232,13 @@ func TestWriteApplyWarningsExternalChange(t *testing.T) {
 func TestDeployResultExternalChange(t *testing.T) {
 	// An applied update over an external change carries the flag; local-ahead and a
 	// non-applying refusal don't.
-	if r := planResult(drift.PlanItem{Name: "srv", Action: drift.ActionUpdate, Cmp: changedServer()}); !r.ExternalChange {
+	if r := (drift.PlanItem{Name: "srv", Action: drift.ActionUpdate, Cmp: changedServer()}).Result(); !r.ExternalChange {
 		t.Error("changed-server update should set ExternalChange")
 	}
-	if r := planResult(drift.PlanItem{Name: "ahead", Action: drift.ActionUpdate, Cmp: localAhead()}); r.ExternalChange {
+	if r := (drift.PlanItem{Name: "ahead", Action: drift.ActionUpdate, Cmp: localAhead()}).Result(); r.ExternalChange {
 		t.Error("local-ahead update should not set ExternalChange")
 	}
-	if r := planResult(drift.PlanItem{Name: "refused", Action: drift.ActionRefuse, Cmp: changedServer()}); r.ExternalChange {
+	if r := (drift.PlanItem{Name: "refused", Action: drift.ActionRefuse, Cmp: changedServer()}).Result(); r.ExternalChange {
 		t.Error("a refusal applies nothing, so it should not set ExternalChange")
 	}
 }

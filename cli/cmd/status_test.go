@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
@@ -225,7 +226,7 @@ func TestRenderStatusJSON(t *testing.T) {
 	if err := renderStatusJSON(&b, entries, nil); err != nil {
 		t.Fatalf("renderStatusJSON: %v", err)
 	}
-	var report statusReportJSON
+	var report cliout.StatusReportJSON
 	if err := json.Unmarshal(b.Bytes(), &report); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, b.String())
 	}

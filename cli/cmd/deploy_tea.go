@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"golang.org/x/term"
 
+	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/ttyutil"
 )
 
@@ -38,7 +39,7 @@ func interactiveWriter(w io.Writer) bool {
 // program renders in its own; the model quits itself once the last row commits.
 type (
 	deployStartMsg struct{ name string }
-	deployDoneMsg  struct{ res deployResult }
+	deployDoneMsg  struct{ res drift.Result }
 )
 
 type rowStatus int
@@ -54,7 +55,7 @@ const (
 type deployRow struct {
 	name   string
 	status rowStatus
-	res    deployResult
+	res    drift.Result
 }
 
 // teaModel is the interactive deploy view. Each projection completes top to
@@ -231,7 +232,7 @@ func initialHeight(w io.Writer) int {
 
 func (s *teaSink) start(name string, _, _ int) { s.prog.Send(deployStartMsg{name: name}) }
 
-func (s *teaSink) done(res deployResult) { s.prog.Send(deployDoneMsg{res: res}) }
+func (s *teaSink) done(res drift.Result) { s.prog.Send(deployDoneMsg{res: res}) }
 
 // finish waits for the program to exit. The model quits itself on completion
 // (the last row's commit sequences a quit), and the program is otherwise killed

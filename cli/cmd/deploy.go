@@ -22,31 +22,6 @@ type deployOpts struct {
 	DryRun             bool
 }
 
-// deployResult is the outcome for one projection. Reason is set only for refuse;
-// Err is set when the apply RPC (or the pre-compare read) failed. LogicChange
-// marks an update that changed the query, so the rendering can note that
-// continuing keeps state computed by the old logic. ExternalChange marks an apply
-// whose deployed definition was changed outside gaffer since its last deploy, so
-// the rendering can caution that deploying overwrites that change; it's cleared
-// when the apply fails, since nothing was then overwritten.
-type deployResult struct {
-	Name           string
-	Action         drift.Action
-	Reason         string
-	LogicChange    bool
-	ExternalChange bool
-	Err            error
-}
-
-// planResult is the deployResult for an item that was not (or not yet) applied: a
-// planning error, or a skip/refuse that the apply phase emits verbatim.
-func planResult(p drift.PlanItem) deployResult {
-	// LogicChange marks a continued logic change (an update that kept state). A
-	// reset rebuilds, so it reports outcome "rebuilt", not a logic-change flag -
-	// drop the flag once the item is no longer an update.
-	return deployResult{Name: p.Name, Action: p.Action, Reason: p.Reason, LogicChange: p.LogicChange && p.Action == drift.ActionUpdate, ExternalChange: p.Action.Applies() && p.Cmp.ExternallyChanged(), Err: p.Err}
-}
-
 // projectionManager is the slice of remote.Client the apply step needs: create
 // and update, plus the disable/reset/enable a logic-change rebuild sequences.
 // Seaming it lets the orchestration be tested without a live database;
@@ -59,35 +34,12 @@ type projectionManager interface {
 	Enable(ctx context.Context, name string) error
 }
 
-// outcome is the past-tense verdict for one projection, used as the JSON value
-// and the text word. A failure (Err set) reads as "failed" regardless of which
-// action was attempted.
-func (res deployResult) outcome() string {
-	if res.Err != nil {
-		return "failed"
-	}
-	switch res.Action {
-	case drift.ActionCreate:
-		return "created"
-	case drift.ActionUpdate:
-		return "updated"
-	case drift.ActionReset:
-		return "rebuilt"
-	case drift.ActionSkip:
-		return "skipped"
-	case drift.ActionRefuse:
-		return "refused"
-	default:
-		return "unknown"
-	}
-}
-
 // deployCounts tallies outcomes for the summary line and the live progress bar.
 type deployCounts struct {
 	created, updated, rebuilt, skipped, refused, failed int
 }
 
-func (c *deployCounts) add(res deployResult) {
+func (c *deployCounts) add(res drift.Result) {
 	switch {
 	case res.Err != nil:
 		c.failed++
@@ -323,7 +275,7 @@ func applyPlan(ctx context.Context, plan []drift.PlanItem, sink deploySink, appl
 			break
 		}
 		sink.start(item.Name, i+1, total)
-		res := planResult(item)
+		res := item.Result()
 		if item.Err == nil && item.Action.Applies() {
 			if err := apply(item); err != nil {
 				res.Err = err

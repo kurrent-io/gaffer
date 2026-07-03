@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
@@ -197,19 +198,19 @@ func TestDeployNames(t *testing.T) {
 func TestJSONSink(t *testing.T) {
 	var b bytes.Buffer
 	s := &jsonSink{w: &b}
-	s.done(deployResult{Name: "a", Action: drift.ActionCreate})
-	s.done(deployResult{Name: "b", Action: drift.ActionRefuse, Reason: "engine version"})
-	s.done(deployResult{Name: "c", Action: drift.ActionUpdate, Err: errors.New("boom")})
-	s.done(deployResult{Name: "d", Action: drift.ActionUpdate, LogicChange: true}) // continued over a logic change
+	s.done(drift.Result{Name: "a", Action: drift.ActionCreate})
+	s.done(drift.Result{Name: "b", Action: drift.ActionRefuse, Reason: "engine version"})
+	s.done(drift.Result{Name: "c", Action: drift.ActionUpdate, Err: errors.New("boom")})
+	s.done(drift.Result{Name: "d", Action: drift.ActionUpdate, LogicChange: true}) // continued over a logic change
 	if err := s.finish(); err != nil {
 		t.Fatalf("finish: %v", err)
 	}
 
-	var got []deployJSON
+	var got []cliout.DeployJSON
 	if err := json.Unmarshal(b.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, b.String())
 	}
-	want := []deployJSON{
+	want := []cliout.DeployJSON{
 		{Name: "a", Outcome: "created"},
 		{Name: "b", Outcome: "refused", Reason: "engine version"},
 		{Name: "c", Outcome: "failed", Error: "boom"},
@@ -231,11 +232,11 @@ func TestJSONSinkResetOmitsLogicChange(t *testing.T) {
 	// logic_change (which means "continued over a logic change").
 	var b bytes.Buffer
 	s := &jsonSink{w: &b}
-	s.done(planResult(drift.PlanItem{Name: "e", Action: drift.ActionReset, LogicChange: true}))
+	s.done((drift.PlanItem{Name: "e", Action: drift.ActionReset, LogicChange: true}).Result())
 	if err := s.finish(); err != nil {
 		t.Fatalf("finish: %v", err)
 	}
-	var got []deployJSON
+	var got []cliout.DeployJSON
 	if err := json.Unmarshal(b.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, b.String())
 	}
@@ -247,10 +248,10 @@ func TestJSONSinkResetOmitsLogicChange(t *testing.T) {
 func TestPlainSink(t *testing.T) {
 	var b bytes.Buffer
 	s := newPlainSink(&b, &b, []string{"alpha", "b"})
-	s.done(deployResult{Name: "alpha", Action: drift.ActionCreate})
-	s.done(deployResult{Name: "b", Action: drift.ActionSkip})
-	s.done(deployResult{Name: "c", Action: drift.ActionRefuse, Reason: "engine version (remote 1, local 2) can't be changed in place"})
-	s.done(deployResult{Name: "d", Action: drift.ActionUpdate, Err: errors.New("boom")})
+	s.done(drift.Result{Name: "alpha", Action: drift.ActionCreate})
+	s.done(drift.Result{Name: "b", Action: drift.ActionSkip})
+	s.done(drift.Result{Name: "c", Action: drift.ActionRefuse, Reason: "engine version (remote 1, local 2) can't be changed in place"})
+	s.done(drift.Result{Name: "d", Action: drift.ActionUpdate, Err: errors.New("boom")})
 	if err := s.finish(); err != nil {
 		t.Fatalf("finish: %v", err)
 	}
@@ -270,7 +271,7 @@ func TestPlainSink(t *testing.T) {
 
 func TestJSONSinkEmpty(t *testing.T) {
 	var b bytes.Buffer
-	s := &jsonSink{w: &b, results: []deployJSON{}}
+	s := &jsonSink{w: &b, results: []cliout.DeployJSON{}}
 	if err := s.finish(); err != nil {
 		t.Fatalf("finish: %v", err)
 	}
@@ -301,11 +302,11 @@ func TestNewDeploySink(t *testing.T) {
 // ordering can be asserted without a renderer.
 type recordingSink struct {
 	events  []string
-	results []deployResult
+	results []drift.Result
 }
 
 func (s *recordingSink) start(name string, _, _ int) { s.events = append(s.events, "start:"+name) }
-func (s *recordingSink) done(res deployResult) {
+func (s *recordingSink) done(res drift.Result) {
 	s.events = append(s.events, "done:"+res.Name)
 	s.results = append(s.results, res)
 }
@@ -340,7 +341,7 @@ func TestApplyPlan(t *testing.T) {
 	if strings.Join(sink.events, ",") != strings.Join(want, ",") {
 		t.Errorf("event order = %v, want %v", sink.events, want)
 	}
-	byName := map[string]deployResult{}
+	byName := map[string]drift.Result{}
 	for _, r := range sink.results {
 		byName[r.Name] = r
 	}
@@ -366,7 +367,7 @@ func TestApplyPlanClearsExternalChangeOnFailure(t *testing.T) {
 		}
 		return nil
 	})
-	byName := map[string]deployResult{}
+	byName := map[string]drift.Result{}
 	for _, r := range sink.results {
 		byName[r.Name] = r
 	}
@@ -431,7 +432,7 @@ func TestTeaModelTransitions(t *testing.T) {
 
 	// Finishing a row commits it to scrollback (a tea.Println command) and drops
 	// it from the live window. Not the last row, so no quit yet.
-	finished, cmd := m.Update(deployDoneMsg{res: deployResult{Name: "alpha", Action: drift.ActionCreate}})
+	finished, cmd := m.Update(deployDoneMsg{res: drift.Result{Name: "alpha", Action: drift.ActionCreate}})
 	m = testutil.MustType[teaModel](t, finished)
 	if m.committed != 1 || m.counts.created != 1 {
 		t.Errorf("after done: committed=%d created=%d", m.committed, m.counts.created)
@@ -448,7 +449,7 @@ func TestTeaModelTransitions(t *testing.T) {
 
 	// Finishing the last row commits it and quits, in one command, so the final
 	// line can't be lost to a quit that races the print.
-	last, cmd := m.Update(deployDoneMsg{res: deployResult{Name: "beta", Action: drift.ActionSkip}})
+	last, cmd := m.Update(deployDoneMsg{res: drift.Result{Name: "beta", Action: drift.ActionSkip}})
 	m = testutil.MustType[teaModel](t, last)
 	if m.committed != 2 {
 		t.Errorf("committed = %d after the last row, want 2", m.committed)
@@ -506,7 +507,7 @@ func TestTeaModelPagingShrinksAfterCommit(t *testing.T) {
 	for _, n := range []string{"alpha", "bravo"} {
 		started, _ := m.Update(deployStartMsg{name: n})
 		m = testutil.MustType[teaModel](t, started)
-		done, _ := m.Update(deployDoneMsg{res: deployResult{Name: n, Action: drift.ActionCreate}})
+		done, _ := m.Update(deployDoneMsg{res: drift.Result{Name: n, Action: drift.ActionCreate}})
 		m = testutil.MustType[teaModel](t, done)
 	}
 	if m.committed != 2 {
@@ -522,13 +523,13 @@ func TestTeaModelPagingShrinksAfterCommit(t *testing.T) {
 func TestTeaModelCommitsContiguousPrefix(t *testing.T) {
 	m := newTestTeaModel("alpha", "bravo", "charlie")
 
-	early, _ := m.Update(deployDoneMsg{res: deployResult{Name: "bravo", Action: drift.ActionSkip}})
+	early, _ := m.Update(deployDoneMsg{res: drift.Result{Name: "bravo", Action: drift.ActionSkip}})
 	m = testutil.MustType[teaModel](t, early)
 	if m.committed != 0 {
 		t.Errorf("committed = %d; nothing should commit while the front row is unfinished", m.committed)
 	}
 
-	flush, cmd := m.Update(deployDoneMsg{res: deployResult{Name: "alpha", Action: drift.ActionCreate}})
+	flush, cmd := m.Update(deployDoneMsg{res: drift.Result{Name: "alpha", Action: drift.ActionCreate}})
 	m = testutil.MustType[teaModel](t, flush)
 	if m.committed != 2 {
 		t.Errorf("committed = %d; finishing alpha should flush alpha+bravo", m.committed)

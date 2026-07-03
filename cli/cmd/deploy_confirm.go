@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
@@ -66,11 +68,9 @@ func confirmPlan(out, errOut io.Writer, plan []drift.PlanItem, target string, to
 // deploy's shape (each item's would-be outcome), so the schema is the same either way.
 func renderDryRun(out io.Writer, plan []drift.PlanItem, target string, totals planTotals, prod, jsonOut bool) error {
 	if jsonOut {
-		sink := &jsonSink{w: out, results: []deployJSON{}}
-		for _, it := range plan {
-			sink.done(planResult(it))
-		}
-		if err := sink.finish(); err != nil {
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(cliout.BuildPlanJSON(plan)); err != nil {
 			return err
 		}
 	} else {

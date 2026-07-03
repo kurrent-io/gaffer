@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
@@ -258,7 +259,7 @@ func TestHistoryJSONKeepsRecreateBookends(t *testing.T) {
 	if err := renderHistoryJSON(&buf, hist); err != nil {
 		t.Fatalf("renderHistoryJSON: %v", err)
 	}
-	var got []historyJSON
+	var got []cliout.HistoryJSON
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -282,7 +283,7 @@ func TestRenderHistoryJSON(t *testing.T) {
 	if err := renderHistoryJSON(&buf, hist); err != nil {
 		t.Fatalf("renderHistoryJSON: %v", err)
 	}
-	var got []historyJSON
+	var got []cliout.HistoryJSON
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}

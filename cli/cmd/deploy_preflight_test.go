@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
@@ -41,7 +42,7 @@ func TestRenderPreflightFailuresJSON(t *testing.T) {
 		t.Fatalf("renderPreflightFailures: %v", err)
 	}
 
-	var got []deployJSON
+	var got []cliout.DeployJSON
 	if err := json.Unmarshal(b.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, b.String())
 	}

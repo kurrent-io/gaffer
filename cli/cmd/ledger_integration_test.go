@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
@@ -62,7 +63,7 @@ func TestStatus_LedgerAware_Integration(t *testing.T) {
 	mustCreate(orphan, src, gaffer())                                                      // server-only, gaffer's metadata
 	mustCreate(foreign, src, &remote.Ledger{Tool: "KurrentDB Embedded UI", Actor: "jane"}) // server-only, another tool's
 
-	byName := make(map[string]statusJSON)
+	byName := make(map[string]cliout.StatusJSON)
 	for _, e := range runStatusJSON(t) {
 		byName[e.Name] = e
 	}

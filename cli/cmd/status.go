@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 )
 
@@ -107,58 +108,8 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 	return nil
 }
 
-type statusJSON struct {
-	Name         string             `json:"name"`
-	Drift        string             `json:"drift"`
-	Owner        string             `json:"owner"`
-	Attribution  string             `json:"attribution,omitempty"`
-	LastDeployed string             `json:"lastDeployed,omitempty"`
-	LastWrite    *ledgerJSON        `json:"lastWrite,omitempty"`
-	Runtime      *statusRuntimeJSON `json:"runtime,omitempty"`
-	// Error is the compile error, present only when drift is invalid, so a
-	// machine consumer sees why a projection is invalid, not just that it is.
-	Error string `json:"error,omitempty"`
-}
-
-type statusRuntimeJSON struct {
-	State       string  `json:"state"`
-	Progress    float32 `json:"progress"`
-	Position    string  `json:"position,omitempty"`
-	FaultReason string  `json:"faultReason,omitempty"`
-}
-
-// statusReportJSON is the status --json envelope: the per-projection entries,
-// plus the env-level [database_config] drift so a machine consumer (the VS
-// Code extension's status surface) sees the target's engine configuration
-// diverging without a second call. configDrift is omitted when clean, not
-// declared, or unreadable - absence is "nothing to report", not "in sync".
-type statusReportJSON struct {
-	Projections []statusJSON      `json:"projections"`
-	ConfigDrift []configDriftJSON `json:"configDrift,omitempty"`
-}
-
 func renderStatusJSON(w io.Writer, entries []drift.StatusEntry, items []drift.ConfigDrift) error {
-	out := make([]statusJSON, 0, len(entries))
-	for _, e := range entries {
-		j := statusJSON{Name: e.Name, Drift: string(e.State), Owner: string(e.Owner()), Attribution: string(e.Attribution()), LastDeployed: lastDeployedJSON(e.Comparison), LastWrite: lastWrite(e.Comparison)}
-		if e.State == drift.Invalid && e.LocalErr != nil {
-			j.Error = e.LocalErr.Error()
-		}
-		if e.Runtime != nil {
-			j.Runtime = &statusRuntimeJSON{
-				State:       string(e.Runtime.State),
-				Progress:    e.Runtime.Progress,
-				Position:    e.Runtime.Position,
-				FaultReason: e.Runtime.FaultReason,
-			}
-		}
-		out = append(out, j)
-	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	report := statusReportJSON{Projections: out}
-	if len(items) > 0 {
-		report.ConfigDrift = configDriftToJSON(items)
-	}
-	return enc.Encode(report)
+	return enc.Encode(cliout.BuildStatusReport(entries, items))
 }

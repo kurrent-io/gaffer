@@ -47,7 +47,11 @@ func newStatusCmd() *cobra.Command {
 			"and source revision.\n\n" +
 			"The last-deploy date comes from the event itself, so it shows even without\n" +
 			"metadata, where it is the time of the last write. Against a server without the\n" +
-			"metadata, status falls back to plain untracked or drifted.",
+			"metadata, status falls back to plain untracked or drifted.\n\n" +
+			"When gaffer.toml declares a [database_config], status also checks the target\n" +
+			"node's live engine settings and warns on a divergence, since the fixtures and\n" +
+			"local runs assumed the declared values. Advisory only: a server that doesn't\n" +
+			"expose its options (or refuses the read) skips the check silently.",
 		Example: "  gaffer status\n" +
 			"  gaffer status order-count --env staging",
 		Args: maxArgs(1),
@@ -78,15 +82,21 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 	ctx, cancel := context.WithTimeout(cmd.Context(), projectionRPCTimeout)
 	defer cancel()
 
+	// The [database_config] drift check runs in the background so its HTTP
+	// round-trip overlaps the status RPCs; drained before rendering.
+	resolved, _ := resolveLiveEnv(opts.Connection, opts.Env, cfg)
+	driftCh := startConfigDriftCheck(cmd.Context(), cfg, root, resolved.Name, resolved.Connection)
+
 	if name != "" {
 		entry, err := statusOne(ctx, r, cfg, root, name)
 		if err != nil {
 			return err
 		}
 		if opts.JSON {
-			return renderStatusJSON(cmd.OutOrStdout(), []statusEntry{entry})
+			return renderStatusJSON(cmd.OutOrStdout(), []statusEntry{entry}, <-driftCh)
 		}
 		newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr()).WriteStatus(entry)
+		writeConfigDriftWarnings(cmd.ErrOrStderr(), <-driftCh)
 		return nil
 	}
 
@@ -95,13 +105,15 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 		return err
 	}
 	if opts.JSON {
-		return renderStatusJSON(cmd.OutOrStdout(), entries)
+		return renderStatusJSON(cmd.OutOrStdout(), entries, <-driftCh)
 	}
 	if len(entries) == 0 {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No projections to show.")
+		writeConfigDriftWarnings(cmd.ErrOrStderr(), <-driftCh)
 		return nil
 	}
 	newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr()).WriteStatusTable(entries)
+	writeConfigDriftWarnings(cmd.ErrOrStderr(), <-driftCh)
 	return nil
 }
 
@@ -200,7 +212,17 @@ type statusRuntimeJSON struct {
 	FaultReason string  `json:"faultReason,omitempty"`
 }
 
-func renderStatusJSON(w io.Writer, entries []statusEntry) error {
+// statusReportJSON is the status --json envelope: the per-projection entries,
+// plus the env-level [database_config] drift so a machine consumer (the VS
+// Code extension's status surface) sees the target's engine configuration
+// diverging without a second call. configDrift is omitted when clean, not
+// declared, or unreadable - absence is "nothing to report", not "in sync".
+type statusReportJSON struct {
+	Projections []statusJSON      `json:"projections"`
+	ConfigDrift []configDriftJSON `json:"configDrift,omitempty"`
+}
+
+func renderStatusJSON(w io.Writer, entries []statusEntry, drift []configDrift) error {
 	out := make([]statusJSON, 0, len(entries))
 	for _, e := range entries {
 		j := statusJSON{Name: e.Name, Drift: string(e.State), Owner: string(e.owner()), Attribution: string(e.attribution()), LastDeployed: e.lastDeployedJSON(), LastWrite: e.lastWrite()}
@@ -219,5 +241,9 @@ func renderStatusJSON(w io.Writer, entries []statusEntry) error {
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(out)
+	report := statusReportJSON{Projections: out}
+	if len(drift) > 0 {
+		report.ConfigDrift = configDriftToJSON(drift)
+	}
+	return enc.Encode(report)
 }

@@ -148,7 +148,11 @@ func newDeployCmd() *cobra.Command {
 			"project's git commit, suffixed +changes when the tree is dirty; the actor is the user " +
 			"gaffer connects as. For CI, the GAFFER_REVISION and GAFFER_ACTOR environment variables " +
 			"override them (to record the canonical commit or the pipeline identity). A KurrentDB " +
-			"that predates the feature ignores the metadata and deploy is unaffected.",
+			"that predates the feature ignores the metadata and deploy is unaffected.\n\n" +
+			"When gaffer.toml declares a [database_config], deploy also checks the target node's " +
+			"live engine settings and warns on a divergence before anything is applied, since the " +
+			"fixtures and local runs assumed the declared values. Advisory only: a server that " +
+			"doesn't expose its options (or refuses the read) skips the check silently.",
 		Example: "  gaffer deploy\n" +
 			"  gaffer deploy order-count --env staging",
 		Args: maxArgs(1),
@@ -217,6 +221,12 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	}
 	defer cleanup()
 
+	// The [database_config] drift check runs in the background so its HTTP
+	// round-trip overlaps the planning RPCs; drained before the confirm, so an
+	// operator sees the target's engine config diverging before applying.
+	resolved, _ := resolveLiveEnv(opts.Connection, opts.Env, cfg)
+	driftCh := startConfigDriftCheck(cmd.Context(), cfg, root, resolved.Name, resolved.Connection)
+
 	// Plan first (reads only), so the whole run is known before any write - the
 	// basis for the confirm gate and, later, --dry-run.
 	plan := planAll(ctx, r, cfg, root, names)
@@ -248,6 +258,12 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	if prod && opts.NoValidate {
 		return refuseNoValidateOnProd("Deploy", "projections are", target)
 	}
+
+	// The engine-config warning lands before the dry-run render and the confirm
+	// alike: fixtures and local runs assumed the declared config, so a diverging
+	// target is worth seeing before any decision. Stderr, so a --json consumer's
+	// stdout payload stays clean while the warning still reaches CI logs.
+	writeConfigDriftWarnings(cmd.ErrOrStderr(), <-driftCh)
 
 	// --dry-run reports the plan and applies nothing, so it stops before the confirm
 	// gate below - an apply-only guardrail a read-only preview needs no answer to (a

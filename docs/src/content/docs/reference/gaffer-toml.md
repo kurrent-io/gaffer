@@ -152,6 +152,8 @@ execution_timeout = 250
 
 All keys are optional; omit the section to take the defaults.
 
+`gaffer deploy` and `gaffer status` check the declared values against the target node's live settings and warn on a divergence, so a server enforcing different limits than your fixtures assumed is visible before it bites. The check is advisory: a server that doesn't expose its options, or refuses the read, skips it silently. `gaffer status --json` carries any divergence in its `configDrift` array.
+
 ### `telemetry`
 
 ```toml

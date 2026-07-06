@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kurrent-io/gaffer/cli/internal/apply"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
-	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
@@ -20,18 +20,6 @@ type deployOpts struct {
 	Yes                bool
 	ResetOnLogicChange bool
 	DryRun             bool
-}
-
-// projectionManager is the slice of remote.Client the apply step needs: create
-// and update, plus the disable/reset/enable a logic-change rebuild sequences.
-// Seaming it lets the orchestration be tested without a live database;
-// *remote.Client satisfies it.
-type projectionManager interface {
-	Create(ctx context.Context, name, query string, opts remote.CreateOptions) error
-	Update(ctx context.Context, name, query string, opts remote.UpdateOptions) error
-	Disable(ctx context.Context, name string) error
-	Reset(ctx context.Context, name string, writeCheckpoint bool) error
-	Enable(ctx context.Context, name string) error
 }
 
 // deployCounts tallies outcomes for the summary line and the live progress bar.
@@ -226,9 +214,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	ledger := toolLedger(opts.Connection, opts.Env, remote.OpDeploy, cfg, root)
 
 	sink := newDeploySink(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts.JSON, names, ctx, cancel)
-	failed := applyPlan(ctx, plan, sink, func(item drift.PlanItem) error {
-		return applyOne(ctx, r, item, ledger)
-	})
+	failed := apply.Plan(ctx, plan, r, ledger, sink.start, sink.done)
 	if ferr := sink.finish(); ferr != nil {
 		return ferr
 	}
@@ -261,93 +247,11 @@ func deployNames(cfg *config.Config, name string) ([]string, error) {
 	return names, nil
 }
 
-// applyPlan executes a plan, reporting progress through the sink, and returns how
-// many failed (an apply error) or were refused. It applies only create/update
-// items; skip/refuse/planning-error items stream their verdict unchanged. It
-// continues past a failure so the summary is complete; the caller turns a
-// non-zero count into a non-zero exit. The apply itself is a parameter so the
-// loop's accounting and event order are testable without a live database.
-func applyPlan(ctx context.Context, plan []drift.PlanItem, sink deploySink, apply func(drift.PlanItem) error) (failed int) {
-	total := len(plan)
-	for i := range plan {
-		item := plan[i]
-		if ctx.Err() != nil {
-			break
-		}
-		sink.start(item.Name, i+1, total)
-		res := item.Result()
-		if item.Err == nil && item.Action.Applies() {
-			if err := apply(item); err != nil {
-				res.Err = err
-				// The apply failed, so nothing was overwritten - don't keep claiming
-				// it did via externalChange.
-				res.ExternalChange = false
-			}
-		}
-		if res.Err != nil || res.Action == drift.ActionRefuse {
-			failed++
-		}
-		sink.done(res)
-	}
-	return failed
-}
-
-// applyOne performs one item's create/update/reset. Each underlying RPC is
-// bounded separately (a reset issues four), so a multi-step rebuild isn't
-// squeezed into the budget for a single call.
-func applyOne(ctx context.Context, r *remote.Client, item drift.PlanItem, ledger remote.Ledger) error {
-	return applyAction(ctx, r, item.Name, item.Action, item.Cmp.Local, ledger)
-}
-
-// rpc bounds one server call by projectionRPCTimeout, so every step of a
-// multi-step apply gets a full budget rather than sharing one.
+// rpc bounds one server call by projectionRPCTimeout for the commands that
+// read or write outside the apply loop (rollback's read and update, the
+// operate verbs' existence checks and RPCs).
 func rpc(ctx context.Context, fn func(context.Context) error) error {
 	ctx, cancel := context.WithTimeout(ctx, projectionRPCTimeout)
 	defer cancel()
 	return fn(ctx)
-}
-
-// applyAction performs the create, update, or logic-change reset. Emit is always
-// sent on update (as a non-nil pointer) because the server resets it to false on
-// any update that omits it. A created continuous projection starts enabled
-// server-side, so there is no separate enable step.
-func applyAction(ctx context.Context, mgr projectionManager, name string, action drift.Action, local *deploy.Descriptor, ledger remote.Ledger) error {
-	switch action {
-	case drift.ActionCreate:
-		return rpc(ctx, func(ctx context.Context) error {
-			return mgr.Create(ctx, name, local.Query, remote.CreateOptions{
-				EngineVersion:       local.EngineVersion,
-				Emit:                local.Emit,
-				TrackEmittedStreams: local.TrackEmittedStreams,
-				Ledger:              &ledger,
-			})
-		})
-	case drift.ActionUpdate:
-		return rpc(ctx, func(ctx context.Context) error {
-			return mgr.Update(ctx, name, local.Query, remote.UpdateOptions{Emit: emitPtr(local), Ledger: &ledger})
-		})
-	case drift.ActionReset:
-		// The destructive Disable -> Update -> Reset -> Enable sequence, its
-		// ordering and recovery messages, live in internal/deploy; here we only bind
-		// each step to the client and its option mapping. emitPtr keeps the update's
-		// explicit-emit guarantee.
-		return deploy.Rebuild(ctx, name, deploy.RebuildSteps{
-			Disable: func(ctx context.Context) error { return mgr.Disable(ctx, name) },
-			Update: func(ctx context.Context) error {
-				return mgr.Update(ctx, name, local.Query, remote.UpdateOptions{Emit: emitPtr(local), Ledger: &ledger})
-			},
-			Reset:  func(ctx context.Context) error { return mgr.Reset(ctx, name, true) },
-			Enable: func(ctx context.Context) error { return mgr.Enable(ctx, name) },
-		})
-	default:
-		return nil
-	}
-}
-
-// emitPtr returns a non-nil pointer to the descriptor's derived emit flag, so an
-// update always sends it explicitly (the server clears emit on any update that
-// omits it).
-func emitPtr(local *deploy.Descriptor) *bool {
-	emit := local.Emit
-	return &emit
 }

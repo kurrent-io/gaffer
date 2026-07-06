@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -146,5 +147,55 @@ func TestIntegration_OperateVerbs(t *testing.T) {
 	deleted = true
 	if exists, _ := client.Exists(ctx, name); exists {
 		t.Fatal("accepted delete should remove the projection")
+	}
+}
+
+func TestIntegration_DeployApply(t *testing.T) {
+	s, client, name := setupDeployToolsProject(t)
+
+	// First deploy creates; off production with no rebuilds there is no
+	// elicit, so a nil request suffices.
+	res := callVerb(t, s.handleDeployApply, nil, deployApplyInput{Name: name})
+	results := res["results"].([]any)
+	if len(results) != 1 || results[0].(map[string]any)["outcome"] != "created" {
+		t.Fatalf("first deploy = %v, want created", res)
+	}
+	if res["changes"].(float64) != 1 || res["failed"].(float64) != 0 || res["production"] != false {
+		t.Fatalf("envelope = %v", res)
+	}
+	t.Cleanup(func() {
+		cctx, ccancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer ccancel()
+		_ = client.Disable(cctx, name)
+		_ = client.Delete(cctx, name, remote.DeleteOptions{})
+	})
+	if os.Getenv("GAFFER_TEST_LEDGER") != "" {
+		hist := callTool(t, s, deployHistoryTool, s.handleDeployHistory, deployHistoryInput{Name: name})
+		head := hist["versions"].([]any)[0].(map[string]any)
+		if head["kind"] != "deploy" || head["tool"] != remote.ToolName {
+			t.Fatalf("history head = %v, want a gaffer-stamped deploy", head)
+		}
+	}
+
+	// Nothing changed: no gate, no writes, a skipped result.
+	res = callVerb(t, s.handleDeployApply, nil, deployApplyInput{Name: name})
+	if res["changes"].(float64) != 0 || res["results"].([]any)[0].(map[string]any)["outcome"] != "skipped" {
+		t.Fatalf("idempotent deploy = %v, want skipped with 0 changes", res)
+	}
+
+	// A logic change with resetOnLogicChange plans a rebuild - the no-undo
+	// tier - so even off production it elicits: declined leaves the deployed
+	// definition alone, accepted rebuilds.
+	src := filepath.Join(s.root, "projections", name+".js")
+	if err := os.WriteFile(src, []byte("fromAll().when({ $init() { return { v: 2 }; } })"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, _, _ := s.handleDeployApply(context.Background(), decliningReq(t), deployApplyInput{Name: name, ResetOnLogicChange: true})
+	if result == nil || !result.IsError {
+		t.Fatalf("declined rebuild deploy should refuse, got %v", result)
+	}
+	res = callVerb(t, s.handleDeployApply, acceptingReq(t), deployApplyInput{Name: name, ResetOnLogicChange: true})
+	if res["results"].([]any)[0].(map[string]any)["outcome"] != "rebuilt" {
+		t.Fatalf("accepted rebuild deploy = %v, want rebuilt", res)
 	}
 }

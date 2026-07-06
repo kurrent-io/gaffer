@@ -30,11 +30,17 @@ type writeGate struct {
 	// Target and Production come from operateTarget.
 	Target     string
 	Production bool
-	// NoUndo marks a write with no undo story (delete, recreate): it always
-	// elicits, and on production the confirm requires typing the projection
-	// name rather than a one-key accept. Off production it stays
-	// accept/decline - the escalation is proportional, not harassment.
+	// NoUndo marks a write with no undo story (delete, recreate, a deploy
+	// that rebuilds): it always elicits, and on production the confirm
+	// requires typing a value rather than a one-key accept. Off production
+	// it stays accept/decline - the escalation is proportional, not
+	// harassment.
 	NoUndo bool
+	// TypedValue and TypedNoun override what the production no-undo confirm
+	// asks the human to type: the projection name by default; the deploy
+	// tool asks for the environment name, since its plan spans projections.
+	TypedValue string
+	TypedNoun  string
 	// Consequence states what the write does that the human is agreeing to,
 	// as a trailing statement after the question ("Stops WITHOUT a final
 	// checkpoint; a later resume reprocesses from the last checkpoint
@@ -100,6 +106,13 @@ func confirmWrite(ctx context.Context, req *mcp.CallToolRequest, g writeGate) *m
 	// projection name. Raw JSON / a plain map rather than jsonschema.Schema:
 	// the spec requires the properties member and the struct's omitempty
 	// drops an empty map.
+	typedValue, typedNoun := g.TypedValue, g.TypedNoun
+	if typedValue == "" {
+		typedValue = g.Name
+	}
+	if typedNoun == "" {
+		typedNoun = "projection name"
+	}
 	schema := json.RawMessage(`{"type":"object","properties":{}}`)
 	if g.typedConfirm() {
 		// The instruction lives on the field alone (clients render the
@@ -114,8 +127,8 @@ func confirmWrite(ctx context.Context, req *mcp.CallToolRequest, g writeGate) *m
 			"properties": map[string]any{
 				"confirm": map[string]any{
 					"type":        "string",
-					"pattern":     "^" + regexp.QuoteMeta(g.Name) + "$",
-					"description": fmt.Sprintf("Type the projection name %q to confirm", g.Name),
+					"pattern":     "^" + regexp.QuoteMeta(typedValue) + "$",
+					"description": fmt.Sprintf("Type the %s %q to confirm", typedNoun, typedValue),
 				},
 			},
 			"required": []string{"confirm"},
@@ -135,7 +148,7 @@ func confirmWrite(ctx context.Context, req *mcp.CallToolRequest, g writeGate) *m
 		// failing the exact-match pattern arrives here as a schema-validation
 		// error; report it as the mismatch it is, not transport noise.
 		if g.typedConfirm() && strings.Contains(err.Error(), "does not match requested schema") {
-			return toolError("%s was not confirmed: the typed name must match %q exactly; nothing was changed", capitalizeFirst(g.Action), g.Name)
+			return toolError("%s was not confirmed: the typed %s must match %q exactly; nothing was changed", capitalizeFirst(g.Action), typedNoun, typedValue)
 		}
 		return toolError("confirmation failed: %v; nothing was changed. Run `%s` to proceed from the CLI", err, g.CLI)
 	}
@@ -148,8 +161,8 @@ func confirmWrite(ctx context.Context, req *mcp.CallToolRequest, g writeGate) *m
 	}
 	if g.typedConfirm() {
 		typed, _ := res.Content["confirm"].(string)
-		if typed != g.Name {
-			return toolError("%s was not confirmed: the typed name %q doesn't match %q; nothing was changed", capitalizeFirst(g.Action), typed, g.Name)
+		if typed != typedValue {
+			return toolError("%s was not confirmed: the typed %s %q doesn't match %q; nothing was changed", capitalizeFirst(g.Action), typedNoun, typed, typedValue)
 		}
 	}
 	return nil

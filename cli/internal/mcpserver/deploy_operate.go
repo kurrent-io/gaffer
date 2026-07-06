@@ -132,8 +132,9 @@ var deployPauseTool = &mcp.Tool{
 
 func (s *Server) handleDeployPause(ctx context.Context, req *mcp.CallToolRequest, in operateInput) (*mcp.CallToolResult, any, error) {
 	return s.runOperateVerb(ctx, req, in, verbSpec{
-		verb: "Pause", outcome: "disabled", cli: "gaffer disable",
-		do: func(rctx context.Context, c *remote.Client) error { return c.Disable(rctx, in.Name) },
+		phrase: "pause", outcome: "disabled", cli: "gaffer disable",
+		consequence: "Stops after a final checkpoint; resume with deploy_resume.",
+		do:          func(rctx context.Context, c *remote.Client) error { return c.Disable(rctx, in.Name) },
 	})
 }
 
@@ -147,8 +148,9 @@ var deployResumeTool = &mcp.Tool{
 
 func (s *Server) handleDeployResume(ctx context.Context, req *mcp.CallToolRequest, in operateInput) (*mcp.CallToolResult, any, error) {
 	return s.runOperateVerb(ctx, req, in, verbSpec{
-		verb: "Resume", outcome: "enabled", cli: "gaffer enable",
-		do: func(rctx context.Context, c *remote.Client) error { return c.Enable(rctx, in.Name) },
+		phrase: "resume", outcome: "enabled", cli: "gaffer enable",
+		consequence: "Restarts from the last checkpoint.",
+		do:          func(rctx context.Context, c *remote.Client) error { return c.Enable(rctx, in.Name) },
 	})
 }
 
@@ -164,9 +166,9 @@ var deployAbortTool = &mcp.Tool{
 
 func (s *Server) handleDeployAbort(ctx context.Context, req *mcp.CallToolRequest, in operateInput) (*mcp.CallToolResult, any, error) {
 	return s.runOperateVerb(ctx, req, in, verbSpec{
-		verb: "Abort", outcome: "aborted", cli: "gaffer disable --abort",
-		warning: "It stops without a final checkpoint.",
-		do:      func(rctx context.Context, c *remote.Client) error { return c.Abort(rctx, in.Name) },
+		phrase: "abort", outcome: "aborted", cli: "gaffer disable --abort",
+		consequence: "Stops WITHOUT a final checkpoint; a later resume reprocesses from the last checkpoint written.",
+		do:          func(rctx context.Context, c *remote.Client) error { return c.Abort(rctx, in.Name) },
 	})
 }
 
@@ -188,18 +190,18 @@ var deployDeleteTool = &mcp.Tool{
 }
 
 func (s *Server) handleDeployDelete(ctx context.Context, req *mcp.CallToolRequest, in deployDeleteInput) (*mcp.CallToolResult, any, error) {
-	warning := "This deletes the projection and its state; there is no undo."
+	consequence := "Removes the projection, its state, and checkpoints. No undo."
 	if in.DeleteEmitted {
-		warning = "This deletes the projection, its state, and the streams it emitted; there is no undo."
+		consequence = "Removes the projection, its state, checkpoints, and the streams it emitted. No undo."
 	}
 	cli := "gaffer delete"
 	if in.DeleteEmitted {
 		cli += " --delete-emitted"
 	}
 	return s.runOperateVerb(ctx, req, operateInput{Name: in.Name, Env: in.Env}, verbSpec{
-		verb: "Delete", outcome: "deleted", cli: cli,
-		always:  true,
-		warning: warning,
+		phrase: "delete", outcome: "deleted", cli: cli,
+		noUndo:      true,
+		consequence: consequence,
 		do: func(octx context.Context, c *remote.Client) error {
 			// The server rejects deleting an enabled projection; disable first,
 			// like the CLI. Two RPCs, each under its own budget.
@@ -224,11 +226,11 @@ func (s *Server) handleDeployDelete(ctx context.Context, req *mcp.CallToolReques
 // verbSpec is one operate verb's shape: the gate wording, the outcome word,
 // the CLI equivalent for refusals, and the write itself.
 type verbSpec struct {
-	verb    string
-	outcome string
-	cli     string
-	warning string
-	always  bool
+	phrase      string // lowercase verb for the action phrase: "pause", "abort"
+	outcome     string
+	cli         string
+	consequence string
+	noUndo      bool
 	// do performs the write. With perStepBudget do runs under the caller's
 	// context and bounds each of its own steps via operateRPC; otherwise it
 	// runs under one RPC-timeout budget.
@@ -245,9 +247,10 @@ func (s *Server) runOperateVerb(ctx context.Context, req *mcp.CallToolRequest, i
 	defer conn.cleanup()
 
 	if r := confirmWrite(ctx, req, writeGate{
-		Verb: spec.verb, Name: in.Name,
+		Action: fmt.Sprintf("%s projection %q", spec.phrase, in.Name),
+		Name:   in.Name, Env: conn.env.Name,
 		Target: conn.target, Production: conn.production,
-		Always: spec.always, Warning: spec.warning,
+		NoUndo: spec.noUndo, Consequence: spec.consequence,
 		CLI: spec.cli + " " + shellQuote(in.Name),
 	}); r != nil {
 		return r, nil, nil

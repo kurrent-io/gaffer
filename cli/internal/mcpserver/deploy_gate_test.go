@@ -42,13 +42,18 @@ func gateReq(ss *mcp.ServerSession) *mcp.CallToolRequest {
 }
 
 func prodGate() writeGate {
-	return writeGate{Verb: "Pause", Name: "orders", Target: "orders-prod", Production: true, CLI: "gaffer disable orders"}
+	return writeGate{
+		Action: `pause projection "orders"`, Name: "orders", Env: "production",
+		Target: "orders-prod", Production: true,
+		Consequence: "Stops after a final checkpoint; resume with deploy_resume.",
+		CLI:         "gaffer disable orders",
+	}
 }
 
 func TestConfirmWriteNonProdProceeds(t *testing.T) {
 	// Not production, not Always: no elicit, no session needed - the client's
 	// tool-approval layer is the gate.
-	if r := confirmWrite(context.Background(), nil, writeGate{Verb: "Pause", Name: "orders"}); r != nil {
+	if r := confirmWrite(context.Background(), nil, writeGate{Action: `pause projection "orders"`, Name: "orders", Env: "local"}); r != nil {
 		t.Fatalf("non-prod write should proceed without a session, got %v", r)
 	}
 }
@@ -62,8 +67,9 @@ func TestConfirmWriteAccepted(t *testing.T) {
 	if r := confirmWrite(context.Background(), gateReq(ss), prodGate()); r != nil {
 		t.Fatalf("accepted confirm should proceed, got %v", r)
 	}
-	if !strings.Contains(asked, `Pause "orders" on production orders-prod?`) {
-		t.Errorf("question = %q, want the verb, projection, and production target named", asked)
+	const want = `PRODUCTION [env.production]: pause projection "orders" on "orders-prod"? Stops after a final checkpoint; resume with deploy_resume.`
+	if asked != want {
+		t.Errorf("question = %q, want %q", asked, want)
 	}
 }
 
@@ -102,20 +108,14 @@ func TestConfirmWriteElicitError(t *testing.T) {
 	}
 }
 
-func TestProdWhere(t *testing.T) {
-	for _, tc := range []struct {
-		target string
-		prod   bool
-		want   string
-	}{
-		{"orders-prod", true, "production orders-prod"},
-		{"", true, "production"},
-		{"staging", false, "staging"},
-		{"", false, "the target server"},
-	} {
-		if got := prodWhere(tc.target, tc.prod); got != tc.want {
-			t.Errorf("prodWhere(%q, %v) = %q, want %q", tc.target, tc.prod, got, tc.want)
-		}
+func TestWriteGateQuestionUnknownTarget(t *testing.T) {
+	// An unreadable $server-info leaves no target name; the question says so
+	// plainly instead of quoting an empty string.
+	g := writeGate{Action: `pause projection "orders"`, Name: "orders", Env: "prod", Production: true, Consequence: "Stops."}
+	g.Target = ""
+	const want = `PRODUCTION [env.prod]: pause projection "orders" on the target server? Stops.`
+	if got := g.question(); got != want {
+		t.Errorf("question = %q, want %q", got, want)
 	}
 }
 
@@ -140,20 +140,78 @@ func TestConfirmWriteNilSessionFailsClosed(t *testing.T) {
 	}
 }
 
-func TestConfirmWriteAlwaysElicitsOffProd(t *testing.T) {
-	// Delete's tier: Always elicits even off production, and the warning
-	// rides along in the question.
+func TestConfirmWriteNoUndoElicitsOffProd(t *testing.T) {
+	// The no-undo tier off production: still elicits, but as a plain
+	// accept/decline - the typed escalation is production-only. The env key
+	// trails the target and the consequence follows the question.
 	asked := ""
 	ss := elicitSession(t, func(_ context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 		asked = req.Params.Message
 		return &mcp.ElicitResult{Action: "accept"}, nil
 	})
-	g := writeGate{Verb: "Delete", Name: "orders", Target: "staging", Always: true, Warning: "There is no undo.", CLI: "gaffer delete orders"}
-	if r := confirmWrite(context.Background(), gateReq(ss), g); r != nil {
-		t.Fatalf("accepted always-gate should proceed, got %v", r)
+	g := writeGate{
+		Action: `delete projection "orders"`, Name: "orders", Env: "local",
+		Target: "staging", NoUndo: true,
+		Consequence: "Removes the projection, its state, and checkpoints. No undo.",
+		CLI:         "gaffer delete orders",
 	}
-	if !strings.Contains(asked, `Delete "orders" on staging?`) || !strings.Contains(asked, "There is no undo.") {
-		t.Errorf("question = %q, want the non-prod target and the warning", asked)
+	if r := confirmWrite(context.Background(), gateReq(ss), g); r != nil {
+		t.Fatalf("accepted no-undo gate should proceed, got %v", r)
+	}
+	const want = `Delete projection "orders" on "staging" [env.local]? Removes the projection, its state, and checkpoints. No undo.`
+	if asked != want {
+		t.Errorf("question = %q, want %q", asked, want)
+	}
+	if strings.Contains(asked, "Type the projection name") {
+		t.Errorf("off production the no-undo tier must not require typing, got %q", asked)
+	}
+}
+
+func TestConfirmWriteTypedConfirmOnProd(t *testing.T) {
+	// The no-undo tier on production: accept alone isn't enough - the human
+	// types the projection name, and a mismatch or missing field refuses.
+	g := prodGate()
+	g.NoUndo = true
+
+	cases := []struct {
+		name    string
+		content map[string]any
+		wantOK  bool
+		wantMsg string
+	}{
+		{"typed name matches", map[string]any{"confirm": "orders"}, true, ""},
+		{"typed name differs", map[string]any{"confirm": "order"}, false, "doesn't match"},
+		// A missing or mistyped field is rejected by the SDK's own schema
+		// validation before the gate's value check - a different message,
+		// the same fail-closed outcome.
+		{"field missing", nil, false, "confirmation failed"},
+		{"field wrong type", map[string]any{"confirm": 7}, false, "confirmation failed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var asked string
+			ss := elicitSession(t, func(_ context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+				asked = req.Params.Message
+				return &mcp.ElicitResult{Action: "accept", Content: tc.content}, nil
+			})
+			r := confirmWrite(context.Background(), gateReq(ss), g)
+			if !strings.Contains(asked, `Type the projection name ("orders") to confirm.`) {
+				t.Errorf("question = %q, want the typing instruction", asked)
+			}
+			if tc.wantOK {
+				if r != nil {
+					t.Fatalf("matching typed confirm should proceed, got %v", r)
+				}
+				return
+			}
+			if r == nil || !r.IsError {
+				t.Fatalf("expected refusal, got %v", r)
+			}
+			msg := testutil.MustType[*mcp.TextContent](t, r.Content[0]).Text
+			if !strings.Contains(msg, tc.wantMsg) || !strings.Contains(msg, "nothing was changed") {
+				t.Errorf("refusal = %q", msg)
+			}
+		})
 	}
 }
 

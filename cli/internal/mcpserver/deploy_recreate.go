@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
@@ -77,23 +78,24 @@ func (s *Server) handleDeployRecreate(ctx context.Context, req *mcp.CallToolRequ
 		return toolError("projection %q would fault on the server, so recreate refuses to rebuild from it: %s", in.Name, strings.Join(reasons, "; ")), nil, nil
 	}
 
-	warning := "State is destroyed and rebuilt from zero."
+	consequence := "Destroys state and rebuilds from zero. No undo."
 	if local.Emit && !in.DeleteEmitted {
-		warning += " It emits: recreating re-emits and may duplicate into its target streams (deleteEmitted wipes them first)."
+		consequence += " It emits: recreating re-emits and may duplicate (deleteEmitted wipes the emitted streams first)."
 	}
-	// Always elicits, production or not: recreate embeds a delete - state is
-	// wiped, and deleteEmitted destroys emitted-stream data - so it sits in
-	// delete's tier, matching the CLI's confirm-always for recreate.
+	// No-undo tier, like delete: recreate embeds a delete - state is wiped,
+	// and deleteEmitted destroys emitted-stream data - so it always elicits,
+	// and a production confirm requires typing the projection name.
 	cli := "gaffer recreate " + shellQuote(in.Name)
 	if in.DeleteEmitted {
 		cli += " --delete-emitted"
 	}
 	if r := confirmWrite(ctx, req, writeGate{
-		Verb: "Recreate", Name: in.Name,
+		Action: fmt.Sprintf("recreate projection %q", in.Name),
+		Name:   in.Name, Env: conn.env.Name,
 		Target: conn.target, Production: conn.production,
-		Always:  true,
-		Warning: warning,
-		CLI:     cli,
+		NoUndo:      true,
+		Consequence: consequence,
+		CLI:         cli,
 	}); r != nil {
 		return r, nil, nil
 	}

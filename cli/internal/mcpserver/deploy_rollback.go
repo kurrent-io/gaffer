@@ -76,10 +76,11 @@ func (s *Server) handleDeployRollback(ctx context.Context, req *mcp.CallToolRequ
 	}
 
 	if r := confirmWrite(ctx, req, writeGate{
-		Verb: "Roll back", Name: in.Name,
+		Action: fmt.Sprintf("roll projection %q back to %.7s", in.Name, tgt.Hash),
+		Name:   in.Name, Env: conn.env.Name,
 		Target: conn.target, Production: conn.production,
-		Warning: fmt.Sprintf("This rewrites the live query %.7s -> %.7s. Code rolls back, state does not; local files stay untouched and will show as drift.", currentDesc.Hash(), tgt.Hash),
-		CLI:     fmt.Sprintf("gaffer rollback %s %s", shellQuote(in.Name), prefix),
+		Consequence: "Rewrites the live query; state built by the newer query is kept. Local files unchanged and will show as drift.",
+		CLI:         fmt.Sprintf("gaffer rollback %s %s", shellQuote(in.Name), prefix),
 	}); r != nil {
 		return r, nil, nil
 	}

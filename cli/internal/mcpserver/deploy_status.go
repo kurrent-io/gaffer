@@ -13,7 +13,8 @@ var deployStatusTool = &mcp.Tool{
 	Name: "deploy_status",
 	Description: "Show the state of projections deployed to a KurrentDB environment and how " +
 		"each compares to local config. Mirrors `gaffer status --json`; the response echoes " +
-		"the resolved env. Omit `name` to list every local and deployed projection. Per " +
+		"the resolved env, the target server, and whether it reports itself as production. " +
+		"Omit `name` to list every local and deployed projection. Per " +
 		"projection: drift is in-sync / drifted / not-deployed / untracked / invalid (an " +
 		"invalid row carries reason, the local compile or config error); owner " +
 		"is in-config / orphan (gaffer-deployed but no longer in gaffer.toml - a deletion " +
@@ -74,5 +75,7 @@ func (s *Server) handleDeployStatus(ctx context.Context, _ *mcp.CallToolRequest,
 	}
 	report := cliout.BuildStatusReport(entries, <-driftCh)
 	report.Env = env.Name
+	target, prod := operateTarget(ctx, client, env.Name)
+	report.Target, report.Production = target, &prod
 	return toolResult(report), nil, nil
 }

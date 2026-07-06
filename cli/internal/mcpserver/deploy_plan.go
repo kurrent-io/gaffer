@@ -13,7 +13,8 @@ var deployPlanTool = &mcp.Tool{
 	Description: "Compute what `gaffer deploy` would do to a KurrentDB environment without " +
 		"writing anything: per projection, whether it would be created, updated, rebuilt, " +
 		"skipped, or refused (with the reason), plus logic-change and external-change " +
-		"flags. faultedUpdates names update targets currently faulted on the server (an " +
+		"flags. The response echoes the resolved env, the target server, and whether it " +
+		"reports itself as production. faultedUpdates names update targets currently faulted on the server (an " +
 		"update won't clear the fault); configDrift reports [database_config] divergence. " +
 		"Mirrors `gaffer deploy --dry-run --json`, except there is no preflight gate: a " +
 		"projection that doesn't compile is planned as refused with the compile error, " +
@@ -79,8 +80,11 @@ func (s *Server) handleDeployPlan(ctx context.Context, _ *mcp.CallToolRequest, i
 		}
 	}
 
+	target, prod := operateTarget(ctx, client, env.Name)
 	result := map[string]any{
-		"env": env.Name,
+		"env":        env.Name,
+		"target":     target,
+		"production": prod,
 		// The same per-item array a `gaffer deploy --dry-run --json` emits;
 		// outcome is the would-be verdict.
 		"plan":    cliout.BuildPlanJSON(plan),

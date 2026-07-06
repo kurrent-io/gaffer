@@ -263,9 +263,11 @@ func instructionsFor(cfg *config.Config) string {
 		"scaffold to create new ones, run with fixture events to test, " +
 		"get_timeline/get_step to inspect results, debug with break_at to pause and " +
 		"evaluate expressions. Each run replaces the previous session. " +
-		"For deployed environments (read-only): deploy_status shows live state and drift, " +
+		"For deployed environments: deploy_status shows live state and drift, " +
 		"deploy_plan previews what a deploy would change, deploy_history reads a " +
-		"projection's audit log."
+		"projection's audit log. The deploy_pause/resume/abort/recreate/rollback/delete " +
+		"verbs manage a deployed projection's lifecycle; destructive or production " +
+		"writes ask the human to confirm through the client."
 }
 
 // resolveRoot finds the project root. With an override it walks up from

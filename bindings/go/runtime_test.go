@@ -105,13 +105,15 @@ func TestSessionHandleIsNotPointer(t *testing.T) {
 
 // TestSessionHandleSurvivesConcurrentGC exercises the FFI under GC pressure:
 // it feeds concurrently across sessions while a background goroutine churns
-// runtime.GC(), so a stack scan can coincide with a live handle mid-Feed
-// (consumeError -> json.Unmarshal) or mid-callback (the handle flows back
-// through user_data into the emit trampoline). With the handle stored as a
-// pointer this could trip the GC's invalidptr abort; uintptr storage and an
-// integer-typed user_data keep it off the stack maps. This is a probabilistic
-// behavioural check - TestSessionHandleIsNotPointer is the deterministic guard
-// against the field type regressing.
+// runtime.GC(), so a stack copy can coincide with a live handle - mid-Feed
+// (consumeError -> json.Unmarshal), mid-callback (the emit trampoline
+// re-enters Go while the FFI call's frames sit below it, stack movable), or
+// at the call boundary itself. Any pointer-typed slot holding the integer
+// handle at such a moment trips the GC's invalidptr abort (UI-1813 caught
+// exactly that in this test); handles stay uintptr/uintptr_t end-to-end and
+// the go_* shims cast in C, off Go's stack maps. This is a probabilistic
+// behavioural check - TestSessionHandleIsNotPointer is the deterministic
+// guard against the field type regressing.
 func TestSessionHandleSurvivesConcurrentGC(t *testing.T) {
 	const (
 		sessions = 8

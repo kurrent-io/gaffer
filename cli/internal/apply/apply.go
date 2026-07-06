@@ -1,6 +1,6 @@
-// Package apply executes a deploy plan - the write half of the read side
-// the drift package computes. Shared by gaffer deploy and the MCP deploy
-// tool so the RPC bindings, ledger stamping, and failure accounting can't
+// Package apply executes a deploy plan: the writes that realize what the
+// drift package computed. Shared by gaffer deploy and the MCP deploy tool
+// so the RPC bindings, ledger stamping, and failure accounting can't
 // drift between surfaces.
 package apply
 
@@ -13,7 +13,8 @@ import (
 )
 
 // Manager is the slice of remote.Client the apply step needs: create and
-// update, plus the disable/reset/enable a logic-change rebuild sequences.
+// update, plus the disable/reset/enable steps a logic-change rebuild
+// sequences.
 // Seaming it lets the orchestration be tested without a live database;
 // *remote.Client satisfies it.
 type Manager interface {
@@ -29,7 +30,8 @@ type Manager interface {
 // create/update/reset items; skip/refuse/planning-error items stream their
 // verdict unchanged. It continues past a failure so the summary is
 // complete; the caller turns a non-zero count into a non-zero exit or tool
-// error. onStart fires before an item's RPCs (nil to skip); onDone fires
+// error. onStart fires before an item's RPCs, for every item including the
+// ones that apply nothing (nil to skip); onDone must be non-nil and fires
 // with every item's outcome.
 func Plan(ctx context.Context, plan []drift.PlanItem, mgr Manager, ledger remote.Ledger, onStart func(name string, index, total int), onDone func(drift.Result)) (failed int) {
 	total := len(plan)

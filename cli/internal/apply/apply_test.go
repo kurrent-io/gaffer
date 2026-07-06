@@ -215,6 +215,13 @@ func TestPlan(t *testing.T) {
 	if strings.Join(outcomes, ",") != want {
 		t.Fatalf("outcomes = %v, want %s", outcomes, want)
 	}
+	// onStart fires for every item - skip, refuse, and planning-error
+	// included (the interactive sink spins its active line on it) - and
+	// strictly precedes each item's done.
+	wantEvents := "start:a,done:a,start:b,done:b,start:c,done:c,start:d,done:d,start:e,done:e"
+	if got := strings.Join(rec.events, ","); got != wantEvents {
+		t.Fatalf("events = %s, want %s", got, wantEvents)
+	}
 	// The ledger threads through to the writes.
 	if f.createOpts.Ledger == nil || *f.createOpts.Ledger != testLedger {
 		t.Errorf("create ledger = %+v, want %+v", f.createOpts.Ledger, testLedger)
@@ -239,6 +246,17 @@ func TestPlanClearsExternalChangeOnFailure(t *testing.T) {
 	if rec.results[0].ExternalChange {
 		t.Error("a failed apply overwrote nothing, so externalChange must be cleared")
 	}
+
+	// The successful half: an apply that lands over an external change keeps
+	// the flag, so the caller can caution that it overwrote.
+	rec = &recorder{}
+	Plan(context.Background(), []drift.PlanItem{ext("ok")}, &fakeWriter{}, testLedger, rec.start, rec.done)
+	if len(rec.results) != 1 || rec.results[0].Err != nil {
+		t.Fatalf("results = %+v, want the successful update", rec.results)
+	}
+	if !rec.results[0].ExternalChange {
+		t.Error("a successful apply over an external change must keep the flag")
+	}
 }
 
 func TestPlanStopsOnCancel(t *testing.T) {
@@ -256,5 +274,9 @@ func TestPlanStopsOnCancel(t *testing.T) {
 	Plan(ctx, plan, f, testLedger, rec.start, rec.done)
 	if calls != 1 {
 		t.Fatalf("writer calls = %d, want the loop to stop after the cancel", calls)
+	}
+	// The in-flight item still reports its outcome; nothing later starts.
+	if got := strings.Join(rec.events, ","); got != "start:a,done:a" {
+		t.Fatalf("events = %s, want start:a,done:a only", got)
 	}
 }

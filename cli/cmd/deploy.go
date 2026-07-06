@@ -247,8 +247,9 @@ func deployNames(cfg *config.Config, name string) ([]string, error) {
 	return names, nil
 }
 
-// rpc bounds one server call by projectionRPCTimeout, so every step of a
-// multi-step apply gets a full budget rather than sharing one.
+// rpc bounds one server call by projectionRPCTimeout for the commands that
+// read or write outside the apply loop (rollback's read and update, the
+// operate verbs' existence checks and RPCs).
 func rpc(ctx context.Context, fn func(context.Context) error) error {
 	ctx, cancel := context.WithTimeout(ctx, projectionRPCTimeout)
 	defer cancel()

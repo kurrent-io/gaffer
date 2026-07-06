@@ -285,6 +285,45 @@ public static class DiagnosticCatalog {
 		FixedIn = null, // V2 keeps no emitted-streams catalog; no plan to support it
 	};
 
+	/// <summary>
+	/// A handler exception never faults a deployed V2 projection: the partition processor's
+	/// task dies unobserved (only the read-loop task feeds <c>IsFaulted</c>), so the projection
+	/// reports Running while processing and persistence have stopped - no checkpoint, no state
+	/// or emitted-event writes, nothing logged (DB-2159). Not reproduced: gaffer faults the
+	/// event locally (the behaviour V2 should have) and attaches this diagnostic to the error to
+	/// explain the divergence. Fires for any event-processing throw under engine_version 2;
+	/// partition resolution is exempt because it runs on the server's read loop, whose
+	/// exceptions fault the projection properly.
+	/// </summary>
+	public static readonly DiagnosticDescriptor HandlerErrorWedgesOnV2 = new() {
+		Code = "quirk.handlerError.wedgesOnV2",
+		Class = DiagnosticClass.Quirk,
+		Severity = DiagnosticSeverity.Error,
+		Message = "An error while processing an event wedges a deployed engine_version 2 projection instead of faulting it: status stays Running while processing and persistence have stopped, and nothing is logged.",
+		Docs = "When an event-processing exception escapes on deployed engine_version 2 - a throwing handler, a state-load or serialization failure, or a `$created`/`$deleted` callback error - the projection does not fault. The failure is silent: `status` stays `Running` and `eventsProcessedAfterRestart` keeps counting, but processing has stopped - no checkpoint is written and no state or emitted events are persisted, for every partition, not just the failing one. Nothing reaches the server log. Gaffer does not reproduce the wedge: locally the event faults with the error, which is what the deployed projection should do. Treat an event-processing error under engine_version 2 as a deployment risk - guard handlers against throwing, and monitor deployed V2 projections by checkpoint progress rather than `status`.",
+		BadExample = """
+		fromStream('orders').when({
+		  $init() { return { total: 0 }; },
+		  OrderPlaced(state, event) {
+		    state.total += event.body.amount.value; // throws when amount is missing; deployed V2 wedges silently
+		    return state;
+		  }
+		});
+		""",
+		GoodExample = """
+		fromStream('orders').when({
+		  $init() { return { total: 0 }; },
+		  OrderPlaced(state, event) {
+		    const amount = event.body.amount;
+		    if (amount && typeof amount.value === 'number')
+		      state.total += amount.value;
+		    return state;
+		  }
+		});
+		""",
+		FixedIn = null, // DB-2159 open; no upstream fix as of the 26.2.0 nightlies
+	};
+
 	// ---------- usage.* : the user's own projection code ----------
 
 	/// <summary><c>linkStreamTo</c> is undocumented in KurrentDB and may be removed.</summary>
@@ -425,6 +464,7 @@ public static class DiagnosticCatalog {
 		BiStateNonArrayReturn,
 		OutputStateNoEffectOnV2,
 		TrackEmittedStreamsUnsupportedOnV2,
+		HandlerErrorWedgesOnV2,
 		LinkStreamToDeprecated,
 		TransformsNotInvoked,
 		OptionsDuplicate,

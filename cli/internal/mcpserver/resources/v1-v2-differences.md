@@ -153,3 +153,24 @@ diagnostics so you find it before the result stream surprises you:
 projection fails to create), matching KurrentDB, which maintains no
 emitted-streams catalog on V2.
 
+## Handler errors
+
+**V1:** An exception thrown while processing an event faults the projection:
+`status` becomes `Faulted` with the JS error in `stateReason`.
+
+**V2:** The projection never faults - it wedges silently. `status` stays
+`Running` and `eventsProcessedAfterRestart` keeps counting (it counts events
+read, not handled), but processing has stopped: no checkpoint is written and
+no state or emitted events are persisted, for every partition, not just the
+failing one. Nothing reaches the server log.
+
+**Impact:** A deployed V2 projection whose handler throws looks healthy on
+every status surface. Monitor V2 projections by checkpoint progress rather
+than `status`.
+
+Gaffer does not reproduce the wedge: locally an event-processing error (a
+throwing handler, a state-load or serialization failure, or a
+`$created`/`$deleted` callback error) faults the event - the behaviour V2
+should have - and the error carries the `quirk.handlerError.wedgesOnV2`
+(Error) diagnostic explaining the divergence.
+

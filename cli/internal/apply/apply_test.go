@@ -280,3 +280,16 @@ func TestPlanStopsOnCancel(t *testing.T) {
 		t.Fatalf("events = %s, want start:a,done:a only", got)
 	}
 }
+
+func TestPlanNilOnDonePanicsBeforeWriting(t *testing.T) {
+	f := &fakeWriter{}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("nil onDone must panic - silently dropping results would hide what a deploy did")
+		}
+		if len(f.calls) != 0 {
+			t.Fatalf("the panic must fire before any write, got calls %v", f.calls)
+		}
+	}()
+	Plan(context.Background(), []drift.PlanItem{item("a", drift.ActionCreate)}, f, testLedger, nil, nil)
+}

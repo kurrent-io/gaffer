@@ -32,8 +32,13 @@ type Manager interface {
 // complete; the caller turns a non-zero count into a non-zero exit or tool
 // error. onStart fires before an item's RPCs, for every item including the
 // ones that apply nothing (nil to skip); onDone must be non-nil and fires
-// with every item's outcome.
+// with every item's outcome - results are the deploy's output, so there is
+// no silent-drop tolerance, and the check runs before any write rather
+// than panicking after the first item already applied.
 func Plan(ctx context.Context, plan []drift.PlanItem, mgr Manager, ledger remote.Ledger, onStart func(name string, index, total int), onDone func(drift.Result)) (failed int) {
+	if onDone == nil {
+		panic("apply.Plan: onDone must be non-nil - results are the deploy's output")
+	}
 	total := len(plan)
 	for i := range plan {
 		item := plan[i]

@@ -79,7 +79,7 @@ func (s *Server) handleDeployRollback(ctx context.Context, req *mcp.CallToolRequ
 		Verb: "Roll back", Name: in.Name,
 		Target: conn.target, Production: conn.production,
 		Warning: fmt.Sprintf("This rewrites the live query %.7s -> %.7s. Code rolls back, state does not; local files stay untouched and will show as drift.", currentDesc.Hash(), tgt.Hash),
-		CLI:     fmt.Sprintf("gaffer rollback %s %s", in.Name, prefix),
+		CLI:     fmt.Sprintf("gaffer rollback %s %s", shellQuote(in.Name), prefix),
 	}); r != nil {
 		return r, nil, nil
 	}

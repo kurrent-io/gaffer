@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -76,6 +77,14 @@ func confirmWrite(ctx context.Context, req *mcp.CallToolRequest, g writeGate) *m
 		return toolError("%s %q was not confirmed (%s); nothing was changed", g.Verb, g.Name, action)
 	}
 	return nil
+}
+
+// shellQuote single-quotes a value for the CLI hand-off strings, so a
+// crafted projection name can't smuggle shell syntax into the command a
+// human is told to copy and run. POSIX single quotes disable all expansion;
+// an embedded single quote closes, escapes, and reopens.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // prodWhere names the target for a confirm question: the target with

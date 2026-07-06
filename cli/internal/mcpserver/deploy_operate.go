@@ -248,7 +248,7 @@ func (s *Server) runOperateVerb(ctx context.Context, req *mcp.CallToolRequest, i
 		Verb: spec.verb, Name: in.Name,
 		Target: conn.target, Production: conn.production,
 		Always: spec.always, Warning: spec.warning,
-		CLI: fmt.Sprintf("%s %s", spec.cli, in.Name),
+		CLI: spec.cli + " " + shellQuote(in.Name),
 	}); r != nil {
 		return r, nil, nil
 	}

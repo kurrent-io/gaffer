@@ -156,3 +156,18 @@ func TestConfirmWriteAlwaysElicitsOffProd(t *testing.T) {
 		t.Errorf("question = %q, want the non-prod target and the warning", asked)
 	}
 }
+
+func TestShellQuote(t *testing.T) {
+	for in, want := range map[string]string{
+		"orders":         "'orders'",
+		"weird name":     "'weird name'",
+		"a;rm -rf ~":     "'a;rm -rf ~'",
+		"it's":           `'it'\''s'`,
+		"$(touch pwned)": "'$(touch pwned)'",
+		"`touch pwned`":  "'`touch pwned`'",
+	} {
+		if got := shellQuote(in); got != want {
+			t.Errorf("shellQuote(%q) = %s, want %s", in, got, want)
+		}
+	}
+}

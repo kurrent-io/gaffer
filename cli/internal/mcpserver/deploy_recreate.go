@@ -84,7 +84,7 @@ func (s *Server) handleDeployRecreate(ctx context.Context, req *mcp.CallToolRequ
 	// Always elicits, production or not: recreate embeds a delete - state is
 	// wiped, and deleteEmitted destroys emitted-stream data - so it sits in
 	// delete's tier, matching the CLI's confirm-always for recreate.
-	cli := "gaffer recreate " + in.Name
+	cli := "gaffer recreate " + shellQuote(in.Name)
 	if in.DeleteEmitted {
 		cli += " --delete-emitted"
 	}

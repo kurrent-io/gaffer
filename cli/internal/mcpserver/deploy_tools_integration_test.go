@@ -73,6 +73,9 @@ func TestIntegration_DeployTools(t *testing.T) {
 	if status["env"] != "default" {
 		t.Fatalf("expected the resolved env echoed, got %v", status["env"])
 	}
+	if status["production"] != false || status["target"] == "" {
+		t.Fatalf("expected target and production echoed, got target=%v production=%v", status["target"], status["production"])
+	}
 	projs := status["projections"].([]any)
 	if len(projs) != 1 {
 		t.Fatalf("expected 1 status entry, got %d", len(projs))

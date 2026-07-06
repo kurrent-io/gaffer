@@ -37,11 +37,11 @@ type historyDiff struct {
 // baseline they make the diff unknown rather than a created-from-empty.
 func historyDiffAt(versions []historyVersion, i int, morePages bool) historyDiff {
 	sel := versions[i]
-	if sel.stateChange() || sel.Definition == nil {
+	if sel.StateChange() || sel.Definition == nil {
 		return historyDiff{state: diffNoChange, sel: sel}
 	}
 	for j := i + 1; j < len(versions); j++ {
-		if versions[j].stateChange() || versions[j].Definition == nil {
+		if versions[j].StateChange() || versions[j].Definition == nil {
 			continue
 		}
 		base := versions[j]

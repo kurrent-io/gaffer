@@ -79,13 +79,13 @@ func candidateSpans(versions []historyVersion) []graphSpan {
 	var spans []graphSpan
 	pos := 0
 	for i, hv := range versions {
-		if hv.contentKey == "" || hv.stateChange() {
+		if hv.ContentHash == "" || hv.StateChange() {
 			continue
 		}
-		if o, ok := last[hv.contentKey]; ok && pos-o.pos > 1 {
+		if o, ok := last[hv.ContentHash]; ok && pos-o.pos > 1 {
 			spans = append(spans, graphSpan{top: o.index, bottom: i})
 		}
-		last[hv.contentKey] = occurrence{index: i, pos: pos}
+		last[hv.ContentHash] = occurrence{index: i, pos: pos}
 		pos++
 	}
 	slices.SortStableFunc(spans, func(a, b graphSpan) int { return a.top - b.top })

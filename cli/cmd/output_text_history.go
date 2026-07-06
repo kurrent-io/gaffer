@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
+	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
 const historyHashWidth = 7 // a short content hash; blank for a state change
@@ -55,7 +56,7 @@ func (tw *textWriter) WriteHistory(name string, versions []historyVersion, total
 // run-state glyph in the gutter ahead of it.
 func (tw *textWriter) historyRowTail(hv historyVersion, ow int, pad string) string {
 	hash := strings.Repeat(" ", historyHashWidth)
-	if !hv.stateChange() {
+	if !hv.StateChange() {
 		hash = tw.styles.dim.Render(padCells(hv.Hash, historyHashWidth))
 	}
 	op := tw.historyKindStyle(hv).Render(padCells(truncate(hv.eventLabel(), ow), ow))
@@ -87,11 +88,11 @@ func (tw *textWriter) historyProvenance(hv historyVersion) string {
 // style and (for the TUI) truncate it to the pane.
 func historyProvenanceText(hv historyVersion) (text string, warn bool) {
 	switch hv.Kind {
-	case kindEditedExternally:
+	case remote.KindEditedExternally:
 		return "⚠ " + changeSummary(hv.Change) + " outside gaffer", true
-	case kindUnreadable:
+	case remote.KindUnreadable:
 		return "⚠ deploy metadata could not be read", true
-	case kindReconfigured:
+	case remote.KindReconfigured:
 		return configSummary(hv.ConfigChanges), false
 	}
 	if hv.Ledger == nil {
@@ -124,15 +125,15 @@ func historyProvenanceText(hv historyVersion) (text string, warn bool) {
 // create - a quiet-but-present grey.
 func (tw *textWriter) historyKindStyle(hv historyVersion) lipgloss.Style {
 	switch hv.Kind {
-	case kindDeleted:
+	case remote.KindDeleted:
 		return tw.styles.errStatus
-	case kindEnabled:
+	case remote.KindEnabled:
 		return tw.styles.added
-	case kindEditedExternally, kindChangedByTool, kindUnreadable:
+	case remote.KindEditedExternally, remote.KindChangedByTool, remote.KindUnreadable:
 		return tw.styles.warning
-	case kindDeploy, kindRollback, kindReset, kindRecreate:
+	case remote.KindDeploy, remote.KindRollback, remote.KindReset, remote.KindRecreate:
 		return tw.styles.label
-	case kindRewritten:
+	case remote.KindRewritten:
 		return tw.styles.dim
 	default: // disabled, reconfigured, created
 		return tw.styles.muted
@@ -147,7 +148,7 @@ func historyGlyph(hv historyVersion) string {
 	switch {
 	case hv.Deleted:
 		return "✗"
-	case hv.enabled():
+	case hv.Enabled():
 		return "●"
 	default:
 		return "○"
@@ -162,7 +163,7 @@ func (tw *textWriter) historyRunStyle(hv historyVersion) lipgloss.Style {
 	switch {
 	case hv.Deleted:
 		return tw.styles.errStatus
-	case hv.enabled():
+	case hv.Enabled():
 		return tw.styles.added
 	default:
 		return tw.styles.muted

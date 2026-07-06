@@ -225,10 +225,10 @@ func TestHistoryFoldsRecreateBookendsAcrossPages(t *testing.T) {
 	if len(m.versions) != 2 {
 		t.Fatalf("got %d rows after the page, want 2 (recreate + deploy): %v", len(m.versions), kinds(m.versions))
 	}
-	if m.versions[0].Kind != kindRecreate || len(m.versions[0].Absorbed) != 2 {
+	if m.versions[0].Kind != remote.KindRecreate || len(m.versions[0].Absorbed) != 2 {
 		t.Errorf("row 0 = %q with %d absorbed, want recreate folding both bookends", m.versions[0].Kind, len(m.versions[0].Absorbed))
 	}
-	if m.versions[1].Kind != kindDeploy {
+	if m.versions[1].Kind != remote.KindDeploy {
 		t.Errorf("row 1 = %q, want the deploy", m.versions[1].Kind)
 	}
 }

@@ -6,27 +6,28 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
 // WriteStatus renders a single projection's status as a detail block: its
 // runtime state (when deployed), how it compares to local, and - where a ledger
 // is present - who last deployed it and from where.
-func (tw *textWriter) WriteStatus(e statusEntry) {
+func (tw *textWriter) WriteStatus(e drift.StatusEntry) {
 	tw.heading(e.Name)
-	if e.runtime != nil {
+	if e.Runtime != nil {
 		tw.detail("State", tw.runtimeStateStyle(e).Render(runtimeStateText(e)))
 		tw.detail("Progress", progressText(e))
-		if e.runtime.Position != "" {
-			tw.detail("Position", e.runtime.Position)
+		if e.Runtime.Position != "" {
+			tw.detail("Position", e.Runtime.Position)
 		}
-		if e.runtime.State == remote.StateFaulted && e.runtime.FaultReason != "" {
-			tw.detail("Fault", tw.styles.errDetail.Render(e.runtime.FaultReason))
+		if e.Runtime.State == remote.StateFaulted && e.Runtime.FaultReason != "" {
+			tw.detail("Fault", tw.styles.errDetail.Render(e.Runtime.FaultReason))
 		}
 	}
-	tw.detail("Drift", tw.driftStyle(e.comparison).Render(driftVerdict(e.comparison)))
-	tw.writeLedgerProvenance(e.comparison)
-	if e.State == driftInvalid && e.LocalErr != nil {
+	tw.detail("Drift", tw.driftStyle(e.Comparison).Render(driftVerdict(e.Comparison)))
+	tw.writeLedgerProvenance(e.Comparison)
+	if e.State == drift.Invalid && e.LocalErr != nil {
 		tw.blank()
 		tw.write("%s\n", tw.styles.errDetail.Render(e.LocalErr.Error()))
 	}
@@ -36,18 +37,18 @@ func (tw *textWriter) WriteStatus(e statusEntry) {
 // status detail block and gaffer diff. Drift is refined by attribution (local
 // ahead / changed externally) and an untracked projection by ownership (orphan vs
 // plain untracked - the DEPLOYED VIA column / provenance names the tool behind it).
-func driftVerdict(c comparison) string {
+func driftVerdict(c drift.Comparison) string {
 	switch c.State {
-	case driftUntracked:
-		if c.owner() == ownerOrphan {
+	case drift.Untracked:
+		if c.Owner() == drift.OwnerOrphan {
 			return "orphan"
 		}
 		return "untracked"
-	case driftDrifted:
-		switch c.attribution() {
-		case attrLocalAhead:
+	case drift.Drifted:
+		switch c.Attribution() {
+		case drift.AttrLocalAhead:
 			return "local ahead"
-		case attrChangedByTool, attrChangedServer:
+		case drift.AttrChangedByTool, drift.AttrChangedServer:
 			return "changed externally"
 		default:
 			return "drifted"
@@ -60,8 +61,8 @@ func driftVerdict(c comparison) string {
 // writeLedgerProvenance adds the deploy-provenance detail lines from the ledger -
 // when, by which tool, who, and from what source revision. No-op without a ledger;
 // an unreadable entry is flagged. Shared by the status detail block and gaffer diff.
-func (tw *textWriter) writeLedgerProvenance(c comparison) {
-	if at := c.lastDeployTime(); !at.IsZero() {
+func (tw *textWriter) writeLedgerProvenance(c drift.Comparison) {
+	if at := c.LastDeployTime(); !at.IsZero() {
 		tw.detail("Last deploy", at.Format("2006-01-02 15:04"))
 	}
 	if c.LedgerErr != nil {
@@ -106,7 +107,7 @@ func shortRevision(rev string) string {
 // WriteStatusTable renders all projections as a borderless aligned table. The
 // cell text is plain; colour is applied per cell by the StyleFunc keying off the
 // row's entry, so lipgloss's ANSI-aware width keeps the columns aligned.
-func (tw *textWriter) WriteStatusTable(entries []statusEntry) {
+func (tw *textWriter) WriteStatusTable(entries []drift.StatusEntry) {
 	const pad = 3
 	t := table.New().
 		BorderTop(false).BorderBottom(false).BorderLeft(false).BorderRight(false).
@@ -120,13 +121,13 @@ func (tw *textWriter) WriteStatusTable(entries []statusEntry) {
 			case 1:
 				return tw.runtimeStateStyle(entries[row]).PaddingRight(pad)
 			case 5:
-				return tw.driftStyle(entries[row].comparison).PaddingRight(pad)
+				return tw.driftStyle(entries[row].Comparison).PaddingRight(pad)
 			default:
 				return tw.styles.emitted.PaddingRight(pad)
 			}
 		})
 	for _, e := range entries {
-		t.Row(e.Name, runtimeStateText(e), progressText(e), lastDeployText(e.comparison), deployedViaText(e.comparison), driftVerdict(e.comparison))
+		t.Row(e.Name, runtimeStateText(e), progressText(e), lastDeployText(e.Comparison), deployedViaText(e.Comparison), driftVerdict(e.Comparison))
 	}
 	// Trim the column padding the last cell leaves as trailing whitespace (plain
 	// in piped output; invisible inside the colour codes on a terminal).
@@ -134,35 +135,35 @@ func (tw *textWriter) WriteStatusTable(entries []statusEntry) {
 		tw.write("%s\n", strings.TrimRight(line, " "))
 	}
 	for _, e := range entries {
-		if e.State == driftDrifted {
+		if e.State == drift.Drifted {
 			tw.write("\n%s\n", tw.styles.pipe.Render("Drifted - run gaffer diff <projection> to see what changed."))
 			break
 		}
 	}
 }
 
-func runtimeStateText(e statusEntry) string {
-	if e.runtime == nil {
+func runtimeStateText(e drift.StatusEntry) string {
+	if e.Runtime == nil {
 		return "-"
 	}
-	return string(e.runtime.State)
+	return string(e.Runtime.State)
 }
 
-func progressText(e statusEntry) string {
-	if e.runtime == nil {
+func progressText(e drift.StatusEntry) string {
+	if e.Runtime == nil {
 		return "-"
 	}
-	if e.runtime.Progress < 0 {
+	if e.Runtime.Progress < 0 {
 		return "unknown"
 	}
-	return fmt.Sprintf("%.0f%%", e.runtime.Progress)
+	return fmt.Sprintf("%.0f%%", e.Runtime.Progress)
 }
 
-func (tw *textWriter) runtimeStateStyle(e statusEntry) lipgloss.Style {
-	if e.runtime == nil {
+func (tw *textWriter) runtimeStateStyle(e drift.StatusEntry) lipgloss.Style {
+	if e.Runtime == nil {
 		return tw.styles.emitted
 	}
-	switch e.runtime.State {
+	switch e.Runtime.State {
 	case remote.StateRunning:
 		return tw.styles.added
 	case remote.StateFaulted:
@@ -176,32 +177,32 @@ func (tw *textWriter) runtimeStateStyle(e statusEntry) lipgloss.Style {
 // is the last-deploy/write time (from the ledger, else the deployed event), so it
 // shows even for a projection with no tool metadata; "via" needs a tool entry. The
 // table shows the date alone for scanning; the detail block adds the time.
-func lastDeployText(c comparison) string {
-	at := c.lastDeployTime()
+func lastDeployText(c drift.Comparison) string {
+	at := c.LastDeployTime()
 	if at.IsZero() {
 		return "-"
 	}
 	return at.Format("2006-01-02")
 }
 
-func deployedViaText(c comparison) string {
+func deployedViaText(c drift.Comparison) string {
 	if c.Ledger == nil {
 		return "-"
 	}
 	return c.Ledger.Tool
 }
 
-func driftText(d driftState) string {
+func driftText(d drift.State) string {
 	switch d {
-	case driftInSync:
+	case drift.InSync:
 		return "in sync"
-	case driftDrifted:
+	case drift.Drifted:
 		return "drifted"
-	case driftNotDeployed:
+	case drift.NotDeployed:
 		return "not deployed"
-	case driftUntracked:
+	case drift.Untracked:
 		return "untracked"
-	case driftInvalid:
+	case drift.Invalid:
 		return "invalid"
 	default:
 		return string(d)
@@ -211,17 +212,17 @@ func driftText(d driftState) string {
 // driftStyle colours the verdict by meaning: green healthy, red broken, orange
 // wants-attention (drift, and orphan - your abandoned deploy), grey neutral (not
 // deployed, and untracked - on the server but not yours). Keys off the comparison,
-// since orphan and plain-untracked share the driftUntracked state.
-func (tw *textWriter) driftStyle(c comparison) lipgloss.Style {
+// since orphan and plain-untracked share the untracked state.
+func (tw *textWriter) driftStyle(c drift.Comparison) lipgloss.Style {
 	switch c.State {
-	case driftInSync:
+	case drift.InSync:
 		return tw.styles.added
-	case driftInvalid:
+	case drift.Invalid:
 		return tw.styles.errStatus
-	case driftNotDeployed:
+	case drift.NotDeployed:
 		return tw.styles.muted
-	case driftUntracked:
-		if c.owner() == ownerOrphan {
+	case drift.Untracked:
+		if c.Owner() == drift.OwnerOrphan {
 			return tw.styles.warning
 		}
 		return tw.styles.muted

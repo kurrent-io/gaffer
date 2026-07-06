@@ -9,12 +9,15 @@ import (
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 )
 
-// historyHardCap bounds a single ReadHistory call when the caller asks for "all"
-// (count <= 0). A projection's $projections-<name> stream grows one event per
-// create/update/lifecycle write, so an unbounded read of a long-lived projection
-// could pull thousands of events; the cap keeps a degenerate stream from hanging
-// the command. The interactive picker pages instead of asking for all at once.
-const historyHardCap = 1000
+// HistoryHardCap bounds a single ReadHistory call when the caller asks for "all"
+// (count <= 0), and clamps any larger count. A projection's $projections-<name>
+// stream grows one event per create/update/lifecycle write, so an unbounded read
+// of a long-lived projection could pull thousands of events; the cap keeps a
+// degenerate stream from hanging the command. The interactive picker pages
+// instead of asking for all at once. Exported so callers that over-read one
+// version for the classification baseline can keep their display limit below it
+// (a count of HardCap+1 would silently clamp and drop the baseline).
+const HistoryHardCap = 1000
 
 // Version is one entry in a projection's version history: a single
 // $ProjectionUpdated event on $projections-<name>. Definition is the deployed
@@ -39,7 +42,7 @@ type Version struct {
 //
 // before bounds the read to versions strictly older than that revision, for
 // paging the interactive picker; pass a negative before to start from the current
-// head. count caps how many versions to return (count <= 0 uses historyHardCap).
+// head. count caps how many versions to return (count <= 0 uses HistoryHardCap).
 //
 // total is the stream's version count (head revision + 1) when reading from the
 // head (before < 0); on a paged read (before >= 0) total is -1, since the head
@@ -61,8 +64,8 @@ func (c *Client) ReadHistory(ctx context.Context, name string, before int64, cou
 		from = kurrentdb.StreamPosition(kurrentdb.Revision(uint64(before - 1))) //nolint:gosec // before > 0 here, so before-1 is non-negative
 	}
 	limit := count
-	if limit <= 0 || limit > historyHardCap {
-		limit = historyHardCap
+	if limit <= 0 || limit > HistoryHardCap {
+		limit = HistoryHardCap
 	}
 	// Read the event budget at the hard cap, not `limit`: the loop counts
 	// $ProjectionUpdated versions and skips any other event type, so bounding the
@@ -73,7 +76,7 @@ func (c *Client) ReadHistory(ctx context.Context, name string, before int64, cou
 		Direction:      kurrentdb.Backwards,
 		From:           from,
 		RequiresLeader: true,
-	}, uint64(historyHardCap))
+	}, uint64(HistoryHardCap))
 	if err != nil {
 		return nil, 0, classify(err)
 	}

@@ -91,7 +91,7 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 
 	// Build the descriptor by compiling the local source. recreate creates from
 	// local config and never reads the deployed definition, so it avoids the $ops
-	// stream read that compareProjection needs - matching delete/enable/disable, which
+	// stream read that drift.Compare needs - matching delete/enable/disable, which
 	// only check existence. A hard compile failure leaves nothing to create from,
 	// so refuse even under --no-validate (which only skips the diagnostics gate).
 	source, err := engine.ReadSource(root, def.Entry)

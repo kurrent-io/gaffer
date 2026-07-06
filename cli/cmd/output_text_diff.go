@@ -7,20 +7,21 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
+	"github.com/kurrent-io/gaffer/cli/internal/drift"
 )
 
 // WriteDiff renders a projection's comparison against what's deployed, matching
 // the info command's heading + indented detail layout. In-sync and drifted
 // projections show a line per dimension; a one-sided projection (not deployed,
 // untracked) shows a single status line.
-func (tw *textWriter) WriteDiff(e comparison) {
+func (tw *textWriter) WriteDiff(e drift.Comparison) {
 	tw.heading(e.Name)
 	switch e.State {
-	case driftNotDeployed:
+	case drift.NotDeployed:
 		tw.status(tw.styles.muted.Render("not deployed (local only)"))
-	case driftUntracked:
+	case drift.Untracked:
 		tw.status(tw.driftStyle(e).Render(driftVerdict(e) + " (deployed, not in gaffer.toml)"))
-	case driftInvalid:
+	case drift.Invalid:
 		tw.writeInvalidDiff(e)
 	default:
 		tw.detail("Query", tw.queryStatus(e))
@@ -31,7 +32,7 @@ func (tw *textWriter) WriteDiff(e comparison) {
 			tw.detail("Track emitted streams", tw.flagStatus(true, e.Deployed.TrackEmittedStreams, e.Local.TrackEmittedStreams))
 		}
 		// Attribute the drift when the ledger allows it (local edit vs a server-side change).
-		if e.State == driftDrifted {
+		if e.State == drift.Drifted {
 			tw.detail("Drift", tw.driftStyle(e).Render(driftVerdict(e)))
 		}
 	}
@@ -44,7 +45,7 @@ func (tw *textWriter) WriteDiff(e comparison) {
 // still show against the deployed side, emit is unknown, and there's no overall
 // verdict. With nothing deployed there's nothing to compare, so it just notes the
 // state. The compile error follows so the user knows what to fix.
-func (tw *textWriter) writeInvalidDiff(e comparison) {
+func (tw *textWriter) writeInvalidDiff(e drift.Comparison) {
 	// No readable local definition (e.g. a config error with a bad entry): nothing
 	// to compare, so just the shared invalid body. Same rendering as info.
 	if e.Local == nil {
@@ -86,7 +87,7 @@ func (tw *textWriter) writeInvalidBody(reason error) {
 // A matched dimension renders green (all green reads as in sync at a glance); a
 // drifted one renders the change in the warning colour so it stands out.
 
-func (tw *textWriter) queryStatus(e comparison) string {
+func (tw *textWriter) queryStatus(e drift.Comparison) string {
 	if !e.Cmp.QueryDiffers {
 		return tw.styles.added.Render("in sync")
 	}
@@ -95,7 +96,7 @@ func (tw *textWriter) queryStatus(e comparison) string {
 		tw.styles.errDetail.Render(fmt.Sprintf("-%d", removed))
 }
 
-func (tw *textWriter) versionStatus(e comparison) string {
+func (tw *textWriter) versionStatus(e drift.Comparison) string {
 	if !e.Cmp.EngineVersionDiffers {
 		return tw.styles.added.Render(strconv.Itoa(e.Local.EngineVersion))
 	}

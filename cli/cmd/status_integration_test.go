@@ -9,11 +9,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
-func runStatusJSON(t *testing.T, args ...string) []statusJSON {
+func runStatusJSON(t *testing.T, args ...string) []cliout.StatusJSON {
 	t.Helper()
 	root := NewRootCmd()
 	root.SetArgs(append([]string{"status", "--json"}, args...))
@@ -23,7 +24,7 @@ func runStatusJSON(t *testing.T, args ...string) []statusJSON {
 			t.Fatalf("status: %v", err)
 		}
 	})
-	var report statusReportJSON
+	var report cliout.StatusReportJSON
 	if err := json.Unmarshal([]byte(out), &report); err != nil {
 		t.Fatalf("unmarshal status json: %v\n%s", err, out)
 	}
@@ -32,7 +33,7 @@ func runStatusJSON(t *testing.T, args ...string) []statusJSON {
 
 // runStatusReportJSON is runStatusJSON keeping the whole envelope, for the
 // env-level fields alongside the projections.
-func runStatusReportJSON(t *testing.T, args ...string) statusReportJSON {
+func runStatusReportJSON(t *testing.T, args ...string) cliout.StatusReportJSON {
 	t.Helper()
 	root := NewRootCmd()
 	root.SetArgs(append([]string{"status", "--json"}, args...))
@@ -42,7 +43,7 @@ func runStatusReportJSON(t *testing.T, args ...string) statusReportJSON {
 			t.Fatalf("status: %v", err)
 		}
 	})
-	var report statusReportJSON
+	var report cliout.StatusReportJSON
 	if err := json.Unmarshal([]byte(out), &report); err != nil {
 		t.Fatalf("unmarshal status json: %v\n%s", err, out)
 	}
@@ -77,7 +78,7 @@ func TestStatus_Integration(t *testing.T) {
 
 	t.Run("overview reconciles all", func(t *testing.T) {
 		got := runStatusJSON(t)
-		byName := make(map[string]statusJSON, len(got))
+		byName := make(map[string]cliout.StatusJSON, len(got))
 		index := make(map[string]int, len(got))
 		for i, e := range got {
 			byName[e.Name] = e

@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
 // maxLane is the deepest lane any node sits in - the timeline's branch depth, which
@@ -139,7 +141,7 @@ func (p graphPainter) railSpacer(i int) string { return p.rail(i, false) }
 
 func (p graphPainter) rail(i int, seam bool) string {
 	spine := "│"
-	if seam && p.versions[i].Kind == kindRecreate {
+	if seam && p.versions[i].Kind == remote.KindRecreate {
 		spine = "┬"
 	}
 	if p.g.maxLane() == 0 {

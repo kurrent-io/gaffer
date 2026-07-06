@@ -14,68 +14,13 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
+	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
-
-func TestPlanAction(t *testing.T) {
-	drift := func(c deploy.Comparison, local, deployed *deploy.Descriptor) comparison {
-		return comparison{State: driftDrifted, Cmp: c, Local: local, Deployed: deployed}
-	}
-	tests := []struct {
-		name       string
-		in         comparison
-		wantAction deployAction
-		wantReason []string // substrings the refuse reason must contain
-	}{
-		{"not deployed creates", comparison{State: driftNotDeployed}, actCreate, nil},
-		{"in sync skips", comparison{State: driftInSync}, actSkip, nil},
-		{"query drift updates", drift(deploy.Comparison{QueryDiffers: true}, desc("a", 2, false), desc("b", 2, false)), actUpdate, nil},
-		{"emit drift updates", drift(deploy.Comparison{EmitDiffers: true}, desc("a", 2, true), desc("a", 2, false)), actUpdate, nil},
-		{
-			"engine version drift refuses",
-			drift(deploy.Comparison{EngineVersionDiffers: true}, desc("a", 2, false), desc("a", 1, false)),
-			actRefuse,
-			[]string{"engine version (remote 1, local 2)", "can't be changed in place"},
-		},
-		{
-			"track emitted streams drift refuses",
-			drift(deploy.Comparison{TrackEmittedStreamsDiffers: true},
-				&deploy.Descriptor{EngineVersion: 1, TrackEmittedStreams: true},
-				&deploy.Descriptor{EngineVersion: 1, TrackEmittedStreams: false}),
-			actRefuse,
-			[]string{"track emitted streams (remote false, local true)"},
-		},
-		{
-			"both create-time fields drift refuses with both",
-			drift(deploy.Comparison{EngineVersionDiffers: true, TrackEmittedStreamsDiffers: true},
-				&deploy.Descriptor{EngineVersion: 1, TrackEmittedStreams: false},
-				&deploy.Descriptor{EngineVersion: 2, TrackEmittedStreams: true}),
-			actRefuse,
-			[]string{"engine version (remote 2, local 1)", "track emitted streams (remote true, local false)"},
-		},
-		{"query and emit drift still updates", drift(deploy.Comparison{QueryDiffers: true, EmitDiffers: true}, desc("a", 2, true), desc("b", 2, false)), actUpdate, nil},
-		{"invalid refuses (can't compile under --no-validate)", comparison{State: driftInvalid}, actRefuse, []string{"local definition is invalid"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			action, reason := planAction(tt.in)
-			if action != tt.wantAction {
-				t.Errorf("action = %q, want %q", action, tt.wantAction)
-			}
-			if len(tt.wantReason) == 0 && reason != "" {
-				t.Errorf("reason = %q, want empty", reason)
-			}
-			for _, want := range tt.wantReason {
-				if !strings.Contains(reason, want) {
-					t.Errorf("reason %q missing %q", reason, want)
-				}
-			}
-		})
-	}
-}
 
 // fakeWriter records calls so applyAction's option mapping and the reset
 // sequence can be asserted without a live database. calls records the method
@@ -124,7 +69,7 @@ var testLedger = remote.Ledger{Tool: remote.ToolName, ToolVersion: "1.2.3-test",
 func TestApplyActionCreateMapsOptions(t *testing.T) {
 	f := &fakeWriter{}
 	local := &deploy.Descriptor{Query: "q", EngineVersion: 1, Emit: true, TrackEmittedStreams: true}
-	if err := applyAction(context.Background(), f, "p", actCreate, local, testLedger); err != nil {
+	if err := applyAction(context.Background(), f, "p", drift.ActionCreate, local, testLedger); err != nil {
 		t.Fatalf("applyAction: %v", err)
 	}
 	if f.creates != 1 || f.query != "q" {
@@ -141,7 +86,7 @@ func TestApplyActionCreateMapsOptions(t *testing.T) {
 func TestApplyActionUpdateAlwaysSendsEmit(t *testing.T) {
 	for _, emit := range []bool{true, false} {
 		f := &fakeWriter{}
-		if err := applyAction(context.Background(), f, "p", actUpdate, &deploy.Descriptor{Query: "q", Emit: emit}, testLedger); err != nil {
+		if err := applyAction(context.Background(), f, "p", drift.ActionUpdate, &deploy.Descriptor{Query: "q", Emit: emit}, testLedger); err != nil {
 			t.Fatalf("applyAction: %v", err)
 		}
 		if f.updates != 1 {
@@ -160,7 +105,7 @@ func TestApplyActionUpdateAlwaysSendsEmit(t *testing.T) {
 }
 
 func TestApplyActionSkipAndRefuseDoNothing(t *testing.T) {
-	for _, action := range []deployAction{actSkip, actRefuse} {
+	for _, action := range []drift.Action{drift.ActionSkip, drift.ActionRefuse} {
 		f := &fakeWriter{}
 		if err := applyAction(context.Background(), f, "p", action, &deploy.Descriptor{}, testLedger); err != nil {
 			t.Fatalf("applyAction(%s): %v", action, err)
@@ -171,59 +116,10 @@ func TestApplyActionSkipAndRefuseDoNothing(t *testing.T) {
 	}
 }
 
-func TestIsLogicChange(t *testing.T) {
-	queryDrift := comparison{Cmp: deploy.Comparison{QueryDiffers: true}}
-	emitDrift := comparison{Cmp: deploy.Comparison{EmitDiffers: true}}
-	for _, tc := range []struct {
-		name   string
-		action deployAction
-		cmp    comparison
-		want   bool
-	}{
-		{"update with query drift", actUpdate, queryDrift, true},
-		{"update with emit-only drift", actUpdate, emitDrift, false},
-		{"create is never a logic change", actCreate, queryDrift, false},
-		{"refuse is never a logic change", actRefuse, queryDrift, false},
-	} {
-		if got := isLogicChange(tc.action, tc.cmp); got != tc.want {
-			t.Errorf("%s: isLogicChange = %v, want %v", tc.name, got, tc.want)
-		}
-	}
-}
-
-func TestResolveResets(t *testing.T) {
-	mk := func() []plannedItem {
-		return []plannedItem{
-			{name: "logic", action: actUpdate, logicChange: true},
-			{name: "settings", action: actUpdate, logicChange: false}, // emit-only update
-			{name: "new", action: actCreate},
-			{name: "refused", action: actRefuse},
-		}
-	}
-
-	off := mk()
-	resolveResets(off, false)
-	if off[0].action != actUpdate {
-		t.Errorf("flag off: logic-change should stay update, got %s", off[0].action)
-	}
-
-	on := mk()
-	resolveResets(on, true)
-	if on[0].action != actReset {
-		t.Errorf("flag on: logic-change should become reset, got %s", on[0].action)
-	}
-	if on[1].action != actUpdate {
-		t.Errorf("flag on: settings-only update must NOT become reset, got %s", on[1].action)
-	}
-	if on[2].action != actCreate || on[3].action != actRefuse {
-		t.Error("flag on: create and refuse should be untouched")
-	}
-}
-
 func TestApplyActionResetSequence(t *testing.T) {
 	for _, emit := range []bool{true, false} {
 		f := &fakeWriter{}
-		if err := applyAction(context.Background(), f, "p", actReset, &deploy.Descriptor{Query: "q", Emit: emit}, testLedger); err != nil {
+		if err := applyAction(context.Background(), f, "p", drift.ActionReset, &deploy.Descriptor{Query: "q", Emit: emit}, testLedger); err != nil {
 			t.Fatalf("applyAction(reset): %v", err)
 		}
 		// stop → update (new query) → reset (rewind) → start.
@@ -243,7 +139,7 @@ func TestApplyActionResetEnableFailure(t *testing.T) {
 	// Enable fails after the reset already wiped state: the error must name the
 	// recovery, since there's no auto-rollback.
 	f := &fakeWriter{failOn: "enable"}
-	err := applyAction(context.Background(), f, "orders", actReset, &deploy.Descriptor{Query: "q"}, testLedger)
+	err := applyAction(context.Background(), f, "orders", drift.ActionReset, &deploy.Descriptor{Query: "q"}, testLedger)
 	if err == nil {
 		t.Fatal("expected an error when enable fails after reset")
 	}
@@ -265,7 +161,7 @@ func TestApplyActionResetMidSequenceFailure(t *testing.T) {
 		{"reset", "disable,update,reset", "gaffer recreate orders"}, // stopped, not rewound
 	} {
 		f := &fakeWriter{failOn: tc.failOn}
-		err := applyAction(context.Background(), f, "orders", actReset, &deploy.Descriptor{Query: "q"}, testLedger)
+		err := applyAction(context.Background(), f, "orders", drift.ActionReset, &deploy.Descriptor{Query: "q"}, testLedger)
 		if err == nil {
 			t.Fatalf("failOn %s: expected an error", tc.failOn)
 		}
@@ -302,19 +198,19 @@ func TestDeployNames(t *testing.T) {
 func TestJSONSink(t *testing.T) {
 	var b bytes.Buffer
 	s := &jsonSink{w: &b}
-	s.done(deployResult{Name: "a", Action: actCreate})
-	s.done(deployResult{Name: "b", Action: actRefuse, Reason: "engine version"})
-	s.done(deployResult{Name: "c", Action: actUpdate, Err: errors.New("boom")})
-	s.done(deployResult{Name: "d", Action: actUpdate, LogicChange: true}) // continued over a logic change
+	s.done(drift.Result{Name: "a", Action: drift.ActionCreate})
+	s.done(drift.Result{Name: "b", Action: drift.ActionRefuse, Reason: "engine version"})
+	s.done(drift.Result{Name: "c", Action: drift.ActionUpdate, Err: errors.New("boom")})
+	s.done(drift.Result{Name: "d", Action: drift.ActionUpdate, LogicChange: true}) // continued over a logic change
 	if err := s.finish(); err != nil {
 		t.Fatalf("finish: %v", err)
 	}
 
-	var got []deployJSON
+	var got []cliout.DeployJSON
 	if err := json.Unmarshal(b.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, b.String())
 	}
-	want := []deployJSON{
+	want := []cliout.DeployJSON{
 		{Name: "a", Outcome: "created"},
 		{Name: "b", Outcome: "refused", Reason: "engine version"},
 		{Name: "c", Outcome: "failed", Error: "boom"},
@@ -333,29 +229,29 @@ func TestJSONSink(t *testing.T) {
 func TestJSONSinkResetOmitsLogicChange(t *testing.T) {
 	// A promoted reset still carries logicChange on the plan item, but the result
 	// must not leak it into JSON: a rebuild is signalled by outcome "rebuilt", not
-	// logic_change (which means "continued over a logic change").
+	// logicChange (which means "continued over a logic change").
 	var b bytes.Buffer
 	s := &jsonSink{w: &b}
-	s.done(plannedItem{name: "e", action: actReset, logicChange: true}.result())
+	s.done((drift.PlanItem{Name: "e", Action: drift.ActionReset, LogicChange: true}).Result())
 	if err := s.finish(); err != nil {
 		t.Fatalf("finish: %v", err)
 	}
-	var got []deployJSON
+	var got []cliout.DeployJSON
 	if err := json.Unmarshal(b.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, b.String())
 	}
 	if len(got) != 1 || got[0].Outcome != "rebuilt" || got[0].LogicChange {
-		t.Errorf("reset JSON = %+v, want outcome rebuilt with logic_change false", got)
+		t.Errorf("reset JSON = %+v, want outcome rebuilt with logicChange false", got)
 	}
 }
 
 func TestPlainSink(t *testing.T) {
 	var b bytes.Buffer
 	s := newPlainSink(&b, &b, []string{"alpha", "b"})
-	s.done(deployResult{Name: "alpha", Action: actCreate})
-	s.done(deployResult{Name: "b", Action: actSkip})
-	s.done(deployResult{Name: "c", Action: actRefuse, Reason: "engine version (remote 1, local 2) can't be changed in place"})
-	s.done(deployResult{Name: "d", Action: actUpdate, Err: errors.New("boom")})
+	s.done(drift.Result{Name: "alpha", Action: drift.ActionCreate})
+	s.done(drift.Result{Name: "b", Action: drift.ActionSkip})
+	s.done(drift.Result{Name: "c", Action: drift.ActionRefuse, Reason: "engine version (remote 1, local 2) can't be changed in place"})
+	s.done(drift.Result{Name: "d", Action: drift.ActionUpdate, Err: errors.New("boom")})
 	if err := s.finish(); err != nil {
 		t.Fatalf("finish: %v", err)
 	}
@@ -375,7 +271,7 @@ func TestPlainSink(t *testing.T) {
 
 func TestJSONSinkEmpty(t *testing.T) {
 	var b bytes.Buffer
-	s := &jsonSink{w: &b, results: []deployJSON{}}
+	s := &jsonSink{w: &b, results: []cliout.DeployJSON{}}
 	if err := s.finish(); err != nil {
 		t.Fatalf("finish: %v", err)
 	}
@@ -406,29 +302,29 @@ func TestNewDeploySink(t *testing.T) {
 // ordering can be asserted without a renderer.
 type recordingSink struct {
 	events  []string
-	results []deployResult
+	results []drift.Result
 }
 
 func (s *recordingSink) start(name string, _, _ int) { s.events = append(s.events, "start:"+name) }
-func (s *recordingSink) done(res deployResult) {
+func (s *recordingSink) done(res drift.Result) {
 	s.events = append(s.events, "done:"+res.Name)
 	s.results = append(s.results, res)
 }
 func (s *recordingSink) finish() error { return nil }
 
 func TestApplyPlan(t *testing.T) {
-	plan := []plannedItem{
-		{name: "a", action: actCreate},
-		{name: "b", action: actRefuse, reason: "x"},
-		{name: "c", action: actUpdate}, // apply will fail
-		{name: "d", action: actSkip},
-		{name: "e", err: errors.New("read boom")}, // planning failure
+	plan := []drift.PlanItem{
+		{Name: "a", Action: drift.ActionCreate},
+		{Name: "b", Action: drift.ActionRefuse, Reason: "x"},
+		{Name: "c", Action: drift.ActionUpdate}, // apply will fail
+		{Name: "d", Action: drift.ActionSkip},
+		{Name: "e", Err: errors.New("read boom")}, // planning failure
 	}
 	sink := &recordingSink{}
 	var applied []string
-	failed := applyPlan(context.Background(), plan, sink, func(item plannedItem) error {
-		applied = append(applied, item.name)
-		if item.name == "c" {
+	failed := applyPlan(context.Background(), plan, sink, func(item drift.PlanItem) error {
+		applied = append(applied, item.Name)
+		if item.Name == "c" {
 			return errors.New("apply boom")
 		}
 		return nil
@@ -445,7 +341,7 @@ func TestApplyPlan(t *testing.T) {
 	if strings.Join(sink.events, ",") != strings.Join(want, ",") {
 		t.Errorf("event order = %v, want %v", sink.events, want)
 	}
-	byName := map[string]deployResult{}
+	byName := map[string]drift.Result{}
 	for _, r := range sink.results {
 		byName[r.Name] = r
 	}
@@ -458,37 +354,37 @@ func TestApplyPlan(t *testing.T) {
 }
 
 func TestApplyPlanClearsExternalChangeOnFailure(t *testing.T) {
-	// A successful apply over an external change keeps external_change; a failed one
+	// A successful apply over an external change keeps externalChange; a failed one
 	// drops it, since the failed apply overwrote nothing.
-	plan := []plannedItem{
-		{name: "ok", action: actUpdate, cmp: changedServer()},
-		{name: "boom", action: actUpdate, cmp: changedServer()},
+	plan := []drift.PlanItem{
+		{Name: "ok", Action: drift.ActionUpdate, Cmp: changedServer()},
+		{Name: "boom", Action: drift.ActionUpdate, Cmp: changedServer()},
 	}
 	sink := &recordingSink{}
-	applyPlan(context.Background(), plan, sink, func(item plannedItem) error {
-		if item.name == "boom" {
+	applyPlan(context.Background(), plan, sink, func(item drift.PlanItem) error {
+		if item.Name == "boom" {
 			return errors.New("apply failed")
 		}
 		return nil
 	})
-	byName := map[string]deployResult{}
+	byName := map[string]drift.Result{}
 	for _, r := range sink.results {
 		byName[r.Name] = r
 	}
 	if !byName["ok"].ExternalChange {
-		t.Error("a successful apply over an external change should keep external_change")
+		t.Error("a successful apply over an external change should keep externalChange")
 	}
 	if byName["boom"].ExternalChange {
-		t.Error("a failed apply overwrote nothing, so external_change should be cleared")
+		t.Error("a failed apply overwrote nothing, so externalChange should be cleared")
 	}
 }
 
 func TestApplyPlanStopsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	plan := []plannedItem{{name: "a", action: actCreate}, {name: "b", action: actCreate}, {name: "c", action: actCreate}}
+	plan := []drift.PlanItem{{Name: "a", Action: drift.ActionCreate}, {Name: "b", Action: drift.ActionCreate}, {Name: "c", Action: drift.ActionCreate}}
 	sink := &recordingSink{}
 	calls := 0
-	applyPlan(ctx, plan, sink, func(plannedItem) error {
+	applyPlan(ctx, plan, sink, func(drift.PlanItem) error {
 		calls++
 		cancel() // interrupt arrives while the first item is applying
 		return nil
@@ -536,7 +432,7 @@ func TestTeaModelTransitions(t *testing.T) {
 
 	// Finishing a row commits it to scrollback (a tea.Println command) and drops
 	// it from the live window. Not the last row, so no quit yet.
-	finished, cmd := m.Update(deployDoneMsg{res: deployResult{Name: "alpha", Action: actCreate}})
+	finished, cmd := m.Update(deployDoneMsg{res: drift.Result{Name: "alpha", Action: drift.ActionCreate}})
 	m = testutil.MustType[teaModel](t, finished)
 	if m.committed != 1 || m.counts.created != 1 {
 		t.Errorf("after done: committed=%d created=%d", m.committed, m.counts.created)
@@ -553,7 +449,7 @@ func TestTeaModelTransitions(t *testing.T) {
 
 	// Finishing the last row commits it and quits, in one command, so the final
 	// line can't be lost to a quit that races the print.
-	last, cmd := m.Update(deployDoneMsg{res: deployResult{Name: "beta", Action: actSkip}})
+	last, cmd := m.Update(deployDoneMsg{res: drift.Result{Name: "beta", Action: drift.ActionSkip}})
 	m = testutil.MustType[teaModel](t, last)
 	if m.committed != 2 {
 		t.Errorf("committed = %d after the last row, want 2", m.committed)
@@ -611,7 +507,7 @@ func TestTeaModelPagingShrinksAfterCommit(t *testing.T) {
 	for _, n := range []string{"alpha", "bravo"} {
 		started, _ := m.Update(deployStartMsg{name: n})
 		m = testutil.MustType[teaModel](t, started)
-		done, _ := m.Update(deployDoneMsg{res: deployResult{Name: n, Action: actCreate}})
+		done, _ := m.Update(deployDoneMsg{res: drift.Result{Name: n, Action: drift.ActionCreate}})
 		m = testutil.MustType[teaModel](t, done)
 	}
 	if m.committed != 2 {
@@ -627,13 +523,13 @@ func TestTeaModelPagingShrinksAfterCommit(t *testing.T) {
 func TestTeaModelCommitsContiguousPrefix(t *testing.T) {
 	m := newTestTeaModel("alpha", "bravo", "charlie")
 
-	early, _ := m.Update(deployDoneMsg{res: deployResult{Name: "bravo", Action: actSkip}})
+	early, _ := m.Update(deployDoneMsg{res: drift.Result{Name: "bravo", Action: drift.ActionSkip}})
 	m = testutil.MustType[teaModel](t, early)
 	if m.committed != 0 {
 		t.Errorf("committed = %d; nothing should commit while the front row is unfinished", m.committed)
 	}
 
-	flush, cmd := m.Update(deployDoneMsg{res: deployResult{Name: "alpha", Action: actCreate}})
+	flush, cmd := m.Update(deployDoneMsg{res: drift.Result{Name: "alpha", Action: drift.ActionCreate}})
 	m = testutil.MustType[teaModel](t, flush)
 	if m.committed != 2 {
 		t.Errorf("committed = %d; finishing alpha should flush alpha+bravo", m.committed)

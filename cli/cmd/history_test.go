@@ -3,11 +3,11 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
@@ -25,47 +25,6 @@ func gafferLedger(op string) *remote.Ledger {
 	return &remote.Ledger{Tool: remote.ToolName, Operation: op, ToolVersion: "1.4.0", Actor: "george@kurrent.io", Revision: "9f8e7d6", Time: histTime}
 }
 
-func TestClassifyVersion(t *testing.T) {
-	prev := ver(0, "v0", true, nil)
-	disabledPrev := ver(0, "v0", false, nil)
-	enabledPrev := ver(0, "v0", true, nil)
-	for _, tc := range []struct {
-		name     string
-		v        remote.Version
-		prev     *remote.Version
-		wantKind versionKind
-		wantTool string
-		wantExt  bool
-	}{
-		{"gaffer deploy", ver(1, "v1", true, gafferLedger(remote.OpDeploy)), &prev, kindDeploy, "", false},
-		{"gaffer rollback", ver(1, "v1", true, gafferLedger(remote.OpRollback)), &prev, kindRollback, "", false},
-		{"gaffer reset", ver(1, "v1", true, gafferLedger(remote.OpReset)), &prev, kindReset, "", false},
-		{"gaffer recreate", ver(1, "v1", true, gafferLedger(remote.OpRecreate)), &prev, kindRecreate, "", false},
-		{"foreign tool", ver(1, "v1", true, &remote.Ledger{Tool: "KurrentDB Embedded UI", Operation: "create", Time: histTime}), &prev, kindChangedByTool, "KurrentDB Embedded UI", true},
-		{"metadata-less query change", ver(1, "changed", true, nil), &prev, kindEditedExternally, "", true},
-		{"metadata-less enable", ver(1, "v0", true, nil), &disabledPrev, kindEnabled, "", false},
-		{"metadata-less disable", ver(1, "v0", false, nil), &enabledPrev, kindDisabled, "", false},
-		{"absent enabled is disabled (flip from enabled)", remote.Version{Number: 1, Definition: &remote.Definition{Query: "v0", EngineVersion: 1, Time: histTime}}, &enabledPrev, kindDisabled, "", false},
-		{"config change (reconfigured)", remote.Version{Number: 1, Definition: &remote.Definition{Query: "v0", EngineVersion: 1, Enabled: true, Config: remote.Config{MaxWriteBatchLength: 1000}, Time: histTime}}, &prev, kindReconfigured, "", false},
-		{"metadata-less no-op", ver(1, "v0", true, nil), &prev, kindRewritten, "", false},
-		{"metadata-less first version", ver(0, "v0", true, nil), nil, kindCreated, "", false},
-		{"metadata-less oldest in window", ver(5, "v5", true, nil), nil, kindRewritten, "", false},
-		{"tombstone", remote.Version{Number: 2, Deleted: true, Definition: &remote.Definition{Query: "v2", Time: histTime}, Ledger: gafferLedger(remote.OpDeploy)}, &prev, kindDeleted, "", false},
-		{"unreadable metadata", remote.Version{Number: 1, Definition: &remote.Definition{Query: "v1", Time: histTime}, MetaErr: errors.New("bad metadata")}, &prev, kindUnreadable, "", false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			kind, tool, _, _ := classifyVersion(tc.v, tc.prev)
-			if kind != tc.wantKind || tool != tc.wantTool {
-				t.Fatalf("got (%q, %q), want (%q, %q)", kind, tool, tc.wantKind, tc.wantTool)
-			}
-			hv := historyVersion{Version: tc.v, Kind: kind, Tool: tool}
-			if hv.external() != tc.wantExt {
-				t.Errorf("external() = %v, want %v", hv.external(), tc.wantExt)
-			}
-		})
-	}
-}
-
 func TestClassifyHistoryReconfigured(t *testing.T) {
 	base := remote.Config{CheckpointHandledThreshold: 4000, MaxWriteBatchLength: 500}
 	tuned := base
@@ -78,7 +37,7 @@ func TestClassifyHistoryReconfigured(t *testing.T) {
 		{Number: 1, Definition: def(tuned)},
 		{Number: 0, Definition: def(base), Ledger: gafferLedger(remote.OpDeploy)},
 	})
-	if hist[0].Kind != kindReconfigured {
+	if hist[0].Kind != remote.KindReconfigured {
 		t.Fatalf("v1 kind = %q, want reconfigured", hist[0].Kind)
 	}
 	got := map[string]string{}
@@ -108,10 +67,10 @@ func TestCollapseHistoryFoldsRecreate(t *testing.T) {
 	if len(hist) != 2 {
 		t.Fatalf("got %d rows, want 2 (recreate + deploy): %+v", len(hist), kinds(hist))
 	}
-	if hist[0].Kind != kindRecreate || len(hist[0].Absorbed) != 2 {
+	if hist[0].Kind != remote.KindRecreate || len(hist[0].Absorbed) != 2 {
 		t.Fatalf("row 0 = %q with %d absorbed, want recreate with 2", hist[0].Kind, len(hist[0].Absorbed))
 	}
-	if hist[0].Absorbed[0].Kind != kindDeleted || hist[0].Absorbed[1].Kind != kindDisabled {
+	if hist[0].Absorbed[0].Kind != remote.KindDeleted || hist[0].Absorbed[1].Kind != remote.KindDisabled {
 		t.Errorf("absorbed = %q, %q, want deleted then disabled", hist[0].Absorbed[0].Kind, hist[0].Absorbed[1].Kind)
 	}
 	if absorbedCount(hist) != 2 {
@@ -132,10 +91,10 @@ func TestCollapseHistoryAlreadyDisabled(t *testing.T) {
 	if len(hist) != 3 {
 		t.Fatalf("got %d rows, want 3 (recreate + disabled + deploy): %v", len(hist), kinds(hist))
 	}
-	if len(hist[0].Absorbed) != 2 || hist[0].Absorbed[1].Kind != kindRewritten {
+	if len(hist[0].Absorbed) != 2 || hist[0].Absorbed[1].Kind != remote.KindRewritten {
 		t.Fatalf("row 0 absorbed = %v, want tombstone + the rewritten no-op", kinds(hist[0].Absorbed))
 	}
-	if hist[1].Kind != kindDisabled {
+	if hist[1].Kind != remote.KindDisabled {
 		t.Errorf("row 1 = %q, want the manual disable left visible", hist[1].Kind)
 	}
 }
@@ -152,7 +111,7 @@ func TestHistoryRows(t *testing.T) {
 			ver(1, "q", false, nil),
 		})
 		rows := historyRows(hist, 2)
-		if len(rows) != 1 || rows[0].Kind != kindRecreate || len(rows[0].Absorbed) != 2 {
+		if len(rows) != 1 || rows[0].Kind != remote.KindRecreate || len(rows[0].Absorbed) != 2 {
 			t.Fatalf("rows = %v (absorbed %d), want one fully-folded recreate", kinds(rows), len(rows[0].Absorbed))
 		}
 	})
@@ -167,7 +126,7 @@ func TestHistoryRows(t *testing.T) {
 			ver(1, "q", true, nil), // baseline: metadata-less, would show "rewritten"
 		})
 		rows := historyRows(hist, 3)
-		if len(rows) != 1 || rows[0].Kind != kindRecreate {
+		if len(rows) != 1 || rows[0].Kind != remote.KindRecreate {
 			t.Fatalf("rows = %v, want the baseline dropped, not displayed", kinds(rows))
 		}
 	})
@@ -209,11 +168,11 @@ func TestCollapseHistoryConsecutiveRecreates(t *testing.T) {
 		t.Fatalf("got %d rows, want 3 (recreate + recreate + deploy): %v", len(hist), kinds(hist))
 	}
 	for i := range 2 {
-		if hist[i].Kind != kindRecreate || len(hist[i].Absorbed) != 2 {
+		if hist[i].Kind != remote.KindRecreate || len(hist[i].Absorbed) != 2 {
 			t.Errorf("row %d = %q with %d absorbed, want a recreate folding both bookends", i, hist[i].Kind, len(hist[i].Absorbed))
 		}
 	}
-	if hist[2].Kind != kindDeploy {
+	if hist[2].Kind != remote.KindDeploy {
 		t.Errorf("row 2 = %q, want the deploy", hist[2].Kind)
 	}
 }
@@ -256,8 +215,8 @@ func TestCollapseHistoryLeavesNonPatterns(t *testing.T) {
 	})
 }
 
-func kinds(hist []historyVersion) []versionKind {
-	out := make([]versionKind, len(hist))
+func kinds(hist []historyVersion) []remote.VersionKind {
+	out := make([]remote.VersionKind, len(hist))
 	for i, hv := range hist {
 		out[i] = hv.Kind
 	}
@@ -282,7 +241,7 @@ func TestClassifyHistoryRevertedContentSharesHash(t *testing.T) {
 	if hist[0].Hash != hist[2].Hash {
 		t.Errorf("v2 hash %q != v0 hash %q, want equal (same content)", hist[0].Hash, hist[2].Hash)
 	}
-	if hist[1].Kind != kindEditedExternally {
+	if hist[1].Kind != remote.KindEditedExternally {
 		t.Errorf("v1 kind = %q, want edited externally", hist[1].Kind)
 	}
 }
@@ -300,7 +259,7 @@ func TestHistoryJSONKeepsRecreateBookends(t *testing.T) {
 	if err := renderHistoryJSON(&buf, hist); err != nil {
 		t.Fatalf("renderHistoryJSON: %v", err)
 	}
-	var got []historyJSON
+	var got []cliout.HistoryJSON
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -324,7 +283,7 @@ func TestRenderHistoryJSON(t *testing.T) {
 	if err := renderHistoryJSON(&buf, hist); err != nil {
 		t.Fatalf("renderHistoryJSON: %v", err)
 	}
-	var got []historyJSON
+	var got []cliout.HistoryJSON
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}

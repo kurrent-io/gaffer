@@ -83,7 +83,7 @@ func (m historyModel) diffModalTitle(d historyDiff, width int) string {
 	lead := m.tw.historyRunStyle(hv).Render(historyGlyph(hv)) + " " +
 		m.tw.historyKindStyle(hv).Render(hv.eventLabel())
 	var parts []string
-	if !hv.stateChange() && hv.Hash != "" {
+	if !hv.StateChange() && hv.Hash != "" {
 		parts = append(parts, hv.Hash)
 	}
 	switch {

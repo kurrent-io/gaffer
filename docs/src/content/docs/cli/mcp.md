@@ -17,6 +17,7 @@ description: Connect gaffer's MCP server to Claude Code, Cursor, Continue, Claud
 - **`get_projection_info`**: return a projection's parsed structure, including sources, partition mode, whether it emits events, and effective engine version.
 - **`list_projections`** / **`list_events`**: workspace navigation. `list_events` samples from a live connection and accepts an `env` argument to choose the environment.
 - **`debug_continue`** / **`debug_step_over`** / **`debug_step_into`** / **`debug_step_out`** / **`evaluate`**: drive the DAP debugger from natural language.
+- **`deploy_status`** / **`deploy_plan`** / **`deploy_history`**: read-only visibility into deployed environments. `deploy_status` shows each projection's runtime state and drift verdict, plus any `[database_config]` divergence, mirroring [`gaffer status --json`](./commands.md#gaffer-status). `deploy_plan` previews what a deploy would change without applying anything, mirroring `gaffer deploy --dry-run --json`. `deploy_history` reads a projection's per-deploy audit log, pageable with `before`, mirroring `gaffer history --json`. All three accept an `env` argument; omit it for the default environment. Applying changes has no MCP surface. It stays in the CLI, behind its confirmation gates.
 - **`get_version`**: report the gaffer CLI version backing the server.
 
 **Resources**:

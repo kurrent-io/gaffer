@@ -74,7 +74,9 @@ func toStatus(s kurrentdb.ProjectionStatus) Status {
 		Mode:     s.Mode,
 	}
 	if state == StateFaulted {
-		st.FaultReason = s.StateReason
+		// The server's fault text can arrive with Windows line endings;
+		// normalize so consumers render clean lines without losing structure.
+		st.FaultReason = strings.ReplaceAll(s.StateReason, "\r\n", "\n")
 	}
 	return st
 }

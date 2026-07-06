@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
@@ -47,7 +48,7 @@ func runPreflight(ctx context.Context, root string, cfg *config.Config, names []
 		}
 		def := cfg.FindProjection(name) // non-nil: deployNames only yields config names
 		// A config-bad projection is refused per-projection in the plan (via
-		// driftInvalid); skip it here so it doesn't fail the all-or-nothing
+		// drift.Invalid); skip it here so it doesn't fail the all-or-nothing
 		// preflight and abort the deploy of the good projections alongside it.
 		if cfg.ProjectionConfigError(name) != nil {
 			continue
@@ -76,9 +77,9 @@ func runPreflight(ctx context.Context, root string, cfg *config.Config, names []
 // deploy sink.
 func renderPreflightFailures(w io.Writer, jsonOut bool, total int, failures []preflightFailure) error {
 	if jsonOut {
-		out := make([]deployJSON, len(failures))
+		out := make([]cliout.DeployJSON, len(failures))
 		for i, f := range failures {
-			out[i] = deployJSON{Name: f.Name, Outcome: "invalid", Reason: strings.Join(f.reasons(), "; ")}
+			out[i] = cliout.DeployJSON{Name: f.Name, Outcome: "invalid", Reason: strings.Join(f.reasons(), "; ")}
 		}
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")

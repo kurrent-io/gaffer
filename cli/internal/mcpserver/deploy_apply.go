@@ -29,7 +29,9 @@ var deployApplyTool = &mcp.Tool{
 		"and pass the diagnostics preflight first; there is no validation bypass) and " +
 		"emits the same per-item results as `gaffer deploy --json`, in an envelope echoing " +
 		"the resolved env, target, and production; a non-zero `failed` means some items " +
-		"failed or were refused (their result carries the reason or error). Use " +
+		"failed, were refused, or failed preflight (their result carries the reason or " +
+		"error - a preflight failure reports every invalid projection as outcome " +
+		"invalid, with nothing deployed and no target resolved). Use " +
 		"deploy_plan first to preview. On a " +
 		"production target the deploy asks the human to confirm via the client " +
 		"(elicitation); with resetOnLogicChange rebuilds in the plan it always asks, and a " +
@@ -67,9 +69,20 @@ func (s *Server) handleDeployApply(ctx context.Context, req *mcp.CallToolRequest
 	// diagnostic, so a bad projection can't leave a half-applied set. No
 	// bypass exists here - the CLI's --no-validate is an operator's flag,
 	// not an agent's. Config-bad projections skip the gate and refuse
-	// per-projection in the plan instead, like the CLI.
-	if refusal := deployPreflight(ctx, cfg, root, names); refusal != nil {
-		return refusal, nil, nil
+	// per-projection in the plan instead, like the CLI. Failures come back
+	// in the standard envelope as outcome-invalid items (the same shape
+	// `gaffer deploy --json` renders them), every failing projection listed;
+	// target/production are omitted - nothing connected, so nothing is known.
+	if failures := deployPreflight(ctx, cfg, root, names); len(failures) > 0 {
+		result := map[string]any{
+			"changes": 0,
+			"failed":  len(failures),
+			"results": failures,
+		}
+		if env, err := cfg.ResolveEnv(in.Env); err == nil {
+			result["env"] = env.Name
+		}
+		return toolResult(result), nil, nil
 	}
 
 	client, env, cleanup, err := s.connectRemote(cfg, root, in.Env)
@@ -239,14 +252,20 @@ func capNames(names []string) string {
 	return fmt.Sprintf("%s, and %d more", strings.Join(names[:max], ", "), len(names)-max)
 }
 
-// deployPreflight compiles every projection and rejects the run on any
-// compile failure or error-severity diagnostic, mirroring the CLI's
-// runPreflight semantics. Returns nil when everything is deployable.
-func deployPreflight(ctx context.Context, cfg *config.Config, root string, names []string) *mcp.CallToolResult {
-	var reasons []string
+// deployPreflight compiles every projection and collects the ones that
+// can't be deployed - a compile failure or an error-severity diagnostic -
+// mirroring the CLI's runPreflight semantics, as the outcome-invalid items
+// `gaffer deploy --json` renders. Every failing projection is reported, not
+// just the first, so a broken set is fixed in one pass. Empty when
+// everything is deployable.
+func deployPreflight(ctx context.Context, cfg *config.Config, root string, names []string) []cliout.DeployJSON {
+	var failures []cliout.DeployJSON
+	invalid := func(name string, reasons ...string) {
+		failures = append(failures, cliout.DeployJSON{Name: name, Outcome: "invalid", Reason: strings.Join(reasons, "; ")})
+	}
 	for _, name := range names {
 		if ctx.Err() != nil {
-			return toolError("%v", ctx.Err())
+			break
 		}
 		def := cfg.FindProjection(name)
 		// A config-bad projection is refused per-projection in the plan (via
@@ -257,20 +276,21 @@ func deployPreflight(ctx context.Context, cfg *config.Config, root string, names
 		}
 		source, err := engine.ReadSource(root, def.Entry)
 		if err != nil {
-			reasons = append(reasons, name+": "+err.Error())
+			invalid(name, err.Error())
 			continue
 		}
 		diags, err := engine.Preflight(engine.NewProjection(root, cfg, def, source))
 		if err != nil {
-			reasons = append(reasons, name+": "+err.Error())
+			invalid(name, err.Error())
 			continue
 		}
-		for _, d := range diags {
-			reasons = append(reasons, name+": "+d.Code+": "+d.Message)
+		if len(diags) > 0 {
+			reasons := make([]string, 0, len(diags))
+			for _, d := range diags {
+				reasons = append(reasons, d.Code+": "+d.Message)
+			}
+			invalid(name, reasons...)
 		}
 	}
-	if len(reasons) == 0 {
-		return nil
-	}
-	return toolError("preflight failed, nothing was deployed: %s", strings.Join(reasons, "; "))
+	return failures
 }

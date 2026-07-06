@@ -26,25 +26,44 @@ func TestDeployApplyUnknownName(t *testing.T) {
 }
 
 // The preflight runs before any connection (the fixture has no envs, so
-// reaching resolution would fail differently) and one uncompilable
-// projection refuses the whole run.
+// reaching resolution would fail differently), refuses the whole run on any
+// uncompilable projection, and reports the failures in the standard
+// envelope - the shape `gaffer deploy --json` renders them - listing every
+// invalid projection so a broken set is fixed in one pass, not
+// fix-one-rerun-repeat.
 func TestDeployApplyPreflightRefusesBeforeConnecting(t *testing.T) {
 	p := testutil.NewProject(t).
 		AddProjection("good", "fromAll().when({ $init() { return {}; } })").
 		AddProjection("bad", "fromAll(.when({").
+		AddProjection("worse", "when({{{").
 		Save()
 	s := New(p.Dir, p.Cfg, "test")
 
-	msg := callToolExpectError(t, s.handleDeployApply, deployApplyInput{Name: "bad"})
-	if !strings.Contains(msg, "preflight failed, nothing was deployed") || !strings.Contains(msg, "bad:") {
-		t.Errorf("got %q, want the preflight refusal naming the projection", msg)
+	// Deploying everything: the good projection doesn't proceed while
+	// siblings fail preflight, and both failures report.
+	res := callTool(t, s, deployApplyTool, s.handleDeployApply, deployApplyInput{})
+	if res["changes"] != float64(0) || res["failed"] != float64(2) {
+		t.Fatalf("envelope = %v, want 0 changes 2 failed", res)
+	}
+	results, ok := res["results"].([]any)
+	if !ok || len(results) != 2 {
+		t.Fatalf("results = %v, want both invalid projections listed", res["results"])
+	}
+	for _, r := range results {
+		entry := testutil.MustType[map[string]any](t, r)
+		if entry["outcome"] != "invalid" || entry["reason"] == "" {
+			t.Errorf("entry = %v, want outcome invalid with a reason", entry)
+		}
+	}
+	// No connection happened, so no target/production to echo.
+	if _, ok := res["target"]; ok {
+		t.Errorf("target should be omitted before any connection, got %v", res["target"])
 	}
 
-	// Deploying everything hits the same gate: the good projection doesn't
-	// proceed while a sibling fails preflight.
-	msg = callToolExpectError(t, s.handleDeployApply, deployApplyInput{})
-	if !strings.Contains(msg, "preflight failed, nothing was deployed") {
-		t.Errorf("got %q, want the all-or-nothing preflight refusal", msg)
+	// Scoped to one bad projection, only it reports.
+	res = callTool(t, s, deployApplyTool, s.handleDeployApply, deployApplyInput{Name: "bad"})
+	if res["failed"] != float64(1) {
+		t.Fatalf("scoped envelope = %v, want the single failure", res)
 	}
 }
 

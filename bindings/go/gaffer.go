@@ -25,7 +25,80 @@ package gafferruntime
 #cgo windows,amd64 LDFLAGS: -L${SRCDIR}/../../runtime/Gaffer.Runtime/bin/Release/net10.0/win-x64/publish    -l:Gaffer.Runtime.dll
 
 #include "gaffer.h"
+#include <stdint.h>
 #include <stdlib.h>
+
+// The runtime's session handles are small integers (1, 2, 3, ...) cast to
+// gaffer_session*, never dereferenced. Go must not hold them in any
+// pointer-typed value, even transiently: the GC's precise stack maps treat
+// such slots as pointers, and a stack copy - growth, or a shrink during the
+// mark phase - aborts the process when it finds a value below the first page
+// ("invalid pointer found on stack"). The stack CAN move mid-FFI-call: a
+// callback re-enters Go, and while it runs the goroutine is preemptible and
+// its stack movable, with the call's argument slots still live below. These
+// shims keep the handle uintptr_t on the Go side and cast in C, where the GC
+// can't see it.
+
+static uintptr_t go_session_create(const char* source, const char* options_json, const char** error_out) {
+	return (uintptr_t)gaffer_session_create(source, options_json, error_out);
+}
+static void go_session_destroy(uintptr_t s) {
+	gaffer_session_destroy((gaffer_session*)s);
+}
+static const char* go_session_feed(uintptr_t s, const char* event_json, const char** error_out) {
+	return gaffer_session_feed((gaffer_session*)s, event_json, error_out);
+}
+static const char* go_session_get_state(uintptr_t s, const char* partition, const char** error_out) {
+	return gaffer_session_get_state((gaffer_session*)s, partition, error_out);
+}
+static const char* go_session_get_shared_state(uintptr_t s, const char** error_out) {
+	return gaffer_session_get_shared_state((gaffer_session*)s, error_out);
+}
+static void go_session_set_state(uintptr_t s, const char* partition, const char* state_json, const char** error_out) {
+	gaffer_session_set_state((gaffer_session*)s, partition, state_json, error_out);
+}
+static const char* go_session_get_result(uintptr_t s, const char* partition, const char** error_out) {
+	return gaffer_session_get_result((gaffer_session*)s, partition, error_out);
+}
+static const char* go_session_get_sources(uintptr_t s, const char** error_out) {
+	return gaffer_session_get_sources((gaffer_session*)s, error_out);
+}
+static const char* go_session_get_partition_key(uintptr_t s, const char* event_json, const char** error_out) {
+	return gaffer_session_get_partition_key((gaffer_session*)s, event_json, error_out);
+}
+static const char* go_debug_set_breakpoint(uintptr_t s, int line, int column, const char* condition, const char* hit_condition, const char* log_message, const char** error_out) {
+	return gaffer_debug_set_breakpoint((gaffer_session*)s, line, column, condition, hit_condition, log_message, error_out);
+}
+static void go_debug_clear_breakpoints(uintptr_t s, const char** error_out) {
+	gaffer_debug_clear_breakpoints((gaffer_session*)s, error_out);
+}
+static void go_debug_continue(uintptr_t s, const char** error_out) {
+	gaffer_debug_continue((gaffer_session*)s, error_out);
+}
+static void go_debug_pause(uintptr_t s, const char** error_out) {
+	gaffer_debug_pause((gaffer_session*)s, error_out);
+}
+static void go_debug_step_into(uintptr_t s, const char** error_out) {
+	gaffer_debug_step_into((gaffer_session*)s, error_out);
+}
+static void go_debug_step_over(uintptr_t s, const char** error_out) {
+	gaffer_debug_step_over((gaffer_session*)s, error_out);
+}
+static void go_debug_step_out(uintptr_t s, const char** error_out) {
+	gaffer_debug_step_out((gaffer_session*)s, error_out);
+}
+static const char* go_debug_evaluate(uintptr_t s, const char* expression, const char** error_out) {
+	return gaffer_debug_evaluate((gaffer_session*)s, expression, error_out);
+}
+static const char* go_debug_get_call_stack(uintptr_t s, const char** error_out) {
+	return gaffer_debug_get_call_stack((gaffer_session*)s, error_out);
+}
+static const char* go_debug_get_scopes(uintptr_t s, int frame_index, const char** error_out) {
+	return gaffer_debug_get_scopes((gaffer_session*)s, frame_index, error_out);
+}
+static const char* go_debug_get_variables(uintptr_t s, int variables_reference, const char** error_out) {
+	return gaffer_debug_get_variables((gaffer_session*)s, variables_reference, error_out);
+}
 */
 import "C"
 
@@ -38,24 +111,13 @@ import (
 // Session wraps a projection runtime session.
 // Not thread-safe - do not use from multiple goroutines concurrently.
 type Session struct {
-	// handle is the runtime session handle. The runtime returns small
-	// integers (1, 2, 3, ...) cast to a pointer, not real pointers. Stored
-	// in a *C.gaffer_session field, the GC's stack scan treats those as
-	// pointers and aborts the process when one falls below the first page
-	// ("invalid pointer found on stack"). A uintptr is invisible to the GC,
-	// so the value is only reconstituted as a pointer transiently, at the
-	// FFI call boundary, via c().
+	// handle is the runtime session handle: a small integer (1, 2, 3, ...),
+	// not a real pointer. It must stay integer-typed everywhere on the Go
+	// side - even a transient *C.gaffer_session aborts the process if the
+	// GC copies the stack while it's live (see the shim comment in the cgo
+	// preamble). The go_* shims cast it in C at the FFI boundary.
 	handle uintptr
 	source string
-}
-
-// c reconstitutes the C session pointer for an FFI call. The handle is an
-// opaque integer the runtime never dereferences, so the conversion is safe;
-// keeping it in one place keeps the uintptr->pointer cast out of every call
-// site (see Session.handle).
-func (s *Session) c() *C.gaffer_session {
-	//nolint:govet // opaque integer handle, not a real pointer (see Session.handle)
-	return (*C.gaffer_session)(unsafe.Pointer(s.handle))
 }
 
 // rethrowCallbackPanic re-raises, with its original value, a panic captured
@@ -83,14 +145,14 @@ func NewSession(source string, optionsJSON *string) (*Session, error) {
 		defer C.free(unsafe.Pointer(opts))
 	}
 	var cErr *C.char
-	handle := C.gaffer_session_create(cs, opts, &cErr)
+	handle := C.go_session_create(cs, opts, &cErr)
 	if err := consumeError(cErr, source); err != nil {
 		return nil, err
 	}
-	if handle == nil {
+	if handle == 0 {
 		return nil, &UnexpectedError{Code: "unexpected", Desc: "unknown error", Msg: "unknown error"}
 	}
-	return &Session{handle: uintptr(unsafe.Pointer(handle)), source: source}, nil
+	return &Session{handle: uintptr(handle), source: source}, nil
 }
 
 // Destroy frees all resources associated with the session.
@@ -102,8 +164,8 @@ func (s *Session) Destroy() {
 	// resumes the engine, which can fire callbacks; with the maps already
 	// cleared those are no-ops, so no user code (and no panic) runs during
 	// teardown. cleanupCallbacks also drops any stash as a backstop.
-	cleanupCallbacks(s.c())
-	C.gaffer_session_destroy(s.c())
+	cleanupCallbacks(s.handle)
+	C.go_session_destroy(C.uintptr_t(s.handle))
 	s.handle = 0
 }
 
@@ -120,7 +182,7 @@ func (s *Session) Feed(eventJSON string) (*FeedResult, error) {
 	cs := C.CString(eventJSON)
 	defer C.free(unsafe.Pointer(cs))
 	var cErr *C.char
-	result := C.gaffer_session_feed(s.c(), cs, &cErr)
+	result := C.go_session_feed(C.uintptr_t(s.handle), cs, &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if err := consumeError(cErr, s.source); err != nil {
 		return nil, err
@@ -146,7 +208,7 @@ func (s *Session) GetState(partition *string) (*string, error) {
 		defer C.free(unsafe.Pointer(cp))
 	}
 	var cErr *C.char
-	result := C.gaffer_session_get_state(s.c(), cp, &cErr)
+	result := C.go_session_get_state(C.uintptr_t(s.handle), cp, &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if err := consumeError(cErr, s.source); err != nil {
 		return nil, err
@@ -163,7 +225,7 @@ func (s *Session) GetState(partition *string) (*string, error) {
 func (s *Session) GetSharedState() (*string, error) {
 	s.ensureAlive()
 	var cErr *C.char
-	result := C.gaffer_session_get_shared_state(s.c(), &cErr)
+	result := C.go_session_get_shared_state(C.uintptr_t(s.handle), &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if err := consumeError(cErr, s.source); err != nil {
 		return nil, err
@@ -189,7 +251,7 @@ func (s *Session) SetState(partition *string, stateJSON string) error {
 	cs := C.CString(stateJSON)
 	defer C.free(unsafe.Pointer(cs))
 	var cErr *C.char
-	C.gaffer_session_set_state(s.c(), cp, cs, &cErr)
+	C.go_session_set_state(C.uintptr_t(s.handle), cp, cs, &cErr)
 	return consumeError(cErr, s.source)
 }
 
@@ -206,7 +268,7 @@ func (s *Session) GetResult(partition *string) (*string, error) {
 		defer C.free(unsafe.Pointer(cp))
 	}
 	var cErr *C.char
-	result := C.gaffer_session_get_result(s.c(), cp, &cErr)
+	result := C.go_session_get_result(C.uintptr_t(s.handle), cp, &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if err := consumeError(cErr, s.source); err != nil {
 		return nil, err
@@ -221,7 +283,7 @@ func (s *Session) GetResult(partition *string) (*string, error) {
 // GetSources returns the projection's source configuration and features.
 func (s *Session) GetSources() ProjectionInfo {
 	s.ensureAlive()
-	result := C.gaffer_session_get_sources(s.c(), nil)
+	result := C.go_session_get_sources(C.uintptr_t(s.handle), nil)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if result == nil {
 		return ProjectionInfo{}
@@ -241,7 +303,7 @@ func (s *Session) GetPartitionKey(eventJSON string) (*string, error) {
 	cs := C.CString(eventJSON)
 	defer C.free(unsafe.Pointer(cs))
 	var cErr *C.char
-	result := C.gaffer_session_get_partition_key(s.c(), cs, &cErr)
+	result := C.go_session_get_partition_key(C.uintptr_t(s.handle), cs, &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if err := consumeError(cErr, s.source); err != nil {
 		return nil, err
@@ -255,29 +317,29 @@ func (s *Session) GetPartitionKey(eventJSON string) (*string, error) {
 
 // OnEmit registers a callback for emitted events (emit and linkTo).
 func (s *Session) OnEmit(cb EmitCallback) {
-	sessionOnEmit(s.c(), cb)
+	sessionOnEmit(s.handle, cb)
 }
 
 // OnLog registers a callback for console.log output.
 func (s *Session) OnLog(cb LogCallback) {
-	sessionOnLog(s.c(), cb)
+	sessionOnLog(s.handle, cb)
 }
 
 // OnDiagnostic registers a callback for quirks that fire while processing an
 // event, invoked at the point each fires. The quirk is also included in the
 // feed result's Diagnostics.
 func (s *Session) OnDiagnostic(cb DiagnosticCallback) {
-	sessionOnDiagnostic(s.c(), cb)
+	sessionOnDiagnostic(s.handle, cb)
 }
 
 // OnStateChanged registers a callback for state changes.
 func (s *Session) OnStateChanged(cb StateChangedCallback) {
-	sessionOnStateChanged(s.c(), cb)
+	sessionOnStateChanged(s.handle, cb)
 }
 
 // OnBreak registers a callback for debug pause notifications.
 func (s *Session) OnBreak(cb BreakCallback) {
-	sessionOnBreak(s.c(), cb)
+	sessionOnBreak(s.handle, cb)
 }
 
 // SnappedBreakpoint is the actual position where a breakpoint was set after snapping.
@@ -314,7 +376,7 @@ func (s *Session) SetBreakpoint(line, column int, opts *BreakpointOptions) (*Sna
 		}
 	}
 	var cErr *C.char
-	result := C.gaffer_debug_set_breakpoint(s.c(), C.int(line), C.int(column), cond, hitCond, logMsg, &cErr)
+	result := C.go_debug_set_breakpoint(C.uintptr_t(s.handle), C.int(line), C.int(column), cond, hitCond, logMsg, &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if err := consumeError(cErr, s.source); err != nil {
 		return nil, err
@@ -335,7 +397,7 @@ func (s *Session) SetBreakpoint(line, column int, opts *BreakpointOptions) (*Sna
 func (s *Session) Pause() error {
 	s.ensureAlive()
 	var cErr *C.char
-	C.gaffer_debug_pause(s.c(), &cErr)
+	C.go_debug_pause(C.uintptr_t(s.handle), &cErr)
 	return consumeError(cErr, s.source)
 }
 
@@ -345,7 +407,7 @@ func (s *Session) StepInto() error {
 	s.ensureAlive()
 	defer s.rethrowCallbackPanic()
 	var cErr *C.char
-	C.gaffer_debug_step_into(s.c(), &cErr)
+	C.go_debug_step_into(C.uintptr_t(s.handle), &cErr)
 	return consumeError(cErr, s.source)
 }
 
@@ -355,7 +417,7 @@ func (s *Session) StepOver() error {
 	s.ensureAlive()
 	defer s.rethrowCallbackPanic()
 	var cErr *C.char
-	C.gaffer_debug_step_over(s.c(), &cErr)
+	C.go_debug_step_over(C.uintptr_t(s.handle), &cErr)
 	return consumeError(cErr, s.source)
 }
 
@@ -365,7 +427,7 @@ func (s *Session) StepOut() error {
 	s.ensureAlive()
 	defer s.rethrowCallbackPanic()
 	var cErr *C.char
-	C.gaffer_debug_step_out(s.c(), &cErr)
+	C.go_debug_step_out(C.uintptr_t(s.handle), &cErr)
 	return consumeError(cErr, s.source)
 }
 
@@ -376,7 +438,7 @@ func (s *Session) Evaluate(expression string) (*DebugVariable, error) {
 	cs := C.CString(expression)
 	defer C.free(unsafe.Pointer(cs))
 	var cErr *C.char
-	result := C.gaffer_debug_evaluate(s.c(), cs, &cErr)
+	result := C.go_debug_evaluate(C.uintptr_t(s.handle), cs, &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if err := consumeError(cErr, s.source); err != nil {
 		return nil, err
@@ -396,7 +458,7 @@ func (s *Session) Evaluate(expression string) (*DebugVariable, error) {
 func (s *Session) ClearBreakpoints() error {
 	s.ensureAlive()
 	var cErr *C.char
-	C.gaffer_debug_clear_breakpoints(s.c(), &cErr)
+	C.go_debug_clear_breakpoints(C.uintptr_t(s.handle), &cErr)
 	return consumeError(cErr, s.source)
 }
 
@@ -406,7 +468,7 @@ func (s *Session) Continue() error {
 	s.ensureAlive()
 	defer s.rethrowCallbackPanic()
 	var cErr *C.char
-	C.gaffer_debug_continue(s.c(), &cErr)
+	C.go_debug_continue(C.uintptr_t(s.handle), &cErr)
 	return consumeError(cErr, s.source)
 }
 
@@ -415,7 +477,7 @@ func (s *Session) GetCallStack() ([]DebugCallFrame, error) {
 	s.ensureAlive()
 	defer s.rethrowCallbackPanic()
 	var cErr *C.char
-	result := C.gaffer_debug_get_call_stack(s.c(), &cErr)
+	result := C.go_debug_get_call_stack(C.uintptr_t(s.handle), &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if err := consumeError(cErr, s.source); err != nil {
 		return nil, err
@@ -435,7 +497,7 @@ func (s *Session) GetScopes(frameIndex int) ([]DebugScopeInfo, error) {
 	s.ensureAlive()
 	defer s.rethrowCallbackPanic()
 	var cErr *C.char
-	result := C.gaffer_debug_get_scopes(s.c(), C.int(frameIndex), &cErr)
+	result := C.go_debug_get_scopes(C.uintptr_t(s.handle), C.int(frameIndex), &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if err := consumeError(cErr, s.source); err != nil {
 		return nil, err
@@ -455,7 +517,7 @@ func (s *Session) GetVariables(variablesReference int) ([]DebugVariable, error) 
 	s.ensureAlive()
 	defer s.rethrowCallbackPanic()
 	var cErr *C.char
-	result := C.gaffer_debug_get_variables(s.c(), C.int(variablesReference), &cErr)
+	result := C.go_debug_get_variables(C.uintptr_t(s.handle), C.int(variablesReference), &cErr)
 	defer C.gaffer_free(unsafe.Pointer(result))
 	if err := consumeError(cErr, s.source); err != nil {
 		return nil, err

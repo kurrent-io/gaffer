@@ -7,30 +7,49 @@ package gafferruntime
 // Forward declarations for Go callback trampolines. user_data is declared
 // uintptr_t to match the //export signatures: it carries the session handle,
 // a small integer that must never appear pointer-typed on the Go side (see
-// the shim comment in gaffer.go's preamble). The cast to the void*-taking
-// callback typedef below is ABI-equivalent on every target.
+// the shim comment in gaffer.go's preamble).
 extern void goEmitCallback(const char* streamId, const char* eventType, const char* data, const char* metadata, int isJson, int isLink, uintptr_t userData);
 extern void goLogCallback(const char* message, uintptr_t userData);
 extern void goDiagnosticCallback(const char* code, const char* message, int severity, uintptr_t userData);
 extern void goStateChangedCallback(const char* partition, const char* stateJson, uintptr_t userData);
 extern void goBreakCallback(const char* reason, const char* source, int line, int column, uintptr_t userData);
 
+// Thunks matching the gaffer_*_cb typedefs exactly. The void* -> uintptr_t
+// conversion happens here on the user_data VALUE; casting the Go trampolines
+// (uintptr_t last parameter) to the void*-taking typedefs instead would call
+// through an incompatible function-pointer type, which is undefined behavior.
+static void go_emit_thunk(const char* streamId, const char* eventType, const char* data, const char* metadata, int isJson, int isLink, void* userData) {
+	goEmitCallback(streamId, eventType, data, metadata, isJson, isLink, (uintptr_t)userData);
+}
+static void go_log_thunk(const char* message, void* userData) {
+	goLogCallback(message, (uintptr_t)userData);
+}
+static void go_diagnostic_thunk(const char* code, const char* message, int severity, void* userData) {
+	goDiagnosticCallback(code, message, severity, (uintptr_t)userData);
+}
+static void go_state_changed_thunk(const char* partition, const char* stateJson, void* userData) {
+	goStateChangedCallback(partition, stateJson, (uintptr_t)userData);
+}
+static void go_break_thunk(const char* reason, const char* source, int line, int column, void* userData) {
+	goBreakCallback(reason, source, line, column, (uintptr_t)userData);
+}
+
 // Registration shims: cast the integer handle to gaffer_session* (and back
 // into the user_data slot) in C, so no fake pointer transits Go stack slots.
 static void go_on_emit(uintptr_t s) {
-	gaffer_on_emit((gaffer_session*)s, (gaffer_emit_cb)goEmitCallback, (void*)s);
+	gaffer_on_emit((gaffer_session*)s, go_emit_thunk, (void*)s);
 }
 static void go_on_log(uintptr_t s) {
-	gaffer_on_log((gaffer_session*)s, (gaffer_log_cb)goLogCallback, (void*)s);
+	gaffer_on_log((gaffer_session*)s, go_log_thunk, (void*)s);
 }
 static void go_on_diagnostic(uintptr_t s) {
-	gaffer_on_diagnostic((gaffer_session*)s, (gaffer_diagnostic_cb)goDiagnosticCallback, (void*)s);
+	gaffer_on_diagnostic((gaffer_session*)s, go_diagnostic_thunk, (void*)s);
 }
 static void go_on_state_changed(uintptr_t s) {
-	gaffer_on_state_changed((gaffer_session*)s, (gaffer_state_changed_cb)goStateChangedCallback, (void*)s);
+	gaffer_on_state_changed((gaffer_session*)s, go_state_changed_thunk, (void*)s);
 }
 static void go_on_break(uintptr_t s) {
-	gaffer_on_break((gaffer_session*)s, (gaffer_break_cb)goBreakCallback, (void*)s);
+	gaffer_on_break((gaffer_session*)s, go_break_thunk, (void*)s);
 }
 */
 import "C"

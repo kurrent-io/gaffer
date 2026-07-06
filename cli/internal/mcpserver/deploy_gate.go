@@ -101,13 +101,14 @@ func confirmWrite(ctx context.Context, req *mcp.CallToolRequest, g writeGate) *m
 	// drops an empty map.
 	schema := json.RawMessage(`{"type":"object","properties":{}}`)
 	if g.typedConfirm() {
-		question += fmt.Sprintf(" Type the projection name (%q) to confirm.", g.Name)
+		// The instruction lives on the field alone (clients render the
+		// description at the input); repeating it in the message doubled up.
 		s, err := json.Marshal(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"confirm": map[string]any{
 					"type":        "string",
-					"description": fmt.Sprintf("Type the projection name (%q) to confirm", g.Name),
+					"description": fmt.Sprintf("Type the projection name %q to confirm", g.Name),
 				},
 			},
 			"required": []string{"confirm"},

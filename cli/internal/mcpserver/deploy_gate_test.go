@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -190,13 +191,21 @@ func TestConfirmWriteTypedConfirmOnProd(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var asked string
+			var schema []byte
 			ss := elicitSession(t, func(_ context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 				asked = req.Params.Message
+				schema, _ = json.Marshal(req.Params.RequestedSchema)
 				return &mcp.ElicitResult{Action: "accept", Content: tc.content}, nil
 			})
 			r := confirmWrite(context.Background(), gateReq(ss), g)
-			if !strings.Contains(asked, `Type the projection name ("orders") to confirm.`) {
-				t.Errorf("question = %q, want the typing instruction", asked)
+			// The typing instruction lives on the form field, not the message -
+			// clients render the field description at the input, so a message
+			// copy doubled up.
+			if strings.Contains(asked, "Type the projection name") {
+				t.Errorf("question = %q, want the typing instruction only on the field", asked)
+			}
+			if !strings.Contains(string(schema), `Type the projection name \"orders\" to confirm`) {
+				t.Errorf("schema = %s, want the field description carrying the instruction", schema)
 			}
 			if tc.wantOK {
 				if r != nil {

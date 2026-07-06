@@ -7,9 +7,11 @@ init:
 
 # Run tests. The `dev` build tag adds a build-dir rpath to the cgo
 # link so the binary finds the runtime at the published path - see
-# gaffer_dev.go.
+# gaffer_dev.go. -race doubles as a checkptr gate on the FFI: an integer
+# session handle leaking into a pointer-typed slot fatals deterministically
+# here instead of crashing the GC once in a blue moon (UI-1813).
 test:
-    CGO_ENABLED=1 go test -tags dev -v ./...
+    CGO_ENABLED=1 go test -tags dev -race -v ./...
 
 # Format code and apply lint fixes
 fix:

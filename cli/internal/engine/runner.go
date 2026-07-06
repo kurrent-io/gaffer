@@ -187,15 +187,17 @@ func NewRunner(cfg RunnerConfig) *Runner {
 			// (ProcessOne), so the counter is non-zero and the session cannot
 			// be freed before these goroutines finish. Registration happens
 			// here, before the spawn, so ops.Wait can never pass between the
-			// spawn and a goroutine registering itself.
+			// spawn and a goroutine registering itself. That safety argument
+			// rests on Feed only ever being driven through ProcessOne - a
+			// caller feeding the session directly with debug wired would let
+			// these Adds race ops.Wait at counter zero. (WaitGroup.Go adds
+			// synchronously before spawning, preserving exactly that order.)
 			if r.control.draining {
 				r.control.paused = false
 				r.mu.Unlock()
-				r.ops.Add(1)
-				go func() {
-					defer r.ops.Done()
+				r.ops.Go(func() {
 					_ = r.debug.Session.Continue()
-				}()
+				})
 				return
 			}
 			if info.Reason == "pause" && r.control.breakAtStep > 0 {
@@ -205,13 +207,11 @@ func NewRunner(cfg RunnerConfig) *Runner {
 				// StepInto blocks on the engine thread that's currently running
 				// this callback. A returned error has no caller here, so route
 				// it through OnError (e.g. MCP's error channel).
-				r.ops.Add(1)
-				go func() {
-					defer r.ops.Done()
+				r.ops.Go(func() {
 					if err := r.debug.Session.StepInto(); err != nil && r.debug.OnError != nil {
 						r.debug.OnError(err)
 					}
-				}()
+				})
 				return
 			}
 			r.control.paused = true

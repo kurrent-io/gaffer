@@ -171,9 +171,17 @@ func (r *Runner) drain() {
 
 // Destroy frees the session after draining and waiting out every in-flight
 // session-crossing call, an in-flight ProcessOne included (see the Runner
-// doc comment's teardown guarantee). Idempotent; concurrent and repeat calls
-// no-op. Front-ends should still stop their source loop first as a matter of
+// doc comment's teardown guarantee). Idempotent; a concurrent second call
+// no-ops immediately, returning before the first call's teardown completes.
+// Front-ends should still stop their source loop first as a matter of
 // hygiene, but a straggling feed no longer races the teardown.
+//
+// The wait trusts every registered op to finish. The runtime's debug-command
+// queue can strand a command (an unsynchronized paused check-then-add racing
+// the command loop's exit leaves the command's Done unsignalled), and a
+// stranded verb now blocks Destroy where it previously leaked a goroutine.
+// The window needs concurrent debug verbs on a paused engine; the fix is
+// runtime-side, in the command loop.
 //
 // The history store is NOT closed here: the Runner only borrows it, and in
 // the dev debug loop one store serves every restart iteration's runner.

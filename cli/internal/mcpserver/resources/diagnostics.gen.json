@@ -90,6 +90,16 @@
     "goodExample": "// Run on engine_version 1 if you need emitted-stream tracking, or drop the option.\nfromAll().when({\n  Counted(state, event) { return { count: state.count + 1 }; }\n});"
   },
   {
+    "code": "quirk.handlerError.wedgesOnV2",
+    "class": "quirk",
+    "severity": "error",
+    "message": "An error while processing an event wedges a deployed engine_version 2 projection instead of faulting it: status stays Running while processing and persistence have stopped, and nothing is logged.",
+    "docs": "When an event-processing exception escapes on deployed engine_version 2 - a throwing handler, a state-load or serialization failure, or a `$created`/`$deleted` callback error - the projection does not fault. The failure is silent: `status` stays `Running` and `eventsProcessedAfterRestart` keeps counting, but processing has stopped - no checkpoint is written and no state or emitted events are persisted, for every partition, not just the failing one. Nothing reaches the server log. Gaffer does not reproduce the wedge: locally the event faults with the error, which is what the deployed projection should do. Treat an event-processing error under engine_version 2 as a deployment risk - guard handlers against throwing, and monitor deployed V2 projections by checkpoint progress rather than `status`.",
+    "fixedIn": null,
+    "badExample": "fromStream('orders').when({\n  $init() { return { total: 0 }; },\n  OrderPlaced(state, event) {\n    state.total += event.body.amount.value; // throws when amount is missing; deployed V2 wedges silently\n    return state;\n  }\n});",
+    "goodExample": "fromStream('orders').when({\n  $init() { return { total: 0 }; },\n  OrderPlaced(state, event) {\n    const amount = event.body.amount;\n    if (amount && typeof amount.value === 'number')\n      state.total += amount.value;\n    return state;\n  }\n});"
+  },
+  {
     "code": "usage.linkStreamTo.deprecated",
     "class": "usage",
     "severity": "information",

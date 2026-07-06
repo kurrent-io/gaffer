@@ -333,12 +333,19 @@ public sealed class ProjectionSession : IDisposable {
 		} catch (OperationCanceledException) {
 			throw;
 		} catch (StateSerializationException ex) {
+			AppendHandlerErrorWedgeDiagnostic();
 			var part = IsPartitioned ? partition : null;
 			throw new StateSerializationException(
 				ex.Description,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
 				ex.InnerException) { CompatCode = ex.CompatCode };
 		} catch (Exception ex) when (ex is not ProjectionException) {
+			// A throwing partitionBy (partition still null) is exempt from the wedge quirk:
+			// the server computes partition keys on the read loop, whose exceptions fault
+			// the projection properly. Everything past ResolvePartition is partition-
+			// processor work, which wedges (DB-2159).
+			if (partition != null)
+				AppendHandlerErrorWedgeDiagnostic();
 			throw WrapHandlerException(ex, @event, partition);
 		}
 	}
@@ -498,8 +505,36 @@ public sealed class ProjectionSession : IDisposable {
 			Message = descriptor.Message,
 			Severity = DiagnosticSeverity.Error,
 		};
-		OnDiagnostic?.Invoke(diagnostic);
+		NotifyDiagnosticWhileThrowing(diagnostic);
 		return diagnostic;
+	}
+
+	// The deployed V2 engine never observes an exception thrown while processing an event:
+	// the partition processor dies silently and the projection wedges (Running, no
+	// checkpoints, no persistence) instead of faulting (DB-2159). Local faulting is the
+	// behaviour V2 should have, so it stays - this diagnostic rides the error to explain
+	// the divergence. Placement is the caller's: the throw sites know whether the failing
+	// work is partition-processor work (wedges) or read-loop work (faults properly).
+	private void AppendHandlerErrorWedgeDiagnostic() {
+		if (_version != ProjectionVersion.V2
+			|| !DiagnosticCatalog.HandlerErrorWedgesOnV2.FiresAt(_quirksVersion))
+			return;
+		var diagnostic = DiagnosticCatalog.HandlerErrorWedgesOnV2.ToDiagnostic();
+		_pendingDiagnostics.Add(diagnostic);
+		NotifyDiagnosticWhileThrowing(diagnostic);
+	}
+
+	// Live-notify a diagnostic raised while a projection error is already unwinding.
+	// Unlike the happy-path callbacks (SafeInvokeEmit/SafeInvokeLog fault the session
+	// and rethrow), a subscriber failure here is swallowed: it must not replace the
+	// projection error being reported. Nothing is lost - the diagnostic still reaches
+	// the caller on the exception's Diagnostics; only the live notification is dropped.
+	private void NotifyDiagnosticWhileThrowing(Diagnostic diagnostic) {
+		try {
+			OnDiagnostic?.Invoke(diagnostic);
+		} catch {
+			// best effort
+		}
 	}
 
 	// Event path: append the throwing quirk to everything that fired before the throw
@@ -586,12 +621,16 @@ public sealed class ProjectionSession : IDisposable {
 		} catch (OperationCanceledException) {
 			throw;
 		} catch (StateSerializationException ex) {
+			AppendHandlerErrorWedgeDiagnostic();
 			var part = IsPartitioned ? partition : null;
 			throw new StateSerializationException(
 				ex.Description,
 				@event.EventType, @event.StreamId, @event.SequenceNumber, part,
 				ex.InnerException) { CompatCode = ex.CompatCode };
 		} catch (Exception ex) when (ex is not ProjectionException) {
+			// $deleted handling is partition-processor work on the server, so a throw
+			// here wedges a deployed V2 projection (DB-2159).
+			AppendHandlerErrorWedgeDiagnostic();
 			throw WrapHandlerException(ex, @event, partition);
 		}
 	}

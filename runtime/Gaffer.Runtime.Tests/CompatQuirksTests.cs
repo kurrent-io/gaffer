@@ -269,9 +269,11 @@ public class CompatQuirksTests {
 				IsJson = true,
 			}));
 
-		Assert.Equal(2, ex.Diagnostics.Count); // exactly the two that fired, no duplication
+		// Exactly the two that fired plus the V2 wedge rider, no duplication.
+		Assert.Equal(3, ex.Diagnostics.Count);
 		Assert.Contains(ex.Diagnostics, x => x.Code == DiagnosticCatalog.LogMultiParam.Code);
 		Assert.Contains(ex.Diagnostics, x => x.Code == DiagnosticCatalog.EventBodyCast.Code);
+		Assert.Contains(ex.Diagnostics, x => x.Code == DiagnosticCatalog.HandlerErrorWedgesOnV2.Code);
 	}
 
 	[Fact]
@@ -566,5 +568,143 @@ public class CompatQuirksTests {
 		// "b" emitted at i=1; objects at i=0 and i=2 go to buffer; i=2's
 		// separator is " ," (i>1 is true).
 		Assert.Equal(new[] { "b", "{\"a\":1} ,{\"c\":2}" }, logs);
+	}
+
+	// -- handler-error wedge (DB-2159) --
+	// The deployed V2 engine never faults on a handler error - the projection wedges
+	// silently. gaffer keeps faulting locally and rides this diagnostic on the error.
+
+	[Fact]
+	public void HandlerError_OnV2_CarriesWedgeDiagnostic() {
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				Boom: function (s, e) { throw new Error("intentional"); }
+			});
+		""", Options());
+		var live = new List<Diagnostic>();
+		session.OnDiagnostic = d => live.Add(d);
+
+		var ex = Assert.Throws<ProjectionHandlerException>(() =>
+			session.Feed(new ProjectionEvent { EventType = "Boom", StreamId = "s-1", Data = "{}" }));
+
+		// Not the throw's cause, so it must not claim CompatCode - it rides Diagnostics only.
+		Assert.Null(ex.CompatCode);
+		var d = Assert.Single(ex.Diagnostics, x => x.Code == DiagnosticCatalog.HandlerErrorWedgesOnV2.Code);
+		Assert.Equal(DiagnosticSeverity.Error, d.Severity);
+		// Streamed live at the point of firing too, like every other quirk.
+		Assert.Contains(live, x => x.Code == DiagnosticCatalog.HandlerErrorWedgesOnV2.Code);
+	}
+
+	[Fact]
+	public void HandlerError_OnV2_Versioned_StillFires() {
+		// FixedIn = null, so the wedge fires regardless of which version is set.
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				Boom: function (s, e) { throw new Error("intentional"); }
+			});
+		""", Options(new KurrentDbVersion(26, 2, 0)));
+
+		var ex = Assert.Throws<ProjectionHandlerException>(() =>
+			session.Feed(new ProjectionEvent { EventType = "Boom", StreamId = "s-1", Data = "{}" }));
+
+		Assert.Single(ex.Diagnostics, x => x.Code == DiagnosticCatalog.HandlerErrorWedgesOnV2.Code);
+	}
+
+	[Fact]
+	public void HandlerError_OnV1_NoWedgeDiagnostic() {
+		// V1 faults properly on the server, so there is no divergence to explain.
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				Boom: function (s, e) { throw new Error("intentional"); }
+			});
+		""", new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V1 });
+
+		var ex = Assert.Throws<ProjectionHandlerException>(() =>
+			session.Feed(new ProjectionEvent { EventType = "Boom", StreamId = "s-1", Data = "{}" }));
+
+		Assert.Empty(ex.Diagnostics);
+	}
+
+	[Fact]
+	public void PartitionByThrow_OnV2_NoWedgeDiagnostic() {
+		// Partition keys are computed on the server's read loop, whose exceptions fault
+		// the projection properly - only partition-processor work wedges.
+		using var session = new ProjectionSession("""
+			fromAll().partitionBy(function (e) { throw new Error("intentional"); }).when({
+				$any: function (s, e) { return s; }
+			});
+		""", Options());
+
+		var ex = Assert.Throws<ProjectionHandlerException>(() =>
+			session.Feed(new ProjectionEvent { EventType = "X", StreamId = "s-1", Data = "{}" }));
+
+		Assert.Empty(ex.Diagnostics);
+	}
+
+	[Fact]
+	public void ThrowingDiagnosticSubscriber_DoesNotMaskProjectionError() {
+		// OnDiagnostic invocations that happen while a projection error is unwinding
+		// (the wedge rider and the thrown-quirk diagnostic) must not let a throwing
+		// subscriber replace that error. The body-cast projection exercises both
+		// sites in one feed; the diagnostics still arrive on the exception.
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				Test: function (s, e) { return e.body; }
+			});
+		""", Options());
+		session.OnDiagnostic = _ => throw new InvalidOperationException("subscriber boom");
+
+		var ex = Assert.Throws<ProjectionHandlerException>(() =>
+			session.Feed(new ProjectionEvent {
+				EventType = "Test",
+				StreamId = "s-1",
+				Data = "null",
+				IsJson = true,
+			}));
+
+		Assert.Equal(DiagnosticCatalog.EventBodyCast.Code, ex.CompatCode);
+		Assert.Contains(ex.Diagnostics, x => x.Code == DiagnosticCatalog.EventBodyCast.Code);
+		Assert.Contains(ex.Diagnostics, x => x.Code == DiagnosticCatalog.HandlerErrorWedgesOnV2.Code);
+	}
+
+	[Fact]
+	public void DeletedHandlerThrow_OnV2_CarriesWedgeDiagnostic() {
+		// $deleted handling is partition-processor work on the server, so the
+		// FeedStreamDeleted throw sites must ride the wedge diagnostic too.
+		using var session = new ProjectionSession("""
+			fromAll().foreachStream().when({
+				$init: function() { return {}; },
+				$deleted: function(s, e) { throw new Error("deleted boom"); },
+				Ping: function(s, e) { return s; }
+			});
+		""", Options());
+
+		session.Feed(new ProjectionEvent { EventType = "Ping", StreamId = "s-1", Data = "{}" });
+
+		var ex = Assert.Throws<ProjectionHandlerException>(() =>
+			session.Feed(new ProjectionEvent {
+				EventType = ProjectionSession.StreamDeletedEventType,
+				StreamId = "s-1",
+				Data = "{}",
+			}));
+
+		Assert.Single(ex.Diagnostics, x => x.Code == DiagnosticCatalog.HandlerErrorWedgesOnV2.Code);
+	}
+
+	[Fact]
+	public void StateSerializationError_OnV2_CarriesWedgeDiagnostic() {
+		// Output serialization is partition-processor work on the server, so it wedges too.
+		// NaN state throws (SerializeNonFinite, unfixed below 26.2.0); the wedge rides along.
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				Test: function (s, e) { return { v: NaN }; }
+			});
+		""", Options(new KurrentDbVersion(26, 1, 0)));
+
+		var ex = Assert.Throws<StateSerializationException>(() =>
+			session.Feed(new ProjectionEvent { EventType = "Test", StreamId = "s-1", Data = "{}" }));
+
+		Assert.Equal(DiagnosticCatalog.SerializeNonFinite.Code, ex.CompatCode);
+		Assert.Single(ex.Diagnostics, x => x.Code == DiagnosticCatalog.HandlerErrorWedgesOnV2.Code);
 	}
 }

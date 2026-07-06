@@ -181,12 +181,14 @@ func TestConfirmWriteTypedConfirmOnProd(t *testing.T) {
 		wantMsg string
 	}{
 		{"typed name matches", map[string]any{"confirm": "orders"}, true, ""},
-		{"typed name differs", map[string]any{"confirm": "order"}, false, "doesn't match"},
+		// The exact-match pattern makes the SDK reject a differing name at
+		// schema validation; the gate reports it as the mismatch it is.
+		{"typed name differs", map[string]any{"confirm": "order"}, false, "must match"},
 		// A missing or mistyped field is rejected by the SDK's own schema
-		// validation before the gate's value check - a different message,
-		// the same fail-closed outcome.
-		{"field missing", nil, false, "confirmation failed"},
-		{"field wrong type", map[string]any{"confirm": 7}, false, "confirmation failed"},
+		// validation, which the gate reports with the same must-match
+		// message as a pattern failure - accurate for all three.
+		{"field missing", nil, false, "must match"},
+		{"field wrong type", map[string]any{"confirm": 7}, false, "must match"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

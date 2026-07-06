@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -103,11 +104,17 @@ func confirmWrite(ctx context.Context, req *mcp.CallToolRequest, g writeGate) *m
 	if g.typedConfirm() {
 		// The instruction lives on the field alone (clients render the
 		// description at the input); repeating it in the message doubled up.
+		// The exact-match pattern lets a client gate its Accept inline
+		// instead of accept-then-reject. pattern is an extension over the
+		// MCP elicitation string-schema subset: a client that enforces it
+		// closes the seam, one that ignores unknown keywords loses nothing,
+		// and the SDK validates the result against it either way.
 		s, err := json.Marshal(map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"confirm": map[string]any{
 					"type":        "string",
+					"pattern":     "^" + regexp.QuoteMeta(g.Name) + "$",
 					"description": fmt.Sprintf("Type the projection name %q to confirm", g.Name),
 				},
 			},
@@ -124,6 +131,12 @@ func confirmWrite(ctx context.Context, req *mcp.CallToolRequest, g writeGate) *m
 		RequestedSchema: schema,
 	})
 	if err != nil {
+		// The SDK validates the result against the schema, so a typed name
+		// failing the exact-match pattern arrives here as a schema-validation
+		// error; report it as the mismatch it is, not transport noise.
+		if g.typedConfirm() && strings.Contains(err.Error(), "does not match requested schema") {
+			return toolError("%s was not confirmed: the typed name must match %q exactly; nothing was changed", capitalizeFirst(g.Action), g.Name)
+		}
 		return toolError("confirmation failed: %v; nothing was changed. Run `%s` to proceed from the CLI", err, g.CLI)
 	}
 	if res.Action != "accept" {

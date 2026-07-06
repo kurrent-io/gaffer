@@ -5,6 +5,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
@@ -101,8 +102,13 @@ func TestIntegration_OperateVerbs(t *testing.T) {
 	hist := callTool(t, s, deployHistoryTool, s.handleDeployHistory, deployHistoryInput{Name: name})
 	versions := hist["versions"].([]any)
 	head := versions[0].(map[string]any)
-	if head["kind"] != "recreate" || head["tool"] != remote.ToolName || head["operation"] != "recreate" {
-		t.Fatalf("history head after recreate = %v, want a gaffer-stamped recreate", head)
+	// The stamped classification needs a metadata-capable KurrentDB; against
+	// a release that ignores the field, history degrades to a metadata-less
+	// external edit. Same gate as remote's ledger integration tests.
+	if os.Getenv("GAFFER_TEST_LEDGER") != "" {
+		if head["kind"] != "recreate" || head["tool"] != remote.ToolName || head["operation"] != "recreate" {
+			t.Fatalf("history head after recreate = %v, want a gaffer-stamped recreate", head)
+		}
 	}
 	recreatedHash := head["contentHash"].(string)
 

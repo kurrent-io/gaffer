@@ -28,7 +28,9 @@ var deployApplyTool = &mcp.Tool{
 		"the ones already in sync. Mirrors `gaffer deploy` (every projection must compile " +
 		"and pass the diagnostics preflight first; there is no validation bypass) and " +
 		"emits the same per-item results as `gaffer deploy --json`, in an envelope echoing " +
-		"the resolved env, target, and production. Use deploy_plan first to preview. On a " +
+		"the resolved env, target, and production; a non-zero `failed` means some items " +
+		"failed or were refused (their result carries the reason or error). Use " +
+		"deploy_plan first to preview. On a " +
 		"production target the deploy asks the human to confirm via the client " +
 		"(elicitation); with resetOnLogicChange rebuilds in the plan it always asks, and a " +
 		"production confirm requires typing the environment name (rebuilds destroy state). " +
@@ -81,20 +83,18 @@ func (s *Server) handleDeployApply(ctx context.Context, req *mcp.CallToolRequest
 	plan := drift.PlanAll(ctx, client, cfg, root, names)
 	drift.ResolveResets(plan, in.ResetOnLogicChange)
 
-	changes, rebuilds := 0, 0
-	var faulted, overwrites []string
+	if ctx.Err() != nil {
+		return toolError("%v; nothing was deployed", ctx.Err()), nil, nil
+	}
+
+	changes := 0
+	var faulted []string
 	for _, it := range plan {
 		if it.Err != nil {
 			continue
 		}
 		if it.Action.Applies() {
 			changes++
-			if it.Cmp.ExternallyChanged() {
-				overwrites = append(overwrites, it.Name)
-			}
-		}
-		if it.Action == drift.ActionReset {
-			rebuilds++
 		}
 		if it.Action == drift.ActionUpdate && it.Faulted {
 			faulted = append(faulted, it.Name)
@@ -109,8 +109,12 @@ func (s *Server) handleDeployApply(ctx context.Context, req *mcp.CallToolRequest
 		"production": prod,
 		"changes":    changes,
 	}
-	if items := <-driftCh; len(items) > 0 {
-		result["configDrift"] = cliout.BuildConfigDriftJSON(items)
+	if len(faulted) > 0 {
+		result["faultedUpdates"] = faulted
+	}
+	driftItems := <-driftCh
+	if len(driftItems) > 0 {
+		result["configDrift"] = cliout.BuildConfigDriftJSON(driftItems)
 	}
 
 	// A plan that changes nothing needs no confirmation and writes nothing;
@@ -130,7 +134,7 @@ func (s *Server) handleDeployApply(ctx context.Context, req *mcp.CallToolRequest
 		return toolResult(result), nil, nil
 	}
 
-	if r := confirmWrite(ctx, req, deployApplyGate(in, env.Name, target, prod, changes, rebuilds, faulted, overwrites)); r != nil {
+	if r := confirmWrite(ctx, req, deployApplyGate(in, env.Name, target, prod, plan, len(driftItems) > 0)); r != nil {
 		return r, nil, nil
 	}
 
@@ -141,28 +145,66 @@ func (s *Server) handleDeployApply(ctx context.Context, req *mcp.CallToolRequest
 	})
 	result["results"] = results
 	result["failed"] = failed
+	if len(results) < len(plan) {
+		// A cancellation stopped the loop; say so rather than shipping a
+		// truncated result that reads as a complete run.
+		result["interrupted"] = true
+	}
 	return toolResult(result), nil, nil
 }
 
-// deployApplyGate shapes the confirm for a deploy: the change counts lead the
-// consequence, rebuilds put the plan in the no-undo tier (state is destroyed,
-// so a production confirm types the environment name - the plan spans
-// projections, so there is no single projection name to type), and the
-// faulted/overwrite cautions the CLI prints pre-confirm ride along.
-func deployApplyGate(in deployApplyInput, envName, target string, prod bool, changes, rebuilds int, faulted, overwrites []string) writeGate {
+// deployApplyGate shapes the confirm for a deploy. The human at the elicit
+// is the one link the gate exists not to trust the agent over, so the
+// consequence names the changed projections (capped), not just counts, and
+// carries the cautions the CLI prints pre-confirm: rebuilds (which put the
+// plan in the no-undo tier - state is destroyed, so a production confirm
+// types the environment name; the plan spans projections, so there is no
+// single projection name to type), out-of-band overwrites, faulted update
+// targets, emitting rebuilds, and a diverging [database_config].
+func deployApplyGate(in deployApplyInput, envName, target string, prod bool, plan []drift.PlanItem, configDrift bool) writeGate {
+	changes, rebuilds := 0, 0
+	var changed, faulted, overwrites, emitting []string
+	for _, it := range plan {
+		if it.Err != nil {
+			continue
+		}
+		if it.Action.Applies() {
+			changes++
+			changed = append(changed, it.Name)
+			if it.Cmp.ExternallyChanged() {
+				overwrites = append(overwrites, it.Name)
+			}
+		}
+		if it.Action == drift.ActionReset {
+			rebuilds++
+			if it.Cmp.Local != nil && it.Cmp.Local.Emit {
+				emitting = append(emitting, it.Name)
+			}
+		}
+		if it.Action == drift.ActionUpdate && it.Faulted {
+			faulted = append(faulted, it.Name)
+		}
+	}
+
 	plural := "s"
 	if changes == 1 {
 		plural = ""
 	}
-	consequence := fmt.Sprintf("Applies %d change%s.", changes, plural)
+	consequence := fmt.Sprintf("Changes %s.", capNames(changed))
 	if rebuilds > 0 {
-		consequence = fmt.Sprintf("Applies %d change%s, including %d rebuild(s) from zero (state destroyed; an emitting projection re-emits).", changes, plural, rebuilds)
+		consequence += fmt.Sprintf(" %d rebuild(s) from zero: state destroyed.", rebuilds)
+	}
+	if len(emitting) > 0 {
+		consequence += fmt.Sprintf(" %s re-emit(s) on rebuild and may duplicate.", capNames(emitting))
 	}
 	if len(overwrites) > 0 {
-		consequence += fmt.Sprintf(" Overwrites out-of-band changes on %s.", strings.Join(overwrites, ", "))
+		consequence += fmt.Sprintf(" Overwrites out-of-band changes on %s.", capNames(overwrites))
 	}
 	if len(faulted) > 0 {
-		consequence += fmt.Sprintf(" Updating won't clear the fault on %s.", strings.Join(faulted, ", "))
+		consequence += fmt.Sprintf(" Updating won't clear the fault on %s.", capNames(faulted))
+	}
+	if configDrift {
+		consequence += " The target's [database_config] diverges from gaffer.toml."
 	}
 
 	cli := "gaffer deploy"
@@ -185,6 +227,16 @@ func deployApplyGate(in deployApplyInput, envName, target string, prod bool, cha
 		Consequence: consequence,
 		CLI:         cli,
 	}
+}
+
+// capNames joins names for a single-line confirm, capping the list so a
+// large deploy doesn't scroll the question off the dialog.
+func capNames(names []string) string {
+	const max = 5
+	if len(names) <= max {
+		return strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("%s, and %d more", strings.Join(names[:max], ", "), len(names)-max)
 }
 
 // deployPreflight compiles every projection and rejects the run on any

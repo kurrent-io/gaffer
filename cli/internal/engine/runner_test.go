@@ -345,6 +345,67 @@ func TestRunner_Integration_FaultedMidStream(t *testing.T) {
 
 // --- nil-guard tests: debug and history methods on a minimal runner ---
 
+// TestRunner_Destroy_WaitsForInflightStep pins the teardown guarantee (see
+// the Runner doc comment): a step verb issued from another goroutine - the
+// DAP continue handler, the MCP stop path, the Runner's own drain-resume -
+// can still be inside its FFI call at the moment the feed goroutine exits,
+// which is exactly when callers proceed to Destroy. Destroy must wait it out
+// rather than free the session under it; the race detector enforces the
+// "rather than".
+func TestRunner_Destroy_WaitsForInflightStep(t *testing.T) {
+	opts := `{"engineVersion":2,"debug":true}`
+	session, err := gafferruntime.NewSession(`fromAll().when({
+		$init() { return { count: 0 } },
+		ItemAdded(s, e) {
+			s.count++;
+			return s;
+		}
+	})`, &opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(session.Destroy)
+
+	broke := make(chan struct{}, 1)
+	r := NewRunner(RunnerConfig{
+		Feed:    session.Feed,
+		Session: session,
+		Info:    session.GetSources(),
+		Debug: &DebugConfig{
+			Session: session,
+			Info:    session.GetSources(),
+			OnBreak: func(gafferruntime.BreakInfo) { broke <- struct{}{} },
+		},
+	})
+	if _, err := r.SetBreakpoints([]Breakpoint{{Line: 4}}); err != nil {
+		t.Fatal(err)
+	}
+
+	feedDone := make(chan struct{})
+	go func() {
+		defer close(feedDone)
+		r.ProcessOne(testutil.Event("ItemAdded", "s-1", 0))
+	}()
+	<-broke
+
+	// Resume from a second goroutine and tear down as soon as the feed
+	// goroutine exits, without joining the resumer - the shape every
+	// front-end teardown has.
+	go func() { _ = r.Continue() }()
+	<-feedDone
+	r.Destroy()
+
+	// After Destroy the control surface no-ops or refuses instead of
+	// touching (or panicking on) the freed session.
+	if err := r.Continue(); err != nil {
+		t.Errorf("Continue after Destroy: %v", err)
+	}
+	if _, err := r.Evaluate("1"); !errors.Is(err, gafferruntime.ErrSessionDestroyed) {
+		t.Errorf("Evaluate after Destroy: got %v, want ErrSessionDestroyed", err)
+	}
+	r.Destroy() // idempotent
+}
+
 func TestRunner_DebugNilGuards(t *testing.T) {
 	r := NewRunner(RunnerConfig{Feed: func(string) (*gafferruntime.FeedResult, error) { return nil, nil }})
 

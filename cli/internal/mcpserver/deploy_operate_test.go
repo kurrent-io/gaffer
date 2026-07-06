@@ -43,6 +43,8 @@ func TestOperateVerbsRefuseSystemProjections(t *testing.T) {
 		msg  string
 	}{
 		{"deploy_pause", callToolExpectError(t, s.handleDeployPause, operateInput{Name: "$by_category"})},
+		{"deploy_resume", callToolExpectError(t, s.handleDeployResume, operateInput{Name: "$by_category"})},
+		{"deploy_abort", callToolExpectError(t, s.handleDeployAbort, operateInput{Name: "$by_category"})},
 		{"deploy_delete", callToolExpectError(t, s.handleDeployDelete, deployDeleteInput{Name: "$by_category"})},
 		{"deploy_recreate", callToolExpectError(t, s.handleDeployRecreate, deployRecreateInput{Name: "$by_category"})},
 		{"deploy_rollback", callToolExpectError(t, s.handleDeployRollback, deployRollbackInput{Name: "$by_category", Hash: "abcd"})},

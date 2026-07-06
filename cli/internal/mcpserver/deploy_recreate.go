@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"strings"
 
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
@@ -23,9 +24,10 @@ var deployRecreateTool = &mcp.Tool{
 		"local source - the only way to change create-time settings like engine version or " +
 		"emitted-stream tracking. State is destroyed and rebuilt from zero; an emitting " +
 		"projection re-emits unless deleteEmitted wipes its target streams first. Mirrors " +
-		"`gaffer recreate` (the local source must compile; there is no validation bypass). " +
-		"On a production target this asks the human to confirm via the client " +
-		"(elicitation); the result echoes env, target, and production. Ledger-stamps " +
+		"`gaffer recreate` (the local source must compile and pass the diagnostics " +
+		"preflight; there is no validation bypass). Because it embeds a delete, this " +
+		"ALWAYS asks the human to confirm via the client (elicitation), production or " +
+		"not. The result echoes env, target, and production. Ledger-stamps " +
 		"operation: recreate.",
 	Annotations: destructiveHints(),
 }
@@ -53,20 +55,45 @@ func (s *Server) handleDeployRecreate(ctx context.Context, req *mcp.CallToolRequ
 	if err != nil {
 		return toolError("%v", err), nil, nil
 	}
-	local, err := engine.LocalDescriptor(engine.NewProjection(conn.root, conn.cfg, def, source))
+	proj := engine.NewProjection(conn.root, conn.cfg, def, source)
+	local, err := engine.LocalDescriptor(proj)
 	if err != nil {
 		return toolError("projection %q does not compile, so there's nothing to recreate it from: %v", in.Name, err), nil, nil
+	}
+	// The diagnostics preflight the CLI runs by default: a source that
+	// compiles can still carry error-severity diagnostics known to fault on
+	// (or be rejected by) the server, and Delete runs before Create - so
+	// without this gate a healthy projection would be destroyed and rebuilt
+	// into a faulting one.
+	diags, err := engine.Preflight(proj)
+	if err != nil {
+		return toolError("projection %q does not compile, so there's nothing to recreate it from: %v", in.Name, err), nil, nil
+	}
+	if len(diags) > 0 {
+		reasons := make([]string, 0, len(diags))
+		for _, d := range diags {
+			reasons = append(reasons, d.Code+": "+d.Message)
+		}
+		return toolError("projection %q would fault on the server, so recreate refuses to rebuild from it: %s", in.Name, strings.Join(reasons, "; ")), nil, nil
 	}
 
 	warning := "State is destroyed and rebuilt from zero."
 	if local.Emit && !in.DeleteEmitted {
 		warning += " It emits: recreating re-emits and may duplicate into its target streams (deleteEmitted wipes them first)."
 	}
+	// Always elicits, production or not: recreate embeds a delete - state is
+	// wiped, and deleteEmitted destroys emitted-stream data - so it sits in
+	// delete's tier, matching the CLI's confirm-always for recreate.
+	cli := "gaffer recreate " + in.Name
+	if in.DeleteEmitted {
+		cli += " --delete-emitted"
+	}
 	if r := confirmWrite(ctx, req, writeGate{
 		Verb: "Recreate", Name: in.Name,
 		Target: conn.target, Production: conn.production,
+		Always:  true,
 		Warning: warning,
-		CLI:     "gaffer recreate " + in.Name,
+		CLI:     cli,
 	}); r != nil {
 		return r, nil, nil
 	}
@@ -75,30 +102,24 @@ func (s *Server) handleDeployRecreate(ctx context.Context, req *mcp.CallToolRequ
 	// the recreate to gaffer instead of showing anonymous lifecycle steps.
 	ledger := stamp.Ledger(conn.env, remote.OpRecreate, s.version, conn.root)
 
-	// The destructive Disable -> Delete -> Create sequence, its ordering and
-	// recovery messages, live in internal/deploy (shared with the CLI); here we
-	// only bind each step to the client, each under its own RPC budget.
+	// The destructive Disable -> Delete -> Create sequence, its ordering,
+	// per-step RPC bounds, and recovery messages live in internal/deploy
+	// (shared with the CLI); here we only bind each step to the client.
 	err = deploy.Recreate(ctx, in.Name, deploy.RecreateSteps{
-		Disable: func(sctx context.Context) error {
-			return operateRPC(sctx, func(rctx context.Context) error { return conn.client.Disable(rctx, in.Name) })
-		},
+		Disable: func(sctx context.Context) error { return conn.client.Disable(sctx, in.Name) },
 		Delete: func(sctx context.Context) error {
-			return operateRPC(sctx, func(rctx context.Context) error {
-				return conn.client.Delete(rctx, in.Name, remote.DeleteOptions{
-					DeleteStateStream:      true,
-					DeleteCheckpointStream: true,
-					DeleteEmittedStreams:   in.DeleteEmitted,
-				})
+			return conn.client.Delete(sctx, in.Name, remote.DeleteOptions{
+				DeleteStateStream:      true,
+				DeleteCheckpointStream: true,
+				DeleteEmittedStreams:   in.DeleteEmitted,
 			})
 		},
 		Create: func(sctx context.Context) error {
-			return operateRPC(sctx, func(rctx context.Context) error {
-				return conn.client.Create(rctx, in.Name, local.Query, remote.CreateOptions{
-					EngineVersion:       local.EngineVersion,
-					Emit:                local.Emit,
-					TrackEmittedStreams: local.TrackEmittedStreams,
-					Ledger:              &ledger,
-				})
+			return conn.client.Create(sctx, in.Name, local.Query, remote.CreateOptions{
+				EngineVersion:       local.EngineVersion,
+				Emit:                local.Emit,
+				TrackEmittedStreams: local.TrackEmittedStreams,
+				Ledger:              &ledger,
 			})
 		},
 	})

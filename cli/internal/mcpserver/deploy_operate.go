@@ -192,22 +192,29 @@ func (s *Server) handleDeployDelete(ctx context.Context, req *mcp.CallToolReques
 	if in.DeleteEmitted {
 		warning = "This deletes the projection, its state, and the streams it emitted; there is no undo."
 	}
+	cli := "gaffer delete"
+	if in.DeleteEmitted {
+		cli += " --delete-emitted"
+	}
 	return s.runOperateVerb(ctx, req, operateInput{Name: in.Name, Env: in.Env}, verbSpec{
-		verb: "Delete", outcome: "deleted", cli: "gaffer delete",
+		verb: "Delete", outcome: "deleted", cli: cli,
 		always:  true,
 		warning: warning,
 		do: func(octx context.Context, c *remote.Client) error {
 			// The server rejects deleting an enabled projection; disable first,
 			// like the CLI. Two RPCs, each under its own budget.
 			if err := operateRPC(octx, func(rctx context.Context) error { return c.Disable(rctx, in.Name) }); err != nil {
-				return fmt.Errorf("disabling before delete: %w", err)
+				return fmt.Errorf("could not disable %s before deleting: %w", in.Name, err)
 			}
 			return operateRPC(octx, func(rctx context.Context) error {
-				return c.Delete(rctx, in.Name, remote.DeleteOptions{
+				if err := c.Delete(rctx, in.Name, remote.DeleteOptions{
 					DeleteStateStream:      true,
 					DeleteCheckpointStream: true,
 					DeleteEmittedStreams:   in.DeleteEmitted,
-				})
+				}); err != nil {
+					return fmt.Errorf("could not delete %s: %w", in.Name, err)
+				}
+				return nil
 			})
 		},
 		perStepBudget: true,

@@ -234,6 +234,7 @@ func New(root string, cfg *config.Config, version string) *Server {
 	mcp.AddTool(s.mcp, deployDeleteTool, trackedTool(s, s.handleDeployDelete))
 	mcp.AddTool(s.mcp, deployRecreateTool, trackedTool(s, s.handleDeployRecreate))
 	mcp.AddTool(s.mcp, deployRollbackTool, trackedTool(s, s.handleDeployRollback))
+	mcp.AddTool(s.mcp, deployApplyTool, trackedTool(s, s.handleDeployApply))
 	mcp.AddTool(s.mcp, infoTool, trackedTool(s, s.handleInfo))
 	mcp.AddTool(s.mcp, initTool, trackedTool(s, s.handleInit))
 	mcp.AddTool(s.mcp, versionTool, trackedTool(s, s.handleVersion))
@@ -265,9 +266,10 @@ func instructionsFor(cfg *config.Config) string {
 		"evaluate expressions. Each run replaces the previous session. " +
 		"For deployed environments: deploy_status shows live state and drift, " +
 		"deploy_plan previews what a deploy would change, deploy_history reads a " +
-		"projection's audit log. The deploy_pause/resume/abort/recreate/rollback/delete " +
-		"verbs manage a deployed projection's lifecycle; destructive or production " +
-		"writes ask the human to confirm through the client."
+		"projection's audit log. deploy_apply deploys from gaffer.toml, and the " +
+		"deploy_pause/resume/abort/recreate/rollback/delete verbs manage a deployed " +
+		"projection's lifecycle; destructive or production writes ask the human to " +
+		"confirm through the client."
 }
 
 // resolveRoot finds the project root. With an override it walks up from

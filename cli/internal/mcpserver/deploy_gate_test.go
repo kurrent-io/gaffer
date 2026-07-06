@@ -240,3 +240,37 @@ func TestShellQuote(t *testing.T) {
 		}
 	}
 }
+
+func TestConfirmWriteTypedValueOverride(t *testing.T) {
+	// The deploy gate types the environment name - its plan spans
+	// projections, so there is no single projection name to ask for.
+	g := writeGate{
+		Action: "deploy 3 changes", Env: "production",
+		Target: "orders-prod", Production: true,
+		NoUndo: true, TypedValue: "production", TypedNoun: "environment name",
+		Consequence: "Applies 3 changes.", CLI: "gaffer deploy",
+	}
+	var schema []byte
+	ss := elicitSession(t, func(_ context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		schema, _ = json.Marshal(req.Params.RequestedSchema)
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirm": "production"}}, nil
+	})
+	if r := confirmWrite(context.Background(), gateReq(ss), g); r != nil {
+		t.Fatalf("matching typed env should proceed, got %v", r)
+	}
+	if !strings.Contains(string(schema), `Type the environment name \"production\" to confirm`) || !strings.Contains(string(schema), "^production$") {
+		t.Errorf("schema = %s, want the environment-name instruction and pattern", schema)
+	}
+
+	ss = elicitSession(t, func(_ context.Context, _ *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirm": "prod"}}, nil
+	})
+	r := confirmWrite(context.Background(), gateReq(ss), g)
+	if r == nil || !r.IsError {
+		t.Fatal("a mismatched typed env must refuse")
+	}
+	msg := testutil.MustType[*mcp.TextContent](t, r.Content[0]).Text
+	if !strings.Contains(msg, "environment name") || !strings.Contains(msg, "nothing was changed") {
+		t.Errorf("refusal = %q, want the environment-name mismatch", msg)
+	}
+}

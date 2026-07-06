@@ -34,13 +34,15 @@ build: _resources
 build-release version: _resources
     CGO_ENABLED=1 go build -ldflags '-X github.com/kurrent-io/gaffer/cli/cmd.Version={{version}} -X github.com/kurrent-io/gaffer/cli/cmd.devBuild=false -X github.com/kurrent-io/gaffer/cli/internal/telemetry.DefaultWorkerURL=https://telemetry.gaffer.kurrent.io/v1/ingest' -o gaffer{{exe-suffix}} .
 
-# Run tests
+# Run tests. -race doubles as a checkptr gate on the FFI boundary and
+# guards the session-teardown paths (an in-flight debug command racing
+# Destroy fatals here instead of corrupting a user's process).
 test: _resources
-    go test -tags dev ./...
+    go test -tags dev -race ./...
 
 # Run integration tests (requires KurrentDB)
 test-integration: _resources
-    go test -tags 'dev integration' ./...
+    go test -tags 'dev integration' -race ./...
 
 # Run the CLI
 run *args: _resources

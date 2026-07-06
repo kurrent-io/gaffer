@@ -174,6 +174,10 @@ func (r *Runner) drain() {
 // doc comment's teardown guarantee). Idempotent; concurrent and repeat calls
 // no-op. Front-ends should still stop their source loop first as a matter of
 // hygiene, but a straggling feed no longer races the teardown.
+//
+// The history store is NOT closed here: the Runner only borrows it, and in
+// the dev debug loop one store serves every restart iteration's runner.
+// Whoever created the store closes it.
 func (r *Runner) Destroy() {
 	r.mu.Lock()
 	if r.closed {
@@ -187,9 +191,6 @@ func (r *Runner) Destroy() {
 	r.ops.Wait()
 	if r.session != nil {
 		r.session.Destroy()
-	}
-	if r.history != nil {
-		_ = r.history.Close()
 	}
 }
 

@@ -637,7 +637,11 @@ func runDevDebug(
 		select {
 		case <-adapter.Ready():
 		case <-adapter.RestartRequested():
-			session.Destroy()
+			// Destroy through the runner (here and on every in-loop teardown
+			// below): the adapter's handlers issue session calls on their own
+			// goroutines, and Runner.Destroy waits those out where a raw
+			// session.Destroy would free the session under them.
+			r.Destroy()
 			session, info, err = engine.CreateSession(proj, true, includeShape)
 			if err != nil {
 				adapter.AckRestart()
@@ -654,7 +658,7 @@ func runDevDebug(
 			adapter.AckRestart()
 			continue
 		case <-ctx.Done():
-			session.Destroy()
+			r.Destroy()
 			return nil
 		}
 
@@ -689,7 +693,7 @@ func runDevDebug(
 		if err != nil {
 			innerCancel()
 			close(iterDone)
-			session.Destroy()
+			r.Destroy()
 			return err
 		}
 
@@ -722,7 +726,7 @@ func runDevDebug(
 		// events, and a restart won't fix it - surface the signal and stop.
 		if authErr := asAuthRequired(srcErr); authErr != nil {
 			writer.WriteAuthRequired(authErr.Env)
-			session.Destroy()
+			r.Destroy()
 			return silent(srcErr)
 		}
 
@@ -758,7 +762,7 @@ func runDevDebug(
 			// projection_errors_seen. The teardown-path branch below
 			// has its own r.Faulted() check; this one matches it.
 			recordProjectionFault(r, obs.onProjectionError)
-			session.Destroy()
+			r.Destroy()
 			session, info, err = engine.CreateSession(proj, true, includeShape)
 			if err != nil {
 				adapter.AckRestart()
@@ -787,7 +791,7 @@ func runDevDebug(
 
 		adapter.SendTerminated()
 		if runErr := finalizeRun(ctx, caughtUp, srcErr, r, os.Stderr); runErr != nil {
-			session.Destroy()
+			r.Destroy()
 			if code, ok := runErrorCode(runErr); ok {
 				writer.WriteRunError(code, runErr.Error())
 				return silent(runErr)
@@ -800,7 +804,7 @@ func runDevDebug(
 			fmt.Fprintf(os.Stderr, "warning: reading projection state: %v\n", stateErr)
 		}
 		writer.WriteSummary(r.Stats(), summary)
-		session.Destroy()
+		r.Destroy()
 		if r.Faulted() {
 			lastErr := r.LastError()
 			if lastErr != nil {

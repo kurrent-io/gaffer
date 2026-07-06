@@ -505,7 +505,7 @@ public sealed class ProjectionSession : IDisposable {
 			Message = descriptor.Message,
 			Severity = DiagnosticSeverity.Error,
 		};
-		OnDiagnostic?.Invoke(diagnostic);
+		NotifyDiagnosticWhileThrowing(diagnostic);
 		return diagnostic;
 	}
 
@@ -521,7 +521,20 @@ public sealed class ProjectionSession : IDisposable {
 			return;
 		var diagnostic = DiagnosticCatalog.HandlerErrorWedgesOnV2.ToDiagnostic();
 		_pendingDiagnostics.Add(diagnostic);
-		OnDiagnostic?.Invoke(diagnostic);
+		NotifyDiagnosticWhileThrowing(diagnostic);
+	}
+
+	// Live-notify a diagnostic raised while a projection error is already unwinding.
+	// Unlike the happy-path callbacks (SafeInvokeEmit/SafeInvokeLog fault the session
+	// and rethrow), a subscriber failure here is swallowed: it must not replace the
+	// projection error being reported. Nothing is lost - the diagnostic still reaches
+	// the caller on the exception's Diagnostics; only the live notification is dropped.
+	private void NotifyDiagnosticWhileThrowing(Diagnostic diagnostic) {
+		try {
+			OnDiagnostic?.Invoke(diagnostic);
+		} catch {
+			// best effort
+		}
 	}
 
 	// Event path: append the throwing quirk to everything that fired before the throw

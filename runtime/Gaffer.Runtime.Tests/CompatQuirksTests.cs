@@ -642,6 +642,32 @@ public class CompatQuirksTests {
 	}
 
 	[Fact]
+	public void ThrowingDiagnosticSubscriber_DoesNotMaskProjectionError() {
+		// OnDiagnostic invocations that happen while a projection error is unwinding
+		// (the wedge rider and the thrown-quirk diagnostic) must not let a throwing
+		// subscriber replace that error. The body-cast projection exercises both
+		// sites in one feed; the diagnostics still arrive on the exception.
+		using var session = new ProjectionSession("""
+			fromAll().when({
+				Test: function (s, e) { return e.body; }
+			});
+		""", Options());
+		session.OnDiagnostic = _ => throw new InvalidOperationException("subscriber boom");
+
+		var ex = Assert.Throws<ProjectionHandlerException>(() =>
+			session.Feed(new ProjectionEvent {
+				EventType = "Test",
+				StreamId = "s-1",
+				Data = "null",
+				IsJson = true,
+			}));
+
+		Assert.Equal(DiagnosticCatalog.EventBodyCast.Code, ex.CompatCode);
+		Assert.Contains(ex.Diagnostics, x => x.Code == DiagnosticCatalog.EventBodyCast.Code);
+		Assert.Contains(ex.Diagnostics, x => x.Code == DiagnosticCatalog.HandlerErrorWedgesOnV2.Code);
+	}
+
+	[Fact]
 	public void DeletedHandlerThrow_OnV2_CarriesWedgeDiagnostic() {
 		// $deleted handling is partition-processor work on the server, so the
 		// FeedStreamDeleted throw sites must ride the wedge diagnostic too.

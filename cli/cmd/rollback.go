@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -49,7 +47,7 @@ func runRollback(cmd *cobra.Command, name, hashArg string, opts operateOpts) err
 	if err := checkOperable(name); err != nil {
 		return err
 	}
-	prefix, err := normalizeHashPrefix(hashArg)
+	prefix, err := remote.NormalizeHashPrefix(hashArg)
 	if err != nil {
 		return err
 	}
@@ -76,24 +74,24 @@ func runRollback(cmd *cobra.Command, name, hashArg string, opts operateOpts) err
 		return err
 	}
 
-	tgt, err := findByHash(ctx, r, name, prefix)
+	tgt, err := r.FindVersionByHash(ctx, name, prefix)
 	if err != nil {
 		return err
 	}
 
 	currentDesc := current.Descriptor()
-	if tgt.hash == currentDesc.Hash() {
-		return renderRollback(cmd.OutOrStdout(), opts.JSON, name, "unchanged", tgt.hash, target)
+	if tgt.Hash == currentDesc.Hash() {
+		return renderRollback(cmd.OutOrStdout(), opts.JSON, name, "unchanged", tgt.Hash, target)
 	}
 
-	tgtDesc := tgt.def.Descriptor()
+	tgtDesc := tgt.Def.Descriptor()
 	cmp := deploy.Compare(tgtDesc, currentDesc)
-	if err := rollbackRefusal(cmp, tgt.hash, name); err != nil {
+	if err := remote.RollbackRefusal(cmp, tgt.Hash, name); err != nil {
 		return err
 	}
 
 	if !opts.JSON {
-		writeRollbackPreview(cmd.OutOrStdout(), name, currentDesc, tgtDesc, tgt.hash, cmp)
+		writeRollbackPreview(cmd.OutOrStdout(), name, currentDesc, tgtDesc, tgt.Hash, cmp)
 	}
 	if err := confirmOp(opQuestion("Roll back", name, target, prod), opts.Yes, opts.JSON); err != nil {
 		return err
@@ -101,11 +99,11 @@ func runRollback(cmd *cobra.Command, name, hashArg string, opts operateOpts) err
 
 	ledger := toolLedger(opts.Connection, opts.Env, remote.OpRollback, cfg, root)
 	if err := rpc(ctx, func(ctx context.Context) error {
-		return r.Update(ctx, name, tgt.def.Query, remote.UpdateOptions{Emit: &tgt.def.Emit, Ledger: &ledger})
+		return r.Update(ctx, name, tgt.Def.Query, remote.UpdateOptions{Emit: &tgt.Def.Emit, Ledger: &ledger})
 	}); err != nil {
 		return fmt.Errorf("could not roll back %s: %w", name, err)
 	}
-	return renderRollback(cmd.OutOrStdout(), opts.JSON, name, "rolled-back", tgt.hash, target)
+	return renderRollback(cmd.OutOrStdout(), opts.JSON, name, "rolled-back", tgt.Hash, target)
 }
 
 // writeRollbackPreview shows what the rollback would change before the confirm:
@@ -126,124 +124,6 @@ func writeRollbackPreview(out io.Writer, name string, current, target deploy.Des
 	tw.write("%s\n", tw.styles.warning.Render("⚠ code rolls back, state does not: state built by the newer query is kept (gaffer recreate rebuilds from zero)"))
 	tw.write("%s\n", tw.styles.warning.Render("⚠ local files are untouched: gaffer diff will show this as drift until local is reconciled"))
 	tw.blank()
-}
-
-// rollbackRefusal refuses a target that differs from the deployed projection in
-// a create-only dimension: rollback redeploys in place via Update, which carries
-// only the query and emit, so an engine version or emitted-stream tracking
-// change can't be applied. Nil when the target is applyable.
-func rollbackRefusal(cmp deploy.Comparison, hash, name string) error {
-	if !cmp.EngineVersionDiffers && !cmp.TrackEmittedStreamsDiffers {
-		return nil
-	}
-	dim := "engine version"
-	if !cmp.EngineVersionDiffers {
-		dim = "emitted-stream tracking"
-	}
-	return fmt.Errorf("version %s differs from the deployed projection in %s, which rollback can't change in place; update local config and use `gaffer recreate %s`",
-		shortHash(hash), dim, name)
-}
-
-// rollbackTarget is what a hash prefix resolved to in the projection's history:
-// the definition to redeploy and its full content hash.
-type rollbackTarget struct {
-	def  *remote.Definition
-	hash string
-}
-
-// findByHash scans the projection's whole history for content whose hash matches
-// the prefix. The same content at several versions is one match - the hash is the
-// identity - so only a prefix straddling two different contents is ambiguous.
-// Pages newest-first like the interactive timeline, bounded per read by the
-// history hard cap and overall by the stream itself.
-func findByHash(ctx context.Context, r *remote.Client, name, prefix string) (*rollbackTarget, error) {
-	matches := map[string]*remote.Definition{}
-	before := int64(-1)
-	for {
-		var versions []remote.Version
-		if err := rpc(ctx, func(ctx context.Context) error {
-			var err error
-			versions, _, err = r.ReadHistory(ctx, name, before, 0)
-			return err
-		}); err != nil {
-			return nil, err
-		}
-		if len(versions) == 0 {
-			break
-		}
-		matchHashes(versions, prefix, matches)
-		if scanSettled(prefix, matches) {
-			break
-		}
-		oldest := versions[len(versions)-1].Number
-		if oldest <= 0 {
-			break
-		}
-		before = oldest
-	}
-	return resolveHashMatches(matches, prefix, name)
-}
-
-// scanSettled reports whether older pages could still change the outcome: a
-// full hash is exact, so one match settles it, and a second distinct content
-// already proves the prefix ambiguous - either way the scan can stop early
-// rather than paging a large history to its start.
-func scanSettled(prefix string, matches map[string]*remote.Definition) bool {
-	return (len(prefix) == 64 && len(matches) > 0) || len(matches) > 1
-}
-
-// matchHashes collects the distinct contents in a page whose hash carries the
-// prefix. Tombstones have no content of their own and are skipped.
-func matchHashes(versions []remote.Version, prefix string, matches map[string]*remote.Definition) {
-	for _, v := range versions {
-		if v.Deleted || v.Definition == nil {
-			continue
-		}
-		h := v.Definition.Descriptor().Hash()
-		if strings.HasPrefix(h, prefix) {
-			if _, ok := matches[h]; !ok {
-				matches[h] = v.Definition
-			}
-		}
-	}
-}
-
-// resolveHashMatches turns the collected matches into the single target, or the
-// not-found / ambiguous-prefix error.
-func resolveHashMatches(matches map[string]*remote.Definition, prefix, name string) (*rollbackTarget, error) {
-	switch len(matches) {
-	case 0:
-		return nil, fmt.Errorf("no version matching %q in the history of %s", prefix, name)
-	case 1:
-		for h, d := range matches {
-			return &rollbackTarget{def: d, hash: h}, nil
-		}
-	}
-	hashes := make([]string, 0, len(matches))
-	for h := range matches {
-		hashes = append(hashes, shortHash(h))
-	}
-	slices.Sort(hashes)
-	return nil, fmt.Errorf("%q matches %d different versions (%s); give more characters", prefix, len(matches), strings.Join(hashes, ", "))
-}
-
-// normalizeHashPrefix validates the hash argument: lowercase hex, at least 4
-// characters so a stray character can't match half the history, at most a full
-// 64-character hash.
-func normalizeHashPrefix(s string) (string, error) {
-	p := strings.ToLower(s)
-	if len(p) < 4 {
-		return "", fmt.Errorf("hash prefix %q is too short; give at least 4 characters", s)
-	}
-	if len(p) > 64 {
-		return "", fmt.Errorf("hash prefix %q is longer than a full content hash", s)
-	}
-	for _, c := range p {
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return "", fmt.Errorf("hash prefix %q is not hexadecimal", s)
-		}
-	}
-	return p, nil
 }
 
 // rollbackJSON is the --json shape: the projection, the outcome (rolled-back, or

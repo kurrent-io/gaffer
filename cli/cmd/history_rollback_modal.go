@@ -210,7 +210,7 @@ func (m historyModel) rollbackModalBody(rb historyRollback, width int) []string 
 		// The refusal names the dimension and the recreate escape; wrap it
 		// rather than truncating the actionable tail off.
 		var rows []string
-		msg := rollbackRefusal(rb.cmp, rb.sel.ContentHash, m.name).Error()
+		msg := remote.RollbackRefusal(rb.cmp, rb.sel.ContentHash, m.name).Error()
 		for line := range strings.SplitSeq(lipgloss.NewStyle().Width(width).Render(msg), "\n") {
 			rows = append(rows, m.tw.styles.warning.Render(line))
 		}

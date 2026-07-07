@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/joho/godotenv"
 )
@@ -36,7 +37,35 @@ func Load(projectDir string) error {
 	if err := godotenv.Load(filepath.Join(projectDir, ".env")); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return errors.New("malformed .env")
 	}
+	loadedRoots.Store(canonicalRoot(projectDir), true)
 	return nil
+}
+
+// loadedRoots records the project roots whose base .env has been loaded into
+// the process env (including the no-file no-op), so Loaded can vouch for a
+// root. sync.Map: written from command startup / Connect, read from
+// background goroutines (the drift check's resolution).
+var loadedRoots sync.Map
+
+// Loaded reports whether Load ran for this project root. Credentials read
+// via the process-env fallback are only complete once the base .env is
+// loaded; target.Resolve refuses to resolve a root with an unloaded .env
+// rather than silently produce empty credentials (the UI-1820 shape).
+func Loaded(projectDir string) bool {
+	if projectDir == "" {
+		return true
+	}
+	_, ok := loadedRoots.Load(canonicalRoot(projectDir))
+	return ok
+}
+
+// canonicalRoot normalizes a project root so Load and Loaded agree on the
+// key regardless of how the caller spelled the path.
+func canonicalRoot(dir string) string {
+	if abs, err := filepath.Abs(dir); err == nil {
+		return abs
+	}
+	return filepath.Clean(dir)
 }
 
 // Credentials returns the KurrentDB username and password resolved from

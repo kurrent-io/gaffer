@@ -9,6 +9,7 @@ package target
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -74,6 +75,15 @@ type Target struct {
 // once at startup (and by engine.Connect for self-contained use), so calling
 // this from any goroutine is safe even while cgo sessions read environ.
 func Resolve(root string, env config.ResolvedEnv) (Target, error) {
+	// A base .env that exists but was never loaded means the process-env
+	// fallback would silently resolve empty credentials - the UI-1820
+	// shape, from a future entry point that forgets the startup Load.
+	// Refuse loudly at the choke point instead.
+	if !envvar.Loaded(root) {
+		if _, err := os.Stat(filepath.Join(root, ".env")); err == nil {
+			return Target{}, fmt.Errorf("a .env exists at %q but was never loaded; call envvar.Load at startup before resolving targets", root)
+		}
+	}
 	overlay, err := envvar.Overlay(root, env.Name)
 	if err != nil {
 		return Target{}, fmt.Errorf("reading env overlay: %w", err)

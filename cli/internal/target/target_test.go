@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/envvar"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
@@ -295,5 +296,25 @@ func TestResolve_BearerTokenHonoursContext(t *testing.T) {
 	cancel()
 	if _, err := tgt.BearerToken(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+}
+
+// The structural guard for the load-order precondition: a base .env that
+// exists but was never envvar.Load-ed must refuse resolution loudly rather
+// than silently produce empty credentials (the UI-1820 shape).
+func TestResolve_RefusesUnloadedBaseEnv(t *testing.T) {
+	clearCreds(t)
+	root := t.TempDir()
+	writeEnvFile(t, root, ".env", "KURRENTDB_USERNAME=baseuser\n")
+
+	if _, err := Resolve(root, config.ResolvedEnv{Connection: "kurrentdb://x:1"}); err == nil || !strings.Contains(err.Error(), "never loaded") {
+		t.Fatalf("err = %v, want the unloaded-.env refusal", err)
+	}
+
+	if err := envvar.Load(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Resolve(root, config.ResolvedEnv{Connection: "kurrentdb://x:1"}); err != nil {
+		t.Fatalf("Resolve after Load: %v", err)
 	}
 }

@@ -32,11 +32,11 @@ func TestConnect_AppliesEnvOverlay(t *testing.T) {
 
 	// With the prod overlay the variable resolves, so expansion does not
 	// fail (any later error is the dial, not an undefined variable).
-	if _, _, err := Connect(connStr, dir, "prod", nil, nil); err != nil && strings.Contains(err.Error(), key) {
+	if _, _, err := Connect(dir, config.ResolvedEnv{Name: "prod", Connection: connStr}); err != nil && strings.Contains(err.Error(), key) {
 		t.Fatalf("env overlay not applied: %v", err)
 	}
 	// Without an env name there's no overlay, so the variable is undefined.
-	_, _, err := Connect(connStr, dir, "", nil, nil)
+	_, _, err := Connect(dir, config.ResolvedEnv{Connection: connStr})
 	if err == nil || !strings.Contains(err.Error(), key) {
 		t.Fatalf("expected undefined-variable error without overlay, got %v", err)
 	}
@@ -46,7 +46,7 @@ func TestConnect_AppliesEnvOverlay(t *testing.T) {
 // TLS disabled can't use one; Connect rejects the combination before dialing.
 func TestConnect_CertRequiresTLS(t *testing.T) {
 	cert := &config.CertAuth{CertFile: "user.crt", KeyFile: "user.key"}
-	_, _, err := Connect("kurrentdb://host:2113?tls=false", t.TempDir(), "", nil, cert)
+	_, _, err := Connect(t.TempDir(), config.ResolvedEnv{Connection: "kurrentdb://host:2113?tls=false", Cert: cert})
 	if err == nil || !strings.Contains(err.Error(), "requires TLS") {
 		t.Fatalf("expected a TLS-required error, got %v", err)
 	}
@@ -55,7 +55,7 @@ func TestConnect_CertRequiresTLS(t *testing.T) {
 func TestConnect_MalformedConnStr_DoesNotLeakPassword(t *testing.T) {
 	connStr := "kurrentdb://user:supersecret@host:%XX"
 
-	_, _, err := Connect(connStr, "", "", nil, nil)
+	_, _, err := Connect("", config.ResolvedEnv{Connection: connStr})
 	if err == nil {
 		t.Fatal("expected error for malformed connection string")
 	}
@@ -149,7 +149,7 @@ func TestOAuthProvider_ClientCredentials(t *testing.T) {
 }
 
 func TestConnectionLost(t *testing.T) {
-	l := &liveSource{cfg: LiveSourceConfig{EnvName: "prod"}}
+	l := &liveSource{cfg: LiveSourceConfig{Env: config.ResolvedEnv{Name: "prod"}}}
 
 	// No flag, or a flag that wasn't tripped: a plain disconnect.
 	for _, inv := range []*AuthInvalidation{nil, {}} {

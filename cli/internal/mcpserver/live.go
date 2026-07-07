@@ -34,11 +34,8 @@ func (s *Server) startLiveSubscription(sess *activeSession, cfg *config.Config, 
 	sess.done = done
 
 	source := engine.NewLiveSource(engine.LiveSourceConfig{
-		ConnStr:       env.Connection,
 		Root:          root,
-		EnvName:       env.Name,
-		OAuth:         env.OAuth,
-		Cert:          env.Cert,
+		Env:           env,
 		Info:          sess.runner.Info(),
 		EngineVersion: sess.runner.EngineVersion(),
 		OnCaughtUp: func() {

@@ -10,11 +10,9 @@ import (
 )
 
 type LiveSourceConfig struct {
-	ConnStr       string
-	Root          string
-	EnvName       string
-	OAuth         *config.OAuthConfig
-	Cert          *config.CertAuth
+	Root string
+	// Env is the selected environment, passed whole to Connect.
+	Env           config.ResolvedEnv
 	Info          gafferruntime.ProjectionInfo
 	EngineVersion int
 	OnCaughtUp    func() // called when subscription reaches head of stream, nil = ignore, must not block
@@ -39,7 +37,7 @@ func NewLiveSource(cfg LiveSourceConfig) EventSource {
 }
 
 func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
-	client, authInvalidated, err := Connect(l.cfg.ConnStr, l.cfg.Root, l.cfg.EnvName, l.cfg.OAuth, l.cfg.Cert)
+	client, authInvalidated, err := Connect(l.cfg.Root, l.cfg.Env)
 	if err != nil {
 		return err
 	}
@@ -105,7 +103,7 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 // otherwise it's a plain disconnect carrying the reason.
 func (l *liveSource) connectionLost(authInvalidated *AuthInvalidation, reason string) error {
 	if authInvalidated != nil && authInvalidated.Tripped() {
-		return &AuthRequiredError{Env: l.cfg.EnvName}
+		return &AuthRequiredError{Env: l.cfg.Env.Name}
 	}
 	return fmt.Errorf("%w: %s", ErrDBDisconnect, reason)
 }

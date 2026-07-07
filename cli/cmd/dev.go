@@ -894,11 +894,8 @@ func buildSource(
 		return nil, noSourceErr(proj.Config)
 	}
 	liveCfg := engine.LiveSourceConfig{
-		ConnStr:       resolved.Connection,
 		Root:          proj.Root,
-		EnvName:       resolved.Name,
-		OAuth:         resolved.OAuth,
-		Cert:          resolved.Cert,
+		Env:           resolved,
 		Info:          info,
 		EngineVersion: proj.EngineVersion,
 	}

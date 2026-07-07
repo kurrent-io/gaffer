@@ -48,7 +48,10 @@ type AuthInvalidation struct{ tripped atomic.Bool }
 func (a *AuthInvalidation) Trip()         { a.tripped.Store(true) }
 func (a *AuthInvalidation) Tripped() bool { return a.tripped.Load() }
 
-func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig, certCfg *config.CertAuth) (*kurrentdb.Client, *AuthInvalidation, error) {
+// Connect dials the environment. It takes the selected env whole (rather
+// than exploded fields) so a new auth-relevant field on ResolvedEnv can't be
+// silently forgotten at a call site.
+func Connect(projectRoot string, env config.ResolvedEnv) (*kurrentdb.Client, *AuthInvalidation, error) {
 	// Base .env is also loaded once at startup; reloading here (no-override,
 	// so it never clobbers shell vars) keeps Connect self-contained for
 	// callers and tests that reach it without the startup path.
@@ -58,12 +61,7 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 
 	// All resolution - overlay, ${VAR} expansion, credential precedence,
 	// cert paths, OAuth secret - happens in one place (see internal/target).
-	tgt, err := target.Resolve(projectRoot, config.ResolvedEnv{
-		Name:       envName,
-		Connection: connStr,
-		OAuth:      oauthCfg,
-		Cert:       certCfg,
-	})
+	tgt, err := target.Resolve(projectRoot, env)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 	}
@@ -107,9 +105,9 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 	// independently of the credentials branch above (an env may use mutual TLS
 	// and OAuth together). The paths were resolved against the project root by
 	// target.Resolve; the client would resolve them against its own cwd.
-	if certCfg != nil {
+	if env.Cert != nil {
 		if dbConfig.DisableTLS {
-			return nil, nil, fmt.Errorf("%w: env %q sets a user certificate but the connection disables TLS; a user certificate requires TLS", ErrDBConnect, envName)
+			return nil, nil, fmt.Errorf("%w: env %q sets a user certificate but the connection disables TLS; a user certificate requires TLS", ErrDBConnect, env.Name)
 		}
 		dbConfig.UserCertFile = tgt.CertFile
 		dbConfig.UserKeyFile = tgt.KeyFile
@@ -130,14 +128,14 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 // username is KURRENTDB_USERNAME (the .env overlay) or the connection string's
 // userinfo. A cert-only or anonymous env, or any resolution failure, yields "" -
 // attribution is best-effort and never blocks a deploy.
-func Principal(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig) string {
-	if oauthCfg != nil {
-		return oauthCfg.ClientID
+func Principal(projectRoot string, env config.ResolvedEnv) string {
+	if env.OAuth != nil {
+		return env.OAuth.ClientID
 	}
 	if err := envvar.Load(projectRoot); err != nil {
 		return ""
 	}
-	tgt, err := target.Resolve(projectRoot, config.ResolvedEnv{Name: envName, Connection: connStr})
+	tgt, err := target.Resolve(projectRoot, config.ResolvedEnv{Name: env.Name, Connection: env.Connection})
 	if err != nil {
 		return ""
 	}

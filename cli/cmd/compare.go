@@ -71,7 +71,7 @@ func connectResolved(cfg *config.Config, root, connection, env string) (r *remot
 	if resolved.Connection == "" {
 		return nil, nil, errors.New("no environment: mark a default [env.<name>], pass --env, or pass --connection")
 	}
-	client, _, err := engine.Connect(resolved.Connection, root, resolved.Name, resolved.OAuth, resolved.Cert)
+	client, _, err := engine.Connect(root, resolved)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -76,5 +76,5 @@ func resolveActor(env config.ResolvedEnv, root string) string {
 	if env.Connection == "" {
 		return ""
 	}
-	return engine.Principal(env.Connection, root, env.Name, env.OAuth)
+	return engine.Principal(root, env)
 }

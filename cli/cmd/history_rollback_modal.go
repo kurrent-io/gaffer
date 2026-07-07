@@ -217,6 +217,13 @@ func (m historyModel) rollbackModalBody(rb historyRollback, width int) []string 
 		return rows
 	}
 	var rows []string
+	if m.prod {
+		// The same louder-against-production confirm gaffer rollback gives:
+		// the tier is resolved once at TUI start, from the shared identity.
+		rows = append(rows,
+			m.tw.styles.warning.Render(truncate("⚠ rolls back on "+prodWhere(m.target, true), width)),
+			"")
+	}
 	if rb.cmp.EmitDiffers {
 		rows = append(rows,
 			m.tw.styles.warning.Render(truncate("emit "+enabledStr(rb.cur.Definition.Emit)+" → "+enabledStr(rb.sel.Definition.Emit), width)),

@@ -83,7 +83,10 @@ func runHistory(cmd *cobra.Command, name string, opts historyOpts) error {
 		// The ledger a timeline-applied rollback stamps; resolved once here, so
 		// the modal's confirm doesn't pay the actor/revision lookups per apply.
 		ledger := toolLedger(conn.env, remote.OpRollback, conn.root)
-		return runHistoryTUI(cmd, conn.r, name, conn.env.Name, redactConnection(conn.env.Connection), ledger)
+		// The target identity too: the TUI holds one connection, so the tier
+		// can't change mid-session, and the modal opens without a read.
+		target, prod := conn.r.OperateTarget(cmd.Context(), conn.env, projectionRPCTimeout)
+		return runHistoryTUI(cmd, conn.r, name, conn.env.Name, redactConnection(conn.env.Connection), target, prod, ledger)
 	}
 
 	// remote calls block until their context deadline if the projections

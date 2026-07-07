@@ -13,6 +13,7 @@ import (
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 )
 
 func TestRedactConnection(t *testing.T) {
@@ -141,39 +142,6 @@ func TestConnect_AppliesEnvOverlay(t *testing.T) {
 	}
 }
 
-func TestResolveCertPath(t *testing.T) {
-	t.Run("relative joins the project root", func(t *testing.T) {
-		got, err := resolveCertPath("certs/user.crt", "/proj", nil)
-		if err != nil || got != filepath.Join("/proj", "certs/user.crt") {
-			t.Fatalf("got %q, %v", got, err)
-		}
-	})
-	t.Run("absolute path is unchanged", func(t *testing.T) {
-		abs := filepath.Join("/abs", "user.crt")
-		got, err := resolveCertPath(abs, "/proj", nil)
-		if err != nil || got != abs {
-			t.Fatalf("got %q, %v", got, err)
-		}
-	})
-	t.Run("expands vars before resolving", func(t *testing.T) {
-		got, err := resolveCertPath("${CERT_DIR}/user.key", "/proj", map[string]string{"CERT_DIR": "sub"})
-		if err != nil || got != filepath.Join("/proj", "sub/user.key") {
-			t.Fatalf("got %q, %v", got, err)
-		}
-	})
-	t.Run("undefined var errors", func(t *testing.T) {
-		if _, err := resolveCertPath("${GAFFER_CERT_TEST_UNSET}/user.key", "/proj", nil); err == nil {
-			t.Fatal("expected an undefined-variable error")
-		}
-	})
-	t.Run("trims surrounding whitespace, including from expansion", func(t *testing.T) {
-		got, err := resolveCertPath("  ${CERT}  ", "/proj", map[string]string{"CERT": " certs/user.crt "})
-		if err != nil || got != filepath.Join("/proj", "certs/user.crt") {
-			t.Fatalf("got %q, %v", got, err)
-		}
-	})
-}
-
 // A user certificate is presented in the TLS handshake, so a connection with
 // TLS disabled can't use one; Connect rejects the combination before dialing.
 func TestConnect_CertRequiresTLS(t *testing.T) {
@@ -262,9 +230,12 @@ func oauthFakeIDP(t *testing.T) *httptest.Server {
 // opens the keyring, so this exercises the engine-level wiring without a store.
 func TestOAuthProvider_ClientCredentials(t *testing.T) {
 	srv := oauthFakeIDP(t)
-	overlay := map[string]string{"KURRENTDB_OAUTH_CLIENT_SECRET": "secret"}
 
-	provider, err := oauthProvider(&config.OAuthConfig{Issuer: srv.URL, ClientID: "id"}, "prod", "", overlay, &AuthInvalidation{})
+	provider, err := oauthProvider(target.Target{
+		Env:               "prod",
+		OAuth:             &config.OAuthConfig{Issuer: srv.URL, ClientID: "id"},
+		OAuthClientSecret: "secret",
+	}, "", &AuthInvalidation{})
 	if err != nil {
 		t.Fatalf("oauthProvider: %v", err)
 	}

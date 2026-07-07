@@ -2,15 +2,17 @@ package target
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 // clearCreds makes the credential variables absent (not empty) for the test:
@@ -188,46 +190,18 @@ func TestResolveCertPath(t *testing.T) {
 	})
 }
 
-// bearerFakeIDP serves OIDC discovery + a token endpoint that echoes the
-// grant type into the access token, mirroring engine's oauthFakeIDP.
-func bearerFakeIDP(t *testing.T) *httptest.Server {
-	t.Helper()
-	mux := http.NewServeMux()
-	var srv *httptest.Server
-	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"issuer":                 srv.URL,
-			"authorization_endpoint": srv.URL + "/authorize",
-			"token_endpoint":         srv.URL + "/token",
-		})
-	})
-	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
-		_ = r.ParseForm()
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"access_token": "access-" + r.FormValue("grant_type"),
-			"token_type":   "Bearer",
-			"expires_in":   3600,
-		})
-	})
-	srv = httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv
-}
-
-// The OAuth target's lazy bearer source: Resolve does no I/O (the fake IdP
-// sees no traffic until the first BearerToken call), and a client secret
-// from the overlay selects the client-credentials grant without a keyring.
+// The OAuth target's lazy bearer source: a client secret from the overlay
+// selects the client-credentials grant without a keyring.
 func TestResolve_BearerTokenClientCredentials(t *testing.T) {
 	clearCreds(t)
-	srv := bearerFakeIDP(t)
+	idp := testutil.NewFakeIDP(t)
 	root := t.TempDir()
 	writeEnvFile(t, root, ".env.production", "KURRENTDB_OAUTH_CLIENT_SECRET=s3cret\n")
 
 	tgt, err := Resolve(root, config.ResolvedEnv{
 		Name:       "production",
 		Connection: "kurrentdb://x:1",
-		OAuth:      &config.OAuthConfig{Issuer: srv.URL, ClientID: "svc"},
+		OAuth:      &config.OAuthConfig{Issuer: idp.URL, ClientID: "svc"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -252,5 +226,74 @@ func TestResolve_NoBearerTokenWithoutOAuth(t *testing.T) {
 	}
 	if tgt.BearerToken != nil {
 		t.Error("BearerToken should be nil on a basic-auth target")
+	}
+}
+
+// The bearer accessor's three structural promises: Resolve does no I/O
+// (laziness), the source is built once (memoization), and concurrent calls
+// are safe (the race detector watches the sync.Once path).
+func TestResolve_BearerTokenLazyMemoizedConcurrent(t *testing.T) {
+	clearCreds(t)
+	idp := testutil.NewFakeIDP(t)
+	root := t.TempDir()
+	writeEnvFile(t, root, ".env.production", "KURRENTDB_OAUTH_CLIENT_SECRET=s3cret\n")
+
+	tgt, err := Resolve(root, config.ResolvedEnv{
+		Name:       "production",
+		Connection: "kurrentdb://x:1",
+		OAuth:      &config.OAuthConfig{Issuer: idp.URL, ClientID: "svc"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := idp.TokenHits.Load(); got != 0 {
+		t.Fatalf("Resolve performed %d token fetches, want none (lazy)", got)
+	}
+
+	var wg sync.WaitGroup
+	tokens := make([]string, 4)
+	errs := make([]error, 4)
+	for i := range tokens {
+		wg.Go(func() {
+			tokens[i], errs[i] = tgt.BearerToken(context.Background())
+		})
+	}
+	wg.Wait()
+	for i := range tokens {
+		if errs[i] != nil || tokens[i] != tokens[0] {
+			t.Fatalf("call %d: token %q err %v, want all identical", i, tokens[i], errs[i])
+		}
+	}
+	if got := idp.TokenHits.Load(); got != 1 {
+		t.Errorf("token fetches = %d, want 1 (memoized)", got)
+	}
+}
+
+// The caller's context bounds the wait even when the IdP never answers -
+// the drift check's budget must hold against a hung identity provider.
+func TestResolve_BearerTokenHonoursContext(t *testing.T) {
+	clearCreds(t)
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-block }))
+	defer func() {
+		close(block)
+		srv.Close()
+	}()
+
+	root := t.TempDir()
+	writeEnvFile(t, root, ".env.production", "KURRENTDB_OAUTH_CLIENT_SECRET=s3cret\n")
+	tgt, err := Resolve(root, config.ResolvedEnv{
+		Name:       "production",
+		Connection: "kurrentdb://x:1",
+		OAuth:      &config.OAuthConfig{Issuer: srv.URL, ClientID: "svc"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := tgt.BearerToken(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }

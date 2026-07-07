@@ -13,6 +13,7 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 func TestConfigDriftItems(t *testing.T) {
@@ -160,17 +161,7 @@ func TestStartConfigDriftCheck(t *testing.T) {
 		// The check follows the connection's own auth: an OAuth env reads
 		// the node options with a bearer from the client-credentials grant
 		// (the secret in .env.<env>), never basic credentials.
-		idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/.well-known/openid-configuration":
-				host := "http://" + r.Host
-				_, _ = w.Write([]byte(`{"issuer":"` + host + `","authorization_endpoint":"` + host + `/authorize","token_endpoint":"` + host + `/token"}`))
-			case "/token":
-				w.Header().Set("Content-Type", "application/json")
-				_, _ = w.Write([]byte(`{"access_token":"drift-tok","token_type":"Bearer","expires_in":3600}`))
-			}
-		}))
-		defer idp.Close()
+		idp := testutil.NewFakeIDP(t)
 
 		var gotAuth string
 		node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -192,7 +183,7 @@ func TestStartConfigDriftCheck(t *testing.T) {
 		if got.Err != nil || len(got.Items) != 1 {
 			t.Fatalf("got %+v, want the divergence detected through the bearer", got)
 		}
-		if gotAuth != "Bearer drift-tok" {
+		if gotAuth != "Bearer access-client_credentials" {
 			t.Errorf("Authorization = %q, want the bearer token", gotAuth)
 		}
 	})

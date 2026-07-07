@@ -83,8 +83,9 @@ func newDeployCmd() *cobra.Command {
 			"that predates the feature ignores the metadata and deploy is unaffected.\n\n" +
 			"When gaffer.toml declares a [database_config], deploy also checks the target node's " +
 			"live engine settings and warns on a divergence before anything is applied, since the " +
-			"fixtures and local runs assumed the declared values. Advisory only: a server that " +
-			"doesn't expose its options (or refuses the read) skips the check silently.",
+			"fixtures and local runs assumed the declared values. Advisory only: when the node's " +
+			"options can't be read (no HTTP surface, auth refusal), deploy warns that the check " +
+			"couldn't run instead of failing or reporting a false \"in sync\".",
 		Example: "  gaffer deploy\n" +
 			"  gaffer deploy order-count --env staging",
 		Args: maxArgs(1),
@@ -157,7 +158,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	// round-trip overlaps the planning RPCs; drained before the confirm, so an
 	// operator sees the target's engine config diverging before applying.
 	resolved, _ := resolveLiveEnv(opts.Connection, opts.Env, cfg)
-	driftCh := drift.StartConfigDriftCheck(cmd.Context(), cfg, root, resolved.Name, resolved.Connection)
+	driftCh := drift.StartConfigDriftCheck(cmd.Context(), cfg, root, resolved)
 
 	// Plan first (reads only), so the whole run is known before any write - the
 	// basis for the confirm gate and --dry-run.

@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -138,7 +139,7 @@ func TestFetchNodeOptions(t *testing.T) {
 		defer srv.Close()
 
 		conn := "kurrentdb://admin:changeit@" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
-		node, err := FetchNodeOptions(context.Background(), conn)
+		node, err := FetchNodeOptions(context.Background(), conn, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -150,6 +151,26 @@ func TestFetchNodeOptions(t *testing.T) {
 		}
 	})
 
+	t.Run("explicit credentials override the userinfo", func(t *testing.T) {
+		// The .env-supplied login must win over connection-string userinfo,
+		// matching the main gRPC connection's precedence (UI-1820).
+		var gotAuth string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotAuth = r.Header.Get("Authorization")
+			_, _ = w.Write([]byte(sampleOptions))
+		}))
+		defer srv.Close()
+
+		conn := "kurrentdb://inline:wrong@" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
+		if _, err := FetchNodeOptions(context.Background(), conn, "envuser", "envpass"); err != nil {
+			t.Fatal(err)
+		}
+		want := "Basic " + base64.StdEncoding.EncodeToString([]byte("envuser:envpass"))
+		if gotAuth != want {
+			t.Errorf("Authorization = %q, want the explicit credentials %q", gotAuth, want)
+		}
+	})
+
 	t.Run("an auth refusal is an error, not a payload", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -157,7 +178,7 @@ func TestFetchNodeOptions(t *testing.T) {
 		defer srv.Close()
 
 		conn := "kurrentdb://" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
-		if _, err := FetchNodeOptions(context.Background(), conn); err == nil {
+		if _, err := FetchNodeOptions(context.Background(), conn, "", ""); err == nil {
 			t.Error("a 401 should surface as an error for the caller to skip on")
 		}
 	})

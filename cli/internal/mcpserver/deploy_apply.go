@@ -91,7 +91,7 @@ func (s *Server) handleDeployApply(ctx context.Context, req *mcp.CallToolRequest
 	}
 	defer cleanup()
 
-	driftCh := drift.StartConfigDriftCheck(ctx, cfg, root, env.Name, env.Connection)
+	driftCh := drift.StartConfigDriftCheck(ctx, cfg, root, env)
 
 	plan := drift.PlanAll(ctx, client, cfg, root, names)
 	drift.ResolveResets(plan, in.ResetOnLogicChange)
@@ -125,9 +125,12 @@ func (s *Server) handleDeployApply(ctx context.Context, req *mcp.CallToolRequest
 	if len(faulted) > 0 {
 		result["faultedUpdates"] = faulted
 	}
-	driftItems := <-driftCh
-	if len(driftItems) > 0 {
-		result["configDrift"] = cliout.BuildConfigDriftJSON(driftItems)
+	driftRes := <-driftCh
+	if driftRes.Err != nil {
+		// A failed node-config read must not present as "in sync" (UI-1820).
+		result["configDriftError"] = driftRes.Err.Error()
+	} else if len(driftRes.Items) > 0 {
+		result["configDrift"] = cliout.BuildConfigDriftJSON(driftRes.Items)
 	}
 
 	// A plan that changes nothing needs no confirmation and writes nothing;
@@ -147,7 +150,7 @@ func (s *Server) handleDeployApply(ctx context.Context, req *mcp.CallToolRequest
 		return toolResult(result), nil, nil
 	}
 
-	if r := confirmWrite(ctx, req, deployApplyGate(in, env.Name, target, prod, plan, len(driftItems) > 0)); r != nil {
+	if r := confirmWrite(ctx, req, deployApplyGate(in, env.Name, target, prod, plan, driftRes)); r != nil {
 		return r, nil, nil
 	}
 
@@ -174,7 +177,7 @@ func (s *Server) handleDeployApply(ctx context.Context, req *mcp.CallToolRequest
 // types the environment name; the plan spans projections, so there is no
 // single projection name to type), out-of-band overwrites, faulted update
 // targets, emitting rebuilds, and a diverging [database_config].
-func deployApplyGate(in deployApplyInput, envName, target string, prod bool, plan []drift.PlanItem, configDrift bool) writeGate {
+func deployApplyGate(in deployApplyInput, envName, target string, prod bool, plan []drift.PlanItem, dr drift.ConfigDriftResult) writeGate {
 	changes, rebuilds := 0, 0
 	var changed, faulted, overwrites, emitting []string
 	for _, it := range plan {
@@ -216,7 +219,10 @@ func deployApplyGate(in deployApplyInput, envName, target string, prod bool, pla
 	if len(faulted) > 0 {
 		consequence += fmt.Sprintf(" Updating won't clear the fault on %s.", capNames(faulted))
 	}
-	if configDrift {
+	if dr.Err != nil {
+		// The human decides with less information than usual - say so.
+		consequence += " The target's [database_config] could not be checked."
+	} else if len(dr.Items) > 0 {
 		consequence += " The target's [database_config] diverges from gaffer.toml."
 	}
 

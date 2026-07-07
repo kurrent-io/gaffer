@@ -223,7 +223,7 @@ func TestRenderStatusJSON(t *testing.T) {
 		{Comparison: drift.Comparison{Name: "adhoc", State: drift.Untracked, DeployedAt: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)}, Runtime: &remote.Status{State: remote.StateRunning}},
 	}
 	var b bytes.Buffer
-	if err := renderStatusJSON(&b, entries, nil); err != nil {
+	if err := renderStatusJSON(&b, entries, drift.ConfigDriftResult{}); err != nil {
 		t.Fatalf("renderStatusJSON: %v", err)
 	}
 	var report cliout.StatusReportJSON

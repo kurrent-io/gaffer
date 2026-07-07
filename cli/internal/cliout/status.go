@@ -62,6 +62,10 @@ type StatusReportJSON struct {
 	Production  *bool             `json:"production,omitempty"`
 	Projections []StatusJSON      `json:"projections"`
 	ConfigDrift []ConfigDriftJSON `json:"configDrift,omitempty"`
+	// ConfigDriftError says the [database_config] drift check could not read
+	// the node's live options (auth refusal, unreachable HTTP surface, ...),
+	// so an absent configDrift must not be read as "in sync" (UI-1820).
+	ConfigDriftError string `json:"configDriftError,omitempty"`
 }
 
 // ConfigDriftJSON is one [database_config] divergence in machine output: the
@@ -76,7 +80,7 @@ type ConfigDriftJSON struct {
 
 // BuildStatusReport assembles the shared status envelope from the collected
 // entries and the config-drift check's result.
-func BuildStatusReport(entries []drift.StatusEntry, items []drift.ConfigDrift) StatusReportJSON {
+func BuildStatusReport(entries []drift.StatusEntry, dr drift.ConfigDriftResult) StatusReportJSON {
 	out := make([]StatusJSON, 0, len(entries))
 	for _, e := range entries {
 		j := StatusJSON{
@@ -101,8 +105,12 @@ func BuildStatusReport(entries []drift.StatusEntry, items []drift.ConfigDrift) S
 		out = append(out, j)
 	}
 	report := StatusReportJSON{Projections: out}
-	if len(items) > 0 {
-		report.ConfigDrift = BuildConfigDriftJSON(items)
+	// Enforce the result's Items/Err mutual exclusion at the render too, so
+	// a mis-constructed result can't emit ambiguous machine output.
+	if dr.Err != nil {
+		report.ConfigDriftError = dr.Err.Error()
+	} else if len(dr.Items) > 0 {
+		report.ConfigDrift = BuildConfigDriftJSON(dr.Items)
 	}
 	return report
 }

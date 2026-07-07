@@ -41,8 +41,9 @@ func newStatusCmd() *cobra.Command {
 			"metadata, status falls back to plain untracked or drifted.\n\n" +
 			"When gaffer.toml declares a [database_config], status also checks the target\n" +
 			"node's live engine settings and warns on a divergence, since the fixtures and\n" +
-			"local runs assumed the declared values. Advisory only: a server that doesn't\n" +
-			"expose its options (or refuses the read) skips the check silently.",
+			"local runs assumed the declared values. Advisory only: when the node's options\n" +
+			"can't be read (no HTTP surface, auth refusal), status warns that the check\n" +
+			"couldn't run instead of failing or reporting a false \"in sync\".",
 		Example: "  gaffer status\n" +
 			"  gaffer status order-count --env staging",
 		Args: maxArgs(1),
@@ -76,7 +77,7 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 	// The [database_config] drift check runs in the background so its HTTP
 	// round-trip overlaps the status RPCs; drained before rendering.
 	resolved, _ := resolveLiveEnv(opts.Connection, opts.Env, cfg)
-	driftCh := drift.StartConfigDriftCheck(cmd.Context(), cfg, root, resolved.Name, resolved.Connection)
+	driftCh := drift.StartConfigDriftCheck(cmd.Context(), cfg, root, resolved)
 
 	if name != "" {
 		entry, err := drift.StatusOne(ctx, r, cfg, root, name)
@@ -108,8 +109,8 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 	return nil
 }
 
-func renderStatusJSON(w io.Writer, entries []drift.StatusEntry, items []drift.ConfigDrift) error {
+func renderStatusJSON(w io.Writer, entries []drift.StatusEntry, dr drift.ConfigDriftResult) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(cliout.BuildStatusReport(entries, items))
+	return enc.Encode(cliout.BuildStatusReport(entries, dr))
 }

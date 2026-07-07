@@ -105,11 +105,12 @@ func BuildStatusReport(entries []drift.StatusEntry, dr drift.ConfigDriftResult) 
 		out = append(out, j)
 	}
 	report := StatusReportJSON{Projections: out}
-	if len(dr.Items) > 0 {
-		report.ConfigDrift = BuildConfigDriftJSON(dr.Items)
-	}
+	// Enforce the result's Items/Err mutual exclusion at the render too, so
+	// a mis-constructed result can't emit ambiguous machine output.
 	if dr.Err != nil {
 		report.ConfigDriftError = dr.Err.Error()
+	} else if len(dr.Items) > 0 {
+		report.ConfigDrift = BuildConfigDriftJSON(dr.Items)
 	}
 	return report
 }

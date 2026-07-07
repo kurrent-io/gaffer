@@ -82,6 +82,7 @@ func StartConfigDriftCheck(ctx context.Context, cfg *config.Config, root string,
 	ch := make(chan ConfigDriftResult, 1)
 	if cfg == nil || cfg.DatabaseConfig == nil || env.Connection == "" {
 		ch <- ConfigDriftResult{}
+		close(ch)
 		return ch
 	}
 	if env.OAuth != nil || env.Cert != nil {
@@ -89,6 +90,7 @@ func StartConfigDriftCheck(ctx context.Context, cfg *config.Config, root string,
 		// certificate env an attempt could only fail. Report that the check
 		// didn't run rather than warn about a refusal no credential can fix.
 		ch <- ConfigDriftResult{Err: errors.New("not supported on OAuth or certificate-auth environments yet")}
+		close(ch)
 		return ch
 	}
 	go func() {

@@ -68,11 +68,12 @@ func (r *Runner) doStep(fn func() error) error {
 	if r.debug == nil {
 		return nil
 	}
-	// Flip paused optimistically, before issuing the command. The only error
-	// fn can return is the runtime's "not paused" - which means the engine
-	// wasn't paused anyway, so false is the correct resulting state. Leaving it
-	// false on error also lets the caller's next Paused() guard reject cleanly
-	// rather than re-entering here and failing again.
+	// Flip paused optimistically, before issuing the command. The only errors
+	// fn can return are the runtime's "not paused" and its lost-the-race-
+	// with-a-resume refusal (UI-1822) - both mean the engine ended up
+	// running, so false is the correct resulting state. Leaving it false on
+	// error also lets the caller's next Paused() guard reject cleanly rather
+	// than re-entering here and failing again.
 	r.mu.Lock()
 	if r.closed {
 		// Teardown has begun: the session may already be freed. Refuse
@@ -177,12 +178,10 @@ func (r *Runner) drain() {
 // Front-ends should still stop their source loop first as a matter of
 // hygiene, but a straggling feed no longer races the teardown.
 //
-// The wait trusts every registered op to finish. The runtime's debug-command
-// queue can strand a command (an unsynchronized paused check-then-add racing
-// the command loop's exit leaves the command's Done unsignalled), and a
-// stranded verb now blocks Destroy where it previously leaked a goroutine.
-// The window needs concurrent debug verbs on a paused engine; the fix is
-// runtime-side, in the command loop.
+// The wait trusts every registered op to finish, which the runtime
+// guarantees: a debug verb that loses the race with a resume is failed with
+// an error rather than stranded (UI-1822), so no verb can hold an op - and
+// this wait - open indefinitely.
 //
 // The history store is NOT closed here: the Runner only borrows it, and in
 // the dev debug loop one store serves every restart iteration's runner.

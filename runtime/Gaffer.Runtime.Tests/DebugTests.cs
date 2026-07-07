@@ -805,4 +805,118 @@ public class DebugTests {
 		Assert.Null(feedEx);
 		Assert.NotNull(result);
 	}
+
+	[Fact]
+	public void Racing_resume_verbs_never_strand_a_caller() {
+		// UI-1822: a verb that passed the paused check could enqueue its
+		// command just as the command loop consumed another caller's resume
+		// and exited - the command's Done was never signalled and the caller
+		// blocked forever. The enqueue and the resume-drain are now atomic:
+		// every racer either wins the resume or gets an error, and always
+		// returns. The Join timeouts are the strand detectors.
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
+
+		var paused = new ManualResetEventSlim(false);
+		session.OnBreak = _ => paused.Set();
+		session.SetBreakpoint(4);
+
+		for (var i = 0; i < 25; i++) {
+			paused.Reset();
+			Exception? feedEx = null;
+			// Background threads: on a regression the strand leaves them
+			// blocked past the failed Join assert, and a foreground thread
+			// would then hang the test host instead of reporting the failure.
+			var feedThread = new Thread(() => {
+				try {
+					session.Feed(MakeEvent());
+				} catch (Exception ex) {
+					feedEx = ex;
+				}
+			}) { IsBackground = true };
+			feedThread.Start();
+			Assert.True(paused.Wait(TimeSpan.FromSeconds(5)));
+
+			var racers = new Thread[3];
+			for (var r = 0; r < racers.Length; r++) {
+				racers[r] = new Thread(() => {
+					try {
+						session.Continue();
+					} catch (InvalidOperationException) {
+						// Lost the race: "not paused", or drained with
+						// "resumed before the command ran". Both fine -
+						// only hanging is a bug.
+					}
+				}) { IsBackground = true };
+				racers[r].Start();
+			}
+			foreach (var racer in racers)
+				Assert.True(racer.Join(TimeSpan.FromSeconds(10)), "a resume verb stranded: its Done was never signalled");
+			Assert.True(feedThread.Join(TimeSpan.FromSeconds(10)));
+			Assert.Null(feedEx);
+		}
+
+		Assert.Contains("\"count\":25", session.GetState()!);
+	}
+
+	[Fact]
+	public void Resume_race_does_not_replay_into_the_next_pause() {
+		// The other half of UI-1822: a command left in the queue when the
+		// loop exited replayed at the NEXT pause - a stale Continue from a
+		// lost race would silently resume a breakpoint the user never
+		// continued. The resume-drain must leave the queue empty.
+		var source = "fromAll().when({\n$init: function() { return { count: 0 }; },\nItemAdded: function(s, e) {\ns.count++;\nreturn s;\n}\n})";
+		using var session = new ProjectionSession(source, new ProjectionSessionOptions { EngineVersion = ProjectionVersion.V2, Debug = true });
+
+		var paused = new ManualResetEventSlim(false);
+		session.OnBreak = _ => paused.Set();
+		session.SetBreakpoint(4);
+
+		// Background threads for the same reason as the racing test above:
+		// a regression must fail the test, not hang the test host.
+		Exception? feedEx = null;
+		var feed1 = new Thread(() => {
+			try {
+				session.Feed(MakeEvent());
+			} catch (Exception ex) {
+				feedEx = ex;
+			}
+		}) { IsBackground = true };
+		feed1.Start();
+		Assert.True(paused.Wait(TimeSpan.FromSeconds(5)));
+
+		var racers = new Thread[2];
+		for (var r = 0; r < racers.Length; r++) {
+			racers[r] = new Thread(() => {
+				try {
+					session.Continue();
+				} catch (InvalidOperationException) {
+				}
+			}) { IsBackground = true };
+			racers[r].Start();
+		}
+		foreach (var racer in racers)
+			Assert.True(racer.Join(TimeSpan.FromSeconds(10)), "a resume verb stranded: its Done was never signalled");
+		Assert.True(feed1.Join(TimeSpan.FromSeconds(10)));
+		Assert.Null(feedEx);
+
+		// The second pause must wait for its own resume.
+		paused.Reset();
+		var feed2 = new Thread(() => {
+			try {
+				session.Feed(MakeEvent());
+			} catch (Exception ex) {
+				feedEx = ex;
+			}
+		}) { IsBackground = true };
+		feed2.Start();
+		Assert.True(paused.Wait(TimeSpan.FromSeconds(5)));
+		Assert.False(feed2.Join(TimeSpan.FromMilliseconds(300)), "second pause auto-resumed: a stale command replayed");
+		Assert.True(session.IsPaused);
+
+		session.Continue();
+		Assert.True(feed2.Join(TimeSpan.FromSeconds(10)));
+		Assert.Null(feedEx);
+		Assert.Contains("\"count\":2", session.GetState()!);
+	}
 }

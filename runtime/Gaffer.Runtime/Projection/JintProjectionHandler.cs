@@ -70,6 +70,9 @@ internal sealed class JintProjectionHandler : IDisposable {
 	private readonly ProjectionVersion _engineVersion;
 	private readonly TimeConstraint _timeConstraint;
 	private readonly BlockingCollection<DebugCommand> _debugCommands = new();
+	// Makes a verb's paused-check-then-enqueue atomic with the command loop's
+	// resume-then-drain (see EnqueueDebugCommand / ResumeAndDrainDebugCommands).
+	private readonly object _debugSync = new();
 	private readonly Dictionary<int, object> _variableStore = new();
 	private List<BreakablePosition>? _breakablePositions;
 	private int _nextVariableRef = 1;
@@ -190,6 +193,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 
 	public void Dispose() {
 		_debugCommands.CompleteAdding();
+		// Fail anything still queued so no caller is left blocked on a Done
+		// that will never be signalled. With the enqueue/resume lock this
+		// should be unreachable - a queued command implies a consuming loop -
+		// but Dispose mustn't bet on it.
+		DrainDebugCommands();
 		_engine.Dispose();
 	}
 
@@ -619,11 +627,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 			foreach (var cmd in _debugCommands.GetConsumingEnumerable()) {
 				switch (cmd) {
 					case ContinueCommand cc:
-						ClearDebugState();
+						ResumeAndDrainDebugCommands();
 						cc.Done.Set();
 						return StepMode.None;
 					case StepCommand sc:
-						ClearDebugState();
+						ResumeAndDrainDebugCommands();
 						sc.Done.Set();
 						return sc.Mode;
 					case GetCallStackCommand gc:
@@ -648,11 +656,11 @@ internal sealed class JintProjectionHandler : IDisposable {
 				}
 			}
 		} catch {
-			ClearDebugState();
+			ResumeAndDrainDebugCommands();
 			throw;
 		}
 
-		ClearDebugState();
+		ResumeAndDrainDebugCommands();
 		throw new OperationCanceledException("Debug session disposed while paused");
 	}
 
@@ -661,6 +669,50 @@ internal sealed class JintProjectionHandler : IDisposable {
 		_currentDebugInfo = null;
 		_variableStore.Clear();
 		_nextVariableRef = 1;
+	}
+
+	/// <summary>
+	/// Flips the engine back to running and fails any command that lost the
+	/// race with the resume, atomically with respect to
+	/// <see cref="EnqueueDebugCommand"/>. Every exit from the command loop
+	/// must come through here: a command left in the queue when the loop
+	/// exits blocks its caller forever (its Done is never set) and then
+	/// replays as a stale command at the next pause.
+	/// </summary>
+	private void ResumeAndDrainDebugCommands() {
+		lock (_debugSync) {
+			ClearDebugState();
+			DrainDebugCommands();
+		}
+	}
+
+	private void DrainDebugCommands() {
+		while (_debugCommands.TryTake(out var stale)) {
+			stale.Error = new InvalidOperationException("Engine resumed before the command ran");
+			stale.Done.Set();
+		}
+	}
+
+	/// <summary>
+	/// The verbs' shared enqueue: the paused check and the enqueue are one
+	/// atomic step, so a command can only enter the queue while the command
+	/// loop is still consuming (or is guaranteed to drain it on exit).
+	/// Without the lock, a verb that passed the check could add after the
+	/// loop consumed a resume and exited - the strand UI-1822 describes.
+	/// </summary>
+	private void EnqueueDebugCommand(DebugCommand cmd, string notPausedMessage) {
+		lock (_debugSync) {
+			if (!_paused)
+				throw new InvalidOperationException(notPausedMessage);
+			try {
+				_debugCommands.Add(cmd);
+			} catch (InvalidOperationException) {
+				// Dispose completed the collection between the check and the
+				// add. Surface the same refusal the caller would have gotten
+				// a beat later, not the framework's marked-as-complete text.
+				throw new InvalidOperationException(notPausedMessage);
+			}
+		}
 	}
 
 	private DebugCallFrame[] ReadCallStack(DebugInformation info) {
@@ -954,42 +1006,40 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	public void Continue() {
-		if (!_paused)
-			throw new InvalidOperationException("Cannot continue when not paused");
 		using var cmd = new ContinueCommand();
-		_debugCommands.Add(cmd);
+		EnqueueDebugCommand(cmd, "Cannot continue when not paused");
 		cmd.Done.Wait();
+		if (cmd.Error != null)
+			throw cmd.Error;
 	}
 
 	public void StepInto() {
-		if (!_paused)
-			throw new InvalidOperationException("Cannot step when not paused");
 		using var cmd = new StepCommand { Mode = StepMode.Into };
-		_debugCommands.Add(cmd);
+		EnqueueDebugCommand(cmd, "Cannot step when not paused");
 		cmd.Done.Wait();
+		if (cmd.Error != null)
+			throw cmd.Error;
 	}
 
 	public void StepOver() {
-		if (!_paused)
-			throw new InvalidOperationException("Cannot step when not paused");
 		using var cmd = new StepCommand { Mode = StepMode.Over };
-		_debugCommands.Add(cmd);
+		EnqueueDebugCommand(cmd, "Cannot step when not paused");
 		cmd.Done.Wait();
+		if (cmd.Error != null)
+			throw cmd.Error;
 	}
 
 	public void StepOut() {
-		if (!_paused)
-			throw new InvalidOperationException("Cannot step when not paused");
 		using var cmd = new StepCommand { Mode = StepMode.Out };
-		_debugCommands.Add(cmd);
+		EnqueueDebugCommand(cmd, "Cannot step when not paused");
 		cmd.Done.Wait();
+		if (cmd.Error != null)
+			throw cmd.Error;
 	}
 
 	public DebugCallFrame[] GetCallStack() {
-		if (!_paused)
-			throw new InvalidOperationException("Cannot inspect when not paused");
 		using var cmd = new GetCallStackCommand();
-		_debugCommands.Add(cmd);
+		EnqueueDebugCommand(cmd, "Cannot inspect when not paused");
 		cmd.Done.Wait();
 		if (cmd.Error != null)
 			throw cmd.Error;
@@ -997,10 +1047,8 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	public DebugScopeInfo[] GetScopes(int frameIndex) {
-		if (!_paused)
-			throw new InvalidOperationException("Cannot inspect when not paused");
 		using var cmd = new GetScopesCommand { FrameIndex = frameIndex };
-		_debugCommands.Add(cmd);
+		EnqueueDebugCommand(cmd, "Cannot inspect when not paused");
 		cmd.Done.Wait();
 		if (cmd.Error != null)
 			throw cmd.Error;
@@ -1008,10 +1056,8 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	public DebugVariable[] GetVariables(int variablesReference) {
-		if (!_paused)
-			throw new InvalidOperationException("Cannot inspect when not paused");
 		using var cmd = new GetVariablesCommand { VariablesReference = variablesReference };
-		_debugCommands.Add(cmd);
+		EnqueueDebugCommand(cmd, "Cannot inspect when not paused");
 		cmd.Done.Wait();
 		if (cmd.Error != null)
 			throw cmd.Error;
@@ -1019,10 +1065,8 @@ internal sealed class JintProjectionHandler : IDisposable {
 	}
 
 	public DebugVariable Evaluate(string expression) {
-		if (!_paused)
-			throw new InvalidOperationException("Cannot evaluate when not paused");
 		using var cmd = new EvaluateCommand { Expression = expression };
-		_debugCommands.Add(cmd);
+		EnqueueDebugCommand(cmd, "Cannot evaluate when not paused");
 		cmd.Done.Wait();
 		if (cmd.Error != null)
 			throw cmd.Error;

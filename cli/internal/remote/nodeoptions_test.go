@@ -2,11 +2,26 @@ package remote
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/pem"
+	"errors"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 )
 
 func TestNodeOptionsEndpoint(t *testing.T) {
@@ -17,6 +32,7 @@ func TestNodeOptionsEndpoint(t *testing.T) {
 		wantUser   string
 		wantPass   string
 		wantSkip   bool
+		wantCA     string
 		wantErr    bool
 	}{
 		{
@@ -36,6 +52,34 @@ func TestNodeOptionsEndpoint(t *testing.T) {
 			connection: "esdb://db.example:2113?tlsVerifyCert=false",
 			wantURL:    "https://db.example:2113/info/options",
 			wantSkip:   true,
+		},
+		{
+			name:       "custom verification CA",
+			connection: "kurrentdb://db.example:2113?tlsCaFile=certs/ca.crt",
+			wantURL:    "https://db.example:2113/info/options",
+			wantCA:     "certs/ca.crt",
+		},
+		{
+			// The client parses booleans via strconv.ParseBool with
+			// case-insensitive keys; the HTTP read must agree (a tls=0
+			// string dials plaintext gRPC and must not dial https here).
+			name:       "client bool dialect: tls=0",
+			connection: "kurrentdb://db.example:2113?tls=0",
+			wantURL:    "http://db.example:2113/info/options",
+		},
+		{
+			name:       "client bool dialect: key and value case",
+			connection: "kurrentdb://db.example:2113?TLS=False&TLSVERIFYCERT=F",
+			wantURL:    "http://db.example:2113/info/options",
+			wantSkip:   true,
+		},
+		{
+			// Duplicate case-variants of one key resolve deterministically
+			// (first match in sorted key order: "TLS" before "tls"), never
+			// by map iteration order.
+			name:       "duplicate case-variant keys are deterministic",
+			connection: "kurrentdb://db.example:2113?TLS=false&tls=true",
+			wantURL:    "http://db.example:2113/info/options",
 		},
 		{
 			name:       "multi-host asks the first",
@@ -74,7 +118,7 @@ func TestNodeOptionsEndpoint(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			endpoint, user, pass, skip, err := nodeOptionsEndpoint(tc.connection)
+			endpoint, user, pass, tlsOpts, err := nodeOptionsEndpoint(tc.connection)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("want an error, got %q", endpoint)
@@ -84,9 +128,9 @@ func TestNodeOptionsEndpoint(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if endpoint != tc.wantURL || user != tc.wantUser || pass != tc.wantPass || skip != tc.wantSkip {
-				t.Errorf("got (%q, %q, %q, %v), want (%q, %q, %q, %v)",
-					endpoint, user, pass, skip, tc.wantURL, tc.wantUser, tc.wantPass, tc.wantSkip)
+			if endpoint != tc.wantURL || user != tc.wantUser || pass != tc.wantPass || tlsOpts.insecure != tc.wantSkip || tlsOpts.caFile != tc.wantCA {
+				t.Errorf("got (%q, %q, %q, %+v), want (%q, %q, %q, insecure=%v ca=%q)",
+					endpoint, user, pass, tlsOpts, tc.wantURL, tc.wantUser, tc.wantPass, tc.wantSkip, tc.wantCA)
 			}
 		})
 	}
@@ -139,7 +183,7 @@ func TestFetchNodeOptions(t *testing.T) {
 		defer srv.Close()
 
 		conn := "kurrentdb://admin:changeit@" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
-		node, err := FetchNodeOptions(context.Background(), conn, "", "")
+		node, err := FetchNodeOptions(context.Background(), target.Target{Connection: conn})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -162,7 +206,7 @@ func TestFetchNodeOptions(t *testing.T) {
 		defer srv.Close()
 
 		conn := "kurrentdb://inline:wrong@" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
-		if _, err := FetchNodeOptions(context.Background(), conn, "envuser", "envpass"); err != nil {
+		if _, err := FetchNodeOptions(context.Background(), target.Target{Connection: conn, Username: "envuser", Password: "envpass"}); err != nil {
 			t.Fatal(err)
 		}
 		want := "Basic " + base64.StdEncoding.EncodeToString([]byte("envuser:envpass"))
@@ -178,8 +222,161 @@ func TestFetchNodeOptions(t *testing.T) {
 		defer srv.Close()
 
 		conn := "kurrentdb://" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
-		if _, err := FetchNodeOptions(context.Background(), conn, "", ""); err == nil {
+		if _, err := FetchNodeOptions(context.Background(), target.Target{Connection: conn}); err == nil {
 			t.Error("a 401 should surface as an error for the caller to skip on")
+		}
+	})
+}
+
+func TestFetchNodeOptions_BearerToken(t *testing.T) {
+	// An OAuth target authenticates the read with its bearer token; basic
+	// credentials (userinfo or resolved) don't apply.
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(sampleOptions))
+	}))
+	defer srv.Close()
+
+	conn := "kurrentdb://inline:wrong@" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
+	tgt := target.Target{
+		Connection:  conn,
+		BearerToken: func(context.Context) (string, error) { return "tok-123", nil },
+	}
+	if _, err := FetchNodeOptions(context.Background(), tgt); err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer tok-123" {
+		t.Errorf("Authorization = %q, want the bearer token", gotAuth)
+	}
+
+	// A token failure surfaces (never silently degrades to anonymous).
+	tgt.BearerToken = func(context.Context) (string, error) { return "", errors.New("no stored token") }
+	if _, err := FetchNodeOptions(context.Background(), tgt); err == nil || !strings.Contains(err.Error(), "resolving bearer token") {
+		t.Fatalf("err = %v, want the bearer failure surfaced", err)
+	}
+}
+
+func TestFetchNodeOptions_UserCertificate(t *testing.T) {
+	// A cert-auth target presents its user certificate in the handshake and
+	// verifies the server against the connection's tlsCaFile - the whole
+	// mTLS path the gRPC connection uses, on the HTTP read.
+	clientCert, clientKey, clientPEM := testKeyPair(t, "gaffer-user")
+
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(r.TLS.PeerCertificates) == 0 || r.TLS.PeerCertificates[0].Subject.CommonName != "gaffer-user" {
+			http.Error(w, "no client certificate", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(sampleOptions))
+	}))
+	clientPool := x509.NewCertPool()
+	clientPool.AppendCertsFromPEM(clientPEM)
+	srv.TLS = &tls.Config{ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: clientPool}
+	srv.StartTLS()
+	defer srv.Close()
+
+	// The httptest server's own certificate becomes the read's tlsCaFile.
+	caPath := filepath.Join(t.TempDir(), "ca.crt")
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	if err := os.WriteFile(caPath, caPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	conn := "kurrentdb://" + strings.TrimPrefix(srv.URL, "https://") + "?tlsCaFile=" + url.QueryEscape(caPath)
+	node, err := FetchNodeOptions(context.Background(), target.Target{
+		Connection: conn,
+		CertFile:   clientCert,
+		KeyFile:    clientKey,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.MaxStateSizeBytes == nil {
+		t.Error("expected the options payload through mTLS")
+	}
+}
+
+// testKeyPair generates a self-signed certificate, returning the cert and
+// key file paths plus the certificate PEM (for the server's client CA pool).
+func testKeyPair(t *testing.T, cn string) (certPath, keyPath string, certPEM []byte) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: cn},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	dir := t.TempDir()
+	certPath, keyPath = filepath.Join(dir, cn+".crt"), filepath.Join(dir, cn+".key")
+	if err := os.WriteFile(certPath, certPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return certPath, keyPath, certPEM
+}
+
+func TestFetchNodeOptions_RefusesRedirects(t *testing.T) {
+	// A redirecting node would otherwise get a blind SSRF primitive; the
+	// read targets exactly the endpoint it derived and nothing else.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://127.0.0.1:1/elsewhere", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	conn := "kurrentdb://" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
+	if _, err := FetchNodeOptions(context.Background(), target.Target{Connection: conn}); err == nil || !strings.Contains(err.Error(), "redirected") {
+		t.Fatalf("err = %v, want the redirect refused", err)
+	}
+}
+
+func TestNodeOptionsTLSErrors(t *testing.T) {
+	t.Run("missing tlsCaFile surfaces", func(t *testing.T) {
+		_, err := nodeOptionsTLS(nodeTLSOptions{caFile: filepath.Join(t.TempDir(), "absent.crt")}, target.Target{})
+		if err == nil || !strings.Contains(err.Error(), "reading tlsCaFile") {
+			t.Fatalf("err = %v, want the read failure surfaced", err)
+		}
+	})
+	t.Run("junk PEM surfaces", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "junk.crt")
+		if err := os.WriteFile(path, []byte("not a certificate"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := nodeOptionsTLS(nodeTLSOptions{caFile: path}, target.Target{})
+		if err == nil || !strings.Contains(err.Error(), "no usable certificates") {
+			t.Fatalf("err = %v, want the parse failure surfaced", err)
+		}
+	})
+	t.Run("insecure with a client cert combines", func(t *testing.T) {
+		cert, key, _ := testKeyPair(t, "combo")
+		cfg, err := nodeOptionsTLS(nodeTLSOptions{insecure: true}, target.Target{CertFile: cert, KeyFile: key})
+		if err != nil || cfg == nil || !cfg.InsecureSkipVerify || len(cfg.Certificates) != 1 {
+			t.Fatalf("cfg = %+v, %v; want skip-verify with the cert presented", cfg, err)
+		}
+	})
+	t.Run("default TLS needs no custom config", func(t *testing.T) {
+		cfg, err := nodeOptionsTLS(nodeTLSOptions{}, target.Target{})
+		if err != nil || cfg != nil {
+			t.Fatalf("cfg = %+v, %v; want nil for the default", cfg, err)
 		}
 	})
 }

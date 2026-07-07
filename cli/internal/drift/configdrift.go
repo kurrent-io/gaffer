@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"unicode"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
-	"github.com/kurrent-io/gaffer/cli/internal/envvar"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 )
 
 // ConfigDrift is one [database_config] knob whose live value on the target
@@ -85,44 +87,59 @@ func StartConfigDriftCheck(ctx context.Context, cfg *config.Config, root string,
 		close(ch)
 		return ch
 	}
-	if env.OAuth != nil || env.Cert != nil {
-		// The node-options read speaks basic auth only, so on an OAuth or
-		// certificate env an attempt could only fail. Report that the check
-		// didn't run rather than warn about a refusal no credential can fix.
-		ch <- ConfigDriftResult{Err: errors.New("not supported on OAuth or certificate-auth environments yet")}
-		close(ch)
-		return ch
-	}
 	go func() {
 		defer close(ch)
-		fail := func(stage string, err error) {
-			ch <- ConfigDriftResult{Err: fmt.Errorf("%s: %w", stage, err)}
-		}
-		// Mirror the main connection's credential resolution, minus
-		// envvar.Load: every caller connects (which Loads the base .env into
-		// the process env) before starting this check, and calling Load here
-		// would os.Setenv on a goroutine running concurrently with the rest
-		// of the command - including, in the MCP server, live cgo sessions
-		// reading environ.
-		overlay, err := envvar.Overlay(root, env.Name)
+		// target.Resolve owns the credential stack, and never touches the
+		// process environment - safe on this goroutine, which runs beside
+		// the rest of the command (in the MCP server, beside live cgo
+		// sessions reading environ). The base .env was loaded by the connect
+		// that precedes this check.
+		tgt, err := target.Resolve(root, env)
 		if err != nil {
-			fail("reading env overlay", err)
+			ch <- ConfigDriftResult{Err: sanitizeDriftErr(err, env.Connection)}
 			return
 		}
-		conn, err := envvar.Expand(env.Connection, overlay)
-		if err != nil {
-			fail("expanding connection string", err)
-			return
-		}
-		username, password := envvar.Credentials(overlay)
 		fctx, cancel := context.WithTimeout(ctx, deploy.RPCTimeout)
 		defer cancel()
-		node, err := remote.FetchNodeOptions(fctx, conn, username, password)
+		node, err := remote.FetchNodeOptions(fctx, tgt)
 		if err != nil {
-			fail("reading node options", err)
+			err = fmt.Errorf("reading node options: %w", err)
+			ch <- ConfigDriftResult{Err: sanitizeDriftErr(err, env.Connection, tgt.Connection)}
 			return
 		}
 		ch <- ConfigDriftResult{Items: ConfigDriftItems(cfg.DatabaseConfig, node)}
 	}()
 	return ch
+}
+
+// sanitizeDriftErrMax bounds the rendered length of a drift-check failure.
+const sanitizeDriftErrMax = 300
+
+// sanitizeDriftErr flattens the check's error for its render surfaces. The
+// warning line and the configDriftError fields reach terminals and
+// LLM-agent-visible MCP output, and parts of the message can be
+// server-chosen (an IdP error body, a proxy's response), so control
+// characters go, length is bounded, and the connection string - raw or
+// expanded - is redacted wherever a wrapped error echoed it.
+func sanitizeDriftErr(err error, connections ...string) error {
+	msg := err.Error()
+	for _, c := range connections {
+		if c != "" {
+			msg = target.ScrubConnection(msg, c)
+		}
+	}
+	msg = strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n' || r == '\r' || r == '\t':
+			return ' '
+		case unicode.IsControl(r):
+			return -1
+		default:
+			return r
+		}
+	}, msg)
+	if runes := []rune(msg); len(runes) > sanitizeDriftErrMax {
+		msg = string(runes[:sanitizeDriftErrMax]) + " [truncated]"
+	}
+	return errors.New(msg)
 }

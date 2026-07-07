@@ -3,6 +3,7 @@ package remote
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,9 +11,13 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 )
 
 // NodeProjectionOptions are a node's live projection-engine settings, read from
@@ -39,32 +44,51 @@ const nodeOptionsHTTPTimeout = 3 * time.Second
 
 // FetchNodeOptions reads the target node's projection options over its HTTP
 // surface (multiplexed with gRPC on the same port). The endpoint and scheme
-// derive from the connection string; a multi-host string is asked via its
-// first host. username/password, when non-empty, take precedence over the
-// connection string's userinfo - the same order the main gRPC connection
-// applies to .env-supplied credentials (UI-1820: without this, a login kept
-// out of the connection string never reached the HTTP read). Advisory by
-// design: callers surface errors as warnings, never failing the command.
-func FetchNodeOptions(ctx context.Context, connection, username, password string) (*NodeProjectionOptions, error) {
-	endpoint, user, pass, insecure, err := nodeOptionsEndpoint(connection)
+// derive from the target's connection string; a multi-host string is asked
+// via its first host. Authentication follows the target, in the connection's
+// own precedence: an OAuth bearer token when the env uses OAuth, else the
+// target's resolved basic credentials (which win over the connection
+// string's userinfo - UI-1820), else the userinfo; a user certificate is
+// presented in the TLS handshake, and the connection's tlsCaFile /
+// tlsVerifyCert settings are honoured. Advisory by design: callers surface
+// errors as warnings, never failing the command.
+func FetchNodeOptions(ctx context.Context, tgt target.Target) (*NodeProjectionOptions, error) {
+	endpoint, user, pass, tlsOpts, err := nodeOptionsEndpoint(tgt.Connection)
 	if err != nil {
 		return nil, err
 	}
-	if username != "" {
-		user, pass = username, password
+	if tgt.Username != "" {
+		user, pass = tgt.Username, tgt.Password
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
-	if user != "" {
+	switch {
+	case tgt.BearerToken != nil:
+		tok, err := tgt.BearerToken(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("resolving bearer token: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+	case user != "":
 		req.SetBasicAuth(user, pass)
 	}
-	client := &http.Client{Timeout: nodeOptionsHTTPTimeout}
-	if insecure {
-		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // mirrors the connection string's explicit tlsVerifyCert=false
-		}
+	client := &http.Client{
+		Timeout: nodeOptionsHTTPTimeout,
+		// The read targets exactly one endpoint it derived itself; a redirect
+		// means a misbehaving (or malicious) node, and following one would
+		// hand it a blind SSRF primitive. Refuse.
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return errors.New("options endpoint redirected")
+		},
+	}
+	tlsCfg, err := nodeOptionsTLS(tlsOpts, tgt)
+	if err != nil {
+		return nil, err
+	}
+	if tlsCfg != nil {
+		client.Transport = &http.Transport{TLSClientConfig: tlsCfg}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -72,26 +96,74 @@ func FetchNodeOptions(ctx context.Context, connection, username, password string
 	}
 	defer resp.Body.Close() //nolint:errcheck // read-only response
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("options endpoint returned %s", resp.Status)
+		// StatusCode, never resp.Status: the reason phrase is server-chosen
+		// text, and this error reaches terminals and MCP tool results.
+		return nil, fmt.Errorf("options endpoint returned status %d", resp.StatusCode)
 	}
 	return parseNodeOptions(resp.Body)
 }
 
-// nodeOptionsEndpoint derives the /info/options URL and credentials from a
-// KurrentDB connection string: tls=false selects http (the default is TLS),
-// tlsVerifyCert=false skips verification, and the userinfo carries the basic
-// credentials. A multi-host list is asked via its first host; a host without a
-// port gets the default 2113.
-func nodeOptionsEndpoint(connection string) (endpoint, user, pass string, insecure bool, err error) {
+// nodeOptionsTLS builds the TLS config for the read, or nil when the default
+// suffices: skip-verify and CA from the connection string's own settings, and
+// the target's user certificate presented in the handshake like the gRPC
+// connection presents it.
+func nodeOptionsTLS(opts nodeTLSOptions, tgt target.Target) (*tls.Config, error) {
+	if !opts.insecure && opts.caFile == "" && tgt.CertFile == "" {
+		return nil, nil
+	}
+	cfg := &tls.Config{InsecureSkipVerify: opts.insecure} //nolint:gosec // mirrors the connection string's explicit tlsVerifyCert=false
+	if opts.caFile != "" {
+		pem, err := os.ReadFile(opts.caFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading tlsCaFile: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, errors.New("tlsCaFile contains no usable certificates")
+		}
+		cfg.RootCAs = pool
+	}
+	if tgt.CertFile != "" {
+		cert, err := tls.LoadX509KeyPair(tgt.CertFile, tgt.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("loading user certificate: %w", err)
+		}
+		cfg.Certificates = []tls.Certificate{cert}
+	}
+	return cfg, nil
+}
+
+// nodeTLSOptions are the TLS settings a connection string carries for the
+// HTTP read: tlsVerifyCert=false and tlsCaFile, mirrored from what the gRPC
+// client honours.
+type nodeTLSOptions struct {
+	insecure bool
+	caFile   string
+}
+
+// nodeOptionsEndpoint derives the /info/options URL, credentials, and TLS
+// settings from a KurrentDB connection string: tls=false selects http (the
+// default is TLS), tlsVerifyCert=false skips verification, tlsCaFile names
+// the verification CA, and the userinfo carries the basic credentials. A
+// multi-host list is asked via its first host; a host without a port gets
+// the default 2113.
+//
+// This is deliberately a second parser beside kurrentdb.ParseConnectionString
+// (which can't be reused wholesale: it rejects bracketed IPv6 literals and
+// routes multi-host strings through a different URL shape). The boolean and
+// key dialect is matched to the client's via queryFlag/queryValue so the two
+// parsers can't disagree about what a string means; anyone adding a TLS knob
+// here must mirror the client's reading of it.
+func nodeOptionsEndpoint(connection string) (endpoint, user, pass string, tlsOpts nodeTLSOptions, err error) {
 	u, err := url.Parse(firstHostConnection(connection))
 	if err != nil {
 		// The connection string can carry credentials (url.Error embeds the
 		// URL), so the error is described, never wrapped.
-		return "", "", "", false, errors.New("unparsable connection string")
+		return "", "", "", nodeTLSOptions{}, errors.New("unparsable connection string")
 	}
 	host := u.Host
 	if host == "" {
-		return "", "", "", false, errors.New("connection string has no host")
+		return "", "", "", nodeTLSOptions{}, errors.New("connection string has no host")
 	}
 	if _, _, err := net.SplitHostPort(host); err != nil {
 		// JoinHostPort re-brackets a host containing colons, so a bracketed
@@ -101,16 +173,57 @@ func nodeOptionsEndpoint(connection string) (endpoint, user, pass string, insecu
 
 	q := u.Query()
 	scheme := "https"
-	if strings.EqualFold(q.Get("tls"), "false") {
+	if v, ok := queryFlag(q, "tls"); ok && !v {
 		scheme = "http"
 	}
-	insecure = strings.EqualFold(q.Get("tlsVerifyCert"), "false")
+	if v, ok := queryFlag(q, "tlsVerifyCert"); ok && !v {
+		tlsOpts.insecure = true
+	}
+	tlsOpts.caFile = queryValue(q, "tlsCaFile")
 
 	if u.User != nil {
 		user = u.User.Username()
 		pass, _ = u.User.Password()
 	}
-	return scheme + "://" + host + "/info/options", user, pass, insecure, nil
+	return scheme + "://" + host + "/info/options", user, pass, tlsOpts, nil
+}
+
+// queryFlag reads a boolean connection-string setting the way the kurrentdb
+// client's parser does - key matched case-insensitively, value through
+// strconv.ParseBool of the lowercased text (so tls=0, tls=F, TLS=FALSE all
+// count) - because the HTTP read and the gRPC dial must not disagree about
+// what a connection string means. An unparsable value reads as unset; the
+// dial would have refused the string before this advisory read ran.
+func queryFlag(q url.Values, name string) (value, ok bool) {
+	v := queryValue(q, name)
+	if v == "" {
+		return false, false
+	}
+	b, err := strconv.ParseBool(strings.ToLower(v))
+	if err != nil {
+		return false, false
+	}
+	return b, true
+}
+
+// queryValue reads a connection-string setting with the client parser's
+// case-insensitive key matching. A pathological string carrying duplicate
+// case-variants of one key (tls and TLS) resolves deterministically - the
+// first match in sorted key order - where ranging the map would flip
+// between runs (the client itself has that pathology; determinism wins
+// over bug-compatibility).
+func queryValue(q url.Values, name string) string {
+	var keys []string
+	for k, vs := range q {
+		if strings.EqualFold(k, name) && len(vs) > 0 {
+			keys = append(keys, k)
+		}
+	}
+	if len(keys) == 0 {
+		return ""
+	}
+	slices.Sort(keys)
+	return q.Get(keys[0])
 }
 
 // firstHostConnection reduces a multi-host connection string to its first host

@@ -8,10 +8,11 @@ import (
 	"strings"
 )
 
-// ResolvedEnv is the outcome of resolving an environment: its name and
+// ResolvedEnv is the outcome of selecting an environment: its name and
 // its connection string as written in the config. The connection is
-// raw - any ${VAR} interpolation happens downstream at connect time,
-// not here.
+// raw - do not dial it. Pass the ResolvedEnv to target.Resolve, which
+// owns ${VAR} interpolation and credential resolution and returns
+// something dialable.
 type ResolvedEnv struct {
 	Name       string
 	Connection string

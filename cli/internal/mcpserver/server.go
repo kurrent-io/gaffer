@@ -422,7 +422,7 @@ func (s *Server) connectToKurrentDB(cfg *config.Config, root, envName string) (*
 	// The auth-invalidation handle drives the editor's re-sign-in prompt on a
 	// debug run; the MCP server has no such UX, so it's dropped. A rejected
 	// token is still cleared by the provider, so the next call self-heals.
-	client, _, err := engine.Connect(env.Connection, root, env.Name, env.OAuth, env.Cert)
+	client, _, err := engine.Connect(root, env)
 	return client, err
 }
 

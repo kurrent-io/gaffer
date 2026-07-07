@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -92,5 +93,39 @@ func TestIdentityDistinct(t *testing.T) {
 	}
 	if Identity("iss1", "c") == Identity("iss2", "c") {
 		t.Error("different issuers must produce different identities")
+	}
+}
+
+// The never-prompt contract for background callers: the passphrase comes
+// from GAFFER_KEYRING_PASSWORD or the access fails closed - reverting
+// OpenTokenStoreNonInteractive to the prompting opener must fail these.
+func TestNonInteractivePassword(t *testing.T) {
+	t.Setenv("GAFFER_KEYRING_PASSWORD", "")
+	_ = os.Unsetenv("GAFFER_KEYRING_PASSWORD")
+	if _, err := nonInteractivePassword("x"); !errors.Is(err, ErrKeyringLocked) {
+		t.Fatalf("err = %v, want ErrKeyringLocked with no passphrase source", err)
+	}
+
+	t.Setenv("GAFFER_KEYRING_PASSWORD", "pw")
+	pw, err := nonInteractivePassword("x")
+	if err != nil || pw != "pw" {
+		t.Fatalf("got %q, %v; want the env passphrase", pw, err)
+	}
+}
+
+// filePassword's precedence after the refactor: the env passphrase wins
+// without prompting, and with no terminal (go test's stdin is not a tty)
+// the file keyring fails closed instead of reaching TerminalPrompt.
+func TestFilePassword_NonInteractiveFallback(t *testing.T) {
+	t.Setenv("GAFFER_KEYRING_PASSWORD", "")
+	_ = os.Unsetenv("GAFFER_KEYRING_PASSWORD")
+	if _, err := filePassword(t.TempDir())("x"); !errors.Is(err, ErrKeyringLocked) {
+		t.Fatalf("err = %v, want ErrKeyringLocked without a terminal", err)
+	}
+
+	t.Setenv("GAFFER_KEYRING_PASSWORD", "pw")
+	pw, err := filePassword(t.TempDir())("x")
+	if err != nil || pw != "pw" {
+		t.Fatalf("got %q, %v; want the env passphrase before any prompt", pw, err)
 	}
 }

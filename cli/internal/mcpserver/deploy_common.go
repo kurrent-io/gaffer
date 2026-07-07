@@ -19,7 +19,7 @@ func (s *Server) connectRemote(cfg *config.Config, root, envName string) (*remot
 	// The auth-invalidation handle drives the editor's re-sign-in prompt on a
 	// debug run; the MCP server has no such UX, so it's dropped, like
 	// connectToKurrentDB.
-	client, _, err := engine.Connect(env.Connection, root, env.Name, env.OAuth, env.Cert)
+	client, _, err := engine.Connect(root, env)
 	if err != nil {
 		return nil, config.ResolvedEnv{}, nil, err
 	}

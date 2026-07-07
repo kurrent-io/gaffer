@@ -4,16 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
-	"strings"
 	"sync/atomic"
-	"time"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/envvar"
 	"github.com/kurrent-io/gaffer/cli/internal/oauth"
-	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 )
 
 // ErrDBConnect wraps every Connect failure (bad URL, dotenv read,
@@ -51,7 +48,10 @@ type AuthInvalidation struct{ tripped atomic.Bool }
 func (a *AuthInvalidation) Trip()         { a.tripped.Store(true) }
 func (a *AuthInvalidation) Tripped() bool { return a.tripped.Load() }
 
-func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig, certCfg *config.CertAuth) (*kurrentdb.Client, *AuthInvalidation, error) {
+// Connect dials the environment. It takes the selected env whole (rather
+// than exploded fields) so a new auth-relevant field on ResolvedEnv can't be
+// silently forgotten at a call site.
+func Connect(projectRoot string, env config.ResolvedEnv) (*kurrentdb.Client, *AuthInvalidation, error) {
 	// Base .env is also loaded once at startup; reloading here (no-override,
 	// so it never clobbers shell vars) keeps Connect self-contained for
 	// callers and tests that reach it without the startup path.
@@ -59,30 +59,20 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 		return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 	}
 
-	// Read the .env.<envName> overlay once and share it across connection
-	// expansion and credential resolution, so both see the same view and
-	// the file is parsed a single time.
-	overlay, err := envvar.Overlay(projectRoot, envName)
+	// All resolution - overlay, ${VAR} expansion, credential precedence,
+	// cert paths, OAuth secret - happens in one place (see internal/target).
+	tgt, err := target.Resolve(projectRoot, env)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 	}
 
-	// Interpolate ${VAR} (e.g. credentials kept out of the committed
-	// connection) before parsing; a missing var errors here rather than
-	// dialing a malformed endpoint. The overlay layers .env.<envName>
-	// over the base .env for this target.
-	connStr, err = envvar.Expand(connStr, overlay)
-	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
-	}
-
-	redacted := RedactConnection(connStr)
-	dbConfig, err := kurrentdb.ParseConnectionString(connStr)
+	redacted := target.RedactConnection(tgt.Connection)
+	dbConfig, err := kurrentdb.ParseConnectionString(tgt.Connection)
 	if err != nil {
 		// Don't %w the underlying error: url.Parse errors echo the
 		// original input, which for malformed connection strings
 		// includes the password verbatim.
-		return nil, nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, scrubRaw(err.Error(), connStr, redacted))
+		return nil, nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, target.ScrubConnection(err.Error(), tgt.Connection))
 	}
 
 	// authInvalidated is tripped by the OAuth provider if the IdP rejects the
@@ -93,9 +83,9 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 	// An env with OAuth configured uses it exclusively: KURRENTDB_USERNAME /
 	// KURRENTDB_PASSWORD (and any inline user:pass in the connection string)
 	// are intentionally ignored in favour of bearer tokens.
-	if oauthCfg != nil {
+	if tgt.OAuth != nil {
 		authInvalidated = &AuthInvalidation{}
-		provider, err := oauthProvider(oauthCfg, envName, projectRoot, overlay, authInvalidated)
+		provider, err := oauthProvider(tgt, authInvalidated)
 		if err != nil {
 			// An auth-required error stands on its own: it asks the user to sign
 			// in, not to debug a connection, so it isn't wrapped as ErrDBConnect.
@@ -106,42 +96,27 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 			return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 		}
 		dbConfig.CredentialsProvider = provider
-	} else if username, password := envvar.Credentials(overlay); username != "" {
-		dbConfig.Username = username
-		dbConfig.Password = password
+	} else if tgt.Username != "" {
+		dbConfig.Username = tgt.Username
+		dbConfig.Password = tgt.Password
 	}
 
 	// An X.509 user certificate is presented in the TLS handshake, so it's set
 	// independently of the credentials branch above (an env may use mutual TLS
-	// and OAuth together). The client resolves relative cert paths against its
-	// own cwd; resolving here against the project root - and ${VAR}-expanding,
-	// like the connection string - keeps cert paths working from any directory.
-	if certCfg != nil {
+	// and OAuth together). The paths were resolved against the project root by
+	// target.Resolve; the client would resolve them against its own cwd.
+	if env.Cert != nil {
 		if dbConfig.DisableTLS {
-			return nil, nil, fmt.Errorf("%w: env %q sets a user certificate but the connection disables TLS; a user certificate requires TLS", ErrDBConnect, envName)
+			return nil, nil, fmt.Errorf("%w: env %q sets a user certificate but the connection disables TLS; a user certificate requires TLS", ErrDBConnect, env.Name)
 		}
-		certFile, err := resolveCertPath(certCfg.CertFile, projectRoot, overlay)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
-		}
-		keyFile, err := resolveCertPath(certCfg.KeyFile, projectRoot, overlay)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
-		}
-		// Guard against a ${VAR} that expands to empty: a half-set pair would
-		// silently disable the cert (the client loads it only when both are set)
-		// rather than authenticating as intended.
-		if certFile == "" || keyFile == "" {
-			return nil, nil, fmt.Errorf("%w: env %q user certificate path resolved to empty (check ${VAR} expansion)", ErrDBConnect, envName)
-		}
-		dbConfig.UserCertFile = certFile
-		dbConfig.UserKeyFile = keyFile
+		dbConfig.UserCertFile = tgt.CertFile
+		dbConfig.UserKeyFile = tgt.KeyFile
 	}
 	dbConfig.Logger = kurrentdb.NoopLogging()
 
 	client, err := kurrentdb.NewClient(dbConfig)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, scrubRaw(err.Error(), connStr, redacted))
+		return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, target.ScrubConnection(err.Error(), tgt.Connection))
 	}
 	return client, authInvalidated, nil
 }
@@ -153,89 +128,42 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 // username is KURRENTDB_USERNAME (the .env overlay) or the connection string's
 // userinfo. A cert-only or anonymous env, or any resolution failure, yields "" -
 // attribution is best-effort and never blocks a deploy.
-func Principal(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig) string {
-	if oauthCfg != nil {
-		return oauthCfg.ClientID
+func Principal(projectRoot string, env config.ResolvedEnv) string {
+	if env.OAuth != nil {
+		return env.OAuth.ClientID
 	}
 	if err := envvar.Load(projectRoot); err != nil {
 		return ""
 	}
-	overlay, err := envvar.Overlay(projectRoot, envName)
+	tgt, err := target.Resolve(projectRoot, config.ResolvedEnv{Name: env.Name, Connection: env.Connection})
 	if err != nil {
 		return ""
 	}
-	if username, _ := envvar.Credentials(overlay); username != "" {
-		return username
+	if tgt.Username != "" {
+		return tgt.Username
 	}
-	expanded, err := envvar.Expand(connStr, overlay)
-	if err != nil {
-		return ""
-	}
-	dbConfig, err := kurrentdb.ParseConnectionString(expanded)
+	dbConfig, err := kurrentdb.ParseConnectionString(tgt.Connection)
 	if err != nil {
 		return ""
 	}
 	return dbConfig.Username
 }
 
-// resolveCertPath expands ${VAR} references in a cert path (using the same
-// overlay as the connection string) and resolves a relative result against the
-// project root. An absolute path or empty string is returned unchanged.
-func resolveCertPath(path, projectRoot string, overlay map[string]string) (string, error) {
-	expanded, err := envvar.Expand(path, overlay)
-	if err != nil {
-		return "", err
-	}
-	// Trim after expansion too: a ${VAR} can introduce surrounding whitespace
-	// that the config-load trim never saw, which would corrupt the path.
-	expanded = strings.TrimSpace(expanded)
-	if expanded == "" || filepath.IsAbs(expanded) {
-		return expanded, nil
-	}
-	return filepath.Join(projectRoot, expanded), nil
-}
-
-// oauthTimeout bounds OIDC discovery and each token fetch/refresh, so a slow
-// or unreachable identity provider can't hang a connection or an RPC.
-const oauthTimeout = 30 * time.Second
-
-// oauthProvider builds the KurrentDB credentials provider for an env's OAuth
-// config. A configured client secret (KURRENTDB_OAUTH_CLIENT_SECRET) selects
-// the client-credentials grant; otherwise the token stored by `gaffer auth` is
-// used and refreshed in place.
-func oauthProvider(c *config.OAuthConfig, envName, projectRoot string, overlay map[string]string, authInvalidated *AuthInvalidation) (kurrentdb.CredentialsProvider, error) {
-	secret := envvar.OAuthClientSecret(overlay)
-
-	var store *oauth.TokenStore
-	if secret == "" {
-		dir, err := userconfig.DefaultDir()
-		if err != nil {
-			return nil, err
-		}
-		if store, err = oauth.OpenTokenStore(dir); err != nil {
-			return nil, err
-		}
-	}
-
-	// Background, not a per-RPC context: the token source outlives any single
-	// request and refreshes on its own schedule. The timeout-bearing client
-	// bounds discovery and refresh HTTP, and verifies the issuer against the
-	// configured CA when one is set.
-	ctx, err := oauth.WithHTTPClient(context.Background(), oauthTimeout, oauth.ResolveCAFile(c.CAFile, projectRoot))
-	if err != nil {
-		return nil, err
-	}
-	src, err := oauth.TokenSource(ctx, oauth.Config{
-		Issuer:   c.Issuer,
-		ClientID: c.ClientID,
-		Scopes:   c.Scopes,
-		Audience: c.Audience,
-	}, secret, store)
+// oauthProvider builds the KurrentDB credentials provider for a target's
+// OAuth config. Construction goes through target.NewTokenSource - the single
+// path shared with Target.BearerToken - with the interactive store opener:
+// a connection may prompt for the keyring passphrase where a background read
+// must not. The provider adds what the connection alone owns: mapping the
+// needs-sign-in sentinels to AuthRequiredError, and dropping a rejected
+// token + tripping the invalidation flag on invalid_grant.
+func oauthProvider(tgt target.Target, authInvalidated *AuthInvalidation) (kurrentdb.CredentialsProvider, error) {
+	c := tgt.OAuth
+	src, store, err := target.NewTokenSource(c, tgt.OAuthCAFile, tgt.OAuthClientSecret, oauth.OpenTokenStore)
 	if err != nil {
 		// No stored token, or a passphrase-locked keyring we can't unlock
 		// non-interactively: both need an interactive sign-in.
 		if errors.Is(err, oauth.ErrNoToken) || errors.Is(err, oauth.ErrKeyringLocked) {
-			return nil, &AuthRequiredError{Env: envName}
+			return nil, &AuthRequiredError{Env: tgt.Env}
 		}
 		return nil, err
 	}
@@ -289,52 +217,4 @@ func ProbeServerVersion(client serverVersionProvider) string {
 		return dbVersionUnknown
 	}
 	return fmt.Sprintf("%d.%d", v.Major, v.Minor)
-}
-
-// RedactConnection masks the password portion of a KurrentDB connection
-// string, leaving the scheme, username, host, port, and path intact.
-//
-//	"kurrentdb+discover://admin:supersecret@host:2113/p" ->
-//	"kurrentdb+discover://admin:***@host:2113/p"
-//
-// String-walk implementation rather than url.Parse: net/url percent-encodes
-// the mask, and we want this to work for malformed inputs (which is exactly
-// when we most need redaction, since parser errors echo the input).
-func RedactConnection(connStr string) string {
-	const sep = "://"
-	schemeIdx := strings.Index(connStr, sep)
-	if schemeIdx < 0 {
-		return connStr
-	}
-	authStart := schemeIdx + len(sep)
-	rest := connStr[authStart:]
-
-	end := len(rest)
-	for i, c := range rest {
-		if c == '/' || c == '?' || c == '#' {
-			end = i
-			break
-		}
-	}
-	authority := rest[:end]
-	at := strings.LastIndex(authority, "@")
-	if at < 0 {
-		return connStr
-	}
-	userinfo := authority[:at]
-	colon := strings.Index(userinfo, ":")
-	if colon < 0 {
-		return connStr
-	}
-	return connStr[:authStart] + userinfo[:colon+1] + "***" + connStr[authStart+at:]
-}
-
-// scrubRaw replaces every occurrence of the raw connection string with its
-// redacted form. Used to clean error messages from libraries (e.g. url.Parse)
-// that echo the input verbatim.
-func scrubRaw(msg, raw, redacted string) string {
-	if raw == "" || raw == redacted {
-		return msg
-	}
-	return strings.ReplaceAll(msg, raw, redacted)
 }

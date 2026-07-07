@@ -2,10 +2,7 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,107 +10,9 @@ import (
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
-
-func TestRedactConnection(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{
-			name: "well-formed with password",
-			in:   "kurrentdb+discover://admin:supersecret@host:2113",
-			want: "kurrentdb+discover://admin:***@host:2113",
-		},
-		{
-			name: "with path and query",
-			in:   "kurrentdb://admin:hunter2@host:2113/path?tls=false",
-			want: "kurrentdb://admin:***@host:2113/path?tls=false",
-		},
-		{
-			name: "no password",
-			in:   "kurrentdb://admin@host:2113",
-			want: "kurrentdb://admin@host:2113",
-		},
-		{
-			name: "no userinfo",
-			in:   "kurrentdb://host:2113",
-			want: "kurrentdb://host:2113",
-		},
-		{
-			name: "malformed - @ in password (best-effort)",
-			in:   "kurrentdb://user:p@ss@host:2113",
-			want: "kurrentdb://user:***@host:2113",
-		},
-		{
-			name: "no scheme",
-			in:   "host:2113",
-			want: "host:2113",
-		},
-		{
-			name: "empty",
-			in:   "",
-			want: "",
-		},
-		{
-			name: "IPv6 host with userinfo",
-			in:   "kurrentdb://user:pw@[::1]:2113",
-			want: "kurrentdb://user:***@[::1]:2113",
-		},
-		{
-			name: "IPv6 host without userinfo",
-			in:   "kurrentdb://[::1]:2113",
-			want: "kurrentdb://[::1]:2113",
-		},
-		{
-			name: "gossip seeds with userinfo",
-			in:   "kurrentdb://user:pw@host1:1234,host2:5678",
-			want: "kurrentdb://user:***@host1:1234,host2:5678",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := RedactConnection(tt.in)
-			if got != tt.want {
-				t.Errorf("RedactConnection(%q) = %q, want %q", tt.in, got, tt.want)
-			}
-			if strings.Contains(got, "supersecret") || strings.Contains(got, "hunter2") {
-				t.Errorf("password leaked in %q", got)
-			}
-		})
-	}
-}
-
-func TestScrubRaw(t *testing.T) {
-	raw := "kurrentdb://admin:supersecret@host:2113"
-	redacted := "kurrentdb://admin:***@host:2113"
-	msg := `parse "kurrentdb://admin:supersecret@host:2113": invalid URL escape "%xx"`
-
-	got := scrubRaw(msg, raw, redacted)
-
-	if strings.Contains(got, "supersecret") {
-		t.Errorf("password leaked in scrubbed message: %q", got)
-	}
-	if !strings.Contains(got, redacted) {
-		t.Errorf("expected redacted form in message, got %q", got)
-	}
-}
-
-func TestScrubRaw_NoOpWhenRawEqualsRedacted(t *testing.T) {
-	got := scrubRaw("some error: localhost", "localhost", "localhost")
-	if got != "some error: localhost" {
-		t.Errorf("unexpected change: %q", got)
-	}
-}
-
-func TestScrubRaw_NoOpWhenRawAbsent(t *testing.T) {
-	msg := "connection refused"
-	got := scrubRaw(msg, "kurrentdb://user:pw@host", "kurrentdb://user:***@host")
-	if got != msg {
-		t.Errorf("scrubRaw should pass through when raw not in msg, got %q", got)
-	}
-}
 
 // Connect threads its envName through to ${VAR} expansion, so a value
 // from .env.<envName> resolves the connection; with no env name the
@@ -131,54 +30,21 @@ func TestConnect_AppliesEnvOverlay(t *testing.T) {
 
 	// With the prod overlay the variable resolves, so expansion does not
 	// fail (any later error is the dial, not an undefined variable).
-	if _, _, err := Connect(connStr, dir, "prod", nil, nil); err != nil && strings.Contains(err.Error(), key) {
+	if _, _, err := Connect(dir, config.ResolvedEnv{Name: "prod", Connection: connStr}); err != nil && strings.Contains(err.Error(), key) {
 		t.Fatalf("env overlay not applied: %v", err)
 	}
 	// Without an env name there's no overlay, so the variable is undefined.
-	_, _, err := Connect(connStr, dir, "", nil, nil)
+	_, _, err := Connect(dir, config.ResolvedEnv{Connection: connStr})
 	if err == nil || !strings.Contains(err.Error(), key) {
 		t.Fatalf("expected undefined-variable error without overlay, got %v", err)
 	}
-}
-
-func TestResolveCertPath(t *testing.T) {
-	t.Run("relative joins the project root", func(t *testing.T) {
-		got, err := resolveCertPath("certs/user.crt", "/proj", nil)
-		if err != nil || got != filepath.Join("/proj", "certs/user.crt") {
-			t.Fatalf("got %q, %v", got, err)
-		}
-	})
-	t.Run("absolute path is unchanged", func(t *testing.T) {
-		abs := filepath.Join("/abs", "user.crt")
-		got, err := resolveCertPath(abs, "/proj", nil)
-		if err != nil || got != abs {
-			t.Fatalf("got %q, %v", got, err)
-		}
-	})
-	t.Run("expands vars before resolving", func(t *testing.T) {
-		got, err := resolveCertPath("${CERT_DIR}/user.key", "/proj", map[string]string{"CERT_DIR": "sub"})
-		if err != nil || got != filepath.Join("/proj", "sub/user.key") {
-			t.Fatalf("got %q, %v", got, err)
-		}
-	})
-	t.Run("undefined var errors", func(t *testing.T) {
-		if _, err := resolveCertPath("${GAFFER_CERT_TEST_UNSET}/user.key", "/proj", nil); err == nil {
-			t.Fatal("expected an undefined-variable error")
-		}
-	})
-	t.Run("trims surrounding whitespace, including from expansion", func(t *testing.T) {
-		got, err := resolveCertPath("  ${CERT}  ", "/proj", map[string]string{"CERT": " certs/user.crt "})
-		if err != nil || got != filepath.Join("/proj", "certs/user.crt") {
-			t.Fatalf("got %q, %v", got, err)
-		}
-	})
 }
 
 // A user certificate is presented in the TLS handshake, so a connection with
 // TLS disabled can't use one; Connect rejects the combination before dialing.
 func TestConnect_CertRequiresTLS(t *testing.T) {
 	cert := &config.CertAuth{CertFile: "user.crt", KeyFile: "user.key"}
-	_, _, err := Connect("kurrentdb://host:2113?tls=false", t.TempDir(), "", nil, cert)
+	_, _, err := Connect(t.TempDir(), config.ResolvedEnv{Connection: "kurrentdb://host:2113?tls=false", Cert: cert})
 	if err == nil || !strings.Contains(err.Error(), "requires TLS") {
 		t.Fatalf("expected a TLS-required error, got %v", err)
 	}
@@ -187,7 +53,7 @@ func TestConnect_CertRequiresTLS(t *testing.T) {
 func TestConnect_MalformedConnStr_DoesNotLeakPassword(t *testing.T) {
 	connStr := "kurrentdb://user:supersecret@host:%XX"
 
-	_, _, err := Connect(connStr, "", "", nil, nil)
+	_, _, err := Connect("", config.ResolvedEnv{Connection: connStr})
 	if err == nil {
 		t.Fatal("expected error for malformed connection string")
 	}
@@ -231,40 +97,16 @@ func TestProbeServerVersion(t *testing.T) {
 	}
 }
 
-// oauthFakeIDP serves OIDC discovery + a token endpoint that echoes the grant
-// type into the access token, for testing oauthProvider without a real IdP.
-func oauthFakeIDP(t *testing.T) *httptest.Server {
-	t.Helper()
-	mux := http.NewServeMux()
-	var srv *httptest.Server
-	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"issuer":                 srv.URL,
-			"authorization_endpoint": srv.URL + "/authorize",
-			"token_endpoint":         srv.URL + "/token",
-		})
-	})
-	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
-		_ = r.ParseForm()
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"access_token": "access-" + r.FormValue("grant_type"),
-			"token_type":   "Bearer",
-			"expires_in":   3600,
-		})
-	})
-	srv = httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv
-}
-
 // A configured client secret selects the client-credentials grant and never
 // opens the keyring, so this exercises the engine-level wiring without a store.
 func TestOAuthProvider_ClientCredentials(t *testing.T) {
-	srv := oauthFakeIDP(t)
-	overlay := map[string]string{"KURRENTDB_OAUTH_CLIENT_SECRET": "secret"}
+	srv := testutil.NewFakeIDP(t)
 
-	provider, err := oauthProvider(&config.OAuthConfig{Issuer: srv.URL, ClientID: "id"}, "prod", "", overlay, &AuthInvalidation{})
+	provider, err := oauthProvider(target.Target{
+		Env:               "prod",
+		OAuth:             &config.OAuthConfig{Issuer: srv.URL, ClientID: "id"},
+		OAuthClientSecret: "secret",
+	}, &AuthInvalidation{})
 	if err != nil {
 		t.Fatalf("oauthProvider: %v", err)
 	}
@@ -278,7 +120,7 @@ func TestOAuthProvider_ClientCredentials(t *testing.T) {
 }
 
 func TestConnectionLost(t *testing.T) {
-	l := &liveSource{cfg: LiveSourceConfig{EnvName: "prod"}}
+	l := &liveSource{cfg: LiveSourceConfig{Env: config.ResolvedEnv{Name: "prod"}}}
 
 	// No flag, or a flag that wasn't tripped: a plain disconnect.
 	for _, inv := range []*AuthInvalidation{nil, {}} {

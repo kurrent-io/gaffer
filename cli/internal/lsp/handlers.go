@@ -12,6 +12,17 @@ import (
 // handle dispatches a single JSON-RPC message to the right method.
 // jsonrpc2.HandlerWithError takes care of error/result wrapping.
 func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) (any, error) {
+	// Wait for Run to finish storing the run state (see Server.ready):
+	// dispatch can start before Run's conn assignment, and a handler
+	// observing the half-initialized state loses work silently. Closed
+	// microseconds after the conn exists; nil only when no Run is
+	// active, which a dispatched handler can't observe.
+	s.mu.Lock()
+	ready := s.ready
+	s.mu.Unlock()
+	if ready != nil {
+		<-ready
+	}
 	switch req.Method {
 	case MethodInitialize:
 		return s.handleInitialize(ctx, req)

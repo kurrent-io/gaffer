@@ -84,6 +84,14 @@ type Server struct {
 	// goroutines blocked on I/O after the connection is gone.
 	runCtxFn  func() context.Context
 	cancelRun context.CancelFunc
+	// ready gates handler dispatch on Run having stored conn/runCtxFn.
+	// jsonrpc2.NewConn starts dispatching the moment it's constructed,
+	// so without the gate a fast client's `initialized` can reach
+	// spawnWithCtx while runCtxFn is still nil - silently dropping the
+	// workspace walk, which nothing retries. Created before the conn,
+	// closed once the run state is stored; nil when Run isn't active
+	// (handlers can't be dispatched then anyway - no conn exists).
+	ready chan struct{}
 	// roots holds workspace folder paths captured from initialize.
 	// Used by the initialized handler to walk for gaffer.toml files.
 	// Stored as filesystem paths (URIs converted at capture time)

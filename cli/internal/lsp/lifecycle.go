@@ -20,21 +20,31 @@ import (
 func (s *Server) Run(ctx context.Context, stream io.ReadWriteCloser) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	// The run state must be visible to handlers before any handler can
+	// run, and NewConn starts dispatching the moment it returns. runCtx
+	// exists already, so it's stored first; the conn can only be stored
+	// after NewConn, so handler dispatch blocks on `ready` until then
+	// (see Server.ready and the gate at the top of handle). Without
+	// this, a fast client's `initialized` could find runCtxFn nil and
+	// silently lose the workspace walk.
+	ready := make(chan struct{})
+	s.mu.Lock()
+	s.ready = ready
+	s.runCtxFn = func() context.Context { return runCtx }
+	s.cancelRun = cancel
+	s.mu.Unlock()
 	conn := jsonrpc2.NewConn(
 		runCtx,
 		jsonrpc2.NewBufferedStream(stream, jsonrpc2.VSCodeObjectCodec{}),
 		jsonrpc2.HandlerWithError(s.handle),
 	)
-	// Capture the conn + runCtx for server-pushed notifications
-	// (publishDiagnostics, registerCapability) and for spawned work
-	// (workspace walk) that needs a shutdown signal. Cleared on
-	// disconnect so handlers that reach for them post-shutdown bail
-	// cleanly.
+	// Capture the conn for server-pushed notifications
+	// (publishDiagnostics, registerCapability). Cleared on disconnect
+	// so handlers that reach for it post-shutdown bail cleanly.
 	s.mu.Lock()
 	s.conn = conn
-	s.runCtxFn = func() context.Context { return runCtx }
-	s.cancelRun = cancel
 	s.mu.Unlock()
+	close(ready)
 	defer func() {
 		// Teardown order:
 		//   1. Cancel runCtx so in-flight parseAndPublish notices
@@ -58,6 +68,7 @@ func (s *Server) Run(ctx context.Context, stream io.ReadWriteCloser) error {
 		s.conn = nil
 		s.runCtxFn = nil
 		s.cancelRun = nil
+		s.ready = nil
 		s.mu.Unlock()
 	}()
 	// Three ways out: peer disconnects, client sent exit (we drive

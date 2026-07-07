@@ -150,3 +150,36 @@ func TestResolve_AdHocTargetNoOverlay(t *testing.T) {
 		t.Errorf("target = %+v", tgt)
 	}
 }
+
+func TestResolveCertPath(t *testing.T) {
+	t.Run("relative joins the project root", func(t *testing.T) {
+		got, err := resolveCertPath("certs/user.crt", "/proj", nil)
+		if err != nil || got != filepath.Join("/proj", "certs/user.crt") {
+			t.Fatalf("got %q, %v", got, err)
+		}
+	})
+	t.Run("absolute path is unchanged", func(t *testing.T) {
+		abs := filepath.Join("/abs", "user.crt")
+		got, err := resolveCertPath(abs, "/proj", nil)
+		if err != nil || got != abs {
+			t.Fatalf("got %q, %v", got, err)
+		}
+	})
+	t.Run("expands vars before resolving", func(t *testing.T) {
+		got, err := resolveCertPath("${CERT_DIR}/user.key", "/proj", map[string]string{"CERT_DIR": "sub"})
+		if err != nil || got != filepath.Join("/proj", "sub/user.key") {
+			t.Fatalf("got %q, %v", got, err)
+		}
+	})
+	t.Run("undefined var errors", func(t *testing.T) {
+		if _, err := resolveCertPath("${GAFFER_CERT_TEST_UNSET}/user.key", "/proj", nil); err == nil {
+			t.Fatal("expected an undefined-variable error")
+		}
+	})
+	t.Run("trims surrounding whitespace, including from expansion", func(t *testing.T) {
+		got, err := resolveCertPath("  ${CERT}  ", "/proj", map[string]string{"CERT": " certs/user.crt "})
+		if err != nil || got != filepath.Join("/proj", "certs/user.crt") {
+			t.Fatalf("got %q, %v", got, err)
+		}
+	})
+}

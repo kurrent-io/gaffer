@@ -824,13 +824,16 @@ public class DebugTests {
 		for (var i = 0; i < 25; i++) {
 			paused.Reset();
 			Exception? feedEx = null;
+			// Background threads: on a regression the strand leaves them
+			// blocked past the failed Join assert, and a foreground thread
+			// would then hang the test host instead of reporting the failure.
 			var feedThread = new Thread(() => {
 				try {
 					session.Feed(MakeEvent());
 				} catch (Exception ex) {
 					feedEx = ex;
 				}
-			});
+			}) { IsBackground = true };
 			feedThread.Start();
 			Assert.True(paused.Wait(TimeSpan.FromSeconds(5)));
 
@@ -844,7 +847,7 @@ public class DebugTests {
 						// "resumed before the command ran". Both fine -
 						// only hanging is a bug.
 					}
-				});
+				}) { IsBackground = true };
 				racers[r].Start();
 			}
 			foreach (var racer in racers)
@@ -869,6 +872,8 @@ public class DebugTests {
 		session.OnBreak = _ => paused.Set();
 		session.SetBreakpoint(4);
 
+		// Background threads for the same reason as the racing test above:
+		// a regression must fail the test, not hang the test host.
 		Exception? feedEx = null;
 		var feed1 = new Thread(() => {
 			try {
@@ -876,7 +881,7 @@ public class DebugTests {
 			} catch (Exception ex) {
 				feedEx = ex;
 			}
-		});
+		}) { IsBackground = true };
 		feed1.Start();
 		Assert.True(paused.Wait(TimeSpan.FromSeconds(5)));
 
@@ -887,7 +892,7 @@ public class DebugTests {
 					session.Continue();
 				} catch (InvalidOperationException) {
 				}
-			});
+			}) { IsBackground = true };
 			racers[r].Start();
 		}
 		foreach (var racer in racers)
@@ -903,7 +908,7 @@ public class DebugTests {
 			} catch (Exception ex) {
 				feedEx = ex;
 			}
-		});
+		}) { IsBackground = true };
 		feed2.Start();
 		Assert.True(paused.Wait(TimeSpan.FromSeconds(5)));
 		Assert.False(feed2.Join(TimeSpan.FromMilliseconds(300)), "second pause auto-resumed: a stale command replayed");

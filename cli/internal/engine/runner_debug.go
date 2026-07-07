@@ -58,7 +58,7 @@ func (r *Runner) ClearBreakpoints() error {
 		return nil
 	}
 	if !r.beginSessionOp() {
-		return nil
+		return gafferruntime.ErrSessionDestroyed
 	}
 	defer r.ops.Done()
 	return r.debug.Session.ClearBreakpoints()
@@ -75,10 +75,11 @@ func (r *Runner) doStep(fn func() error) error {
 	// rather than re-entering here and failing again.
 	r.mu.Lock()
 	if r.closed {
-		// Teardown has begun: the session may already be freed, and there is
-		// nothing left to step. No-op, like a step on a never-paused engine.
+		// Teardown has begun: the session may already be freed. Refuse
+		// loudly rather than report a step that never happened - the
+		// inspection methods do the same.
 		r.mu.Unlock()
-		return nil
+		return gafferruntime.ErrSessionDestroyed
 	}
 	r.ops.Add(1)
 	r.control.paused = false
@@ -115,7 +116,7 @@ func (r *Runner) Pause() error {
 		return nil
 	}
 	if !r.beginSessionOp() {
-		return nil
+		return gafferruntime.ErrSessionDestroyed
 	}
 	defer r.ops.Done()
 	return r.debug.Session.Pause()

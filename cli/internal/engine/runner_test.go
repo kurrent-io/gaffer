@@ -395,10 +395,11 @@ func TestRunner_Destroy_WaitsForInflightStep(t *testing.T) {
 	<-feedDone
 	r.Destroy()
 
-	// After Destroy the control surface no-ops or refuses instead of
-	// touching (or panicking on) the freed session.
-	if err := r.Continue(); err != nil {
-		t.Errorf("Continue after Destroy: %v", err)
+	// After Destroy the whole control surface refuses with
+	// ErrSessionDestroyed instead of touching (or panicking on) the freed
+	// session - or worse, reporting a step that never happened.
+	if err := r.Continue(); !errors.Is(err, gafferruntime.ErrSessionDestroyed) {
+		t.Errorf("Continue after Destroy: got %v, want ErrSessionDestroyed", err)
 	}
 	if _, err := r.Evaluate("1"); !errors.Is(err, gafferruntime.ErrSessionDestroyed) {
 		t.Errorf("Evaluate after Destroy: got %v, want ErrSessionDestroyed", err)

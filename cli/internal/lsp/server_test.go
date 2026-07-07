@@ -456,10 +456,13 @@ func TestServer_DidSaveIsAccepted(t *testing.T) {
 // waitForTimeout is the canonical "wait for an async server effect"
 // budget. The happy-path latency for these helpers is milliseconds
 // (one pipe roundtrip plus a goroutine schedule); the slack is for
-// GitHub-runner CPU contention. Tests that intentionally bound a
+// GitHub-runner CPU contention, which the race-instrumented run
+// multiplies - 5s was observed starved out with every package's test
+// binary in flight. Passing tests never spend the slack (waitFor
+// returns on the first true poll). Tests that intentionally bound a
 // shorter window (e.g. "no second publish within 500ms") pass the
 // value to waitFor explicitly.
-const waitForTimeout = 5 * time.Second
+const waitForTimeout = 30 * time.Second
 
 // ctxTimeout backstops a test's server connection. It must exceed
 // waitForTimeout: a waitFor poll outliving its connection context

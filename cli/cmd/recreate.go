@@ -135,7 +135,8 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 	// recovery messages, live in internal/deploy (shared in shape with deploy's
 	// rebuild); here we only bind each step to the client and its option mapping.
 	if err := deploy.Recreate(ctx, name, deploy.RecreateSteps{
-		Disable: func(ctx context.Context) error { return r.Disable(ctx, name) },
+		RetryCreate: remote.IsCreateConflict,
+		Disable:     func(ctx context.Context) error { return r.Disable(ctx, name) },
 		Delete: func(ctx context.Context) error {
 			return r.Delete(ctx, name, remote.DeleteOptions{
 				DeleteStateStream:      true,

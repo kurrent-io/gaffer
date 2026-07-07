@@ -3,6 +3,7 @@ package remote
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	"google.golang.org/grpc/codes"
@@ -41,6 +42,21 @@ var (
 	// failing the whole command (cf. the drift.Invalid local-definition state).
 	ErrMalformedLedger = errors.New("malformed tool metadata")
 )
+
+// IsCreateConflict reports whether err is the server refusing a projection
+// create because the name is still registered. The projections subsystem
+// replies Conflict through its command envelope - "Envelope callback expected
+// Updated, received Conflict instead" inside an unclassified gRPC Unknown -
+// never AlreadyExists (see that sentinel), so this has to match the envelope
+// text; the sentinel check covers a server version that someday returns the
+// code. Recreate retries on it: a delete settles asynchronously, and a create
+// racing the lingering registration bounces with exactly this reply.
+func IsCreateConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, ErrAlreadyExists) || strings.Contains(err.Error(), "received Conflict")
+}
 
 // classify maps a projection-operation error to a typed sentinel where it
 // recognises one, leaving unrecognised errors wrapped unchanged.

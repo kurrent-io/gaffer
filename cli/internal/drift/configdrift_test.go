@@ -155,19 +155,58 @@ func TestStartConfigDriftCheck(t *testing.T) {
 		}
 	})
 
-	t.Run("OAuth and cert envs report unsupported without a request", func(t *testing.T) {
-		// The node-options read speaks basic auth only; an attempt on these
-		// envs could only fail. The check says it didn't run - a permanent
-		// per-command warning about an unfixable 401 would be worse.
-		cfg := &config.Config{DatabaseConfig: &config.DatabaseConfig{MaxStateSize: new(int64(1024))}}
-		for name, env := range map[string]config.ResolvedEnv{
-			"oauth": {Connection: "kurrentdb://x:1", OAuth: &config.OAuthConfig{}},
-			"cert":  {Connection: "kurrentdb://x:1", Cert: &config.CertAuth{}},
-		} {
-			got := <-StartConfigDriftCheck(context.Background(), cfg, t.TempDir(), env)
-			if got.Err == nil || !strings.Contains(got.Err.Error(), "not supported") {
-				t.Errorf("%s: got %+v, want the unsupported-auth reason", name, got)
+	t.Run("OAuth envs authenticate the read with a bearer token", func(t *testing.T) {
+		// The check follows the connection's own auth: an OAuth env reads
+		// the node options with a bearer from the client-credentials grant
+		// (the secret in .env.<env>), never basic credentials.
+		idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/.well-known/openid-configuration":
+				host := "http://" + r.Host
+				_, _ = w.Write([]byte(`{"issuer":"` + host + `","authorization_endpoint":"` + host + `/authorize","token_endpoint":"` + host + `/token"}`))
+			case "/token":
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"access_token":"drift-tok","token_type":"Bearer","expires_in":3600}`))
 			}
+		}))
+		defer idp.Close()
+
+		var gotAuth string
+		node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotAuth = r.Header.Get("Authorization")
+			_, _ = w.Write([]byte(`[{"name": "MaxProjectionStateSize", "value": "16777216"}]`))
+		}))
+		defer node.Close()
+
+		root := t.TempDir()
+		if err := os.WriteFile(filepath.Join(root, ".env.production"), []byte("KURRENTDB_OAUTH_CLIENT_SECRET=s3cret\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg := &config.Config{DatabaseConfig: &config.DatabaseConfig{MaxStateSize: new(int64(1024))}}
+		got := <-StartConfigDriftCheck(context.Background(), cfg, root, config.ResolvedEnv{
+			Name:       "production",
+			Connection: "kurrentdb://" + strings.TrimPrefix(node.URL, "http://") + "?tls=false",
+			OAuth:      &config.OAuthConfig{Issuer: idp.URL, ClientID: "svc"},
+		})
+		if got.Err != nil || len(got.Items) != 1 {
+			t.Fatalf("got %+v, want the divergence detected through the bearer", got)
+		}
+		if gotAuth != "Bearer drift-tok" {
+			t.Errorf("Authorization = %q, want the bearer token", gotAuth)
+		}
+	})
+
+	t.Run("an OAuth env without a token surfaces, not silence", func(t *testing.T) {
+		// No secret and no stored token: the check reports it couldn't run
+		// (the bearer resolution fails) rather than reading anonymously or
+		// reporting a false in-sync. It never prompts.
+		cfg := &config.Config{DatabaseConfig: &config.DatabaseConfig{MaxStateSize: new(int64(1024))}}
+		got := <-StartConfigDriftCheck(context.Background(), cfg, t.TempDir(), config.ResolvedEnv{
+			Connection: "kurrentdb://127.0.0.1:1?tls=false",
+			OAuth:      &config.OAuthConfig{Issuer: "http://127.0.0.1:1", ClientID: "svc"},
+		})
+		if got.Err == nil || !strings.Contains(got.Err.Error(), "bearer") {
+			t.Errorf("got %+v, want the bearer failure surfaced", got)
 		}
 	})
 }

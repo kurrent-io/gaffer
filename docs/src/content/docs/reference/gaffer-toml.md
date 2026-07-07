@@ -152,7 +152,7 @@ execution_timeout = 250
 
 All keys are optional; omit the section to take the defaults.
 
-`gaffer deploy` and `gaffer status` check the declared values against the target node's live settings and warn on a divergence, so a server enforcing different limits than your fixtures assumed is visible before it bites. The check is advisory: when the node's options can't be read (no HTTP surface, an auth refusal), both commands warn that the check couldn't run instead of failing or reporting a false in-sync. The read speaks basic auth only, so OAuth and certificate-auth environments report the check as not supported. Credentials resolve the same way as the connection itself, so a login supplied via `.env`/`.env.<env>` reaches this read too. `gaffer status --json` carries any divergence in its `configDrift` array, or the failure reason in `configDriftError`.
+`gaffer deploy` and `gaffer status` check the declared values against the target node's live settings and warn on a divergence, so a server enforcing different limits than your fixtures assumed is visible before it bites. The check is advisory: when the node's options can't be read (no HTTP surface, an auth refusal), both commands warn that the check couldn't run instead of failing or reporting a false in-sync. The read authenticates exactly like the connection itself - basic credentials (from `.env`/`.env.<env>` or the connection string), an OAuth bearer token, or the environment's user certificate, honouring `tlsCaFile` and `tlsVerifyCert`. `gaffer status --json` carries any divergence in its `configDrift` array, or the failure reason in `configDriftError`.
 
 ### `telemetry`
 

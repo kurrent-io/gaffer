@@ -3,6 +3,7 @@ package remote
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -42,13 +44,15 @@ const nodeOptionsHTTPTimeout = 3 * time.Second
 // FetchNodeOptions reads the target node's projection options over its HTTP
 // surface (multiplexed with gRPC on the same port). The endpoint and scheme
 // derive from the target's connection string; a multi-host string is asked
-// via its first host. The target's resolved credentials, when set, take
-// precedence over the connection string's userinfo - the same order the main
-// gRPC connection applies (UI-1820: without this, a login kept out of the
-// connection string never reached the HTTP read). Advisory by design:
-// callers surface errors as warnings, never failing the command.
+// via its first host. Authentication follows the target, in the connection's
+// own precedence: an OAuth bearer token when the env uses OAuth, else the
+// target's resolved basic credentials (which win over the connection
+// string's userinfo - UI-1820), else the userinfo; a user certificate is
+// presented in the TLS handshake, and the connection's tlsCaFile /
+// tlsVerifyCert settings are honoured. Advisory by design: callers surface
+// errors as warnings, never failing the command.
 func FetchNodeOptions(ctx context.Context, tgt target.Target) (*NodeProjectionOptions, error) {
-	endpoint, user, pass, insecure, err := nodeOptionsEndpoint(tgt.Connection)
+	endpoint, user, pass, tlsOpts, err := nodeOptionsEndpoint(tgt.Connection)
 	if err != nil {
 		return nil, err
 	}
@@ -59,14 +63,23 @@ func FetchNodeOptions(ctx context.Context, tgt target.Target) (*NodeProjectionOp
 	if err != nil {
 		return nil, err
 	}
-	if user != "" {
+	switch {
+	case tgt.BearerToken != nil:
+		tok, err := tgt.BearerToken()
+		if err != nil {
+			return nil, fmt.Errorf("resolving bearer token: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+	case user != "":
 		req.SetBasicAuth(user, pass)
 	}
 	client := &http.Client{Timeout: nodeOptionsHTTPTimeout}
-	if insecure {
-		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // mirrors the connection string's explicit tlsVerifyCert=false
-		}
+	tlsCfg, err := nodeOptionsTLS(tlsOpts, tgt)
+	if err != nil {
+		return nil, err
+	}
+	if tlsCfg != nil {
+		client.Transport = &http.Transport{TLSClientConfig: tlsCfg}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -79,21 +92,60 @@ func FetchNodeOptions(ctx context.Context, tgt target.Target) (*NodeProjectionOp
 	return parseNodeOptions(resp.Body)
 }
 
-// nodeOptionsEndpoint derives the /info/options URL and credentials from a
-// KurrentDB connection string: tls=false selects http (the default is TLS),
-// tlsVerifyCert=false skips verification, and the userinfo carries the basic
-// credentials. A multi-host list is asked via its first host; a host without a
-// port gets the default 2113.
-func nodeOptionsEndpoint(connection string) (endpoint, user, pass string, insecure bool, err error) {
+// nodeOptionsTLS builds the TLS config for the read, or nil when the default
+// suffices: skip-verify and CA from the connection string's own settings, and
+// the target's user certificate presented in the handshake like the gRPC
+// connection presents it.
+func nodeOptionsTLS(opts nodeTLSOptions, tgt target.Target) (*tls.Config, error) {
+	if !opts.insecure && opts.caFile == "" && tgt.CertFile == "" {
+		return nil, nil
+	}
+	cfg := &tls.Config{InsecureSkipVerify: opts.insecure} //nolint:gosec // mirrors the connection string's explicit tlsVerifyCert=false
+	if opts.caFile != "" {
+		pem, err := os.ReadFile(opts.caFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading tlsCaFile: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, errors.New("tlsCaFile contains no usable certificates")
+		}
+		cfg.RootCAs = pool
+	}
+	if tgt.CertFile != "" {
+		cert, err := tls.LoadX509KeyPair(tgt.CertFile, tgt.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("loading user certificate: %w", err)
+		}
+		cfg.Certificates = []tls.Certificate{cert}
+	}
+	return cfg, nil
+}
+
+// nodeTLSOptions are the TLS settings a connection string carries for the
+// HTTP read: tlsVerifyCert=false and tlsCaFile, mirrored from what the gRPC
+// client honours.
+type nodeTLSOptions struct {
+	insecure bool
+	caFile   string
+}
+
+// nodeOptionsEndpoint derives the /info/options URL, credentials, and TLS
+// settings from a KurrentDB connection string: tls=false selects http (the
+// default is TLS), tlsVerifyCert=false skips verification, tlsCaFile names
+// the verification CA, and the userinfo carries the basic credentials. A
+// multi-host list is asked via its first host; a host without a port gets
+// the default 2113.
+func nodeOptionsEndpoint(connection string) (endpoint, user, pass string, tlsOpts nodeTLSOptions, err error) {
 	u, err := url.Parse(firstHostConnection(connection))
 	if err != nil {
 		// The connection string can carry credentials (url.Error embeds the
 		// URL), so the error is described, never wrapped.
-		return "", "", "", false, errors.New("unparsable connection string")
+		return "", "", "", nodeTLSOptions{}, errors.New("unparsable connection string")
 	}
 	host := u.Host
 	if host == "" {
-		return "", "", "", false, errors.New("connection string has no host")
+		return "", "", "", nodeTLSOptions{}, errors.New("connection string has no host")
 	}
 	if _, _, err := net.SplitHostPort(host); err != nil {
 		// JoinHostPort re-brackets a host containing colons, so a bracketed
@@ -106,13 +158,14 @@ func nodeOptionsEndpoint(connection string) (endpoint, user, pass string, insecu
 	if strings.EqualFold(q.Get("tls"), "false") {
 		scheme = "http"
 	}
-	insecure = strings.EqualFold(q.Get("tlsVerifyCert"), "false")
+	tlsOpts.insecure = strings.EqualFold(q.Get("tlsVerifyCert"), "false")
+	tlsOpts.caFile = q.Get("tlsCaFile")
 
 	if u.User != nil {
 		user = u.User.Username()
 		pass, _ = u.User.Password()
 	}
-	return scheme + "://" + host + "/info/options", user, pass, insecure, nil
+	return scheme + "://" + host + "/info/options", user, pass, tlsOpts, nil
 }
 
 // firstHostConnection reduces a multi-host connection string to its first host

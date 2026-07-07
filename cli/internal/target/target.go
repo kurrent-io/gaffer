@@ -7,12 +7,19 @@
 package target
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
+
+	"golang.org/x/oauth2"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/envvar"
+	"github.com/kurrent-io/gaffer/cli/internal/oauth"
+	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
 
 // Target is the resolved description of a KurrentDB environment. Construct
@@ -36,6 +43,15 @@ type Target struct {
 	// non-empty it selects the client-credentials grant over the interactive
 	// token store. Meaningful only when OAuth is set.
 	OAuthClientSecret string
+	// BearerToken lazily yields an OAuth access token for the target, set
+	// only when OAuth is configured. The token source (OIDC discovery, the
+	// client-credentials grant or the token stored by `gaffer auth`) is
+	// built on first call and memoized; safe for concurrent use. It never
+	// prompts - a missing or locked token errors (oauth.ErrNoToken /
+	// ErrKeyringLocked) - and unlike the connection's own provider it never
+	// deletes a stored token: credential lifecycle stays with the
+	// connection that owns re-sign-in.
+	BearerToken func() (string, error)
 	// CertFile and KeyFile are the env's X.509 user certificate paths,
 	// ${VAR}-expanded and anchored to the project root. Both empty when the
 	// env doesn't use certificate auth.
@@ -67,15 +83,16 @@ func Resolve(root string, env config.ResolvedEnv) (Target, error) {
 	}
 	if env.OAuth != nil {
 		t.OAuthClientSecret = envvar.OAuthClientSecret(overlay)
+		t.BearerToken = bearerSource(root, env.OAuth, t.OAuthClientSecret)
 	} else {
 		t.Username, t.Password = envvar.Credentials(overlay)
 	}
 	if env.Cert != nil {
 		if t.CertFile, err = resolveCertPath(env.Cert.CertFile, root, overlay); err != nil {
-			return Target{}, err
+			return Target{}, fmt.Errorf("resolving user certificate path: %w", err)
 		}
 		if t.KeyFile, err = resolveCertPath(env.Cert.KeyFile, root, overlay); err != nil {
-			return Target{}, err
+			return Target{}, fmt.Errorf("resolving user certificate key path: %w", err)
 		}
 		// Guard against a ${VAR} that expands to empty: a half-set pair would
 		// silently disable the cert (the client loads it only when both are
@@ -85,6 +102,60 @@ func Resolve(root string, env config.ResolvedEnv) (Target, error) {
 		}
 	}
 	return t, nil
+}
+
+// oauthTimeout bounds OIDC discovery and each token fetch/refresh, so a slow
+// or unreachable identity provider can't hang a caller. Matches the main
+// connection's bound.
+const oauthTimeout = 30 * time.Second
+
+// bearerSource builds the lazy token accessor for Target.BearerToken. The
+// underlying oauth2 source is constructed once, on first call, so Resolve
+// itself stays free of keyring and network I/O.
+func bearerSource(root string, c *config.OAuthConfig, secret string) func() (string, error) {
+	var (
+		once    sync.Once
+		src     oauth2.TokenSource
+		initErr error
+	)
+	build := func() {
+		var store *oauth.TokenStore
+		if secret == "" {
+			dir, err := userconfig.DefaultDir()
+			if err != nil {
+				initErr = err
+				return
+			}
+			if store, err = oauth.OpenTokenStore(dir); err != nil {
+				initErr = err
+				return
+			}
+		}
+		// Background, not a per-call context: the source outlives any single
+		// request; the timeout-bearing client bounds discovery and refresh.
+		ctx, err := oauth.WithHTTPClient(context.Background(), oauthTimeout, oauth.ResolveCAFile(c.CAFile, root))
+		if err != nil {
+			initErr = err
+			return
+		}
+		src, initErr = oauth.TokenSource(ctx, oauth.Config{
+			Issuer:   c.Issuer,
+			ClientID: c.ClientID,
+			Scopes:   c.Scopes,
+			Audience: c.Audience,
+		}, secret, store)
+	}
+	return func() (string, error) {
+		once.Do(build)
+		if initErr != nil {
+			return "", initErr
+		}
+		tok, err := src.Token()
+		if err != nil {
+			return "", err
+		}
+		return tok.AccessToken, nil
+	}
 }
 
 // resolveCertPath expands ${VAR} references in a cert path (using the same

@@ -1,6 +1,9 @@
 package target
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -182,4 +185,71 @@ func TestResolveCertPath(t *testing.T) {
 			t.Fatalf("got %q, %v", got, err)
 		}
 	})
+}
+
+// bearerFakeIDP serves OIDC discovery + a token endpoint that echoes the
+// grant type into the access token, mirroring engine's oauthFakeIDP.
+func bearerFakeIDP(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	var srv *httptest.Server
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"issuer":                 srv.URL,
+			"authorization_endpoint": srv.URL + "/authorize",
+			"token_endpoint":         srv.URL + "/token",
+		})
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "access-" + r.FormValue("grant_type"),
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	})
+	srv = httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// The OAuth target's lazy bearer source: Resolve does no I/O (the fake IdP
+// sees no traffic until the first BearerToken call), and a client secret
+// from the overlay selects the client-credentials grant without a keyring.
+func TestResolve_BearerTokenClientCredentials(t *testing.T) {
+	clearCreds(t)
+	srv := bearerFakeIDP(t)
+	root := t.TempDir()
+	writeEnvFile(t, root, ".env.production", "KURRENTDB_OAUTH_CLIENT_SECRET=s3cret\n")
+
+	tgt, err := Resolve(root, config.ResolvedEnv{
+		Name:       "production",
+		Connection: "kurrentdb://x:1",
+		OAuth:      &config.OAuthConfig{Issuer: srv.URL, ClientID: "svc"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tgt.BearerToken == nil {
+		t.Fatal("BearerToken should be set on an OAuth target")
+	}
+	tok, err := tgt.BearerToken()
+	if err != nil {
+		t.Fatalf("BearerToken: %v", err)
+	}
+	if !strings.Contains(tok, "client_credentials") {
+		t.Errorf("token = %q, want the client-credentials grant", tok)
+	}
+}
+
+func TestResolve_NoBearerTokenWithoutOAuth(t *testing.T) {
+	clearCreds(t)
+	tgt, err := Resolve(t.TempDir(), config.ResolvedEnv{Connection: "kurrentdb://x:1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tgt.BearerToken != nil {
+		t.Error("BearerToken should be nil on a basic-auth target")
+	}
 }

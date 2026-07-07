@@ -74,6 +74,14 @@ func TestNodeOptionsEndpoint(t *testing.T) {
 			wantSkip:   true,
 		},
 		{
+			// Duplicate case-variants of one key resolve deterministically
+			// (first match in sorted key order: "TLS" before "tls"), never
+			// by map iteration order.
+			name:       "duplicate case-variant keys are deterministic",
+			connection: "kurrentdb://db.example:2113?TLS=false&tls=true",
+			wantURL:    "http://db.example:2113/info/options",
+		},
+		{
 			name:       "multi-host asks the first",
 			connection: "kurrentdb://a.example:2113,b.example:2113?tls=false",
 			wantURL:    "http://a.example:2113/info/options",

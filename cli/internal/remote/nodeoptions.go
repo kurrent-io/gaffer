@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -206,14 +207,23 @@ func queryFlag(q url.Values, name string) (value, ok bool) {
 }
 
 // queryValue reads a connection-string setting with the client parser's
-// case-insensitive key matching.
+// case-insensitive key matching. A pathological string carrying duplicate
+// case-variants of one key (tls and TLS) resolves deterministically - the
+// first match in sorted key order - where ranging the map would flip
+// between runs (the client itself has that pathology; determinism wins
+// over bug-compatibility).
 func queryValue(q url.Values, name string) string {
+	var keys []string
 	for k, vs := range q {
 		if strings.EqualFold(k, name) && len(vs) > 0 {
-			return vs[0]
+			keys = append(keys, k)
 		}
 	}
-	return ""
+	if len(keys) == 0 {
+		return ""
+	}
+	slices.Sort(keys)
+	return q.Get(keys[0])
 }
 
 // firstHostConnection reduces a multi-host connection string to its first host

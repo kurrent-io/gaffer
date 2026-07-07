@@ -14,8 +14,9 @@ var deployPlanTool = &mcp.Tool{
 	Description: "Compute what `gaffer deploy` would do to a KurrentDB environment without " +
 		"writing anything: per projection, whether it would be created, updated, rebuilt, " +
 		"skipped, or refused (with the reason), plus logic-change and external-change " +
-		"flags. The response echoes the resolved env, the target server, and whether it " +
-		"reports itself as production. faultedUpdates names update targets currently faulted on the server (an " +
+		"flags. The response echoes the resolved env, the target server, and whether it is a " +
+		"production target (declared by the server itself, or by production = true on the " +
+		"env). faultedUpdates names update targets currently faulted on the server (an " +
 		"update won't clear the fault); configDrift reports [database_config] divergence, " +
 		"or configDriftError the reason the node's config couldn't be read (never both). " +
 		"Mirrors `gaffer deploy --dry-run --json`, except there is no preflight gate: a " +

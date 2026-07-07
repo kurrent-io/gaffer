@@ -68,8 +68,9 @@ func newDeployCmd() *cobra.Command {
 			"won't clear the fault, and so is one whose deployed definition was changed outside gaffer " +
 			"since its last deploy (deploying overwrites it). --yes skips the prompt; " +
 			"without a terminal (or with --json) deploy " +
-			"won't apply unconfirmed, so pass --yes in scripts. A server that reports itself as " +
-			"production gets a louder confirm and refuses --no-validate. " +
+			"won't apply unconfirmed, so pass --yes in scripts. A production target (a server " +
+			"that declares itself production, or an env with production = true) gets a louder " +
+			"confirm and refuses --no-validate. " +
 			"Pass --json for machine-readable output.\n\n" +
 			"--dry-run shows the plan and applies nothing. The exit code is stable for scripts: " +
 			"0 succeeded (or nothing to do), 1 an error, 2 changes are pending (--dry-run only), " +

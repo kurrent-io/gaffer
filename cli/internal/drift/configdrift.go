@@ -2,7 +2,10 @@ package drift
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
+	"unicode"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
@@ -93,17 +96,50 @@ func StartConfigDriftCheck(ctx context.Context, cfg *config.Config, root string,
 		// that precedes this check.
 		tgt, err := target.Resolve(root, env)
 		if err != nil {
-			ch <- ConfigDriftResult{Err: err}
+			ch <- ConfigDriftResult{Err: sanitizeDriftErr(err, env.Connection)}
 			return
 		}
 		fctx, cancel := context.WithTimeout(ctx, deploy.RPCTimeout)
 		defer cancel()
 		node, err := remote.FetchNodeOptions(fctx, tgt)
 		if err != nil {
-			ch <- ConfigDriftResult{Err: fmt.Errorf("reading node options: %w", err)}
+			err = fmt.Errorf("reading node options: %w", err)
+			ch <- ConfigDriftResult{Err: sanitizeDriftErr(err, env.Connection, tgt.Connection)}
 			return
 		}
 		ch <- ConfigDriftResult{Items: ConfigDriftItems(cfg.DatabaseConfig, node)}
 	}()
 	return ch
+}
+
+// sanitizeDriftErrMax bounds the rendered length of a drift-check failure.
+const sanitizeDriftErrMax = 300
+
+// sanitizeDriftErr flattens the check's error for its render surfaces. The
+// warning line and the configDriftError fields reach terminals and
+// LLM-agent-visible MCP output, and parts of the message can be
+// server-chosen (an IdP error body, a proxy's response), so control
+// characters go, length is bounded, and the connection string - raw or
+// expanded - is redacted wherever a wrapped error echoed it.
+func sanitizeDriftErr(err error, connections ...string) error {
+	msg := err.Error()
+	for _, c := range connections {
+		if c != "" {
+			msg = target.ScrubConnection(msg, c)
+		}
+	}
+	msg = strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n' || r == '\r' || r == '\t':
+			return ' '
+		case unicode.IsControl(r):
+			return -1
+		default:
+			return r
+		}
+	}, msg)
+	if runes := []rune(msg); len(runes) > sanitizeDriftErrMax {
+		msg = string(runes[:sanitizeDriftErrMax]) + " [truncated]"
+	}
+	return errors.New(msg)
 }

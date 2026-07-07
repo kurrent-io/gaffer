@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync/atomic"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
@@ -69,13 +68,13 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 		return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 	}
 
-	redacted := RedactConnection(tgt.Connection)
+	redacted := target.RedactConnection(tgt.Connection)
 	dbConfig, err := kurrentdb.ParseConnectionString(tgt.Connection)
 	if err != nil {
 		// Don't %w the underlying error: url.Parse errors echo the
 		// original input, which for malformed connection strings
 		// includes the password verbatim.
-		return nil, nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, scrubRaw(err.Error(), tgt.Connection, redacted))
+		return nil, nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, target.ScrubConnection(err.Error(), tgt.Connection))
 	}
 
 	// authInvalidated is tripped by the OAuth provider if the IdP rejects the
@@ -119,7 +118,7 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 
 	client, err := kurrentdb.NewClient(dbConfig)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, scrubRaw(err.Error(), tgt.Connection, redacted))
+		return nil, nil, fmt.Errorf("%w: %s", ErrDBConnect, target.ScrubConnection(err.Error(), tgt.Connection))
 	}
 	return client, authInvalidated, nil
 }
@@ -220,52 +219,4 @@ func ProbeServerVersion(client serverVersionProvider) string {
 		return dbVersionUnknown
 	}
 	return fmt.Sprintf("%d.%d", v.Major, v.Minor)
-}
-
-// RedactConnection masks the password portion of a KurrentDB connection
-// string, leaving the scheme, username, host, port, and path intact.
-//
-//	"kurrentdb+discover://admin:supersecret@host:2113/p" ->
-//	"kurrentdb+discover://admin:***@host:2113/p"
-//
-// String-walk implementation rather than url.Parse: net/url percent-encodes
-// the mask, and we want this to work for malformed inputs (which is exactly
-// when we most need redaction, since parser errors echo the input).
-func RedactConnection(connStr string) string {
-	const sep = "://"
-	schemeIdx := strings.Index(connStr, sep)
-	if schemeIdx < 0 {
-		return connStr
-	}
-	authStart := schemeIdx + len(sep)
-	rest := connStr[authStart:]
-
-	end := len(rest)
-	for i, c := range rest {
-		if c == '/' || c == '?' || c == '#' {
-			end = i
-			break
-		}
-	}
-	authority := rest[:end]
-	at := strings.LastIndex(authority, "@")
-	if at < 0 {
-		return connStr
-	}
-	userinfo := authority[:at]
-	colon := strings.Index(userinfo, ":")
-	if colon < 0 {
-		return connStr
-	}
-	return connStr[:authStart] + userinfo[:colon+1] + "***" + connStr[authStart+at:]
-}
-
-// scrubRaw replaces every occurrence of the raw connection string with its
-// redacted form. Used to clean error messages from libraries (e.g. url.Parse)
-// that echo the input verbatim.
-func scrubRaw(msg, raw, redacted string) string {
-	if raw == "" || raw == redacted {
-		return msg
-	}
-	return strings.ReplaceAll(msg, raw, redacted)
 }

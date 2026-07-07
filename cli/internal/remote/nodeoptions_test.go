@@ -312,3 +312,17 @@ func testKeyPair(t *testing.T, cn string) (certPath, keyPath string, certPEM []b
 	}
 	return certPath, keyPath, certPEM
 }
+
+func TestFetchNodeOptions_RefusesRedirects(t *testing.T) {
+	// A redirecting node would otherwise get a blind SSRF primitive; the
+	// read targets exactly the endpoint it derived and nothing else.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://127.0.0.1:1/elsewhere", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	conn := "kurrentdb://" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
+	if _, err := FetchNodeOptions(context.Background(), target.Target{Connection: conn}); err == nil || !strings.Contains(err.Error(), "redirected") {
+		t.Fatalf("err = %v, want the redirect refused", err)
+	}
+}

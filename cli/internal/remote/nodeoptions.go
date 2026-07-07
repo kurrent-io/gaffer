@@ -73,7 +73,15 @@ func FetchNodeOptions(ctx context.Context, tgt target.Target) (*NodeProjectionOp
 	case user != "":
 		req.SetBasicAuth(user, pass)
 	}
-	client := &http.Client{Timeout: nodeOptionsHTTPTimeout}
+	client := &http.Client{
+		Timeout: nodeOptionsHTTPTimeout,
+		// The read targets exactly one endpoint it derived itself; a redirect
+		// means a misbehaving (or malicious) node, and following one would
+		// hand it a blind SSRF primitive. Refuse.
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return errors.New("options endpoint redirected")
+		},
+	}
 	tlsCfg, err := nodeOptionsTLS(tlsOpts, tgt)
 	if err != nil {
 		return nil, err
@@ -87,7 +95,9 @@ func FetchNodeOptions(ctx context.Context, tgt target.Target) (*NodeProjectionOp
 	}
 	defer resp.Body.Close() //nolint:errcheck // read-only response
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("options endpoint returned %s", resp.Status)
+		// StatusCode, never resp.Status: the reason phrase is server-chosen
+		// text, and this error reaches terminals and MCP tool results.
+		return nil, fmt.Errorf("options endpoint returned status %d", resp.StatusCode)
 	}
 	return parseNodeOptions(resp.Body)
 }

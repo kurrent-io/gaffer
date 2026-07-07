@@ -18,6 +18,10 @@ type ResolvedEnv struct {
 	Connection string
 	OAuth      *OAuthConfig
 	Cert       *CertAuth
+	// Production is the env's local production opt-in (Env.Production). It
+	// ORs with the server's own $server-info declaration to gate the
+	// production tier - it can add the tier, never remove it.
+	Production bool
 }
 
 // ResolveEnv selects an environment by name, or the default when name
@@ -62,6 +66,7 @@ func (e Env) resolved(name string) ResolvedEnv {
 		Connection: e.Connection,
 		OAuth:      e.OAuth,
 		Cert:       e.certAuth(),
+		Production: e.Production,
 	}
 }
 

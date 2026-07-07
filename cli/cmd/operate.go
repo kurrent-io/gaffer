@@ -36,23 +36,6 @@ func addEnvFlags(cmd *cobra.Command, opts *operateOpts) {
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output as JSON")
 }
 
-// resolveOperateTarget reads the server's self-reported identity to name the
-// target and gate the production tier (keyed on the DB's own flag, never the env
-// label). Shared by the operate verbs, recreate, and deploy. $server-info is
-// advisory and unreadable on most DBs - absent on most, or ACL-restricted on a
-// secured server - so any error falls back to the env label and non-production
-// (deployTarget and IsProduction are nil-safe). The read is bounded like the
-// other management calls so a hung $server-info can't stall the command; a real
-// connection failure surfaces when the command's own RPC runs. Trade-off: an
-// unreadable prod DB drops the prod tier (re-permits --no-validate); the core
-// never-act-unconfirmed guard still holds.
-func resolveOperateTarget(ctx context.Context, r *remote.Client, env string) (target string, prod bool) {
-	siCtx, cancel := context.WithTimeout(ctx, projectionRPCTimeout)
-	defer cancel()
-	info, _ := r.ServerInfo(siCtx)
-	return deployTarget(env, info), info.IsProduction()
-}
-
 // checkOperable refuses $-prefixed system projections. gaffer doesn't manage
 // them (status/diff/deploy exclude them), and disabling or deleting one - say
 // $by_category - would break the database's standard projections.
@@ -248,7 +231,7 @@ func runOperate(cmd *cobra.Command, name string, opts operateOpts, spec opSpec) 
 	r := conn.r
 
 	ctx := cmd.Context()
-	target, prod := resolveOperateTarget(ctx, r, opts.Env)
+	target, prod := r.OperateTarget(ctx, conn.env, projectionRPCTimeout)
 
 	if err := requireExists(ctx, r, name, target); err != nil {
 		return err

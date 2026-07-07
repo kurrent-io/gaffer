@@ -53,10 +53,11 @@ type StatusReportJSON struct {
 	// Env, Target, and Production are set by the MCP tool so each response
 	// is self-describing in multi-env workflows: the resolved environment
 	// name, the server's self-reported cluster name (falling back to the env
-	// label), and whether the server reports itself as production - an agent
-	// reading status alone can tell it is pointed at a prod database before
-	// deciding to mutate. The CLI leaves them unset (omitted) - the
-	// invocation already names the env there.
+	// name), and whether the target gates as production (the server's own
+	// declaration OR the env's production opt-in) - an agent reading status
+	// alone can tell it is pointed at a prod database before deciding to
+	// mutate. The CLI leaves them unset (omitted) - the invocation already
+	// names the env there.
 	Env         string            `json:"env,omitempty"`
 	Target      string            `json:"target,omitempty"`
 	Production  *bool             `json:"production,omitempty"`

@@ -7,12 +7,8 @@ import (
 )
 
 // toolLedger builds the tool metadata stamped on a create/update gaffer makes,
-// resolving the live env from the command's flags first. An unresolvable env
-// still stamps tool/version/operation/revision - only the actor is dropped.
-func toolLedger(connection, env, operation string, cfg *config.Config, root string) remote.Ledger {
-	resolved, err := resolveLiveEnv(connection, env, cfg)
-	if err != nil {
-		resolved = config.ResolvedEnv{}
-	}
-	return stamp.Ledger(resolved, operation, Version, root)
+// from the env the command already resolved to connect. Kept as a wrapper so
+// the CLI's version wiring stays in one place.
+func toolLedger(env config.ResolvedEnv, operation, root string) remote.Ledger {
+	return stamp.Ledger(env, operation, Version, root)
 }

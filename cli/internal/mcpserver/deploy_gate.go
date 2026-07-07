@@ -27,7 +27,7 @@ type writeGate struct {
 	// the human sees the thing they actually chose, not just the server's
 	// friendly name.
 	Env string
-	// Target and Production come from operateTarget.
+	// Target and Production come from client.OperateTarget.
 	Target     string
 	Production bool
 	// NoUndo marks a write with no undo story (delete, recreate, a deploy

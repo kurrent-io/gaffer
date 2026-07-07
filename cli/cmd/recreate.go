@@ -103,7 +103,7 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 		return fmt.Errorf("projection %q does not compile, so there's nothing to recreate it from: %w", name, err)
 	}
 
-	target, prod := resolveOperateTarget(ctx, r, opts.Env)
+	target, prod := r.OperateTarget(ctx, conn.env, projectionRPCTimeout)
 	if err := requireExists(ctx, r, name, target); err != nil {
 		return err
 	}
@@ -129,7 +129,7 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 
 	// The tool-metadata stamped on the rebuild's create, so history attributes
 	// the recreate to gaffer instead of showing anonymous lifecycle steps.
-	ledger := toolLedger(opts.Connection, opts.Env, remote.OpRecreate, cfg, root)
+	ledger := toolLedger(conn.env, remote.OpRecreate, root)
 
 	// The destructive Disable -> Delete -> Create sequence, its ordering and
 	// recovery messages, live in internal/deploy (shared in shape with deploy's

@@ -27,6 +27,8 @@ const initTemplate = `# gaffer.toml - projection toolkit config.
 # Mark exactly one as default; it is used when --env is omitted.
 # ${VAR} in a connection is resolved from the process environment and
 # .env / .env.<name> files, so no credentials need to be committed.
+# production = true opts an env into the production guard tier (louder
+# confirmations, --no-validate refused).
 #
 # [env.local]
 # connection = "esdb://localhost:2113?tls=false"
@@ -34,6 +36,7 @@ const initTemplate = `# gaffer.toml - projection toolkit config.
 #
 # [env.prod]
 # connection = "${KURRENT_PROD_CONNECTION}"
+# production = true
 
 # Add projections with 'gaffer scaffold', or by hand. engine_version is
 # required on each projection (use 2 unless you need the v1 engine).

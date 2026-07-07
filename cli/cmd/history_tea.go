@@ -43,6 +43,8 @@ type historyModel struct {
 	name      string
 	envLabel  string
 	connLabel string
+	target    string        // resolved confirm target (cluster name, else env name)
+	prod      bool          // production tier: server-declared OR the env's opt-in
 	tw        *textWriter   // shared ANSI-palette styles for the timeline
 	hs        historyStyles // charm-palette chrome for the footer bar and detail banner
 
@@ -86,6 +88,7 @@ type historyStyles struct {
 	badgeEnv  lipgloss.Style // environment pill
 	badgeConn lipgloss.Style // connection pill
 	badgeWarn lipgloss.Style // load-failure pill
+	badgeProd lipgloss.Style // production-tier pill
 
 	// Detail panel: a foreground-coloured title keyed to the version's nature
 	// (accent for a deploy, warning for out-of-band, muted for lifecycle), over a
@@ -125,6 +128,7 @@ func newHistoryStyles(w io.Writer) historyStyles {
 		badgeEnv:  pill.Background(purple).Foreground(salt),
 		badgeConn: r.NewStyle().Padding(0, 1).Background(iron).Foreground(smoke),
 		badgeWarn: pill.Background(coral).Foreground(salt),
+		badgeProd: pill.Background(coral).Foreground(salt),
 
 		titleAccent: r.NewStyle().Foreground(teal).Bold(true),
 		titleWarn:   r.NewStyle().Foreground(coral).Bold(true),
@@ -773,6 +777,9 @@ func (m historyModel) footer() string {
 	case m.loading:
 		right = m.hs.barDim.Render(" loading… ")
 	default:
+		if m.prod {
+			right += m.hs.badgeProd.Render("production")
+		}
 		if m.envLabel != "" {
 			right += m.hs.badgeEnv.Render(m.envLabel)
 		}
@@ -816,8 +823,10 @@ func truncate(s string, w int) string {
 
 // runHistoryTUI reads the first page, then runs the interactive timeline on the
 // alt screen, paging older versions in on demand. ledger is stamped on a
-// rollback applied from the timeline.
-func runHistoryTUI(cmd *cobra.Command, r *remote.Client, name, envLabel, connLabel string, ledger remote.Ledger) error {
+// rollback applied from the timeline; target and prod are the resolved
+// identity (remote.OperateTarget) the rollback modal confirms against, so the
+// timeline gates like `gaffer rollback` does.
+func runHistoryTUI(cmd *cobra.Command, r *remote.Client, name, envLabel, connLabel, target string, prod bool, ledger remote.Ledger) error {
 	ctx, cancel := context.WithTimeout(cmd.Context(), projectionRPCTimeout)
 	versions, total, err := r.ReadHistory(ctx, name, -1, historyPageSize)
 	cancel()
@@ -833,6 +842,8 @@ func runHistoryTUI(cmd *cobra.Command, r *remote.Client, name, envLabel, connLab
 		name:      name,
 		envLabel:  envLabel,
 		connLabel: connLabel,
+		target:    target,
+		prod:      prod,
 		tw:        tw,
 		hs:        newHistoryStyles(cmd.OutOrStdout()),
 		client:    r,

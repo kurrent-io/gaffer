@@ -262,25 +262,6 @@ func TestConfirmTitle(t *testing.T) {
 	}
 }
 
-func TestDeployTarget(t *testing.T) {
-	prod := &remote.ServerInfo{Name: "orders-prod"}
-	noName := &remote.ServerInfo{}
-	for _, tc := range []struct {
-		env  string
-		info *remote.ServerInfo
-		want string
-	}{
-		{"staging", prod, "orders-prod"}, // cluster name wins over env label
-		{"staging", noName, "staging"},   // no cluster name → env label
-		{"staging", nil, "staging"},      // no server info → env label
-		{"", nil, ""},                    // nothing known
-	} {
-		if got := deployTarget(tc.env, tc.info); got != tc.want {
-			t.Errorf("deployTarget(%q, %+v) = %q, want %q", tc.env, tc.info, got, tc.want)
-		}
-	}
-}
-
 func TestWritePlanSummary(t *testing.T) {
 	plan := []drift.PlanItem{
 		{Name: "a", Action: drift.ActionCreate},

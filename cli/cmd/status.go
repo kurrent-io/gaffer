@@ -76,8 +76,7 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 
 	// The [database_config] drift check runs in the background so its HTTP
 	// round-trip overlaps the status RPCs; drained before rendering.
-	resolved, _ := resolveLiveEnv(opts.Connection, opts.Env, cfg)
-	driftCh := drift.StartConfigDriftCheck(cmd.Context(), cfg, root, resolved)
+	driftCh := drift.StartConfigDriftCheck(cmd.Context(), cfg, root, conn.env)
 
 	if name != "" {
 		entry, err := drift.StatusOne(ctx, r, cfg, root, name)

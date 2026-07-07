@@ -130,6 +130,31 @@ func TestHistoryRollbackModalFlow(t *testing.T) {
 	}
 }
 
+func TestHistoryRollbackModalProduction(t *testing.T) {
+	m := newTestHistoryModel(rollbackHistory(), 100, 24)
+	m.target, m.prod = "orders-prod", true
+	m.cursor = 2
+
+	// The footer names the tier before any modal opens.
+	if !strings.Contains(m.View(), "production") {
+		t.Error("footer should carry the production badge")
+	}
+
+	nm, _ := m.handleKey(key("r"))
+	m = asModel(t, nm)
+	if !strings.Contains(m.View(), "rolls back on production orders-prod") {
+		t.Errorf("production modal missing the tier caution\n%s", m.View())
+	}
+
+	// Off production the caution is absent - the tier makes it louder, not both ways.
+	base := newTestHistoryModel(rollbackHistory(), 100, 24)
+	base.cursor = 2
+	nm, _ = base.handleKey(key("r"))
+	if out := asModel(t, nm).View(); strings.Contains(out, "rolls back on production") {
+		t.Errorf("non-production modal should not carry the tier caution\n%s", out)
+	}
+}
+
 func TestHistoryStaleLoadDiscardedAfterReload(t *testing.T) {
 	// A page load fired before the rollback reload targets the old window; if it
 	// lands after the reload it must be discarded - appending it would punch a

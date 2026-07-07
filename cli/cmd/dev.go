@@ -977,11 +977,11 @@ func resolveConnection(opts *devOpts, cfg *config.Config) (config.ResolvedEnv, e
 	return resolveLiveEnv(opts.Connection, opts.Env, cfg)
 }
 
-// resolveLiveEnv resolves a live KurrentDB target from explicit flags, shared by
-// dev and diff: an ad-hoc --connection wins (no env name, so no OAuth/cert or
-// .env.<env> overlay), then a named --env, then the default env. An empty
-// connection with no error means no target was resolvable; the caller decides
-// whether that's an error.
+// resolveLiveEnv resolves a live KurrentDB target from explicit flags, shared
+// by dev and the connect path (connectResolved): an ad-hoc --connection wins
+// (no env name, so no OAuth/cert or .env.<env> overlay), then a named --env,
+// then the default env. An empty connection with no error means no target was
+// resolvable; the caller decides whether that's an error.
 func resolveLiveEnv(connection, env string, cfg *config.Config) (config.ResolvedEnv, error) {
 	if connection != "" {
 		return config.ResolvedEnv{Connection: connection}, nil

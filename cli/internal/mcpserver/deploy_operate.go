@@ -12,23 +12,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// operateTarget names the write target and whether it reports production,
-// mirroring the CLI's resolveOperateTarget: a bounded, best-effort
-// $server-info read. The server's own production flag decides the tier -
-// never the env label - and an unreadable $server-info degrades to the env
-// label and non-production, the same as the CLI, so one server never gates
-// differently per surface.
-func operateTarget(ctx context.Context, client *remote.Client, envName string) (target string, prod bool) {
-	sctx, cancel := context.WithTimeout(ctx, deploy.RPCTimeout)
-	defer cancel()
-	info, _ := client.ServerInfo(sctx)
-	target = envName
-	if info != nil && info.Name != "" {
-		target = info.Name
-	}
-	return target, info.IsProduction()
-}
-
 // operateRPC bounds one server call like the CLI's rpc helper, so each step
 // of a multi-step verb gets a full budget rather than sharing one.
 func operateRPC(ctx context.Context, fn func(context.Context) error) error {
@@ -69,7 +52,7 @@ func (s *Server) operateSetup(ctx context.Context, name, envName string) (*opera
 		return nil, toolError("%v", err)
 	}
 
-	target, prod := operateTarget(ctx, client, env.Name)
+	target, prod := client.OperateTarget(ctx, env, deploy.RPCTimeout)
 
 	// A verb against a projection that isn't deployed reports "not deployed"
 	// rather than a raw RPC error.

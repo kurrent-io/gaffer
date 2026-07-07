@@ -70,6 +70,14 @@ type Env struct {
 	UserCertFile string `toml:"user_cert_file,omitempty"`
 	UserKeyFile  string `toml:"user_key_file,omitempty"`
 	Default      bool   `toml:"default,omitempty"`
+	// Production marks the env's database as production locally, activating
+	// the production guard tier (louder confirms, --no-validate refused)
+	// without waiting for the server to declare itself via $server-info. The
+	// effective tier is the OR of both signals, so this flag can only add the
+	// tier: production = false against a prod-declaring server is a no-op,
+	// never an opt-out. Plain bool, not *bool - false and absent both mean
+	// "defer to the server".
+	Production bool `toml:"production,omitempty"`
 }
 
 // CertAuth is an env's X.509 user-certificate auth: the cert and key file paths

@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 )
 
 // NodeProjectionOptions are a node's live projection-engine settings, read from
@@ -39,19 +41,19 @@ const nodeOptionsHTTPTimeout = 3 * time.Second
 
 // FetchNodeOptions reads the target node's projection options over its HTTP
 // surface (multiplexed with gRPC on the same port). The endpoint and scheme
-// derive from the connection string; a multi-host string is asked via its
-// first host. username/password, when non-empty, take precedence over the
-// connection string's userinfo - the same order the main gRPC connection
-// applies to .env-supplied credentials (UI-1820: without this, a login kept
-// out of the connection string never reached the HTTP read). Advisory by
-// design: callers surface errors as warnings, never failing the command.
-func FetchNodeOptions(ctx context.Context, connection, username, password string) (*NodeProjectionOptions, error) {
-	endpoint, user, pass, insecure, err := nodeOptionsEndpoint(connection)
+// derive from the target's connection string; a multi-host string is asked
+// via its first host. The target's resolved credentials, when set, take
+// precedence over the connection string's userinfo - the same order the main
+// gRPC connection applies (UI-1820: without this, a login kept out of the
+// connection string never reached the HTTP read). Advisory by design:
+// callers surface errors as warnings, never failing the command.
+func FetchNodeOptions(ctx context.Context, tgt target.Target) (*NodeProjectionOptions, error) {
+	endpoint, user, pass, insecure, err := nodeOptionsEndpoint(tgt.Connection)
 	if err != nil {
 		return nil, err
 	}
-	if username != "" {
-		user, pass = username, password
+	if tgt.Username != "" {
+		user, pass = tgt.Username, tgt.Password
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {

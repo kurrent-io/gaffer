@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 )
 
 func TestNodeOptionsEndpoint(t *testing.T) {
@@ -139,7 +141,7 @@ func TestFetchNodeOptions(t *testing.T) {
 		defer srv.Close()
 
 		conn := "kurrentdb://admin:changeit@" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
-		node, err := FetchNodeOptions(context.Background(), conn, "", "")
+		node, err := FetchNodeOptions(context.Background(), target.Target{Connection: conn})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -162,7 +164,7 @@ func TestFetchNodeOptions(t *testing.T) {
 		defer srv.Close()
 
 		conn := "kurrentdb://inline:wrong@" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
-		if _, err := FetchNodeOptions(context.Background(), conn, "envuser", "envpass"); err != nil {
+		if _, err := FetchNodeOptions(context.Background(), target.Target{Connection: conn, Username: "envuser", Password: "envpass"}); err != nil {
 			t.Fatal(err)
 		}
 		want := "Basic " + base64.StdEncoding.EncodeToString([]byte("envuser:envpass"))
@@ -178,7 +180,7 @@ func TestFetchNodeOptions(t *testing.T) {
 		defer srv.Close()
 
 		conn := "kurrentdb://" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
-		if _, err := FetchNodeOptions(context.Background(), conn, "", ""); err == nil {
+		if _, err := FetchNodeOptions(context.Background(), target.Target{Connection: conn}); err == nil {
 			t.Error("a 401 should surface as an error for the caller to skip on")
 		}
 	})

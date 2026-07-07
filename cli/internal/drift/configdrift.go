@@ -7,8 +7,8 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
-	"github.com/kurrent-io/gaffer/cli/internal/envvar"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 )
 
 // ConfigDrift is one [database_config] knob whose live value on the target
@@ -95,31 +95,21 @@ func StartConfigDriftCheck(ctx context.Context, cfg *config.Config, root string,
 	}
 	go func() {
 		defer close(ch)
-		fail := func(stage string, err error) {
-			ch <- ConfigDriftResult{Err: fmt.Errorf("%s: %w", stage, err)}
-		}
-		// Mirror the main connection's credential resolution, minus
-		// envvar.Load: every caller connects (which Loads the base .env into
-		// the process env) before starting this check, and calling Load here
-		// would os.Setenv on a goroutine running concurrently with the rest
-		// of the command - including, in the MCP server, live cgo sessions
-		// reading environ.
-		overlay, err := envvar.Overlay(root, env.Name)
+		// target.Resolve owns the credential stack, and never touches the
+		// process environment - safe on this goroutine, which runs beside
+		// the rest of the command (in the MCP server, beside live cgo
+		// sessions reading environ). The base .env was loaded by the connect
+		// that precedes this check.
+		tgt, err := target.Resolve(root, env)
 		if err != nil {
-			fail("reading env overlay", err)
+			ch <- ConfigDriftResult{Err: err}
 			return
 		}
-		conn, err := envvar.Expand(env.Connection, overlay)
-		if err != nil {
-			fail("expanding connection string", err)
-			return
-		}
-		username, password := envvar.Credentials(overlay)
 		fctx, cancel := context.WithTimeout(ctx, deploy.RPCTimeout)
 		defer cancel()
-		node, err := remote.FetchNodeOptions(fctx, conn, username, password)
+		node, err := remote.FetchNodeOptions(fctx, tgt)
 		if err != nil {
-			fail("reading node options", err)
+			ch <- ConfigDriftResult{Err: fmt.Errorf("reading node options: %w", err)}
 			return
 		}
 		ch <- ConfigDriftResult{Items: ConfigDriftItems(cfg.DatabaseConfig, node)}

@@ -396,6 +396,66 @@ user_key_file = "certs/user.key"
 	})
 }
 
+func TestLoadEnvProduction(t *testing.T) {
+	const base = `
+[[projection]]
+name = "a"
+entry = "a.js"
+engine_version = 2
+`
+	load := func(t *testing.T, body string) *Config {
+		t.Helper()
+		dir := t.TempDir()
+		path := filepath.Join(dir, "gaffer.toml")
+		if err := os.WriteFile(path, []byte(base+body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		return cfg
+	}
+
+	t.Run("true parses and resolves", func(t *testing.T) {
+		cfg := load(t, `
+[env.prod]
+connection = "kurrentdb://prod:2113"
+production = true
+`)
+		if !cfg.Env["prod"].Production {
+			t.Error("expected Env.Production true")
+		}
+		resolved, err := cfg.ResolveEnv("prod")
+		if err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+		if !resolved.Production {
+			t.Error("expected ResolvedEnv.Production true")
+		}
+	})
+
+	t.Run("absent and explicit false both resolve false", func(t *testing.T) {
+		cfg := load(t, `
+[env.local]
+connection = "kurrentdb://localhost:2113?tls=false"
+
+[env.staging]
+connection = "kurrentdb://staging:2113"
+production = false
+`)
+		for _, name := range []string{"local", "staging"} {
+			resolved, err := cfg.ResolveEnv(name)
+			if err != nil {
+				t.Fatalf("resolve %s: %v", name, err)
+			}
+			if resolved.Production {
+				t.Errorf("expected %s to resolve Production false", name)
+			}
+		}
+	})
+}
+
 func TestLoadEnvOAuth(t *testing.T) {
 	const base = `
 [[projection]]

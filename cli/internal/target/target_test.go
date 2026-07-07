@@ -318,3 +318,24 @@ func TestResolve_RefusesUnloadedBaseEnv(t *testing.T) {
 		t.Fatalf("Resolve after Load: %v", err)
 	}
 }
+
+// An env may use mutual TLS and OAuth together (engine documents the
+// combination); the target carries both.
+func TestResolve_CertAndOAuthCombine(t *testing.T) {
+	clearCreds(t)
+	root := t.TempDir()
+	writeEnvFile(t, root, ".env.production", "KURRENTDB_OAUTH_CLIENT_SECRET=s3cret\n")
+
+	tgt, err := Resolve(root, config.ResolvedEnv{
+		Name:       "production",
+		Connection: "kurrentdb://x:1",
+		OAuth:      &config.OAuthConfig{ClientID: "svc"},
+		Cert:       &config.CertAuth{CertFile: "/abs/user.crt", KeyFile: "/abs/user.key"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tgt.BearerToken == nil || tgt.CertFile != "/abs/user.crt" || tgt.KeyFile != "/abs/user.key" {
+		t.Errorf("target = %+v, want bearer and cert both carried", tgt)
+	}
+}

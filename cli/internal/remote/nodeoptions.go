@@ -146,6 +146,13 @@ type nodeTLSOptions struct {
 // the verification CA, and the userinfo carries the basic credentials. A
 // multi-host list is asked via its first host; a host without a port gets
 // the default 2113.
+//
+// This is deliberately a second parser beside kurrentdb.ParseConnectionString
+// (which can't be reused wholesale: it rejects bracketed IPv6 literals and
+// routes multi-host strings through a different URL shape). The boolean and
+// key dialect is matched to the client's via queryFlag/queryValue so the two
+// parsers can't disagree about what a string means; anyone adding a TLS knob
+// here must mirror the client's reading of it.
 func nodeOptionsEndpoint(connection string) (endpoint, user, pass string, tlsOpts nodeTLSOptions, err error) {
 	u, err := url.Parse(firstHostConnection(connection))
 	if err != nil {
@@ -165,17 +172,48 @@ func nodeOptionsEndpoint(connection string) (endpoint, user, pass string, tlsOpt
 
 	q := u.Query()
 	scheme := "https"
-	if strings.EqualFold(q.Get("tls"), "false") {
+	if v, ok := queryFlag(q, "tls"); ok && !v {
 		scheme = "http"
 	}
-	tlsOpts.insecure = strings.EqualFold(q.Get("tlsVerifyCert"), "false")
-	tlsOpts.caFile = q.Get("tlsCaFile")
+	if v, ok := queryFlag(q, "tlsVerifyCert"); ok && !v {
+		tlsOpts.insecure = true
+	}
+	tlsOpts.caFile = queryValue(q, "tlsCaFile")
 
 	if u.User != nil {
 		user = u.User.Username()
 		pass, _ = u.User.Password()
 	}
 	return scheme + "://" + host + "/info/options", user, pass, tlsOpts, nil
+}
+
+// queryFlag reads a boolean connection-string setting the way the kurrentdb
+// client's parser does - key matched case-insensitively, value through
+// strconv.ParseBool of the lowercased text (so tls=0, tls=F, TLS=FALSE all
+// count) - because the HTTP read and the gRPC dial must not disagree about
+// what a connection string means. An unparsable value reads as unset; the
+// dial would have refused the string before this advisory read ran.
+func queryFlag(q url.Values, name string) (value, ok bool) {
+	v := queryValue(q, name)
+	if v == "" {
+		return false, false
+	}
+	b, err := strconv.ParseBool(strings.ToLower(v))
+	if err != nil {
+		return false, false
+	}
+	return b, true
+}
+
+// queryValue reads a connection-string setting with the client parser's
+// case-insensitive key matching.
+func queryValue(q url.Values, name string) string {
+	for k, vs := range q {
+		if strings.EqualFold(k, name) && len(vs) > 0 {
+			return vs[0]
+		}
+	}
+	return ""
 }
 
 // firstHostConnection reduces a multi-host connection string to its first host

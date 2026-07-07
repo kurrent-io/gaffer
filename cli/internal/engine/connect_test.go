@@ -2,10 +2,7 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +11,7 @@ import (
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/target"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
 // Connect threads its envName through to ${VAR} expansion, so a value
@@ -99,37 +97,10 @@ func TestProbeServerVersion(t *testing.T) {
 	}
 }
 
-// oauthFakeIDP serves OIDC discovery + a token endpoint that echoes the grant
-// type into the access token, for testing oauthProvider without a real IdP.
-func oauthFakeIDP(t *testing.T) *httptest.Server {
-	t.Helper()
-	mux := http.NewServeMux()
-	var srv *httptest.Server
-	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"issuer":                 srv.URL,
-			"authorization_endpoint": srv.URL + "/authorize",
-			"token_endpoint":         srv.URL + "/token",
-		})
-	})
-	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
-		_ = r.ParseForm()
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"access_token": "access-" + r.FormValue("grant_type"),
-			"token_type":   "Bearer",
-			"expires_in":   3600,
-		})
-	})
-	srv = httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv
-}
-
 // A configured client secret selects the client-credentials grant and never
 // opens the keyring, so this exercises the engine-level wiring without a store.
 func TestOAuthProvider_ClientCredentials(t *testing.T) {
-	srv := oauthFakeIDP(t)
+	srv := testutil.NewFakeIDP(t)
 
 	provider, err := oauthProvider(target.Target{
 		Env:               "prod",

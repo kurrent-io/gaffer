@@ -60,6 +60,20 @@ func TestNodeOptionsEndpoint(t *testing.T) {
 			wantCA:     "certs/ca.crt",
 		},
 		{
+			// The client parses booleans via strconv.ParseBool with
+			// case-insensitive keys; the HTTP read must agree (a tls=0
+			// string dials plaintext gRPC and must not dial https here).
+			name:       "client bool dialect: tls=0",
+			connection: "kurrentdb://db.example:2113?tls=0",
+			wantURL:    "http://db.example:2113/info/options",
+		},
+		{
+			name:       "client bool dialect: key and value case",
+			connection: "kurrentdb://db.example:2113?TLS=False&TLSVERIFYCERT=F",
+			wantURL:    "http://db.example:2113/info/options",
+			wantSkip:   true,
+		},
+		{
 			name:       "multi-host asks the first",
 			connection: "kurrentdb://a.example:2113,b.example:2113?tls=false",
 			wantURL:    "http://a.example:2113/info/options",
@@ -325,4 +339,36 @@ func TestFetchNodeOptions_RefusesRedirects(t *testing.T) {
 	if _, err := FetchNodeOptions(context.Background(), target.Target{Connection: conn}); err == nil || !strings.Contains(err.Error(), "redirected") {
 		t.Fatalf("err = %v, want the redirect refused", err)
 	}
+}
+
+func TestNodeOptionsTLSErrors(t *testing.T) {
+	t.Run("missing tlsCaFile surfaces", func(t *testing.T) {
+		_, err := nodeOptionsTLS(nodeTLSOptions{caFile: filepath.Join(t.TempDir(), "absent.crt")}, target.Target{})
+		if err == nil || !strings.Contains(err.Error(), "reading tlsCaFile") {
+			t.Fatalf("err = %v, want the read failure surfaced", err)
+		}
+	})
+	t.Run("junk PEM surfaces", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "junk.crt")
+		if err := os.WriteFile(path, []byte("not a certificate"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := nodeOptionsTLS(nodeTLSOptions{caFile: path}, target.Target{})
+		if err == nil || !strings.Contains(err.Error(), "no usable certificates") {
+			t.Fatalf("err = %v, want the parse failure surfaced", err)
+		}
+	})
+	t.Run("insecure with a client cert combines", func(t *testing.T) {
+		cert, key, _ := testKeyPair(t, "combo")
+		cfg, err := nodeOptionsTLS(nodeTLSOptions{insecure: true}, target.Target{CertFile: cert, KeyFile: key})
+		if err != nil || cfg == nil || !cfg.InsecureSkipVerify || len(cfg.Certificates) != 1 {
+			t.Fatalf("cfg = %+v, %v; want skip-verify with the cert presented", cfg, err)
+		}
+	})
+	t.Run("default TLS needs no custom config", func(t *testing.T) {
+		cfg, err := nodeOptionsTLS(nodeTLSOptions{}, target.Target{})
+		if err != nil || cfg != nil {
+			t.Fatalf("cfg = %+v, %v; want nil for the default", cfg, err)
+		}
+	})
 }

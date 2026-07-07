@@ -65,7 +65,7 @@ func FetchNodeOptions(ctx context.Context, tgt target.Target) (*NodeProjectionOp
 	}
 	switch {
 	case tgt.BearerToken != nil:
-		tok, err := tgt.BearerToken()
+		tok, err := tgt.BearerToken(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("resolving bearer token: %w", err)
 		}

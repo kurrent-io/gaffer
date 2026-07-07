@@ -127,16 +127,17 @@ func Identity(issuer, clientID string) string {
 // any entries, so the first run reads as creating a passphrase rather than
 // unlocking one that doesn't exist yet.
 func filePassword(keyringDir string) keyring.PromptFunc {
-	return func(string) (string, error) {
-		if v := os.Getenv("GAFFER_KEYRING_PASSWORD"); v != "" {
-			return v, nil
+	return func(name string) (string, error) {
+		pw, err := nonInteractivePassword(name)
+		if err == nil {
+			return pw, nil
 		}
 		// A non-interactive caller (an editor, CI, a piped run) has no terminal
 		// to prompt on, and TerminalPrompt would write to stdout - corrupting
 		// the LSP/DAP protocol stream - before failing opaquely. Fail fast with
 		// guidance instead.
 		if !term.IsTerminal(int(os.Stdin.Fd())) { //nolint:gosec // term takes an int fd; fds are small, no overflow
-			return "", fmt.Errorf("%w: set GAFFER_KEYRING_PASSWORD, or run `gaffer auth` from a terminal", ErrKeyringLocked)
+			return "", err
 		}
 		prompt := "Enter passphrase to unlock gaffer's stored credentials"
 		if entries, err := os.ReadDir(keyringDir); err != nil || len(entries) == 0 {
@@ -144,4 +145,32 @@ func filePassword(keyringDir string) keyring.PromptFunc {
 		}
 		return keyring.TerminalPrompt(prompt)
 	}
+}
+
+// nonInteractivePassword resolves the file keyring's passphrase without ever
+// prompting: GAFFER_KEYRING_PASSWORD, or ErrKeyringLocked.
+func nonInteractivePassword(string) (string, error) {
+	if v := os.Getenv("GAFFER_KEYRING_PASSWORD"); v != "" {
+		return v, nil
+	}
+	return "", fmt.Errorf("%w: set GAFFER_KEYRING_PASSWORD, or run `gaffer auth` from a terminal", ErrKeyringLocked)
+}
+
+// OpenTokenStoreNonInteractive opens the token store for callers that must
+// never prompt - background checks, protocol servers. The file keyring's
+// passphrase comes from GAFFER_KEYRING_PASSWORD, or access fails with
+// ErrKeyringLocked; an OS keychain backend may still enforce its own access
+// policy.
+func OpenTokenStoreNonInteractive(dir string) (*TokenStore, error) {
+	kr, err := keyring.Open(keyring.Config{
+		ServiceName:              keyringService,
+		KeychainName:             keyringService,
+		KeychainTrustApplication: true,
+		FileDir:                  filepath.Join(dir, "keyring"),
+		FilePasswordFunc:         nonInteractivePassword,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open keyring: %w", err)
+	}
+	return &TokenStore{kr: kr}, nil
 }

@@ -1,6 +1,7 @@
 package target
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -234,7 +235,7 @@ func TestResolve_BearerTokenClientCredentials(t *testing.T) {
 	if tgt.BearerToken == nil {
 		t.Fatal("BearerToken should be set on an OAuth target")
 	}
-	tok, err := tgt.BearerToken()
+	tok, err := tgt.BearerToken(context.Background())
 	if err != nil {
 		t.Fatalf("BearerToken: %v", err)
 	}

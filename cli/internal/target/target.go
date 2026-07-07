@@ -47,11 +47,14 @@ type Target struct {
 	// only when OAuth is configured. The token source (OIDC discovery, the
 	// client-credentials grant or the token stored by `gaffer auth`) is
 	// built on first call and memoized; safe for concurrent use. It never
-	// prompts - a missing or locked token errors (oauth.ErrNoToken /
-	// ErrKeyringLocked) - and unlike the connection's own provider it never
-	// deletes a stored token: credential lifecycle stays with the
-	// connection that owns re-sign-in.
-	BearerToken func() (string, error)
+	// prompts for gaffer's keyring passphrase - a missing or locked token
+	// errors (oauth.ErrNoToken / ErrKeyringLocked; an OS keychain may
+	// enforce its own policy) - and unlike the connection's own provider it
+	// never deletes a stored token: credential lifecycle stays with the
+	// connection that owns re-sign-in. The wait is bounded by ctx; the
+	// underlying fetch is independently bounded by the OAuth client's own
+	// timeout.
+	BearerToken func(ctx context.Context) (string, error)
 	// CertFile and KeyFile are the env's X.509 user certificate paths,
 	// ${VAR}-expanded and anchored to the project root. Both empty when the
 	// env doesn't use certificate auth.
@@ -111,8 +114,9 @@ const oauthTimeout = 30 * time.Second
 
 // bearerSource builds the lazy token accessor for Target.BearerToken. The
 // underlying oauth2 source is constructed once, on first call, so Resolve
-// itself stays free of keyring and network I/O.
-func bearerSource(root string, c *config.OAuthConfig, secret string) func() (string, error) {
+// itself stays free of keyring and network I/O. The token store opens
+// non-interactively: a background check must never prompt.
+func bearerSource(root string, c *config.OAuthConfig, secret string) func(context.Context) (string, error) {
 	var (
 		once    sync.Once
 		src     oauth2.TokenSource
@@ -126,35 +130,53 @@ func bearerSource(root string, c *config.OAuthConfig, secret string) func() (str
 				initErr = err
 				return
 			}
-			if store, err = oauth.OpenTokenStore(dir); err != nil {
+			if store, err = oauth.OpenTokenStoreNonInteractive(dir); err != nil {
 				initErr = err
 				return
 			}
 		}
 		// Background, not a per-call context: the source outlives any single
 		// request; the timeout-bearing client bounds discovery and refresh.
-		ctx, err := oauth.WithHTTPClient(context.Background(), oauthTimeout, oauth.ResolveCAFile(c.CAFile, root))
+		cctx, err := oauth.WithHTTPClient(context.Background(), oauthTimeout, oauth.ResolveCAFile(c.CAFile, root))
 		if err != nil {
 			initErr = err
 			return
 		}
-		src, initErr = oauth.TokenSource(ctx, oauth.Config{
+		src, initErr = oauth.TokenSource(cctx, oauth.Config{
 			Issuer:   c.Issuer,
 			ClientID: c.ClientID,
 			Scopes:   c.Scopes,
 			Audience: c.Audience,
 		}, secret, store)
 	}
-	return func() (string, error) {
-		once.Do(build)
-		if initErr != nil {
-			return "", initErr
+	return func(ctx context.Context) (string, error) {
+		// oauth2 sources take no per-call context, so the caller's deadline
+		// bounds the wait here; an abandoned fetch self-terminates within
+		// the OAuth client's own timeout.
+		type result struct {
+			tok string
+			err error
 		}
-		tok, err := src.Token()
-		if err != nil {
-			return "", err
+		ch := make(chan result, 1)
+		go func() {
+			once.Do(build)
+			if initErr != nil {
+				ch <- result{"", initErr}
+				return
+			}
+			tok, err := src.Token()
+			if err != nil {
+				ch <- result{"", err}
+				return
+			}
+			ch <- result{tok.AccessToken, nil}
+		}()
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case r := <-ch:
+			return r.tok, r.err
 		}
-		return tok.AccessToken, nil
 	}
 }
 

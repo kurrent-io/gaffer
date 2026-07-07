@@ -219,7 +219,7 @@ func TestFetchNodeOptions_BearerToken(t *testing.T) {
 	conn := "kurrentdb://inline:wrong@" + strings.TrimPrefix(srv.URL, "http://") + "?tls=false"
 	tgt := target.Target{
 		Connection:  conn,
-		BearerToken: func() (string, error) { return "tok-123", nil },
+		BearerToken: func(context.Context) (string, error) { return "tok-123", nil },
 	}
 	if _, err := FetchNodeOptions(context.Background(), tgt); err != nil {
 		t.Fatal(err)
@@ -229,7 +229,7 @@ func TestFetchNodeOptions_BearerToken(t *testing.T) {
 	}
 
 	// A token failure surfaces (never silently degrades to anonymous).
-	tgt.BearerToken = func() (string, error) { return "", errors.New("no stored token") }
+	tgt.BearerToken = func(context.Context) (string, error) { return "", errors.New("no stored token") }
 	if _, err := FetchNodeOptions(context.Background(), tgt); err == nil || !strings.Contains(err.Error(), "resolving bearer token") {
 		t.Fatalf("err = %v, want the bearer failure surfaced", err)
 	}

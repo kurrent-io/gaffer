@@ -25,7 +25,9 @@ var deployStatusTool = &mcp.Tool{
 		"runtime.progress is a percentage (0-100; " +
 		"negative means the server couldn't report it). configDrift lists [database_config] " +
 		"knobs diverging from the target node's live engine settings; it is node-level, not " +
-		"per-projection, so it appears even when `name` scopes the report.",
+		"per-projection, so it appears even when `name` scopes the report. When the node's " +
+		"config couldn't be read, configDriftError carries the reason instead, so an " +
+		"absent configDrift alone doesn't mean in sync.",
 	Annotations: readOnlyHints(),
 }
 
@@ -53,7 +55,7 @@ func (s *Server) handleDeployStatus(ctx context.Context, _ *mcp.CallToolRequest,
 
 	// The [database_config] drift check runs in the background so its HTTP
 	// round-trip overlaps the status RPCs; drained before building the report.
-	driftCh := drift.StartConfigDriftCheck(ctx, cfg, root, env.Name, env.Connection)
+	driftCh := drift.StartConfigDriftCheck(ctx, cfg, root, env)
 
 	// Management calls block until their deadline if the projections subsystem
 	// is still starting, so bound the read rather than hang the tool call.

@@ -5,8 +5,10 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -146,7 +148,7 @@ func TestStatus_Integration(t *testing.T) {
 			if len(report.ConfigDrift) > 0 || attempt == 3 {
 				break
 			}
-			t.Logf("attempt %d: configDrift empty (advisory check likely timed out), retrying", attempt)
+			t.Logf("attempt %d: configDrift empty (configDriftError=%q), retrying", attempt, report.ConfigDriftError)
 			time.Sleep(2 * time.Second)
 		}
 		if len(report.ConfigDrift) != 1 || report.ConfigDrift[0].Knob != "max_state_size" || report.ConfigDrift[0].Local != 1 {
@@ -154,6 +156,61 @@ func TestStatus_Integration(t *testing.T) {
 		}
 		if report.ConfigDrift[0].Server <= 0 {
 			t.Errorf("server value = %d, want the node's live cap", report.ConfigDrift[0].Server)
+		}
+	})
+
+	t.Run("config drift authenticates with .env credentials", func(t *testing.T) {
+		// The UI-1820 repro shape: credentials only in .env.<env>, none in
+		// the connection string. Locks the full command path resolving and
+		// attaching the .env login to the node-options read - before the fix
+		// the read went out anonymous and the failure read as "no drift".
+		// (An insecure test node ignores the login; the resolution path is
+		// what this case guards.)
+		toml := filepath.Join(p.Dir, "gaffer.toml")
+		orig, err := os.ReadFile(toml)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.WriteFile(toml, orig, 0o644) //nolint:errcheck // best-effort restore
+
+		conn := testutil.ConnectionString()
+		u, err := url.Parse(conn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		user, pass := "admin", "changeit"
+		if u.User != nil {
+			user = u.User.Username()
+			if pw, ok := u.User.Password(); ok {
+				pass = pw
+			}
+			u.User = nil
+		}
+		envFile := filepath.Join(p.Dir, ".env.default")
+		if err := os.WriteFile(envFile, []byte("KURRENTDB_USERNAME="+user+"\nKURRENTDB_PASSWORD="+pass+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(envFile) //nolint:errcheck // best-effort cleanup
+
+		updated := strings.Replace(string(orig), conn, u.String(), 1) + "\n[database_config]\nmax_state_size = 1\n"
+		if err := os.WriteFile(toml, []byte(updated), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		var report cliout.StatusReportJSON
+		for attempt := 1; ; attempt++ {
+			report = runStatusReportJSON(t)
+			if len(report.ConfigDrift) > 0 || attempt == 3 {
+				break
+			}
+			t.Logf("attempt %d: configDrift empty (configDriftError=%q), retrying", attempt, report.ConfigDriftError)
+			time.Sleep(2 * time.Second)
+		}
+		if report.ConfigDriftError != "" {
+			t.Fatalf("configDriftError = %q, want the check running on .env credentials", report.ConfigDriftError)
+		}
+		if len(report.ConfigDrift) != 1 || report.ConfigDrift[0].Knob != "max_state_size" {
+			t.Fatalf("configDrift = %+v, want the divergence detected via .env credentials", report.ConfigDrift)
 		}
 	})
 }

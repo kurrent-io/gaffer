@@ -15,7 +15,8 @@ var deployPlanTool = &mcp.Tool{
 		"skipped, or refused (with the reason), plus logic-change and external-change " +
 		"flags. The response echoes the resolved env, the target server, and whether it " +
 		"reports itself as production. faultedUpdates names update targets currently faulted on the server (an " +
-		"update won't clear the fault); configDrift reports [database_config] divergence. " +
+		"update won't clear the fault); configDrift reports [database_config] divergence, " +
+		"or configDriftError the reason the node's config couldn't be read (never both). " +
 		"Mirrors `gaffer deploy --dry-run --json`, except there is no preflight gate: a " +
 		"projection that doesn't compile is planned as refused with the compile error, " +
 		"where a real deploy's preflight would abort with outcome invalid. Read-only: it " +
@@ -62,7 +63,7 @@ func (s *Server) handleDeployPlan(ctx context.Context, _ *mcp.CallToolRequest, i
 	}
 	defer cleanup()
 
-	driftCh := drift.StartConfigDriftCheck(ctx, cfg, root, env.Name, env.Connection)
+	driftCh := drift.StartConfigDriftCheck(ctx, cfg, root, env)
 
 	// PlanOne bounds each projection's reads itself, so the loop needs no
 	// outer deadline - one stalled projection can't eat the others' budget.
@@ -93,8 +94,11 @@ func (s *Server) handleDeployPlan(ctx context.Context, _ *mcp.CallToolRequest, i
 	if len(faulted) > 0 {
 		result["faultedUpdates"] = faulted
 	}
-	if items := <-driftCh; len(items) > 0 {
-		result["configDrift"] = cliout.BuildConfigDriftJSON(items)
+	if dr := <-driftCh; dr.Err != nil {
+		// A failed node-config read must not present as "in sync" (UI-1820).
+		result["configDriftError"] = dr.Err.Error()
+	} else if len(dr.Items) > 0 {
+		result["configDrift"] = cliout.BuildConfigDriftJSON(dr.Items)
 	}
 	return toolResult(result), nil, nil
 }

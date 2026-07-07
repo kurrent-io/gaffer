@@ -236,7 +236,7 @@ When the plan would change something, deploy shows it and asks to confirm before
 
 Each create or update records tool metadata on the projection for attribution: the tool and version, the source revision, and the acting identity. The revision is the project's git commit, suffixed +changes when the tree is dirty; the actor is the user gaffer connects as. For CI, the GAFFER_REVISION and GAFFER_ACTOR environment variables override them (to record the canonical commit or the pipeline identity). A KurrentDB that predates the feature ignores the metadata and deploy is unaffected.
 
-When gaffer.toml declares a [database_config], deploy also checks the target node's live engine settings and warns on a divergence before anything is applied, since the fixtures and local runs assumed the declared values. Advisory only: a server that doesn't expose its options (or refuses the read) skips the check silently.
+When gaffer.toml declares a [database_config], deploy also checks the target node's live engine settings and warns on a divergence before anything is applied, since the fixtures and local runs assumed the declared values. Advisory only: when the node's options can't be read (no HTTP surface, auth refusal), deploy warns that the check couldn't run instead of failing or reporting a false "in sync".
 
 ```
 gaffer deploy [projection] [flags]
@@ -437,8 +437,9 @@ metadata, status falls back to plain untracked or drifted.
 
 When gaffer.toml declares a [database_config], status also checks the target
 node's live engine settings and warns on a divergence, since the fixtures and
-local runs assumed the declared values. Advisory only: a server that doesn't
-expose its options (or refuses the read) skips the check silently.
+local runs assumed the declared values. Advisory only: when the node's options
+can't be read (no HTTP surface, auth refusal), status warns that the check
+couldn't run instead of failing or reporting a false "in sync".
 
 ```
 gaffer status [projection] [flags]

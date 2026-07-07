@@ -38,15 +38,20 @@ const (
 const nodeOptionsHTTPTimeout = 3 * time.Second
 
 // FetchNodeOptions reads the target node's projection options over its HTTP
-// surface (multiplexed with gRPC on the same port). The endpoint, scheme, and
-// basic credentials derive from the connection string; a multi-host string is
-// asked via its first host. Advisory by design: callers treat any error -
-// unparsable connection, auth refusal, missing endpoint - as "unknown" and
-// skip their check, never failing the command.
-func FetchNodeOptions(ctx context.Context, connection string) (*NodeProjectionOptions, error) {
+// surface (multiplexed with gRPC on the same port). The endpoint and scheme
+// derive from the connection string; a multi-host string is asked via its
+// first host. username/password, when non-empty, take precedence over the
+// connection string's userinfo - the same order the main gRPC connection
+// applies to .env-supplied credentials (UI-1820: without this, a login kept
+// out of the connection string never reached the HTTP read). Advisory by
+// design: callers surface errors as warnings, never failing the command.
+func FetchNodeOptions(ctx context.Context, connection, username, password string) (*NodeProjectionOptions, error) {
 	endpoint, user, pass, insecure, err := nodeOptionsEndpoint(connection)
 	if err != nil {
 		return nil, err
+	}
+	if username != "" {
+		user, pass = username, password
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {

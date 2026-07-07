@@ -91,7 +91,8 @@ func TestDeployApplyGate(t *testing.T) {
 		{Name: "refused", Action: drift.ActionRefuse, Reason: "engine version"},
 		{Name: "errored", Err: context.DeadlineExceeded},
 	}
-	g := deployApplyGate(deployApplyInput{ResetOnLogicChange: true}, "production", "orders-prod", true, plan, true)
+	g := deployApplyGate(deployApplyInput{ResetOnLogicChange: true}, "production", "orders-prod", true, plan,
+		drift.ConfigDriftResult{Items: []drift.ConfigDrift{{Knob: "max_state_size", Server: 1, Local: 2}}})
 
 	// The rebuild puts the plan in the no-undo tier, and the typed confirm
 	// asks for the environment name - a deploy-all has no projection name.
@@ -119,9 +120,18 @@ func TestDeployApplyGate(t *testing.T) {
 
 	// A single-name update-only deploy: prod-tier only, name in the CLI.
 	single := deployApplyGate(deployApplyInput{Name: "orders"}, "staging", "stage-1", false,
-		[]drift.PlanItem{{Name: "orders", Action: drift.ActionUpdate, Cmp: drift.Comparison{Local: &deploy.Descriptor{}}}}, false)
+		[]drift.PlanItem{{Name: "orders", Action: drift.ActionUpdate, Cmp: drift.Comparison{Local: &deploy.Descriptor{}}}}, drift.ConfigDriftResult{})
 	if single.NoUndo || single.Production || single.Action != "deploy 1 change" || single.CLI != "gaffer deploy 'orders'" {
 		t.Fatalf("single gate = %+v", single)
+	}
+
+	// A failed drift read tells the confirming human the check didn't run -
+	// less information than usual is decision-relevant (UI-1820).
+	unchecked := deployApplyGate(deployApplyInput{Name: "orders"}, "staging", "stage-1", false,
+		[]drift.PlanItem{{Name: "orders", Action: drift.ActionUpdate, Cmp: drift.Comparison{Local: &deploy.Descriptor{}}}},
+		drift.ConfigDriftResult{Err: context.DeadlineExceeded})
+	if !strings.Contains(unchecked.Consequence, "The target's [database_config] could not be checked.") {
+		t.Errorf("consequence = %q, missing the unchecked-config caution", unchecked.Consequence)
 	}
 }
 

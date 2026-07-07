@@ -178,9 +178,9 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	// own flag, never the env label); an unreadable $server-info falls back to the
 	// env label and non-production.
 	totals := planChangeCounts(plan)
-	target, prod := "", false
+	targetName, prod := "", false
 	if totals.changes() > 0 {
-		target, prod = resolveOperateTarget(ctx, r, opts.Env)
+		targetName, prod = resolveOperateTarget(ctx, r, opts.Env)
 	}
 
 	// Refuse the prod --no-validate combination before applying - nothing has been
@@ -189,7 +189,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	// than misreporting a plan the real deploy would never run. The guardrail is
 	// defined once (shared with recreate) so its message and exit code can't drift.
 	if prod && opts.NoValidate {
-		return refuseNoValidateOnProd("Deploy", "projections are", target)
+		return refuseNoValidateOnProd("Deploy", "projections are", targetName)
 	}
 
 	// The engine-config warning lands before the dry-run render and the confirm
@@ -204,10 +204,10 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	// does honour the production --no-validate refusal above, which a real deploy with
 	// the same flags would hit before any prompt.
 	if opts.DryRun {
-		return renderDryRun(cmd.OutOrStdout(), plan, target, totals, prod, opts.JSON)
+		return renderDryRun(cmd.OutOrStdout(), plan, targetName, totals, prod, opts.JSON)
 	}
 
-	if err := confirmPlan(cmd.OutOrStdout(), cmd.ErrOrStderr(), plan, target, totals, opts.Yes, opts.JSON, prod); err != nil {
+	if err := confirmPlan(cmd.OutOrStdout(), cmd.ErrOrStderr(), plan, targetName, totals, opts.Yes, opts.JSON, prod); err != nil {
 		return err
 	}
 

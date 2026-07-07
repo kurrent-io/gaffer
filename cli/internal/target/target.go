@@ -43,6 +43,10 @@ type Target struct {
 	// non-empty it selects the client-credentials grant over the interactive
 	// token store. Meaningful only when OAuth is set.
 	OAuthClientSecret string
+	// OAuthCAFile is the OAuth issuer's CA file anchored to the project
+	// root (oauth.ResolveCAFile semantics - no ${VAR} expansion, matching
+	// the connection's behaviour). Meaningful only when OAuth is set.
+	OAuthCAFile string
 	// BearerToken lazily yields an OAuth access token for the target, set
 	// only when OAuth is configured. The token source (OIDC discovery, the
 	// client-credentials grant or the token stored by `gaffer auth`) is
@@ -86,7 +90,8 @@ func Resolve(root string, env config.ResolvedEnv) (Target, error) {
 	}
 	if env.OAuth != nil {
 		t.OAuthClientSecret = envvar.OAuthClientSecret(overlay)
-		t.BearerToken = bearerSource(root, env.OAuth, t.OAuthClientSecret)
+		t.OAuthCAFile = oauth.ResolveCAFile(env.OAuth.CAFile, root)
+		t.BearerToken = bearerSource(env.OAuth, t.OAuthCAFile, t.OAuthClientSecret)
 	} else {
 		t.Username, t.Password = envvar.Credentials(overlay)
 	}
@@ -108,46 +113,59 @@ func Resolve(root string, env config.ResolvedEnv) (Target, error) {
 }
 
 // oauthTimeout bounds OIDC discovery and each token fetch/refresh, so a slow
-// or unreachable identity provider can't hang a caller. Matches the main
-// connection's bound.
+// or unreachable identity provider can't hang a caller. The single bound for
+// every token source built here (the connection's provider included).
 const oauthTimeout = 30 * time.Second
+
+// NewTokenSource is the one construction path for a target's OAuth token
+// source: OIDC discovery over a timeout-bounded client (verifying the issuer
+// against caFile when set), the client-credentials grant when a secret is
+// configured, else the token store opened via openStore (interactive for the
+// connection, non-interactive for background reads). The returned store is
+// non-nil only on the stored-token path - the connection's provider uses it
+// to drop a rejected token. Both the gRPC credentials provider and
+// Target.BearerToken build through here so the two can't drift.
+func NewTokenSource(c *config.OAuthConfig, caFile, secret string, openStore func(dir string) (*oauth.TokenStore, error)) (oauth2.TokenSource, *oauth.TokenStore, error) {
+	var store *oauth.TokenStore
+	if secret == "" {
+		dir, err := userconfig.DefaultDir()
+		if err != nil {
+			return nil, nil, err
+		}
+		if store, err = openStore(dir); err != nil {
+			return nil, nil, err
+		}
+	}
+	// Background, not a per-call context: the source outlives any single
+	// request; the timeout-bearing client bounds discovery and refresh.
+	ctx, err := oauth.WithHTTPClient(context.Background(), oauthTimeout, caFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	src, err := oauth.TokenSource(ctx, oauth.Config{
+		Issuer:   c.Issuer,
+		ClientID: c.ClientID,
+		Scopes:   c.Scopes,
+		Audience: c.Audience,
+	}, secret, store)
+	if err != nil {
+		return nil, nil, err
+	}
+	return src, store, nil
+}
 
 // bearerSource builds the lazy token accessor for Target.BearerToken. The
 // underlying oauth2 source is constructed once, on first call, so Resolve
 // itself stays free of keyring and network I/O. The token store opens
 // non-interactively: a background check must never prompt.
-func bearerSource(root string, c *config.OAuthConfig, secret string) func(context.Context) (string, error) {
+func bearerSource(c *config.OAuthConfig, caFile, secret string) func(context.Context) (string, error) {
 	var (
 		once    sync.Once
 		src     oauth2.TokenSource
 		initErr error
 	)
 	build := func() {
-		var store *oauth.TokenStore
-		if secret == "" {
-			dir, err := userconfig.DefaultDir()
-			if err != nil {
-				initErr = err
-				return
-			}
-			if store, err = oauth.OpenTokenStoreNonInteractive(dir); err != nil {
-				initErr = err
-				return
-			}
-		}
-		// Background, not a per-call context: the source outlives any single
-		// request; the timeout-bearing client bounds discovery and refresh.
-		cctx, err := oauth.WithHTTPClient(context.Background(), oauthTimeout, oauth.ResolveCAFile(c.CAFile, root))
-		if err != nil {
-			initErr = err
-			return
-		}
-		src, initErr = oauth.TokenSource(cctx, oauth.Config{
-			Issuer:   c.Issuer,
-			ClientID: c.ClientID,
-			Scopes:   c.Scopes,
-			Audience: c.Audience,
-		}, secret, store)
+		src, _, initErr = NewTokenSource(c, caFile, secret, oauth.OpenTokenStoreNonInteractive)
 	}
 	return func(ctx context.Context) (string, error) {
 		// oauth2 sources take no per-call context, so the caller's deadline

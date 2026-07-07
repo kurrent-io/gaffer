@@ -235,7 +235,7 @@ func TestOAuthProvider_ClientCredentials(t *testing.T) {
 		Env:               "prod",
 		OAuth:             &config.OAuthConfig{Issuer: srv.URL, ClientID: "id"},
 		OAuthClientSecret: "secret",
-	}, "", &AuthInvalidation{})
+	}, &AuthInvalidation{})
 	if err != nil {
 		t.Fatalf("oauthProvider: %v", err)
 	}

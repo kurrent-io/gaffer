@@ -38,17 +38,7 @@ type TokenStore struct {
 // dir/keyring; dir is typically the gaffer user-config directory.
 func OpenTokenStore(dir string) (*TokenStore, error) {
 	keyringDir := filepath.Join(dir, "keyring")
-	kr, err := keyring.Open(keyring.Config{
-		ServiceName:              keyringService,
-		KeychainName:             keyringService,
-		KeychainTrustApplication: true,
-		FileDir:                  keyringDir,
-		FilePasswordFunc:         filePassword(keyringDir),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("open keyring: %w", err)
-	}
-	return &TokenStore{kr: kr}, nil
+	return openTokenStore(keyringDir, filePassword(keyringDir))
 }
 
 func newTokenStore(kr keyring.Keyring) *TokenStore { return &TokenStore{kr: kr} }
@@ -162,12 +152,18 @@ func nonInteractivePassword(string) (string, error) {
 // ErrKeyringLocked; an OS keychain backend may still enforce its own access
 // policy.
 func OpenTokenStoreNonInteractive(dir string) (*TokenStore, error) {
+	return openTokenStore(filepath.Join(dir, "keyring"), nonInteractivePassword)
+}
+
+// openTokenStore is the single keyring configuration both openers share -
+// they differ only in how the file keyring's passphrase is obtained.
+func openTokenStore(keyringDir string, password keyring.PromptFunc) (*TokenStore, error) {
 	kr, err := keyring.Open(keyring.Config{
 		ServiceName:              keyringService,
 		KeychainName:             keyringService,
 		KeychainTrustApplication: true,
-		FileDir:                  filepath.Join(dir, "keyring"),
-		FilePasswordFunc:         nonInteractivePassword,
+		FileDir:                  keyringDir,
+		FilePasswordFunc:         password,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open keyring: %w", err)

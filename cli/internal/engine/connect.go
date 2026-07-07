@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/envvar"
 	"github.com/kurrent-io/gaffer/cli/internal/oauth"
 	"github.com/kurrent-io/gaffer/cli/internal/target"
-	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
 
 // ErrDBConnect wraps every Connect failure (bad URL, dotenv read,
@@ -90,7 +88,7 @@ func Connect(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfig,
 	// are intentionally ignored in favour of bearer tokens.
 	if tgt.OAuth != nil {
 		authInvalidated = &AuthInvalidation{}
-		provider, err := oauthProvider(tgt, projectRoot, authInvalidated)
+		provider, err := oauthProvider(tgt, authInvalidated)
 		if err != nil {
 			// An auth-required error stands on its own: it asks the user to sign
 			// in, not to debug a connection, so it isn't wrapped as ErrDBConnect.
@@ -154,42 +152,16 @@ func Principal(connStr, projectRoot, envName string, oauthCfg *config.OAuthConfi
 	return dbConfig.Username
 }
 
-// oauthTimeout bounds OIDC discovery and each token fetch/refresh, so a slow
-// or unreachable identity provider can't hang a connection or an RPC.
-const oauthTimeout = 30 * time.Second
-
 // oauthProvider builds the KurrentDB credentials provider for a target's
-// OAuth config. A configured client secret (KURRENTDB_OAUTH_CLIENT_SECRET,
-// resolved by target.Resolve) selects the client-credentials grant; otherwise
-// the token stored by `gaffer auth` is used and refreshed in place.
-func oauthProvider(tgt target.Target, projectRoot string, authInvalidated *AuthInvalidation) (kurrentdb.CredentialsProvider, error) {
-	c, secret := tgt.OAuth, tgt.OAuthClientSecret
-
-	var store *oauth.TokenStore
-	if secret == "" {
-		dir, err := userconfig.DefaultDir()
-		if err != nil {
-			return nil, err
-		}
-		if store, err = oauth.OpenTokenStore(dir); err != nil {
-			return nil, err
-		}
-	}
-
-	// Background, not a per-RPC context: the token source outlives any single
-	// request and refreshes on its own schedule. The timeout-bearing client
-	// bounds discovery and refresh HTTP, and verifies the issuer against the
-	// configured CA when one is set.
-	ctx, err := oauth.WithHTTPClient(context.Background(), oauthTimeout, oauth.ResolveCAFile(c.CAFile, projectRoot))
-	if err != nil {
-		return nil, err
-	}
-	src, err := oauth.TokenSource(ctx, oauth.Config{
-		Issuer:   c.Issuer,
-		ClientID: c.ClientID,
-		Scopes:   c.Scopes,
-		Audience: c.Audience,
-	}, secret, store)
+// OAuth config. Construction goes through target.NewTokenSource - the single
+// path shared with Target.BearerToken - with the interactive store opener:
+// a connection may prompt for the keyring passphrase where a background read
+// must not. The provider adds what the connection alone owns: mapping the
+// needs-sign-in sentinels to AuthRequiredError, and dropping a rejected
+// token + tripping the invalidation flag on invalid_grant.
+func oauthProvider(tgt target.Target, authInvalidated *AuthInvalidation) (kurrentdb.CredentialsProvider, error) {
+	c := tgt.OAuth
+	src, store, err := target.NewTokenSource(c, tgt.OAuthCAFile, tgt.OAuthClientSecret, oauth.OpenTokenStore)
 	if err != nil {
 		// No stored token, or a passphrase-locked keyring we can't unlock
 		// non-interactively: both need an interactive sign-in.

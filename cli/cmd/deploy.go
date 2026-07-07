@@ -148,7 +148,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 		}
 	}
 
-	r, cleanup, err := connectResolved(cfg, root, opts.Connection, opts.Env)
+	r, resolved, cleanup, err := connectResolved(cfg, root, opts.Connection, opts.Env)
 	if err != nil {
 		return err
 	}
@@ -157,7 +157,6 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	// The [database_config] drift check runs in the background so its HTTP
 	// round-trip overlaps the planning RPCs; drained before the confirm, so an
 	// operator sees the target's engine config diverging before applying.
-	resolved, _ := resolveLiveEnv(opts.Connection, opts.Env, cfg)
 	driftCh := drift.StartConfigDriftCheck(cmd.Context(), cfg, root, resolved)
 
 	// Plan first (reads only), so the whole run is known before any write - the
@@ -174,13 +173,13 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	// Only a plan that changes something needs the target identity (and
 	// confirmation). Reading server info is a leader round-trip, so skip it on a
 	// no-op deploy. The same bounded $server-info read the operate verbs use names
-	// the target in the confirm and gates the production tier (keyed on the DB's
-	// own flag, never the env label); an unreadable $server-info falls back to the
-	// env label and non-production.
+	// the target in the confirm and gates the production tier (the DB's own flag
+	// OR the env's production opt-in, never the env label alone); an unreadable
+	// $server-info falls back to the env name and its opt-in.
 	totals := planChangeCounts(plan)
 	targetName, prod := "", false
 	if totals.changes() > 0 {
-		targetName, prod = resolveOperateTarget(ctx, r, opts.Env)
+		targetName, prod = r.OperateTarget(ctx, resolved, projectionRPCTimeout)
 	}
 
 	// Refuse the prod --no-validate combination before applying - nothing has been
@@ -212,7 +211,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	}
 
 	// The tool-metadata gaffer stamps on every create/update this deploy makes.
-	ledger := toolLedger(opts.Connection, opts.Env, remote.OpDeploy, cfg, root)
+	ledger := toolLedger(resolved, remote.OpDeploy, root)
 
 	sink := newDeploySink(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts.JSON, names, ctx, cancel)
 	failed := apply.Plan(ctx, plan, r, ledger, sink.start, sink.done)

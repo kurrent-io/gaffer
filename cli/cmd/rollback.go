@@ -57,10 +57,10 @@ func runRollback(cmd *cobra.Command, name, hashArg string, opts operateOpts) err
 		return err
 	}
 	defer conn.cleanup()
-	cfg, root, r := conn.cfg, conn.root, conn.r
+	root, r := conn.root, conn.r
 
 	ctx := cmd.Context()
-	target, prod := resolveOperateTarget(ctx, r, opts.Env)
+	target, prod := r.OperateTarget(ctx, conn.env, projectionRPCTimeout)
 
 	var current *remote.Definition
 	if err := rpc(ctx, func(ctx context.Context) error {
@@ -97,7 +97,7 @@ func runRollback(cmd *cobra.Command, name, hashArg string, opts operateOpts) err
 		return err
 	}
 
-	ledger := toolLedger(opts.Connection, opts.Env, remote.OpRollback, cfg, root)
+	ledger := toolLedger(conn.env, remote.OpRollback, root)
 	if err := rpc(ctx, func(ctx context.Context) error {
 		return r.Update(ctx, name, tgt.Def.Query, remote.UpdateOptions{Emit: &tgt.Def.Emit, Ledger: &ledger})
 	}); err != nil {

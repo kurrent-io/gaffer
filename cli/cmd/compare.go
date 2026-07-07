@@ -34,12 +34,14 @@ func loadProject() (cfg *config.Config, root string, err error) {
 	return cfg, root, nil
 }
 
-// liveConn is a connected live target: the loaded project (cfg/root), the remote
-// client, and the cleanup to defer. Returned as a struct rather than a five-value
-// tuple so callers take the fields they need without positional discards.
+// liveConn is a connected live target: the loaded project (cfg/root), the
+// resolved env it connected to, the remote client, and the cleanup to defer.
+// Returned as a struct rather than a six-value tuple so callers take the
+// fields they need without positional discards.
 type liveConn struct {
 	cfg     *config.Config
 	root    string
+	env     config.ResolvedEnv
 	r       *remote.Client
 	cleanup func()
 }
@@ -52,30 +54,31 @@ func connectEnv(connection, env string) (liveConn, error) {
 	if err != nil {
 		return liveConn{}, err
 	}
-	r, cleanup, err := connectResolved(cfg, root, connection, env)
+	r, resolved, cleanup, err := connectResolved(cfg, root, connection, env)
 	if err != nil {
 		return liveConn{}, err
 	}
-	return liveConn{cfg: cfg, root: root, r: r, cleanup: cleanup}, nil
+	return liveConn{cfg: cfg, root: root, env: resolved, r: r, cleanup: cleanup}, nil
 }
 
 // connectResolved resolves the live env from explicit flags against an
-// already-loaded config and connects. Split from connectEnv so deploy can load
-// the config, run preflight locally, then connect only once the projections are
-// known to be deployable.
-func connectResolved(cfg *config.Config, root, connection, env string) (r *remote.Client, cleanup func(), err error) {
-	resolved, err := resolveLiveEnv(connection, env, cfg)
+// already-loaded config and connects, returning the resolved env alongside the
+// client so callers don't re-derive it. Split from connectEnv so deploy can
+// load the config, run preflight locally, then connect only once the
+// projections are known to be deployable.
+func connectResolved(cfg *config.Config, root, connection, env string) (r *remote.Client, resolved config.ResolvedEnv, cleanup func(), err error) {
+	resolved, err = resolveLiveEnv(connection, env, cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, config.ResolvedEnv{}, nil, err
 	}
 	if resolved.Connection == "" {
-		return nil, nil, errors.New("no environment: mark a default [env.<name>], pass --env, or pass --connection")
+		return nil, config.ResolvedEnv{}, nil, errors.New("no environment: mark a default [env.<name>], pass --env, or pass --connection")
 	}
 	client, _, err := engine.Connect(root, resolved)
 	if err != nil {
-		return nil, nil, err
+		return nil, config.ResolvedEnv{}, nil, err
 	}
-	return remote.New(client), func() { _ = client.Close() }, nil
+	return remote.New(client), resolved, func() { _ = client.Close() }, nil
 }
 
 // refuseNoValidateOnProd is the single source of the production --no-validate

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/kurrent-io/gaffer/cli/internal/cliout"
+	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -81,7 +82,7 @@ func (s *Server) handleDeployPlan(ctx context.Context, _ *mcp.CallToolRequest, i
 		}
 	}
 
-	target, prod := operateTarget(ctx, client, env.Name)
+	target, prod := client.OperateTarget(ctx, env, deploy.RPCTimeout)
 	result := map[string]any{
 		"env":        env.Name,
 		"target":     target,

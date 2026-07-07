@@ -77,7 +77,7 @@ func (s *Server) handleDeployStatus(ctx context.Context, _ *mcp.CallToolRequest,
 	}
 	report := cliout.BuildStatusReport(entries, <-driftCh)
 	report.Env = env.Name
-	target, prod := operateTarget(ctx, client, env.Name)
+	target, prod := client.OperateTarget(ctx, env, deploy.RPCTimeout)
 	report.Target, report.Production = target, &prod
 	return toolResult(report), nil, nil
 }

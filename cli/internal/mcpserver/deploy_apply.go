@@ -8,6 +8,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/apply"
 	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
@@ -114,7 +115,7 @@ func (s *Server) handleDeployApply(ctx context.Context, req *mcp.CallToolRequest
 		}
 	}
 
-	target, prod := operateTarget(ctx, client, env.Name)
+	target, prod := client.OperateTarget(ctx, env, deploy.RPCTimeout)
 
 	result := map[string]any{
 		"env":        env.Name,

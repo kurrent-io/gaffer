@@ -78,14 +78,12 @@ func runHistory(cmd *cobra.Command, name string, opts historyOpts) error {
 
 	// On a terminal (and not --json) the interactive timeline pages versions in
 	// itself, so it owns the read; the static and JSON paths read a bounded window
-	// here. resolveLiveEnv re-derives what connectEnv already resolved, only for
-	// the footer's env/target labels - it can't fail now that the connect succeeded.
+	// here.
 	if !opts.JSON && interactiveWriter(cmd.OutOrStdout()) {
-		resolved, _ := resolveLiveEnv(opts.Connection, opts.Env, conn.cfg)
 		// The ledger a timeline-applied rollback stamps; resolved once here, so
 		// the modal's confirm doesn't pay the actor/revision lookups per apply.
-		ledger := toolLedger(opts.Connection, opts.Env, remote.OpRollback, conn.cfg, conn.root)
-		return runHistoryTUI(cmd, conn.r, name, resolved.Name, redactConnection(resolved.Connection), ledger)
+		ledger := toolLedger(conn.env, remote.OpRollback, conn.root)
+		return runHistoryTUI(cmd, conn.r, name, conn.env.Name, redactConnection(conn.env.Connection), ledger)
 	}
 
 	// remote calls block until their context deadline if the projections

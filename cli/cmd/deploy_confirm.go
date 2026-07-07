@@ -9,7 +9,6 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
-	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
 // errNeedConfirm is returned when a deploy that would change something can't be
@@ -86,16 +85,6 @@ func renderDryRun(out io.Writer, plan []drift.PlanItem, target string, totals pl
 		return exitWith(2, silent(errors.New("dry run: changes pending")))
 	}
 	return nil
-}
-
-// deployTarget names the deploy target for the confirm: the server's
-// self-reported cluster name when it has one (authoritative), else the env name
-// the user selected, else empty.
-func deployTarget(env string, info *remote.ServerInfo) string {
-	if info != nil && info.Name != "" {
-		return info.Name
-	}
-	return env
 }
 
 // targetDesc names the target for an error message: "cluster <name>" when known,

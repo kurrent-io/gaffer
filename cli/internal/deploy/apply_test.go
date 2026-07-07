@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -126,6 +127,65 @@ func TestRecreateCreateFailureNamesBothRecoveries(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("create-failure recovery missing %q, got: %v", want, err)
 		}
+	}
+}
+
+// TestRecreateRetriesCreateWhileSettling pins the delete-settle retry: the
+// server deletes asynchronously, so a create can bounce off the lingering
+// registration (the envelope's Conflict reply) and must be retried rather
+// than stranding the projection deleted-but-not-recreated.
+func TestRecreateRetriesCreateWhileSettling(t *testing.T) {
+	r := &recorder{}
+	attempts := 0
+	steps := r.recreateSteps()
+	create := steps.Create
+	steps.Create = func(ctx context.Context) error {
+		attempts++
+		if attempts < 3 {
+			return errors.New("rpc error: code = Unknown desc = Envelope callback expected Updated, received Conflict instead")
+		}
+		return create(ctx)
+	}
+	steps.RetryCreate = func(err error) bool { return strings.Contains(err.Error(), "received Conflict") }
+
+	if err := Recreate(context.Background(), "orders", steps); err != nil {
+		t.Fatalf("Recreate should have retried through the settle window: %v", err)
+	}
+	if attempts != 3 {
+		t.Errorf("create attempts = %d, want 3 (two conflicts, then success)", attempts)
+	}
+}
+
+// A non-retryable create failure keeps the single-attempt behaviour even with
+// the predicate set.
+func TestRecreateDoesNotRetryOtherCreateFailures(t *testing.T) {
+	r := &recorder{failOn: "create"}
+	steps := r.recreateSteps()
+	steps.RetryCreate = func(err error) bool { return strings.Contains(err.Error(), "received Conflict") }
+
+	if err := Recreate(context.Background(), "orders", steps); err == nil {
+		t.Fatal("expected the create failure to surface")
+	}
+	if got := strings.Join(r.calls, ","); got != "disable,delete,create" {
+		t.Errorf("calls = %q, want a single create attempt", got)
+	}
+}
+
+// A cancelled context ends the retry loop with the recovery message instead
+// of sleeping out the settle budget.
+func TestRecreateRetryStopsOnCancel(t *testing.T) {
+	r := &recorder{}
+	ctx, cancel := context.WithCancel(context.Background())
+	steps := r.recreateSteps()
+	steps.Create = func(context.Context) error {
+		cancel()
+		return errors.New("received Conflict")
+	}
+	steps.RetryCreate = func(err error) bool { return strings.Contains(err.Error(), "received Conflict") }
+
+	err := Recreate(ctx, "orders", steps)
+	if err == nil || !strings.Contains(err.Error(), "orders was deleted but recreating it failed") {
+		t.Fatalf("got %v, want the deleted-but-not-recreated recovery", err)
 	}
 }
 

@@ -60,3 +60,23 @@ func TestClassifyVersion(t *testing.T) {
 		})
 	}
 }
+
+func TestIsCreateConflict(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"envelope conflict reply", errors.New("rpc error: code = Unknown desc = Envelope callback expected Updated, received Conflict instead"), true},
+		{"typed sentinel", ErrAlreadyExists, true},
+		{"wrapped sentinel", errors.Join(errors.New("create orders"), ErrAlreadyExists), true},
+		{"unrelated failure", errors.New("rpc error: code = Unavailable desc = leader down"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsCreateConflict(tc.err); got != tc.want {
+				t.Errorf("IsCreateConflict(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}

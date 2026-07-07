@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
@@ -133,7 +134,21 @@ func TestStatus_Integration(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		report := runStatusReportJSON(t)
+		// The drift check degrades to "no drift" by design when the
+		// /info/options read misses its 3s budget (it's advisory - see
+		// nodeOptionsHTTPTimeout), and a race-instrumented CI runner under
+		// full parallel-package load can miss that window. Retry the whole
+		// command a few times so the assertion tests the envelope plumbing,
+		// not one 3-second slot on a loaded runner.
+		var report cliout.StatusReportJSON
+		for attempt := 1; ; attempt++ {
+			report = runStatusReportJSON(t)
+			if len(report.ConfigDrift) > 0 || attempt == 3 {
+				break
+			}
+			t.Logf("attempt %d: configDrift empty (advisory check likely timed out), retrying", attempt)
+			time.Sleep(2 * time.Second)
+		}
 		if len(report.ConfigDrift) != 1 || report.ConfigDrift[0].Knob != "max_state_size" || report.ConfigDrift[0].Local != 1 {
 			t.Fatalf("configDrift = %+v, want the max_state_size divergence", report.ConfigDrift)
 		}

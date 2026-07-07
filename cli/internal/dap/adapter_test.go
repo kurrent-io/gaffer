@@ -55,6 +55,13 @@ func mustSetupDebugSessionUnbound(t *testing.T, source string) (*DebugAdapter, *
 			OnBreak: adapter.HandleBreak,
 		},
 	})
+	// Tear down through the Runner, which waits out in-flight session calls -
+	// the adapter's handlers issue step verbs on their own goroutines, and a
+	// raw session.Destroy here raced them (caught by the race detector). The
+	// session.Destroy cleanup above stays as the failure-path backstop for a
+	// t.Fatal between session and runner creation; it no-ops once the runner
+	// has destroyed the session. Cleanups run LIFO, so the runner goes first.
+	t.Cleanup(runner.Destroy)
 
 	handler := adapter.Handler()
 	srv, err := NewServer("127.0.0.1:0", handler)
@@ -335,6 +342,7 @@ func mustSetupDebugSessionWithHistory(t *testing.T) (*DebugAdapter, *engine.Runn
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 
 	adapter := NewDebugAdapter(session, "/tmp/test/projection.js", "/tmp/test")
 	runner := engine.NewRunner(engine.RunnerConfig{
@@ -349,6 +357,9 @@ func mustSetupDebugSessionWithHistory(t *testing.T) (*DebugAdapter, *engine.Runn
 			OnBreak: adapter.HandleBreak,
 		},
 	})
+	// See mustSetupDebugSessionUnbound: teardown goes through the Runner so
+	// in-flight step verbs from the adapter's goroutines are waited out.
+	t.Cleanup(runner.Destroy)
 	adapter.SetRunner(runner)
 
 	handler := adapter.Handler()

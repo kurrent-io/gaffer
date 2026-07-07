@@ -108,7 +108,8 @@ func (s *Server) handleDeployRecreate(ctx context.Context, req *mcp.CallToolRequ
 	// per-step RPC bounds, and recovery messages live in internal/deploy
 	// (shared with the CLI); here we only bind each step to the client.
 	err = deploy.Recreate(ctx, in.Name, deploy.RecreateSteps{
-		Disable: func(sctx context.Context) error { return conn.client.Disable(sctx, in.Name) },
+		RetryCreate: remote.IsCreateConflict,
+		Disable:     func(sctx context.Context) error { return conn.client.Disable(sctx, in.Name) },
 		Delete: func(sctx context.Context) error {
 			return conn.client.Delete(sctx, in.Name, remote.DeleteOptions{
 				DeleteStateStream:      true,

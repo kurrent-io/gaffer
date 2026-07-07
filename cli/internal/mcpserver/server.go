@@ -142,6 +142,9 @@ func (s *Server) recordProjectionError(err error) {
 type activeSession struct {
 	runner *engine.Runner
 	cancel context.CancelFunc
+	// store backs the runner's step history. The runner only borrows it, so
+	// closeSession closes it here after the runner is destroyed.
+	store *history.Store
 
 	// debug is true when the run requested a breakpoint or break_at, so a
 	// timeout can name a breakpoint; live is true for a live subscription,
@@ -461,6 +464,9 @@ func (s *Server) closeSession() {
 		<-sess.done
 	}
 	sess.runner.Destroy()
+	if sess.store != nil {
+		_ = sess.store.Close()
+	}
 }
 
 func (s *Server) createSession(cfg *config.Config, root, name string, debug bool) (*activeSession, error) {
@@ -479,7 +485,7 @@ func (s *Server) createSession(cfg *config.Config, root, name string, debug bool
 		return nil, fmt.Errorf("creating history store: %w", err)
 	}
 
-	sess := &activeSession{debug: debug}
+	sess := &activeSession{debug: debug, store: store}
 
 	runnerCfg := engine.RunnerConfig{
 		Feed:          engine.FeedFn(runtime.Feed),

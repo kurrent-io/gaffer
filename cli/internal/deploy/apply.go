@@ -102,6 +102,13 @@ type RecreateSteps struct {
 	Disable Step
 	Delete  Step
 	Create  Step
+	// RetryCreate, when set, marks a Create error as worth retrying over the
+	// settle budget. The server deletes asynchronously - the Delete RPC
+	// returns while the name can still be registered - so an immediate
+	// Create can bounce off the lingering registration (the projections
+	// subsystem replies Conflict; see remote.IsCreateConflict). Optional:
+	// nil means one attempt.
+	RetryCreate func(error) bool
 }
 
 func (s RecreateSteps) validate() error {
@@ -112,11 +119,18 @@ func (s RecreateSteps) validate() error {
 	)
 }
 
+// createSettleBudget bounds how long Recreate keeps retrying a Create that
+// bounces off the deleted projection's lingering registration, on top of the
+// per-attempt RPCTimeout.
+const createSettleBudget = 10 * time.Second
+
 // Recreate destroys a projection and rebuilds it from local config: stop it,
 // delete it (with its state and checkpoint streams), then create it fresh,
 // reprocessing from zero. The destroy precedes the create, so a failure after
 // Delete leaves the projection gone: each step names the recovery rather than a
-// bare error. There's no auto-rollback.
+// bare error. There's no auto-rollback. A Create refused while the server is
+// still settling the delete retries over createSettleBudget (see
+// RecreateSteps.RetryCreate) before giving up with the recovery message.
 func Recreate(ctx context.Context, name string, s RecreateSteps) error {
 	if err := s.validate(); err != nil {
 		return fmt.Errorf("recreate %s: %w", name, err)
@@ -127,7 +141,19 @@ func Recreate(ctx context.Context, name string, s RecreateSteps) error {
 	if err := bound(ctx, s.Delete); err != nil {
 		return fmt.Errorf("could not delete %s before recreating: %w", name, err)
 	}
-	if err := bound(ctx, s.Create); err != nil {
+	err := bound(ctx, s.Create)
+	if s.RetryCreate != nil {
+		deadline := time.Now().Add(createSettleBudget)
+		for delay := 250 * time.Millisecond; err != nil && s.RetryCreate(err) && time.Now().Before(deadline); delay = min(delay*2, 2*time.Second) {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("%s was deleted but recreating it failed - re-run gaffer recreate %s, or gaffer deploy %s: %w", name, name, name, ctx.Err())
+			case <-time.After(delay):
+			}
+			err = bound(ctx, s.Create)
+		}
+	}
+	if err != nil {
 		return fmt.Errorf("%s was deleted but recreating it failed - re-run gaffer recreate %s, or gaffer deploy %s: %w", name, name, name, err)
 	}
 	return nil

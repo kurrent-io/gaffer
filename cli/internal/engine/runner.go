@@ -63,10 +63,25 @@ type RunnerConfig struct {
 //     only to snapshot Runner fields the FFI call needs (e.g. the partition
 //     set), then released before crossing into the session.
 //
+// Teardown adds a third guarantee: every session-crossing method - including
+// ProcessOne - registers with r.ops (via beginSessionOp, or directly under
+// r.mu), and Destroy sets closed (refusing new ops), drains, then waits for
+// r.ops before freeing the session. Without it, Destroy races the in-flight
+// FFI call of a step verb issued from another goroutine - and two of those
+// goroutines are the Runner's own: the drain-resume and break_at auto-step
+// goroutines OnBreak spawns are, by construction, still alive at the moment
+// the feed goroutine they unpark exits, which is exactly when front-end
+// teardowns proceed to Destroy. With ProcessOne registered too, Destroy is
+// safe even against a feed still in flight: the drain unparks it, ops.Wait
+// sees it out, and the source loop's next ProcessOne returns stop. (The
+// OnBreak-spawned goroutines register unconditionally rather than through
+// the closed gate - see the comment there for why that cannot deadlock.)
+//
 // The mutable state is split into two concerns, both guarded by r.mu: run
 // holds what processing produces (stats, partitions, fault, status), control
 // holds the debug pause/break wiring. step is an atomic.Int64 read lock-free
-// (see Step), deliberately outside the mutex.
+// (see Step), deliberately outside the mutex. closed is lifecycle, guarded
+// by r.mu alongside them.
 type Runner struct {
 	feed          FeedFn
 	session       *gafferruntime.Session
@@ -78,10 +93,26 @@ type Runner struct {
 	onDiagnostic  func(code string)
 
 	step atomic.Int64
+	ops  sync.WaitGroup
 
 	mu      sync.Mutex
 	run     runState
 	control debugControl
+	closed  bool
+}
+
+// beginSessionOp registers an in-flight session-crossing call so Destroy can
+// wait for it, pairing with r.ops.Done() at the call's end. Returns false once
+// Destroy has begun: the session may already be freed, so the caller must skip
+// the session call entirely.
+func (r *Runner) beginSessionOp() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return false
+	}
+	r.ops.Add(1)
+	return true
 }
 
 // runState is the Runner's per-run progress, mutated as events are processed
@@ -147,10 +178,26 @@ func NewRunner(cfg RunnerConfig) *Runner {
 			// step the break_at pause converts into - so the blocked
 			// Feed returns and the feed goroutine can exit. The resume
 			// error is irrelevant: the session is going away.
+			// The two goroutines spawned below register with r.ops directly,
+			// NOT via beginSessionOp: they must run even mid-Destroy (closed
+			// set), because they are what unparks the blocked Feed that
+			// Destroy's ops.Wait is waiting out - gating them on closed would
+			// deadlock the teardown. The unconditional Add is safe: this
+			// callback runs inside the feed goroutine's own registered op
+			// (ProcessOne), so the counter is non-zero and the session cannot
+			// be freed before these goroutines finish. Registration happens
+			// here, before the spawn, so ops.Wait can never pass between the
+			// spawn and a goroutine registering itself. That safety argument
+			// rests on Feed only ever being driven through ProcessOne - a
+			// caller feeding the session directly with debug wired would let
+			// these Adds race ops.Wait at counter zero. (WaitGroup.Go adds
+			// synchronously before spawning, preserving exactly that order.)
 			if r.control.draining {
 				r.control.paused = false
 				r.mu.Unlock()
-				go func() { _ = r.debug.Session.Continue() }()
+				r.ops.Go(func() {
+					_ = r.debug.Session.Continue()
+				})
 				return
 			}
 			if info.Reason == "pause" && r.control.breakAtStep > 0 {
@@ -160,11 +207,11 @@ func NewRunner(cfg RunnerConfig) *Runner {
 				// StepInto blocks on the engine thread that's currently running
 				// this callback. A returned error has no caller here, so route
 				// it through OnError (e.g. MCP's error channel).
-				go func() {
+				r.ops.Go(func() {
 					if err := r.debug.Session.StepInto(); err != nil && r.debug.OnError != nil {
 						r.debug.OnError(err)
 					}
-				}()
+				})
 				return
 			}
 			r.control.paused = true
@@ -177,6 +224,14 @@ func NewRunner(cfg RunnerConfig) *Runner {
 
 func (r *Runner) ProcessOne(eventJSON string) (stop bool) {
 	r.mu.Lock()
+	if r.closed {
+		// Teardown has begun and the session may already be freed: stop the
+		// source loop instead of feeding into it.
+		r.mu.Unlock()
+		return true
+	}
+	r.ops.Add(1)
+	defer r.ops.Done()
 	step := r.step.Add(1)
 	var pauseErr error
 	if r.debug != nil {

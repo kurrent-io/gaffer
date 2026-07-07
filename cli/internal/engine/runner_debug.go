@@ -31,6 +31,10 @@ func (r *Runner) SetBreakpoints(breakpoints []Breakpoint) ([]*gafferruntime.Snap
 	if r.debug == nil {
 		return nil, errors.New("debug not enabled")
 	}
+	if !r.beginSessionOp() {
+		return nil, gafferruntime.ErrSessionDestroyed
+	}
+	defer r.ops.Done()
 	if err := r.debug.Session.ClearBreakpoints(); err != nil {
 		return nil, fmt.Errorf("clearing breakpoints: %w", err)
 	}
@@ -53,6 +57,10 @@ func (r *Runner) ClearBreakpoints() error {
 	if r.debug == nil {
 		return nil
 	}
+	if !r.beginSessionOp() {
+		return gafferruntime.ErrSessionDestroyed
+	}
+	defer r.ops.Done()
 	return r.debug.Session.ClearBreakpoints()
 }
 
@@ -66,8 +74,17 @@ func (r *Runner) doStep(fn func() error) error {
 	// false on error also lets the caller's next Paused() guard reject cleanly
 	// rather than re-entering here and failing again.
 	r.mu.Lock()
+	if r.closed {
+		// Teardown has begun: the session may already be freed. Refuse
+		// loudly rather than report a step that never happened - the
+		// inspection methods do the same.
+		r.mu.Unlock()
+		return gafferruntime.ErrSessionDestroyed
+	}
+	r.ops.Add(1)
 	r.control.paused = false
 	r.mu.Unlock()
+	defer r.ops.Done()
 	return fn()
 }
 
@@ -98,6 +115,10 @@ func (r *Runner) Pause() error {
 	if r.debug == nil {
 		return nil
 	}
+	if !r.beginSessionOp() {
+		return gafferruntime.ErrSessionDestroyed
+	}
+	defer r.ops.Done()
 	return r.debug.Session.Pause()
 }
 
@@ -113,6 +134,18 @@ func (r *Runner) Pause() error {
 //
 // Safe to call when debug is disabled (no-op) or no breakpoint is set.
 func (r *Runner) Drain() {
+	if !r.beginSessionOp() {
+		// Destroy has begun, and its own drain covers the teardown.
+		return
+	}
+	defer r.ops.Done()
+	r.drain()
+}
+
+// drain is Drain without the session-op registration: Destroy calls it after
+// setting closed (which makes beginSessionOp refuse), sequenced on its own
+// goroutine before the session is freed.
+func (r *Runner) drain() {
 	if r.debug == nil {
 		return
 	}
@@ -137,13 +170,36 @@ func (r *Runner) Drain() {
 	}
 }
 
+// Destroy frees the session after draining and waiting out every in-flight
+// session-crossing call, an in-flight ProcessOne included (see the Runner
+// doc comment's teardown guarantee). Idempotent; a concurrent second call
+// no-ops immediately, returning before the first call's teardown completes.
+// Front-ends should still stop their source loop first as a matter of
+// hygiene, but a straggling feed no longer races the teardown.
+//
+// The wait trusts every registered op to finish. The runtime's debug-command
+// queue can strand a command (an unsynchronized paused check-then-add racing
+// the command loop's exit leaves the command's Done unsignalled), and a
+// stranded verb now blocks Destroy where it previously leaked a goroutine.
+// The window needs concurrent debug verbs on a paused engine; the fix is
+// runtime-side, in the command loop.
+//
+// The history store is NOT closed here: the Runner only borrows it, and in
+// the dev debug loop one store serves every restart iteration's runner.
+// Whoever created the store closes it.
 func (r *Runner) Destroy() {
-	r.Drain()
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return
+	}
+	r.closed = true
+	r.mu.Unlock()
+
+	r.drain()
+	r.ops.Wait()
 	if r.session != nil {
 		r.session.Destroy()
-	}
-	if r.history != nil {
-		_ = r.history.Close()
 	}
 }
 
@@ -157,6 +213,10 @@ func (r *Runner) Evaluate(expression string) (*gafferruntime.DebugVariable, erro
 	if r.debug == nil {
 		return nil, errors.New("debug not enabled")
 	}
+	if !r.beginSessionOp() {
+		return nil, gafferruntime.ErrSessionDestroyed
+	}
+	defer r.ops.Done()
 	return r.debug.Session.Evaluate(expression)
 }
 
@@ -164,6 +224,10 @@ func (r *Runner) GetCallStack() ([]gafferruntime.DebugCallFrame, error) {
 	if r.debug == nil {
 		return nil, errors.New("debug not enabled")
 	}
+	if !r.beginSessionOp() {
+		return nil, gafferruntime.ErrSessionDestroyed
+	}
+	defer r.ops.Done()
 	return r.debug.Session.GetCallStack()
 }
 
@@ -171,6 +235,10 @@ func (r *Runner) GetScopes(frameID int) ([]gafferruntime.DebugScopeInfo, error) 
 	if r.debug == nil {
 		return nil, errors.New("debug not enabled")
 	}
+	if !r.beginSessionOp() {
+		return nil, gafferruntime.ErrSessionDestroyed
+	}
+	defer r.ops.Done()
 	return r.debug.Session.GetScopes(frameID)
 }
 
@@ -178,6 +246,10 @@ func (r *Runner) GetVariables(variablesReference int) ([]gafferruntime.DebugVari
 	if r.debug == nil {
 		return nil, errors.New("debug not enabled")
 	}
+	if !r.beginSessionOp() {
+		return nil, gafferruntime.ErrSessionDestroyed
+	}
+	defer r.ops.Done()
 	return r.debug.Session.GetVariables(variablesReference)
 }
 
@@ -191,8 +263,16 @@ func (r *Runner) CollectState() (StateSummary, error) {
 		return StateSummary{}, nil
 	}
 	r.mu.Lock()
+	if r.closed {
+		// Mirrors the nil-session return: after teardown there is no state
+		// left to read.
+		r.mu.Unlock()
+		return StateSummary{}, nil
+	}
+	r.ops.Add(1)
 	partitions := maps.Clone(r.run.partitions)
 	r.mu.Unlock()
+	defer r.ops.Done()
 	return CollectState(r.session, r.info, partitions)
 }
 
@@ -204,6 +284,11 @@ func (r *Runner) GetPartitionState(partition string) (state *string, result *str
 	if r.session == nil {
 		return nil, nil, nil
 	}
+	if !r.beginSessionOp() {
+		// Mirrors the nil-session return, like CollectState.
+		return nil, nil, nil
+	}
+	defer r.ops.Done()
 	state, err = r.session.GetState(&partition)
 	if err != nil {
 		return nil, nil, fmt.Errorf("reading state for partition %q: %w", partition, err)

@@ -62,9 +62,11 @@ func newDeployCmd() *cobra.Command {
 			"to rebuild instead, reprocessing from zero with the new logic (slower, and an emitting " +
 			"projection re-emits). A change to engine version or track-emitted-streams can't be applied " +
 			"in place; deploy refuses it and points you at gaffer recreate.\n\n" +
-			"Every projection is compiled before anything is sent to the server; if any fails to " +
-			"compile or has errors that would fault on the server, the whole deploy is refused so " +
-			"a bad projection can't leave a half-applied set. --no-validate skips this check.\n\n" +
+			"Deploy builds the whole plan first, then validates it: it compiles the projections " +
+			"it would create or update, and if any won't run (fails to compile, or would fault on " +
+			"the server) it refuses before writing anything, so a bad projection can't leave a " +
+			"half-applied set. --no-validate skips the check, deploying the valid projections and " +
+			"refusing the invalid ones individually instead of aborting the whole run.\n\n" +
 			"When the plan would change something, deploy shows it and asks to confirm before " +
 			"applying; updating a projection that's currently faulted is flagged, since the update " +
 			"won't clear the fault, and so is one whose deployed definition was changed outside gaffer " +
@@ -103,7 +105,7 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment from gaffer.toml to deploy to")
 	cmd.Flags().StringVar(&opts.Connection, "connection", "", "KurrentDB connection string (overrides --env)")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output as JSON")
-	cmd.Flags().BoolVar(&opts.NoValidate, "no-validate", false, "Skip the preflight compile check and deploy anyway")
+	cmd.Flags().BoolVar(&opts.NoValidate, "no-validate", false, "Skip validation: deploy the valid projections and refuse invalid ones per-projection")
 	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip the confirmation prompt")
 	cmd.Flags().BoolVar(&opts.ResetOnLogicChange, "reset-on-logic-change", false, "Rebuild from zero on a logic change instead of continuing from checkpoint")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Show the plan and exit without applying (exit 2 if changes are pending)")

@@ -12,16 +12,20 @@ import (
 var deployPlanTool = &mcp.Tool{
 	Name: "deploy_plan",
 	Description: "Compute what `gaffer deploy` would do to a KurrentDB environment without " +
-		"writing anything: per projection, whether it would be created, updated, rebuilt, " +
-		"skipped, or refused (with the reason), plus logic-change and external-change " +
-		"flags. The response echoes the resolved env, the target server, and whether it is a " +
-		"production target (declared by the server itself, or by production = true on the " +
-		"env). faultedUpdates names update targets currently faulted on the server (an " +
-		"update won't clear the fault); configDrift reports [database_config] divergence, " +
-		"or configDriftError the reason the node's config couldn't be read (never both). " +
-		"Mirrors `gaffer deploy --dry-run --json`, except there is no preflight gate: a " +
-		"projection that doesn't compile is planned as refused with the compile error, " +
-		"where a real deploy's preflight would abort with outcome invalid. Read-only: it " +
+		"writing anything. verdict is the whole-plan headline - in-sync (nothing to do), " +
+		"deployable (changes pending, none blocked), or blocked (something can't be " +
+		"deployed). Per projection, outcome is what an apply would produce: created, " +
+		"updated, rebuilt, skipped, refused (a recreate is needed - recreate is then true, " +
+		"see deploy_recreate), or invalid (the local definition won't run - reason carries " +
+		"the compile or config error). Items also flag logicChange, externalChange (with " +
+		"externalChangeTool when another tool made the change), faulted (an update over a " +
+		"faulted projection), and emittingReset (a rebuild that re-emits). The response " +
+		"echoes the resolved env, the target server, and whether it is a production target " +
+		"(declared by the server itself, or by production = true on the env). configDrift " +
+		"reports [database_config] divergence, or configDriftError the reason the node's " +
+		"config couldn't be read (never both). Mirrors `gaffer deploy --dry-run --json`, " +
+		"except it runs no fault-severity diagnostics check, so a projection that compiles " +
+		"but would fault plans as its would-be write rather than invalid. Read-only: it " +
 		"never applies the plan - deploying is the CLI's job.",
 	Annotations: readOnlyHints(),
 }
@@ -50,9 +54,9 @@ func (s *Server) handleDeployPlan(ctx context.Context, _ *mcp.CallToolRequest, i
 		}
 	}
 	if len(names) == 0 {
-		// Nothing configured plans as nothing to do, matching the CLI's `[]`
-		// exit-0 - a parseable answer, not an error to reason about.
-		return toolResult(map[string]any{"plan": []cliout.DeployJSON{}, "changes": 0}), nil, nil
+		// Nothing configured plans as nothing to do - the same in-sync envelope a
+		// real plan produces, so a consumer parses one shape.
+		return toolResult(cliout.BuildPlanReport(nil, drift.ConfigDriftResult{})), nil, nil
 	}
 
 	// No s.mu: planning compiles the local definitions into throwaway engine
@@ -72,35 +76,15 @@ func (s *Server) handleDeployPlan(ctx context.Context, _ *mcp.CallToolRequest, i
 	plan := drift.PlanAll(ctx, client, cfg, root, names)
 	drift.ResolveResets(plan, in.ResetOnLogicChange)
 
-	changes := 0
-	var faulted []string
-	for _, it := range plan {
-		if it.Err == nil && it.Action.Applies() {
-			changes++
-		}
-		if it.Err == nil && it.Action == drift.ActionUpdate && it.Faulted {
-			faulted = append(faulted, it.Name)
-		}
-	}
-
+	// The shared envelope the CLI's --dry-run emits: the verdict, change count,
+	// per-item plan (recreate/faulted/emittingReset flags and all), and the
+	// [database_config] divergence. OperateTarget overlaps the drift check drained
+	// inside BuildPlanReport. Unlike the CLI, deploy_plan runs no fault-diagnostics
+	// validation, so a projection that compiles but would fault plans as its
+	// would-be write, not invalid.
 	target, prod := client.OperateTarget(ctx, env, deploy.RPCTimeout)
-	result := map[string]any{
-		"env":        env.Name,
-		"target":     target,
-		"production": prod,
-		// The same per-item array a `gaffer deploy --dry-run --json` emits;
-		// outcome is the would-be verdict.
-		"plan":    cliout.BuildPlanJSON(plan),
-		"changes": changes,
-	}
-	if len(faulted) > 0 {
-		result["faultedUpdates"] = faulted
-	}
-	if dr := <-driftCh; dr.Err != nil {
-		// A failed node-config read must not present as "in sync" (UI-1820).
-		result["configDriftError"] = dr.Err.Error()
-	} else if len(dr.Items) > 0 {
-		result["configDrift"] = cliout.BuildConfigDriftJSON(dr.Items)
-	}
-	return toolResult(result), nil, nil
+	report := cliout.BuildPlanReport(plan, <-driftCh)
+	report.Env = env.Name
+	report.Target, report.Production = target, &prod
+	return toolResult(report), nil, nil
 }

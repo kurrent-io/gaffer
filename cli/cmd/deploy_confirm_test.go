@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"testing"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
@@ -66,7 +68,7 @@ func TestRenderDryRunExitCodes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			err := renderDryRun(&buf, tc.plan, "", planChangeCounts(tc.plan), false, false)
+			err := renderDryRun(&buf, tc.plan, "", "", nil, planChangeCounts(tc.plan), drift.ConfigDriftResult{}, false)
 			got := 0
 			if err != nil {
 				got = ExitCodeFor(err)
@@ -84,16 +86,21 @@ func TestRenderDryRunExitCodes(t *testing.T) {
 func TestRenderDryRunJSONShape(t *testing.T) {
 	plan := []drift.PlanItem{{Name: "a", Action: drift.ActionCreate}, {Name: "b", Action: drift.ActionSkip}}
 	var buf bytes.Buffer
-	err := renderDryRun(&buf, plan, "", planChangeCounts(plan), false, true)
+	err := renderDryRun(&buf, plan, "staging", "orders-cluster", nil, planChangeCounts(plan), drift.ConfigDriftResult{}, true)
 	if got := exitCodeOf(err); got != 2 {
 		t.Fatalf("exit code = %d, want 2", got)
 	}
-	// Same array-of-outcomes schema as a real deploy: each item reports its
-	// would-be outcome (present here as the past-tense verdict).
-	for _, want := range []string{`"name": "a"`, `"outcome": "created"`, `"name": "b"`, `"outcome": "skipped"`} {
-		if !strings.Contains(buf.String(), want) {
-			t.Errorf("dry-run JSON missing %q in:\n%s", want, buf.String())
-		}
+	// The PlanReportJSON envelope: the top-level verdict and env/target, wrapping
+	// the plan array whose items each report their would-be outcome.
+	var got cliout.PlanReportJSON
+	if uerr := json.Unmarshal(buf.Bytes(), &got); uerr != nil {
+		t.Fatalf("unmarshal: %v\n%s", uerr, buf.String())
+	}
+	if got.Verdict != "deployable" || got.Env != "staging" || got.Target != "orders-cluster" || got.Changes != 1 {
+		t.Errorf("envelope = %+v; want verdict deployable, env staging, target orders-cluster, 1 change", got)
+	}
+	if len(got.Plan) != 2 || got.Plan[0].Outcome != "created" || got.Plan[1].Outcome != "skipped" {
+		t.Errorf("plan = %+v; want created then skipped", got.Plan)
 	}
 }
 

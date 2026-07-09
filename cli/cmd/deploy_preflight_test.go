@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/cliout"
+	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
@@ -127,6 +129,65 @@ func TestRunPreflightErrorDiagnostic(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected the V2-incompatibility diagnostic, got %+v", failures[0].Diagnostics)
+	}
+}
+
+func TestValidatePlan(t *testing.T) {
+	// track_emitted_streams on v2 compiles but carries an error-severity
+	// diagnostic - it would fault on the server.
+	const valid = `fromAll().when({ $any: function (s, e) { return s; } })`
+	p := testutil.NewProject(t).AddProjection("tes", valid).Save()
+	for i := range p.Cfg.Projection {
+		if p.Cfg.Projection[i].Name == "tes" {
+			p.Cfg.Projection[i].EngineVersion = new(2)
+			p.Cfg.Projection[i].TrackEmittedStreams = new(true)
+		}
+	}
+	p.Save()
+
+	// An applying item that would fault is folded to invalid with its reason.
+	applying := []drift.PlanItem{{Name: "tes", Action: drift.ActionCreate}}
+	validatePlan(context.Background(), p.Dir, p.Cfg, applying)
+	if applying[0].Action != drift.ActionInvalid || applying[0].Reason == "" {
+		t.Errorf("applying item = %+v; want invalid with a reason", applying[0])
+	}
+
+	// A skip isn't being written, so it's never validated even if it would fault.
+	skip := []drift.PlanItem{{Name: "tes", Action: drift.ActionSkip}}
+	validatePlan(context.Background(), p.Dir, p.Cfg, skip)
+	if skip[0].Action != drift.ActionSkip {
+		t.Errorf("skip item = %+v; want left untouched", skip[0])
+	}
+}
+
+func TestRefuseInvalidPlan(t *testing.T) {
+	// A plan with nothing invalid proceeds (nil), so the caller applies.
+	clean := []drift.PlanItem{{Name: "a", Action: drift.ActionCreate}}
+	if err := refuseInvalidPlan(io.Discard, clean, false); err != nil {
+		t.Errorf("clean plan should not refuse, got %v", err)
+	}
+
+	blocked := []drift.PlanItem{
+		{Name: "a", Action: drift.ActionCreate},
+		{Name: "bad", Action: drift.ActionInvalid, Reason: "won't compile"},
+	}
+	// Text: names the invalid projection and its reason, exits 1.
+	var text bytes.Buffer
+	if got := exitCodeOf(refuseInvalidPlan(&text, blocked, false)); got != 1 {
+		t.Fatalf("invalid plan should exit 1, got %d", got)
+	}
+	if !strings.Contains(text.String(), "bad") || !strings.Contains(text.String(), "won't compile") {
+		t.Errorf("refusal should name the invalid projection and reason:\n%s", text.String())
+	}
+	// JSON: an array of just the invalid items' verdicts.
+	var jbuf bytes.Buffer
+	_ = refuseInvalidPlan(&jbuf, blocked, true)
+	var arr []cliout.DeployJSON
+	if err := json.Unmarshal(jbuf.Bytes(), &arr); err != nil {
+		t.Fatalf("json: %v\n%s", err, jbuf.String())
+	}
+	if len(arr) != 1 || arr[0].Name != "bad" || arr[0].Outcome != "invalid" {
+		t.Errorf("json = %+v; want one invalid item", arr)
 	}
 }
 

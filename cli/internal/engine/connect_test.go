@@ -128,7 +128,7 @@ func TestConnectionLost(t *testing.T) {
 		if !errors.Is(err, ErrDBDisconnect) {
 			t.Errorf("expected ErrDBDisconnect, got %v", err)
 		}
-		if are := (*AuthRequiredError)(nil); errors.As(err, &are) {
+		if are := (*target.AuthRequiredError)(nil); errors.As(err, &are) {
 			t.Errorf("did not expect AuthRequiredError, got %v", err)
 		}
 	}
@@ -137,7 +137,7 @@ func TestConnectionLost(t *testing.T) {
 	tripped := &AuthInvalidation{}
 	tripped.Trip()
 	err := l.connectionLost(tripped, "subscription dropped")
-	var are *AuthRequiredError
+	var are *target.AuthRequiredError
 	if !errors.As(err, &are) || are.Env != "prod" {
 		t.Errorf("expected AuthRequiredError for prod, got %v", err)
 	}

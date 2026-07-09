@@ -12,6 +12,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
@@ -32,7 +33,7 @@ func TestOutcomeFor_StructuralSentinels(t *testing.T) {
 		{"manifest-parse", fmt.Errorf("%w: bad toml", config.ErrManifestParse), telemetry.OutcomeManifestParseError},
 		{"manifest-validate", fmt.Errorf("%w: bad config", config.ErrManifestValidate), telemetry.OutcomeManifestValidationError},
 		{"db-connect", fmt.Errorf("%w: dns", engine.ErrDBConnect), telemetry.OutcomeDBConnectError},
-		{"auth-required", &engine.AuthRequiredError{Env: "prod"}, telemetry.OutcomeDBConnectError},
+		{"auth-required", &target.AuthRequiredError{Env: "prod"}, telemetry.OutcomeDBConnectError},
 		{"db-disconnect", fmt.Errorf("%w: subscription dropped", engine.ErrDBDisconnect), telemetry.OutcomeDBDisconnect},
 		{"prompt-cancelled", prompt.ErrCancelled, telemetry.OutcomeUserInterrupt},
 		{"prompt-cancelled-wrapped", fmt.Errorf("%w", prompt.ErrCancelled), telemetry.OutcomeUserInterrupt},

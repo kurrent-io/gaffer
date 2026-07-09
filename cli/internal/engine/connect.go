@@ -24,19 +24,6 @@ var ErrDBConnect = errors.New("connect to KurrentDB")
 // distinguish "couldn't connect" from "connected then lost the link".
 var ErrDBDisconnect = errors.New("KurrentDB connection lost")
 
-// AuthRequiredError is returned when an OAuth env can't authenticate without an
-// interactive sign-in: no stored token, or a passphrase-locked keyring that
-// can't be unlocked non-interactively. It's distinct from ErrDBConnect so
-// callers (the --json stream, telemetry) can surface a "sign in" action rather
-// than a generic connection failure. Env is the environment to authenticate.
-type AuthRequiredError struct {
-	Env string
-}
-
-func (e *AuthRequiredError) Error() string {
-	return fmt.Sprintf("env %q requires sign-in: run `gaffer auth --env %s`", e.Env, e.Env)
-}
-
 // AuthInvalidation is tripped by the OAuth credentials provider when the IdP
 // rejects the stored token (invalid_grant), after it clears the dead token.
 // Connect returns it (nil for non-OAuth envs) so the live source can turn the
@@ -89,7 +76,7 @@ func Connect(projectRoot string, env config.ResolvedEnv) (*kurrentdb.Client, *Au
 		if err != nil {
 			// An auth-required error stands on its own: it asks the user to sign
 			// in, not to debug a connection, so it isn't wrapped as ErrDBConnect.
-			var authErr *AuthRequiredError
+			var authErr *target.AuthRequiredError
 			if errors.As(err, &authErr) {
 				return nil, nil, err
 			}
@@ -162,10 +149,7 @@ func oauthProvider(tgt target.Target, authInvalidated *AuthInvalidation) (kurren
 	if err != nil {
 		// No stored token, or a passphrase-locked keyring we can't unlock
 		// non-interactively: both need an interactive sign-in.
-		if errors.Is(err, oauth.ErrNoToken) || errors.Is(err, oauth.ErrKeyringLocked) {
-			return nil, &AuthRequiredError{Env: tgt.Env}
-		}
-		return nil, err
+		return nil, target.AsAuthRequired(tgt.Env, err)
 	}
 
 	id := oauth.Identity(c.Issuer, c.ClientID)

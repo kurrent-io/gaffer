@@ -1,6 +1,8 @@
 package deploy
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -27,13 +29,41 @@ func (k LineKind) String() string {
 	}
 }
 
+// MarshalJSON encodes the kind as its string ("equal"/"removed"/"added") so a
+// consumer maps it to a style without knowing the enum's integer values.
+func (k LineKind) MarshalJSON() ([]byte, error) {
+	return json.Marshal(k.String())
+}
+
+// UnmarshalJSON is the inverse of MarshalJSON, so the structured diff round-trips
+// (the CLI's own JSON tests decode it back).
+func (k *LineKind) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	switch s {
+	case "equal":
+		*k = LineEqual
+	case "removed":
+		*k = LineRemoved
+	case "added":
+		*k = LineAdded
+	default:
+		return fmt.Errorf("unknown line kind %q", s)
+	}
+	return nil
+}
+
 // DiffLine is one row of an aligned line diff: the line's text, which side(s)
-// it belongs to, and its line number on each side.
+// it belongs to, and its line number on each side. The json tags make it the
+// wire shape of `gaffer diff --json`, so a consumer colours each row from kind
+// and highlights the changed span from emphFrom/emphTo without re-diffing.
 type DiffLine struct {
-	Kind LineKind
-	OldN int    // 1-based line number in the remote (deployed) query; 0 for an added line
-	NewN int    // 1-based line number in the local query; 0 for a removed line
-	Text string // the line, without its trailing newline
+	Kind LineKind `json:"kind"`
+	OldN int      `json:"oldN"` // 1-based line number in the remote (deployed) query; 0 for an added line
+	NewN int      `json:"newN"` // 1-based line number in the local query; 0 for a removed line
+	Text string   `json:"text"` // the line, without its trailing newline
 
 	// EmphFrom/EmphTo bound the span that changed within the line (half-open
 	// byte offsets into Text, always on rune boundaries). Set on removed/added
@@ -42,7 +72,8 @@ type DiffLine struct {
 	// The zero span [0,0) is also what an unpaired line carries, so it means
 	// "no intraline information", not an insertion at column 0 - a renderer
 	// draws nothing for it either way.
-	EmphFrom, EmphTo int
+	EmphFrom int `json:"emphFrom"`
+	EmphTo   int `json:"emphTo"`
 }
 
 // LineDiff computes the aligned line diff of the change from the remote

@@ -1,6 +1,8 @@
 package deploy
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -166,6 +168,48 @@ func TestLineDiffEmphasisNotPairedAcrossEqual(t *testing.T) {
 		if dl.Kind != LineEqual && (dl.EmphFrom != 0 || dl.EmphTo != 0) {
 			t.Errorf("%v line %q carries span [%d,%d), want unset (no pair across an equal line)",
 				dl.Kind, dl.Text, dl.EmphFrom, dl.EmphTo)
+		}
+	}
+}
+
+func TestLineKindJSON(t *testing.T) {
+	// The kind marshals to its string name and back, so the structured diff is
+	// self-describing on the wire and round-trips through the CLI's JSON tests.
+	for _, tc := range []struct {
+		kind LineKind
+		want string
+	}{{LineEqual, `"equal"`}, {LineRemoved, `"removed"`}, {LineAdded, `"added"`}} {
+		b, err := json.Marshal(tc.kind)
+		if err != nil {
+			t.Fatalf("marshal %v: %v", tc.kind, err)
+		}
+		if string(b) != tc.want {
+			t.Errorf("marshal %v = %s, want %s", tc.kind, b, tc.want)
+		}
+		var got LineKind
+		if err := json.Unmarshal(b, &got); err != nil {
+			t.Fatalf("unmarshal %s: %v", b, err)
+		}
+		if got != tc.kind {
+			t.Errorf("round-trip %s = %v, want %v", b, got, tc.kind)
+		}
+	}
+
+	if err := json.Unmarshal([]byte(`"bogus"`), new(LineKind)); err == nil || !strings.Contains(err.Error(), "bogus") {
+		t.Errorf("unmarshal of an unknown kind = %v, want an error naming it", err)
+	}
+}
+
+func TestDiffLineJSONTags(t *testing.T) {
+	// The row's field names are the wire contract consumers key off.
+	b, err := json.Marshal(DiffLine{Kind: LineAdded, OldN: 0, NewN: 3, Text: "x", EmphFrom: 1, EmphTo: 2})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := string(b)
+	for _, want := range []string{`"kind":"added"`, `"oldN":0`, `"newN":3`, `"text":"x"`, `"emphFrom":1`, `"emphTo":2`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %s in %s", want, got)
 		}
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
+	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
@@ -83,21 +84,40 @@ func TestDiff_Integration(t *testing.T) {
 
 	t.Run("in sync", func(t *testing.T) {
 		got := runDiffJSON(t, deployed)
-		if got.Drift != "in-sync" || got.LocalHash == "" || got.LocalHash != got.DeployedHash {
-			t.Fatalf("got %+v, want in-sync with matching hashes", got)
+		if got.Verdict.Drift != "in-sync" || got.Right.Hash == "" || got.Right.Hash != got.Left.Hash {
+			t.Fatalf("got %+v (verdict %+v), want in-sync with matching hashes", got, got.Verdict)
 		}
 	})
 
 	t.Run("not deployed", func(t *testing.T) {
-		if got := runDiffJSON(t, notDeployed); got.Drift != "not-deployed" {
-			t.Fatalf("got %+v, want not-deployed", got)
+		if got := runDiffJSON(t, notDeployed); got.Verdict.Drift != "not-deployed" {
+			t.Fatalf("got %+v, want not-deployed", got.Verdict)
 		}
 	})
 
 	t.Run("untracked", func(t *testing.T) {
 		got := runDiffJSON(t, untracked)
-		if got.Drift != "untracked" || got.DeployedHash == "" || got.LocalHash != "" {
-			t.Fatalf("got %+v, want untracked with deployed hash only", got)
+		if got.Verdict.Drift != "untracked" || got.Left.Hash == "" || got.Right.Hash != "" {
+			t.Fatalf("got %+v (verdict %+v), want untracked with deployed hash only", got, got.Verdict)
+		}
+	})
+
+	// version diff: resolve the deployed content by its own hash and diff it
+	// against deployed. Same content, so all-equal lines, and a two-ref diff
+	// carries no drift verdict.
+	t.Run("version diff has no verdict", func(t *testing.T) {
+		hash := runDiffJSON(t, deployed).Left.Hash
+		got := runDiffJSON(t, deployed, "--left", "deployed", "--right", hash)
+		if got.Verdict != nil || got.Changes != nil {
+			t.Fatalf("version diff should carry no verdict/changes: %+v", got)
+		}
+		if got.Left.Ref != "deployed" || got.Right.Ref != "version" || got.Right.Hash != hash {
+			t.Fatalf("got sides %+v / %+v, want deployed vs version %s", got.Left, got.Right, hash)
+		}
+		for _, l := range got.Lines {
+			if l.Kind != deploy.LineEqual {
+				t.Fatalf("deployed vs its own version should be all-equal, got %+v", l)
+			}
 		}
 	})
 
@@ -107,8 +127,8 @@ func TestDiff_Integration(t *testing.T) {
 			t.Fatalf("rewrite source: %v", err)
 		}
 		got := runDiffJSON(t, deployed)
-		if got.Drift != "drifted" || got.Changes == nil || !got.Changes.Query {
-			t.Fatalf("got %+v, want drifted with query change", got)
+		if got.Verdict.Drift != "drifted" || got.Changes == nil || !got.Changes.Query {
+			t.Fatalf("got %+v (verdict %+v), want drifted with query change", got, got.Verdict)
 		}
 	})
 }
@@ -158,7 +178,7 @@ func TestDiff_Integration_Viewer(t *testing.T) {
 		// the viewer ran with the two temp files rather than depending on git.
 		t.Setenv("GAFFER_EXTERNAL_DIFF", "echo")
 		out := runDiffText(t)
-		if !strings.Contains(out, ".remote") || !strings.Contains(out, ".local") {
+		if !strings.Contains(out, ".deployed") || !strings.Contains(out, ".local") {
 			t.Errorf("viewer was not invoked with the two temp files:\n%s", out)
 		}
 	})

@@ -256,15 +256,17 @@ Flags:
 
 ## gaffer diff
 
-Show how a projection differs from what's deployed.
+Compare two versions of a projection.
 
-Compare a projection's local definition against what's deployed on KurrentDB.
+By default gaffer diff compares the local definition against what's deployed on KurrentDB; --left and --right pick any two versions to compare instead.
 
-Reports one of five states: in sync, drifted, not deployed (local only), untracked (on the server but absent from gaffer.toml), or invalid. Invalid means the local definition can't be used - it doesn't compile, or has a config error such as track_emitted_streams on engine version 2; the source and config still diff where possible, but emit is unknown.
+Each side is one of: local (the definition in gaffer.toml), deployed (what's live now), or a content-hash prefix (a past version from the projection's history; resolving a hash costs a history read). The default is --left deployed --right local.
+
+The default deployed-vs-local diff reports one of five states: in sync, drifted, not deployed (local only), untracked (on the server but absent from gaffer.toml), or invalid. Invalid means the local definition can't be used - it doesn't compile, or has a config error such as track_emitted_streams on engine version 2; the source and config still diff where possible, but emit is unknown. When deploy metadata is present, a drifted projection is attributed as local ahead (you edited local since deploying) or changed externally (a tool or a direct write changed the server since). An untracked projection is shown as an orphan when gaffer deployed it, otherwise as plain untracked. A version-to-version diff (any --left/--right other than the default) is a pure source diff with no verdict.
 
 When the query differs, the source diff is rendered inline: every line of both sides with the changes marked, and the span that changed within a line highlighted. Set GAFFER_EXTERNAL_DIFF to open an external viewer instead (e.g. git diff, delta, difft).
 
-When deploy metadata is present, a drifted projection is attributed as local ahead (you edited local since deploying) or changed externally (a tool or a direct write changed the server since). An untracked projection is shown as an orphan when gaffer deployed it, otherwise as plain untracked. The provenance block names the tool, deployer, and revision behind it. Pass --json for machine-readable output, which splits changed externally into changed-by-tool and changed-server and carries the owner (including foreign).
+Pass --json for machine-readable output: the two sides (ref, hash, canonical source), the structured line diff, and (for the default deployed-vs-local diff) the drift verdict, owner, and provenance.
 
 ```
 gaffer diff <projection> [flags]
@@ -276,6 +278,8 @@ Flags:
       --connection string   KurrentDB connection string (overrides --env)
       --env string          Environment from gaffer.toml to compare against
       --json                Output as JSON
+      --left string         Left (base) side: local, deployed, or a content-hash prefix (default "deployed")
+      --right string        Right (compared) side: local, deployed, or a content-hash prefix (default "local")
 ```
 
 ## gaffer disable

@@ -11,7 +11,27 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
+
+func TestLocalDiffDescriptorInvalidLocal(t *testing.T) {
+	// A local projection that doesn't compile still yields its source for a
+	// version diff, but with the compile error surfaced (not swallowed) and no
+	// trustworthy hash.
+	const broken = `fromAll().when({ $any: function (s, e) { return `
+	p := testutil.NewProject(t).AddProjection("bad", broken).Save()
+
+	d, compileErr, err := localDiffDescriptor(p.Cfg, p.Dir, "bad")
+	if err != nil {
+		t.Fatalf("localDiffDescriptor returned a fatal error for a mere compile failure: %v", err)
+	}
+	if compileErr == nil {
+		t.Fatal("a non-compiling local must return its compile error, not swallow it")
+	}
+	if d.Query == "" {
+		t.Error("the source should still be available to diff")
+	}
+}
 
 func desc(query string, engineVersion int, emit bool) *deploy.Descriptor {
 	return &deploy.Descriptor{Query: query, EngineVersion: engineVersion, Emit: emit}
@@ -152,8 +172,12 @@ func TestRenderDiffJSON(t *testing.T) {
 	}
 
 	synced := decode(drift.Comparison{Name: "s", State: drift.InSync, Local: desc("q", 2, true), Deployed: desc("q", 2, true)})
-	if synced.Drift != "in-sync" || synced.LocalHash == "" || synced.LocalHash != synced.DeployedHash || synced.Changes != nil {
-		t.Errorf("synced = %+v; want matching non-empty hashes, no drift", synced)
+	if synced.Verdict.Drift != "in-sync" || synced.Right.Hash == "" || synced.Right.Hash != synced.Left.Hash || synced.Changes != nil {
+		t.Errorf("synced = %+v (verdict %+v); want matching non-empty hashes, no drift", synced, synced.Verdict)
+	}
+	// The sides name themselves and carry the structured line diff regardless of state.
+	if synced.Left.Ref != "deployed" || synced.Right.Ref != "local" || len(synced.Lines) == 0 {
+		t.Errorf("synced sides = %+v / %+v, lines %d; want deployed/local with a line diff", synced.Left, synced.Right, len(synced.Lines))
 	}
 
 	drifted := decode(drift.Comparison{
@@ -163,25 +187,25 @@ func TestRenderDiffJSON(t *testing.T) {
 		Local:    desc("x", 2, false),
 		Deployed: desc("y", 2, false),
 	})
-	if drifted.Changes == nil || !drifted.Changes.Query || drifted.LocalHash == drifted.DeployedHash {
+	if drifted.Changes == nil || !drifted.Changes.Query || drifted.Right.Hash == drifted.Left.Hash {
 		t.Errorf("drifted = %+v; want query drift and differing hashes", drifted)
 	}
 
 	untracked := decode(drift.Comparison{Name: "u", State: drift.Untracked, Deployed: desc("q", 2, false)})
-	if untracked.Drift != "untracked" || untracked.Owner != "unknown" || untracked.LocalHash != "" || untracked.DeployedHash == "" || untracked.Changes != nil {
-		t.Errorf("untracked = %+v; want deployed hash only, owner unknown", untracked)
+	if untracked.Verdict.Drift != "untracked" || untracked.Verdict.Owner != "unknown" || untracked.Right.Hash != "" || untracked.Left.Hash == "" || untracked.Changes != nil {
+		t.Errorf("untracked = %+v (verdict %+v); want deployed hash only, owner unknown", untracked, untracked.Verdict)
 	}
 
 	// Metadata-less but deployed: lastDeployed (event time) is present, lastWrite isn't.
 	adhoc := decode(drift.Comparison{Name: "a", State: drift.Untracked, Deployed: desc("q", 2, false), DeployedAt: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)})
-	if adhoc.LastDeployed == "" || adhoc.LastWrite != nil {
-		t.Errorf("adhoc = %+v (lastWrite %+v); want deploy time + no last-write", adhoc, adhoc.LastWrite)
+	if adhoc.Verdict.LastDeployed == "" || adhoc.Verdict.LastWrite != nil {
+		t.Errorf("adhoc = %+v; want deploy time + no last-write", adhoc.Verdict)
 	}
 
 	// An orphan (untracked, gaffer's tool entry) carries owner + deploy time + the tool.
 	orphan := decode(drift.Comparison{Name: "o", State: drift.Untracked, Deployed: desc("q", 2, false), Ledger: ledgerEntry(remote.ToolName, "admin")})
-	if orphan.Owner != "orphan" || orphan.LastDeployed == "" || orphan.LastWrite == nil || orphan.LastWrite.Tool != remote.ToolName || orphan.LastWrite.Actor != "admin" {
-		t.Errorf("orphan = %+v (lastWrite %+v); want owner orphan + deploy time + gaffer last-write", orphan, orphan.LastWrite)
+	if orphan.Verdict.Owner != "orphan" || orphan.Verdict.LastDeployed == "" || orphan.Verdict.LastWrite == nil || orphan.Verdict.LastWrite.Tool != remote.ToolName || orphan.Verdict.LastWrite.Actor != "admin" {
+		t.Errorf("orphan = %+v; want owner orphan + deploy time + gaffer last-write", orphan.Verdict)
 	}
 
 	// A drifted projection still matching my last deploy attributes to a local edit.
@@ -190,8 +214,8 @@ func TestRenderDiffJSON(t *testing.T) {
 		Local: desc("x", 2, false), Deployed: desc("y", 2, false),
 		Ledger: ledgerEntry(remote.ToolName, "admin"), DeployBaseline: desc("y", 2, false),
 	})
-	if localAhead.Attribution != "local-ahead" || localAhead.Owner != "in-config" || localAhead.LastWrite == nil {
-		t.Errorf("local-ahead = %+v; want attribution local-ahead, owner in-config", localAhead)
+	if localAhead.Verdict.Attribution != "local-ahead" || localAhead.Verdict.Owner != "in-config" || localAhead.Verdict.LastWrite == nil {
+		t.Errorf("local-ahead = %+v; want attribution local-ahead, owner in-config", localAhead.Verdict)
 	}
 
 	// Invalid: report the compile error and the deployed hash, but no local hash
@@ -201,7 +225,7 @@ func TestRenderDiffJSON(t *testing.T) {
 		Local: desc("q", 2, false), Deployed: desc("q", 2, false),
 		LocalErr: errors.New("boom"),
 	})
-	if invalid.Drift != "invalid" || invalid.Reason != "boom" || invalid.LocalHash != "" || invalid.DeployedHash == "" || invalid.Changes != nil {
-		t.Errorf("invalid = %+v; want error + deployed hash only", invalid)
+	if invalid.Verdict.Drift != "invalid" || invalid.Verdict.Reason != "boom" || invalid.Right.Hash != "" || invalid.Left.Hash == "" || invalid.Changes != nil {
+		t.Errorf("invalid = %+v (verdict %+v); want error + deployed hash only", invalid, invalid.Verdict)
 	}
 }

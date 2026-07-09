@@ -227,3 +227,23 @@ func PlanAction(c Comparison) (Action, string) {
 func (c Comparison) RecreateRequired() bool {
 	return c.State == Drifted && (c.Cmp.EngineVersionDiffers || c.Cmp.TrackEmittedStreamsDiffers)
 }
+
+// PlanVerdict summarises a whole plan as what a real deploy would do, in the
+// per-projection drift vocabulary scaled up: "blocked" if any item can't be
+// deployed (invalid, recreate-required, or a planning error), otherwise
+// "deployable" if anything would change, otherwise "in-sync".
+func PlanVerdict(plan []PlanItem) string {
+	changes := 0
+	for _, it := range plan {
+		switch {
+		case it.Err != nil, it.Action == ActionInvalid, it.Action == ActionRefuse:
+			return "blocked"
+		case it.Action.Applies():
+			changes++
+		}
+	}
+	if changes > 0 {
+		return "deployable"
+	}
+	return "in-sync"
+}

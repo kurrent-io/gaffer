@@ -57,7 +57,7 @@ func TestJSONSink(t *testing.T) {
 	}
 	want := []cliout.DeployJSON{
 		{Name: "a", Outcome: "created"},
-		{Name: "b", Outcome: "refused", Reason: "engine version"},
+		{Name: "b", Outcome: "refused", Recreate: true, Reason: "engine version"},
 		{Name: "c", Outcome: "failed", Error: "boom"},
 		{Name: "d", Outcome: "updated", LogicChange: true},
 	}

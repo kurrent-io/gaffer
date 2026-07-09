@@ -137,19 +137,16 @@ func Principal(projectRoot string, env config.ResolvedEnv) string {
 }
 
 // oauthProvider builds the KurrentDB credentials provider for a target's
-// OAuth config. Construction goes through target.NewTokenSource - the single
-// path shared with Target.BearerToken - with the interactive store opener:
-// a connection may prompt for the keyring passphrase where a background read
-// must not. The provider adds what the connection alone owns: mapping the
-// needs-sign-in sentinels to AuthRequiredError, and dropping a rejected
-// token + tripping the invalidation flag on invalid_grant.
+// OAuth config over the process-shared token source (target.SharedTokenSource),
+// so the connection and any background reader refresh through one source rather
+// than racing two. The provider adds what the connection alone owns: dropping a
+// rejected token + tripping the invalidation flag on invalid_grant. The
+// needs-sign-in classification is done by SharedTokenSource.
 func oauthProvider(tgt target.Target, authInvalidated *AuthInvalidation) (kurrentdb.CredentialsProvider, error) {
 	c := tgt.OAuth
-	src, store, err := target.NewTokenSource(c, tgt.OAuthCAFile, tgt.OAuthClientSecret, oauth.OpenTokenStore)
+	src, err := target.SharedTokenSource(tgt.Env, c, tgt.OAuthCAFile, tgt.OAuthClientSecret)
 	if err != nil {
-		// No stored token, or a passphrase-locked keyring we can't unlock
-		// non-interactively: both need an interactive sign-in.
-		return nil, target.AsAuthRequired(tgt.Env, err)
+		return nil, err
 	}
 
 	id := oauth.Identity(c.Issuer, c.ClientID)
@@ -157,16 +154,14 @@ func oauthProvider(tgt target.Target, authInvalidated *AuthInvalidation) (kurren
 		tok, err := src.Token()
 		if err != nil {
 			// A rejected token (invalid_grant) can't be refreshed - it's a dead
-			// credential, not a transient failure. Drop it from the store and
-			// trip the flag so the run prompts re-sign-in rather than reporting
-			// a generic disconnect. Only meaningful for the interactive flow
-			// (store != nil); client-credentials has no stored token.
-			//
-			// The Delete is best-effort: the trip already drives the re-sign-in,
-			// and the subsequent `gaffer auth` overwrites the token, so a failed
-			// delete still self-heals.
-			if store != nil && oauth.IsInvalidGrant(err) {
-				_ = store.Delete(id)
+			// credential, not a transient failure. Drop it from the store and the
+			// shared cache, and trip the flag so the run prompts re-sign-in rather
+			// than reporting a generic disconnect. Only the stored-token flow
+			// reaches here with a deletable token (InvalidateTokenSource no-ops for
+			// an uncached client-credentials source, whose errors aren't
+			// invalid_grant anyway).
+			if oauth.IsInvalidGrant(err) {
+				target.InvalidateTokenSource(id)
 				authInvalidated.Trip()
 			}
 			return nil, err

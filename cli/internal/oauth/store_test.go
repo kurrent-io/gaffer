@@ -97,8 +97,8 @@ func TestIdentityDistinct(t *testing.T) {
 }
 
 // The never-prompt contract for background callers: the passphrase comes
-// from GAFFER_KEYRING_PASSWORD or the access fails closed - reverting
-// OpenTokenStoreNonInteractive to the prompting opener must fail these.
+// from GAFFER_KEYRING_PASSWORD or the access fails closed. filePassword tries
+// this first, so a non-tty caller never reaches the terminal prompt.
 func TestNonInteractivePassword(t *testing.T) {
 	t.Setenv("GAFFER_KEYRING_PASSWORD", "")
 	_ = os.Unsetenv("GAFFER_KEYRING_PASSWORD")

@@ -49,16 +49,18 @@ type Target struct {
 	// the connection's behaviour). Meaningful only when OAuth is set.
 	OAuthCAFile string
 	// BearerToken lazily yields an OAuth access token for the target, set
-	// only when OAuth is configured. The token source (OIDC discovery, the
-	// client-credentials grant or the token stored by `gaffer auth`) is
-	// built on first call and memoized; safe for concurrent use. It never
-	// prompts for gaffer's keyring passphrase - a missing or locked token
-	// errors (oauth.ErrNoToken / ErrKeyringLocked; an OS keychain may
-	// enforce its own policy) - and unlike the connection's own provider it
-	// never deletes a stored token: credential lifecycle stays with the
-	// connection that owns re-sign-in. The wait is bounded by ctx; the
-	// underlying fetch is independently bounded by the OAuth client's own
-	// timeout.
+	// only when OAuth is configured. It resolves the process-shared token
+	// source (SharedTokenSource) so the connection and this background read
+	// refresh through one source rather than racing two over the same stored
+	// refresh token. A missing or locked token surfaces as *AuthRequiredError
+	// (oauth.ErrNoToken / ErrKeyringLocked underneath). Unlike the connection's
+	// own provider it never deletes a stored token - credential lifecycle stays
+	// with the connection that owns re-sign-in - though it does evict the shared
+	// source on an invalid_grant so a re-`gaffer auth` is seen next time. The
+	// store opens interactively (as the connection's does), so on a terminal a
+	// passphrase prompt is possible; a protocol server's non-tty stdin suppresses
+	// it and fails closed instead. The wait is bounded by ctx; the underlying
+	// fetch is independently bounded by the OAuth client's own timeout.
 	BearerToken func(ctx context.Context) (string, error)
 	// CertFile and KeyFile are the env's X.509 user certificate paths,
 	// ${VAR}-expanded and anchored to the project root. Both empty when the
@@ -101,7 +103,7 @@ func Resolve(root string, env config.ResolvedEnv) (Target, error) {
 	if env.OAuth != nil {
 		t.OAuthClientSecret = envvar.OAuthClientSecret(overlay)
 		t.OAuthCAFile = oauth.ResolveCAFile(env.OAuth.CAFile, root)
-		t.BearerToken = bearerSource(env.OAuth, t.OAuthCAFile, t.OAuthClientSecret)
+		t.BearerToken = bearerSource(env.Name, env.OAuth, t.OAuthCAFile, t.OAuthClientSecret)
 	} else {
 		t.Username, t.Password = envvar.Credentials(overlay)
 	}
@@ -127,55 +129,65 @@ func Resolve(root string, env config.ResolvedEnv) (Target, error) {
 // every token source built here (the connection's provider included).
 const oauthTimeout = 30 * time.Second
 
-// NewTokenSource is the one construction path for a target's OAuth token
+// newTokenSource is the one construction path for a target's OAuth token
 // source: OIDC discovery over a timeout-bounded client (verifying the issuer
 // against caFile when set), the client-credentials grant when a secret is
-// configured, else the token store opened via openStore (interactive for the
-// connection, non-interactive for background reads). The returned store is
-// non-nil only on the stored-token path - the connection's provider uses it
-// to drop a rejected token. Both the gRPC credentials provider and
-// Target.BearerToken build through here so the two can't drift.
-func NewTokenSource(c *config.OAuthConfig, caFile, secret string, openStore func(dir string) (*oauth.TokenStore, error)) (oauth2.TokenSource, *oauth.TokenStore, error) {
+// configured, else the token store. The store always opens interactively: a
+// connection may prompt for the keyring passphrase, and the terminal check in
+// the file-keyring password hook already suppresses a prompt where none can
+// happen (a protocol server's non-tty stdin), so a background reader sharing
+// this source can't force a prompt that wouldn't already fire. Callers reach
+// this through SharedTokenSource, which shares one instance per identity;
+// deleting a rejected stored token opens its own store handle (deleteStoredToken).
+func newTokenSource(c *config.OAuthConfig, caFile, secret string) (oauth2.TokenSource, error) {
 	var store *oauth.TokenStore
 	if secret == "" {
 		dir, err := userconfig.DefaultDir()
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		if store, err = openStore(dir); err != nil {
-			return nil, nil, err
+		if store, err = oauth.OpenTokenStore(dir); err != nil {
+			return nil, err
 		}
 	}
 	// Background, not a per-call context: the source outlives any single
 	// request; the timeout-bearing client bounds discovery and refresh.
 	ctx, err := oauth.WithHTTPClient(context.Background(), oauthTimeout, caFile)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	src, err := oauth.TokenSource(ctx, oauth.Config{
+	return oauth.TokenSource(ctx, oauth.Config{
 		Issuer:   c.Issuer,
 		ClientID: c.ClientID,
 		Scopes:   c.Scopes,
 		Audience: c.Audience,
 	}, secret, store)
-	if err != nil {
-		return nil, nil, err
-	}
-	return src, store, nil
 }
 
-// bearerSource builds the lazy token accessor for Target.BearerToken. The
-// underlying oauth2 source is constructed once, on first call, so Resolve
-// itself stays free of keyring and network I/O. The token store opens
-// non-interactively: a background check must never prompt.
-func bearerSource(c *config.OAuthConfig, caFile, secret string) func(context.Context) (string, error) {
+// bearerSource builds the lazy token accessor for Target.BearerToken. It
+// resolves the process-shared token source (SharedTokenSource) on each call so
+// a rebuild after an eviction is picked up, keeping Resolve itself free of
+// keyring and network I/O. Unlike the connection's provider it never deletes a
+// stored token - credential lifecycle stays with the connection that owns
+// re-sign-in - but it does evict the shared source on an invalid_grant so a
+// re-`gaffer auth` is seen next time.
+func bearerSource(env string, c *config.OAuthConfig, caFile, secret string) func(context.Context) (string, error) {
+	id := oauth.Identity(c.Issuer, c.ClientID)
+	// A stored-token source is resolved from the shared cache on every call so
+	// an eviction (a re-`gaffer auth`) is picked up. A client-credentials source
+	// isn't cached (no refresh token to serialize), so memoize it here to avoid
+	// re-running OIDC discovery on each call.
 	var (
-		once    sync.Once
-		src     oauth2.TokenSource
-		initErr error
+		once  sync.Once
+		ccSrc oauth2.TokenSource
+		ccErr error
 	)
-	build := func() {
-		src, _, initErr = NewTokenSource(c, caFile, secret, oauth.OpenTokenStoreNonInteractive)
+	resolve := func() (oauth2.TokenSource, error) {
+		if secret == "" {
+			return SharedTokenSource(env, c, caFile, secret)
+		}
+		once.Do(func() { ccSrc, ccErr = SharedTokenSource(env, c, caFile, secret) })
+		return ccSrc, ccErr
 	}
 	return func(ctx context.Context) (string, error) {
 		// oauth2 sources take no per-call context, so the caller's deadline
@@ -187,13 +199,16 @@ func bearerSource(c *config.OAuthConfig, caFile, secret string) func(context.Con
 		}
 		ch := make(chan result, 1)
 		go func() {
-			once.Do(build)
-			if initErr != nil {
-				ch <- result{"", initErr}
+			src, err := resolve()
+			if err != nil {
+				ch <- result{"", err}
 				return
 			}
 			tok, err := src.Token()
 			if err != nil {
+				if secret == "" && oauth.IsInvalidGrant(err) {
+					EvictTokenSource(id)
+				}
 				ch <- result{"", err}
 				return
 			}

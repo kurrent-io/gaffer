@@ -146,17 +146,8 @@ func nonInteractivePassword(string) (string, error) {
 	return "", fmt.Errorf("%w: set GAFFER_KEYRING_PASSWORD, or run `gaffer auth` from a terminal", ErrKeyringLocked)
 }
 
-// OpenTokenStoreNonInteractive opens the token store for callers that must
-// never prompt - background checks, protocol servers. The file keyring's
-// passphrase comes from GAFFER_KEYRING_PASSWORD, or access fails with
-// ErrKeyringLocked; an OS keychain backend may still enforce its own access
-// policy.
-func OpenTokenStoreNonInteractive(dir string) (*TokenStore, error) {
-	return openTokenStore(filepath.Join(dir, "keyring"), nonInteractivePassword)
-}
-
-// openTokenStore is the single keyring configuration both openers share -
-// they differ only in how the file keyring's passphrase is obtained.
+// openTokenStore is the single keyring configuration the opener uses; a caller
+// supplies how the file keyring's passphrase is obtained.
 func openTokenStore(keyringDir string, password keyring.PromptFunc) (*TokenStore, error) {
 	kr, err := keyring.Open(keyring.Config{
 		ServiceName:              keyringService,

@@ -169,6 +169,11 @@ func runVersionDiff(ctx context.Context, cmd *cobra.Command, r *remote.Client, c
 	if err != nil {
 		return err
 	}
+	// A non-compiling local side still diffs its source, but say so rather than
+	// pass off the diff as a clean comparison. On stderr so --json stdout stays
+	// pure; the JSON already signals it by omitting that side's hash.
+	warnUncompiledSide(cmd.ErrOrStderr(), name, ls)
+	warnUncompiledSide(cmd.ErrOrStderr(), name, rs)
 	lines := deploy.LineDiff(ls.json.Source, rs.json.Source)
 
 	if asJSON {
@@ -186,10 +191,21 @@ func runVersionDiff(ctx context.Context, cmd *cobra.Command, r *remote.Client, c
 }
 
 // resolvedSide is one operand resolved to its JSON shape plus a short label for
-// text output and external-diff filenames.
+// text output and external-diff filenames. uncompiled carries the compile error
+// when a local side's source doesn't compile - the source still diffs, but the
+// caller surfaces the failure rather than swallow it.
 type resolvedSide struct {
-	json  diffSideJSON
-	label string
+	json       diffSideJSON
+	label      string
+	uncompiled error
+}
+
+// warnUncompiledSide notes on stderr that a side's local definition didn't
+// compile, so a source-only diff isn't mistaken for a clean comparison.
+func warnUncompiledSide(w io.Writer, name string, s resolvedSide) {
+	if s.uncompiled != nil {
+		fmt.Fprintf(w, "warning: local %q doesn't compile, diffing source only: %v\n", name, s.uncompiled)
+	}
 }
 
 // resolveDiffSide reads one side of a version diff. deployed and a hash come from
@@ -216,39 +232,44 @@ func resolveDiffSide(ctx context.Context, r *remote.Client, cfg *config.Config, 
 		d := m.Def.Descriptor()
 		return resolvedSide{json: diffSideJSON{Ref: "version", Hash: m.Hash, Source: d.CanonicalQuery()}, label: shortRef(m.Hash)}, nil
 	default: // refLocal
-		d, hashKnown, err := localDiffDescriptor(cfg, root, name)
+		d, compileErr, err := localDiffDescriptor(cfg, root, name)
 		if err != nil {
 			return resolvedSide{}, err
 		}
 		side := diffSideJSON{Ref: "local", Source: d.CanonicalQuery()}
-		if hashKnown {
+		// The hash needs emit, which only a successful compile derives; omit it
+		// on a compile failure rather than emit a misleading one.
+		if compileErr == nil {
 			side.Hash = d.Hash()
 		}
-		return resolvedSide{json: side, label: "local"}, nil
+		return resolvedSide{json: side, label: "local", uncompiled: compileErr}, nil
 	}
 }
 
-// localDiffDescriptor builds the local side's descriptor from gaffer.toml,
-// reporting whether the hash is trustworthy. A compile failure leaves the hash
-// untrustworthy (emit unknown) but still returns the source to diff.
-func localDiffDescriptor(cfg *config.Config, root, name string) (deploy.Descriptor, bool, error) {
+// localDiffDescriptor builds the local side's descriptor from gaffer.toml. A
+// source that doesn't compile is not fatal for a diff - the query still reads
+// from source - so it returns the partial descriptor and the compile error as a
+// non-fatal note (emit, and so the hash, is then unknown). The error return is
+// reserved for genuinely unresolvable locals: absent from config, a config
+// error, or an unreadable entry.
+func localDiffDescriptor(cfg *config.Config, root, name string) (desc deploy.Descriptor, compileErr, err error) {
 	def := cfg.FindProjection(name)
 	if def == nil {
-		return deploy.Descriptor{}, false, fmt.Errorf("%q is not in gaffer.toml", name)
+		return deploy.Descriptor{}, nil, fmt.Errorf("%q is not in gaffer.toml", name)
 	}
 	if cfgErr := cfg.ProjectionConfigError(name); cfgErr != nil {
-		return deploy.Descriptor{}, false, cfgErr
+		return deploy.Descriptor{}, nil, cfgErr
 	}
 	source, err := engine.ReadSource(root, def.Entry)
 	if err != nil {
-		return deploy.Descriptor{}, false, err
+		return deploy.Descriptor{}, nil, err
 	}
 	proj := engine.NewProjection(root, cfg, def, source)
-	d, err := engine.LocalDescriptor(proj)
-	if err != nil {
-		return engine.PartialDescriptor(proj), false, nil
+	d, cErr := engine.LocalDescriptor(proj)
+	if cErr != nil {
+		return engine.PartialDescriptor(proj), cErr, nil
 	}
-	return d, true, nil
+	return d, nil, nil
 }
 
 // shortRef abbreviates a content hash for a human label (git-style leading 7).

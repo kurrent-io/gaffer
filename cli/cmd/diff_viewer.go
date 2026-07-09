@@ -21,9 +21,19 @@ func externalDiffCommand(getenv func(string) string) (argv []string, ok bool) {
 	return nil, false
 }
 
+// diffTempName is the temp filename for one side of an external diff. The side
+// ("left"/"right") keeps the two paths distinct even when the labels are equal
+// (local vs local, or two versions whose short hashes coincide), so the viewer
+// never diffs a file against itself; the label trails so a viewer keying off
+// the extension still sees it.
+func diffTempName(name, side, label string) string {
+	safe := strings.ReplaceAll(name, string(os.PathSeparator), "_")
+	return safe + "." + side + "." + label
+}
+
 // openSourceDiff renders the left vs right query through the user's external
-// diff viewer. The two queries are written to temp files (suffixed with each
-// side's label for readable diff headers) and the viewer is run with
+// diff viewer. The two queries are written to temp files (named for each side
+// and its label, for readable diff headers) and the viewer is run with
 // stdout/stderr inherited so it pages and colours itself.
 func openSourceDiff(argv []string, name, leftLabel, leftQuery, rightLabel, rightQuery string, out, errOut io.Writer) error {
 	dir, err := os.MkdirTemp("", "gaffer-diff-")
@@ -32,9 +42,8 @@ func openSourceDiff(argv []string, name, leftLabel, leftQuery, rightLabel, right
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	safe := strings.ReplaceAll(name, string(os.PathSeparator), "_")
-	leftPath := filepath.Join(dir, safe+"."+leftLabel)
-	rightPath := filepath.Join(dir, safe+"."+rightLabel)
+	leftPath := filepath.Join(dir, diffTempName(name, "left", leftLabel))
+	rightPath := filepath.Join(dir, diffTempName(name, "right", rightLabel))
 	if err := os.WriteFile(leftPath, []byte(leftQuery), 0o600); err != nil {
 		return err
 	}

@@ -11,7 +11,27 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
+
+func TestLocalDiffDescriptorInvalidLocal(t *testing.T) {
+	// A local projection that doesn't compile still yields its source for a
+	// version diff, but with the compile error surfaced (not swallowed) and no
+	// trustworthy hash.
+	const broken = `fromAll().when({ $any: function (s, e) { return `
+	p := testutil.NewProject(t).AddProjection("bad", broken).Save()
+
+	d, compileErr, err := localDiffDescriptor(p.Cfg, p.Dir, "bad")
+	if err != nil {
+		t.Fatalf("localDiffDescriptor returned a fatal error for a mere compile failure: %v", err)
+	}
+	if compileErr == nil {
+		t.Fatal("a non-compiling local must return its compile error, not swallow it")
+	}
+	if d.Query == "" {
+		t.Error("the source should still be available to diff")
+	}
+}
 
 func desc(query string, engineVersion int, emit bool) *deploy.Descriptor {
 	return &deploy.Descriptor{Query: query, EngineVersion: engineVersion, Emit: emit}

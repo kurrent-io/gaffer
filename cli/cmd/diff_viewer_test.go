@@ -34,6 +34,20 @@ func TestExternalDiffCommand(t *testing.T) {
 	})
 }
 
+func TestDiffTempNameNoCollision(t *testing.T) {
+	// Equal labels on both sides (local vs local, or two versions sharing a
+	// 7-char short hash) must still produce distinct filenames, or the viewer
+	// gets the same path twice and diffs a file against itself.
+	l := diffTempName("order-count", "left", "abc1234")
+	r := diffTempName("order-count", "right", "abc1234")
+	if l == r {
+		t.Fatalf("identical labels collided: %q == %q", l, r)
+	}
+	if !strings.Contains(l, "abc1234") || !strings.Contains(r, "abc1234") {
+		t.Errorf("label dropped from the names: %q / %q", l, r)
+	}
+}
+
 func TestOpenSourceDiffExitCodes(t *testing.T) {
 	// Exit 1 is "files differ" (always true here) and tolerated; anything higher
 	// is the viewer reporting real trouble and must surface.

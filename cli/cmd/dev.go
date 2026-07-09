@@ -22,6 +22,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/history"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
@@ -922,8 +923,8 @@ func buildSource(
 // faulted state. Otherwise propagates any source error.
 // asAuthRequired returns the AuthRequiredError in err's chain, or nil. Both dev
 // paths use it to emit the typed sign-in signal instead of a generic failure.
-func asAuthRequired(err error) *engine.AuthRequiredError {
-	var are *engine.AuthRequiredError
+func asAuthRequired(err error) *target.AuthRequiredError {
+	var are *target.AuthRequiredError
 	if errors.As(err, &are) {
 		return are
 	}

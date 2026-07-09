@@ -11,6 +11,7 @@ import (
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
@@ -86,7 +87,7 @@ func TestRunErrorCode(t *testing.T) {
 }
 
 func TestAsAuthRequired(t *testing.T) {
-	are := &engine.AuthRequiredError{Env: "prod"}
+	are := &target.AuthRequiredError{Env: "prod"}
 
 	if got := asAuthRequired(are); got == nil || got.Env != "prod" {
 		t.Errorf("direct: got %v", got)

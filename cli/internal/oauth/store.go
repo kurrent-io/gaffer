@@ -146,17 +146,23 @@ func nonInteractivePassword(string) (string, error) {
 	return "", fmt.Errorf("%w: set GAFFER_KEYRING_PASSWORD, or run `gaffer auth` from a terminal", ErrKeyringLocked)
 }
 
-// OpenTokenStoreNonInteractive opens the token store for callers that must
-// never prompt - background checks, protocol servers. The file keyring's
-// passphrase comes from GAFFER_KEYRING_PASSWORD, or access fails with
-// ErrKeyringLocked; an OS keychain backend may still enforce its own access
-// policy.
-func OpenTokenStoreNonInteractive(dir string) (*TokenStore, error) {
-	return openTokenStore(filepath.Join(dir, "keyring"), nonInteractivePassword)
+// DeleteStoredToken removes the stored token for identity without ever
+// prompting. Deleting a rejected token is best-effort cleanup on the
+// invalid_grant path, which runs on a live command's RPC goroutines, so it must
+// never block on a keyring passphrase. Removal doesn't need the passphrase (see
+// Clear), so a locked file keyring still deletes; a genuinely unopenable store
+// is ignored - the caller has already tripped re-sign-in, and the next
+// `gaffer auth` overwrites the token.
+func DeleteStoredToken(dir, identity string) error {
+	store, err := openTokenStore(filepath.Join(dir, "keyring"), nonInteractivePassword)
+	if err != nil {
+		return err
+	}
+	return store.Delete(identity)
 }
 
-// openTokenStore is the single keyring configuration both openers share -
-// they differ only in how the file keyring's passphrase is obtained.
+// openTokenStore is the single keyring configuration the opener uses; a caller
+// supplies how the file keyring's passphrase is obtained.
 func openTokenStore(keyringDir string, password keyring.PromptFunc) (*TokenStore, error) {
 	kr, err := keyring.Open(keyring.Config{
 		ServiceName:              keyringService,

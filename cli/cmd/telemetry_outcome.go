@@ -10,6 +10,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
@@ -155,7 +156,7 @@ func classifyStructural(err error) (telemetry.Outcome, bool) {
 	// ErrDBConnect), but it's still a failure to connect, so it keeps that
 	// bucket - the classification it had before becoming distinct. A dedicated
 	// outcome would need a telemetry schema change.
-	var authErr *engine.AuthRequiredError
+	var authErr *target.AuthRequiredError
 	if errors.As(err, &authErr) {
 		return telemetry.OutcomeDBConnectError, true
 	}

@@ -7,6 +7,7 @@ import (
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/subscription"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 )
 
 type LiveSourceConfig struct {
@@ -103,7 +104,7 @@ func (l *liveSource) Run(ctx context.Context, process func(string) bool) error {
 // otherwise it's a plain disconnect carrying the reason.
 func (l *liveSource) connectionLost(authInvalidated *AuthInvalidation, reason string) error {
 	if authInvalidated != nil && authInvalidated.Tripped() {
-		return &AuthRequiredError{Env: l.cfg.Env.Name}
+		return &target.AuthRequiredError{Env: l.cfg.Env.Name}
 	}
 	return fmt.Errorf("%w: %s", ErrDBDisconnect, reason)
 }

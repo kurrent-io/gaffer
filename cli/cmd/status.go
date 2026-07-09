@@ -25,10 +25,15 @@ func newStatusCmd() *cobra.Command {
 		Short: "Show the state of projections on an environment",
 		Long: "Show the runtime state of projections on a KurrentDB environment and how they\n" +
 			"compare to local config.\n\n" +
-			"With no argument, lists every local and deployed projection: running, stopped or\n" +
-			"faulted, progress, and whether each is in sync, drifted, not deployed, untracked,\n" +
-			"or invalid (local definition doesn't compile or has a config error). Name a\n" +
-			"projection for its detail. Pass --json for machine output.\n\n" +
+			"With no argument, lists every local and deployed projection: running, stopped,\n" +
+			"aborted, or faulted, progress, and whether each is in sync, drifted, not deployed,\n" +
+			"untracked, or invalid (local definition doesn't compile or has a config error). Name\n" +
+			"a projection for its detail. Pass --json for machine output.\n\n" +
+			"An aborted projection was stopped without a final checkpoint, so resuming it\n" +
+			"reprocesses from the last checkpoint written (re-emitting, for an emitting\n" +
+			"projection). The server reports this only while it holds the projection in memory,\n" +
+			"so it reverts to stopped after a restart. The absence of aborted is not proof of a\n" +
+			"clean pause.\n\n" +
 			"When a projection carries deploy metadata, status shows when and via which tool\n" +
 			"it was last deployed. A projection on the server but not in gaffer.toml shows as\n" +
 			"an orphan when gaffer deployed it (a deletion candidate), otherwise as plain\n" +

@@ -21,8 +21,12 @@ var deployStatusTool = &mcp.Tool{
 		"is in-config / orphan (gaffer-deployed but no longer in gaffer.toml - a deletion " +
 		"candidate) / foreign (another tool's) / unknown (no readable metadata); attribution " +
 		"appears only on drifted rows - local-ahead (local edited since gaffer's deploy), " +
-		"changed-by-tool, or changed-server. runtime.state is running / stopped / faulted / " +
-		"unknown; a faulted row adds runtime.faultReason (the server's fault message). " +
+		"changed-by-tool, or changed-server. runtime.state is running / stopped / aborted / " +
+		"faulted / unknown. aborted means the projection was killed without a final checkpoint, " +
+		"so a resume reprocesses from the last checkpoint written (re-emitting, for an emitting " +
+		"projection). The server reports it only in memory, so it reverts to stopped after a " +
+		"server restart. Its absence is not proof of a clean pause. A faulted row adds " +
+		"runtime.faultReason (the server's fault message). " +
 		"runtime.progress is a percentage (0-100; " +
 		"negative means the server couldn't report it). configDrift lists [database_config] " +
 		"knobs diverging from the target node's live engine settings; it is node-level, not " +

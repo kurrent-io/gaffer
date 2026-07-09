@@ -418,10 +418,16 @@ Show the state of projections on an environment.
 Show the runtime state of projections on a KurrentDB environment and how they
 compare to local config.
 
-With no argument, lists every local and deployed projection: running, stopped or
-faulted, progress, and whether each is in sync, drifted, not deployed, untracked,
-or invalid (local definition doesn't compile or has a config error). Name a
-projection for its detail. Pass --json for machine output.
+With no argument, lists every local and deployed projection: running, stopped,
+aborted, or faulted, progress, and whether each is in sync, drifted, not deployed,
+untracked, or invalid (local definition doesn't compile or has a config error). Name
+a projection for its detail. Pass --json for machine output.
+
+An aborted projection was stopped without a final checkpoint, so resuming it
+reprocesses from the last checkpoint written (re-emitting, for an emitting
+projection). The server reports this only while it holds the projection in memory,
+so it reverts to stopped after a restart. The absence of aborted is not proof of a
+clean pause.
 
 When a projection carries deploy metadata, status shows when and via which tool
 it was last deployed. A projection on the server but not in gaffer.toml shows as

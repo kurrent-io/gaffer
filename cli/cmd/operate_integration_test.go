@@ -36,6 +36,15 @@ func runOperateJSON(t *testing.T, args ...string) operateJSON {
 
 func waitState(t *testing.T, r *remote.Client, name string, want remote.State) {
 	t.Helper()
+	waitStateAny(t, r, name, want)
+}
+
+// waitStateAny polls until the projection reaches any of the acceptable states.
+// Abort is the reason for the "any": a modern server reports it as StateAborted,
+// but accepting StateStopped too keeps the assertion honest against a server that
+// only reports plain Stopped, without over-fitting to one status string.
+func waitStateAny(t *testing.T, r *remote.Client, name string, want ...remote.State) {
+	t.Helper()
 	ctx := context.Background()
 	var last *remote.Status
 	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(300 * time.Millisecond) {
@@ -44,11 +53,13 @@ func waitState(t *testing.T, r *remote.Client, name string, want remote.State) {
 			t.Fatalf("status %s: %v", name, err)
 		}
 		last = s
-		if s.State == want {
-			return
+		for _, w := range want {
+			if s.State == w {
+				return
+			}
 		}
 	}
-	t.Fatalf("projection %s never reached %s: %+v", name, want, last)
+	t.Fatalf("projection %s never reached %v: %+v", name, want, last)
 }
 
 // TestOperate_Integration drives enable / disable / abort / delete against a live
@@ -98,7 +109,7 @@ func TestOperate_Integration(t *testing.T) {
 		if got := runOperateJSON(t, "disable", name, "--abort"); got.Outcome != "aborted" {
 			t.Fatalf("abort outcome = %q, want aborted", got.Outcome)
 		}
-		waitState(t, r, name, remote.StateStopped)
+		waitStateAny(t, r, name, remote.StateAborted, remote.StateStopped)
 	})
 
 	t.Run("delete", func(t *testing.T) {

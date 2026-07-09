@@ -24,6 +24,9 @@ func (tw *textWriter) WriteStatus(e drift.StatusEntry) {
 		if e.Runtime.State == remote.StateFaulted && e.Runtime.FaultReason != "" {
 			tw.detail("Fault", tw.styles.errDetail.Render(e.Runtime.FaultReason))
 		}
+		if e.Runtime.State == remote.StateAborted {
+			tw.detail("Resume", tw.styles.warning.Render("reprocesses from the last checkpoint (abort skipped the final one)"))
+		}
 	}
 	tw.detail("Drift", tw.driftStyle(e.Comparison).Render(driftVerdict(e.Comparison)))
 	tw.writeLedgerProvenance(e.Comparison)
@@ -168,6 +171,8 @@ func (tw *textWriter) runtimeStateStyle(e drift.StatusEntry) lipgloss.Style {
 		return tw.styles.added
 	case remote.StateFaulted:
 		return tw.styles.errStatus
+	case remote.StateAborted:
+		return tw.styles.warning
 	default:
 		return tw.styles.emitted
 	}

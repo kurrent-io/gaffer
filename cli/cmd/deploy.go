@@ -24,7 +24,7 @@ type deployOpts struct {
 
 // deployCounts tallies outcomes for the summary line and the live progress bar.
 type deployCounts struct {
-	created, updated, rebuilt, skipped, refused, failed int
+	created, updated, rebuilt, skipped, refused, invalid, failed int
 }
 
 func (c *deployCounts) add(res drift.Result) {
@@ -41,6 +41,8 @@ func (c *deployCounts) add(res drift.Result) {
 		c.skipped++
 	case res.Action == drift.ActionRefuse:
 		c.refused++
+	case res.Action == drift.ActionInvalid:
+		c.invalid++
 	}
 }
 

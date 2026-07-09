@@ -77,7 +77,7 @@ func renderDryRun(out io.Writer, plan []drift.PlanItem, target string, totals pl
 	}
 
 	for _, it := range plan {
-		if it.Err != nil || it.Action == drift.ActionRefuse {
+		if it.Err != nil || it.Action == drift.ActionRefuse || it.Action == drift.ActionInvalid {
 			return exitWith(1, silent(errors.New("dry run: some projections can't be deployed")))
 		}
 	}

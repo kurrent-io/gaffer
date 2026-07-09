@@ -13,15 +13,16 @@ import (
 type Action string
 
 const (
-	ActionCreate Action = "create"
-	ActionUpdate Action = "update"
-	ActionReset  Action = "reset" // a logic-change update applied with a rebuild from zero
-	ActionSkip   Action = "skip"
-	ActionRefuse Action = "refuse"
+	ActionCreate  Action = "create"
+	ActionUpdate  Action = "update"
+	ActionReset   Action = "reset" // a logic-change update applied with a rebuild from zero
+	ActionSkip    Action = "skip"
+	ActionRefuse  Action = "refuse"  // a valid projection that can't be applied in place - recreate required
+	ActionInvalid Action = "invalid" // local definition won't run - compile error, config error, or fault-severity diagnostics
 )
 
 // Applies reports whether the action performs a server write (so the apply phase
-// runs it); skip and refuse don't.
+// runs it); skip, refuse and invalid don't.
 func (a Action) Applies() bool {
 	return a == ActionCreate || a == ActionUpdate || a == ActionReset
 }
@@ -104,20 +105,23 @@ func ResolveResets(plan []PlanItem, resetOnLogicChange bool) {
 	}
 }
 
-// Result is the outcome for one projection. Reason is set only for refuse;
-// Err is set when the apply RPC (or the pre-compare read) failed. LogicChange
-// marks an update that changed the query, so the rendering can note that
-// continuing keeps state computed by the old logic. ExternalChange marks an apply
-// whose deployed definition was changed outside gaffer since its last deploy, so
-// the rendering can caution that deploying overwrites that change; the apply
-// phase clears it when the apply fails, since nothing was then overwritten.
+// Result is the outcome for one projection. Reason is set for refuse and
+// invalid (why deploy won't apply it); Err is set when the apply RPC (or the
+// pre-compare read) failed. LogicChange marks an update that changed the query,
+// so the rendering can note that continuing keeps state computed by the old
+// logic. ExternalChange marks an apply whose deployed definition was changed
+// outside gaffer since its last deploy, so the rendering can caution that
+// deploying overwrites that change; the apply phase clears it when the apply
+// fails, since nothing was then overwritten. ExternalChangeTool names the tool
+// behind that change when another tool made it (empty for a direct write).
 type Result struct {
-	Name           string
-	Action         Action
-	Reason         string
-	LogicChange    bool
-	ExternalChange bool
-	Err            error
+	Name               string
+	Action             Action
+	Reason             string
+	LogicChange        bool
+	ExternalChange     bool
+	ExternalChangeTool string
+	Err                error
 }
 
 // Outcome is the past-tense verdict for one projection, used as the JSON value
@@ -138,6 +142,8 @@ func (r Result) Outcome() string {
 		return "skipped"
 	case ActionRefuse:
 		return "refused"
+	case ActionInvalid:
+		return "invalid"
 	default:
 		return "unknown"
 	}
@@ -149,7 +155,12 @@ func (p PlanItem) Result() Result {
 	// LogicChange marks a continued logic change (an update that kept state). A
 	// reset rebuilds, so it reports outcome "rebuilt", not a logic-change flag -
 	// drop the flag once the item is no longer an update.
-	return Result{Name: p.Name, Action: p.Action, Reason: p.Reason, LogicChange: p.LogicChange && p.Action == ActionUpdate, ExternalChange: p.Action.Applies() && p.Cmp.ExternallyChanged(), Err: p.Err}
+	external := p.Action.Applies() && p.Cmp.ExternallyChanged()
+	tool := ""
+	if external && p.Cmp.Attribution() == AttrChangedByTool && p.Cmp.Ledger != nil {
+		tool = p.Cmp.Ledger.Tool
+	}
+	return Result{Name: p.Name, Action: p.Action, Reason: p.Reason, LogicChange: p.LogicChange && p.Action == ActionUpdate, ExternalChange: external, ExternalChangeTool: tool, Err: p.Err}
 }
 
 // PlanOne compares one projection and decides its action, applying nothing. The
@@ -178,7 +189,8 @@ func isLogicChange(action Action, cmp Comparison) bool {
 }
 
 // PlanAction maps a drift comparison to the action deploy takes. It is pure: the
-// reason string is non-empty only for refuse. Engine version and
+// reason string is non-empty only for refuse (the recreate explanation) and
+// invalid (why the local definition won't run). Engine version and
 // track-emitted-streams are create-time-only (no update path), so a drift in
 // either forces a destructive recreate that deploy refuses rather than performs.
 func PlanAction(c Comparison) (Action, string) {
@@ -188,22 +200,30 @@ func PlanAction(c Comparison) (Action, string) {
 	case InSync:
 		return ActionSkip, ""
 	case Drifted:
-		if c.Cmp.EngineVersionDiffers || c.Cmp.TrackEmittedStreamsDiffers {
+		if c.RecreateRequired() {
 			return ActionRefuse, deploy.RecreateReason(c.Cmp, *c.Local, *c.Deployed)
 		}
 		return ActionUpdate, ""
 	case Invalid:
 		// The local definition is invalid - it doesn't compile, or carries a
 		// per-projection config error (e.g. a missing engine_version or a bad entry
-		// path). Either way there's no correct definition to send, so refuse, naming
-		// the actual problem when we have it.
+		// path). Either way there's no correct definition to send, so it's invalid,
+		// naming the actual problem when we have it.
 		if c.LocalErr != nil {
-			return ActionRefuse, c.LocalErr.Error()
+			return ActionInvalid, c.LocalErr.Error()
 		}
-		return ActionRefuse, "local definition is invalid"
+		return ActionInvalid, "local definition is invalid"
 	default:
 		// Untracked never reaches here: deploy only plans names in config,
 		// so Compare returns one of the above. Defensive only.
-		return ActionRefuse, "not in gaffer.toml"
+		return ActionInvalid, "not in gaffer.toml"
 	}
+}
+
+// RecreateRequired reports whether a drift can only be applied by recreating the
+// projection: engine version or track-emitted-streams changed, neither of which
+// has an in-place update path. deploy refuses these (ActionRefuse) and points at
+// gaffer recreate. Meaningful only for a Drifted comparison.
+func (c Comparison) RecreateRequired() bool {
+	return c.State == Drifted && (c.Cmp.EngineVersionDiffers || c.Cmp.TrackEmittedStreamsDiffers)
 }

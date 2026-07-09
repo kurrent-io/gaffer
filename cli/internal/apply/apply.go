@@ -26,9 +26,9 @@ type Manager interface {
 }
 
 // Plan executes a plan, reporting progress through the callbacks, and
-// returns how many failed (an apply error) or were refused. It applies only
-// create/update/reset items; skip/refuse/planning-error items stream their
-// verdict unchanged. It continues past a failure so the summary is
+// returns how many failed (an apply error) or were refused/invalid. It applies
+// only create/update/reset items; skip/refuse/invalid/planning-error items
+// stream their verdict unchanged. It continues past a failure so the summary is
 // complete; the caller turns a non-zero count into a non-zero exit or tool
 // error. onStart fires before an item's RPCs, for every item including the
 // ones that apply nothing (nil to skip); onDone must be non-nil and fires
@@ -57,7 +57,7 @@ func Plan(ctx context.Context, plan []drift.PlanItem, mgr Manager, ledger remote
 				res.ExternalChange = false
 			}
 		}
-		if res.Err != nil || res.Action == drift.ActionRefuse {
+		if res.Err != nil || res.Action == drift.ActionRefuse || res.Action == drift.ActionInvalid {
 			failed++
 		}
 		onDone(res)

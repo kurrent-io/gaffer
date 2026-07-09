@@ -24,6 +24,9 @@ func (tw *textWriter) deployResultLine(res drift.Result, nameWidth int) string {
 	case res.Action == drift.ActionRefuse:
 		marker = tw.styles.warning.Render("✗")
 		verdict = tw.styles.warning.Render("refused (" + res.Reason + ")")
+	case res.Action == drift.ActionInvalid:
+		marker = tw.styles.errStatus.Render("✗")
+		verdict = tw.styles.errDetail.Render("invalid (" + res.Reason + ")")
 	case res.Action == drift.ActionSkip:
 		marker = tw.styles.pipe.Render("·")
 		verdict = tw.styles.pipe.Render("skipped (in sync)")
@@ -76,6 +79,9 @@ func (tw *textWriter) deploySummaryLine(c deployCounts) string {
 	if c.refused > 0 {
 		segs = append(segs, tw.styles.warning.Render(fmt.Sprintf("%d refused", c.refused)))
 	}
+	if c.invalid > 0 {
+		segs = append(segs, tw.styles.errStatus.Render(fmt.Sprintf("%d invalid", c.invalid)))
+	}
 	if c.failed > 0 {
 		segs = append(segs, tw.styles.errStatus.Render(fmt.Sprintf("%d failed", c.failed)))
 	}
@@ -99,7 +105,7 @@ func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, tot
 		}
 		tw.write("%s\n", tw.styles.errStatus.Render("⚠ "+banner))
 	}
-	skipped, refused, logicContinues, errored := 0, 0, 0, 0
+	skipped, refused, invalid, logicContinues, errored := 0, 0, 0, 0, 0
 	for _, it := range plan {
 		switch {
 		case it.Err != nil:
@@ -108,6 +114,8 @@ func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, tot
 			skipped++
 		case it.Action == drift.ActionRefuse:
 			refused++
+		case it.Action == drift.ActionInvalid:
+			invalid++
 		case it.Action == drift.ActionUpdate && it.LogicChange:
 			logicContinues++
 		}
@@ -131,6 +139,9 @@ func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, tot
 	}
 	if refused > 0 {
 		segs = append(segs, tw.styles.warning.Render(fmt.Sprintf("%d refused", refused)))
+	}
+	if invalid > 0 {
+		segs = append(segs, tw.styles.errStatus.Render(fmt.Sprintf("%d invalid", invalid)))
 	}
 
 	heading := "Plan"
@@ -198,6 +209,8 @@ func (tw *textWriter) planVerdict(it drift.PlanItem) (word, styled, detail strin
 		return "rebuild", tw.styles.warning.Render("rebuild"), "reprocessing from zero"
 	case it.Action == drift.ActionRefuse:
 		return "refused", tw.styles.warning.Render("refused"), it.Reason
+	case it.Action == drift.ActionInvalid:
+		return "invalid", tw.styles.errStatus.Render("invalid"), it.Reason
 	default:
 		return "", "", ""
 	}

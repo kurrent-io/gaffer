@@ -115,6 +115,16 @@ func TestWriteStatusBlock(t *testing.T) {
 		t.Errorf("faulted block missing fault reason:\n%s", faulted)
 	}
 
+	aborted := render(drift.StatusEntry{
+		Comparison: drift.Comparison{Name: "killed", State: drift.InSync},
+		Runtime:    &remote.Status{State: remote.StateAborted, Progress: 50},
+	})
+	for _, want := range []string{"State: aborted", "Resume: reprocesses from the last checkpoint"} {
+		if !strings.Contains(aborted, want) {
+			t.Errorf("aborted block missing %q:\n%s", want, aborted)
+		}
+	}
+
 	notDeployed := render(drift.StatusEntry{Comparison: drift.Comparison{Name: "orders", State: drift.NotDeployed}})
 	if !strings.Contains(notDeployed, "Drift: not deployed") || strings.Contains(notDeployed, "State:") || strings.Contains(notDeployed, "Last deploy") {
 		t.Errorf("not-deployed block should show drift only, no provenance:\n%s", notDeployed)

@@ -16,9 +16,15 @@ type State string
 const (
 	// StateRunning: the projection is actively processing.
 	StateRunning State = "running"
-	// StateStopped: the projection is not running and not faulted - stopped,
-	// completed, aborted, or in a transitional state (starting, loading).
+	// StateStopped: the projection is not running and not faulted - cleanly
+	// stopped, completed, or in a transitional state (starting, loading).
 	StateStopped State = "stopped"
+	// StateAborted: the projection was killed without a final checkpoint, so a
+	// resume reprocesses from the last checkpoint written (re-emitting, for an
+	// emitting projection). The server reports this only in memory: after a
+	// restart or reload an aborted projection reads back as StateStopped, so
+	// the absence of this state is not proof of a clean pause.
+	StateAborted State = "aborted"
 	// StateFaulted: the projection stopped on an error; FaultReason explains it.
 	StateFaulted State = "faulted"
 	// StateUnknown: the server reported no status string.
@@ -50,6 +56,10 @@ type Status struct {
 // An in-flight stop reads as e.g. "Stopping/Running" and so classifies as
 // running; this matches the server's own telemetry, which counts the same
 // composite as running.
+//
+// "Aborted" is matched in its settled form only: an in-flight kill reads as
+// "Aborting" and classifies as stopped, mirroring how "Stopping" reads as its
+// settled-adjacent state until the kill lands.
 func classifyState(raw string) State {
 	switch {
 	case raw == "":
@@ -58,6 +68,8 @@ func classifyState(raw string) State {
 		return StateFaulted
 	case strings.Contains(raw, "Running"):
 		return StateRunning
+	case strings.Contains(raw, "Aborted"):
+		return StateAborted
 	default:
 		return StateStopped
 	}

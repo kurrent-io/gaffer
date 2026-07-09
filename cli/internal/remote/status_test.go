@@ -21,7 +21,11 @@ func TestClassifyState(t *testing.T) {
 		{"Stopped/Faulted (Enabled)", StateFaulted}, // composite: faulted wins
 		{"Stopped (Enabled)", StateStopped},
 		{"Completed", StateStopped},
-		{"Starting", StateStopped}, // does not contain "Running"
+		{"Starting", StateStopped},         // does not contain "Running"
+		{"Aborted", StateAborted},          // killed without a final checkpoint
+		{"Aborted/Stopped", StateAborted},  // composite: aborted still wins over the trailing stopped
+		{"Aborting", StateStopped},         // in-flight kill: settled "Aborted" only
+		{"Aborting/Running", StateRunning}, // still running until the kill lands
 		{"", StateUnknown},
 	} {
 		t.Run(tc.raw, func(t *testing.T) {

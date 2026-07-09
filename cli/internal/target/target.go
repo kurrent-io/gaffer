@@ -138,7 +138,7 @@ const oauthTimeout = 30 * time.Second
 // happen (a protocol server's non-tty stdin), so a background reader sharing
 // this source can't force a prompt that wouldn't already fire. Callers reach
 // this through SharedTokenSource, which shares one instance per identity;
-// deleting a rejected stored token opens its own store handle (deleteStoredToken).
+// deleting a rejected stored token is handled separately by InvalidateTokenSource.
 func newTokenSource(c *config.OAuthConfig, caFile, secret string) (oauth2.TokenSource, error) {
 	var store *oauth.TokenStore
 	if secret == "" {

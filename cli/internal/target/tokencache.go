@@ -99,20 +99,18 @@ func EvictTokenSource(id string) {
 // id. Used at the engine edge on invalid_grant: the credential itself is dead
 // (its refresh token was rotated out or reused), so re-sign-in is required.
 //
-// The delete opens its own store handle rather than reaching into the cached
-// entry: the entry may already be gone (the drift path evicted it first), and
-// reading a store off an entry a concurrent rebuild is still populating would
-// race. It's best-effort anyway - the caller also trips re-sign-in, and the
-// next `gaffer auth` overwrites the token, so a skipped delete self-heals.
+// The delete goes through oauth.DeleteStoredToken rather than reaching into the
+// cached entry: the entry may already be gone (the drift path evicted it first),
+// and reading a store off an entry a concurrent rebuild is still populating
+// would race. DeleteStoredToken also never prompts - this runs on a live
+// command's RPC goroutines, so it must not block on a keyring passphrase. It's
+// best-effort anyway: the caller trips re-sign-in, and the next `gaffer auth`
+// overwrites the token, so a skipped delete self-heals.
 func InvalidateTokenSource(id string) {
 	EvictTokenSource(id)
 	dir, err := userconfig.DefaultDir()
 	if err != nil {
 		return
 	}
-	store, err := oauth.OpenTokenStore(dir)
-	if err != nil {
-		return
-	}
-	_ = store.Delete(id)
+	_ = oauth.DeleteStoredToken(dir, id)
 }

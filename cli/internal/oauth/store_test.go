@@ -10,6 +10,30 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// DeleteStoredToken removes the token via the non-prompting opener: the
+// invalid_grant cleanup path runs on RPC goroutines and must never block on a
+// passphrase. TestNonInteractivePassword covers the never-prompt contract of
+// the opener it uses; this covers that removal actually lands.
+func TestDeleteStoredToken(t *testing.T) {
+	dir := t.TempDir()
+	id := Identity("iss", "cid")
+
+	t.Setenv("GAFFER_KEYRING_PASSWORD", "pw")
+	store, err := OpenTokenStore(dir)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if err := store.Save(id, &oauth2.Token{AccessToken: "a"}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if err := DeleteStoredToken(dir, id); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := store.Load(id); !errors.Is(err, ErrNoToken) {
+		t.Errorf("token still present after delete: %v", err)
+	}
+}
+
 func TestTokenStoreRoundTrip(t *testing.T) {
 	s := newTokenStore(keyring.NewArrayKeyring(nil))
 	id := Identity("https://idp.example.com", "kurrentdb-client")

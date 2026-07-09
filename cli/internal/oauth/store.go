@@ -146,6 +146,21 @@ func nonInteractivePassword(string) (string, error) {
 	return "", fmt.Errorf("%w: set GAFFER_KEYRING_PASSWORD, or run `gaffer auth` from a terminal", ErrKeyringLocked)
 }
 
+// DeleteStoredToken removes the stored token for identity without ever
+// prompting. Deleting a rejected token is best-effort cleanup on the
+// invalid_grant path, which runs on a live command's RPC goroutines, so it must
+// never block on a keyring passphrase. Removal doesn't need the passphrase (see
+// Clear), so a locked file keyring still deletes; a genuinely unopenable store
+// is ignored - the caller has already tripped re-sign-in, and the next
+// `gaffer auth` overwrites the token.
+func DeleteStoredToken(dir, identity string) error {
+	store, err := openTokenStore(filepath.Join(dir, "keyring"), nonInteractivePassword)
+	if err != nil {
+		return err
+	}
+	return store.Delete(identity)
+}
+
 // openTokenStore is the single keyring configuration the opener uses; a caller
 // supplies how the file keyring's passphrase is obtained.
 func openTokenStore(keyringDir string, password keyring.PromptFunc) (*TokenStore, error) {

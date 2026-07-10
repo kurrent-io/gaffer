@@ -671,11 +671,10 @@ func (m historyModel) detail(hv historyVersion, width int) string {
 		b.WriteString(strings.Repeat(" ", labelW) + m.tw.styles.dim.Render(truncate("⟳ reprocessed from zero", max(1, width-labelW))))
 		b.WriteByte('\n')
 	}
-	switch hv.Kind {
-	case remote.KindEditedExternally:
-		b.WriteString(m.tw.styles.warning.Render(truncate(glyphWarning+" "+changeSummary(hv.Change)+" outside gaffer", width)) + "\n")
-	case remote.KindUnreadable:
-		b.WriteString(m.tw.styles.warning.Render(truncate(glyphWarning+" deploy metadata could not be read", width)) + "\n")
+	// The same provenance caution the list rail and text view show (glyph baked
+	// in by historyProvenanceText), rather than re-deriving the strings here.
+	if text, warn := historyProvenanceText(hv); warn {
+		b.WriteString(m.tw.styles.warning.Render(truncate(text, width)) + "\n")
 	}
 
 	// Section 2: the deployed version this entry relates to - itself for a content

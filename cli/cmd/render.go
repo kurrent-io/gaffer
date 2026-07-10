@@ -177,6 +177,14 @@ func (tw *textWriter) markError() string   { return tw.styles.errStatus.Render(g
 func (tw *textWriter) markWarning() string { return tw.styles.warning.Render(glyphWarning) }
 func (tw *textWriter) markInfo() string    { return tw.styles.info.Render(glyphInfo) }
 
+// warnLine is the TUI form of a warning: the warning glyph and the message, the
+// whole thing truncated to width and rendered in the warning tint. For a modal or
+// rail line that must fit a pane, where markWarning (just the styled glyph) leaves
+// the caller to truncate its own composed line.
+func (tw *textWriter) warnLine(text string, width int) string {
+	return tw.styles.warning.Render(truncate(glyphWarning+" "+text, width))
+}
+
 func (p prefixed) detail(label, value string) {
 	p.tw.write("%s%s %s\n", p.pfx, p.tw.styles.label.Render(label+":"), value)
 }

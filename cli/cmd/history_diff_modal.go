@@ -112,8 +112,7 @@ func (m historyModel) diffModalBody(d historyDiff, width int) []string {
 			truncate("no definition change · "+d.sel.eventLabel(), width))}
 	case diffBaselineUnloaded:
 		if m.loadErr != nil {
-			return []string{m.tw.styles.warning.Render(
-				truncate("couldn't load older entries to find the previous version - ↑/↓ retries", width))}
+			return []string{m.tw.warnLine("couldn't load older entries to find the previous version - ↑/↓ retries", width)}
 		}
 		return []string{m.tw.styles.muted.Render(truncate("loading older entries to find the previous version…", width))}
 	}

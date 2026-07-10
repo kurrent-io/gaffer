@@ -12,6 +12,8 @@ Examples of the telemetry data collected:
 - Whether gaffer is running locally or in CI
 - Which gaffer command ran and how it finished
 - Bucketed counts of work done (`none`, `1`, `2-9`, `10-99`, `100-999`, `1000+`)
+- For the deploy and lifecycle commands (`deploy`, `rollback`, `recreate`, `enable`, `disable`, `delete`): whether the target is production. `deploy` and `recreate` also record whether validation was skipped, and `deploy` whether the run was a dry-run. A run refused by a safety guardrail is recorded in the command's outcome.
+- For `gaffer history`: whether a rollback was applied from the interactive timeline (a boolean only, never which version)
 - The structural shape of projection files (which builtins are called, with bucketed counts; which handlers are registered; bucketed file size)
 - Which gaffer diagnostics fired during a `gaffer dev` run (the diagnostic codes only - gaffer's own `quirk.*` / `usage.*` identifiers, e.g. `quirk.serialize.rawString`; never your code or counts)
 - Crashes in gaffer's own code (gaffer-authored error messages with scrubbed stack frames)

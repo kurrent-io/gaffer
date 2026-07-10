@@ -11,10 +11,15 @@ import (
 // provenance, and the runtime state when deployed. Shared by
 // `gaffer status --json` and the MCP deploy_status tool.
 type StatusJSON struct {
-	Name         string             `json:"name"`
-	Drift        string             `json:"drift"`
-	Owner        string             `json:"owner"`
-	Attribution  string             `json:"attribution,omitempty"`
+	Name        string `json:"name"`
+	Drift       string `json:"drift"`
+	Owner       string `json:"owner"`
+	Attribution string `json:"attribution,omitempty"`
+	// Hash is the deployed definition's content hash - what's actually running
+	// on the server - so a consumer can pin the deployed version or match it to a
+	// history entry without a second call. Omitted when the projection isn't
+	// deployed (there's nothing on the server to hash).
+	Hash         string             `json:"hash,omitempty"`
 	LastDeployed string             `json:"lastDeployed,omitempty"`
 	LastWrite    *LedgerJSON        `json:"lastWrite,omitempty"`
 	Runtime      *StatusRuntimeJSON `json:"runtime,omitempty"`
@@ -35,12 +40,16 @@ type StatusRuntimeJSON struct {
 
 // LedgerJSON is the machine view of the latest tool entry behind a deployed
 // projection - the `lastWrite`, the tool attribution (who) behind an owner
-// or attribution verdict. The when is the top-level `lastDeployed`, which is
-// event time and present with or without a tool entry, so it's not duplicated
-// here.
+// or attribution verdict. toolVersion and revision pin what deployed it: the
+// tool's version, and the project's source revision (a git commit, +changes when
+// the tree was dirty). Both omitted when the entry didn't record them. The when
+// is the top-level `lastDeployed`, which is event time and present with or
+// without a tool entry, so it's not duplicated here.
 type LedgerJSON struct {
-	Tool  string `json:"tool"`
-	Actor string `json:"actor,omitempty"`
+	Tool        string `json:"tool"`
+	ToolVersion string `json:"toolVersion,omitempty"`
+	Revision    string `json:"revision,omitempty"`
+	Actor       string `json:"actor,omitempty"`
 }
 
 // StatusReportJSON is the status envelope: the per-projection entries, plus
@@ -50,14 +59,13 @@ type LedgerJSON struct {
 // clean, not declared, or unreadable - absence is "nothing to report", not
 // "in sync".
 type StatusReportJSON struct {
-	// Env, Target, and Production are set by the MCP tool so each response
-	// is self-describing in multi-env workflows: the resolved environment
-	// name, the server's self-reported cluster name (falling back to the env
-	// name), and whether the target gates as production (the server's own
-	// declaration OR the env's production opt-in) - an agent reading status
-	// alone can tell it is pointed at a prod database before deciding to
-	// mutate. The CLI leaves them unset (omitted) - the invocation already
-	// names the env there.
+	// Env, Target, and Production make each response self-describing in
+	// multi-env workflows: the resolved environment name, the server's
+	// self-reported cluster name (falling back to the env name), and whether
+	// the target gates as production (the server's own declaration OR the env's
+	// production opt-in) - a consumer reading status alone can tell it is
+	// pointed at a prod database before deciding to mutate. Set by both the CLI
+	// and the MCP tool.
 	Env         string            `json:"env,omitempty"`
 	Target      string            `json:"target,omitempty"`
 	Production  *bool             `json:"production,omitempty"`
@@ -89,6 +97,7 @@ func BuildStatusReport(entries []drift.StatusEntry, dr drift.ConfigDriftResult) 
 			Drift:        string(e.State),
 			Owner:        string(e.Owner()),
 			Attribution:  string(e.Attribution()),
+			Hash:         deployedHashJSON(e.Comparison),
 			LastDeployed: LastDeployedJSON(e.Comparison),
 			LastWrite:    BuildLedgerJSON(e.Comparison),
 		}
@@ -122,7 +131,21 @@ func BuildLedgerJSON(c drift.Comparison) *LedgerJSON {
 	if c.Ledger == nil {
 		return nil
 	}
-	return &LedgerJSON{Tool: c.Ledger.Tool, Actor: c.Ledger.Actor}
+	return &LedgerJSON{
+		Tool:        c.Ledger.Tool,
+		ToolVersion: c.Ledger.ToolVersion,
+		Revision:    c.Ledger.Revision,
+		Actor:       c.Ledger.Actor,
+	}
+}
+
+// deployedHashJSON is the deployed definition's content hash, or "" (omitted)
+// when the projection isn't deployed.
+func deployedHashJSON(c drift.Comparison) string {
+	if c.Deployed != nil {
+		return c.Deployed.Hash()
+	}
+	return ""
 }
 
 // LastDeployedJSON is the comparison's last-deploy time formatted for machine

@@ -114,12 +114,18 @@ func TestStatus_Integration(t *testing.T) {
 		if len(got) != 1 || got[0].Drift != "in-sync" || got[0].Runtime == nil {
 			t.Fatalf("got %+v, want one in-sync entry with runtime", got)
 		}
+		if got[0].Hash == "" {
+			t.Errorf("a deployed entry should carry the content hash, got %+v", got[0])
+		}
 	})
 
 	t.Run("single not deployed has no runtime", func(t *testing.T) {
 		got := runStatusJSON(t, notDeployed)
 		if len(got) != 1 || got[0].Drift != "not-deployed" || got[0].Runtime != nil {
 			t.Fatalf("got %+v, want not-deployed with no runtime", got)
+		}
+		if got[0].Hash != "" {
+			t.Errorf("a not-deployed entry should carry no hash, got %q", got[0].Hash)
 		}
 	})
 
@@ -156,6 +162,11 @@ func TestStatus_Integration(t *testing.T) {
 		}
 		if report.ConfigDrift[0].Server <= 0 {
 			t.Errorf("server value = %d, want the node's live cap", report.ConfigDrift[0].Server)
+		}
+		// The CLI now populates the self-describing envelope too, resolved against
+		// the live server.
+		if report.Env == "" || report.Target == "" || report.Production == nil {
+			t.Errorf("envelope should carry env/target/production, got env=%q target=%q production=%v", report.Env, report.Target, report.Production)
 		}
 	})
 

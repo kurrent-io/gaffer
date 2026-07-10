@@ -115,6 +115,9 @@ func TestIntegration_DeployTools(t *testing.T) {
 	if entry["runtime"] == nil {
 		t.Fatal("expected runtime state for a deployed projection")
 	}
+	if h, _ := entry["hash"].(string); h == "" {
+		t.Fatalf("expected a deployed content hash, got %v", entry["hash"])
+	}
 
 	plan = callTool(t, s, deployPlanTool, s.handleDeployPlan, deployPlanInput{Name: name})
 	if outcome := plan["plan"].([]any)[0].(map[string]any)["outcome"]; outcome != "updated" {

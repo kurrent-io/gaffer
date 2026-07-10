@@ -83,13 +83,25 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 	// round-trip overlaps the status RPCs; drained before rendering.
 	driftCh := drift.StartConfigDriftCheck(cmd.Context(), cfg, root, conn.env)
 
+	// statusJSON emits the machine report, resolving the target identity once so
+	// the envelope names the env, the server, and its production tier - the same
+	// self-describing shape the MCP deploy_status tool returns. The bounded
+	// $server-info read the operate verbs use; an unreadable one falls back to the
+	// env name and its opt-in.
+	statusJSON := func(entries []drift.StatusEntry) error {
+		// cmd.Context(), not the shared status ctx, so the target read gets its own
+		// full budget rather than whatever the projection reads left of it.
+		target, prod := r.OperateTarget(cmd.Context(), conn.env, projectionRPCTimeout)
+		return renderStatusJSON(cmd.OutOrStdout(), entries, <-driftCh, conn.env.Name, target, &prod)
+	}
+
 	if name != "" {
 		entry, err := drift.StatusOne(ctx, r, cfg, root, name)
 		if err != nil {
 			return err
 		}
 		if opts.JSON {
-			return renderStatusJSON(cmd.OutOrStdout(), []drift.StatusEntry{entry}, <-driftCh)
+			return statusJSON([]drift.StatusEntry{entry})
 		}
 		newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr()).WriteStatus(entry)
 		writeConfigDriftWarnings(cmd.ErrOrStderr(), <-driftCh)
@@ -101,7 +113,7 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 		return err
 	}
 	if opts.JSON {
-		return renderStatusJSON(cmd.OutOrStdout(), entries, <-driftCh)
+		return statusJSON(entries)
 	}
 	if len(entries) == 0 {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No projections to show.")
@@ -113,8 +125,10 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 	return nil
 }
 
-func renderStatusJSON(w io.Writer, entries []drift.StatusEntry, dr drift.ConfigDriftResult) error {
+func renderStatusJSON(w io.Writer, entries []drift.StatusEntry, dr drift.ConfigDriftResult, env, target string, production *bool) error {
+	report := cliout.BuildStatusReport(entries, dr)
+	report.Env, report.Target, report.Production = env, target, production
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(cliout.BuildStatusReport(entries, dr))
+	return enc.Encode(report)
 }

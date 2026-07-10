@@ -73,6 +73,8 @@ type historyModel struct {
 	rbOpen bool  // the rollback confirm modal is up for the selected entry
 	rbBusy bool  // the rollback update is in flight; keys are dead until it lands
 	rbErr  error // the last failed apply, shown in the modal for a retry
+
+	rolledBack bool // a rollback was applied from the timeline this session (telemetry)
 }
 
 // historyStyles is the charm-palette chrome around the timeline: the footer status
@@ -192,6 +194,7 @@ func (m historyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The rollback landed; refresh from the head so the new entry shows on
 		// top. rbBusy stays up until the reload lands - the modal reads
 		// "rolling back…" over a stale timeline rather than accepting keys.
+		m.rolledBack = true
 		cmd := m.reloadHistory()
 		return m, cmd
 	case historyReloadedMsg:
@@ -825,15 +828,15 @@ func truncate(s string, w int) string {
 // rollback applied from the timeline; target and prod are the resolved
 // identity (remote.OperateTarget) the rollback modal confirms against, so the
 // timeline gates like `gaffer rollback` does.
-func runHistoryTUI(cmd *cobra.Command, r *remote.Client, name, envLabel, connLabel, target string, prod bool, ledger remote.Ledger) error {
+func runHistoryTUI(cmd *cobra.Command, r *remote.Client, name, envLabel, connLabel, target string, prod bool, ledger remote.Ledger) (bool, error) {
 	ctx, cancel := context.WithTimeout(cmd.Context(), projectionRPCTimeout)
 	versions, total, err := r.ReadHistory(ctx, name, -1, historyPageSize)
 	cancel()
 	if err != nil {
 		if errors.Is(err, remote.ErrNotFound) {
-			return fmt.Errorf("%w: %q is not deployed on the server", remote.ErrNotFound, name)
+			return false, fmt.Errorf("%w: %q is not deployed on the server", remote.ErrNotFound, name)
 		}
-		return err
+		return false, err
 	}
 	tw := newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr())
 	tw.warmBackground()
@@ -855,9 +858,13 @@ func runHistoryTUI(cmd *cobra.Command, r *remote.Client, name, envLabel, connLab
 	m.graph = computeHistoryGraph(m.versions)
 	m.ow = operationWidth(m.versions)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(cmd.Context()), tea.WithOutput(cmd.OutOrStdout()))
-	_, err = p.Run()
-	if errors.Is(err, tea.ErrProgramKilled) || errors.Is(err, tea.ErrInterrupted) {
-		return nil
+	fm, err := p.Run()
+	rolledBack := false
+	if hm, ok := fm.(historyModel); ok {
+		rolledBack = hm.rolledBack
 	}
-	return err
+	if errors.Is(err, tea.ErrProgramKilled) || errors.Is(err, tea.ErrInterrupted) {
+		return rolledBack, nil
+	}
+	return rolledBack, err
 }

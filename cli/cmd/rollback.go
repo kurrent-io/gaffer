@@ -11,6 +11,7 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 func newRollbackCmd() *cobra.Command {
@@ -34,8 +35,13 @@ func newRollbackCmd() *cobra.Command {
 		Example: "  gaffer rollback order-count 23e1fa6\n" +
 			"  gaffer rollback order-count 23e1fa6 --env staging",
 		Args: exactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRollback(cmd, args[0], args[1], opts)
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			props := telemetry.RollbackCommandInvokedProperties{}
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				props.Outcome = o
+				telemetry.EmitRollback(cmd.Context(), props)
+			})
+			return runRollback(cmd, args[0], args[1], opts, &props)
 		},
 	}
 	addEnvFlags(cmd, &opts)
@@ -43,7 +49,7 @@ func newRollbackCmd() *cobra.Command {
 	return cmd
 }
 
-func runRollback(cmd *cobra.Command, name, hashArg string, opts operateOpts) error {
+func runRollback(cmd *cobra.Command, name, hashArg string, opts operateOpts, tel *telemetry.RollbackCommandInvokedProperties) error {
 	if err := checkOperable(name); err != nil {
 		return err
 	}
@@ -61,6 +67,7 @@ func runRollback(cmd *cobra.Command, name, hashArg string, opts operateOpts) err
 
 	ctx := cmd.Context()
 	target, prod := r.OperateTarget(ctx, conn.env, projectionRPCTimeout)
+	tel.ProdTarget = &prod
 
 	var current *remote.Definition
 	if err := rpc(ctx, func(ctx context.Context) error {

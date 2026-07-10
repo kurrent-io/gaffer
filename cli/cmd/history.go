@@ -12,6 +12,7 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 // historyDefaultLimit bounds the non-interactive (piped / --json) read. The
@@ -57,8 +58,13 @@ func newHistoryCmd() *cobra.Command {
 			"  gaffer history order-count --env staging\n" +
 			"  gaffer history order-count --json",
 		Args: exactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runHistory(cmd, args[0], opts)
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			props := telemetry.HistoryCommandInvokedProperties{}
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				props.Outcome = o
+				telemetry.EmitHistory(cmd.Context(), props)
+			})
+			return runHistory(cmd, args[0], opts, &props)
 		},
 	}
 	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment from gaffer.toml")
@@ -69,7 +75,7 @@ func newHistoryCmd() *cobra.Command {
 	return cmd
 }
 
-func runHistory(cmd *cobra.Command, name string, opts historyOpts) error {
+func runHistory(cmd *cobra.Command, name string, opts historyOpts, tel *telemetry.HistoryCommandInvokedProperties) error {
 	conn, err := connectEnv(opts.Connection, opts.Env)
 	if err != nil {
 		return err
@@ -86,7 +92,11 @@ func runHistory(cmd *cobra.Command, name string, opts historyOpts) error {
 		// The target identity too: the TUI holds one connection, so the tier
 		// can't change mid-session, and the modal opens without a read.
 		target, prod := conn.r.OperateTarget(cmd.Context(), conn.env, projectionRPCTimeout)
-		return runHistoryTUI(cmd, conn.r, name, conn.env.Name, redactConnection(conn.env.Connection), target, prod, ledger)
+		rolledBack, err := runHistoryTUI(cmd, conn.r, name, conn.env.Name, redactConnection(conn.env.Connection), target, prod, ledger)
+		// Only the interactive timeline can roll back, so the flag is set on this
+		// path alone; the piped / --json path below leaves it absent.
+		tel.RollbackApplied = &rolledBack
+		return err
 	}
 
 	// remote calls block until their context deadline if the projections

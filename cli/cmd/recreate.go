@@ -9,6 +9,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 type recreateOpts struct {
@@ -40,8 +41,15 @@ func newRecreateCmd() *cobra.Command {
 		Example: "  gaffer recreate order-count\n" +
 			"  gaffer recreate order-count --env staging",
 		Args: exactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRecreate(cmd, args[0], opts)
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			props := telemetry.RecreateCommandInvokedProperties{
+				NoValidate: &opts.NoValidate,
+			}
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				props.Outcome = o
+				telemetry.EmitRecreate(cmd.Context(), props)
+			})
+			return runRecreate(cmd, args[0], opts, &props)
 		},
 	}
 	addEnvFlags(cmd, &opts.operateOpts)
@@ -51,7 +59,7 @@ func newRecreateCmd() *cobra.Command {
 	return cmd
 }
 
-func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
+func runRecreate(cmd *cobra.Command, name string, opts recreateOpts, tel *telemetry.RecreateCommandInvokedProperties) error {
 	if err := checkOperable(name); err != nil {
 		return err
 	}
@@ -104,6 +112,7 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 	}
 
 	target, prod := r.OperateTarget(ctx, conn.env, projectionRPCTimeout)
+	tel.ProdTarget = &prod
 	if err := requireExists(ctx, r, name, target); err != nil {
 		return err
 	}

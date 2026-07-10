@@ -10,6 +10,7 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 type statusOpts struct {
@@ -52,11 +53,14 @@ func newStatusCmd() *cobra.Command {
 		Example: "  gaffer status\n" +
 			"  gaffer status order-count --env staging",
 		Args: maxArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
 			var name string
 			if len(args) == 1 {
 				name = args[0]
 			}
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				telemetry.EmitStatus(cmd.Context(), telemetry.StatusCommandInvokedProperties{Outcome: o})
+			})
 			return runStatus(cmd, name, opts)
 		},
 	}

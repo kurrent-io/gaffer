@@ -103,6 +103,9 @@ func TestHistoryRollbackModalFlow(t *testing.T) {
 	if !strings.Contains(m.View(), "rollback failed") {
 		t.Error("the modal should show the failure")
 	}
+	if m.rolledBack {
+		t.Error("a failed apply must not set the rolledBack telemetry flag")
+	}
 
 	// A successful apply reloads from the head...
 	m.rbBusy = true
@@ -113,6 +116,9 @@ func TestHistoryRollbackModalFlow(t *testing.T) {
 	}
 	if !m.rbBusy {
 		t.Error("busy should hold until the reload lands")
+	}
+	if !m.rolledBack {
+		t.Error("a landed rollback should set the rolledBack telemetry flag")
 	}
 
 	// ...and the reload replaces the window with the new entry on top.

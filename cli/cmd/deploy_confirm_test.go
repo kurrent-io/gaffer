@@ -325,3 +325,34 @@ func TestWritePlanSummary(t *testing.T) {
 		t.Errorf("prod summary should show a production banner:\n%s", prodBuf.String())
 	}
 }
+
+func TestWritePlanSummaryInvalidBlock(t *testing.T) {
+	// A compile error is multi-line: its first line summarises in the detail
+	// column, and the rest renders as an indented block below the row rather than
+	// spilling to the left margin.
+	plan := []drift.PlanItem{
+		{Name: "good", Action: drift.ActionCreate},
+		{Name: "bad", Action: drift.ActionInvalid, Reason: "Failed to compile projection\nerror: Unexpected token (3:5)\n  3 | oops"},
+	}
+	var buf bytes.Buffer
+	newTextWriter(&buf, &buf).writePlanSummary(plan, "", planChangeCounts(plan), false)
+	out := buf.String()
+
+	summaryOnRow := false
+	for l := range strings.SplitSeq(out, "\n") {
+		if strings.Contains(l, "invalid") && strings.Contains(l, "Failed to compile projection") {
+			summaryOnRow = true
+		}
+		if strings.HasPrefix(l, "error:") {
+			t.Errorf("a reason line spilled to column 0: %q", l)
+		}
+	}
+	if !summaryOnRow {
+		t.Errorf("the invalid verdict and its summary should share a line:\n%s", out)
+	}
+	for _, want := range []string{"    error: Unexpected token (3:5)", "      3 | oops"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected indented block line %q in:\n%s", want, out)
+		}
+	}
+}

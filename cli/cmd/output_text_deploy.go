@@ -168,11 +168,25 @@ func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, tot
 		verdictWidth = max(verdictWidth, len(r.word))
 	}
 	for _, r := range rows {
+		// A one-line summary sits in the detail column; a multi-line detail (a
+		// compile diagnostic) doesn't fit there, so its remaining lines render as an
+		// indented block in the alert colour below the row - aligned under the row
+		// and reading as an error, not spilling to the margin in the muted tint.
+		summary, block, _ := strings.Cut(r.detail, "\n")
 		line := fmt.Sprintf("  %s  %s", padCells(r.name, nameWidth), r.styled)
-		if r.detail != "" {
-			line += strings.Repeat(" ", verdictWidth-len(r.word)) + "  " + tw.styles.muted.Render(r.detail)
+		if summary != "" {
+			line += strings.Repeat(" ", verdictWidth-len(r.word)) + "  " + tw.styles.muted.Render(summary)
 		}
 		tw.write("%s\n", line)
+		if block != "" {
+			for l := range strings.SplitSeq(strings.TrimRight(block, "\n"), "\n") {
+				if l == "" {
+					tw.write("\n")
+					continue
+				}
+				tw.write("    %s\n", tw.styles.errDetail.Render(l))
+			}
+		}
 	}
 
 	tw.write("  %s\n", strings.Join(segs, tw.styles.pipe.Render(" · ")))

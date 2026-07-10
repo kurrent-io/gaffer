@@ -111,18 +111,18 @@ func runRollback(cmd *cobra.Command, name, hashArg string, opts operateOpts) err
 // is not rolled back with the code, and local files stay as they are.
 func writeRollbackPreview(out io.Writer, name string, current, target deploy.Descriptor, targetHash string, cmp deploy.Comparison) {
 	tw := newTextWriter(out, out)
-	tw.write("Rolling back %s: %s → %s\n", name,
-		tw.styles.dim.Render(shortHash(current.Hash())), tw.styles.label.Render(shortHash(targetHash)))
+	tw.write("Rolling back %s: %s\n", name,
+		transition(tw.styles.dim.Render(shortHash(current.Hash())), tw.styles.label.Render(shortHash(targetHash))))
 	tw.blank()
 	if cmp.EmitDiffers {
-		tw.write("  emit %s → %s\n", enabledStr(current.Emit), enabledStr(target.Emit))
+		tw.write("  %s\n", fieldChange("emit", enabledStr(current.Emit), enabledStr(target.Emit)))
 	}
 	if cmp.QueryDiffers {
 		tw.WriteQueryDiff(deploy.LineDiff(current.Query, target.Query))
 	}
 	tw.blank()
-	tw.write("%s\n", tw.styles.warning.Render("⚠ code rolls back, state does not: state built by the newer query is kept (gaffer recreate rebuilds from zero)"))
-	tw.write("%s\n", tw.styles.warning.Render("⚠ local files are untouched: gaffer diff will show this as drift until local is reconciled"))
+	tw.write("%s\n", tw.styles.warning.Render(glyphWarning+" code rolls back, state does not: state built by the newer query is kept (gaffer recreate rebuilds from zero)"))
+	tw.write("%s\n", tw.styles.warning.Render(glyphWarning+" local files are untouched: gaffer diff will show this as drift until local is reconciled"))
 	tw.blank()
 }
 

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -48,7 +49,7 @@ func (m historyModel) diffModal() string {
 	innerW := m.modalInnerWidth()
 	d := historyDiffAt(m.versions, m.cursor, m.morePages())
 	return m.modalFrame(m.diffModalTitle(d, innerW), m.diffModalBody(d, innerW),
-		"↑↓ scrub · pgup/pgdn scroll · esc close")
+		hintBar("↑↓ scrub", "pgup/pgdn scroll", "esc close"))
 }
 
 // modalFrame windows the body by the current scroll and wraps title, body, and
@@ -62,7 +63,7 @@ func (m historyModel) modalFrame(title string, body []string, hint string) strin
 	from := min(m.diffScroll, len(body)-visible)
 	window := body[from : from+visible]
 	if len(body) > visible {
-		hint = fmt.Sprintf("%d-%d of %d · %s", from+1, from+visible, len(body), hint)
+		hint = fmt.Sprintf("%d-%d of %d", from+1, from+visible, len(body)) + dotSep + hint
 	}
 
 	content := title + "\n\n" + strings.Join(window, "\n") + "\n\n" +
@@ -97,7 +98,7 @@ func (m historyModel) diffModalTitle(d historyDiff, width int) string {
 	}
 	tail := ""
 	if len(parts) > 0 {
-		tail = m.hs.fieldKey.Render(" · " + strings.Join(parts, " · "))
+		tail = m.hs.fieldKey.Render(dotSep + strings.Join(parts, dotSep))
 	}
 	return ansi.Truncate(lead+tail, width, "…")
 }
@@ -109,11 +110,10 @@ func (m historyModel) diffModalBody(d historyDiff, width int) []string {
 	switch d.state {
 	case diffNoChange:
 		return []string{m.tw.styles.muted.Render(
-			truncate("no definition change · "+d.sel.eventLabel(), width))}
+			truncate("no definition change"+dotSep+d.sel.eventLabel(), width))}
 	case diffBaselineUnloaded:
 		if m.loadErr != nil {
-			return []string{m.tw.styles.warning.Render(
-				truncate("couldn't load older entries to find the previous version - ↑/↓ retries", width))}
+			return []string{m.tw.warnLine("couldn't load older entries to find the previous version - ↑/↓ retries", width)}
 		}
 		return []string{m.tw.styles.muted.Render(truncate("loading older entries to find the previous version…", width))}
 	}
@@ -139,13 +139,13 @@ func scalarChanges(d historyDiff) []string {
 	sel, base := d.sel.Definition.Descriptor(), d.base.Definition.Descriptor()
 	var out []string
 	if d.cmp.EngineVersionDiffers {
-		out = append(out, fmt.Sprintf("engine version %d → %d", base.EngineVersion, sel.EngineVersion))
+		out = append(out, fieldChange("engine version", strconv.Itoa(base.EngineVersion), strconv.Itoa(sel.EngineVersion)))
 	}
 	if d.cmp.EmitDiffers {
-		out = append(out, fmt.Sprintf("emit %s → %s", enabledStr(base.Emit), enabledStr(sel.Emit)))
+		out = append(out, fieldChange("emit", enabledStr(base.Emit), enabledStr(sel.Emit)))
 	}
 	if d.cmp.TrackEmittedStreamsDiffers {
-		out = append(out, fmt.Sprintf("track emitted streams %s → %s", enabledStr(base.TrackEmittedStreams), enabledStr(sel.TrackEmittedStreams)))
+		out = append(out, fieldChange("track emitted streams", enabledStr(base.TrackEmittedStreams), enabledStr(sel.TrackEmittedStreams)))
 	}
 	return out
 }

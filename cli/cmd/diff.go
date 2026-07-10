@@ -181,7 +181,7 @@ func runVersionDiff(ctx context.Context, cmd *cobra.Command, r *remote.Client, c
 	}
 	tw := newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr())
 	tw.heading(name)
-	tw.status(tw.styles.muted.Render(ls.label + " → " + rs.label))
+	tw.status(tw.styles.muted.Render(transition(ls.label, rs.label)))
 	if argv, ok := externalDiffCommand(os.Getenv); ok {
 		return openSourceDiff(argv, name, ls.label, ls.json.Source, rs.label, rs.json.Source, cmd.OutOrStdout(), cmd.ErrOrStderr())
 	}
@@ -204,7 +204,7 @@ type resolvedSide struct {
 // compile, so a source-only diff isn't mistaken for a clean comparison.
 func warnUncompiledSide(w io.Writer, name string, s resolvedSide) {
 	if s.uncompiled != nil {
-		fmt.Fprintf(w, "warning: local %q doesn't compile, diffing source only: %v\n", name, s.uncompiled)
+		warningf(w, "local %q doesn't compile, diffing source only: %v", name, s.uncompiled)
 	}
 }
 

@@ -671,11 +671,10 @@ func (m historyModel) detail(hv historyVersion, width int) string {
 		b.WriteString(strings.Repeat(" ", labelW) + m.tw.styles.dim.Render(truncate("⟳ reprocessed from zero", max(1, width-labelW))))
 		b.WriteByte('\n')
 	}
-	switch hv.Kind {
-	case remote.KindEditedExternally:
-		b.WriteString(m.tw.styles.warning.Render(truncate("⚠ "+changeSummary(hv.Change)+" outside gaffer", width)) + "\n")
-	case remote.KindUnreadable:
-		b.WriteString(m.tw.styles.warning.Render(truncate("⚠ deploy metadata could not be read", width)) + "\n")
+	// The same provenance caution the list rail and text view show (glyph baked
+	// in by historyProvenanceText), rather than re-deriving the strings here.
+	if text, warn := historyProvenanceText(hv); warn {
+		b.WriteString(m.tw.styles.warning.Render(truncate(text, width)) + "\n")
 	}
 
 	// Section 2: the deployed version this entry relates to - itself for a content
@@ -708,7 +707,7 @@ func (m historyModel) detail(hv historyVersion, width int) string {
 		header("configuration", m.hs.fieldKey)
 		for _, cc := range hv.ConfigChanges {
 			b.WriteString(m.hs.fieldKey.Render(padCells(cc.Label, cw+2)))
-			b.WriteString(m.hs.fieldVal.Render(truncate(cc.From+" → "+cc.To, max(1, width-cw-2))))
+			b.WriteString(m.hs.fieldVal.Render(truncate(transition(cc.From, cc.To), max(1, width-cw-2))))
 			b.WriteByte('\n')
 		}
 	}
@@ -786,7 +785,7 @@ func (m historyModel) footer() string {
 		right += m.hs.badgeConn.Render(m.connLabel)
 	}
 
-	controls := m.hs.barDim.Render("↑↓/g/G move · d diff · r rollback · q quit")
+	controls := m.hs.barDim.Render(hintBar("↑↓/g/G move", "d diff", "r rollback", "q quit"))
 	lw, rw, cw := lipgloss.Width(left), lipgloss.Width(right), lipgloss.Width(controls)
 	// Drop the controls when there isn't room for them plus a gap each side.
 	if lw+rw+cw+4 > m.width {

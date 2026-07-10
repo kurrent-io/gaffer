@@ -12,6 +12,27 @@ import (
 
 const indentSize = 3
 
+// dotSep is the middot separator joining inline items - summary segments,
+// provenance parts, keybinding hints - defined once so the glyph and its spacing
+// stay consistent. (Distinct from the bare "·" skip tick in the deploy result
+// rows, which is a status glyph, not a separator.)
+const dotSep = " · "
+
+// hintBar joins keybinding hints with dotSep, e.g. hintBar("↑↓ scrub", "esc
+// close") -> "↑↓ scrub · esc close". The caller styles the result (the modals dim
+// it).
+func hintBar(hints ...string) string { return strings.Join(hints, dotSep) }
+
+// arrow is the transition glyph joining a before and after value, defined once so
+// the glyph and its spacing stay consistent.
+const arrow = "→"
+
+// transition renders a "from → to" change with the shared arrow. fieldChange
+// prefixes a labelled field: fieldChange("emit", "enabled", "disabled") ->
+// "emit enabled → disabled".
+func transition(from, to string) string         { return from + " " + arrow + " " + to }
+func fieldChange(label, from, to string) string { return label + " " + transition(from, to) }
+
 // padCells left-aligns s in a field of the given display-cell width, padding on
 // the right with spaces. It measures with lipgloss.Width (terminal cell width)
 // rather than fmt's %-*s (which counts runes), so names with full-width or
@@ -157,6 +178,47 @@ func (tw *textWriter) heading(text string) {
 
 func (tw *textWriter) blank() {
 	tw.write("\n")
+}
+
+// Severity marker glyphs, defined once so the level's mark stays consistent
+// across every command rather than each site hardcoding its own. All width-1 so
+// they align in a column (avoid the emoji-presentation ℹ and the double-width
+// 🛈, which don't). Use the mark* methods for a styled marker; use these raw
+// glyphs where a caller builds and styles its own string (a TUI line that
+// truncates to a width, say).
+const (
+	glyphError   = "✗"
+	glyphWarning = "⚠"
+	glyphInfo    = "ⓘ"
+)
+
+// markError / markWarning / markInfo render the severity glyph in its tint (red /
+// amber / blue) for prefixing a message line.
+func (tw *textWriter) markError() string   { return tw.styles.errStatus.Render(glyphError) }
+func (tw *textWriter) markWarning() string { return tw.styles.warning.Render(glyphWarning) }
+func (tw *textWriter) markInfo() string    { return tw.styles.info.Render(glyphInfo) }
+
+// warnLine is the TUI form of a warning: the warning glyph and the message, the
+// whole thing truncated to width and rendered in the warning tint. For a modal or
+// rail line that must fit a pane, where markWarning (just the styled glyph) leaves
+// the caller to truncate its own composed line.
+func (tw *textWriter) warnLine(text string, width int) string {
+	return tw.styles.warning.Render(truncate(glyphWarning+" "+text, width))
+}
+
+// warningf writes a severity-prefixed diagnostic line to w: a lowercase
+// "warning:" in the warning tint, then the message. The text-prefix twin of the
+// mark* glyph markers - those prefix a rich output line with a glyph; this
+// prefixes a plain stderr diagnostic with a word. The tint degrades to plain when
+// w isn't a terminal (a pipe, a CI log), so the spelled-out word is the
+// always-visible severity signal. Defined once here so the prefix and its casing
+// stay consistent across every diagnostic. errorf/infof twins follow the same
+// one-liner shape (styles.errStatus/"error:", styles.info/"info:") and get added
+// when a stderr error/info diagnostic first needs one - today they're all
+// warning-level.
+func warningf(w io.Writer, format string, a ...any) {
+	tw := newTextWriter(w, w)
+	tw.write("%s %s\n", tw.styles.warning.Render("warning:"), fmt.Sprintf(format, a...))
 }
 
 func (p prefixed) detail(label, value string) {

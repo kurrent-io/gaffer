@@ -12,7 +12,7 @@ import (
 func writeConfigDriftWarnings(out io.Writer, dr drift.ConfigDriftResult) {
 	if dr.Err != nil {
 		tw := newTextWriter(out, out)
-		tw.write("%s\n", tw.styles.warning.Render("⚠ could not check [database_config] drift: "+dr.Err.Error()))
+		tw.write("%s %s\n", tw.markWarning(), tw.styles.warning.Render("could not check [database_config] drift: "+dr.Err.Error()))
 		return
 	}
 	if len(dr.Items) == 0 {
@@ -20,6 +20,6 @@ func writeConfigDriftWarnings(out io.Writer, dr drift.ConfigDriftResult) {
 	}
 	tw := newTextWriter(out, out)
 	for _, d := range dr.Items {
-		tw.write("%s\n", tw.styles.warning.Render("⚠ target config drift: "+d.Text()))
+		tw.write("%s %s\n", tw.markWarning(), tw.styles.warning.Render("target config drift: "+d.Text()))
 	}
 }

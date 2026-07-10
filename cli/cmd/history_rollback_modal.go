@@ -163,12 +163,12 @@ func (m historyModel) handleRollbackKey(key string) (tea.Model, tea.Cmd) {
 func (m historyModel) rollbackModal() string {
 	innerW := m.modalInnerWidth()
 	rb := historyRollbackAt(m.versions, m.cursor)
-	hint := "y confirm · ↑↓ scrub · esc cancel"
+	hint := hintBar("y confirm", "↑↓ scrub", "esc cancel")
 	switch {
 	case m.rbBusy:
 		hint = "rolling back…"
 	case rb.state != rbReady:
-		hint = "↑↓ scrub · esc close"
+		hint = hintBar("↑↓ scrub", "esc close")
 	}
 	return m.modalFrame(m.rollbackModalTitle(rb, innerW), m.rollbackModalBody(rb, innerW), hint)
 }
@@ -191,7 +191,7 @@ func (m historyModel) rollbackModalTitle(rb historyRollback, width int) string {
 	}
 	tail := ""
 	if len(parts) > 0 {
-		tail = m.hs.fieldKey.Render(" · " + strings.Join(parts, " · "))
+		tail = m.hs.fieldKey.Render(dotSep + strings.Join(parts, dotSep))
 	}
 	return ansi.Truncate(lead+tail, width, "…")
 }
@@ -210,7 +210,9 @@ func (m historyModel) rollbackModalBody(rb historyRollback, width int) []string 
 		// The refusal names the dimension and the recreate escape; wrap it
 		// rather than truncating the actionable tail off.
 		var rows []string
-		msg := remote.RollbackRefusal(rb.cmp, rb.sel.ContentHash, m.name).Error()
+		// Glyph before the wrap so it leads the first line and the wrapping accounts
+		// for its width.
+		msg := glyphWarning + " " + remote.RollbackRefusal(rb.cmp, rb.sel.ContentHash, m.name).Error()
 		for line := range strings.SplitSeq(lipgloss.NewStyle().Width(width).Render(msg), "\n") {
 			rows = append(rows, m.tw.styles.warning.Render(line))
 		}
@@ -221,23 +223,23 @@ func (m historyModel) rollbackModalBody(rb historyRollback, width int) []string 
 		// The same louder-against-production confirm gaffer rollback gives:
 		// the tier is resolved once at TUI start, from the shared identity.
 		rows = append(rows,
-			m.tw.styles.warning.Render(truncate("⚠ rolls back on "+prodWhere(m.target, true), width)),
+			m.tw.warnLine("rolls back on "+prodWhere(m.target, true), width),
 			"")
 	}
 	if rb.cmp.EmitDiffers {
 		rows = append(rows,
-			m.tw.styles.warning.Render(truncate("emit "+enabledStr(rb.cur.Definition.Emit)+" → "+enabledStr(rb.sel.Definition.Emit), width)),
+			m.tw.styles.warning.Render(truncate(fieldChange("emit", enabledStr(rb.cur.Definition.Emit), enabledStr(rb.sel.Definition.Emit)), width)),
 			"")
 	}
 	for _, row := range m.tw.queryDiffRows(rb.lines) {
 		rows = append(rows, ansi.Truncate(row, width, "…"))
 	}
 	rows = append(rows, "",
-		m.tw.styles.warning.Render(truncate("⚠ code rolls back, state does not (gaffer recreate rebuilds from zero)", width)),
-		m.tw.styles.warning.Render(truncate("⚠ local files stay untouched; gaffer diff will show this as drift", width)))
+		m.tw.warnLine("code rolls back, state does not (gaffer recreate rebuilds from zero)", width),
+		m.tw.warnLine("local files stay untouched; gaffer diff will show this as drift", width))
 	if m.rbErr != nil {
 		rows = append(rows, "",
-			m.tw.styles.warning.Render(truncate("rollback failed: "+m.rbErr.Error()+" - y retries", width)))
+			m.tw.warnLine("rollback failed: "+m.rbErr.Error()+" - y retries", width))
 	}
 	return rows
 }

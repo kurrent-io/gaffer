@@ -195,9 +195,9 @@ func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, tot
 	tw.write("  %s\n", strings.Join(segs, tw.styles.pipe.Render(" · ")))
 	if logicContinues > 0 {
 		// Info, not a warning or an error: deploy proceeds, this just says what it
-		// did and the flag to change it. Blue with an info icon, matching the ⚠ / ✗
-		// severity marks above.
-		tw.write("  %s %s\n", tw.styles.info.Render("ℹ"), tw.styles.info.Render(fmt.Sprintf(
+		// did and the flag to change it. A plain width-1 "i" in the info tint - the
+		// circled/emoji info glyphs mismatch the other marks and vary in cell width.
+		tw.write("  %s %s\n", tw.styles.info.Render("i"), tw.styles.info.Render(fmt.Sprintf(
 			"%d logic change(s) continuing from checkpoint - --reset-on-logic-change to rebuild instead", logicContinues)))
 	}
 	tw.writeApplyWarnings(plan)

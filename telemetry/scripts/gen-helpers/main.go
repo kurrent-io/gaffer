@@ -254,6 +254,15 @@ var commands = []commandSpec{
 	{GoName: "MCP", CmdName: "mcp", DefName: "McpCommandInvokedProperties", LongRun: true},
 	{GoName: "LSP", CmdName: "lsp", DefName: "LspCommandInvokedProperties", LongRun: true},
 	{GoName: "Debug", CmdName: "debug", DefName: "DebugCommandInvokedProperties", LongRun: true},
+	{GoName: "Deploy", CmdName: "deploy", DefName: "DeployCommandInvokedProperties"},
+	{GoName: "Status", CmdName: "status", DefName: "StatusCommandInvokedProperties"},
+	{GoName: "Diff", CmdName: "diff", DefName: "DiffCommandInvokedProperties"},
+	{GoName: "History", CmdName: "history", DefName: "HistoryCommandInvokedProperties"},
+	{GoName: "Rollback", CmdName: "rollback", DefName: "RollbackCommandInvokedProperties"},
+	{GoName: "Recreate", CmdName: "recreate", DefName: "RecreateCommandInvokedProperties"},
+	{GoName: "Enable", CmdName: "enable", DefName: "EnableCommandInvokedProperties"},
+	{GoName: "Disable", CmdName: "disable", DefName: "DisableCommandInvokedProperties"},
+	{GoName: "Delete", CmdName: "delete", DefName: "DeleteCommandInvokedProperties"},
 }
 
 // stringEnums lists the CUE definitions that the generator promotes to Go

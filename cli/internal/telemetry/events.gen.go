@@ -123,13 +123,22 @@ type CommandName string
 
 const (
 	CommandNameDebug    CommandName = "debug"
+	CommandNameDelete   CommandName = "delete"
+	CommandNameDeploy   CommandName = "deploy"
 	CommandNameDev      CommandName = "dev"
+	CommandNameDiff     CommandName = "diff"
+	CommandNameDisable  CommandName = "disable"
+	CommandNameEnable   CommandName = "enable"
+	CommandNameHistory  CommandName = "history"
 	CommandNameInfo     CommandName = "info"
 	CommandNameInit     CommandName = "init"
 	CommandNameLSP      CommandName = "lsp"
 	CommandNameManifest CommandName = "manifest"
 	CommandNameMCP      CommandName = "mcp"
+	CommandNameRecreate CommandName = "recreate"
+	CommandNameRollback CommandName = "rollback"
 	CommandNameScaffold CommandName = "scaffold"
+	CommandNameStatus   CommandName = "status"
 	CommandNameVersion  CommandName = "version"
 )
 
@@ -149,6 +158,7 @@ const (
 	OutcomeProjectionCompileError  Outcome = "projection_compile_error"
 	OutcomeProjectionUnknownError  Outcome = "projection_unknown_error"
 	OutcomeProjectionUserThrow     Outcome = "projection_user_throw"
+	OutcomeRefused                 Outcome = "refused"
 	OutcomeSuccess                 Outcome = "success"
 	OutcomeUserError               Outcome = "user_error"
 	OutcomeUserInterrupt           Outcome = "user_interrupt"
@@ -748,6 +758,179 @@ func (tx *DebugTx) SetDiagnosticsSeen(v []string) {
 		return
 	}
 	tx.props.DiagnosticsSeen = v
+}
+
+// DeployCommandInvokedProperties carries the property set for `gaffer deploy`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
+type DeployCommandInvokedProperties struct {
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawDuration `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
+	// Whether --dry-run was set (plan shown, nothing applied). Separates a preview from a real apply, otherwise identical events.
+	DryRun *bool `json:"dry_run,omitempty"`
+	// Whether the target is production (the server declares it, or the env opts in with production = true).
+	ProdTarget *bool `json:"prod_target,omitempty"`
+	// Whether --no-validate skipped the pre-apply validation gate.
+	NoValidate *bool `json:"no_validate,omitempty"`
+}
+
+// StatusCommandInvokedProperties carries the property set for `gaffer status`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
+type StatusCommandInvokedProperties struct {
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawDuration `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
+}
+
+// DiffCommandInvokedProperties carries the property set for `gaffer diff`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
+type DiffCommandInvokedProperties struct {
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawDuration `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
+}
+
+// HistoryCommandInvokedProperties carries the property set for `gaffer history`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
+type HistoryCommandInvokedProperties struct {
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawDuration `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
+	// Whether the user applied a rollback from the interactive timeline's `r` modal. Absent on the piped / --json path, which can't roll back.
+	RollbackApplied *bool `json:"rollback_applied,omitempty"`
+}
+
+// RollbackCommandInvokedProperties carries the property set for `gaffer rollback`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
+type RollbackCommandInvokedProperties struct {
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawDuration `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
+	// Whether the target is production.
+	ProdTarget *bool `json:"prod_target,omitempty"`
+}
+
+// RecreateCommandInvokedProperties carries the property set for `gaffer recreate`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
+type RecreateCommandInvokedProperties struct {
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawDuration `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
+	// Whether the target is production.
+	ProdTarget *bool `json:"prod_target,omitempty"`
+	// Whether --no-validate skipped the pre-destructive compile gate.
+	NoValidate *bool `json:"no_validate,omitempty"`
+}
+
+// EnableCommandInvokedProperties carries the property set for `gaffer enable`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
+type EnableCommandInvokedProperties struct {
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawDuration `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
+	// Whether the target is production.
+	ProdTarget *bool `json:"prod_target,omitempty"`
+}
+
+// DisableCommandInvokedProperties carries the property set for `gaffer disable`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
+type DisableCommandInvokedProperties struct {
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawDuration `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
+	// Whether the target is production.
+	ProdTarget *bool `json:"prod_target,omitempty"`
+}
+
+// DeleteCommandInvokedProperties carries the property set for `gaffer delete`.
+// Base fields are inlined rather than embedded so callers can set
+// Outcome (and future per-invocation overrides) at the top-level
+// struct literal without an extra nesting layer.
+type DeleteCommandInvokedProperties struct {
+	// Which gaffer command ran. Variants narrow this to a specific literal.
+	Command CommandName `json:"command"`
+	// Wall-clock duration from process start to exit. For long-running commands (`dev`, `mcp`, `lsp`, `debug`) this is invocation lifetime, not engagement time - includes idle stretches where the editor was open but nobody was touching gaffer.
+	DurationMs RawDuration `json:"duration_ms"`
+	// What ended the invocation.
+	Outcome Outcome `json:"outcome"`
+	// Who triggered the run.
+	InvokedBy InvokedBy `json:"invoked_by"`
+	// Specific surface the invocation came through. Optional; when absent the spawner either didn't pass `--invoked-via` or no surface mapping was meaningful (e.g. an extension-internal `gaffer manifest` / `gaffer lsp` spawn). Dashboards split on `invoked_by` first; `invoked_via` is the sub-breakdown.
+	InvokedVia *InvokedVia `json:"invoked_via,omitempty"`
+	// Whether the target is production.
+	ProdTarget *bool `json:"prod_target,omitempty"`
 }
 
 // ProjectionShape carries a snapshot of what a projection's source looks

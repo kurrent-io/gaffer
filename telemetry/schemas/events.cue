@@ -8,7 +8,8 @@ import "strings"
 
 // The set of gaffer commands. Source of truth for the discriminator on
 // `command_invoked` variants and the `command` field on `exception`.
-#CommandName: "version" | "init" | "scaffold" | "manifest" | "info" | "dev" | "mcp" | "lsp" | "debug"
+#CommandName: "version" | "init" | "scaffold" | "manifest" | "info" | "dev" | "mcp" | "lsp" | "debug" |
+	"deploy" | "status" | "diff" | "history" | "rollback" | "recreate" | "enable" | "disable" | "delete"
 
 // ----------------------------------------------------------------------------
 // command_invoked
@@ -28,7 +29,16 @@ import "strings"
 		#DevCommandInvokedProperties |
 		#McpCommandInvokedProperties |
 		#LspCommandInvokedProperties |
-		#DebugCommandInvokedProperties
+		#DebugCommandInvokedProperties |
+		#DeployCommandInvokedProperties |
+		#StatusCommandInvokedProperties |
+		#DiffCommandInvokedProperties |
+		#HistoryCommandInvokedProperties |
+		#RollbackCommandInvokedProperties |
+		#RecreateCommandInvokedProperties |
+		#EnableCommandInvokedProperties |
+		#DisableCommandInvokedProperties |
+		#DeleteCommandInvokedProperties
 }
 
 // CommandInvokedBaseProperties is the set of properties present on every
@@ -215,6 +225,102 @@ import "strings"
 	diagnostics_seen?: [...string & =~"^[a-z]+\\.[a-zA-Z0-9]+\\.[a-zA-Z0-9]+$"]
 }
 
+// ----------------------------------------------------------------------------
+// Deploy family: deploy / status / diff / history / rollback / recreate /
+// enable / disable / delete
+// ----------------------------------------------------------------------------
+
+// `gaffer deploy` - plan, validate, then apply projection creates/updates to an
+// environment.
+#DeployCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
+	command: "deploy"
+
+	// Whether --dry-run was set (plan shown, nothing applied). Separates a
+	// preview from a real apply, otherwise identical events.
+	dry_run?: bool
+
+	// Whether the target is production (the server declares it, or the env
+	// opts in with production = true).
+	prod_target?: bool
+
+	// Whether --no-validate skipped the pre-apply validation gate.
+	no_validate?: bool
+}
+
+// `gaffer status` - report projection state on an environment. Read-only. No
+// command-specific properties.
+#StatusCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
+	command: "status"
+}
+
+// `gaffer diff` - compare two versions of a projection. Read-only. No
+// command-specific properties.
+#DiffCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
+	command: "diff"
+}
+
+// `gaffer history` - browse a deployed projection's history.
+#HistoryCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
+	command: "history"
+
+	// Whether the user applied a rollback from the interactive timeline's `r`
+	// modal. Absent on the piped / --json path, which can't roll back.
+	rollback_applied?: bool
+}
+
+// `gaffer rollback` - redeploy a prior version of a projection in place.
+#RollbackCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
+	command: "rollback"
+
+	// Whether the target is production.
+	prod_target?: bool
+}
+
+// `gaffer recreate` - destroy and rebuild a projection from local config.
+// Destructive.
+#RecreateCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
+	command: "recreate"
+
+	// Whether the target is production.
+	prod_target?: bool
+
+	// Whether --no-validate skipped the pre-destructive compile gate.
+	no_validate?: bool
+}
+
+// `gaffer enable` / `disable` / `delete` - the operate verbs (shared runOperate
+// flow). One variant each of an identical shape, because the type generator maps
+// one command to one property struct. `disable --abort` reports as `disable`.
+#EnableCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
+	command: "enable"
+
+	// Whether the target is production.
+	prod_target?: bool
+}
+
+#DisableCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
+	command: "disable"
+
+	// Whether the target is production.
+	prod_target?: bool
+}
+
+#DeleteCommandInvokedProperties: {
+	#CommandInvokedBaseProperties
+	command: "delete"
+
+	// Whether the target is production.
+	prod_target?: bool
+}
+
 // Outcome is the *final* outcome of a command invocation - whatever made it
 // actually exit. Long-running sessions that hit transient errors and
 // recovered carry the recovered outcome (typically `user_interrupt`) here,
@@ -228,10 +334,18 @@ import "strings"
 // as `user_interrupt` because on one-shot commands it signals
 // abandonment (user gave up mid-init/scaffold/etc.); on long-running
 // commands it's the normal end-of-session marker and reads the same.
+//
+// `refused` is a deploy-family guardrail block (process exit code 3): the
+// command declined to proceed without explicit authorisation - a mutating
+// command needing --yes with no terminal, a blocked/invalid plan, or
+// --no-validate against production. Distinct from `user_interrupt` (the user
+// declined an interactive prompt or Ctrl+C'd) and `user_error` (a malformed
+// invocation).
 #Outcome:
 	"success" |
 	"user_interrupt" |
 	"user_error" |
+	"refused" |
 	"internal_error" |
 	"manifest_not_found" |
 	"manifest_parse_error" |

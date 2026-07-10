@@ -281,7 +281,12 @@ func (tw *textWriter) writePreflightFailures(total int, failures []preflightFail
 // so it states the refusal and the remedy without repeating the per-projection
 // detail.
 func (tw *textWriter) writeInvalidRefusal(invalid, total int) {
-	tw.write("%s\n", tw.styles.errStatus.Render(
-		fmt.Sprintf("Deploy refused: %d of %d projections are invalid.", invalid, total)))
-	tw.write("%s\n", tw.styles.pipe.Render("Fix the errors above, or pass --no-validate to deploy the rest."))
+	// A cross, not a warning triangle: a refusal is a hard stop (nothing was
+	// deployed), the same marker a failed/refused row carries - the ⚠ cautions
+	// above are advisory, where a deploy still proceeds.
+	tw.write("%s %s\n",
+		tw.styles.errStatus.Render("✗"),
+		tw.styles.errStatus.Render(fmt.Sprintf("Deploy refused: %d of %d projections are invalid.", invalid, total)))
+	// Default foreground for the remedy, not the muted "in sync" tint.
+	tw.write("Fix the errors above, or pass --no-validate to deploy the rest.\n")
 }

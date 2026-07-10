@@ -111,11 +111,11 @@ func runRollback(cmd *cobra.Command, name, hashArg string, opts operateOpts) err
 // is not rolled back with the code, and local files stay as they are.
 func writeRollbackPreview(out io.Writer, name string, current, target deploy.Descriptor, targetHash string, cmp deploy.Comparison) {
 	tw := newTextWriter(out, out)
-	tw.write("Rolling back %s: %s → %s\n", name,
-		tw.styles.dim.Render(shortHash(current.Hash())), tw.styles.label.Render(shortHash(targetHash)))
+	tw.write("Rolling back %s: %s\n", name,
+		transition(tw.styles.dim.Render(shortHash(current.Hash())), tw.styles.label.Render(shortHash(targetHash))))
 	tw.blank()
 	if cmp.EmitDiffers {
-		tw.write("  emit %s → %s\n", enabledStr(current.Emit), enabledStr(target.Emit))
+		tw.write("  %s\n", fieldChange("emit", enabledStr(current.Emit), enabledStr(target.Emit)))
 	}
 	if cmp.QueryDiffers {
 		tw.WriteQueryDiff(deploy.LineDiff(current.Query, target.Query))

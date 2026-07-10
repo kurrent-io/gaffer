@@ -23,6 +23,16 @@ const dotSep = " · "
 // it).
 func hintBar(hints ...string) string { return strings.Join(hints, dotSep) }
 
+// arrow is the transition glyph joining a before and after value, defined once so
+// the glyph and its spacing stay consistent.
+const arrow = "→"
+
+// transition renders a "from → to" change with the shared arrow. fieldChange
+// prefixes a labelled field: fieldChange("emit", "enabled", "disabled") ->
+// "emit enabled → disabled".
+func transition(from, to string) string         { return from + " " + arrow + " " + to }
+func fieldChange(label, from, to string) string { return label + " " + transition(from, to) }
+
 // padCells left-aligns s in a field of the given display-cell width, padding on
 // the right with spaces. It measures with lipgloss.Width (terminal cell width)
 // rather than fmt's %-*s (which counts runes), so names with full-width or

@@ -228,7 +228,7 @@ func (m historyModel) rollbackModalBody(rb historyRollback, width int) []string 
 	}
 	if rb.cmp.EmitDiffers {
 		rows = append(rows,
-			m.tw.styles.warning.Render(truncate("emit "+enabledStr(rb.cur.Definition.Emit)+" → "+enabledStr(rb.sel.Definition.Emit), width)),
+			m.tw.styles.warning.Render(truncate(fieldChange("emit", enabledStr(rb.cur.Definition.Emit), enabledStr(rb.sel.Definition.Emit)), width)),
 			"")
 	}
 	for _, row := range m.tw.queryDiffRows(rb.lines) {

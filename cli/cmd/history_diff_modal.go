@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -138,13 +139,13 @@ func scalarChanges(d historyDiff) []string {
 	sel, base := d.sel.Definition.Descriptor(), d.base.Definition.Descriptor()
 	var out []string
 	if d.cmp.EngineVersionDiffers {
-		out = append(out, fmt.Sprintf("engine version %d → %d", base.EngineVersion, sel.EngineVersion))
+		out = append(out, fieldChange("engine version", strconv.Itoa(base.EngineVersion), strconv.Itoa(sel.EngineVersion)))
 	}
 	if d.cmp.EmitDiffers {
-		out = append(out, fmt.Sprintf("emit %s → %s", enabledStr(base.Emit), enabledStr(sel.Emit)))
+		out = append(out, fieldChange("emit", enabledStr(base.Emit), enabledStr(sel.Emit)))
 	}
 	if d.cmp.TrackEmittedStreamsDiffers {
-		out = append(out, fmt.Sprintf("track emitted streams %s → %s", enabledStr(base.TrackEmittedStreams), enabledStr(sel.TrackEmittedStreams)))
+		out = append(out, fieldChange("track emitted streams", enabledStr(base.TrackEmittedStreams), enabledStr(sel.TrackEmittedStreams)))
 	}
 	return out
 }

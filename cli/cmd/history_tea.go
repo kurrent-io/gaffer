@@ -707,7 +707,7 @@ func (m historyModel) detail(hv historyVersion, width int) string {
 		header("configuration", m.hs.fieldKey)
 		for _, cc := range hv.ConfigChanges {
 			b.WriteString(m.hs.fieldKey.Render(padCells(cc.Label, cw+2)))
-			b.WriteString(m.hs.fieldVal.Render(truncate(cc.From+" → "+cc.To, max(1, width-cw-2))))
+			b.WriteString(m.hs.fieldVal.Render(truncate(transition(cc.From, cc.To), max(1, width-cw-2))))
 			b.WriteByte('\n')
 		}
 	}

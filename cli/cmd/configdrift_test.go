@@ -34,7 +34,7 @@ func TestWriteConfigDriftWarnings(t *testing.T) {
 func TestRenderStatusJSONCarriesConfigDrift(t *testing.T) {
 	var b bytes.Buffer
 	items := []drift.ConfigDrift{{Knob: "execution_timeout", Server: 250, Local: 700, Unit: "ms"}}
-	if err := renderStatusJSON(&b, nil, drift.ConfigDriftResult{Items: items}); err != nil {
+	if err := renderStatusJSON(&b, nil, drift.ConfigDriftResult{Items: items}, "", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	var report cliout.StatusReportJSON
@@ -55,7 +55,7 @@ func TestRenderStatusJSONCarriesConfigDrift(t *testing.T) {
 	// A failed read lands in configDriftError so machine consumers can tell
 	// "couldn't check" from "in sync" (UI-1820).
 	b.Reset()
-	if err := renderStatusJSON(&b, nil, drift.ConfigDriftResult{Err: errors.New("reading node options: connection refused")}); err != nil {
+	if err := renderStatusJSON(&b, nil, drift.ConfigDriftResult{Err: errors.New("reading node options: connection refused")}, "", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	report = cliout.StatusReportJSON{}

@@ -21,7 +21,10 @@ var deployStatusTool = &mcp.Tool{
 		"is in-config / orphan (gaffer-deployed but no longer in gaffer.toml - a deletion " +
 		"candidate) / foreign (another tool's) / unknown (no readable metadata); attribution " +
 		"appears only on drifted rows - local-ahead (local edited since gaffer's deploy), " +
-		"changed-by-tool, or changed-server. runtime.state is running / stopped / aborted / " +
+		"changed-by-tool, or changed-server. A deployed row carries hash (the deployed " +
+		"definition's content hash, to pin the running version or match a history entry) and, " +
+		"when it carries deploy metadata, lastDeployed (the deploy time) and lastWrite (the " +
+		"deploying tool, toolVersion, revision, and actor). runtime.state is running / stopped / aborted / " +
 		"faulted / unknown. aborted means the projection was killed without a final checkpoint, " +
 		"so a resume reprocesses from the last checkpoint written (re-emitting, for an emitting " +
 		"projection). The server reports it only in memory, so it reverts to stopped after a " +

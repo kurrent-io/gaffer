@@ -83,13 +83,39 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 	// round-trip overlaps the status RPCs; drained before rendering.
 	driftCh := drift.StartConfigDriftCheck(cmd.Context(), cfg, root, conn.env)
 
+	// For --json, resolve the target identity concurrently with the status reads
+	// (like the drift check above), so the self-describing envelope adds no wall
+	// time over the status RPCs and its own bounded $server-info read isn't
+	// squeezed by whatever budget the projection reads left. An unreadable
+	// server-info falls back to the env name and its opt-in.
+	type targetInfo struct {
+		name string
+		prod bool
+	}
+	var targetCh chan targetInfo
+	if opts.JSON {
+		targetCh = make(chan targetInfo, 1)
+		go func() {
+			name, prod := r.OperateTarget(cmd.Context(), conn.env, projectionRPCTimeout)
+			targetCh <- targetInfo{name, prod}
+		}()
+	}
+
+	// statusJSON emits the machine report, naming the env, the server, and its
+	// production tier - the same self-describing shape the MCP deploy_status tool
+	// returns.
+	statusJSON := func(entries []drift.StatusEntry) error {
+		ti := <-targetCh
+		return renderStatusJSON(cmd.OutOrStdout(), entries, <-driftCh, conn.env.Name, ti.name, &ti.prod)
+	}
+
 	if name != "" {
 		entry, err := drift.StatusOne(ctx, r, cfg, root, name)
 		if err != nil {
 			return err
 		}
 		if opts.JSON {
-			return renderStatusJSON(cmd.OutOrStdout(), []drift.StatusEntry{entry}, <-driftCh)
+			return statusJSON([]drift.StatusEntry{entry})
 		}
 		newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr()).WriteStatus(entry)
 		writeConfigDriftWarnings(cmd.ErrOrStderr(), <-driftCh)
@@ -101,7 +127,7 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 		return err
 	}
 	if opts.JSON {
-		return renderStatusJSON(cmd.OutOrStdout(), entries, <-driftCh)
+		return statusJSON(entries)
 	}
 	if len(entries) == 0 {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No projections to show.")
@@ -113,8 +139,10 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 	return nil
 }
 
-func renderStatusJSON(w io.Writer, entries []drift.StatusEntry, dr drift.ConfigDriftResult) error {
+func renderStatusJSON(w io.Writer, entries []drift.StatusEntry, dr drift.ConfigDriftResult, env, target string, production *bool) error {
+	report := cliout.BuildStatusReport(entries, dr)
+	report.Env, report.Target, report.Production = env, target, production
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(cliout.BuildStatusReport(entries, dr))
+	return enc.Encode(report)
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kurrent-io/gaffer/cli/internal/cliout"
+	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
@@ -231,9 +232,17 @@ func TestRenderStatusJSON(t *testing.T) {
 		{Comparison: drift.Comparison{Name: "orphaned", State: drift.Untracked, Ledger: ledgerEntry(remote.ToolName, "admin")}, Runtime: &remote.Status{State: remote.StateRunning}},
 		// Metadata-less: lastDeployed (event time) is present even though lastWrite isn't.
 		{Comparison: drift.Comparison{Name: "adhoc", State: drift.Untracked, DeployedAt: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)}, Runtime: &remote.Status{State: remote.StateRunning}},
+		// Deployed with a full ledger: the deployed content hash and the ledger's
+		// tool version / revision ride through.
+		{Comparison: drift.Comparison{
+			Name: "detailed", State: drift.InSync,
+			Deployed: &deploy.Descriptor{Query: "fromAll().when({})", EngineVersion: 2},
+			Ledger:   &remote.Ledger{Tool: remote.ToolName, ToolVersion: "1.2.3", Revision: "abc123", Actor: "alice", Time: time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)},
+		}, Runtime: &remote.Status{State: remote.StateRunning}},
 	}
 	var b bytes.Buffer
-	if err := renderStatusJSON(&b, entries, drift.ConfigDriftResult{}); err != nil {
+	prod := true
+	if err := renderStatusJSON(&b, entries, drift.ConfigDriftResult{}, "staging", "orders-cluster", &prod); err != nil {
 		t.Fatalf("renderStatusJSON: %v", err)
 	}
 	var report cliout.StatusReportJSON
@@ -243,9 +252,13 @@ func TestRenderStatusJSON(t *testing.T) {
 	if report.ConfigDrift != nil {
 		t.Errorf("configDrift = %+v, want omitted when there's nothing to report", report.ConfigDrift)
 	}
+	// The envelope names where it landed: env, server, and production tier.
+	if report.Env != "staging" || report.Target != "orders-cluster" || report.Production == nil || !*report.Production {
+		t.Errorf("envelope should carry env/target/production, got env=%q target=%q production=%v", report.Env, report.Target, report.Production)
+	}
 	got := report.Projections
-	if len(got) != 5 {
-		t.Fatalf("want 5 entries, got %d", len(got))
+	if len(got) != 6 {
+		t.Fatalf("want 6 entries, got %d", len(got))
 	}
 	// owner is always present, including the in-config value for a tracked projection.
 	if got[0].Drift != "in-sync" || got[0].Owner != "in-config" || got[0].Runtime == nil || got[0].Runtime.State != "running" {
@@ -264,6 +277,16 @@ func TestRenderStatusJSON(t *testing.T) {
 	// Metadata-less: the event-derived deploy time is present, with no tool attribution.
 	if got[4].Owner != "unknown" || got[4].LastDeployed == "" || got[4].LastWrite != nil {
 		t.Errorf("adhoc entry = %+v (lastWrite %+v); want owner unknown + deploy time + no last-write", got[4], got[4].LastWrite)
+	}
+	// A not-deployed projection has nothing on the server to hash.
+	if got[1].Hash != "" {
+		t.Errorf("not-deployed entry should carry no hash, got %q", got[1].Hash)
+	}
+	// The deployed entry carries the deployed content hash and the ledger's tool
+	// version and revision.
+	d := got[5]
+	if d.Hash == "" || d.LastWrite == nil || d.LastWrite.ToolVersion != "1.2.3" || d.LastWrite.Revision != "abc123" || d.LastWrite.Actor != "alice" {
+		t.Errorf("detailed entry = %+v (lastWrite %+v); want hash + tool version/revision/actor", d, d.LastWrite)
 	}
 }
 

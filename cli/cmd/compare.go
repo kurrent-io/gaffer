@@ -83,12 +83,13 @@ func connectResolved(cfg *config.Config, root, connection, env string) (r *remot
 
 // refuseNoValidateOnProd is the single source of the production --no-validate
 // guardrail, shared by deploy and recreate so the message and exit code stay in
-// lockstep. --no-validate skips the preflight compile gate; production never
-// accepts it, so a prod deploy/recreate always validates first. exitWith(3) is
-// the guardrail-refusal code, and (unlike a silent wrap) lets fang print the
-// reason instead of swallowing it. verb names the command ("Deploy"/"Recreate")
-// and subject reads in "so <subject> are/is validated first".
+// lockstep. --no-validate skips validation (deploy's plan validation, recreate's
+// pre-delete compile gate); production never accepts it, so a prod deploy/recreate
+// always validates first. exitWith(3) is the guardrail-refusal code, and (unlike a
+// silent wrap) lets fang print the reason instead of swallowing it. verb names the
+// command ("Deploy"/"Recreate") and subject reads in "so <subject> are/is
+// validated first".
 func refuseNoValidateOnProd(verb, subject, target string) error {
-	return exitWith(3, fmt.Errorf("--no-validate is not allowed on production %s: it skips the preflight compile check. %s without it so %s validated first",
+	return exitWith(3, fmt.Errorf("--no-validate is not allowed on production %s: it skips validation. %s without it so %s validated first",
 		targetDesc(target), verb, subject))
 }

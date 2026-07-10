@@ -181,28 +181,28 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 		}
 	}
 
-	// Any plan that reports something - changes to apply or a block to explain -
-	// needs the target identity, so the dry-run envelope and the confirm can name
-	// where it lands. Only a pure no-op (all in sync) skips the leader round-trip.
-	// The same bounded $server-info read the operate verbs use names the target and
-	// gates the production tier (the DB's own flag OR the env's production opt-in,
-	// never the env label alone); an unreadable $server-info falls back to the env
-	// name and its opt-in.
+	// A plan that reports something (changes to apply or a block to explain) needs
+	// the target identity so the dry-run envelope and the confirm can name where it
+	// lands; and --no-validate needs it regardless, so the production guardrail can
+	// always fire. Only a pure no-op without --no-validate skips the leader
+	// round-trip. The same bounded $server-info read the operate verbs use names the
+	// target and gates the production tier (the DB's own flag OR the env's
+	// production opt-in, never the env label alone); an unreadable $server-info
+	// falls back to the env name and its opt-in.
 	totals := planChangeCounts(plan)
 	targetName, prod := "", false
 	var production *bool
-	if drift.PlanVerdict(plan) != "in-sync" {
+	if drift.PlanVerdict(plan) != "in-sync" || opts.NoValidate {
 		targetName, prod = r.OperateTarget(ctx, resolved, projectionRPCTimeout)
 		production = &prod
 	}
 
-	// Refuse the prod --no-validate combination before applying - but only when
-	// something would actually be written. A blocked-only plan writes nothing, so
-	// the dangerous flag combination has no effect to guard. Enforced even under
-	// --dry-run: it guards the combination itself, not the write, so a preview of it
-	// is refused too. The guardrail is defined once (shared with recreate) so its
+	// Refuse the prod --no-validate combination before applying - production never
+	// accepts it (matching recreate), so it's refused unconditionally, not only when
+	// something would be written. Enforced even under --dry-run: it guards the flag
+	// combination itself, not the write. Defined once (shared with recreate) so the
 	// message and exit code can't drift.
-	if totals.changes() > 0 && prod && opts.NoValidate {
+	if prod && opts.NoValidate {
 		return refuseNoValidateOnProd("Deploy", "projections are", targetName)
 	}
 

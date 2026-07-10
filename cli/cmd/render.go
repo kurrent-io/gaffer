@@ -12,6 +12,17 @@ import (
 
 const indentSize = 3
 
+// dotSep is the middot separator joining inline items - summary segments,
+// provenance parts, keybinding hints - defined once so the glyph and its spacing
+// stay consistent. (Distinct from the bare "·" skip tick in the deploy result
+// rows, which is a status glyph, not a separator.)
+const dotSep = " · "
+
+// hintBar joins keybinding hints with dotSep, e.g. hintBar("↑↓ scrub", "esc
+// close") -> "↑↓ scrub · esc close". The caller styles the result (the modals dim
+// it).
+func hintBar(hints ...string) string { return strings.Join(hints, dotSep) }
+
 // padCells left-aligns s in a field of the given display-cell width, padding on
 // the right with spaces. It measures with lipgloss.Width (terminal cell width)
 // rather than fmt's %-*s (which counts runes), so names with full-width or

@@ -14,5 +14,5 @@ func configSummary(changes []remote.ConfigChange) string {
 	for i, c := range changes {
 		parts[i] = fmt.Sprintf("%s %s → %s", c.Label, c.From, c.To)
 	}
-	return strings.Join(parts, " · ")
+	return strings.Join(parts, dotSep)
 }

@@ -163,12 +163,12 @@ func (m historyModel) handleRollbackKey(key string) (tea.Model, tea.Cmd) {
 func (m historyModel) rollbackModal() string {
 	innerW := m.modalInnerWidth()
 	rb := historyRollbackAt(m.versions, m.cursor)
-	hint := "y confirm · ↑↓ scrub · esc cancel"
+	hint := hintBar("y confirm", "↑↓ scrub", "esc cancel")
 	switch {
 	case m.rbBusy:
 		hint = "rolling back…"
 	case rb.state != rbReady:
-		hint = "↑↓ scrub · esc close"
+		hint = hintBar("↑↓ scrub", "esc close")
 	}
 	return m.modalFrame(m.rollbackModalTitle(rb, innerW), m.rollbackModalBody(rb, innerW), hint)
 }
@@ -191,7 +191,7 @@ func (m historyModel) rollbackModalTitle(rb historyRollback, width int) string {
 	}
 	tail := ""
 	if len(parts) > 0 {
-		tail = m.hs.fieldKey.Render(" · " + strings.Join(parts, " · "))
+		tail = m.hs.fieldKey.Render(dotSep + strings.Join(parts, dotSep))
 	}
 	return ansi.Truncate(lead+tail, width, "…")
 }

@@ -785,7 +785,7 @@ func (m historyModel) footer() string {
 		right += m.hs.badgeConn.Render(m.connLabel)
 	}
 
-	controls := m.hs.barDim.Render("↑↓/g/G move · d diff · r rollback · q quit")
+	controls := m.hs.barDim.Render(hintBar("↑↓/g/G move", "d diff", "r rollback", "q quit"))
 	lw, rw, cw := lipgloss.Width(left), lipgloss.Width(right), lipgloss.Width(controls)
 	// Drop the controls when there isn't room for them plus a gap each side.
 	if lw+rw+cw+4 > m.width {

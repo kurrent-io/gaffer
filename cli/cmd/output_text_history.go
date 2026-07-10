@@ -115,7 +115,7 @@ func historyProvenanceText(hv historyVersion) (text string, warn bool) {
 	if len(parts) == 0 {
 		return "", false
 	}
-	return strings.Join(parts, " · "), false
+	return strings.Join(parts, dotSep), false
 }
 
 // historyKindStyle colours the operation label by meaning: gaffer's deploys in

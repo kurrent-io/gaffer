@@ -85,7 +85,7 @@ func (tw *textWriter) deploySummaryLine(c deployCounts) string {
 	if c.failed > 0 {
 		segs = append(segs, tw.styles.errStatus.Render(fmt.Sprintf("%d failed", c.failed)))
 	}
-	return strings.Join(segs, tw.styles.pipe.Render(" · "))
+	return strings.Join(segs, tw.styles.pipe.Render(dotSep))
 }
 
 func (tw *textWriter) writeDeploySummary(c deployCounts) {
@@ -194,7 +194,7 @@ func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, tot
 		}
 	}
 
-	tw.write("  %s\n", strings.Join(segs, tw.styles.pipe.Render(" · ")))
+	tw.write("  %s\n", strings.Join(segs, tw.styles.pipe.Render(dotSep)))
 	if logicContinues > 0 {
 		// Info, not a warning or an error: deploy proceeds, this just says what it
 		// did and the flag to change it.

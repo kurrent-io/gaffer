@@ -83,16 +83,30 @@ func runStatus(cmd *cobra.Command, name string, opts statusOpts) error {
 	// round-trip overlaps the status RPCs; drained before rendering.
 	driftCh := drift.StartConfigDriftCheck(cmd.Context(), cfg, root, conn.env)
 
-	// statusJSON emits the machine report, resolving the target identity once so
-	// the envelope names the env, the server, and its production tier - the same
-	// self-describing shape the MCP deploy_status tool returns. The bounded
-	// $server-info read the operate verbs use; an unreadable one falls back to the
-	// env name and its opt-in.
+	// For --json, resolve the target identity concurrently with the status reads
+	// (like the drift check above), so the self-describing envelope adds no wall
+	// time over the status RPCs and its own bounded $server-info read isn't
+	// squeezed by whatever budget the projection reads left. An unreadable
+	// server-info falls back to the env name and its opt-in.
+	type targetInfo struct {
+		name string
+		prod bool
+	}
+	var targetCh chan targetInfo
+	if opts.JSON {
+		targetCh = make(chan targetInfo, 1)
+		go func() {
+			name, prod := r.OperateTarget(cmd.Context(), conn.env, projectionRPCTimeout)
+			targetCh <- targetInfo{name, prod}
+		}()
+	}
+
+	// statusJSON emits the machine report, naming the env, the server, and its
+	// production tier - the same self-describing shape the MCP deploy_status tool
+	// returns.
 	statusJSON := func(entries []drift.StatusEntry) error {
-		// cmd.Context(), not the shared status ctx, so the target read gets its own
-		// full budget rather than whatever the projection reads left of it.
-		target, prod := r.OperateTarget(cmd.Context(), conn.env, projectionRPCTimeout)
-		return renderStatusJSON(cmd.OutOrStdout(), entries, <-driftCh, conn.env.Name, target, &prod)
+		ti := <-targetCh
+		return renderStatusJSON(cmd.OutOrStdout(), entries, <-driftCh, conn.env.Name, ti.name, &ti.prod)
 	}
 
 	if name != "" {

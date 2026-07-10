@@ -258,17 +258,13 @@ func (tw *textWriter) writePreflightFailures(total int, failures []preflightFail
 	tw.write("\n%s\n", tw.styles.pipe.Render("Fix the errors above, or pass --no-validate to deploy anyway."))
 }
 
-// writeInvalidProjections reports the projections deploy refused because their
-// local definition won't run, and how to proceed. Each shows its name and its
-// reason (a compile error, or the error-severity diagnostics joined), in the
-// alert colour. Driven by the built plan's invalid items - the validate gate's
-// refusal, not a separate preflight pass.
-func (tw *textWriter) writeInvalidProjections(total int, invalid []drift.PlanItem) {
-	tw.write("%s\n\n", tw.styles.heading.Render(
-		fmt.Sprintf("Deploy refused: %d of %d projections are invalid", len(invalid), total)))
-	for _, it := range invalid {
-		tw.write("  %s %s\n", tw.styles.errStatus.Render("✗"), tw.styles.heading.Render(it.Name))
-		tw.write("    %s\n", tw.styles.errDetail.Render(it.Reason))
-	}
-	tw.write("\n%s\n", tw.styles.pipe.Render("Fix the errors above, or pass --no-validate to deploy the rest."))
+// writeInvalidRefusal is the footer under a refused plan: the deploy is refused
+// because some projections are invalid, and how to proceed. It follows the plan
+// summary (which already lists each invalid projection with its reason inline),
+// so it states the refusal and the remedy without repeating the per-projection
+// detail.
+func (tw *textWriter) writeInvalidRefusal(invalid, total int) {
+	tw.write("%s\n", tw.styles.errStatus.Render(
+		fmt.Sprintf("Deploy refused: %d of %d projections are invalid.", invalid, total)))
+	tw.write("%s\n", tw.styles.pipe.Render("Fix the errors above, or pass --no-validate to deploy the rest."))
 }

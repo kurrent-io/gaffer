@@ -225,7 +225,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	// unless --no-validate, so a bad one can't leave a half-applied set (the
 	// invariant the old preflight held, now enforced against the built plan).
 	if !opts.NoValidate {
-		if err := refuseInvalidPlan(cmd.OutOrStdout(), plan, opts.JSON); err != nil {
+		if err := refuseInvalidPlan(cmd.OutOrStdout(), plan, targetName, totals, prod, opts.JSON); err != nil {
 			return err
 		}
 	}

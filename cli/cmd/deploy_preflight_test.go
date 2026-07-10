@@ -163,31 +163,38 @@ func TestValidatePlan(t *testing.T) {
 func TestRefuseInvalidPlan(t *testing.T) {
 	// A plan with nothing invalid proceeds (nil), so the caller applies.
 	clean := []drift.PlanItem{{Name: "a", Action: drift.ActionCreate}}
-	if err := refuseInvalidPlan(io.Discard, clean, false); err != nil {
+	if err := refuseInvalidPlan(io.Discard, clean, "", planChangeCounts(clean), false, false); err != nil {
 		t.Errorf("clean plan should not refuse, got %v", err)
 	}
 
 	blocked := []drift.PlanItem{
-		{Name: "a", Action: drift.ActionCreate},
+		{Name: "good", Action: drift.ActionCreate},
 		{Name: "bad", Action: drift.ActionInvalid, Reason: "won't compile"},
 	}
-	// Text: names the invalid projection and its reason, exits 1.
+	// Text: the full plan (both the would-be create and the invalid, with its
+	// reason), then the refusal footer and remedy, exits 1.
 	var text bytes.Buffer
-	if got := exitCodeOf(refuseInvalidPlan(&text, blocked, false)); got != 1 {
+	if got := exitCodeOf(refuseInvalidPlan(&text, blocked, "", planChangeCounts(blocked), false, false)); got != 1 {
 		t.Fatalf("invalid plan should exit 1, got %d", got)
 	}
-	if !strings.Contains(text.String(), "bad") || !strings.Contains(text.String(), "won't compile") {
-		t.Errorf("refusal should name the invalid projection and reason:\n%s", text.String())
+	for _, want := range []string{"good", "bad", "won't compile", "Deploy refused", "--no-validate"} {
+		if !strings.Contains(text.String(), want) {
+			t.Errorf("refusal missing %q in:\n%s", want, text.String())
+		}
 	}
-	// JSON: an array of just the invalid items' verdicts.
+	// JSON: the full plan array, the invalid item flagged.
 	var jbuf bytes.Buffer
-	_ = refuseInvalidPlan(&jbuf, blocked, true)
+	_ = refuseInvalidPlan(&jbuf, blocked, "", planChangeCounts(blocked), false, true)
 	var arr []cliout.DeployJSON
 	if err := json.Unmarshal(jbuf.Bytes(), &arr); err != nil {
 		t.Fatalf("json: %v\n%s", err, jbuf.String())
 	}
-	if len(arr) != 1 || arr[0].Name != "bad" || arr[0].Outcome != "invalid" {
-		t.Errorf("json = %+v; want one invalid item", arr)
+	if len(arr) != 2 {
+		t.Fatalf("json = %+v; want the full plan (2 items)", arr)
+	}
+	bad := arr[1]
+	if bad.Name != "bad" || bad.Outcome != "invalid" {
+		t.Errorf("json invalid item = %+v; want bad/invalid", bad)
 	}
 }
 

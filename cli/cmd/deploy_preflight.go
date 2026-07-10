@@ -118,28 +118,31 @@ func validatePlan(ctx context.Context, root string, cfg *config.Config, plan []d
 // refuseInvalidPlan is the validate gate for a real apply: when the plan carries
 // an invalid projection and --no-validate wasn't given, deploy refuses the whole
 // run so a bad projection can't leave a half-applied set (the invariant the old
-// preflight gate held, now enforced against the built plan). It reports the
-// invalid projections - a JSON array of their verdicts, or a text block with how
-// to proceed - and returns the exit-1 error. Returns nil when nothing is invalid,
-// so the caller proceeds to confirm and apply.
-func refuseInvalidPlan(out io.Writer, plan []drift.PlanItem, jsonOut bool) error {
-	var invalid []drift.PlanItem
+// preflight gate held, now enforced against the built plan). It shows the full
+// plan with the invalid projections' reasons inline, then the refusal and how to
+// proceed - so you see what would have happened, not just what failed - and
+// returns the exit-1 error. --json emits the plan array. Returns nil when nothing
+// is invalid, so the caller proceeds to confirm and apply.
+func refuseInvalidPlan(out io.Writer, plan []drift.PlanItem, target string, totals planTotals, prod, jsonOut bool) error {
+	invalid := 0
 	for _, it := range plan {
 		if it.Action == drift.ActionInvalid {
-			invalid = append(invalid, it)
+			invalid++
 		}
 	}
-	if len(invalid) == 0 {
+	if invalid == 0 {
 		return nil
 	}
 	if jsonOut {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(cliout.BuildPlanJSON(invalid)); err != nil {
+		if err := enc.Encode(cliout.BuildPlanJSON(plan)); err != nil {
 			return err
 		}
 	} else {
-		newTextWriter(out, out).writeInvalidProjections(len(plan), invalid)
+		tw := newTextWriter(out, out)
+		tw.writePlanSummary(plan, target, totals, prod)
+		tw.writeInvalidRefusal(invalid, len(plan))
 	}
-	return silent(fmt.Errorf("deploy refused: %d of %d projections are invalid", len(invalid), len(plan)))
+	return silent(fmt.Errorf("deploy refused: %d of %d projections are invalid", invalid, len(plan)))
 }

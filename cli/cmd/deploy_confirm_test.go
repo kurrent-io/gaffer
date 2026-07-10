@@ -330,9 +330,11 @@ func TestWritePlanSummaryInvalidBlock(t *testing.T) {
 	// A compile error is multi-line: its first line summarises in the detail
 	// column, and the rest renders as an indented block below the row rather than
 	// spilling to the left margin.
+	// A leading blank line in the diagnostic (compile errors carry one after the
+	// summary) must not separate the block from its row.
 	plan := []drift.PlanItem{
 		{Name: "good", Action: drift.ActionCreate},
-		{Name: "bad", Action: drift.ActionInvalid, Reason: "Failed to compile projection\nerror: Unexpected token (3:5)\n  3 | oops"},
+		{Name: "bad", Action: drift.ActionInvalid, Reason: "Failed to compile projection\n\nerror: Unexpected token (3:5)\n  3 | oops"},
 	}
 	var buf bytes.Buffer
 	newTextWriter(&buf, &buf).writePlanSummary(plan, "", planChangeCounts(plan), false)
@@ -354,5 +356,9 @@ func TestWritePlanSummaryInvalidBlock(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected indented block line %q in:\n%s", want, out)
 		}
+	}
+	// The block sits flush under its row - no blank line between them.
+	if !strings.Contains(out, "Failed to compile projection\n    error:") {
+		t.Errorf("the diagnostic block should follow its row with no blank line, in:\n%s", out)
 	}
 }

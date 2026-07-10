@@ -178,8 +178,11 @@ func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, tot
 			line += strings.Repeat(" ", verdictWidth-len(r.word)) + "  " + tw.styles.muted.Render(summary)
 		}
 		tw.write("%s\n", line)
-		if block != "" {
-			for l := range strings.SplitSeq(strings.TrimRight(block, "\n"), "\n") {
+		// Trim both ends so the block sits flush under its row (no blank line
+		// separating it from the projection it belongs to) - the list stays tight,
+		// the next projection follows immediately.
+		if block = strings.Trim(block, "\n"); block != "" {
+			for l := range strings.SplitSeq(block, "\n") {
 				if l == "" {
 					tw.write("\n")
 					continue

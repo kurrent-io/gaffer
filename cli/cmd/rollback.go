@@ -121,8 +121,8 @@ func writeRollbackPreview(out io.Writer, name string, current, target deploy.Des
 		tw.WriteQueryDiff(deploy.LineDiff(current.Query, target.Query))
 	}
 	tw.blank()
-	tw.write("%s\n", tw.styles.warning.Render("⚠ code rolls back, state does not: state built by the newer query is kept (gaffer recreate rebuilds from zero)"))
-	tw.write("%s\n", tw.styles.warning.Render("⚠ local files are untouched: gaffer diff will show this as drift until local is reconciled"))
+	tw.write("%s\n", tw.styles.warning.Render(glyphWarning+" code rolls back, state does not: state built by the newer query is kept (gaffer recreate rebuilds from zero)"))
+	tw.write("%s\n", tw.styles.warning.Render(glyphWarning+" local files are untouched: gaffer diff will show this as drift until local is reconciled"))
 	tw.blank()
 }
 

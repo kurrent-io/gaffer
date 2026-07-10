@@ -673,9 +673,9 @@ func (m historyModel) detail(hv historyVersion, width int) string {
 	}
 	switch hv.Kind {
 	case remote.KindEditedExternally:
-		b.WriteString(m.tw.styles.warning.Render(truncate("⚠ "+changeSummary(hv.Change)+" outside gaffer", width)) + "\n")
+		b.WriteString(m.tw.styles.warning.Render(truncate(glyphWarning+" "+changeSummary(hv.Change)+" outside gaffer", width)) + "\n")
 	case remote.KindUnreadable:
-		b.WriteString(m.tw.styles.warning.Render(truncate("⚠ deploy metadata could not be read", width)) + "\n")
+		b.WriteString(m.tw.styles.warning.Render(truncate(glyphWarning+" deploy metadata could not be read", width)) + "\n")
 	}
 
 	// Section 2: the deployed version this entry relates to - itself for a content

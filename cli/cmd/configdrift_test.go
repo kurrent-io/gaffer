@@ -18,7 +18,7 @@ func TestWriteConfigDriftWarnings(t *testing.T) {
 		t.Errorf("nothing to report should write nothing, got %q", b.String())
 	}
 	writeConfigDriftWarnings(&b, drift.ConfigDriftResult{Items: []drift.ConfigDrift{{Knob: "max_state_size", Server: 1, Local: 2, Unit: "bytes"}}})
-	if out := b.String(); !strings.Contains(out, "⚠ target config drift: max_state_size is 1 bytes on the server, 2 bytes in gaffer.toml") {
+	if out := b.String(); !strings.Contains(out, "target config drift: max_state_size is 1 bytes on the server, 2 bytes in gaffer.toml") {
 		t.Errorf("warning = %q", out)
 	}
 
@@ -26,7 +26,7 @@ func TestWriteConfigDriftWarnings(t *testing.T) {
 	// identical to "in sync" (UI-1820).
 	b.Reset()
 	writeConfigDriftWarnings(&b, drift.ConfigDriftResult{Err: errors.New("reading node options: options endpoint returned 401 Unauthorized")})
-	if out := b.String(); !strings.Contains(out, "⚠ could not check [database_config] drift: reading node options") {
+	if out := b.String(); !strings.Contains(out, "could not check [database_config] drift: reading node options") {
 		t.Errorf("failed-read warning = %q", out)
 	}
 }

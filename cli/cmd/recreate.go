@@ -119,7 +119,7 @@ func runRecreate(cmd *cobra.Command, name string, opts recreateOpts) error {
 	// confirm (and on the --yes path, where the operator is least watching).
 	if local.Emit && !opts.DeleteEmitted && !opts.JSON {
 		w := newTextWriter(cmd.ErrOrStderr(), cmd.ErrOrStderr())
-		w.write("%s %s\n", w.styles.warning.Render("⚠"),
+		w.write("%s %s\n", w.markWarning(),
 			w.styles.warning.Render(name+" emits; recreating re-emits and may duplicate - pass --delete-emitted for a clean rebuild"))
 	}
 

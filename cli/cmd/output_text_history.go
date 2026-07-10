@@ -89,9 +89,9 @@ func (tw *textWriter) historyProvenance(hv historyVersion) string {
 func historyProvenanceText(hv historyVersion) (text string, warn bool) {
 	switch hv.Kind {
 	case remote.KindEditedExternally:
-		return "⚠ " + changeSummary(hv.Change) + " outside gaffer", true
+		return glyphWarning + " " + changeSummary(hv.Change) + " outside gaffer", true
 	case remote.KindUnreadable:
-		return "⚠ deploy metadata could not be read", true
+		return glyphWarning + " deploy metadata could not be read", true
 	case remote.KindReconfigured:
 		return configSummary(hv.ConfigChanges), false
 	}

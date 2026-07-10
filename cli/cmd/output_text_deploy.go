@@ -103,7 +103,9 @@ func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, tot
 		if target != "" {
 			banner += " - " + target
 		}
-		tw.write("%s\n", tw.styles.errStatus.Render("⚠ "+banner))
+		// Production is the highest-caution context, so the banner keeps the error
+		// red rather than the amber warning tint, but uses the shared warning glyph.
+		tw.write("%s\n", tw.styles.errStatus.Render(glyphWarning+" "+banner))
 	}
 	skipped, refused, invalid, logicContinues, errored := 0, 0, 0, 0, 0
 	for _, it := range plan {
@@ -195,9 +197,8 @@ func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, tot
 	tw.write("  %s\n", strings.Join(segs, tw.styles.pipe.Render(" · ")))
 	if logicContinues > 0 {
 		// Info, not a warning or an error: deploy proceeds, this just says what it
-		// did and the flag to change it. A plain width-1 "i" in the info tint - the
-		// circled/emoji info glyphs mismatch the other marks and vary in cell width.
-		tw.write("  %s %s\n", tw.styles.info.Render("i"), tw.styles.info.Render(fmt.Sprintf(
+		// did and the flag to change it.
+		tw.write("  %s %s\n", tw.markInfo(), tw.styles.info.Render(fmt.Sprintf(
 			"%d logic change(s) continuing from checkpoint - --reset-on-logic-change to rebuild instead", logicContinues)))
 	}
 	tw.writeApplyWarnings(plan)
@@ -249,14 +250,14 @@ func (tw *textWriter) writeApplyWarnings(plan []drift.PlanItem) {
 			by = " (by " + ec.tool + ")"
 		}
 		msg := ec.name + " was changed outside gaffer" + by + " since its last deploy; deploying overwrites it"
-		tw.write("  %s %s\n", tw.styles.warning.Render("⚠"), tw.styles.warning.Render(msg))
+		tw.write("  %s %s\n", tw.markWarning(), tw.styles.warning.Render(msg))
 	}
 	for _, name := range faultedUpdates(plan) {
-		tw.write("  %s %s\n", tw.styles.warning.Render("⚠"),
+		tw.write("  %s %s\n", tw.markWarning(),
 			tw.styles.warning.Render(name+" is faulted; updating won't clear the fault"))
 	}
 	for _, name := range emittingResets(plan) {
-		tw.write("  %s %s\n", tw.styles.warning.Render("⚠"),
+		tw.write("  %s %s\n", tw.markWarning(),
 			tw.styles.warning.Render(name+" emits; rebuilding re-emits and may duplicate - use gaffer recreate --delete-emitted for a clean rebuild"))
 	}
 }
@@ -270,7 +271,7 @@ func (tw *textWriter) writePreflightFailures(total int, failures []preflightFail
 		fmt.Sprintf("Preflight failed: %d of %d projections have errors", len(failures), total)))
 	for _, f := range failures {
 		reasons := f.reasons()
-		tw.write("  %s %s\n", tw.styles.errStatus.Render("✗"), tw.styles.heading.Render(f.Name))
+		tw.write("  %s %s\n", tw.markError(), tw.styles.heading.Render(f.Name))
 		for _, r := range reasons {
 			tw.write("    %s\n", tw.styles.errDetail.Render(r))
 		}
@@ -284,11 +285,10 @@ func (tw *textWriter) writePreflightFailures(total int, failures []preflightFail
 // so it states the refusal and the remedy without repeating the per-projection
 // detail.
 func (tw *textWriter) writeInvalidRefusal(invalid, total int) {
-	// A cross, not a warning triangle: a refusal is a hard stop (nothing was
-	// deployed), the same marker a failed/refused row carries - the ⚠ cautions
-	// above are advisory, where a deploy still proceeds.
+	// The error mark, not a warning: a refusal is a hard stop (nothing was
+	// deployed), where the [!] cautions above are advisory and a deploy proceeds.
 	tw.write("%s %s\n",
-		tw.styles.errStatus.Render("✗"),
+		tw.markError(),
 		tw.styles.errStatus.Render(fmt.Sprintf("Deploy refused: %d of %d projections are invalid.", invalid, total)))
 	// Default foreground for the remedy, not the muted "in sync" tint.
 	tw.write("Fix the errors above, or pass --no-validate to deploy the rest.\n")

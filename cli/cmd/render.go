@@ -159,6 +159,24 @@ func (tw *textWriter) blank() {
 	tw.write("\n")
 }
 
+// Severity marker glyphs, defined once so the level's mark stays consistent
+// across every command rather than each site hardcoding its own. All width-1 so
+// they align in a column (avoid the emoji-presentation ℹ and the double-width
+// 🛈, which don't). Use the mark* methods for a styled marker; use these raw
+// glyphs where a caller builds and styles its own string (a TUI line that
+// truncates to a width, say).
+const (
+	glyphError   = "✗"
+	glyphWarning = "⚠"
+	glyphInfo    = "ⓘ"
+)
+
+// markError / markWarning / markInfo render the severity glyph in its tint (red /
+// amber / blue) for prefixing a message line.
+func (tw *textWriter) markError() string   { return tw.styles.errStatus.Render(glyphError) }
+func (tw *textWriter) markWarning() string { return tw.styles.warning.Render(glyphWarning) }
+func (tw *textWriter) markInfo() string    { return tw.styles.info.Render(glyphInfo) }
+
 func (p prefixed) detail(label, value string) {
 	p.tw.write("%s%s %s\n", p.pfx, p.tw.styles.label.Render(label+":"), value)
 }

@@ -221,7 +221,7 @@ func (m historyModel) rollbackModalBody(rb historyRollback, width int) []string 
 		// The same louder-against-production confirm gaffer rollback gives:
 		// the tier is resolved once at TUI start, from the shared identity.
 		rows = append(rows,
-			m.tw.styles.warning.Render(truncate("⚠ rolls back on "+prodWhere(m.target, true), width)),
+			m.tw.styles.warning.Render(truncate(glyphWarning+" rolls back on "+prodWhere(m.target, true), width)),
 			"")
 	}
 	if rb.cmp.EmitDiffers {
@@ -233,8 +233,8 @@ func (m historyModel) rollbackModalBody(rb historyRollback, width int) []string 
 		rows = append(rows, ansi.Truncate(row, width, "…"))
 	}
 	rows = append(rows, "",
-		m.tw.styles.warning.Render(truncate("⚠ code rolls back, state does not (gaffer recreate rebuilds from zero)", width)),
-		m.tw.styles.warning.Render(truncate("⚠ local files stay untouched; gaffer diff will show this as drift", width)))
+		m.tw.styles.warning.Render(truncate(glyphWarning+" code rolls back, state does not (gaffer recreate rebuilds from zero)", width)),
+		m.tw.styles.warning.Render(truncate(glyphWarning+" local files stay untouched; gaffer diff will show this as drift", width)))
 	if m.rbErr != nil {
 		rows = append(rows, "",
 			m.tw.styles.warning.Render(truncate("rollback failed: "+m.rbErr.Error()+" - y retries", width)))

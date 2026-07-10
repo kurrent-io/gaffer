@@ -141,7 +141,7 @@ func (s *Server) handleDeployApply(ctx context.Context, req *mcp.CallToolRequest
 		failed := 0
 		for _, it := range plan {
 			res := it.Result()
-			if res.Err != nil || res.Action == drift.ActionRefuse {
+			if res.Err != nil || res.Action == drift.ActionRefuse || res.Action == drift.ActionInvalid {
 				failed++
 			}
 			results = append(results, cliout.BuildDeployJSON(res))

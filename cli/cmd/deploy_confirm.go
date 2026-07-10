@@ -59,32 +59,36 @@ func confirmPlan(out, errOut io.Writer, plan []drift.PlanItem, target string, to
 }
 
 // renderDryRun shows the plan and applies nothing, returning the CI exit code as
-// an error: nil (exit 0) when everything is in sync, exit 2 when changes are
-// pending so a pipeline can branch on drift, and exit 1 when a projection failed
-// to plan or is refused (deploy can't apply it in place - e.g. an engine-version
-// change needing recreate). The plan is already on screen, so the non-zero codes
-// wrap a silent error and fang prints nothing more. The JSON mirrors a real
-// deploy's shape (each item's would-be outcome), so the schema is the same either way.
-func renderDryRun(out io.Writer, plan []drift.PlanItem, target string, totals planTotals, prod, jsonOut bool) error {
+// an error that mirrors the plan verdict: nil (exit 0) when in-sync, exit 2 when
+// deployable (changes pending, so a pipeline can branch on drift), and exit 1
+// when blocked (a projection can't be deployed - invalid, or a recreate deploy
+// won't do in place). The plan is already on screen, so the non-zero codes wrap
+// a silent error and fang prints nothing more. --json emits the PlanReportJSON
+// envelope (verdict, target, config drift, the plan array); env/target are the
+// resolved environment and its server, production the target's tier (nil when a
+// no-op skipped the server round-trip that determines it).
+func renderDryRun(out io.Writer, plan []drift.PlanItem, env, target string, production *bool, totals planTotals, dr drift.ConfigDriftResult, jsonOut bool) error {
 	if jsonOut {
+		report := cliout.BuildPlanReport(plan, dr)
+		report.Env, report.Target, report.Production = env, target, production
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(cliout.BuildPlanJSON(plan)); err != nil {
+		if err := enc.Encode(report); err != nil {
 			return err
 		}
 	} else {
+		prod := production != nil && *production
 		newTextWriter(out, out).writePlanSummary(plan, target, totals, prod)
 	}
 
-	for _, it := range plan {
-		if it.Err != nil || it.Action == drift.ActionRefuse {
-			return exitWith(1, silent(errors.New("dry run: some projections can't be deployed")))
-		}
-	}
-	if totals.changes() > 0 {
+	switch drift.PlanVerdict(plan) {
+	case "blocked":
+		return exitWith(1, silent(errors.New("dry run: some projections can't be deployed")))
+	case "deployable":
 		return exitWith(2, silent(errors.New("dry run: changes pending")))
+	default:
+		return nil
 	}
-	return nil
 }
 
 // targetDesc names the target for an error message: "cluster <name>" when known,

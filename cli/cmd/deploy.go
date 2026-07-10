@@ -24,7 +24,7 @@ type deployOpts struct {
 
 // deployCounts tallies outcomes for the summary line and the live progress bar.
 type deployCounts struct {
-	created, updated, rebuilt, skipped, refused, failed int
+	created, updated, rebuilt, skipped, refused, invalid, failed int
 }
 
 func (c *deployCounts) add(res drift.Result) {
@@ -41,6 +41,8 @@ func (c *deployCounts) add(res drift.Result) {
 		c.skipped++
 	case res.Action == drift.ActionRefuse:
 		c.refused++
+	case res.Action == drift.ActionInvalid:
+		c.invalid++
 	}
 }
 
@@ -60,9 +62,11 @@ func newDeployCmd() *cobra.Command {
 			"to rebuild instead, reprocessing from zero with the new logic (slower, and an emitting " +
 			"projection re-emits). A change to engine version or track-emitted-streams can't be applied " +
 			"in place; deploy refuses it and points you at gaffer recreate.\n\n" +
-			"Every projection is compiled before anything is sent to the server; if any fails to " +
-			"compile or has errors that would fault on the server, the whole deploy is refused so " +
-			"a bad projection can't leave a half-applied set. --no-validate skips this check.\n\n" +
+			"Deploy builds the whole plan first, then validates it: it compiles the projections " +
+			"it would create or update, and if any won't run (fails to compile, or would fault on " +
+			"the server) it refuses before writing anything, so a bad projection can't leave a " +
+			"half-applied set. --no-validate skips the check, deploying the valid projections and " +
+			"refusing the invalid ones individually instead of aborting the whole run.\n\n" +
 			"When the plan would change something, deploy shows it and asks to confirm before " +
 			"applying; updating a projection that's currently faulted is flagged, since the update " +
 			"won't clear the fault, and so is one whose deployed definition was changed outside gaffer " +
@@ -101,7 +105,7 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment from gaffer.toml to deploy to")
 	cmd.Flags().StringVar(&opts.Connection, "connection", "", "KurrentDB connection string (overrides --env)")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output as JSON")
-	cmd.Flags().BoolVar(&opts.NoValidate, "no-validate", false, "Skip the preflight compile check and deploy anyway")
+	cmd.Flags().BoolVar(&opts.NoValidate, "no-validate", false, "Skip validation: deploy the valid projections and refuse invalid ones per-projection")
 	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip the confirmation prompt")
 	cmd.Flags().BoolVar(&opts.ResetOnLogicChange, "reset-on-logic-change", false, "Rebuild from zero on a logic change instead of continuing from checkpoint")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Show the plan and exit without applying (exit 2 if changes are pending)")
@@ -119,36 +123,30 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 		return err
 	}
 	if len(names) == 0 {
-		if opts.JSON {
+		switch {
+		case opts.DryRun && opts.JSON:
+			// An empty project still emits the plan envelope (verdict in-sync, no
+			// changes) so a --json consumer always parses the same shape.
+			return renderDryRun(cmd.OutOrStdout(), nil, "", "", nil, planTotals{}, drift.ConfigDriftResult{}, true)
+		case opts.JSON:
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "[]")
-		} else {
+		default:
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No projections to deploy.")
 		}
 		return nil
 	}
 
-	// A deploy-scoped context so an interrupt (Ctrl-C: a signal during preflight,
-	// or a raw-mode key during the interactive apply) cancels the in-flight work
-	// and stops the loops rather than running to completion.
+	// A deploy-scoped context so an interrupt (Ctrl-C: a signal during planning, or
+	// a raw-mode key during the interactive apply) cancels the in-flight work and
+	// stops the loops rather than running to completion.
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
-	// Preflight gate, before connecting: compile everything locally, unless
-	// bypassed. A failure refuses the whole run - so a bad projection can't leave
-	// the earlier ones already applied - and needs no reachable server.
-	if !opts.NoValidate {
-		failures := runPreflight(ctx, root, cfg, names)
-		if ctx.Err() != nil {
-			return silent(ctx.Err())
-		}
-		if len(failures) > 0 {
-			if err := renderPreflightFailures(cmd.OutOrStdout(), opts.JSON, len(names), failures); err != nil {
-				return err
-			}
-			return silent(fmt.Errorf("preflight failed: %d of %d projections have errors", len(failures), len(names)))
-		}
-	}
-
+	// Connect before planning: the plan compares each projection against what's
+	// deployed, so building it needs the server. (The old preflight compiled
+	// locally and could refuse before connecting; now a projection that won't run
+	// surfaces as an invalid item in the full plan, a truer picture than a fast
+	// offline abort. You can't use deploy to check that your projections compile.)
 	r, resolved, cleanup, err := connectResolved(cfg, root, opts.Connection, opts.Env)
 	if err != nil {
 		return err
@@ -171,23 +169,39 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	// zero, so the confirm and the apply both treat it as a reset.
 	drift.ResolveResets(plan, opts.ResetOnLogicChange)
 
-	// Only a plan that changes something needs the target identity (and
-	// confirmation). Reading server info is a leader round-trip, so skip it on a
-	// no-op deploy. The same bounded $server-info read the operate verbs use names
-	// the target in the confirm and gates the production tier (the DB's own flag
-	// OR the env's production opt-in, never the env label alone); an unreadable
-	// $server-info falls back to the env name and its opt-in.
-	totals := planChangeCounts(plan)
-	targetName, prod := "", false
-	if totals.changes() > 0 {
-		targetName, prod = r.OperateTarget(ctx, resolved, projectionRPCTimeout)
+	// Validate: run the runtime's preflight over the applying items and fold any
+	// that would fault on the server into the plan as invalid. --no-validate skips
+	// it - its whole purpose - so a fault-prone projection deploys anyway (a
+	// projection that outright won't compile is already invalid from the plan's own
+	// compile, --no-validate or not, and just refuses per-item).
+	if !opts.NoValidate {
+		validatePlan(ctx, root, cfg, plan)
+		if ctx.Err() != nil {
+			return silent(ctx.Err())
+		}
 	}
 
-	// Refuse the prod --no-validate combination before applying - nothing has been
-	// written yet. Enforced even under --dry-run: this guards the dangerous flag
-	// combination itself, not the write, so a preview of it is refused too rather
-	// than misreporting a plan the real deploy would never run. The guardrail is
-	// defined once (shared with recreate) so its message and exit code can't drift.
+	// A plan that reports something (changes to apply or a block to explain) needs
+	// the target identity so the dry-run envelope and the confirm can name where it
+	// lands; and --no-validate needs it regardless, so the production guardrail can
+	// always fire. Only a pure no-op without --no-validate skips the leader
+	// round-trip. The same bounded $server-info read the operate verbs use names the
+	// target and gates the production tier (the DB's own flag OR the env's
+	// production opt-in, never the env label alone); an unreadable $server-info
+	// falls back to the env name and its opt-in.
+	totals := planChangeCounts(plan)
+	targetName, prod := "", false
+	var production *bool
+	if drift.PlanVerdict(plan) != "in-sync" || opts.NoValidate {
+		targetName, prod = r.OperateTarget(ctx, resolved, projectionRPCTimeout)
+		production = &prod
+	}
+
+	// Refuse the prod --no-validate combination before applying - production never
+	// accepts it (matching recreate), so it's refused unconditionally, not only when
+	// something would be written. Enforced even under --dry-run: it guards the flag
+	// combination itself, not the write. Defined once (shared with recreate) so the
+	// message and exit code can't drift.
 	if prod && opts.NoValidate {
 		return refuseNoValidateOnProd("Deploy", "projections are", targetName)
 	}
@@ -196,15 +210,24 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	// alike: fixtures and local runs assumed the declared config, so a diverging
 	// target is worth seeing before any decision. Stderr, so a --json consumer's
 	// stdout payload stays clean while the warning still reaches CI logs.
-	writeConfigDriftWarnings(cmd.ErrOrStderr(), <-driftCh)
+	dr := <-driftCh
+	writeConfigDriftWarnings(cmd.ErrOrStderr(), dr)
 
-	// --dry-run reports the plan and applies nothing, so it stops before the confirm
-	// gate below - an apply-only guardrail a read-only preview needs no answer to (a
-	// non-interactive dry-run must still report drift as exit 2, not refuse as 3). It
-	// does honour the production --no-validate refusal above, which a real deploy with
-	// the same flags would hit before any prompt.
+	// --dry-run reports the plan and applies nothing, so it stops before the apply
+	// gate below - a read-only preview needs no confirmation, and a non-interactive
+	// dry-run must report drift as exit 2, not refuse as 3. It does honour the
+	// production --no-validate refusal above, which a real deploy would also hit.
 	if opts.DryRun {
-		return renderDryRun(cmd.OutOrStdout(), plan, targetName, totals, prod, opts.JSON)
+		return renderDryRun(cmd.OutOrStdout(), plan, resolved.Name, targetName, production, totals, dr, opts.JSON)
+	}
+
+	// Validate gate for the real apply: an invalid projection refuses the whole run
+	// unless --no-validate, so a bad one can't leave a half-applied set (the
+	// invariant the old preflight held, now enforced against the built plan).
+	if !opts.NoValidate {
+		if err := refuseInvalidPlan(cmd.OutOrStdout(), plan, targetName, totals, prod, opts.JSON); err != nil {
+			return err
+		}
 	}
 
 	if err := confirmPlan(cmd.OutOrStdout(), cmd.ErrOrStderr(), plan, targetName, totals, opts.Yes, opts.JSON, prod); err != nil {

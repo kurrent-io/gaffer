@@ -3,12 +3,14 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 
 	gafferruntime "github.com/kurrent-io/gaffer/bindings/go"
 	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 )
 
@@ -69,12 +71,12 @@ func runPreflight(ctx context.Context, root string, cfg *config.Config, names []
 	return failures
 }
 
-// renderPreflightFailures reports the refusal: a JSON array of invalid
-// projections, or a text block listing each failure and how to proceed. Kept
-// separate from the deploy sink because preflight is a gate before any apply -
-// its outcomes aren't apply verdicts. Returns the JSON encode error so a write
-// failure surfaces rather than vanishing behind the non-zero exit, matching the
-// deploy sink.
+// renderPreflightFailures reports a preflight refusal: a JSON array of invalid
+// projections, or a text block listing each failure and how to proceed. Used by
+// recreate, whose compile gate runs before a destructive delete and so must
+// refuse before building any plan - deploy folds the same failures into its plan
+// instead (validatePlan). Returns the JSON encode error so a write failure
+// surfaces rather than vanishing behind the non-zero exit.
 func renderPreflightFailures(w io.Writer, jsonOut bool, total int, failures []preflightFailure) error {
 	if jsonOut {
 		out := make([]cliout.DeployJSON, len(failures))
@@ -87,4 +89,60 @@ func renderPreflightFailures(w io.Writer, jsonOut bool, total int, failures []pr
 	}
 	newTextWriter(w, w).writePreflightFailures(total, failures)
 	return nil
+}
+
+// validatePlan runs the runtime's preflight over the plan's applying items and
+// marks any that would fault on the server invalid, folding the diagnostics into
+// the plan rather than aborting. The plan's own compile already catches source
+// that won't build (a Compare failure is planned invalid); this adds the
+// error-severity diagnostics that compile discards - a projection that builds but
+// would fault. Only applying items (create/update/reset) are checked: a skip
+// isn't being written, and a refusal/invalid already won't apply. Gated by the
+// caller on --no-validate, whose whole purpose is to skip it.
+func validatePlan(ctx context.Context, root string, cfg *config.Config, plan []drift.PlanItem) {
+	idx := make(map[string]int, len(plan))
+	var names []string
+	for i := range plan {
+		if plan[i].Err == nil && plan[i].Action.Applies() {
+			names = append(names, plan[i].Name)
+			idx[plan[i].Name] = i
+		}
+	}
+	for _, f := range runPreflight(ctx, root, cfg, names) {
+		i := idx[f.Name]
+		plan[i].Action = drift.ActionInvalid
+		plan[i].Reason = strings.Join(f.reasons(), "; ")
+	}
+}
+
+// refuseInvalidPlan is the validate gate for a real apply: when the plan carries
+// an invalid projection and --no-validate wasn't given, deploy refuses the whole
+// run so a bad projection can't leave a half-applied set (the invariant the old
+// preflight gate held, now enforced against the built plan). It shows the full
+// plan with the invalid projections' reasons inline, then the refusal and how to
+// proceed - so you see what would have happened, not just what failed - and
+// returns the exit-1 error. --json emits the plan array. Returns nil when nothing
+// is invalid, so the caller proceeds to confirm and apply.
+func refuseInvalidPlan(out io.Writer, plan []drift.PlanItem, target string, totals planTotals, prod, jsonOut bool) error {
+	invalid := 0
+	for _, it := range plan {
+		if it.Action == drift.ActionInvalid {
+			invalid++
+		}
+	}
+	if invalid == 0 {
+		return nil
+	}
+	if jsonOut {
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(cliout.BuildPlanJSON(plan)); err != nil {
+			return err
+		}
+	} else {
+		tw := newTextWriter(out, out)
+		tw.writePlanSummary(plan, target, totals, prod)
+		tw.writeInvalidRefusal(invalid, len(plan))
+	}
+	return silent(fmt.Errorf("deploy refused: %d of %d projections are invalid", invalid, len(plan)))
 }

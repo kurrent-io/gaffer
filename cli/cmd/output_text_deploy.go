@@ -24,6 +24,9 @@ func (tw *textWriter) deployResultLine(res drift.Result, nameWidth int) string {
 	case res.Action == drift.ActionRefuse:
 		marker = tw.styles.warning.Render("✗")
 		verdict = tw.styles.warning.Render("refused (" + res.Reason + ")")
+	case res.Action == drift.ActionInvalid:
+		marker = tw.styles.errStatus.Render("✗")
+		verdict = tw.styles.errDetail.Render("invalid (" + res.Reason + ")")
 	case res.Action == drift.ActionSkip:
 		marker = tw.styles.pipe.Render("·")
 		verdict = tw.styles.pipe.Render("skipped (in sync)")
@@ -76,6 +79,9 @@ func (tw *textWriter) deploySummaryLine(c deployCounts) string {
 	if c.refused > 0 {
 		segs = append(segs, tw.styles.warning.Render(fmt.Sprintf("%d refused", c.refused)))
 	}
+	if c.invalid > 0 {
+		segs = append(segs, tw.styles.errStatus.Render(fmt.Sprintf("%d invalid", c.invalid)))
+	}
 	if c.failed > 0 {
 		segs = append(segs, tw.styles.errStatus.Render(fmt.Sprintf("%d failed", c.failed)))
 	}
@@ -99,7 +105,7 @@ func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, tot
 		}
 		tw.write("%s\n", tw.styles.errStatus.Render("⚠ "+banner))
 	}
-	skipped, refused, logicContinues, errored := 0, 0, 0, 0
+	skipped, refused, invalid, logicContinues, errored := 0, 0, 0, 0, 0
 	for _, it := range plan {
 		switch {
 		case it.Err != nil:
@@ -108,6 +114,8 @@ func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, tot
 			skipped++
 		case it.Action == drift.ActionRefuse:
 			refused++
+		case it.Action == drift.ActionInvalid:
+			invalid++
 		case it.Action == drift.ActionUpdate && it.LogicChange:
 			logicContinues++
 		}
@@ -131,6 +139,9 @@ func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, tot
 	}
 	if refused > 0 {
 		segs = append(segs, tw.styles.warning.Render(fmt.Sprintf("%d refused", refused)))
+	}
+	if invalid > 0 {
+		segs = append(segs, tw.styles.errStatus.Render(fmt.Sprintf("%d invalid", invalid)))
 	}
 
 	heading := "Plan"
@@ -157,16 +168,36 @@ func (tw *textWriter) writePlanSummary(plan []drift.PlanItem, target string, tot
 		verdictWidth = max(verdictWidth, len(r.word))
 	}
 	for _, r := range rows {
+		// A one-line summary sits in the detail column; a multi-line detail (a
+		// compile diagnostic) doesn't fit there, so its remaining lines render as an
+		// indented block in the alert colour below the row - aligned under the row
+		// and reading as an error, not spilling to the margin in the muted tint.
+		summary, block, _ := strings.Cut(r.detail, "\n")
 		line := fmt.Sprintf("  %s  %s", padCells(r.name, nameWidth), r.styled)
-		if r.detail != "" {
-			line += strings.Repeat(" ", verdictWidth-len(r.word)) + "  " + tw.styles.muted.Render(r.detail)
+		if summary != "" {
+			line += strings.Repeat(" ", verdictWidth-len(r.word)) + "  " + tw.styles.muted.Render(summary)
 		}
 		tw.write("%s\n", line)
+		// Trim both ends so the block sits flush under its row (no blank line
+		// separating it from the projection it belongs to) - the list stays tight,
+		// the next projection follows immediately.
+		if block = strings.Trim(block, "\n"); block != "" {
+			for l := range strings.SplitSeq(block, "\n") {
+				if l == "" {
+					tw.write("\n")
+					continue
+				}
+				tw.write("    %s\n", tw.styles.errDetail.Render(l))
+			}
+		}
 	}
 
 	tw.write("  %s\n", strings.Join(segs, tw.styles.pipe.Render(" · ")))
 	if logicContinues > 0 {
-		tw.write("  %s\n", tw.styles.pipe.Render(fmt.Sprintf(
+		// Info, not a warning or an error: deploy proceeds, this just says what it
+		// did and the flag to change it. A plain width-1 "i" in the info tint - the
+		// circled/emoji info glyphs mismatch the other marks and vary in cell width.
+		tw.write("  %s %s\n", tw.styles.info.Render("i"), tw.styles.info.Render(fmt.Sprintf(
 			"%d logic change(s) continuing from checkpoint - --reset-on-logic-change to rebuild instead", logicContinues)))
 	}
 	tw.writeApplyWarnings(plan)
@@ -198,6 +229,8 @@ func (tw *textWriter) planVerdict(it drift.PlanItem) (word, styled, detail strin
 		return "rebuild", tw.styles.warning.Render("rebuild"), "reprocessing from zero"
 	case it.Action == drift.ActionRefuse:
 		return "refused", tw.styles.warning.Render("refused"), it.Reason
+	case it.Action == drift.ActionInvalid:
+		return "invalid", tw.styles.errStatus.Render("invalid"), it.Reason
 	default:
 		return "", "", ""
 	}
@@ -230,7 +263,8 @@ func (tw *textWriter) writeApplyWarnings(plan []drift.PlanItem) {
 
 // writePreflightFailures reports the projections that can't be deployed and how
 // to proceed. Each failure shows its name and one line per problem (a compile
-// error, or each error-severity diagnostic), in the alert colour.
+// error, or each error-severity diagnostic), in the alert colour. Used by
+// recreate's pre-destructive compile gate.
 func (tw *textWriter) writePreflightFailures(total int, failures []preflightFailure) {
 	tw.write("%s\n\n", tw.styles.heading.Render(
 		fmt.Sprintf("Preflight failed: %d of %d projections have errors", len(failures), total)))
@@ -242,4 +276,20 @@ func (tw *textWriter) writePreflightFailures(total int, failures []preflightFail
 		}
 	}
 	tw.write("\n%s\n", tw.styles.pipe.Render("Fix the errors above, or pass --no-validate to deploy anyway."))
+}
+
+// writeInvalidRefusal is the footer under a refused plan: the deploy is refused
+// because some projections are invalid, and how to proceed. It follows the plan
+// summary (which already lists each invalid projection with its reason inline),
+// so it states the refusal and the remedy without repeating the per-projection
+// detail.
+func (tw *textWriter) writeInvalidRefusal(invalid, total int) {
+	// A cross, not a warning triangle: a refusal is a hard stop (nothing was
+	// deployed), the same marker a failed/refused row carries - the ⚠ cautions
+	// above are advisory, where a deploy still proceeds.
+	tw.write("%s %s\n",
+		tw.styles.errStatus.Render("✗"),
+		tw.styles.errStatus.Render(fmt.Sprintf("Deploy refused: %d of %d projections are invalid.", invalid, total)))
+	// Default foreground for the remedy, not the muted "in sync" tint.
+	tw.write("Fix the errors above, or pass --no-validate to deploy the rest.\n")
 }

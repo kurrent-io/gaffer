@@ -64,6 +64,9 @@ func TestIntegration_DeployTools(t *testing.T) {
 	if plan["changes"].(float64) != 1 {
 		t.Fatalf("expected changes=1, got %v", plan["changes"])
 	}
+	if plan["verdict"] != "deployable" {
+		t.Fatalf("expected verdict=deployable for a pending create, got %v", plan["verdict"])
+	}
 
 	if plan["env"] != "default" {
 		t.Fatalf("expected the resolved env echoed, got %v", plan["env"])

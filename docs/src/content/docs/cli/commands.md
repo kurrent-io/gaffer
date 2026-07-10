@@ -228,7 +228,7 @@ With no argument, deploys every projection in gaffer.toml; name one to deploy ju
 
 A changed query is a logic change: the new code may interpret already-processed events differently, so the accumulated state could now be wrong. By default deploy continues from the existing checkpoint (state is kept) and flags the change. Pass --reset-on-logic-change to rebuild instead, reprocessing from zero with the new logic (slower, and an emitting projection re-emits). A change to engine version or track-emitted-streams can't be applied in place; deploy refuses it and points you at gaffer recreate.
 
-Every projection is compiled before anything is sent to the server; if any fails to compile or has errors that would fault on the server, the whole deploy is refused so a bad projection can't leave a half-applied set. --no-validate skips this check.
+Deploy builds the whole plan first, then validates it: it compiles the projections it would create or update, and if any won't run (fails to compile, or would fault on the server) it refuses before writing anything, so a bad projection can't leave a half-applied set. --no-validate skips the check, deploying the valid projections and refusing the invalid ones individually instead of aborting the whole run.
 
 When the plan would change something, deploy shows it and asks to confirm before applying; updating a projection that's currently faulted is flagged, since the update won't clear the fault, and so is one whose deployed definition was changed outside gaffer since its last deploy (deploying overwrites it). --yes skips the prompt; without a terminal (or with --json) deploy won't apply unconfirmed, so pass --yes in scripts. A production target (a server that declares itself production, or an env with production = true) gets a louder confirm and refuses --no-validate. Pass --json for machine-readable output.
 
@@ -249,7 +249,7 @@ Flags:
       --dry-run                 Show the plan and exit without applying (exit 2 if changes are pending)
       --env string              Environment from gaffer.toml to deploy to
       --json                    Output as JSON
-      --no-validate             Skip the preflight compile check and deploy anyway
+      --no-validate             Skip validation: deploy the valid projections and refuse invalid ones per-projection
       --reset-on-logic-change   Rebuild from zero on a logic change instead of continuing from checkpoint
   -y, --yes                     Skip the confirmation prompt
 ```

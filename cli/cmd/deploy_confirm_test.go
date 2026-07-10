@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"testing"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
@@ -66,7 +68,7 @@ func TestRenderDryRunExitCodes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			err := renderDryRun(&buf, tc.plan, "", planChangeCounts(tc.plan), false, false)
+			err := renderDryRun(&buf, tc.plan, "", "", nil, planChangeCounts(tc.plan), drift.ConfigDriftResult{}, false)
 			got := 0
 			if err != nil {
 				got = ExitCodeFor(err)
@@ -84,16 +86,21 @@ func TestRenderDryRunExitCodes(t *testing.T) {
 func TestRenderDryRunJSONShape(t *testing.T) {
 	plan := []drift.PlanItem{{Name: "a", Action: drift.ActionCreate}, {Name: "b", Action: drift.ActionSkip}}
 	var buf bytes.Buffer
-	err := renderDryRun(&buf, plan, "", planChangeCounts(plan), false, true)
+	err := renderDryRun(&buf, plan, "staging", "orders-cluster", nil, planChangeCounts(plan), drift.ConfigDriftResult{}, true)
 	if got := exitCodeOf(err); got != 2 {
 		t.Fatalf("exit code = %d, want 2", got)
 	}
-	// Same array-of-outcomes schema as a real deploy: each item reports its
-	// would-be outcome (present here as the past-tense verdict).
-	for _, want := range []string{`"name": "a"`, `"outcome": "created"`, `"name": "b"`, `"outcome": "skipped"`} {
-		if !strings.Contains(buf.String(), want) {
-			t.Errorf("dry-run JSON missing %q in:\n%s", want, buf.String())
-		}
+	// The PlanReportJSON envelope: the top-level verdict and env/target, wrapping
+	// the plan array whose items each report their would-be outcome.
+	var got cliout.PlanReportJSON
+	if uerr := json.Unmarshal(buf.Bytes(), &got); uerr != nil {
+		t.Fatalf("unmarshal: %v\n%s", uerr, buf.String())
+	}
+	if got.Verdict != "deployable" || got.Env != "staging" || got.Target != "orders-cluster" || got.Changes != 1 {
+		t.Errorf("envelope = %+v; want verdict deployable, env staging, target orders-cluster, 1 change", got)
+	}
+	if len(got.Plan) != 2 || got.Plan[0].Outcome != "created" || got.Plan[1].Outcome != "skipped" {
+		t.Errorf("plan = %+v; want created then skipped", got.Plan)
 	}
 }
 
@@ -316,5 +323,42 @@ func TestWritePlanSummary(t *testing.T) {
 	newTextWriter(&prodBuf, &prodBuf).writePlanSummary(plan, "orders-prod", planChangeCounts(plan), true)
 	if !strings.Contains(prodBuf.String(), "PRODUCTION") {
 		t.Errorf("prod summary should show a production banner:\n%s", prodBuf.String())
+	}
+}
+
+func TestWritePlanSummaryInvalidBlock(t *testing.T) {
+	// A compile error is multi-line: its first line summarises in the detail
+	// column, and the rest renders as an indented block below the row rather than
+	// spilling to the left margin.
+	// A leading blank line in the diagnostic (compile errors carry one after the
+	// summary) must not separate the block from its row.
+	plan := []drift.PlanItem{
+		{Name: "good", Action: drift.ActionCreate},
+		{Name: "bad", Action: drift.ActionInvalid, Reason: "Failed to compile projection\n\nerror: Unexpected token (3:5)\n  3 | oops"},
+	}
+	var buf bytes.Buffer
+	newTextWriter(&buf, &buf).writePlanSummary(plan, "", planChangeCounts(plan), false)
+	out := buf.String()
+
+	summaryOnRow := false
+	for l := range strings.SplitSeq(out, "\n") {
+		if strings.Contains(l, "invalid") && strings.Contains(l, "Failed to compile projection") {
+			summaryOnRow = true
+		}
+		if strings.HasPrefix(l, "error:") {
+			t.Errorf("a reason line spilled to column 0: %q", l)
+		}
+	}
+	if !summaryOnRow {
+		t.Errorf("the invalid verdict and its summary should share a line:\n%s", out)
+	}
+	for _, want := range []string{"    error: Unexpected token (3:5)", "      3 | oops"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected indented block line %q in:\n%s", want, out)
+		}
+	}
+	// The block sits flush under its row - no blank line between them.
+	if !strings.Contains(out, "Failed to compile projection\n    error:") {
+		t.Errorf("the diagnostic block should follow its row with no blank line, in:\n%s", out)
 	}
 }

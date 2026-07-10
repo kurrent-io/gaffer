@@ -1,6 +1,7 @@
 package drift
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -15,7 +16,7 @@ func TestPlanAction(t *testing.T) {
 		name       string
 		in         Comparison
 		wantAction Action
-		wantReason []string // substrings the refuse reason must contain
+		wantReason []string // substrings the refuse/invalid reason must contain
 	}{
 		{"not deployed creates", Comparison{State: NotDeployed}, ActionCreate, nil},
 		{"in sync skips", Comparison{State: InSync}, ActionSkip, nil},
@@ -44,7 +45,7 @@ func TestPlanAction(t *testing.T) {
 			[]string{"engine version (remote 2, local 1)", "track emitted streams (remote true, local false)"},
 		},
 		{"query and emit drift still updates", drifted(deploy.Comparison{QueryDiffers: true, EmitDiffers: true}, desc("a", 2, true), desc("b", 2, false)), ActionUpdate, nil},
-		{"invalid refuses (can't compile under --no-validate)", Comparison{State: Invalid}, ActionRefuse, []string{"local definition is invalid"}},
+		{"invalid local is invalid, not refused", Comparison{State: Invalid}, ActionInvalid, []string{"local definition is invalid"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -110,5 +111,61 @@ func TestResolveResets(t *testing.T) {
 	}
 	if on[2].Action != ActionCreate || on[3].Action != ActionRefuse {
 		t.Error("flag on: create and refuse should be untouched")
+	}
+}
+
+func TestResultOutcome(t *testing.T) {
+	for action, want := range map[Action]string{
+		ActionCreate:  "created",
+		ActionUpdate:  "updated",
+		ActionReset:   "rebuilt",
+		ActionSkip:    "skipped",
+		ActionRefuse:  "refused",
+		ActionInvalid: "invalid",
+	} {
+		if got := (Result{Action: action}).Outcome(); got != want {
+			t.Errorf("%s -> %q, want %q", action, got, want)
+		}
+	}
+	// A failed apply reads as "failed" whatever action was attempted.
+	if got := (Result{Action: ActionCreate, Err: errors.New("boom")}).Outcome(); got != "failed" {
+		t.Errorf("err -> %q, want failed", got)
+	}
+}
+
+func TestResultExternalChangeTool(t *testing.T) {
+	item := func(action Action, c Comparison) Result { return PlanItem{Name: "p", Action: action, Cmp: c}.Result() }
+
+	// A drifted update whose deployed def still matches another tool's last
+	// deploy: changed-by-tool, so the result names that tool.
+	byTool := item(ActionUpdate, Comparison{
+		State: Drifted, Cmp: deploy.Comparison{QueryDiffers: true},
+		Local: desc("y", 2, false), Deployed: desc("x", 2, false),
+		DeployBaseline: desc("x", 2, false), Ledger: ledgerEntry("other-tool", "bob"),
+	})
+	if !byTool.ExternalChange || byTool.ExternalChangeTool != "other-tool" {
+		t.Errorf("changed-by-tool: external=%v tool=%q; want true/other-tool", byTool.ExternalChange, byTool.ExternalChangeTool)
+	}
+
+	// Deployed diverged from the latest tool entry: changed on the server
+	// directly, so it's external but there's no tool to name.
+	direct := item(ActionUpdate, Comparison{
+		State: Drifted, Cmp: deploy.Comparison{QueryDiffers: true},
+		Local: desc("y", 2, false), Deployed: desc("x", 2, false),
+		DeployBaseline: desc("z", 2, false), Ledger: ledgerEntry("other-tool", "bob"),
+	})
+	if !direct.ExternalChange || direct.ExternalChangeTool != "" {
+		t.Errorf("changed-server: external=%v tool=%q; want true/empty", direct.ExternalChange, direct.ExternalChangeTool)
+	}
+
+	// A recreate refusal applies nothing, so it never claims an external
+	// overwrite even when the server drifted.
+	refused := item(ActionRefuse, Comparison{
+		State: Drifted, Cmp: deploy.Comparison{EngineVersionDiffers: true},
+		Local: desc("x", 3, false), Deployed: desc("x", 2, false),
+		DeployBaseline: desc("z", 2, false), Ledger: ledgerEntry("other-tool", "bob"),
+	})
+	if refused.ExternalChange {
+		t.Error("refused item must not claim an external overwrite")
 	}
 }

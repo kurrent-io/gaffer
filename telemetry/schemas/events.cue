@@ -337,10 +337,10 @@ import "strings"
 //
 // `refused` is a deploy-family guardrail block (process exit code 3): the
 // command declined to proceed without explicit authorisation - a mutating
-// command needing --yes with no terminal, a blocked/invalid plan, or
-// --no-validate against production. Distinct from `user_interrupt` (the user
-// declined an interactive prompt or Ctrl+C'd) and `user_error` (a malformed
-// invocation).
+// command needing --yes with no terminal, or --no-validate against production.
+// Distinct from `user_interrupt` (the user declined an interactive prompt or
+// Ctrl+C'd) and `user_error` (a malformed invocation, or an invalid plan that
+// exits 1 with its projections to fix).
 #Outcome:
 	"success" |
 	"user_interrupt" |

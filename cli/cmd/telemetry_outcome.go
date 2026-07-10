@@ -160,6 +160,19 @@ func classifyStructural(err error) (telemetry.Outcome, bool) {
 	if errors.As(err, &authErr) {
 		return telemetry.OutcomeDBConnectError, true
 	}
+	// The deploy family carries a non-nil error purely to set the process exit
+	// code on two non-failure/guardrail paths, so map those off the same
+	// predicate as the exit code to keep telemetry in lockstep with the CI
+	// contract: exit 2 is a completed dry-run with changes pending (a success),
+	// exit 3 is a guardrail refusal (needed --yes with no terminal, or
+	// --no-validate against production). A blocked plan or a declined prompt is
+	// exit 1 and classifies below, so these don't overlap the sentinels.
+	switch ExitCodeFor(err) {
+	case 2:
+		return telemetry.OutcomeSuccess, true
+	case 3:
+		return telemetry.OutcomeRefused, true
+	}
 	switch {
 	case errors.Is(err, prompt.ErrCancelled):
 		return telemetry.OutcomeUserInterrupt, true

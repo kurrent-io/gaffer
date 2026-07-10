@@ -89,3 +89,147 @@ func EmitManifest(ctx context.Context, p ManifestCommandInvokedProperties) {
 	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameManifest)
 	c.fireCommandInvoked(p)
 }
+
+// EmitDeploy fires command_invoked for `gaffer deploy`. No-op when ctx
+// carries no Client (opt-out or unreadable config).
+//
+// Callers fill in Outcome (and any variant-specific optional
+// fields). Command and DurationMs are stamped by the helper from
+// Client state - any caller-set value is discarded.
+func EmitDeploy(ctx context.Context, p DeployCommandInvokedProperties) {
+	c := ClientFromContext(ctx)
+	if c == nil {
+		return
+	}
+	c.setCurrentCommand(CommandNameDeploy)
+	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameDeploy)
+	c.fireCommandInvoked(p)
+}
+
+// EmitStatus fires command_invoked for `gaffer status`. No-op when ctx
+// carries no Client (opt-out or unreadable config).
+//
+// Callers fill in Outcome (and any variant-specific optional
+// fields). Command and DurationMs are stamped by the helper from
+// Client state - any caller-set value is discarded.
+func EmitStatus(ctx context.Context, p StatusCommandInvokedProperties) {
+	c := ClientFromContext(ctx)
+	if c == nil {
+		return
+	}
+	c.setCurrentCommand(CommandNameStatus)
+	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameStatus)
+	c.fireCommandInvoked(p)
+}
+
+// EmitDiff fires command_invoked for `gaffer diff`. No-op when ctx
+// carries no Client (opt-out or unreadable config).
+//
+// Callers fill in Outcome (and any variant-specific optional
+// fields). Command and DurationMs are stamped by the helper from
+// Client state - any caller-set value is discarded.
+func EmitDiff(ctx context.Context, p DiffCommandInvokedProperties) {
+	c := ClientFromContext(ctx)
+	if c == nil {
+		return
+	}
+	c.setCurrentCommand(CommandNameDiff)
+	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameDiff)
+	c.fireCommandInvoked(p)
+}
+
+// EmitHistory fires command_invoked for `gaffer history`. No-op when ctx
+// carries no Client (opt-out or unreadable config).
+//
+// Callers fill in Outcome (and any variant-specific optional
+// fields). Command and DurationMs are stamped by the helper from
+// Client state - any caller-set value is discarded.
+func EmitHistory(ctx context.Context, p HistoryCommandInvokedProperties) {
+	c := ClientFromContext(ctx)
+	if c == nil {
+		return
+	}
+	c.setCurrentCommand(CommandNameHistory)
+	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameHistory)
+	c.fireCommandInvoked(p)
+}
+
+// EmitRollback fires command_invoked for `gaffer rollback`. No-op when ctx
+// carries no Client (opt-out or unreadable config).
+//
+// Callers fill in Outcome (and any variant-specific optional
+// fields). Command and DurationMs are stamped by the helper from
+// Client state - any caller-set value is discarded.
+func EmitRollback(ctx context.Context, p RollbackCommandInvokedProperties) {
+	c := ClientFromContext(ctx)
+	if c == nil {
+		return
+	}
+	c.setCurrentCommand(CommandNameRollback)
+	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameRollback)
+	c.fireCommandInvoked(p)
+}
+
+// EmitRecreate fires command_invoked for `gaffer recreate`. No-op when ctx
+// carries no Client (opt-out or unreadable config).
+//
+// Callers fill in Outcome (and any variant-specific optional
+// fields). Command and DurationMs are stamped by the helper from
+// Client state - any caller-set value is discarded.
+func EmitRecreate(ctx context.Context, p RecreateCommandInvokedProperties) {
+	c := ClientFromContext(ctx)
+	if c == nil {
+		return
+	}
+	c.setCurrentCommand(CommandNameRecreate)
+	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameRecreate)
+	c.fireCommandInvoked(p)
+}
+
+// EmitEnable fires command_invoked for `gaffer enable`. No-op when ctx
+// carries no Client (opt-out or unreadable config).
+//
+// Callers fill in Outcome (and any variant-specific optional
+// fields). Command and DurationMs are stamped by the helper from
+// Client state - any caller-set value is discarded.
+func EmitEnable(ctx context.Context, p EnableCommandInvokedProperties) {
+	c := ClientFromContext(ctx)
+	if c == nil {
+		return
+	}
+	c.setCurrentCommand(CommandNameEnable)
+	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameEnable)
+	c.fireCommandInvoked(p)
+}
+
+// EmitDisable fires command_invoked for `gaffer disable`. No-op when ctx
+// carries no Client (opt-out or unreadable config).
+//
+// Callers fill in Outcome (and any variant-specific optional
+// fields). Command and DurationMs are stamped by the helper from
+// Client state - any caller-set value is discarded.
+func EmitDisable(ctx context.Context, p DisableCommandInvokedProperties) {
+	c := ClientFromContext(ctx)
+	if c == nil {
+		return
+	}
+	c.setCurrentCommand(CommandNameDisable)
+	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameDisable)
+	c.fireCommandInvoked(p)
+}
+
+// EmitDelete fires command_invoked for `gaffer delete`. No-op when ctx
+// carries no Client (opt-out or unreadable config).
+//
+// Callers fill in Outcome (and any variant-specific optional
+// fields). Command and DurationMs are stamped by the helper from
+// Client state - any caller-set value is discarded.
+func EmitDelete(ctx context.Context, p DeleteCommandInvokedProperties) {
+	c := ClientFromContext(ctx)
+	if c == nil {
+		return
+	}
+	c.setCurrentCommand(CommandNameDelete)
+	c.stampInvocation(&p.Command, &p.DurationMs, &p.InvokedBy, &p.InvokedVia, CommandNameDelete)
+	c.fireCommandInvoked(p)
+}

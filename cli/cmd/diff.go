@@ -16,6 +16,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 type diffOpts struct {
@@ -57,7 +58,10 @@ func newDiffCmd() *cobra.Command {
 			"  gaffer diff order-count --env staging\n" +
 			"  gaffer diff order-count --left 9f2a1c --right local",
 		Args: exactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				telemetry.EmitDiff(cmd.Context(), telemetry.DiffCommandInvokedProperties{Outcome: o})
+			})
 			return runDiff(cmd, args[0], opts)
 		},
 	}

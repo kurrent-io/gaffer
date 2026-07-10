@@ -50,7 +50,25 @@ export type VersionCommandInvokedProperties = CommandInvokedBaseProperties & {
  * The set of gaffer commands. Source of truth for the discriminator on
  * `command_invoked` variants and the `command` field on `exception`.
  */
-export type CommandName = "version" | "init" | "scaffold" | "manifest" | "info" | "dev" | "mcp" | "lsp" | "debug";
+export type CommandName =
+  | "version"
+  | "init"
+  | "scaffold"
+  | "manifest"
+  | "info"
+  | "dev"
+  | "mcp"
+  | "lsp"
+  | "debug"
+  | "deploy"
+  | "status"
+  | "diff"
+  | "history"
+  | "rollback"
+  | "recreate"
+  | "enable"
+  | "disable"
+  | "delete";
 /**
  * Bucketed duration in milliseconds (lower-bound of the half-open
  * interval).
@@ -70,11 +88,19 @@ export type DurationBucket = 0 | 10 | 100 | 1000 | 10000 | 60000 | 600000;
  * as `user_interrupt` because on one-shot commands it signals
  * abandonment (user gave up mid-init/scaffold/etc.); on long-running
  * commands it's the normal end-of-session marker and reads the same.
+ *
+ * `refused` is a deploy-family guardrail block (process exit code 3): the
+ * command declined to proceed without explicit authorisation - a mutating
+ * command needing --yes with no terminal, or --no-validate against production.
+ * Distinct from `user_interrupt` (the user declined an interactive prompt or
+ * Ctrl+C'd) and `user_error` (a malformed invocation, or an invalid plan that
+ * exits 1 with its projections to fix).
  */
 export type Outcome =
   | "success"
   | "user_interrupt"
   | "user_error"
+  | "refused"
   | "internal_error"
   | "manifest_not_found"
   | "manifest_parse_error"
@@ -263,6 +289,112 @@ export type DebugCommandInvokedProperties = CommandInvokedBaseProperties & {
   [k: string]: unknown;
 };
 /**
+ * `gaffer deploy` - plan, validate, then apply projection creates/updates to an
+ * environment.
+ */
+export type DeployCommandInvokedProperties = CommandInvokedBaseProperties & {
+  command: "deploy";
+  /**
+   * Whether --dry-run was set (plan shown, nothing applied). Separates a
+   * preview from a real apply, otherwise identical events.
+   */
+  dry_run?: boolean;
+  /**
+   * Whether the target is production (the server declares it, or the env
+   * opts in with production = true).
+   */
+  prod_target?: boolean;
+  /**
+   * Whether --no-validate skipped the pre-apply validation gate.
+   */
+  no_validate?: boolean;
+  [k: string]: unknown;
+};
+/**
+ * `gaffer status` - report projection state on an environment. Read-only. No
+ * command-specific properties.
+ */
+export type StatusCommandInvokedProperties = CommandInvokedBaseProperties & {
+  command: "status";
+  [k: string]: unknown;
+};
+/**
+ * `gaffer diff` - compare two versions of a projection. Read-only. No
+ * command-specific properties.
+ */
+export type DiffCommandInvokedProperties = CommandInvokedBaseProperties & {
+  command: "diff";
+  [k: string]: unknown;
+};
+/**
+ * `gaffer history` - browse a deployed projection's history.
+ */
+export type HistoryCommandInvokedProperties = CommandInvokedBaseProperties & {
+  command: "history";
+  /**
+   * Whether the user applied a rollback from the interactive timeline's `r`
+   * modal. Absent on the piped / --json path, which can't roll back.
+   */
+  rollback_applied?: boolean;
+  [k: string]: unknown;
+};
+/**
+ * `gaffer rollback` - redeploy a prior version of a projection in place.
+ */
+export type RollbackCommandInvokedProperties = CommandInvokedBaseProperties & {
+  command: "rollback";
+  /**
+   * Whether the target is production.
+   */
+  prod_target?: boolean;
+  [k: string]: unknown;
+};
+/**
+ * `gaffer recreate` - destroy and rebuild a projection from local config.
+ * Destructive.
+ */
+export type RecreateCommandInvokedProperties = CommandInvokedBaseProperties & {
+  command: "recreate";
+  /**
+   * Whether the target is production.
+   */
+  prod_target?: boolean;
+  /**
+   * Whether --no-validate skipped the pre-destructive compile gate.
+   */
+  no_validate?: boolean;
+  [k: string]: unknown;
+};
+/**
+ * `gaffer enable` / `disable` / `delete` - the operate verbs (shared runOperate
+ * flow). One variant each of an identical shape, because the type generator maps
+ * one command to one property struct. `disable --abort` reports as `disable`.
+ */
+export type EnableCommandInvokedProperties = CommandInvokedBaseProperties & {
+  command: "enable";
+  /**
+   * Whether the target is production.
+   */
+  prod_target?: boolean;
+  [k: string]: unknown;
+};
+export type DisableCommandInvokedProperties = CommandInvokedBaseProperties & {
+  command: "disable";
+  /**
+   * Whether the target is production.
+   */
+  prod_target?: boolean;
+  [k: string]: unknown;
+};
+export type DeleteCommandInvokedProperties = CommandInvokedBaseProperties & {
+  command: "delete";
+  /**
+   * Whether the target is production.
+   */
+  prod_target?: boolean;
+  [k: string]: unknown;
+};
+/**
  * Bucketed file size on disk in bytes (lower-bound of the half-open
  * interval).
  */
@@ -352,7 +484,16 @@ export interface CommandInvoked {
     | DevCommandInvokedProperties
     | McpCommandInvokedProperties
     | LspCommandInvokedProperties
-    | DebugCommandInvokedProperties;
+    | DebugCommandInvokedProperties
+    | DeployCommandInvokedProperties
+    | StatusCommandInvokedProperties
+    | DiffCommandInvokedProperties
+    | HistoryCommandInvokedProperties
+    | RollbackCommandInvokedProperties
+    | RecreateCommandInvokedProperties
+    | EnableCommandInvokedProperties
+    | DisableCommandInvokedProperties
+    | DeleteCommandInvokedProperties;
   [k: string]: unknown;
 }
 /**

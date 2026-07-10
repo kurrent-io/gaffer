@@ -10,6 +10,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 type deployOpts struct {
@@ -94,12 +95,20 @@ func newDeployCmd() *cobra.Command {
 		Example: "  gaffer deploy\n" +
 			"  gaffer deploy order-count --env staging",
 		Args: maxArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
 			var name string
 			if len(args) == 1 {
 				name = args[0]
 			}
-			return runDeploy(cmd, name, opts)
+			props := telemetry.DeployCommandInvokedProperties{
+				DryRun:     &opts.DryRun,
+				NoValidate: &opts.NoValidate,
+			}
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				props.Outcome = o
+				telemetry.EmitDeploy(cmd.Context(), props)
+			})
+			return runDeploy(cmd, name, opts, &props)
 		},
 	}
 	cmd.Flags().StringVar(&opts.Env, "env", "", "Environment from gaffer.toml to deploy to")
@@ -112,7 +121,7 @@ func newDeployCmd() *cobra.Command {
 	return cmd
 }
 
-func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
+func runDeploy(cmd *cobra.Command, name string, opts deployOpts, tel *telemetry.DeployCommandInvokedProperties) error {
 	cfg, root, err := loadProject()
 	if err != nil {
 		return err
@@ -195,6 +204,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts) error {
 	if drift.PlanVerdict(plan) != "in-sync" || opts.NoValidate {
 		targetName, prod = r.OperateTarget(ctx, resolved, projectionRPCTimeout)
 		production = &prod
+		tel.ProdTarget = &prod
 	}
 
 	// Refuse the prod --no-validate combination before applying - production never

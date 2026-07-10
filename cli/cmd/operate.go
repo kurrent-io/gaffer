@@ -12,6 +12,7 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
 // operateOpts are the flags shared by the operate-tier verbs (enable / disable /
@@ -132,9 +133,13 @@ func newEnableCmd() *cobra.Command {
 		Example: "  gaffer enable order-count\n" +
 			"  gaffer enable order-count --env staging",
 		Args: exactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			var prod *bool
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				telemetry.EmitEnable(cmd.Context(), telemetry.EnableCommandInvokedProperties{Outcome: o, ProdTarget: prod})
+			})
 			do := func(ctx context.Context, c *remote.Client, n string) error { return c.Enable(ctx, n) }
-			return runOperate(cmd, args[0], opts, opSpec{verb: "Enable", outcome: "enabled", do: do})
+			return runOperate(cmd, args[0], opts, opSpec{verb: "Enable", outcome: "enabled", do: do}, func(p bool) { prod = &p })
 		},
 	}
 	addEnvFlags(cmd, &opts)
@@ -156,7 +161,11 @@ func newDisableCmd() *cobra.Command {
 		Example: "  gaffer disable order-count\n" +
 			"  gaffer disable order-count --abort --env staging",
 		Args: exactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			var prod *bool
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				telemetry.EmitDisable(cmd.Context(), telemetry.DisableCommandInvokedProperties{Outcome: o, ProdTarget: prod})
+			})
 			verb, outcome := "Disable", "disabled"
 			do := func(ctx context.Context, c *remote.Client, n string) error { return c.Disable(ctx, n) }
 			if abort {
@@ -164,7 +173,7 @@ func newDisableCmd() *cobra.Command {
 				do = func(ctx context.Context, c *remote.Client, n string) error { return c.Abort(ctx, n) }
 			}
 			// Disabling is recoverable, so it only needs confirmation on production.
-			return runOperate(cmd, args[0], opts, opSpec{verb: verb, outcome: outcome, do: do, confirmProdOnly: true})
+			return runOperate(cmd, args[0], opts, opSpec{verb: verb, outcome: outcome, do: do, confirmProdOnly: true}, func(p bool) { prod = &p })
 		},
 	}
 	addEnvFlags(cmd, &opts)
@@ -188,7 +197,11 @@ func newDeleteCmd() *cobra.Command {
 		Example: "  gaffer delete order-count\n" +
 			"  gaffer delete order-count --delete-emitted --env staging",
 		Args: exactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (retErr error) {
+			var prod *bool
+			defer oneShotDefer(&retErr, func(o telemetry.Outcome) {
+				telemetry.EmitDelete(cmd.Context(), telemetry.DeleteCommandInvokedProperties{Outcome: o, ProdTarget: prod})
+			})
 			do := func(ctx context.Context, c *remote.Client, n string) error {
 				return c.Delete(ctx, n, remote.DeleteOptions{
 					DeleteStateStream:      true,
@@ -196,7 +209,7 @@ func newDeleteCmd() *cobra.Command {
 					DeleteEmittedStreams:   deleteEmitted,
 				})
 			}
-			return runOperate(cmd, args[0], opts, opSpec{verb: "Delete", outcome: "deleted", do: do, confirmAlways: true, disableFirst: true})
+			return runOperate(cmd, args[0], opts, opSpec{verb: "Delete", outcome: "deleted", do: do, confirmAlways: true, disableFirst: true}, func(p bool) { prod = &p })
 		},
 	}
 	addEnvFlags(cmd, &opts)
@@ -217,8 +230,12 @@ type opSpec struct {
 }
 
 // runOperate is the shared enable/disable flow: connect, resolve the target, check
-// the projection exists, confirm per the verb's policy, then run the RPC.
-func runOperate(cmd *cobra.Command, name string, opts operateOpts, spec opSpec) error {
+// the projection exists, confirm per the verb's policy, then run the RPC. setProd,
+// when non-nil, is called with the target's production tier once resolved, for the
+// caller's command_invoked event; it's left uncalled (so prod_target stays absent,
+// matching deploy/rollback/recreate) when the run fails before the target is
+// reached.
+func runOperate(cmd *cobra.Command, name string, opts operateOpts, spec opSpec, setProd func(bool)) error {
 	if err := checkOperable(name); err != nil {
 		return err
 	}
@@ -232,6 +249,9 @@ func runOperate(cmd *cobra.Command, name string, opts operateOpts, spec opSpec) 
 
 	ctx := cmd.Context()
 	target, prod := r.OperateTarget(ctx, conn.env, projectionRPCTimeout)
+	if setProd != nil {
+		setProd(prod)
+	}
 
 	if err := requireExists(ctx, r, name, target); err != nil {
 		return err

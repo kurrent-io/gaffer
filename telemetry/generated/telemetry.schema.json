@@ -113,6 +113,33 @@
             },
             {
               "$ref": "#/definitions/DebugCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/DeployCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/StatusCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/DiffCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/HistoryCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/RollbackCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/RecreateCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/EnableCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/DisableCommandInvokedProperties"
+            },
+            {
+              "$ref": "#/definitions/DeleteCommandInvokedProperties"
             }
           ],
           "unevaluatedProperties": false
@@ -159,7 +186,16 @@
         "dev",
         "mcp",
         "lsp",
-        "debug"
+        "debug",
+        "deploy",
+        "status",
+        "diff",
+        "history",
+        "rollback",
+        "recreate",
+        "enable",
+        "disable",
+        "delete"
       ]
     },
     "Context": {
@@ -254,6 +290,63 @@
       ],
       "unevaluatedProperties": false
     },
+    "DeleteCommandInvokedProperties": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "delete"
+          ]
+        },
+        "prod_target": {
+          "description": "Whether the target is production.",
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
+    "DeployCommandInvokedProperties": {
+      "description": "`gaffer deploy` - plan, validate, then apply projection creates/updates to an\nenvironment.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "deploy"
+          ]
+        },
+        "dry_run": {
+          "description": "Whether --dry-run was set (plan shown, nothing applied). Separates a\npreview from a real apply, otherwise identical events.",
+          "type": "boolean"
+        },
+        "prod_target": {
+          "description": "Whether the target is production (the server declares it, or the env\nopts in with production = true).",
+          "type": "boolean"
+        },
+        "no_validate": {
+          "description": "Whether --no-validate skipped the pre-apply validation gate.",
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
     "DevCommandInvokedProperties": {
       "description": "`gaffer dev` - long-running development loop, optionally connected to a\nlive KurrentDB.",
       "type": "object",
@@ -316,6 +409,51 @@
       ],
       "unevaluatedProperties": false
     },
+    "DiffCommandInvokedProperties": {
+      "description": "`gaffer diff` - compare two versions of a projection. Read-only. No\ncommand-specific properties.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "diff"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
+    "DisableCommandInvokedProperties": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "disable"
+          ]
+        },
+        "prod_target": {
+          "description": "Whether the target is production.",
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
     "DurationBucket": {
       "description": "Bucketed duration in milliseconds (lower-bound of the half-open\ninterval).",
       "type": "integer",
@@ -348,6 +486,31 @@
         "mcp",
         "vscode"
       ]
+    },
+    "EnableCommandInvokedProperties": {
+      "description": "`gaffer enable` / `disable` / `delete` - the operate verbs (shared runOperate\nflow). One variant each of an identical shape, because the type generator maps\none command to one property struct. `disable --abort` reports as `disable`.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "enable"
+          ]
+        },
+        "prod_target": {
+          "description": "Whether the target is production.",
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
     },
     "Envelope": {
       "description": "Envelope is the top-level shape POSTed to the worker. One envelope per HTTP\nrequest, carrying a batch of events that share the same emitter and run.",
@@ -613,6 +776,31 @@
       },
       "unevaluatedProperties": false
     },
+    "HistoryCommandInvokedProperties": {
+      "description": "`gaffer history` - browse a deployed projection's history.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "history"
+          ]
+        },
+        "rollback_applied": {
+          "description": "Whether the user applied a rollback from the interactive timeline's `r`\nmodal. Absent on the piped / --json path, which can't roll back.",
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
     "InfoCommandInvokedProperties": {
       "description": "`gaffer info` - print environment + manifest summary. No command-specific\nproperties.",
       "type": "object",
@@ -796,12 +984,13 @@
       ]
     },
     "Outcome": {
-      "description": "Outcome is the *final* outcome of a command invocation - whatever made it\nactually exit. Long-running sessions that hit transient errors and\nrecovered carry the recovered outcome (typically `user_interrupt`) here,\nwith the transient errors captured in `projection_errors_seen` for the\ncommands that have it.\n\n\"Designed completion\" paths (clean exit, --until-caught-up reaching\nhead, fixture file fully consumed) collapse to `success` - the user\nwasn't surprised, nothing went wrong, distinguishing them adds\nwire-shape without adding signal. Ctrl+C / SIGTERM stays distinct\nas `user_interrupt` because on one-shot commands it signals\nabandonment (user gave up mid-init/scaffold/etc.); on long-running\ncommands it's the normal end-of-session marker and reads the same.",
+      "description": "Outcome is the *final* outcome of a command invocation - whatever made it\nactually exit. Long-running sessions that hit transient errors and\nrecovered carry the recovered outcome (typically `user_interrupt`) here,\nwith the transient errors captured in `projection_errors_seen` for the\ncommands that have it.\n\n\"Designed completion\" paths (clean exit, --until-caught-up reaching\nhead, fixture file fully consumed) collapse to `success` - the user\nwasn't surprised, nothing went wrong, distinguishing them adds\nwire-shape without adding signal. Ctrl+C / SIGTERM stays distinct\nas `user_interrupt` because on one-shot commands it signals\nabandonment (user gave up mid-init/scaffold/etc.); on long-running\ncommands it's the normal end-of-session marker and reads the same.\n\n`refused` is a deploy-family guardrail block (process exit code 3): the\ncommand declined to proceed without explicit authorisation - a mutating\ncommand needing --yes with no terminal, or --no-validate against production.\nDistinct from `user_interrupt` (the user declined an interactive prompt or\nCtrl+C'd) and `user_error` (a malformed invocation, or an invalid plan that\nexits 1 with its projections to fix).",
       "type": "string",
       "enum": [
         "success",
         "user_interrupt",
         "user_error",
+        "refused",
         "internal_error",
         "manifest_not_found",
         "manifest_parse_error",
@@ -957,6 +1146,60 @@
       },
       "unevaluatedProperties": false
     },
+    "RecreateCommandInvokedProperties": {
+      "description": "`gaffer recreate` - destroy and rebuild a projection from local config.\nDestructive.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "recreate"
+          ]
+        },
+        "prod_target": {
+          "description": "Whether the target is production.",
+          "type": "boolean"
+        },
+        "no_validate": {
+          "description": "Whether --no-validate skipped the pre-destructive compile gate.",
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
+    "RollbackCommandInvokedProperties": {
+      "description": "`gaffer rollback` - redeploy a prior version of a projection in place.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "rollback"
+          ]
+        },
+        "prod_target": {
+          "description": "Whether the target is production.",
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
     "RuntimeEnvironment": {
       "description": "\"ci\" if any standard CI env var indicates an automated environment;\n\"local\" otherwise.",
       "type": "string",
@@ -973,6 +1216,27 @@
           "type": "string",
           "enum": [
             "scaffold"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CommandInvokedBaseProperties"
+        }
+      ],
+      "required": [
+        "command"
+      ],
+      "unevaluatedProperties": false
+    },
+    "StatusCommandInvokedProperties": {
+      "description": "`gaffer status` - report projection state on an environment. Read-only. No\ncommand-specific properties.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "status"
           ]
         }
       },

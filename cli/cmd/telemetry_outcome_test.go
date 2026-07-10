@@ -53,6 +53,31 @@ func TestOutcomeFor_GenericErrorFallsThroughToUserError(t *testing.T) {
 	}
 }
 
+func TestOutcomeFor_ExitCodeDrivenOutcomes(t *testing.T) {
+	// The deploy family carries a non-nil error to set the process exit code;
+	// the classifier keys `refused` (3) and dry-run success (2) off the same
+	// ExitCodeFor predicate so telemetry stays in lockstep with the CI contract.
+	cases := []struct {
+		name string
+		err  error
+		want telemetry.Outcome
+	}{
+		{"deploy-need-confirm", errNeedConfirm, telemetry.OutcomeRefused},
+		{"operate-need-confirm", errOperateNeedsConfirm, telemetry.OutcomeRefused},
+		{"need-confirm-wrapped", fmt.Errorf("deploy: %w", errNeedConfirm), telemetry.OutcomeRefused},
+		{"prod-no-validate", refuseNoValidateOnProd("Deploy", "projections are", "prod"), telemetry.OutcomeRefused},
+		{"dry-run-changes-pending", exitWith(2, silent(errors.New("changes pending"))), telemetry.OutcomeSuccess},
+		{"dry-run-blocked", exitWith(1, silent(errors.New("blocked"))), telemetry.OutcomeUserError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := outcomeFor(tc.err); got != tc.want {
+				t.Errorf("outcomeFor(%v) = %q, want %q", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestProjectionOutcomeFor_FFICategories(t *testing.T) {
 	cases := []struct {
 		name string

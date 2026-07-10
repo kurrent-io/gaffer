@@ -185,6 +185,21 @@ func (tw *textWriter) warnLine(text string, width int) string {
 	return tw.styles.warning.Render(truncate(glyphWarning+" "+text, width))
 }
 
+// warningf writes a severity-prefixed diagnostic line to w: a lowercase
+// "warning:" in the warning tint, then the message. The text-prefix twin of the
+// mark* glyph markers - those prefix a rich output line with a glyph; this
+// prefixes a plain stderr diagnostic with a word. The tint degrades to plain when
+// w isn't a terminal (a pipe, a CI log), so the spelled-out word is the
+// always-visible severity signal. Defined once here so the prefix and its casing
+// stay consistent across every diagnostic. errorf/infof twins follow the same
+// one-liner shape (styles.errStatus/"error:", styles.info/"info:") and get added
+// when a stderr error/info diagnostic first needs one - today they're all
+// warning-level.
+func warningf(w io.Writer, format string, a ...any) {
+	tw := newTextWriter(w, w)
+	tw.write("%s %s\n", tw.styles.warning.Render("warning:"), fmt.Sprintf(format, a...))
+}
+
 func (p prefixed) detail(label, value string) {
 	p.tw.write("%s%s %s\n", p.pfx, p.tw.styles.label.Render(label+":"), value)
 }

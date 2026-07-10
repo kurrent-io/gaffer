@@ -204,7 +204,7 @@ func runConfigTelemetryOn(cmd *cobra.Command, out, noticeOut io.Writer) error {
 	}
 	t, loadErr := telemetry.LoadTelemetry(store)
 	if loadErr != nil {
-		_, _ = fmt.Fprintf(noticeOut, "warning: prior telemetry config unreadable: %v\n", loadErr)
+		warningf(noticeOut, "prior telemetry config unreadable: %v", loadErr)
 		_, _ = fmt.Fprintln(noticeOut, "rewriting [telemetry] section from scratch")
 	}
 	on := true
@@ -245,7 +245,7 @@ func runConfigTelemetryOn(cmd *cobra.Command, out, noticeOut io.Writer) error {
 		// otherwise-valid section). Preference is saved; surface
 		// the warning, don't exit non-zero.
 		_, _ = fmt.Fprintln(out, "Telemetry enabled.")
-		_, _ = fmt.Fprintf(out, "Warning: %v\n", err)
+		warningf(out, "%v", err)
 		return nil
 	}
 	_, _ = fmt.Fprintln(out, "Telemetry enabled.")

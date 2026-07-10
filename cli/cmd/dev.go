@@ -356,7 +356,7 @@ type runObservers struct {
 // properties off it; nil when LoadProjection failed.
 func runDev(cmd *cobra.Command, args []string, opts *devOpts, dapStats *dapserver.Stats, obs runObservers) (*engine.Projection, error) {
 	if opts.StartPausedIfNoBreakpoints && !opts.Debug {
-		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: --start-paused-if-no-breakpoints requires --debug; ignoring")
+		warningf(cmd.ErrOrStderr(), "--start-paused-if-no-breakpoints requires --debug; ignoring")
 	}
 
 	name, err := resolveDevName(cmd, args, opts)
@@ -490,7 +490,7 @@ func runDevSingle(
 
 	summary, stateErr := r.CollectState()
 	if stateErr != nil {
-		fmt.Fprintf(os.Stderr, "warning: reading projection state: %v\n", stateErr)
+		warningf(os.Stderr, "reading projection state: %v", stateErr)
 	}
 	writer.WriteSummary(r.Stats(), summary)
 	if r.Faulted() {
@@ -802,7 +802,7 @@ func runDevDebug(
 
 		summary, stateErr := r.CollectState()
 		if stateErr != nil {
-			fmt.Fprintf(os.Stderr, "warning: reading projection state: %v\n", stateErr)
+			warningf(os.Stderr, "reading projection state: %v", stateErr)
 		}
 		writer.WriteSummary(r.Stats(), summary)
 		r.Destroy()

@@ -204,7 +204,7 @@ type resolvedSide struct {
 // compile, so a source-only diff isn't mistaken for a clean comparison.
 func warnUncompiledSide(w io.Writer, name string, s resolvedSide) {
 	if s.uncompiled != nil {
-		fmt.Fprintf(w, "warning: local %q doesn't compile, diffing source only: %v\n", name, s.uncompiled)
+		warningf(w, "local %q doesn't compile, diffing source only: %v", name, s.uncompiled)
 	}
 }
 

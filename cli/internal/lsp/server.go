@@ -65,6 +65,13 @@ type Server struct {
 	docs      *documentStore
 	debouncer *debouncer
 
+	// statusCache holds fetched per-env deploy status keyed by config
+	// URI, refreshed on open/save/manual request and read by the env
+	// status surface. statusFetch does one env's dial-and-read; it's a
+	// field so tests inject a fake in place of a live KurrentDB.
+	statusCache *statusCache
+	statusFetch statusFetchFunc
+
 	mu          sync.Mutex
 	conn        *jsonrpc2.Conn // captured during Run, used for server-pushed notifications
 	initialized bool
@@ -134,9 +141,11 @@ func NewServer(opts ServerOptions) *Server {
 		window = defaultDebounceWindow
 	}
 	return &Server{
-		opts:      opts,
-		docs:      newDocumentStore(),
-		debouncer: newDebouncer(window),
-		exitCh:    make(chan struct{}),
+		opts:        opts,
+		docs:        newDocumentStore(),
+		debouncer:   newDebouncer(window),
+		exitCh:      make(chan struct{}),
+		statusCache: newStatusCache(),
+		statusFetch: fetchEnvStatus,
 	}
 }

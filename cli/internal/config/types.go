@@ -63,13 +63,18 @@ type Description struct {
 }
 
 // EnvDescription is a single [env.<name>] block in a Description: its
-// name and whether it's the default (the env used when --env is
-// omitted). The connection string is deliberately omitted - the editor
-// selects an env by name and lets the CLI resolve the connection (and
-// any ${VAR} / .env.<name> credentials) at launch.
+// name, whether it's the default (the env used when --env is omitted),
+// and the source range of its [env.<name>] header so the editor can
+// anchor env-block affordances (status roll-up, sign-in). Range is the
+// zero value when the header couldn't be located on a source line - a
+// quoted key ([env."../x"]) or a sub-table-only declaration - matching
+// the quoted-fixture rule. The connection string is deliberately
+// omitted - the editor selects an env by name and lets the CLI resolve
+// the connection (and any ${VAR} / .env.<name> credentials) at launch.
 type EnvDescription struct {
-	Name    string `json:"name"`
-	Default bool   `json:"default,omitempty"`
+	Name    string      `json:"name"`
+	Default bool        `json:"default,omitempty"`
+	Range   SourceRange `json:"range"`
 }
 
 // ProjectionDescription is a single projection's view: name, entry

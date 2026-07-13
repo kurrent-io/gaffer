@@ -108,18 +108,27 @@ func DescribeBytes(ctx context.Context, path string, data []byte) (Description, 
 		return desc, nil
 	}
 	desc.Connection = cfg.DefaultEnvConnection()
+
+	scan := scanLines(text)
+	// First occurrence wins: a duplicate [env.<name>] is a parser error the
+	// strict path rejects, so the loose describe just anchors on the first.
+	envHeaders := make(map[string]envHeaderLine, len(scan.EnvHeaders))
+	for _, h := range scan.EnvHeaders {
+		if _, ok := envHeaders[h.Name]; !ok {
+			envHeaders[h.Name] = h
+		}
+	}
 	for _, n := range cfg.EnvNames() {
-		desc.Environments = append(desc.Environments, EnvDescription{
-			Name:    n,
-			Default: cfg.Env[n].Default,
-		})
+		e := EnvDescription{Name: n, Default: cfg.Env[n].Default}
+		if h, ok := envHeaders[n]; ok {
+			e.Range = rangeForLine(h.Line, h.Length)
+		}
+		desc.Environments = append(desc.Environments, e)
 	}
 
 	if err := ctx.Err(); err != nil {
 		return Description{}, err
 	}
-
-	scan := scanLines(text)
 
 	// Drift: BurntSushi found N projections, the line scanner found
 	// M headers, and they disagree. Source is malformed in a way

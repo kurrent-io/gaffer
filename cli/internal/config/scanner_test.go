@@ -44,6 +44,39 @@ func TestScanLines_LocatesFixturesAndCapturesNames(t *testing.T) {
 	}
 }
 
+func TestScanLines_LocatesEnvHeaders(t *testing.T) {
+	text := "[env.local]\nconnection = \"x\"\n\n[env.prod]\n"
+	got := scanLines(text)
+	want := []envHeaderLine{
+		{Line: 1, Length: len("[env.local]"), Name: "local"},
+		{Line: 4, Length: len("[env.prod]"), Name: "prod"},
+	}
+	if !reflect.DeepEqual(got.EnvHeaders, want) {
+		t.Fatalf("EnvHeaders mismatch:\n got %+v\nwant %+v", got.EnvHeaders, want)
+	}
+}
+
+func TestScanLines_EnvHeaderWhitespaceAndComment(t *testing.T) {
+	// Leading spaces, interior spaces around brackets/dot, and a
+	// trailing comment are all legal TOML the scanner must tolerate.
+	text := "  [ env . staging ]  # target"
+	got := scanLines(text)
+	if len(got.EnvHeaders) != 1 || got.EnvHeaders[0].Name != "staging" {
+		t.Fatalf("expected 1 env header named staging, got %+v", got.EnvHeaders)
+	}
+}
+
+func TestScanLines_EnvHeaderIgnoresSubTablesAndQuotedKeys(t *testing.T) {
+	// `[env.<name>.oauth]` sub-tables and quoted keys (`[env."x"]`)
+	// carry no top-level env range; they fall through, like quoted
+	// fixture keys.
+	text := "[env.prod.oauth]\n[env.\"weird name\"]\n"
+	got := scanLines(text)
+	if len(got.EnvHeaders) != 0 {
+		t.Fatalf("expected 0 env headers, got %+v", got.EnvHeaders)
+	}
+}
+
 func TestScanLines_ToleratesWhitespaceAroundDot(t *testing.T) {
 	// TOML grammar permits whitespace around dotted keys. Without
 	// allowing it, the scanner would miss legal source.

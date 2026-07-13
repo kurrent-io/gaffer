@@ -650,6 +650,30 @@ async function activateAfterTelemetry(
 				requestStatusRefresh(doc.uri);
 			}),
 		),
+		// Click target for the env-block "Sign in" lens: opens an interactive
+		// `gaffer auth --env <env>` terminal (a pty, so the keyring passphrase
+		// prompt works) in the config's directory. Mirrors the debug flow's
+		// auth handling.
+		vscode.commands.registerCommand(
+			"gaffer.signIn",
+			wrap((arg: { env: string; tomlUri: vscode.Uri }) => {
+				const argv = buildGafferArgv(["auth", "--env", arg.env], {
+					invokerId: telemetry.invokerId(),
+					invokedVia: "code_lens",
+				});
+				const [shellPath, ...shellArgs] = argv;
+				if (!shellPath) return;
+				const env = gafferRunEnv(telemetry.isOptedOut());
+				const terminal = vscode.window.createTerminal({
+					name: `gaffer auth (${arg.env})`,
+					shellPath,
+					shellArgs,
+					cwd: vscode.Uri.joinPath(arg.tomlUri, "..").fsPath,
+					...(env ? { env } : {}),
+				});
+				terminal.show();
+			}),
+		),
 	);
 
 	context.subscriptions.push(

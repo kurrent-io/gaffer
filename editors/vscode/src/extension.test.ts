@@ -127,6 +127,7 @@ describe("activate registrations", () => {
 			"gaffer.runProjection",
 			"gaffer.scaffold",
 			"gaffer.scaffoldHere",
+			"gaffer.signIn",
 			"gaffer.stopDebug",
 		]);
 	});
@@ -397,6 +398,25 @@ describe("runtime fatal-error dismissal", () => {
 			vscode.Uri.file("/p/projection.js"),
 		);
 		expect(coll?.entries.has("/p/projection.js")).toBe(false);
+	});
+
+	it("gaffer.signIn opens a gaffer auth terminal for the env in the config's directory", async () => {
+		await activateBare();
+		await vscode.commands.executeCommand("gaffer.signIn", {
+			env: "prod",
+			tomlUri: vscode.Uri.file("/ws/gaffer.toml"),
+		});
+		const term = getState().terminals.find((t) =>
+			t.name.includes("gaffer auth"),
+		);
+		expect(term?.name).toBe("gaffer auth (prod)");
+		expect(term?.options.shellArgs).toEqual(
+			expect.arrayContaining(["auth", "--env", "prod"]),
+		);
+		expect(term?.options.cwd).toBe(
+			vscode.Uri.joinPath(vscode.Uri.file("/ws/gaffer.toml"), "..").fsPath,
+		);
+		expect(term?.showCount).toBeGreaterThan(0);
 	});
 });
 

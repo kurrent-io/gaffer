@@ -30,6 +30,8 @@ function lensState(debugState: Readonly<DebugState>, name: string): LensState {
 // Server-side intent constants (must match cli/internal/lsp/protocol.go).
 const IntentDebug = "debug";
 const IntentDebugChoose = "debug-choose";
+const IntentStatusEnv = "status-env";
+const IntentSignIn = "sign-in";
 
 const codeLensMethod = "textDocument/codeLens";
 
@@ -89,6 +91,13 @@ const ProjectionPickArgsSchema = v.object({
 	configURI: v.string(),
 	fixtureNames: v.array(v.string()),
 	envs: v.optional(v.array(EnvSchema), []),
+});
+
+// Args[0] for an env-block sign-in lens: the env that needs auth and the
+// declaring gaffer.toml.
+const SignInArgsSchema = v.object({
+	env: v.string(),
+	configURI: v.string(),
 });
 
 // parseConfigURI guards `vscode.Uri.parse` so a malformed URI
@@ -202,6 +211,12 @@ export class LspCodeLensProvider
 		}
 		if (intent === IntentDebugChoose) {
 			return this.#decorateDebugChoose(sl, range);
+		}
+		if (intent === IntentStatusEnv) {
+			return this.#decorateStatusEnv(sl, range);
+		}
+		if (intent === IntentSignIn) {
+			return this.#decorateSignIn(sl, range);
 		}
 		// Unknown intent: pass through with the server's title and
 		// command, but trust-gate it. Future intents we don't yet
@@ -318,6 +333,42 @@ export class LspCodeLensProvider
 					envs: args.envs,
 				},
 			],
+		});
+	}
+
+	// The env-block roll-up is informational: the server owns the text, we
+	// render it non-clickable via the registered no-op. It only arrives for a
+	// trusted workspace (the LSP isn't spawned untrusted), so no extra gate.
+	#decorateStatusEnv(
+		sl: LspCodeLens,
+		range: vscode.Range,
+	): vscode.CodeLens | null {
+		const title = sl.command?.title;
+		if (title === undefined || title === "") return null;
+		return new vscode.CodeLens(range, { title, command: "gaffer.noop" });
+	}
+
+	#decorateSignIn(
+		sl: LspCodeLens,
+		range: vscode.Range,
+	): vscode.CodeLens | null {
+		const parsed = v.safeParse(SignInArgsSchema, sl.command?.arguments?.[0]);
+		if (!parsed.success) {
+			log(
+				`Lens: rejecting sign-in args: ${parsed.issues.map((i) => i.message).join("; ")}`,
+			);
+			return null;
+		}
+		const args = parsed.output;
+		// Sign-in launches a gaffer process, so gate it on workspace trust like
+		// the debug affordances.
+		if (!vscode.workspace.isTrusted) return null;
+		const tomlUri = parseConfigURI(args.configURI);
+		if (!tomlUri) return null;
+		return new vscode.CodeLens(range, {
+			title: "$(key) Sign in",
+			command: "gaffer.signIn",
+			arguments: [{ env: args.env, tomlUri }],
 		});
 	}
 }

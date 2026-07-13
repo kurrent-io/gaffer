@@ -146,6 +146,10 @@
 			{
 				"command": "gaffer.refreshStatus",
 				"title": "Gaffer: Refresh Deployment Status"
+			},
+			{
+				"command": "gaffer.signIn",
+				"title": "Gaffer: Sign In to Environment"
 			}
 		],
 		"debuggers": [
@@ -181,6 +185,10 @@
 				{
 					"command": "gaffer.refreshStatus",
 					"when": "resourceFilename == gaffer.toml"
+				},
+				{
+					"command": "gaffer.signIn",
+					"when": "false"
 				},
 				{
 					"command": "gaffer.debugProjection",

@@ -47,6 +47,8 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 		return s.handleDidChange(ctx, req)
 	case MethodDidClose:
 		return s.handleDidClose(req)
+	case MethodDidSave:
+		return s.handleDidSave(req)
 	case MethodCodeLens:
 		return s.handleCodeLens(req)
 	case MethodWorkspaceSymbol:
@@ -93,6 +95,7 @@ func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (any
 	// without any workspace.
 	s.roots = nil
 	s.codeLensRefreshSupported = false
+	s.statusLensCapable = false
 	if req.Params != nil {
 		params, jerr := decodeParams[InitializeParams](req, "initialize")
 		if jerr != nil {
@@ -102,11 +105,22 @@ func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (any
 		if cl := params.Capabilities.Workspace.CodeLens; cl != nil && cl.RefreshSupport {
 			s.codeLensRefreshSupported = true
 		}
+		if len(params.InitOptions) > 0 {
+			var opts InitializationOptions
+			// Best-effort: a malformed blob just leaves status disabled.
+			if err := json.Unmarshal(params.InitOptions, &opts); err == nil {
+				s.statusLensCapable = opts.StatusLens
+			}
+		}
 	}
 	s.initialized = true
 	return InitializeResult{
 		Capabilities: ServerCapabilities{
-			TextDocumentSync:        TextDocumentSyncFull,
+			TextDocumentSync: TextDocumentSyncOptions{
+				OpenClose: true,
+				Change:    TextDocumentSyncFull,
+				Save:      true,
+			},
 			CodeLensProvider:        &CodeLensOptions{},
 			WorkspaceSymbolProvider: &WorkspaceSymbolOptions{},
 		},
@@ -249,7 +263,12 @@ func (s *Server) handleCodeLens(req *jsonrpc2.Request) (any, error) {
 			return []CodeLens{}, nil
 		}
 		lenses := emitCodeLenses(parse.Description, uri)
-		lenses = append(lenses, emitStatusEnvLenses(parse.Description, uri, s.statusCache.get(uri))...)
+		// Status lenses only go to a client that opted in (see statusLensCapable):
+		// the informational roll-up isn't a routable command a generic client
+		// could render sanely, so we don't emit it to one that can't.
+		if s.statusLensEnabled() {
+			lenses = append(lenses, emitStatusEnvLenses(parse.Description, uri, s.statusCache.get(uri))...)
+		}
 		return lenses, nil
 	}
 	return emitEntryScriptLenses(s.docs.AllParses(), uri), nil
@@ -310,6 +329,28 @@ func (s *Server) handleProjectionDetails(req *jsonrpc2.Request) (any, error) {
 		}, nil
 	}
 	return ProjectionDetailsResult{Fixtures: []string{}}, nil
+}
+
+// statusLensEnabled reports whether the client opted into the deploy-status
+// surface (initializationOptions.statusLens). Guarded by mu, like the other
+// initialize-time capability flags.
+func (s *Server) statusLensEnabled() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.statusLensCapable
+}
+
+// handleDidSave refreshes deploy status when a gaffer.toml is saved, so the env
+// surface updates without relying on the file watcher (which not every client
+// registers). The buffer is already current from full sync, so there's nothing
+// to reparse here.
+func (s *Server) handleDidSave(req *jsonrpc2.Request) (any, error) {
+	params, jerr := decodeParams[DidSaveTextDocumentParams](req, "didSave")
+	if jerr != nil {
+		return nil, jerr
+	}
+	s.refreshStatus(params.TextDocument.URI)
+	return nil, nil
 }
 
 // handleRefreshStatus re-fetches deploy status for the named gaffer.toml on

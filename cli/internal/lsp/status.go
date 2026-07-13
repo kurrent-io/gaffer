@@ -155,9 +155,10 @@ func (c *statusCache) drop(uri string) {
 // any cached status for the URI so the surface clears rather than showing stale
 // data; the loose parse already surfaces the problem as diagnostics.
 func (s *Server) refreshStatus(uri string) {
-	if s.statusFetch == nil {
-		// Status fetching disabled (harness tests that drive the full Run loop
-		// but don't exercise status). Production always has a fetcher.
+	if !s.statusLensEnabled() {
+		// Client didn't opt into the status surface - don't dial for output it
+		// can't render. This is also how the full-Run test harness stays off the
+		// network: its clients don't send the statusLens initialization option.
 		return
 	}
 	if !isGafferConfig(uri) {

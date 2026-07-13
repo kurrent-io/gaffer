@@ -154,6 +154,11 @@ async function spawnLanguageClient(
 			{ scheme: "file", pattern: "**/gaffer.toml" },
 			{ scheme: "file", language: "javascript" },
 		],
+		// Opt into the deploy-status lenses. The server only fetches and emits
+		// them for a client that sets this - the informational roll-up isn't a
+		// routable command a generic LSP client could render, so other editors
+		// don't opt in and don't receive lenses they can't handle.
+		initializationOptions: { statusLens: true },
 		outputChannel: channel,
 		// Suppress vscode-languageclient's built-in auto-toasts. By
 		// default it fires `showErrorMessage("Client ...is erroring",

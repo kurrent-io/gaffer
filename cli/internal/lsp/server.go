@@ -109,6 +109,11 @@ type Server struct {
 	// fire workspace/codeLens/refresh into a void. LSP 3.16 spec:
 	// servers MUST gate the request on this.
 	codeLensRefreshSupported bool
+	// statusLensCapable mirrors the client's initializationOptions.statusLens:
+	// only a client that opts in (the VS Code extension) fetches and receives
+	// the deploy-status lenses, since the informational roll-up isn't a
+	// routable command a generic LSP client could render sanely.
+	statusLensCapable bool
 	// exitCh closes when the client sends `exit`. Run selects on
 	// this so the server tears down its connection without waiting
 	// for the client to also close stdin (a well-behaved client

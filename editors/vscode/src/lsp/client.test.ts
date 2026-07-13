@@ -183,6 +183,21 @@ describe("startLanguageClient invokerId wiring", () => {
 		expect(sentNotifications).toEqual([]);
 	});
 
+	it("opts into the status surface via initializationOptions", async () => {
+		setTrusted(true);
+		spawnMock.mockImplementation(() => fakeChild());
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => null,
+			isOptedOut: () => false,
+		});
+		await flushAllMicrotasks();
+		const c = getLanguageClient() as unknown as LanguageClient;
+		const opts = c.clientOptions as {
+			initializationOptions?: { statusLens?: boolean };
+		};
+		expect(opts.initializationOptions?.statusLens).toBe(true);
+	});
+
 	it("re-evaluates getInvokerId when vscode-languageclient restarts the server", async () => {
 		// Drives the same code path vscode-languageclient hits when the
 		// error-handler returns CloseAction.Restart: it re-invokes

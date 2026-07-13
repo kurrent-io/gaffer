@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -99,6 +100,7 @@ func testServer(fetch statusFetchFunc) *Server {
 	ctx := context.Background()
 	s.runCtxFn = func() context.Context { return ctx }
 	s.statusFetch = fetch
+	s.statusLensCapable = true // these tests exercise the status surface
 	return s
 }
 
@@ -318,5 +320,74 @@ func TestHandleDidClose_DropsStatus(t *testing.T) {
 
 	if s.statusCache.get(uri) != nil {
 		t.Fatal("didClose should drop the cached status for the uri")
+	}
+}
+
+func TestHandleDidSave_TriggersStatusFetch(t *testing.T) {
+	root := t.TempDir()
+	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", envOnlyConfig))
+
+	var fetched atomic.Bool
+	s := testServer(func(_ context.Context, _ string, _ *config.Config, env string) envStatus {
+		fetched.Store(true)
+		return envStatus{Target: env + "-cluster"}
+	})
+	s.docs.Open(uri, envOnlyConfig)
+
+	req := &jsonrpc2.Request{}
+	if err := req.SetParams(DidSaveTextDocumentParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.handleDidSave(req); err != nil {
+		t.Fatal(err)
+	}
+	s.wg.Wait()
+
+	if !fetched.Load() {
+		t.Fatal("didSave should trigger a status fetch")
+	}
+	if s.statusCache.get(uri) == nil {
+		t.Fatal("cache should be populated after save")
+	}
+}
+
+func TestRefreshStatus_DisabledWithoutStatusLensCapability(t *testing.T) {
+	root := t.TempDir()
+	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", envOnlyConfig))
+
+	var fetched atomic.Bool
+	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
+		fetched.Store(true)
+		return envStatus{}
+	})
+	s.statusLensCapable = false // client did not opt into the status surface
+	s.docs.Open(uri, envOnlyConfig)
+
+	s.refreshStatus(uri)
+	s.wg.Wait()
+
+	if fetched.Load() {
+		t.Fatal("status should not be fetched for a client that didn't opt in")
+	}
+	if s.statusCache.get(uri) != nil {
+		t.Fatal("cache should stay empty without the statusLens capability")
+	}
+}
+
+func TestHandleInitialize_StatusLensOptIn(t *testing.T) {
+	s := NewServer(ServerOptions{})
+	req := &jsonrpc2.Request{}
+	if err := req.SetParams(InitializeParams{
+		InitOptions: json.RawMessage(`{"statusLens":true}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.handleInitialize(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if !s.statusLensCapable {
+		t.Fatal("the statusLens init option should enable the status surface")
 	}
 }

@@ -135,14 +135,12 @@ type ServerInfo struct {
 // ServerCapabilities advertises what the server provides. V1 surface
 // is intentionally minimal; more fields land with chunks 2.2+.
 type ServerCapabilities struct {
-	// TextDocumentSync uses the bare-integer form
-	// (TextDocumentSyncKind enum). Full = 1: client re-sends the
-	// entire document on each change. See LSP plan Decision 1:
-	// we chose full sync over incremental since config files
-	// are tiny. The bare-int form does not include a `save`
-	// field; clients infer "no didSave wanted" and skip it,
-	// which is what we want.
-	TextDocumentSync TextDocumentSyncKind `json:"textDocumentSync"`
+	// TextDocumentSync uses the options form so we can request `save`
+	// notifications (Full sync since config files are tiny - LSP plan
+	// Decision 1). didSave drives a deploy-status refresh directly, rather
+	// than relying only on the file watcher, so clients that don't support
+	// dynamic watcher registration still refresh status on save.
+	TextDocumentSync TextDocumentSyncOptions `json:"textDocumentSync"`
 	// CodeLensProvider advertises that the server responds to
 	// textDocument/codeLens requests. Empty options struct is
 	// fine - we don't require resolveProvider since lenses are
@@ -162,6 +160,25 @@ type TextDocumentSyncKind int
 const (
 	TextDocumentSyncFull TextDocumentSyncKind = 1
 )
+
+// TextDocumentSyncOptions is the object form of the textDocumentSync
+// capability. OpenClose requests didOpen/didClose (which the parse pipeline
+// needs); Save requests didSave (which drives status refresh); Change is the
+// sync kind. Save is the bare-bool form ("send didSave without the text") -
+// the server already holds the buffer from full sync.
+type TextDocumentSyncOptions struct {
+	OpenClose bool                 `json:"openClose"`
+	Change    TextDocumentSyncKind `json:"change"`
+	Save      bool                 `json:"save"`
+}
+
+// InitializationOptions is the client-supplied initializationOptions blob the
+// server consults. StatusLens is the VS Code extension's signal that it can
+// render the deploy-status lenses (the informational roll-up isn't expressible
+// as a routable command, so other editors don't opt in and don't receive it).
+type InitializationOptions struct {
+	StatusLens bool `json:"statusLens"`
+}
 
 // CodeLensOptions is the value of ServerCapabilities.CodeLensProvider.
 type CodeLensOptions struct {

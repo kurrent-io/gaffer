@@ -66,8 +66,8 @@ func TestServer_InitializeReturnsCapabilities(t *testing.T) {
 	if err := conn.Call(ctx, MethodInitialize, &InitializeParams{}, &result); err != nil {
 		t.Fatalf("initialize: %v", err)
 	}
-	if result.Capabilities.TextDocumentSync != 1 {
-		t.Errorf("textDocumentSync: got %d, want 1 (full sync)", result.Capabilities.TextDocumentSync)
+	if sync := result.Capabilities.TextDocumentSync; sync.Change != TextDocumentSyncFull || !sync.OpenClose || !sync.Save {
+		t.Errorf("textDocumentSync: got %+v, want full sync with openClose+save", sync)
 	}
 	if result.ServerInfo.Name != "gaffer-lsp" {
 		t.Errorf("serverInfo.name: got %q want gaffer-lsp", result.ServerInfo.Name)
@@ -270,11 +270,6 @@ func TestServer_ExitBeforeInitializeIsClean(t *testing.T) {
 // store state after driving lifecycle messages.
 func startServerWithStore(ctx context.Context, stream io.ReadWriteCloser, opts ServerOptions) (*Server, <-chan error) {
 	srv := NewServer(opts)
-	// Disable deploy-status fetching for the full-Run harness: didOpen now
-	// triggers a fetch, and no harness test exercises status (it's covered by
-	// direct-handler tests with an injected fetcher), so this keeps them off
-	// the network and their codeLens assertions free of status lenses.
-	srv.statusFetch = nil
 	done := make(chan error, 1)
 	go func() {
 		done <- srv.Run(ctx, stream)

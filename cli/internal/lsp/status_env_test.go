@@ -52,29 +52,29 @@ func TestStatusRollup(t *testing.T) {
 		st   envStatus
 		want string
 	}{
-		{"all in sync", envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync), inConfig(drift.InSync)}}, "2 projections · in sync"},
-		{"singular", envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync)}}, "1 projection · in sync"},
-		{"prod prefix", envStatus{Production: true, Entries: []drift.StatusEntry{inConfig(drift.InSync)}}, "PRODUCTION · 1 projection · in sync"},
+		{"all in sync leads with the in-sync count, no total", envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync), inConfig(drift.InSync)}}, "2 in sync"},
+		{"singular", envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync)}}, "1 in sync"},
+		{"prod prefix", envStatus{Production: true, Entries: []drift.StatusEntry{inConfig(drift.InSync)}}, "PRODUCTION · 1 in sync"},
 		{
-			"mixed issues in order",
+			"in sync leads, then attention categories in order",
 			envStatus{Entries: []drift.StatusEntry{
 				inConfig(drift.InSync), changedExternally(), localAhead(), inConfig(drift.NotDeployed), inConfig(drift.Drifted), inConfig(drift.Invalid),
 			}},
-			"6 projections · 1 changed externally · 1 local ahead · 1 not deployed · 1 drifted · 1 invalid",
+			"1 in sync · 1 changed externally · 1 local ahead · 1 not deployed · 1 drifted · 1 invalid",
 		},
-		{"faulted counted independently of drift", envStatus{Entries: []drift.StatusEntry{faulted}}, "1 projection · 1 faulted"},
+		{"faulted counted independently of drift", envStatus{Entries: []drift.StatusEntry{faulted}}, "1 in sync · 1 faulted"},
 		{
 			"drifted and faulted on one projection count in both dimensions",
 			envStatus{Entries: []drift.StatusEntry{{
 				Comparison: drift.Comparison{State: drift.Drifted},
 				Runtime:    &remote.Status{State: remote.StateFaulted},
 			}}},
-			"1 projection · 1 faulted · 1 drifted",
+			"1 faulted · 1 drifted",
 		},
 		{
-			"orphan and untracked appended",
+			"orphan and untracked appended after the in-config counts",
 			envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync), untrackedEntry(remote.ToolName), untrackedEntry("Other Tool")}},
-			"1 projection · in sync · 1 orphan · 1 untracked",
+			"1 in sync · 1 orphan · 1 untracked",
 		},
 		{
 			"orphans pluralize",

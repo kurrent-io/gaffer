@@ -241,18 +241,23 @@ func emitStatusEnvLenses(desc config.Description, uri string, statuses map[strin
 	return out
 }
 
-// statusRollup builds the env-block roll-up text from a fetched status: the
-// in-config projection count, then the non-zero attention categories (or "in
-// sync" when every in-config projection is clean), then any orphan/untracked
-// projections - which live on the server but not in this config, so they
-// surface nowhere else. A production target is flagged up front.
+// statusRollup builds the env-block roll-up text from a fetched status: a count
+// per state, led by how many are in sync, then the non-zero attention
+// categories, then any orphan/untracked projections - which live on the server
+// but not in this config, so they surface nowhere else. A production target is
+// flagged up front. There's deliberately no total: the number of projections in
+// gaffer.toml isn't the useful signal, the state breakdown is.
+//
+// The in-config drift states (in sync / changed externally / local ahead / not
+// deployed / drifted / invalid) partition the configured set. faulted is a
+// runtime state orthogonal to drift, counted independently, so a faulted
+// projection also appears in its drift bucket.
 func statusRollup(st envStatus) string {
-	var configured, changedExternally, localAhead, notDeployed, drifted, faulted, invalid, orphaned, untracked int
+	var inSync, changedExternally, localAhead, notDeployed, drifted, faulted, invalid, orphaned, untracked int
 	for i := range st.Entries {
 		e := st.Entries[i]
 		switch e.Owner() {
 		case drift.OwnerInConfig:
-			configured++
 			switch {
 			case e.ExternallyChanged():
 				changedExternally++
@@ -264,9 +269,9 @@ func statusRollup(st envStatus) string {
 				drifted++
 			case e.State == drift.Invalid:
 				invalid++
+			case e.State == drift.InSync:
+				inSync++
 			}
-			// Faulted is a runtime state orthogonal to drift, so it's counted
-			// independently of the drift verdict above.
 			if e.Runtime != nil && e.Runtime.State == remote.StateFaulted {
 				faulted++
 			}
@@ -279,41 +284,31 @@ func statusRollup(st envStatus) string {
 
 	// Labels are single-sourced from drift.Verdict's vocabulary (and
 	// remote.StateFaulted), so a rename there lands here too.
-	var issues []string
+	var segs []string
+	if st.Production {
+		segs = append(segs, "PRODUCTION")
+	}
 	add := func(n int, label string) {
 		if n > 0 {
-			issues = append(issues, fmt.Sprintf("%d %s", n, label))
+			segs = append(segs, fmt.Sprintf("%d %s", n, label))
 		}
 	}
+	add(inSync, drift.LabelInSync)
 	add(changedExternally, drift.LabelChangedExternally)
 	add(localAhead, drift.LabelLocalAhead)
 	add(notDeployed, drift.LabelNotDeployed)
 	add(faulted, string(remote.StateFaulted))
 	add(drifted, drift.LabelDrifted)
 	add(invalid, drift.LabelInvalid)
-
-	var segs []string
-	if st.Production {
-		segs = append(segs, "PRODUCTION")
-	}
-	if configured > 0 {
-		segs = append(segs, fmt.Sprintf("%d %s", configured, plural(configured, "projection")))
-		if len(issues) > 0 {
-			segs = append(segs, issues...)
-		} else {
-			segs = append(segs, drift.LabelInSync)
-		}
-	}
+	// "orphan" is a noun here, so it pluralizes; the other categories are
+	// adjectival ("2 untracked", "2 drifted") and don't.
 	if orphaned > 0 {
-		// "orphan" is a noun here, so it pluralizes; the other categories are
-		// adjectival ("2 untracked", "2 drifted") and don't.
 		segs = append(segs, fmt.Sprintf("%d %s", orphaned, plural(orphaned, drift.LabelOrphan)))
 	}
-	if untracked > 0 {
-		segs = append(segs, fmt.Sprintf("%d %s", untracked, drift.LabelUntracked))
-	}
-	// Nothing configured and no anomalies - still name the (production) target.
-	if configured == 0 && orphaned == 0 && untracked == 0 {
+	add(untracked, drift.LabelUntracked)
+
+	// Nothing to report at all - still name the (production) target.
+	if len(segs) == 0 || (st.Production && len(segs) == 1) {
 		segs = append(segs, "no projections")
 	}
 	return strings.Join(segs, " · ")

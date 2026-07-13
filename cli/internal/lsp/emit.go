@@ -1,10 +1,14 @@
 package lsp
 
 import (
+	"fmt"
 	"iter"
 	"path/filepath"
+	"strings"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/drift"
+	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
 // validProjections yields each (parse, projection) pair across
@@ -174,6 +178,141 @@ type projectionPickArgs struct {
 	ConfigURI    string                  `json:"configURI"`
 	FixtureNames []string                `json:"fixtureNames"`
 	Envs         []config.EnvDescription `json:"envs,omitempty"`
+}
+
+// signInArgs is the Command.Arguments[0] payload for an env-block sign-in
+// lens: which env needs authentication, and the declaring gaffer.toml.
+type signInArgs struct {
+	Env       string `json:"env"`
+	ConfigURI string `json:"configURI"`
+}
+
+// emitStatusEnvLenses renders one env-block deploy-status lens per configured
+// [env.<name>] with a located header, from the fetched status keyed by env
+// name. An unauthenticated env gets a sign-in action; a failed fetch gets a
+// muted "status unavailable"; a successful one gets the non-clickable roll-up.
+// An env with no cached entry yet (fetch in flight) renders nothing - it pops
+// in when the fetch lands and the client re-requests.
+func emitStatusEnvLenses(desc config.Description, uri string, statuses map[string]envStatus) []CodeLens {
+	out := []CodeLens{}
+	if len(statuses) == 0 {
+		return out
+	}
+	for _, env := range desc.Environments {
+		// No source line to anchor on (quoted key, or a sub-table-only
+		// declaration) - the scan left the range zero.
+		if env.Range == (config.SourceRange{}) {
+			continue
+		}
+		st, ok := statuses[env.Name]
+		if !ok {
+			continue
+		}
+		r := rangeToLSP(env.Range)
+		switch {
+		case st.Unauthenticated:
+			out = append(out, CodeLens{
+				Range: r,
+				Command: &Command{
+					Title:     "Sign in",
+					Command:   CommandSignIn,
+					Arguments: []any{signInArgs{Env: env.Name, ConfigURI: uri}},
+				},
+				Data: &CodeLensData{Intent: IntentSignIn},
+			})
+		case st.Err != nil:
+			out = append(out, CodeLens{
+				Range:   r,
+				Command: &Command{Title: "status unavailable"},
+				Data:    &CodeLensData{Intent: IntentStatusEnv},
+			})
+		default:
+			out = append(out, CodeLens{
+				Range:   r,
+				Command: &Command{Title: statusRollup(st)},
+				Data:    &CodeLensData{Intent: IntentStatusEnv},
+			})
+		}
+	}
+	return out
+}
+
+// statusRollup builds the env-block roll-up text from a fetched status: the
+// in-config projection count, then the non-zero attention categories (or "in
+// sync" when every in-config projection is clean), then any orphaned/untracked
+// projections - which live on the server but not in this config, so they
+// surface nowhere else. A production target is flagged up front.
+func statusRollup(st envStatus) string {
+	var configured, changedExternally, localAhead, notDeployed, drifted, faulted, invalid, orphaned, untracked int
+	for i := range st.Entries {
+		e := st.Entries[i]
+		switch e.Owner() {
+		case drift.OwnerInConfig:
+			configured++
+			switch {
+			case e.ExternallyChanged():
+				changedExternally++
+			case e.Attribution() == drift.AttrLocalAhead:
+				localAhead++
+			case e.State == drift.NotDeployed:
+				notDeployed++
+			case e.State == drift.Drifted:
+				drifted++
+			case e.State == drift.Invalid:
+				invalid++
+			}
+			// Faulted is a runtime state orthogonal to drift, so it's counted
+			// independently of the drift verdict above.
+			if e.Runtime != nil && e.Runtime.State == remote.StateFaulted {
+				faulted++
+			}
+		case drift.OwnerOrphan:
+			orphaned++
+		default: // foreign / unknown ownership both read as plain untracked
+			untracked++
+		}
+	}
+
+	var issues []string
+	add := func(n int, label string) {
+		if n > 0 {
+			issues = append(issues, fmt.Sprintf("%d %s", n, label))
+		}
+	}
+	add(changedExternally, "changed externally")
+	add(localAhead, "local ahead")
+	add(notDeployed, "not deployed")
+	add(faulted, "faulted")
+	add(drifted, "drifted")
+	add(invalid, "invalid")
+
+	var segs []string
+	if st.Production {
+		segs = append(segs, "PROD")
+	}
+	if configured > 0 {
+		unit := "projections"
+		if configured == 1 {
+			unit = "projection"
+		}
+		segs = append(segs, fmt.Sprintf("%d %s", configured, unit))
+		if len(issues) > 0 {
+			segs = append(segs, issues...)
+		} else {
+			segs = append(segs, "in sync")
+		}
+	}
+	if orphaned > 0 {
+		segs = append(segs, fmt.Sprintf("%d orphaned", orphaned))
+	}
+	if untracked > 0 {
+		segs = append(segs, fmt.Sprintf("%d untracked", untracked))
+	}
+	// Nothing configured and no anomalies - still name the (production) target.
+	if configured == 0 && orphaned == 0 && untracked == 0 {
+		segs = append(segs, "no projections")
+	}
+	return strings.Join(segs, " · ")
 }
 
 // emitEntryScriptLenses returns Debug lenses for a non-toml URI

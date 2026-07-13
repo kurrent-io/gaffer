@@ -61,13 +61,20 @@ const (
 const (
 	IntentDebug       = "debug"
 	IntentDebugChoose = "debug-choose"
+	// IntentStatusEnv marks the non-clickable env-block deploy-status
+	// roll-up; the client renders the server's title as informational text.
+	IntentStatusEnv = "status-env"
+	// IntentSignIn marks the env-block sign-in action shown when an env
+	// needs authentication; the client routes it to its sign-in flow.
+	IntentSignIn = "sign-in"
 )
 
 // Gaffer command IDs surfaced via CodeLens.command. Each editor
-// extension routes these to its native debug-launch API.
+// extension routes these to its native launch API.
 const (
 	CommandDebugProjection     = "gaffer.debugProjection"
 	CommandDebugProjectionPick = "gaffer.debugProjectionPick"
+	CommandSignIn              = "gaffer.signIn"
 )
 
 // InitializeParams is the subset of LSP InitializeParams we care

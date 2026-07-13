@@ -248,7 +248,9 @@ func (s *Server) handleCodeLens(req *jsonrpc2.Request) (any, error) {
 		if !ok {
 			return []CodeLens{}, nil
 		}
-		return emitCodeLenses(parse.Description, uri), nil
+		lenses := emitCodeLenses(parse.Description, uri)
+		lenses = append(lenses, emitStatusEnvLenses(parse.Description, uri, s.statusCache.get(uri))...)
+		return lenses, nil
 	}
 	return emitEntryScriptLenses(s.docs.AllParses(), uri), nil
 }

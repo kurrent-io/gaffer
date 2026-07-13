@@ -137,10 +137,16 @@ func (c *statusCache) drop(uri string) {
 // env is fetched in its own wg-tracked goroutine bounded by runCtx; single-flight
 // skips an env already being fetched.
 //
-// A strict config load failure (a gaffer.toml edited into an invalid state)
-// drops any cached status for the URI so the surface clears rather than showing
-// stale data - the loose parse already surfaces the problem as diagnostics, and
-// there's no reachable target to read from.
+// The config is parsed from the client's in-memory buffer (the same content the
+// diagnostics and lenses are built from), not the file on disk, so status
+// reflects what the user is looking at - including unsaved edits at a manual
+// refresh - and stays consistent with the rest of the language server. Status is
+// only fetched at deliberate points (open, save, explicit refresh), never on a
+// keystroke, so the buffer is coherent when read.
+//
+// A buffer that doesn't parse (a gaffer.toml edited into an invalid state) drops
+// any cached status for the URI so the surface clears rather than showing stale
+// data; the loose parse already surfaces the problem as diagnostics.
 func (s *Server) refreshStatus(uri string) {
 	if !isGafferConfig(uri) {
 		return
@@ -149,7 +155,13 @@ func (s *Server) refreshStatus(uri string) {
 	if path == "" {
 		return
 	}
-	cfg, err := config.Load(path)
+	state, ok := s.docs.Get(uri)
+	if !ok {
+		// Nothing tracked for this URI yet; a parse or disk-seed will drive a
+		// later refresh once the content lands.
+		return
+	}
+	cfg, err := config.Parse([]byte(state.Content))
 	if err != nil {
 		s.statusCache.drop(uri)
 		s.requestCodeLensRefresh()

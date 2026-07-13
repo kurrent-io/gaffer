@@ -103,15 +103,15 @@ func testServer(fetch statusFetchFunc) *Server {
 }
 
 func TestRefreshStatus_PopulatesCachePerEnv(t *testing.T) {
-	root := t.TempDir()
-	cfgPath := writeWorkspaceFile(t, root, "gaffer.toml", `[env.local]
+	const content = `[env.local]
 connection = "esdb://localhost:2113"
 default = true
 
 [env.prod]
 connection = "esdb://prod:2113"
-`)
-	uri := pathToURI(cfgPath)
+`
+	root := t.TempDir()
+	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", content))
 
 	var mu sync.Mutex
 	seen := map[string]int{}
@@ -124,6 +124,7 @@ connection = "esdb://prod:2113"
 		}
 		return envStatus{Target: env + "-cluster"}
 	})
+	s.docs.Open(uri, content)
 
 	s.refreshStatus(uri)
 	s.wg.Wait()
@@ -140,11 +141,9 @@ connection = "esdb://prod:2113"
 }
 
 func TestRefreshStatus_SingleFlightAcrossCalls(t *testing.T) {
+	const content = "[env.prod]\nconnection = \"esdb://prod:2113\"\n"
 	root := t.TempDir()
-	cfgPath := writeWorkspaceFile(t, root, "gaffer.toml", `[env.prod]
-connection = "esdb://prod:2113"
-`)
-	uri := pathToURI(cfgPath)
+	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", content))
 
 	var calls atomic.Int64
 	release := make(chan struct{})
@@ -153,6 +152,7 @@ connection = "esdb://prod:2113"
 		<-release // hold the fetch in flight
 		return envStatus{}
 	})
+	s.docs.Open(uri, content)
 
 	s.refreshStatus(uri) // marks prod in-flight and spawns the (blocked) fetch
 	s.refreshStatus(uri) // prod still in flight -> skipped
@@ -166,14 +166,14 @@ connection = "esdb://prod:2113"
 
 func TestRefreshStatus_InvalidConfigIsNoop(t *testing.T) {
 	root := t.TempDir()
-	cfgPath := writeWorkspaceFile(t, root, "gaffer.toml", "[unterminated")
-	uri := pathToURI(cfgPath)
+	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", "[unterminated"))
 
 	var fetched atomic.Bool
 	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
 		fetched.Store(true)
 		return envStatus{}
 	})
+	s.docs.Open(uri, "[unterminated")
 
 	s.refreshStatus(uri)
 	s.wg.Wait()
@@ -186,14 +186,14 @@ func TestRefreshStatus_InvalidConfigIsNoop(t *testing.T) {
 	}
 }
 
-func TestRefreshStatus_LoadFailureDropsCachedStatus(t *testing.T) {
+func TestRefreshStatus_ParseFailureDropsCachedStatus(t *testing.T) {
 	root := t.TempDir()
-	cfgPath := writeWorkspaceFile(t, root, "gaffer.toml", "[unterminated")
-	uri := pathToURI(cfgPath)
+	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", "[unterminated"))
 
 	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
 		return envStatus{}
 	})
+	s.docs.Open(uri, "[unterminated")
 	// A prior successful fetch left status cached for this uri.
 	s.statusCache.store(uri, "prod", 0, envStatus{Target: "old"})
 	if s.statusCache.get(uri) == nil {
@@ -204,7 +204,7 @@ func TestRefreshStatus_LoadFailureDropsCachedStatus(t *testing.T) {
 	s.wg.Wait()
 
 	if s.statusCache.get(uri) != nil {
-		t.Fatal("a config load failure should drop the stale cached status")
+		t.Fatal("a buffer that no longer parses should drop the stale cached status")
 	}
 }
 
@@ -265,6 +265,7 @@ func TestHandleRefreshStatus_TriggersFetch(t *testing.T) {
 	s := testServer(func(_ context.Context, _ string, _ *config.Config, env string) envStatus {
 		return envStatus{Target: env + "-cluster"}
 	})
+	s.docs.Open(uri, envOnlyConfig)
 
 	req := &jsonrpc2.Request{}
 	if err := req.SetParams(RefreshStatusParams{URI: uri}); err != nil {

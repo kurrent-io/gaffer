@@ -14,7 +14,6 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
-	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 	"github.com/kurrent-io/gaffer/cli/internal/target"
 )
@@ -252,7 +251,7 @@ func fetchEnvStatus(ctx context.Context, root string, cfg *config.Config, envNam
 	if err != nil {
 		return envStatus{Err: err}
 	}
-	client, _, err := engine.Connect(root, resolved)
+	r, cleanup, err := remote.Dial(root, resolved)
 	if err != nil {
 		// Only a connect-time auth failure (a missing/expired token the dial
 		// can't satisfy) classifies as needs-sign-in. A token that passes the
@@ -264,8 +263,7 @@ func fetchEnvStatus(ctx context.Context, root string, cfg *config.Config, envNam
 		}
 		return envStatus{Err: err}
 	}
-	defer func() { _ = client.Close() }()
-	r := remote.New(client)
+	defer cleanup()
 
 	// Management calls block until their deadline if the projections subsystem
 	// is still starting, so bound the reads rather than hang the fetch.

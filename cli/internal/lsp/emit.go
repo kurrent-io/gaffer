@@ -239,7 +239,7 @@ func emitStatusEnvLenses(desc config.Description, uri string, statuses map[strin
 
 // statusRollup builds the env-block roll-up text from a fetched status: the
 // in-config projection count, then the non-zero attention categories (or "in
-// sync" when every in-config projection is clean), then any orphaned/untracked
+// sync" when every in-config projection is clean), then any orphan/untracked
 // projections - which live on the server but not in this config, so they
 // surface nowhere else. A production target is flagged up front.
 func statusRollup(st envStatus) string {
@@ -303,7 +303,7 @@ func statusRollup(st envStatus) string {
 		}
 	}
 	if orphaned > 0 {
-		segs = append(segs, fmt.Sprintf("%d orphaned", orphaned))
+		segs = append(segs, fmt.Sprintf("%d orphan", orphaned))
 	}
 	if untracked > 0 {
 		segs = append(segs, fmt.Sprintf("%d untracked", untracked))

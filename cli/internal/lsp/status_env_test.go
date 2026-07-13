@@ -66,9 +66,9 @@ func TestStatusRollup(t *testing.T) {
 		{
 			"orphan and untracked appended",
 			envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync), untrackedEntry(remote.ToolName), untrackedEntry("Other Tool")}},
-			"1 projection · in sync · 1 orphaned · 1 untracked",
+			"1 projection · in sync · 1 orphan · 1 untracked",
 		},
-		{"only anomalies, no configured", envStatus{Entries: []drift.StatusEntry{untrackedEntry(remote.ToolName)}}, "1 orphaned"},
+		{"only anomalies, no configured", envStatus{Entries: []drift.StatusEntry{untrackedEntry(remote.ToolName)}}, "1 orphan"},
 		{"empty", envStatus{}, "no projections"},
 		{"empty prod", envStatus{Production: true}, "PROD · no projections"},
 	} {

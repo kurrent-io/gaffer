@@ -402,6 +402,7 @@ describe("runtime fatal-error dismissal", () => {
 
 	it("gaffer.signIn opens a gaffer auth terminal for the env in the config's directory", async () => {
 		await activateBare();
+		setTrusted(true); // sign-in is trust-gated in the command handler
 		await vscode.commands.executeCommand("gaffer.signIn", {
 			env: "prod",
 			tomlUri: vscode.Uri.file("/ws/gaffer.toml"),
@@ -417,6 +418,17 @@ describe("runtime fatal-error dismissal", () => {
 			vscode.Uri.joinPath(vscode.Uri.file("/ws/gaffer.toml"), "..").fsPath,
 		);
 		expect(term?.showCount).toBeGreaterThan(0);
+	});
+
+	it("gaffer.signIn is a no-op in an untrusted workspace", async () => {
+		await activateBare(); // leaves the workspace untrusted
+		await vscode.commands.executeCommand("gaffer.signIn", {
+			env: "prod",
+			tomlUri: vscode.Uri.file("/ws/gaffer.toml"),
+		});
+		expect(
+			getState().terminals.some((t) => t.name.includes("gaffer auth")),
+		).toBe(false);
 	});
 });
 

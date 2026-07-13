@@ -657,6 +657,10 @@ async function activateAfterTelemetry(
 		vscode.commands.registerCommand(
 			"gaffer.signIn",
 			wrap((arg: { env: string; tomlUri: vscode.Uri }) => {
+				// The lens is trust-gated in the provider, but a programmatic
+				// executeCommand could reach here untrusted - and this launches a
+				// process that touches the keyring, so re-check.
+				if (!vscode.workspace.isTrusted) return;
 				const argv = buildGafferArgv(["auth", "--env", arg.env], {
 					invokerId: telemetry.invokerId(),
 					invokedVia: "code_lens",

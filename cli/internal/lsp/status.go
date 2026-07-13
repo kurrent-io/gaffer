@@ -38,18 +38,22 @@ type envStatus struct {
 type statusFetchFunc func(ctx context.Context, root string, cfg *config.Config, envName string) envStatus
 
 // statusCache holds fetched status keyed by config URI then env name, with
-// single-flight dedupe of concurrent fetches for the same (uri, env). All
-// access is guarded by mu.
+// single-flight dedupe of concurrent fetches for the same (uri, env). A per-URI
+// generation counter, bumped on every drop, lets a fetch that was already in
+// flight when its document closed (or its config went invalid) discard its
+// late result instead of resurrecting the cache. All access is guarded by mu.
 type statusCache struct {
 	mu       sync.Mutex
 	byURI    map[string]map[string]envStatus
 	inflight map[string]struct{}
+	gen      map[string]uint64
 }
 
 func newStatusCache() *statusCache {
 	return &statusCache{
 		byURI:    map[string]map[string]envStatus{},
 		inflight: map[string]struct{}{},
+		gen:      map[string]uint64{},
 	}
 }
 
@@ -57,30 +61,37 @@ func newStatusCache() *statusCache {
 // distinct (uri, env) pairs never collide.
 func inflightKey(uri, env string) string { return uri + "\x00" + env }
 
-// begin marks (uri, env) as fetching. Returns false when a fetch is already in
-// flight for that pair, so the caller skips a duplicate.
-func (c *statusCache) begin(uri, env string) bool {
+// begin marks (uri, env) as fetching and returns the URI's current generation
+// to hand back to store. The bool is false when a fetch is already in flight for
+// that pair, so the caller skips a duplicate.
+func (c *statusCache) begin(uri, env string) (uint64, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	k := inflightKey(uri, env)
 	if _, ok := c.inflight[k]; ok {
-		return false
+		return 0, false
 	}
 	c.inflight[k] = struct{}{}
-	return true
+	return c.gen[uri], true
 }
 
-// store records a completed fetch and clears the in-flight marker.
-func (c *statusCache) store(uri, env string, st envStatus) {
+// store records a completed fetch and clears the in-flight marker. The result is
+// dropped (cache not written) when gen no longer matches the URI's generation -
+// the document was closed, or its config reloaded, while this fetch was running,
+// so its data is stale and must not resurrect the cache.
+func (c *statusCache) store(uri, env string, gen uint64, st envStatus) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	delete(c.inflight, inflightKey(uri, env))
+	if gen != c.gen[uri] {
+		return
+	}
 	m := c.byURI[uri]
 	if m == nil {
 		m = map[string]envStatus{}
 		c.byURI[uri] = m
 	}
 	m[env] = st
-	delete(c.inflight, inflightKey(uri, env))
 }
 
 // release clears an in-flight marker without recording a result, for when a
@@ -105,12 +116,14 @@ func (c *statusCache) get(uri string) map[string]envStatus {
 	return out
 }
 
-// drop clears any cached status and in-flight markers for uri, called when the
-// document closes. A fetch still running for uri will re-record on completion;
-// harmless, since no surface reads a closed document.
+// drop clears any cached status and in-flight markers for uri, and bumps the
+// URI's generation so a fetch still running for it discards its result instead
+// of repopulating the cache. Called when the document closes or its config
+// reload fails.
 func (c *statusCache) drop(uri string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.gen[uri]++
 	delete(c.byURI, uri)
 	for k := range c.inflight {
 		if strings.HasPrefix(k, uri+"\x00") {
@@ -122,9 +135,12 @@ func (c *statusCache) drop(uri string) {
 // refreshStatus re-fetches every env's deploy status for the gaffer.toml at uri,
 // updating the cache and asking the client to re-render as each env lands. Each
 // env is fetched in its own wg-tracked goroutine bounded by runCtx; single-flight
-// skips an env already being fetched. A strict config load failure (an invalid
-// gaffer.toml) leaves the cache untouched - the loose parse already surfaces the
-// problem as diagnostics, and there's no reachable target to read from.
+// skips an env already being fetched.
+//
+// A strict config load failure (a gaffer.toml edited into an invalid state)
+// drops any cached status for the URI so the surface clears rather than showing
+// stale data - the loose parse already surfaces the problem as diagnostics, and
+// there's no reachable target to read from.
 func (s *Server) refreshStatus(uri string) {
 	if !isGafferConfig(uri) {
 		return
@@ -135,15 +151,18 @@ func (s *Server) refreshStatus(uri string) {
 	}
 	cfg, err := config.Load(path)
 	if err != nil {
+		s.statusCache.drop(uri)
+		s.requestCodeLensRefresh()
 		return
 	}
 	root := filepath.Dir(path)
 	for _, env := range cfg.EnvNames() {
-		if !s.statusCache.begin(uri, env) {
+		gen, ok := s.statusCache.begin(uri, env)
+		if !ok {
 			continue
 		}
 		if !s.spawnWithCtx(func(ctx context.Context) {
-			s.statusCache.store(uri, env, s.statusFetch(ctx, root, cfg, env))
+			s.statusCache.store(uri, env, gen, s.statusFetch(ctx, root, cfg, env))
 			// Status landed; ask the client to re-request lenses so the env
 			// surface re-renders with the fresh state.
 			s.requestCodeLensRefresh()

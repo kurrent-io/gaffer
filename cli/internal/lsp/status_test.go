@@ -13,24 +13,25 @@ import (
 
 func TestStatusCache_SingleFlight(t *testing.T) {
 	c := newStatusCache()
-	if !c.begin("u", "prod") {
+	gen, ok := c.begin("u", "prod")
+	if !ok {
 		t.Fatal("first begin should succeed")
 	}
-	if c.begin("u", "prod") {
+	if _, ok := c.begin("u", "prod"); ok {
 		t.Fatal("second begin while in flight should be refused")
 	}
-	if !c.begin("u", "staging") {
+	if _, ok := c.begin("u", "staging"); !ok {
 		t.Fatal("a distinct env should begin independently")
 	}
-	c.store("u", "prod", envStatus{Target: "t"})
-	if !c.begin("u", "prod") {
+	c.store("u", "prod", gen, envStatus{Target: "t"})
+	if _, ok := c.begin("u", "prod"); !ok {
 		t.Fatal("begin should succeed once store cleared the marker")
 	}
 }
 
 func TestStatusCache_StoreGetReturnsCopy(t *testing.T) {
 	c := newStatusCache()
-	c.store("u", "prod", envStatus{Target: "prod-cluster", Production: true})
+	c.store("u", "prod", 0, envStatus{Target: "prod-cluster", Production: true})
 	got := c.get("u")
 	if got == nil || got["prod"].Target != "prod-cluster" || !got["prod"].Production {
 		t.Fatalf("get: %+v", got)
@@ -49,22 +50,44 @@ func TestStatusCache_ReleaseAndDrop(t *testing.T) {
 	c := newStatusCache()
 	c.begin("u", "prod")
 	c.release("u", "prod")
-	if !c.begin("u", "prod") {
+	if _, ok := c.begin("u", "prod"); !ok {
 		t.Fatal("release should clear the in-flight marker")
 	}
-	c.store("u", "prod", envStatus{})
-	c.store("u2", "x", envStatus{})
+	c.store("u", "prod", 0, envStatus{})
+	c.store("u2", "x", 0, envStatus{})
 	c.begin("u", "staging") // in flight, never stored
 
 	c.drop("u")
 	if c.get("u") != nil {
 		t.Fatal("drop should clear byURI for u")
 	}
-	if !c.begin("u", "staging") {
+	if _, ok := c.begin("u", "staging"); !ok {
 		t.Fatal("drop should clear u's in-flight markers")
 	}
 	if c.get("u2") == nil {
 		t.Fatal("drop must not touch other uris")
+	}
+}
+
+func TestStatusCache_DropDiscardsInFlightStore(t *testing.T) {
+	c := newStatusCache()
+	// A fetch begins, capturing the current generation.
+	gen, ok := c.begin("u", "prod")
+	if !ok {
+		t.Fatal("begin should succeed")
+	}
+	// The document closes (or its config reloads) while the fetch runs.
+	c.drop("u")
+	// The late store must be discarded, not resurrect the cache.
+	c.store("u", "prod", gen, envStatus{Target: "stale"})
+	if c.get("u") != nil {
+		t.Fatalf("a stale store after drop must not repopulate the cache: %+v", c.get("u"))
+	}
+	// A fresh fetch (post-drop generation) stores normally.
+	gen2, _ := c.begin("u", "prod")
+	c.store("u", "prod", gen2, envStatus{Target: "fresh"})
+	if got := c.get("u"); got == nil || got["prod"].Target != "fresh" {
+		t.Fatalf("a post-drop fetch should store: %+v", got)
 	}
 }
 
@@ -163,6 +186,28 @@ func TestRefreshStatus_InvalidConfigIsNoop(t *testing.T) {
 	}
 }
 
+func TestRefreshStatus_LoadFailureDropsCachedStatus(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := writeWorkspaceFile(t, root, "gaffer.toml", "[unterminated")
+	uri := pathToURI(cfgPath)
+
+	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
+		return envStatus{}
+	})
+	// A prior successful fetch left status cached for this uri.
+	s.statusCache.store(uri, "prod", 0, envStatus{Target: "old"})
+	if s.statusCache.get(uri) == nil {
+		t.Fatal("precondition: cache should be populated")
+	}
+
+	s.refreshStatus(uri)
+	s.wg.Wait()
+
+	if s.statusCache.get(uri) != nil {
+		t.Fatal("a config load failure should drop the stale cached status")
+	}
+}
+
 func TestRefreshStatus_NonConfigURIIsNoop(t *testing.T) {
 	var fetched atomic.Bool
 	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
@@ -240,7 +285,7 @@ func TestHandleDidClose_DropsStatus(t *testing.T) {
 	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
 		return envStatus{}
 	})
-	s.statusCache.store(uri, "prod", envStatus{Target: "prod-cluster"})
+	s.statusCache.store(uri, "prod", 0, envStatus{Target: "prod-cluster"})
 
 	req := &jsonrpc2.Request{}
 	if err := req.SetParams(DidCloseTextDocumentParams{

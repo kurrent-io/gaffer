@@ -122,7 +122,7 @@ func TestEmitStatusEnvLenses(t *testing.T) {
 		}
 	})
 
-	t.Run("error emits a muted unavailable lens", func(t *testing.T) {
+	t.Run("error emits a muted unavailable lens with the reason in the tooltip", func(t *testing.T) {
 		statuses := map[string]envStatus{"prod": {Err: errStub{}}}
 		lenses := emitStatusEnvLenses(desc, uri, statuses)
 		if len(lenses) != 1 || lenses[0].Data.Intent != IntentStatusEnv {
@@ -131,10 +131,13 @@ func TestEmitStatusEnvLenses(t *testing.T) {
 		if lenses[0].Command.Title != "status unavailable" || lenses[0].Command.Command != "" {
 			t.Errorf("command: %+v", lenses[0].Command)
 		}
+		if lenses[0].Command.Tooltip != "boom" {
+			t.Errorf("tooltip: got %q want the error reason", lenses[0].Command.Tooltip)
+		}
 	})
 
-	t.Run("data emits the non-clickable roll-up", func(t *testing.T) {
-		st := envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync)}}
+	t.Run("data emits the non-clickable roll-up with the target in the tooltip", func(t *testing.T) {
+		st := envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync)}, Target: "prod-cluster"}
 		statuses := map[string]envStatus{"prod": st}
 		lenses := emitStatusEnvLenses(desc, uri, statuses)
 		if len(lenses) != 1 || lenses[0].Data.Intent != IntentStatusEnv {
@@ -142,6 +145,9 @@ func TestEmitStatusEnvLenses(t *testing.T) {
 		}
 		if lenses[0].Command.Title != statusRollup(st) || lenses[0].Command.Command != "" {
 			t.Errorf("command: %+v", lenses[0].Command)
+		}
+		if lenses[0].Command.Tooltip != "Target: prod-cluster" {
+			t.Errorf("tooltip: got %q want the target", lenses[0].Command.Tooltip)
 		}
 	})
 

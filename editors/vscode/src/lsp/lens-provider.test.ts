@@ -292,6 +292,24 @@ describe("LspCodeLensProvider", () => {
 		expect(await getLenses(p)).toEqual([]);
 	});
 
+	it("passes the status-env tooltip through", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [
+			{
+				range: fakeLensRange(4),
+				command: {
+					title: "3 projections · in sync",
+					command: "",
+					tooltip: "Target: prod-cluster",
+				},
+				data: { intent: "status-env" },
+			},
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		const lenses = await getLenses(p);
+		expect(lenses[0]?.command?.tooltip).toBe("Target: prod-cluster");
+	});
+
 	it("decorates a sign-in lens with the key icon and gaffer.signIn command", async () => {
 		setLspRequestHandler("textDocument/codeLens", () => [
 			signInLens({ env: "prod", configURI: "file:///p/gaffer.toml" }),

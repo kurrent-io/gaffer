@@ -51,6 +51,7 @@ interface LspRange {
 interface LspCommand {
 	title: string;
 	command: string;
+	tooltip?: string;
 	arguments?: unknown[];
 }
 
@@ -345,7 +346,12 @@ export class LspCodeLensProvider
 	): vscode.CodeLens | null {
 		const title = sl.command?.title;
 		if (title === undefined || title === "") return null;
-		return new vscode.CodeLens(range, { title, command: "gaffer.noop" });
+		const tooltip = sl.command?.tooltip;
+		return new vscode.CodeLens(range, {
+			title,
+			command: "gaffer.noop",
+			...(tooltip ? { tooltip } : {}),
+		});
 	}
 
 	#decorateSignIn(

@@ -228,10 +228,13 @@ type Range struct {
 
 // Command identifies an editor-side command that runs when the user
 // activates a CodeLens. Arguments is opaque - the editor extension
-// passes it through to its registered handler verbatim.
+// passes it through to its registered handler verbatim. Tooltip is an
+// optional hover string (used by the informational status lenses to
+// explain the target or a fetch failure).
 type Command struct {
 	Title     string `json:"title"`
 	Command   string `json:"command"`
+	Tooltip   string `json:"tooltip,omitempty"`
 	Arguments []any  `json:"arguments,omitempty"`
 }
 

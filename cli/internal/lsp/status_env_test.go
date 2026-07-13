@@ -101,7 +101,7 @@ func TestEmitStatusEnvLenses(t *testing.T) {
 
 	t.Run("unauthenticated emits a sign-in lens with args", func(t *testing.T) {
 		statuses := map[string]envStatus{"prod": {Unauthenticated: true}}
-		lenses := emitStatusEnvLenses(desc, uri, statuses)
+		lenses := emitStatusEnvLenses(desc, uri, statuses, nil)
 		if len(lenses) != 1 {
 			t.Fatalf("expected 1 lens, got %d", len(lenses))
 		}
@@ -124,7 +124,7 @@ func TestEmitStatusEnvLenses(t *testing.T) {
 
 	t.Run("error emits a muted unavailable lens with the reason in the tooltip", func(t *testing.T) {
 		statuses := map[string]envStatus{"prod": {Err: errStub{}}}
-		lenses := emitStatusEnvLenses(desc, uri, statuses)
+		lenses := emitStatusEnvLenses(desc, uri, statuses, nil)
 		if len(lenses) != 1 || lenses[0].Data.Intent != IntentStatusEnv {
 			t.Fatalf("lenses: %+v", lenses)
 		}
@@ -139,7 +139,7 @@ func TestEmitStatusEnvLenses(t *testing.T) {
 	t.Run("data emits the non-clickable roll-up as plain label text", func(t *testing.T) {
 		st := envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync)}, Target: "prod-cluster"}
 		statuses := map[string]envStatus{"prod": st}
-		lenses := emitStatusEnvLenses(desc, uri, statuses)
+		lenses := emitStatusEnvLenses(desc, uri, statuses, nil)
 		if len(lenses) != 1 || lenses[0].Data.Intent != IntentStatusEnv {
 			t.Fatalf("lenses: %+v", lenses)
 		}
@@ -156,7 +156,7 @@ func TestEmitStatusEnvLenses(t *testing.T) {
 	t.Run("pending env (no cache entry) and zero-range env are skipped", func(t *testing.T) {
 		// Only staging has a landed status; prod is pending, quoted has no range.
 		statuses := map[string]envStatus{"staging": {Entries: []drift.StatusEntry{inConfig(drift.InSync)}}}
-		lenses := emitStatusEnvLenses(desc, uri, statuses)
+		lenses := emitStatusEnvLenses(desc, uri, statuses, nil)
 		if len(lenses) != 1 {
 			t.Fatalf("expected only staging, got %d lenses", len(lenses))
 		}
@@ -166,8 +166,19 @@ func TestEmitStatusEnvLenses(t *testing.T) {
 	})
 
 	t.Run("empty status map emits nothing", func(t *testing.T) {
-		if lenses := emitStatusEnvLenses(desc, uri, nil); len(lenses) != 0 {
+		if lenses := emitStatusEnvLenses(desc, uri, nil, nil); len(lenses) != 0 {
 			t.Fatalf("expected no lenses, got %+v", lenses)
+		}
+	})
+
+	t.Run("in-flight env emits a loading placeholder", func(t *testing.T) {
+		// prod has no cached status yet but is being fetched; staging is neither.
+		lenses := emitStatusEnvLenses(desc, uri, nil, map[string]bool{"prod": true})
+		if len(lenses) != 1 || lenses[0].Data.Intent != IntentStatusLoading {
+			t.Fatalf("expected one loading lens, got %+v", lenses)
+		}
+		if lenses[0].Command.Title != "loading status..." || lenses[0].Command.Command != "" {
+			t.Errorf("command: %+v", lenses[0].Command)
 		}
 	})
 }

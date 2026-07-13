@@ -31,6 +31,7 @@ function lensState(debugState: Readonly<DebugState>, name: string): LensState {
 const IntentDebug = "debug";
 const IntentDebugChoose = "debug-choose";
 const IntentStatusEnv = "status-env";
+const IntentStatusLoading = "status-loading";
 const IntentSignIn = "sign-in";
 
 const codeLensMethod = "textDocument/codeLens";
@@ -216,6 +217,9 @@ export class LspCodeLensProvider
 		if (intent === IntentStatusEnv) {
 			return this.#decorateStatusEnv(sl, range);
 		}
+		if (intent === IntentStatusLoading) {
+			return this.#decorateStatusLoading(sl, range);
+		}
 		if (intent === IntentSignIn) {
 			return this.#decorateSignIn(sl, range);
 		}
@@ -352,6 +356,20 @@ export class LspCodeLensProvider
 			title,
 			command: "",
 			...(tooltip ? { tooltip } : {}),
+		});
+	}
+
+	// Placeholder shown while an env's status fetch is in flight. Non-clickable
+	// (empty command, like the roll-up) with a spinning sync codicon prefixed
+	// client-side, so the user sees the surface is working rather than a gap.
+	#decorateStatusLoading(
+		sl: LspCodeLens,
+		range: vscode.Range,
+	): vscode.CodeLens | null {
+		const title = sl.command?.title ?? "loading status...";
+		return new vscode.CodeLens(range, {
+			title: `$(sync~spin) ${title}`,
+			command: "",
 		});
 	}
 

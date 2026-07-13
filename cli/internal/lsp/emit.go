@@ -188,27 +188,31 @@ type signInArgs struct {
 }
 
 // emitStatusEnvLenses renders one env-block deploy-status lens per configured
-// [env.<name>] with a located header, from the fetched status keyed by env
-// name. An unauthenticated env gets a sign-in action; a failed fetch gets a
+// [env.<name>] with a located header. From the fetched status keyed by env
+// name: an unauthenticated env gets a sign-in action; a failed fetch gets a
 // muted "status unavailable"; a successful one gets the non-clickable roll-up.
-// An env with no cached entry yet (fetch in flight) renders nothing - it pops
-// in when the fetch lands and the client re-requests.
-func emitStatusEnvLenses(desc config.Description, uri string, statuses map[string]envStatus) []CodeLens {
+// An env whose fetch is still in flight (in loading) gets a loading
+// placeholder; one that's neither cached nor loading renders nothing.
+func emitStatusEnvLenses(desc config.Description, uri string, statuses map[string]envStatus, loading map[string]bool) []CodeLens {
 	out := []CodeLens{}
-	if len(statuses) == 0 {
-		return out
-	}
 	for _, env := range desc.Environments {
 		// No source line to anchor on (quoted key, or a sub-table-only
 		// declaration) - the scan left the range zero.
 		if env.Range == (config.SourceRange{}) {
 			continue
 		}
+		r := rangeToLSP(env.Range)
 		st, ok := statuses[env.Name]
 		if !ok {
+			if loading[env.Name] {
+				out = append(out, CodeLens{
+					Range:   r,
+					Command: &Command{Title: "loading status..."},
+					Data:    &CodeLensData{Intent: IntentStatusLoading},
+				})
+			}
 			continue
 		}
-		r := rangeToLSP(env.Range)
 		switch {
 		case st.Unauthenticated:
 			out = append(out, CodeLens{

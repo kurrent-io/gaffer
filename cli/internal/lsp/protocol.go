@@ -64,6 +64,9 @@ const (
 	// IntentStatusEnv marks the non-clickable env-block deploy-status
 	// roll-up; the client renders the server's title as informational text.
 	IntentStatusEnv = "status-env"
+	// IntentStatusLoading marks a placeholder shown while an env's status
+	// fetch is still in flight; the client renders it with a spinner.
+	IntentStatusLoading = "status-loading"
 	// IntentSignIn marks the env-block sign-in action shown when an env
 	// needs authentication; the client routes it to its sign-in flow.
 	IntentSignIn = "sign-in"

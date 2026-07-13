@@ -311,6 +311,22 @@ describe("LspCodeLensProvider", () => {
 		expect(lenses[0]?.command?.tooltip).toBe("Target: prod-cluster");
 	});
 
+	it("renders a status-loading placeholder with a spinner, non-clickable", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [
+			{
+				range: fakeLensRange(4),
+				command: { title: "loading status...", command: "" },
+				data: { intent: "status-loading" },
+			},
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		const lenses = await getLenses(p);
+		expect(lenses).toHaveLength(1);
+		expect(lenses[0]?.command?.title).toBe("$(sync~spin) loading status...");
+		expect(lenses[0]?.command?.command).toBe("");
+	});
+
 	it("decorates a sign-in lens with the key icon and gaffer.signIn command", async () => {
 		setLspRequestHandler("textDocument/codeLens", () => [
 			signInLens({ env: "prod", configURI: "file:///p/gaffer.toml" }),

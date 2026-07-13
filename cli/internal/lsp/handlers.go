@@ -267,7 +267,7 @@ func (s *Server) handleCodeLens(req *jsonrpc2.Request) (any, error) {
 		// the informational roll-up isn't a routable command a generic client
 		// could render sanely, so we don't emit it to one that can't.
 		if s.statusLensEnabled() {
-			lenses = append(lenses, emitStatusEnvLenses(parse.Description, uri, s.statusCache.get(uri))...)
+			lenses = append(lenses, emitStatusEnvLenses(parse.Description, uri, s.statusCache.get(uri), s.statusCache.inFlightEnvs(uri))...)
 		}
 		return lenses, nil
 	}

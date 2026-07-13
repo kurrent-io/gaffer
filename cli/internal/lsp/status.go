@@ -100,6 +100,21 @@ func (c *statusCache) store(uri, env string, gen uint64, st envStatus) {
 	m[env] = st
 }
 
+// inFlightEnvs returns the set of env names currently being fetched for uri, so
+// the surface can show a loading placeholder for them.
+func (c *statusCache) inFlightEnvs(uri string) map[string]bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	prefix := uri + "\x00"
+	out := map[string]bool{}
+	for k := range c.inflight {
+		if env, ok := strings.CutPrefix(k, prefix); ok {
+			out[env] = true
+		}
+	}
+	return out
+}
+
 // release clears an in-flight marker without recording a result, for when a
 // fetch couldn't be queued (Run wound down) and a later session should retry.
 func (c *statusCache) release(uri, env string) {

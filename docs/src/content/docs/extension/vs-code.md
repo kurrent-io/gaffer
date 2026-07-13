@@ -29,7 +29,7 @@ Set breakpoints in the projection JS file. Standard VS Code debug controls work:
 
 ## Deployment status
 
-Above each `[env.<name>]` block in `gaffer.toml`, the extension shows a read-only summary of how your projections compare to what's deployed on that environment. It reads status when you open or save the file, and **Gaffer: Refresh Deployment Status** re-reads it on demand.
+Above each `[env.<name>]` block in `gaffer.toml`, the extension shows a read-only summary of how your projections compare to what's deployed on that environment. It reads status when you open or save the file.
 
 The summary is a count per state: how many are **in sync**, then anything needing attention (changed externally, local ahead of the deploy, not deployed, faulted, drifted, or invalid). Projections on the server but not in your `gaffer.toml` are counted as **orphan** (gaffer deployed them, so a deletion candidate) or **untracked** (another tool did). A production target is flagged **PRODUCTION**. Hovering the summary shows which target it read.
 
@@ -82,7 +82,6 @@ See [MCP](../cli/mcp.md) for the tools and resources gaffer exposes, and for con
 | `Gaffer: Debug`              | CodeLens or command palette      | Launch the projection with the debugger attached. Lens uses the projection at the cursor; palette prompts for a projection and source.    |
 | `Gaffer: Debug from...`      | CodeLens                         | Pick a source (a fixture or a configured environment) and launch with the debugger attached.                                            |
 | `Gaffer: Stop`               | CodeLens or command palette      | Stop the running session.                                                                                                                |
-| `Gaffer: Refresh Deployment Status` | Command palette (on a `gaffer.toml`) | Re-read each environment's deployment status for the active `gaffer.toml`.                                                        |
 | `Gaffer: Sign In to Environment` | CodeLens                     | Open a `gaffer auth --env <name>` terminal for an environment that needs authentication.                                                 |
 
 ## Telemetry

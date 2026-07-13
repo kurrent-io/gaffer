@@ -69,7 +69,6 @@ import {
 	wrapWebviewViewProvider,
 } from "./telemetry/wrap-provider.js";
 import {
-	requestStatusRefresh,
 	retryStartLanguageClient,
 	startLanguageClient,
 	stopLanguageClient,
@@ -633,22 +632,6 @@ async function activateAfterTelemetry(
 		vscode.commands.registerCommand(
 			"gaffer.dismissDiagnostic",
 			wrap((uri: vscode.Uri) => clearDiagnosticsForUri(uri)),
-		),
-		// Manual "refresh deployment status" for the active gaffer.toml. The
-		// palette entry is gated to gaffer.toml; the basename guard here
-		// defends a programmatic invocation on some other document.
-		vscode.commands.registerCommand(
-			"gaffer.refreshStatus",
-			wrap(() => {
-				const doc = vscode.window.activeTextEditor?.document;
-				if (!doc || !doc.uri.path.endsWith("/gaffer.toml")) {
-					void vscode.window.showInformationMessage(
-						"Open a gaffer.toml to refresh deployment status.",
-					);
-					return;
-				}
-				requestStatusRefresh(doc.uri);
-			}),
 		),
 		// Click target for the env-block "Sign in" lens: opens an interactive
 		// `gaffer auth --env <env>` terminal (a pty, so the keyring passphrase

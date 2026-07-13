@@ -277,30 +277,6 @@ func TestHandleDidOpen_TriggersStatusFetch(t *testing.T) {
 	}
 }
 
-func TestHandleRefreshStatus_TriggersFetch(t *testing.T) {
-	root := t.TempDir()
-	cfgPath := writeWorkspaceFile(t, root, "gaffer.toml", envOnlyConfig)
-	uri := pathToURI(cfgPath)
-
-	s := testServer(func(_ context.Context, _ string, _ *config.Config, env string) envStatus {
-		return envStatus{Target: env + "-cluster"}
-	})
-	s.docs.Open(uri, envOnlyConfig)
-
-	req := &jsonrpc2.Request{}
-	if err := req.SetParams(RefreshStatusParams{URI: uri}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.handleRefreshStatus(req); err != nil {
-		t.Fatal(err)
-	}
-	s.wg.Wait()
-
-	if got := s.statusCache.get(uri); got == nil || got["prod"].Target != "prod-cluster" {
-		t.Fatalf("manual refresh should populate the cache: %+v", got)
-	}
-}
-
 func TestHandleDidClose_DropsStatus(t *testing.T) {
 	uri := "file:///ws/gaffer.toml"
 	s := testServer(func(context.Context, string, *config.Config, string) envStatus {

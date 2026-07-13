@@ -6,12 +6,10 @@ import {
 	LanguageClient,
 	holdLspStart,
 	resetLspMock,
-	sentNotifications,
 } from "../../test/__mocks__/vscode-languageclient-node.js";
 import {
 	makeErrorHandler,
 	getLanguageClient,
-	requestStatusRefresh,
 	startLanguageClient,
 	stopLanguageClient,
 } from "./client.js";
@@ -153,34 +151,6 @@ describe("startLanguageClient invokerId wiring", () => {
 		// Not opted out, so no telemetry-optout key; parent env still passes through.
 		expect(opts?.env?.GAFFER_TELEMETRY_OPTOUT).toBeUndefined();
 		expect(opts?.env?.PATH).toBe(process.env.PATH);
-	});
-
-	it("requestStatusRefresh sends a gaffer/refreshStatus notification when the client runs", async () => {
-		setTrusted(true);
-		spawnMock.mockImplementation(() => fakeChild());
-		startLanguageClient(makeContext(), () => true, {
-			invokerId: () => "abc-id",
-			isOptedOut: () => false,
-		});
-		await flushAllMicrotasks();
-		const uri = {
-			toString: () => "file:///ws/gaffer.toml",
-		} as unknown as Parameters<typeof requestStatusRefresh>[0];
-		requestStatusRefresh(uri);
-		expect(sentNotifications).toEqual([
-			{
-				method: "gaffer/refreshStatus",
-				params: { uri: "file:///ws/gaffer.toml" },
-			},
-		]);
-	});
-
-	it("requestStatusRefresh is a no-op when the client isn't running", () => {
-		const uri = {
-			toString: () => "file:///ws/gaffer.toml",
-		} as unknown as Parameters<typeof requestStatusRefresh>[0];
-		requestStatusRefresh(uri);
-		expect(sentNotifications).toEqual([]);
 	});
 
 	it("opts into the status surface via initializationOptions", async () => {

@@ -144,10 +144,6 @@
 				"category": "Gaffer"
 			},
 			{
-				"command": "gaffer.refreshStatus",
-				"title": "Gaffer: Refresh Deployment Status"
-			},
-			{
 				"command": "gaffer.signIn",
 				"title": "Gaffer: Sign In to Environment"
 			}
@@ -182,10 +178,6 @@
 		],
 		"menus": {
 			"commandPalette": [
-				{
-					"command": "gaffer.refreshStatus",
-					"when": "resourceFilename == gaffer.toml"
-				},
 				{
 					"command": "gaffer.signIn",
 					"when": "false"

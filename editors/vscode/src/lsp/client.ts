@@ -242,19 +242,6 @@ export function getLanguageClient(): LanguageClient | undefined {
 	return client;
 }
 
-// Must match MethodRefreshStatus in cli/internal/lsp/protocol.go.
-const refreshStatusMethod = "gaffer/refreshStatus";
-
-// requestStatusRefresh asks the LSP server to re-fetch deploy status for one
-// gaffer.toml (the manual-refresh command). Fire-and-forget: the fresh status
-// arrives via the server's codeLens refresh once it lands. No-op when the
-// client isn't running (untrusted workspace, CLI missing, etc.).
-export function requestStatusRefresh(uri: vscode.Uri): void {
-	const c = client;
-	if (!c) return;
-	void c.sendNotification(refreshStatusMethod, { uri: uri.toString() });
-}
-
 // Restart on the first MAX_RESTART_COUNT closes within
 // RESTART_WINDOW_MS, give up on the next one. The give-up branch
 // surfaces a toast (showLspCrashed) so the user knows features

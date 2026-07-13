@@ -13,6 +13,7 @@ import {
 	startLanguageClient,
 	stopLanguageClient,
 } from "./client.js";
+import { setKeyringPassword } from "../discovery/cli.js";
 import { flushAllMicrotasks } from "../../test/testutil/promise.js";
 import { makeContext } from "../../test/testutil/fake-context.js";
 import {
@@ -50,6 +51,9 @@ describe("startLanguageClient invokerId wiring", () => {
 		resetVscode();
 		resetLspMock();
 		spawnMock.mockReset();
+		// The keyring password is module-level state in discovery/cli;
+		// clear it so a test that sets it doesn't leak into the next.
+		setKeyringPassword(undefined);
 	});
 
 	function fakeChild(): EventEmitter {
@@ -110,8 +114,9 @@ describe("startLanguageClient invokerId wiring", () => {
 		expect(opts?.env?.PATH).toBe(process.env.PATH);
 	});
 
-	it("omits the spawn env when the extension has a live identity (child inherits)", async () => {
+	it("omits the spawn env when opted in with no keyring password (child inherits)", async () => {
 		setTrusted(true);
+		setKeyringPassword(undefined);
 		spawnMock.mockImplementation(() => fakeChild());
 		startLanguageClient(makeContext(), () => true, {
 			invokerId: () => "abc-id",
@@ -123,6 +128,29 @@ describe("startLanguageClient invokerId wiring", () => {
 			| { env?: NodeJS.ProcessEnv }
 			| undefined;
 		expect(opts?.env).toBeUndefined();
+	});
+
+	it("injects GAFFER_KEYRING_PASSWORD in the spawn env when a keyring password is set", async () => {
+		// The LSP dials KurrentDB for deploy status, so it carries the
+		// keyring passphrase (like run/debug/mcp spawns) to unlock the OAuth
+		// token store without a prompt. In production the passphrase is always
+		// resolved at activation, so the consenting spawn is never bare.
+		setTrusted(true);
+		setKeyringPassword("pw-123");
+		spawnMock.mockImplementation(() => fakeChild());
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => "abc-id",
+			isOptedOut: () => false,
+		});
+		await flushAllMicrotasks();
+		await runFactory();
+		const opts = spawnMock.mock.calls[0]?.[2] as
+			| { env?: NodeJS.ProcessEnv }
+			| undefined;
+		expect(opts?.env?.GAFFER_KEYRING_PASSWORD).toBe("pw-123");
+		// Not opted out, so no telemetry-optout key; parent env still passes through.
+		expect(opts?.env?.GAFFER_TELEMETRY_OPTOUT).toBeUndefined();
+		expect(opts?.env?.PATH).toBe(process.env.PATH);
 	});
 
 	it("re-evaluates getInvokerId when vscode-languageclient restarts the server", async () => {

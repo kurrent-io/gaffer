@@ -14,7 +14,7 @@ import {
 } from "vscode-languageclient/node";
 import {
 	buildGafferArgv,
-	gafferSpawnEnv,
+	gafferRunEnv,
 	type SpawnTelemetry,
 } from "../discovery/cli.js";
 import { log } from "../output.js";
@@ -127,7 +127,10 @@ async function spawnLanguageClient(
 		if (command === undefined) {
 			throw new Error("LSP client: empty gaffer.command");
 		}
-		const env = gafferSpawnEnv(telemetry.isOptedOut());
+		// gafferRunEnv (not gafferSpawnEnv): the LSP now dials KurrentDB to
+		// fetch deploy status, so it needs GAFFER_KEYRING_PASSWORD to unlock
+		// the OAuth token store without a prompt, like the run/debug/mcp spawns.
+		const env = gafferRunEnv(telemetry.isOptedOut());
 		// Routed through cross-spawn so the Windows PATHEXT lookup
 		// works: an npm-installed `gaffer` resolves to a `gaffer.cmd`
 		// shim, which Node's bare `spawn(...)` (shell: false) won't

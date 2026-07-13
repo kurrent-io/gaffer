@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
@@ -84,10 +85,14 @@ func (c *statusCache) begin(uri, env string) (uint64, bool) {
 func (c *statusCache) store(uri, env string, gen uint64, st envStatus) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	delete(c.inflight, inflightKey(uri, env))
 	if gen != c.gen[uri] {
+		// Stale (the doc closed or its config reloaded since this fetch began):
+		// discard, and leave the in-flight marker alone - it was cleared by the
+		// drop that bumped the generation, and any current-generation fetch owns
+		// its own marker, which this stale store must not clear.
 		return
 	}
+	delete(c.inflight, inflightKey(uri, env))
 	m := c.byURI[uri]
 	if m == nil {
 		m = map[string]envStatus{}
@@ -175,20 +180,41 @@ func (s *Server) refreshStatus(uri string) {
 		return
 	}
 	root := filepath.Dir(path)
+
+	type job struct {
+		env string
+		gen uint64
+	}
+	var jobs []job
 	for _, env := range cfg.EnvNames() {
-		gen, ok := s.statusCache.begin(uri, env)
-		if !ok {
-			continue
+		if gen, ok := s.statusCache.begin(uri, env); ok {
+			jobs = append(jobs, job{env: env, gen: gen})
 		}
-		if !s.spawnWithCtx(func(ctx context.Context) {
-			s.statusCache.store(uri, env, gen, s.safeStatusFetch(ctx, root, cfg, env))
-			// Status landed; ask the client to re-request lenses so the env
-			// surface re-renders with the fresh state.
+	}
+	if len(jobs) == 0 {
+		return
+	}
+
+	// Coalesce the per-env fetches into a single codeLens refresh: the last
+	// fetch to settle (or fail to spawn) fires it, so an N-env config triggers
+	// one workspace re-request rather than N.
+	var remaining atomic.Int64
+	remaining.Store(int64(len(jobs)))
+	fireWhenDone := func() {
+		if remaining.Add(-1) == 0 {
 			s.requestCodeLensRefresh()
+		}
+	}
+	for _, j := range jobs {
+		if !s.spawnWithCtx(func(ctx context.Context) {
+			s.statusCache.store(uri, j.env, j.gen, s.safeStatusFetch(ctx, root, cfg, j.env))
+			fireWhenDone()
 		}) {
 			// Run wound down before we could spawn - release the marker so a
-			// later session isn't blocked from retrying this env.
-			s.statusCache.release(uri, env)
+			// later session isn't blocked from retrying this env, and still count
+			// the job so the last one that did spawn fires the refresh.
+			s.statusCache.release(uri, j.env)
+			fireWhenDone()
 		}
 	}
 }
@@ -200,8 +226,17 @@ func (s *Server) refreshStatus(uri string) {
 func (s *Server) safeStatusFetch(ctx context.Context, root string, cfg *config.Config, env string) (st envStatus) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("lsp: status fetch for env %q panicked: %v", env, r)
-			st = envStatus{Err: fmt.Errorf("status fetch panicked: %v", r)}
+			// Scrub the panic value against the env's connection before logging,
+			// in case it embedded a connection string; the connection is
+			// best-effort (empty if the env won't resolve, which scrubs to a no-op).
+			msg := fmt.Sprint(r)
+			if resolved, rerr := cfg.ResolveEnv(env); rerr == nil {
+				msg = target.ScrubConnection(msg, resolved.Connection)
+			}
+			log.Printf("lsp: status fetch for env %q panicked: %s", env, msg)
+			// Keep the error generic - it's surfaced in the lens tooltip, so it
+			// must not carry the (unscrubbed) panic value.
+			st = envStatus{Err: errors.New("status read failed unexpectedly")}
 		}
 	}()
 	return s.statusFetch(ctx, root, cfg, env)

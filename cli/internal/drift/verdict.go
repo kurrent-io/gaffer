@@ -1,5 +1,19 @@
 package drift
 
+// Verdict vocabulary, single-sourced here so every surface (gaffer status,
+// gaffer diff, the editor status roll-up) spells a verdict the same way and a
+// rename lands everywhere at once.
+const (
+	LabelInSync            = "in sync"
+	LabelDrifted           = "drifted"
+	LabelNotDeployed       = "not deployed"
+	LabelUntracked         = "untracked"
+	LabelInvalid           = "invalid"
+	LabelOrphan            = "orphan"
+	LabelLocalAhead        = "local ahead"
+	LabelChangedExternally = "changed externally"
+)
+
 // Verdict is the terse comparison verdict shared by gaffer status (table and
 // detail), gaffer diff, and the editor status surface. Drift is refined by
 // attribution (local ahead / changed externally) and an untracked projection by
@@ -9,17 +23,17 @@ func Verdict(c Comparison) string {
 	switch c.State {
 	case Untracked:
 		if c.Owner() == OwnerOrphan {
-			return "orphan"
+			return LabelOrphan
 		}
-		return "untracked"
+		return LabelUntracked
 	case Drifted:
 		switch c.Attribution() {
 		case AttrLocalAhead:
-			return "local ahead"
+			return LabelLocalAhead
 		case AttrChangedByTool, AttrChangedServer:
-			return "changed externally"
+			return LabelChangedExternally
 		default:
-			return "drifted"
+			return LabelDrifted
 		}
 	default:
 		return StateLabel(c.State)
@@ -32,15 +46,15 @@ func Verdict(c Comparison) string {
 func StateLabel(s State) string {
 	switch s {
 	case InSync:
-		return "in sync"
+		return LabelInSync
 	case Drifted:
-		return "drifted"
+		return LabelDrifted
 	case NotDeployed:
-		return "not deployed"
+		return LabelNotDeployed
 	case Untracked:
-		return "untracked"
+		return LabelUntracked
 	case Invalid:
-		return "invalid"
+		return LabelInvalid
 	default:
 		return string(s)
 	}

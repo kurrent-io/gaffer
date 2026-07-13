@@ -273,46 +273,54 @@ func statusRollup(st envStatus) string {
 		}
 	}
 
+	// Labels are single-sourced from drift.Verdict's vocabulary (and
+	// remote.StateFaulted), so a rename there lands here too.
 	var issues []string
 	add := func(n int, label string) {
 		if n > 0 {
 			issues = append(issues, fmt.Sprintf("%d %s", n, label))
 		}
 	}
-	add(changedExternally, "changed externally")
-	add(localAhead, "local ahead")
-	add(notDeployed, "not deployed")
-	add(faulted, "faulted")
-	add(drifted, "drifted")
-	add(invalid, "invalid")
+	add(changedExternally, drift.LabelChangedExternally)
+	add(localAhead, drift.LabelLocalAhead)
+	add(notDeployed, drift.LabelNotDeployed)
+	add(faulted, string(remote.StateFaulted))
+	add(drifted, drift.LabelDrifted)
+	add(invalid, drift.LabelInvalid)
 
 	var segs []string
 	if st.Production {
-		segs = append(segs, "PROD")
+		segs = append(segs, "PRODUCTION")
 	}
 	if configured > 0 {
-		unit := "projections"
-		if configured == 1 {
-			unit = "projection"
-		}
-		segs = append(segs, fmt.Sprintf("%d %s", configured, unit))
+		segs = append(segs, fmt.Sprintf("%d %s", configured, plural(configured, "projection")))
 		if len(issues) > 0 {
 			segs = append(segs, issues...)
 		} else {
-			segs = append(segs, "in sync")
+			segs = append(segs, drift.LabelInSync)
 		}
 	}
 	if orphaned > 0 {
-		segs = append(segs, fmt.Sprintf("%d orphan", orphaned))
+		// "orphan" is a noun here, so it pluralizes; the other categories are
+		// adjectival ("2 untracked", "2 drifted") and don't.
+		segs = append(segs, fmt.Sprintf("%d %s", orphaned, plural(orphaned, drift.LabelOrphan)))
 	}
 	if untracked > 0 {
-		segs = append(segs, fmt.Sprintf("%d untracked", untracked))
+		segs = append(segs, fmt.Sprintf("%d %s", untracked, drift.LabelUntracked))
 	}
 	// Nothing configured and no anomalies - still name the (production) target.
 	if configured == 0 && orphaned == 0 && untracked == 0 {
 		segs = append(segs, "no projections")
 	}
 	return strings.Join(segs, " · ")
+}
+
+// plural appends an "s" to word unless n is exactly 1.
+func plural(n int, word string) string {
+	if n == 1 {
+		return word
+	}
+	return word + "s"
 }
 
 // emitEntryScriptLenses returns Debug lenses for a non-toml URI

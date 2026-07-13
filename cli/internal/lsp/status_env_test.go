@@ -54,7 +54,7 @@ func TestStatusRollup(t *testing.T) {
 	}{
 		{"all in sync", envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync), inConfig(drift.InSync)}}, "2 projections · in sync"},
 		{"singular", envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync)}}, "1 projection · in sync"},
-		{"prod prefix", envStatus{Production: true, Entries: []drift.StatusEntry{inConfig(drift.InSync)}}, "PROD · 1 projection · in sync"},
+		{"prod prefix", envStatus{Production: true, Entries: []drift.StatusEntry{inConfig(drift.InSync)}}, "PRODUCTION · 1 projection · in sync"},
 		{
 			"mixed issues in order",
 			envStatus{Entries: []drift.StatusEntry{
@@ -64,13 +64,26 @@ func TestStatusRollup(t *testing.T) {
 		},
 		{"faulted counted independently of drift", envStatus{Entries: []drift.StatusEntry{faulted}}, "1 projection · 1 faulted"},
 		{
+			"drifted and faulted on one projection count in both dimensions",
+			envStatus{Entries: []drift.StatusEntry{{
+				Comparison: drift.Comparison{State: drift.Drifted},
+				Runtime:    &remote.Status{State: remote.StateFaulted},
+			}}},
+			"1 projection · 1 faulted · 1 drifted",
+		},
+		{
 			"orphan and untracked appended",
 			envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync), untrackedEntry(remote.ToolName), untrackedEntry("Other Tool")}},
 			"1 projection · in sync · 1 orphan · 1 untracked",
 		},
+		{
+			"orphans pluralize",
+			envStatus{Entries: []drift.StatusEntry{untrackedEntry(remote.ToolName), untrackedEntry(remote.ToolName)}},
+			"2 orphans",
+		},
 		{"only anomalies, no configured", envStatus{Entries: []drift.StatusEntry{untrackedEntry(remote.ToolName)}}, "1 orphan"},
 		{"empty", envStatus{}, "no projections"},
-		{"empty prod", envStatus{Production: true}, "PROD · no projections"},
+		{"empty prod", envStatus{Production: true}, "PRODUCTION · no projections"},
 	} {
 		if got := statusRollup(tc.st); got != tc.want {
 			t.Errorf("%s: statusRollup() = %q, want %q", tc.name, got, tc.want)

@@ -273,7 +273,7 @@ describe("LspCodeLensProvider", () => {
 	// here; the production VS Code Uri.parse with strict=true does
 	// throw. Pinning would need a per-test override of vscode.Uri.
 
-	it("renders a status-env roll-up as a non-clickable noop lens", async () => {
+	it("renders a status-env roll-up as non-clickable text (empty command)", async () => {
 		setLspRequestHandler("textDocument/codeLens", () => [
 			statusEnvLens("3 projections · in sync"),
 		]);
@@ -282,7 +282,8 @@ describe("LspCodeLensProvider", () => {
 		const lenses = await getLenses(p);
 		expect(lenses).toHaveLength(1);
 		expect(lenses[0]?.command?.title).toBe("3 projections · in sync");
-		expect(lenses[0]?.command?.command).toBe("gaffer.noop");
+		// Empty command id -> VS Code renders a plain span, not a clickable link.
+		expect(lenses[0]?.command?.command).toBe("");
 	});
 
 	it("drops a status-env lens with an empty title", async () => {

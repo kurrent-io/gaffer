@@ -337,9 +337,10 @@ export class LspCodeLensProvider
 		});
 	}
 
-	// The env-block roll-up is informational: the server owns the text, we
-	// render it non-clickable via the registered no-op. It only arrives for a
-	// trusted workspace (the LSP isn't spawned untrusted), so no extra gate.
+	// The env-block roll-up is informational, not an action. An empty command
+	// id makes VS Code render the title as a plain, non-clickable span (no
+	// pointer, no hover-link) rather than a dead clickable link. A tooltip
+	// (only set on the "status unavailable" case) still shows on hover.
 	#decorateStatusEnv(
 		sl: LspCodeLens,
 		range: vscode.Range,
@@ -349,7 +350,7 @@ export class LspCodeLensProvider
 		const tooltip = sl.command?.tooltip;
 		return new vscode.CodeLens(range, {
 			title,
-			command: "gaffer.noop",
+			command: "",
 			...(tooltip ? { tooltip } : {}),
 		});
 	}

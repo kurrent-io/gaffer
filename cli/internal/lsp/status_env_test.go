@@ -136,18 +136,20 @@ func TestEmitStatusEnvLenses(t *testing.T) {
 		}
 	})
 
-	t.Run("data emits the non-clickable roll-up with the target in the tooltip", func(t *testing.T) {
+	t.Run("data emits the non-clickable roll-up as plain label text", func(t *testing.T) {
 		st := envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync)}, Target: "prod-cluster"}
 		statuses := map[string]envStatus{"prod": st}
 		lenses := emitStatusEnvLenses(desc, uri, statuses)
 		if len(lenses) != 1 || lenses[0].Data.Intent != IntentStatusEnv {
 			t.Fatalf("lenses: %+v", lenses)
 		}
+		// Empty command -> the client renders a non-clickable span; no tooltip
+		// on the healthy roll-up (it's just label text).
 		if lenses[0].Command.Title != statusRollup(st) || lenses[0].Command.Command != "" {
 			t.Errorf("command: %+v", lenses[0].Command)
 		}
-		if lenses[0].Command.Tooltip != "Target: prod-cluster" {
-			t.Errorf("tooltip: got %q want the target", lenses[0].Command.Tooltip)
+		if lenses[0].Command.Tooltip != "" {
+			t.Errorf("tooltip: got %q want none on the roll-up", lenses[0].Command.Tooltip)
 		}
 	})
 

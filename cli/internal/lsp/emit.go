@@ -227,11 +227,9 @@ func emitStatusEnvLenses(desc config.Description, uri string, statuses map[strin
 				Data:    &CodeLensData{Intent: IntentStatusEnv},
 			})
 		default:
-			// Tooltip names the resolved target (a cluster name, not a
-			// connection string) so the user can see which server was read.
 			out = append(out, CodeLens{
 				Range:   r,
-				Command: &Command{Title: statusRollup(st), Tooltip: targetTooltip(st.Target)},
+				Command: &Command{Title: statusRollup(st)},
 				Data:    &CodeLensData{Intent: IntentStatusEnv},
 			})
 		}
@@ -315,15 +313,6 @@ func statusRollup(st envStatus) string {
 		segs = append(segs, "no projections")
 	}
 	return strings.Join(segs, " · ")
-}
-
-// targetTooltip labels the resolved target for the roll-up lens's hover, or
-// empty when the target couldn't be resolved.
-func targetTooltip(target string) string {
-	if target == "" {
-		return ""
-	}
-	return "Target: " + target
 }
 
 // plural appends an "s" to word unless n is exactly 1.

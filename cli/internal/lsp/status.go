@@ -3,6 +3,8 @@ package lsp
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 	"maps"
 	"path/filepath"
 	"strings"
@@ -148,6 +150,11 @@ func (c *statusCache) drop(uri string) {
 // any cached status for the URI so the surface clears rather than showing stale
 // data; the loose parse already surfaces the problem as diagnostics.
 func (s *Server) refreshStatus(uri string) {
+	if s.statusFetch == nil {
+		// Status fetching disabled (harness tests that drive the full Run loop
+		// but don't exercise status). Production always has a fetcher.
+		return
+	}
 	if !isGafferConfig(uri) {
 		return
 	}
@@ -174,7 +181,7 @@ func (s *Server) refreshStatus(uri string) {
 			continue
 		}
 		if !s.spawnWithCtx(func(ctx context.Context) {
-			s.statusCache.store(uri, env, gen, s.statusFetch(ctx, root, cfg, env))
+			s.statusCache.store(uri, env, gen, s.safeStatusFetch(ctx, root, cfg, env))
 			// Status landed; ask the client to re-request lenses so the env
 			// surface re-renders with the fresh state.
 			s.requestCodeLensRefresh()
@@ -184,6 +191,20 @@ func (s *Server) refreshStatus(uri string) {
 			s.statusCache.release(uri, env)
 		}
 	}
+}
+
+// safeStatusFetch runs the configured fetcher with a panic guard, so a crash
+// deep in a dependency (e.g. a nil-deref in the KurrentDB client on an unready
+// projection subsystem) surfaces as a "status unavailable" lens instead of
+// taking down the whole language server via an unrecovered goroutine panic.
+func (s *Server) safeStatusFetch(ctx context.Context, root string, cfg *config.Config, env string) (st envStatus) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("lsp: status fetch for env %q panicked: %v", env, r)
+			st = envStatus{Err: fmt.Errorf("status fetch panicked: %v", r)}
+		}
+	}()
+	return s.statusFetch(ctx, root, cfg, env)
 }
 
 // fetchEnvStatus is the default statusFetchFunc: dial one env, read every

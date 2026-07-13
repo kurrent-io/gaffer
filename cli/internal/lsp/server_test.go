@@ -37,10 +37,7 @@ func (p *rwc) Close() error {
 // startServer runs a server in a goroutine over the given stream
 // and returns a channel that delivers the Run result.
 func startServer(ctx context.Context, stream io.ReadWriteCloser, opts ServerOptions) <-chan error {
-	done := make(chan error, 1)
-	go func() {
-		done <- NewServer(opts).Run(ctx, stream)
-	}()
+	_, done := startServerWithStore(ctx, stream, opts)
 	return done
 }
 
@@ -273,6 +270,11 @@ func TestServer_ExitBeforeInitializeIsClean(t *testing.T) {
 // store state after driving lifecycle messages.
 func startServerWithStore(ctx context.Context, stream io.ReadWriteCloser, opts ServerOptions) (*Server, <-chan error) {
 	srv := NewServer(opts)
+	// Disable deploy-status fetching for the full-Run harness: didOpen now
+	// triggers a fetch, and no harness test exercises status (it's covered by
+	// direct-handler tests with an injected fetcher), so this keeps them off
+	// the network and their codeLens assertions free of status lenses.
+	srv.statusFetch = nil
 	done := make(chan error, 1)
 	go func() {
 		done <- srv.Run(ctx, stream)

@@ -227,6 +227,24 @@ func TestRefreshStatus_NonConfigURIIsNoop(t *testing.T) {
 // config.Load in the trigger handlers.
 const envOnlyConfig = "[env.prod]\nconnection = \"esdb://prod:2113\"\n"
 
+func TestRefreshStatus_RecoversFetchPanic(t *testing.T) {
+	root := t.TempDir()
+	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", envOnlyConfig))
+
+	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
+		panic("boom")
+	})
+	s.docs.Open(uri, envOnlyConfig)
+
+	s.refreshStatus(uri)
+	s.wg.Wait() // must return - a recovered panic, not a process crash
+
+	got := s.statusCache.get(uri)
+	if got == nil || got["prod"].Err == nil {
+		t.Fatalf("a panicking fetch should be recorded as an error, not crash: %+v", got)
+	}
+}
+
 func TestHandleDidOpen_TriggersStatusFetch(t *testing.T) {
 	root := t.TempDir()
 	cfgPath := writeWorkspaceFile(t, root, "gaffer.toml", envOnlyConfig)

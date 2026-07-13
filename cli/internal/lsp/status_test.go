@@ -6,6 +6,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/sourcegraph/jsonrpc2"
+
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 )
 
@@ -173,5 +175,84 @@ func TestRefreshStatus_NonConfigURIIsNoop(t *testing.T) {
 
 	if fetched.Load() {
 		t.Fatal("a non-config uri should not trigger a fetch")
+	}
+}
+
+// envOnlyConfig is a minimal on-disk gaffer.toml with one env, enough to drive
+// config.Load in the trigger handlers.
+const envOnlyConfig = "[env.prod]\nconnection = \"esdb://prod:2113\"\n"
+
+func TestHandleDidOpen_TriggersStatusFetch(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := writeWorkspaceFile(t, root, "gaffer.toml", envOnlyConfig)
+	uri := pathToURI(cfgPath)
+
+	var fetched atomic.Bool
+	s := testServer(func(_ context.Context, _ string, _ *config.Config, env string) envStatus {
+		fetched.Store(true)
+		return envStatus{Target: env + "-cluster"}
+	})
+
+	req := &jsonrpc2.Request{}
+	if err := req.SetParams(DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{URI: uri, Text: envOnlyConfig},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.handleDidOpen(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	s.wg.Wait()
+
+	if !fetched.Load() {
+		t.Fatal("didOpen should trigger a status fetch")
+	}
+	if s.statusCache.get(uri) == nil {
+		t.Fatal("cache should be populated after open")
+	}
+}
+
+func TestHandleRefreshStatus_TriggersFetch(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := writeWorkspaceFile(t, root, "gaffer.toml", envOnlyConfig)
+	uri := pathToURI(cfgPath)
+
+	s := testServer(func(_ context.Context, _ string, _ *config.Config, env string) envStatus {
+		return envStatus{Target: env + "-cluster"}
+	})
+
+	req := &jsonrpc2.Request{}
+	if err := req.SetParams(RefreshStatusParams{URI: uri}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.handleRefreshStatus(req); err != nil {
+		t.Fatal(err)
+	}
+	s.wg.Wait()
+
+	if got := s.statusCache.get(uri); got == nil || got["prod"].Target != "prod-cluster" {
+		t.Fatalf("manual refresh should populate the cache: %+v", got)
+	}
+}
+
+func TestHandleDidClose_DropsStatus(t *testing.T) {
+	uri := "file:///ws/gaffer.toml"
+	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
+		return envStatus{}
+	})
+	s.statusCache.store(uri, "prod", envStatus{Target: "prod-cluster"})
+
+	req := &jsonrpc2.Request{}
+	if err := req.SetParams(DidCloseTextDocumentParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.handleDidClose(req); err != nil {
+		t.Fatal(err)
+	}
+
+	if s.statusCache.get(uri) != nil {
+		t.Fatal("didClose should drop the cached status for the uri")
 	}
 }

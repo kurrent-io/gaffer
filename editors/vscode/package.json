@@ -142,6 +142,10 @@
 				"command": "gaffer.scaffoldHere",
 				"title": "Scaffold Projection Here",
 				"category": "Gaffer"
+			},
+			{
+				"command": "gaffer.refreshStatus",
+				"title": "Gaffer: Refresh Deployment Status"
 			}
 		],
 		"debuggers": [
@@ -174,6 +178,10 @@
 		],
 		"menus": {
 			"commandPalette": [
+				{
+					"command": "gaffer.refreshStatus",
+					"when": "resourceFilename == gaffer.toml"
+				},
 				{
 					"command": "gaffer.debugProjection",
 					"when": "false"

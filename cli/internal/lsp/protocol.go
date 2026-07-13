@@ -44,6 +44,12 @@ const (
 	// to drive the Run Projection picker (live vs fixture). Editors
 	// without this knowledge (zed, neovim) just default to live.
 	MethodProjectionDetails = "gaffer/projectionDetails"
+
+	// MethodRefreshStatus is a gaffer-specific extension: the editor asks
+	// the server to re-fetch deploy status for one gaffer.toml (the manual
+	// refresh command). Fire-and-forget - the fresh status reaches the editor
+	// through the normal codeLens refresh once it lands.
+	MethodRefreshStatus = "gaffer/refreshStatus"
 )
 
 // LSP intent codes for code lenses. Per the LSP plan, the server
@@ -375,6 +381,12 @@ type RegistrationParams struct {
 type ProjectionDetailsParams struct {
 	ConfigURI string `json:"configURI"`
 	Name      string `json:"name"`
+}
+
+// RefreshStatusParams identifies the gaffer.toml whose deploy status the
+// editor wants re-fetched (the manual-refresh command).
+type RefreshStatusParams struct {
+	URI string `json:"uri"`
 }
 
 // ProjectionDetailsResult is the bits of a projection's parsed

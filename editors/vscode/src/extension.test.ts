@@ -123,6 +123,7 @@ describe("activate registrations", () => {
 			"gaffer.dismissDiagnostic",
 			"gaffer.init",
 			"gaffer.noop",
+			"gaffer.refreshStatus",
 			"gaffer.runProjection",
 			"gaffer.scaffold",
 			"gaffer.scaffoldHere",

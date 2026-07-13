@@ -55,6 +55,8 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 		return s.handleDidChangeWatchedFiles(ctx, req)
 	case MethodProjectionDetails:
 		return s.handleProjectionDetails(req)
+	case MethodRefreshStatus:
+		return s.handleRefreshStatus(req)
 	default:
 		// $/-prefixed messages are optional per the LSP spec.
 		// Notifications must be silently ignored; requests get the
@@ -124,6 +126,9 @@ func (s *Server) handleDidOpen(_ context.Context, req *jsonrpc2.Request) (any, e
 	// didOpen drives the first parse - users expect immediate
 	// feedback when a file opens, not a debounce-window wait.
 	s.triggerParse(params.TextDocument.URI, true)
+	// Kick a deploy-status fetch for the opened config so the env
+	// surface renders live state; no-op for non-config URIs.
+	s.refreshStatus(params.TextDocument.URI)
 	return nil, nil
 }
 
@@ -203,6 +208,8 @@ func (s *Server) handleDidClose(req *jsonrpc2.Request) (any, error) {
 		hadParse = true
 	}
 	s.docs.Close(params.TextDocument.URI)
+	// Drop cached deploy status - the surface is gone with the buffer.
+	s.statusCache.drop(params.TextDocument.URI)
 	// Fire the refresh BEFORE publishDiagnostics. publishDiagnostics
 	// is a synchronous conn.Notify holding the conn write lock for
 	// the duration of the wire write; if it blocks (slow client, or
@@ -301,6 +308,18 @@ func (s *Server) handleProjectionDetails(req *jsonrpc2.Request) (any, error) {
 		}, nil
 	}
 	return ProjectionDetailsResult{Fixtures: []string{}}, nil
+}
+
+// handleRefreshStatus re-fetches deploy status for the named gaffer.toml on
+// demand (the editor's manual-refresh command). The fetch is async; the fresh
+// status reaches the editor through the normal codeLens refresh once it lands.
+func (s *Server) handleRefreshStatus(req *jsonrpc2.Request) (any, error) {
+	params, jerr := decodeParams[RefreshStatusParams](req, "refreshStatus")
+	if jerr != nil {
+		return nil, jerr
+	}
+	s.refreshStatus(params.URI)
+	return nil, nil
 }
 
 func (s *Server) handleShutdown() (any, error) {

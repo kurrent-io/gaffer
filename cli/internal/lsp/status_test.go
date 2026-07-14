@@ -1,8 +1,11 @@
 package lsp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -244,6 +247,33 @@ func TestRefreshStatus_RecoversFetchPanic(t *testing.T) {
 	got := s.statusCache.get(uri)
 	if got == nil || got["prod"].Err == nil {
 		t.Fatalf("a panicking fetch should be recorded as an error, not crash: %+v", got)
+	}
+}
+
+func TestSafeStatusFetch_ScrubsExpandedConnectionFromPanicLog(t *testing.T) {
+	t.Setenv("STATUS_TEST_PW", "s3cr3t")
+	root := t.TempDir()
+	const cfgSrc = "[env.prod]\nconnection = \"kurrentdb://user:${STATUS_TEST_PW}@host:2113\"\n"
+	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", cfgSrc))
+
+	// A crash deep in the client carries the ${VAR}-expanded connection, not
+	// the toml literal - so scrubbing only the raw connection would leak the
+	// secret. This guards the expanded-form scrub in safeStatusFetch.
+	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
+		panic("dial failed: kurrentdb://user:s3cr3t@host:2113")
+	})
+	s.docs.Open(uri, cfgSrc)
+
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(old) })
+
+	s.refreshStatus(uri)
+	s.wg.Wait()
+
+	if strings.Contains(buf.String(), "s3cr3t") {
+		t.Fatalf("expanded connection secret leaked into the panic log: %q", buf.String())
 	}
 }
 

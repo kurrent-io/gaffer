@@ -57,6 +57,8 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 		return s.handleDidChangeWatchedFiles(ctx, req)
 	case MethodProjectionDetails:
 		return s.handleProjectionDetails(req)
+	case MethodRefreshStatus:
+		return s.handleRefreshStatus(req)
 	default:
 		// $/-prefixed messages are optional per the LSP spec.
 		// Notifications must be silently ignored; requests get the
@@ -348,6 +350,19 @@ func (s *Server) handleDidSave(req *jsonrpc2.Request) (any, error) {
 		return nil, jerr
 	}
 	s.refreshStatus(params.TextDocument.URI)
+	return nil, nil
+}
+
+// handleRefreshStatus re-fetches deploy status for the named gaffer.toml after
+// an out-of-band auth change the server can't observe (the editor fires this
+// when a sign-in terminal exits cleanly). The fetch is async; the fresh status
+// reaches the editor through the normal codeLens refresh once it lands.
+func (s *Server) handleRefreshStatus(req *jsonrpc2.Request) (any, error) {
+	params, jerr := decodeParams[RefreshStatusParams](req, "refreshStatus")
+	if jerr != nil {
+		return nil, jerr
+	}
+	s.refreshStatus(params.URI)
 	return nil, nil
 }
 

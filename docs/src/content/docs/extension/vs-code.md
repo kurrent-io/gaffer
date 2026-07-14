@@ -33,7 +33,7 @@ Above each `[env.<name>]` block in `gaffer.toml`, the extension shows a read-onl
 
 The summary is a count per state: how many are **in sync**, then anything needing attention (changed externally, local ahead of the deploy, not deployed, faulted, drifted, or invalid). Projections on the server but not in your `gaffer.toml` are counted as **orphan** (gaffer deployed them, so a deletion candidate) or **untracked** (another tool did). A production target is flagged **PRODUCTION**. Hovering the summary shows which target it read.
 
-When an environment needs authentication, the summary is replaced by a **Sign in** action; see [Authentication](#authentication) for the flow. If the status read can't complete (the target is unreachable, or the config doesn't compile), the summary reads **status unavailable** rather than a false **in sync**, and hovering shows the reason. Status is read-only: it never deploys, starts, or stops anything.
+When an environment needs authentication, the summary is replaced by a **Sign in** action; see [Authentication](#authentication) for the flow. It also reappears for an environment you signed in to before whose token has since expired or been revoked. Once you sign in, the summary refreshes on its own, so there's no need to reload the window. If the status read can't complete (the target is unreachable, or the config doesn't compile), the summary reads **status unavailable** rather than a false **in sync**, and hovering shows the reason. Status is read-only: it never deploys, starts, or stops anything.
 
 The summary appears above bare-key `[env.name]` headers. An environment declared with a quoted key (`[env."my env"]`) has no summary line.
 

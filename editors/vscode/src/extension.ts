@@ -69,6 +69,7 @@ import {
 	wrapWebviewViewProvider,
 } from "./telemetry/wrap-provider.js";
 import {
+	requestStatusRefresh,
 	retryStartLanguageClient,
 	startLanguageClient,
 	stopLanguageClient,
@@ -659,6 +660,19 @@ async function activateAfterTelemetry(
 					...(env ? { env } : {}),
 				});
 				terminal.show();
+				// The terminal *is* the `gaffer auth` process. When it exits
+				// cleanly the token is in the keyring, but the LSP can't see
+				// that - nudge it to re-fetch so the status lens updates
+				// without a window reload. A non-zero exit (cancelled/failed)
+				// leaves the "Sign in" lens in place, which is correct.
+				const closeSub = vscode.window.onDidCloseTerminal((closed) => {
+					if (closed !== terminal) return;
+					closeSub.dispose();
+					if (closed.exitStatus?.code === 0) {
+						requestStatusRefresh(arg.tomlUri);
+					}
+				});
+				context.subscriptions.push(closeSub);
 			}),
 		),
 	);

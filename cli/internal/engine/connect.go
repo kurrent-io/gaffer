@@ -35,6 +35,12 @@ type AuthInvalidation struct{ tripped atomic.Bool }
 func (a *AuthInvalidation) Trip()         { a.tripped.Store(true) }
 func (a *AuthInvalidation) Tripped() bool { return a.tripped.Load() }
 
+// TripOnce trips the flag and reports whether this call tripped it. The
+// provider gates its invalid_grant cleanup on it: a dead connection keeps
+// failing on every subsequent RPC, and re-deleting the stored token would
+// destroy one stored by an intervening `gaffer auth`.
+func (a *AuthInvalidation) TripOnce() bool { return a.tripped.CompareAndSwap(false, true) }
+
 // Connect dials the environment. It takes the selected env whole (rather
 // than exploded fields) so a new auth-relevant field on ResolvedEnv can't be
 // silently forgotten at a call site.
@@ -53,13 +59,11 @@ func Connect(projectRoot string, env config.ResolvedEnv) (*kurrentdb.Client, *Au
 		return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 	}
 
-	redacted := target.RedactConnection(tgt.Connection)
-	dbConfig, err := kurrentdb.ParseConnectionString(tgt.Connection)
+	// ParseConnection owns making the parser's echo-prone errors safe to
+	// surface; don't add the raw error alongside it.
+	dbConfig, err := target.ParseConnection(tgt.Connection)
 	if err != nil {
-		// Don't %w the underlying error: url.Parse errors echo the
-		// original input, which for malformed connection strings
-		// includes the password verbatim.
-		return nil, nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, target.ScrubConnection(err.Error(), tgt.Connection))
+		return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 	}
 
 	// authInvalidated is tripped by the OAuth provider if the IdP rejects the
@@ -143,13 +147,11 @@ func Principal(projectRoot string, env config.ResolvedEnv) string {
 // rejected token + tripping the invalidation flag on invalid_grant. The
 // needs-sign-in classification is done by SharedTokenSource.
 func oauthProvider(tgt target.Target, authInvalidated *AuthInvalidation) (kurrentdb.CredentialsProvider, error) {
-	c := tgt.OAuth
-	src, err := target.SharedTokenSource(tgt.Env, c, tgt.OAuthCAFile, tgt.OAuthClientSecret)
+	src, err := target.SharedTokenSource(tgt)
 	if err != nil {
 		return nil, err
 	}
 
-	id := oauth.Identity(c.Issuer, c.ClientID)
 	return func(context.Context) (*kurrentdb.Credentials, error) {
 		tok, err := src.Token()
 		if err != nil {
@@ -160,9 +162,8 @@ func oauthProvider(tgt target.Target, authInvalidated *AuthInvalidation) (kurren
 			// reaches here with a deletable token (InvalidateTokenSource no-ops for
 			// an uncached client-credentials source, whose errors aren't
 			// invalid_grant anyway).
-			if oauth.IsInvalidGrant(err) {
-				target.InvalidateTokenSource(id)
-				authInvalidated.Trip()
+			if oauth.IsInvalidGrant(err) && authInvalidated.TripOnce() {
+				target.InvalidateTokenSource(tgt)
 			}
 			return nil, err
 		}

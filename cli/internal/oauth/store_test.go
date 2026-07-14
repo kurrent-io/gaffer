@@ -16,7 +16,7 @@ import (
 // the opener it uses; this covers that removal actually lands.
 func TestDeleteStoredToken(t *testing.T) {
 	dir := t.TempDir()
-	id := Identity("iss", "cid")
+	id := Identity("iss", "cid", "db.example:2113")
 
 	t.Setenv("GAFFER_KEYRING_PASSWORD", "pw")
 	store, err := OpenTokenStore(dir)
@@ -36,7 +36,7 @@ func TestDeleteStoredToken(t *testing.T) {
 
 func TestTokenStoreRoundTrip(t *testing.T) {
 	s := newTokenStore(keyring.NewArrayKeyring(nil))
-	id := Identity("https://idp.example.com", "kurrentdb-client")
+	id := Identity("https://idp.example.com", "kurrentdb-client", "db.example:2113")
 
 	if _, err := s.Load(id); !errors.Is(err, ErrNoToken) {
 		t.Fatalf("expected ErrNoToken before save, got %v", err)
@@ -63,7 +63,7 @@ func TestTokenStoreRoundTrip(t *testing.T) {
 
 func TestTokenStoreDeleteIsIdempotent(t *testing.T) {
 	s := newTokenStore(keyring.NewArrayKeyring(nil))
-	id := Identity("https://idp.example.com", "c")
+	id := Identity("https://idp.example.com", "c", "db.example:2113")
 
 	if err := s.Delete(id); err != nil {
 		t.Fatalf("delete of absent token should be nil, got %v", err)
@@ -87,7 +87,7 @@ func TestTokenStoreClear(t *testing.T) {
 		t.Fatalf("clear of empty store: got (%d, %v), want (0, nil)", n, err)
 	}
 
-	for _, id := range []string{Identity("iss1", "c"), Identity("iss2", "c")} {
+	for _, id := range []string{Identity("iss1", "c", "h:2113"), Identity("iss2", "c", "h:2113")} {
 		if err := s.Save(id, &oauth2.Token{AccessToken: "a"}); err != nil {
 			t.Fatalf("save: %v", err)
 		}
@@ -100,23 +100,28 @@ func TestTokenStoreClear(t *testing.T) {
 	if n != 2 {
 		t.Errorf("cleared %d tokens, want 2", n)
 	}
-	if _, err := s.Load(Identity("iss1", "c")); !errors.Is(err, ErrNoToken) {
+	if _, err := s.Load(Identity("iss1", "c", "h:2113")); !errors.Is(err, ErrNoToken) {
 		t.Errorf("expected ErrNoToken after clear, got %v", err)
 	}
 }
 
 func TestIdentityNormalizesTrailingSlash(t *testing.T) {
-	if Identity("https://idp.example.com/", "c") != Identity("https://idp.example.com", "c") {
+	if Identity("https://idp.example.com/", "c", "db.example:2113") != Identity("https://idp.example.com", "c", "db.example:2113") {
 		t.Error("issuer trailing slash must not change the identity")
 	}
 }
 
 func TestIdentityDistinct(t *testing.T) {
-	if Identity("iss", "c1") == Identity("iss", "c2") {
+	if Identity("iss", "c1", "h") == Identity("iss", "c2", "h") {
 		t.Error("different client ids must produce different identities")
 	}
-	if Identity("iss1", "c") == Identity("iss2", "c") {
+	if Identity("iss1", "c", "h") == Identity("iss2", "c", "h") {
 		t.Error("different issuers must produce different identities")
+	}
+	// The UI-1836 property: the same issuer and client bound to a different
+	// host is a different identity, so a token never crosses hosts.
+	if Identity("iss", "c", "victim.example:2113") == Identity("iss", "c", "attacker.example:2113") {
+		t.Error("different hosts must produce different identities")
 	}
 }
 

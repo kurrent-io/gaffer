@@ -242,16 +242,18 @@ func (s *Server) safeStatusFetch(ctx context.Context, root string, cfg *config.C
 	defer func() {
 		if r := recover(); r != nil {
 			// Scrub the panic value against the env's connection before logging,
-			// in case it embedded one. ScrubConnection only redacts exact
-			// matches, so scrub both the raw connection and the ${VAR}-expanded
-			// form the dial actually used - a panic from deep in the client
-			// carries the expanded string, not the toml literal. Best-effort: an
-			// env that won't resolve scrubs to a no-op.
+			// in case it embedded one. Scrub both the raw connection and the
+			// ${VAR}-expanded form the dial actually used - a panic from deep in
+			// the client carries the expanded string, not the toml literal.
+			// Expansion alone rather than full Resolve: a target that refuses to
+			// resolve (an unparseable connection under OAuth host binding) still
+			// expands, so its secret still gets masked. Best-effort: an env that
+			// won't even expand scrubs to a no-op.
 			msg := fmt.Sprint(r)
 			if resolved, rerr := cfg.ResolveEnv(env); rerr == nil {
 				msg = target.ScrubConnection(msg, resolved.Connection)
-				if tgt, terr := target.Resolve(root, resolved); terr == nil {
-					msg = target.ScrubConnection(msg, tgt.Connection)
+				if conn, cerr := target.ExpandConnection(root, resolved); cerr == nil {
+					msg = target.ScrubConnection(msg, conn)
 				}
 			}
 			log.Printf("lsp: status fetch for env %q panicked: %s", env, msg)

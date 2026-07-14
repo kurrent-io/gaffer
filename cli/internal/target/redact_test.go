@@ -1,6 +1,7 @@
 package target
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -40,6 +41,16 @@ func TestRedactConnection(t *testing.T) {
 			name: "no scheme",
 			in:   "host:2113",
 			want: "host:2113",
+		},
+		{
+			name: "one-slash scheme (malformed)",
+			in:   "esdb:/admin:hunter2@host:2113",
+			want: "esdb:/admin:***@host:2113",
+		},
+		{
+			name: "no scheme with userinfo",
+			in:   "admin:hunter2@host:2113",
+			want: "admin:***@host:2113",
 		},
 		{
 			name: "empty",
@@ -87,6 +98,34 @@ func TestScrubRaw(t *testing.T) {
 	}
 	if !strings.Contains(got, redacted) {
 		t.Errorf("expected redacted form in message, got %q", got)
+	}
+}
+
+func TestScrubConnection_FragmentEcho(t *testing.T) {
+	// The kurrentdb parser echoes fragments of the input (the URL path, a
+	// host segment) that never match the whole connection string; the
+	// password's ":pw@" context still survives in them.
+	raw := "esdb:/admin:hunter2@host:2113"
+	got := ScrubConnection("unsupported URL path: /admin:hunter2@host:2113", raw)
+	if strings.Contains(got, "hunter2") {
+		t.Errorf("password leaked in scrubbed fragment echo: %q", got)
+	}
+	if !strings.Contains(got, ":***@") {
+		t.Errorf("expected masked userinfo in %q", got)
+	}
+}
+
+func TestScrubConnection_QuotedEcho(t *testing.T) {
+	// url errors %q-quote their input, so a password with a quote or a
+	// control character is spelled with escapes in the echo.
+	raw := "esdb://admin:hu\"nter2@host\x01:2113"
+	msg := fmt.Sprintf("parse %q: net/url: invalid control character in URL", raw)
+	got := ScrubConnection(msg, raw)
+	if strings.Contains(got, "nter2") {
+		t.Errorf("password leaked in scrubbed quoted echo: %q", got)
+	}
+	if !strings.Contains(got, ":***@") {
+		t.Errorf("expected masked userinfo in %q", got)
 	}
 }
 

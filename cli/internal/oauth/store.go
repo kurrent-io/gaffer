@@ -98,13 +98,19 @@ func (s *TokenStore) Clear() (int, error) {
 	return len(keys), nil
 }
 
-// Identity is the storage key for tokens issued to clientID by issuer. Keying
-// on the OAuth identity rather than the env name lets a single login serve
-// every project that targets the same issuer and client. The issuer's trailing
-// slash is trimmed to match OIDC discovery, so the same issuer spelled with or
-// without one resolves to a single stored token.
-func Identity(issuer, clientID string) string {
-	return strings.TrimRight(issuer, "/") + "|" + clientID
+// Identity is the storage key for tokens issued to clientID by issuer for
+// connections to host (target.Resolve's AuthHost: the normalized endpoint set
+// the env's connection names). Keying on the OAuth identity rather than the
+// env name lets a single login serve every project that targets the same
+// issuer, client, and host; keying on the host keeps a token from ever being
+// attached to a connection to a host the user didn't sign in for - a config
+// that reuses an org's issuer/clientID but points its connection elsewhere
+// finds no token and falls back to a fresh sign-in against that host
+// (UI-1836). The issuer's trailing slash is trimmed to match OIDC discovery,
+// so the same issuer spelled with or without one resolves to a single stored
+// token.
+func Identity(issuer, clientID, host string) string {
+	return strings.TrimRight(issuer, "/") + "|" + clientID + "|" + host
 }
 
 // filePassword supplies the passphrase for the encrypted-file fallback. The

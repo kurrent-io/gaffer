@@ -53,13 +53,11 @@ func Connect(projectRoot string, env config.ResolvedEnv) (*kurrentdb.Client, *Au
 		return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 	}
 
-	redacted := target.RedactConnection(tgt.Connection)
-	dbConfig, err := kurrentdb.ParseConnectionString(tgt.Connection)
+	// ParseConnection owns making the parser's echo-prone errors safe to
+	// surface; don't add the raw error alongside it.
+	dbConfig, err := target.ParseConnection(tgt.Connection)
 	if err != nil {
-		// Don't %w the underlying error: url.Parse errors echo the
-		// original input, which for malformed connection strings
-		// includes the password verbatim.
-		return nil, nil, fmt.Errorf("%w: invalid connection string %s: %s", ErrDBConnect, redacted, target.ScrubConnection(err.Error(), tgt.Connection))
+		return nil, nil, fmt.Errorf("%w: %w", ErrDBConnect, err)
 	}
 
 	// authInvalidated is tripped by the OAuth provider if the IdP rejects the

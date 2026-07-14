@@ -48,6 +48,10 @@ type Target struct {
 	// root (oauth.ResolveCAFile semantics - no ${VAR} expansion, matching
 	// the connection's behaviour). Meaningful only when OAuth is set.
 	OAuthCAFile string
+	// AuthHost is the normalized endpoint set the connection names (see
+	// authHost); tokens for this target are stored and looked up bound to
+	// it, never crossing to another host. Set only when OAuth is set.
+	AuthHost string
 	// BearerToken lazily yields an OAuth access token for the target, set
 	// only when OAuth is configured. It resolves the process-shared token
 	// source (SharedTokenSource) so the connection and this background read
@@ -101,6 +105,12 @@ func Resolve(root string, env config.ResolvedEnv) (Target, error) {
 		OAuth:      env.OAuth,
 	}
 	if env.OAuth != nil {
+		// An unparseable connection means there is no host to bind a token
+		// to, so an OAuth target refuses to resolve rather than fall back to
+		// host-unbound credentials.
+		if t.AuthHost, err = authHost(conn); err != nil {
+			return Target{}, fmt.Errorf("resolving OAuth host binding: %w", err)
+		}
 		t.OAuthClientSecret = envvar.OAuthClientSecret(overlay)
 		t.OAuthCAFile = oauth.ResolveCAFile(env.OAuth.CAFile, root)
 		t.BearerToken = bearerSource(env.Name, env.OAuth, t.OAuthCAFile, t.OAuthClientSecret)
@@ -122,6 +132,19 @@ func Resolve(root string, env config.ResolvedEnv) (Target, error) {
 		}
 	}
 	return t, nil
+}
+
+// ExpandConnection returns the env's ${VAR}-expanded connection string alone.
+// For consumers that need the dial string but must not inherit Resolve's
+// refusals - e.g. scrubbing a panic message against an env whose OAuth host
+// binding won't resolve: expansion still succeeds there, so the secret the
+// dial saw still gets masked.
+func ExpandConnection(root string, env config.ResolvedEnv) (string, error) {
+	overlay, err := envvar.Overlay(root, env.Name)
+	if err != nil {
+		return "", err
+	}
+	return envvar.Expand(env.Connection, overlay)
 }
 
 // oauthTimeout bounds OIDC discovery and each token fetch/refresh, so a slow

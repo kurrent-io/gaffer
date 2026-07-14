@@ -96,6 +96,35 @@ func TestResolve_OAuthIgnoresBasicCredsAndResolvesSecret(t *testing.T) {
 	if tgt.OAuthClientSecret != "s3cret" || tgt.OAuth == nil {
 		t.Errorf("oauth = %+v secret %q", tgt.OAuth, tgt.OAuthClientSecret)
 	}
+	if tgt.AuthHost != "x:1" {
+		t.Errorf("AuthHost = %q, want %q", tgt.AuthHost, "x:1")
+	}
+}
+
+func TestResolve_OAuthRefusesUnparseableConnection(t *testing.T) {
+	clearCreds(t)
+	_, err := Resolve(t.TempDir(), config.ResolvedEnv{
+		Name:       "production",
+		Connection: "kurrentdb://admin:hunter2@host:notaport",
+		OAuth:      &config.OAuthConfig{ClientID: "svc"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "OAuth host binding") {
+		t.Fatalf("err = %v, want the host-binding refusal", err)
+	}
+	if strings.Contains(err.Error(), "hunter2") {
+		t.Errorf("err %q leaks the password", err)
+	}
+}
+
+func TestResolve_NoAuthHostWithoutOAuth(t *testing.T) {
+	clearCreds(t)
+	tgt, err := Resolve(t.TempDir(), config.ResolvedEnv{Name: "production", Connection: "kurrentdb://x:1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tgt.AuthHost != "" {
+		t.Errorf("AuthHost = %q, want empty without OAuth", tgt.AuthHost)
+	}
 }
 
 func TestResolve_UndefinedVarSurfaces(t *testing.T) {

@@ -40,6 +40,26 @@ function fakeServerLens(intent: string, args: unknown, startLine = 4): unknown {
 	};
 }
 
+// A non-clickable status-env roll-up as the server emits it: title only,
+// empty command string, status-env intent.
+function statusEnvLens(title: string, startLine = 4): unknown {
+	return {
+		range: fakeLensRange(startLine),
+		command: { title, command: "" },
+		data: { intent: "status-env" },
+	};
+}
+
+// A sign-in lens as the server emits it: a Sign in action carrying the env +
+// configURI, under the sign-in intent.
+function signInLens(args: unknown, startLine = 4): unknown {
+	return {
+		range: fakeLensRange(startLine),
+		command: { title: "Sign in", command: "gaffer.signIn", arguments: [args] },
+		data: { intent: "sign-in" },
+	};
+}
+
 function makeClient(): RealLanguageClient {
 	const c = new LanguageClient("test", "test", null, null);
 	return c as unknown as RealLanguageClient;
@@ -252,6 +272,99 @@ describe("LspCodeLensProvider", () => {
 	// falls back to file://) so we can't exercise the catch from
 	// here; the production VS Code Uri.parse with strict=true does
 	// throw. Pinning would need a per-test override of vscode.Uri.
+
+	it("renders a status-env roll-up as non-clickable text (empty command)", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [
+			statusEnvLens("3 projections · in sync"),
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		const lenses = await getLenses(p);
+		expect(lenses).toHaveLength(1);
+		expect(lenses[0]?.command?.title).toBe("3 projections · in sync");
+		// Empty command id -> VS Code renders a plain span, not a clickable link.
+		expect(lenses[0]?.command?.command).toBe("");
+	});
+
+	it("drops a status-env lens with an empty title", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [statusEnvLens("")]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		expect(await getLenses(p)).toEqual([]);
+	});
+
+	it("passes the status-env tooltip through", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [
+			{
+				range: fakeLensRange(4),
+				command: {
+					title: "3 projections · in sync",
+					command: "",
+					tooltip: "Target: prod-cluster",
+				},
+				data: { intent: "status-env" },
+			},
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		const lenses = await getLenses(p);
+		expect(lenses[0]?.command?.tooltip).toBe("Target: prod-cluster");
+	});
+
+	it("renders a status-loading placeholder with a spinner, non-clickable", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [
+			{
+				range: fakeLensRange(4),
+				command: { title: "loading status...", command: "" },
+				data: { intent: "status-loading" },
+			},
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		const lenses = await getLenses(p);
+		expect(lenses).toHaveLength(1);
+		expect(lenses[0]?.command?.title).toBe("$(sync~spin) loading status...");
+		expect(lenses[0]?.command?.command).toBe("");
+	});
+
+	it("decorates a sign-in lens with the key icon and gaffer.signIn command", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [
+			signInLens({ env: "prod", configURI: "file:///p/gaffer.toml" }),
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		const lenses = await getLenses(p);
+		expect(lenses).toHaveLength(1);
+		expect(lenses[0]?.command?.title).toBe("$(key) Sign in");
+		expect(lenses[0]?.command?.command).toBe("gaffer.signIn");
+		const args = lenses[0]?.command?.arguments?.[0] as {
+			env: string;
+			tomlUri: vscode.Uri;
+		};
+		expect(args.env).toBe("prod");
+		expect(args.tomlUri.toString()).toBe(
+			vscode.Uri.parse("file:///p/gaffer.toml").toString(),
+		);
+	});
+
+	it("hides the sign-in lens in an untrusted workspace", async () => {
+		setTrusted(false);
+		setLspRequestHandler("textDocument/codeLens", () => [
+			signInLens({ env: "prod", configURI: "file:///p/gaffer.toml" }),
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		expect(await getLenses(p)).toEqual([]);
+	});
+
+	it("rejects malformed sign-in args without crashing", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [
+			signInLens({ env: 123 }),
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		expect(await getLenses(p)).toEqual([]);
+	});
 
 	it("trust-gates the unknown-intent passthrough", async () => {
 		setTrusted(false);

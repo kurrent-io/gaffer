@@ -14,7 +14,7 @@ import {
 } from "vscode-languageclient/node";
 import {
 	buildGafferArgv,
-	gafferSpawnEnv,
+	gafferRunEnv,
 	type SpawnTelemetry,
 } from "../discovery/cli.js";
 import { log } from "../output.js";
@@ -127,7 +127,10 @@ async function spawnLanguageClient(
 		if (command === undefined) {
 			throw new Error("LSP client: empty gaffer.command");
 		}
-		const env = gafferSpawnEnv(telemetry.isOptedOut());
+		// gafferRunEnv (not gafferSpawnEnv): the LSP now dials KurrentDB to
+		// fetch deploy status, so it needs GAFFER_KEYRING_PASSWORD to unlock
+		// the OAuth token store without a prompt, like the run/debug/mcp spawns.
+		const env = gafferRunEnv(telemetry.isOptedOut());
 		// Routed through cross-spawn so the Windows PATHEXT lookup
 		// works: an npm-installed `gaffer` resolves to a `gaffer.cmd`
 		// shim, which Node's bare `spawn(...)` (shell: false) won't
@@ -151,6 +154,11 @@ async function spawnLanguageClient(
 			{ scheme: "file", pattern: "**/gaffer.toml" },
 			{ scheme: "file", language: "javascript" },
 		],
+		// Opt into the deploy-status lenses. The server only fetches and emits
+		// them for a client that sets this - the informational roll-up isn't a
+		// routable command a generic LSP client could render, so other editors
+		// don't opt in and don't receive lenses they can't handle.
+		initializationOptions: { statusLens: true },
 		outputChannel: channel,
 		// Suppress vscode-languageclient's built-in auto-toasts. By
 		// default it fires `showErrorMessage("Client ...is erroring",
@@ -232,6 +240,20 @@ async function spawnLanguageClient(
  */
 export function getLanguageClient(): LanguageClient | undefined {
 	return client;
+}
+
+// Must match MethodRefreshStatus in cli/internal/lsp/protocol.go.
+const refreshStatusMethod = "gaffer/refreshStatus";
+
+// requestStatusRefresh asks the LSP server to re-fetch deploy status for one
+// gaffer.toml after an out-of-band auth change (e.g. a sign-in completing).
+// Fire-and-forget: the fresh status arrives via the server's codeLens refresh
+// once it lands. No-op when the client isn't running (untrusted workspace, CLI
+// missing, etc.).
+export function requestStatusRefresh(uri: vscode.Uri): void {
+	const c = client;
+	if (!c) return;
+	void c.sendNotification(refreshStatusMethod, { uri: uri.toString() });
 }
 
 // Restart on the first MAX_RESTART_COUNT closes within

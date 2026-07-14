@@ -142,6 +142,10 @@
 				"command": "gaffer.scaffoldHere",
 				"title": "Scaffold Projection Here",
 				"category": "Gaffer"
+			},
+			{
+				"command": "gaffer.signIn",
+				"title": "Gaffer: Sign In to Environment"
 			}
 		],
 		"debuggers": [
@@ -174,6 +178,10 @@
 		],
 		"menus": {
 			"commandPalette": [
+				{
+					"command": "gaffer.signIn",
+					"when": "false"
+				},
 				{
 					"command": "gaffer.debugProjection",
 					"when": "false"

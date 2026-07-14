@@ -69,6 +69,7 @@ import {
 	wrapWebviewViewProvider,
 } from "./telemetry/wrap-provider.js";
 import {
+	requestStatusRefresh,
 	retryStartLanguageClient,
 	startLanguageClient,
 	stopLanguageClient,
@@ -632,6 +633,47 @@ async function activateAfterTelemetry(
 		vscode.commands.registerCommand(
 			"gaffer.dismissDiagnostic",
 			wrap((uri: vscode.Uri) => clearDiagnosticsForUri(uri)),
+		),
+		// Click target for the env-block "Sign in" lens: opens an interactive
+		// `gaffer auth --env <env>` terminal (a pty, so the keyring passphrase
+		// prompt works) in the config's directory. Mirrors the debug flow's
+		// auth handling.
+		vscode.commands.registerCommand(
+			"gaffer.signIn",
+			wrap((arg: { env: string; tomlUri: vscode.Uri }) => {
+				// The lens is trust-gated in the provider, but a programmatic
+				// executeCommand could reach here untrusted - and this launches a
+				// process that touches the keyring, so re-check.
+				if (!vscode.workspace.isTrusted) return;
+				const argv = buildGafferArgv(["auth", "--env", arg.env], {
+					invokerId: telemetry.invokerId(),
+					invokedVia: "code_lens",
+				});
+				const [shellPath, ...shellArgs] = argv;
+				if (!shellPath) return;
+				const env = gafferRunEnv(telemetry.isOptedOut());
+				const terminal = vscode.window.createTerminal({
+					name: `gaffer auth (${arg.env})`,
+					shellPath,
+					shellArgs,
+					cwd: vscode.Uri.joinPath(arg.tomlUri, "..").fsPath,
+					...(env ? { env } : {}),
+				});
+				terminal.show();
+				// The terminal *is* the `gaffer auth` process. When it exits
+				// cleanly the token is in the keyring, but the LSP can't see
+				// that - nudge it to re-fetch so the status lens updates
+				// without a window reload. A non-zero exit (cancelled/failed)
+				// leaves the "Sign in" lens in place, which is correct.
+				const closeSub = vscode.window.onDidCloseTerminal((closed) => {
+					if (closed !== terminal) return;
+					closeSub.dispose();
+					if (closed.exitStatus?.code === 0) {
+						requestStatusRefresh(arg.tomlUri);
+					}
+				});
+				context.subscriptions.push(closeSub);
+			}),
 		),
 	);
 

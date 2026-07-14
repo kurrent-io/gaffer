@@ -4,9 +4,34 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
+	"sync"
+	"time"
 
 	"github.com/sourcegraph/jsonrpc2"
 )
+
+// wgDrainTimeout bounds how long teardown waits for spawned work to finish. It
+// comfortably covers normal work (parse, publish, refresh - all sub-second),
+// but caps the wait so a status dial stuck in the KurrentDB client's
+// context-ignoring connection discovery (up to the client's whole discovery
+// budget, ~tens of seconds) can't delay process exit.
+const wgDrainTimeout = 3 * time.Second
+
+// waitTimeout waits for wg, returning false if d elapses first.
+func waitTimeout(wg *sync.WaitGroup, d time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(d):
+		return false
+	}
+}
 
 // Run drives the JSON-RPC message loop over the given stream until
 // the client closes the connection, sends `exit`, or ctx is
@@ -63,7 +88,12 @@ func (s *Server) Run(ctx context.Context, stream io.ReadWriteCloser) error {
 		s.mu.Lock()
 		s.draining = true
 		s.mu.Unlock()
-		s.wg.Wait()
+		// Bounded: abandon work that outlives the drain window (a stuck status
+		// dial). It holds no lock the cleared fields need, snapshotRunState
+		// returns nil to any late goroutine, and it dies with the process.
+		if !waitTimeout(&s.wg, wgDrainTimeout) {
+			log.Printf("lsp: teardown drain timed out; abandoning in-flight work")
+		}
 		s.mu.Lock()
 		s.conn = nil
 		s.runCtxFn = nil

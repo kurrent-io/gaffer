@@ -17,6 +17,7 @@ import { flushAllMicrotasks } from "../test/testutil/promise.js";
 import { makeContext } from "../test/testutil/fake-context.js";
 import {
 	fireConfigurationChange,
+	fireTerminalClosed,
 	fireTextDocumentChange,
 	fireWorkspaceTrustGranted,
 	getShownMessages,
@@ -31,13 +32,17 @@ import {
 } from "../test/testutil/vscode-state.js";
 import {
 	clearLspRequestHandlers,
+	sentNotifications,
 	setLspRequestHandler,
 } from "../test/__mocks__/vscode-languageclient-node.js";
 
 afterEach(() => {
 	// Clear LSP request handlers between tests so a stub
-	// installed by one test doesn't leak into the next.
+	// installed by one test doesn't leak into the next, and drop
+	// recorded notifications so a refresh sent by one test can't
+	// satisfy another's assertion.
 	clearLspRequestHandlers();
+	sentNotifications.length = 0;
 });
 
 // Shared test setup: an untrusted workspace where activate's initial
@@ -126,6 +131,7 @@ describe("activate registrations", () => {
 			"gaffer.runProjection",
 			"gaffer.scaffold",
 			"gaffer.scaffoldHere",
+			"gaffer.signIn",
 			"gaffer.stopDebug",
 		]);
 	});
@@ -396,6 +402,82 @@ describe("runtime fatal-error dismissal", () => {
 			vscode.Uri.file("/p/projection.js"),
 		);
 		expect(coll?.entries.has("/p/projection.js")).toBe(false);
+	});
+
+	it("gaffer.signIn opens a gaffer auth terminal for the env in the config's directory", async () => {
+		await activateBare();
+		setTrusted(true); // sign-in is trust-gated in the command handler
+		await vscode.commands.executeCommand("gaffer.signIn", {
+			env: "prod",
+			tomlUri: vscode.Uri.file("/ws/gaffer.toml"),
+		});
+		const term = getState().terminals.find((t) =>
+			t.name.includes("gaffer auth"),
+		);
+		expect(term?.name).toBe("gaffer auth (prod)");
+		expect(term?.options.shellArgs).toEqual(
+			expect.arrayContaining(["auth", "--env", "prod"]),
+		);
+		expect(term?.options.cwd).toBe(
+			vscode.Uri.joinPath(vscode.Uri.file("/ws/gaffer.toml"), "..").fsPath,
+		);
+		expect(term?.showCount).toBeGreaterThan(0);
+	});
+
+	it("gaffer.signIn is a no-op in an untrusted workspace", async () => {
+		await activateBare(); // leaves the workspace untrusted
+		await vscode.commands.executeCommand("gaffer.signIn", {
+			env: "prod",
+			tomlUri: vscode.Uri.file("/ws/gaffer.toml"),
+		});
+		expect(
+			getState().terminals.some((t) => t.name.includes("gaffer auth")),
+		).toBe(false);
+	});
+
+	it("gaffer.signIn requests a status refresh when the auth terminal exits cleanly", async () => {
+		stubManifestFetch();
+		await activateBare();
+		setTrusted(true);
+		fireWorkspaceTrustGranted();
+		await waitForLspClient();
+		const tomlUri = vscode.Uri.file("/ws/gaffer.toml");
+		await vscode.commands.executeCommand("gaffer.signIn", {
+			env: "kc",
+			tomlUri,
+		});
+		const term = getState().terminals.find((t) =>
+			t.name.includes("gaffer auth"),
+		);
+		expect(term).toBeDefined();
+		if (!term) return;
+		fireTerminalClosed(term, 0);
+		expect(sentNotifications).toContainEqual({
+			method: "gaffer/refreshStatus",
+			params: { uri: tomlUri.toString() },
+		});
+	});
+
+	it("gaffer.signIn does not refresh when the auth terminal exits non-zero", async () => {
+		stubManifestFetch();
+		await activateBare();
+		setTrusted(true);
+		fireWorkspaceTrustGranted();
+		await waitForLspClient();
+		const tomlUri = vscode.Uri.file("/ws/gaffer.toml");
+		await vscode.commands.executeCommand("gaffer.signIn", {
+			env: "kc",
+			tomlUri,
+		});
+		const term = getState().terminals.find((t) =>
+			t.name.includes("gaffer auth"),
+		);
+		expect(term).toBeDefined();
+		if (!term) return;
+		fireTerminalClosed(term, 1);
+		expect(
+			sentNotifications.some((n) => n.method === "gaffer/refreshStatus"),
+		).toBe(false);
 	});
 });
 

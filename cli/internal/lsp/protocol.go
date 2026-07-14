@@ -44,6 +44,14 @@ const (
 	// to drive the Run Projection picker (live vs fixture). Editors
 	// without this knowledge (zed, neovim) just default to live.
 	MethodProjectionDetails = "gaffer/projectionDetails"
+
+	// MethodRefreshStatus is a gaffer-specific extension: the editor asks
+	// the server to re-fetch deploy status for one gaffer.toml after an
+	// out-of-band change the server can't observe, such as a sign-in
+	// completing in an editor-spawned terminal. Fire-and-forget - the fresh
+	// status reaches the editor through the normal codeLens refresh once it
+	// lands.
+	MethodRefreshStatus = "gaffer/refreshStatus"
 )
 
 // LSP intent codes for code lenses. Per the LSP plan, the server
@@ -55,13 +63,23 @@ const (
 const (
 	IntentDebug       = "debug"
 	IntentDebugChoose = "debug-choose"
+	// IntentStatusEnv marks the non-clickable env-block deploy-status
+	// roll-up; the client renders the server's title as informational text.
+	IntentStatusEnv = "status-env"
+	// IntentStatusLoading marks a placeholder shown while an env's status
+	// fetch is still in flight; the client renders it with a spinner.
+	IntentStatusLoading = "status-loading"
+	// IntentSignIn marks the env-block sign-in action shown when an env
+	// needs authentication; the client routes it to its sign-in flow.
+	IntentSignIn = "sign-in"
 )
 
 // Gaffer command IDs surfaced via CodeLens.command. Each editor
-// extension routes these to its native debug-launch API.
+// extension routes these to its native launch API.
 const (
 	CommandDebugProjection     = "gaffer.debugProjection"
 	CommandDebugProjectionPick = "gaffer.debugProjectionPick"
+	CommandSignIn              = "gaffer.signIn"
 )
 
 // InitializeParams is the subset of LSP InitializeParams we care
@@ -122,14 +140,12 @@ type ServerInfo struct {
 // ServerCapabilities advertises what the server provides. V1 surface
 // is intentionally minimal; more fields land with chunks 2.2+.
 type ServerCapabilities struct {
-	// TextDocumentSync uses the bare-integer form
-	// (TextDocumentSyncKind enum). Full = 1: client re-sends the
-	// entire document on each change. See LSP plan Decision 1:
-	// we chose full sync over incremental since config files
-	// are tiny. The bare-int form does not include a `save`
-	// field; clients infer "no didSave wanted" and skip it,
-	// which is what we want.
-	TextDocumentSync TextDocumentSyncKind `json:"textDocumentSync"`
+	// TextDocumentSync uses the options form so we can request `save`
+	// notifications (Full sync since config files are tiny - LSP plan
+	// Decision 1). didSave drives a deploy-status refresh directly, rather
+	// than relying only on the file watcher, so clients that don't support
+	// dynamic watcher registration still refresh status on save.
+	TextDocumentSync TextDocumentSyncOptions `json:"textDocumentSync"`
 	// CodeLensProvider advertises that the server responds to
 	// textDocument/codeLens requests. Empty options struct is
 	// fine - we don't require resolveProvider since lenses are
@@ -149,6 +165,25 @@ type TextDocumentSyncKind int
 const (
 	TextDocumentSyncFull TextDocumentSyncKind = 1
 )
+
+// TextDocumentSyncOptions is the object form of the textDocumentSync
+// capability. OpenClose requests didOpen/didClose (which the parse pipeline
+// needs); Save requests didSave (which drives status refresh); Change is the
+// sync kind. Save is the bare-bool form ("send didSave without the text") -
+// the server already holds the buffer from full sync.
+type TextDocumentSyncOptions struct {
+	OpenClose bool                 `json:"openClose"`
+	Change    TextDocumentSyncKind `json:"change"`
+	Save      bool                 `json:"save"`
+}
+
+// InitializationOptions is the client-supplied initializationOptions blob the
+// server consults. StatusLens is the VS Code extension's signal that it can
+// render the deploy-status lenses (the informational roll-up isn't expressible
+// as a routable command, so other editors don't opt in and don't receive it).
+type InitializationOptions struct {
+	StatusLens bool `json:"statusLens"`
+}
 
 // CodeLensOptions is the value of ServerCapabilities.CodeLensProvider.
 type CodeLensOptions struct {
@@ -215,10 +250,13 @@ type Range struct {
 
 // Command identifies an editor-side command that runs when the user
 // activates a CodeLens. Arguments is opaque - the editor extension
-// passes it through to its registered handler verbatim.
+// passes it through to its registered handler verbatim. Tooltip is an
+// optional hover string (used by the informational status lenses to
+// explain the target or a fetch failure).
 type Command struct {
 	Title     string `json:"title"`
 	Command   string `json:"command"`
+	Tooltip   string `json:"tooltip,omitempty"`
 	Arguments []any  `json:"arguments,omitempty"`
 }
 
@@ -375,6 +413,12 @@ type RegistrationParams struct {
 type ProjectionDetailsParams struct {
 	ConfigURI string `json:"configURI"`
 	Name      string `json:"name"`
+}
+
+// RefreshStatusParams identifies the gaffer.toml whose deploy status the
+// editor wants re-fetched after an out-of-band auth change (e.g. sign-in).
+type RefreshStatusParams struct {
+	URI string `json:"uri"`
 }
 
 // ProjectionDetailsResult is the bits of a projection's parsed

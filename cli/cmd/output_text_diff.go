@@ -20,7 +20,7 @@ func (tw *textWriter) WriteDiff(e drift.Comparison) {
 	case drift.NotDeployed:
 		tw.status(tw.styles.muted.Render("not deployed (local only)"))
 	case drift.Untracked:
-		tw.status(tw.driftStyle(e).Render(driftVerdict(e) + " (deployed, not in gaffer.toml)"))
+		tw.status(tw.driftStyle(e).Render(drift.Verdict(e) + " (deployed, not in gaffer.toml)"))
 	case drift.Invalid:
 		tw.writeInvalidDiff(e)
 	default:
@@ -33,7 +33,7 @@ func (tw *textWriter) WriteDiff(e drift.Comparison) {
 		}
 		// Attribute the drift when the ledger allows it (local edit vs a server-side change).
 		if e.State == drift.Drifted {
-			tw.detail("Drift", tw.driftStyle(e).Render(driftVerdict(e)))
+			tw.detail("Drift", tw.driftStyle(e).Render(drift.Verdict(e)))
 		}
 	}
 	// Who last deployed it and from where, when the ledger has it.

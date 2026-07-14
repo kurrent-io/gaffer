@@ -65,6 +65,13 @@ type Server struct {
 	docs      *documentStore
 	debouncer *debouncer
 
+	// statusCache holds fetched per-env deploy status keyed by config
+	// URI, refreshed on open/save/manual request and read by the env
+	// status surface. statusFetch does one env's dial-and-read; it's a
+	// field so tests inject a fake in place of a live KurrentDB.
+	statusCache *statusCache
+	statusFetch statusFetchFunc
+
 	mu          sync.Mutex
 	conn        *jsonrpc2.Conn // captured during Run, used for server-pushed notifications
 	initialized bool
@@ -102,6 +109,11 @@ type Server struct {
 	// fire workspace/codeLens/refresh into a void. LSP 3.16 spec:
 	// servers MUST gate the request on this.
 	codeLensRefreshSupported bool
+	// statusLensCapable mirrors the client's initializationOptions.statusLens:
+	// only a client that opts in (the VS Code extension) fetches and receives
+	// the deploy-status lenses, since the informational roll-up isn't a
+	// routable command a generic LSP client could render sanely.
+	statusLensCapable bool
 	// exitCh closes when the client sends `exit`. Run selects on
 	// this so the server tears down its connection without waiting
 	// for the client to also close stdin (a well-behaved client
@@ -134,9 +146,11 @@ func NewServer(opts ServerOptions) *Server {
 		window = defaultDebounceWindow
 	}
 	return &Server{
-		opts:      opts,
-		docs:      newDocumentStore(),
-		debouncer: newDebouncer(window),
-		exitCh:    make(chan struct{}),
+		opts:        opts,
+		docs:        newDocumentStore(),
+		debouncer:   newDebouncer(window),
+		exitCh:      make(chan struct{}),
+		statusCache: newStatusCache(),
+		statusFetch: fetchEnvStatus,
 	}
 }

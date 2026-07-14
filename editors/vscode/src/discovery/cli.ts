@@ -56,10 +56,10 @@ export function gafferSpawnEnv(
 }
 
 /** Like `gafferSpawnEnv` but also carries GAFFER_KEYRING_PASSWORD, for spawns
- * that connect to KurrentDB and so touch the OAuth token store (dev/debug runs
- * and the sign-in terminal). Kept off the lsp/manifest/scaffold spawns, which
- * never authenticate, so the passphrase isn't handed to processes that don't
- * need it. */
+ * that connect to KurrentDB and so touch the OAuth token store (dev/debug runs,
+ * the sign-in terminal, and the LSP - which dials for deploy status). Kept off
+ * the manifest/scaffold spawns, which never authenticate, so the passphrase
+ * isn't handed to processes that don't need it. */
 export function gafferRunEnv(optedOut: boolean): NodeJS.ProcessEnv | undefined {
 	if (!optedOut && !keyringPassword) return undefined;
 	return {

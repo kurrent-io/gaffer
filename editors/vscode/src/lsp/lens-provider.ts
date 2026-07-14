@@ -30,6 +30,9 @@ function lensState(debugState: Readonly<DebugState>, name: string): LensState {
 // Server-side intent constants (must match cli/internal/lsp/protocol.go).
 const IntentDebug = "debug";
 const IntentDebugChoose = "debug-choose";
+const IntentStatusEnv = "status-env";
+const IntentStatusLoading = "status-loading";
+const IntentSignIn = "sign-in";
 
 const codeLensMethod = "textDocument/codeLens";
 
@@ -49,6 +52,7 @@ interface LspRange {
 interface LspCommand {
 	title: string;
 	command: string;
+	tooltip?: string;
 	arguments?: unknown[];
 }
 
@@ -89,6 +93,13 @@ const ProjectionPickArgsSchema = v.object({
 	configURI: v.string(),
 	fixtureNames: v.array(v.string()),
 	envs: v.optional(v.array(EnvSchema), []),
+});
+
+// Args[0] for an env-block sign-in lens: the env that needs auth and the
+// declaring gaffer.toml.
+const SignInArgsSchema = v.object({
+	env: v.string(),
+	configURI: v.string(),
 });
 
 // parseConfigURI guards `vscode.Uri.parse` so a malformed URI
@@ -202,6 +213,15 @@ export class LspCodeLensProvider
 		}
 		if (intent === IntentDebugChoose) {
 			return this.#decorateDebugChoose(sl, range);
+		}
+		if (intent === IntentStatusEnv) {
+			return this.#decorateStatusEnv(sl, range);
+		}
+		if (intent === IntentStatusLoading) {
+			return this.#decorateStatusLoading(sl, range);
+		}
+		if (intent === IntentSignIn) {
+			return this.#decorateSignIn(sl, range);
 		}
 		// Unknown intent: pass through with the server's title and
 		// command, but trust-gate it. Future intents we don't yet
@@ -318,6 +338,62 @@ export class LspCodeLensProvider
 					envs: args.envs,
 				},
 			],
+		});
+	}
+
+	// The env-block roll-up is informational, not an action. An empty command
+	// id makes VS Code render the title as a plain, non-clickable span (no
+	// pointer, no hover-link) rather than a dead clickable link. A tooltip
+	// (only set on the "status unavailable" case) still shows on hover.
+	#decorateStatusEnv(
+		sl: LspCodeLens,
+		range: vscode.Range,
+	): vscode.CodeLens | null {
+		const title = sl.command?.title;
+		if (title === undefined || title === "") return null;
+		const tooltip = sl.command?.tooltip;
+		return new vscode.CodeLens(range, {
+			title,
+			command: "",
+			...(tooltip ? { tooltip } : {}),
+		});
+	}
+
+	// Placeholder shown while an env's status fetch is in flight. Non-clickable
+	// (empty command, like the roll-up) with a spinning sync codicon prefixed
+	// client-side, so the user sees the surface is working rather than a gap.
+	#decorateStatusLoading(
+		sl: LspCodeLens,
+		range: vscode.Range,
+	): vscode.CodeLens | null {
+		const title = sl.command?.title ?? "loading status...";
+		return new vscode.CodeLens(range, {
+			title: `$(sync~spin) ${title}`,
+			command: "",
+		});
+	}
+
+	#decorateSignIn(
+		sl: LspCodeLens,
+		range: vscode.Range,
+	): vscode.CodeLens | null {
+		const parsed = v.safeParse(SignInArgsSchema, sl.command?.arguments?.[0]);
+		if (!parsed.success) {
+			log(
+				`Lens: rejecting sign-in args: ${parsed.issues.map((i) => i.message).join("; ")}`,
+			);
+			return null;
+		}
+		const args = parsed.output;
+		// Sign-in launches a gaffer process, so gate it on workspace trust like
+		// the debug affordances.
+		if (!vscode.workspace.isTrusted) return null;
+		const tomlUri = parseConfigURI(args.configURI);
+		if (!tomlUri) return null;
+		return new vscode.CodeLens(range, {
+			title: "$(key) Sign in",
+			command: "gaffer.signIn",
+			arguments: [{ env: args.env, tomlUri }],
 		});
 	}
 }

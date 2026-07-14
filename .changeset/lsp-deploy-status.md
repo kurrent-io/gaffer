@@ -1,0 +1,5 @@
+---
+"@kurrent/gaffer": patch
+---
+
+The language server now serves per-environment deployment status for `gaffer.toml`. On open or save it reads each environment's projection drift and runtime state in-process, reusing the same drift and target reads as `gaffer status`. It also refreshes when the editor signals an out-of-band auth change via `gaffer/refreshStatus`, such as a sign-in completing. It then emits a CodeLens above each `[env.<name>]` block. The lens is a roll-up of how the environment's projections compare to local config, a sign-in action when the environment needs authentication, or a muted note when the read can't complete. Editors opt in via an initialization option, so this is a no-op for clients that don't render it. Editors that consume the language server (starting with the VS Code extension) surface this without reimplementing the fetch.

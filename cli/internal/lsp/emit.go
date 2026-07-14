@@ -1,10 +1,14 @@
 package lsp
 
 import (
+	"fmt"
 	"iter"
 	"path/filepath"
+	"strings"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/drift"
+	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
 // validProjections yields each (parse, projection) pair across
@@ -174,6 +178,148 @@ type projectionPickArgs struct {
 	ConfigURI    string                  `json:"configURI"`
 	FixtureNames []string                `json:"fixtureNames"`
 	Envs         []config.EnvDescription `json:"envs,omitempty"`
+}
+
+// signInArgs is the Command.Arguments[0] payload for an env-block sign-in
+// lens: which env needs authentication, and the declaring gaffer.toml.
+type signInArgs struct {
+	Env       string `json:"env"`
+	ConfigURI string `json:"configURI"`
+}
+
+// emitStatusEnvLenses renders one env-block deploy-status lens per configured
+// [env.<name>] with a located header. From the fetched status keyed by env
+// name: an unauthenticated env gets a sign-in action; a failed fetch gets a
+// muted "status unavailable"; a successful one gets the non-clickable roll-up.
+// An env whose fetch is still in flight (in loading) gets a loading
+// placeholder; one that's neither cached nor loading renders nothing.
+func emitStatusEnvLenses(desc config.Description, uri string, statuses map[string]envStatus, loading map[string]bool) []CodeLens {
+	out := []CodeLens{}
+	for _, env := range desc.Environments {
+		// No source line to anchor on (quoted key, or a sub-table-only
+		// declaration) - the scan left the range zero.
+		if env.Range == (config.SourceRange{}) {
+			continue
+		}
+		r := rangeToLSP(env.Range)
+		st, ok := statuses[env.Name]
+		if !ok {
+			if loading[env.Name] {
+				out = append(out, CodeLens{
+					Range:   r,
+					Command: &Command{Title: "loading status..."},
+					Data:    &CodeLensData{Intent: IntentStatusLoading},
+				})
+			}
+			continue
+		}
+		switch {
+		case st.Unauthenticated:
+			out = append(out, CodeLens{
+				Range: r,
+				Command: &Command{
+					Title:     "Sign in",
+					Command:   CommandSignIn,
+					Arguments: []any{signInArgs{Env: env.Name, ConfigURI: uri}},
+				},
+				Data: &CodeLensData{Intent: IntentSignIn},
+			})
+		case st.Err != nil:
+			out = append(out, CodeLens{
+				Range:   r,
+				Command: &Command{Title: "status unavailable", Tooltip: st.Err.Error()},
+				Data:    &CodeLensData{Intent: IntentStatusEnv},
+			})
+		default:
+			out = append(out, CodeLens{
+				Range:   r,
+				Command: &Command{Title: statusRollup(st)},
+				Data:    &CodeLensData{Intent: IntentStatusEnv},
+			})
+		}
+	}
+	return out
+}
+
+// statusRollup builds the env-block roll-up text from a fetched status: a count
+// per state, led by how many are in sync, then the non-zero attention
+// categories, then any orphan/untracked projections - which live on the server
+// but not in this config, so they surface nowhere else. A production target is
+// flagged up front. There's deliberately no total: the number of projections in
+// gaffer.toml isn't the useful signal, the state breakdown is.
+//
+// The in-config drift states (in sync / changed externally / local ahead / not
+// deployed / drifted / invalid) partition the configured set. faulted is a
+// runtime state orthogonal to drift, counted independently, so a faulted
+// projection also appears in its drift bucket.
+func statusRollup(st envStatus) string {
+	var inSync, changedExternally, localAhead, notDeployed, drifted, faulted, invalid, orphaned, untracked int
+	for i := range st.Entries {
+		e := st.Entries[i]
+		switch e.Owner() {
+		case drift.OwnerInConfig:
+			switch {
+			case e.ExternallyChanged():
+				changedExternally++
+			case e.Attribution() == drift.AttrLocalAhead:
+				localAhead++
+			case e.State == drift.NotDeployed:
+				notDeployed++
+			case e.State == drift.Drifted:
+				drifted++
+			case e.State == drift.Invalid:
+				invalid++
+			case e.State == drift.InSync:
+				inSync++
+			}
+			if e.Runtime != nil && e.Runtime.State == remote.StateFaulted {
+				faulted++
+			}
+		case drift.OwnerOrphan:
+			orphaned++
+		default: // foreign / unknown ownership both read as plain untracked
+			untracked++
+		}
+	}
+
+	// Labels are single-sourced from drift.Verdict's vocabulary (and
+	// remote.StateFaulted), so a rename there lands here too.
+	var segs []string
+	if st.Production {
+		segs = append(segs, "PRODUCTION")
+	}
+	add := func(n int, label string) {
+		if n > 0 {
+			segs = append(segs, fmt.Sprintf("%d %s", n, label))
+		}
+	}
+	add(inSync, drift.LabelInSync)
+	add(changedExternally, drift.LabelChangedExternally)
+	add(localAhead, drift.LabelLocalAhead)
+	add(notDeployed, drift.LabelNotDeployed)
+	add(faulted, string(remote.StateFaulted))
+	add(drifted, drift.LabelDrifted)
+	add(invalid, drift.LabelInvalid)
+	// "orphan" is a noun here, so it pluralizes; the other categories are
+	// adjectival ("2 untracked", "2 drifted") and don't.
+	if orphaned > 0 {
+		segs = append(segs, fmt.Sprintf("%d %s", orphaned, plural(orphaned, drift.LabelOrphan)))
+	}
+	add(untracked, drift.LabelUntracked)
+
+	// Nothing to report at all - still name the (production) target.
+	if len(segs) == 0 || (st.Production && len(segs) == 1) {
+		segs = append(segs, "no projections")
+	}
+	return strings.Join(segs, " · ")
+}
+
+// plural appends an "s" to word unless n is exactly 1.
+func plural(n int, word string) string {
+	if n == 1 {
+		return word
+	}
+	return word + "s"
 }
 
 // emitEntryScriptLenses returns Debug lenses for a non-toml URI

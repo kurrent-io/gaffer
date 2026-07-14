@@ -21,11 +21,20 @@ type fixtureKeyLine struct {
 	Name   string
 }
 
+// envHeaderLine locates an `[env.<name>]` table header in source
+// order. Name is the captured env key (TOML bare-key syntax only;
+// quoted keys are not captured, matching the fixture-line rule).
+type envHeaderLine struct {
+	Line   int
+	Length int
+	Name   string
+}
+
 // scannedLines is the source-position view of a config file: every
-// projection header line and every per-fixture key line. The TOML
-// parser returns values but not positions; this scan recovers them
-// so Describe can anchor lenses and diagnostics on real source
-// lines.
+// projection header line, every per-fixture key line, and every
+// [env.<name>] header line. The TOML parser returns values but not
+// positions; this scan recovers them so Describe can anchor lenses
+// and diagnostics on real source lines.
 //
 // Lines are 1-indexed for direct use on the LSP wire. Length is the
 // byte length of the line - safe to use as a column-end position
@@ -40,6 +49,7 @@ type fixtureKeyLine struct {
 type scannedLines struct {
 	ProjectionHeaders []projectionHeaderLine
 	FixtureLines      []fixtureKeyLine
+	EnvHeaders        []envHeaderLine
 }
 
 // Bare `[[projection]]` header. Allow leading whitespace, interior
@@ -50,6 +60,13 @@ var projectionHeaderPattern = regexp.MustCompile(`^\s*\[\[\s*projection\s*\]\]\s
 // ([A-Za-z0-9_-]+). Quoted keys are not matched; the dropdown still
 // works for them via the parser, but no per-line lens.
 var fixtureKeyPattern = regexp.MustCompile(`^\s*fixtures\s*\.\s*([A-Za-z0-9_-]+)\s*=`)
+
+// `[env.<name>]` table header where <name> is a bare TOML key. The
+// anchored `\]` after the name rejects sub-tables like
+// `[env.<name>.oauth]`, and the bare-key class rejects quoted keys
+// (`[env."../x"]`) - both fall through to no source range, like
+// quoted fixture keys.
+var envHeaderPattern = regexp.MustCompile(`^\s*\[\s*env\s*\.\s*([A-Za-z0-9_-]+)\s*\]\s*(?:#.*)?$`)
 
 // scanLines walks `text` line-by-line and returns the position info
 // for every projection header and fixture-key line, in source order.
@@ -65,6 +82,14 @@ func scanLines(text string) scannedLines {
 		}
 		if m := fixtureKeyPattern.FindStringSubmatch(line); m != nil {
 			out.FixtureLines = append(out.FixtureLines, fixtureKeyLine{
+				Line:   i + 1,
+				Length: len(line),
+				Name:   m[1],
+			})
+			continue
+		}
+		if m := envHeaderPattern.FindStringSubmatch(line); m != nil {
+			out.EnvHeaders = append(out.EnvHeaders, envHeaderLine{
 				Line:   i + 1,
 				Length: len(line),
 				Name:   m[1],

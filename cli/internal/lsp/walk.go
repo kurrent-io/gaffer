@@ -153,9 +153,13 @@ func (s *Server) applyWatchedFileEvents(ctx context.Context, events []FileEvent)
 		switch ev.Type {
 		case FileChangeCreated, FileChangeChanged:
 			s.seedFromDisk(ctx, uriToPath(ev.URI))
+			// A saved/created config may have new envs or a moved target;
+			// re-fetch its deploy status.
+			s.refreshStatus(ev.URI)
 		case FileChangeDeleted:
 			_, hadParse := s.docs.GetParse(ev.URI)
 			s.docs.Close(ev.URI)
+			s.statusCache.drop(ev.URI)
 			if hadParse {
 				// Cached parse for this toml is gone - any .js
 				// URI whose lenses pointed at one of its

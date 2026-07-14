@@ -37,10 +37,7 @@ func (p *rwc) Close() error {
 // startServer runs a server in a goroutine over the given stream
 // and returns a channel that delivers the Run result.
 func startServer(ctx context.Context, stream io.ReadWriteCloser, opts ServerOptions) <-chan error {
-	done := make(chan error, 1)
-	go func() {
-		done <- NewServer(opts).Run(ctx, stream)
-	}()
+	_, done := startServerWithStore(ctx, stream, opts)
 	return done
 }
 
@@ -69,8 +66,8 @@ func TestServer_InitializeReturnsCapabilities(t *testing.T) {
 	if err := conn.Call(ctx, MethodInitialize, &InitializeParams{}, &result); err != nil {
 		t.Fatalf("initialize: %v", err)
 	}
-	if result.Capabilities.TextDocumentSync != 1 {
-		t.Errorf("textDocumentSync: got %d, want 1 (full sync)", result.Capabilities.TextDocumentSync)
+	if sync := result.Capabilities.TextDocumentSync; sync.Change != TextDocumentSyncFull || !sync.OpenClose || !sync.Save {
+		t.Errorf("textDocumentSync: got %+v, want full sync with openClose+save", sync)
 	}
 	if result.ServerInfo.Name != "gaffer-lsp" {
 		t.Errorf("serverInfo.name: got %q want gaffer-lsp", result.ServerInfo.Name)

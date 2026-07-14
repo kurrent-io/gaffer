@@ -339,6 +339,32 @@ engine_version = 2
 	}
 }
 
+func TestDescribe_EnvHeaderRangesPointAtTheirSourceLines(t *testing.T) {
+	// The env-block status surface anchors on these ranges. Environments
+	// are sorted by name; each Range points at its [env.<name>] header line.
+	path := describeFile(t, `[env.local]
+connection = "esdb://localhost:2113"
+
+[env.prod]
+connection = "esdb://prod:2113"
+default = true
+`)
+	desc, err := Describe(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]EnvDescription{}
+	for _, e := range desc.Environments {
+		byName[e.Name] = e
+	}
+	if got := byName["local"].Range.StartLine; got != 1 {
+		t.Errorf("local env header line: got %d want 1 (%+v)", got, byName["local"].Range)
+	}
+	if got := byName["prod"].Range.StartLine; got != 4 {
+		t.Errorf("prod env header line: got %d want 4 (%+v)", got, byName["prod"].Range)
+	}
+}
+
 func TestDescribe_OmitsConnectionWhenNoDefaultEnv(t *testing.T) {
 	// An env without default = true yields no default connection;
 	// Description.Connection stays empty so the editor gates the live

@@ -3,7 +3,7 @@ title: VS Code
 description: Install the KurrentDB Gaffer VS Code extension for inline run/debug, breakpoints, state inspection, and projection-API autocomplete.
 ---
 
-The **KurrentDB Gaffer** extension wires gaffer's debugger, language server, MCP server, and tsserver plugin into VS Code. Run and debug projections from `gaffer.toml`, step through handlers, inspect state as it evolves, and get type-aware autocomplete for projection builtins.
+The **KurrentDB Gaffer** extension wires gaffer's debugger, language server, MCP server, and tsserver plugin into VS Code. Run and debug projections from `gaffer.toml`, step through handlers, inspect state as it evolves, see how each environment compares to what's deployed, and get type-aware autocomplete for projection builtins.
 
 ## Install
 
@@ -26,6 +26,16 @@ Once `gaffer.toml` exists, the extension adds CodeLenses above each projection b
 Set breakpoints in the projection JS file. Standard VS Code debug controls work: step over, into, out, continue. The call stack and scopes views populate with the projection's JS frames and variables.
 
 `Gaffer: Debug` is also available from the command palette: it lists every projection in the workspace, then prompts for a source (a fixture or a configured environment) when there's more than one.
+
+## Deployment status
+
+Above each `[env.<name>]` block in `gaffer.toml`, the extension shows a read-only summary of how your projections compare to what's deployed on that environment. It reads status when you open or save the file.
+
+The summary is a count per state: how many are **in sync**, then anything needing attention (changed externally, local ahead of the deploy, not deployed, faulted, drifted, or invalid). Projections on the server but not in your `gaffer.toml` are counted as **orphan** (gaffer deployed them, so a deletion candidate) or **untracked** (another tool did). A production target is flagged **PRODUCTION**. Hovering the summary shows which target it read.
+
+When an environment needs authentication, the summary is replaced by a **Sign in** action; see [Authentication](#authentication) for the flow. It also reappears for an environment you signed in to before whose token has since expired or been revoked. Once you sign in, the summary refreshes on its own, so there's no need to reload the window. If the status read can't complete (the target is unreachable, or the config doesn't compile), the summary reads **status unavailable** rather than a false **in sync**, and hovering shows the reason. Status is read-only: it never deploys, starts, or stops anything.
+
+The summary appears above bare-key `[env.name]` headers. An environment declared with a quoted key (`[env."my env"]`) has no summary line.
 
 ## Authentication
 
@@ -72,6 +82,7 @@ See [MCP](../cli/mcp.md) for the tools and resources gaffer exposes, and for con
 | `Gaffer: Debug`              | CodeLens or command palette      | Launch the projection with the debugger attached. Lens uses the projection at the cursor; palette prompts for a projection and source.    |
 | `Gaffer: Debug from...`      | CodeLens                         | Pick a source (a fixture or a configured environment) and launch with the debugger attached.                                            |
 | `Gaffer: Stop`               | CodeLens or command palette      | Stop the running session.                                                                                                                |
+| `Gaffer: Sign In to Environment` | CodeLens                     | Open a `gaffer auth --env <name>` terminal for an environment that needs authentication.                                                 |
 
 ## Telemetry
 

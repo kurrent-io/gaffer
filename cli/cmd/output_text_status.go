@@ -28,36 +28,11 @@ func (tw *textWriter) WriteStatus(e drift.StatusEntry) {
 			tw.detail("Resume", tw.styles.warning.Render("reprocesses from the last checkpoint (abort skipped the final one)"))
 		}
 	}
-	tw.detail("Drift", tw.driftStyle(e.Comparison).Render(driftVerdict(e.Comparison)))
+	tw.detail("Drift", tw.driftStyle(e.Comparison).Render(drift.Verdict(e.Comparison)))
 	tw.writeLedgerProvenance(e.Comparison)
 	if e.State == drift.Invalid && e.LocalErr != nil {
 		tw.blank()
 		tw.write("%s\n", tw.styles.errDetail.Render(e.LocalErr.Error()))
-	}
-}
-
-// driftVerdict is the terse comparison verdict shared by the status table, the
-// status detail block and gaffer diff. Drift is refined by attribution (local
-// ahead / changed externally) and an untracked projection by ownership (orphan vs
-// plain untracked - the DEPLOYED VIA column / provenance names the tool behind it).
-func driftVerdict(c drift.Comparison) string {
-	switch c.State {
-	case drift.Untracked:
-		if c.Owner() == drift.OwnerOrphan {
-			return "orphan"
-		}
-		return "untracked"
-	case drift.Drifted:
-		switch c.Attribution() {
-		case drift.AttrLocalAhead:
-			return "local ahead"
-		case drift.AttrChangedByTool, drift.AttrChangedServer:
-			return "changed externally"
-		default:
-			return "drifted"
-		}
-	default:
-		return driftText(c.State)
 	}
 }
 
@@ -130,7 +105,7 @@ func (tw *textWriter) WriteStatusTable(entries []drift.StatusEntry) {
 			}
 		})
 	for _, e := range entries {
-		t.Row(e.Name, runtimeStateText(e), progressText(e), lastDeployText(e.Comparison), deployedViaText(e.Comparison), driftVerdict(e.Comparison))
+		t.Row(e.Name, runtimeStateText(e), progressText(e), lastDeployText(e.Comparison), deployedViaText(e.Comparison), drift.Verdict(e.Comparison))
 	}
 	// Trim the column padding the last cell leaves as trailing whitespace (plain
 	// in piped output; invisible inside the colour codes on a terminal).
@@ -195,23 +170,6 @@ func deployedViaText(c drift.Comparison) string {
 		return "-"
 	}
 	return c.Ledger.Tool
-}
-
-func driftText(d drift.State) string {
-	switch d {
-	case drift.InSync:
-		return "in sync"
-	case drift.Drifted:
-		return "drifted"
-	case drift.NotDeployed:
-		return "not deployed"
-	case drift.Untracked:
-		return "untracked"
-	case drift.Invalid:
-		return "invalid"
-	default:
-		return string(d)
-	}
 }
 
 // driftStyle colours the verdict by meaning: green healthy, red broken, orange

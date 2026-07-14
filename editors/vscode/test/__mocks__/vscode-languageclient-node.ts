@@ -55,6 +55,10 @@ export function clearLspRequestHandlers(): void {
 	requestHandlers.clear();
 }
 
+// Records every client.sendNotification call so tests can assert
+// fire-and-forget traffic (e.g. gaffer/refreshStatus).
+export const sentNotifications: Array<{ method: string; params: unknown }> = [];
+
 // Optional async gate held by `start()`. Tests install a resolver
 // to exercise the dispose-during-start race in spawnLanguageClient.
 let startGate: Promise<void> | null = null;
@@ -79,6 +83,7 @@ export const constructedClients: LanguageClient[] = [];
 export function resetLspMock(): void {
 	requestHandlers.clear();
 	constructedClients.length = 0;
+	sentNotifications.length = 0;
 	startGate = null;
 	startGateResolve = null;
 }
@@ -115,6 +120,10 @@ export class LanguageClient {
 			return null as T;
 		}
 		return handler(params) as T;
+	}
+
+	async sendNotification(method: string, params?: unknown): Promise<void> {
+		sentNotifications.push({ method, params });
 	}
 
 	/** Simulates `vscode-languageclient`'s internal restart path: when

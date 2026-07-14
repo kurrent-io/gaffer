@@ -6,7 +6,6 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
-	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
@@ -74,11 +73,11 @@ func connectResolved(cfg *config.Config, root, connection, env string) (r *remot
 	if resolved.Connection == "" {
 		return nil, config.ResolvedEnv{}, nil, errors.New("no environment: mark a default [env.<name>], pass --env, or pass --connection")
 	}
-	client, _, err := engine.Connect(root, resolved)
+	r, cleanup, err = remote.Dial(root, resolved)
 	if err != nil {
 		return nil, config.ResolvedEnv{}, nil, err
 	}
-	return remote.New(client), resolved, func() { _ = client.Close() }, nil
+	return r, resolved, cleanup, nil
 }
 
 // refuseNoValidateOnProd is the single source of the production --no-validate

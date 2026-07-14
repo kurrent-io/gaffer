@@ -178,7 +178,7 @@ func TestTokenSourceClientCredentials(t *testing.T) {
 func TestTokenSourceInteractiveRefreshesAndPersists(t *testing.T) {
 	srv := fakeIDP(t)
 	store := newTokenStore(keyring.NewArrayKeyring(nil))
-	id := Identity(srv.URL, "id")
+	id := Identity(srv.URL, "id", "db.example:2113")
 
 	// An expired access token with a refresh token forces a refresh on first use.
 	if err := store.Save(id, &oauth2.Token{
@@ -190,7 +190,7 @@ func TestTokenSourceInteractiveRefreshesAndPersists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ts, err := TokenSource(context.Background(), Config{Issuer: srv.URL, ClientID: "id"}, "", store)
+	ts, err := TokenSource(context.Background(), Config{Issuer: srv.URL, ClientID: "id", Host: "db.example:2113"}, "", store)
 	if err != nil {
 		t.Fatalf("TokenSource: %v", err)
 	}
@@ -214,9 +214,40 @@ func TestTokenSourceInteractiveRefreshesAndPersists(t *testing.T) {
 func TestTokenSourceInteractiveRequiresLogin(t *testing.T) {
 	srv := fakeIDP(t)
 	store := newTokenStore(keyring.NewArrayKeyring(nil))
-	_, err := TokenSource(context.Background(), Config{Issuer: srv.URL, ClientID: "id"}, "", store)
+	_, err := TokenSource(context.Background(), Config{Issuer: srv.URL, ClientID: "id", Host: "db.example:2113"}, "", store)
 	if !errors.Is(err, ErrNoToken) {
 		t.Fatalf("expected ErrNoToken, got %v", err)
+	}
+}
+
+// The UI-1836 property at the source level: a token stored for one host is
+// not found for another, even with the same issuer and client ID, so it
+// falls back to requiring a sign-in against that host.
+func TestTokenSourceInteractiveNoCrossHostReuse(t *testing.T) {
+	srv := fakeIDP(t)
+	store := newTokenStore(keyring.NewArrayKeyring(nil))
+	if err := store.Save(Identity(srv.URL, "id", "victim.example:2113"), &oauth2.Token{
+		AccessToken: "victim-token",
+		TokenType:   "Bearer",
+		Expiry:      time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := TokenSource(context.Background(), Config{Issuer: srv.URL, ClientID: "id", Host: "attacker.example:2113"}, "", store)
+	if !errors.Is(err, ErrNoToken) {
+		t.Fatalf("expected ErrNoToken for a host the user never authenticated, got %v", err)
+	}
+}
+
+// A call site that forgot to resolve a host binding must fail loudly rather
+// than silently keying a host-unbound token.
+func TestTokenSourceInteractiveRequiresHost(t *testing.T) {
+	srv := fakeIDP(t)
+	store := newTokenStore(keyring.NewArrayKeyring(nil))
+	_, err := TokenSource(context.Background(), Config{Issuer: srv.URL, ClientID: "id"}, "", store)
+	if err == nil || errors.Is(err, ErrNoToken) {
+		t.Fatalf("expected a missing-host error distinct from ErrNoToken, got %v", err)
 	}
 }
 
@@ -225,7 +256,7 @@ func TestTokenSourceInteractiveRequiresLogin(t *testing.T) {
 func TestPersistingSourceConcurrent(t *testing.T) {
 	srv := fakeIDP(t)
 	store := newTokenStore(keyring.NewArrayKeyring(nil))
-	id := Identity(srv.URL, "id")
+	id := Identity(srv.URL, "id", "db.example:2113")
 	if err := store.Save(id, &oauth2.Token{
 		AccessToken:  "stale",
 		RefreshToken: "refresh-old",
@@ -235,7 +266,7 @@ func TestPersistingSourceConcurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ts, err := TokenSource(context.Background(), Config{Issuer: srv.URL, ClientID: "id"}, "", store)
+	ts, err := TokenSource(context.Background(), Config{Issuer: srv.URL, ClientID: "id", Host: "db.example:2113"}, "", store)
 	if err != nil {
 		t.Fatalf("TokenSource: %v", err)
 	}

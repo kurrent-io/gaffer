@@ -5,7 +5,6 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/oauth"
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
@@ -43,21 +42,24 @@ type tokenEntry struct {
 
 var sharedTokens = &tokenCache{m: map[string]*tokenEntry{}}
 
-// SharedTokenSource returns the process-shared, auto-refreshing token source for
-// the target's OAuth identity, building it once per oauth.Identity. A missing or
-// locked stored token is classified to *AuthRequiredError (via AsAuthRequired)
-// so every consumer surfaces the same sign-in signal. A client-credentials grant
-// (secret set) is stateless and built per call rather than cached.
-func SharedTokenSource(env string, c *config.OAuthConfig, caFile, secret string) (oauth2.TokenSource, error) {
-	if secret != "" {
-		src, err := newTokenSource(c, caFile, secret)
-		return src, AsAuthRequired(env, err)
+// SharedTokenSource returns the process-shared, auto-refreshing token source
+// for the target's OAuth identity, building it once per oauth.Identity
+// (issuer|clientID|host - so envs naming the same host share a source, and a
+// token never crosses to another host). A missing or locked stored token is
+// classified to *AuthRequiredError (via AsAuthRequired) so every consumer
+// surfaces the same sign-in signal. A client-credentials grant (secret set)
+// is stateless and built per call rather than cached.
+func SharedTokenSource(t Target) (oauth2.TokenSource, error) {
+	c := t.OAuth
+	if t.OAuthClientSecret != "" {
+		src, err := newTokenSource(c, t.OAuthCAFile, t.OAuthClientSecret, t.AuthHost)
+		return src, AsAuthRequired(t.Env, err)
 	}
-	id := oauth.Identity(c.Issuer, c.ClientID)
+	id := t.OAuthIdentity()
 	src, err := sharedTokens.getOrBuild(id, func() (oauth2.TokenSource, error) {
-		return newTokenSource(c, caFile, secret)
+		return newTokenSource(c, t.OAuthCAFile, "", t.AuthHost)
 	})
-	return src, AsAuthRequired(env, err)
+	return src, AsAuthRequired(t.Env, err)
 }
 
 func (tc *tokenCache) getOrBuild(id string, build func() (oauth2.TokenSource, error)) (oauth2.TokenSource, error) {

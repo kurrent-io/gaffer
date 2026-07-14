@@ -125,7 +125,7 @@ func TestInvalidateTokenSource_DeletesStoredTokenAndEvicts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
-	id := oauth.Identity("iss", "cid")
+	id := oauth.Identity("iss", "cid", "db.example:2113")
 	if err := store.Save(id, &oauth2.Token{AccessToken: "a", RefreshToken: "r"}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -169,18 +169,19 @@ func TestSharedTokenSource_SharesOneInstanceAndSerializesRefresh(t *testing.T) {
 		t.Fatalf("open store: %v", err)
 	}
 	c := &config.OAuthConfig{Issuer: idp.URL, ClientID: "cid"}
-	id := oauth.Identity(c.Issuer, c.ClientID)
+	id := oauth.Identity(c.Issuer, c.ClientID, "db.example:2113")
 	// Expired, so the first Token() refreshes; expires_in from the fake keeps
 	// the refreshed token valid, so later reads don't re-hit.
 	if err := store.Save(id, &oauth2.Token{AccessToken: "old", RefreshToken: "r", Expiry: time.Now().Add(-time.Hour)}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
-	s1, err := SharedTokenSource("prod", c, "", "")
+	tgt := Target{Env: "prod", OAuth: c, AuthHost: "db.example:2113"}
+	s1, err := SharedTokenSource(tgt)
 	if err != nil {
 		t.Fatalf("SharedTokenSource #1: %v", err)
 	}
-	s2, err := SharedTokenSource("prod", c, "", "")
+	s2, err := SharedTokenSource(tgt)
 	if err != nil {
 		t.Fatalf("SharedTokenSource #2: %v", err)
 	}
@@ -200,5 +201,40 @@ func TestSharedTokenSource_SharesOneInstanceAndSerializesRefresh(t *testing.T) {
 
 	if got := idp.TokenHits.Load(); got != 1 {
 		t.Errorf("token endpoint hits = %d, want 1 (one shared, serialized refresh)", got)
+	}
+}
+
+// The UI-1836 property end to end through the shared cache: a token stored
+// for one host satisfies only targets naming that host; a target with the
+// same issuer/clientID but another host finds nothing and surfaces the
+// sign-in signal instead of the victim's token.
+func TestSharedTokenSource_NoCrossHostReuse(t *testing.T) {
+	resetTokenCache()
+	clearCreds(t)
+	idp := testutil.NewFakeIDP(t)
+	dir := t.TempDir()
+	t.Setenv("GAFFER_CONFIG_DIR", dir)
+	t.Setenv("GAFFER_KEYRING_PASSWORD", "pw")
+
+	store, err := oauth.OpenTokenStore(dir)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	c := &config.OAuthConfig{Issuer: idp.URL, ClientID: "cid"}
+	if err := store.Save(oauth.Identity(c.Issuer, c.ClientID, "victim.example:2113"), &oauth2.Token{
+		AccessToken: "victim-token",
+		Expiry:      time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	if _, err := SharedTokenSource(Target{Env: "prod", OAuth: c, AuthHost: "victim.example:2113"}); err != nil {
+		t.Fatalf("the authenticated host must resolve: %v", err)
+	}
+
+	_, err = SharedTokenSource(Target{Env: "prod", OAuth: c, AuthHost: "attacker.example:2113"})
+	var authErr *AuthRequiredError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("a host the user never authenticated must require sign-in, got %v", err)
 	}
 }

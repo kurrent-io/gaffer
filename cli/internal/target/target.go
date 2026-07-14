@@ -73,6 +73,15 @@ type Target struct {
 	KeyFile  string
 }
 
+// OAuthIdentity is the token-store key for this target (oauth.Identity over
+// its issuer, client ID, and host binding). The single derivation for every
+// consumer - the shared source cache, the connection's invalidate path, and
+// `gaffer auth`'s save - so the components can't drift between save and load.
+// Only meaningful when OAuth is set.
+func (t Target) OAuthIdentity() string {
+	return oauth.Identity(t.OAuth.Issuer, t.OAuth.ClientID, t.AuthHost)
+}
+
 // Resolve derives the Target for an environment: the one place the
 // envvar resolution stack (overlay + ${VAR} expansion + credential
 // precedence) runs.
@@ -113,7 +122,7 @@ func Resolve(root string, env config.ResolvedEnv) (Target, error) {
 		}
 		t.OAuthClientSecret = envvar.OAuthClientSecret(overlay)
 		t.OAuthCAFile = oauth.ResolveCAFile(env.OAuth.CAFile, root)
-		t.BearerToken = bearerSource(env.Name, env.OAuth, t.OAuthCAFile, t.OAuthClientSecret)
+		t.BearerToken = bearerSource(t)
 	} else {
 		t.Username, t.Password = envvar.Credentials(overlay)
 	}
@@ -155,14 +164,15 @@ const oauthTimeout = 30 * time.Second
 // newTokenSource is the one construction path for a target's OAuth token
 // source: OIDC discovery over a timeout-bounded client (verifying the issuer
 // against caFile when set), the client-credentials grant when a secret is
-// configured, else the token store. The store always opens interactively: a
-// connection may prompt for the keyring passphrase, and the terminal check in
-// the file-keyring password hook already suppresses a prompt where none can
+// configured, else the token store (whose entries are bound to host - see
+// oauth.Identity). The store always opens interactively: a connection may
+// prompt for the keyring passphrase, and the terminal check in the
+// file-keyring password hook already suppresses a prompt where none can
 // happen (a protocol server's non-tty stdin), so a background reader sharing
 // this source can't force a prompt that wouldn't already fire. Callers reach
 // this through SharedTokenSource, which shares one instance per identity;
 // deleting a rejected stored token is handled separately by InvalidateTokenSource.
-func newTokenSource(c *config.OAuthConfig, caFile, secret string) (oauth2.TokenSource, error) {
+func newTokenSource(c *config.OAuthConfig, caFile, secret, host string) (oauth2.TokenSource, error) {
 	var store *oauth.TokenStore
 	if secret == "" {
 		dir, err := userconfig.DefaultDir()
@@ -184,6 +194,7 @@ func newTokenSource(c *config.OAuthConfig, caFile, secret string) (oauth2.TokenS
 		ClientID: c.ClientID,
 		Scopes:   c.Scopes,
 		Audience: c.Audience,
+		Host:     host,
 	}, secret, store)
 }
 
@@ -193,9 +204,12 @@ func newTokenSource(c *config.OAuthConfig, caFile, secret string) (oauth2.TokenS
 // keyring and network I/O. Unlike the connection's provider it never deletes a
 // stored token - credential lifecycle stays with the connection that owns
 // re-sign-in - but it does evict the shared source on an invalid_grant so a
-// re-`gaffer auth` is seen next time.
-func bearerSource(env string, c *config.OAuthConfig, caFile, secret string) func(context.Context) (string, error) {
-	id := oauth.Identity(c.Issuer, c.ClientID)
+// re-`gaffer auth` is seen next time. Takes the Target by value: a snapshot
+// of the auth-relevant fields (OAuth, CA file, secret, host binding) as
+// resolved, unaffected by later mutation of the caller's copy.
+func bearerSource(t Target) func(context.Context) (string, error) {
+	id := t.OAuthIdentity()
+	secret := t.OAuthClientSecret
 	// A stored-token source is resolved from the shared cache on every call so
 	// an eviction (a re-`gaffer auth`) is picked up. A client-credentials source
 	// isn't cached (no refresh token to serialize), so memoize it here to avoid
@@ -207,9 +221,9 @@ func bearerSource(env string, c *config.OAuthConfig, caFile, secret string) func
 	)
 	resolve := func() (oauth2.TokenSource, error) {
 		if secret == "" {
-			return SharedTokenSource(env, c, caFile, secret)
+			return SharedTokenSource(t)
 		}
-		once.Do(func() { ccSrc, ccErr = SharedTokenSource(env, c, caFile, secret) })
+		once.Do(func() { ccSrc, ccErr = SharedTokenSource(t) })
 		return ccSrc, ccErr
 	}
 	return func(ctx context.Context) (string, error) {

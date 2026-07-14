@@ -62,6 +62,11 @@ type Config struct {
 	ClientID string
 	Scopes   []string
 	Audience string
+	// Host is the target host the stored token is bound to (Identity's host
+	// component, from target.Resolve's AuthHost). Required for the
+	// interactive (stored-token) flow; unused by client credentials, which
+	// never touch the store.
+	Host string
 }
 
 // TokenSource builds an auto-refreshing token source for the env. A non-empty
@@ -96,7 +101,13 @@ func interactiveSource(ctx context.Context, c Config, store *TokenStore, eps End
 	if store == nil {
 		return nil, errors.New("interactive OAuth requires a token store")
 	}
-	id := Identity(c.Issuer, c.ClientID)
+	// An empty host would silently store and match a host-unbound key - the
+	// cross-host reuse this key exists to prevent - so a call site that
+	// forgot to resolve one fails loudly instead.
+	if c.Host == "" {
+		return nil, errors.New("interactive OAuth requires a target host binding")
+	}
+	id := Identity(c.Issuer, c.ClientID, c.Host)
 	tok, err := store.Load(id)
 	if err != nil {
 		return nil, err // ErrNoToken surfaces as the cause; caller maps to guidance

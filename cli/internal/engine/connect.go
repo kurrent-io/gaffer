@@ -141,13 +141,12 @@ func Principal(projectRoot string, env config.ResolvedEnv) string {
 // rejected token + tripping the invalidation flag on invalid_grant. The
 // needs-sign-in classification is done by SharedTokenSource.
 func oauthProvider(tgt target.Target, authInvalidated *AuthInvalidation) (kurrentdb.CredentialsProvider, error) {
-	c := tgt.OAuth
-	src, err := target.SharedTokenSource(tgt.Env, c, tgt.OAuthCAFile, tgt.OAuthClientSecret)
+	src, err := target.SharedTokenSource(tgt)
 	if err != nil {
 		return nil, err
 	}
 
-	id := oauth.Identity(c.Issuer, c.ClientID)
+	id := tgt.OAuthIdentity()
 	return func(context.Context) (*kurrentdb.Credentials, error) {
 		tok, err := src.Token()
 		if err != nil {

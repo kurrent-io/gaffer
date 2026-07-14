@@ -11,8 +11,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
+	"github.com/kurrent-io/gaffer/cli/internal/envvar"
 	"github.com/kurrent-io/gaffer/cli/internal/oauth"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
 
@@ -80,9 +82,21 @@ func runAuth(cmd *cobra.Command, envName string) error {
 		return err
 	}
 
+	// The token is stored bound to the host the env's connection names
+	// (oauth.Identity), so resolve the target before the browser round-trip:
+	// an env whose connection can't be expanded or parsed has no host to
+	// bind a token to, and should fail here rather than after a sign-in.
+	if err := envvar.Load(root); err != nil {
+		return err
+	}
+	tgt, err := target.Resolve(root, resolved)
+	if err != nil {
+		return fmt.Errorf("cannot determine the host to bind the token to: %w", err)
+	}
+
 	ctx, cancel := context.WithTimeout(cmd.Context(), authTimeout)
 	defer cancel()
-	ctx, err = oauth.WithHTTPClient(ctx, 30*time.Second, oauth.ResolveCAFile(resolved.OAuth.CAFile, root))
+	ctx, err = oauth.WithHTTPClient(ctx, 30*time.Second, tgt.OAuthCAFile)
 	if err != nil {
 		return err
 	}
@@ -105,11 +119,13 @@ func runAuth(cmd *cobra.Command, envName string) error {
 	if err != nil {
 		return err
 	}
-	if err := store.Save(oauth.Identity(resolved.OAuth.Issuer, resolved.OAuth.ClientID), tok); err != nil {
+	if err := store.Save(tgt.OAuthIdentity(), tok); err != nil {
 		return fmt.Errorf("store token: %w", err)
 	}
 
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Authenticated to env %q. Token stored.\n", resolved.Name)
+	// Name the host the token is bound to: sign-ins are per host, and this
+	// makes that visible when a project has several OAuth envs.
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Authenticated to env %q (%s). Token stored.\n", resolved.Name, tgt.AuthHost)
 	return nil
 }
 

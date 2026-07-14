@@ -46,7 +46,7 @@ type tokenCache struct {
 
 // sourceKey is the full set of inputs newTokenSource is built from: the OAuth
 // identity (issuer|clientID|host) plus the per-env settings that shape the
-// source. Scopes are order-insensitive in the key.
+// source. Scopes key as a set: order and duplicates don't split it.
 type sourceKey struct {
 	identity, caFile, audience, scopes string
 }
@@ -58,7 +58,7 @@ func (t Target) sourceKey() sourceKey {
 		identity: t.OAuthIdentity(),
 		caFile:   t.OAuthCAFile,
 		audience: t.OAuth.Audience,
-		scopes:   strings.Join(slices.Sorted(slices.Values(t.OAuth.Scopes)), "\x00"),
+		scopes:   strings.Join(slices.Compact(slices.Sorted(slices.Values(t.OAuth.Scopes))), "\x00"),
 	}
 }
 

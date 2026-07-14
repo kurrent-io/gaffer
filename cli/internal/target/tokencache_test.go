@@ -291,13 +291,13 @@ func TestSharedTokenSource_KeyedByConfig(t *testing.T) {
 	}
 }
 
-// Scopes are order-insensitive in the key: the same set spelled in a
-// different order is the same configuration.
-func TestSourceKey_ScopeOrderInsensitive(t *testing.T) {
+// Scopes key as a set: the same scopes spelled in a different order or with
+// duplicates are the same configuration.
+func TestSourceKey_ScopesKeyAsSet(t *testing.T) {
 	a := Target{OAuth: &config.OAuthConfig{Issuer: "iss", ClientID: "cid", Scopes: []string{"openid", "email"}}, AuthHost: "h:2113"}
-	b := Target{OAuth: &config.OAuthConfig{Issuer: "iss", ClientID: "cid", Scopes: []string{"email", "openid"}}, AuthHost: "h:2113"}
+	b := Target{OAuth: &config.OAuthConfig{Issuer: "iss", ClientID: "cid", Scopes: []string{"email", "openid", "email"}}, AuthHost: "h:2113"}
 	if a.sourceKey() != b.sourceKey() {
-		t.Errorf("scope order must not change the key: %+v != %+v", a.sourceKey(), b.sourceKey())
+		t.Errorf("scope order and duplicates must not change the key: %+v != %+v", a.sourceKey(), b.sourceKey())
 	}
 }
 

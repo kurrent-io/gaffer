@@ -17,7 +17,7 @@ import (
 // resetTokenCache clears the process-global cache between tests.
 func resetTokenCache() {
 	sharedTokens.mu.Lock()
-	sharedTokens.m = map[string]*tokenEntry{}
+	sharedTokens.m = map[sourceKey]*tokenEntry{}
 	sharedTokens.mu.Unlock()
 }
 
@@ -25,10 +25,10 @@ func staticSource() oauth2.TokenSource {
 	return oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "x"})
 }
 
-// The core of the fix: one identity yields one shared source, built once even
-// under concurrent resolves, so the connection and the drift check refresh
-// through a single source instead of racing two.
-func TestGetOrBuild_BuildsOncePerIdentity(t *testing.T) {
+// The core of the fix: one resolved env yields one shared source, built once
+// even under concurrent resolves, so the connection and the drift check
+// refresh through a single source instead of racing two.
+func TestGetOrBuild_BuildsOncePerKey(t *testing.T) {
 	resetTokenCache()
 	var builds atomic.Int64
 	src := staticSource()
@@ -41,7 +41,7 @@ func TestGetOrBuild_BuildsOncePerIdentity(t *testing.T) {
 	got := make([]oauth2.TokenSource, 8)
 	for i := range got {
 		wg.Go(func() {
-			s, err := sharedTokens.getOrBuild("iss|cid", build)
+			s, err := sharedTokens.getOrBuild(sourceKey{root: "/p", env: "prod", identity: "iss|cid"}, build)
 			if err != nil {
 				t.Errorf("getOrBuild: %v", err)
 			}
@@ -51,7 +51,7 @@ func TestGetOrBuild_BuildsOncePerIdentity(t *testing.T) {
 	wg.Wait()
 
 	if builds.Load() != 1 {
-		t.Errorf("builds = %d, want 1 for one identity", builds.Load())
+		t.Errorf("builds = %d, want 1 for one key", builds.Load())
 	}
 	for i := range got {
 		if got[i] != src {
@@ -59,11 +59,14 @@ func TestGetOrBuild_BuildsOncePerIdentity(t *testing.T) {
 		}
 	}
 
-	if _, err := sharedTokens.getOrBuild("iss|other", build); err != nil {
+	// A different env over the same identity is a different key: each env's
+	// source honours its own OAuth settings (e.g. ca_file) instead of
+	// silently reusing whichever env resolved first.
+	if _, err := sharedTokens.getOrBuild(sourceKey{root: "/p", env: "other", identity: "iss|cid"}, build); err != nil {
 		t.Fatal(err)
 	}
 	if builds.Load() != 2 {
-		t.Errorf("builds = %d, want 2 after a second identity", builds.Load())
+		t.Errorf("builds = %d, want 2 after a second env", builds.Load())
 	}
 }
 
@@ -80,10 +83,11 @@ func TestGetOrBuild_FailureNotCached(t *testing.T) {
 		return staticSource(), nil
 	}
 
-	if _, err := sharedTokens.getOrBuild("id", build); !errors.Is(err, boom) {
+	key := sourceKey{root: "/p", env: "prod", identity: "id"}
+	if _, err := sharedTokens.getOrBuild(key, build); !errors.Is(err, boom) {
 		t.Fatalf("first err = %v, want boom", err)
 	}
-	if _, err := sharedTokens.getOrBuild("id", build); err != nil {
+	if _, err := sharedTokens.getOrBuild(key, build); err != nil {
 		t.Fatalf("second err = %v, want success after rebuild", err)
 	}
 	if builds.Load() != 2 {
@@ -99,14 +103,15 @@ func TestEvictTokenSource_Rebuilds(t *testing.T) {
 		return staticSource(), nil
 	}
 
-	_, _ = sharedTokens.getOrBuild("id", build)
-	_, _ = sharedTokens.getOrBuild("id", build)
+	tgt := Target{Root: "/p", Env: "prod", OAuth: &config.OAuthConfig{Issuer: "iss", ClientID: "cid"}, AuthHost: "db.example:2113"}
+	_, _ = sharedTokens.getOrBuild(tgt.sourceKey(), build)
+	_, _ = sharedTokens.getOrBuild(tgt.sourceKey(), build)
 	if builds.Load() != 1 {
 		t.Fatalf("builds = %d, want 1 before evict", builds.Load())
 	}
 
-	EvictTokenSource("id")
-	_, _ = sharedTokens.getOrBuild("id", build)
+	EvictTokenSource(tgt)
+	_, _ = sharedTokens.getOrBuild(tgt.sourceKey(), build)
 	if builds.Load() != 2 {
 		t.Errorf("builds = %d, want 2 after evict", builds.Load())
 	}
@@ -125,7 +130,8 @@ func TestInvalidateTokenSource_DeletesStoredTokenAndEvicts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
-	id := oauth.Identity("iss", "cid", "db.example:2113")
+	tgt := Target{Root: "/p", Env: "prod", OAuth: &config.OAuthConfig{Issuer: "iss", ClientID: "cid"}, AuthHost: "db.example:2113"}
+	id := tgt.OAuthIdentity()
 	if err := store.Save(id, &oauth2.Token{AccessToken: "a", RefreshToken: "r"}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -135,16 +141,16 @@ func TestInvalidateTokenSource_DeletesStoredTokenAndEvicts(t *testing.T) {
 		builds.Add(1)
 		return staticSource(), nil
 	}
-	if _, err := sharedTokens.getOrBuild(id, build); err != nil {
+	if _, err := sharedTokens.getOrBuild(tgt.sourceKey(), build); err != nil {
 		t.Fatal(err)
 	}
 
-	InvalidateTokenSource(id)
+	InvalidateTokenSource(tgt)
 
 	if _, err := store.Load(id); !errors.Is(err, oauth.ErrNoToken) {
 		t.Errorf("stored token still present after invalidate: %v", err)
 	}
-	if _, err := sharedTokens.getOrBuild(id, build); err != nil {
+	if _, err := sharedTokens.getOrBuild(tgt.sourceKey(), build); err != nil {
 		t.Fatal(err)
 	}
 	if builds.Load() != 2 {
@@ -176,7 +182,7 @@ func TestSharedTokenSource_SharesOneInstanceAndSerializesRefresh(t *testing.T) {
 		t.Fatalf("save: %v", err)
 	}
 
-	tgt := Target{Env: "prod", OAuth: c, AuthHost: "db.example:2113"}
+	tgt := Target{Root: "/p", Env: "prod", OAuth: c, AuthHost: "db.example:2113"}
 	s1, err := SharedTokenSource(tgt)
 	if err != nil {
 		t.Fatalf("SharedTokenSource #1: %v", err)
@@ -228,13 +234,51 @@ func TestSharedTokenSource_NoCrossHostReuse(t *testing.T) {
 		t.Fatalf("save: %v", err)
 	}
 
-	if _, err := SharedTokenSource(Target{Env: "prod", OAuth: c, AuthHost: "victim.example:2113"}); err != nil {
+	if _, err := SharedTokenSource(Target{Root: "/p", Env: "prod", OAuth: c, AuthHost: "victim.example:2113"}); err != nil {
 		t.Fatalf("the authenticated host must resolve: %v", err)
 	}
 
-	_, err = SharedTokenSource(Target{Env: "prod", OAuth: c, AuthHost: "attacker.example:2113"})
+	_, err = SharedTokenSource(Target{Root: "/p", Env: "prod", OAuth: c, AuthHost: "attacker.example:2113"})
 	var authErr *AuthRequiredError
 	if !errors.As(err, &authErr) {
 		t.Fatalf("a host the user never authenticated must require sign-in, got %v", err)
+	}
+}
+
+// Sources are scoped per resolved env, not per OAuth identity: two envs
+// naming the same issuer, client, and host each get a source built from
+// their own settings (ca_file), instead of silently sharing whichever
+// resolved first. They still read the same stored token (one sign-in per
+// host).
+func TestSharedTokenSource_ScopedPerEnv(t *testing.T) {
+	resetTokenCache()
+	clearCreds(t)
+	idp := testutil.NewFakeIDP(t)
+	dir := t.TempDir()
+	t.Setenv("GAFFER_CONFIG_DIR", dir)
+	t.Setenv("GAFFER_KEYRING_PASSWORD", "pw")
+
+	store, err := oauth.OpenTokenStore(dir)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	c := &config.OAuthConfig{Issuer: idp.URL, ClientID: "cid"}
+	if err := store.Save(oauth.Identity(c.Issuer, c.ClientID, "db.example:2113"), &oauth2.Token{
+		AccessToken: "tok",
+		Expiry:      time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	sA, err := SharedTokenSource(Target{Root: "/p", Env: "staging", OAuth: c, AuthHost: "db.example:2113"})
+	if err != nil {
+		t.Fatalf("SharedTokenSource staging: %v", err)
+	}
+	sB, err := SharedTokenSource(Target{Root: "/p", Env: "prod", OAuth: c, AuthHost: "db.example:2113"})
+	if err != nil {
+		t.Fatalf("SharedTokenSource prod: %v", err)
+	}
+	if sA == sB {
+		t.Fatal("two envs must not share a source, even over the same identity")
 	}
 }

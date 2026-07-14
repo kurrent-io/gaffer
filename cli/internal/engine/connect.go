@@ -146,7 +146,6 @@ func oauthProvider(tgt target.Target, authInvalidated *AuthInvalidation) (kurren
 		return nil, err
 	}
 
-	id := tgt.OAuthIdentity()
 	return func(context.Context) (*kurrentdb.Credentials, error) {
 		tok, err := src.Token()
 		if err != nil {
@@ -158,7 +157,7 @@ func oauthProvider(tgt target.Target, authInvalidated *AuthInvalidation) (kurren
 			// an uncached client-credentials source, whose errors aren't
 			// invalid_grant anyway).
 			if oauth.IsInvalidGrant(err) {
-				target.InvalidateTokenSource(id)
+				target.InvalidateTokenSource(tgt)
 				authInvalidated.Trip()
 			}
 			return nil, err

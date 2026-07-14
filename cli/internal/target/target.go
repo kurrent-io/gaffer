@@ -26,6 +26,10 @@ import (
 // Target is the resolved description of a KurrentDB environment. Construct
 // via Resolve; the zero value means "nothing to dial".
 type Target struct {
+	// Root is the project root the target was resolved for. With Env it
+	// names the resolution context: the token-source cache is scoped by it,
+	// so one env's OAuth settings never bleed into another's source.
+	Root string
 	// Env is the environment name, "" for an ad-hoc --connection target.
 	Env string
 	// Connection is the ${VAR}-expanded connection string.
@@ -109,6 +113,7 @@ func Resolve(root string, env config.ResolvedEnv) (Target, error) {
 	}
 
 	t := Target{
+		Root:       root,
 		Env:        env.Name,
 		Connection: conn,
 		OAuth:      env.OAuth,
@@ -208,7 +213,6 @@ func newTokenSource(c *config.OAuthConfig, caFile, secret, host string) (oauth2.
 // of the auth-relevant fields (OAuth, CA file, secret, host binding) as
 // resolved, unaffected by later mutation of the caller's copy.
 func bearerSource(t Target) func(context.Context) (string, error) {
-	id := t.OAuthIdentity()
 	secret := t.OAuthClientSecret
 	// A stored-token source is resolved from the shared cache on every call so
 	// an eviction (a re-`gaffer auth`) is picked up. A client-credentials source
@@ -244,7 +248,7 @@ func bearerSource(t Target) func(context.Context) (string, error) {
 			tok, err := src.Token()
 			if err != nil {
 				if secret == "" && oauth.IsInvalidGrant(err) {
-					EvictTokenSource(id)
+					EvictTokenSource(t)
 				}
 				ch <- result{"", err}
 				return

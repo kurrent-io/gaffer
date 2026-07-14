@@ -266,12 +266,10 @@ func fetchEnvStatus(ctx context.Context, root string, cfg *config.Config, envNam
 	if err != nil {
 		return envStatus{Err: err}
 	}
-	r, cleanup, err := remote.Dial(root, resolved)
+	r, authInv, cleanup, err := remote.DialWithAuth(root, resolved)
 	if err != nil {
-		// Only a connect-time auth failure (a missing/expired token the dial
-		// can't satisfy) classifies as needs-sign-in. A token that passes the
-		// dial but is rejected at RPC time surfaces as a generic Err - no
-		// sign-in affordance - matching the MCP deploy tools.
+		// A connect-time auth failure is a missing or locked token the dial
+		// can't satisfy - needs sign-in.
 		var authErr *target.AuthRequiredError
 		if errors.As(err, &authErr) {
 			return envStatus{Unauthenticated: true}
@@ -285,6 +283,14 @@ func fetchEnvStatus(ctx context.Context, root string, cfg *config.Config, envNam
 	rctx, cancel := context.WithTimeout(ctx, deploy.RPCTimeout)
 	defer cancel()
 	entries, err := drift.StatusAll(rctx, r, cfg, root)
+	// A stored OAuth token the IdP rejected (invalid_grant) trips the auth flag
+	// on the read - the credential is dead, not merely unreachable, so surface
+	// sign-in rather than a generic "unavailable", matching a missing token at
+	// dial. A generic RPC rejection (a valid token lacking a role) leaves the
+	// flag untripped and stays a generic Err.
+	if authInv != nil && authInv.Tripped() {
+		return envStatus{Unauthenticated: true}
+	}
 	if err != nil {
 		return envStatus{Err: err}
 	}

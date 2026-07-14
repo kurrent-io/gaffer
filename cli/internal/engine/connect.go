@@ -35,6 +35,12 @@ type AuthInvalidation struct{ tripped atomic.Bool }
 func (a *AuthInvalidation) Trip()         { a.tripped.Store(true) }
 func (a *AuthInvalidation) Tripped() bool { return a.tripped.Load() }
 
+// TripOnce trips the flag and reports whether this call tripped it. The
+// provider gates its invalid_grant cleanup on it: a dead connection keeps
+// failing on every subsequent RPC, and re-deleting the stored token would
+// destroy one stored by an intervening `gaffer auth`.
+func (a *AuthInvalidation) TripOnce() bool { return a.tripped.CompareAndSwap(false, true) }
+
 // Connect dials the environment. It takes the selected env whole (rather
 // than exploded fields) so a new auth-relevant field on ResolvedEnv can't be
 // silently forgotten at a call site.
@@ -156,9 +162,8 @@ func oauthProvider(tgt target.Target, authInvalidated *AuthInvalidation) (kurren
 			// reaches here with a deletable token (InvalidateTokenSource no-ops for
 			// an uncached client-credentials source, whose errors aren't
 			// invalid_grant anyway).
-			if oauth.IsInvalidGrant(err) {
+			if oauth.IsInvalidGrant(err) && authInvalidated.TripOnce() {
 				target.InvalidateTokenSource(tgt)
-				authInvalidated.Trip()
 			}
 			return nil, err
 		}

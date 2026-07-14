@@ -26,10 +26,6 @@ import (
 // Target is the resolved description of a KurrentDB environment. Construct
 // via Resolve; the zero value means "nothing to dial".
 type Target struct {
-	// Root is the project root the target was resolved for. With Env it
-	// names the resolution context: the token-source cache is scoped by it,
-	// so one env's OAuth settings never bleed into another's source.
-	Root string
 	// Env is the environment name, "" for an ad-hoc --connection target.
 	Env string
 	// Connection is the ${VAR}-expanded connection string.
@@ -113,7 +109,6 @@ func Resolve(root string, env config.ResolvedEnv) (Target, error) {
 	}
 
 	t := Target{
-		Root:       root,
 		Env:        env.Name,
 		Connection: conn,
 		OAuth:      env.OAuth,
@@ -175,7 +170,8 @@ const oauthTimeout = 30 * time.Second
 // file-keyring password hook already suppresses a prompt where none can
 // happen (a protocol server's non-tty stdin), so a background reader sharing
 // this source can't force a prompt that wouldn't already fire. Callers reach
-// this through SharedTokenSource, which shares one instance per identity;
+// this through SharedTokenSource, which shares one instance per source
+// configuration (sourceKey);
 // deleting a rejected stored token is handled separately by InvalidateTokenSource.
 func newTokenSource(c *config.OAuthConfig, caFile, secret, host string) (oauth2.TokenSource, error) {
 	var store *oauth.TokenStore

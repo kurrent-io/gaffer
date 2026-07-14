@@ -1,6 +1,8 @@
 package target
 
 import (
+	"slices"
+	"strings"
 	"sync"
 
 	"golang.org/x/oauth2"
@@ -9,12 +11,13 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/userconfig"
 )
 
-// tokenCache shares one refreshing token source per resolved env across the
-// process. The connection's credentials provider and any background reader
-// (the config-drift check) resolve the SAME env and therefore the SAME
-// source, so refreshes serialize through its single mutex: the first caller
-// rotates the stored refresh token, the next reuses the freshly minted access
-// token instead of racing a second rotation.
+// tokenCache shares one refreshing token source per source configuration
+// across the process. Every consumer whose target resolves the same build
+// inputs - the connection's credentials provider, the config-drift check, any
+// other env or project with an identical OAuth block - gets the SAME source,
+// so refreshes serialize through its single mutex: the first caller rotates
+// the stored refresh token, the next reuses the freshly minted access token
+// instead of racing a second rotation.
 //
 // Two independent sources over one stored refresh token is the bug this
 // fixes: with refresh-token rotation / reuse detection, the loser of a
@@ -22,14 +25,16 @@ import (
 // connection provider it deletes the token the winner just rotated in and
 // forces a spurious re-sign-in.
 //
-// The sharing unit is one resolved env (sourceKey), NOT the OAuth identity:
-// a source is built from per-env config beyond the identity - the ca_file
-// that anchors TLS to the IdP - so two envs that happen to name the same
-// issuer, client, and host must not silently share whichever config resolved
-// first. Each env gets a source honouring its own settings. If such envs are
-// used concurrently in one process, their sources can race a refresh over the
-// shared stored token and the loser forces a visible re-sign-in - a rare,
-// self-healing failure, accepted over a silent trust change.
+// The cache memoizes newTokenSource by its inputs (sourceKey), not by the
+// OAuth identity alone: a source is also shaped by the env's ca_file (the TLS
+// anchor for discovery and refresh), scopes, and audience, so two envs that
+// name the same issuer, client, and host but declare different settings get
+// separate sources, each honouring its own config. Such envs share one stored
+// token, so their separate sources can fork its rotation chain; the loser's
+// invalid_grant then triggers re-sign-in. Envs with identical settings share
+// one source and cannot fork. Keying by inputs also means an edited setting
+// resolves to a fresh source on the next dial instead of serving the old
+// config until the process restarts.
 //
 // Only stored-token (interactive) sources are cached. A client-credentials
 // grant fetches independently with no refresh token and no shared mutable
@@ -39,19 +44,22 @@ type tokenCache struct {
 	m  map[sourceKey]*tokenEntry
 }
 
-// sourceKey names one resolved env's token source: the resolution context
-// (project root + env name) plus the OAuth identity. Identity in the key
-// makes an edited issuer, client, or connection host pick up a fresh source
-// on the next resolve in a long-lived process; an edited ca_file alone keeps
-// the old source until the process restarts or the entry is evicted.
+// sourceKey is the full set of inputs newTokenSource is built from: the OAuth
+// identity (issuer|clientID|host) plus the per-env settings that shape the
+// source. Scopes are order-insensitive in the key.
 type sourceKey struct {
-	root, env, identity string
+	identity, caFile, audience, scopes string
 }
 
 // sourceKey is the cache key for this target's token source. Only meaningful
 // when OAuth is set.
 func (t Target) sourceKey() sourceKey {
-	return sourceKey{root: t.Root, env: t.Env, identity: t.OAuthIdentity()}
+	return sourceKey{
+		identity: t.OAuthIdentity(),
+		caFile:   t.OAuthCAFile,
+		audience: t.OAuth.Audience,
+		scopes:   strings.Join(slices.Sorted(slices.Values(t.OAuth.Scopes)), "\x00"),
+	}
 }
 
 // tokenEntry memoizes one build. once ensures a single build per entry even
@@ -68,10 +76,10 @@ type tokenEntry struct {
 var sharedTokens = &tokenCache{m: map[sourceKey]*tokenEntry{}}
 
 // SharedTokenSource returns the process-shared, auto-refreshing token source
-// for the resolved env, building it once per sourceKey. The stored token it
+// for the resolved target, building it once per sourceKey. The stored token it
 // reads stays keyed by oauth.Identity (issuer|clientID|host), so envs naming
-// the same host share one sign-in while each env's source honours its own
-// OAuth settings. A missing or locked stored token is classified to
+// the same host share one sign-in while each source honours the settings it
+// was resolved with. A missing or locked stored token is classified to
 // *AuthRequiredError (via AsAuthRequired) so every consumer surfaces the same
 // sign-in signal. A client-credentials grant (secret set) is stateless and
 // built per call rather than cached.
@@ -115,32 +123,49 @@ func (tc *tokenCache) getOrBuild(key sourceKey, build func() (oauth2.TokenSource
 // EvictTokenSource drops the cached source for the target so the next resolve
 // rebuilds from the store. Used after an invalid_grant on the advisory drift
 // path: the in-memory source is dead, but the stored token is left for the
-// connection to manage.
+// connection to manage. A target without OAuth has no source; no-op.
 func EvictTokenSource(t Target) {
+	if t.OAuth == nil {
+		return
+	}
 	sharedTokens.mu.Lock()
 	delete(sharedTokens.m, t.sourceKey())
 	sharedTokens.mu.Unlock()
 }
 
-// InvalidateTokenSource drops the cached source AND deletes the stored token
-// for the target. Used at the engine edge on invalid_grant: the credential
-// itself is dead (its refresh token was rotated out or reused), so re-sign-in
-// is required. The eviction is scoped to this env's source; the stored-token
-// delete is by OAuth identity, since that credential is shared by every env
-// naming the same host.
+// InvalidateTokenSource drops every cached source over the target's OAuth
+// identity AND deletes its stored token. Used at the engine edge on
+// invalid_grant: the credential itself is dead (its refresh token was rotated
+// out or reused), so re-sign-in is required. Eviction covers the whole
+// identity, not just the caller's key: other configurations' sources refresh
+// the same stored credential, and one left cached would fail on its dead
+// in-memory chain after the user signs back in - and then delete the fresh
+// token when its own invalid_grant lands. A target without OAuth has no
+// source or token; no-op.
 //
 // The delete goes through oauth.DeleteStoredToken rather than reaching into the
-// cached entry: the entry may already be gone (the drift path evicted it first),
-// and reading a store off an entry a concurrent rebuild is still populating
-// would race. DeleteStoredToken also never prompts - this runs on a live
-// command's RPC goroutines, so it must not block on a keyring passphrase. It's
-// best-effort anyway: the caller trips re-sign-in, and the next `gaffer auth`
-// overwrites the token, so a skipped delete self-heals.
+// cached entries: an entry may already be gone (the drift path evicted it
+// first), and reading a store off an entry a concurrent rebuild is still
+// populating would race. DeleteStoredToken also never prompts - this runs on a
+// live command's RPC goroutines, so it must not block on a keyring passphrase.
+// It's best-effort anyway: the caller trips re-sign-in, and the next
+// `gaffer auth` overwrites the token, so a skipped delete self-heals.
 func InvalidateTokenSource(t Target) {
-	EvictTokenSource(t)
+	if t.OAuth == nil {
+		return
+	}
+	id := t.OAuthIdentity()
+	sharedTokens.mu.Lock()
+	for k := range sharedTokens.m {
+		if k.identity == id {
+			delete(sharedTokens.m, k)
+		}
+	}
+	sharedTokens.mu.Unlock()
+
 	dir, err := userconfig.DefaultDir()
 	if err != nil {
 		return
 	}
-	_ = oauth.DeleteStoredToken(dir, t.OAuthIdentity())
+	_ = oauth.DeleteStoredToken(dir, id)
 }

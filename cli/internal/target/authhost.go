@@ -1,8 +1,9 @@
 package target
 
 import (
-	"fmt"
+	"net"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -32,7 +33,11 @@ func authHost(connection string) (string, error) {
 		hosts = append(hosts, strings.ToLower(cfg.Address))
 	}
 	for _, ep := range cfg.GossipSeeds {
-		hosts = append(hosts, strings.ToLower(fmt.Sprintf("%s:%d", ep.Host, ep.Port)))
+		// JoinHostPort brackets a host containing colons; the client's parser
+		// currently rejects IPv6 literals, so every reachable input formats
+		// as plain host:port, but a key this security-sensitive shouldn't
+		// depend on that staying true.
+		hosts = append(hosts, strings.ToLower(net.JoinHostPort(ep.Host, strconv.Itoa(int(ep.Port)))))
 	}
 	slices.Sort(hosts)
 	return strings.Join(slices.Compact(hosts), ","), nil

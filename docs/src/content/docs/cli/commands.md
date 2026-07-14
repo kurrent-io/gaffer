@@ -87,7 +87,8 @@ non-interactive client-credentials grant.
 
 The token is bound to the host the environment's connection names and is only
 ever sent there. Environments pointing at the same host share one sign-in;
-a different host needs its own.
+a different host needs its own. The connection string must resolve to name
+that host, so an unset ${VAR} or an unparseable connection fails the sign-in.
 
 --clear removes every stored token, signing out of all environments. Use it to
 reset a keyring whose passphrase has been forgotten; it needs neither the

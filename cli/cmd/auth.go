@@ -36,7 +36,8 @@ func newAuthCmd() *cobra.Command {
 			"non-interactive client-credentials grant.\n\n" +
 			"The token is bound to the host the environment's connection names and is only\n" +
 			"ever sent there. Environments pointing at the same host share one sign-in;\n" +
-			"a different host needs its own.\n\n" +
+			"a different host needs its own. The connection string must resolve to name\n" +
+			"that host, so an unset ${VAR} or an unparseable connection fails the sign-in.\n\n" +
 			"--clear removes every stored token, signing out of all environments. Use it to\n" +
 			"reset a keyring whose passphrase has been forgotten; it needs neither the\n" +
 			"passphrase nor a gaffer project.\n\n" +

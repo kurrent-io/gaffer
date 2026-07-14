@@ -91,6 +91,6 @@ How a token is obtained depends on whether a client secret is set in the environ
 - **For local development**, leave `KURRENTDB_OAUTH_CLIENT_SECRET` unset and run [`gaffer auth --env <name>`](./commands.md#gaffer-auth) once. It signs in through the browser and stores a token that refreshes automatically. The [VS Code extension](../extension/vs-code.md#authentication) offers the same sign-in inline.
 - **For CI**, set `KURRENTDB_OAUTH_CLIENT_SECRET`. gaffer uses the non-interactive client-credentials grant, with no browser.
 
-A stored token is bound to the host the environment's connection names, and gaffer only ever sends it there. Environments pointing at the same host share one sign-in, even across projects; an environment naming a different host - even with the same issuer and client ID - needs its own `gaffer auth`, so a token obtained for one cluster can never be sent to another.
+A stored token is bound to the host the environment's connection names, and gaffer only ever sends it there. Environments pointing at the same host share one sign-in, even across projects. An environment naming a different host needs its own `gaffer auth`, even with the same issuer and client ID, so a token obtained for one cluster is never sent to another. Because the binding comes from the connection string, `gaffer auth` needs it to resolve: an unset `${VAR}` or an unparseable connection fails the sign-in before the browser opens.
 
 See [`[env.<name>.oauth]`](../reference/gaffer-toml.md#envnameoauth) for the full field list and keyring behaviour.

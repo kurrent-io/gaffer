@@ -37,6 +37,12 @@ When an environment needs authentication, the summary is replaced by a **Sign in
 
 The summary appears above bare-key `[env.name]` headers. An environment declared with a quoted key (`[env."my env"]`) has no summary line.
 
+### Per-projection status
+
+Each `[[projection]]` header carries a row of small dots, one per environment in the order they appear in the file. A solid dot is a known state: green in sync, orange needing attention (drifted, local ahead, changed externally, or not deployed), red faulted or invalid. The other shapes mean there's no reading yet: an open ring needs sign-in, a crossed ring couldn't be read, and a faint dot is still loading.
+
+Hovering the header lists those environments one per line, each with its drift verdict and runtime state (running, stopped, aborted, or faulted). An environment that needs sign-in or couldn't be read shows that reason in place of the verdict; the **Sign in** action lives on the `[env.<name>]` block above. Like the environment summary, this is read-only and reads on open and save.
+
 ## Authentication
 
 When you debug against an environment that uses [OAuth](../reference/gaffer-toml.md#envnameoauth) and you haven't signed in yet, the run stops and the extension shows a **Sign in** action. It opens a terminal running `gaffer auth --env <name>`. You sign in through the browser once, and the stored token refreshes automatically for later runs.

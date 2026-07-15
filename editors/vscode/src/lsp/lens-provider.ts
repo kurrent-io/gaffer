@@ -5,6 +5,12 @@ import { hasCommand, hasFlag } from "../discovery/cli.js";
 import type { Manifest } from "../discovery/schemas.js";
 import type { DebugState } from "../types.js";
 import { log } from "../output.js";
+import type { BadgeCell } from "./status-badges.js";
+
+// Sink for the per-projection badge health the server delivers alongside the
+// clickable lenses. Called once per provideCodeLenses with every badge cell
+// for the document (empty to clear), so the extension can paint decorations.
+export type BadgeSink = (uri: vscode.Uri, cells: BadgeCell[]) => void;
 
 // A projection's debug state from a lens's perspective. "stop"
 // means the projection-level lens should swap to a Stop button
@@ -33,6 +39,13 @@ const IntentDebugChoose = "debug-choose";
 const IntentStatusEnv = "status-env";
 const IntentStatusLoading = "status-loading";
 const IntentSignIn = "sign-in";
+const IntentStatusBadges = "status-badges";
+
+// Server-reported per-environment health, validated at the wire boundary like
+// the lens arg payloads.
+const BadgeHealthsSchema = v.array(
+	v.picklist(["green", "orange", "red", "locked", "error", "loading"]),
+);
 
 const codeLensMethod = "textDocument/codeLens";
 
@@ -59,7 +72,7 @@ interface LspCommand {
 interface LspCodeLens {
 	range: LspRange;
 	command?: LspCommand;
-	data?: { intent?: string };
+	data?: { intent?: string; healths?: string[] };
 }
 
 interface CodeLensParams {
@@ -137,6 +150,13 @@ export class LspCodeLensProvider
 	#client: LanguageClient | undefined;
 	#manifest: Manifest | null = null;
 	#debugState: DebugState = { name: null, status: "idle" };
+	readonly #onBadges: BadgeSink | undefined;
+
+	// onBadges receives the per-projection badge health carried alongside the
+	// lenses; omitted by clients (and tests) that don't paint the badge.
+	constructor(onBadges?: BadgeSink) {
+		this.#onBadges = onBadges;
+	}
 
 	dispose(): void {
 		this.#onDidChange.dispose();
@@ -166,7 +186,14 @@ export class LspCodeLensProvider
 		token: vscode.CancellationToken,
 	): Promise<vscode.CodeLens[]> {
 		const client = this.#client;
-		if (!client) return [];
+		// Server gone (not yet spawned, stopped, or mid-restart): clear any
+		// painted badge dots so stale health doesn't linger with no data
+		// behind it. The catch path below deliberately doesn't clear - a
+		// cancelled request is transient and clearing would flicker.
+		if (!client) {
+			this.#onBadges?.(document.uri, []);
+			return [];
+		}
 		const params: CodeLensParams = {
 			textDocument: { uri: document.uri.toString() },
 		};
@@ -182,10 +209,22 @@ export class LspCodeLensProvider
 			// surfacing a "no provider could compute lenses" toast.
 			return [];
 		}
-		if (!serverLenses) return [];
+		if (!serverLenses) {
+			this.#onBadges?.(document.uri, []);
+			return [];
+		}
 
 		const lenses: vscode.CodeLens[] = [];
+		const badges: BadgeCell[] = [];
 		for (const sl of serverLenses) {
+			// Badge markers ride the codeLens channel but aren't rendered as
+			// lenses - peel them off before the clickable-lens decoration so a
+			// data-only lens never surfaces as an empty clickable annotation.
+			if (sl.data?.intent === IntentStatusBadges) {
+				const cell = this.#badgeCell(sl);
+				if (cell) badges.push(cell);
+				continue;
+			}
 			try {
 				const decorated = this.#decorate(sl);
 				if (decorated) lenses.push(decorated);
@@ -197,7 +236,33 @@ export class LspCodeLensProvider
 				);
 			}
 		}
+		// Forward every provideCodeLenses (empty badge included) so the sink
+		// clears markers for a document that no longer reports any.
+		this.#onBadges?.(document.uri, badges);
 		return lenses;
+	}
+
+	#badgeCell(sl: LspCodeLens): BadgeCell | null {
+		const parsed = v.safeParse(BadgeHealthsSchema, sl.data?.healths);
+		if (!parsed.success || parsed.output.length === 0) {
+			log(
+				`Lens: rejecting badge healths: ${
+					parsed.success
+						? "empty"
+						: parsed.issues.map((i) => i.message).join("; ")
+				}`,
+			);
+			return null;
+		}
+		return {
+			range: new vscode.Range(
+				sl.range.start.line,
+				sl.range.start.character,
+				sl.range.end.line,
+				sl.range.end.character,
+			),
+			healths: parsed.output,
+		};
 	}
 
 	#decorate(sl: LspCodeLens): vscode.CodeLens | null {

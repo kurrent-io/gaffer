@@ -9,6 +9,7 @@ import {
 import type { LanguageClient as RealLanguageClient } from "vscode-languageclient/node";
 import { setTrusted } from "../../test/testutil/vscode-state.js";
 import type { Manifest } from "../discovery/schemas.js";
+import type { BadgeCell } from "./status-badges.js";
 
 // A stub manifest with `dev --debug` available - the lens
 // emission gate that lensState delegates to via hasFlag /
@@ -409,5 +410,105 @@ describe("LspCodeLensProvider", () => {
 		p.setDebugState({ name: "x", status: "idle" });
 		p.refresh();
 		expect(fired).toHaveBeenCalledTimes(4);
+	});
+});
+
+// A status marker as the server emits it: a range + status-badges intent
+// carrying per-env healths, no command.
+function badgeLens(healths: string[], startLine = 4): unknown {
+	return {
+		range: fakeLensRange(startLine),
+		data: { intent: "status-badges", healths },
+	};
+}
+
+describe("LspCodeLensProvider status badges", () => {
+	beforeEach(() => {
+		setTrusted(true);
+	});
+	afterEach(() => {
+		clearLspRequestHandlers();
+	});
+
+	it("peels status markers off the rendered lenses and forwards them to the sink", async () => {
+		const calls: BadgeCell[][] = [];
+		setLspRequestHandler("textDocument/codeLens", () => [
+			fakeServerLens("debug", {
+				name: "checkout",
+				configURI: "file:///p/gaffer.toml",
+				env: "cloud",
+			}),
+			badgeLens(["red", "green"], 4),
+			badgeLens(["green"], 8),
+		]);
+		const p = new LspCodeLensProvider((_uri, cells) => calls.push(cells));
+		p.setClient(makeClient());
+		p.setManifest(manifestWithDebug);
+
+		const lenses = await getLenses(p);
+		// The status markers are not rendered as clickable lenses.
+		expect(lenses).toHaveLength(1);
+		expect(lenses[0]?.command?.command).toBe("gaffer.debugProjection");
+		// They're forwarded to the sink with parsed per-env healths, in order.
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.map((c) => [c.range.start.line, c.healths])).toEqual([
+			[4, ["red", "green"]],
+			[8, ["green"]],
+		]);
+	});
+
+	it("forwards an empty badge set so stale markers can be cleared", async () => {
+		const calls: BadgeCell[][] = [];
+		setLspRequestHandler("textDocument/codeLens", () => [
+			statusEnvLens("2 in sync"),
+		]);
+		const p = new LspCodeLensProvider((_uri, cells) => calls.push(cells));
+		p.setClient(makeClient());
+		await getLenses(p);
+		expect(calls).toEqual([[]]);
+	});
+
+	it("clears the badges when the server is gone", async () => {
+		const calls: BadgeCell[][] = [];
+		// No setClient -> client undefined; stale dots must be cleared.
+		const p = new LspCodeLensProvider((_uri, cells) => calls.push(cells));
+		expect(await getLenses(p)).toEqual([]);
+		expect(calls).toEqual([[]]);
+	});
+
+	it("rejects a status marker with an unknown health value", async () => {
+		const calls: BadgeCell[][] = [];
+		setLspRequestHandler("textDocument/codeLens", () => [
+			badgeLens(["purple"], 4),
+		]);
+		const p = new LspCodeLensProvider((_uri, cells) => calls.push(cells));
+		p.setClient(makeClient());
+		const lenses = await getLenses(p);
+		expect(lenses).toEqual([]);
+		// Bad health dropped; nothing forwarded but the (empty) sink call still fires.
+		expect(calls).toEqual([[]]);
+	});
+
+	it("rejects a status marker with an empty healths array", async () => {
+		const calls: BadgeCell[][] = [];
+		setLspRequestHandler("textDocument/codeLens", () => [badgeLens([], 4)]);
+		const p = new LspCodeLensProvider((_uri, cells) => calls.push(cells));
+		p.setClient(makeClient());
+		expect(await getLenses(p)).toEqual([]);
+		// Empty healths is well-formed but useless; the cell is dropped.
+		expect(calls).toEqual([[]]);
+	});
+
+	it("does not clear badges on a transient or cancelled request", async () => {
+		const calls: BadgeCell[][] = [];
+		setLspRequestHandler("textDocument/codeLens", () => {
+			throw new Error("simulated transport error");
+		});
+		const p = new LspCodeLensProvider((_uri, cells) => calls.push(cells));
+		p.setClient(makeClient());
+		expect(await getLenses(p)).toEqual([]);
+		// The catch path must NOT touch the sink - clearing here would flicker
+		// dots on every rapid re-request.
+		expect(calls).toEqual([]);
 	});
 });

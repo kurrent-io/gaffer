@@ -22,9 +22,21 @@ export function makeContext(): vscode.ExtensionContext {
 		toJSON: () => storageDir,
 		toString: () => `file://${storageDir}`,
 	} as unknown as vscode.Uri;
+	const extensionUri = {
+		fsPath: "/fake/extension",
+		scheme: "file",
+		path: "/fake/extension",
+		authority: "",
+		query: "",
+		fragment: "",
+		with: () => extensionUri,
+		toJSON: () => "/fake/extension",
+		toString: () => "file:///fake/extension",
+	} as unknown as vscode.Uri;
 	return {
 		subscriptions: [],
 		extensionPath: "/fake/extension",
+		extensionUri,
 		globalStorageUri,
 		workspaceState: makeMemento(),
 		globalState: makeMemento(),

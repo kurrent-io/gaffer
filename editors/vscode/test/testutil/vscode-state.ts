@@ -9,7 +9,9 @@ import {
 	__clearShownMessages,
 	__getShownMessages,
 	__resetState,
+	type FakeDecorationType,
 	type FakeStatusBarItem,
+	type FakeTextEditor,
 	setExtension as setExtensionImpl,
 	state,
 } from "../__mocks__/vscode.js";
@@ -141,6 +143,21 @@ export function fireTerminalClosed(
 
 export function getStatusBarItems(): readonly FakeStatusBarItem[] {
 	return state.statusBarItems;
+}
+
+export function getDecorationTypes(): readonly FakeDecorationType[] {
+	return state.decorationTypes;
+}
+
+// Sets the editors window.visibleTextEditors reports. Does NOT fire the change
+// event - use fireVisibleEditorsChanged for that.
+export function setVisibleTextEditors(editors: FakeTextEditor[]): void {
+	state.visibleTextEditors = editors;
+}
+
+export function fireVisibleEditorsChanged(editors: FakeTextEditor[]): void {
+	state.visibleTextEditors = editors;
+	state.visibleTextEditorsChanged.fire(editors as readonly vscode.TextEditor[]);
 }
 
 export const getState = (): typeof state => state;

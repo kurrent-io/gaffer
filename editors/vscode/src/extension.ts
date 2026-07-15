@@ -8,6 +8,7 @@ import {
 import { getOrCreateKeyringPassword } from "./keyring-secret.js";
 import type { Manifest } from "./discovery/schemas.js";
 import { LspCodeLensProvider } from "./lsp/lens-provider.js";
+import { StatusBadges } from "./lsp/status-badges.js";
 import { StepProvider } from "./panels/step.js";
 import { StateProvider } from "./panels/state.js";
 import { StatusViewProvider } from "./panels/status.js";
@@ -281,8 +282,16 @@ async function activateAfterTelemetry(
 	const phaseTracker = new PhaseTracker((phase) =>
 		statusProvider.setPhase(phase),
 	);
-	const lspCodeLens = new LspCodeLensProvider();
-	context.subscriptions.push(stepProvider, stateProvider, lspCodeLens);
+	const statusBadges = new StatusBadges();
+	const lspCodeLens = new LspCodeLensProvider((uri, cells) =>
+		statusBadges.set(uri, cells),
+	);
+	context.subscriptions.push(
+		stepProvider,
+		stateProvider,
+		lspCodeLens,
+		statusBadges,
+	);
 
 	// Single source of truth for the latest manifest. The LSP spawn
 	// gate reads it via predicate; reloadManifest + handleManifestOutcome

@@ -32,6 +32,7 @@ const (
 	MethodDidSave   = "textDocument/didSave"
 
 	MethodCodeLens           = "textDocument/codeLens"
+	MethodHover              = "textDocument/hover"
 	MethodPublishDiagnostics = "textDocument/publishDiagnostics"
 
 	MethodDidChangeWatchedFiles = "workspace/didChangeWatchedFiles"
@@ -72,6 +73,14 @@ const (
 	// IntentSignIn marks the env-block sign-in action shown when an env
 	// needs authentication; the client routes it to its sign-in flow.
 	IntentSignIn = "sign-in"
+	// IntentStatusBadges marks a per-projection health signal anchored on the
+	// [[projection]] header. It carries no command or title - the client reads
+	// CodeLensData.Healths and paints a row of inline badges rather than
+	// rendering a lens. Rides the codeLens channel so it refreshes with the env
+	// lenses. This is a private gaffer extension, not a conformant actionable
+	// lens: any client on the status surface must special-case this intent and
+	// not try to render it as a normal (command-bearing) lens.
+	IntentStatusBadges = "status-badges"
 )
 
 // Gaffer command IDs surfaced via CodeLens.command. Each editor
@@ -155,6 +164,11 @@ type ServerCapabilities struct {
 	// to workspace/symbol requests. Lets editors fuzzy-find
 	// projections via Cmd+T and powers our QuickPick.
 	WorkspaceSymbolProvider *WorkspaceSymbolOptions `json:"workspaceSymbolProvider,omitempty"`
+	// HoverProvider advertises textDocument/hover. Only set when the client
+	// opted into the deploy-status surface (initializationOptions.statusLens):
+	// the hover exists solely to show a projection's per-env deploy status, so
+	// a client that can't render it shouldn't route hovers here.
+	HoverProvider *HoverOptions `json:"hoverProvider,omitempty"`
 }
 
 // TextDocumentSyncKind matches LSP spec values: 0=None, 1=Full,
@@ -197,6 +211,37 @@ type CodeLensOptions struct {
 // ServerCapabilities.WorkspaceSymbolProvider when sent as an
 // object (the spec also accepts a bare bool).
 type WorkspaceSymbolOptions struct{}
+
+// HoverOptions is the value of ServerCapabilities.HoverProvider when sent as
+// an object (the spec also accepts a bare bool). Empty - we resolve the hover
+// content on the request, with nothing to configure up front.
+type HoverOptions struct{}
+
+// MarkupKindMarkdown is the only MarkupContent kind we emit. The client renders
+// the value as Markdown.
+const MarkupKindMarkdown = "markdown"
+
+// MarkupContent is a string rendered per Kind (plaintext or markdown), the
+// standard LSP shape for hover bodies.
+type MarkupContent struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+}
+
+// HoverParams is the request payload for textDocument/hover: which document,
+// and where the cursor is.
+type HoverParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+}
+
+// Hover is the textDocument/hover response. Range is the span the hover
+// applies to (the projection header line) so the client highlights it while
+// the tooltip is up. A nil result (JSON null) means "no hover here".
+type Hover struct {
+	Contents MarkupContent `json:"contents"`
+	Range    *Range        `json:"range,omitempty"`
+}
 
 // WorkspaceSymbolParams is the request payload for workspace/symbol.
 // Query is a fuzzy filter; we treat empty as "return everything"
@@ -271,8 +316,13 @@ type CodeLens struct {
 
 // CodeLensData carries the semantic intent so client extensions
 // can map to a native icon / treatment without parsing the title.
+// Healths is set only on an IntentStatusBadges lens: the projection's
+// per-environment health in file order - "green" / "orange" / "red" for a
+// known state, or "locked" / "error" / "loading" when an env has no reading -
+// which the client renders as a row of inline badges.
 type CodeLensData struct {
-	Intent string `json:"intent"`
+	Intent  string   `json:"intent"`
+	Healths []string `json:"healths,omitempty"`
 }
 
 // CodeLensParams is the request payload for textDocument/codeLens.

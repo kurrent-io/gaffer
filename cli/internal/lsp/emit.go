@@ -241,6 +241,41 @@ func emitStatusEnvLenses(desc config.Description, uri string, statuses map[strin
 	return out
 }
 
+// emitStatusBadgeLenses renders one per-projection status marker anchored on
+// each located, non-diagnostic [[projection]] header, carrying the projection's
+// per-environment health (in file order) for the client to paint as a row of
+// inline badges. An environment with no usable status contributes its reason
+// ("locked" / "error" / "loading") rather than being dropped, so the row's
+// length matches the configured environments and the client can distinguish why
+// a reading is missing. A projection with no configured environment gets no
+// marker. The lens has no command or title: it's a decoration data-carrier the
+// client consumes, riding the codeLens channel so it refreshes with the env
+// lenses.
+func emitStatusBadgeLenses(desc config.Description, statuses map[string]envStatus, loading map[string]bool) []CodeLens {
+	out := []CodeLens{}
+	for _, p := range desc.Projections {
+		if p.Diagnostic != nil {
+			continue
+		}
+		if p.Range == (config.SourceRange{}) {
+			continue
+		}
+		cells := projectionEnvCells(desc, p.Name, statuses, loading)
+		if len(cells) == 0 {
+			continue
+		}
+		healths := make([]string, len(cells))
+		for i := range cells {
+			healths[i] = cells[i].Marker
+		}
+		out = append(out, CodeLens{
+			Range: rangeToLSP(p.Range),
+			Data:  &CodeLensData{Intent: IntentStatusBadges, Healths: healths},
+		})
+	}
+	return out
+}
+
 // statusRollup builds the env-block roll-up text from a fetched status: a count
 // per state, led by how many are in sync, then the non-zero attention
 // categories, then any orphan/untracked projections - which live on the server

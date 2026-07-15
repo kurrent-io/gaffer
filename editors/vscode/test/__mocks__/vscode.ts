@@ -572,6 +572,82 @@ function makeFakeTerminal(options: vscode.TerminalOptions): FakeTerminal {
 	return terminal;
 }
 
+// ---- Text editor decorations ----------------------------------------------
+
+export interface FakeDecorationType extends vscode.TextEditorDecorationType {
+	readonly options: vscode.DecorationRenderOptions;
+	disposed: boolean;
+}
+
+function makeFakeDecorationType(
+	options: vscode.DecorationRenderOptions,
+): FakeDecorationType {
+	const type: FakeDecorationType = {
+		key: `deco-${state.decorationTypes.length}`,
+		options,
+		disposed: false,
+		dispose(): void {
+			type.disposed = true;
+		},
+	};
+	return type;
+}
+
+// One recorded decoration on a fake editor: the line it sits on and, when set
+// via DecorationOptions.renderOptions, the inline after-content - either text
+// or an icon path (the badge row).
+export interface FakeDecoration {
+	line: number;
+	after?: string;
+	afterIcon?: string;
+}
+
+export interface FakeTextEditor extends vscode.TextEditor {
+	// Latest decorations set per decoration type, keyed by the type's `key`. A
+	// test reads this to assert which markers landed where and their badge text.
+	// setDecorations replaces (not appends), mirroring the real API.
+	readonly decorations: Map<string, readonly FakeDecoration[]>;
+}
+
+export function makeFakeTextEditor(
+	document: vscode.TextDocument,
+): FakeTextEditor {
+	const decorations = new Map<string, readonly FakeDecoration[]>();
+	const editor = {
+		document,
+		decorations,
+		setDecorations(
+			decorationType: vscode.TextEditorDecorationType,
+			rangesOrOptions:
+				| readonly vscode.Range[]
+				| readonly vscode.DecorationOptions[],
+		): void {
+			const key = (decorationType as FakeDecorationType).key;
+			const recorded = (rangesOrOptions as readonly unknown[]).map(
+				(item): FakeDecoration => {
+					const isOptions = "range" in (item as object);
+					const range = isOptions
+						? (item as vscode.DecorationOptions).range
+						: (item as vscode.Range);
+					const rec: FakeDecoration = { line: range.start.line };
+					if (isOptions) {
+						const attach = (item as vscode.DecorationOptions).renderOptions
+							?.after;
+						if (attach?.contentText !== undefined)
+							rec.after = attach.contentText;
+						const icon = attach?.contentIconPath;
+						if (icon !== undefined)
+							rec.afterIcon = typeof icon === "string" ? icon : icon.toString();
+					}
+					return rec;
+				},
+			);
+			decorations.set(key, recorded);
+		},
+	} as unknown as FakeTextEditor;
+	return editor;
+}
+
 // ---- Webview / View providers ---------------------------------------------
 
 export interface FakeWebview extends vscode.Webview {
@@ -763,6 +839,9 @@ export interface MockState {
 	terminals: FakeTerminal[];
 	terminalClosed: EventEmitter<vscode.Terminal>;
 	statusBarItems: FakeStatusBarItem[];
+	decorationTypes: FakeDecorationType[];
+	visibleTextEditors: FakeTextEditor[];
+	visibleTextEditorsChanged: EventEmitter<readonly vscode.TextEditor[]>;
 }
 
 export const state: MockState = createInitialState();
@@ -807,6 +886,9 @@ function createInitialState(): MockState {
 		terminals: [],
 		terminalClosed: new EventEmitter(),
 		statusBarItems: [],
+		decorationTypes: [],
+		visibleTextEditors: [],
+		visibleTextEditorsChanged: new EventEmitter(),
 	};
 }
 
@@ -879,6 +961,13 @@ export const ConfigurationTarget = {
 export const StatusBarAlignment = {
 	Left: 1,
 	Right: 2,
+} as const;
+
+export const OverviewRulerLane = {
+	Left: 1,
+	Center: 2,
+	Right: 4,
+	Full: 7,
 } as const;
 
 // ---- workspace ------------------------------------------------------------
@@ -1028,8 +1117,11 @@ type WindowShape = Pick<
 	| "createTerminal"
 	| "createStatusBarItem"
 	| "onDidCloseTerminal"
+	| "createTextEditorDecorationType"
+	| "onDidChangeVisibleTextEditors"
 > & {
 	createOutputChannel(name: string, languageId?: string): vscode.OutputChannel;
+	readonly visibleTextEditors: readonly vscode.TextEditor[];
 };
 
 export const window: WindowShape = {
@@ -1125,6 +1217,22 @@ export const window: WindowShape = {
 		state.statusBarItems.push(item);
 		return item;
 	}) as typeof vscode.window.createStatusBarItem,
+	createTextEditorDecorationType(
+		options: vscode.DecorationRenderOptions,
+	): vscode.TextEditorDecorationType {
+		const type = makeFakeDecorationType(options);
+		state.decorationTypes.push(type);
+		return type;
+	},
+	get visibleTextEditors(): readonly vscode.TextEditor[] {
+		return state.visibleTextEditors;
+	},
+	onDidChangeVisibleTextEditors: ((listener, thisArgs, disposables) =>
+		state.visibleTextEditorsChanged.event(
+			listener,
+			thisArgs,
+			disposables,
+		)) as typeof vscode.window.onDidChangeVisibleTextEditors,
 };
 
 // ---- commands -------------------------------------------------------------

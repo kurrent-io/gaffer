@@ -122,10 +122,12 @@ func envsInFileOrder(envs []config.EnvDescription) []config.EnvDescription {
 }
 
 // projectionEnvCells assembles one cell per configured env for a projection, in
-// the order the environments appear in the file. An env that needs sign-in,
-// whose fetch failed, or whose status hasn't landed yet yields an unknown cell
-// with an explanatory note.
-func projectionEnvCells(desc config.Description, projName string, statuses map[string]envStatus) []projEnvCell {
+// the order the environments appear in the file. An env that needs sign-in or
+// whose fetch failed yields an unknown cell with an explanatory note; one whose
+// fetch is still in flight yields a loading cell. An env that is neither cached
+// nor in flight (e.g. status was dropped on a parse error) is omitted - there's
+// no fetch behind it, so showing a "loading" spinner would be a phantom.
+func projectionEnvCells(desc config.Description, projName string, statuses map[string]envStatus, loading map[string]bool) []projEnvCell {
 	envs := envsInFileOrder(desc.Environments)
 	out := make([]projEnvCell, 0, len(envs))
 	for _, env := range envs {
@@ -133,8 +135,11 @@ func projectionEnvCells(desc config.Description, projName string, statuses map[s
 		st, ok := statuses[env.Name]
 		switch {
 		case !ok:
-			// Not cached: either a fetch is in flight, or one hasn't been
-			// triggered yet. Either way there's nothing to show but "checking".
+			if !loading[env.Name] {
+				// No cached status and no fetch in flight: nothing to show.
+				// Matches the env-block lens, which renders nothing here.
+				continue
+			}
 			cell.Note = "checking…"
 			cell.Marker = "loading"
 		case st.Unauthenticated:
@@ -185,8 +190,8 @@ func findEntry(entries []drift.StatusEntry, name string) (drift.StatusEntry, boo
 // Column alignment isn't attempted: a hover renders in a proportional font, and
 // inline code spans collapse padding whitespace, so there's no way to line the
 // columns up short of a table (heavy) or a <pre> block (needs client-side HTML).
-func projectionHoverMarkdown(desc config.Description, proj config.ProjectionDescription, statuses map[string]envStatus) string {
-	cells := projectionEnvCells(desc, proj.Name, statuses)
+func projectionHoverMarkdown(desc config.Description, proj config.ProjectionDescription, statuses map[string]envStatus, loading map[string]bool) string {
+	cells := projectionEnvCells(desc, proj.Name, statuses, loading)
 	if len(cells) == 0 {
 		return ""
 	}

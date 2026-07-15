@@ -212,7 +212,7 @@ func TestEmitStatusBadgeLenses(t *testing.T) {
 			"prod":    {Entries: []drift.StatusEntry{named("checkout", drift.InSync, remote.StateRunning), named("orders", drift.InSync, remote.StateRunning)}},
 			"staging": {Entries: []drift.StatusEntry{named("checkout", drift.Drifted, remote.StateRunning), named("orders", drift.InSync, remote.StateRunning)}},
 		}
-		lenses := emitStatusBadgeLenses(desc, statuses)
+		lenses := emitStatusBadgeLenses(desc, statuses, nil)
 		if len(lenses) != 2 {
 			t.Fatalf("expected 2 status lenses (bad is diagnostic), got %d: %+v", len(lenses), lenses)
 		}
@@ -229,7 +229,7 @@ func TestEmitStatusBadgeLenses(t *testing.T) {
 
 	t.Run("unknown envs carry their reason, keeping the row aligned", func(t *testing.T) {
 		statuses := map[string]envStatus{"prod": {Unauthenticated: true}, "staging": {Err: errStub{}}}
-		lenses := emitStatusBadgeLenses(desc, statuses)
+		lenses := emitStatusBadgeLenses(desc, statuses, nil)
 		// prod needs sign-in (locked), staging failed (error); the row still has
 		// one entry per configured env.
 		byLine := healthsByLine(lenses)
@@ -244,7 +244,7 @@ func TestEmitStatusBadgeLenses(t *testing.T) {
 			Environments: []config.EnvDescription{{Name: "prod"}},
 		}
 		statuses := map[string]envStatus{"prod": {Entries: []drift.StatusEntry{named("checkout", drift.InSync, remote.StateRunning)}}}
-		if lenses := emitStatusBadgeLenses(unlocated, statuses); len(lenses) != 0 {
+		if lenses := emitStatusBadgeLenses(unlocated, statuses, nil); len(lenses) != 0 {
 			t.Fatalf("a projection with no header range should get no marker, got %+v", lenses)
 		}
 	})
@@ -253,7 +253,7 @@ func TestEmitStatusBadgeLenses(t *testing.T) {
 		noEnvs := config.Description{
 			Projections: []config.ProjectionDescription{{Name: "checkout", Range: config.SourceRange{StartLine: 5, EndLine: 5}}},
 		}
-		if lenses := emitStatusBadgeLenses(noEnvs, nil); len(lenses) != 0 {
+		if lenses := emitStatusBadgeLenses(noEnvs, nil, nil); len(lenses) != 0 {
 			t.Fatalf("no envs -> no marker, got %+v", lenses)
 		}
 	})
@@ -263,7 +263,7 @@ func TestEmitStatusBadgeLenses(t *testing.T) {
 			"prod":    {Entries: []drift.StatusEntry{named("checkout", drift.InSync, remote.StateFaulted)}},
 			"staging": {Entries: []drift.StatusEntry{named("checkout", drift.InSync, remote.StateRunning)}},
 		}
-		byLine := healthsByLine(emitStatusBadgeLenses(desc, statuses))
+		byLine := healthsByLine(emitStatusBadgeLenses(desc, statuses, nil))
 		if got := byLine[4]; len(got) != 2 || got[0] != "red" || got[1] != "green" {
 			t.Errorf("faulted-in-prod healths: got %v want [red green]", got)
 		}

@@ -251,7 +251,7 @@ func emitStatusEnvLenses(desc config.Description, uri string, statuses map[strin
 // marker. The lens has no command or title: it's a decoration data-carrier the
 // client consumes, riding the codeLens channel so it refreshes with the env
 // lenses.
-func emitStatusBadgeLenses(desc config.Description, statuses map[string]envStatus) []CodeLens {
+func emitStatusBadgeLenses(desc config.Description, statuses map[string]envStatus, loading map[string]bool) []CodeLens {
 	out := []CodeLens{}
 	for _, p := range desc.Projections {
 		if p.Diagnostic != nil {
@@ -260,7 +260,7 @@ func emitStatusBadgeLenses(desc config.Description, statuses map[string]envStatu
 		if p.Range == (config.SourceRange{}) {
 			continue
 		}
-		cells := projectionEnvCells(desc, p.Name, statuses)
+		cells := projectionEnvCells(desc, p.Name, statuses, loading)
 		if len(cells) == 0 {
 			continue
 		}

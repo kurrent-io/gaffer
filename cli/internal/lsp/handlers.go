@@ -277,8 +277,9 @@ func (s *Server) handleCodeLens(req *jsonrpc2.Request) (any, error) {
 		// could render sanely, so we don't emit it to one that can't.
 		if s.statusLensEnabled() {
 			statuses := s.statusCache.get(uri)
-			lenses = append(lenses, emitStatusEnvLenses(parse.Description, uri, statuses, s.statusCache.inFlightEnvs(uri))...)
-			lenses = append(lenses, emitStatusBadgeLenses(parse.Description, statuses)...)
+			loading := s.statusCache.inFlightEnvs(uri)
+			lenses = append(lenses, emitStatusEnvLenses(parse.Description, uri, statuses, loading)...)
+			lenses = append(lenses, emitStatusBadgeLenses(parse.Description, statuses, loading)...)
 		}
 		return lenses, nil
 	}
@@ -313,7 +314,7 @@ func (s *Server) handleHover(req *jsonrpc2.Request) (any, error) {
 	if !ok {
 		return nil, nil
 	}
-	md := projectionHoverMarkdown(parse.Description, proj, s.statusCache.get(uri))
+	md := projectionHoverMarkdown(parse.Description, proj, s.statusCache.get(uri), s.statusCache.inFlightEnvs(uri))
 	if md == "" {
 		return nil, nil
 	}

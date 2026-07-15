@@ -53,10 +53,11 @@ func TestProjectionEnvCells_Markers(t *testing.T) {
 		"synced": {Entries: []drift.StatusEntry{named("p", drift.InSync, remote.StateRunning)}},
 		"locked": {Unauthenticated: true},
 		"failed": {Err: errStub{}},
-		// "pending" absent from the cache -> loading.
+		// "pending" absent from the cache but has a fetch in flight -> loading.
 	}
+	loading := map[string]bool{"pending": true}
 	got := map[string]string{}
-	for _, c := range projectionEnvCells(desc, "p", statuses) {
+	for _, c := range projectionEnvCells(desc, "p", statuses, loading) {
 		got[c.Env] = c.Marker
 	}
 	want := map[string]string{
@@ -80,9 +81,9 @@ func TestProjectionEnvCells(t *testing.T) {
 		"prod":    {Entries: []drift.StatusEntry{named("checkout", drift.InSync, remote.StateRunning)}},
 		"staging": {Unauthenticated: true},
 		"dev":     {Err: errStub{}},
-		// qa: not cached at all
+		// qa: not cached, but a fetch is in flight -> loading.
 	}
-	cells := projectionEnvCells(desc, "checkout", statuses)
+	cells := projectionEnvCells(desc, "checkout", statuses, map[string]bool{"qa": true})
 	if len(cells) != 4 {
 		t.Fatalf("expected one cell per env, got %d", len(cells))
 	}
@@ -109,9 +110,18 @@ func TestProjectionEnvCells_ProjectionNotInEntries(t *testing.T) {
 	statuses := map[string]envStatus{
 		"prod": {Entries: []drift.StatusEntry{named("other", drift.InSync, remote.StateRunning)}},
 	}
-	cells := projectionEnvCells(desc, "checkout", statuses)
+	cells := projectionEnvCells(desc, "checkout", statuses, nil)
 	if len(cells) != 1 || cells[0].Known || cells[0].Note != "no status" {
 		t.Errorf("a projection absent from a clean fetch should degrade to 'no status': %+v", cells)
+	}
+}
+
+func TestProjectionEnvCells_UncachedNotInFlightOmitted(t *testing.T) {
+	// Status was dropped (e.g. parse error) so the env is neither cached nor in
+	// flight: it must be omitted, not shown as a phantom "loading".
+	desc := config.Description{Environments: []config.EnvDescription{{Name: "prod"}}}
+	if cells := projectionEnvCells(desc, "p", nil, nil); len(cells) != 0 {
+		t.Errorf("an uncached, not-in-flight env should be omitted, got %+v", cells)
 	}
 }
 
@@ -125,7 +135,7 @@ func TestProjectionEnvCells_FileOrder(t *testing.T) {
 	}}
 	st := envStatus{Entries: []drift.StatusEntry{named("p", drift.InSync, remote.StateRunning)}}
 	statuses := map[string]envStatus{"zeta": st, "alpha": st, "quoted": st}
-	cells := projectionEnvCells(desc, "p", statuses)
+	cells := projectionEnvCells(desc, "p", statuses, nil)
 	if len(cells) != 3 || cells[0].Env != "zeta" || cells[1].Env != "alpha" || cells[2].Env != "quoted" {
 		t.Errorf("env order: got [%s %s %s] want [zeta alpha quoted]", cells[0].Env, cells[1].Env, cells[2].Env)
 	}
@@ -164,7 +174,7 @@ func TestProjectionHoverMarkdown_SanitizesEnvName(t *testing.T) {
 	statuses := map[string]envStatus{
 		weird: {Entries: []drift.StatusEntry{named("p", drift.InSync, remote.StateRunning)}},
 	}
-	md := projectionHoverMarkdown(desc, config.ProjectionDescription{Name: "p"}, statuses)
+	md := projectionHoverMarkdown(desc, config.ProjectionDescription{Name: "p"}, statuses, nil)
 	if !strings.Contains(md, "`prod x`") {
 		t.Errorf("env name should render as a single unbroken code span: %s", md)
 	}
@@ -181,7 +191,7 @@ func TestProjectionHoverMarkdown(t *testing.T) {
 		"prod":    {Entries: []drift.StatusEntry{named("checkout", drift.InSync, remote.StateRunning)}},
 		"staging": {Entries: []drift.StatusEntry{named("checkout", drift.Drifted, remote.StateFaulted)}},
 	}
-	md := projectionHoverMarkdown(desc, config.ProjectionDescription{Name: "checkout"}, statuses)
+	md := projectionHoverMarkdown(desc, config.ProjectionDescription{Name: "checkout"}, statuses, nil)
 
 	for _, want := range []string{
 		"`prod` · `in sync` · `running`",
@@ -202,7 +212,7 @@ func TestProjectionHoverMarkdown(t *testing.T) {
 func TestProjectionHoverMarkdown_UnknownCellRendersNote(t *testing.T) {
 	desc := config.Description{Environments: []config.EnvDescription{{Name: "prod"}}}
 	statuses := map[string]envStatus{"prod": {Unauthenticated: true}}
-	md := projectionHoverMarkdown(desc, config.ProjectionDescription{Name: "p"}, statuses)
+	md := projectionHoverMarkdown(desc, config.ProjectionDescription{Name: "p"}, statuses, nil)
 	if !strings.Contains(md, "`prod` · `sign-in needed`") {
 		t.Errorf("an unknown env should show its note in place of a verdict:\n%s", md)
 	}
@@ -213,7 +223,7 @@ func TestProjectionHoverMarkdown_UnknownCellRendersNote(t *testing.T) {
 
 func TestProjectionHoverMarkdown_NoEnvsIsEmpty(t *testing.T) {
 	desc := config.Description{Projections: []config.ProjectionDescription{{Name: "p"}}}
-	if md := projectionHoverMarkdown(desc, config.ProjectionDescription{Name: "p"}, nil); md != "" {
+	if md := projectionHoverMarkdown(desc, config.ProjectionDescription{Name: "p"}, nil, nil); md != "" {
 		t.Errorf("no configured envs should render no hover, got %q", md)
 	}
 }
@@ -223,7 +233,7 @@ func TestProjectionHoverMarkdown_NotDeployedOmitsState(t *testing.T) {
 	statuses := map[string]envStatus{
 		"prod": {Entries: []drift.StatusEntry{named("p", drift.NotDeployed, remote.StateUnknown)}},
 	}
-	md := projectionHoverMarkdown(desc, config.ProjectionDescription{Name: "p"}, statuses)
+	md := projectionHoverMarkdown(desc, config.ProjectionDescription{Name: "p"}, statuses, nil)
 	if !strings.Contains(md, "`prod` · `not deployed`") {
 		t.Errorf("not-deployed row should show env and verdict:\n%s", md)
 	}

@@ -51,6 +51,8 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 		return s.handleDidSave(req)
 	case MethodCodeLens:
 		return s.handleCodeLens(req)
+	case MethodHover:
+		return s.handleHover(req)
 	case MethodWorkspaceSymbol:
 		return s.handleWorkspaceSymbol(req)
 	case MethodDidChangeWatchedFiles:
@@ -114,16 +116,23 @@ func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (any
 		}
 	}
 	s.initialized = true
-	return InitializeResult{
-		Capabilities: ServerCapabilities{
-			TextDocumentSync: TextDocumentSyncOptions{
-				OpenClose: true,
-				Change:    TextDocumentSyncFull,
-				Save:      true,
-			},
-			CodeLensProvider:        &CodeLensOptions{},
-			WorkspaceSymbolProvider: &WorkspaceSymbolOptions{},
+	caps := ServerCapabilities{
+		TextDocumentSync: TextDocumentSyncOptions{
+			OpenClose: true,
+			Change:    TextDocumentSyncFull,
+			Save:      true,
 		},
+		CodeLensProvider:        &CodeLensOptions{},
+		WorkspaceSymbolProvider: &WorkspaceSymbolOptions{},
+	}
+	// Hover serves per-projection deploy status, part of the opt-in status
+	// surface - advertise it only to a client that asked for that surface, so
+	// editors without it keep their own hover behaviour.
+	if s.statusLensCapable {
+		caps.HoverProvider = &HoverOptions{}
+	}
+	return InitializeResult{
+		Capabilities: caps,
 		ServerInfo: ServerInfo{
 			Name:    "gaffer-lsp",
 			Version: s.opts.Version,
@@ -267,11 +276,52 @@ func (s *Server) handleCodeLens(req *jsonrpc2.Request) (any, error) {
 		// the informational roll-up isn't a routable command a generic client
 		// could render sanely, so we don't emit it to one that can't.
 		if s.statusLensEnabled() {
-			lenses = append(lenses, emitStatusEnvLenses(parse.Description, uri, s.statusCache.get(uri), s.statusCache.inFlightEnvs(uri))...)
+			statuses := s.statusCache.get(uri)
+			lenses = append(lenses, emitStatusEnvLenses(parse.Description, uri, statuses, s.statusCache.inFlightEnvs(uri))...)
+			lenses = append(lenses, emitStatusBadgeLenses(parse.Description, statuses)...)
 		}
 		return lenses, nil
 	}
 	return emitEntryScriptLenses(s.docs.AllParses(), uri), nil
+}
+
+// handleHover serves a per-projection deploy-status tooltip on a [[projection]]
+// header: a table of every configured env's runtime state and drift verdict,
+// read from the same status cache the env-block lenses use. Returns nil (no
+// hover) when the client didn't opt into the status surface, the URI isn't a
+// gaffer.toml, or the cursor isn't on a projection header.
+func (s *Server) handleHover(req *jsonrpc2.Request) (any, error) {
+	if !s.statusLensEnabled() {
+		return nil, nil
+	}
+	if req.Params == nil {
+		return nil, nil
+	}
+	params, jerr := decodeParams[HoverParams](req, "hover")
+	if jerr != nil {
+		return nil, jerr
+	}
+	uri := params.TextDocument.URI
+	if !isGafferConfig(uri) {
+		return nil, nil
+	}
+	parse, ok := s.docs.GetParse(uri)
+	if !ok {
+		return nil, nil
+	}
+	proj, ok := projectionAt(parse.Description, params.Position.Line)
+	if !ok {
+		return nil, nil
+	}
+	md := projectionHoverMarkdown(parse.Description, proj, s.statusCache.get(uri))
+	if md == "" {
+		return nil, nil
+	}
+	r := rangeToLSP(proj.Range)
+	return Hover{
+		Contents: MarkupContent{Kind: MarkupKindMarkdown, Value: md},
+		Range:    &r,
+	}, nil
 }
 
 func (s *Server) handleWorkspaceSymbol(req *jsonrpc2.Request) (any, error) {

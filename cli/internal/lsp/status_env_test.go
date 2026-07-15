@@ -183,6 +183,93 @@ func TestEmitStatusEnvLenses(t *testing.T) {
 	})
 }
 
+func TestEmitStatusBadgeLenses(t *testing.T) {
+	desc := config.Description{
+		Projections: []config.ProjectionDescription{
+			{Name: "checkout", Range: config.SourceRange{StartLine: 5, EndLine: 5}},
+			{Name: "orders", Range: config.SourceRange{StartLine: 9, EndLine: 9}},
+			{Name: "bad", Range: config.SourceRange{StartLine: 12, EndLine: 12}, Diagnostic: &config.Diagnostic{Message: "x"}},
+		},
+		Environments: []config.EnvDescription{{Name: "prod"}, {Name: "staging"}},
+	}
+
+	healthsByLine := func(lenses []CodeLens) map[int][]string {
+		out := map[int][]string{}
+		for _, l := range lenses {
+			if l.Command != nil {
+				t.Errorf("a status lens carries no command: %+v", l.Command)
+			}
+			if l.Data == nil || l.Data.Intent != IntentStatusBadges {
+				t.Fatalf("intent: %+v", l.Data)
+			}
+			out[l.Range.Start.Line] = l.Data.Healths
+		}
+		return out
+	}
+
+	t.Run("per-env healths in config order, anchored on the header, diagnostic skipped", func(t *testing.T) {
+		statuses := map[string]envStatus{
+			"prod":    {Entries: []drift.StatusEntry{named("checkout", drift.InSync, remote.StateRunning), named("orders", drift.InSync, remote.StateRunning)}},
+			"staging": {Entries: []drift.StatusEntry{named("checkout", drift.Drifted, remote.StateRunning), named("orders", drift.InSync, remote.StateRunning)}},
+		}
+		lenses := emitStatusBadgeLenses(desc, statuses)
+		if len(lenses) != 2 {
+			t.Fatalf("expected 2 status lenses (bad is diagnostic), got %d: %+v", len(lenses), lenses)
+		}
+		byLine := healthsByLine(lenses)
+		// checkout (source line 5 -> LSP 4): prod green, staging drifted -> orange.
+		if got := byLine[4]; len(got) != 2 || got[0] != "green" || got[1] != "orange" {
+			t.Errorf("checkout healths: got %v want [green orange]", got)
+		}
+		// orders (source line 9 -> LSP 8): green in both envs.
+		if got := byLine[8]; len(got) != 2 || got[0] != "green" || got[1] != "green" {
+			t.Errorf("orders healths: got %v want [green green]", got)
+		}
+	})
+
+	t.Run("unknown envs carry their reason, keeping the row aligned", func(t *testing.T) {
+		statuses := map[string]envStatus{"prod": {Unauthenticated: true}, "staging": {Err: errStub{}}}
+		lenses := emitStatusBadgeLenses(desc, statuses)
+		// prod needs sign-in (locked), staging failed (error); the row still has
+		// one entry per configured env.
+		byLine := healthsByLine(lenses)
+		if got := byLine[4]; len(got) != 2 || got[0] != "locked" || got[1] != "error" {
+			t.Errorf("unknown-reason healths: got %v want [locked error]", got)
+		}
+	})
+
+	t.Run("a projection with no located header emits no marker", func(t *testing.T) {
+		unlocated := config.Description{
+			Projections:  []config.ProjectionDescription{{Name: "checkout"}}, // zero range
+			Environments: []config.EnvDescription{{Name: "prod"}},
+		}
+		statuses := map[string]envStatus{"prod": {Entries: []drift.StatusEntry{named("checkout", drift.InSync, remote.StateRunning)}}}
+		if lenses := emitStatusBadgeLenses(unlocated, statuses); len(lenses) != 0 {
+			t.Fatalf("a projection with no header range should get no marker, got %+v", lenses)
+		}
+	})
+
+	t.Run("a projection with no configured envs emits no marker", func(t *testing.T) {
+		noEnvs := config.Description{
+			Projections: []config.ProjectionDescription{{Name: "checkout", Range: config.SourceRange{StartLine: 5, EndLine: 5}}},
+		}
+		if lenses := emitStatusBadgeLenses(noEnvs, nil); len(lenses) != 0 {
+			t.Fatalf("no envs -> no marker, got %+v", lenses)
+		}
+	})
+
+	t.Run("faulted reads red for that env", func(t *testing.T) {
+		statuses := map[string]envStatus{
+			"prod":    {Entries: []drift.StatusEntry{named("checkout", drift.InSync, remote.StateFaulted)}},
+			"staging": {Entries: []drift.StatusEntry{named("checkout", drift.InSync, remote.StateRunning)}},
+		}
+		byLine := healthsByLine(emitStatusBadgeLenses(desc, statuses))
+		if got := byLine[4]; len(got) != 2 || got[0] != "red" || got[1] != "green" {
+			t.Errorf("faulted-in-prod healths: got %v want [red green]", got)
+		}
+	})
+}
+
 type errStub struct{}
 
 func (errStub) Error() string { return "boom" }

@@ -245,15 +245,23 @@ export function getLanguageClient(): LanguageClient | undefined {
 // Must match MethodRefreshStatus in cli/internal/lsp/protocol.go.
 const refreshStatusMethod = "gaffer/refreshStatus";
 
-// requestStatusRefresh asks the LSP server to re-fetch deploy status for one
-// gaffer.toml after an out-of-band auth change (e.g. a sign-in completing).
-// Fire-and-forget: the fresh status arrives via the server's codeLens refresh
-// once it lands. No-op when the client isn't running (untrusted workspace, CLI
-// missing, etc.).
-export function requestStatusRefresh(uri: vscode.Uri): void {
+// requestStatusRefresh asks the LSP server to re-read deploy status for one
+// gaffer.toml. Pass poll: true for a routine liveness poll (the server refreshes
+// runtime state only, reusing the cached drift verdict); omit it for a
+// change-driven refresh such as a sign-in completing (the server recomputes
+// drift). Fire-and-forget: the fresh status arrives via the server's codeLens
+// refresh once it lands. No-op when the client isn't running (untrusted
+// workspace, CLI missing, etc.).
+export function requestStatusRefresh(
+	uri: vscode.Uri,
+	opts: { poll?: boolean } = {},
+): void {
 	const c = client;
 	if (!c) return;
-	void c.sendNotification(refreshStatusMethod, { uri: uri.toString() });
+	void c.sendNotification(refreshStatusMethod, {
+		uri: uri.toString(),
+		poll: opts.poll ?? false,
+	});
 }
 
 // Restart on the first MAX_RESTART_COUNT closes within

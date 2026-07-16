@@ -170,7 +170,27 @@ describe("startLanguageClient invokerId wiring", () => {
 		expect(sentNotifications).toEqual([
 			{
 				method: "gaffer/refreshStatus",
-				params: { uri: "file:///ws/gaffer.toml" },
+				params: { uri: "file:///ws/gaffer.toml", poll: false },
+			},
+		]);
+	});
+
+	it("requestStatusRefresh marks a poll refresh with poll: true", async () => {
+		setTrusted(true);
+		spawnMock.mockImplementation(() => fakeChild());
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => "abc-id",
+			isOptedOut: () => false,
+		});
+		await flushAllMicrotasks();
+		const uri = {
+			toString: () => "file:///ws/gaffer.toml",
+		} as unknown as Parameters<typeof requestStatusRefresh>[0];
+		requestStatusRefresh(uri, { poll: true });
+		expect(sentNotifications).toEqual([
+			{
+				method: "gaffer/refreshStatus",
+				params: { uri: "file:///ws/gaffer.toml", poll: true },
 			},
 		]);
 	});

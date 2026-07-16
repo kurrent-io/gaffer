@@ -465,10 +465,13 @@ type ProjectionDetailsParams struct {
 	Name      string `json:"name"`
 }
 
-// RefreshStatusParams identifies the gaffer.toml whose deploy status the
-// editor wants re-fetched after an out-of-band auth change (e.g. sign-in).
+// RefreshStatusParams identifies the gaffer.toml whose deploy status the editor
+// wants re-read. Poll marks a routine liveness poll: refresh runtime state only,
+// reusing the cached drift verdict. Without it (a sign-in, or any change-driven
+// request) the drift verdict is recomputed.
 type RefreshStatusParams struct {
-	URI string `json:"uri"`
+	URI  string `json:"uri"`
+	Poll bool   `json:"poll,omitempty"`
 }
 
 // ProjectionDetailsResult is the bits of a projection's parsed

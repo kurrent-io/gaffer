@@ -9,6 +9,7 @@ import { getOrCreateKeyringPassword } from "./keyring-secret.js";
 import type { Manifest } from "./discovery/schemas.js";
 import { LspCodeLensProvider } from "./lsp/lens-provider.js";
 import { StatusBadges } from "./lsp/status-badges.js";
+import { StatusPoller } from "./lsp/status-poller.js";
 import { StepProvider } from "./panels/step.js";
 import { StateProvider } from "./panels/state.js";
 import { StatusViewProvider } from "./panels/status.js";
@@ -286,11 +287,18 @@ async function activateAfterTelemetry(
 	const lspCodeLens = new LspCodeLensProvider((uri, cells) =>
 		statusBadges.set(uri, cells),
 	);
+	// Keep the per-projection badges tracking live runtime state while a
+	// gaffer.toml is visible. poll: true tells the server to refresh runtime only
+	// (reusing the cached drift verdict), so each tick stays cheap.
+	const statusPoller = new StatusPoller((uri) =>
+		requestStatusRefresh(uri, { poll: true }),
+	);
 	context.subscriptions.push(
 		stepProvider,
 		stateProvider,
 		lspCodeLens,
 		statusBadges,
+		statusPoller,
 	);
 
 	// Single source of truth for the latest manifest. The LSP spawn

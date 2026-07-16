@@ -13,9 +13,11 @@ import (
 
 // TestFetchEnvStatus_Integration exercises the real fetch path (dial ->
 // StatusAll -> OperateTarget) against a live KurrentDB, which the unit tests
-// can't reach (they inject a fake fetcher).
+// can't reach (they inject a fake fetcher). With no watch connection up for the
+// URI, fetchEnvStatus dials a fresh one (the borrow fallback).
 func TestFetchEnvStatus_Integration(t *testing.T) {
 	root := t.TempDir()
+	s := NewServer(ServerOptions{})
 
 	t.Run("reachable env yields entries and a target", func(t *testing.T) {
 		cfg, err := config.Parse([]byte("[env.it]\nconnection = \"" + testutil.ConnectionString() + "\"\n"))
@@ -25,7 +27,7 @@ func TestFetchEnvStatus_Integration(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		st := fetchEnvStatus(ctx, root, cfg, "it")
+		st := s.fetchEnvStatus(ctx, root, cfg, "file:///it/gaffer.toml", "it")
 		if st.Err != nil {
 			t.Fatalf("unexpected error against the integration DB: %v", st.Err)
 		}
@@ -47,7 +49,7 @@ func TestFetchEnvStatus_Integration(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		st := fetchEnvStatus(ctx, root, cfg, "dead")
+		st := s.fetchEnvStatus(ctx, root, cfg, "file:///dead/gaffer.toml", "dead")
 		if st.Err == nil {
 			t.Fatal("expected an error dialing an unreachable host")
 		}

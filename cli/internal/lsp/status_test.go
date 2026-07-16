@@ -104,6 +104,11 @@ func testServer(fetch statusFetchFunc) *Server {
 	s.runCtxFn = func() context.Context { return ctx }
 	s.statusFetch = fetch
 	s.statusLensCapable = true // these tests exercise the status surface
+	// No-op the definition watch by default: the runtime watchRun dials and
+	// reconnects forever, which would wedge any test that goes through the parse
+	// path and then waits on the wg (runCtx here never cancels). Reconcile tests
+	// override this with a recorder.
+	s.watchRun = func(context.Context, envWatchSpec) {}
 	return s
 }
 
@@ -120,7 +125,7 @@ connection = "esdb://prod:2113"
 
 	var mu sync.Mutex
 	seen := map[string]int{}
-	s := testServer(func(_ context.Context, gotRoot string, _ *config.Config, env string) envStatus {
+	s := testServer(func(_ context.Context, gotRoot string, _ *config.Config, _, env string) envStatus {
 		mu.Lock()
 		seen[env]++
 		mu.Unlock()
@@ -131,7 +136,7 @@ connection = "esdb://prod:2113"
 	})
 	s.docs.Open(uri, content)
 
-	s.refreshStatus(uri)
+	s.refreshStatus(uri, true)
 	s.wg.Wait()
 
 	got := s.statusCache.get(uri)
@@ -152,15 +157,15 @@ func TestRefreshStatus_SingleFlightAcrossCalls(t *testing.T) {
 
 	var calls atomic.Int64
 	release := make(chan struct{})
-	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
+	s := testServer(func(context.Context, string, *config.Config, string, string) envStatus {
 		calls.Add(1)
 		<-release // hold the fetch in flight
 		return envStatus{}
 	})
 	s.docs.Open(uri, content)
 
-	s.refreshStatus(uri) // marks prod in-flight and spawns the (blocked) fetch
-	s.refreshStatus(uri) // prod still in flight -> skipped
+	s.refreshStatus(uri, true) // marks prod in-flight and spawns the (blocked) fetch
+	s.refreshStatus(uri, true) // prod still in flight -> skipped
 	close(release)
 	s.wg.Wait()
 
@@ -174,13 +179,13 @@ func TestRefreshStatus_InvalidConfigIsNoop(t *testing.T) {
 	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", "[unterminated"))
 
 	var fetched atomic.Bool
-	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
+	s := testServer(func(context.Context, string, *config.Config, string, string) envStatus {
 		fetched.Store(true)
 		return envStatus{}
 	})
 	s.docs.Open(uri, "[unterminated")
 
-	s.refreshStatus(uri)
+	s.refreshStatus(uri, true)
 	s.wg.Wait()
 
 	if fetched.Load() {
@@ -195,7 +200,7 @@ func TestRefreshStatus_ParseFailureDropsCachedStatus(t *testing.T) {
 	root := t.TempDir()
 	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", "[unterminated"))
 
-	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
+	s := testServer(func(context.Context, string, *config.Config, string, string) envStatus {
 		return envStatus{}
 	})
 	s.docs.Open(uri, "[unterminated")
@@ -205,7 +210,7 @@ func TestRefreshStatus_ParseFailureDropsCachedStatus(t *testing.T) {
 		t.Fatal("precondition: cache should be populated")
 	}
 
-	s.refreshStatus(uri)
+	s.refreshStatus(uri, true)
 	s.wg.Wait()
 
 	if s.statusCache.get(uri) != nil {
@@ -215,12 +220,12 @@ func TestRefreshStatus_ParseFailureDropsCachedStatus(t *testing.T) {
 
 func TestRefreshStatus_NonConfigURIIsNoop(t *testing.T) {
 	var fetched atomic.Bool
-	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
+	s := testServer(func(context.Context, string, *config.Config, string, string) envStatus {
 		fetched.Store(true)
 		return envStatus{}
 	})
 
-	s.refreshStatus("file:///x/notgaffer.toml")
+	s.refreshStatus("file:///x/notgaffer.toml", true)
 	s.wg.Wait()
 
 	if fetched.Load() {
@@ -236,12 +241,12 @@ func TestRefreshStatus_RecoversFetchPanic(t *testing.T) {
 	root := t.TempDir()
 	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", envOnlyConfig))
 
-	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
+	s := testServer(func(context.Context, string, *config.Config, string, string) envStatus {
 		panic("boom")
 	})
 	s.docs.Open(uri, envOnlyConfig)
 
-	s.refreshStatus(uri)
+	s.refreshStatus(uri, true)
 	s.wg.Wait() // must return - a recovered panic, not a process crash
 
 	got := s.statusCache.get(uri)
@@ -258,8 +263,8 @@ func TestSafeStatusFetch_ScrubsExpandedConnectionFromPanicLog(t *testing.T) {
 
 	// A crash deep in the client carries the ${VAR}-expanded connection, not
 	// the toml literal - so scrubbing only the raw connection would leak the
-	// secret. This guards the expanded-form scrub in safeStatusFetch.
-	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
+	// secret. This guards the expanded-form scrub in safeFetch.
+	s := testServer(func(context.Context, string, *config.Config, string, string) envStatus {
 		panic("dial failed: kurrentdb://user:s3cr3t@host:2113")
 	})
 	s.docs.Open(uri, cfgSrc)
@@ -269,7 +274,7 @@ func TestSafeStatusFetch_ScrubsExpandedConnectionFromPanicLog(t *testing.T) {
 	log.SetOutput(&buf)
 	t.Cleanup(func() { log.SetOutput(old) })
 
-	s.refreshStatus(uri)
+	s.refreshStatus(uri, true)
 	s.wg.Wait()
 
 	if strings.Contains(buf.String(), "s3cr3t") {
@@ -283,7 +288,7 @@ func TestHandleDidOpen_TriggersStatusFetch(t *testing.T) {
 	uri := pathToURI(cfgPath)
 
 	var fetched atomic.Bool
-	s := testServer(func(_ context.Context, _ string, _ *config.Config, env string) envStatus {
+	s := testServer(func(_ context.Context, _ string, _ *config.Config, _, env string) envStatus {
 		fetched.Store(true)
 		return envStatus{Target: env + "-cluster"}
 	})
@@ -312,7 +317,7 @@ func TestHandleRefreshStatus_TriggersFetch(t *testing.T) {
 	cfgPath := writeWorkspaceFile(t, root, "gaffer.toml", envOnlyConfig)
 	uri := pathToURI(cfgPath)
 
-	s := testServer(func(_ context.Context, _ string, _ *config.Config, env string) envStatus {
+	s := testServer(func(_ context.Context, _ string, _ *config.Config, _, env string) envStatus {
 		return envStatus{Target: env + "-cluster"}
 	})
 	s.docs.Open(uri, envOnlyConfig)
@@ -333,7 +338,7 @@ func TestHandleRefreshStatus_TriggersFetch(t *testing.T) {
 
 func TestHandleDidClose_DropsStatus(t *testing.T) {
 	uri := "file:///ws/gaffer.toml"
-	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
+	s := testServer(func(context.Context, string, *config.Config, string, string) envStatus {
 		return envStatus{}
 	})
 	s.statusCache.store(uri, "prod", 0, envStatus{Target: "prod-cluster"})
@@ -358,7 +363,7 @@ func TestHandleDidSave_TriggersStatusFetch(t *testing.T) {
 	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", envOnlyConfig))
 
 	var fetched atomic.Bool
-	s := testServer(func(_ context.Context, _ string, _ *config.Config, env string) envStatus {
+	s := testServer(func(_ context.Context, _ string, _ *config.Config, _, env string) envStatus {
 		fetched.Store(true)
 		return envStatus{Target: env + "-cluster"}
 	})
@@ -388,14 +393,14 @@ func TestRefreshStatus_DisabledWithoutStatusLensCapability(t *testing.T) {
 	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", envOnlyConfig))
 
 	var fetched atomic.Bool
-	s := testServer(func(context.Context, string, *config.Config, string) envStatus {
+	s := testServer(func(context.Context, string, *config.Config, string, string) envStatus {
 		fetched.Store(true)
 		return envStatus{}
 	})
 	s.statusLensCapable = false // client did not opt into the status surface
 	s.docs.Open(uri, envOnlyConfig)
 
-	s.refreshStatus(uri)
+	s.refreshStatus(uri, true)
 	s.wg.Wait()
 
 	if fetched.Load() {

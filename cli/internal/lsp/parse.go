@@ -54,6 +54,9 @@ func (s *Server) parseAndPublish(ctx context.Context, uri string) {
 	if !applied {
 		return
 	}
+	// The projection or env set may have changed - bring the definition-stream
+	// subscriptions in line so deploys to the current set are still caught.
+	s.reconcileWatches(uri)
 	// A new parse may have changed which entry scripts are
 	// projection entries (or shifted projection metadata). Open
 	// .js buffers showing entry-script lenses derived from the
@@ -104,6 +107,15 @@ func (s *Server) publishDiagnostics(uri string, diags []lspDiagnostic) {
 // file under the workspace. Built from project.ConfigFileName so the
 // filename's one source of truth stays in the project package.
 const gafferConfigGlob = "**/" + project.ConfigFileName
+
+// jsSourceGlob watches projection source files so an on-disk source edit
+// refreshes the status surface (see applyWatchedFileEvents). sourceRefreshKey
+// is the debouncer key coalescing a burst of such events into one refresh; it's
+// not a URI, so it never collides with the per-URI parse debounce.
+const (
+	jsSourceGlob     = "**/*.js"
+	sourceRefreshKey = "\x00source-refresh"
+)
 
 // isGafferConfig is the parse-trigger gate. V1: any URI whose
 // scheme is `file://` and whose basename matches gafferConfigName.

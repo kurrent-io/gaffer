@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -85,6 +86,69 @@ default = true
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
 	<-done
+}
+
+func TestServer_ActionsLensGatedOnStatusSurface(t *testing.T) {
+	// The per-projection "actions.." lens is a vscode-only surface: present on a
+	// toml's lenses only when the client opted into statusLens, absent otherwise.
+	toml := `[[projection]]
+name = "checkout"
+entry = "checkout.js"
+
+[env.local]
+connection = "kurrentdb://localhost:2113?tls=false"
+default = true
+`
+	countActions := func(t *testing.T, statusLens bool) int {
+		t.Helper()
+		srv, cli := pipePair()
+		ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+		defer cancel()
+
+		root := t.TempDir()
+		cfg := writeWorkspaceFile(t, root, "gaffer.toml", toml)
+		tomlURI := pathToURI(cfg)
+
+		server, done := startServerWithStore(ctx, srv, ServerOptions{})
+		stub := &clientStub{}
+		conn := newClientConnStub(ctx, cli, stub)
+		defer func() { _ = conn.Close() }()
+
+		init := &InitializeParams{WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}}}
+		if statusLens {
+			init.InitOptions = json.RawMessage(`{"statusLens":true}`)
+		}
+		_ = conn.Call(ctx, MethodInitialize, init, &InitializeResult{})
+		_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+		waitFor(t, func() bool {
+			_, ok := server.docs.GetParse(tomlURI)
+			return ok
+		}, waitForTimeout)
+
+		var lenses []CodeLens
+		if err := conn.Call(ctx, MethodCodeLens, CodeLensParams{
+			TextDocument: TextDocumentIdentifier{URI: tomlURI},
+		}, &lenses); err != nil {
+			t.Fatalf("codeLens: %v", err)
+		}
+		n := 0
+		for _, l := range lenses {
+			if l.Data != nil && l.Data.Intent == IntentActions {
+				n++
+			}
+		}
+		_ = conn.Call(ctx, MethodShutdown, nil, nil)
+		_ = conn.Notify(ctx, MethodExit, nil)
+		<-done
+		return n
+	}
+
+	if n := countActions(t, true); n != 1 {
+		t.Errorf("with statusLens: got %d actions lenses, want 1", n)
+	}
+	if n := countActions(t, false); n != 0 {
+		t.Errorf("without statusLens: got %d actions lenses, want 0", n)
+	}
 }
 
 func TestServer_CodeLensOnNonEntryScriptReturnsEmpty(t *testing.T) {

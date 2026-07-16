@@ -270,6 +270,66 @@ func TestEmitStatusBadgeLenses(t *testing.T) {
 	})
 }
 
+func TestEmitActionsLenses(t *testing.T) {
+	const uri = "file:///w/gaffer.toml"
+	envs := []config.EnvDescription{{Name: "prod"}, {Name: "local"}}
+	desc := config.Description{
+		Projections: []config.ProjectionDescription{
+			{Name: "checkout", Range: config.SourceRange{StartLine: 5, EndLine: 5}},
+			{Name: "orders", Range: config.SourceRange{StartLine: 9, EndLine: 9}},
+			{Name: "bad", Range: config.SourceRange{StartLine: 12, EndLine: 12}, Diagnostic: &config.Diagnostic{Message: "x"}},
+			{Name: "unlocated"}, // zero range
+		},
+		Environments: envs,
+	}
+
+	t.Run("one lens per located, non-diagnostic projection", func(t *testing.T) {
+		lenses := emitActionsLenses(desc, uri)
+		if len(lenses) != 2 {
+			t.Fatalf("expected 2 actions lenses (bad diagnostic + unlocated skipped), got %d: %+v", len(lenses), lenses)
+		}
+		byLine := map[int]CodeLens{}
+		for _, l := range lenses {
+			byLine[l.Range.Start.Line] = l
+		}
+		// checkout on source line 5 -> LSP line 4; orders on 9 -> 8.
+		for _, want := range []struct {
+			line int
+			name string
+		}{{4, "checkout"}, {8, "orders"}} {
+			l, ok := byLine[want.line]
+			if !ok {
+				t.Fatalf("no actions lens on line %d", want.line)
+			}
+			if l.Data == nil || l.Data.Intent != IntentActions {
+				t.Errorf("intent on line %d: %+v", want.line, l.Data)
+			}
+			if l.Command == nil || l.Command.Title != "actions.." || l.Command.Command != CommandProjectionActions {
+				t.Fatalf("command on line %d: %+v", want.line, l.Command)
+			}
+			args, ok := l.Command.Arguments[0].(projectionActionsArgs)
+			if !ok {
+				t.Fatalf("args type on line %d: %T", want.line, l.Command.Arguments[0])
+			}
+			if args.Name != want.name || args.ConfigURI != uri {
+				t.Errorf("args on line %d: got %+v", want.line, args)
+			}
+			if len(args.Envs) != 2 || args.Envs[0].Name != "prod" || args.Envs[1].Name != "local" {
+				t.Errorf("args envs on line %d: got %+v", want.line, args.Envs)
+			}
+		}
+	})
+
+	t.Run("no configured envs -> no lenses", func(t *testing.T) {
+		noEnvs := config.Description{
+			Projections: []config.ProjectionDescription{{Name: "checkout", Range: config.SourceRange{StartLine: 5, EndLine: 5}}},
+		}
+		if lenses := emitActionsLenses(noEnvs, uri); len(lenses) != 0 {
+			t.Fatalf("no envs -> no actions lens, got %+v", lenses)
+		}
+	})
+}
+
 type errStub struct{}
 
 func (errStub) Error() string { return "boom" }

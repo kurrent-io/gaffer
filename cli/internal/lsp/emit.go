@@ -187,6 +187,17 @@ type signInArgs struct {
 	ConfigURI string `json:"configURI"`
 }
 
+// projectionActionsArgs is the Command.Arguments[0] payload for the
+// per-projection "actions.." lens: the projection to act on, its declaring
+// gaffer.toml, and the configured environments so the client can build the
+// env-grouped action menu without re-reading the config. Mirrors
+// projectionPickArgs' shape - the client already knows this vocabulary.
+type projectionActionsArgs struct {
+	Name      string                  `json:"name"`
+	ConfigURI string                  `json:"configURI"`
+	Envs      []config.EnvDescription `json:"envs,omitempty"`
+}
+
 // emitStatusEnvLenses renders one env-block deploy-status lens per configured
 // [env.<name>] with a located header. From the fetched status keyed by env
 // name: an unauthenticated env gets a sign-in action; a failed fetch gets a
@@ -271,6 +282,40 @@ func emitStatusBadgeLenses(desc config.Description, statuses map[string]envStatu
 		out = append(out, CodeLens{
 			Range: rangeToLSP(p.Range),
 			Data:  &CodeLensData{Intent: IntentStatusBadges, Healths: healths},
+		})
+	}
+	return out
+}
+
+// emitActionsLenses renders one "actions.." lens per located, non-diagnostic
+// [[projection]] header - the entry point to the per-projection action menu
+// (diff against deployed today; operate / history later). Emitted only on the
+// status surface (a vscode-only capability) and only when the config declares
+// at least one environment, since every action in the menu targets an env. A
+// projection with a projection-level diagnostic or no anchorable header gets no
+// lens, matching the status badge emitter.
+func emitActionsLenses(desc config.Description, uri string) []CodeLens {
+	out := []CodeLens{}
+	if len(desc.Environments) == 0 {
+		return out
+	}
+	for _, p := range desc.Projections {
+		if p.Diagnostic != nil {
+			continue
+		}
+		if p.Range == (config.SourceRange{}) {
+			continue
+		}
+		out = append(out, CodeLens{
+			Range: rangeToLSP(p.Range),
+			Command: &Command{
+				Title:   "actions..",
+				Command: CommandProjectionActions,
+				Arguments: []any{
+					projectionActionsArgs{Name: p.Name, ConfigURI: uri, Envs: desc.Environments},
+				},
+			},
+			Data: &CodeLensData{Intent: IntentActions},
 		})
 	}
 	return out

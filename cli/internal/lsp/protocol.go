@@ -81,6 +81,10 @@ const (
 	// lens: any client on the status surface must special-case this intent and
 	// not try to render it as a normal (command-bearing) lens.
 	IntentStatusBadges = "status-badges"
+	// IntentActions marks the per-projection "actions.." lens: the entry point
+	// to the action menu the client pops (diff against deployed today; operate /
+	// history later). A vscode-only surface, emitted alongside the status lenses.
+	IntentActions = "actions"
 )
 
 // Gaffer command IDs surfaced via CodeLens.command. Each editor
@@ -89,6 +93,7 @@ const (
 	CommandDebugProjection     = "gaffer.debugProjection"
 	CommandDebugProjectionPick = "gaffer.debugProjectionPick"
 	CommandSignIn              = "gaffer.signIn"
+	CommandProjectionActions   = "gaffer.projectionActions"
 )
 
 // InitializeParams is the subset of LSP InitializeParams we care

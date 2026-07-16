@@ -156,9 +156,11 @@ func (s *Server) applyWatchedFileEvents(ctx context.Context, events []FileEvent)
 			return
 		}
 		if !isGafferConfig(ev.URI) {
-			// A projection source changed on disk (a drift input). Coalesce the
-			// batch and refresh open configs once, below.
-			if isJSSource(ev.URI) && (ev.Type == FileChangeCreated || ev.Type == FileChangeChanged) {
+			// A projection source changed on disk (a drift input). Any event moves
+			// the verdict - a delete makes the projection uncompilable, a create/
+			// change alters the compiled definition - so coalesce the batch and
+			// refresh open configs once, below.
+			if isJSSource(ev.URI) {
 				jsChanged = true
 			}
 			continue

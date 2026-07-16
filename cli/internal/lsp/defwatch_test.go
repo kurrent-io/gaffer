@@ -500,6 +500,26 @@ func TestApplyWatchedFileEvents_SourceChangeRecomputesEveryOpenConfig(t *testing
 	s.wg.Wait()
 }
 
+func TestApplyWatchedFileEvents_SourceDeleteRecomputes(t *testing.T) {
+	root := t.TempDir()
+	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", runtimeCfg))
+	var drift_ atomic.Int64
+	s := testServer(func(context.Context, string, *config.Config, string, string) envStatus {
+		drift_.Add(1)
+		return envStatus{}
+	})
+	s.debouncer = newDebouncer(time.Millisecond)
+	s.docs.Open(uri, runtimeCfg)
+
+	// Deleting a projection source is a drift input change (the projection becomes
+	// uncompilable), so it must recompute like a create/change.
+	s.applyWatchedFileEvents(context.Background(), []FileEvent{
+		{URI: pathToURI(root + "/projections/p.js"), Type: FileChangeDeleted},
+	})
+	eventually(t, func() bool { return drift_.Load() > 0 })
+	s.wg.Wait()
+}
+
 func TestApplyWatchedFileEvents_IgnoresNodeModules(t *testing.T) {
 	root := t.TempDir()
 	uri := pathToURI(writeWorkspaceFile(t, root, "gaffer.toml", runtimeCfg))

@@ -10,8 +10,9 @@ import (
 // ($projections-<name>) from its current end and calls onUpdate for each
 // $ProjectionUpdated event - a deploy, or a lifecycle write (enable / disable /
 // abort / reset / config). It blocks until ctx is cancelled or the subscription
-// drops, returning the drop error (nil for a clean ctx cancellation) so the
-// caller can reconnect.
+// drops, returning the subscription's drop error - or, when ctx was cancelled,
+// that context error - so the caller can tell an intentional teardown
+// (ctx.Err() != nil) from a reconnectable drop.
 //
 // Subscribing from the end means only writes after this call fire the callback;
 // the caller reads current state separately. Subscribing to a stream that
@@ -34,8 +35,8 @@ func (c *Client) WatchDefinition(ctx context.Context, name string, onUpdate func
 				onUpdate()
 			}
 		case ev.SubscriptionDropped != nil:
-			// A clean ctx cancellation surfaces as a drop; report it as nil so the
-			// caller can tell an intentional teardown from a reconnectable failure.
+			// A ctx cancellation surfaces as a drop; return the ctx error so the
+			// caller can distinguish an intentional teardown from a reconnectable one.
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}

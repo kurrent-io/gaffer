@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
@@ -88,15 +89,21 @@ func (s *Server) registerFileWatcher(ctx context.Context) {
 	if conn == nil {
 		return
 	}
+	watchers := []FileSystemWatcher{{GlobPattern: gafferConfigGlob}}
+	// A projection's source is a drift input, but .js files aren't otherwise
+	// watched - only edited-in-editor buffers sync. Watch them so a source edit
+	// updates the status surface (drift) live, the local counterpart to the
+	// server-side definition subscription. Only for clients on the status surface;
+	// the handler ignores node_modules, and the client's watcherExclude keeps the
+	// glob light.
+	if s.statusLensEnabled() {
+		watchers = append(watchers, FileSystemWatcher{GlobPattern: jsSourceGlob})
+	}
 	params := RegistrationParams{
 		Registrations: []Registration{{
-			ID:     "gaffer-config-watcher",
-			Method: MethodDidChangeWatchedFiles,
-			RegisterOptions: DidChangeWatchedFilesRegistrationOptions{
-				Watchers: []FileSystemWatcher{
-					{GlobPattern: gafferConfigGlob},
-				},
-			},
+			ID:              "gaffer-config-watcher",
+			Method:          MethodDidChangeWatchedFiles,
+			RegisterOptions: DidChangeWatchedFilesRegistrationOptions{Watchers: watchers},
 		}},
 	}
 	// Bound the call - a misbehaving client that ACKed initialize
@@ -143,19 +150,27 @@ func (s *Server) handleDidChangeWatchedFiles(_ context.Context, req *jsonrpc2.Re
 // inserts; Deleted closes the URI - mixing these on separate
 // goroutines races on a [Changed, Deleted] burst.
 func (s *Server) applyWatchedFileEvents(ctx context.Context, events []FileEvent) {
+	jsChanged := false
 	for _, ev := range events {
 		if ctx.Err() != nil {
 			return
 		}
 		if !isGafferConfig(ev.URI) {
+			// A projection source changed on disk (a drift input). Any event moves
+			// the verdict - a delete makes the projection uncompilable, a create/
+			// change alters the compiled definition - so coalesce the batch and
+			// refresh open configs once, below.
+			if isJSSource(ev.URI) {
+				jsChanged = true
+			}
 			continue
 		}
 		switch ev.Type {
 		case FileChangeCreated, FileChangeChanged:
 			s.seedFromDisk(ctx, uriToPath(ev.URI))
-			// A saved/created config may have new envs or a moved target;
-			// re-fetch its deploy status.
-			s.refreshStatus(ev.URI)
+			// A saved/created config may have new envs or a moved target, and its
+			// drift inputs changed; recompute drift.
+			s.refreshStatus(ev.URI, true)
 		case FileChangeDeleted:
 			_, hadParse := s.docs.GetParse(ev.URI)
 			s.docs.Close(ev.URI)
@@ -173,4 +188,35 @@ func (s *Server) applyWatchedFileEvents(ctx context.Context, events []FileEvent)
 			s.publishDiagnostics(ev.URI, []lspDiagnostic{})
 		}
 	}
+	if jsChanged {
+		s.scheduleSourceRefresh()
+	}
+}
+
+// scheduleSourceRefresh recomputes drift for every open config after a projection
+// source changed on disk, debounced on one key so a burst of .js writes (a build,
+// a branch switch, a formatter) collapses to a single pass rather than one drift
+// recompute per file. A source edit isn't mapped to a specific config, so all
+// open configs recompute - cheap (only open configs, the recompute is bounded,
+// and refreshStatus no-ops for a surface-off config). Debounce plus single-flight
+// keep a noisy source tree (a watch-mode build writing dist/) from amplifying
+// into a recompute per write.
+func (s *Server) scheduleSourceRefresh() {
+	if _, runCtx := s.snapshotRunState(); runCtx == nil {
+		return
+	}
+	s.debouncer.schedule(sourceRefreshKey, func() {
+		for _, uri := range s.docs.OpenURIs() {
+			if isGafferConfig(uri) {
+				s.refreshStatus(uri, true)
+			}
+		}
+	})
+}
+
+// isJSSource reports whether uri is a JavaScript source file worth treating as a
+// projection drift input, excluding node_modules (belt-and-suspenders over the
+// client's watcherExclude).
+func isJSSource(uri string) bool {
+	return strings.HasSuffix(uri, ".js") && !strings.Contains(uri, "/node_modules/")
 }

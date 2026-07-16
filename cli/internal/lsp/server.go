@@ -67,10 +67,22 @@ type Server struct {
 
 	// statusCache holds fetched per-env deploy status keyed by config
 	// URI, refreshed on open/save/manual request and read by the env
-	// status surface. statusFetch does one env's dial-and-read; it's a
-	// field so tests inject a fake in place of a live KurrentDB.
-	statusCache *statusCache
-	statusFetch statusFetchFunc
+	// status surface. statusFetch does one env's full dial-and-read;
+	// runtimeFetch is the cheap poll tier that reuses a cached drift
+	// verdict and refreshes only live runtime state. Both are fields so
+	// tests inject fakes in place of a live KurrentDB.
+	statusCache  *statusCache
+	statusFetch  statusFetchFunc
+	runtimeFetch statusRuntimeFunc
+
+	// watches holds one live per-env definition-stream subscription per open
+	// gaffer.toml (key uri\x00env), so a server-side deploy pushes a drift
+	// refresh instead of waiting for a poll. Guarded by watchMu. watchRun does
+	// the dial-and-subscribe loop; it's a field so tests inject a fake.
+	watchMu        sync.Mutex
+	watches        map[string]*watchEntry
+	watchRun       envWatchFunc
+	watchCapWarned bool
 
 	mu          sync.Mutex
 	conn        *jsonrpc2.Conn // captured during Run, used for server-pushed notifications
@@ -145,12 +157,16 @@ func NewServer(opts ServerOptions) *Server {
 	if window <= 0 {
 		window = defaultDebounceWindow
 	}
-	return &Server{
+	s := &Server{
 		opts:        opts,
 		docs:        newDocumentStore(),
 		debouncer:   newDebouncer(window),
 		exitCh:      make(chan struct{}),
 		statusCache: newStatusCache(),
-		statusFetch: fetchEnvStatus,
+		watches:     map[string]*watchEntry{},
 	}
+	s.statusFetch = s.fetchEnvStatus
+	s.runtimeFetch = s.fetchEnvRuntime
+	s.watchRun = s.runEnvWatch
+	return s
 }

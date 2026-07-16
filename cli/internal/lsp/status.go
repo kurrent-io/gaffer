@@ -10,13 +10,27 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 	"github.com/kurrent-io/gaffer/cli/internal/target"
 )
+
+// pollThrottleWindow is the minimum gap between runtime-only fetches for one
+// (config, env). A runtime-only refresh (a poll tick, or the sign-in nudge's
+// already-authenticated envs) is skipped when a fetch for that pair started
+// within this window, so a poll landing right behind another refresh - a
+// sign-in completing, a save - doesn't fire a redundant read. Kept comfortably
+// below the client's poll interval (see the vscode poller) so scheduled polls
+// always pass; only sub-window bursts are absorbed. A fetch already in flight
+// is handled by single-flight (begin); this covers the just-completed case
+// single-flight can't see. Full fetches (local changed, first fetch, a
+// previously-failed env) bypass it - they must always run.
+const pollThrottleWindow = 3 * time.Second
 
 // envStatus is the fetched deploy status for one (config, env): the
 // per-projection drift entries and the resolved target, or a marker that the
@@ -35,33 +49,56 @@ type envStatus struct {
 	Err error
 }
 
-// statusFetchFunc fetches one env's status. Injected onto the Server so the
-// cache / single-flight orchestration is testable without a live KurrentDB.
-type statusFetchFunc func(ctx context.Context, root string, cfg *config.Config, envName string) envStatus
+// statusFetchFunc recomputes one env's full status (drift verdict + runtime).
+// Injected onto the Server so the cache / single-flight orchestration is
+// testable without a live KurrentDB. uri identifies the config so the fetch can
+// borrow that env's live subscription connection instead of dialing fresh.
+type statusFetchFunc func(ctx context.Context, root string, cfg *config.Config, uri, envName string) envStatus
 
 // statusCache holds fetched status keyed by config URI then env name, with
 // single-flight dedupe of concurrent fetches for the same (uri, env). A per-URI
 // generation counter, bumped on every drop, lets a fetch that was already in
 // flight when its document closed (or its config went invalid) discard its
 // late result instead of resurrecting the cache. All access is guarded by mu.
+//
+// lastStart records when the most recent fetch for a (uri, env) began, so
+// pollThrottleWindow can drop redundant runtime-only polls. now is the clock,
+// overridable in tests.
 type statusCache struct {
-	mu       sync.Mutex
-	byURI    map[string]map[string]envStatus
-	inflight map[string]struct{}
-	gen      map[string]uint64
+	mu        sync.Mutex
+	byURI     map[string]map[string]envStatus
+	inflight  map[string]struct{}
+	gen       map[string]uint64
+	lastStart map[string]time.Time
+	// forceFull marks a (uri, env) whose deployed definition changed server-side
+	// (a subscription reported a $ProjectionUpdated). A local edit arrives as a
+	// driftChanged refresh, but a server-side deploy has no local signal, so this
+	// flag is what forces the drift recompute. Held separately from the cached
+	// verdict so an in-flight runtime-only store can't clobber it; consumed when a
+	// drift recompute begins.
+	forceFull map[string]bool
+	now       func() time.Time
 }
 
 func newStatusCache() *statusCache {
 	return &statusCache{
-		byURI:    map[string]map[string]envStatus{},
-		inflight: map[string]struct{}{},
-		gen:      map[string]uint64{},
+		byURI:     map[string]map[string]envStatus{},
+		inflight:  map[string]struct{}{},
+		gen:       map[string]uint64{},
+		lastStart: map[string]time.Time{},
+		forceFull: map[string]bool{},
+		now:       time.Now,
 	}
 }
 
-// inflightKey joins uri and env with a NUL, which can't appear in either, so
-// distinct (uri, env) pairs never collide.
-func inflightKey(uri, env string) string { return uri + "\x00" + env }
+// uriKeyPrefix is the NUL-terminated prefix every per-env key for a URI shares,
+// so a prefix scan selects exactly that URI's entries. NUL can't appear in a URI
+// or a TOML env key, so keys never collide across URIs or envs.
+func uriKeyPrefix(uri string) string { return uri + "\x00" }
+
+// inflightKey is the per-(uri, env) key used across the status cache and the
+// definition-watch map.
+func inflightKey(uri, env string) string { return uriKeyPrefix(uri) + env }
 
 // begin marks (uri, env) as fetching and returns the URI's current generation
 // to hand back to store. The bool is false when a fetch is already in flight for
@@ -74,7 +111,46 @@ func (c *statusCache) begin(uri, env string) (uint64, bool) {
 		return 0, false
 	}
 	c.inflight[k] = struct{}{}
+	c.lastStart[k] = c.now()
 	return c.gen[uri], true
+}
+
+// recentlyFetched reports whether a fetch for (uri, env) began within window of
+// now, so a runtime-only refresh can be throttled (see pollThrottleWindow).
+func (c *statusCache) recentlyFetched(uri, env string, window time.Duration) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	last, ok := c.lastStart[inflightKey(uri, env)]
+	if !ok {
+		return false
+	}
+	return c.now().Sub(last) < window
+}
+
+// markForceFull records that (uri, env)'s deployed definition changed
+// server-side, so the next refresh recomputes its drift verdict in full. Sticky
+// until consumed by a full fetch (see forcedFull / consumeForceFull), so a
+// concurrent runtime-only store can't drop the signal and a raced deploy is at
+// worst reflected on the next poll rather than lost.
+func (c *statusCache) markForceFull(uri, env string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.forceFull[inflightKey(uri, env)] = true
+}
+
+// forcedFull reports whether (uri, env) is flagged for a full recompute.
+func (c *statusCache) forcedFull(uri, env string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.forceFull[inflightKey(uri, env)]
+}
+
+// consumeForceFull clears the flag, called when a full fetch for (uri, env)
+// begins. A deploy landing after this re-sets it, so it isn't lost.
+func (c *statusCache) consumeForceFull(uri, env string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.forceFull, inflightKey(uri, env))
 }
 
 // store records a completed fetch and clears the in-flight marker. The result is
@@ -105,7 +181,7 @@ func (c *statusCache) store(uri, env string, gen uint64, st envStatus) {
 func (c *statusCache) inFlightEnvs(uri string) map[string]bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	prefix := uri + "\x00"
+	prefix := uriKeyPrefix(uri)
 	out := map[string]bool{}
 	for k := range c.inflight {
 		if env, ok := strings.CutPrefix(k, prefix); ok {
@@ -146,65 +222,133 @@ func (c *statusCache) drop(uri string) {
 	defer c.mu.Unlock()
 	c.gen[uri]++
 	delete(c.byURI, uri)
+	prefix := uriKeyPrefix(uri)
 	for k := range c.inflight {
-		if strings.HasPrefix(k, uri+"\x00") {
+		if strings.HasPrefix(k, prefix) {
 			delete(c.inflight, k)
+		}
+	}
+	for k := range c.lastStart {
+		if strings.HasPrefix(k, prefix) {
+			delete(c.lastStart, k)
+		}
+	}
+	for k := range c.forceFull {
+		if strings.HasPrefix(k, prefix) {
+			delete(c.forceFull, k)
 		}
 	}
 }
 
-// refreshStatus re-fetches every env's deploy status for the gaffer.toml at uri,
+// configLoad is the outcome of loadStatusConfig.
+type configLoad int
+
+const (
+	loadSkip     configLoad = iota // surface off, not a config, or no tracked buffer
+	loadParseErr                   // the buffer doesn't parse
+	loadOK
+)
+
+// loadStatusConfig parses the in-memory gaffer.toml buffer for the status
+// surface, returning the config and its project root. It is the shared guard for
+// the fetch path and the definition-watch reconcile: both need the same
+// opt-in / is-config / has-buffer / parses checks off the same buffer, and
+// coupling them here keeps the two from drifting. The three-way result lets each
+// caller handle a parse failure differently (the fetch drops cached status; the
+// watch reconcile tears its subscriptions down).
+func (s *Server) loadStatusConfig(uri string) (*config.Config, string, configLoad) {
+	if !s.statusLensEnabled() || !isGafferConfig(uri) {
+		return nil, "", loadSkip
+	}
+	path := uriToPath(uri)
+	if path == "" {
+		return nil, "", loadSkip
+	}
+	state, ok := s.docs.Get(uri)
+	if !ok {
+		return nil, "", loadSkip
+	}
+	cfg, err := config.Parse([]byte(state.Content))
+	if err != nil {
+		return nil, "", loadParseErr
+	}
+	return cfg, filepath.Dir(path), loadOK
+}
+
+// refreshStatus re-fetches the gaffer.toml's deploy status for every env,
 // updating the cache and asking the client to re-render as each env lands. Each
 // env is fetched in its own wg-tracked goroutine bounded by runCtx; single-flight
 // skips an env already being fetched.
 //
-// The config is parsed from the client's in-memory buffer (the same content the
-// diagnostics and lenses are built from), not the file on disk, so status
-// reflects what the user is looking at - including unsaved edits at a manual
-// refresh - and stays consistent with the rest of the language server. Status is
-// only fetched at deliberate points (open, save, explicit refresh), never on a
-// keystroke, so the buffer is coherent when read.
+// driftChanged is what the caller knows that the server can't infer: whether a
+// *local* drift input changed (a save or a watched-file edit). It doesn't decide
+// the tier on its own - the server still picks per env:
+//   - recompute the drift verdict (fetchEnvStatus: recompile local, read the
+//     deployed definition + ledger, compare, and read runtime) when driftChanged
+//     is set, a subscription reported a server-side deploy (forceFull), or the env
+//     has no reusable verdict yet (never fetched, or the last fetch needed
+//     sign-in / failed).
+//   - refresh runtime only (fetchEnvRuntime: one List reattached onto the cached
+//     verdict) otherwise - the poll's cheap path, throttled by pollThrottleWindow.
 //
-// A buffer that doesn't parse (a gaffer.toml edited into an invalid state) drops
-// any cached status for the URI so the surface clears rather than showing stale
-// data; the loose parse already surfaces the problem as diagnostics.
-func (s *Server) refreshStatus(uri string) {
-	if !s.statusLensEnabled() {
-		// Client didn't opt into the status surface - don't dial for output it
-		// can't render. This is also how the full-Run test harness stays off the
-		// network: its clients don't send the statusLens initialization option.
+// The config is parsed from the client's in-memory buffer, so it reflects what
+// the user is looking at. A buffer that doesn't parse drops cached status for the
+// URI so the surface clears rather than showing stale data (the loose parse
+// already surfaces the problem as diagnostics).
+func (s *Server) refreshStatus(uri string, driftChanged bool) {
+	cfg, root, load := s.loadStatusConfig(uri)
+	switch load {
+	case loadSkip:
+		// Surface off, not a config, or no tracked buffer - nothing to do.
 		return
-	}
-	if !isGafferConfig(uri) {
-		return
-	}
-	path := uriToPath(uri)
-	if path == "" {
-		return
-	}
-	state, ok := s.docs.Get(uri)
-	if !ok {
-		// Nothing tracked for this URI yet; a parse or disk-seed will drive a
-		// later refresh once the content lands.
-		return
-	}
-	cfg, err := config.Parse([]byte(state.Content))
-	if err != nil {
+	case loadParseErr:
+		// A buffer edited into an invalid state: drop cached status so the surface
+		// clears rather than showing stale data (the loose parse already surfaces
+		// the problem as diagnostics).
 		s.statusCache.drop(uri)
 		s.requestCodeLensRefresh()
 		return
 	}
-	root := filepath.Dir(path)
+
+	cached := s.statusCache.get(uri)
 
 	type job struct {
-		env string
-		gen uint64
+		env         string
+		gen         uint64
+		runtimeOnly bool
+		cached      envStatus
 	}
 	var jobs []job
 	for _, env := range cfg.EnvNames() {
-		if gen, ok := s.statusCache.begin(uri, env); ok {
-			jobs = append(jobs, job{env: env, gen: gen})
+		st, ok := cached[env]
+		// A cached verdict is reusable when the last fetch produced one: not
+		// sign-in-needed, not errored. Recompute drift when the caller signalled a
+		// local change (driftChanged), a subscription reported a deploy (forceFull),
+		// or there's no verdict to reuse yet; otherwise refresh only live runtime.
+		reusable := ok && !st.Unauthenticated && st.Err == nil
+		recompute := driftChanged || !reusable || s.statusCache.forcedFull(uri, env)
+		if !recompute && s.statusCache.recentlyFetched(uri, env, pollThrottleWindow) {
+			// A fetch for this env began within the throttle window; skip this
+			// redundant runtime-only poll rather than fire another read.
+			continue
 		}
+		gen, began := s.statusCache.begin(uri, env)
+		if !began {
+			// A fetch is already in flight. If we needed a drift recompute, that
+			// in-flight fetch might be a runtime-only poll that won't reflect the
+			// change, so flag the env: the next refresh upgrades to a recompute
+			// rather than losing the local edit (symmetric with the deploy path).
+			if recompute {
+				s.statusCache.markForceFull(uri, env)
+			}
+			continue
+		}
+		if recompute {
+			// This fetch recomputes drift against current state, so clear any pending
+			// force flag now. A change landing after this re-sets it, so it isn't lost.
+			s.statusCache.consumeForceFull(uri, env)
+		}
+		jobs = append(jobs, job{env: env, gen: gen, runtimeOnly: !recompute, cached: st})
 	}
 	if len(jobs) == 0 {
 		return
@@ -222,7 +366,17 @@ func (s *Server) refreshStatus(uri string) {
 	}
 	for _, j := range jobs {
 		if !s.spawnWithCtx(func(ctx context.Context) {
-			s.statusCache.store(uri, j.env, j.gen, s.safeStatusFetch(ctx, root, cfg, j.env))
+			var st envStatus
+			if j.runtimeOnly {
+				st = s.safeFetch(ctx, root, cfg, j.env, func(ctx context.Context) envStatus {
+					return s.runtimeFetch(ctx, root, cfg, uri, j.env, j.cached)
+				})
+			} else {
+				st = s.safeFetch(ctx, root, cfg, j.env, func(ctx context.Context) envStatus {
+					return s.statusFetch(ctx, root, cfg, uri, j.env)
+				})
+			}
+			s.statusCache.store(uri, j.env, j.gen, st)
 			fireWhenDone()
 		}) {
 			// Run wound down before we could spawn - release the marker so a
@@ -234,11 +388,12 @@ func (s *Server) refreshStatus(uri string) {
 	}
 }
 
-// safeStatusFetch runs the configured fetcher with a panic guard, so a crash
-// deep in a dependency (e.g. a nil-deref in the KurrentDB client on an unready
-// projection subsystem) surfaces as a "status unavailable" lens instead of
-// taking down the whole language server via an unrecovered goroutine panic.
-func (s *Server) safeStatusFetch(ctx context.Context, root string, cfg *config.Config, env string) (st envStatus) {
+// safeFetch runs fetch with a panic guard, so a crash deep in a dependency (e.g.
+// a nil-deref in the KurrentDB client on an unready projection subsystem)
+// surfaces as a "status unavailable" lens instead of taking down the whole
+// language server via an unrecovered goroutine panic. Shared by the full and
+// runtime-only fetch paths.
+func (s *Server) safeFetch(ctx context.Context, root string, cfg *config.Config, env string, fetch func(context.Context) envStatus) (st envStatus) {
 	defer func() {
 		if r := recover(); r != nil {
 			// Scrub the panic value against the env's connection before logging,
@@ -251,10 +406,7 @@ func (s *Server) safeStatusFetch(ctx context.Context, root string, cfg *config.C
 			// won't even expand scrubs to a no-op.
 			msg := fmt.Sprint(r)
 			if resolved, rerr := cfg.ResolveEnv(env); rerr == nil {
-				msg = target.ScrubConnection(msg, resolved.Connection)
-				if conn, cerr := target.ExpandConnection(root, resolved); cerr == nil {
-					msg = target.ScrubConnection(msg, conn)
-				}
+				msg = scrubConnection(msg, root, resolved)
 			}
 			log.Printf("lsp: status fetch for env %q panicked: %s", env, msg)
 			// Keep the error generic - it's surfaced in the lens tooltip, so it
@@ -262,50 +414,158 @@ func (s *Server) safeStatusFetch(ctx context.Context, root string, cfg *config.C
 			st = envStatus{Err: errors.New("status read failed unexpectedly")}
 		}
 	}()
-	return s.statusFetch(ctx, root, cfg, env)
+	return fetch(ctx)
 }
 
-// fetchEnvStatus is the default statusFetchFunc: dial one env, read every
-// projection's drift + runtime state, and resolve the target. Dials fresh and
-// closes per call (like the CLI and the MCP deploy tools) - a language server
-// holding a live connection would just go stale between refreshes.
-func fetchEnvStatus(ctx context.Context, root string, cfg *config.Config, envName string) envStatus {
-	resolved, err := cfg.ResolveEnv(envName)
+// scrubConnection masks an env's connection secret out of a message before it's
+// logged. It scrubs both the raw connection and the ${VAR}-expanded form the
+// dial actually used - a panic or error from deep in the client carries the
+// expanded string, not the toml literal. Best-effort: an env that won't expand
+// scrubs to a no-op. Shared by the fetch panic guard and the watch panic guard.
+func scrubConnection(msg, root string, resolved config.ResolvedEnv) string {
+	msg = target.ScrubConnection(msg, resolved.Connection)
+	if conn, err := target.ExpandConnection(root, resolved); err == nil {
+		msg = target.ScrubConnection(msg, conn)
+	}
+	return msg
+}
+
+// borrowedConn is a client for reading one env: either the env's live
+// subscription connection (borrowed - release is a no-op) or a fresh throwaway
+// dial (release closes it). authInv reports whether a read on the connection hit
+// an auth rejection; it may be nil for a connection with no auth.
+type borrowedConn struct {
+	client  *remote.Client
+	authInv *engine.AuthInvalidation
+	release func()
+}
+
+// envClient returns a client for reading one env, preferring the env's live
+// subscription connection (see borrowConn) and dialing a fresh one only when no
+// watch connection is up. A returned error is the dial failure; callers classify
+// AuthRequiredError as sign-in-needed.
+func (s *Server) envClient(root string, cfg *config.Config, uri, env string) (borrowedConn, error) {
+	if bc, ok := s.borrowConn(uri, env); ok {
+		return bc, nil
+	}
+	resolved, err := cfg.ResolveEnv(env)
 	if err != nil {
-		return envStatus{Err: err}
+		return borrowedConn{}, err
 	}
 	r, authInv, cleanup, err := remote.DialWithAuth(root, resolved)
 	if err != nil {
-		// A connect-time auth failure is a missing or locked token the dial
-		// can't satisfy - needs sign-in.
-		var authErr *target.AuthRequiredError
-		if errors.As(err, &authErr) {
-			return envStatus{Unauthenticated: true}
-		}
-		return envStatus{Err: err}
+		return borrowedConn{}, err
 	}
-	defer cleanup()
+	return borrowedConn{client: r, authInv: authInv, release: cleanup}, nil
+}
+
+// dialErrStatus classifies a dial/connect failure: a missing or locked token
+// that the dial can't satisfy needs sign-in (Unauthenticated); anything else is
+// a generic Err.
+func dialErrStatus(err error) envStatus {
+	var authErr *target.AuthRequiredError
+	if errors.As(err, &authErr) {
+		return envStatus{Unauthenticated: true}
+	}
+	return envStatus{Err: err}
+}
+
+// fetchEnvStatus is the default statusFetchFunc: recompute one env's full status.
+// It reads every projection's drift + runtime state and resolves the target, on
+// the env's live subscription connection when one is up (else a fresh dial). A
+// connect-time or read-time auth failure surfaces as sign-in-needed.
+func (s *Server) fetchEnvStatus(ctx context.Context, root string, cfg *config.Config, uri, envName string) envStatus {
+	bc, err := s.envClient(root, cfg, uri, envName)
+	if err != nil {
+		return dialErrStatus(err)
+	}
+	defer bc.release()
 
 	// Management calls block until their deadline if the projections subsystem
 	// is still starting, so bound the reads rather than hang the fetch.
 	rctx, cancel := context.WithTimeout(ctx, deploy.RPCTimeout)
 	defer cancel()
-	entries, err := drift.StatusAll(rctx, r, cfg, root)
+	entries, err := drift.StatusAll(rctx, bc.client, cfg, root)
 	// A stored OAuth token the IdP rejected (invalid_grant) trips the auth flag
 	// on the read - the credential is dead, not merely unreachable, so surface
-	// sign-in rather than a generic "unavailable", matching a missing token at
-	// dial. A generic RPC rejection (a valid token lacking a role) leaves the
-	// flag untripped and stays a generic Err.
-	if authInv != nil && authInv.Tripped() {
+	// sign-in rather than a generic "unavailable". A generic RPC rejection (a
+	// valid token lacking a role) leaves the flag untripped and stays a generic Err.
+	//
+	// authInv is shared with the watch and any other borrower of this connection,
+	// and Tripped() is sticky: once any read on it hits invalid_grant, borrowers
+	// report Unauthenticated until the watch reconnects with a fresh one. That's
+	// correct (the credential is dead), if briefly pessimistic for a read that
+	// itself succeeded.
+	if bc.authInv != nil && bc.authInv.Tripped() {
 		return envStatus{Unauthenticated: true}
 	}
 	if err != nil {
 		return envStatus{Err: err}
 	}
-	// OperateTarget gets the parent ctx, not rctx: it applies its own
-	// RPCTimeout, and passing the already-consumed rctx would starve its
-	// $server-info read after StatusAll ate the budget (falling back to the
-	// env name / opt-in). Matches the MCP deploy tools.
-	target, prod := r.OperateTarget(ctx, resolved, deploy.RPCTimeout)
+	resolved, err := cfg.ResolveEnv(envName)
+	if err != nil {
+		return envStatus{Err: err}
+	}
+	// OperateTarget gets the parent ctx, not rctx: it applies its own RPCTimeout,
+	// and passing the already-consumed rctx would starve its $server-info read
+	// after StatusAll ate the budget. Matches the MCP deploy tools.
+	target, prod := bc.client.OperateTarget(ctx, resolved, deploy.RPCTimeout)
 	return envStatus{Entries: entries, Target: target, Production: prod}
+}
+
+// statusRuntimeFunc refreshes one env's live runtime state, reusing the drift
+// verdict from a prior full status read. Injected onto the Server so the cheap
+// poll path is testable without a live KurrentDB, mirroring statusFetchFunc.
+type statusRuntimeFunc func(ctx context.Context, root string, cfg *config.Config, uri, envName string, cached envStatus) envStatus
+
+// fetchEnvRuntime is the default statusRuntimeFunc: the cheap poll path. It reads
+// live runtime state with a single List (on the env's live connection when one
+// is up) and reattaches it onto the cached comparison entries by name - no
+// recompile, no per-projection definition/ledger reads, no $server-info. The
+// drift verdict and resolved target carry over from the cached full read.
+//
+// A projection missing from the fresh List keeps its cached runtime rather than
+// dropping to nil: a vanished projection is a server-side change, picked up when
+// the drift verdict is recomputed. Dial/read failures degrade the env the same
+// way a full read does, so a poll that hits an expired token flips the surface
+// to "sign in" rather than showing stale live state.
+func (s *Server) fetchEnvRuntime(ctx context.Context, root string, cfg *config.Config, uri, envName string, cached envStatus) envStatus {
+	bc, err := s.envClient(root, cfg, uri, envName)
+	if err != nil {
+		return dialErrStatus(err)
+	}
+	defer bc.release()
+
+	rctx, cancel := context.WithTimeout(ctx, deploy.RPCTimeout)
+	defer cancel()
+	live, err := bc.client.List(rctx)
+	if bc.authInv != nil && bc.authInv.Tripped() {
+		return envStatus{Unauthenticated: true}
+	}
+	if err != nil {
+		return envStatus{Err: err}
+	}
+	return reattachRuntime(cached, live)
+}
+
+// reattachRuntime returns the cached env status with each entry's live runtime
+// refreshed from live (matched by projection name), carrying the cached drift
+// verdict, target, and production flag over unchanged. An entry whose projection
+// is absent from live keeps its cached runtime (see fetchEnvRuntime). live never
+// adds entries: a projection appearing on the server but not in the cached
+// verdict is a server-side change picked up on the next full refresh.
+func reattachRuntime(cached envStatus, live []remote.Status) envStatus {
+	byName := make(map[string]remote.Status, len(live))
+	for i := range live {
+		byName[live[i].Name] = live[i]
+	}
+	entries := make([]drift.StatusEntry, len(cached.Entries))
+	copy(entries, cached.Entries)
+	for i := range entries {
+		if rt, ok := byName[entries[i].Name]; ok {
+			rt := rt
+			entries[i].Runtime = &rt
+		}
+	}
+	return envStatus{Entries: entries, Target: cached.Target, Production: cached.Production}
 }

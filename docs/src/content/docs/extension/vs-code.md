@@ -29,7 +29,7 @@ Set breakpoints in the projection JS file. Standard VS Code debug controls work:
 
 ## Deployment status
 
-Above each `[env.<name>]` block in `gaffer.toml`, the extension shows a read-only summary of how your projections compare to what's deployed on that environment. It reads status when you open or save the file.
+Above each `[env.<name>]` block in `gaffer.toml`, the extension shows a read-only summary of how your projections compare to what's deployed on that environment. It reads status when you open or save the file, and re-reads it when you save a projection's source. Runtime state (a projection stopping, faulting, or catching up) refreshes on a short timer while the file is visible, pausing while you have unsaved edits. A change made outside the editor (a deploy, or pausing or resuming a projection) is reflected as soon as it lands, for as long as the file stays open.
 
 The summary is a count per state: how many are **in sync**, then anything needing attention (changed externally, local ahead of the deploy, not deployed, faulted, drifted, or invalid). Projections on the server but not in your `gaffer.toml` are counted as **orphan** (gaffer deployed them, so a deletion candidate) or **untracked** (another tool did). A production target is flagged **PRODUCTION**. Hovering the summary shows which target it read.
 
@@ -41,7 +41,7 @@ The summary appears above bare-key `[env.name]` headers. An environment declared
 
 Each `[[projection]]` header carries a row of small dots, one per environment in the order they appear in the file. A solid dot is a known state: green in sync, orange needing attention (drifted, local ahead, changed externally, or not deployed), red faulted or invalid. The other shapes mean there's no reading yet: an open ring needs sign-in, a crossed ring couldn't be read, and a faint dot is still loading.
 
-Hovering the header lists those environments one per line, each with its drift verdict and runtime state (running, stopped, aborted, or faulted). An environment that needs sign-in or couldn't be read shows that reason in place of the verdict; the **Sign in** action lives on the `[env.<name>]` block above. Like the environment summary, this is read-only and reads on open and save.
+Hovering the header lists those environments one per line, each with its drift verdict and runtime state (running, stopped, aborted, or faulted). An environment that needs sign-in or couldn't be read shows that reason in place of the verdict; the **Sign in** action lives on the `[env.<name>]` block above. Like the environment summary, this is read-only, reads on open and save, and stays current the same way.
 
 ## Authentication
 

@@ -149,9 +149,10 @@ func (s *Server) handleDidOpen(_ context.Context, req *jsonrpc2.Request) (any, e
 	// didOpen drives the first parse - users expect immediate
 	// feedback when a file opens, not a debounce-window wait.
 	s.triggerParse(params.TextDocument.URI, true)
-	// Kick a deploy-status fetch for the opened config so the env
-	// surface renders live state; no-op for non-config URIs.
-	s.refreshStatus(params.TextDocument.URI)
+	// Kick a deploy-status read for the opened config so the env surface renders
+	// live state; recompute drift since we have nothing cached. No-op for
+	// non-config URIs.
+	s.refreshStatus(params.TextDocument.URI, true)
 	return nil, nil
 }
 
@@ -231,8 +232,10 @@ func (s *Server) handleDidClose(req *jsonrpc2.Request) (any, error) {
 		hadParse = true
 	}
 	s.docs.Close(params.TextDocument.URI)
-	// Drop cached deploy status - the surface is gone with the buffer.
+	// Drop cached deploy status and stop its definition-stream subscriptions -
+	// the surface is gone with the buffer.
 	s.statusCache.drop(params.TextDocument.URI)
+	s.stopWatches(params.TextDocument.URI)
 	// Fire the refresh BEFORE publishDiagnostics. publishDiagnostics
 	// is a synchronous conn.Notify holding the conn write lock for
 	// the duration of the wire write; if it blocks (slow client, or
@@ -393,27 +396,28 @@ func (s *Server) statusLensEnabled() bool {
 
 // handleDidSave refreshes deploy status when a gaffer.toml is saved, so the env
 // surface updates without relying on the file watcher (which not every client
-// registers). The buffer is already current from full sync, so there's nothing
-// to reparse here.
+// registers). The save may have changed the drift inputs, so recompute drift.
+// The buffer is already current from full sync, so there's nothing to reparse.
 func (s *Server) handleDidSave(req *jsonrpc2.Request) (any, error) {
 	params, jerr := decodeParams[DidSaveTextDocumentParams](req, "didSave")
 	if jerr != nil {
 		return nil, jerr
 	}
-	s.refreshStatus(params.TextDocument.URI)
+	s.refreshStatus(params.TextDocument.URI, true)
 	return nil, nil
 }
 
-// handleRefreshStatus re-fetches deploy status for the named gaffer.toml after
-// an out-of-band auth change the server can't observe (the editor fires this
-// when a sign-in terminal exits cleanly). The fetch is async; the fresh status
-// reaches the editor through the normal codeLens refresh once it lands.
+// handleRefreshStatus re-reads deploy status for the named gaffer.toml on the
+// editor's request. Params.Poll marks a routine liveness poll (refresh runtime
+// only, reusing the cached drift verdict); without it the request is treated as
+// change-driven (a sign-in), recomputing drift. The read is async; the fresh
+// status reaches the editor through the normal codeLens refresh once it lands.
 func (s *Server) handleRefreshStatus(req *jsonrpc2.Request) (any, error) {
 	params, jerr := decodeParams[RefreshStatusParams](req, "refreshStatus")
 	if jerr != nil {
 		return nil, jerr
 	}
-	s.refreshStatus(params.URI)
+	s.refreshStatus(params.URI, !params.Poll)
 	return nil, nil
 }
 

@@ -452,9 +452,10 @@ describe("runtime fatal-error dismissal", () => {
 		expect(term).toBeDefined();
 		if (!term) return;
 		fireTerminalClosed(term, 0);
+		// A sign-in is change-driven, not a poll, so it recomputes drift (poll: false).
 		expect(sentNotifications).toContainEqual({
 			method: "gaffer/refreshStatus",
-			params: { uri: tomlUri.toString() },
+			params: { uri: tomlUri.toString(), poll: false },
 		});
 	});
 

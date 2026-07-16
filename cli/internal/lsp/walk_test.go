@@ -125,9 +125,10 @@ fixtures.evil = "../escape.json"
 	<-done
 }
 
-func TestServer_InitializedRegistersFileWatcher(t *testing.T) {
-	// Server should send a client/registerCapability request after
-	// initialized, asking the editor to watch **/gaffer.toml.
+// registeredWatcherGlobs drives initialize+initialized and returns the glob
+// patterns the server asked the editor to watch via registerCapability.
+func registeredWatcherGlobs(t *testing.T, initOpts json.RawMessage) []string {
+	t.Helper()
 	srv, cli := pipePair()
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
@@ -140,6 +141,7 @@ func TestServer_InitializedRegistersFileWatcher(t *testing.T) {
 
 	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
 		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+		InitOptions:      initOpts,
 	}, &InitializeResult{})
 	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
 
@@ -152,7 +154,7 @@ func TestServer_InitializedRegistersFileWatcher(t *testing.T) {
 		return false
 	}, waitForTimeout)
 
-	var foundPattern string
+	var globs []string
 	for _, r := range stub.requestSnapshot() {
 		if r.Method != MethodRegisterCapability {
 			continue
@@ -161,35 +163,41 @@ func TestServer_InitializedRegistersFileWatcher(t *testing.T) {
 		if err := json.Unmarshal(r.Params, &p); err != nil {
 			t.Fatalf("registerCapability params: %v", err)
 		}
-		if len(p.Registrations) == 0 {
-			t.Fatalf("expected at least one registration: %+v", p)
+		for _, reg := range p.Registrations {
+			if reg.Method != MethodDidChangeWatchedFiles {
+				continue
+			}
+			raw, err := json.Marshal(reg.RegisterOptions)
+			if err != nil {
+				t.Fatalf("marshal registerOptions: %v", err)
+			}
+			var opts DidChangeWatchedFilesRegistrationOptions
+			if err := json.Unmarshal(raw, &opts); err != nil {
+				t.Fatalf("registerOptions: %v", err)
+			}
+			for _, w := range opts.Watchers {
+				globs = append(globs, w.GlobPattern)
+			}
 		}
-		reg := p.Registrations[0]
-		if reg.Method != MethodDidChangeWatchedFiles {
-			t.Errorf("registration method: got %q want %q", reg.Method, MethodDidChangeWatchedFiles)
-		}
-		// registerOptions arrives as a generic JSON object; round-trip
-		// to extract the pattern.
-		raw, err := json.Marshal(reg.RegisterOptions)
-		if err != nil {
-			t.Fatalf("marshal registerOptions: %v", err)
-		}
-		var opts DidChangeWatchedFilesRegistrationOptions
-		if err := json.Unmarshal(raw, &opts); err != nil {
-			t.Fatalf("registerOptions: %v", err)
-		}
-		if len(opts.Watchers) == 0 {
-			t.Fatalf("expected at least one watcher: %+v", opts)
-		}
-		foundPattern = opts.Watchers[0].GlobPattern
-	}
-	if foundPattern != "**/gaffer.toml" {
-		t.Errorf("watcher pattern: got %q want **/gaffer.toml", foundPattern)
 	}
 
 	_ = conn.Call(ctx, MethodShutdown, nil, nil)
 	_ = conn.Notify(ctx, MethodExit, nil)
 	<-done
+	return globs
+}
+
+func TestServer_InitializedRegistersFileWatcher(t *testing.T) {
+	// Without the status opt-in, only the config watcher is registered.
+	if got := registeredWatcherGlobs(t, nil); len(got) != 1 || got[0] != "**/gaffer.toml" {
+		t.Errorf("without statusLens: got %v want [**/gaffer.toml]", got)
+	}
+	// With it, the projection-source watcher is added so a .js save refreshes
+	// the status surface.
+	got := registeredWatcherGlobs(t, json.RawMessage(`{"statusLens":true}`))
+	if len(got) != 2 || got[0] != "**/gaffer.toml" || got[1] != "**/*.js" {
+		t.Errorf("with statusLens: got %v want [**/gaffer.toml **/*.js]", got)
+	}
 }
 
 func TestServer_InitializedSkipsOpenBuffers(t *testing.T) {
@@ -741,10 +749,11 @@ entry = "beta.js"
 	<-done
 }
 
-func TestServer_DidChangeWatchedFiles_NonGafferIgnored(t *testing.T) {
-	// Editors sometimes register broader watchers; ensure the
-	// gate by basename keeps non-gaffer events from reaching the
-	// document store.
+func TestServer_DidChangeWatchedFiles_NonConfigNotSeeded(t *testing.T) {
+	// A non-config URI (a .js source) never enters the document store - only
+	// gaffer.toml events seed it. (A .js event can drive a status refresh when
+	// the status surface is on, which this harness doesn't enable; that path is
+	// covered by the applyWatchedFileEvents source-change tests.)
 	srv, cli := pipePair()
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()

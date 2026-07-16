@@ -43,6 +43,14 @@ Each `[[projection]]` header carries a row of small dots, one per environment in
 
 Hovering the header lists those environments one per line, each with its drift verdict and runtime state (running, stopped, aborted, or faulted). An environment that needs sign-in or couldn't be read shows that reason in place of the verdict; the **Sign in** action lives on the `[env.<name>]` block above. Like the environment summary, this is read-only, reads on open and save, and stays current the same way.
 
+## Projection actions
+
+Each `[[projection]]` header also carries an **actions..** lens that opens a menu of actions for that projection, grouped by environment. Every action targets an environment, so the lens appears only once the config declares at least one. When more than one environment is configured, each is a heading with its actions listed beneath; with a single environment the actions are listed directly.
+
+The one action today is **Diff against deployed**. It opens VS Code's diff editor with the projection's local source on one side and what's deployed on the chosen environment on the other, so you can see exactly what a deploy would change. Both sides are read-only. The diff is a comparison and never deploys.
+
+If the projection isn't deployed to that environment yet, the extension says so rather than diffing against an empty file. If the environment needs authentication, the action offers to sign in first; see [Authentication](#authentication).
+
 ## Authentication
 
 When you debug against an environment that uses [OAuth](../reference/gaffer-toml.md#envnameoauth) and you haven't signed in yet, the run stops and the extension shows a **Sign in** action. It opens a terminal running `gaffer auth --env <name>`. You sign in through the browser once, and the stored token refreshes automatically for later runs.
@@ -89,6 +97,7 @@ See [MCP](../cli/mcp.md) for the tools and resources gaffer exposes, and for con
 | `Gaffer: Debug from...`      | CodeLens                         | Pick a source (a fixture or a configured environment) and launch with the debugger attached.                                            |
 | `Gaffer: Stop`               | CodeLens or command palette      | Stop the running session.                                                                                                                |
 | `Gaffer: Sign In to Environment` | CodeLens                     | Open a `gaffer auth --env <name>` terminal for an environment that needs authentication.                                                 |
+| `Gaffer: Projection Actions` | CodeLens                         | Open the per-projection action menu, grouped by environment. Currently offers diffing local against what's deployed.                     |
 
 ## Telemetry
 

@@ -146,6 +146,10 @@
 			{
 				"command": "gaffer.signIn",
 				"title": "Gaffer: Sign In to Environment"
+			},
+			{
+				"command": "gaffer.projectionActions",
+				"title": "Gaffer: Projection Actions"
 			}
 		],
 		"debuggers": [
@@ -188,6 +192,10 @@
 				},
 				{
 					"command": "gaffer.debugProjectionPick",
+					"when": "false"
+				},
+				{
+					"command": "gaffer.projectionActions",
 					"when": "false"
 				},
 				{

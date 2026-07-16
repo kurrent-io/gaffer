@@ -40,6 +40,7 @@ const IntentStatusEnv = "status-env";
 const IntentStatusLoading = "status-loading";
 const IntentSignIn = "sign-in";
 const IntentStatusBadges = "status-badges";
+const IntentActions = "actions";
 
 // Server-reported per-environment health, validated at the wire boundary like
 // the lens arg payloads.
@@ -113,6 +114,15 @@ const ProjectionPickArgsSchema = v.object({
 const SignInArgsSchema = v.object({
 	env: v.string(),
 	configURI: v.string(),
+});
+
+// Args[0] for the per-projection "actions.." lens: the projection, its
+// declaring gaffer.toml, and the configured environments the action menu is
+// grouped by.
+const ProjectionActionsArgsSchema = v.object({
+	name: v.string(),
+	configURI: v.string(),
+	envs: v.optional(v.array(EnvSchema), []),
 });
 
 // parseConfigURI guards `vscode.Uri.parse` so a malformed URI
@@ -288,6 +298,9 @@ export class LspCodeLensProvider
 		if (intent === IntentSignIn) {
 			return this.#decorateSignIn(sl, range);
 		}
+		if (intent === IntentActions) {
+			return this.#decorateActions(sl, range);
+		}
 		// Unknown intent: pass through with the server's title and
 		// command, but trust-gate it. Future intents we don't yet
 		// know about still respect the workspace-trust contract -
@@ -459,6 +472,36 @@ export class LspCodeLensProvider
 			title: "$(key) Sign in",
 			command: "gaffer.signIn",
 			arguments: [{ env: args.env, tomlUri }],
+		});
+	}
+
+	// The per-projection "actions.." lens opens the action menu (diff against
+	// deployed today; operate / history later). Trust-gated because every action
+	// launches a gaffer process, and hidden when the CLI can't `diff` - the only
+	// action wired so far, so a menu that led nowhere would be a dead end.
+	#decorateActions(
+		sl: LspCodeLens,
+		range: vscode.Range,
+	): vscode.CodeLens | null {
+		const parsed = v.safeParse(
+			ProjectionActionsArgsSchema,
+			sl.command?.arguments?.[0],
+		);
+		if (!parsed.success) {
+			log(
+				`Lens: rejecting actions args: ${parsed.issues.map((i) => i.message).join("; ")}`,
+			);
+			return null;
+		}
+		if (!vscode.workspace.isTrusted) return null;
+		if (!hasCommand(this.#manifest, "diff")) return null;
+		const args = parsed.output;
+		const tomlUri = parseConfigURI(args.configURI);
+		if (!tomlUri) return null;
+		return new vscode.CodeLens(range, {
+			title: "$(list-unordered) actions..",
+			command: "gaffer.projectionActions",
+			arguments: [{ name: args.name, tomlUri, envs: args.envs }],
 		});
 	}
 }

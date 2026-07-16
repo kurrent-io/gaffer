@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import {
 	buildGafferArgv,
 	gafferRunEnv,
+	runGafferCommand,
 	setKeyringPassword,
 	tryFetchManifest,
 } from "./discovery/cli.js";
@@ -80,6 +81,12 @@ import { registerTypeScriptPlugin } from "./lsp/typescript-plugin.js";
 import { GafferMcpProvider } from "./mcp/provider.js";
 import { runProjection } from "./commands/run-projection.js";
 import { debugProjectionPick } from "./commands/debug-projection-pick.js";
+import { projectionActions } from "./commands/projection-actions.js";
+import {
+	diffProjection,
+	GafferDiffContentProvider,
+	GAFFER_DIFF_SCHEME,
+} from "./commands/diff-projection.js";
 import { initProjection } from "./commands/init-projection.js";
 import {
 	createVscodeWizardSteps,
@@ -612,6 +619,36 @@ async function activateAfterTelemetry(
 			"gaffer.debugProjectionPick",
 			wrap(debugProjectionPick({ start: startSessionLens })),
 		),
+		(() => {
+			// The per-projection action menu (opened from the "actions.." lens):
+			// its only action today diffs local against deployed via `gaffer diff
+			// --json`, rendered in the native diff editor. gafferRunEnv (not the
+			// bare spawn env) because diff dials KurrentDB and needs the token
+			// store unlocked.
+			const diffProvider = new GafferDiffContentProvider();
+			const diff = diffProjection({
+				provider: diffProvider,
+				run: (args, cwd) =>
+					runGafferCommand(
+						args,
+						cwd,
+						telemetry,
+						"code_lens",
+						gafferRunEnv(telemetry.isOptedOut()),
+					),
+			});
+			return vscode.Disposable.from(
+				diffProvider,
+				vscode.workspace.registerTextDocumentContentProvider(
+					GAFFER_DIFF_SCHEME,
+					diffProvider,
+				),
+				vscode.commands.registerCommand(
+					"gaffer.projectionActions",
+					wrap(projectionActions({ diff })),
+				),
+			);
+		})(),
 		vscode.commands.registerCommand(
 			"gaffer.runProjection",
 			wrap(

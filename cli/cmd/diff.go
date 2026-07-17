@@ -199,7 +199,7 @@ func runVersionDiff(ctx context.Context, cmd *cobra.Command, r *remote.Client, c
 	lines := deploy.LineDiff(ls.json.Source, rs.json.Source)
 
 	if asJSON {
-		return encodeDiffJSON(cmd.OutOrStdout(), diffJSON{Name: name, Left: ls.json, Right: rs.json, Lines: lines})
+		return encodeDiffJSON(cmd.OutOrStdout(), cliout.DiffJSON{Name: name, Left: ls.json, Right: rs.json, Lines: lines})
 	}
 	tw := newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr())
 	tw.heading(name)
@@ -217,7 +217,7 @@ func runVersionDiff(ctx context.Context, cmd *cobra.Command, r *remote.Client, c
 // when a local side's source doesn't compile - the source still diffs, but the
 // caller surfaces the failure rather than swallow it.
 type resolvedSide struct {
-	json       diffSideJSON
+	json       cliout.DiffSideJSON
 	label      string
 	uncompiled error
 }
@@ -245,20 +245,20 @@ func resolveDiffSide(ctx context.Context, r *remote.Client, cfg *config.Config, 
 			return resolvedSide{}, err
 		}
 		d := def.Descriptor()
-		return resolvedSide{json: diffSideJSON{Ref: "deployed", Hash: d.Hash(), Source: d.CanonicalQuery()}, label: "deployed"}, nil
+		return resolvedSide{json: cliout.DiffSideJSON{Ref: "deployed", Hash: d.Hash(), Source: d.CanonicalQuery()}, label: "deployed"}, nil
 	case refHash:
 		m, err := r.FindVersionByHash(ctx, name, ref.hash)
 		if err != nil {
 			return resolvedSide{}, err
 		}
 		d := m.Def.Descriptor()
-		return resolvedSide{json: diffSideJSON{Ref: "version", Hash: m.Hash, Source: d.CanonicalQuery()}, label: shortRef(m.Hash)}, nil
+		return resolvedSide{json: cliout.DiffSideJSON{Ref: "version", Hash: m.Hash, Source: d.CanonicalQuery()}, label: shortRef(m.Hash)}, nil
 	default: // refLocal
 		d, compileErr, err := localDiffDescriptor(cfg, root, name)
 		if err != nil {
 			return resolvedSide{}, err
 		}
-		side := diffSideJSON{Ref: "local", Source: d.CanonicalQuery()}
+		side := cliout.DiffSideJSON{Ref: "local", Source: d.CanonicalQuery()}
 		// The hash needs emit, which only a successful compile derives; omit it
 		// on a compile failure rather than emit a misleading one.
 		if compileErr == nil {
@@ -302,100 +302,13 @@ func shortRef(hash string) string {
 	return hash
 }
 
-// diffJSON is the --json shape. left/right name each operand (ref, content hash,
-// canonical source); lines is the structured, colourable line diff. verdict and
-// changes are the drift verdict and per-dimension flags, present only for the
-// default deployed↔local diff - a version-to-version diff is a pure source diff.
-type diffJSON struct {
-	Name    string            `json:"name"`
-	Left    diffSideJSON      `json:"left"`
-	Right   diffSideJSON      `json:"right"`
-	Verdict *diffVerdictJSON  `json:"verdict,omitempty"`
-	Changes *changesJSON      `json:"changes,omitempty"`
-	Lines   []deploy.DiffLine `json:"lines"`
-}
-
-// diffSideJSON identifies one operand: which side (local / deployed / a specific
-// historical version), its content hash, and the canonical source the lines were
-// computed from. Hash is omitted when it can't be derived - an invalid local
-// definition yields no emit, so it has no hash.
-type diffSideJSON struct {
-	Ref    string `json:"ref"`
-	Hash   string `json:"hash,omitempty"`
-	Source string `json:"source"`
-}
-
-// diffVerdictJSON is the drift verdict, mirroring gaffer status: drift, owner,
-// attribution, and provenance. reason carries the compile error when invalid.
-type diffVerdictJSON struct {
-	Drift        string             `json:"drift"`
-	Owner        string             `json:"owner"`
-	Attribution  string             `json:"attribution,omitempty"`
-	LastDeployed string             `json:"lastDeployed,omitempty"`
-	LastWrite    *cliout.LedgerJSON `json:"lastWrite,omitempty"`
-	Reason       string             `json:"reason,omitempty"`
-}
-
-type changesJSON struct {
-	Query               bool `json:"query"`
-	EngineVersion       bool `json:"engineVersion"`
-	Emit                bool `json:"emit"`
-	TrackEmittedStreams bool `json:"trackEmittedStreams"`
-}
-
 // renderDiffJSON emits the default deployed↔local diff: the two sides, the drift
 // verdict, and the structured line diff.
 func renderDiffJSON(w io.Writer, e drift.Comparison) error {
-	return encodeDiffJSON(w, comparisonDiffJSON(e))
+	return encodeDiffJSON(w, cliout.ComparisonDiffJSON(e))
 }
 
-func comparisonDiffJSON(e drift.Comparison) diffJSON {
-	var deployedQuery, localQuery string
-	left := diffSideJSON{Ref: "deployed"}
-	right := diffSideJSON{Ref: "local"}
-	if e.Deployed != nil {
-		left.Hash = e.Deployed.Hash()
-		left.Source = e.Deployed.CanonicalQuery()
-		deployedQuery = e.Deployed.Query
-	}
-	if e.Local != nil {
-		right.Source = e.Local.CanonicalQuery()
-		localQuery = e.Local.Query
-		// A local hash needs emit, which an invalid (uncompilable) projection
-		// can't provide, so omit it; the verdict reports the compile error instead.
-		if e.State != drift.Invalid {
-			right.Hash = e.Local.Hash()
-		}
-	}
-
-	j := diffJSON{
-		Name:  e.Name,
-		Left:  left,
-		Right: right,
-		Lines: deploy.LineDiff(deployedQuery, localQuery),
-		Verdict: &diffVerdictJSON{
-			Drift:        string(e.State),
-			Owner:        string(e.Owner()),
-			Attribution:  string(e.Attribution()),
-			LastDeployed: cliout.LastDeployedJSON(e),
-			LastWrite:    cliout.BuildLedgerJSON(e),
-		},
-	}
-	if e.State == drift.Invalid && e.LocalErr != nil {
-		j.Verdict.Reason = e.LocalErr.Error()
-	}
-	if e.State == drift.Drifted {
-		j.Changes = &changesJSON{
-			Query:               e.Cmp.QueryDiffers,
-			EngineVersion:       e.Cmp.EngineVersionDiffers,
-			Emit:                e.Cmp.EmitDiffers,
-			TrackEmittedStreams: e.Cmp.TrackEmittedStreamsDiffers,
-		}
-	}
-	return j
-}
-
-func encodeDiffJSON(w io.Writer, j diffJSON) error {
+func encodeDiffJSON(w io.Writer, j cliout.DiffJSON) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(j)

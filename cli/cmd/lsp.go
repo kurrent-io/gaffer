@@ -33,13 +33,15 @@ func newLSPCmd() *cobra.Command {
 			})
 			runErr := server.Run(ctx, stdioStream{})
 
-			// Drain after Run returns - request goroutines have
-			// finished by then so the atomic loads see final
-			// values. Single-goroutine Tx contract holds: setters
-			// fire on the main goroutine.
+			// Drain after Run returns. Inline handlers finish before the
+			// read loop exits; offloaded ones (see offloadBlocking) run
+			// through spawn, so Run's wait-group drain awaits them too -
+			// the atomic loads see final values. Single-goroutine Tx
+			// contract holds: setters fire on the main goroutine.
 			stats := server.Stats()
 			tx.SetCodeLensRequestCount(stats.CodeLensRequestCount)
 			tx.SetDiagnosticPublishCount(stats.DiagnosticPublishCount)
+			tx.SetDiffRequestCount(stats.DiffRequestCount)
 
 			tx.SetOutcome(classifyLSPOutcome(runErr))
 			return runErr

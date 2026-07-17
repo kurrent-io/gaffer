@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
@@ -188,13 +189,13 @@ func TestWriteDiffLedger(t *testing.T) {
 }
 
 func TestRenderDiffJSON(t *testing.T) {
-	decode := func(e drift.Comparison) diffJSON {
+	decode := func(e drift.Comparison) cliout.DiffJSON {
 		t.Helper()
 		var b bytes.Buffer
 		if err := renderDiffJSON(&b, e); err != nil {
 			t.Fatalf("renderDiffJSON: %v", err)
 		}
-		var j diffJSON
+		var j cliout.DiffJSON
 		if err := json.Unmarshal(b.Bytes(), &j); err != nil {
 			t.Fatalf("unmarshal: %v\n%s", err, b.String())
 		}
@@ -257,5 +258,13 @@ func TestRenderDiffJSON(t *testing.T) {
 	})
 	if invalid.Verdict.Drift != "invalid" || invalid.Verdict.Reason != "boom" || invalid.Right.Hash != "" || invalid.Left.Hash == "" || invalid.Changes != nil {
 		t.Errorf("invalid = %+v (verdict %+v); want error + deployed hash only", invalid, invalid.Verdict)
+	}
+
+	// Not deployed: local only, no deployed side. The deployed side carries no
+	// source - the empty-source signal the editor keys on for "not deployed" -
+	// while the local side has its source and hash.
+	notDeployed := decode(drift.Comparison{Name: "nd", State: drift.NotDeployed, Local: desc("q", 2, true)})
+	if notDeployed.Verdict.Drift != "not-deployed" || notDeployed.Left.Source != "" || notDeployed.Left.Hash != "" || notDeployed.Right.Source == "" {
+		t.Errorf("not-deployed = %+v (verdict %+v); want empty deployed side + local source", notDeployed, notDeployed.Verdict)
 	}
 }

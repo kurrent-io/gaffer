@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import {
 	buildGafferArgv,
 	gafferRunEnv,
-	runGafferCommand,
 	setKeyringPassword,
 	tryFetchManifest,
 } from "./discovery/cli.js";
@@ -87,6 +86,7 @@ import {
 	GafferDiffContentProvider,
 	GAFFER_DIFF_SCHEME,
 } from "./commands/diff-projection.js";
+import { requestProjectionDiff } from "./lsp/diff.js";
 import { initProjection } from "./commands/init-projection.js";
 import {
 	createVscodeWizardSteps,
@@ -621,21 +621,14 @@ async function activateAfterTelemetry(
 		),
 		(() => {
 			// The per-projection action menu (opened from the "Manage..." lens):
-			// its only action today diffs local against deployed via `gaffer diff
-			// --json`, rendered in the native diff editor. gafferRunEnv (not the
-			// bare spawn env) because diff dials KurrentDB and needs the token
-			// store unlocked.
+			// its only action today diffs local against deployed, rendered in the
+			// native diff editor. The diff is computed by the language server over
+			// its warm per-env connection (gaffer/diffProjection), so a re-diff is
+			// one read RPC rather than a cold `gaffer diff` spawn.
 			const diffProvider = new GafferDiffContentProvider();
 			const diff = diffProjection({
 				provider: diffProvider,
-				run: (args, cwd) =>
-					runGafferCommand(
-						args,
-						cwd,
-						telemetry,
-						"code_lens",
-						gafferRunEnv(telemetry.isOptedOut()),
-					),
+				requestDiff: requestProjectionDiff,
 			});
 			return vscode.Disposable.from(
 				diffProvider,

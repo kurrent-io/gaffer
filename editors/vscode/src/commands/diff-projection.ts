@@ -1,38 +1,19 @@
-// The "Diff against deployed" action from the projection action menu: run
-// `gaffer diff <name> --env <env> --json`, then open VS Code's native diff
-// editor with the deployed and local source as read-only virtual documents.
+// The "Diff against deployed" action from the projection action menu: ask the
+// language server for a projection's deployed↔local diff, then open VS Code's
+// native diff editor with the deployed and local source as read-only virtual
+// documents.
 //
 // The two sides are served by GafferDiffContentProvider under the `gaffer-diff:`
 // scheme - a source string keyed by (env, projection, side), refreshed in place
-// so re-running a diff updates an already-open editor. The CLI already resolves
-// refs, dials, and returns both canonical sources (UI-1826), so this is a spawn,
-// not a second implementation of the comparison.
+// so re-running a diff updates an already-open editor. The diff is computed by
+// the server over its warm per-env connection (gaffer/diffProjection), so a
+// re-diff is one read RPC rather than a cold `gaffer diff` spawn.
 
 import * as vscode from "vscode";
-import * as v from "valibot";
 import { log } from "../output.js";
+import { DiffAuthRequiredError, type ProjectionDiff } from "../lsp/diff.js";
 
 export const GAFFER_DIFF_SCHEME = "gaffer-diff";
-
-// A diff side as `gaffer diff --json` reports it. Only source is needed to
-// render; ref/hash are validated so a shape change is caught at the boundary.
-const DiffSideSchema = v.object({
-	ref: v.string(),
-	hash: v.optional(v.string()),
-	source: v.optional(v.string(), ""),
-});
-
-// The subset of the `gaffer diff --json` payload the editor consumes: both
-// sides' source and the drift verdict (to tell "not deployed" from a real
-// diff). Unmodelled fields (lines, changes, provenance) pass through ignored.
-const DiffJsonSchema = v.object({
-	name: v.string(),
-	left: DiffSideSchema,
-	right: DiffSideSchema,
-	verdict: v.optional(v.object({ drift: v.optional(v.string()) })),
-});
-
-type DiffJson = v.InferOutput<typeof DiffJsonSchema>;
 
 // Serves the two diff sides as read-only virtual documents. One instance is
 // registered for the whole session; each diff invocation stores its sources and
@@ -92,30 +73,15 @@ export interface DiffProjectionArgs {
 }
 
 export interface DiffProjectionDeps {
-	// Runs the CLI and returns its stdout or the failure (with err.cause.stderr
-	// attached), mirroring runGafferCommand's result shape.
-	run: (
-		args: string[],
-		cwd: string,
-	) => Promise<{ ok: true; stdout: string } | { ok: false; err: unknown }>;
+	// Fetches the projection's deployed↔local diff over the LSP warm connection.
+	// Throws DiffAuthRequiredError when the env needs sign-in, DiffUnavailableError
+	// otherwise. A field so tests inject a fake in place of a live server.
+	requestDiff: (
+		name: string,
+		tomlUri: vscode.Uri,
+		env: string,
+	) => Promise<ProjectionDiff>;
 	provider: GafferDiffContentProvider;
-}
-
-// The CLI exits with this code (root.go exitCodeAuthRequired) when a command
-// fails for want of an interactive sign-in (target.AuthRequiredError). Keying
-// off the code, not the message text, is the stable signal that an auth failure
-// should offer a one-click sign-in.
-const EXIT_AUTH_REQUIRED = 4;
-
-// runGafferCommand attaches the CLI's numeric exit code as err.code (see
-// discovery/cli.ts execFileAsync).
-function isAuthRequired(err: unknown): boolean {
-	return (err as { code?: unknown })?.code === EXIT_AUTH_REQUIRED;
-}
-
-function stderrOf(err: unknown): string {
-	const cause = (err as { cause?: { stderr?: unknown } })?.cause;
-	return typeof cause?.stderr === "string" ? cause.stderr : "";
 }
 
 export function diffProjection(
@@ -123,35 +89,19 @@ export function diffProjection(
 ): (args: DiffProjectionArgs) => Promise<void> {
 	return async ({ name, tomlUri, env }) => {
 		if (!vscode.workspace.isTrusted) return;
-		const cwd = vscode.Uri.joinPath(tomlUri, "..").fsPath;
-		// `--` terminates flag parsing before the positional projection name;
-		// without it a projection named `--connection=...` (names aren't charset-
-		// validated) would be parsed as a flag. Flags first, name last after the
-		// separator - same guard as the debug spawn.
-		const result = await deps.run(
-			["diff", "--env", env, "--json", "--", name],
-			cwd,
-		);
-		if (!result.ok) {
-			await reportFailure(name, env, tomlUri, result.err);
-			return;
-		}
 
-		let json: DiffJson;
+		let diff: ProjectionDiff;
 		try {
-			json = v.parse(DiffJsonSchema, JSON.parse(result.stdout));
+			diff = await deps.requestDiff(name, tomlUri, env);
 		} catch (err) {
-			log(`diff: unparseable --json output: ${String(err)}`);
-			await vscode.window.showErrorMessage(
-				`Couldn't read the diff for "${name}".`,
-			);
+			await reportFailure(name, env, tomlUri, err);
 			return;
 		}
 
 		// No deployed side: the projection isn't on this env yet. A diff against
 		// an empty document would misrepresent "not deployed" as "everything
 		// removed", so say it plainly instead.
-		if (json.verdict?.drift === "not-deployed" || json.left.source === "") {
+		if (diff.verdict?.drift === "not-deployed" || diff.left.source === "") {
 			await vscode.window.showInformationMessage(
 				`"${name}" isn't deployed to ${env}.`,
 			);
@@ -161,8 +111,8 @@ export function diffProjection(
 		const { left, right } = deps.provider.setSides(
 			name,
 			env,
-			json.left.source,
-			json.right.source,
+			diff.left.source,
+			diff.right.source,
 		);
 		await vscode.commands.executeCommand(
 			"vscode.diff",
@@ -179,8 +129,7 @@ async function reportFailure(
 	tomlUri: vscode.Uri,
 	err: unknown,
 ): Promise<void> {
-	const stderr = stderrOf(err);
-	if (isAuthRequired(err)) {
+	if (err instanceof DiffAuthRequiredError) {
 		const signIn = "Sign in";
 		const choice = await vscode.window.showErrorMessage(
 			`${env} needs sign-in to diff "${name}".`,
@@ -191,7 +140,7 @@ async function reportFailure(
 		}
 		return;
 	}
-	const detail = stderr || (err instanceof Error ? err.message : String(err));
+	const detail = err instanceof Error ? err.message : String(err);
 	log(`diff ${name} --env ${env} failed: ${detail}`);
 	await vscode.window.showErrorMessage(
 		`Couldn't diff "${name}" against ${env}: ${detail}`,

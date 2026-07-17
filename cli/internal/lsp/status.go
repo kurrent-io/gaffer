@@ -257,7 +257,20 @@ const (
 // caller handle a parse failure differently (the fetch drops cached status; the
 // watch reconcile tears its subscriptions down).
 func (s *Server) loadStatusConfig(uri string) (*config.Config, string, configLoad) {
-	if !s.statusLensEnabled() || !isGafferConfig(uri) {
+	if !s.statusLensEnabled() {
+		return nil, "", loadSkip
+	}
+	return s.loadConfig(uri)
+}
+
+// loadConfig parses the in-memory gaffer.toml buffer for uri, independent of any
+// client capability. loadStatusConfig is the status surface's capability-gated
+// wrapper; a client-pulled request (e.g. gaffer/diffProjection) calls loadConfig
+// directly so it isn't coupled to the vscode-oriented statusLens rendering
+// capability. Returns loadSkip for a non-gaffer URI or one with no synced buffer,
+// loadParseErr when the buffer doesn't parse.
+func (s *Server) loadConfig(uri string) (*config.Config, string, configLoad) {
+	if !isGafferConfig(uri) {
 		return nil, "", loadSkip
 	}
 	path := uriToPath(uri)
@@ -396,25 +409,29 @@ func (s *Server) refreshStatus(uri string, driftChanged bool) {
 func (s *Server) safeFetch(ctx context.Context, root string, cfg *config.Config, env string, fetch func(context.Context) envStatus) (st envStatus) {
 	defer func() {
 		if r := recover(); r != nil {
-			// Scrub the panic value against the env's connection before logging,
-			// in case it embedded one. Scrub both the raw connection and the
-			// ${VAR}-expanded form the dial actually used - a panic from deep in
-			// the client carries the expanded string, not the toml literal.
-			// Expansion alone rather than full Resolve: a target that refuses to
-			// resolve (an unparseable connection under OAuth host binding) still
-			// expands, so its secret still gets masked. Best-effort: an env that
-			// won't even expand scrubs to a no-op.
-			msg := fmt.Sprint(r)
-			if resolved, rerr := cfg.ResolveEnv(env); rerr == nil {
-				msg = scrubConnection(msg, root, resolved)
-			}
-			log.Printf("lsp: status fetch for env %q panicked: %s", env, msg)
+			logScrubbedPanic(cfg, root, env, "status fetch", r)
 			// Keep the error generic - it's surfaced in the lens tooltip, so it
 			// must not carry the (unscrubbed) panic value.
 			st = envStatus{Err: errors.New("status read failed unexpectedly")}
 		}
 	}()
 	return fetch(ctx)
+}
+
+// logScrubbedPanic logs a recovered panic value with the env's connection secret
+// scrubbed out. It scrubs both the raw connection and the ${VAR}-expanded form
+// the dial actually used - a panic from deep in the client carries the expanded
+// string, not the toml literal. Expansion alone rather than full Resolve: a
+// target that refuses to resolve (an unparseable connection under OAuth host
+// binding) still expands, so its secret still gets masked. Best-effort: an env
+// that won't even resolve scrubs to a no-op. Shared by the status-fetch and diff
+// panic guards; `what` names the operation for the log line.
+func logScrubbedPanic(cfg *config.Config, root, env, what string, rec any) {
+	msg := fmt.Sprint(rec)
+	if resolved, rerr := cfg.ResolveEnv(env); rerr == nil {
+		msg = scrubConnection(msg, root, resolved)
+	}
+	log.Printf("lsp: %s for env %q panicked: %s", what, env, msg)
 }
 
 // scrubConnection masks an env's connection secret out of a message before it's

@@ -258,6 +258,7 @@ export type LspCommandInvokedProperties = CommandInvokedBaseProperties & {
   command: "lsp";
   code_lens_request_count?: BucketCount;
   diagnostic_publish_count?: BucketCount;
+  diff_request_count?: BucketCount;
   [k: string]: unknown;
 };
 /**

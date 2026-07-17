@@ -61,7 +61,7 @@ func (s *Server) Run(ctx context.Context, stream io.ReadWriteCloser) error {
 	conn := jsonrpc2.NewConn(
 		runCtx,
 		jsonrpc2.NewBufferedStream(stream, jsonrpc2.VSCodeObjectCodec{}),
-		jsonrpc2.HandlerWithError(s.handle),
+		offloadBlocking(jsonrpc2.HandlerWithError(s.handle), s.spawn),
 	)
 	// Capture the conn for server-pushed notifications
 	// (publishDiagnostics, registerCapability). Cleared on disconnect

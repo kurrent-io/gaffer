@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
@@ -39,7 +40,7 @@ func cleanupRemote(t *testing.T, r *remote.Client, name string) {
 	})
 }
 
-func runDiffJSON(t *testing.T, args ...string) diffJSON {
+func runDiffJSON(t *testing.T, args ...string) cliout.DiffJSON {
 	t.Helper()
 	root := NewRootCmd()
 	root.SetArgs(append([]string{"diff", "--json"}, args...))
@@ -49,7 +50,7 @@ func runDiffJSON(t *testing.T, args ...string) diffJSON {
 			t.Fatalf("diff: %v", err)
 		}
 	})
-	var got diffJSON
+	var got cliout.DiffJSON
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("unmarshal diff json: %v\n%s", err, out)
 	}

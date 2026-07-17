@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"context"
 	"testing"
 
 	"github.com/sourcegraph/jsonrpc2"
@@ -14,6 +15,9 @@ func TestStats_ZeroBeforeActivity(t *testing.T) {
 	}
 	if got.DiagnosticPublishCount != 0 {
 		t.Errorf("DiagnosticPublishCount = %d, want 0", got.DiagnosticPublishCount)
+	}
+	if got.DiffRequestCount != 0 {
+		t.Errorf("DiffRequestCount = %d, want 0", got.DiffRequestCount)
 	}
 }
 
@@ -43,5 +47,19 @@ func TestPublishDiagnostics_IncrementsCounter(t *testing.T) {
 	}
 	if got := s.Stats().DiagnosticPublishCount; got != 2 {
 		t.Errorf("DiagnosticPublishCount = %d, want 2", got)
+	}
+}
+
+func TestHandleDiffProjection_IncrementsCounter(t *testing.T) {
+	s := NewServer(ServerOptions{})
+	// nil params path: the handler errors early, but the counter bump
+	// precedes it so every diff request appears in the data.
+	for range 3 {
+		if _, err := s.handleDiffProjection(context.Background(), &jsonrpc2.Request{}); err == nil {
+			t.Fatal("nil params should error")
+		}
+	}
+	if got := s.Stats().DiffRequestCount; got != 3 {
+		t.Errorf("DiffRequestCount = %d, want 3", got)
 	}
 }

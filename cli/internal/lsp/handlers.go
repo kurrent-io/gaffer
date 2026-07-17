@@ -39,16 +39,20 @@ func (h offloadBlockingHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn,
 	h.inner.Handle(ctx, conn, req)
 }
 
-// blocksReadLoop reports whether a request method's handler does blocking I/O and
-// so must run off the read loop. Every method that reads or writes over the
-// network (today only diffProjection; history and operate verbs will join it)
-// MUST be listed here, or its handler runs inline and freezes all other LSP
-// traffic for up to RPCTimeout against a slow or unreachable env - a freeze a
-// fast-env test won't catch. Keep this in sync with the dispatch switch in
-// handle. Everything else is a cache read or spawns its own work and returns at
-// once.
+// blockingMethods is the set of request methods whose handler does blocking I/O
+// over the env connection (a bounded network read/write), so it must run off the
+// read loop or it freezes all other LSP traffic for up to RPCTimeout against a
+// slow or unreachable env - a freeze a fast-env test won't catch. Every such
+// method MUST be listed here AND dispatched from handle's switch; a guard test
+// (TestBlockingMethodsAreDispatched) checks the two don't drift. Everything else
+// is a cache read or spawns its own work and returns at once.
+var blockingMethods = map[string]struct{}{
+	MethodDiffProjection: {},
+}
+
 func blocksReadLoop(method string) bool {
-	return method == MethodDiffProjection
+	_, ok := blockingMethods[method]
+	return ok
 }
 
 // handle dispatches a single JSON-RPC message to the right method.

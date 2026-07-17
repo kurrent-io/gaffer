@@ -9,6 +9,34 @@ import (
 	"github.com/sourcegraph/jsonrpc2"
 )
 
+// offloadBlockingHandler runs blocking request handlers in their own goroutine
+// so they don't freeze the single read-loop goroutine that serves all other LSP
+// traffic. Non-blocking methods stay inline, preserving the in-order processing
+// document sync relies on. Unlike jsonrpc2.AsyncHandler - which offloads every
+// message and so reorders notifications - this offloads only the methods that
+// need it, and reuses the wrapped handler's reply machinery.
+type offloadBlockingHandler struct{ inner jsonrpc2.Handler }
+
+func offloadBlocking(inner jsonrpc2.Handler) jsonrpc2.Handler {
+	return offloadBlockingHandler{inner}
+}
+
+func (h offloadBlockingHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+	if !req.Notif && blocksReadLoop(req.Method) {
+		go h.inner.Handle(ctx, conn, req)
+		return
+	}
+	h.inner.Handle(ctx, conn, req)
+}
+
+// blocksReadLoop reports whether a request method's handler does blocking I/O
+// and so must run off the read loop. diffProjection reads a definition over the
+// network (bounded by RPCTimeout, but seconds against a slow or unreachable env);
+// every other request is a cache read or spawns its own work and returns at once.
+func blocksReadLoop(method string) bool {
+	return method == MethodDiffProjection
+}
+
 // handle dispatches a single JSON-RPC message to the right method.
 // jsonrpc2.HandlerWithError takes care of error/result wrapping.
 func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) (any, error) {
@@ -59,6 +87,8 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 		return s.handleDidChangeWatchedFiles(ctx, req)
 	case MethodProjectionDetails:
 		return s.handleProjectionDetails(req)
+	case MethodDiffProjection:
+		return s.handleDiffProjection(ctx, req)
 	case MethodRefreshStatus:
 		return s.handleRefreshStatus(req)
 	default:

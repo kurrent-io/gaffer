@@ -192,6 +192,10 @@ import "strings"
 
 	// Bucketed total diagnostic publishes.
 	diagnostic_publish_count?: #BucketCount
+
+	// Bucketed total projection-diff requests served (the editor's "Diff
+	// against deployed", routed through the server's warm connection).
+	diff_request_count?: #BucketCount
 }
 
 // `gaffer debug` - DAP server for projection debugging.

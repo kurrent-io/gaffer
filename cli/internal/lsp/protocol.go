@@ -53,7 +53,20 @@ const (
 	// status reaches the editor through the normal codeLens refresh once it
 	// lands.
 	MethodRefreshStatus = "gaffer/refreshStatus"
+
+	// MethodDiffProjection is a gaffer-specific extension: diff a projection's
+	// local definition against what's deployed on one env, served over the
+	// server's warm per-env connection instead of a cold `gaffer diff` spawn.
+	// The result is a cliout.DiffJSON - the same shape as `gaffer diff --json` -
+	// so the editor's diff wiring is unchanged.
+	MethodDiffProjection = "gaffer/diffProjection"
 )
+
+// CodeAuthRequired is a gaffer-specific JSON-RPC error code returned when a
+// request needs sign-in: a missing or locked token, or a stored token the IdP
+// rejected. The editor offers a sign-in affordance rather than a generic error
+// toast. In the JSON-RPC server-reserved range (-32000..-32099).
+const CodeAuthRequired = -32001
 
 // LSP intent codes for code lenses. Per the LSP plan, the server
 // emits a semantic intent in `data.intent` and each editor extension
@@ -468,6 +481,15 @@ type RegistrationParams struct {
 type ProjectionDetailsParams struct {
 	ConfigURI string `json:"configURI"`
 	Name      string `json:"name"`
+}
+
+// DiffProjectionParams identifies the projection to diff (by declaring
+// gaffer.toml URI plus name) and the env to diff its local definition against.
+// The result is a cliout.DiffJSON, the default deployed↔local shape.
+type DiffProjectionParams struct {
+	ConfigURI string `json:"configURI"`
+	Name      string `json:"name"`
+	Env       string `json:"env"`
 }
 
 // RefreshStatusParams identifies the gaffer.toml whose deploy status the editor

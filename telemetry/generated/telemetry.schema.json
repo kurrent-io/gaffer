@@ -878,6 +878,9 @@
         },
         "diagnostic_publish_count": {
           "$ref": "#/definitions/BucketCount"
+        },
+        "diff_request_count": {
+          "$ref": "#/definitions/BucketCount"
         }
       },
       "allOf": [

@@ -40,6 +40,7 @@ func newLSPCmd() *cobra.Command {
 			stats := server.Stats()
 			tx.SetCodeLensRequestCount(stats.CodeLensRequestCount)
 			tx.SetDiagnosticPublishCount(stats.DiagnosticPublishCount)
+			tx.SetDiffRequestCount(stats.DiffRequestCount)
 
 			tx.SetOutcome(classifyLSPOutcome(runErr))
 			return runErr

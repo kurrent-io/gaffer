@@ -119,7 +119,7 @@ func emitCodeLenses(desc config.Description, uri string) []CodeLens {
 							Name:         p.Name,
 							ConfigURI:    uri,
 							FixtureNames: validNames,
-							Envs:         desc.Environments,
+							Envs:         lensEnvs(desc.Environments),
 						},
 					},
 				},
@@ -170,14 +170,33 @@ type projectionArgs struct {
 	Env string `json:"env,omitempty"`
 }
 
+// lensEnv is the minimal environment shape a lens command carries: the client
+// builds its env picker from the name and default flag alone. Narrower than
+// config.EnvDescription on purpose - the full form also carries the header's
+// source range, which the client ignores, and a lens payload repeats its env
+// list once per projection, so shipping the range would be dead weight scaled by
+// projections × envs.
+type lensEnv struct {
+	Name    string `json:"name"`
+	Default bool   `json:"default,omitempty"`
+}
+
+func lensEnvs(envs []config.EnvDescription) []lensEnv {
+	out := make([]lensEnv, len(envs))
+	for i, e := range envs {
+		out[i] = lensEnv{Name: e.Name, Default: e.Default}
+	}
+	return out
+}
+
 // projectionPickArgs is the payload for the dropdown lens. Includes
 // the available fixture names and environments so the editor extension
 // can pop a quick-pick without re-fetching.
 type projectionPickArgs struct {
-	Name         string                  `json:"name"`
-	ConfigURI    string                  `json:"configURI"`
-	FixtureNames []string                `json:"fixtureNames"`
-	Envs         []config.EnvDescription `json:"envs,omitempty"`
+	Name         string    `json:"name"`
+	ConfigURI    string    `json:"configURI"`
+	FixtureNames []string  `json:"fixtureNames"`
+	Envs         []lensEnv `json:"envs,omitempty"`
 }
 
 // signInArgs is the Command.Arguments[0] payload for an env-block sign-in
@@ -193,9 +212,9 @@ type signInArgs struct {
 // env-grouped action menu without re-reading the config. Mirrors
 // projectionPickArgs' shape - the client already knows this vocabulary.
 type projectionActionsArgs struct {
-	Name      string                  `json:"name"`
-	ConfigURI string                  `json:"configURI"`
-	Envs      []config.EnvDescription `json:"envs,omitempty"`
+	Name      string    `json:"name"`
+	ConfigURI string    `json:"configURI"`
+	Envs      []lensEnv `json:"envs,omitempty"`
 }
 
 // emitStatusEnvLenses renders one env-block deploy-status lens per configured
@@ -313,7 +332,7 @@ func emitActionsLenses(desc config.Description, uri string) []CodeLens {
 				Title:   "Manage...",
 				Command: CommandProjectionActions,
 				Arguments: []any{
-					projectionActionsArgs{Name: p.Name, ConfigURI: uri, Envs: desc.Environments},
+					projectionActionsArgs{Name: p.Name, ConfigURI: uri, Envs: lensEnvs(desc.Environments)},
 				},
 			},
 			Data: &CodeLensData{Intent: IntentActions},
@@ -470,7 +489,7 @@ func emitEntryScriptLenses(parses []parseResult, uri string) []CodeLens {
 							Name:         p.Name,
 							ConfigURI:    tomlURI,
 							FixtureNames: validNames,
-							Envs:         parse.Description.Environments,
+							Envs:         lensEnvs(parse.Description.Environments),
 						},
 					},
 				},

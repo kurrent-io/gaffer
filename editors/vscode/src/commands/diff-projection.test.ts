@@ -7,6 +7,11 @@ import {
 	type DiffProjectionDeps,
 } from "./diff-projection.js";
 import {
+	DiffAuthRequiredError,
+	DiffUnavailableError,
+	type ProjectionDiff,
+} from "../lsp/diff.js";
+import {
 	getShownMessages,
 	getState,
 	queueMessageResponse,
@@ -24,26 +29,31 @@ afterEach(() => {
 	resetVscode();
 });
 
-// A `gaffer diff --json` payload with distinct sources and a drift verdict.
-function diffedJson(): string {
-	return JSON.stringify({
+// A drifted diff with distinct sources.
+function diffedResult(): ProjectionDiff {
+	return {
 		name: "checkout",
 		left: { ref: "deployed", hash: "aaa", source: "OLD" },
 		right: { ref: "local", hash: "bbb", source: "NEW" },
 		verdict: { drift: "drifted" },
-	});
+	};
 }
 
-function fakeRun(result: Awaited<ReturnType<DiffProjectionDeps["run"]>>): {
-	calls: { args: string[]; cwd: string }[];
-	run: DiffProjectionDeps["run"];
+// fakeRequest records its calls and resolves or rejects with the given outcome.
+function fakeRequest(
+	outcome: { resolve: ProjectionDiff } | { reject: unknown },
+): {
+	calls: { name: string; env: string }[];
+	requestDiff: DiffProjectionDeps["requestDiff"];
 } {
-	const calls: { args: string[]; cwd: string }[] = [];
+	const calls: { name: string; env: string }[] = [];
 	return {
 		calls,
-		run: (args, cwd) => {
-			calls.push({ args, cwd });
-			return Promise.resolve(result);
+		requestDiff: (name, _tomlUri, env) => {
+			calls.push({ name, env });
+			return "reject" in outcome
+				? Promise.reject(outcome.reject)
+				: Promise.resolve(outcome.resolve);
 		},
 	};
 }
@@ -81,23 +91,13 @@ describe("GafferDiffContentProvider", () => {
 describe("diffProjection", () => {
 	it("opens the native diff with both sources", async () => {
 		const provider = new GafferDiffContentProvider();
-		const { calls, run } = fakeRun({ ok: true, stdout: diffedJson() });
-		await diffProjection({ provider, run })({
+		const { calls, requestDiff } = fakeRequest({ resolve: diffedResult() });
+		await diffProjection({ provider, requestDiff })({
 			name: "checkout",
 			tomlUri,
 			env: "prod",
 		});
-		// Spawned with the right argv, in the config's directory. Compute the
-		// expected cwd the same way so the assertion adapts to the mock's Uri
-		// normalization (the real Uri.parse normalizes leading slashes; the mock
-		// doesn't).
-		const expectedCwd = vscode.Uri.joinPath(tomlUri, "..").fsPath;
-		expect(calls).toEqual([
-			{
-				args: ["diff", "--env", "prod", "--json", "--", "checkout"],
-				cwd: expectedCwd,
-			},
-		]);
+		expect(calls).toEqual([{ name: "checkout", env: "prod" }]);
 		const diffs = diffCommandCalls();
 		expect(diffs).toHaveLength(1);
 		const [left, right, title] = diffs[0]?.args as [
@@ -112,16 +112,15 @@ describe("diffProjection", () => {
 
 	it("shows a message and opens no diff when the projection isn't deployed", async () => {
 		const provider = new GafferDiffContentProvider();
-		const { run } = fakeRun({
-			ok: true,
-			stdout: JSON.stringify({
+		const { requestDiff } = fakeRequest({
+			resolve: {
 				name: "checkout",
 				left: { ref: "deployed", source: "" },
 				right: { ref: "local", source: "NEW" },
 				verdict: { drift: "not-deployed" },
-			}),
+			},
 		});
-		await diffProjection({ provider, run })({
+		await diffProjection({ provider, requestDiff })({
 			name: "checkout",
 			tomlUri,
 			env: "prod",
@@ -135,17 +134,11 @@ describe("diffProjection", () => {
 
 	it("offers sign-in on an auth failure and routes the choice", async () => {
 		const provider = new GafferDiffContentProvider();
-		const { run } = fakeRun({
-			ok: false,
-			err: {
-				code: 4,
-				cause: {
-					stderr: 'env "prod" requires sign-in: run `gaffer auth --env prod`',
-				},
-			},
+		const { requestDiff } = fakeRequest({
+			reject: new DiffAuthRequiredError(),
 		});
 		queueMessageResponse("Sign in");
-		await diffProjection({ provider, run })({
+		await diffProjection({ provider, requestDiff })({
 			name: "checkout",
 			tomlUri,
 			env: "prod",
@@ -163,12 +156,11 @@ describe("diffProjection", () => {
 
 	it("does not route sign-in when the error toast is dismissed", async () => {
 		const provider = new GafferDiffContentProvider();
-		const { run } = fakeRun({
-			ok: false,
-			err: { code: 4 },
+		const { requestDiff } = fakeRequest({
+			reject: new DiffAuthRequiredError(),
 		});
 		// No queued response → showErrorMessage resolves undefined (dismissed).
-		await diffProjection({ provider, run })({
+		await diffProjection({ provider, requestDiff })({
 			name: "checkout",
 			tomlUri,
 			env: "prod",
@@ -178,13 +170,12 @@ describe("diffProjection", () => {
 		).toHaveLength(0);
 	});
 
-	it("shows the CLI error on a non-auth failure", async () => {
+	it("shows the error detail on a non-auth failure", async () => {
 		const provider = new GafferDiffContentProvider();
-		const { run } = fakeRun({
-			ok: false,
-			err: { cause: { stderr: "connection refused" } },
+		const { requestDiff } = fakeRequest({
+			reject: new DiffUnavailableError("connection refused"),
 		});
-		await diffProjection({ provider, run })({
+		await diffProjection({ provider, requestDiff })({
 			name: "checkout",
 			tomlUri,
 			env: "prod",
@@ -195,43 +186,11 @@ describe("diffProjection", () => {
 		expect(msgs[0]?.message).toContain("connection refused");
 	});
 
-	it("does not offer sign-in on stderr text alone without the auth exit code", async () => {
-		const provider = new GafferDiffContentProvider();
-		// Message text mentions sign-in, but the exit code isn't the auth code:
-		// detection is the code, not the text, so this is a plain error.
-		const { run } = fakeRun({
-			ok: false,
-			err: { code: 1, cause: { stderr: "boom requires sign-in maybe" } },
-		});
-		await diffProjection({ provider, run })({
-			name: "checkout",
-			tomlUri,
-			env: "prod",
-		});
-		const msgs = getShownMessages();
-		expect(msgs[0]?.items ?? []).not.toContain("Sign in");
-		expect(
-			getState().executeCommandCalls.filter((c) => c.name === "gaffer.signIn"),
-		).toHaveLength(0);
-	});
-
-	it("reports an unparseable --json payload", async () => {
-		const provider = new GafferDiffContentProvider();
-		const { run } = fakeRun({ ok: true, stdout: "not json" });
-		await diffProjection({ provider, run })({
-			name: "checkout",
-			tomlUri,
-			env: "prod",
-		});
-		expect(diffCommandCalls()).toHaveLength(0);
-		expect(getShownMessages()[0]?.kind).toBe("error");
-	});
-
 	it("does nothing in an untrusted workspace", async () => {
 		setTrusted(false);
 		const provider = new GafferDiffContentProvider();
-		const { calls, run } = fakeRun({ ok: true, stdout: diffedJson() });
-		await diffProjection({ provider, run })({
+		const { calls, requestDiff } = fakeRequest({ resolve: diffedResult() });
+		await diffProjection({ provider, requestDiff })({
 			name: "checkout",
 			tomlUri,
 			env: "prod",

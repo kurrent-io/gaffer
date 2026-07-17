@@ -156,7 +156,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts, tel *telemetry.
 	// locally and could refuse before connecting; now a projection that won't run
 	// surfaces as an invalid item in the full plan, a truer picture than a fast
 	// offline abort. You can't use deploy to check that your projections compile.)
-	r, resolved, cleanup, err := connectResolved(cfg, root, opts.Connection, opts.Env)
+	r, resolved, _, cleanup, err := connectResolved(cfg, root, opts.Connection, opts.Env)
 	if err != nil {
 		return err
 	}

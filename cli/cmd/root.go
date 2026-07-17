@@ -11,9 +11,17 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 	"github.com/kurrent-io/gaffer/cli/internal/ttyutil"
 	"github.com/kurrent-io/gaffer/cli/internal/updatecheck"
 )
+
+// exitCodeAuthRequired marks a failure that needs an interactive sign-in
+// (target.AuthRequiredError): a missing or unusable stored credential, not a
+// generic connection fault. It sits above the deploy CI contract's 0-3 so it
+// doesn't collide with those meanings. Editors key off it to offer a one-click
+// sign-in rather than scraping the error text.
+const exitCodeAuthRequired = 4
 
 // silentError wraps an error that has already been printed to stderr by the
 // command itself. fang's error handler skips it to avoid duplicate output.
@@ -48,7 +56,8 @@ func exitWith(code int, err error) error { return &exitError{err: err, code: cod
 // it only on a non-nil error. An explicit exitWith code wins; otherwise a guardrail
 // refusal (confirmation unavailable) is 3 wherever it surfaces - deploy, recreate,
 // or an operate verb - so a non-interactive caller can tell "satisfy the gate and
-// retry" from a genuine failure. Everything else is 1.
+// retry" from a genuine failure. An auth-required error is 4 wherever it surfaces,
+// so a caller can offer a sign-in. Everything else is 1.
 func ExitCodeFor(err error) int {
 	var e *exitError
 	if errors.As(err, &e) {
@@ -56,6 +65,10 @@ func ExitCodeFor(err error) int {
 	}
 	if errors.Is(err, errNeedConfirm) || errors.Is(err, errOperateNeedsConfirm) {
 		return 3
+	}
+	var authErr *target.AuthRequiredError
+	if errors.As(err, &authErr) {
+		return exitCodeAuthRequired
 	}
 	return 1
 }

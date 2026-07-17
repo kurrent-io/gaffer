@@ -13,6 +13,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/prompt"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 )
 
 // changePlan has c creates and u updates (the rest skips), so the change count
@@ -120,6 +121,14 @@ func TestExitCodeFor(t *testing.T) {
 	// A guardrail sentinel still maps to 3 when wrapped (fmt.Errorf %w).
 	if got := ExitCodeFor(fmt.Errorf("deploy: %w", errNeedConfirm)); got != 3 {
 		t.Errorf("wrapped errNeedConfirm should be exit 3, got %d", got)
+	}
+	// An auth-required error maps to 4, wrapped or bare, so an editor can offer
+	// a sign-in rather than scrape the message.
+	if got := ExitCodeFor(&target.AuthRequiredError{Env: "prod"}); got != exitCodeAuthRequired {
+		t.Errorf("AuthRequiredError should be exit %d, got %d", exitCodeAuthRequired, got)
+	}
+	if got := ExitCodeFor(fmt.Errorf("diff: %w", &target.AuthRequiredError{Env: "prod"})); got != exitCodeAuthRequired {
+		t.Errorf("wrapped AuthRequiredError should be exit %d, got %d", exitCodeAuthRequired, got)
 	}
 }
 

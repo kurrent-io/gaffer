@@ -6,6 +6,7 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/project"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
@@ -43,6 +44,12 @@ type liveConn struct {
 	env     config.ResolvedEnv
 	r       *remote.Client
 	cleanup func()
+	// authInv is the engine's auth-invalidation handle, tripped when the IdP
+	// rejects the stored OAuth token on a read (a dead credential the lazy connect
+	// can't see). A caller that offers a sign-in checks Tripped() after a failed
+	// read to tell a dead credential from a generic failure. Nil for a non-OAuth
+	// env.
+	authInv *engine.AuthInvalidation
 }
 
 // connectEnv loads the project, resolves the live env from explicit flags, and
@@ -53,31 +60,31 @@ func connectEnv(connection, env string) (liveConn, error) {
 	if err != nil {
 		return liveConn{}, err
 	}
-	r, resolved, cleanup, err := connectResolved(cfg, root, connection, env)
+	r, resolved, authInv, cleanup, err := connectResolved(cfg, root, connection, env)
 	if err != nil {
 		return liveConn{}, err
 	}
-	return liveConn{cfg: cfg, root: root, env: resolved, r: r, cleanup: cleanup}, nil
+	return liveConn{cfg: cfg, root: root, env: resolved, r: r, cleanup: cleanup, authInv: authInv}, nil
 }
 
 // connectResolved resolves the live env from explicit flags against an
-// already-loaded config and connects, returning the resolved env alongside the
-// client so callers don't re-derive it. Split from connectEnv so deploy can
-// load the config, run preflight locally, then connect only once the
-// projections are known to be deployable.
-func connectResolved(cfg *config.Config, root, connection, env string) (r *remote.Client, resolved config.ResolvedEnv, cleanup func(), err error) {
+// already-loaded config and connects, returning the resolved env and the
+// auth-invalidation handle alongside the client so callers don't re-derive them.
+// Split from connectEnv so deploy can load the config, run preflight locally,
+// then connect only once the projections are known to be deployable.
+func connectResolved(cfg *config.Config, root, connection, env string) (r *remote.Client, resolved config.ResolvedEnv, authInv *engine.AuthInvalidation, cleanup func(), err error) {
 	resolved, err = resolveLiveEnv(connection, env, cfg)
 	if err != nil {
-		return nil, config.ResolvedEnv{}, nil, err
+		return nil, config.ResolvedEnv{}, nil, nil, err
 	}
 	if resolved.Connection == "" {
-		return nil, config.ResolvedEnv{}, nil, errors.New("no environment: mark a default [env.<name>], pass --env, or pass --connection")
+		return nil, config.ResolvedEnv{}, nil, nil, errors.New("no environment: mark a default [env.<name>], pass --env, or pass --connection")
 	}
-	r, cleanup, err = remote.Dial(root, resolved)
+	r, authInv, cleanup, err = remote.DialWithAuth(root, resolved)
 	if err != nil {
-		return nil, config.ResolvedEnv{}, nil, err
+		return nil, config.ResolvedEnv{}, nil, nil, err
 	}
-	return r, resolved, cleanup, nil
+	return r, resolved, authInv, cleanup, nil
 }
 
 // refuseNoValidateOnProd is the single source of the production --no-validate

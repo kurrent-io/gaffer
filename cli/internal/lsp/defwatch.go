@@ -203,15 +203,17 @@ func (s *Server) stopWatches(uri string) {
 
 // borrowConn returns the env's live subscription connection for a read, or
 // ok=false when none is up (no watch, or the watch is between reconnects), in
-// which case the caller dials a fresh one. The returned release is a no-op: the
-// watch owns the connection's lifecycle, a borrower never closes it.
+// which case the caller dials a fresh one. The watch owns the connection's
+// lifecycle - a borrower never closes it - but the borrower must call the
+// returned release exactly once when the borrow is done: it drops the borrow
+// count that clearEnvConn drains before closing, so skipping it wedges the
+// watch's teardown/reconnect.
 //
-// The borrow is counted on e.conn.borrows so clearEnvConn waits for it before
-// closing the client: a close racing the borrower's in-flight RPC panics on a
-// send to the client's closed request channel. The count is taken under watchMu,
-// the same lock clearEnvConn nils the client under, so a borrow either wins
-// (counted, close waits) or loses (sees the nilled client and refuses) - never
-// slips in after the drain begins. release drops the count.
+// The count is taken on e.conn.borrows under watchMu, the same lock clearEnvConn
+// nils the client under, so a borrow either wins (counted, close waits) or loses
+// (sees the nilled client and refuses) - never slips in after the drain begins.
+// Closing while a borrower is mid-RPC panics on a send to the client's closed
+// request channel; the drained count is what prevents that.
 func (s *Server) borrowConn(uri, env string) (borrowedConn, bool) {
 	s.watchMu.Lock()
 	defer s.watchMu.Unlock()

@@ -881,6 +881,9 @@
         },
         "diff_request_count": {
           "$ref": "#/definitions/BucketCount"
+        },
+        "operate_request_count": {
+          "$ref": "#/definitions/BucketCount"
         }
       },
       "allOf": [

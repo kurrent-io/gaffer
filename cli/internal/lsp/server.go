@@ -22,6 +22,7 @@ type Stats struct {
 	CodeLensRequestCount   int
 	DiagnosticPublishCount int
 	DiffRequestCount       int
+	OperateRequestCount    int
 }
 
 // serverStats holds the in-flight counters mutated by request
@@ -31,6 +32,7 @@ type serverStats struct {
 	codeLensRequests    atomic.Int64
 	diagnosticPublishes atomic.Int64
 	diffRequests        atomic.Int64
+	operateRequests     atomic.Int64
 }
 
 // defaultDebounceWindow is the canonical LSP "pause to read"
@@ -77,10 +79,12 @@ type Server struct {
 	statusFetch  statusFetchFunc
 	runtimeFetch statusRuntimeFunc
 
-	// diffFetch does one env's warm-connection diff read for the
-	// gaffer/diffProjection request. A field so tests inject a fake in
-	// place of a live KurrentDB, mirroring statusFetch.
-	diffFetch diffFetchFunc
+	// diffFetch/operateFetch do one env's warm-connection diff read /
+	// operate write for the gaffer/diffProjection and gaffer/operateProjection
+	// requests. Fields so tests inject fakes in place of a live KurrentDB,
+	// mirroring statusFetch.
+	diffFetch    diffFetchFunc
+	operateFetch operateFetchFunc
 
 	// watches holds one live per-env definition-stream subscription per open
 	// gaffer.toml (key uri\x00env), so a server-side deploy pushes a drift
@@ -155,6 +159,7 @@ func (s *Server) Stats() Stats {
 		CodeLensRequestCount:   int(s.stats.codeLensRequests.Load()),
 		DiagnosticPublishCount: int(s.stats.diagnosticPublishes.Load()),
 		DiffRequestCount:       int(s.stats.diffRequests.Load()),
+		OperateRequestCount:    int(s.stats.operateRequests.Load()),
 	}
 }
 
@@ -177,5 +182,6 @@ func NewServer(opts ServerOptions) *Server {
 	s.runtimeFetch = s.fetchEnvRuntime
 	s.watchRun = s.runEnvWatch
 	s.diffFetch = s.fetchDiff
+	s.operateFetch = s.performOperate
 	return s
 }

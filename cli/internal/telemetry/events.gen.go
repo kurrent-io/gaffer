@@ -612,6 +612,8 @@ type LSPCommandInvokedProperties struct {
 	DiagnosticPublishCount *RawCount `json:"diagnostic_publish_count,omitempty"`
 	// Bucketed total projection-diff requests served (the editor's "Diff against deployed", routed through the server's warm connection).
 	DiffRequestCount *RawCount `json:"diff_request_count,omitempty"`
+	// Bucketed total projection-operate requests served (the editor's pause/resume/abort/delete verbs, routed through the warm connection).
+	OperateRequestCount *RawCount `json:"operate_request_count,omitempty"`
 }
 
 // LSPTx accumulates `lsp` command properties over the lifetime of the
@@ -658,6 +660,15 @@ func (tx *LSPTx) SetDiffRequestCount(n int) {
 	}
 	v := RawCount(n)
 	tx.props.DiffRequestCount = &v
+}
+
+// SetOperateRequestCount records operate_request_count. Bucketed total projection-operate requests served (the editor's pause/resume/abort/delete verbs, routed through the warm connection). Nil-safe: silent no-op on a nil receiver.
+func (tx *LSPTx) SetOperateRequestCount(n int) {
+	if tx == nil {
+		return
+	}
+	v := RawCount(n)
+	tx.props.OperateRequestCount = &v
 }
 
 // DebugCommandInvokedProperties carries the property set for `gaffer debug`.

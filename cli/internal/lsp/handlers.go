@@ -47,7 +47,8 @@ func (h offloadBlockingHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn,
 // (TestBlockingMethodsAreDispatched) checks the two don't drift. Everything else
 // is a cache read or spawns its own work and returns at once.
 var blockingMethods = map[string]struct{}{
-	MethodDiffProjection: {},
+	MethodDiffProjection:    {},
+	MethodOperateProjection: {},
 }
 
 func blocksReadLoop(method string) bool {
@@ -106,9 +107,12 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 	case MethodProjectionDetails:
 		return s.handleProjectionDetails(req)
 	case MethodDiffProjection:
-		// Blocking network read - must also be listed in blocksReadLoop, or it
+		// Blocking network read - must also be in blockingMethods, or it
 		// runs inline and freezes the read loop.
 		return s.handleDiffProjection(ctx, req)
+	case MethodOperateProjection:
+		// Blocking network write - must also be in blockingMethods.
+		return s.handleOperateProjection(ctx, req)
 	case MethodRefreshStatus:
 		return s.handleRefreshStatus(req)
 	default:

@@ -187,13 +187,16 @@ export async function runGafferCommand(
 	cwd: string,
 	telemetry: SpawnTelemetry,
 	invokedVia: InvokedVia,
+	// Env override. Defaults to gafferSpawnEnv (no keyring passphrase); pass
+	// gafferRunEnv for a subcommand that connects to KurrentDB and so needs the
+	// OAuth token store unlocked (e.g. `gaffer diff --env`).
+	env: NodeJS.ProcessEnv | undefined = gafferSpawnEnv(telemetry.isOptedOut()),
 ): Promise<{ ok: true; stdout: string } | { ok: false; err: unknown }> {
 	const argv = buildGafferArgv(args, {
 		invokerId: telemetry.invokerId(),
 		invokedVia,
 	});
 	try {
-		const env = gafferSpawnEnv(telemetry.isOptedOut());
 		const opts: ExecOpts = { cwd };
 		if (env !== undefined) opts.env = env;
 		const stdout = await execFileAsync(argv, opts);

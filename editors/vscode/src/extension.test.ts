@@ -128,12 +128,18 @@ describe("activate registrations", () => {
 			"gaffer.dismissDiagnostic",
 			"gaffer.init",
 			"gaffer.noop",
+			"gaffer.projectionActions",
 			"gaffer.runProjection",
 			"gaffer.scaffold",
 			"gaffer.scaffoldHere",
 			"gaffer.signIn",
 			"gaffer.stopDebug",
 		]);
+	});
+
+	it("registers the gaffer-diff content provider for the diff editor", async () => {
+		await activateBare();
+		expect(getState().contentProviderSchemes).toContain("gaffer-diff");
 	});
 
 	it("registers the gaffer MCP server definition provider", async () => {

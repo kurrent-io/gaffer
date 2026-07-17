@@ -110,14 +110,24 @@ export class Uri implements vscode.Uri {
 		}, "");
 		return Uri.file(joined);
 	}
-	static from(_components: {
+	static from(components: {
 		scheme: string;
 		authority?: string;
 		path?: string;
 		query?: string;
 		fragment?: string;
 	}): Uri {
-		throw NOT_IMPLEMENTED("Uri.from");
+		return new Uri({
+			scheme: components.scheme,
+			path: components.path ?? "",
+			...(components.authority !== undefined
+				? { authority: components.authority }
+				: {}),
+			...(components.query !== undefined ? { query: components.query } : {}),
+			...(components.fragment !== undefined
+				? { fragment: components.fragment }
+				: {}),
+		});
 	}
 	with(_change: {
 		scheme?: string;
@@ -809,6 +819,7 @@ export interface MockState {
 	registeredTreeProviders: Array<{ id: string; provider: unknown }>;
 	registeredWebviewProviders: Array<{ id: string; provider: unknown }>;
 	registeredCodeLensProviders: Array<{ selector: unknown; provider: unknown }>;
+	contentProviderSchemes: string[];
 	registeredDebugFactories: Array<{ type: string; factory: unknown }>;
 	registeredDebugTrackerFactories: Array<{ type: string; factory: unknown }>;
 	startDebuggingResult: boolean;
@@ -865,6 +876,7 @@ function createInitialState(): MockState {
 		registeredTreeProviders: [],
 		registeredWebviewProviders: [],
 		registeredCodeLensProviders: [],
+		contentProviderSchemes: [],
 		registeredDebugFactories: [],
 		registeredDebugTrackerFactories: [],
 		startDebuggingResult: true,
@@ -970,6 +982,11 @@ export const OverviewRulerLane = {
 	Full: 7,
 } as const;
 
+export const QuickPickItemKind = {
+	Separator: -1,
+	Default: 0,
+} as const;
+
 // ---- workspace ------------------------------------------------------------
 //
 // Each namespace export below is typed as Pick<typeof vscode.X, ...>.
@@ -997,6 +1014,7 @@ type WorkspaceShape = Pick<
 	| "onDidGrantWorkspaceTrust"
 	| "onDidChangeTextDocument"
 	| "onDidChangeWorkspaceFolders"
+	| "registerTextDocumentContentProvider"
 >;
 
 export const workspace: WorkspaceShape = {
@@ -1076,6 +1094,13 @@ export const workspace: WorkspaceShape = {
 			thisArgs,
 			disposables,
 		)) as typeof vscode.workspace.onDidChangeWorkspaceFolders,
+	registerTextDocumentContentProvider(
+		scheme: string,
+		_provider: vscode.TextDocumentContentProvider,
+	): vscode.Disposable {
+		state.contentProviderSchemes.push(scheme);
+		return { dispose: () => {} };
+	},
 };
 
 // ---- window ---------------------------------------------------------------

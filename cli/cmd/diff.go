@@ -16,6 +16,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 )
 
@@ -129,10 +130,27 @@ func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
 	// The default deployed↔local diff carries the full drift verdict (owner,
 	// attribution, provenance) and the one-sided/invalid rendering; every other
 	// combination is a pure source diff between two versions.
+	var derr error
 	if left.kind == refDeployed && right.kind == refLocal {
-		return runComparisonDiff(ctx, cmd, r, cfg, root, name, opts.JSON)
+		derr = runComparisonDiff(ctx, cmd, r, cfg, root, name, opts.JSON)
+	} else {
+		derr = runVersionDiff(ctx, cmd, r, cfg, root, name, left, right, opts.JSON)
 	}
-	return runVersionDiff(ctx, cmd, r, cfg, root, name, left, right, opts.JSON)
+	return reclassifyAuth(derr, conn.authInv, conn.env.Name)
+}
+
+// reclassifyAuth turns a failed read on a rejected credential into an
+// *AuthRequiredError so a caller (an editor) offers a sign-in rather than a bare
+// error. A stored token the IdP rejected (invalid_grant) surfaces only on the
+// read, not at connect: the lazy connect returns a healthy client and the
+// rejection trips the auth flag while returning a generic error - mirrors the
+// language server's status fetch. A connect-time no-token failure is already
+// *AuthRequiredError from the dial, so it passes through untouched.
+func reclassifyAuth(err error, authInv *engine.AuthInvalidation, env string) error {
+	if err != nil && authInv != nil && authInv.Tripped() {
+		return &target.AuthRequiredError{Env: env}
+	}
+	return err
 }
 
 // runComparisonDiff is the default deployed↔local diff: the drift comparison, its

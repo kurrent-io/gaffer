@@ -119,7 +119,7 @@ func emitCodeLenses(desc config.Description, uri string) []CodeLens {
 							Name:         p.Name,
 							ConfigURI:    uri,
 							FixtureNames: validNames,
-							Envs:         desc.Environments,
+							Envs:         lensEnvs(desc.Environments),
 						},
 					},
 				},
@@ -170,14 +170,33 @@ type projectionArgs struct {
 	Env string `json:"env,omitempty"`
 }
 
+// lensEnv is the minimal environment shape a lens command carries: the client
+// builds its env picker from the name and default flag alone. Narrower than
+// config.EnvDescription on purpose - the full form also carries the header's
+// source range, which the client ignores, and a lens payload repeats its env
+// list once per projection, so shipping the range would be dead weight scaled by
+// projections × envs.
+type lensEnv struct {
+	Name    string `json:"name"`
+	Default bool   `json:"default,omitempty"`
+}
+
+func lensEnvs(envs []config.EnvDescription) []lensEnv {
+	out := make([]lensEnv, len(envs))
+	for i, e := range envs {
+		out[i] = lensEnv{Name: e.Name, Default: e.Default}
+	}
+	return out
+}
+
 // projectionPickArgs is the payload for the dropdown lens. Includes
 // the available fixture names and environments so the editor extension
 // can pop a quick-pick without re-fetching.
 type projectionPickArgs struct {
-	Name         string                  `json:"name"`
-	ConfigURI    string                  `json:"configURI"`
-	FixtureNames []string                `json:"fixtureNames"`
-	Envs         []config.EnvDescription `json:"envs,omitempty"`
+	Name         string    `json:"name"`
+	ConfigURI    string    `json:"configURI"`
+	FixtureNames []string  `json:"fixtureNames"`
+	Envs         []lensEnv `json:"envs,omitempty"`
 }
 
 // signInArgs is the Command.Arguments[0] payload for an env-block sign-in
@@ -185,6 +204,17 @@ type projectionPickArgs struct {
 type signInArgs struct {
 	Env       string `json:"env"`
 	ConfigURI string `json:"configURI"`
+}
+
+// projectionActionsArgs is the Command.Arguments[0] payload for the
+// per-projection "Manage..." lens: the projection to act on, its declaring
+// gaffer.toml, and the configured environments so the client can build the
+// env-grouped action menu without re-reading the config. Mirrors
+// projectionPickArgs' shape - the client already knows this vocabulary.
+type projectionActionsArgs struct {
+	Name      string    `json:"name"`
+	ConfigURI string    `json:"configURI"`
+	Envs      []lensEnv `json:"envs,omitempty"`
 }
 
 // emitStatusEnvLenses renders one env-block deploy-status lens per configured
@@ -271,6 +301,41 @@ func emitStatusBadgeLenses(desc config.Description, statuses map[string]envStatu
 		out = append(out, CodeLens{
 			Range: rangeToLSP(p.Range),
 			Data:  &CodeLensData{Intent: IntentStatusBadges, Healths: healths},
+		})
+	}
+	return out
+}
+
+// emitActionsLenses renders one "Manage..." lens per located, non-diagnostic
+// [[projection]] header - the entry point to the per-projection action menu
+// (diff against deployed today; operate / history later). The client decorates
+// the plain title with its own icon, like the Debug lenses. Emitted only on the
+// status surface (a vscode-only capability) and only when the config declares
+// at least one environment, since every action in the menu targets an env. A
+// projection with a projection-level diagnostic or no anchorable header gets no
+// lens, matching the status badge emitter.
+func emitActionsLenses(desc config.Description, uri string) []CodeLens {
+	out := []CodeLens{}
+	if len(desc.Environments) == 0 {
+		return out
+	}
+	for _, p := range desc.Projections {
+		if p.Diagnostic != nil {
+			continue
+		}
+		if p.Range == (config.SourceRange{}) {
+			continue
+		}
+		out = append(out, CodeLens{
+			Range: rangeToLSP(p.Range),
+			Command: &Command{
+				Title:   "Manage...",
+				Command: CommandProjectionActions,
+				Arguments: []any{
+					projectionActionsArgs{Name: p.Name, ConfigURI: uri, Envs: lensEnvs(desc.Environments)},
+				},
+			},
+			Data: &CodeLensData{Intent: IntentActions},
 		})
 	}
 	return out
@@ -424,7 +489,7 @@ func emitEntryScriptLenses(parses []parseResult, uri string) []CodeLens {
 							Name:         p.Name,
 							ConfigURI:    tomlURI,
 							FixtureNames: validNames,
-							Envs:         parse.Description.Environments,
+							Envs:         lensEnvs(parse.Description.Environments),
 						},
 					},
 				},

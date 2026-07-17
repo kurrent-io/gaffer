@@ -367,6 +367,84 @@ describe("LspCodeLensProvider", () => {
 		expect(await getLenses(p)).toEqual([]);
 	});
 
+	it("decorates an actions-intent lens with the Manage command and env args", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [
+			{
+				range: fakeLensRange(4),
+				command: {
+					title: "Manage...",
+					command: "gaffer.projectionActions",
+					arguments: [
+						{
+							name: "checkout",
+							configURI: "file:///p/gaffer.toml",
+							envs: [{ name: "prod", default: true }, { name: "local" }],
+						},
+					],
+				},
+				data: { intent: "actions" },
+			},
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		p.setManifest({ version: "test", commands: { diff: {} } });
+		const lenses = await getLenses(p);
+		expect(lenses).toHaveLength(1);
+		expect(lenses[0]?.command?.title).toBe("$(radio-tower) Manage...");
+		expect(lenses[0]?.command?.command).toBe("gaffer.projectionActions");
+		const args = lenses[0]?.command?.arguments?.[0] as {
+			name: string;
+			tomlUri: vscode.Uri;
+			envs: { name: string; default: boolean }[];
+		};
+		expect(args.name).toBe("checkout");
+		expect(args.tomlUri.toString()).toBe(
+			vscode.Uri.parse("file:///p/gaffer.toml").toString(),
+		);
+		expect(args.envs).toEqual([
+			{ name: "prod", default: true },
+			{ name: "local", default: false },
+		]);
+	});
+
+	it("hides the actions lens when the CLI can't diff", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [
+			{
+				range: fakeLensRange(4),
+				command: {
+					title: "Manage...",
+					command: "gaffer.projectionActions",
+					arguments: [{ name: "checkout", configURI: "file:///p/gaffer.toml" }],
+				},
+				data: { intent: "actions" },
+			},
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		// Manifest with dev --debug but no `diff` command → actions lens hidden.
+		p.setManifest(manifestWithDebug);
+		expect(await getLenses(p)).toEqual([]);
+	});
+
+	it("hides the actions lens in an untrusted workspace", async () => {
+		setTrusted(false);
+		setLspRequestHandler("textDocument/codeLens", () => [
+			{
+				range: fakeLensRange(4),
+				command: {
+					title: "Manage...",
+					command: "gaffer.projectionActions",
+					arguments: [{ name: "checkout", configURI: "file:///p/gaffer.toml" }],
+				},
+				data: { intent: "actions" },
+			},
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		p.setManifest({ version: "test", commands: { diff: {} } });
+		expect(await getLenses(p)).toEqual([]);
+	});
+
 	it("trust-gates the unknown-intent passthrough", async () => {
 		setTrusted(false);
 		setLspRequestHandler("textDocument/codeLens", () => [

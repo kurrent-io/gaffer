@@ -431,9 +431,11 @@ func scrubConnection(msg, root string, resolved config.ResolvedEnv) string {
 }
 
 // borrowedConn is a client for reading one env: either the env's live
-// subscription connection (borrowed - release is a no-op) or a fresh throwaway
-// dial (release closes it). authInv reports whether a read on the connection hit
-// an auth rejection; it may be nil for a connection with no auth.
+// subscription connection (borrowed - release drops the borrow count so the
+// watch can close it) or a fresh throwaway dial (release closes it). Either way
+// the caller must release exactly once when done. authInv reports whether a read
+// on the connection hit an auth rejection; it may be nil for a connection with
+// no auth.
 type borrowedConn struct {
 	client  *remote.Client
 	authInv *engine.AuthInvalidation

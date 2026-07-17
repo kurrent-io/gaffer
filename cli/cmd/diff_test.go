@@ -10,9 +10,39 @@ import (
 
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
+	"github.com/kurrent-io/gaffer/cli/internal/engine"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
+	"github.com/kurrent-io/gaffer/cli/internal/target"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
+
+func TestReclassifyAuth(t *testing.T) {
+	tripped := &engine.AuthInvalidation{}
+	tripped.Trip()
+	untripped := &engine.AuthInvalidation{}
+	readErr := errors.New("read failed")
+
+	// A read failure on a tripped credential becomes AuthRequiredError for env.
+	got := reclassifyAuth(readErr, tripped, "prod")
+	var authErr *target.AuthRequiredError
+	if !errors.As(got, &authErr) {
+		t.Fatalf("tripped read error: want *AuthRequiredError, got %T (%v)", got, got)
+	}
+	if authErr.Env != "prod" {
+		t.Errorf("AuthRequiredError.Env: got %q want %q", authErr.Env, "prod")
+	}
+
+	// Untripped, nil handle, and nil error all pass through unchanged.
+	if got := reclassifyAuth(readErr, untripped, "prod"); !errors.Is(got, readErr) {
+		t.Errorf("untripped: want original error, got %v", got)
+	}
+	if got := reclassifyAuth(readErr, nil, "prod"); !errors.Is(got, readErr) {
+		t.Errorf("nil authInv: want original error, got %v", got)
+	}
+	if got := reclassifyAuth(nil, tripped, "prod"); got != nil {
+		t.Errorf("nil error: want nil (no success reclassified as auth), got %v", got)
+	}
+}
 
 func TestLocalDiffDescriptorInvalidLocal(t *testing.T) {
 	// A local projection that doesn't compile still yields its source for a

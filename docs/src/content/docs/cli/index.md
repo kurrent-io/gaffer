@@ -119,10 +119,11 @@ Project-level telemetry is opted out by setting `telemetry = false` at the top o
 
 `gaffer deploy` uses a stable exit code so a pipeline can branch on the result:
 
-- **`0`** — succeeded, or nothing to do (everything already in sync).
-- **`1`** — an error: a projection is invalid (won't compile, or would fault on the server), a server call failed, or the plan has a projection deploy can't apply in place (a refusal needing a recreate).
-- **`2`** — changes are pending. Only `--dry-run` returns this; it means the plan has work to apply.
-- **`3`** — refused by a guardrail: confirmation was needed but there was no terminal and no `--yes`, or `--no-validate` was used against production. Re-run satisfying the guardrail. `gaffer recreate`, `gaffer rollback`, `gaffer disable`, and `gaffer delete` also exit `3` when a guarded action can't confirm non-interactively (`gaffer enable` has no guarded action, so it never does).
+- **`0`**: succeeded, or nothing to do (everything already in sync).
+- **`1`**: an error. A projection is invalid (won't compile, or would fault on the server), a server call failed, or the plan has a projection deploy can't apply in place (a refusal needing a recreate).
+- **`2`**: changes are pending. Only `--dry-run` returns this; it means the plan has work to apply.
+- **`3`**: refused by a guardrail. Confirmation was needed but there was no terminal and no `--yes`, or `--no-validate` was used against production. Re-run satisfying the guardrail. `gaffer recreate`, `gaffer rollback`, `gaffer disable`, and `gaffer delete` also exit `3` when a guarded action can't confirm non-interactively (`gaffer enable` has no guarded action, so it never does).
+- **`4`**: an environment needs an interactive sign-in (no stored token, or a locked keyring). Run `gaffer auth --env <name>`, then retry. Any command that connects to an OAuth environment (`deploy`, `diff`, `status`, `history`, the operate verbs) exits `4` when it has no stored credential. `gaffer diff` also exits `4` when a stored token is rejected mid-command, such as an expired session.
 
 A typical CI check is `gaffer deploy --dry-run`: exit `0` means in sync, `2` means drift to apply, `1` means something needs attention.
 

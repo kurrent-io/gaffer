@@ -85,11 +85,11 @@ func (s *Server) fetchDiff(ctx context.Context, root string, cfg *config.Config,
 
 // diffCompareGuarded runs compare with the same panic guard as safeFetch: a
 // crash deep in the KurrentDB client (e.g. a nil-deref on an unready projection
-// subsystem) surfaces as an error instead of taking down the language server via
-// an unrecovered handler-goroutine panic - the diff runs off the read loop (see
-// offloadBlocking), so the panic would otherwise be fatal. The panic value is
-// scrubbed of the env's connection secret before logging. compare is a parameter
-// so the guard is testable without a live client.
+// subsystem) surfaces as an error instead of taking down the language server. A
+// handler panic is unrecovered whether it runs on the read loop or, for the diff,
+// on its own goroutine (see offloadBlocking), so it's fatal either way without
+// this. The panic value is scrubbed of the env's connection secret before
+// logging. compare is a parameter so the guard is testable without a live client.
 func diffCompareGuarded(cfg *config.Config, root, env string, compare func() (drift.Comparison, error)) (entry drift.Comparison, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {

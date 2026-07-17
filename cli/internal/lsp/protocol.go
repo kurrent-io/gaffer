@@ -65,8 +65,10 @@ const (
 // CodeAuthRequired is a gaffer-specific JSON-RPC error code returned when a
 // request needs sign-in: a missing or locked token, or a stored token the IdP
 // rejected. The editor offers a sign-in affordance rather than a generic error
-// toast. In the JSON-RPC server-reserved range (-32000..-32099).
-const CodeAuthRequired = -32001
+// toast. In the JSON-RPC server-reserved range (-32000..-32099), avoiding the
+// two codes LSP already assigns there (-32001 UnknownErrorCode, -32002
+// ServerNotInitialized) so a strict client can't mislabel it.
+const CodeAuthRequired = -32050
 
 // LSP intent codes for code lenses. Per the LSP plan, the server
 // emits a semantic intent in `data.intent` and each editor extension

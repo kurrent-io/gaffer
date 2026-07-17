@@ -131,11 +131,74 @@ func TestHandleDiffProjection_NoConfigForURI(t *testing.T) {
 	assertJSONRPCCode(t, err, jsonrpc2.CodeInvalidParams)
 }
 
-func TestHandleDiffProjection_RequiresStatusLens(t *testing.T) {
-	s, uri := seedDiffServer(t, failDiffFetch(t))
+func TestHandleDiffProjection_ServedWithoutStatusLens(t *testing.T) {
+	// diffProjection is a client-pulled request, so it must not be gated on the
+	// vscode-oriented statusLens rendering capability - a client that never
+	// claimed statusLens can still ask for a diff.
+	reached := false
+	s, uri := seedDiffServer(t, func(context.Context, string, *config.Config, string, string, string) (cliout.DiffJSON, *jsonrpc2.Error) {
+		reached = true
+		return cliout.DiffJSON{Name: "checkout"}, nil
+	})
 	s.statusLensCapable = false
-	_, err := s.handleDiffProjection(context.Background(), diffReq(t, uri, "checkout", "local"))
-	assertJSONRPCCode(t, err, jsonrpc2.CodeInvalidParams)
+	if _, err := s.handleDiffProjection(context.Background(), diffReq(t, uri, "checkout", "local")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reached {
+		t.Error("diff should be served without the statusLens capability")
+	}
+}
+
+func TestDiffProjection_EndToEndOverConn(t *testing.T) {
+	// The full request path over a real jsonrpc2 conn: offloadBlocking -> spawn
+	// -> HandlerWithError -> dispatch -> reply. No statusLens is claimed, so this
+	// also pins that the diff is served without that capability.
+	srv, cli := pipePair()
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	defer cancel()
+
+	root := t.TempDir()
+	cfgPath := writeWorkspaceFile(t, root, "gaffer.toml", diffConfig)
+	writeWorkspaceFile(t, root, "checkout.js", "function project(){}")
+	uri := pathToURI(cfgPath)
+
+	server, done := startServerWithStore(ctx, srv, ServerOptions{})
+	// Set before any request is sent; the diffProjection Call below provides the
+	// happens-before to the handler goroutine that reads it.
+	server.diffFetch = func(_ context.Context, _ string, _ *config.Config, _, _, name string) (cliout.DiffJSON, *jsonrpc2.Error) {
+		return cliout.DiffJSON{
+			Name:  name,
+			Left:  cliout.DiffSideJSON{Ref: "deployed", Source: "OLD"},
+			Right: cliout.DiffSideJSON{Ref: "local", Source: "NEW"},
+		}, nil
+	}
+
+	stub := &clientStub{}
+	conn := newClientConnStub(ctx, cli, stub)
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.Call(ctx, MethodInitialize, &InitializeParams{
+		WorkspaceFolders: []WorkspaceFolder{{URI: pathToURI(root), Name: "ws"}},
+	}, &InitializeResult{})
+	_ = conn.Notify(ctx, MethodInitialized, struct{}{})
+	waitFor(t, func() bool {
+		_, ok := server.docs.GetParse(uri)
+		return ok
+	}, waitForTimeout)
+
+	var result cliout.DiffJSON
+	if err := conn.Call(ctx, MethodDiffProjection, DiffProjectionParams{
+		ConfigURI: uri, Name: "checkout", Env: "local",
+	}, &result); err != nil {
+		t.Fatalf("diffProjection: %v", err)
+	}
+	if result.Left.Source != "OLD" || result.Right.Source != "NEW" {
+		t.Errorf("diff payload round-trip: %+v", result)
+	}
+
+	_ = conn.Call(ctx, MethodShutdown, nil, nil)
+	_ = conn.Notify(ctx, MethodExit, nil)
+	<-done
 }
 
 func TestDiffDialError(t *testing.T) {
@@ -213,13 +276,20 @@ func TestBlocksReadLoop(t *testing.T) {
 	}
 }
 
+// goSpawn is a test stand-in for Server.spawn: run the work in a goroutine and
+// report that it was queued.
+func goSpawn(fn func()) bool {
+	go fn()
+	return true
+}
+
 func TestOffloadBlocking_RunsBlockingRequestOffTheReadLoop(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	h := offloadBlocking(funcHandler(func(context.Context, *jsonrpc2.Conn, *jsonrpc2.Request) {
 		close(entered)
 		<-release
-	}))
+	}), goSpawn)
 
 	returned := make(chan struct{})
 	go func() {
@@ -242,13 +312,30 @@ func TestOffloadBlocking_RunsBlockingRequestOffTheReadLoop(t *testing.T) {
 
 func TestOffloadBlocking_RunsNonBlockingInline(t *testing.T) {
 	ran := false
+	spawned := false
 	h := offloadBlocking(funcHandler(func(context.Context, *jsonrpc2.Conn, *jsonrpc2.Request) {
 		ran = true
-	}))
+	}), func(fn func()) bool { spawned = true; go fn(); return true })
 	// A non-blocking method runs inline, so it has completed by the time Handle
 	// returns - no goroutine, no synchronisation needed to observe the write.
 	h.Handle(context.Background(), nil, &jsonrpc2.Request{Method: MethodHover})
 	if !ran {
 		t.Error("a non-blocking method should run inline")
+	}
+	if spawned {
+		t.Error("a non-blocking method must not be offloaded")
+	}
+}
+
+func TestOffloadBlocking_RunsInlineWhenSpawnRefused(t *testing.T) {
+	ran := false
+	// spawn refuses (Run is draining); the handler must still run - inline - so
+	// the client gets a reply instead of hanging.
+	h := offloadBlocking(funcHandler(func(context.Context, *jsonrpc2.Conn, *jsonrpc2.Request) {
+		ran = true
+	}), func(func()) bool { return false })
+	h.Handle(context.Background(), nil, &jsonrpc2.Request{Method: MethodDiffProjection})
+	if !ran {
+		t.Error("a refused spawn should fall back to running inline")
 	}
 }

@@ -15,24 +15,38 @@ import (
 // document sync relies on. Unlike jsonrpc2.AsyncHandler - which offloads every
 // message and so reorders notifications - this offloads only the methods that
 // need it, and reuses the wrapped handler's reply machinery.
-type offloadBlockingHandler struct{ inner jsonrpc2.Handler }
+//
+// The offloaded work goes through spawn, so it's tracked by the server's wait
+// group and drained at teardown like every other async path - not a bare
+// goroutine that Run could abandon mid-read.
+type offloadBlockingHandler struct {
+	inner jsonrpc2.Handler
+	spawn func(func()) bool
+}
 
-func offloadBlocking(inner jsonrpc2.Handler) jsonrpc2.Handler {
-	return offloadBlockingHandler{inner}
+func offloadBlocking(inner jsonrpc2.Handler, spawn func(func()) bool) jsonrpc2.Handler {
+	return offloadBlockingHandler{inner: inner, spawn: spawn}
 }
 
 func (h offloadBlockingHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
 	if !req.Notif && blocksReadLoop(req.Method) {
-		go h.inner.Handle(ctx, conn, req)
-		return
+		// spawn returns false only once Run is draining; then the ctx is already
+		// cancelled, so running inline replies at once without a real read.
+		if h.spawn(func() { h.inner.Handle(ctx, conn, req) }) {
+			return
+		}
 	}
 	h.inner.Handle(ctx, conn, req)
 }
 
-// blocksReadLoop reports whether a request method's handler does blocking I/O
-// and so must run off the read loop. diffProjection reads a definition over the
-// network (bounded by RPCTimeout, but seconds against a slow or unreachable env);
-// every other request is a cache read or spawns its own work and returns at once.
+// blocksReadLoop reports whether a request method's handler does blocking I/O and
+// so must run off the read loop. Every method that reads or writes over the
+// network (today only diffProjection; history and operate verbs will join it)
+// MUST be listed here, or its handler runs inline and freezes all other LSP
+// traffic for up to RPCTimeout against a slow or unreachable env - a freeze a
+// fast-env test won't catch. Keep this in sync with the dispatch switch in
+// handle. Everything else is a cache read or spawns its own work and returns at
+// once.
 func blocksReadLoop(method string) bool {
 	return method == MethodDiffProjection
 }
@@ -88,6 +102,8 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 	case MethodProjectionDetails:
 		return s.handleProjectionDetails(req)
 	case MethodDiffProjection:
+		// Blocking network read - must also be listed in blocksReadLoop, or it
+		// runs inline and freezes the read loop.
 		return s.handleDiffProjection(ctx, req)
 	case MethodRefreshStatus:
 		return s.handleRefreshStatus(req)

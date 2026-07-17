@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 
 	"github.com/sourcegraph/jsonrpc2"
 
@@ -35,11 +34,13 @@ func (s *Server) handleDiffProjection(ctx context.Context, req *jsonrpc2.Request
 	if jerr != nil {
 		return nil, jerr
 	}
-	cfg, root, load := s.loadStatusConfig(params.ConfigURI)
+	// loadConfig, not loadStatusConfig: diffProjection is a client-pulled request,
+	// so it must not be gated on the vscode-oriented statusLens rendering
+	// capability - any editor that opened the gaffer.toml can ask for a diff.
+	cfg, root, load := s.loadConfig(params.ConfigURI)
 	if load != loadOK {
-		// No parseable config for the URI (or the client didn't opt into the
-		// status surface). The lens that triggers the diff already vouches for
-		// the URI, so this is an unexpected client state, not a user action.
+		// No parseable config for the URI. The caller vouches for the URI (the
+		// lens that triggers the diff), so this is an unexpected client state.
 		return nil, &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInvalidParams,
 			Message: fmt.Sprintf("no parseable gaffer.toml for %q", params.ConfigURI),
@@ -93,11 +94,7 @@ func (s *Server) fetchDiff(ctx context.Context, root string, cfg *config.Config,
 func diffCompareGuarded(cfg *config.Config, root, env string, compare func() (drift.Comparison, error)) (entry drift.Comparison, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			msg := fmt.Sprint(rec)
-			if resolved, rerr := cfg.ResolveEnv(env); rerr == nil {
-				msg = scrubConnection(msg, root, resolved)
-			}
-			log.Printf("lsp: diff for env %q panicked: %s", env, msg)
+			logScrubbedPanic(cfg, root, env, "diff", rec)
 			err = errors.New("diff read failed unexpectedly")
 		}
 	}()

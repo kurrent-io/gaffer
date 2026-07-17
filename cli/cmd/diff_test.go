@@ -259,4 +259,12 @@ func TestRenderDiffJSON(t *testing.T) {
 	if invalid.Verdict.Drift != "invalid" || invalid.Verdict.Reason != "boom" || invalid.Right.Hash != "" || invalid.Left.Hash == "" || invalid.Changes != nil {
 		t.Errorf("invalid = %+v (verdict %+v); want error + deployed hash only", invalid, invalid.Verdict)
 	}
+
+	// Not deployed: local only, no deployed side. The deployed side carries no
+	// source - the empty-source signal the editor keys on for "not deployed" -
+	// while the local side has its source and hash.
+	notDeployed := decode(drift.Comparison{Name: "nd", State: drift.NotDeployed, Local: desc("q", 2, true)})
+	if notDeployed.Verdict.Drift != "not-deployed" || notDeployed.Left.Source != "" || notDeployed.Left.Hash != "" || notDeployed.Right.Source == "" {
+		t.Errorf("not-deployed = %+v (verdict %+v); want empty deployed side + local source", notDeployed, notDeployed.Verdict)
+	}
 }

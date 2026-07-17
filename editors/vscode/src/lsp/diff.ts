@@ -9,8 +9,9 @@ import { getLanguageClient } from "./client.js";
 
 // Mirrors the server's CodeAuthRequired (protocol.go): the env needs an
 // interactive sign-in. Keyed off the JSON-RPC error code, not message text, so
-// the sign-in affordance is a stable signal.
-export const LSP_AUTH_REQUIRED = -32001;
+// the sign-in affordance is a stable signal. -32050 sits in the JSON-RPC
+// server-reserved range but clear of the codes LSP assigns there (-32001/-32002).
+export const LSP_AUTH_REQUIRED = -32050;
 
 // A diff side as the server reports it. Only source is needed to render;
 // ref/hash are validated so a shape change is caught at the boundary.

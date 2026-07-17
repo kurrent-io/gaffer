@@ -71,15 +71,16 @@ export class GafferDiffContentProvider
 		return { left, right };
 	}
 
-	// URI path carries a human-readable label (shown on each side's tab) plus
-	// the env, so the two sides are distinct documents that don't collide across
-	// environments. encodeURIComponent guards a projection name with a slash.
+	// The path ends in `.js` so VS Code infers JavaScript and syntax-highlights
+	// both sides (projection sources are JS today). env and name are separate,
+	// encoded segments so a slash or special char in either can't collide two
+	// distinct (env, name, side) tuples or break out of its segment; the side is
+	// the final `deployed.js` / `local.js` segment, which reads as each pane's
+	// filename.
 	#uri(name: string, env: string, side: "deployed" | "local"): vscode.Uri {
-		const label =
-			side === "deployed" ? `${name} (deployed)` : `${name} (local)`;
 		return vscode.Uri.from({
 			scheme: GAFFER_DIFF_SCHEME,
-			path: `/${encodeURIComponent(env)}/${encodeURIComponent(label)}`,
+			path: `/${encodeURIComponent(env)}/${encodeURIComponent(name)}/${side}.js`,
 		});
 	}
 }
@@ -100,11 +101,18 @@ export interface DiffProjectionDeps {
 	provider: GafferDiffContentProvider;
 }
 
-// The CLI's typed sign-in error (target.AuthRequiredError) renders as
-// `env "x" requires sign-in: run \`gaffer auth --env x\``. Match the stable
-// phrase so an auth failure offers a one-click sign-in rather than a bare error;
-// a miss degrades to the generic error path, which still shows that same
-// actionable text.
+// The CLI exits with this code (root.go exitCodeAuthRequired) when a command
+// fails for want of an interactive sign-in (target.AuthRequiredError). Keying
+// off the code, not the message text, is the stable signal that an auth failure
+// should offer a one-click sign-in.
+const EXIT_AUTH_REQUIRED = 4;
+
+// runGafferCommand attaches the CLI's numeric exit code as err.code (see
+// discovery/cli.ts execFileAsync).
+function isAuthRequired(err: unknown): boolean {
+	return (err as { code?: unknown })?.code === EXIT_AUTH_REQUIRED;
+}
+
 function stderrOf(err: unknown): string {
 	const cause = (err as { cause?: { stderr?: unknown } })?.cause;
 	return typeof cause?.stderr === "string" ? cause.stderr : "";
@@ -116,7 +124,14 @@ export function diffProjection(
 	return async ({ name, tomlUri, env }) => {
 		if (!vscode.workspace.isTrusted) return;
 		const cwd = vscode.Uri.joinPath(tomlUri, "..").fsPath;
-		const result = await deps.run(["diff", name, "--env", env, "--json"], cwd);
+		// `--` terminates flag parsing before the positional projection name;
+		// without it a projection named `--connection=...` (names aren't charset-
+		// validated) would be parsed as a flag. Flags first, name last after the
+		// separator - same guard as the debug spawn.
+		const result = await deps.run(
+			["diff", "--env", env, "--json", "--", name],
+			cwd,
+		);
 		if (!result.ok) {
 			await reportFailure(name, env, tomlUri, result.err);
 			return;
@@ -165,7 +180,7 @@ async function reportFailure(
 	err: unknown,
 ): Promise<void> {
 	const stderr = stderrOf(err);
-	if (stderr.includes("requires sign-in")) {
+	if (isAuthRequired(err)) {
 		const signIn = "Sign in";
 		const choice = await vscode.window.showErrorMessage(
 			`${env} needs sign-in to diff "${name}".`,

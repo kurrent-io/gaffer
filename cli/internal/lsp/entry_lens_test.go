@@ -89,7 +89,7 @@ default = true
 }
 
 func TestServer_ActionsLensGatedOnStatusSurface(t *testing.T) {
-	// The per-projection "actions.." lens is a vscode-only surface: present on a
+	// The per-projection "Manage..." lens is a vscode-only surface: present on a
 	// toml's lenses only when the client opted into statusLens, absent otherwise.
 	toml := `[[projection]]
 name = "checkout"

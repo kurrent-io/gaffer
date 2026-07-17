@@ -137,6 +137,11 @@ describe("activate registrations", () => {
 		]);
 	});
 
+	it("registers the gaffer-diff content provider for the diff editor", async () => {
+		await activateBare();
+		expect(getState().contentProviderSchemes).toContain("gaffer-diff");
+	});
+
 	it("registers the gaffer MCP server definition provider", async () => {
 		await activateBare();
 		const ids = getState().mcpProviders.map((p) => p.id);

@@ -188,7 +188,7 @@ type signInArgs struct {
 }
 
 // projectionActionsArgs is the Command.Arguments[0] payload for the
-// per-projection "actions.." lens: the projection to act on, its declaring
+// per-projection "Manage..." lens: the projection to act on, its declaring
 // gaffer.toml, and the configured environments so the client can build the
 // env-grouped action menu without re-reading the config. Mirrors
 // projectionPickArgs' shape - the client already knows this vocabulary.
@@ -287,9 +287,10 @@ func emitStatusBadgeLenses(desc config.Description, statuses map[string]envStatu
 	return out
 }
 
-// emitActionsLenses renders one "actions.." lens per located, non-diagnostic
+// emitActionsLenses renders one "Manage..." lens per located, non-diagnostic
 // [[projection]] header - the entry point to the per-projection action menu
-// (diff against deployed today; operate / history later). Emitted only on the
+// (diff against deployed today; operate / history later). The client decorates
+// the plain title with its own icon, like the Debug lenses. Emitted only on the
 // status surface (a vscode-only capability) and only when the config declares
 // at least one environment, since every action in the menu targets an env. A
 // projection with a projection-level diagnostic or no anchorable header gets no
@@ -309,7 +310,7 @@ func emitActionsLenses(desc config.Description, uri string) []CodeLens {
 		out = append(out, CodeLens{
 			Range: rangeToLSP(p.Range),
 			Command: &Command{
-				Title:   "actions..",
+				Title:   "Manage...",
 				Command: CommandProjectionActions,
 				Arguments: []any{
 					projectionActionsArgs{Name: p.Name, ConfigURI: uri, Envs: desc.Environments},

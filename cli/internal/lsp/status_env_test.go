@@ -304,7 +304,7 @@ func TestEmitActionsLenses(t *testing.T) {
 			if l.Data == nil || l.Data.Intent != IntentActions {
 				t.Errorf("intent on line %d: %+v", want.line, l.Data)
 			}
-			if l.Command == nil || l.Command.Title != "actions.." || l.Command.Command != CommandProjectionActions {
+			if l.Command == nil || l.Command.Title != "Manage..." || l.Command.Command != CommandProjectionActions {
 				t.Fatalf("command on line %d: %+v", want.line, l.Command)
 			}
 			args, ok := l.Command.Arguments[0].(projectionActionsArgs)

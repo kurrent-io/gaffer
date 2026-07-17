@@ -94,7 +94,7 @@ describe("diffProjection", () => {
 		const expectedCwd = vscode.Uri.joinPath(tomlUri, "..").fsPath;
 		expect(calls).toEqual([
 			{
-				args: ["diff", "checkout", "--env", "prod", "--json"],
+				args: ["diff", "--env", "prod", "--json", "--", "checkout"],
 				cwd: expectedCwd,
 			},
 		]);
@@ -138,6 +138,7 @@ describe("diffProjection", () => {
 		const { run } = fakeRun({
 			ok: false,
 			err: {
+				code: 4,
 				cause: {
 					stderr: 'env "prod" requires sign-in: run `gaffer auth --env prod`',
 				},
@@ -164,7 +165,7 @@ describe("diffProjection", () => {
 		const provider = new GafferDiffContentProvider();
 		const { run } = fakeRun({
 			ok: false,
-			err: { cause: { stderr: "x requires sign-in y" } },
+			err: { code: 4 },
 		});
 		// No queued response → showErrorMessage resolves undefined (dismissed).
 		await diffProjection({ provider, run })({
@@ -192,6 +193,26 @@ describe("diffProjection", () => {
 		const msgs = getShownMessages();
 		expect(msgs[0]?.kind).toBe("error");
 		expect(msgs[0]?.message).toContain("connection refused");
+	});
+
+	it("does not offer sign-in on stderr text alone without the auth exit code", async () => {
+		const provider = new GafferDiffContentProvider();
+		// Message text mentions sign-in, but the exit code isn't the auth code:
+		// detection is the code, not the text, so this is a plain error.
+		const { run } = fakeRun({
+			ok: false,
+			err: { code: 1, cause: { stderr: "boom requires sign-in maybe" } },
+		});
+		await diffProjection({ provider, run })({
+			name: "checkout",
+			tomlUri,
+			env: "prod",
+		});
+		const msgs = getShownMessages();
+		expect(msgs[0]?.items ?? []).not.toContain("Sign in");
+		expect(
+			getState().executeCommandCalls.filter((c) => c.name === "gaffer.signIn"),
+		).toHaveLength(0);
 	});
 
 	it("reports an unparseable --json payload", async () => {

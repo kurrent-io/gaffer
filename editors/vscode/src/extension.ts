@@ -620,7 +620,7 @@ async function activateAfterTelemetry(
 			wrap(debugProjectionPick({ start: startSessionLens })),
 		),
 		(() => {
-			// The per-projection action menu (opened from the "actions.." lens):
+			// The per-projection action menu (opened from the "Manage..." lens):
 			// its only action today diffs local against deployed via `gaffer diff
 			// --json`, rendered in the native diff editor. gafferRunEnv (not the
 			// bare spawn env) because diff dials KurrentDB and needs the token

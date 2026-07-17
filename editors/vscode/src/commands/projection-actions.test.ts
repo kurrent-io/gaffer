@@ -35,23 +35,23 @@ describe("buildActionItems", () => {
 		// prod (default) leads: its separator + action, then local's.
 		expect(items.map((i) => [i.label, i.kind])).toEqual([
 			["prod (default)", vscode.QuickPickItemKind.Separator],
-			["$(git-compare) Diff against deployed", undefined],
+			["$(diff-single) Diff against deployed", undefined],
 			["local", vscode.QuickPickItemKind.Separator],
-			["$(git-compare) Diff against deployed", undefined],
+			["$(diff-single) Diff against deployed", undefined],
 		]);
-		const picks = items.filter((i) => i.pick).map((i) => i.pick);
-		expect(picks).toEqual([
+		expect(items.filter((i) => i.pick).map((i) => i.pick)).toEqual([
 			{ env: "prod", action: "diff" },
 			{ env: "local", action: "diff" },
 		]);
 	});
 
-	it("lists a single env flat (no separator), tagging the env in the description", () => {
+	it("groups a single env under a separator too", () => {
 		const items = buildActionItems([{ name: "prod", default: true }]);
-		expect(items).toHaveLength(1);
-		expect(items[0]?.kind).toBeUndefined();
-		expect(items[0]?.description).toBe("prod");
-		expect(items[0]?.pick).toEqual({ env: "prod", action: "diff" });
+		expect(items.map((i) => [i.label, i.kind])).toEqual([
+			["prod (default)", vscode.QuickPickItemKind.Separator],
+			["$(diff-single) Diff against deployed", undefined],
+		]);
+		expect(items[1]?.pick).toEqual({ env: "prod", action: "diff" });
 	});
 });
 
@@ -59,7 +59,7 @@ describe("projectionActions", () => {
 	it("runs the diff for the picked env", async () => {
 		const { calls, diff } = capture();
 		queueQuickPick({
-			label: "$(git-compare) Diff against deployed",
+			label: "$(diff-single) Diff against deployed",
 			pick: { env: "prod", action: "diff" },
 		});
 		await projectionActions({ diff })({

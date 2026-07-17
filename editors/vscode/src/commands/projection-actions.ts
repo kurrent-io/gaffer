@@ -1,5 +1,5 @@
 // gaffer.projectionActions: the per-projection action menu opened from the
-// "actions.." CodeLens. Pops a single QuickPick grouped by environment - one
+// "Manage..." CodeLens. Pops a single QuickPick grouped by environment - one
 // separator header per env, the env's actions listed under it - so a single
 // pick runs an action against a specific env with no drill-down. Today the only
 // action is "Diff against deployed"; operate / history verbs slot in under each
@@ -37,26 +37,22 @@ export interface ProjectionActionsDeps {
 
 type ActionItem = vscode.QuickPickItem & { pick?: ProjectionAction };
 
-// buildActionItems lays out the grouped menu: for a single env, a flat list of
-// its actions (no separator - the header would be noise); for several, an
-// env-name separator before each env's block. Item order within an env is the
-// action order; the default env leads so its block is first.
+// buildActionItems lays out the menu grouped by environment: an env-name
+// separator header, then that env's actions beneath it. Always grouped, even for
+// a single env, so the env's placement is the same whatever the env count. The
+// default env leads; item order within an env is the action order.
 export function buildActionItems(envs: ProjectionActionsEnv[]): ActionItem[] {
 	const ordered = [...envs].sort(
 		(a, b) => Number(b.default) - Number(a.default),
 	);
-	const multi = ordered.length > 1;
 	const items: ActionItem[] = [];
 	for (const env of ordered) {
-		if (multi) {
-			items.push({
-				label: env.default ? `${env.name} (default)` : env.name,
-				kind: vscode.QuickPickItemKind.Separator,
-			});
-		}
 		items.push({
-			label: "$(git-compare) Diff against deployed",
-			...(multi ? {} : { description: env.name }),
+			label: env.default ? `${env.name} (default)` : env.name,
+			kind: vscode.QuickPickItemKind.Separator,
+		});
+		items.push({
+			label: "$(diff-single) Diff against deployed",
 			pick: { env: env.name, action: "diff" },
 		});
 	}

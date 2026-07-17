@@ -45,7 +45,7 @@ Hovering the header lists those environments one per line, each with its drift v
 
 ## Projection actions
 
-Each `[[projection]]` header also carries an **actions..** lens that opens a menu of actions for that projection, grouped by environment. Every action targets an environment, so the lens appears only once the config declares at least one. When more than one environment is configured, each is a heading with its actions listed beneath; with a single environment the actions are listed directly.
+Each `[[projection]]` header also carries a **Manage...** lens that opens a menu of actions for that projection, grouped by environment. Every action targets an environment, so the lens appears only once the config declares at least one. Each environment is a heading with its actions listed beneath, the default environment first.
 
 The one action today is **Diff against deployed**. It opens VS Code's diff editor with the projection's local source on one side and what's deployed on the chosen environment on the other, so you can see exactly what a deploy would change. Both sides are read-only. The diff is a comparison and never deploys.
 

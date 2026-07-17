@@ -81,7 +81,7 @@ const (
 	// lens: any client on the status surface must special-case this intent and
 	// not try to render it as a normal (command-bearing) lens.
 	IntentStatusBadges = "status-badges"
-	// IntentActions marks the per-projection "actions.." lens: the entry point
+	// IntentActions marks the per-projection "Manage..." lens: the entry point
 	// to the action menu the client pops (diff against deployed today; operate /
 	// history later). A vscode-only surface, emitted alongside the status lenses.
 	IntentActions = "actions"

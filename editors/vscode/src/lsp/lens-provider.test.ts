@@ -367,12 +367,12 @@ describe("LspCodeLensProvider", () => {
 		expect(await getLenses(p)).toEqual([]);
 	});
 
-	it("decorates an actions-intent lens with the actions.. command and env args", async () => {
+	it("decorates an actions-intent lens with the Manage command and env args", async () => {
 		setLspRequestHandler("textDocument/codeLens", () => [
 			{
 				range: fakeLensRange(4),
 				command: {
-					title: "actions..",
+					title: "Manage...",
 					command: "gaffer.projectionActions",
 					arguments: [
 						{
@@ -390,7 +390,7 @@ describe("LspCodeLensProvider", () => {
 		p.setManifest({ version: "test", commands: { diff: {} } });
 		const lenses = await getLenses(p);
 		expect(lenses).toHaveLength(1);
-		expect(lenses[0]?.command?.title).toBe("$(list-unordered) actions..");
+		expect(lenses[0]?.command?.title).toBe("$(radio-tower) Manage...");
 		expect(lenses[0]?.command?.command).toBe("gaffer.projectionActions");
 		const args = lenses[0]?.command?.arguments?.[0] as {
 			name: string;
@@ -412,7 +412,7 @@ describe("LspCodeLensProvider", () => {
 			{
 				range: fakeLensRange(4),
 				command: {
-					title: "actions..",
+					title: "Manage...",
 					command: "gaffer.projectionActions",
 					arguments: [{ name: "checkout", configURI: "file:///p/gaffer.toml" }],
 				},
@@ -432,7 +432,7 @@ describe("LspCodeLensProvider", () => {
 			{
 				range: fakeLensRange(4),
 				command: {
-					title: "actions..",
+					title: "Manage...",
 					command: "gaffer.projectionActions",
 					arguments: [{ name: "checkout", configURI: "file:///p/gaffer.toml" }],
 				},

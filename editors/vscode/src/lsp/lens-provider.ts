@@ -116,7 +116,7 @@ const SignInArgsSchema = v.object({
 	configURI: v.string(),
 });
 
-// Args[0] for the per-projection "actions.." lens: the projection, its
+// Args[0] for the per-projection "Manage..." lens: the projection, its
 // declaring gaffer.toml, and the configured environments the action menu is
 // grouped by.
 const ProjectionActionsArgsSchema = v.object({
@@ -475,7 +475,7 @@ export class LspCodeLensProvider
 		});
 	}
 
-	// The per-projection "actions.." lens opens the action menu (diff against
+	// The per-projection "Manage..." lens opens the action menu (diff against
 	// deployed today; operate / history later). Trust-gated because every action
 	// launches a gaffer process, and hidden when the CLI can't `diff` - the only
 	// action wired so far, so a menu that led nowhere would be a dead end.
@@ -499,7 +499,7 @@ export class LspCodeLensProvider
 		const tomlUri = parseConfigURI(args.configURI);
 		if (!tomlUri) return null;
 		return new vscode.CodeLens(range, {
-			title: "$(list-unordered) actions..",
+			title: "$(radio-tower) Manage...",
 			command: "gaffer.projectionActions",
 			arguments: [{ name: args.name, tomlUri, envs: args.envs }],
 		});

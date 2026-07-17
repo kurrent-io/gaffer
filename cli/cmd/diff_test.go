@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
 	"github.com/kurrent-io/gaffer/cli/internal/engine"
@@ -188,13 +189,13 @@ func TestWriteDiffLedger(t *testing.T) {
 }
 
 func TestRenderDiffJSON(t *testing.T) {
-	decode := func(e drift.Comparison) diffJSON {
+	decode := func(e drift.Comparison) cliout.DiffJSON {
 		t.Helper()
 		var b bytes.Buffer
 		if err := renderDiffJSON(&b, e); err != nil {
 			t.Fatalf("renderDiffJSON: %v", err)
 		}
-		var j diffJSON
+		var j cliout.DiffJSON
 		if err := json.Unmarshal(b.Bytes(), &j); err != nil {
 			t.Fatalf("unmarshal: %v\n%s", err, b.String())
 		}

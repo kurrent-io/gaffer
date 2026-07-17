@@ -17,7 +17,7 @@ connection = "kurrentdb://localhost:2113?tls=false"
 default = true
 ```
 
-The `kurrentdb://` scheme connects to a single node; `kurrentdb+discover://` resolves a cluster through gossip. TLS is on by default. `tls=false` disables it, and `tlsVerifyCert=false` skips certificate verification, useful against a self-signed development cluster. Select an environment with `gaffer dev --env <name>`, or let the interactive prompt pick one.
+The `kurrentdb://` scheme connects to a single node; `kurrentdb+discover://` resolves a cluster through gossip. TLS is on by default. `tls=false` disables it, and `tlsVerifyCert=false` skips certificate verification, useful against a self-signed development cluster. gaffer gives up after two node-discovery attempts before reporting an environment unreachable, faster than the KurrentDB client's own default of ten; raise it with `maxDiscoverAttempts` in the connection string when a slow or large cluster needs longer to resolve. Select an environment with `gaffer dev --env <name>`, or let the interactive prompt pick one.
 
 ## Credentials and secrets
 

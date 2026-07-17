@@ -49,7 +49,7 @@ Each `[[projection]]` header also carries a **Manage...** lens that opens a menu
 
 The one action today is **Diff against deployed**. It opens VS Code's diff editor with the projection's local source on one side and what's deployed on the chosen environment on the other, so you can see exactly what a deploy would change. Both sides are read-only. The diff is a comparison and never deploys.
 
-If the projection isn't deployed to that environment yet, the extension says so rather than diffing against an empty file. If the environment needs authentication, the action offers to sign in first; see [Authentication](#authentication).
+If the projection isn't deployed to that environment yet, the extension says so rather than diffing against an empty file. If the environment needs authentication, the action offers to sign in first. See [Authentication](#authentication).
 
 ## Authentication
 

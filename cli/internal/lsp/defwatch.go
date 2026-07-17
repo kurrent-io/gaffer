@@ -34,12 +34,19 @@ const (
 
 // envConn is one env's live subscription connection, published by its watch
 // goroutine so the fetch path can borrow it (see borrowConn) instead of dialing
-// fresh. Set on a successful dial, cleared and closed on drop/teardown. All
-// access is guarded by watchMu.
+// fresh. Set on a successful dial, cleared and closed on drop/teardown. The
+// client/authInv/cleanup fields are guarded by watchMu.
+//
+// borrows tracks in-flight borrowers so clearEnvConn can drain them before it
+// closes the client. Closing while a borrower is mid-RPC is a send on the
+// client's now-closed request channel - a panic and a data race, not the benign
+// error the borrow path once assumed - so the close waits for outstanding reads
+// to finish first.
 type envConn struct {
 	client  *remote.Client
 	authInv *engine.AuthInvalidation
 	cleanup func()
+	borrows sync.WaitGroup
 }
 
 // envWatchSpec is the immutable input to one env's watch goroutine. conn is the
@@ -199,11 +206,12 @@ func (s *Server) stopWatches(uri string) {
 // which case the caller dials a fresh one. The returned release is a no-op: the
 // watch owns the connection's lifecycle, a borrower never closes it.
 //
-// A borrower uses the client after this returns and unlocks. If the watch drops
-// and clearEnvConn closes the client mid-read, the borrower's RPC errors (a
-// transient "status unavailable") and the next refresh recovers - the gRPC
-// client tolerates a close racing an in-flight call, so it's an error, never a
-// panic. Accepted rather than refcounted: a reconnect is rare and self-healing.
+// The borrow is counted on e.conn.borrows so clearEnvConn waits for it before
+// closing the client: a close racing the borrower's in-flight RPC panics on a
+// send to the client's closed request channel. The count is taken under watchMu,
+// the same lock clearEnvConn nils the client under, so a borrow either wins
+// (counted, close waits) or loses (sees the nilled client and refuses) - never
+// slips in after the drain begins. release drops the count.
 func (s *Server) borrowConn(uri, env string) (borrowedConn, bool) {
 	s.watchMu.Lock()
 	defer s.watchMu.Unlock()
@@ -211,7 +219,8 @@ func (s *Server) borrowConn(uri, env string) (borrowedConn, bool) {
 	if e == nil || e.conn == nil || e.conn.client == nil {
 		return borrowedConn{}, false
 	}
-	return borrowedConn{client: e.conn.client, authInv: e.conn.authInv, release: func() {}}, true
+	e.conn.borrows.Add(1)
+	return borrowedConn{client: e.conn.client, authInv: e.conn.authInv, release: e.conn.borrows.Done}, true
 }
 
 // setEnvConn publishes a watch's freshly-dialed connection so borrowers can use
@@ -228,6 +237,12 @@ func (s *Server) clearEnvConn(c *envConn) {
 	cleanup := c.cleanup
 	c.client, c.authInv, c.cleanup = nil, nil, nil
 	s.watchMu.Unlock()
+	// New borrows are refused now that the client is nilled (borrowConn checks it
+	// under watchMu); wait for any already in flight to finish before closing, so
+	// the close can't race a borrower's send on the request channel. Bounded by
+	// the borrower's RPC deadlines (a fetch spans two), so on a mid-borrow drop a
+	// reconnect waits on the in-flight fetch - the price of not closing mid-send.
+	c.borrows.Wait()
 	if cleanup != nil {
 		cleanup()
 	}

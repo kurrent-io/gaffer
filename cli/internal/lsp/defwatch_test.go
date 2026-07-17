@@ -576,9 +576,12 @@ func TestEnvConn_PublishAndClear(t *testing.T) {
 	s.watches[inflightKey("u", "prod")] = &watchEntry{conn: c}
 	s.watchMu.Unlock()
 
-	if bc, ok := s.borrowConn("u", "prod"); !ok || bc.client != client {
+	bc, ok := s.borrowConn("u", "prod")
+	if !ok || bc.client != client {
 		t.Fatal("setEnvConn should publish the client for borrowing")
 	}
+	// clearEnvConn drains borrowers before closing; release before clearing.
+	bc.release()
 
 	s.clearEnvConn(c)
 	if !closed {
@@ -586,6 +589,48 @@ func TestEnvConn_PublishAndClear(t *testing.T) {
 	}
 	if _, ok := s.borrowConn("u", "prod"); ok {
 		t.Fatal("after clearEnvConn the slot should not borrow")
+	}
+}
+
+// TestClearEnvConn_WaitsForBorrowers pins the drain that fixes the close-vs-
+// borrow race: clearEnvConn must not close the client while a borrow is
+// outstanding (that panics on a send to the client's closed request channel),
+// and must proceed once the borrower releases.
+func TestClearEnvConn_WaitsForBorrowers(t *testing.T) {
+	s := testServer(nil)
+	c := &envConn{}
+	var closed bool
+	s.setEnvConn(c, &remote.Client{}, nil, func() { closed = true })
+	s.watchMu.Lock()
+	s.watches[inflightKey("u", "prod")] = &watchEntry{conn: c}
+	s.watchMu.Unlock()
+
+	bc, ok := s.borrowConn("u", "prod")
+	if !ok {
+		t.Fatal("borrow should succeed")
+	}
+
+	done := make(chan struct{})
+	go func() { s.clearEnvConn(c); close(done) }()
+
+	// While the borrow is held, clearEnvConn blocks and cleanup hasn't run.
+	select {
+	case <-done:
+		t.Fatal("clearEnvConn closed before the borrower released")
+	case <-time.After(50 * time.Millisecond):
+	}
+	if closed {
+		t.Fatal("cleanup ran before the borrower released")
+	}
+
+	bc.release()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("clearEnvConn did not return after the borrower released")
+	}
+	if !closed {
+		t.Fatal("cleanup should run once the borrower released")
 	}
 }
 

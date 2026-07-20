@@ -147,6 +147,37 @@ describe("operateProjection confirm tiers", () => {
 		expect(calls).toEqual([]);
 	});
 
+	it("does not run a reversible verb silently when production is unknown", async () => {
+		const { calls, deps } = fakeRequest({
+			resolve: { name: "checkout", outcome: "paused", target: "stg" },
+		});
+		// production undefined -> must confirm; no queued response -> cancelled.
+		await operateProjection(deps)({
+			name: "checkout",
+			tomlUri,
+			env: "stg",
+			verb: "pause",
+			production: undefined,
+		});
+		expect(calls).toEqual([]);
+	});
+
+	it("confirms (accept modal) a reversible verb when production is unknown", async () => {
+		const { calls, deps } = fakeRequest({
+			resolve: { name: "checkout", outcome: "paused", target: "stg" },
+		});
+		queueMessageResponse("Pause");
+		await operateProjection(deps)({
+			name: "checkout",
+			tomlUri,
+			env: "stg",
+			verb: "pause",
+			production: undefined,
+		});
+		expect(calls).toHaveLength(1);
+		expect(warnings()).toHaveLength(1);
+	});
+
 	it("surfaces the delete-emitted consequence in the confirm", async () => {
 		const { deps } = fakeRequest({
 			resolve: { name: "checkout", outcome: "deleted", target: "local" },

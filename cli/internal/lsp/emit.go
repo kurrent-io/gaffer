@@ -212,22 +212,31 @@ type signInArgs struct {
 // on it (picks pause vs resume). State is "" when unknown - not deployed, not yet
 // fetched, or sign-in needed - and the client falls back to offering both.
 type actionsEnv struct {
-	Name       string `json:"name"`
-	Default    bool   `json:"default,omitempty"`
-	Production bool   `json:"production,omitempty"`
+	Name    string `json:"name"`
+	Default bool   `json:"default,omitempty"`
+	// Production is a pointer so the client can tell "known non-production"
+	// (false) from "not yet known" (nil/omitted). Never treat unknown as
+	// non-production: the editor fails a confirm-tier decision safe when it's nil.
+	Production *bool  `json:"production,omitempty"`
 	State      string `json:"state,omitempty"`
 }
 
 // actionsEnvs builds the per-env cells for one projection's actions lens from the
 // cached per-env status: production off the env's fetched status, state off the
-// projection's runtime entry. Both degrade to zero values when there's no cached
-// status for the env yet.
+// projection's runtime entry. Both stay unknown (production nil, state "") until
+// the env's status has resolved.
 func actionsEnvs(envs []config.EnvDescription, proj string, statuses map[string]envStatus) []actionsEnv {
 	out := make([]actionsEnv, len(envs))
 	for i, e := range envs {
 		cell := actionsEnv{Name: e.Name, Default: e.Default}
 		if st, ok := statuses[e.Name]; ok {
-			cell.Production = st.Production
+			// Production is meaningful only once the fetch resolved; an errored or
+			// sign-in-needed fetch leaves st.Production at its false zero value,
+			// which must read as unknown (nil), not as non-production.
+			if st.Err == nil && !st.Unauthenticated {
+				prod := st.Production
+				cell.Production = &prod
+			}
 			for j := range st.Entries {
 				if st.Entries[j].Name == proj && st.Entries[j].Runtime != nil {
 					cell.State = string(st.Entries[j].Runtime.State)

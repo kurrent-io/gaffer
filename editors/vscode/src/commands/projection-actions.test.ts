@@ -151,7 +151,7 @@ describe("projectionActions", () => {
 		]);
 	});
 
-	it("defaults production to false when the pick omits it", async () => {
+	it("passes production through as undefined when the pick omits it", async () => {
 		const { operateCalls, deps } = capture();
 		queueQuickPick({ pick: { env: "prod", action: "pause" } });
 		await projectionActions(deps)({
@@ -159,7 +159,8 @@ describe("projectionActions", () => {
 			tomlUri,
 			envs: [{ name: "prod", default: true }],
 		});
-		expect(operateCalls[0]).toMatchObject({ verb: "pause", production: false });
+		expect(operateCalls[0]).toMatchObject({ verb: "pause" });
+		expect(operateCalls[0]?.production).toBeUndefined();
 	});
 
 	it("does nothing (no picker) when there are no envs", async () => {

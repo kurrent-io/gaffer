@@ -57,12 +57,11 @@ func (s *Server) performOperate(ctx context.Context, root string, cfg *config.Co
 	}
 	defer bc.release()
 
-	// Bound the write so a stalled projections subsystem can't hang the request.
-	rctx, cancel := context.WithTimeout(ctx, deploy.RPCTimeout)
-	defer cancel()
-
+	// runOperateVerb bounds each management RPC by RPCTimeout on its own - delete
+	// is two writes (disable then delete), so a slow first step mustn't starve the
+	// second, matching the MCP operate path's per-step budget.
 	outcome, err := guardedOp(cfg, root, env, "operate", func() (string, error) {
-		return runOperateVerb(rctx, bc.client, params)
+		return runOperateVerb(ctx, bc.client, params)
 	})
 	// A rejected token trips the auth flag on the write, like the read paths.
 	if bc.authInv != nil && bc.authInv.Tripped() {
@@ -100,27 +99,39 @@ func validOperateVerb(v string) bool {
 	}
 }
 
-// runOperateVerb dispatches to the remote write. Returns the past-tense outcome
-// for the toast. The verb is validated by the caller.
+// runOperateVerb dispatches to the remote write, bounding each management RPC by
+// its own RPCTimeout. Returns the past-tense outcome for the toast. The verb is
+// validated by the caller.
 func runOperateVerb(ctx context.Context, r *remote.Client, params OperateProjectionParams) (string, error) {
 	switch params.Verb {
 	case verbPause:
-		return "paused", r.Disable(ctx, params.Name)
+		return "paused", rpcCall(ctx, func(c context.Context) error { return r.Disable(c, params.Name) })
 	case verbResume:
-		return "resumed", r.Enable(ctx, params.Name)
+		return "resumed", rpcCall(ctx, func(c context.Context) error { return r.Enable(c, params.Name) })
 	case verbAbort:
-		return "aborted", r.Abort(ctx, params.Name)
+		return "aborted", rpcCall(ctx, func(c context.Context) error { return r.Abort(c, params.Name) })
 	case verbDelete:
-		// Disable first: the server rejects deleting an enabled projection.
-		if err := r.Disable(ctx, params.Name); err != nil {
+		// Disable first: the server rejects deleting an enabled projection. Each
+		// write gets its own budget.
+		if err := rpcCall(ctx, func(c context.Context) error { return r.Disable(c, params.Name) }); err != nil {
 			return "", err
 		}
-		return "deleted", r.Delete(ctx, params.Name, remote.DeleteOptions{
-			DeleteStateStream:      true,
-			DeleteCheckpointStream: true,
-			DeleteEmittedStreams:   params.DeleteEmitted,
+		return "deleted", rpcCall(ctx, func(c context.Context) error {
+			return r.Delete(c, params.Name, remote.DeleteOptions{
+				DeleteStateStream:      true,
+				DeleteCheckpointStream: true,
+				DeleteEmittedStreams:   params.DeleteEmitted,
+			})
 		})
 	default:
 		return "", fmt.Errorf("unknown operate verb %q", params.Verb)
 	}
+}
+
+// rpcCall bounds a single management RPC by deploy.RPCTimeout, so a multi-step
+// verb gives each step its own budget rather than sharing one.
+func rpcCall(ctx context.Context, fn func(context.Context) error) error {
+	c, cancel := context.WithTimeout(ctx, deploy.RPCTimeout)
+	defer cancel()
+	return fn(c)
 }

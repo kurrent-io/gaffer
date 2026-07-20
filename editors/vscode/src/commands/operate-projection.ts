@@ -20,7 +20,9 @@ export interface OperateProjectionArgs {
 	tomlUri: vscode.Uri;
 	env: string;
 	verb: OperateVerb;
-	production: boolean;
+	// Tri-state: true/false, or undefined when the env's production status isn't
+	// known yet. Unknown never takes the silent path - the confirm fails safe.
+	production: boolean | undefined;
 	deleteEmitted?: boolean;
 }
 
@@ -74,17 +76,23 @@ function consequenceOf(args: OperateProjectionArgs): string {
 	return VERBS[args.verb].consequence;
 }
 
-// confirm renders the tier and reports whether to proceed.
+// confirm renders the tier and reports whether to proceed. production is
+// tri-state: a silent run needs it *known* non-production, and type-the-name
+// needs it *known* production - unknown production falls through to the accept
+// modal, so a prod op is never run silently just because status hasn't loaded.
 async function confirm(
 	args: OperateProjectionArgs,
 	consequence: string,
 ): Promise<boolean> {
 	const spec = VERBS[args.verb];
-	// silent: non-prod and reversible.
-	if (!args.production && !spec.noUndo) return true;
+	const knownProd = args.production === true;
+	const knownNonProd = args.production === false;
 
-	// type-the-name: production and no-undo (delete on prod).
-	if (args.production && spec.noUndo) {
+	// silent: known non-prod and reversible.
+	if (knownNonProd && !spec.noUndo) return true;
+
+	// type-the-name: known production and no-undo (delete on prod).
+	if (knownProd && spec.noUndo) {
 		const typed = await vscode.window.showInputBox({
 			title: `${spec.title} ${args.name} on ${args.env}`,
 			prompt: `${consequence} Type the projection name "${args.name}" to confirm.`,
@@ -95,8 +103,9 @@ async function confirm(
 		return typed === args.name;
 	}
 
-	// accept: production XOR no-undo -> modal accept/cancel.
-	const where = args.production ? `PRODUCTION [${args.env}]` : args.env;
+	// accept: everything else - known-prod reversible, non-prod no-undo, and any
+	// unknown-production verb - gets a modal accept/cancel.
+	const where = knownProd ? `PRODUCTION [${args.env}]` : args.env;
 	const choice = await vscode.window.showWarningMessage(
 		`${spec.title} ${args.name} on ${where}? ${consequence}`,
 		{ modal: true },

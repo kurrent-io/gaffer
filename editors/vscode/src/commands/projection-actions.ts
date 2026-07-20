@@ -28,11 +28,13 @@ export interface ProjectionActionsArgs {
 
 // What a chosen menu row runs: an action against one env. `action` is a
 // discriminant so the dispatch stays exhaustive as verbs are added. production
-// and deleteEmitted ride along for the operate verbs.
+// is tri-state for the operate verbs - true/false/undefined (not yet known) - so
+// the confirm tier can fail safe when it's unknown; deleteEmitted rides along for
+// delete.
 export interface ProjectionAction {
 	env: string;
 	action: "diff" | OperateVerb;
-	production?: boolean;
+	production: boolean | undefined;
 	deleteEmitted?: boolean;
 }
 
@@ -47,7 +49,7 @@ export interface ProjectionActionsDeps {
 		tomlUri: vscode.Uri;
 		env: string;
 		verb: OperateVerb;
-		production: boolean;
+		production: boolean | undefined;
 		deleteEmitted?: boolean;
 	}) => Promise<void>;
 }
@@ -58,7 +60,7 @@ type ActionItem = vscode.QuickPickItem & { pick?: ProjectionAction };
 // running, resume when not, both pause and resume when the state is unknown.
 // Delete (and its delete-emitted variant) is always offered.
 function operateRows(env: ProjectionActionsEnv): ActionItem[] {
-	const production = env.production ?? false;
+	const production = env.production;
 	const running = env.state === "running";
 	const known = env.state !== undefined && env.state !== "";
 	const rows: ActionItem[] = [];
@@ -107,7 +109,7 @@ export function buildActionItems(envs: ProjectionActionsEnv[]): ActionItem[] {
 		});
 		items.push({
 			label: "$(diff-single) Diff against deployed",
-			pick: { env: env.name, action: "diff" },
+			pick: { env: env.name, action: "diff", production: env.production },
 		});
 		items.push(...operateRows(env));
 	}
@@ -138,7 +140,7 @@ export function projectionActions(
 			tomlUri: args.tomlUri,
 			env: pick.env,
 			verb: pick.action,
-			production: pick.production ?? false,
+			production: pick.production,
 			deleteEmitted: pick.deleteEmitted ?? false,
 		});
 	};

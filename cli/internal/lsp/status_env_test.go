@@ -349,11 +349,13 @@ func TestEmitActionsLenses(t *testing.T) {
 		for _, e := range checkout.Envs {
 			byEnv[e.Name] = e
 		}
-		if !byEnv["prod"].Production || byEnv["prod"].State != "running" {
+		if byEnv["prod"].Production == nil || !*byEnv["prod"].Production ||
+			byEnv["prod"].State != "running" {
 			t.Errorf("prod env cell: got %+v, want production + running", byEnv["prod"])
 		}
-		if byEnv["local"].Production || byEnv["local"].State != "stopped" {
-			t.Errorf("local env cell: got %+v, want non-prod + stopped", byEnv["local"])
+		if byEnv["local"].Production == nil || *byEnv["local"].Production ||
+			byEnv["local"].State != "stopped" {
+			t.Errorf("local env cell: got %+v, want known non-prod + stopped", byEnv["local"])
 		}
 		// orders has no status entry -> empty state, no production.
 		var orders projectionActionsArgs
@@ -365,6 +367,28 @@ func TestEmitActionsLenses(t *testing.T) {
 		for _, e := range orders.Envs {
 			if e.State != "" {
 				t.Errorf("orders env %q should have empty state, got %q", e.Name, e.State)
+			}
+		}
+	})
+
+	t.Run("production is unknown (nil) until the fetch resolves", func(t *testing.T) {
+		// An errored fetch, a sign-in-needed fetch, and an env with no cached
+		// status must all read as unknown production - never as non-production -
+		// so the editor fails the confirm-tier decision safe.
+		statuses := map[string]envStatus{
+			"prod":  {Err: errStub{}, Production: true},
+			"local": {Unauthenticated: true},
+		}
+		lenses := emitActionsLenses(desc, uri, statuses)
+		var checkout projectionActionsArgs
+		for _, l := range lenses {
+			if a, ok := l.Command.Arguments[0].(projectionActionsArgs); ok && a.Name == "checkout" {
+				checkout = a
+			}
+		}
+		for _, e := range checkout.Envs {
+			if e.Production != nil {
+				t.Errorf("env %q: production should be nil (unknown) on an unresolved fetch, got %v", e.Name, *e.Production)
 			}
 		}
 	})

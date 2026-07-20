@@ -812,6 +812,8 @@ export interface MockState {
 	commandHandlers: Map<string, (...args: unknown[]) => unknown>;
 	quickPickResolutions: unknown[];
 	quickPickCalls: Array<{ items: unknown; options: unknown }>;
+	inputBoxResolutions: unknown[];
+	inputBoxCalls: Array<{ options: unknown }>;
 	messageResolutions: unknown[];
 	outputChannels: FakeOutputChannel[];
 	diagnosticCollections: FakeDiagnosticCollection[];
@@ -869,6 +871,8 @@ function createInitialState(): MockState {
 		commandHandlers: new Map(),
 		quickPickResolutions: [],
 		quickPickCalls: [],
+		inputBoxResolutions: [],
+		inputBoxCalls: [],
 		messageResolutions: [],
 		outputChannels: [],
 		diagnosticCollections: [],
@@ -1137,6 +1141,7 @@ type WindowShape = Pick<
 	| "showWarningMessage"
 	| "showInformationMessage"
 	| "showQuickPick"
+	| "showInputBox"
 	| "registerTreeDataProvider"
 	| "registerWebviewViewProvider"
 	| "createTerminal"
@@ -1185,6 +1190,10 @@ export const window: WindowShape = {
 		state.quickPickCalls.push({ items: resolved, options });
 		return state.quickPickResolutions.shift();
 	}) as typeof vscode.window.showQuickPick,
+	showInputBox: (async (options?: unknown) => {
+		state.inputBoxCalls.push({ options });
+		return state.inputBoxResolutions.shift();
+	}) as typeof vscode.window.showInputBox,
 	createOutputChannel(name: string, languageId?: string): vscode.OutputChannel {
 		const channel = makeOutputChannel(name, languageId);
 		state.outputChannels.push(channel);

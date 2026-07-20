@@ -81,12 +81,14 @@ import { GafferMcpProvider } from "./mcp/provider.js";
 import { runProjection } from "./commands/run-projection.js";
 import { debugProjectionPick } from "./commands/debug-projection-pick.js";
 import { projectionActions } from "./commands/projection-actions.js";
+import { operateProjection } from "./commands/operate-projection.js";
 import {
 	diffProjection,
 	GafferDiffContentProvider,
 	GAFFER_DIFF_SCHEME,
 } from "./commands/diff-projection.js";
 import { requestProjectionDiff } from "./lsp/diff.js";
+import { requestOperateProjection } from "./lsp/operate.js";
 import { initProjection } from "./commands/init-projection.js";
 import {
 	createVscodeWizardSteps,
@@ -621,15 +623,16 @@ async function activateAfterTelemetry(
 		),
 		(() => {
 			// The per-projection action menu (opened from the "Manage..." lens):
-			// its only action today diffs local against deployed, rendered in the
-			// native diff editor. The diff is computed by the language server over
-			// its warm per-env connection (gaffer/diffProjection), so a re-diff is
-			// one read RPC rather than a cold `gaffer diff` spawn.
+			// diff against deployed and the operate verbs (pause/resume/abort/
+			// delete). Both are computed/run by the language server over its warm
+			// per-env connection (gaffer/diffProjection, gaffer/operateProjection),
+			// so each is one RPC rather than a cold `gaffer` spawn.
 			const diffProvider = new GafferDiffContentProvider();
 			const diff = diffProjection({
 				provider: diffProvider,
 				requestDiff: requestProjectionDiff,
 			});
+			const operate = operateProjection({ request: requestOperateProjection });
 			return vscode.Disposable.from(
 				diffProvider,
 				vscode.workspace.registerTextDocumentContentProvider(
@@ -638,7 +641,7 @@ async function activateAfterTelemetry(
 				),
 				vscode.commands.registerCommand(
 					"gaffer.projectionActions",
-					wrap(projectionActions({ diff })),
+					wrap(projectionActions({ diff, operate })),
 				),
 			);
 		})(),

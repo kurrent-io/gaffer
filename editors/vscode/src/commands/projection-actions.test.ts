@@ -46,7 +46,7 @@ function actionLabels(items: ReturnType<typeof buildActionItems>): string[] {
 }
 
 describe("buildActionItems", () => {
-	it("groups by env with a separator per env, default env first", () => {
+	it("groups by env with a separator per env, in config order, default labelled", () => {
 		const envs: ProjectionActionsEnv[] = [
 			{ name: "local", default: false },
 			{ name: "prod", default: true },
@@ -54,7 +54,8 @@ describe("buildActionItems", () => {
 		const separators = buildActionItems(envs)
 			.filter((i) => i.kind === vscode.QuickPickItemKind.Separator)
 			.map((i) => i.label);
-		expect(separators).toEqual(["prod (default)", "local"]);
+		// Config order preserved; the default is labelled, not moved to the top.
+		expect(separators).toEqual(["local", "prod (default)"]);
 	});
 
 	it("offers diff + pause/resume (unknown state) + a single delete", () => {

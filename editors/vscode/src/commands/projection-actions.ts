@@ -101,14 +101,12 @@ function operateRows(env: ProjectionActionsEnv): ActionItem[] {
 
 // buildActionItems lays out the menu grouped by environment: an env-name
 // separator header, then that env's actions beneath it. Always grouped, even for
-// a single env, so the env's placement is the same whatever the env count. The
-// default env leads; item order within an env is the action order.
+// a single env, so the env's placement is the same whatever the env count. Envs
+// appear in gaffer.toml order (the default is labelled, not reordered); item
+// order within an env is the action order.
 export function buildActionItems(envs: ProjectionActionsEnv[]): ActionItem[] {
-	const ordered = [...envs].sort(
-		(a, b) => Number(b.default) - Number(a.default),
-	);
 	const items: ActionItem[] = [];
-	for (const env of ordered) {
+	for (const env of envs) {
 		items.push({
 			label: env.default ? `${env.name} (default)` : env.name,
 			kind: vscode.QuickPickItemKind.Separator,

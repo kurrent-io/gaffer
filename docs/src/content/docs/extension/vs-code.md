@@ -53,6 +53,8 @@ If the projection isn't deployed to that environment yet, the extension says so 
 
 The **operate verbs** act on the running projection. **Pause** stops it after a final checkpoint, and **Resume** restarts it from the last checkpoint. **Abort** stops it without a final checkpoint, so a later resume reprocesses from the last checkpoint written. **Delete** removes it along with its state and checkpoints; if the projection emitted streams, deleting asks whether to remove those too. The menu offers Pause while a projection is running and Resume while it's stopped; Abort appears only while it's running.
 
+Each environment heading notes its status. One that needs authentication shows a single **Sign in** in place of the actions, since none can run until you're signed in. One whose status couldn't be read is marked unavailable but keeps its actions, which report the failure if run.
+
 Because these change live state, they confirm before running, in tiers that match `gaffer`'s other surfaces. A non-production, reversible verb runs straight away. A production verb, or an irreversible one, asks you to confirm. Deleting on a production environment asks you to type the projection's name. The result is reported as a notification, and an environment that needs authentication offers to sign in first.
 
 ## Authentication

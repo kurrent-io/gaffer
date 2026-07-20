@@ -222,6 +222,10 @@ type actionsEnv struct {
 	// Emits is whether the deployed projection emits streams, so the editor only
 	// offers the delete-and-emitted-streams choice when it's meaningful.
 	Emits bool `json:"emits,omitempty"`
+	// Status flags a non-actionable env for the menu: "auth" (sign-in needed, so
+	// the actions collapse to a sign-in) or "unavailable" (a failed read, shown as
+	// context but not blocked). Empty when the env resolved, or has no status yet.
+	Status string `json:"status,omitempty"`
 }
 
 // actionsEnvs builds the per-env cells for one projection's actions lens from the
@@ -233,24 +237,29 @@ func actionsEnvs(envs []config.EnvDescription, proj string, statuses map[string]
 	for i, e := range envs {
 		cell := actionsEnv{Name: e.Name, Default: e.Default}
 		if st, ok := statuses[e.Name]; ok {
-			// Production is meaningful only once the fetch resolved; an errored or
-			// sign-in-needed fetch leaves st.Production at its false zero value,
-			// which must read as unknown (nil), not as non-production.
-			if st.Err == nil && !st.Unauthenticated {
+			switch {
+			case st.Unauthenticated:
+				cell.Status = "auth"
+			case st.Err != nil:
+				cell.Status = "unavailable"
+			default:
+				// Resolved: production, state, and emit are meaningful. (An errored
+				// or sign-in-needed fetch leaves st.Production at its false zero
+				// value, so it must not be read as non-production.)
 				prod := st.Production
 				cell.Production = &prod
-			}
-			for j := range st.Entries {
-				if st.Entries[j].Name != proj {
-					continue
+				for j := range st.Entries {
+					if st.Entries[j].Name != proj {
+						continue
+					}
+					if st.Entries[j].Runtime != nil {
+						cell.State = string(st.Entries[j].Runtime.State)
+					}
+					if st.Entries[j].Deployed != nil {
+						cell.Emits = st.Entries[j].Deployed.Emit
+					}
+					break
 				}
-				if st.Entries[j].Runtime != nil {
-					cell.State = string(st.Entries[j].Runtime.State)
-				}
-				if st.Entries[j].Deployed != nil {
-					cell.Emits = st.Entries[j].Deployed.Emit
-				}
-				break
 			}
 		}
 		out[i] = cell

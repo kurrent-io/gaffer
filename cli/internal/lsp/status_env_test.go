@@ -386,10 +386,19 @@ func TestEmitActionsLenses(t *testing.T) {
 				checkout = a
 			}
 		}
+		byEnv := map[string]actionsEnv{}
 		for _, e := range checkout.Envs {
 			if e.Production != nil {
 				t.Errorf("env %q: production should be nil (unknown) on an unresolved fetch, got %v", e.Name, *e.Production)
 			}
+			byEnv[e.Name] = e
+		}
+		// The unresolved fetches surface their reason as status, for the menu.
+		if byEnv["prod"].Status != "unavailable" {
+			t.Errorf("errored env status: got %q want unavailable", byEnv["prod"].Status)
+		}
+		if byEnv["local"].Status != "auth" {
+			t.Errorf("sign-in-needed env status: got %q want auth", byEnv["local"].Status)
 		}
 	})
 }

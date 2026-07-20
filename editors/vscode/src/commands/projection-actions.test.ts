@@ -111,6 +111,29 @@ describe("buildActionItems", () => {
 			emits: true,
 		});
 	});
+
+	it("collapses a sign-in-needed env to a single Sign in, labelled", () => {
+		const items = buildActionItems([
+			{ name: "kc", default: false, status: "auth" },
+		]);
+		expect(
+			items.find((i) => i.kind === vscode.QuickPickItemKind.Separator)?.label,
+		).toBe("kc · sign-in needed");
+		expect(actionLabels(items)).toEqual(["$(key) Sign in"]);
+	});
+
+	it("shows all actions for an unavailable env but labels the separator", () => {
+		const items = buildActionItems([
+			{ name: "local", default: true, status: "unavailable" },
+		]);
+		expect(
+			items.find((i) => i.kind === vscode.QuickPickItemKind.Separator)?.label,
+		).toBe("local (default) · unavailable");
+		// Not blocked - the full action set is still offered.
+		const labels = actionLabels(items);
+		expect(labels).toContain("$(diff-single) Diff against deployed");
+		expect(labels).toContain("$(trash) Delete");
+	});
 });
 
 describe("projectionActions", () => {
@@ -150,6 +173,22 @@ describe("projectionActions", () => {
 				emits: true,
 			},
 		]);
+	});
+
+	it("routes a sign-in pick to the gaffer.signIn command", async () => {
+		const { deps } = capture();
+		getState().executeCommandCalls.length = 0;
+		queueQuickPick({ pick: { env: "kc", action: "signin" } });
+		await projectionActions(deps)({
+			name: "checkout",
+			tomlUri,
+			envs: [{ name: "kc", default: false, status: "auth" }],
+		});
+		const calls = getState().executeCommandCalls.filter(
+			(c) => c.name === "gaffer.signIn",
+		);
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.args[0]).toMatchObject({ env: "kc" });
 	});
 
 	it("passes production through as undefined when the pick omits it", async () => {

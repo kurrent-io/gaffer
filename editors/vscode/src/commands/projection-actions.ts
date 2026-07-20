@@ -20,6 +20,10 @@ export interface ProjectionActionsEnv {
 	production?: boolean;
 	state?: string;
 	emits?: boolean;
+	// "auth" (sign-in needed) or "unavailable" (a failed read); empty when the env
+	// resolved or has no status yet. "auth" collapses the env's actions to a
+	// sign-in; the rest is shown as context and never blocks.
+	status?: string;
 }
 
 export interface ProjectionActionsArgs {
@@ -35,7 +39,7 @@ export interface ProjectionActionsArgs {
 // whether to offer the emitted-streams choice.
 export interface ProjectionAction {
 	env: string;
-	action: "diff" | OperateVerb;
+	action: "diff" | "signin" | OperateVerb;
 	production: boolean | undefined;
 	emits?: boolean;
 }
@@ -104,13 +108,36 @@ function operateRows(env: ProjectionActionsEnv): ActionItem[] {
 // a single env, so the env's placement is the same whatever the env count. Envs
 // appear in gaffer.toml order (the default is labelled, not reordered); item
 // order within an env is the action order.
+// separatorLabel is the env header row: its name, whether it's the default, and
+// a status note ("sign-in needed" / "unavailable") so the menu carries the same
+// context as the status hover.
+function separatorLabel(env: ProjectionActionsEnv): string {
+	const base = env.default ? `${env.name} (default)` : env.name;
+	const note =
+		env.status === "auth"
+			? "sign-in needed"
+			: env.status === "unavailable"
+				? "unavailable"
+				: "";
+	return note ? `${base} · ${note}` : base;
+}
+
 export function buildActionItems(envs: ProjectionActionsEnv[]): ActionItem[] {
 	const items: ActionItem[] = [];
 	for (const env of envs) {
 		items.push({
-			label: env.default ? `${env.name} (default)` : env.name,
+			label: separatorLabel(env),
 			kind: vscode.QuickPickItemKind.Separator,
 		});
+		// A sign-in-needed env can't diff or operate until it's authenticated, and
+		// every action would just funnel to a sign-in - so collapse to one.
+		if (env.status === "auth") {
+			items.push({
+				label: "$(key) Sign in",
+				pick: { env: env.name, action: "signin", production: env.production },
+			});
+			continue;
+		}
 		items.push({
 			label: "$(diff-single) Diff against deployed",
 			pick: { env: env.name, action: "diff", production: env.production },
@@ -136,6 +163,13 @@ export function projectionActions(
 				name: args.name,
 				tomlUri: args.tomlUri,
 				env: pick.env,
+			});
+			return;
+		}
+		if (pick.action === "signin") {
+			await vscode.commands.executeCommand("gaffer.signIn", {
+				env: pick.env,
+				tomlUri: args.tomlUri,
 			});
 			return;
 		}

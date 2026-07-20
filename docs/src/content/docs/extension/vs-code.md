@@ -47,9 +47,13 @@ Hovering the header lists those environments one per line, each with its drift v
 
 Each `[[projection]]` header also carries a **Manage...** lens that opens a menu of actions for that projection, grouped by environment. Every action targets an environment, so the lens appears only once the config declares at least one. Each environment is a heading with its actions listed beneath, the default environment first.
 
-The one action today is **Diff against deployed**. It opens VS Code's diff editor with the projection's local source on one side and what's deployed on the chosen environment on the other, so you can see exactly what a deploy would change. Both sides are read-only. The diff is a comparison and never deploys.
+**Diff against deployed** opens VS Code's diff editor with the projection's local source on one side and what's deployed on the chosen environment on the other, so you can see exactly what a deploy would change. Both sides are read-only. The diff is a comparison and never deploys.
 
 If the projection isn't deployed to that environment yet, the extension says so rather than diffing against an empty file. If the environment needs authentication, the action offers to sign in first. See [Authentication](#authentication).
+
+The **operate verbs** act on the running projection: **Pause** stops it after a final checkpoint, **Resume** restarts it from the last checkpoint, **Abort** stops it without a final checkpoint (a later resume reprocesses from the last checkpoint written), and **Delete** removes it along with its state and checkpoints. **Delete (and emitted streams)** also removes the streams the projection emitted. The menu shows Pause or Resume based on the projection's current state.
+
+Because these change live state, they confirm before running, in tiers that match `gaffer`'s other surfaces: a non-production, reversible verb runs straight away; a production verb, or an irreversible one, asks you to confirm; and deleting on a production environment asks you to type the projection's name. The result is reported as a notification; an environment that needs authentication offers to sign in first.
 
 ## Authentication
 

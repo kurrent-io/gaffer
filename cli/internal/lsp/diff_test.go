@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/sourcegraph/jsonrpc2"
 
@@ -249,6 +250,12 @@ func TestBoundLine(t *testing.T) {
 	got := boundLine(strings.Repeat("a", maxUserErrorLen+50))
 	if len([]rune(got)) != maxUserErrorLen+1 || !strings.HasSuffix(got, "…") {
 		t.Errorf("truncation: %d runes, ellipsis=%v", len([]rune(got)), strings.HasSuffix(got, "…"))
+	}
+	// Multi-byte runes must not be split at the cut: the result stays valid UTF-8
+	// and is exactly maxUserErrorLen kept runes plus the ellipsis.
+	multi := boundLine(strings.Repeat("世", maxUserErrorLen+10))
+	if !utf8.ValidString(multi) || len([]rune(multi)) != maxUserErrorLen+1 || !strings.HasSuffix(multi, "…") {
+		t.Errorf("multibyte truncation: valid=%v, %d runes", utf8.ValidString(multi), len([]rune(multi)))
 	}
 }
 

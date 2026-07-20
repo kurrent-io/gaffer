@@ -47,14 +47,19 @@ func userFacingError(cfg *config.Config, root, env string, err error) string {
 
 // boundLine reduces msg to its first non-empty line and caps its length,
 // appending an ellipsis when truncated. Rune-aware so it never splits a
-// multi-byte character.
+// multi-byte character; it scans at most maxUserErrorLen+1 runes rather than
+// materialising the whole (possibly large) line as a rune slice.
 func boundLine(msg string) string {
 	msg = strings.TrimSpace(msg)
 	if i := strings.IndexByte(msg, '\n'); i >= 0 {
 		msg = strings.TrimSpace(msg[:i])
 	}
-	if r := []rune(msg); len(r) > maxUserErrorLen {
-		return string(r[:maxUserErrorLen]) + "…"
+	runes := 0
+	for i := range msg {
+		if runes == maxUserErrorLen {
+			return msg[:i] + "…"
+		}
+		runes++
 	}
 	return msg
 }

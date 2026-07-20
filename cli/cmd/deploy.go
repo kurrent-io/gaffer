@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -21,6 +22,7 @@ type deployOpts struct {
 	Yes                bool
 	ResetOnLogicChange bool
 	DryRun             bool
+	Stream             bool
 }
 
 // deployCounts tallies outcomes for the summary line and the live progress bar.
@@ -76,7 +78,8 @@ func newDeployCmd() *cobra.Command {
 			"won't apply unconfirmed, so pass --yes in scripts. A production target (a server " +
 			"that declares itself production, or an env with production = true) gets a louder " +
 			"confirm and refuses --no-validate. " +
-			"Pass --json for machine-readable output.\n\n" +
+			"Pass --json for machine-readable output; add --stream to emit apply progress " +
+			"as NDJSON (one event per line) instead of a single array once the run finishes.\n\n" +
 			"--dry-run shows the plan and applies nothing. The exit code is stable for scripts: " +
 			"0 succeeded (or nothing to do), 1 an error, 2 changes are pending (--dry-run only), " +
 			"3 refused by a guardrail (confirmation needed but no terminal or --yes, or " +
@@ -118,10 +121,22 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip the confirmation prompt")
 	cmd.Flags().BoolVar(&opts.ResetOnLogicChange, "reset-on-logic-change", false, "Rebuild from zero on a logic change instead of continuing from checkpoint")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Show the plan and exit without applying (exit 2 if changes are pending)")
+	cmd.Flags().BoolVar(&opts.Stream, "stream", false, "Stream apply progress as NDJSON, one event per line (requires --json, not --dry-run)")
 	return cmd
 }
 
 func runDeploy(cmd *cobra.Command, name string, opts deployOpts, tel *telemetry.DeployCommandInvokedProperties) error {
+	// --stream is an apply-progress format; it only means anything alongside the
+	// machine output --json selects (a plain/interactive run already streams), and
+	// only for an apply - a --dry-run preview is the one-shot plan envelope, so
+	// keeping the two apart is what lets stdout stay strictly NDJSON under --stream.
+	if opts.Stream && !opts.JSON {
+		return errors.New("--stream requires --json")
+	}
+	if opts.Stream && opts.DryRun {
+		return errors.New("--stream is for the apply and can't be combined with --dry-run; use --dry-run --json for a plan preview")
+	}
+
 	cfg, root, err := loadProject()
 	if err != nil {
 		return err
@@ -137,6 +152,9 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts, tel *telemetry.
 			// An empty project still emits the plan envelope (verdict in-sync, no
 			// changes) so a --json consumer always parses the same shape.
 			return renderDryRun(cmd.OutOrStdout(), nil, "", "", nil, planTotals{}, drift.ConfigDriftResult{}, true)
+		case opts.JSON && opts.Stream:
+			// A streaming consumer always ends on a summary, even with nothing to do.
+			return emptyStreamSummary(cmd.OutOrStdout())
 		case opts.JSON:
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "[]")
 		default:
@@ -235,7 +253,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts, tel *telemetry.
 	// unless --no-validate, so a bad one can't leave a half-applied set (the
 	// invariant the old preflight held, now enforced against the built plan).
 	if !opts.NoValidate {
-		if err := refuseInvalidPlan(cmd.OutOrStdout(), plan, targetName, totals, prod, opts.JSON); err != nil {
+		if err := refuseInvalidPlan(cmd.OutOrStdout(), plan, targetName, totals, prod, opts.JSON, opts.Stream); err != nil {
 			return err
 		}
 	}
@@ -247,7 +265,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts, tel *telemetry.
 	// The tool-metadata gaffer stamps on every create/update this deploy makes.
 	ledger := toolLedger(resolved, remote.OpDeploy, root)
 
-	sink := newDeploySink(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts.JSON, names, ctx, cancel)
+	sink := newDeploySink(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts.JSON, opts.Stream, names, ctx, cancel)
 	failed := apply.Plan(ctx, plan, r, ledger, sink.start, sink.done)
 	if ferr := sink.finish(); ferr != nil {
 		return ferr

@@ -12,10 +12,12 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spf13/cobra"
 
 	"github.com/kurrent-io/gaffer/cli/internal/cliout"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
+	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
 	"github.com/kurrent-io/gaffer/cli/internal/testutil"
 )
 
@@ -125,14 +127,140 @@ func TestJSONSinkEmpty(t *testing.T) {
 	}
 }
 
+// streamWireMsg flattens every field the three deploy_* NDJSON events carry, so a
+// test can decode any line and assert on it without a per-type struct.
+type streamWireMsg struct {
+	Type     string `json:"type"`
+	Name     string `json:"name"`
+	Index    int    `json:"index"`
+	Total    int    `json:"total"`
+	Outcome  string `json:"outcome"`
+	Recreate bool   `json:"recreate"`
+	Error    string `json:"error"`
+	Created  int    `json:"created"`
+	Updated  int    `json:"updated"`
+	Rebuilt  int    `json:"rebuilt"`
+	Skipped  int    `json:"skipped"`
+	Refused  int    `json:"refused"`
+	Invalid  int    `json:"invalid"`
+	Failed   int    `json:"failed"`
+}
+
+// decodeNDJSON parses one message per line, asserting the stream is genuine
+// newline-delimited JSON (no indentation, one object per line) as consumers need.
+func decodeNDJSON(t *testing.T, s string) []streamWireMsg {
+	t.Helper()
+	var msgs []streamWireMsg
+	for line := range strings.SplitSeq(strings.TrimRight(s, "\n"), "\n") {
+		var m streamWireMsg
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			t.Fatalf("line %q not valid JSON: %v", line, err)
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs
+}
+
+func TestStreamSink(t *testing.T) {
+	var b bytes.Buffer
+	s := &streamSink{enc: json.NewEncoder(&b)}
+	s.start("a", 1, 3)
+	s.done(drift.Result{Name: "a", Action: drift.ActionCreate})
+	s.done(drift.Result{Name: "b", Action: drift.ActionRefuse, Reason: "engine version"})
+	s.done(drift.Result{Name: "c", Action: drift.ActionUpdate, Err: errors.New("boom")})
+	if err := s.finish(); err != nil {
+		t.Fatalf("finish: %v", err)
+	}
+
+	msgs := decodeNDJSON(t, b.String())
+	if len(msgs) != 5 {
+		t.Fatalf("got %d NDJSON messages, want 5:\n%s", len(msgs), b.String())
+	}
+	if got := msgs[0]; got.Type != "deploy_start" || got.Name != "a" || got.Index != 1 || got.Total != 3 {
+		t.Errorf("start message = %+v, want deploy_start a 1/3", got)
+	}
+	if got := msgs[1]; got.Type != "deploy_result" || got.Name != "a" || got.Outcome != "created" {
+		t.Errorf("result 1 = %+v, want deploy_result a created", got)
+	}
+	if got := msgs[2]; got.Type != "deploy_result" || got.Outcome != "refused" || !got.Recreate {
+		t.Errorf("result 2 = %+v, want deploy_result refused recreate", got)
+	}
+	if got := msgs[3]; got.Type != "deploy_result" || got.Outcome != "failed" || got.Error != "boom" {
+		t.Errorf("result 3 = %+v, want deploy_result failed boom", got)
+	}
+	sum := msgs[4]
+	if sum.Type != "deploy_summary" || sum.Created != 1 || sum.Refused != 1 || sum.Failed != 1 ||
+		sum.Updated != 0 || sum.Rebuilt != 0 || sum.Skipped != 0 || sum.Invalid != 0 {
+		t.Errorf("summary = %+v, want created 1 refused 1 failed 1, rest 0", sum)
+	}
+}
+
+// errWriter fails every write, standing in for a disconnected consumer.
+type errWriter struct{ writes int }
+
+func (w *errWriter) Write(p []byte) (int, error) {
+	w.writes++
+	return 0, errors.New("broken pipe")
+}
+
+func TestStreamSinkWriteError(t *testing.T) {
+	w := &errWriter{}
+	s := &streamSink{enc: json.NewEncoder(w)}
+	s.start("a", 1, 1)                                          // first emit fails
+	s.done(drift.Result{Name: "a", Action: drift.ActionCreate}) // suppressed after the error
+	if err := s.finish(); err == nil {
+		t.Fatal("finish() = nil, want the first write error surfaced")
+	}
+	if w.writes != 1 {
+		t.Errorf("writer called %d times, want 1 (emit goes quiet after the first error)", w.writes)
+	}
+}
+
+func TestDeployStreamRequiresJSON(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+	err := runDeploy(cmd, "", deployOpts{Stream: true}, &telemetry.DeployCommandInvokedProperties{})
+	if err == nil || !strings.Contains(err.Error(), "--stream requires --json") {
+		t.Fatalf("runDeploy(--stream without --json) = %v, want '--stream requires --json' error", err)
+	}
+}
+
+func TestDeployStreamRejectsDryRun(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+	err := runDeploy(cmd, "", deployOpts{JSON: true, Stream: true, DryRun: true}, &telemetry.DeployCommandInvokedProperties{})
+	if err == nil || !strings.Contains(err.Error(), "can't be combined with --dry-run") {
+		t.Fatalf("runDeploy(--dry-run --stream) = %v, want a --dry-run incompatibility error", err)
+	}
+}
+
+func TestStreamSinkEmpty(t *testing.T) {
+	var b bytes.Buffer
+	if err := emptyStreamSummary(&b); err != nil {
+		t.Fatalf("emptyStreamSummary: %v", err)
+	}
+	msgs := decodeNDJSON(t, b.String())
+	if len(msgs) != 1 || msgs[0].Type != "deploy_summary" || msgs[0].Created != 0 || msgs[0].Failed != 0 {
+		t.Errorf("empty stream = %+v, want a single zeroed deploy_summary", msgs)
+	}
+}
+
 func TestNewDeploySink(t *testing.T) {
 	var b bytes.Buffer
-	if _, ok := newDeploySink(&b, &b, true, []string{"a"}, context.Background(), func() {}).(*jsonSink); !ok {
+	if _, ok := newDeploySink(&b, &b, true, false, []string{"a"}, context.Background(), func() {}).(*jsonSink); !ok {
 		t.Error("--json should select the JSON sink")
+	}
+	if _, ok := newDeploySink(&b, &b, true, true, []string{"a"}, context.Background(), func() {}).(*streamSink); !ok {
+		t.Error("--json --stream should select the stream sink")
+	}
+	// --stream without --json can't reach the sink (runDeploy rejects it), so the
+	// flag is inert here: the non-json path stays plain regardless.
+	if _, ok := newDeploySink(&b, &b, false, true, []string{"a"}, context.Background(), func() {}).(*plainSink); !ok {
+		t.Error("--stream without --json should still select the plain sink")
 	}
 	// A buffer is not a terminal, so the non-json path must fall to plain (never
 	// the interactive program) in pipes, CI, and tests.
-	if _, ok := newDeploySink(&b, &b, false, []string{"a"}, context.Background(), func() {}).(*plainSink); !ok {
+	if _, ok := newDeploySink(&b, &b, false, false, []string{"a"}, context.Background(), func() {}).(*plainSink); !ok {
 		t.Error("non-terminal writer should select the plain sink")
 	}
 	if interactiveWriter(&b) {

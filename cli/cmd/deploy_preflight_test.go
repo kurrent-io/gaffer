@@ -163,7 +163,7 @@ func TestValidatePlan(t *testing.T) {
 func TestRefuseInvalidPlan(t *testing.T) {
 	// A plan with nothing invalid proceeds (nil), so the caller applies.
 	clean := []drift.PlanItem{{Name: "a", Action: drift.ActionCreate}}
-	if err := refuseInvalidPlan(io.Discard, clean, "", planChangeCounts(clean), false, false); err != nil {
+	if err := refuseInvalidPlan(io.Discard, clean, "", planChangeCounts(clean), false, false, false); err != nil {
 		t.Errorf("clean plan should not refuse, got %v", err)
 	}
 
@@ -174,7 +174,7 @@ func TestRefuseInvalidPlan(t *testing.T) {
 	// Text: the full plan (both the would-be create and the invalid, with its
 	// reason), then the refusal footer and remedy, exits 1.
 	var text bytes.Buffer
-	if got := exitCodeOf(refuseInvalidPlan(&text, blocked, "", planChangeCounts(blocked), false, false)); got != 1 {
+	if got := exitCodeOf(refuseInvalidPlan(&text, blocked, "", planChangeCounts(blocked), false, false, false)); got != 1 {
 		t.Fatalf("invalid plan should exit 1, got %d", got)
 	}
 	for _, want := range []string{"good", "bad", "won't compile", "Deploy refused", "--no-validate"} {
@@ -184,7 +184,7 @@ func TestRefuseInvalidPlan(t *testing.T) {
 	}
 	// JSON: the full plan array, the invalid item flagged.
 	var jbuf bytes.Buffer
-	_ = refuseInvalidPlan(&jbuf, blocked, "", planChangeCounts(blocked), false, true)
+	_ = refuseInvalidPlan(&jbuf, blocked, "", planChangeCounts(blocked), false, true, false)
 	var arr []cliout.DeployJSON
 	if err := json.Unmarshal(jbuf.Bytes(), &arr); err != nil {
 		t.Fatalf("json: %v\n%s", err, jbuf.String())
@@ -195,6 +195,22 @@ func TestRefuseInvalidPlan(t *testing.T) {
 	bad := arr[1]
 	if bad.Name != "bad" || bad.Outcome != "invalid" {
 		t.Errorf("json invalid item = %+v; want bad/invalid", bad)
+	}
+
+	// JSON stream: strictly NDJSON - a deploy_result for the invalid item (not the
+	// would-be create, which was never attempted) then a terminal deploy_summary
+	// reporting nothing applied. No indented array to choke a line consumer.
+	var sbuf bytes.Buffer
+	_ = refuseInvalidPlan(&sbuf, blocked, "", planChangeCounts(blocked), false, true, true)
+	msgs := decodeNDJSON(t, sbuf.String())
+	if len(msgs) != 2 {
+		t.Fatalf("stream refusal = %d messages, want 2 (invalid result + summary):\n%s", len(msgs), sbuf.String())
+	}
+	if r := msgs[0]; r.Type != "deploy_result" || r.Name != "bad" || r.Outcome != "invalid" {
+		t.Errorf("stream result = %+v, want deploy_result bad invalid", r)
+	}
+	if s := msgs[1]; s.Type != "deploy_summary" || s.Invalid != 1 || s.Created != 0 {
+		t.Errorf("stream summary = %+v, want invalid 1 created 0", s)
 	}
 }
 

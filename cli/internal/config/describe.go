@@ -125,6 +125,22 @@ func DescribeBytes(ctx context.Context, path string, data []byte) (Description, 
 		}
 		desc.Environments = append(desc.Environments, e)
 	}
+	// Present envs in gaffer.toml order (by header line), not the alphabetical
+	// order of EnvNames, so the editor's env-grouped surfaces match the file. An
+	// env with no locatable header (Range zero - a quoted key or a sub-table-only
+	// definition) sorts last, keeping its relative order.
+	slices.SortStableFunc(desc.Environments, func(a, b EnvDescription) int {
+		switch {
+		case a.Range.StartLine == 0 && b.Range.StartLine == 0:
+			return 0
+		case a.Range.StartLine == 0:
+			return 1
+		case b.Range.StartLine == 0:
+			return -1
+		default:
+			return a.Range.StartLine - b.Range.StartLine
+		}
+	})
 
 	if err := ctx.Err(); err != nil {
 		return Description{}, err

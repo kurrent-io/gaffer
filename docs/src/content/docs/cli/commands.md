@@ -235,7 +235,7 @@ A changed query is a logic change: the new code may interpret already-processed 
 
 Deploy builds the whole plan first, then validates it: it compiles the projections it would create or update, and if any won't run (fails to compile, or would fault on the server) it refuses before writing anything, so a bad projection can't leave a half-applied set. --no-validate skips the check, deploying the valid projections and refusing the invalid ones individually instead of aborting the whole run.
 
-When the plan would change something, deploy shows it and asks to confirm before applying; updating a projection that's currently faulted is flagged, since the update won't clear the fault, and so is one whose deployed definition was changed outside gaffer since its last deploy (deploying overwrites it). --yes skips the prompt; without a terminal (or with --json) deploy won't apply unconfirmed, so pass --yes in scripts. A production target (a server that declares itself production, or an env with production = true) gets a louder confirm and refuses --no-validate. Pass --json for machine-readable output.
+When the plan would change something, deploy shows it and asks to confirm before applying; updating a projection that's currently faulted is flagged, since the update won't clear the fault, and so is one whose deployed definition was changed outside gaffer since its last deploy (deploying overwrites it). --yes skips the prompt; without a terminal (or with --json) deploy won't apply unconfirmed, so pass --yes in scripts. A production target (a server that declares itself production, or an env with production = true) gets a louder confirm and refuses --no-validate. Pass --json for machine-readable output; add --stream to emit apply progress as NDJSON (one event per line) instead of a single array once the run finishes.
 
 --dry-run shows the plan and applies nothing. The exit code is stable for scripts: 0 succeeded (or nothing to do), 1 an error, 2 changes are pending (--dry-run only), 3 refused by a guardrail (confirmation needed but no terminal or --yes, or --no-validate against production).
 
@@ -256,6 +256,7 @@ Flags:
       --json                    Output as JSON
       --no-validate             Skip validation: deploy the valid projections and refuse invalid ones per-projection
       --reset-on-logic-change   Rebuild from zero on a logic change instead of continuing from checkpoint
+      --stream                  Stream apply progress as NDJSON, one event per line (requires --json)
   -y, --yes                     Skip the confirmation prompt
 ```
 

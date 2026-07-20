@@ -206,7 +206,7 @@ func (w *errWriter) Write(p []byte) (int, error) {
 func TestStreamSinkWriteError(t *testing.T) {
 	w := &errWriter{}
 	s := &streamSink{enc: json.NewEncoder(w)}
-	s.start("a", 1, 1)                                           // first emit fails
+	s.start("a", 1, 1)                                          // first emit fails
 	s.done(drift.Result{Name: "a", Action: drift.ActionCreate}) // suppressed after the error
 	if err := s.finish(); err == nil {
 		t.Fatal("finish() = nil, want the first write error surfaced")

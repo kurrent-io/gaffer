@@ -69,7 +69,11 @@ type ActionItem = vscode.QuickPickItem & { pick?: ProjectionAction };
 function operateRows(env: ProjectionActionsEnv): ActionItem[] {
 	const production = env.production;
 	const running = env.state === "running";
-	const known = env.state !== undefined && env.state !== "";
+	// The server sends "" for an indeterminate state, but harden against a raw
+	// "unknown" so a server regression can't hide the offer-both fallback. A known
+	// non-running state (stopped/aborted/faulted) still offers only Resume.
+	const known =
+		env.state !== undefined && env.state !== "" && env.state !== "unknown";
 	const rows: ActionItem[] = [];
 	if (running || !known) {
 		rows.push({

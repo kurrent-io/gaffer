@@ -91,6 +91,20 @@ describe("buildActionItems", () => {
 		]);
 	});
 
+	it("offers both pause and resume for a raw unknown state", () => {
+		// The server normalises unknown to "", but a stray "unknown" must not be
+		// read as a known non-running state (which would hide Pause).
+		const items = buildActionItems([
+			{ name: "prod", default: true, state: "unknown" },
+		]);
+		expect(actionLabels(items)).toEqual([
+			"$(diff-single) Diff against deployed",
+			"$(debug-pause) Pause",
+			"$(debug-start) Resume",
+			"$(trash) Delete",
+		]);
+	});
+
 	it("carries production on the operate picks and emits on delete", () => {
 		const items = buildActionItems([
 			{

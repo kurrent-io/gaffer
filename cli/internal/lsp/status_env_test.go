@@ -371,6 +371,28 @@ func TestEmitActionsLenses(t *testing.T) {
 		}
 	})
 
+	t.Run("StateUnknown runtime is emitted as empty state", func(t *testing.T) {
+		// The client reads "" as indeterminate and offers both pause and resume;
+		// forwarding the raw "unknown" would hide pause, so it must normalise to "".
+		statuses := map[string]envStatus{
+			"prod": {Production: true, Entries: []drift.StatusEntry{
+				{Comparison: drift.Comparison{Name: "checkout"}, Runtime: &remote.Status{State: remote.StateUnknown}},
+			}},
+		}
+		lenses := emitActionsLenses(desc, uri, statuses)
+		var checkout projectionActionsArgs
+		for _, l := range lenses {
+			if a, ok := l.Command.Arguments[0].(projectionActionsArgs); ok && a.Name == "checkout" {
+				checkout = a
+			}
+		}
+		for _, e := range checkout.Envs {
+			if e.Name == "prod" && e.State != "" {
+				t.Errorf("StateUnknown should emit empty state, got %q", e.State)
+			}
+		}
+	})
+
 	t.Run("production is unknown (nil) until the fetch resolves", func(t *testing.T) {
 		// An errored fetch, a sign-in-needed fetch, and an env with no cached
 		// status must all read as unknown production - never as non-production -

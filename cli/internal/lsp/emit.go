@@ -252,7 +252,7 @@ func actionsEnvs(envs []config.EnvDescription, proj string, statuses map[string]
 					if st.Entries[j].Name != proj {
 						continue
 					}
-					if st.Entries[j].Runtime != nil {
+					if st.Entries[j].Runtime != nil && st.Entries[j].Runtime.State != remote.StateUnknown {
 						cell.State = string(st.Entries[j].Runtime.State)
 					}
 					if st.Entries[j].Deployed != nil {

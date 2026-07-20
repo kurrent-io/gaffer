@@ -66,6 +66,14 @@ func TestHandleOperateProjection_UnknownVerbRejectedBeforeFetch(t *testing.T) {
 	assertJSONRPCCode(t, err, jsonrpc2.CodeInvalidParams)
 }
 
+func TestHandleOperateProjection_RefusesSystemProjection(t *testing.T) {
+	// A $-prefixed (system) projection must never be operated on, and the refusal
+	// happens before any dial - the fake fetch must not be reached.
+	s, uri := seedOperateServer(t, failOperateFetch(t))
+	_, err := s.handleOperateProjection(context.Background(), operateReq(t, uri, "$scavenge", "local", "delete"))
+	assertJSONRPCCode(t, err, jsonrpc2.CodeInvalidParams)
+}
+
 func TestHandleOperateProjection_AuthErrorPassesThrough(t *testing.T) {
 	s, uri := seedOperateServer(t, func(context.Context, string, *config.Config, string, string, OperateProjectionParams) (OperateProjectionResult, *jsonrpc2.Error) {
 		return OperateProjectionResult{}, authRequiredError("local")

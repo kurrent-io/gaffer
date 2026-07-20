@@ -488,9 +488,9 @@ export class LspCodeLensProvider
 	}
 
 	// The per-projection "Manage..." lens opens the action menu (diff against
-	// deployed today; operate / history later). Trust-gated because every action
-	// launches a gaffer process, and hidden when the CLI can't `diff` - the only
-	// action wired so far, so a menu that led nowhere would be a dead end.
+	// deployed and the operate verbs). Trust-gated because the actions run gaffer
+	// operations; hidden when the manifest lacks `diff` - a proxy for "the gaffer
+	// backing the LSP is capable", since diff and operate ship together.
 	#decorateActions(
 		sl: LspCodeLens,
 		range: vscode.Range,

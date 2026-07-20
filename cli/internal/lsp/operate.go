@@ -2,7 +2,9 @@ package lsp
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/sourcegraph/jsonrpc2"
 
@@ -31,6 +33,15 @@ func (s *Server) handleOperateProjection(ctx context.Context, req *jsonrpc2.Requ
 		return nil, &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInvalidParams,
 			Message: fmt.Sprintf("unknown operate verb %q", params.Verb),
+		}
+	}
+	// Refuse system projections ($-prefixed), like the MCP operate path - the
+	// menu only lists config projections, but never let one drive a write to a
+	// server built-in.
+	if strings.HasPrefix(params.Name, "$") {
+		return nil, &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInvalidParams,
+			Message: fmt.Sprintf("cannot operate on system projection %q", params.Name),
 		}
 	}
 	cfg, root, load := s.loadConfig(params.ConfigURI)
@@ -67,12 +78,21 @@ func (s *Server) performOperate(ctx context.Context, root string, cfg *config.Co
 	if bc.authInv != nil && bc.authInv.Tripped() {
 		return OperateProjectionResult{}, authRequiredError(env)
 	}
+	if errors.Is(err, remote.ErrNotFound) {
+		// A projection in gaffer.toml but not on the server: a clean message, not
+		// a raw RPC error (mirrors the MCP operate path).
+		return OperateProjectionResult{}, &jsonrpc2.Error{
+			Code:    jsonrpc2.CodeInvalidParams,
+			Message: fmt.Sprintf("%q is not deployed on %q", params.Name, env),
+		}
+	}
 	if err != nil {
 		return OperateProjectionResult{}, &jsonrpc2.Error{Code: jsonrpc2.CodeInternalError, Message: err.Error()}
 	}
 
 	// Resolve the target name for the completion toast; best-effort, the write
-	// already succeeded. Uses the parent ctx (rctx's budget is spent).
+	// already succeeded. Each management RPC in runOperateVerb bounded its own
+	// budget, so this uses the request ctx directly.
 	target := env
 	if resolved, rerr := cfg.ResolveEnv(env); rerr == nil {
 		target, _ = bc.client.OperateTarget(ctx, resolved, deploy.RPCTimeout)

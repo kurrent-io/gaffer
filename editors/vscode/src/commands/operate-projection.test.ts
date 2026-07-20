@@ -29,13 +29,17 @@ function fakeRequest(
 	outcome: { resolve: OperateResult } | { reject: unknown },
 ): {
 	calls: Array<{ verb: OperateVerb; deleteEmitted: boolean }>;
+	received: Parameters<OperateProjectionDeps["request"]>[0][];
 	deps: OperateProjectionDeps;
 } {
 	const calls: Array<{ verb: OperateVerb; deleteEmitted: boolean }> = [];
+	const received: Parameters<OperateProjectionDeps["request"]>[0][] = [];
 	return {
 		calls,
+		received,
 		deps: {
 			request: (a) => {
+				received.push(a);
 				calls.push({ verb: a.verb, deleteEmitted: a.deleteEmitted });
 				return "reject" in outcome
 					? Promise.reject(outcome.reject)
@@ -53,7 +57,7 @@ function warnings(): string[] {
 
 describe("operateProjection confirm tiers", () => {
 	it("runs silently for a non-prod reversible verb, then toasts", async () => {
-		const { calls, deps } = fakeRequest({
+		const { calls, received, deps } = fakeRequest({
 			resolve: { name: "checkout", outcome: "paused", target: "local-cluster" },
 		});
 		await operateProjection(deps)({
@@ -65,6 +69,12 @@ describe("operateProjection confirm tiers", () => {
 			emits: false,
 		});
 		expect(calls).toEqual([{ verb: "pause", deleteEmitted: false }]);
+		// The full identity reaches the request, not just verb/deleteEmitted.
+		expect(received[0]).toMatchObject({
+			name: "checkout",
+			env: "local",
+			tomlUri,
+		});
 		expect(warnings()).toHaveLength(0);
 		const msgs = getShownMessages();
 		expect(msgs).toHaveLength(1);
@@ -240,6 +250,25 @@ describe("operateProjection delete scope", () => {
 		});
 		expect(calls).toEqual([{ verb: "delete", deleteEmitted: true }]);
 		expect(warnings().some((m) => m.includes("streams it emitted"))).toBe(true);
+	});
+
+	it("runs the scope step then the type-name tier for a delete on prod that emits", async () => {
+		const { calls, deps } = fakeRequest({
+			resolve: { name: "checkout", outcome: "deleted", target: "prod" },
+		});
+		queueQuickPick({ emitted: true }); // scope step first
+		queueInputBox("checkout"); // then the production type-name tier
+		await operateProjection(deps)({
+			name: "checkout",
+			tomlUri,
+			env: "prod",
+			verb: "delete",
+			production: true,
+			emits: true,
+		});
+		expect(getState().quickPickCalls).toHaveLength(1);
+		expect(getState().inputBoxCalls).toHaveLength(1);
+		expect(calls).toEqual([{ verb: "delete", deleteEmitted: true }]);
 	});
 
 	it("aborts if the emitted-streams step is dismissed", async () => {

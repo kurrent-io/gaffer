@@ -266,8 +266,10 @@ func (f funcHandler) Handle(ctx context.Context, c *jsonrpc2.Conn, r *jsonrpc2.R
 }
 
 func TestBlocksReadLoop(t *testing.T) {
-	if !blocksReadLoop(MethodDiffProjection) {
-		t.Error("diffProjection does a blocking read and must run off the read loop")
+	for _, m := range []string{MethodDiffProjection, MethodOperateProjection} {
+		if !blocksReadLoop(m) {
+			t.Errorf("%s does blocking network I/O and must run off the read loop", m)
+		}
 	}
 	for _, m := range []string{MethodHover, MethodCodeLens, MethodProjectionDetails, MethodRefreshStatus, MethodDidChange} {
 		if blocksReadLoop(m) {

@@ -45,9 +45,9 @@ Hovering the header lists those environments one per line, each with its drift v
 
 ## Projection actions
 
-Each `[[projection]]` header also carries a **Manage...** lens that opens a menu of actions for that projection, grouped by environment. Every action targets an environment, so the lens appears only once the config declares at least one. Each environment is a heading with its actions listed beneath, the default environment first.
+Each `[[projection]]` header also carries a **Manage...** lens that opens a menu of actions for that projection, grouped by environment. Every action targets an environment, so the lens appears only once the config declares at least one. Each environment is a heading with its actions beneath, in the order they're declared in `gaffer.toml`, the default one labelled.
 
-**Diff against deployed** opens VS Code's diff editor with the projection's local source on one side and what's deployed on the chosen environment on the other, so you can see exactly what a deploy would change. Both sides are read-only. The diff is a comparison and never deploys.
+**Diff against deployed** opens VS Code's diff editor with the projection's local source against what's deployed on the chosen environment. You see exactly what a deploy would change. Both sides are read-only, and the diff never deploys.
 
 If the projection isn't deployed to that environment yet, the extension says so rather than diffing against an empty file. If the environment needs authentication, the action offers to sign in first. See [Authentication](#authentication).
 

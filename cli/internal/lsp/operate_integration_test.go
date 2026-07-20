@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sourcegraph/jsonrpc2"
+
 	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
@@ -52,30 +54,49 @@ func TestPerformOperate_Integration(t *testing.T) {
 	})
 
 	s := NewServer(ServerOptions{})
-	op := func(verb string) OperateProjectionResult {
+	op := func(params OperateProjectionParams) OperateProjectionResult {
 		t.Helper()
 		octx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		res, jerr := s.performOperate(octx, root, cfg, uri, "it", OperateProjectionParams{Name: name, Env: "it", Verb: verb})
+		res, jerr := s.performOperate(octx, root, cfg, uri, "it", params)
 		if jerr != nil {
-			t.Fatalf("%s: %v", verb, jerr.Message)
+			t.Fatalf("%s: %v", params.Verb, jerr.Message)
 		}
-		if res.Name != name || res.Target == "" {
-			t.Fatalf("%s result: %+v", verb, res)
+		if res.Name != params.Name || res.Target == "" {
+			t.Fatalf("%s result: %+v", params.Verb, res)
 		}
 		return res
 	}
+	verb := func(v string) OperateProjectionParams {
+		return OperateProjectionParams{Name: name, Env: "it", Verb: v}
+	}
 
-	if got := op(verbPause); got.Outcome != "paused" {
+	if got := op(verb(verbPause)); got.Outcome != "paused" {
 		t.Errorf("pause outcome = %q, want paused", got.Outcome)
 	}
-	if got := op(verbResume); got.Outcome != "resumed" {
+	if got := op(verb(verbResume)); got.Outcome != "resumed" {
 		t.Errorf("resume outcome = %q, want resumed", got.Outcome)
 	}
-	if got := op(verbDelete); got.Outcome != "deleted" {
+	if got := op(verb(verbAbort)); got.Outcome != "aborted" {
+		t.Errorf("abort outcome = %q, want aborted", got.Outcome)
+	}
+	// Delete with the emitted-streams variant, exercising the DeleteEmittedStreams
+	// wiring (this projection emits nothing, so it's the code path under test).
+	del := verb(verbDelete)
+	del.DeleteEmitted = true
+	if got := op(del); got.Outcome != "deleted" {
 		t.Errorf("delete outcome = %q, want deleted", got.Outcome)
 	}
 	if _, err := r.Read(ctx, name); !errors.Is(err, remote.ErrNotFound) {
 		t.Errorf("expected %q gone after delete, got %v", name, err)
+	}
+
+	// A verb on a projection that isn't deployed surfaces a clean invalid-params
+	// error, not a raw RPC failure.
+	octx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_, jerr := s.performOperate(octx, root, cfg, uri, "it", OperateProjectionParams{Name: name, Env: "it", Verb: verbPause})
+	if jerr == nil || jerr.Code != jsonrpc2.CodeInvalidParams {
+		t.Errorf("operate on a deleted projection: got %v, want CodeInvalidParams", jerr)
 	}
 }

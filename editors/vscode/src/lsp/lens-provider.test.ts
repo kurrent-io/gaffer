@@ -378,7 +378,16 @@ describe("LspCodeLensProvider", () => {
 						{
 							name: "checkout",
 							configURI: "file:///p/gaffer.toml",
-							envs: [{ name: "prod", default: true }, { name: "local" }],
+							envs: [
+								{
+									name: "prod",
+									default: true,
+									production: true,
+									state: "running",
+									emits: true,
+								},
+								{ name: "local", status: "auth" },
+							],
 						},
 					],
 				},
@@ -395,15 +404,23 @@ describe("LspCodeLensProvider", () => {
 		const args = lenses[0]?.command?.arguments?.[0] as {
 			name: string;
 			tomlUri: vscode.Uri;
-			envs: { name: string; default: boolean }[];
+			envs: Record<string, unknown>[];
 		};
 		expect(args.name).toBe("checkout");
 		expect(args.tomlUri.toString()).toBe(
 			vscode.Uri.parse("file:///p/gaffer.toml").toString(),
 		);
+		// The operate fields (production/state/emits/status) must survive the
+		// schema - stripping them is what silently disabled the status-aware menu.
 		expect(args.envs).toEqual([
-			{ name: "prod", default: true },
-			{ name: "local", default: false },
+			{
+				name: "prod",
+				default: true,
+				production: true,
+				state: "running",
+				emits: true,
+			},
+			{ name: "local", default: false, status: "auth" },
 		]);
 	});
 

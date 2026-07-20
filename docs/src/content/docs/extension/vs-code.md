@@ -45,11 +45,17 @@ Hovering the header lists those environments one per line, each with its drift v
 
 ## Projection actions
 
-Each `[[projection]]` header also carries a **Manage...** lens that opens a menu of actions for that projection, grouped by environment. Every action targets an environment, so the lens appears only once the config declares at least one. Each environment is a heading with its actions listed beneath, the default environment first.
+Each `[[projection]]` header also carries a **Manage...** lens that opens a menu of actions for that projection, grouped by environment. Every action targets an environment, so the lens appears only once the config declares at least one. Each environment is a heading with its actions beneath, in the order they're declared in `gaffer.toml`, the default one labelled.
 
-The one action today is **Diff against deployed**. It opens VS Code's diff editor with the projection's local source on one side and what's deployed on the chosen environment on the other, so you can see exactly what a deploy would change. Both sides are read-only. The diff is a comparison and never deploys.
+**Diff against deployed** opens VS Code's diff editor with the projection's local source against what's deployed on the chosen environment. You see exactly what a deploy would change. Both sides are read-only, and the diff never deploys.
 
 If the projection isn't deployed to that environment yet, the extension says so rather than diffing against an empty file. If the environment needs authentication, the action offers to sign in first. See [Authentication](#authentication).
+
+The **operate verbs** act on the running projection. **Pause** stops it after a final checkpoint, and **Resume** restarts it from the last checkpoint. **Abort** stops it without a final checkpoint, so a later resume reprocesses from the last checkpoint written. **Delete** removes it along with its state and checkpoints; if the projection emitted streams, deleting asks whether to remove those too. The menu offers Pause while a projection is running and Resume while it's stopped; Abort appears only while it's running.
+
+Each environment heading notes its status. One that needs authentication shows a single **Sign in** in place of the actions, since none can run until you're signed in. One whose status couldn't be read is marked unavailable but keeps its actions, which report the failure if run.
+
+Because these change live state, they confirm before running, in tiers that match `gaffer`'s other surfaces. A non-production, reversible verb runs straight away. A production verb, or an irreversible one, asks you to confirm. Deleting on a production environment asks you to type the projection's name. The result is reported as a notification, and an environment that needs authentication offers to sign in first.
 
 ## Authentication
 

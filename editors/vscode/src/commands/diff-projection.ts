@@ -11,7 +11,8 @@
 
 import * as vscode from "vscode";
 import { log } from "../output.js";
-import { DiffAuthRequiredError, type ProjectionDiff } from "../lsp/diff.js";
+import { type ProjectionDiff } from "../lsp/diff.js";
+import { LspAuthRequiredError } from "../lsp/request.js";
 
 export const GAFFER_DIFF_SCHEME = "gaffer-diff";
 
@@ -74,7 +75,7 @@ export interface DiffProjectionArgs {
 
 export interface DiffProjectionDeps {
 	// Fetches the projection's deployed↔local diff over the LSP warm connection.
-	// Throws DiffAuthRequiredError when the env needs sign-in, DiffUnavailableError
+	// Throws LspAuthRequiredError when the env needs sign-in, LspUnavailableError
 	// otherwise. A field so tests inject a fake in place of a live server.
 	requestDiff: (
 		name: string,
@@ -129,7 +130,7 @@ async function reportFailure(
 	tomlUri: vscode.Uri,
 	err: unknown,
 ): Promise<void> {
-	if (err instanceof DiffAuthRequiredError) {
+	if (err instanceof LspAuthRequiredError) {
 		const signIn = "Sign in";
 		const choice = await vscode.window.showErrorMessage(
 			`${env} needs sign-in to diff "${name}".`,

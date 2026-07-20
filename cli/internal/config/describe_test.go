@@ -340,12 +340,13 @@ engine_version = 2
 }
 
 func TestDescribe_EnvHeaderRangesPointAtTheirSourceLines(t *testing.T) {
-	// The env-block status surface anchors on these ranges. Environments
-	// are sorted by name; each Range points at its [env.<name>] header line.
-	path := describeFile(t, `[env.local]
+	// The env-block status surface anchors on these ranges. Environments are
+	// listed in gaffer.toml order (by header line); each Range points at its
+	// [env.<name>] header line.
+	path := describeFile(t, `[env.zeta]
 connection = "esdb://localhost:2113"
 
-[env.prod]
+[env.alpha]
 connection = "esdb://prod:2113"
 default = true
 `)
@@ -353,15 +354,19 @@ default = true
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Declaration order (zeta before alpha), not alphabetical.
+	if got := []string{desc.Environments[0].Name, desc.Environments[1].Name}; got[0] != "zeta" || got[1] != "alpha" {
+		t.Errorf("env order: got %v want [zeta alpha] (gaffer.toml order)", got)
+	}
 	byName := map[string]EnvDescription{}
 	for _, e := range desc.Environments {
 		byName[e.Name] = e
 	}
-	if got := byName["local"].Range.StartLine; got != 1 {
-		t.Errorf("local env header line: got %d want 1 (%+v)", got, byName["local"].Range)
+	if got := byName["zeta"].Range.StartLine; got != 1 {
+		t.Errorf("zeta env header line: got %d want 1 (%+v)", got, byName["zeta"].Range)
 	}
-	if got := byName["prod"].Range.StartLine; got != 4 {
-		t.Errorf("prod env header line: got %d want 4 (%+v)", got, byName["prod"].Range)
+	if got := byName["alpha"].Range.StartLine; got != 4 {
+		t.Errorf("alpha env header line: got %d want 4 (%+v)", got, byName["alpha"].Range)
 	}
 }
 

@@ -201,26 +201,26 @@ func TestDiffProjection_EndToEndOverConn(t *testing.T) {
 	<-done
 }
 
-func TestDiffDialError(t *testing.T) {
+func TestDialError(t *testing.T) {
 	authErr := &target.AuthRequiredError{Env: "prod"}
-	if je := diffDialError(authErr, "prod"); je.Code != CodeAuthRequired {
+	if je := dialError(authErr, "prod"); je.Code != CodeAuthRequired {
 		t.Errorf("bare AuthRequiredError: code %d want %d", je.Code, CodeAuthRequired)
 	}
 	// errors.As unwraps, so a wrapped auth error still classifies as sign-in.
-	if je := diffDialError(fmt.Errorf("dial: %w", authErr), "prod"); je.Code != CodeAuthRequired {
+	if je := dialError(fmt.Errorf("dial: %w", authErr), "prod"); je.Code != CodeAuthRequired {
 		t.Errorf("wrapped AuthRequiredError: code %d want %d", je.Code, CodeAuthRequired)
 	}
-	if je := diffDialError(errors.New("connection refused"), "prod"); je.Code != jsonrpc2.CodeInternalError {
+	if je := dialError(errors.New("connection refused"), "prod"); je.Code != jsonrpc2.CodeInternalError {
 		t.Errorf("generic dial error: code %d want %d", je.Code, jsonrpc2.CodeInternalError)
 	}
 }
 
-func TestDiffCompareGuarded_PassesThroughResult(t *testing.T) {
+func TestGuardedOp_PassesThroughResult(t *testing.T) {
 	cfg, err := config.Parse([]byte("[env.prod]\nconnection = \"esdb://host:2113\"\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, gerr := diffCompareGuarded(cfg, "/root", "prod", func() (drift.Comparison, error) {
+	got, gerr := guardedOp(cfg, "/root", "prod", "diff", func() (drift.Comparison, error) {
 		return drift.Comparison{Name: "checkout", State: drift.InSync}, nil
 	})
 	if gerr != nil || got.Name != "checkout" {
@@ -228,11 +228,11 @@ func TestDiffCompareGuarded_PassesThroughResult(t *testing.T) {
 	}
 }
 
-// TestDiffCompareGuarded_RecoversAndScrubsPanic covers what the integration test
-// can't: a crash deep in the read is recovered into a generic error (the diff
-// runs off the read loop, so an unrecovered panic would be fatal), and the
-// ${VAR}-expanded connection secret the panic carries is scrubbed from the log.
-func TestDiffCompareGuarded_RecoversAndScrubsPanic(t *testing.T) {
+// TestGuardedOp_RecoversAndScrubsPanic covers what the integration test can't: a
+// crash deep in the op is recovered into a generic error (the op runs off the
+// read loop, so an unrecovered panic would be fatal), and the ${VAR}-expanded
+// connection secret the panic carries is scrubbed from the log.
+func TestGuardedOp_RecoversAndScrubsPanic(t *testing.T) {
 	t.Setenv("DIFF_TEST_PW", "s3cr3t")
 	cfg, err := config.Parse([]byte("[env.prod]\nconnection = \"kurrentdb://user:${DIFF_TEST_PW}@host:2113\"\n"))
 	if err != nil {
@@ -244,7 +244,7 @@ func TestDiffCompareGuarded_RecoversAndScrubsPanic(t *testing.T) {
 	log.SetOutput(&buf)
 	t.Cleanup(func() { log.SetOutput(old) })
 
-	_, gerr := diffCompareGuarded(cfg, t.TempDir(), "prod", func() (drift.Comparison, error) {
+	_, gerr := guardedOp(cfg, t.TempDir(), "prod", "diff", func() (drift.Comparison, error) {
 		panic("dial failed: kurrentdb://user:s3cr3t@host:2113")
 	})
 	if gerr == nil {
@@ -266,12 +266,30 @@ func (f funcHandler) Handle(ctx context.Context, c *jsonrpc2.Conn, r *jsonrpc2.R
 }
 
 func TestBlocksReadLoop(t *testing.T) {
-	if !blocksReadLoop(MethodDiffProjection) {
-		t.Error("diffProjection does a blocking read and must run off the read loop")
+	for _, m := range []string{MethodDiffProjection, MethodOperateProjection} {
+		if !blocksReadLoop(m) {
+			t.Errorf("%s does blocking network I/O and must run off the read loop", m)
+		}
 	}
 	for _, m := range []string{MethodHover, MethodCodeLens, MethodProjectionDetails, MethodRefreshStatus, MethodDidChange} {
 		if blocksReadLoop(m) {
 			t.Errorf("%s should stay inline on the read loop", m)
+		}
+	}
+}
+
+// TestBlockingMethodsAreDispatched guards against a blockingMethods entry that
+// handle's switch doesn't actually dispatch (a typo or a removed case): such a
+// method would be offloaded but then answered with MethodNotFound. It can't catch
+// the opposite drift - a blocking handler added to the switch but not to
+// blockingMethods - which the comment on blockingMethods flags instead.
+func TestBlockingMethodsAreDispatched(t *testing.T) {
+	s := NewServer(ServerOptions{})
+	for m := range blockingMethods {
+		_, err := s.handle(context.Background(), nil, &jsonrpc2.Request{Method: m})
+		var je *jsonrpc2.Error
+		if errors.As(err, &je) && je.Code == jsonrpc2.CodeMethodNotFound {
+			t.Errorf("blocking method %q is not dispatched by handle's switch", m)
 		}
 	}
 }

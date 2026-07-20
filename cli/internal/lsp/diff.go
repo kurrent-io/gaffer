@@ -2,7 +2,6 @@ package lsp
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/sourcegraph/jsonrpc2"
@@ -11,7 +10,6 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/config"
 	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/drift"
-	"github.com/kurrent-io/gaffer/cli/internal/target"
 )
 
 // diffFetchFunc computes one env's deployed↔local diff for a projection. A
@@ -61,7 +59,7 @@ func (s *Server) handleDiffProjection(ctx context.Context, req *jsonrpc2.Request
 func (s *Server) fetchDiff(ctx context.Context, root string, cfg *config.Config, uri, env, name string) (cliout.DiffJSON, *jsonrpc2.Error) {
 	bc, err := s.envClient(root, cfg, uri, env)
 	if err != nil {
-		return cliout.DiffJSON{}, diffDialError(err, env)
+		return cliout.DiffJSON{}, dialError(err, env)
 	}
 	defer bc.release()
 
@@ -69,7 +67,7 @@ func (s *Server) fetchDiff(ctx context.Context, root string, cfg *config.Config,
 	rctx, cancel := context.WithTimeout(ctx, deploy.RPCTimeout)
 	defer cancel()
 
-	entry, err := diffCompareGuarded(cfg, root, env, func() (drift.Comparison, error) {
+	entry, err := guardedOp(cfg, root, env, "diff", func() (drift.Comparison, error) {
 		return drift.Compare(rctx, bc.client, cfg, root, name)
 	})
 	// A stored OAuth token the IdP rejected (invalid_grant) trips the auth flag
@@ -82,39 +80,4 @@ func (s *Server) fetchDiff(ctx context.Context, root string, cfg *config.Config,
 		return cliout.DiffJSON{}, &jsonrpc2.Error{Code: jsonrpc2.CodeInternalError, Message: err.Error()}
 	}
 	return cliout.ComparisonDiffJSON(entry), nil
-}
-
-// diffCompareGuarded runs compare with the same panic guard as safeFetch: a
-// crash deep in the KurrentDB client (e.g. a nil-deref on an unready projection
-// subsystem) surfaces as an error instead of taking down the language server. A
-// handler panic is unrecovered whether it runs on the read loop or, for the diff,
-// on its own goroutine (see offloadBlocking), so it's fatal either way without
-// this. The panic value is scrubbed of the env's connection secret before
-// logging. compare is a parameter so the guard is testable without a live client.
-func diffCompareGuarded(cfg *config.Config, root, env string, compare func() (drift.Comparison, error)) (entry drift.Comparison, err error) {
-	defer func() {
-		if rec := recover(); rec != nil {
-			logScrubbedPanic(cfg, root, env, "diff", rec)
-			err = errors.New("diff read failed unexpectedly")
-		}
-	}()
-	return compare()
-}
-
-// diffDialError classifies a dial/connect failure: a missing or locked token the
-// dial can't satisfy needs sign-in (CodeAuthRequired); anything else is a generic
-// internal error. Mirrors dialErrStatus on the status path.
-func diffDialError(err error, env string) *jsonrpc2.Error {
-	var authErr *target.AuthRequiredError
-	if errors.As(err, &authErr) {
-		return authRequiredError(env)
-	}
-	return &jsonrpc2.Error{Code: jsonrpc2.CodeInternalError, Message: err.Error()}
-}
-
-func authRequiredError(env string) *jsonrpc2.Error {
-	return &jsonrpc2.Error{
-		Code:    CodeAuthRequired,
-		Message: fmt.Sprintf("sign-in required for env %q", env),
-	}
 }

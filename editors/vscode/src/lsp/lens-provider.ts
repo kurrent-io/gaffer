@@ -102,6 +102,18 @@ const EnvSchema = v.object({
 	default: v.optional(v.boolean(), false),
 });
 
+// The actions lens carries more per-env than the debug-pick lens: production and
+// runtime state (drive the operate menu) plus a status flag (sign-in / unavailable).
+// A dedicated schema so valibot doesn't strip these off the "Manage..." args.
+const ActionsEnvSchema = v.object({
+	name: v.string(),
+	default: v.optional(v.boolean(), false),
+	production: v.optional(v.boolean()),
+	state: v.optional(v.string()),
+	emits: v.optional(v.boolean()),
+	status: v.optional(v.string()),
+});
+
 const ProjectionPickArgsSchema = v.object({
 	name: v.string(),
 	configURI: v.string(),
@@ -122,7 +134,7 @@ const SignInArgsSchema = v.object({
 const ProjectionActionsArgsSchema = v.object({
 	name: v.string(),
 	configURI: v.string(),
-	envs: v.optional(v.array(EnvSchema), []),
+	envs: v.optional(v.array(ActionsEnvSchema), []),
 });
 
 // parseConfigURI guards `vscode.Uri.parse` so a malformed URI
@@ -476,9 +488,9 @@ export class LspCodeLensProvider
 	}
 
 	// The per-projection "Manage..." lens opens the action menu (diff against
-	// deployed today; operate / history later). Trust-gated because every action
-	// launches a gaffer process, and hidden when the CLI can't `diff` - the only
-	// action wired so far, so a menu that led nowhere would be a dead end.
+	// deployed and the operate verbs). Trust-gated because the actions run gaffer
+	// operations; hidden when the manifest lacks `diff` - a proxy for "the gaffer
+	// backing the LSP is capable", since diff and operate ship together.
 	#decorateActions(
 		sl: LspCodeLens,
 		range: vscode.Range,

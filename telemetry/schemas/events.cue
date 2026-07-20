@@ -196,6 +196,10 @@ import "strings"
 	// Bucketed total projection-diff requests served (the editor's "Diff
 	// against deployed", routed through the server's warm connection).
 	diff_request_count?: #BucketCount
+
+	// Bucketed total projection-operate requests served (the editor's
+	// pause/resume/abort/delete verbs, routed through the warm connection).
+	operate_request_count?: #BucketCount
 }
 
 // `gaffer debug` - DAP server for projection debugging.

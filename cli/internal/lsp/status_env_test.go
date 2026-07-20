@@ -284,7 +284,7 @@ func TestEmitActionsLenses(t *testing.T) {
 	}
 
 	t.Run("one lens per located, non-diagnostic projection", func(t *testing.T) {
-		lenses := emitActionsLenses(desc, uri)
+		lenses := emitActionsLenses(desc, uri, nil)
 		if len(lenses) != 2 {
 			t.Fatalf("expected 2 actions lenses (bad diagnostic + unlocated skipped), got %d: %+v", len(lenses), lenses)
 		}
@@ -324,8 +324,103 @@ func TestEmitActionsLenses(t *testing.T) {
 		noEnvs := config.Description{
 			Projections: []config.ProjectionDescription{{Name: "checkout", Range: config.SourceRange{StartLine: 5, EndLine: 5}}},
 		}
-		if lenses := emitActionsLenses(noEnvs, uri); len(lenses) != 0 {
+		if lenses := emitActionsLenses(noEnvs, uri, nil); len(lenses) != 0 {
 			t.Fatalf("no envs -> no actions lens, got %+v", lenses)
+		}
+	})
+
+	t.Run("carries production and per-projection runtime state", func(t *testing.T) {
+		statuses := map[string]envStatus{
+			"prod": {Production: true, Entries: []drift.StatusEntry{
+				{Comparison: drift.Comparison{Name: "checkout", Deployed: &deploy.Descriptor{Emit: true}}, Runtime: &remote.Status{State: remote.StateRunning}},
+			}},
+			"local": {Entries: []drift.StatusEntry{
+				{Comparison: drift.Comparison{Name: "checkout"}, Runtime: &remote.Status{State: remote.StateStopped}},
+			}},
+		}
+		lenses := emitActionsLenses(desc, uri, statuses)
+		var checkout projectionActionsArgs
+		for _, l := range lenses {
+			if a, ok := l.Command.Arguments[0].(projectionActionsArgs); ok && a.Name == "checkout" {
+				checkout = a
+			}
+		}
+		byEnv := map[string]actionsEnv{}
+		for _, e := range checkout.Envs {
+			byEnv[e.Name] = e
+		}
+		if byEnv["prod"].Production == nil || !*byEnv["prod"].Production ||
+			byEnv["prod"].State != "running" || !byEnv["prod"].Emits {
+			t.Errorf("prod env cell: got %+v, want production + running + emits", byEnv["prod"])
+		}
+		if byEnv["local"].Production == nil || *byEnv["local"].Production ||
+			byEnv["local"].State != "stopped" || byEnv["local"].Emits {
+			t.Errorf("local env cell: got %+v, want known non-prod + stopped + no emit", byEnv["local"])
+		}
+		// orders has no status entry -> empty state, no production.
+		var orders projectionActionsArgs
+		for _, l := range lenses {
+			if a, ok := l.Command.Arguments[0].(projectionActionsArgs); ok && a.Name == "orders" {
+				orders = a
+			}
+		}
+		for _, e := range orders.Envs {
+			if e.State != "" {
+				t.Errorf("orders env %q should have empty state, got %q", e.Name, e.State)
+			}
+		}
+	})
+
+	t.Run("StateUnknown runtime is emitted as empty state", func(t *testing.T) {
+		// The client reads "" as indeterminate and offers both pause and resume;
+		// forwarding the raw "unknown" would hide pause, so it must normalise to "".
+		statuses := map[string]envStatus{
+			"prod": {Production: true, Entries: []drift.StatusEntry{
+				{Comparison: drift.Comparison{Name: "checkout"}, Runtime: &remote.Status{State: remote.StateUnknown}},
+			}},
+		}
+		lenses := emitActionsLenses(desc, uri, statuses)
+		var checkout projectionActionsArgs
+		for _, l := range lenses {
+			if a, ok := l.Command.Arguments[0].(projectionActionsArgs); ok && a.Name == "checkout" {
+				checkout = a
+			}
+		}
+		for _, e := range checkout.Envs {
+			if e.Name == "prod" && e.State != "" {
+				t.Errorf("StateUnknown should emit empty state, got %q", e.State)
+			}
+		}
+	})
+
+	t.Run("production is unknown (nil) until the fetch resolves", func(t *testing.T) {
+		// An errored fetch, a sign-in-needed fetch, and an env with no cached
+		// status must all read as unknown production - never as non-production -
+		// so the editor fails the confirm-tier decision safe.
+		statuses := map[string]envStatus{
+			"prod":  {Err: errStub{}, Production: true},
+			"local": {Unauthenticated: true},
+		}
+		lenses := emitActionsLenses(desc, uri, statuses)
+		var checkout projectionActionsArgs
+		for _, l := range lenses {
+			if a, ok := l.Command.Arguments[0].(projectionActionsArgs); ok && a.Name == "checkout" {
+				checkout = a
+			}
+		}
+		byEnv := map[string]actionsEnv{}
+		for _, e := range checkout.Envs {
+			if e.Production != nil {
+				t.Errorf("env %q: production should be nil (unknown) on an unresolved fetch, got %v", e.Name, *e.Production)
+			}
+			byEnv[e.Name] = e
+		}
+		// The unresolved fetches surface their reason as status, for the menu.
+		if byEnv["prod"].Status != "unavailable" {
+			t.Errorf("errored env status: got %q want unavailable", byEnv["prod"].Status)
+		}
+		if byEnv["local"].Status != "auth" {
+			t.Errorf("sign-in-needed env status: got %q want auth", byEnv["local"].Status)
 		}
 	})
 }

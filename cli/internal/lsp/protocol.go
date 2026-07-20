@@ -60,6 +60,12 @@ const (
 	// The result is a cliout.DiffJSON - the same shape as `gaffer diff --json` -
 	// so the editor's diff wiring is unchanged.
 	MethodDiffProjection = "gaffer/diffProjection"
+
+	// MethodOperateProjection is a gaffer-specific extension: run an operate verb
+	// (pause/resume/abort/delete) on one projection over the server's warm per-env
+	// connection. The editor renders the confirm tier before calling, so the
+	// server performs the write unconditionally (like the CLI trusts --yes).
+	MethodOperateProjection = "gaffer/operateProjection"
 )
 
 // CodeAuthRequired is a gaffer-specific JSON-RPC error code returned when a
@@ -492,6 +498,27 @@ type DiffProjectionParams struct {
 	ConfigURI string `json:"configURI"`
 	Name      string `json:"name"`
 	Env       string `json:"env"`
+}
+
+// OperateProjectionParams identifies the projection, env, and operate verb to run
+// (pause/resume/abort/delete). DeleteEmitted applies only to delete - it also
+// removes the streams the projection emitted. The editor has already run the
+// confirm tier, so the server does not gate.
+type OperateProjectionParams struct {
+	ConfigURI     string `json:"configURI"`
+	Name          string `json:"name"`
+	Env           string `json:"env"`
+	Verb          string `json:"verb"`
+	DeleteEmitted bool   `json:"deleteEmitted,omitempty"`
+}
+
+// OperateProjectionResult is a successful operate outcome, for the editor's
+// completion toast. Outcome is the past-tense verb (paused/resumed/aborted/
+// deleted); Target is the resolved cluster name (or env name).
+type OperateProjectionResult struct {
+	Name    string `json:"name"`
+	Outcome string `json:"outcome"`
+	Target  string `json:"target"`
 }
 
 // RefreshStatusParams identifies the gaffer.toml whose deploy status the editor

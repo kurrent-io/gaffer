@@ -77,6 +77,12 @@ export function queueMessageResponse(value: unknown): void {
 	state.messageResolutions.push(value);
 }
 
+// Queue a return value for a *future* showInputBox call. Push one per expected
+// call, in order; undefined models a dismissed prompt.
+export function queueInputBox(value: string | undefined): void {
+	state.inputBoxResolutions.push(value);
+}
+
 // Register a custom handler for executeCommand(name, ...). Used to
 // simulate built-in VS Code commands that the extension calls
 // (setContext, workbench.action.openSettings, etc.).

@@ -6,11 +6,8 @@ import {
 	GAFFER_DIFF_SCHEME,
 	type DiffProjectionDeps,
 } from "./diff-projection.js";
-import {
-	DiffAuthRequiredError,
-	DiffUnavailableError,
-	type ProjectionDiff,
-} from "../lsp/diff.js";
+import { type ProjectionDiff } from "../lsp/diff.js";
+import { LspAuthRequiredError, LspUnavailableError } from "../lsp/request.js";
 import {
 	getShownMessages,
 	getState,
@@ -135,7 +132,7 @@ describe("diffProjection", () => {
 	it("offers sign-in on an auth failure and routes the choice", async () => {
 		const provider = new GafferDiffContentProvider();
 		const { requestDiff } = fakeRequest({
-			reject: new DiffAuthRequiredError(),
+			reject: new LspAuthRequiredError(),
 		});
 		queueMessageResponse("Sign in");
 		await diffProjection({ provider, requestDiff })({
@@ -157,7 +154,7 @@ describe("diffProjection", () => {
 	it("does not route sign-in when the error toast is dismissed", async () => {
 		const provider = new GafferDiffContentProvider();
 		const { requestDiff } = fakeRequest({
-			reject: new DiffAuthRequiredError(),
+			reject: new LspAuthRequiredError(),
 		});
 		// No queued response → showErrorMessage resolves undefined (dismissed).
 		await diffProjection({ provider, requestDiff })({
@@ -173,7 +170,7 @@ describe("diffProjection", () => {
 	it("shows the error detail on a non-auth failure", async () => {
 		const provider = new GafferDiffContentProvider();
 		const { requestDiff } = fakeRequest({
-			reject: new DiffUnavailableError("connection refused"),
+			reject: new LspUnavailableError("connection refused"),
 		});
 		await diffProjection({ provider, requestDiff })({
 			name: "checkout",

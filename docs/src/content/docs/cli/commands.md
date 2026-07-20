@@ -256,7 +256,7 @@ Flags:
       --json                    Output as JSON
       --no-validate             Skip validation: deploy the valid projections and refuse invalid ones per-projection
       --reset-on-logic-change   Rebuild from zero on a logic change instead of continuing from checkpoint
-      --stream                  Stream apply progress as NDJSON, one event per line (requires --json)
+      --stream                  Stream apply progress as NDJSON, one event per line (requires --json, not --dry-run)
   -y, --yes                     Skip the confirmation prompt
 ```
 

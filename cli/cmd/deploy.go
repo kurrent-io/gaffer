@@ -121,15 +121,20 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip the confirmation prompt")
 	cmd.Flags().BoolVar(&opts.ResetOnLogicChange, "reset-on-logic-change", false, "Rebuild from zero on a logic change instead of continuing from checkpoint")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Show the plan and exit without applying (exit 2 if changes are pending)")
-	cmd.Flags().BoolVar(&opts.Stream, "stream", false, "Stream apply progress as NDJSON, one event per line (requires --json)")
+	cmd.Flags().BoolVar(&opts.Stream, "stream", false, "Stream apply progress as NDJSON, one event per line (requires --json, not --dry-run)")
 	return cmd
 }
 
 func runDeploy(cmd *cobra.Command, name string, opts deployOpts, tel *telemetry.DeployCommandInvokedProperties) error {
 	// --stream is an apply-progress format; it only means anything alongside the
-	// machine output --json selects (a plain/interactive run already streams).
+	// machine output --json selects (a plain/interactive run already streams), and
+	// only for an apply - a --dry-run preview is the one-shot plan envelope, so
+	// keeping the two apart is what lets stdout stay strictly NDJSON under --stream.
 	if opts.Stream && !opts.JSON {
 		return errors.New("--stream requires --json")
+	}
+	if opts.Stream && opts.DryRun {
+		return errors.New("--stream is for the apply and can't be combined with --dry-run; use --dry-run --json for a plan preview")
 	}
 
 	cfg, root, err := loadProject()
@@ -248,7 +253,7 @@ func runDeploy(cmd *cobra.Command, name string, opts deployOpts, tel *telemetry.
 	// unless --no-validate, so a bad one can't leave a half-applied set (the
 	// invariant the old preflight held, now enforced against the built plan).
 	if !opts.NoValidate {
-		if err := refuseInvalidPlan(cmd.OutOrStdout(), plan, targetName, totals, prod, opts.JSON); err != nil {
+		if err := refuseInvalidPlan(cmd.OutOrStdout(), plan, targetName, totals, prod, opts.JSON, opts.Stream); err != nil {
 			return err
 		}
 	}

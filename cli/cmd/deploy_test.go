@@ -225,6 +225,15 @@ func TestDeployStreamRequiresJSON(t *testing.T) {
 	}
 }
 
+func TestDeployStreamRejectsDryRun(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+	err := runDeploy(cmd, "", deployOpts{JSON: true, Stream: true, DryRun: true}, &telemetry.DeployCommandInvokedProperties{})
+	if err == nil || !strings.Contains(err.Error(), "can't be combined with --dry-run") {
+		t.Fatalf("runDeploy(--dry-run --stream) = %v, want a --dry-run incompatibility error", err)
+	}
+}
+
 func TestStreamSinkEmpty(t *testing.T) {
 	var b bytes.Buffer
 	if err := emptyStreamSummary(&b); err != nil {

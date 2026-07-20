@@ -146,6 +146,22 @@ func emptyStreamSummary(w io.Writer) error {
 	return (&streamSink{enc: json.NewEncoder(w)}).finish()
 }
 
+// streamRefusal emits an invalid-plan refusal as NDJSON under --stream: a
+// deploy_result for each invalid projection (carrying its reason) then a terminal
+// deploy_summary reporting nothing applied. It keeps stdout on the one-object-per-
+// line contract where the non-stream path would write an indented plan array. The
+// valid items aren't emitted - the run refuses before applying, so nothing is
+// attempted and the summary honestly counts only the invalid ones.
+func streamRefusal(w io.Writer, plan []drift.PlanItem) error {
+	s := &streamSink{enc: json.NewEncoder(w)}
+	for _, it := range plan {
+		if it.Action == drift.ActionInvalid {
+			s.done(it.Result())
+		}
+	}
+	return s.finish()
+}
+
 // plainSink streams one verdict line per projection as it completes, then a
 // summary. No animation: start is a no-op, the line is printed on done. Matches
 // the dev/run streaming-text idiom and stays copyable in pipes and CI logs.

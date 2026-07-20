@@ -106,6 +106,10 @@ const (
 	// to the action menu the client pops (diff against deployed today; operate /
 	// history later). A vscode-only surface, emitted alongside the status lenses.
 	IntentActions = "actions"
+	// IntentDeployPreview marks the env-block "Preview" lens: it opens the deploy
+	// plan for the whole project against that env (a --dry-run, no apply). A
+	// vscode-only surface, emitted beside the status roll-up.
+	IntentDeployPreview = "deploy-preview"
 )
 
 // Gaffer command IDs surfaced via CodeLens.command. Each editor
@@ -115,6 +119,7 @@ const (
 	CommandDebugProjectionPick = "gaffer.debugProjectionPick"
 	CommandSignIn              = "gaffer.signIn"
 	CommandProjectionActions   = "gaffer.projectionActions"
+	CommandDeployPreview       = "gaffer.deployPreview"
 )
 
 // InitializeParams is the subset of LSP InitializeParams we care

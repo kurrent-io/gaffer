@@ -150,6 +150,10 @@
 			{
 				"command": "gaffer.projectionActions",
 				"title": "Gaffer: Projection Actions"
+			},
+			{
+				"command": "gaffer.deployPreview",
+				"title": "Gaffer: Preview Deploy Plan"
 			}
 		],
 		"debuggers": [
@@ -196,6 +200,10 @@
 				},
 				{
 					"command": "gaffer.projectionActions",
+					"when": "false"
+				},
+				{
+					"command": "gaffer.deployPreview",
 					"when": "false"
 				},
 				{

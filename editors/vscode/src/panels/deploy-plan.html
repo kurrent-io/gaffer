@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			http-equiv="Content-Security-Policy"
+			content="default-src 'none'; style-src {{CSP_SOURCE}} 'unsafe-inline'; script-src 'nonce-{{NONCE}}';"
+		/>
+		<style>
+			body {
+				margin: 0;
+				padding: 1.2em 1.4em;
+				font-family: var(--vscode-font-family);
+				font-size: var(--vscode-font-size, 13px);
+				color: var(--vscode-foreground);
+			}
+			.header {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: baseline;
+				gap: 0.5em 0.8em;
+				padding-bottom: 0.8em;
+				border-bottom: 1px solid var(--vscode-panel-border);
+			}
+			.env {
+				font-size: 1.2em;
+				font-weight: 600;
+			}
+			.target {
+				color: var(--vscode-descriptionForeground);
+			}
+			.badge {
+				padding: 0.1em 0.55em;
+				border-radius: 0.8em;
+				font-size: 0.82em;
+				font-weight: 600;
+				white-space: nowrap;
+			}
+			.badge.prod {
+				background: var(--vscode-inputValidation-warningBackground);
+				color: var(--vscode-inputValidation-warningForeground, inherit);
+				border: 1px solid var(--vscode-inputValidation-warningBorder);
+			}
+			.verdict-in-sync {
+				color: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
+			}
+			.verdict-deployable {
+				color: var(--vscode-charts-blue, var(--vscode-textLink-foreground));
+			}
+			.verdict-blocked {
+				color: var(--vscode-errorForeground);
+			}
+			.summary {
+				margin: 0.9em 0 0.4em;
+				color: var(--vscode-descriptionForeground);
+			}
+			.drift {
+				margin: 0.6em 0;
+				padding: 0.5em 0.7em;
+				border-left: 3px solid var(--vscode-inputValidation-warningBorder);
+				background: var(--vscode-inputValidation-warningBackground);
+				white-space: pre-wrap;
+				overflow-wrap: anywhere;
+				border-radius: 2px;
+			}
+			ul.plan {
+				list-style: none;
+				margin: 0.4em 0 0;
+				padding: 0;
+			}
+			li.row {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: center;
+				gap: 0.5em;
+				padding: 0.5em 0.4em;
+				border-bottom: 1px solid var(--vscode-panel-border);
+				cursor: pointer;
+			}
+			li.row:hover {
+				background: var(--vscode-list-hoverBackground);
+			}
+			.name {
+				font-weight: 600;
+				min-width: 8em;
+			}
+			.outcome {
+				font-size: 0.82em;
+				font-weight: 600;
+				text-transform: uppercase;
+				letter-spacing: 0.03em;
+			}
+			.o-created,
+			.o-updated,
+			.o-rebuilt {
+				color: var(--vscode-charts-blue, var(--vscode-textLink-foreground));
+			}
+			.o-skipped {
+				color: var(--vscode-descriptionForeground);
+			}
+			.o-refused,
+			.o-invalid,
+			.o-failed {
+				color: var(--vscode-errorForeground);
+			}
+			.tag {
+				padding: 0.05em 0.45em;
+				border-radius: 0.8em;
+				font-size: 0.78em;
+				background: var(--vscode-badge-background);
+				color: var(--vscode-badge-foreground);
+			}
+			.tag.warn {
+				background: var(--vscode-inputValidation-warningBackground);
+				color: var(--vscode-foreground);
+			}
+			.detail {
+				flex-basis: 100%;
+				margin-left: 0.4em;
+				color: var(--vscode-descriptionForeground);
+				font-size: 0.9em;
+				white-space: pre-wrap;
+				overflow-wrap: anywhere;
+			}
+			.empty {
+				margin-top: 1em;
+				color: var(--vscode-descriptionForeground);
+				font-style: italic;
+			}
+			.hint {
+				margin-top: 1.2em;
+				color: var(--vscode-descriptionForeground);
+				font-size: 0.85em;
+				font-style: italic;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="header" id="header"></div>
+		<div id="summary" class="summary"></div>
+		<div id="drift"></div>
+		<ul class="plan" id="plan"></ul>
+		<div class="hint" id="hint"></div>
+		<script nonce="{{NONCE}}">
+			const vscode = acquireVsCodeApi();
+			const headerEl = document.getElementById("header");
+			const summaryEl = document.getElementById("summary");
+			const driftEl = document.getElementById("drift");
+			const planEl = document.getElementById("plan");
+			const hintEl = document.getElementById("hint");
+
+			const VERDICT_LABEL = {
+				"in-sync": "In sync",
+				deployable: "Deployable",
+				blocked: "Blocked",
+			};
+
+			function span(cls, text) {
+				const el = document.createElement("span");
+				el.className = cls;
+				el.textContent = text;
+				return el;
+			}
+
+			function renderHeader(report) {
+				headerEl.replaceChildren();
+				headerEl.appendChild(span("env", report.env || "environment"));
+				if (report.target) {
+					headerEl.appendChild(span("target", report.target));
+				}
+				if (report.production) {
+					headerEl.appendChild(span("badge prod", "PRODUCTION"));
+				}
+				const verdict = report.verdict || "";
+				const label = VERDICT_LABEL[verdict] || verdict;
+				headerEl.appendChild(span("badge verdict-" + verdict, label));
+			}
+
+			function renderSummary(report) {
+				const n = report.changes || 0;
+				const total = (report.plan || []).length;
+				summaryEl.textContent =
+					n === 0
+						? total +
+							(total === 1
+								? " projection, none to apply"
+								: " projections, none to apply")
+						: n +
+							(n === 1
+								? " projection would change"
+								: " projections would change");
+			}
+
+			function renderDrift(report) {
+				driftEl.replaceChildren();
+				if (report.configDriftError) {
+					driftEl.appendChild(
+						span(
+							"drift",
+							"[database_config] check couldn't run: " +
+								report.configDriftError,
+						),
+					);
+					return;
+				}
+				const drift = report.configDrift || [];
+				if (drift.length === 0) return;
+				const lines = drift.map(
+					(d) => d.knob + ": server " + d.server + ", local " + d.local,
+				);
+				driftEl.appendChild(
+					span(
+						"drift",
+						"[database_config] diverges from the target:\n" + lines.join("\n"),
+					),
+				);
+			}
+
+			const TAGS = [
+				["recreate", "recreate required"],
+				["faulted", "faulted"],
+				["emittingReset", "re-emits"],
+				["logicChange", "logic change"],
+			];
+
+			function renderRow(item) {
+				const li = document.createElement("li");
+				li.className = "row";
+				li.appendChild(span("name", item.name));
+				li.appendChild(span("outcome o-" + item.outcome, item.outcome));
+				for (const [key, text] of TAGS) {
+					if (item[key]) li.appendChild(span("tag warn", text));
+				}
+				if (item.externalChange) {
+					const t = item.externalChangeTool
+						? "changed by " + item.externalChangeTool
+						: "changed externally";
+					li.appendChild(span("tag warn", t));
+				}
+				const detail = item.error || item.reason;
+				if (detail) li.appendChild(span("detail", detail));
+				li.addEventListener("click", () => {
+					vscode.postMessage({ command: "diff", name: item.name });
+				});
+				return li;
+			}
+
+			function render(report) {
+				renderHeader(report);
+				renderSummary(report);
+				renderDrift(report);
+				planEl.replaceChildren();
+				const items = report.plan || [];
+				if (items.length === 0) {
+					const li = document.createElement("li");
+					li.appendChild(span("empty", "No projections configured."));
+					planEl.appendChild(li);
+					hintEl.textContent = "";
+					return;
+				}
+				for (const item of items) planEl.appendChild(renderRow(item));
+				hintEl.textContent =
+					"Click a projection to diff it against what's deployed.";
+			}
+
+			window.addEventListener("message", (event) => {
+				const msg = event.data;
+				if (!msg || msg.type !== "plan" || !msg.report) return;
+				render(msg.report);
+			});
+		</script>
+	</body>
+</html>

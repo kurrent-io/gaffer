@@ -125,6 +125,7 @@ describe("activate registrations", () => {
 		expect(names).toEqual([
 			"gaffer.debugProjection",
 			"gaffer.debugProjectionPick",
+			"gaffer.deployPreview",
 			"gaffer.dismissDiagnostic",
 			"gaffer.init",
 			"gaffer.noop",

@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildGafferArgv,
+	captureGafferCommand,
 	hasCommand,
 	hasFlag,
 	tryFetchManifest,
@@ -323,5 +324,69 @@ echo '{"version":"1.0.0","commands":{}}'
 			"--invoked-by=vscode",
 			"manifest",
 		]);
+	});
+});
+
+describe("captureGafferCommand", () => {
+	let tmpRoot: string;
+
+	beforeEach(() => {
+		setTrusted(true);
+		tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gaffer-cap-"));
+	});
+	afterEach(() => {
+		fs.rmSync(tmpRoot, { recursive: true, force: true });
+	});
+
+	const tel = { invokerId: () => null, isOptedOut: () => false };
+
+	function writeStub(body: string): string {
+		const full = path.join(tmpRoot, "gaffer");
+		fs.writeFileSync(full, body);
+		fs.chmodSync(full, 0o755);
+		return full;
+	}
+
+	it("keeps stdout on a non-zero exit (deploy --dry-run exits 2 with the plan on stdout)", async () => {
+		const stub = writeStub(
+			'#!/bin/sh\necho \'{"verdict":"deployable"}\'\nexit 2\n',
+		);
+		setConfiguration("gaffer", "command", { globalValue: [stub] });
+		const res = await captureGafferCommand(
+			["deploy", "--dry-run", "--json"],
+			tmpRoot,
+			tel,
+			"code_lens",
+		);
+		expect(res.ok).toBe(true);
+		if (res.ok) {
+			expect(res.code).toBe(2);
+			expect(JSON.parse(res.stdout)).toEqual({ verdict: "deployable" });
+		}
+	});
+
+	it("returns stdout and code 0 on success", async () => {
+		const stub = writeStub('#!/bin/sh\necho \'{"verdict":"in-sync"}\'\n');
+		setConfiguration("gaffer", "command", { globalValue: [stub] });
+		const res = await captureGafferCommand(
+			["deploy"],
+			tmpRoot,
+			tel,
+			"code_lens",
+		);
+		expect(res.ok && res.code === 0).toBe(true);
+	});
+
+	it("resolves ok:false when the binary cannot run", async () => {
+		setConfiguration("gaffer", "command", {
+			globalValue: [path.join(tmpRoot, "nope")],
+		});
+		const res = await captureGafferCommand(
+			["deploy"],
+			tmpRoot,
+			tel,
+			"code_lens",
+		);
+		expect(res.ok).toBe(false);
 	});
 });

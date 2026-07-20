@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import {
 	buildGafferArgv,
+	captureGafferCommand,
 	gafferRunEnv,
 	setKeyringPassword,
 	tryFetchManifest,
@@ -89,6 +90,8 @@ import {
 } from "./commands/diff-projection.js";
 import { requestProjectionDiff } from "./lsp/diff.js";
 import { requestOperateProjection } from "./lsp/operate.js";
+import { deployPreview } from "./commands/deploy-preview.js";
+import { DeployPlanView } from "./panels/deploy-plan.js";
 import { initProjection } from "./commands/init-projection.js";
 import {
 	createVscodeWizardSteps,
@@ -633,8 +636,26 @@ async function activateAfterTelemetry(
 				requestDiff: requestProjectionDiff,
 			});
 			const operate = operateProjection({ request: requestOperateProjection });
+			// The env-block "Preview" lens: a cold `deploy --dry-run --json` spawn
+			// renders the whole-project plan in the deploy-plan webview; clicking a
+			// projection there reuses the same diff the action menu offers.
+			const deployView = new DeployPlanView((ctx, name) => {
+				void diff({ name, tomlUri: ctx.tomlUri, env: ctx.env });
+			});
+			const preview = deployPreview({
+				view: deployView,
+				runDryRun: (env, cwd) =>
+					captureGafferCommand(
+						["deploy", "--dry-run", "--json", "--env", env],
+						cwd,
+						telemetry,
+						"code_lens",
+						gafferRunEnv(telemetry.isOptedOut()),
+					),
+			});
 			return vscode.Disposable.from(
 				diffProvider,
+				deployView,
 				vscode.workspace.registerTextDocumentContentProvider(
 					GAFFER_DIFF_SCHEME,
 					diffProvider,
@@ -643,6 +664,7 @@ async function activateAfterTelemetry(
 					"gaffer.projectionActions",
 					wrap(projectionActions({ diff, operate })),
 				),
+				vscode.commands.registerCommand("gaffer.deployPreview", wrap(preview)),
 			);
 		})(),
 		vscode.commands.registerCommand(

@@ -136,20 +136,32 @@ func TestEmitStatusEnvLenses(t *testing.T) {
 		}
 	})
 
-	t.Run("data emits the non-clickable roll-up as plain label text", func(t *testing.T) {
+	t.Run("data emits the roll-up label plus a clickable Preview", func(t *testing.T) {
 		st := envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync)}, Target: "prod-cluster"}
 		statuses := map[string]envStatus{"prod": st}
 		lenses := emitStatusEnvLenses(desc, uri, statuses, nil)
-		if len(lenses) != 1 || lenses[0].Data.Intent != IntentStatusEnv {
-			t.Fatalf("lenses: %+v", lenses)
+		if len(lenses) != 2 {
+			t.Fatalf("expected roll-up + preview, got %d: %+v", len(lenses), lenses)
 		}
+		rollup, preview := lenses[0], lenses[1]
 		// Empty command -> the client renders a non-clickable span; no tooltip
 		// on the healthy roll-up (it's just label text).
-		if lenses[0].Command.Title != statusRollup(st) || lenses[0].Command.Command != "" {
-			t.Errorf("command: %+v", lenses[0].Command)
+		if rollup.Data.Intent != IntentStatusEnv || rollup.Command.Title != statusRollup(st) || rollup.Command.Command != "" {
+			t.Errorf("roll-up command: %+v", rollup.Command)
 		}
-		if lenses[0].Command.Tooltip != "" {
-			t.Errorf("tooltip: got %q want none on the roll-up", lenses[0].Command.Tooltip)
+		if rollup.Command.Tooltip != "" {
+			t.Errorf("tooltip: got %q want none on the roll-up", rollup.Command.Tooltip)
+		}
+		if preview.Data.Intent != IntentDeployPreview || preview.Command.Command != CommandDeployPreview {
+			t.Fatalf("preview command: %+v", preview.Command)
+		}
+		args, ok := preview.Command.Arguments[0].(deployEnvArgs)
+		if !ok || args.Env != "prod" || args.ConfigURI != uri {
+			t.Errorf("preview args: %+v", preview.Command.Arguments)
+		}
+		// Both anchored on the same env-block line.
+		if preview.Range.Start.Line != rollup.Range.Start.Line {
+			t.Errorf("preview range %d != roll-up range %d", preview.Range.Start.Line, rollup.Range.Start.Line)
 		}
 	})
 
@@ -157,11 +169,14 @@ func TestEmitStatusEnvLenses(t *testing.T) {
 		// Only staging has a landed status; prod is pending, quoted has no range.
 		statuses := map[string]envStatus{"staging": {Entries: []drift.StatusEntry{inConfig(drift.InSync)}}}
 		lenses := emitStatusEnvLenses(desc, uri, statuses, nil)
-		if len(lenses) != 1 {
-			t.Fatalf("expected only staging, got %d lenses", len(lenses))
+		// staging lands as its roll-up + preview, both on its line.
+		if len(lenses) != 2 {
+			t.Fatalf("expected only staging (roll-up + preview), got %d lenses", len(lenses))
 		}
-		if lenses[0].Range.Start.Line != 8 {
-			t.Errorf("expected staging at 0-indexed line 8 (source line 9), got %d", lenses[0].Range.Start.Line)
+		for _, l := range lenses {
+			if l.Range.Start.Line != 8 {
+				t.Errorf("expected staging at 0-indexed line 8 (source line 9), got %d", l.Range.Start.Line)
+			}
 		}
 	})
 

@@ -670,10 +670,15 @@ export interface FakeWebviewView extends vscode.WebviewView {
 	emitDispose(): void;
 }
 
-export function makeFakeWebviewView(): FakeWebviewView {
+export interface FakeWebviewPanel extends vscode.WebviewPanel {
+	readonly webview: FakeWebview;
+	emitDispose(): void;
+	disposed: boolean;
+	revealCount: number;
+}
+
+function makeFakeWebview(): FakeWebview {
 	const onDidReceiveMessage = new EventEmitter<unknown>();
-	const onDidDispose = new EventEmitter<void>();
-	const onDidChangeVisibility = new EventEmitter<void>();
 	const webview: FakeWebview = {
 		options: {},
 		html: "",
@@ -691,9 +696,15 @@ export function makeFakeWebviewView(): FakeWebviewView {
 			return localResource;
 		},
 	};
+	return webview;
+}
+
+export function makeFakeWebviewView(): FakeWebviewView {
+	const onDidDispose = new EventEmitter<void>();
+	const onDidChangeVisibility = new EventEmitter<void>();
 	const view: FakeWebviewView = {
 		viewType: "fake",
-		webview,
+		webview: makeFakeWebview(),
 		visible: true,
 		onDidDispose: onDidDispose.event,
 		onDidChangeVisibility: onDidChangeVisibility.event,
@@ -703,6 +714,40 @@ export function makeFakeWebviewView(): FakeWebviewView {
 		},
 	};
 	return view;
+}
+
+export function makeFakeWebviewPanel(
+	viewType: string,
+	title: string,
+): FakeWebviewPanel {
+	const onDidDispose = new EventEmitter<void>();
+	const onDidChangeViewState =
+		new EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>();
+	const panel = {
+		viewType,
+		title,
+		webview: makeFakeWebview(),
+		options: {},
+		viewColumn: 1,
+		active: true,
+		visible: true,
+		disposed: false,
+		revealCount: 0,
+		onDidDispose: onDidDispose.event,
+		onDidChangeViewState: onDidChangeViewState.event,
+		reveal(_col?: vscode.ViewColumn, _preserveFocus?: boolean): void {
+			panel.revealCount++;
+		},
+		dispose(): void {
+			if (panel.disposed) return;
+			panel.disposed = true;
+			onDidDispose.fire();
+		},
+		emitDispose(): void {
+			onDidDispose.fire();
+		},
+	} as unknown as FakeWebviewPanel;
+	return panel;
 }
 
 // ---- File system watcher --------------------------------------------------
@@ -855,6 +900,7 @@ export interface MockState {
 	decorationTypes: FakeDecorationType[];
 	visibleTextEditors: FakeTextEditor[];
 	visibleTextEditorsChanged: EventEmitter<readonly vscode.TextEditor[]>;
+	webviewPanels: FakeWebviewPanel[];
 }
 
 export const state: MockState = createInitialState();
@@ -905,6 +951,7 @@ function createInitialState(): MockState {
 		decorationTypes: [],
 		visibleTextEditors: [],
 		visibleTextEditorsChanged: new EventEmitter(),
+		webviewPanels: [],
 	};
 }
 
@@ -989,6 +1036,14 @@ export const OverviewRulerLane = {
 export const QuickPickItemKind = {
 	Separator: -1,
 	Default: 0,
+} as const;
+
+export const ViewColumn = {
+	Active: -1,
+	Beside: -2,
+	One: 1,
+	Two: 2,
+	Three: 3,
 } as const;
 
 // ---- workspace ------------------------------------------------------------
@@ -1122,6 +1177,10 @@ export function __clearShownMessages(): void {
 	shownMessages.length = 0;
 }
 
+export function __getWebviewPanels(): readonly FakeWebviewPanel[] {
+	return state.webviewPanels;
+}
+
 function showMessage(
 	kind: ShownMessage["kind"],
 	message: string,
@@ -1152,6 +1211,14 @@ type WindowShape = Pick<
 > & {
 	createOutputChannel(name: string, languageId?: string): vscode.OutputChannel;
 	readonly visibleTextEditors: readonly vscode.TextEditor[];
+	createWebviewPanel(
+		viewType: string,
+		title: string,
+		showOptions:
+			| vscode.ViewColumn
+			| { viewColumn: vscode.ViewColumn; preserveFocus?: boolean },
+		options?: vscode.WebviewPanelOptions & vscode.WebviewOptions,
+	): vscode.WebviewPanel;
 };
 
 export const window: WindowShape = {
@@ -1198,6 +1265,11 @@ export const window: WindowShape = {
 		const channel = makeOutputChannel(name, languageId);
 		state.outputChannels.push(channel);
 		return channel;
+	},
+	createWebviewPanel(viewType: string, title: string): vscode.WebviewPanel {
+		const panel = makeFakeWebviewPanel(viewType, title);
+		state.webviewPanels.push(panel);
+		return panel;
 	},
 	registerTreeDataProvider<T>(
 		viewId: string,

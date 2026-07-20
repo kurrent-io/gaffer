@@ -219,6 +219,9 @@ type actionsEnv struct {
 	// non-production: the editor fails a confirm-tier decision safe when it's nil.
 	Production *bool  `json:"production,omitempty"`
 	State      string `json:"state,omitempty"`
+	// Emits is whether the deployed projection emits streams, so the editor only
+	// offers the delete-and-emitted-streams choice when it's meaningful.
+	Emits bool `json:"emits,omitempty"`
 }
 
 // actionsEnvs builds the per-env cells for one projection's actions lens from the
@@ -238,10 +241,16 @@ func actionsEnvs(envs []config.EnvDescription, proj string, statuses map[string]
 				cell.Production = &prod
 			}
 			for j := range st.Entries {
-				if st.Entries[j].Name == proj && st.Entries[j].Runtime != nil {
-					cell.State = string(st.Entries[j].Runtime.State)
-					break
+				if st.Entries[j].Name != proj {
+					continue
 				}
+				if st.Entries[j].Runtime != nil {
+					cell.State = string(st.Entries[j].Runtime.State)
+				}
+				if st.Entries[j].Deployed != nil {
+					cell.Emits = st.Entries[j].Deployed.Emit
+				}
+				break
 			}
 		}
 		out[i] = cell

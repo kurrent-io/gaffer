@@ -57,14 +57,13 @@ describe("buildActionItems", () => {
 		expect(separators).toEqual(["prod (default)", "local"]);
 	});
 
-	it("offers diff + pause/resume (unknown state) + delete variants", () => {
+	it("offers diff + pause/resume (unknown state) + a single delete", () => {
 		const items = buildActionItems([{ name: "prod", default: true }]);
 		expect(actionLabels(items)).toEqual([
 			"$(diff-single) Diff against deployed",
 			"$(debug-pause) Pause",
 			"$(debug-start) Resume",
 			"$(trash) Delete",
-			"$(trash) Delete (and emitted streams)",
 		]);
 	});
 
@@ -77,7 +76,6 @@ describe("buildActionItems", () => {
 			"$(debug-pause) Pause",
 			"$(debug-stop) Abort",
 			"$(trash) Delete",
-			"$(trash) Delete (and emitted streams)",
 		]);
 	});
 
@@ -89,25 +87,27 @@ describe("buildActionItems", () => {
 			"$(diff-single) Diff against deployed",
 			"$(debug-start) Resume",
 			"$(trash) Delete",
-			"$(trash) Delete (and emitted streams)",
 		]);
 	});
 
-	it("carries production and deleteEmitted on the operate picks", () => {
+	it("carries production on the operate picks and emits on delete", () => {
 		const items = buildActionItems([
-			{ name: "prod", default: true, state: "running", production: true },
+			{
+				name: "prod",
+				default: true,
+				state: "running",
+				production: true,
+				emits: true,
+			},
 		]);
 		expect(items.find((i) => i.label === "$(debug-pause) Pause")?.pick).toEqual(
 			{ env: "prod", action: "pause", production: true },
 		);
-		expect(
-			items.find((i) => i.label === "$(trash) Delete (and emitted streams)")
-				?.pick,
-		).toEqual({
+		expect(items.find((i) => i.label === "$(trash) Delete")?.pick).toEqual({
 			env: "prod",
 			action: "delete",
 			production: true,
-			deleteEmitted: true,
+			emits: true,
 		});
 	});
 });
@@ -124,14 +124,14 @@ describe("projectionActions", () => {
 		expect(diffCalls).toEqual([{ name: "checkout", tomlUri, env: "prod" }]);
 	});
 
-	it("routes an operate verb with production + deleteEmitted", async () => {
+	it("routes a delete with production + emits", async () => {
 		const { operateCalls, deps } = capture();
 		queueQuickPick({
 			pick: {
 				env: "prod",
 				action: "delete",
 				production: true,
-				deleteEmitted: true,
+				emits: true,
 			},
 		});
 		await projectionActions(deps)({
@@ -146,7 +146,7 @@ describe("projectionActions", () => {
 				env: "prod",
 				verb: "delete",
 				production: true,
-				deleteEmitted: true,
+				emits: true,
 			},
 		]);
 	});

@@ -332,7 +332,7 @@ func TestEmitActionsLenses(t *testing.T) {
 	t.Run("carries production and per-projection runtime state", func(t *testing.T) {
 		statuses := map[string]envStatus{
 			"prod": {Production: true, Entries: []drift.StatusEntry{
-				{Comparison: drift.Comparison{Name: "checkout"}, Runtime: &remote.Status{State: remote.StateRunning}},
+				{Comparison: drift.Comparison{Name: "checkout", Deployed: &deploy.Descriptor{Emit: true}}, Runtime: &remote.Status{State: remote.StateRunning}},
 			}},
 			"local": {Entries: []drift.StatusEntry{
 				{Comparison: drift.Comparison{Name: "checkout"}, Runtime: &remote.Status{State: remote.StateStopped}},
@@ -350,12 +350,12 @@ func TestEmitActionsLenses(t *testing.T) {
 			byEnv[e.Name] = e
 		}
 		if byEnv["prod"].Production == nil || !*byEnv["prod"].Production ||
-			byEnv["prod"].State != "running" {
-			t.Errorf("prod env cell: got %+v, want production + running", byEnv["prod"])
+			byEnv["prod"].State != "running" || !byEnv["prod"].Emits {
+			t.Errorf("prod env cell: got %+v, want production + running + emits", byEnv["prod"])
 		}
 		if byEnv["local"].Production == nil || *byEnv["local"].Production ||
-			byEnv["local"].State != "stopped" {
-			t.Errorf("local env cell: got %+v, want known non-prod + stopped", byEnv["local"])
+			byEnv["local"].State != "stopped" || byEnv["local"].Emits {
+			t.Errorf("local env cell: got %+v, want known non-prod + stopped + no emit", byEnv["local"])
 		}
 		// orders has no status entry -> empty state, no production.
 		var orders projectionActionsArgs

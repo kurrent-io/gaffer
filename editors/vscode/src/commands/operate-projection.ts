@@ -23,7 +23,9 @@ export interface OperateProjectionArgs {
 	// Tri-state: true/false, or undefined when the env's production status isn't
 	// known yet. Unknown never takes the silent path - the confirm fails safe.
 	production: boolean | undefined;
-	deleteEmitted?: boolean;
+	// Whether the deployed projection emits streams; only then does delete offer
+	// the second step to also remove them.
+	emits: boolean;
 }
 
 export interface OperateProjectionDeps {
@@ -35,7 +37,7 @@ export interface OperateProjectionDeps {
 		tomlUri: vscode.Uri;
 		env: string;
 		verb: OperateVerb;
-		deleteEmitted?: boolean;
+		deleteEmitted: boolean;
 	}) => Promise<OperateResult>;
 }
 
@@ -69,11 +71,36 @@ const VERBS: Record<OperateVerb, verbSpec> = {
 	},
 };
 
-function consequenceOf(args: OperateProjectionArgs): string {
-	if (args.verb === "delete" && args.deleteEmitted) {
+function consequenceOf(verb: OperateVerb, deleteEmitted: boolean): string {
+	if (verb === "delete" && deleteEmitted) {
 		return "Removes the projection, its state, checkpoints, and the streams it emitted. No undo.";
 	}
-	return VERBS[args.verb].consequence;
+	return VERBS[verb].consequence;
+}
+
+// deleteScope asks whether to also remove the projection's emitted streams. Only
+// called for delete when the projection emits; returns the chosen deleteEmitted,
+// or undefined if the user dismissed the pick (cancel the whole operation).
+async function deleteScope(
+	name: string,
+	env: string,
+): Promise<boolean | undefined> {
+	const picked = await vscode.window.showQuickPick(
+		[
+			{
+				label: "Delete",
+				detail: "Remove the projection, its state, and checkpoints.",
+				emitted: false,
+			},
+			{
+				label: "Delete, and the streams it emitted",
+				detail: "Also remove the streams the projection emitted.",
+				emitted: true,
+			},
+		],
+		{ placeHolder: `Delete ${name} on ${env}` },
+	);
+	return picked?.emitted;
 }
 
 // confirm renders the tier and reports whether to proceed. production is
@@ -124,7 +151,17 @@ export function operateProjection(
 	return async (args) => {
 		if (!vscode.workspace.isTrusted) return;
 
-		const consequence = consequenceOf(args);
+		// Deleting an emitting projection asks whether to also remove its emitted
+		// streams, as a second step, before the confirm tier. Everything else, and
+		// a non-emitting delete, skips straight to the confirm.
+		let deleteEmitted = false;
+		if (args.verb === "delete" && args.emits) {
+			const scope = await deleteScope(args.name, args.env);
+			if (scope === undefined) return; // dismissed
+			deleteEmitted = scope;
+		}
+
+		const consequence = consequenceOf(args.verb, deleteEmitted);
 		if (!(await confirm(args, consequence))) return;
 
 		let result: OperateResult;
@@ -134,7 +171,7 @@ export function operateProjection(
 				tomlUri: args.tomlUri,
 				env: args.env,
 				verb: args.verb,
-				deleteEmitted: args.deleteEmitted ?? false,
+				deleteEmitted,
 			});
 		} catch (err) {
 			await reportFailure(args, err);

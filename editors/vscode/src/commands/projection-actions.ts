@@ -1,8 +1,9 @@
 // gaffer.projectionActions: the per-projection action menu opened from the
 // "Manage..." CodeLens. Pops a single QuickPick grouped by environment - one
 // separator header per env, the env's actions listed under it - so a single
-// pick runs an action against a specific env with no drill-down. Actions: diff
-// against deployed, and the state-aware operate verbs (pause/resume/abort/delete).
+// pick runs an action against a specific env (delete adds a second step for its
+// emitted-streams scope). Actions: diff against deployed, and the state-aware
+// operate verbs (pause/resume/abort/delete).
 // Lives here for symmetry with the other lens-driven command bodies
 // (debug-projection-pick.ts), keeping activate() free of command logic.
 
@@ -18,6 +19,7 @@ export interface ProjectionActionsEnv {
 	default: boolean;
 	production?: boolean;
 	state?: string;
+	emits?: boolean;
 }
 
 export interface ProjectionActionsArgs {
@@ -29,13 +31,13 @@ export interface ProjectionActionsArgs {
 // What a chosen menu row runs: an action against one env. `action` is a
 // discriminant so the dispatch stays exhaustive as verbs are added. production
 // is tri-state for the operate verbs - true/false/undefined (not yet known) - so
-// the confirm tier can fail safe when it's unknown; deleteEmitted rides along for
-// delete.
+// the confirm tier can fail safe when it's unknown; emits tells the delete verb
+// whether to offer the emitted-streams choice.
 export interface ProjectionAction {
 	env: string;
 	action: "diff" | OperateVerb;
 	production: boolean | undefined;
-	deleteEmitted?: boolean;
+	emits?: boolean;
 }
 
 export interface ProjectionActionsDeps {
@@ -50,7 +52,7 @@ export interface ProjectionActionsDeps {
 		env: string;
 		verb: OperateVerb;
 		production: boolean | undefined;
-		deleteEmitted?: boolean;
+		emits: boolean;
 	}) => Promise<void>;
 }
 
@@ -58,7 +60,8 @@ type ActionItem = vscode.QuickPickItem & { pick?: ProjectionAction };
 
 // operateRows lists the state-aware operate verbs for one env: pause + abort when
 // running, resume when not, both pause and resume when the state is unknown.
-// Delete (and its delete-emitted variant) is always offered.
+// Delete is always offered as a single row; its emitted-streams scope is a second
+// step handled by the command.
 function operateRows(env: ProjectionActionsEnv): ActionItem[] {
 	const production = env.production;
 	const running = env.state === "running";
@@ -82,13 +85,16 @@ function operateRows(env: ProjectionActionsEnv): ActionItem[] {
 			pick: { env: env.name, action: "abort", production },
 		});
 	}
+	// One Delete row; the emitted-streams choice is a second step in the command,
+	// offered only when the projection emits, so the menu stays uncluttered.
 	rows.push({
 		label: "$(trash) Delete",
-		pick: { env: env.name, action: "delete", production },
-	});
-	rows.push({
-		label: "$(trash) Delete (and emitted streams)",
-		pick: { env: env.name, action: "delete", production, deleteEmitted: true },
+		pick: {
+			env: env.name,
+			action: "delete",
+			production,
+			emits: env.emits ?? false,
+		},
 	});
 	return rows;
 }
@@ -141,7 +147,7 @@ export function projectionActions(
 			env: pick.env,
 			verb: pick.action,
 			production: pick.production,
-			deleteEmitted: pick.deleteEmitted ?? false,
+			emits: pick.emits ?? false,
 		});
 	};
 }

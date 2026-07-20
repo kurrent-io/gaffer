@@ -11,6 +11,7 @@ import {
 	getState,
 	queueInputBox,
 	queueMessageResponse,
+	queueQuickPick,
 	resetVscode,
 	setTrusted,
 } from "../../test/testutil/vscode-state.js";
@@ -35,7 +36,7 @@ function fakeRequest(
 		calls,
 		deps: {
 			request: (a) => {
-				calls.push({ verb: a.verb, deleteEmitted: a.deleteEmitted ?? false });
+				calls.push({ verb: a.verb, deleteEmitted: a.deleteEmitted });
 				return "reject" in outcome
 					? Promise.reject(outcome.reject)
 					: Promise.resolve(outcome.resolve);
@@ -61,6 +62,7 @@ describe("operateProjection confirm tiers", () => {
 			env: "local",
 			verb: "pause",
 			production: false,
+			emits: false,
 		});
 		expect(calls).toEqual([{ verb: "pause", deleteEmitted: false }]);
 		expect(warnings()).toHaveLength(0);
@@ -81,6 +83,7 @@ describe("operateProjection confirm tiers", () => {
 			env: "prod",
 			verb: "pause",
 			production: true,
+			emits: false,
 		});
 		expect(calls).toHaveLength(1);
 		expect(warnings().some((m) => m.includes("PRODUCTION [prod]"))).toBe(true);
@@ -97,6 +100,7 @@ describe("operateProjection confirm tiers", () => {
 			env: "prod",
 			verb: "pause",
 			production: true,
+			emits: false,
 		});
 		expect(calls).toEqual([]);
 	});
@@ -112,6 +116,7 @@ describe("operateProjection confirm tiers", () => {
 			env: "local",
 			verb: "delete",
 			production: false,
+			emits: false,
 		});
 		expect(calls).toHaveLength(1);
 	});
@@ -127,6 +132,7 @@ describe("operateProjection confirm tiers", () => {
 			env: "prod",
 			verb: "delete",
 			production: true,
+			emits: false,
 		});
 		expect(calls).toEqual([{ verb: "delete", deleteEmitted: false }]);
 		expect(getState().inputBoxCalls).toHaveLength(1);
@@ -143,6 +149,7 @@ describe("operateProjection confirm tiers", () => {
 			env: "prod",
 			verb: "delete",
 			production: true,
+			emits: false,
 		});
 		expect(calls).toEqual([]);
 	});
@@ -158,6 +165,7 @@ describe("operateProjection confirm tiers", () => {
 			env: "stg",
 			verb: "pause",
 			production: undefined,
+			emits: false,
 		});
 		expect(calls).toEqual([]);
 	});
@@ -173,15 +181,54 @@ describe("operateProjection confirm tiers", () => {
 			env: "stg",
 			verb: "pause",
 			production: undefined,
+			emits: false,
 		});
 		expect(calls).toHaveLength(1);
 		expect(warnings()).toHaveLength(1);
 	});
+});
 
-	it("surfaces the delete-emitted consequence in the confirm", async () => {
-		const { deps } = fakeRequest({
+describe("operateProjection delete scope", () => {
+	it("skips the emitted-streams step for a non-emitting projection", async () => {
+		const { calls, deps } = fakeRequest({
 			resolve: { name: "checkout", outcome: "deleted", target: "local" },
 		});
+		queueMessageResponse("Delete"); // straight to the confirm modal
+		await operateProjection(deps)({
+			name: "checkout",
+			tomlUri,
+			env: "local",
+			verb: "delete",
+			production: false,
+			emits: false,
+		});
+		expect(getState().quickPickCalls).toHaveLength(0);
+		expect(calls).toEqual([{ verb: "delete", deleteEmitted: false }]);
+	});
+
+	it("offers the emitted-streams step for an emitting projection; plain Delete keeps emitted", async () => {
+		const { calls, deps } = fakeRequest({
+			resolve: { name: "checkout", outcome: "deleted", target: "local" },
+		});
+		queueQuickPick({ emitted: false }); // the scope step
+		queueMessageResponse("Delete"); // the confirm modal
+		await operateProjection(deps)({
+			name: "checkout",
+			tomlUri,
+			env: "local",
+			verb: "delete",
+			production: false,
+			emits: true,
+		});
+		expect(getState().quickPickCalls).toHaveLength(1);
+		expect(calls).toEqual([{ verb: "delete", deleteEmitted: false }]);
+	});
+
+	it("deletes the emitted streams when that scope is chosen", async () => {
+		const { calls, deps } = fakeRequest({
+			resolve: { name: "checkout", outcome: "deleted", target: "local" },
+		});
+		queueQuickPick({ emitted: true });
 		queueMessageResponse("Delete");
 		await operateProjection(deps)({
 			name: "checkout",
@@ -189,9 +236,26 @@ describe("operateProjection confirm tiers", () => {
 			env: "local",
 			verb: "delete",
 			production: false,
-			deleteEmitted: true,
+			emits: true,
 		});
+		expect(calls).toEqual([{ verb: "delete", deleteEmitted: true }]);
 		expect(warnings().some((m) => m.includes("streams it emitted"))).toBe(true);
+	});
+
+	it("aborts if the emitted-streams step is dismissed", async () => {
+		const { calls, deps } = fakeRequest({
+			resolve: { name: "checkout", outcome: "deleted", target: "local" },
+		});
+		queueQuickPick(undefined); // dismiss the scope step
+		await operateProjection(deps)({
+			name: "checkout",
+			tomlUri,
+			env: "local",
+			verb: "delete",
+			production: false,
+			emits: true,
+		});
+		expect(calls).toEqual([]);
 	});
 });
 
@@ -205,6 +269,7 @@ describe("operateProjection failures", () => {
 			env: "prod",
 			verb: "pause",
 			production: false,
+			emits: false,
 		});
 		const signIn = getState().executeCommandCalls.filter(
 			(c) => c.name === "gaffer.signIn",
@@ -223,6 +288,7 @@ describe("operateProjection failures", () => {
 			env: "local",
 			verb: "pause",
 			production: false,
+			emits: false,
 		});
 		const errs = getShownMessages().filter((m) => m.kind === "error");
 		expect(errs.some((m) => m.message.includes("connection refused"))).toBe(
@@ -241,6 +307,7 @@ describe("operateProjection failures", () => {
 			env: "local",
 			verb: "pause",
 			production: false,
+			emits: false,
 		});
 		expect(calls).toEqual([]);
 	});

@@ -284,7 +284,7 @@ func TestEmitActionsLenses(t *testing.T) {
 	}
 
 	t.Run("one lens per located, non-diagnostic projection", func(t *testing.T) {
-		lenses := emitActionsLenses(desc, uri)
+		lenses := emitActionsLenses(desc, uri, nil)
 		if len(lenses) != 2 {
 			t.Fatalf("expected 2 actions lenses (bad diagnostic + unlocated skipped), got %d: %+v", len(lenses), lenses)
 		}
@@ -324,8 +324,48 @@ func TestEmitActionsLenses(t *testing.T) {
 		noEnvs := config.Description{
 			Projections: []config.ProjectionDescription{{Name: "checkout", Range: config.SourceRange{StartLine: 5, EndLine: 5}}},
 		}
-		if lenses := emitActionsLenses(noEnvs, uri); len(lenses) != 0 {
+		if lenses := emitActionsLenses(noEnvs, uri, nil); len(lenses) != 0 {
 			t.Fatalf("no envs -> no actions lens, got %+v", lenses)
+		}
+	})
+
+	t.Run("carries production and per-projection runtime state", func(t *testing.T) {
+		statuses := map[string]envStatus{
+			"prod": {Production: true, Entries: []drift.StatusEntry{
+				{Comparison: drift.Comparison{Name: "checkout"}, Runtime: &remote.Status{State: remote.StateRunning}},
+			}},
+			"local": {Entries: []drift.StatusEntry{
+				{Comparison: drift.Comparison{Name: "checkout"}, Runtime: &remote.Status{State: remote.StateStopped}},
+			}},
+		}
+		lenses := emitActionsLenses(desc, uri, statuses)
+		var checkout projectionActionsArgs
+		for _, l := range lenses {
+			if a, ok := l.Command.Arguments[0].(projectionActionsArgs); ok && a.Name == "checkout" {
+				checkout = a
+			}
+		}
+		byEnv := map[string]actionsEnv{}
+		for _, e := range checkout.Envs {
+			byEnv[e.Name] = e
+		}
+		if !byEnv["prod"].Production || byEnv["prod"].State != "running" {
+			t.Errorf("prod env cell: got %+v, want production + running", byEnv["prod"])
+		}
+		if byEnv["local"].Production || byEnv["local"].State != "stopped" {
+			t.Errorf("local env cell: got %+v, want non-prod + stopped", byEnv["local"])
+		}
+		// orders has no status entry -> empty state, no production.
+		var orders projectionActionsArgs
+		for _, l := range lenses {
+			if a, ok := l.Command.Arguments[0].(projectionActionsArgs); ok && a.Name == "orders" {
+				orders = a
+			}
+		}
+		for _, e := range orders.Envs {
+			if e.State != "" {
+				t.Errorf("orders env %q should have empty state, got %q", e.Name, e.State)
+			}
 		}
 	})
 }

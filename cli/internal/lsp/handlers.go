@@ -337,7 +337,7 @@ func (s *Server) handleCodeLens(req *jsonrpc2.Request) (any, error) {
 			loading := s.statusCache.inFlightEnvs(uri)
 			lenses = append(lenses, emitStatusEnvLenses(parse.Description, uri, statuses, loading)...)
 			lenses = append(lenses, emitStatusBadgeLenses(parse.Description, statuses, loading)...)
-			lenses = append(lenses, emitActionsLenses(parse.Description, uri)...)
+			lenses = append(lenses, emitActionsLenses(parse.Description, uri, statuses)...)
 		}
 		return lenses, nil
 	}

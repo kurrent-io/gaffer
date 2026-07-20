@@ -206,15 +206,49 @@ type signInArgs struct {
 	ConfigURI string `json:"configURI"`
 }
 
+// actionsEnv is one env in the "Manage..." payload. Beyond the env identity it
+// carries the two bits the operate menu needs that lensEnv doesn't: whether the
+// env is production (picks the confirm tier) and this projection's runtime state
+// on it (picks pause vs resume). State is "" when unknown - not deployed, not yet
+// fetched, or sign-in needed - and the client falls back to offering both.
+type actionsEnv struct {
+	Name       string `json:"name"`
+	Default    bool   `json:"default,omitempty"`
+	Production bool   `json:"production,omitempty"`
+	State      string `json:"state,omitempty"`
+}
+
+// actionsEnvs builds the per-env cells for one projection's actions lens from the
+// cached per-env status: production off the env's fetched status, state off the
+// projection's runtime entry. Both degrade to zero values when there's no cached
+// status for the env yet.
+func actionsEnvs(envs []config.EnvDescription, proj string, statuses map[string]envStatus) []actionsEnv {
+	out := make([]actionsEnv, len(envs))
+	for i, e := range envs {
+		cell := actionsEnv{Name: e.Name, Default: e.Default}
+		if st, ok := statuses[e.Name]; ok {
+			cell.Production = st.Production
+			for j := range st.Entries {
+				if st.Entries[j].Name == proj && st.Entries[j].Runtime != nil {
+					cell.State = string(st.Entries[j].Runtime.State)
+					break
+				}
+			}
+		}
+		out[i] = cell
+	}
+	return out
+}
+
 // projectionActionsArgs is the Command.Arguments[0] payload for the
 // per-projection "Manage..." lens: the projection to act on, its declaring
-// gaffer.toml, and the configured environments so the client can build the
-// env-grouped action menu without re-reading the config. Mirrors
-// projectionPickArgs' shape - the client already knows this vocabulary.
+// gaffer.toml, and the configured environments (with production + runtime state)
+// so the client can build the env-grouped action menu, pick pause-vs-resume, and
+// choose the confirm tier without re-reading the config or re-fetching status.
 type projectionActionsArgs struct {
-	Name      string    `json:"name"`
-	ConfigURI string    `json:"configURI"`
-	Envs      []lensEnv `json:"envs,omitempty"`
+	Name      string       `json:"name"`
+	ConfigURI string       `json:"configURI"`
+	Envs      []actionsEnv `json:"envs,omitempty"`
 }
 
 // emitStatusEnvLenses renders one env-block deploy-status lens per configured
@@ -314,7 +348,7 @@ func emitStatusBadgeLenses(desc config.Description, statuses map[string]envStatu
 // at least one environment, since every action in the menu targets an env. A
 // projection with a projection-level diagnostic or no anchorable header gets no
 // lens, matching the status badge emitter.
-func emitActionsLenses(desc config.Description, uri string) []CodeLens {
+func emitActionsLenses(desc config.Description, uri string, statuses map[string]envStatus) []CodeLens {
 	out := []CodeLens{}
 	if len(desc.Environments) == 0 {
 		return out
@@ -332,7 +366,7 @@ func emitActionsLenses(desc config.Description, uri string) []CodeLens {
 				Title:   "Manage...",
 				Command: CommandProjectionActions,
 				Arguments: []any{
-					projectionActionsArgs{Name: p.Name, ConfigURI: uri, Envs: lensEnvs(desc.Environments)},
+					projectionActionsArgs{Name: p.Name, ConfigURI: uri, Envs: actionsEnvs(desc.Environments, p.Name, statuses)},
 				},
 			},
 			Data: &CodeLensData{Intent: IntentActions},

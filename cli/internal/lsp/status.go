@@ -45,7 +45,9 @@ type envStatus struct {
 	// affordance rather than a generic failure.
 	Unauthenticated bool
 	// Err is any other fetch failure (transport, invalid config, a projection
-	// read). Kept so the surface can degrade visibly rather than silently.
+	// read). Kept so the surface can degrade visibly rather than silently. It is
+	// rendered verbatim into the deploy-status tooltip, so it must be display-safe:
+	// build it with statusErr, never store a raw fetch error here.
 	Err error
 }
 
@@ -421,11 +423,13 @@ func (s *Server) safeFetch(ctx context.Context, root string, cfg *config.Config,
 // logScrubbedPanic logs a recovered panic value with the env's connection secret
 // scrubbed out. It scrubs both the raw connection and the ${VAR}-expanded form
 // the dial actually used - a panic from deep in the client carries the expanded
-// string, not the toml literal. Expansion alone rather than full Resolve: a
-// target that refuses to resolve (an unparseable connection under OAuth host
-// binding) still expands, so its secret still gets masked. Best-effort: an env
-// that won't even resolve scrubs to a no-op. Shared by the status-fetch and diff
-// panic guards; `what` names the operation for the log line.
+// string, not the toml literal. It gates only on the cheap config.ResolveEnv (the
+// env selector) and lets scrubConnection do the ${VAR} expansion, rather than
+// requiring a full target.Resolve: a target that refuses to resolve (an
+// unparseable connection under OAuth host binding) still expands, so its secret
+// still gets masked. Best-effort: an env config.ResolveEnv rejects scrubs to a
+// no-op. Shared by the status-fetch and diff panic guards; `what` names the
+// operation for the log line.
 func logScrubbedPanic(cfg *config.Config, root, env, what string, rec any) {
 	msg := fmt.Sprint(rec)
 	if resolved, rerr := cfg.ResolveEnv(env); rerr == nil {
@@ -435,10 +439,11 @@ func logScrubbedPanic(cfg *config.Config, root, env, what string, rec any) {
 }
 
 // scrubConnection masks an env's connection secret out of a message before it's
-// logged. It scrubs both the raw connection and the ${VAR}-expanded form the
-// dial actually used - a panic or error from deep in the client carries the
-// expanded string, not the toml literal. Best-effort: an env that won't expand
-// scrubs to a no-op. Shared by the fetch panic guard and the watch panic guard.
+// logged or shown to the user. It scrubs both the raw connection and the
+// ${VAR}-expanded form the dial actually used - a panic or error from deep in the
+// client carries the expanded string, not the toml literal. Best-effort: an env
+// that won't expand scrubs to a no-op. Shared by the panic guards and by
+// userFacingError.
 func scrubConnection(msg, root string, resolved config.ResolvedEnv) string {
 	msg = target.ScrubConnection(msg, resolved.Connection)
 	if conn, err := target.ExpandConnection(root, resolved); err == nil {
@@ -480,13 +485,20 @@ func (s *Server) envClient(root string, cfg *config.Config, uri, env string) (bo
 
 // dialErrStatus classifies a dial/connect failure: a missing or locked token
 // that the dial can't satisfy needs sign-in (Unauthenticated); anything else is
-// a generic Err.
-func dialErrStatus(err error) envStatus {
+// a generic, scrubbed Err. Mirrors dialError on the diff/operate path.
+func dialErrStatus(cfg *config.Config, root, env string, err error) envStatus {
 	var authErr *target.AuthRequiredError
 	if errors.As(err, &authErr) {
 		return envStatus{Unauthenticated: true}
 	}
-	return envStatus{Err: err}
+	return statusErr(cfg, root, env, err)
+}
+
+// statusErr wraps a fetch failure as a display-only envStatus error, scrubbed of
+// the connection secret and bounded to a single line (see userFacingError). The
+// stored error is only ever rendered as a tooltip, never type-inspected.
+func statusErr(cfg *config.Config, root, env string, err error) envStatus {
+	return envStatus{Err: errors.New(userFacingError(cfg, root, env, err))}
 }
 
 // fetchEnvStatus is the default statusFetchFunc: recompute one env's full status.
@@ -496,7 +508,7 @@ func dialErrStatus(err error) envStatus {
 func (s *Server) fetchEnvStatus(ctx context.Context, root string, cfg *config.Config, uri, envName string) envStatus {
 	bc, err := s.envClient(root, cfg, uri, envName)
 	if err != nil {
-		return dialErrStatus(err)
+		return dialErrStatus(cfg, root, envName, err)
 	}
 	defer bc.release()
 
@@ -519,11 +531,11 @@ func (s *Server) fetchEnvStatus(ctx context.Context, root string, cfg *config.Co
 		return envStatus{Unauthenticated: true}
 	}
 	if err != nil {
-		return envStatus{Err: err}
+		return statusErr(cfg, root, envName, err)
 	}
 	resolved, err := cfg.ResolveEnv(envName)
 	if err != nil {
-		return envStatus{Err: err}
+		return statusErr(cfg, root, envName, err)
 	}
 	// OperateTarget gets the parent ctx, not rctx: it applies its own RPCTimeout,
 	// and passing the already-consumed rctx would starve its $server-info read
@@ -551,7 +563,7 @@ type statusRuntimeFunc func(ctx context.Context, root string, cfg *config.Config
 func (s *Server) fetchEnvRuntime(ctx context.Context, root string, cfg *config.Config, uri, envName string, cached envStatus) envStatus {
 	bc, err := s.envClient(root, cfg, uri, envName)
 	if err != nil {
-		return dialErrStatus(err)
+		return dialErrStatus(cfg, root, envName, err)
 	}
 	defer bc.release()
 
@@ -562,7 +574,7 @@ func (s *Server) fetchEnvRuntime(ctx context.Context, root string, cfg *config.C
 		return envStatus{Unauthenticated: true}
 	}
 	if err != nil {
-		return envStatus{Err: err}
+		return statusErr(cfg, root, envName, err)
 	}
 	return reattachRuntime(cached, live)
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/sourcegraph/jsonrpc2"
 
@@ -202,16 +203,59 @@ func TestDiffProjection_EndToEndOverConn(t *testing.T) {
 }
 
 func TestDialError(t *testing.T) {
+	cfg, err := config.Parse([]byte("[env.prod]\nconnection = \"esdb://user:hunter2@host:2113\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	authErr := &target.AuthRequiredError{Env: "prod"}
-	if je := dialError(authErr, "prod"); je.Code != CodeAuthRequired {
+	if je := dialError(cfg, "/root", "prod", authErr); je.Code != CodeAuthRequired {
 		t.Errorf("bare AuthRequiredError: code %d want %d", je.Code, CodeAuthRequired)
 	}
 	// errors.As unwraps, so a wrapped auth error still classifies as sign-in.
-	if je := dialError(fmt.Errorf("dial: %w", authErr), "prod"); je.Code != CodeAuthRequired {
+	if je := dialError(cfg, "/root", "prod", fmt.Errorf("dial: %w", authErr)); je.Code != CodeAuthRequired {
 		t.Errorf("wrapped AuthRequiredError: code %d want %d", je.Code, CodeAuthRequired)
 	}
-	if je := dialError(errors.New("connection refused"), "prod"); je.Code != jsonrpc2.CodeInternalError {
+	if je := dialError(cfg, "/root", "prod", errors.New("connection refused")); je.Code != jsonrpc2.CodeInternalError {
 		t.Errorf("generic dial error: code %d want %d", je.Code, jsonrpc2.CodeInternalError)
+	}
+	// A generic error echoing the connection is scrubbed of the password.
+	je := dialError(cfg, "/root", "prod", errors.New("dial esdb://user:hunter2@host:2113: refused"))
+	if strings.Contains(je.Message, "hunter2") {
+		t.Errorf("dialError leaked the password: %q", je.Message)
+	}
+}
+
+func TestUserFacingError_ScrubsAndBounds(t *testing.T) {
+	cfg, err := config.Parse([]byte("[env.prod]\nconnection = \"esdb://user:hunter2@host:2113\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg := userFacingError(cfg, "/root", "prod", errors.New("dial esdb://user:hunter2@host:2113 failed")); strings.Contains(msg, "hunter2") {
+		t.Errorf("password not scrubbed: %q", msg)
+	}
+	// An unknown env can't resolve, so the scrub is skipped - bounding still applies.
+	long := userFacingError(cfg, "/root", "nope", errors.New(strings.Repeat("x", 500)))
+	if len([]rune(long)) != maxUserErrorLen+1 { // +1 for the ellipsis
+		t.Errorf("not bounded to %d runes: got %d", maxUserErrorLen, len([]rune(long)))
+	}
+}
+
+func TestBoundLine(t *testing.T) {
+	if got := boundLine("  first line\nsecond line\n"); got != "first line" {
+		t.Errorf("multiline: got %q want %q", got, "first line")
+	}
+	if got := boundLine("plain"); got != "plain" {
+		t.Errorf("plain: got %q", got)
+	}
+	got := boundLine(strings.Repeat("a", maxUserErrorLen+50))
+	if len([]rune(got)) != maxUserErrorLen+1 || !strings.HasSuffix(got, "…") {
+		t.Errorf("truncation: %d runes, ellipsis=%v", len([]rune(got)), strings.HasSuffix(got, "…"))
+	}
+	// Multi-byte runes must not be split at the cut: the result stays valid UTF-8
+	// and is exactly maxUserErrorLen kept runes plus the ellipsis.
+	multi := boundLine(strings.Repeat("世", maxUserErrorLen+10))
+	if !utf8.ValidString(multi) || len([]rune(multi)) != maxUserErrorLen+1 || !strings.HasSuffix(multi, "…") {
+		t.Errorf("multibyte truncation: valid=%v, %d runes", utf8.ValidString(multi), len([]rune(multi)))
 	}
 }
 

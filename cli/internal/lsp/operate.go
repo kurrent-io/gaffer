@@ -64,7 +64,7 @@ func (s *Server) handleOperateProjection(ctx context.Context, req *jsonrpc2.Requ
 func (s *Server) performOperate(ctx context.Context, root string, cfg *config.Config, uri, env string, params OperateProjectionParams) (OperateProjectionResult, *jsonrpc2.Error) {
 	bc, err := s.envClient(root, cfg, uri, env)
 	if err != nil {
-		return OperateProjectionResult{}, dialError(err, env)
+		return OperateProjectionResult{}, dialError(cfg, root, env, err)
 	}
 	defer bc.release()
 
@@ -87,7 +87,7 @@ func (s *Server) performOperate(ctx context.Context, root string, cfg *config.Co
 		}
 	}
 	if err != nil {
-		return OperateProjectionResult{}, &jsonrpc2.Error{Code: jsonrpc2.CodeInternalError, Message: err.Error()}
+		return OperateProjectionResult{}, &jsonrpc2.Error{Code: jsonrpc2.CodeInternalError, Message: userFacingError(cfg, root, env, err)}
 	}
 
 	// Resolve the target name for the completion toast; best-effort, the write

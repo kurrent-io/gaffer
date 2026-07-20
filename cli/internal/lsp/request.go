@@ -3,6 +3,7 @@ package lsp
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/sourcegraph/jsonrpc2"
 
@@ -17,13 +18,45 @@ import (
 
 // dialError classifies a dial/connect failure: a missing or locked token the dial
 // can't satisfy needs sign-in (CodeAuthRequired); anything else is a generic
-// internal error. Mirrors dialErrStatus on the status path.
-func dialError(err error, env string) *jsonrpc2.Error {
+// internal error carrying a scrubbed, bounded message. Mirrors dialErrStatus on
+// the status path.
+func dialError(cfg *config.Config, root, env string, err error) *jsonrpc2.Error {
 	var authErr *target.AuthRequiredError
 	if errors.As(err, &authErr) {
 		return authRequiredError(env)
 	}
-	return &jsonrpc2.Error{Code: jsonrpc2.CodeInternalError, Message: err.Error()}
+	return &jsonrpc2.Error{Code: jsonrpc2.CodeInternalError, Message: userFacingError(cfg, root, env, err)}
+}
+
+// maxUserErrorLen bounds a scrubbed error before it reaches the editor as a
+// tooltip or toast: enough to be diagnostic, short enough not to be a wall.
+const maxUserErrorLen = 200
+
+// userFacingError renders err for display in the editor - a status tooltip or a
+// diff/operate toast. A raw err.Error() can embed the env's resolved connection
+// string (with credentials) or span many verbose lines, so scrub the secret (as
+// the panic guards do) and bound it to a single line of reasonable length. The
+// resolve is best-effort: an env that won't resolve just skips the scrub.
+func userFacingError(cfg *config.Config, root, env string, err error) string {
+	msg := err.Error()
+	if resolved, rerr := cfg.ResolveEnv(env); rerr == nil {
+		msg = scrubConnection(msg, root, resolved)
+	}
+	return boundLine(msg)
+}
+
+// boundLine reduces msg to its first non-empty line and caps its length,
+// appending an ellipsis when truncated. Rune-aware so it never splits a
+// multi-byte character.
+func boundLine(msg string) string {
+	msg = strings.TrimSpace(msg)
+	if i := strings.IndexByte(msg, '\n'); i >= 0 {
+		msg = strings.TrimSpace(msg[:i])
+	}
+	if r := []rune(msg); len(r) > maxUserErrorLen {
+		return string(r[:maxUserErrorLen]) + "…"
+	}
+	return msg
 }
 
 func authRequiredError(env string) *jsonrpc2.Error {

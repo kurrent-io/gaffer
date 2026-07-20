@@ -59,7 +59,7 @@ func (s *Server) handleDiffProjection(ctx context.Context, req *jsonrpc2.Request
 func (s *Server) fetchDiff(ctx context.Context, root string, cfg *config.Config, uri, env, name string) (cliout.DiffJSON, *jsonrpc2.Error) {
 	bc, err := s.envClient(root, cfg, uri, env)
 	if err != nil {
-		return cliout.DiffJSON{}, dialError(err, env)
+		return cliout.DiffJSON{}, dialError(cfg, root, env, err)
 	}
 	defer bc.release()
 
@@ -77,7 +77,7 @@ func (s *Server) fetchDiff(ctx context.Context, root string, cfg *config.Config,
 		return cliout.DiffJSON{}, authRequiredError(env)
 	}
 	if err != nil {
-		return cliout.DiffJSON{}, &jsonrpc2.Error{Code: jsonrpc2.CodeInternalError, Message: err.Error()}
+		return cliout.DiffJSON{}, &jsonrpc2.Error{Code: jsonrpc2.CodeInternalError, Message: userFacingError(cfg, root, env, err)}
 	}
 	return cliout.ComparisonDiffJSON(entry), nil
 }

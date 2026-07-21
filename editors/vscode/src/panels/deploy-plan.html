@@ -302,6 +302,10 @@
 			// a projection's row in place.
 			let rowEls = new Map();
 
+			// The env of the plan currently rendered, sent with a Deploy click so the
+			// host can drop the deploy if the panel has since re-rendered to another.
+			let currentEnv = "";
+
 			// This is a plan, so show what a deploy WOULD do, not the past-tense
 			// result words the shared JSON outcome carries (created/updated/...).
 			const PLAN_LABEL = {
@@ -457,6 +461,7 @@
 
 			function render(report) {
 				enterPlanMode();
+				currentEnv = report.env || "";
 				renderHeader(report);
 				renderSummary(report);
 				renderDrift(report);
@@ -500,9 +505,18 @@
 			}
 
 			function deployButton(noValidate) {
-				return button("primary", "Deploy", () =>
-					vscode.postMessage({ command: "deploy", noValidate }),
-				);
+				const btn = button("primary", "Deploy", () => {
+					// Disable on click so a rapid double-click can't post twice before
+					// the host switches the footer to progress; carry the shown env so
+					// a stale click (panel re-rendered since) is dropped host-side.
+					btn.disabled = true;
+					vscode.postMessage({
+						command: "deploy",
+						noValidate,
+						env: currentEnv,
+					});
+				});
+				return btn;
 			}
 
 			// The footer's Deploy / Cancel controls (right of the bar), gated on the
@@ -634,6 +648,15 @@
 
 			function onDeployError(message) {
 				enterMessageMode();
+				// The apply died mid-flight; any row left spinning at "applying…"
+				// never settled, so clear it rather than imply work is still running.
+				for (const li of rowEls.values()) {
+					const outEl = li.querySelector(".outcome.o-applying");
+					if (outEl) {
+						outEl.className = "outcome o-skipped";
+						outEl.textContent = "—";
+					}
+				}
 				footerMessageEl.replaceChildren(
 					span("done-headline fail", message),
 					closeRow(),

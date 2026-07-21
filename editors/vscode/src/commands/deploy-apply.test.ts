@@ -170,4 +170,83 @@ describe("deployApply", () => {
 			getState().executeCommandCalls.some((c) => c.name === "gaffer.signIn"),
 		).toBe(true);
 	});
+
+	it("does not deploy silently when production is unknown", async () => {
+		const { calls, run } = fakeRun([summary()], 0);
+		// undefined production + no rebuild must NOT take the silent tier - it falls
+		// through to the accept modal, which is dismissed here (no queued response).
+		await deployApply({ run })(
+			ctx,
+			plan(undefined, ["created"]),
+			false,
+			() => {},
+		);
+		expect(calls).toHaveLength(0);
+	});
+
+	it("requires a confirm for a non-production rebuild", async () => {
+		const { calls, run } = fakeRun([summary()], 0);
+		// non-prod but a rebuild -> accept modal, not silent; dismissed here.
+		await deployApply({ run })(ctx, plan(false, ["rebuilt"]), false, () => {});
+		expect(calls).toHaveLength(0);
+	});
+
+	it("does nothing in an untrusted workspace", async () => {
+		setTrusted(false);
+		const { calls, run } = fakeRun([summary()], 0);
+		await deployApply({ run })(ctx, plan(false, ["created"]), false, () => {});
+		expect(calls).toHaveLength(0);
+	});
+
+	it("maps the full summary counts into deploy-done", async () => {
+		const sent: DeployPlanMessage[] = [];
+		const counts = {
+			type: "deploy_summary",
+			created: 8,
+			updated: 1,
+			rebuilt: 2,
+			skipped: 3,
+			refused: 1,
+			invalid: 1,
+			failed: 2,
+		} as const;
+		const { run } = fakeRun([counts], 1);
+		await deployApply({ run })(ctx, plan(false, ["created"]), false, (m) =>
+			sent.push(m),
+		);
+		const done = sent.find((m) => m.type === "deploy-done");
+		expect(done && done.type === "deploy-done" && done.summary).toEqual({
+			created: 8,
+			updated: 1,
+			rebuilt: 2,
+			skipped: 3,
+			refused: 1,
+			invalid: 1,
+			failed: 2,
+		});
+	});
+
+	it("falls back to the item reason for detail when there's no error", async () => {
+		const sent: DeployPlanMessage[] = [];
+		const { run } = fakeRun(
+			[
+				{
+					type: "deploy_result",
+					name: "p0",
+					outcome: "refused",
+					reason: "engine version",
+				},
+			],
+			0,
+		);
+		await deployApply({ run })(ctx, plan(false, ["created"]), false, (m) =>
+			sent.push(m),
+		);
+		expect(sent).toContainEqual({
+			type: "deploy-item",
+			name: "p0",
+			outcome: "refused",
+			detail: "engine version",
+		});
+	});
 });

@@ -87,7 +87,11 @@ describe("DeployPlanView", () => {
 				send({ type: "deploy-started" });
 			},
 		}).show(report, { env: "staging", tomlUri });
-		onlyPanel().webview.emitMessage({ command: "deploy", noValidate: true });
+		onlyPanel().webview.emitMessage({
+			command: "deploy",
+			noValidate: true,
+			env: "staging",
+		});
 		expect(calls).toEqual([
 			{ ctx: { env: "staging", tomlUri }, rep: report, noValidate: true },
 		]);
@@ -95,6 +99,40 @@ describe("DeployPlanView", () => {
 		expect(onlyPanel().webview.postedMessages).toContainEqual({
 			type: "deploy-started",
 		});
+	});
+
+	it("drops a second deploy while one is in flight, then allows one after it settles", () => {
+		let sendFn: ((m: unknown) => void) | undefined;
+		let calls = 0;
+		makeView({
+			onDeploy: (_ctx, _rep, _nv, send) => {
+				calls++;
+				sendFn = send as (m: unknown) => void;
+			},
+		}).show(report, { env: "staging", tomlUri });
+		const wv = onlyPanel().webview;
+		const deploy = { command: "deploy", noValidate: false, env: "staging" };
+		wv.emitMessage(deploy);
+		wv.emitMessage(deploy); // second, mid-flight -> ignored
+		expect(calls).toBe(1);
+		// Settle, then a fresh deploy is accepted.
+		sendFn?.({ type: "deploy-done", summary: {} });
+		wv.emitMessage(deploy);
+		expect(calls).toBe(2);
+	});
+
+	it("drops a deploy whose env no longer matches the shown plan", () => {
+		let calls = 0;
+		makeView({ onDeploy: () => calls++ }).show(report, {
+			env: "staging",
+			tomlUri,
+		});
+		onlyPanel().webview.emitMessage({
+			command: "deploy",
+			noValidate: false,
+			env: "prod", // stale: panel is showing staging
+		});
+		expect(calls).toBe(0);
 	});
 
 	it("closes the panel on cancel", () => {

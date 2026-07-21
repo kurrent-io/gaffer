@@ -63,6 +63,10 @@ export class DeployPlanView implements vscode.Disposable {
 	#panel: vscode.WebviewPanel | undefined;
 	#ctx: DeployPlanContext | undefined;
 	#report: PlanReport | undefined;
+	// True from accepting a deploy until it settles (deploy-done / deploy-error).
+	// Guards against a second deploy while one runs, and stops a preview that
+	// resolves mid-apply from clobbering the streaming plan.
+	#deploying = false;
 	readonly #handlers: DeployPlanHandlers;
 
 	constructor(handlers: DeployPlanHandlers) {
@@ -71,8 +75,11 @@ export class DeployPlanView implements vscode.Disposable {
 
 	// Show the plan for (env, project): create the panel on first use, otherwise
 	// reveal and re-render the existing one. The env/target context and the report
-	// ride along so a Diff or Deploy resolves against the right env and plan.
+	// ride along so a Diff or Deploy resolves against the right env and plan. A
+	// preview that lands while an apply is streaming is dropped rather than
+	// wiping the in-flight progress.
 	show(report: PlanReport, ctx: DeployPlanContext): void {
+		if (this.#deploying) return;
 		this.#ctx = ctx;
 		this.#report = report;
 		if (!this.#panel) {
@@ -97,6 +104,7 @@ export class DeployPlanView implements vscode.Disposable {
 				this.#panel = undefined;
 				this.#ctx = undefined;
 				this.#report = undefined;
+				this.#deploying = false;
 			});
 		}
 		this.#panel.title = planTitle(ctx.env);
@@ -119,11 +127,29 @@ export class DeployPlanView implements vscode.Disposable {
 			return;
 		}
 		if (command === "deploy" && this.#report) {
+			// Re-entrancy guard: a second deploy (a double-click, or a queued click)
+			// while one is in flight is dropped, so we never spawn two applies.
+			if (this.#deploying) return;
+			// The click carries the env it was shown against; if a concurrent
+			// preview has since re-rendered the panel to a different env, this
+			// deploy is stale - drop it rather than apply the wrong plan.
+			const env = (msg as { env?: unknown }).env;
+			if (typeof env !== "string" || env !== this.#ctx.env) return;
 			const noValidate = (msg as { noValidate?: unknown }).noValidate === true;
+			this.#deploying = true;
 			this.#handlers.onDeploy(this.#ctx, this.#report, noValidate, (m) =>
-				this.#post(m),
+				this.#sendDeploy(m),
 			);
 		}
+	}
+
+	// Streams an apply message to the webview, releasing the in-flight guard once
+	// the apply settles so the plan can be previewed/deployed again.
+	#sendDeploy(message: DeployPlanMessage): void {
+		if (message.type === "deploy-done" || message.type === "deploy-error") {
+			this.#deploying = false;
+		}
+		this.#post(message);
 	}
 
 	#post(message: DeployPlanMessage): void {
@@ -133,6 +159,7 @@ export class DeployPlanView implements vscode.Disposable {
 	dispose(): void {
 		this.#panel?.dispose();
 		this.#panel = undefined;
+		this.#deploying = false;
 	}
 }
 

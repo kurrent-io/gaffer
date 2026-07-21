@@ -136,14 +136,15 @@ func TestEmitStatusEnvLenses(t *testing.T) {
 		}
 	})
 
-	t.Run("data emits the roll-up label plus a clickable Preview", func(t *testing.T) {
+	t.Run("data emits a leading clickable Deploy then the roll-up label", func(t *testing.T) {
 		st := envStatus{Entries: []drift.StatusEntry{inConfig(drift.InSync)}, Target: "prod-cluster"}
 		statuses := map[string]envStatus{"prod": st}
 		lenses := emitStatusEnvLenses(desc, uri, statuses, nil)
 		if len(lenses) != 2 {
-			t.Fatalf("expected roll-up + preview, got %d: %+v", len(lenses), lenses)
+			t.Fatalf("expected deploy + roll-up, got %d: %+v", len(lenses), lenses)
 		}
-		rollup, preview := lenses[0], lenses[1]
+		// Deploy leads the line, roll-up follows.
+		preview, rollup := lenses[0], lenses[1]
 		// Empty command -> the client renders a non-clickable span; no tooltip
 		// on the healthy roll-up (it's just label text).
 		if rollup.Data.Intent != IntentStatusEnv || rollup.Command.Title != statusRollup(st) || rollup.Command.Command != "" {

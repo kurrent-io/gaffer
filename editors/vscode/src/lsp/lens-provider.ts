@@ -498,8 +498,9 @@ export class LspCodeLensProvider
 		});
 	}
 
-	// The env-block "Preview" lens opens the deploy plan for the whole project
-	// against that env (a --dry-run). Trust-gated because it spawns gaffer.
+	// The env-block "Deploy" lens opens the deploy plan for the whole project
+	// against that env. The plan opens as a read-only preview (a --dry-run); the
+	// webview's own Deploy button applies it. Trust-gated because it spawns gaffer.
 	#decorateDeployPreview(
 		sl: LspCodeLens,
 		range: vscode.Range,
@@ -515,7 +516,7 @@ export class LspCodeLensProvider
 		const tomlUri = parseConfigURI(parsed.output.configURI);
 		if (!tomlUri) return null;
 		return new vscode.CodeLens(range, {
-			title: "$(eye) Preview",
+			title: "$(rocket) Deploy",
 			command: "gaffer.deployPreview",
 			arguments: [{ env: parsed.output.env, tomlUri }],
 		});

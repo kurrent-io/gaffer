@@ -91,7 +91,9 @@ import {
 import { requestProjectionDiff } from "./lsp/diff.js";
 import { requestOperateProjection } from "./lsp/operate.js";
 import { deployPreview } from "./commands/deploy-preview.js";
+import { deployApply } from "./commands/deploy-apply.js";
 import { DeployPlanView } from "./panels/deploy-plan.js";
+import { GafferProcess } from "./ipc/process.js";
 import { initProjection } from "./commands/init-projection.js";
 import {
 	createVscodeWizardSteps,
@@ -641,11 +643,33 @@ async function activateAfterTelemetry(
 				requestDiff: requestProjectionDiff,
 			});
 			const operate = operateProjection({ request: requestOperateProjection });
-			// The env-block "Preview" lens: a cold `deploy --dry-run --json` spawn
-			// renders the whole-project plan in the deploy-plan webview; clicking a
-			// projection there reuses the same diff the action menu offers.
-			const deployView = new DeployPlanView((ctx, name) => {
-				void diff({ name, tomlUri: ctx.tomlUri, env: ctx.env });
+			// The env-block "Deploy" lens: a cold `deploy --dry-run --json` spawn
+			// renders the whole-project plan in the deploy-plan webview; a projection's
+			// Diff button reuses the action menu's diff, and the webview's Deploy button
+			// streams a cold `deploy --yes --json --stream` apply back into the plan.
+			const apply = deployApply({
+				run: (env, cwd, noValidate, handlers) => {
+					const args = ["deploy", "--yes", "--json", "--stream", "--env", env];
+					if (noValidate) args.push("--no-validate");
+					const argv = buildGafferArgv(args, {
+						invokerId: telemetry.invokerId(),
+						invokedVia: "code_lens",
+					});
+					const runEnv = gafferRunEnv(telemetry.isOptedOut());
+					new GafferProcess(argv, {
+						cwd,
+						...(runEnv !== undefined ? { env: runEnv } : {}),
+					})
+						.onLine(handlers.onLine)
+						.onExit(handlers.onExit)
+						.start();
+				},
+			});
+			const deployView = new DeployPlanView({
+				onDiff: (ctx, name) => {
+					void diff({ name, tomlUri: ctx.tomlUri, env: ctx.env });
+				},
+				onDeploy: apply,
 			});
 			const preview = deployPreview({
 				view: deployView,

@@ -330,22 +330,25 @@ func emitStatusEnvLenses(desc config.Description, uri string, statuses map[strin
 				Data:    &CodeLensData{Intent: IntentStatusEnv},
 			})
 		default:
-			out = append(out, CodeLens{
-				Range:   r,
-				Command: &Command{Title: statusRollup(st)},
-				Data:    &CodeLensData{Intent: IntentStatusEnv},
-			})
-			// Preview rides beside the roll-up: it opens the deploy plan for the
-			// whole project against this env (a --dry-run), so only when the env is
-			// reachable and authenticated, not while loading or on a fetch error.
+			// Deploy leads the line as the action, ahead of the status roll-up:
+			// it's the actionable affordance, and a fixed leading position keeps it
+			// in the same place on every env block regardless of the roll-up's
+			// length. Offered only when the env is reachable and authenticated (this
+			// default case), not while loading or on a fetch error. It opens the
+			// deploy plan for the whole project against this env.
 			out = append(out, CodeLens{
 				Range: r,
 				Command: &Command{
-					Title:     "Preview",
+					Title:     "Deploy",
 					Command:   CommandDeployPreview,
 					Arguments: []any{deployEnvArgs{Env: env.Name, ConfigURI: uri}},
 				},
 				Data: &CodeLensData{Intent: IntentDeployPreview},
+			})
+			out = append(out, CodeLens{
+				Range:   r,
+				Command: &Command{Title: statusRollup(st)},
+				Data:    &CodeLensData{Intent: IntentStatusEnv},
 			})
 		}
 	}

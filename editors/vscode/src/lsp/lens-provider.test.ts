@@ -61,6 +61,20 @@ function signInLens(args: unknown, startLine = 4): unknown {
 	};
 }
 
+// A deploy-preview lens as the server emits it: the Preview action carrying the
+// env + configURI, under the deploy-preview intent.
+function deployPreviewLens(args: unknown, startLine = 4): unknown {
+	return {
+		range: fakeLensRange(startLine),
+		command: {
+			title: "Preview",
+			command: "gaffer.deployPreview",
+			arguments: [args],
+		},
+		data: { intent: "deploy-preview" },
+	};
+}
+
 function makeClient(): RealLanguageClient {
 	const c = new LanguageClient("test", "test", null, null);
 	return c as unknown as RealLanguageClient;
@@ -361,6 +375,45 @@ describe("LspCodeLensProvider", () => {
 	it("rejects malformed sign-in args without crashing", async () => {
 		setLspRequestHandler("textDocument/codeLens", () => [
 			signInLens({ env: 123 }),
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		expect(await getLenses(p)).toEqual([]);
+	});
+
+	it("decorates a deploy-preview lens with the eye icon and gaffer.deployPreview command", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [
+			deployPreviewLens({ env: "staging", configURI: "file:///p/gaffer.toml" }),
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		const lenses = await getLenses(p);
+		expect(lenses).toHaveLength(1);
+		expect(lenses[0]?.command?.title).toBe("$(eye) Preview");
+		expect(lenses[0]?.command?.command).toBe("gaffer.deployPreview");
+		const args = lenses[0]?.command?.arguments?.[0] as {
+			env: string;
+			tomlUri: vscode.Uri;
+		};
+		expect(args.env).toBe("staging");
+		expect(args.tomlUri.toString()).toBe(
+			vscode.Uri.parse("file:///p/gaffer.toml").toString(),
+		);
+	});
+
+	it("hides the deploy-preview lens in an untrusted workspace", async () => {
+		setTrusted(false);
+		setLspRequestHandler("textDocument/codeLens", () => [
+			deployPreviewLens({ env: "staging", configURI: "file:///p/gaffer.toml" }),
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		expect(await getLenses(p)).toEqual([]);
+	});
+
+	it("rejects malformed deploy-preview args without crashing", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [
+			deployPreviewLens({ env: 123 }),
 		]);
 		const p = new LspCodeLensProvider();
 		p.setClient(makeClient());

@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			http-equiv="Content-Security-Policy"
+			content="default-src 'none'; style-src {{CSP_SOURCE}} 'unsafe-inline'; script-src 'nonce-{{NONCE}}';"
+		/>
+		<style>
+			body {
+				margin: 0;
+				padding: 1.2em 1.4em;
+				font-family: var(--vscode-font-family);
+				font-size: var(--vscode-font-size, 13px);
+				color: var(--vscode-foreground);
+			}
+			.header {
+				display: flex;
+				justify-content: space-between;
+				align-items: baseline;
+				gap: 0.5em 1em;
+				padding-bottom: 0.8em;
+				border-bottom: 1px solid var(--vscode-panel-border);
+			}
+			.header-left {
+				display: flex;
+				align-items: baseline;
+				gap: 0.45em;
+				min-width: 0;
+			}
+			.env {
+				font-size: 1.2em;
+				font-weight: 600;
+				overflow-wrap: anywhere;
+			}
+			.prod {
+				padding: 0.05em 0.55em;
+				border-radius: 0.9em;
+				font-size: 0.72em;
+				font-weight: 700;
+				letter-spacing: 0.05em;
+				text-transform: uppercase;
+				white-space: nowrap;
+				color: var(
+					--vscode-editorWarning-foreground,
+					var(--vscode-charts-orange)
+				);
+				border: 1px solid
+					var(--vscode-editorWarning-foreground, var(--vscode-charts-orange));
+			}
+			.env-key {
+				color: var(--vscode-descriptionForeground);
+				font-family: var(--vscode-editor-font-family, monospace);
+				font-size: 0.9em;
+				white-space: nowrap;
+			}
+			.summary {
+				margin-top: 1.1em;
+				padding-top: 0.8em;
+				border-top: 1px solid var(--vscode-panel-border);
+			}
+			.seg {
+				font-weight: 600;
+			}
+			.sep {
+				color: var(--vscode-descriptionForeground);
+			}
+			.drift {
+				margin: 0.6em 0;
+				padding: 0.5em 0.7em;
+				border-left: 3px solid var(--vscode-inputValidation-warningBorder);
+				background: var(--vscode-inputValidation-warningBackground);
+				white-space: pre-wrap;
+				overflow-wrap: anywhere;
+				border-radius: 2px;
+			}
+			ul.plan {
+				list-style: none;
+				margin: 0.4em 0 0;
+				padding: 0;
+			}
+			li.row {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: center;
+				gap: 0.5em;
+				padding: 0.4em 0.4em;
+			}
+			.row-action {
+				margin-left: auto;
+				background: var(--vscode-button-secondaryBackground);
+				color: var(--vscode-button-secondaryForeground);
+				border: none;
+				border-radius: 3px;
+				padding: 0.2em 0.7em;
+				font-size: 0.85em;
+				font-family: inherit;
+				cursor: pointer;
+			}
+			.row-action:hover {
+				background: var(--vscode-button-secondaryHoverBackground);
+			}
+			li.row.unchanged {
+				opacity: 0.55;
+			}
+			.name {
+				font-weight: 600;
+				flex: 0 0 var(--name-col, 8em);
+			}
+			.outcome {
+				font-size: 0.82em;
+				font-weight: 600;
+				text-transform: uppercase;
+				letter-spacing: 0.03em;
+			}
+			.o-created {
+				color: var(
+					--vscode-gitDecoration-addedResourceForeground,
+					var(--vscode-charts-green)
+				);
+			}
+			.o-updated {
+				color: var(--vscode-charts-blue, var(--vscode-textLink-foreground));
+			}
+			.o-rebuilt,
+			.o-refused {
+				color: var(
+					--vscode-editorWarning-foreground,
+					var(--vscode-charts-orange)
+				);
+			}
+			.o-skipped {
+				color: var(--vscode-descriptionForeground);
+			}
+			.o-invalid,
+			.o-failed {
+				color: var(--vscode-errorForeground);
+			}
+			.tag {
+				padding: 0.05em 0.45em;
+				border-radius: 0.8em;
+				font-size: 0.78em;
+				background: var(--vscode-badge-background);
+				color: var(--vscode-badge-foreground);
+			}
+			.tag.warn {
+				background: var(--vscode-inputValidation-warningBackground);
+				color: var(--vscode-foreground);
+			}
+			.detail {
+				flex-basis: 100%;
+				margin-left: 0.4em;
+				color: var(--vscode-descriptionForeground);
+				font-size: 0.9em;
+				white-space: pre-wrap;
+				overflow-wrap: anywhere;
+			}
+			.detail.code {
+				font-family: var(--vscode-editor-font-family, monospace);
+				white-space: pre;
+				overflow-x: auto;
+				margin: 0.4em 0.4em 0.5em;
+				padding: 0.7em 0.9em;
+				background: var(
+					--vscode-textCodeBlock-background,
+					rgba(127, 127, 127, 0.1)
+				);
+				border-radius: 4px;
+			}
+			.empty {
+				margin-top: 1em;
+				color: var(--vscode-descriptionForeground);
+				font-style: italic;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="header" id="header"></div>
+		<div id="drift"></div>
+		<ul class="plan" id="plan"></ul>
+		<div id="summary" class="summary"></div>
+		<script nonce="{{NONCE}}">
+			const vscode = acquireVsCodeApi();
+			const headerEl = document.getElementById("header");
+			const summaryEl = document.getElementById("summary");
+			const driftEl = document.getElementById("drift");
+			const planEl = document.getElementById("plan");
+
+			// This is a plan, so show what a deploy WOULD do, not the past-tense
+			// result words the shared JSON outcome carries (created/updated/...).
+			const PLAN_LABEL = {
+				created: "create",
+				updated: "update",
+				rebuilt: "rebuild",
+				skipped: "unchanged",
+				refused: "recreate",
+				invalid: "invalid",
+				failed: "error",
+			};
+
+			function span(cls, text) {
+				const el = document.createElement("span");
+				el.className = cls;
+				el.textContent = text;
+				return el;
+			}
+
+			function block(cls, text) {
+				const el = document.createElement("div");
+				el.className = cls;
+				el.textContent = text;
+				return el;
+			}
+
+			function renderHeader(report) {
+				headerEl.replaceChildren();
+				const left = block("header-left", "");
+				left.appendChild(
+					span("env", report.target || report.env || "environment"),
+				);
+				if (report.production) {
+					left.appendChild(span("prod", "production"));
+				}
+				headerEl.appendChild(left);
+				if (report.env) {
+					headerEl.appendChild(span("env-key", "env." + report.env));
+				}
+			}
+
+			// Per-action breakdown, mirroring the CLI plan roll-up: one segment per
+			// non-zero outcome, in plan-action order, each in its severity colour.
+			const SUMMARY_SEGS = [
+				["created", "to create"],
+				["updated", "to update"],
+				["rebuilt", "to rebuild"],
+				["refused", "to recreate"],
+				["skipped", "unchanged"],
+				["invalid", "invalid"],
+				["failed", "failed"],
+			];
+
+			function renderSummary(report) {
+				summaryEl.replaceChildren();
+				const counts = {};
+				for (const i of report.plan || [])
+					counts[i.outcome] = (counts[i.outcome] || 0) + 1;
+				const parts = [];
+				for (const [outcome, label] of SUMMARY_SEGS) {
+					if (counts[outcome]) {
+						parts.push(span("seg o-" + outcome, counts[outcome] + " " + label));
+					}
+				}
+				if (parts.length === 0) {
+					summaryEl.textContent = "No projections configured.";
+					return;
+				}
+				parts.forEach((part, i) => {
+					if (i > 0) summaryEl.appendChild(span("sep", " · "));
+					summaryEl.appendChild(part);
+				});
+			}
+
+			function renderDrift(report) {
+				driftEl.replaceChildren();
+				if (report.configDriftError) {
+					driftEl.appendChild(
+						block(
+							"drift",
+							"[database_config] check couldn't run: " +
+								report.configDriftError,
+						),
+					);
+					return;
+				}
+				const drift = report.configDrift || [];
+				if (drift.length === 0) return;
+				const lines = drift.map(
+					(d) => d.knob + ": server " + d.server + ", local " + d.local,
+				);
+				driftEl.appendChild(
+					block(
+						"drift",
+						"[database_config] diverges from the target:\n" + lines.join("\n"),
+					),
+				);
+			}
+
+			// recreate isn't listed here: it's carried by the "recreate" outcome
+			// itself (a refused item is always a recreate-required one).
+			const TAGS = [
+				["faulted", "faulted"],
+				["emittingReset", "re-emits"],
+				["logicChange", "logic change"],
+			];
+
+			// The explicit per-row action, keyed by outcome. An update can be diffed
+			// against what's deployed; create/unchanged have nothing to act on.
+			const ROW_ACTION = {
+				updated: { command: "diff", label: "Diff" },
+			};
+
+			function renderRow(item) {
+				const li = document.createElement("li");
+				li.className = item.outcome === "skipped" ? "row unchanged" : "row";
+				li.appendChild(span("name", item.name));
+				li.appendChild(
+					span(
+						"outcome o-" + item.outcome,
+						PLAN_LABEL[item.outcome] || item.outcome,
+					),
+				);
+				for (const [key, text] of TAGS) {
+					if (item[key]) li.appendChild(span("tag warn", text));
+				}
+				if (item.externalChange) {
+					const t = item.externalChangeTool
+						? "changed by " + item.externalChangeTool
+						: "changed externally";
+					li.appendChild(span("tag warn", t));
+				}
+				const action = ROW_ACTION[item.outcome];
+				if (action) {
+					const btn = document.createElement("button");
+					btn.className = "row-action";
+					btn.textContent = action.label;
+					btn.addEventListener("click", () => {
+						vscode.postMessage({ command: action.command, name: item.name });
+					});
+					li.appendChild(btn);
+				}
+				// invalid/failed carry a code diagnostic (compile error, frame) that
+				// needs a monospace font to line up; a refusal's reason is prose.
+				const detail = item.error || item.reason;
+				if (detail) {
+					const code = item.outcome === "invalid" || item.outcome === "failed";
+					li.appendChild(span(code ? "detail code" : "detail", detail));
+				}
+				return li;
+			}
+
+			function render(report) {
+				renderHeader(report);
+				renderSummary(report);
+				renderDrift(report);
+				planEl.replaceChildren();
+				const items = report.plan || [];
+				// Size the name column to the longest name so the outcomes align.
+				const maxName = items.reduce(
+					(m, i) => Math.max(m, (i.name || "").length),
+					0,
+				);
+				planEl.style.setProperty("--name-col", maxName + 2 + "ch");
+				if (items.length === 0) {
+					const li = document.createElement("li");
+					li.appendChild(span("empty", "No projections configured."));
+					planEl.appendChild(li);
+					return;
+				}
+				for (const item of items) planEl.appendChild(renderRow(item));
+			}
+
+			window.addEventListener("message", (event) => {
+				const msg = event.data;
+				if (!msg || msg.type !== "plan" || !msg.report) return;
+				render(msg.report);
+			});
+		</script>
+	</body>
+</html>

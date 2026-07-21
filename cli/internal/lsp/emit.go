@@ -206,6 +206,14 @@ type signInArgs struct {
 	ConfigURI string `json:"configURI"`
 }
 
+// deployEnvArgs is the Command.Arguments[0] payload for the env-block deploy
+// lenses (Preview today, Deploy to come): which env to plan against, and the
+// declaring gaffer.toml the client resolves the project root from.
+type deployEnvArgs struct {
+	Env       string `json:"env"`
+	ConfigURI string `json:"configURI"`
+}
+
 // actionsEnv is one env in the "Manage..." payload. Beyond the env identity it
 // carries the two bits the operate menu needs that lensEnv doesn't: whether the
 // env is production (picks the confirm tier) and this projection's runtime state
@@ -326,6 +334,18 @@ func emitStatusEnvLenses(desc config.Description, uri string, statuses map[strin
 				Range:   r,
 				Command: &Command{Title: statusRollup(st)},
 				Data:    &CodeLensData{Intent: IntentStatusEnv},
+			})
+			// Preview rides beside the roll-up: it opens the deploy plan for the
+			// whole project against this env (a --dry-run), so only when the env is
+			// reachable and authenticated, not while loading or on a fetch error.
+			out = append(out, CodeLens{
+				Range: r,
+				Command: &Command{
+					Title:     "Preview",
+					Command:   CommandDeployPreview,
+					Arguments: []any{deployEnvArgs{Env: env.Name, ConfigURI: uri}},
+				},
+				Data: &CodeLensData{Intent: IntentDeployPreview},
 			})
 		}
 	}

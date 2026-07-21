@@ -209,6 +209,46 @@ export async function runGafferCommand(
 	}
 }
 
+/**
+ * Like `runGafferCommand` but returns stdout together with the exit code for any
+ * exit, resolving `ok: false` only when the process can't run (spawn failure or
+ * timeout). For a command whose --json payload lands on stdout even on a non-zero
+ * "status" exit - `gaffer deploy --dry-run --json` exits 2 when changes are
+ * pending, 1 when the plan is blocked, and prints the plan envelope either way -
+ * so the caller reads the envelope's own verdict rather than treating a non-zero
+ * code as failure.
+ */
+export async function captureGafferCommand(
+	args: string[],
+	cwd: string,
+	telemetry: SpawnTelemetry,
+	invokedVia: InvokedVia,
+	env: NodeJS.ProcessEnv | undefined = gafferSpawnEnv(telemetry.isOptedOut()),
+	// Override the spawn's hard timeout for a command that does network work and
+	// can legitimately outrun the default (deploy --dry-run connects and plans).
+	timeoutMs?: number,
+): Promise<
+	| { ok: true; stdout: string; code: number | null }
+	| { ok: false; err: unknown }
+> {
+	const argv = buildGafferArgv(args, {
+		invokerId: telemetry.invokerId(),
+		invokedVia,
+	});
+	try {
+		const opts: ExecOpts = { cwd };
+		if (env !== undefined) opts.env = env;
+		if (timeoutMs !== undefined) opts.timeoutMs = timeoutMs;
+		const { stdout, code } = await spawnGaffer(argv, opts);
+		log(`gaffer ${args[0] ?? ""} exited ${code} in ${cwd}`);
+		return { ok: true, stdout, code };
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		log(`gaffer ${args[0] ?? ""} failed to run: ${msg}`);
+		return { ok: false, err };
+	}
+}
+
 export const hasCommand = (m: Manifest | null, name: string): boolean =>
 	m?.commands?.[name] != null;
 
@@ -221,6 +261,11 @@ export const hasFlag = (
 interface ExecOpts {
 	cwd?: string;
 	env?: NodeJS.ProcessEnv;
+	// Hard cap after which the spawn is killed and rejected. Defaults to
+	// SPAWN_TIMEOUT_MS, right for the quick local commands (manifest); a command
+	// that connects to KurrentDB and does network work (deploy --dry-run) passes a
+	// longer one so a valid-but-slow run isn't killed and reported as a failure.
+	timeoutMs?: number;
 }
 
 const SPAWN_TIMEOUT_MS = 10_000;
@@ -253,10 +298,20 @@ const SPAWN_TIMEOUT_MS = 10_000;
 // as args; the telemetry exception builder ships err.message
 // verbatim. The argv is reachable via the call-site log lines if
 // it's needed for debugging.
-function execFileAsync(
-	argv: string[],
-	options: ExecOpts = {},
-): Promise<string> {
+interface SpawnResult {
+	stdout: string;
+	stderr: string;
+	code: number | null;
+}
+
+// The one gaffer spawn. Resolves on close for any exit code (the caller decides
+// what a non-zero code means); rejects only when the process can't run at all -
+// a spawn failure (ENOENT/EACCES, err.code is the OS string) or a timeout
+// (err.killed). Stderr is attached to those rejections' cause so the reason isn't
+// lost. Error messages never embed the argv: gaffer.command may be an absolute
+// path and scaffold subcommands pass user paths as args; the telemetry exception
+// builder ships err.message verbatim, and the argv is reachable via the log lines.
+function spawnGaffer(argv: string[], options: ExecOpts): Promise<SpawnResult> {
 	return new Promise((resolve, reject) => {
 		const [head, ...rest] = argv;
 		if (!head) {
@@ -274,11 +329,11 @@ function execFileAsync(
 		const stderrChunks: Buffer[] = [];
 		let settled = false;
 
+		const stderrOf = (): string =>
+			Buffer.concat(stderrChunks).toString().trim();
 		const attachStderr = (err: Error): void => {
-			const stderr = Buffer.concat(stderrChunks).toString().trim();
-			if (stderr) {
-				(err as { cause?: unknown }).cause = { stderr };
-			}
+			const stderr = stderrOf();
+			if (stderr) (err as { cause?: unknown }).cause = { stderr };
 		};
 		const settle = (fn: () => void): void => {
 			if (settled) return;
@@ -290,41 +345,51 @@ function execFileAsync(
 		child.stdout?.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
 		child.stderr?.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
 
+		const timeoutMs = options.timeoutMs ?? SPAWN_TIMEOUT_MS;
 		const timer = setTimeout(() => {
 			settle(() => {
 				child.kill();
 				const err = new Error(
-					`Command timed out after ${SPAWN_TIMEOUT_MS}ms`,
+					`Command timed out after ${timeoutMs}ms`,
 				) as NodeJS.ErrnoException & { killed?: boolean };
 				err.killed = true;
 				attachStderr(err);
 				reject(err);
 			});
-		}, SPAWN_TIMEOUT_MS);
+		}, timeoutMs);
 
+		// Settles on whichever of `error`, the timeout, or `close` fires first.
+		// `close` follows `error` normally, but a Windows kill is best-effort and
+		// `close` can be slow, so we don't rely on it being the only settle path.
 		child.once("error", (err) => {
 			settle(() => {
 				attachStderr(err);
 				reject(err);
 			});
 		});
-
 		child.on("close", (code) => {
 			settle(() => {
-				if (code === 0) {
-					resolve(Buffer.concat(stdoutChunks).toString());
-					return;
-				}
-				const err = new Error("Command failed");
-				if (code !== null) {
-					// execFile's error.code carries the numeric exit code on
-					// non-zero exit; preserve that shape for callers that
-					// classify failures (telemetry's classifyManifestError).
-					(err as { code?: number }).code = code;
-				}
-				attachStderr(err);
-				reject(err);
+				resolve({
+					stdout: Buffer.concat(stdoutChunks).toString(),
+					stderr: stderrOf(),
+					code,
+				});
 			});
 		});
 	});
+}
+
+// Rejects on a non-zero exit, preserving the error shape callers classify:
+// err.code carries the numeric exit code and err.cause.stderr the trimmed stderr
+// (telemetry's classifyManifestError depends on this).
+async function execFileAsync(
+	argv: string[],
+	options: ExecOpts = {},
+): Promise<string> {
+	const { stdout, stderr, code } = await spawnGaffer(argv, options);
+	if (code === 0) return stdout;
+	const err = new Error("Command failed");
+	if (code !== null) (err as { code?: number }).code = code;
+	if (stderr) (err as { cause?: unknown }).cause = { stderr };
+	throw err;
 }

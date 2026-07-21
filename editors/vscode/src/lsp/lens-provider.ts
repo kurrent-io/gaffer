@@ -41,6 +41,7 @@ const IntentStatusLoading = "status-loading";
 const IntentSignIn = "sign-in";
 const IntentStatusBadges = "status-badges";
 const IntentActions = "actions";
+const IntentDeployPreview = "deploy-preview";
 
 // Server-reported per-environment health, validated at the wire boundary like
 // the lens arg payloads.
@@ -124,6 +125,13 @@ const ProjectionPickArgsSchema = v.object({
 // Args[0] for an env-block sign-in lens: the env that needs auth and the
 // declaring gaffer.toml.
 const SignInArgsSchema = v.object({
+	env: v.string(),
+	configURI: v.string(),
+});
+
+// Args[0] for an env-block deploy lens (Preview today): the env to plan against
+// and the declaring gaffer.toml.
+const DeployEnvArgsSchema = v.object({
 	env: v.string(),
 	configURI: v.string(),
 });
@@ -313,6 +321,9 @@ export class LspCodeLensProvider
 		if (intent === IntentActions) {
 			return this.#decorateActions(sl, range);
 		}
+		if (intent === IntentDeployPreview) {
+			return this.#decorateDeployPreview(sl, range);
+		}
 		// Unknown intent: pass through with the server's title and
 		// command, but trust-gate it. Future intents we don't yet
 		// know about still respect the workspace-trust contract -
@@ -484,6 +495,29 @@ export class LspCodeLensProvider
 			title: "$(key) Sign in",
 			command: "gaffer.signIn",
 			arguments: [{ env: args.env, tomlUri }],
+		});
+	}
+
+	// The env-block "Preview" lens opens the deploy plan for the whole project
+	// against that env (a --dry-run). Trust-gated because it spawns gaffer.
+	#decorateDeployPreview(
+		sl: LspCodeLens,
+		range: vscode.Range,
+	): vscode.CodeLens | null {
+		const parsed = v.safeParse(DeployEnvArgsSchema, sl.command?.arguments?.[0]);
+		if (!parsed.success) {
+			log(
+				`Lens: rejecting deploy-preview args: ${parsed.issues.map((i) => i.message).join("; ")}`,
+			);
+			return null;
+		}
+		if (!vscode.workspace.isTrusted) return null;
+		const tomlUri = parseConfigURI(parsed.output.configURI);
+		if (!tomlUri) return null;
+		return new vscode.CodeLens(range, {
+			title: "$(eye) Preview",
+			command: "gaffer.deployPreview",
+			arguments: [{ env: parsed.output.env, tomlUri }],
 		});
 	}
 

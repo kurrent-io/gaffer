@@ -224,6 +224,9 @@ export async function captureGafferCommand(
 	telemetry: SpawnTelemetry,
 	invokedVia: InvokedVia,
 	env: NodeJS.ProcessEnv | undefined = gafferSpawnEnv(telemetry.isOptedOut()),
+	// Override the spawn's hard timeout for a command that does network work and
+	// can legitimately outrun the default (deploy --dry-run connects and plans).
+	timeoutMs?: number,
 ): Promise<
 	| { ok: true; stdout: string; code: number | null }
 	| { ok: false; err: unknown }
@@ -235,6 +238,7 @@ export async function captureGafferCommand(
 	try {
 		const opts: ExecOpts = { cwd };
 		if (env !== undefined) opts.env = env;
+		if (timeoutMs !== undefined) opts.timeoutMs = timeoutMs;
 		const { stdout, code } = await spawnGaffer(argv, opts);
 		log(`gaffer ${args[0] ?? ""} exited ${code} in ${cwd}`);
 		return { ok: true, stdout, code };
@@ -257,6 +261,11 @@ export const hasFlag = (
 interface ExecOpts {
 	cwd?: string;
 	env?: NodeJS.ProcessEnv;
+	// Hard cap after which the spawn is killed and rejected. Defaults to
+	// SPAWN_TIMEOUT_MS, right for the quick local commands (manifest); a command
+	// that connects to KurrentDB and does network work (deploy --dry-run) passes a
+	// longer one so a valid-but-slow run isn't killed and reported as a failure.
+	timeoutMs?: number;
 }
 
 const SPAWN_TIMEOUT_MS = 10_000;
@@ -336,17 +345,18 @@ function spawnGaffer(argv: string[], options: ExecOpts): Promise<SpawnResult> {
 		child.stdout?.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
 		child.stderr?.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
 
+		const timeoutMs = options.timeoutMs ?? SPAWN_TIMEOUT_MS;
 		const timer = setTimeout(() => {
 			settle(() => {
 				child.kill();
 				const err = new Error(
-					`Command timed out after ${SPAWN_TIMEOUT_MS}ms`,
+					`Command timed out after ${timeoutMs}ms`,
 				) as NodeJS.ErrnoException & { killed?: boolean };
 				err.killed = true;
 				attachStderr(err);
 				reject(err);
 			});
-		}, SPAWN_TIMEOUT_MS);
+		}, timeoutMs);
 
 		// Settles on whichever of `error`, the timeout, or `close` fires first.
 		// `close` follows `error` normally, but a Windows kill is best-effort and

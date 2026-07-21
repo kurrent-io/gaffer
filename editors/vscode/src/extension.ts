@@ -128,6 +128,11 @@ function gafferCommandCustomValue(): string[] | null {
 	return val;
 }
 
+// Hard cap for a deploy-plan preview's `deploy --dry-run` spawn: generous
+// (2 min) because it connects and plans every projection, so a large project on
+// a slow link isn't killed at the default spawn timeout and misreported.
+const DEPLOY_PREVIEW_TIMEOUT_MS = 120_000;
+
 // Module-level telemetry handle so deactivate() can drain in-flight
 // envelopes before VS Code kills the extension host. Set during
 // activation; never reassigned after.
@@ -651,6 +656,10 @@ async function activateAfterTelemetry(
 						telemetry,
 						"code_lens",
 						gafferRunEnv(telemetry.isOptedOut()),
+						// A dry-run connects and plans every projection; give it far more
+						// than the default spawn timeout so a large project or slow link
+						// isn't killed and misreported as a preview failure.
+						DEPLOY_PREVIEW_TIMEOUT_MS,
 					),
 			});
 			return vscode.Disposable.from(

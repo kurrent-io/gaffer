@@ -389,4 +389,18 @@ describe("captureGafferCommand", () => {
 		);
 		expect(res.ok).toBe(false);
 	});
+
+	it("kills and fails a spawn that outruns the given timeout", async () => {
+		const stub = writeStub("#!/bin/sh\nsleep 5\necho '{}'\n");
+		setConfiguration("gaffer", "command", { globalValue: [stub] });
+		const res = await captureGafferCommand(
+			["deploy"],
+			tmpRoot,
+			tel,
+			"code_lens",
+			undefined,
+			150,
+		);
+		expect(res.ok).toBe(false);
+	});
 });

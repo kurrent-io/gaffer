@@ -36,7 +36,7 @@ export interface DeploySummaryCounts {
 // settles one projection's row, `deploy-done` shows the final result summary, and
 // `deploy-error` reports an apply that couldn't run.
 export type DeployPlanMessage =
-	| { type: "plan"; report: PlanReport }
+	| { type: "plan"; report: PlanReport; token: number }
 	| { type: "deploy-started" }
 	| { type: "deploy-active"; name: string }
 	| { type: "deploy-item"; name: string; outcome: string; detail?: string }
@@ -67,6 +67,10 @@ export class DeployPlanView implements vscode.Disposable {
 	// Guards against a second deploy while one runs, and stops a preview that
 	// resolves mid-apply from clobbering the streaming plan.
 	#deploying = false;
+	// Bumped on every render; the webview echoes the current token with a Deploy
+	// click, so a click against a plan the panel has since re-rendered away from
+	// is dropped (identity, not env-name matching).
+	#planToken = 0;
 	readonly #handlers: DeployPlanHandlers;
 
 	constructor(handlers: DeployPlanHandlers) {
@@ -107,9 +111,10 @@ export class DeployPlanView implements vscode.Disposable {
 				this.#deploying = false;
 			});
 		}
+		this.#planToken += 1;
 		this.#panel.title = planTitle(ctx.env);
 		this.#panel.reveal(this.#panel.viewColumn);
-		this.#post({ type: "plan", report });
+		this.#post({ type: "plan", report, token: this.#planToken });
 	}
 
 	#handleMessage(msg: unknown): void {
@@ -130,11 +135,10 @@ export class DeployPlanView implements vscode.Disposable {
 			// Re-entrancy guard: a second deploy (a double-click, or a queued click)
 			// while one is in flight is dropped, so we never spawn two applies.
 			if (this.#deploying) return;
-			// The click carries the env it was shown against; if a concurrent
-			// preview has since re-rendered the panel to a different env, this
-			// deploy is stale - drop it rather than apply the wrong plan.
-			const env = (msg as { env?: unknown }).env;
-			if (typeof env !== "string" || env !== this.#ctx.env) return;
+			// The click carries the token of the plan it was shown against; if a
+			// concurrent preview has since re-rendered the panel (bumping the token),
+			// this deploy is stale - drop it rather than apply the wrong plan.
+			if ((msg as { token?: unknown }).token !== this.#planToken) return;
 			const noValidate = (msg as { noValidate?: unknown }).noValidate === true;
 			this.#deploying = true;
 			this.#handlers.onDeploy(this.#ctx, this.#report, noValidate, (m) =>

@@ -43,13 +43,28 @@ function onlyPanel(): FakeWebviewPanel {
 	return p;
 }
 
+// The token from the panel's most recent "plan" message, echoed by a Deploy
+// click so the host can drop a stale one.
+function planToken(): number {
+	const posted = onlyPanel().webview.postedMessages;
+	for (let i = posted.length - 1; i >= 0; i--) {
+		const m = posted[i] as { type?: unknown; token?: unknown };
+		if (m && m.type === "plan" && typeof m.token === "number") return m.token;
+	}
+	return -1;
+}
+
 describe("DeployPlanView", () => {
 	it("creates one panel and posts the plan", () => {
 		makeView().show(report, { env: "staging", tomlUri });
 		const p = onlyPanel();
 		expect(p.title).toBe("Deploy plan: staging");
 		expect(p.webview.html).toContain("acquireVsCodeApi");
-		expect(p.webview.postedMessages).toContainEqual({ type: "plan", report });
+		expect(p.webview.postedMessages).toContainEqual({
+			type: "plan",
+			report,
+			token: 1,
+		});
 	});
 
 	it("reuses the panel on a re-preview and re-renders in place", () => {
@@ -90,7 +105,7 @@ describe("DeployPlanView", () => {
 		onlyPanel().webview.emitMessage({
 			command: "deploy",
 			noValidate: true,
-			env: "staging",
+			token: planToken(),
 		});
 		expect(calls).toEqual([
 			{ ctx: { env: "staging", tomlUri }, rep: report, noValidate: true },
@@ -111,7 +126,7 @@ describe("DeployPlanView", () => {
 			},
 		}).show(report, { env: "staging", tomlUri });
 		const wv = onlyPanel().webview;
-		const deploy = { command: "deploy", noValidate: false, env: "staging" };
+		const deploy = { command: "deploy", noValidate: false, token: planToken() };
 		wv.emitMessage(deploy);
 		wv.emitMessage(deploy); // second, mid-flight -> ignored
 		expect(calls).toBe(1);
@@ -121,7 +136,7 @@ describe("DeployPlanView", () => {
 		expect(calls).toBe(2);
 	});
 
-	it("drops a deploy whose env no longer matches the shown plan", () => {
+	it("drops a deploy whose plan token is stale", () => {
 		let calls = 0;
 		makeView({ onDeploy: () => calls++ }).show(report, {
 			env: "staging",
@@ -130,7 +145,7 @@ describe("DeployPlanView", () => {
 		onlyPanel().webview.emitMessage({
 			command: "deploy",
 			noValidate: false,
-			env: "prod", // stale: panel is showing staging
+			token: planToken() + 1, // stale: the panel has re-rendered since
 		});
 		expect(calls).toBe(0);
 	});

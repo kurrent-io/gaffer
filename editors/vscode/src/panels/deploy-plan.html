@@ -302,9 +302,9 @@
 			// a projection's row in place.
 			let rowEls = new Map();
 
-			// The env of the plan currently rendered, sent with a Deploy click so the
-			// host can drop the deploy if the panel has since re-rendered to another.
-			let currentEnv = "";
+			// The token of the plan currently rendered, sent with a Deploy click so
+			// the host can drop it if the panel has since re-rendered to another plan.
+			let currentToken = 0;
 
 			// This is a plan, so show what a deploy WOULD do, not the past-tense
 			// result words the shared JSON outcome carries (created/updated/...).
@@ -461,7 +461,6 @@
 
 			function render(report) {
 				enterPlanMode();
-				currentEnv = report.env || "";
 				renderHeader(report);
 				renderSummary(report);
 				renderDrift(report);
@@ -507,13 +506,13 @@
 			function deployButton(noValidate) {
 				const btn = button("primary", "Deploy", () => {
 					// Disable on click so a rapid double-click can't post twice before
-					// the host switches the footer to progress; carry the shown env so
+					// the host switches the footer to progress; carry the plan token so
 					// a stale click (panel re-rendered since) is dropped host-side.
 					btn.disabled = true;
 					vscode.postMessage({
 						command: "deploy",
 						noValidate,
-						env: currentEnv,
+						token: currentToken,
 					});
 				});
 				return btn;
@@ -626,15 +625,24 @@
 
 			function onDeployDone(summary) {
 				enterMessageMode();
-				const ok = !summary.failed;
-				const headline = ok
-					? "Successfully deployed"
-					: `Deployed with ${summary.failed} failed`;
+				const failed = summary.failed || 0;
+				// A blocked plan deployed with the bypass skips its invalid/refused
+				// projections - deployed, but not "successfully" (those didn't apply).
+				const skipped = (summary.invalid || 0) + (summary.refused || 0);
+				let headline, cls;
+				if (failed > 0) {
+					headline = `Deployed with ${failed} failed`;
+					cls = "fail";
+				} else if (skipped > 0) {
+					headline = "Deployed the valid projections";
+					cls = "ok";
+				} else {
+					headline = "Successfully deployed";
+					cls = "ok";
+				}
 				// Headline + past-tense breakdown on one line, each in its colour.
 				const line = block("done-line", "");
-				line.appendChild(
-					span("done-headline " + (ok ? "ok" : "fail"), headline),
-				);
+				line.appendChild(span("done-headline " + cls, headline));
 				for (const [key, label] of RESULT_SEGS) {
 					if (summary[key]) {
 						line.append(
@@ -668,7 +676,10 @@
 				if (!msg) return;
 				switch (msg.type) {
 					case "plan":
-						if (msg.report) render(msg.report);
+						if (msg.report) {
+							currentToken = msg.token;
+							render(msg.report);
+						}
 						break;
 					case "deploy-started":
 						enterMessageMode();

@@ -16,42 +16,53 @@
 			}
 			.header {
 				display: flex;
-				flex-wrap: wrap;
+				justify-content: space-between;
 				align-items: baseline;
-				gap: 0.5em 0.8em;
+				gap: 0.5em 1em;
 				padding-bottom: 0.8em;
 				border-bottom: 1px solid var(--vscode-panel-border);
+			}
+			.header-left {
+				display: flex;
+				align-items: baseline;
+				gap: 0.45em;
+				min-width: 0;
 			}
 			.env {
 				font-size: 1.2em;
 				font-weight: 600;
+				overflow-wrap: anywhere;
 			}
-			.target {
+			.prod {
+				padding: 0.05em 0.55em;
+				border-radius: 0.9em;
+				font-size: 0.72em;
+				font-weight: 700;
+				letter-spacing: 0.05em;
+				text-transform: uppercase;
+				white-space: nowrap;
+				color: var(
+					--vscode-editorWarning-foreground,
+					var(--vscode-charts-orange)
+				);
+				border: 1px solid
+					var(--vscode-editorWarning-foreground, var(--vscode-charts-orange));
+			}
+			.env-key {
 				color: var(--vscode-descriptionForeground);
-			}
-			.badge {
-				padding: 0.1em 0.55em;
-				border-radius: 0.8em;
-				font-size: 0.82em;
-				font-weight: 600;
+				font-family: var(--vscode-editor-font-family, monospace);
+				font-size: 0.9em;
 				white-space: nowrap;
 			}
-			.badge.prod {
-				background: var(--vscode-inputValidation-warningBackground);
-				color: var(--vscode-inputValidation-warningForeground, inherit);
-				border: 1px solid var(--vscode-inputValidation-warningBorder);
-			}
-			.verdict-in-sync {
-				color: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
-			}
-			.verdict-deployable {
-				color: var(--vscode-charts-blue, var(--vscode-textLink-foreground));
-			}
-			.verdict-blocked {
-				color: var(--vscode-errorForeground);
-			}
 			.summary {
-				margin: 0.9em 0 0.4em;
+				margin-top: 1.1em;
+				padding-top: 0.8em;
+				border-top: 1px solid var(--vscode-panel-border);
+			}
+			.seg {
+				font-weight: 600;
+			}
+			.sep {
 				color: var(--vscode-descriptionForeground);
 			}
 			.drift {
@@ -73,16 +84,28 @@
 				flex-wrap: wrap;
 				align-items: center;
 				gap: 0.5em;
-				padding: 0.5em 0.4em;
-				border-bottom: 1px solid var(--vscode-panel-border);
+				padding: 0.4em 0.4em;
+			}
+			.row-action {
+				margin-left: auto;
+				background: var(--vscode-button-secondaryBackground);
+				color: var(--vscode-button-secondaryForeground);
+				border: none;
+				border-radius: 3px;
+				padding: 0.2em 0.7em;
+				font-size: 0.85em;
+				font-family: inherit;
 				cursor: pointer;
 			}
-			li.row:hover {
-				background: var(--vscode-list-hoverBackground);
+			.row-action:hover {
+				background: var(--vscode-button-secondaryHoverBackground);
+			}
+			li.row.unchanged {
+				opacity: 0.55;
 			}
 			.name {
 				font-weight: 600;
-				min-width: 8em;
+				flex: 0 0 var(--name-col, 8em);
 			}
 			.outcome {
 				font-size: 0.82em;
@@ -90,15 +113,25 @@
 				text-transform: uppercase;
 				letter-spacing: 0.03em;
 			}
-			.o-created,
-			.o-updated,
-			.o-rebuilt {
+			.o-created {
+				color: var(
+					--vscode-gitDecoration-addedResourceForeground,
+					var(--vscode-charts-green)
+				);
+			}
+			.o-updated {
 				color: var(--vscode-charts-blue, var(--vscode-textLink-foreground));
+			}
+			.o-rebuilt,
+			.o-refused {
+				color: var(
+					--vscode-editorWarning-foreground,
+					var(--vscode-charts-orange)
+				);
 			}
 			.o-skipped {
 				color: var(--vscode-descriptionForeground);
 			}
-			.o-refused,
 			.o-invalid,
 			.o-failed {
 				color: var(--vscode-errorForeground);
@@ -122,37 +155,47 @@
 				white-space: pre-wrap;
 				overflow-wrap: anywhere;
 			}
+			.detail.code {
+				font-family: var(--vscode-editor-font-family, monospace);
+				white-space: pre;
+				overflow-x: auto;
+				margin: 0.4em 0.4em 0.5em;
+				padding: 0.7em 0.9em;
+				background: var(
+					--vscode-textCodeBlock-background,
+					rgba(127, 127, 127, 0.1)
+				);
+				border-radius: 4px;
+			}
 			.empty {
 				margin-top: 1em;
 				color: var(--vscode-descriptionForeground);
-				font-style: italic;
-			}
-			.hint {
-				margin-top: 1.2em;
-				color: var(--vscode-descriptionForeground);
-				font-size: 0.85em;
 				font-style: italic;
 			}
 		</style>
 	</head>
 	<body>
 		<div class="header" id="header"></div>
-		<div id="summary" class="summary"></div>
 		<div id="drift"></div>
 		<ul class="plan" id="plan"></ul>
-		<div class="hint" id="hint"></div>
+		<div id="summary" class="summary"></div>
 		<script nonce="{{NONCE}}">
 			const vscode = acquireVsCodeApi();
 			const headerEl = document.getElementById("header");
 			const summaryEl = document.getElementById("summary");
 			const driftEl = document.getElementById("drift");
 			const planEl = document.getElementById("plan");
-			const hintEl = document.getElementById("hint");
 
-			const VERDICT_LABEL = {
-				"in-sync": "In sync",
-				deployable: "Deployable",
-				blocked: "Blocked",
+			// This is a plan, so show what a deploy WOULD do, not the past-tense
+			// result words the shared JSON outcome carries (created/updated/...).
+			const PLAN_LABEL = {
+				created: "create",
+				updated: "update",
+				rebuilt: "rebuild",
+				skipped: "unchanged",
+				refused: "recreate",
+				invalid: "invalid",
+				failed: "error",
 			};
 
 			function span(cls, text) {
@@ -162,40 +205,66 @@
 				return el;
 			}
 
-			function renderHeader(report) {
-				headerEl.replaceChildren();
-				headerEl.appendChild(span("env", report.env || "environment"));
-				if (report.target) {
-					headerEl.appendChild(span("target", report.target));
-				}
-				if (report.production) {
-					headerEl.appendChild(span("badge prod", "PRODUCTION"));
-				}
-				const verdict = report.verdict || "";
-				const label = VERDICT_LABEL[verdict] || verdict;
-				headerEl.appendChild(span("badge verdict-" + verdict, label));
+			function block(cls, text) {
+				const el = document.createElement("div");
+				el.className = cls;
+				el.textContent = text;
+				return el;
 			}
 
+			function renderHeader(report) {
+				headerEl.replaceChildren();
+				const left = block("header-left", "");
+				left.appendChild(
+					span("env", report.target || report.env || "environment"),
+				);
+				if (report.production) {
+					left.appendChild(span("prod", "production"));
+				}
+				headerEl.appendChild(left);
+				if (report.env) {
+					headerEl.appendChild(span("env-key", "env." + report.env));
+				}
+			}
+
+			// Per-action breakdown, mirroring the CLI plan roll-up: one segment per
+			// non-zero outcome, in plan-action order, each in its severity colour.
+			const SUMMARY_SEGS = [
+				["created", "to create"],
+				["updated", "to update"],
+				["rebuilt", "to rebuild"],
+				["refused", "to recreate"],
+				["skipped", "unchanged"],
+				["invalid", "invalid"],
+				["failed", "failed"],
+			];
+
 			function renderSummary(report) {
-				const n = report.changes || 0;
-				const total = (report.plan || []).length;
-				summaryEl.textContent =
-					n === 0
-						? total +
-							(total === 1
-								? " projection, none to apply"
-								: " projections, none to apply")
-						: n +
-							(n === 1
-								? " projection would change"
-								: " projections would change");
+				summaryEl.replaceChildren();
+				const counts = {};
+				for (const i of report.plan || [])
+					counts[i.outcome] = (counts[i.outcome] || 0) + 1;
+				const parts = [];
+				for (const [outcome, label] of SUMMARY_SEGS) {
+					if (counts[outcome]) {
+						parts.push(span("seg o-" + outcome, counts[outcome] + " " + label));
+					}
+				}
+				if (parts.length === 0) {
+					summaryEl.textContent = "No projections configured.";
+					return;
+				}
+				parts.forEach((part, i) => {
+					if (i > 0) summaryEl.appendChild(span("sep", " · "));
+					summaryEl.appendChild(part);
+				});
 			}
 
 			function renderDrift(report) {
 				driftEl.replaceChildren();
 				if (report.configDriftError) {
 					driftEl.appendChild(
-						span(
+						block(
 							"drift",
 							"[database_config] check couldn't run: " +
 								report.configDriftError,
@@ -209,25 +278,37 @@
 					(d) => d.knob + ": server " + d.server + ", local " + d.local,
 				);
 				driftEl.appendChild(
-					span(
+					block(
 						"drift",
 						"[database_config] diverges from the target:\n" + lines.join("\n"),
 					),
 				);
 			}
 
+			// recreate isn't listed here: it's carried by the "recreate" outcome
+			// itself (a refused item is always a recreate-required one).
 			const TAGS = [
-				["recreate", "recreate required"],
 				["faulted", "faulted"],
 				["emittingReset", "re-emits"],
 				["logicChange", "logic change"],
 			];
 
+			// The explicit per-row action, keyed by outcome. An update can be diffed
+			// against what's deployed; create/unchanged have nothing to act on.
+			const ROW_ACTION = {
+				updated: { command: "diff", label: "Diff" },
+			};
+
 			function renderRow(item) {
 				const li = document.createElement("li");
-				li.className = "row";
+				li.className = item.outcome === "skipped" ? "row unchanged" : "row";
 				li.appendChild(span("name", item.name));
-				li.appendChild(span("outcome o-" + item.outcome, item.outcome));
+				li.appendChild(
+					span(
+						"outcome o-" + item.outcome,
+						PLAN_LABEL[item.outcome] || item.outcome,
+					),
+				);
 				for (const [key, text] of TAGS) {
 					if (item[key]) li.appendChild(span("tag warn", text));
 				}
@@ -237,11 +318,23 @@
 						: "changed externally";
 					li.appendChild(span("tag warn", t));
 				}
+				const action = ROW_ACTION[item.outcome];
+				if (action) {
+					const btn = document.createElement("button");
+					btn.className = "row-action";
+					btn.textContent = action.label;
+					btn.addEventListener("click", () => {
+						vscode.postMessage({ command: action.command, name: item.name });
+					});
+					li.appendChild(btn);
+				}
+				// invalid/failed carry a code diagnostic (compile error, frame) that
+				// needs a monospace font to line up; a refusal's reason is prose.
 				const detail = item.error || item.reason;
-				if (detail) li.appendChild(span("detail", detail));
-				li.addEventListener("click", () => {
-					vscode.postMessage({ command: "diff", name: item.name });
-				});
+				if (detail) {
+					const code = item.outcome === "invalid" || item.outcome === "failed";
+					li.appendChild(span(code ? "detail code" : "detail", detail));
+				}
 				return li;
 			}
 
@@ -251,16 +344,19 @@
 				renderDrift(report);
 				planEl.replaceChildren();
 				const items = report.plan || [];
+				// Size the name column to the longest name so the outcomes align.
+				const maxName = items.reduce(
+					(m, i) => Math.max(m, (i.name || "").length),
+					0,
+				);
+				planEl.style.setProperty("--name-col", maxName + 2 + "ch");
 				if (items.length === 0) {
 					const li = document.createElement("li");
 					li.appendChild(span("empty", "No projections configured."));
 					planEl.appendChild(li);
-					hintEl.textContent = "";
 					return;
 				}
 				for (const item of items) planEl.appendChild(renderRow(item));
-				hintEl.textContent =
-					"Click a projection to diff it against what's deployed.";
 			}
 
 			window.addEventListener("message", (event) => {

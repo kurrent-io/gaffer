@@ -1,7 +1,7 @@
 // Editor-area webview that renders a deploy plan (a `gaffer deploy --dry-run`
-// result): per-projection change kind and warnings, the env/target header and
-// verdict, and any [database_config] drift. Read-only - clicking a projection
-// opens its native source diff.
+// result): the env/target header, each projection's change kind and warnings, a
+// per-action summary, and any [database_config] drift. Read-only - an updated
+// projection's Diff button opens its native source diff.
 //
 // One reusable panel: a new preview reveals and re-renders the existing tab
 // rather than stacking tabs. HTML lives in deploy-plan.html (loaded raw at build

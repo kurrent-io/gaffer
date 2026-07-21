@@ -381,7 +381,7 @@ describe("LspCodeLensProvider", () => {
 		expect(await getLenses(p)).toEqual([]);
 	});
 
-	it("decorates a deploy-preview lens with the eye icon and gaffer.deployPreview command", async () => {
+	it("decorates a deploy-preview lens with the rocket icon and gaffer.deployPreview command", async () => {
 		setLspRequestHandler("textDocument/codeLens", () => [
 			deployPreviewLens({ env: "staging", configURI: "file:///p/gaffer.toml" }),
 		]);
@@ -389,7 +389,7 @@ describe("LspCodeLensProvider", () => {
 		p.setClient(makeClient());
 		const lenses = await getLenses(p);
 		expect(lenses).toHaveLength(1);
-		expect(lenses[0]?.command?.title).toBe("$(eye) Preview");
+		expect(lenses[0]?.command?.title).toBe("$(rocket) Deploy");
 		expect(lenses[0]?.command?.command).toBe("gaffer.deployPreview");
 		const args = lenses[0]?.command?.arguments?.[0] as {
 			env: string;

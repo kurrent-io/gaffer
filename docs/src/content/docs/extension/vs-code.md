@@ -35,7 +35,9 @@ The summary is a count per state: how many are **in sync**, then anything needin
 
 When an environment needs authentication, the summary is replaced by a **Sign in** action; see [Authentication](#authentication) for the flow. It also reappears for an environment you signed in to before whose token has since expired or been revoked. Once you sign in, the summary refreshes on its own, so there's no need to reload the window. If the status read can't complete (the target is unreachable, or the config doesn't compile), the summary reads **status unavailable** rather than a false **in sync**, and hovering shows the reason. Status is read-only: it never deploys, starts, or stops anything.
 
-Beside the summary, a **Preview** action opens the deploy plan for the whole project against that environment. It shows what a deploy would create, update, rebuild, or recreate, alongside anything invalid. The plan flags the warnings worth seeing first: a logic change, a faulted projection, a rebuild that re-emits, a definition changed outside gaffer, or a `[database_config]` divergence. It opens in an editor tab; an updated projection has a **Diff** action that opens its deployed-vs-local diff, and an invalid one shows its compile error inline. Like the summary it's read-only: it runs `gaffer deploy --dry-run` and stops at the plan, applying nothing. Preview appears once the environment's status has resolved and you're signed in.
+Leading each block, a **Deploy** action opens the deploy plan for the whole project against that environment in an editor tab. It shows what a deploy would create, update, rebuild, or recreate, alongside anything invalid. The plan flags the warnings worth seeing first: a logic change, a faulted projection, a rebuild that re-emits, a definition changed outside gaffer, or a `[database_config]` divergence. An updated projection has a **Diff** action that opens its deployed-vs-local diff, and an invalid one shows its compile error inline. The plan opens read-only (a `gaffer deploy --dry-run`); it appears once the environment's status has resolved and you're signed in.
+
+Deploying is confirmed natively, front-loading production: silent for a non-production plan with no rebuild, a modal accept when production or a rebuild is involved, and typing the environment name for a production rebuild. A blocked plan can't deploy until it's fixed; off production, a checkbox deploys the valid projections and skips the rest. The apply streams each projection's result into the plan in place, then a summary.
 
 The summary appears above bare-key `[env.name]` headers. An environment declared with a quoted key (`[env."my env"]`) has no summary line.
 
@@ -106,7 +108,7 @@ See [MCP](../cli/mcp.md) for the tools and resources gaffer exposes, and for con
 | `Gaffer: Stop`               | CodeLens or command palette      | Stop the running session.                                                                                                                |
 | `Gaffer: Sign In to Environment` | CodeLens                     | Open a `gaffer auth --env <name>` terminal for an environment that needs authentication.                                                 |
 | `Gaffer: Projection Actions` | CodeLens                         | Open the per-projection action menu, grouped by environment. Currently offers diffing local against what's deployed.                     |
-| `Gaffer: Preview Deploy Plan` | CodeLens                        | Open the deploy plan for the whole project against an environment (runs `gaffer deploy --dry-run`). Read-only; opens in an editor tab.   |
+| `Gaffer: Deploy Plan`        | CodeLens                         | Open the deploy plan for the whole project against an environment: review the `gaffer deploy --dry-run` plan in an editor tab, then deploy from it. |
 
 ## Telemetry
 

@@ -141,6 +141,42 @@ const RunErrorMessageSchema = v.object({
 	description: v.string(),
 });
 
+// `gaffer deploy --json --stream` progress: a deploy_start as each projection's
+// apply begins, a deploy_result as it settles (the per-item DeployJSON shape),
+// and a terminal deploy_summary of outcome counts. Consumed by the deploy-plan
+// webview to stream the apply.
+const DeployStartMessageSchema = v.object({
+	type: v.literal("deploy_start"),
+	name: v.string(),
+	index: v.number(),
+	total: v.number(),
+});
+
+const DeployResultMessageSchema = v.object({
+	type: v.literal("deploy_result"),
+	name: v.string(),
+	outcome: v.string(),
+	recreate: v.optional(v.boolean()),
+	logicChange: v.optional(v.boolean()),
+	externalChange: v.optional(v.boolean()),
+	externalChangeTool: v.optional(v.string()),
+	faulted: v.optional(v.boolean()),
+	emittingReset: v.optional(v.boolean()),
+	reason: v.optional(v.string()),
+	error: v.optional(v.string()),
+});
+
+const DeploySummaryMessageSchema = v.object({
+	type: v.literal("deploy_summary"),
+	created: v.number(),
+	updated: v.number(),
+	rebuilt: v.number(),
+	skipped: v.number(),
+	refused: v.number(),
+	invalid: v.number(),
+	failed: v.number(),
+});
+
 // CLI-emitted messages as they appear on stdout. v.variant is O(1) on the
 // discriminator vs v.union's linear try-each.
 export const CliMessageWireSchema = v.variant("type", [
@@ -154,6 +190,9 @@ export const CliMessageWireSchema = v.variant("type", [
 	FatalErrorMessageSchema,
 	AuthRequiredMessageSchema,
 	RunErrorMessageSchema,
+	DeployStartMessageSchema,
+	DeployResultMessageSchema,
+	DeploySummaryMessageSchema,
 ]);
 export type CliMessageWire = v.InferOutput<typeof CliMessageWireSchema>;
 

@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as vscode from "vscode";
-import { DeployPlanView, type DeployPlanContext } from "./deploy-plan.js";
+import {
+	DeployPlanView,
+	type DeployPlanContext,
+	type DeployPlanHandlers,
+} from "./deploy-plan.js";
 import type { PlanReport } from "../commands/deploy-plan.js";
 import { getState, resetVscode } from "../../test/testutil/vscode-state.js";
 import type { FakeWebviewPanel } from "../../test/__mocks__/vscode.js";
@@ -20,11 +24,17 @@ afterEach(() => {
 	resetVscode();
 });
 
+function makeView(handlers: Partial<DeployPlanHandlers> = {}): DeployPlanView {
+	return new DeployPlanView({
+		onDiff: handlers.onDiff ?? (() => {}),
+		onDeploy: handlers.onDeploy ?? (() => {}),
+	});
+}
+
 function panels(): readonly FakeWebviewPanel[] {
 	return getState().webviewPanels;
 }
 
-// Assert exactly one panel exists and return it, non-undefined for the assertions.
 function onlyPanel(): FakeWebviewPanel {
 	const ps = panels();
 	expect(ps).toHaveLength(1);
@@ -35,7 +45,7 @@ function onlyPanel(): FakeWebviewPanel {
 
 describe("DeployPlanView", () => {
 	it("creates one panel and posts the plan", () => {
-		new DeployPlanView(() => {}).show(report, { env: "staging", tomlUri });
+		makeView().show(report, { env: "staging", tomlUri });
 		const p = onlyPanel();
 		expect(p.title).toBe("Deploy plan: staging");
 		expect(p.webview.html).toContain("acquireVsCodeApi");
@@ -43,7 +53,7 @@ describe("DeployPlanView", () => {
 	});
 
 	it("reuses the panel on a re-preview and re-renders in place", () => {
-		const view = new DeployPlanView(() => {});
+		const view = makeView();
 		view.show(report, { env: "staging", tomlUri });
 		view.show({ ...report, env: "prod" }, { env: "prod", tomlUri });
 		const p = onlyPanel();
@@ -52,31 +62,63 @@ describe("DeployPlanView", () => {
 		expect(p.webview.postedMessages).toHaveLength(2);
 	});
 
-	it("dispatches a diff request from a row click", () => {
+	it("dispatches a diff request from a row's Diff button", () => {
 		const diffed: { ctx: DeployPlanContext; name: string }[] = [];
-		new DeployPlanView((ctx, name) => diffed.push({ ctx, name })).show(report, {
-			env: "staging",
-			tomlUri,
-		});
+		makeView({ onDiff: (ctx, name) => diffed.push({ ctx, name }) }).show(
+			report,
+			{
+				env: "staging",
+				tomlUri,
+			},
+		);
 		onlyPanel().webview.emitMessage({ command: "diff", name: "a" });
 		expect(diffed).toEqual([{ ctx: { env: "staging", tomlUri }, name: "a" }]);
 	});
 
-	it("ignores malformed webview messages", () => {
-		const diffed: unknown[] = [];
-		new DeployPlanView((ctx, name) => diffed.push({ ctx, name })).show(report, {
-			env: "staging",
-			tomlUri,
+	it("dispatches deploy with the report and bypass flag, and streams back", () => {
+		const calls: {
+			ctx: DeployPlanContext;
+			rep: PlanReport;
+			noValidate: boolean;
+		}[] = [];
+		makeView({
+			onDeploy: (ctx, rep, noValidate, send) => {
+				calls.push({ ctx, rep, noValidate });
+				send({ type: "deploy-started" });
+			},
+		}).show(report, { env: "staging", tomlUri });
+		onlyPanel().webview.emitMessage({ command: "deploy", noValidate: true });
+		expect(calls).toEqual([
+			{ ctx: { env: "staging", tomlUri }, rep: report, noValidate: true },
+		]);
+		// The send callback posts progress back to this panel's webview.
+		expect(onlyPanel().webview.postedMessages).toContainEqual({
+			type: "deploy-started",
 		});
+	});
+
+	it("closes the panel on cancel", () => {
+		makeView().show(report, { env: "staging", tomlUri });
+		const p = onlyPanel();
+		p.webview.emitMessage({ command: "cancel" });
+		expect(p.disposed).toBe(true);
+	});
+
+	it("ignores malformed webview messages", () => {
+		const seen: unknown[] = [];
+		makeView({
+			onDiff: (ctx, name) => seen.push({ ctx, name }),
+			onDeploy: (ctx) => seen.push(ctx),
+		}).show(report, { env: "staging", tomlUri });
 		const wv = onlyPanel().webview;
 		wv.emitMessage({ command: "diff" }); // no name
 		wv.emitMessage({ command: "other", name: "a" });
 		wv.emitMessage(null);
-		expect(diffed).toHaveLength(0);
+		expect(seen).toHaveLength(0);
 	});
 
 	it("recreates the panel after the user closes it", () => {
-		const view = new DeployPlanView(() => {});
+		const view = makeView();
 		view.show(report, { env: "staging", tomlUri });
 		onlyPanel().emitDispose();
 		view.show(report, { env: "staging", tomlUri });

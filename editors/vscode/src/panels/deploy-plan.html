@@ -54,10 +54,43 @@
 				font-size: 0.9em;
 				white-space: nowrap;
 			}
-			.summary {
+			.footer {
 				margin-top: 1.1em;
 				padding-top: 0.8em;
 				border-top: 1px solid var(--vscode-panel-border);
+			}
+			.footer-note {
+				margin-bottom: 0.7em;
+			}
+			.footer-note:empty {
+				display: none;
+			}
+			.footer-bar {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: center;
+				justify-content: space-between;
+				gap: 0.8em;
+			}
+			.footer-message {
+				display: flex;
+				flex-direction: column;
+				gap: 0.5em;
+			}
+			.footer-message:empty {
+				display: none;
+			}
+			.done-headline {
+				font-weight: 600;
+			}
+			.done-headline.ok {
+				color: var(--vscode-charts-green, var(--vscode-testing-iconPassed));
+			}
+			.done-headline.fail {
+				color: var(--vscode-errorForeground);
+			}
+			.hint-text {
+				color: var(--vscode-descriptionForeground);
 			}
 			.seg {
 				font-weight: 600;
@@ -71,6 +104,20 @@
 				border-left: 3px solid var(--vscode-inputValidation-warningBorder);
 				background: var(--vscode-inputValidation-warningBackground);
 				white-space: pre-wrap;
+				overflow-wrap: anywhere;
+				border-radius: 2px;
+			}
+			.alert {
+				padding: 0.5em 0.7em;
+				border-left: 3px solid
+					var(
+						--vscode-inputValidation-errorBorder,
+						var(--vscode-errorForeground)
+					);
+				background: var(
+					--vscode-inputValidation-errorBackground,
+					rgba(244, 135, 113, 0.15)
+				);
 				overflow-wrap: anywhere;
 				border-radius: 2px;
 			}
@@ -90,8 +137,8 @@
 				margin-left: auto;
 				background: var(--vscode-button-secondaryBackground);
 				color: var(--vscode-button-secondaryForeground);
-				border: none;
-				border-radius: 3px;
+				border: 1px solid var(--vscode-button-border, transparent);
+				border-radius: 2px;
 				padding: 0.2em 0.7em;
 				font-size: 0.85em;
 				font-family: inherit;
@@ -172,19 +219,88 @@
 				color: var(--vscode-descriptionForeground);
 				font-style: italic;
 			}
+			.actions {
+				display: flex;
+				align-items: center;
+				gap: 0.6em;
+			}
+			.bypass {
+				display: flex;
+				align-items: center;
+				gap: 0.4em;
+				color: var(--vscode-descriptionForeground);
+				font-size: 0.9em;
+			}
+			button.primary,
+			button.secondary {
+				border: 1px solid var(--vscode-button-border, transparent);
+				border-radius: 2px;
+				padding: 0.35em 1.1em;
+				font-size: inherit;
+				font-family: inherit;
+				line-height: 1.4;
+				cursor: pointer;
+			}
+			button.primary {
+				background: var(--vscode-button-background);
+				color: var(--vscode-button-foreground);
+			}
+			button.primary:hover:not(:disabled) {
+				background: var(--vscode-button-hoverBackground);
+			}
+			button.primary:disabled {
+				opacity: 0.5;
+				cursor: default;
+			}
+			button.secondary {
+				background: var(--vscode-button-secondaryBackground);
+				color: var(--vscode-button-secondaryForeground);
+			}
+			button.secondary:hover {
+				background: var(--vscode-button-secondaryHoverBackground);
+			}
+			.o-applying {
+				color: var(--vscode-descriptionForeground);
+			}
 		</style>
 	</head>
 	<body>
 		<div class="header" id="header"></div>
 		<div id="drift"></div>
 		<ul class="plan" id="plan"></ul>
-		<div id="summary" class="summary"></div>
+		<div class="footer">
+			<div id="footer-note" class="footer-note"></div>
+			<div id="footer-bar" class="footer-bar">
+				<div id="summary" class="summary"></div>
+				<div id="actions" class="actions"></div>
+			</div>
+			<div id="footer-message" class="footer-message"></div>
+		</div>
 		<script nonce="{{NONCE}}">
 			const vscode = acquireVsCodeApi();
 			const headerEl = document.getElementById("header");
 			const summaryEl = document.getElementById("summary");
 			const driftEl = document.getElementById("drift");
 			const planEl = document.getElementById("plan");
+			const actionsEl = document.getElementById("actions");
+			const footerNoteEl = document.getElementById("footer-note");
+			const footerBarEl = document.getElementById("footer-bar");
+			const footerMessageEl = document.getElementById("footer-message");
+
+			// The footer has two modes: the plan bar (summary + Deploy/Cancel) while
+			// reviewing, and a single message once an apply starts.
+			function enterMessageMode() {
+				footerNoteEl.replaceChildren();
+				footerBarEl.style.display = "none";
+			}
+			function enterPlanMode() {
+				footerBarEl.style.display = "";
+				footerMessageEl.replaceChildren();
+			}
+
+			// name -> row <li>, rebuilt each render so the streaming apply can update
+			// a projection's row in place.
+			let rowEls = new Map();
 
 			// This is a plan, so show what a deploy WOULD do, not the past-tense
 			// result words the shared JSON outcome carries (created/updated/...).
@@ -302,6 +418,7 @@
 			function renderRow(item) {
 				const li = document.createElement("li");
 				li.className = item.outcome === "skipped" ? "row unchanged" : "row";
+				li.dataset.name = item.name;
 				li.appendChild(span("name", item.name));
 				li.appendChild(
 					span(
@@ -339,10 +456,12 @@
 			}
 
 			function render(report) {
+				enterPlanMode();
 				renderHeader(report);
 				renderSummary(report);
 				renderDrift(report);
 				planEl.replaceChildren();
+				rowEls = new Map();
 				const items = report.plan || [];
 				// Size the name column to the longest name so the outcomes align.
 				const maxName = items.reduce(
@@ -354,15 +473,197 @@
 					const li = document.createElement("li");
 					li.appendChild(span("empty", "No projections configured."));
 					planEl.appendChild(li);
+					actionsEl.replaceChildren();
+					footerNoteEl.replaceChildren();
 					return;
 				}
-				for (const item of items) planEl.appendChild(renderRow(item));
+				for (const item of items) {
+					const li = renderRow(item);
+					rowEls.set(item.name, li);
+					planEl.appendChild(li);
+				}
+				renderActions(report);
+			}
+
+			function button(cls, label, onClick) {
+				const b = document.createElement("button");
+				b.className = cls;
+				b.textContent = label;
+				b.addEventListener("click", onClick);
+				return b;
+			}
+
+			function cancelButton(label) {
+				return button("secondary", label, () =>
+					vscode.postMessage({ command: "cancel" }),
+				);
+			}
+
+			function deployButton(noValidate) {
+				return button("primary", "Deploy", () =>
+					vscode.postMessage({ command: "deploy", noValidate }),
+				);
+			}
+
+			// The footer's Deploy / Cancel controls (right of the bar), gated on the
+			// plan's verdict. The bypass checkbox or prod note goes in footerNoteEl,
+			// its own line above the bar.
+			function renderActions(report) {
+				actionsEl.replaceChildren();
+				footerNoteEl.replaceChildren();
+				if ((report.plan || []).length === 0) return;
+				const verdict = report.verdict || "";
+
+				if (verdict === "in-sync") {
+					actionsEl.appendChild(cancelButton("Close"));
+					return;
+				}
+
+				if (verdict === "blocked") {
+					if (report.production) {
+						// --no-validate is refused on production, so the invalid
+						// projections can't be skipped. Show Deploy disabled with a
+						// visible reason (and a title) rather than dropping it - a lone
+						// Cancel reads as broken.
+						const reason =
+							"This is a production database, so invalid projections can't be skipped. Fix them to deploy.";
+						footerNoteEl.appendChild(block("alert", reason));
+						const deployBtn = deployButton(false);
+						deployBtn.disabled = true;
+						deployBtn.title = reason;
+						actionsEl.append(cancelButton("Cancel"), deployBtn);
+						return;
+					}
+					const deployBtn = deployButton(true);
+					deployBtn.disabled = true;
+					const check = document.createElement("input");
+					check.type = "checkbox";
+					check.id = "bypass";
+					check.addEventListener("change", () => {
+						deployBtn.disabled = !check.checked;
+					});
+					const label = document.createElement("label");
+					label.className = "bypass";
+					label.htmlFor = "bypass";
+					label.append(
+						check,
+						document.createTextNode(
+							"Deploy the valid projections, skip the rest",
+						),
+					);
+					footerNoteEl.appendChild(label);
+					actionsEl.append(cancelButton("Cancel"), deployBtn);
+					return;
+				}
+
+				// deployable
+				actionsEl.append(cancelButton("Cancel"), deployButton(false));
+			}
+
+			// Set a projection row's outcome cell (during the streaming apply).
+			function setRowOutcome(name, outcome, text) {
+				const li = rowEls.get(name);
+				if (!li) return;
+				li.classList.remove("unchanged");
+				const outEl = li.querySelector(".outcome");
+				if (outEl) {
+					outEl.className = "outcome o-" + outcome;
+					outEl.textContent = text;
+				}
+			}
+
+			function setRowDetail(name, detail, code) {
+				const li = rowEls.get(name);
+				if (!li) return;
+				const existing = li.querySelector(".detail");
+				if (existing) existing.remove();
+				if (detail)
+					li.appendChild(span(code ? "detail code" : "detail", detail));
+			}
+
+			function onDeployItem(msg) {
+				setRowOutcome(msg.name, msg.outcome, msg.outcome);
+				const code = msg.outcome === "invalid" || msg.outcome === "failed";
+				setRowDetail(msg.name, msg.detail, code);
+			}
+
+			// Past-tense result breakdown for the completion message, from the
+			// deploy_summary counts.
+			const RESULT_SEGS = [
+				["created", "created"],
+				["updated", "updated"],
+				["rebuilt", "rebuilt"],
+				["skipped", "unchanged"],
+				["refused", "refused"],
+				["invalid", "invalid"],
+				["failed", "failed"],
+			];
+
+			// A "you can close this window" line with a right-aligned Close button,
+			// reusing the footer bar's space-between layout.
+			function closeRow() {
+				const row = block("footer-bar", "");
+				row.append(
+					span("hint-text", "You can close this window."),
+					cancelButton("Close"),
+				);
+				return row;
+			}
+
+			function onDeployDone(summary) {
+				enterMessageMode();
+				const ok = !summary.failed;
+				const headline = ok
+					? "Successfully deployed"
+					: `Deployed with ${summary.failed} failed`;
+				// Headline + past-tense breakdown on one line, each in its colour.
+				const line = block("done-line", "");
+				line.appendChild(
+					span("done-headline " + (ok ? "ok" : "fail"), headline),
+				);
+				for (const [key, label] of RESULT_SEGS) {
+					if (summary[key]) {
+						line.append(
+							span("sep", " · "),
+							span("seg o-" + key, summary[key] + " " + label),
+						);
+					}
+				}
+				footerMessageEl.replaceChildren(line, closeRow());
+			}
+
+			function onDeployError(message) {
+				enterMessageMode();
+				footerMessageEl.replaceChildren(
+					span("done-headline fail", message),
+					closeRow(),
+				);
 			}
 
 			window.addEventListener("message", (event) => {
 				const msg = event.data;
-				if (!msg || msg.type !== "plan" || !msg.report) return;
-				render(msg.report);
+				if (!msg) return;
+				switch (msg.type) {
+					case "plan":
+						if (msg.report) render(msg.report);
+						break;
+					case "deploy-started":
+						enterMessageMode();
+						footerMessageEl.replaceChildren(span("hint-text", "Deploying…"));
+						break;
+					case "deploy-active":
+						setRowOutcome(msg.name, "applying", "applying…");
+						break;
+					case "deploy-item":
+						onDeployItem(msg);
+						break;
+					case "deploy-done":
+						onDeployDone(msg.summary);
+						break;
+					case "deploy-error":
+						onDeployError(msg.message);
+						break;
+				}
 			});
 		</script>
 	</body>

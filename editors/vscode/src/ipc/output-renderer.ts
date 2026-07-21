@@ -72,6 +72,12 @@ export function renderCliMessage(msg: CliMessage, write: WriteFn): void {
 		case "exit":
 			write(`Process exited (code ${msg.code})`);
 			break;
+		case "deploy_start":
+		case "deploy_result":
+		case "deploy_summary":
+			// Streamed by `deploy --json --stream` and consumed by the deploy-plan
+			// webview, not this run/dev output channel.
+			break;
 		default: {
 			// Exhaustiveness check: a new CliMessage variant added to schemas.ts
 			// without a matching case here is a TS error.

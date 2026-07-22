@@ -18,6 +18,10 @@ import deployPlanTemplate from "./deploy-plan.html?raw";
 export interface DeployPlanContext {
 	env: string;
 	tomlUri: vscode.Uri;
+	// The single projection this plan is scoped to (the per-projection Deploy
+	// action), or undefined for the whole-project env-block Deploy. Scopes the
+	// preview/apply spawns to `deploy <name>` and titles the tab.
+	name?: string;
 }
 
 // The outcome counts from the terminal deploy_summary NDJSON line.
@@ -89,7 +93,7 @@ export class DeployPlanView implements vscode.Disposable {
 		if (!this.#panel) {
 			this.#panel = vscode.window.createWebviewPanel(
 				"gaffer.deployPlan",
-				planTitle(ctx.env),
+				planTitle(ctx),
 				{ viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
 				{
 					enableScripts: true,
@@ -112,7 +116,7 @@ export class DeployPlanView implements vscode.Disposable {
 			});
 		}
 		this.#planToken += 1;
-		this.#panel.title = planTitle(ctx.env);
+		this.#panel.title = planTitle(ctx);
 		this.#panel.reveal(this.#panel.viewColumn);
 		this.#post({ type: "plan", report, token: this.#planToken });
 	}
@@ -167,8 +171,8 @@ export class DeployPlanView implements vscode.Disposable {
 	}
 }
 
-function planTitle(env: string): string {
-	return `Deploy plan: ${env}`;
+function planTitle(ctx: DeployPlanContext): string {
+	return `Deploy plan: ${ctx.name ?? ctx.env}`;
 }
 
 function generateNonce(): string {

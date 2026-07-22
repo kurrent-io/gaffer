@@ -67,6 +67,11 @@ describe("DeployPlanView", () => {
 		});
 	});
 
+	it("titles the tab by the projection name when the plan is scoped", () => {
+		makeView().show(report, { env: "staging", tomlUri, name: "orders" });
+		expect(onlyPanel().title).toBe("Deploy plan: orders");
+	});
+
 	it("reuses the panel on a re-preview and re-renders in place", () => {
 		const view = makeView();
 		view.show(report, { env: "staging", tomlUri });

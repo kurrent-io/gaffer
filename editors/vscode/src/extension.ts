@@ -643,13 +643,23 @@ async function activateAfterTelemetry(
 				requestDiff: requestProjectionDiff,
 			});
 			const operate = operateProjection({ request: requestOperateProjection });
-			// The env-block "Deploy" lens: a cold `deploy --dry-run --json` spawn
-			// renders the whole-project plan in the deploy-plan webview; a projection's
-			// Diff button reuses the action menu's diff, and the webview's Deploy button
-			// streams a cold `deploy --yes --json --stream` apply back into the plan.
+			// The "Deploy" actions: a cold `deploy [name] --dry-run --json` spawn
+			// renders the plan in the deploy-plan webview - whole-project from the
+			// env-block lens, or one projection from the per-projection action menu
+			// (which passes a name). A projection's Diff button reuses the action menu's
+			// diff, and the webview's Deploy button streams a cold `deploy [name] --yes
+			// --json --stream` apply back into the plan.
 			const apply = deployApply({
-				run: (env, cwd, noValidate, handlers) => {
-					const args = ["deploy", "--yes", "--json", "--stream", "--env", env];
+				run: (env, cwd, noValidate, name, handlers) => {
+					const args = [
+						"deploy",
+						...(name ? [name] : []),
+						"--yes",
+						"--json",
+						"--stream",
+						"--env",
+						env,
+					];
 					if (noValidate) args.push("--no-validate");
 					const argv = buildGafferArgv(args, {
 						invokerId: telemetry.invokerId(),
@@ -673,9 +683,16 @@ async function activateAfterTelemetry(
 			});
 			const preview = deployPreview({
 				view: deployView,
-				runDryRun: (env, cwd) =>
+				runDryRun: (env, cwd, name) =>
 					captureGafferCommand(
-						["deploy", "--dry-run", "--json", "--env", env],
+						[
+							"deploy",
+							...(name ? [name] : []),
+							"--dry-run",
+							"--json",
+							"--env",
+							env,
+						],
 						cwd,
 						telemetry,
 						"code_lens",

@@ -22,13 +22,16 @@ import type { DeployPlanContext, DeploySend } from "../panels/deploy-plan.js";
 const EXIT_AUTH_REQUIRED = 4;
 
 export interface DeployApplyDeps {
-	// Spawns `deploy --yes --json --stream` (plus --no-validate when bypassing) in
-	// the project directory and drives the callbacks with its NDJSON progress and
-	// exit code. A field so tests inject a fake in place of a live spawn.
+	// Spawns `deploy [name] --yes --json --stream` (plus --no-validate when
+	// bypassing) in the project directory and drives the callbacks with its NDJSON
+	// progress and exit code. `name` scopes the apply to one projection; undefined
+	// applies the whole project. A field so tests inject a fake in place of a live
+	// spawn.
 	run: (
 		env: string,
 		cwd: string,
 		noValidate: boolean,
+		name: string | undefined,
 		handlers: {
 			onLine: (msg: CliMessage) => void;
 			onExit: (code: number | null) => void;
@@ -53,7 +56,7 @@ export function deployApply(
 		send({ type: "deploy-started" });
 		const cwd = path.dirname(ctx.tomlUri.fsPath);
 		let sawSummary = false;
-		deps.run(ctx.env, cwd, noValidate, {
+		deps.run(ctx.env, cwd, noValidate, ctx.name, {
 			onLine: (msg) => {
 				if (msg.type === "deploy_start") {
 					send({ type: "deploy-active", name: msg.name });

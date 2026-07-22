@@ -58,9 +58,10 @@ describe("buildActionItems", () => {
 		expect(separators).toEqual(["local", "prod (default)"]);
 	});
 
-	it("offers diff + pause/resume (unknown state) + a single delete", () => {
+	it("offers deploy + diff + pause/resume (unknown state) + a single delete", () => {
 		const items = buildActionItems([{ name: "prod", default: true }]);
 		expect(actionLabels(items)).toEqual([
+			"$(rocket) Deploy",
 			"$(diff-single) Diff against deployed",
 			"$(debug-pause) Pause",
 			"$(debug-start) Resume",
@@ -73,6 +74,7 @@ describe("buildActionItems", () => {
 			{ name: "prod", default: true, state: "running" },
 		]);
 		expect(actionLabels(items)).toEqual([
+			"$(rocket) Deploy",
 			"$(diff-single) Diff against deployed",
 			"$(debug-pause) Pause",
 			"$(debug-stop) Abort",
@@ -85,6 +87,7 @@ describe("buildActionItems", () => {
 			{ name: "prod", default: true, state: "stopped" },
 		]);
 		expect(actionLabels(items)).toEqual([
+			"$(rocket) Deploy",
 			"$(diff-single) Diff against deployed",
 			"$(debug-start) Resume",
 			"$(trash) Delete",
@@ -98,6 +101,7 @@ describe("buildActionItems", () => {
 			{ name: "prod", default: true, state: "unknown" },
 		]);
 		expect(actionLabels(items)).toEqual([
+			"$(rocket) Deploy",
 			"$(diff-single) Diff against deployed",
 			"$(debug-pause) Pause",
 			"$(debug-start) Resume",
@@ -136,17 +140,21 @@ describe("buildActionItems", () => {
 		expect(actionLabels(items)).toEqual(["$(key) Sign in"]);
 	});
 
-	it("shows all actions for an unavailable env but labels the separator", () => {
+	it("collapses an unavailable env to a single non-actionable notice", () => {
 		const items = buildActionItems([
 			{ name: "local", default: true, status: "unavailable" },
 		]);
+		// The row states the status, so the separator carries no note that repeats it.
 		expect(
 			items.find((i) => i.kind === vscode.QuickPickItemKind.Separator)?.label,
-		).toBe("local (default) · unavailable");
-		// Not blocked - the full action set is still offered.
-		const labels = actionLabels(items);
-		expect(labels).toContain("$(diff-single) Diff against deployed");
-		expect(labels).toContain("$(trash) Delete");
+		).toBe("local (default)");
+		// A single non-actionable notice (no pick, so it's filtered from actionLabels).
+		const rows = items.filter(
+			(i) => i.kind !== vscode.QuickPickItemKind.Separator,
+		);
+		expect(rows.map((i) => i.label)).toEqual(["$(warning) Unavailable"]);
+		expect(rows[0]?.pick).toBeUndefined();
+		expect(actionLabels(items)).toEqual([]);
 	});
 });
 
@@ -160,6 +168,26 @@ describe("projectionActions", () => {
 			envs: [{ name: "prod", default: true }],
 		});
 		expect(diffCalls).toEqual([{ name: "checkout", tomlUri, env: "prod" }]);
+	});
+
+	it("routes a deploy pick to gaffer.deployPreview scoped to the projection", async () => {
+		const { deps } = capture();
+		getState().executeCommandCalls.length = 0;
+		queueQuickPick({ pick: { env: "prod", action: "deploy" } });
+		await projectionActions(deps)({
+			name: "checkout",
+			tomlUri,
+			envs: [{ name: "prod", default: true }],
+		});
+		const calls = getState().executeCommandCalls.filter(
+			(c) => c.name === "gaffer.deployPreview",
+		);
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.args[0]).toEqual({
+			name: "checkout",
+			env: "prod",
+			tomlUri,
+		});
 	});
 
 	it("routes a delete with production + emits", async () => {
@@ -235,6 +263,20 @@ describe("projectionActions", () => {
 		});
 		expect(diffCalls).toEqual([]);
 		expect(operateCalls).toEqual([]);
+	});
+
+	it("does nothing when the unavailable notice is picked", async () => {
+		const { diffCalls, operateCalls, deps } = capture();
+		getState().executeCommandCalls.length = 0;
+		queueQuickPick({ label: "$(warning) Unavailable" });
+		await projectionActions(deps)({
+			name: "checkout",
+			tomlUri,
+			envs: [{ name: "local", default: true, status: "unavailable" }],
+		});
+		expect(diffCalls).toEqual([]);
+		expect(operateCalls).toEqual([]);
+		expect(getState().executeCommandCalls).toHaveLength(0);
 	});
 
 	it("ignores a picked separator row (no pick payload)", async () => {

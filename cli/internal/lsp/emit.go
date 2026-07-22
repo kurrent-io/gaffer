@@ -235,13 +235,18 @@ type actionsEnv struct {
 	// read) to a non-actionable notice. Empty when the env resolved, or has no
 	// status yet.
 	Status string `json:"status,omitempty"`
+	// Loading is true while the env's status fetch is still in flight (mirrors the
+	// env-block "loading status..." lens). The menu shows a busy spinner and keeps
+	// repopulating until it clears; a resolved / auth / unavailable env is never
+	// loading.
+	Loading bool `json:"loading,omitempty"`
 }
 
 // actionsEnvs builds the per-env cells for one projection's actions lens from the
 // cached per-env status: production off the env's fetched status, state off the
 // projection's runtime entry. Both stay unknown (production nil, state "") until
 // the env's status has resolved.
-func actionsEnvs(envs []config.EnvDescription, proj string, statuses map[string]envStatus) []actionsEnv {
+func actionsEnvs(envs []config.EnvDescription, proj string, statuses map[string]envStatus, loading map[string]bool) []actionsEnv {
 	out := make([]actionsEnv, len(envs))
 	for i, e := range envs {
 		cell := actionsEnv{Name: e.Name, Default: e.Default}
@@ -270,6 +275,10 @@ func actionsEnvs(envs []config.EnvDescription, proj string, statuses map[string]
 					break
 				}
 			}
+		} else if loading[e.Name] {
+			// Not yet cached but its fetch is in flight: the menu shows this env
+			// optimistically with a spinner until the status lands.
+			cell.Loading = true
 		}
 		out[i] = cell
 	}
@@ -399,7 +408,7 @@ func emitStatusBadgeLenses(desc config.Description, statuses map[string]envStatu
 // at least one environment, since every action in the menu targets an env. A
 // projection with a projection-level diagnostic or no anchorable header gets no
 // lens, matching the status badge emitter.
-func emitActionsLenses(desc config.Description, uri string, statuses map[string]envStatus) []CodeLens {
+func emitActionsLenses(desc config.Description, uri string, statuses map[string]envStatus, loading map[string]bool) []CodeLens {
 	out := []CodeLens{}
 	if len(desc.Environments) == 0 {
 		return out
@@ -417,7 +426,7 @@ func emitActionsLenses(desc config.Description, uri string, statuses map[string]
 				Title:   "Manage...",
 				Command: CommandProjectionActions,
 				Arguments: []any{
-					projectionActionsArgs{Name: p.Name, ConfigURI: uri, Envs: actionsEnvs(desc.Environments, p.Name, statuses)},
+					projectionActionsArgs{Name: p.Name, ConfigURI: uri, Envs: actionsEnvs(desc.Environments, p.Name, statuses, loading)},
 				},
 			},
 			Data: &CodeLensData{Intent: IntentActions},

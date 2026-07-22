@@ -113,6 +113,9 @@ const ActionsEnvSchema = v.object({
 	state: v.optional(v.string()),
 	emits: v.optional(v.boolean()),
 	status: v.optional(v.string()),
+	// True while this env's status fetch is still in flight; the menu shows a
+	// spinner and repopulates as it resolves.
+	loading: v.optional(v.boolean(), false),
 });
 
 const ProjectionPickArgsSchema = v.object({
@@ -144,6 +147,40 @@ const ProjectionActionsArgsSchema = v.object({
 	configURI: v.string(),
 	envs: v.optional(v.array(ActionsEnvSchema), []),
 });
+
+// The per-env actions payload as decoded off the wire. Structurally the
+// ProjectionActionsEnv the menu builds from; kept as the schema output here so
+// the provider stays self-contained.
+export type ActionsEnv = v.InferOutput<typeof ActionsEnvSchema>;
+
+// Cache key for a projection's live actions payload: its declaring gaffer.toml
+// plus the projection name.
+function actionsKey(uri: string, name: string): string {
+	return `${uri}::${name}`;
+}
+
+// Field-wise equality for a projection's env cells, to decide whether a decoded
+// payload actually changed. Runs on every provideCodeLenses, so it avoids the
+// per-refresh allocation of a JSON.stringify compare.
+function sameEnvs(a: ActionsEnv[], b: ActionsEnv[]): boolean {
+	if (a.length !== b.length) return false;
+	for (const [i, x] of a.entries()) {
+		const y = b[i];
+		if (
+			!y ||
+			x.name !== y.name ||
+			x.default !== y.default ||
+			x.production !== y.production ||
+			x.state !== y.state ||
+			x.emits !== y.emits ||
+			x.status !== y.status ||
+			x.loading !== y.loading
+		) {
+			return false;
+		}
+	}
+	return true;
+}
 
 // parseConfigURI guards `vscode.Uri.parse` so a malformed URI
 // from the server doesn't throw out of provideCodeLenses and
@@ -177,6 +214,13 @@ export class LspCodeLensProvider
 	readonly #onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChangeCodeLenses = this.#onDidChange.event;
 
+	// Latest per-projection actions payload, refreshed every provideCodeLenses.
+	// The "Manage..." menu subscribes to onDidChangeActions and re-reads its
+	// projection so it repaints as an env's status loads -> resolves.
+	readonly #actions = new Map<string, ActionsEnv[]>();
+	readonly #onDidChangeActions = new vscode.EventEmitter<void>();
+	readonly onDidChangeActions = this.#onDidChangeActions.event;
+
 	#client: LanguageClient | undefined;
 	#manifest: Manifest | null = null;
 	#debugState: DebugState = { name: null, status: "idle" };
@@ -190,6 +234,19 @@ export class LspCodeLensProvider
 
 	dispose(): void {
 		this.#onDidChange.dispose();
+		this.#onDidChangeActions.dispose();
+	}
+
+	// The live actions envs for a projection, or undefined if none have been
+	// decoded yet (server gone, projection not on the status surface). The
+	// "Manage..." command reads this on each onDidChangeActions to repaint.
+	//
+	// The cache keys on the document URI's string form. The command passes the
+	// parsed configURI (parseConfigURI(args.configURI)); the server sets
+	// configURI = the codeLens document URI, and a gaffer.toml is always file:
+	// scheme, whose parse round-trip is idempotent - so the two key forms agree.
+	getActions(uri: vscode.Uri, name: string): ActionsEnv[] | undefined {
+		return this.#actions.get(actionsKey(uri.toString(), name));
 	}
 
 	setClient(client: LanguageClient | undefined): void {
@@ -222,6 +279,7 @@ export class LspCodeLensProvider
 		// cancelled request is transient and clearing would flicker.
 		if (!client) {
 			this.#onBadges?.(document.uri, []);
+			this.#applyActions(document.uri, new Map());
 			return [];
 		}
 		const params: CodeLensParams = {
@@ -241,11 +299,13 @@ export class LspCodeLensProvider
 		}
 		if (!serverLenses) {
 			this.#onBadges?.(document.uri, []);
+			this.#applyActions(document.uri, new Map());
 			return [];
 		}
 
 		const lenses: vscode.CodeLens[] = [];
 		const badges: BadgeCell[] = [];
+		const docActions = new Map<string, ActionsEnv[]>();
 		for (const sl of serverLenses) {
 			// Badge markers ride the codeLens channel but aren't rendered as
 			// lenses - peel them off before the clickable-lens decoration so a
@@ -254,6 +314,11 @@ export class LspCodeLensProvider
 				const cell = this.#badgeCell(sl);
 				if (cell) badges.push(cell);
 				continue;
+			}
+			// Cache the actions payload for the live "Manage..." menu. The lens is
+			// still decorated below; this just snapshots its envs by projection.
+			if (sl.data?.intent === IntentActions) {
+				this.#cacheActions(document.uri, sl, docActions);
 			}
 			try {
 				const decorated = this.#decorate(sl);
@@ -269,7 +334,47 @@ export class LspCodeLensProvider
 		// Forward every provideCodeLenses (empty badge included) so the sink
 		// clears markers for a document that no longer reports any.
 		this.#onBadges?.(document.uri, badges);
+		this.#applyActions(document.uri, docActions);
 		return lenses;
+	}
+
+	// Parse one actions lens and record its envs by projection under this
+	// document. Malformed args are skipped (logged), same posture as decoration.
+	#cacheActions(
+		docUri: vscode.Uri,
+		sl: LspCodeLens,
+		into: Map<string, ActionsEnv[]>,
+	): void {
+		const parsed = v.safeParse(
+			ProjectionActionsArgsSchema,
+			sl.command?.arguments?.[0],
+		);
+		if (!parsed.success) return;
+		into.set(
+			actionsKey(docUri.toString(), parsed.output.name),
+			parsed.output.envs,
+		);
+	}
+
+	// Replace this document's slice of the actions cache with the freshly-decoded
+	// payloads and fire onDidChangeActions if anything changed, so an open menu
+	// repaints only on a real update (not on every poll).
+	#applyActions(docUri: vscode.Uri, next: Map<string, ActionsEnv[]>): void {
+		const prefix = `${docUri.toString()}::`;
+		let changed = false;
+		for (const [key, envs] of next) {
+			const prev = this.#actions.get(key);
+			if (!prev || !sameEnvs(prev, envs)) changed = true;
+			this.#actions.set(key, envs);
+		}
+		// Drop entries for projections this document no longer reports.
+		for (const key of this.#actions.keys()) {
+			if (key.startsWith(prefix) && !next.has(key)) {
+				this.#actions.delete(key);
+				changed = true;
+			}
+		}
+		if (changed) this.#onDidChangeActions.fire();
 	}
 
 	#badgeCell(sl: LspCodeLens): BadgeCell | null {

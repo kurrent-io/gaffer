@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import * as vscode from "vscode";
 import {
+	anyLoading,
 	buildActionItems,
+	preserveActiveItems,
 	projectionActions,
+	type ActionMenu,
+	type ProjectionAction,
 	type ProjectionActionsDeps,
 	type ProjectionActionsEnv,
 } from "./projection-actions.js";
@@ -17,17 +21,24 @@ const tomlUri = vscode.Uri.parse("file:///p/gaffer.toml");
 
 type DiffArgs = Parameters<ProjectionActionsDeps["diff"]>[0];
 type OperateArgs = Parameters<ProjectionActionsDeps["operate"]>[0];
+type MenuArgs = Parameters<ActionMenu>[0];
 
+// The stub menu resolves to the pick queued via queueQuickPick, so the dispatch
+// tests read the same as before while the real createQuickPick presenter (whose
+// repaint logic is covered via anyLoading / preserveActiveItems) is bypassed.
 function capture(): {
 	diffCalls: DiffArgs[];
 	operateCalls: OperateArgs[];
+	menuCalls: MenuArgs[];
 	deps: ProjectionActionsDeps;
 } {
 	const diffCalls: DiffArgs[] = [];
 	const operateCalls: OperateArgs[] = [];
+	const menuCalls: MenuArgs[] = [];
 	return {
 		diffCalls,
 		operateCalls,
+		menuCalls,
 		deps: {
 			diff: (a) => {
 				diffCalls.push(a);
@@ -36,6 +47,13 @@ function capture(): {
 			operate: (a) => {
 				operateCalls.push(a);
 				return Promise.resolve();
+			},
+			menu: (a) => {
+				menuCalls.push(a);
+				const item = getState().quickPickResolutions.shift() as
+					| { pick?: ProjectionAction }
+					| undefined;
+				return Promise.resolve(item?.pick);
 			},
 		},
 	};
@@ -160,6 +178,18 @@ describe("buildActionItems", () => {
 		expect(rows[0]?.pick).toBeUndefined();
 		expect(actionLabels(items)).toEqual([]);
 	});
+
+	it("collapses a still-loading env to a single non-actionable spinner row", () => {
+		const items = buildActionItems([
+			{ name: "prod", default: true, loading: true },
+		]);
+		const rows = items.filter(
+			(i) => i.kind !== vscode.QuickPickItemKind.Separator,
+		);
+		expect(rows.map((i) => i.label)).toEqual(["$(sync~spin) Loading status…"]);
+		expect(rows[0]?.pick).toBeUndefined();
+		expect(actionLabels(items)).toEqual([]);
+	});
 });
 
 describe("projectionActions", () => {
@@ -272,12 +302,12 @@ describe("projectionActions", () => {
 		expect(operateCalls[0]?.production).toBeUndefined();
 	});
 
-	it("does nothing (no picker) when there are no envs", async () => {
-		const { diffCalls, operateCalls, deps } = capture();
+	it("does nothing (no menu) when there are no envs", async () => {
+		const { diffCalls, operateCalls, menuCalls, deps } = capture();
 		await projectionActions(deps)({ name: "checkout", tomlUri, envs: [] });
 		expect(diffCalls).toEqual([]);
 		expect(operateCalls).toEqual([]);
-		expect(getState().quickPickCalls).toHaveLength(0);
+		expect(menuCalls).toHaveLength(0);
 	});
 
 	it("does nothing when the pick is dismissed", async () => {
@@ -316,5 +346,84 @@ describe("projectionActions", () => {
 		});
 		expect(diffCalls).toEqual([]);
 		expect(operateCalls).toEqual([]);
+	});
+
+	it("passes the initial envs and a live-source subscribe to the menu", async () => {
+		const { menuCalls, deps } = capture();
+		const watchCalls: { name: string; tomlUri: vscode.Uri }[] = [];
+		let pushed: ((envs: ProjectionActionsEnv[]) => void) | undefined;
+		deps.watchActions = (name, uri, onUpdate) => {
+			watchCalls.push({ name, tomlUri: uri });
+			pushed = onUpdate;
+			return { dispose: () => {} };
+		};
+		const initial: ProjectionActionsEnv[] = [
+			{ name: "prod", default: true, loading: true },
+		];
+		queueQuickPick(undefined);
+		await projectionActions(deps)({ name: "checkout", tomlUri, envs: initial });
+
+		expect(menuCalls[0]?.initial).toEqual(initial);
+		// Driving the menu's subscribe reaches watchActions with the projection id.
+		const disposable = menuCalls[0]?.subscribe?.(() => {});
+		expect(watchCalls).toEqual([{ name: "checkout", tomlUri }]);
+		expect(typeof pushed).toBe("function");
+		expect(typeof disposable?.dispose).toBe("function");
+	});
+
+	it("omits subscribe when no live source is wired", async () => {
+		const { menuCalls, deps } = capture();
+		queueQuickPick(undefined);
+		await projectionActions(deps)({
+			name: "checkout",
+			tomlUri,
+			envs: [{ name: "prod", default: true }],
+		});
+		expect(menuCalls[0]?.subscribe).toBeUndefined();
+	});
+});
+
+describe("anyLoading", () => {
+	it("is true when any env's status is in flight", () => {
+		expect(anyLoading([{ name: "a", default: true }])).toBe(false);
+		expect(
+			anyLoading([
+				{ name: "a", default: true },
+				{ name: "b", default: false, loading: true },
+			]),
+		).toBe(true);
+	});
+});
+
+describe("preserveActiveItems", () => {
+	it("keeps the previously-active action row, ignoring separators", () => {
+		const items = buildActionItems([{ name: "prod", default: true }]);
+		const deploy = items.find((i) => i.pick?.action === "deploy")?.pick;
+		// undefined models a separator's (absent) pick - must not be restored.
+		const kept = preserveActiveItems(items, [undefined, deploy]);
+		expect(kept.map((i) => i.label)).toEqual(["$(rocket) Deploy"]);
+	});
+
+	it("restores the row in the right env when action labels collide", () => {
+		const items = buildActionItems([
+			{ name: "prod", default: true },
+			{ name: "local", default: false },
+		]);
+		// local's Deploy carries the same label as prod's; only the pick's env differs.
+		const localDeploy = items.find(
+			(i) => i.pick?.env === "local" && i.pick?.action === "deploy",
+		)?.pick;
+		const kept = preserveActiveItems(items, [localDeploy]);
+		expect(kept).toHaveLength(1);
+		expect(kept[0]?.pick?.env).toBe("local");
+	});
+
+	it("returns nothing when no pick matches", () => {
+		const items = buildActionItems([{ name: "prod", default: true }]);
+		expect(
+			preserveActiveItems(items, [
+				{ env: "gone", action: "deploy", production: undefined },
+			]),
+		).toEqual([]);
 	});
 });

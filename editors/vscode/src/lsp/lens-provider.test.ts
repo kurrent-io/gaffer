@@ -472,9 +472,75 @@ describe("LspCodeLensProvider", () => {
 				production: true,
 				state: "running",
 				emits: true,
+				loading: false,
 			},
-			{ name: "local", default: false, status: "auth" },
+			{ name: "local", default: false, status: "auth", loading: false },
 		]);
+	});
+
+	describe("actions cache", () => {
+		// Keyed by the document URI, like provideCodeLenses caches it. (The command
+		// reads via parseConfigURI(configURI); for a file: gaffer.toml that round-trip
+		// is idempotent in real vscode, so the keys agree - the mock's Uri.parse is
+		// lossy for file URIs, so the test mirrors the document URI directly.)
+		const doc = vscode.Uri.file("/p/gaffer.toml");
+		const actionsLens = (envs: unknown[]): unknown => ({
+			range: fakeLensRange(4),
+			command: {
+				title: "Manage...",
+				command: "gaffer.projectionActions",
+				arguments: [
+					{ name: "checkout", configURI: "file:///p/gaffer.toml", envs },
+				],
+			},
+			data: { intent: "actions" },
+		});
+		const withActions = (p: LspCodeLensProvider): void => {
+			p.setClient(makeClient());
+			p.setManifest({ version: "test", commands: { diff: {} } });
+		};
+
+		it("exposes the decoded envs for the live menu via getActions", async () => {
+			setLspRequestHandler("textDocument/codeLens", () => [
+				actionsLens([{ name: "prod", default: true, loading: true }]),
+			]);
+			const p = new LspCodeLensProvider();
+			withActions(p);
+			await getLenses(p);
+			expect(p.getActions(doc, "checkout")).toEqual([
+				{ name: "prod", default: true, loading: true },
+			]);
+			expect(p.getActions(doc, "missing")).toBeUndefined();
+		});
+
+		it("fires onDidChangeActions only when a payload actually changes", async () => {
+			let envs: unknown[] = [{ name: "prod", default: true, loading: true }];
+			setLspRequestHandler("textDocument/codeLens", () => [actionsLens(envs)]);
+			const p = new LspCodeLensProvider();
+			withActions(p);
+			let fired = 0;
+			p.onDidChangeActions(() => {
+				fired++;
+			});
+			await getLenses(p); // first decode: empty -> present
+			expect(fired).toBe(1);
+			await getLenses(p); // identical payload -> no fire
+			expect(fired).toBe(1);
+			envs = [
+				{ name: "prod", default: true, production: true, state: "running" },
+			];
+			await getLenses(p); // status resolved -> fire
+			expect(fired).toBe(2);
+			expect(p.getActions(doc, "checkout")).toEqual([
+				{
+					name: "prod",
+					default: true,
+					production: true,
+					state: "running",
+					loading: false,
+				},
+			]);
+		});
 	});
 
 	it("hides the actions lens when the CLI can't diff", async () => {

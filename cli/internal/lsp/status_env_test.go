@@ -300,7 +300,7 @@ func TestEmitActionsLenses(t *testing.T) {
 	}
 
 	t.Run("one lens per located, non-diagnostic projection", func(t *testing.T) {
-		lenses := emitActionsLenses(desc, uri, nil)
+		lenses := emitActionsLenses(desc, uri, nil, nil)
 		if len(lenses) != 2 {
 			t.Fatalf("expected 2 actions lenses (bad diagnostic + unlocated skipped), got %d: %+v", len(lenses), lenses)
 		}
@@ -340,7 +340,7 @@ func TestEmitActionsLenses(t *testing.T) {
 		noEnvs := config.Description{
 			Projections: []config.ProjectionDescription{{Name: "checkout", Range: config.SourceRange{StartLine: 5, EndLine: 5}}},
 		}
-		if lenses := emitActionsLenses(noEnvs, uri, nil); len(lenses) != 0 {
+		if lenses := emitActionsLenses(noEnvs, uri, nil, nil); len(lenses) != 0 {
 			t.Fatalf("no envs -> no actions lens, got %+v", lenses)
 		}
 	})
@@ -354,7 +354,7 @@ func TestEmitActionsLenses(t *testing.T) {
 				{Comparison: drift.Comparison{Name: "checkout"}, Runtime: &remote.Status{State: remote.StateStopped}},
 			}},
 		}
-		lenses := emitActionsLenses(desc, uri, statuses)
+		lenses := emitActionsLenses(desc, uri, statuses, nil)
 		var checkout projectionActionsArgs
 		for _, l := range lenses {
 			if a, ok := l.Command.Arguments[0].(projectionActionsArgs); ok && a.Name == "checkout" {
@@ -395,7 +395,7 @@ func TestEmitActionsLenses(t *testing.T) {
 				{Comparison: drift.Comparison{Name: "checkout"}, Runtime: &remote.Status{State: remote.StateUnknown}},
 			}},
 		}
-		lenses := emitActionsLenses(desc, uri, statuses)
+		lenses := emitActionsLenses(desc, uri, statuses, nil)
 		var checkout projectionActionsArgs
 		for _, l := range lenses {
 			if a, ok := l.Command.Arguments[0].(projectionActionsArgs); ok && a.Name == "checkout" {
@@ -417,7 +417,7 @@ func TestEmitActionsLenses(t *testing.T) {
 			"prod":  {Err: errStub{}, Production: true},
 			"local": {Unauthenticated: true},
 		}
-		lenses := emitActionsLenses(desc, uri, statuses)
+		lenses := emitActionsLenses(desc, uri, statuses, nil)
 		var checkout projectionActionsArgs
 		for _, l := range lenses {
 			if a, ok := l.Command.Arguments[0].(projectionActionsArgs); ok && a.Name == "checkout" {
@@ -437,6 +437,34 @@ func TestEmitActionsLenses(t *testing.T) {
 		}
 		if byEnv["local"].Status != "auth" {
 			t.Errorf("sign-in-needed env status: got %q want auth", byEnv["local"].Status)
+		}
+	})
+
+	t.Run("an in-flight fetch marks the env loading", func(t *testing.T) {
+		// prod's fetch has resolved; local's is still loading. Only local carries
+		// the loading flag, and a resolved env never does.
+		statuses := map[string]envStatus{
+			"prod": {Production: true, Entries: []drift.StatusEntry{
+				{Comparison: drift.Comparison{Name: "checkout"}, Runtime: &remote.Status{State: remote.StateRunning}},
+			}},
+		}
+		loading := map[string]bool{"local": true}
+		lenses := emitActionsLenses(desc, uri, statuses, loading)
+		var checkout projectionActionsArgs
+		for _, l := range lenses {
+			if a, ok := l.Command.Arguments[0].(projectionActionsArgs); ok && a.Name == "checkout" {
+				checkout = a
+			}
+		}
+		byEnv := map[string]actionsEnv{}
+		for _, e := range checkout.Envs {
+			byEnv[e.Name] = e
+		}
+		if byEnv["prod"].Loading {
+			t.Errorf("resolved env should not be loading, got %+v", byEnv["prod"])
+		}
+		if !byEnv["local"].Loading {
+			t.Errorf("in-flight env should be loading, got %+v", byEnv["local"])
 		}
 	})
 }

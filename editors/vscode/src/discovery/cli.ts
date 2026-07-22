@@ -191,6 +191,11 @@ export async function runGafferCommand(
 	// gafferRunEnv for a subcommand that connects to KurrentDB and so needs the
 	// OAuth token store unlocked (e.g. `gaffer diff --env`).
 	env: NodeJS.ProcessEnv | undefined = gafferSpawnEnv(telemetry.isOptedOut()),
+	// Override the default spawn timeout for a command that does network work and
+	// can outrun it - connecting to a (possibly remote) cluster, resolving a
+	// version, writing. The 10s default is right for a quick local command, not a
+	// cloud round-trip.
+	timeoutMs?: number,
 ): Promise<{ ok: true; stdout: string } | { ok: false; err: unknown }> {
 	const argv = buildGafferArgv(args, {
 		invokerId: telemetry.invokerId(),
@@ -199,6 +204,7 @@ export async function runGafferCommand(
 	try {
 		const opts: ExecOpts = { cwd };
 		if (env !== undefined) opts.env = env;
+		if (timeoutMs !== undefined) opts.timeoutMs = timeoutMs;
 		const stdout = await execFileAsync(argv, opts);
 		log(`gaffer ${args[0] ?? ""} succeeded in ${cwd}`);
 		return { ok: true, stdout };

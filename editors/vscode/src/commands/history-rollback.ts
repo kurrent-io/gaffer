@@ -94,21 +94,21 @@ export function rollbackFromHistory(
 			return;
 		}
 
-		// Release the guard, then reload so the fresh ledger re-renders.
+		// Release the guard, confirm, then reload. The toast is fire-and-forget
+		// (never awaited - an awaited showInformationMessage only resolves when it's
+		// dismissed, which would gate the reload), so it shows immediately; the
+		// reload then refreshes the timeline without holding up the confirmation or
+		// letting a slow/failed reload's toast land before it.
 		send({
 			type: "rollback-done",
 			version: target.version,
 			outcome: result.outcome,
 		});
-		if (result.outcome === "rolled-back") {
-			await vscode.window.showInformationMessage(
-				`Rolled back "${ctx.name}" to ${short(result.hash)} on ${ctx.env}. Local files are unchanged and will show as drift.`,
-			);
-		} else {
-			await vscode.window.showInformationMessage(
-				`"${ctx.name}" is already at that version on ${ctx.env}.`,
-			);
-		}
+		void vscode.window.showInformationMessage(
+			result.outcome === "rolled-back"
+				? `Rolled back "${ctx.name}" to ${short(result.hash)} on ${ctx.env}. Local files are unchanged and will show as drift.`
+				: `"${ctx.name}" is already at that version on ${ctx.env}.`,
+		);
 		await deps.reload(ctx);
 	};
 }

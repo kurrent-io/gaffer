@@ -62,8 +62,8 @@ describe("buildActionItems", () => {
 		const items = buildActionItems([{ name: "prod", default: true }]);
 		expect(actionLabels(items)).toEqual([
 			"$(rocket) Deploy",
-			"$(diff-single) Diff against deployed",
 			"$(history) History",
+			"$(diff-single) Diff against deployed",
 			"$(debug-pause) Pause",
 			"$(debug-start) Resume",
 			"$(trash) Delete",
@@ -76,8 +76,8 @@ describe("buildActionItems", () => {
 		]);
 		expect(actionLabels(items)).toEqual([
 			"$(rocket) Deploy",
-			"$(diff-single) Diff against deployed",
 			"$(history) History",
+			"$(diff-single) Diff against deployed",
 			"$(debug-pause) Pause",
 			"$(debug-stop) Abort",
 			"$(trash) Delete",
@@ -90,8 +90,8 @@ describe("buildActionItems", () => {
 		]);
 		expect(actionLabels(items)).toEqual([
 			"$(rocket) Deploy",
-			"$(diff-single) Diff against deployed",
 			"$(history) History",
+			"$(diff-single) Diff against deployed",
 			"$(debug-start) Resume",
 			"$(trash) Delete",
 		]);
@@ -105,8 +105,8 @@ describe("buildActionItems", () => {
 		]);
 		expect(actionLabels(items)).toEqual([
 			"$(rocket) Deploy",
-			"$(diff-single) Diff against deployed",
 			"$(history) History",
+			"$(diff-single) Diff against deployed",
 			"$(debug-pause) Pause",
 			"$(debug-start) Resume",
 			"$(trash) Delete",

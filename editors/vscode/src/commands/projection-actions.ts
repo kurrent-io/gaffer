@@ -155,12 +155,12 @@ export function buildActionItems(envs: ProjectionActionsEnv[]): ActionItem[] {
 			pick: { env: env.name, action: "deploy", production: env.production },
 		});
 		items.push({
-			label: "$(diff-single) Diff against deployed",
-			pick: { env: env.name, action: "diff", production: env.production },
-		});
-		items.push({
 			label: "$(history) History",
 			pick: { env: env.name, action: "history", production: env.production },
+		});
+		items.push({
+			label: "$(diff-single) Diff against deployed",
+			pick: { env: env.name, action: "diff", production: env.production },
 		});
 		items.push(...operateRows(env));
 	}

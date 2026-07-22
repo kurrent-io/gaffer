@@ -146,6 +146,11 @@ function gafferCommandCustomValue(): string[] | null {
 // a slow link isn't killed at the default spawn timeout and misreported.
 const DEPLOY_PREVIEW_TIMEOUT_MS = 120_000;
 
+// History and rollback connect to a (possibly remote) cluster, resolve a version,
+// and read/write, so they need more than the 10s default spawn timeout - a
+// production cloud round-trip blows past it and misreports as a failure.
+const HISTORY_SPAWN_TIMEOUT_MS = 60_000;
+
 // Module-level telemetry handle so deactivate() can drain in-flight
 // envelopes before VS Code kills the extension host. Set during
 // activation; never reassigned after.
@@ -742,6 +747,7 @@ async function activateAfterTelemetry(
 					telemetry,
 					"code_lens",
 					runEnv(),
+					HISTORY_SPAWN_TIMEOUT_MS,
 				);
 				return r.ok
 					? { ok: true as const, stdout: r.stdout }

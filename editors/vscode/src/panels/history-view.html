@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			http-equiv="Content-Security-Policy"
+			content="default-src 'none'; style-src {{CSP_SOURCE}} 'unsafe-inline'; script-src 'nonce-{{NONCE}}';"
+		/>
+		<style>
+			:root {
+				--enabled: var(--vscode-charts-green, #89d185);
+				--disabled: var(--vscode-descriptionForeground, #a0a0a0);
+				--deleted: var(--vscode-errorForeground, #f14c4c);
+				--deploy: var(--vscode-charts-blue, #4dc4d6);
+				--warn: var(
+					--vscode-editorWarning-foreground,
+					var(--vscode-charts-orange, #cc8f3f)
+				);
+				--faint: var(--vscode-descriptionForeground, #808080);
+			}
+			body {
+				margin: 0;
+				padding: 1.1em 1.3em;
+				font-family: var(--vscode-font-family);
+				font-size: var(--vscode-font-size, 13px);
+				color: var(--vscode-foreground);
+			}
+			.header {
+				display: flex;
+				align-items: baseline;
+				gap: 0.5em;
+				padding-bottom: 0.7em;
+				margin-bottom: 0.5em;
+				border-bottom: 1px solid var(--vscode-panel-border);
+			}
+			.header .name {
+				font-size: 1.15em;
+				font-weight: 600;
+			}
+			.header .env {
+				color: var(--vscode-descriptionForeground);
+			}
+			.header .count {
+				margin-left: auto;
+				color: var(--vscode-descriptionForeground);
+				font-size: 0.9em;
+			}
+			.timeline {
+				position: relative;
+			}
+			.rail {
+				position: absolute;
+				top: 0;
+				left: 0;
+				height: 100%;
+				pointer-events: none;
+			}
+			.rows {
+				position: relative;
+			}
+			.row {
+				display: flex;
+				align-items: center;
+				gap: 1em;
+				padding: 0.5em 0.3em 0.5em 0;
+			}
+			.body {
+				flex: 1 1 auto;
+				min-width: 0;
+			}
+			.main {
+				display: grid;
+				grid-template-columns: var(--verb-w, 11ch) 7ch max-content;
+				align-items: baseline;
+				column-gap: 1.6em;
+				font-family: var(--vscode-editor-font-family, monospace);
+				font-size: 0.92em;
+			}
+			.op {
+				grid-column: 1;
+			}
+			.op.deploy {
+				color: var(--deploy);
+			}
+			.op.enable {
+				color: var(--enabled);
+			}
+			.op.delete {
+				color: var(--deleted);
+			}
+			.op.warn {
+				color: var(--warn);
+			}
+			.op.quiet {
+				color: var(--vscode-descriptionForeground);
+			}
+			.op.rewrite {
+				color: var(--faint);
+				opacity: 0.8;
+			}
+			.hash {
+				grid-column: 2;
+				color: var(--vscode-descriptionForeground);
+				letter-spacing: 0.03em;
+			}
+			.time {
+				grid-column: 3;
+				color: var(--vscode-descriptionForeground);
+				font-variant-numeric: tabular-nums;
+			}
+			.prov {
+				margin-top: 0.25em;
+				font-size: 0.88em;
+				color: var(--vscode-descriptionForeground);
+				overflow-wrap: anywhere;
+			}
+			.prov.warn {
+				color: var(--warn);
+			}
+			.row-actions {
+				flex: none;
+				display: flex;
+				align-items: center;
+				gap: 0.4em;
+				opacity: 0;
+				transition: opacity 0.1s;
+			}
+			.row:hover .row-actions,
+			.row:focus-within .row-actions {
+				opacity: 1;
+			}
+			.row-actions.busy {
+				opacity: 1;
+			}
+			@media (prefers-reduced-motion: reduce) {
+				.row-actions {
+					transition: none;
+				}
+			}
+			.abtn {
+				font-family: inherit;
+				font-size: 0.85em;
+				padding: 0.2em 0.7em;
+				border-radius: 2px;
+				border: 1px solid var(--vscode-button-border, transparent);
+				background: var(--vscode-button-secondaryBackground);
+				color: var(--vscode-button-secondaryForeground);
+				cursor: pointer;
+				white-space: nowrap;
+			}
+			.abtn:hover {
+				background: var(--vscode-button-secondaryHoverBackground);
+			}
+			.abtn:disabled {
+				opacity: 0.5;
+				cursor: default;
+			}
+			.rolling {
+				color: var(--vscode-descriptionForeground);
+				font-size: 0.85em;
+			}
+			.notice {
+				margin-top: 1em;
+				color: var(--vscode-descriptionForeground);
+				font-style: italic;
+			}
+			.notice.error {
+				color: var(--vscode-errorForeground);
+				font-style: normal;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="header" id="header"></div>
+		<div class="timeline">
+			<svg class="rail" id="rail"></svg>
+			<div class="rows" id="rows"></div>
+		</div>
+		<div id="notice"></div>
+		<script nonce="{{NONCE}}">
+			const vscode = acquireVsCodeApi();
+			const SVGNS = "http://www.w3.org/2000/svg";
+			const headerEl = document.getElementById("header");
+			const rowsEl = document.getElementById("rows");
+			const rail = document.getElementById("rail");
+			const noticeEl = document.getElementById("notice");
+
+			// The last-rendered ledger + the token it was rendered under (echoed with a
+			// rollback click so a stale click on a since-refreshed timeline is dropped).
+			// name/env are kept so a rollback-error re-render restores the same header.
+			let entries = [];
+			let token = 0;
+			let ctxName = "";
+			let ctxEnv = "";
+
+			// The collapsed rows and their lane layout (nodeLane + revert spans) are
+			// computed host-side in the one tested model (panels/history-graph.ts) and
+			// posted with each "history" message; the webview only renders them.
+
+			// ---- ledger -> display ----
+			function runState(e) {
+				return e.deleted ? "deleted" : e.enabled ? "enabled" : "disabled";
+			}
+			const RUN_VAR = {
+				enabled: "var(--enabled)",
+				disabled: "var(--disabled)",
+				deleted: "var(--deleted)",
+			};
+			// The row's verb, matching the CLI's eventLabel: the kind read as a word,
+			// with the tool folded in for a foreign write.
+			function verbLabel(e) {
+				switch (e.kind) {
+					case "changed-by":
+						return e.tool ? "changed by " + e.tool : "changed externally";
+					case "edited-externally":
+						return "edited externally";
+					case "unreadable":
+						return "unreadable metadata";
+					default:
+						return e.kind;
+				}
+			}
+			// Verb colour, matching the CLI's historyKindStyle.
+			function verbClass(e) {
+				switch (e.kind) {
+					case "deleted":
+						return "delete";
+					case "enabled":
+						return "enable";
+					case "edited-externally":
+					case "changed-by":
+					case "unreadable":
+						return "warn";
+					case "deploy":
+					case "rollback":
+					case "reset":
+					case "recreate":
+						return "deploy";
+					case "rewritten":
+						return "rewrite";
+					default:
+						return "quiet";
+				}
+			}
+			function shortHash(h) {
+				return h && h.length >= 7 ? h.slice(0, 7) : h || "";
+			}
+			function shortRev(r) {
+				return r.length > 10 ? r.slice(0, 8) : r;
+			}
+			// "2026-07-22T09:14:00Z" -> "2026-07-22 09:14"; blank stays a dash.
+			function fmtTime(t) {
+				if (!t) return "—";
+				return t.length >= 16 ? t.slice(0, 16).replace("T", " ") : t;
+			}
+			// The dimmed second line: an out-of-band caution, a reconfigure's knob
+			// changes, or the deployer / tool / source revision.
+			function provenance(e) {
+				if (e.kind === "edited-externally")
+					return { text: "changed outside gaffer", warn: true };
+				if (e.kind === "unreadable")
+					return { text: "deploy metadata could not be read", warn: true };
+				if (e.kind === "reconfigured") {
+					const parts = (e.configChanges || []).map(
+						(c) => c.knob + " " + c.from + " → " + c.to,
+					);
+					return { text: parts.join(" · "), warn: false };
+				}
+				const parts = [];
+				if (e.actor) parts.push(e.actor);
+				let via = e.tool || "";
+				if (e.toolVersion) via += (via ? " " : "") + e.toolVersion;
+				if (via) parts.push(via);
+				if (e.revision) parts.push("src " + shortRev(e.revision));
+				return { text: parts.join(" · "), warn: false };
+			}
+			// A content version is a rollback target with a source to diff; state
+			// changes and the tombstone are neither.
+			function rollable(e) {
+				return !e.stateChange && !!e.contentHash;
+			}
+
+			function esc(s) {
+				return String(s)
+					.replace(/&/g, "&amp;")
+					.replace(/</g, "&lt;")
+					.replace(/>/g, "&gt;");
+			}
+
+			// ---- layout constants ----
+			const PAD_L = 12,
+				LANE_GAP = 20,
+				NODE_R = 4,
+				SPINE_W = 1.6,
+				CORNER_R = 6,
+				STEP = 14;
+			let graph = { nodeLane: [], spans: [] };
+			let maxLane = 0;
+			const laneX = (l) => PAD_L + l * LANE_GAP;
+
+			function renderHeader(name, env) {
+				headerEl.replaceChildren();
+				const n = document.createElement("span");
+				n.className = "name";
+				n.textContent = name;
+				const e = document.createElement("span");
+				e.className = "env";
+				e.textContent = "· " + env;
+				const c = document.createElement("span");
+				c.className = "count";
+				c.textContent =
+					entries.length + (entries.length === 1 ? " version" : " versions");
+				headerEl.append(n, e, c);
+			}
+
+			function render(name, env) {
+				ctxName = name;
+				ctxEnv = env;
+				noticeEl.replaceChildren();
+				maxLane = graph.nodeLane.reduce((m, l) => Math.max(m, l), 0);
+				const railW = PAD_L + maxLane * LANE_GAP + 20;
+				rowsEl.style.marginLeft = railW + "px";
+				rowsEl.style.setProperty(
+					"--verb-w",
+					entries.reduce((m, e) => Math.max(m, verbLabel(e).length), 0) + "ch",
+				);
+				renderHeader(name, env);
+				rowsEl.replaceChildren();
+				if (entries.length === 0) {
+					const d = document.createElement("div");
+					d.className = "notice";
+					d.textContent = `No deploy history for "${name}" on ${env}.`;
+					noticeEl.appendChild(d);
+					rail.replaceChildren();
+					return;
+				}
+				for (const e of entries) rowsEl.appendChild(renderRow(e));
+				draw();
+			}
+
+			function renderRow(e) {
+				const row = document.createElement("div");
+				row.className = "row";
+				row.dataset.version = e.version;
+				const hash = e.contentHash
+					? `<span class="hash">${esc(shortHash(e.contentHash))}</span>`
+					: "";
+				const prov = provenance(e);
+				const provHtml = prov.text
+					? `<div class="prov${prov.warn ? " warn" : ""}">${esc(prov.text)}</div>`
+					: "";
+				row.innerHTML = `
+					<div class="body">
+						<div class="main">
+							<span class="op ${verbClass(e)}">${esc(verbLabel(e))}</span>
+							${hash}
+							<span class="time">${esc(fmtTime(e.time))}</span>
+						</div>
+						${provHtml}
+					</div>`;
+				if (rollable(e)) row.appendChild(actionBar(e.version));
+				return row;
+			}
+
+			function actionBar(version) {
+				const bar = document.createElement("div");
+				bar.className = "row-actions";
+				bar.appendChild(
+					actionBtn("diff previous", () => postDiff(version, "previous")),
+				);
+				bar.appendChild(
+					actionBtn("diff local", () => postDiff(version, "local")),
+				);
+				bar.appendChild(actionBtn("rollback", () => postRollback(version)));
+				return bar;
+			}
+			function actionBtn(label, onClick) {
+				const b = document.createElement("button");
+				b.className = "abtn";
+				b.textContent = label;
+				b.addEventListener("click", onClick);
+				return b;
+			}
+			function postDiff(version, framing) {
+				vscode.postMessage({ command: "diff", version, framing });
+			}
+			function postRollback(version) {
+				vscode.postMessage({ command: "rollback", version, token });
+			}
+
+			// ---- SVG rail ----
+			function line(x1, y1, x2, y2, stroke, w, dash) {
+				const n = document.createElementNS(SVGNS, "line");
+				n.setAttribute("x1", x1);
+				n.setAttribute("y1", y1);
+				n.setAttribute("x2", x2);
+				n.setAttribute("y2", y2);
+				n.setAttribute("stroke-width", w);
+				n.setAttribute("stroke-linecap", "round");
+				if (dash) {
+					n.setAttribute("stroke-dasharray", dash);
+					n.style.strokeOpacity = "0.55";
+				}
+				n.style.stroke = stroke;
+				return n;
+			}
+			function stepPath(xa, ya, xb, yb, horizY, stroke) {
+				const dir = xb > xa ? 1 : -1;
+				const d = [
+					`M ${xa} ${ya}`,
+					`L ${xa} ${horizY - CORNER_R}`,
+					`Q ${xa} ${horizY} ${xa + dir * CORNER_R} ${horizY}`,
+					`L ${xb - dir * CORNER_R} ${horizY}`,
+					`Q ${xb} ${horizY} ${xb} ${horizY + CORNER_R}`,
+					`L ${xb} ${yb}`,
+				].join(" ");
+				const n = document.createElementNS(SVGNS, "path");
+				n.setAttribute("d", d);
+				n.setAttribute("fill", "none");
+				n.setAttribute("stroke-width", SPINE_W);
+				n.setAttribute("stroke-linejoin", "round");
+				n.style.stroke = stroke;
+				return n;
+			}
+			function nodeCenters() {
+				const box = rail.getBoundingClientRect();
+				return [...rowsEl.querySelectorAll(".row")].map((r) => {
+					const m = r.querySelector(".main").getBoundingClientRect();
+					return (m.top + m.bottom) / 2 - box.top;
+				});
+			}
+			function spineBlank(i) {
+				return i + 1 >= entries.length || entries[i + 1].deleted;
+			}
+			function draw() {
+				const railW = PAD_L + maxLane * LANE_GAP + 20;
+				rail.setAttribute("width", railW);
+				rail.style.width = railW + "px";
+				const ys = nodeCenters();
+				rail.setAttribute("height", rail.getBoundingClientRect().height);
+				rail.replaceChildren();
+
+				for (const s of graph.spans) {
+					const x = laneX(s.lane - 1);
+					rail.appendChild(
+						line(
+							x,
+							ys[s.top] + NODE_R + 2,
+							x,
+							ys[s.bottom] - NODE_R - 2,
+							"var(--faint)",
+							1.2,
+							"1.5 3.5",
+						),
+					);
+				}
+				for (let i = 0; i < entries.length - 1; i++) {
+					if (spineBlank(i)) continue;
+					const la = graph.nodeLane[i],
+						lb = graph.nodeLane[i + 1];
+					const xa = laneX(la),
+						xb = laneX(lb),
+						ya = ys[i],
+						yb = ys[i + 1];
+					const col = RUN_VAR[runState(entries[i + 1])];
+					if (entries[i].kind === "recreate") {
+						// terminus: new line ends at the dot, a break, then a buffer bar
+						// caps the old line, which continues down.
+						const yTerm = ya + 16;
+						rail.appendChild(line(xa - 5, yTerm, xa + 5, yTerm, col, SPINE_W));
+						rail.appendChild(line(xa, yTerm, xb, yb, col, SPINE_W));
+						continue;
+					}
+					if (la === lb) rail.appendChild(line(xa, ya, xb, yb, col, SPINE_W));
+					else if (lb > la)
+						rail.appendChild(stepPath(xa, ya, xb, yb, ya + STEP, col));
+					else rail.appendChild(stepPath(xa, ya, xb, yb, yb - STEP, col));
+				}
+				entries.forEach((e, i) => {
+					const x = laneX(graph.nodeLane[i]),
+						y = ys[i],
+						c = RUN_VAR[runState(e)];
+					if (e.deleted) {
+						rail.appendChild(line(x - 4, y - 4, x + 4, y + 4, c, 1.8));
+						rail.appendChild(line(x - 4, y + 4, x + 4, y - 4, c, 1.8));
+					} else {
+						const dot = document.createElementNS(SVGNS, "circle");
+						dot.setAttribute("cx", x);
+						dot.setAttribute("cy", y);
+						dot.setAttribute("r", NODE_R);
+						if (runState(e) === "disabled") {
+							dot.setAttribute("stroke-width", 1.6);
+							dot.style.stroke = c;
+							dot.style.fill = "var(--vscode-editor-background, transparent)";
+						} else {
+							dot.style.fill = c;
+						}
+						rail.appendChild(dot);
+					}
+				});
+			}
+
+			// ---- rollback in-flight state ----
+			function rowActions(version) {
+				const row = rowsEl.querySelector(`.row[data-version="${version}"]`);
+				return row ? row.querySelector(".row-actions") : null;
+			}
+			function markRolling(version) {
+				const bar = rowActions(version);
+				if (!bar) return;
+				bar.classList.add("busy");
+				bar.replaceChildren();
+				const s = document.createElement("span");
+				s.className = "rolling";
+				s.textContent = "rolling back…";
+				bar.appendChild(s);
+			}
+
+			window.addEventListener("message", (event) => {
+				const msg = event.data;
+				if (!msg) return;
+				switch (msg.type) {
+					case "history":
+						entries = msg.entries || [];
+						graph = msg.graph || { nodeLane: [], spans: [] };
+						token = msg.token;
+						render(msg.name, msg.env);
+						break;
+					case "error": {
+						const d = document.createElement("div");
+						d.className = "notice error";
+						d.textContent = msg.message;
+						noticeEl.replaceChildren(d);
+						break;
+					}
+					case "rollback-active":
+						markRolling(msg.version);
+						break;
+					case "rollback-done":
+					case "rollback-error":
+						// Restore the row's actions from the current rows. On success the
+						// host also re-reads and posts a fresh "history" (which re-renders
+						// with the new top entry); re-rendering here first means a reload
+						// that fails can't leave the row stuck on "rolling back…". On error
+						// the host also toasts.
+						render(ctxName, ctxEnv);
+						break;
+				}
+			});
+
+			let resizePending = false;
+			function scheduleDraw() {
+				if (resizePending) return;
+				resizePending = true;
+				requestAnimationFrame(() => {
+					resizePending = false;
+					if (entries.length) draw();
+				});
+			}
+			window.addEventListener("resize", scheduleDraw);
+			new ResizeObserver(scheduleDraw).observe(rowsEl);
+		</script>
+	</body>
+</html>

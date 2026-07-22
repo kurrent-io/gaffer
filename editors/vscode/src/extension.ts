@@ -3,6 +3,7 @@ import {
 	buildGafferArgv,
 	captureGafferCommand,
 	gafferRunEnv,
+	runGafferCommand,
 	setKeyringPassword,
 	tryFetchManifest,
 } from "./discovery/cli.js";
@@ -88,12 +89,21 @@ import {
 	GafferDiffContentProvider,
 	GAFFER_DIFF_SCHEME,
 } from "./commands/diff-projection.js";
-import { requestProjectionDiff } from "./lsp/diff.js";
+import { requestProjectionDiff, requestDiffVersions } from "./lsp/diff.js";
 import { requestOperateProjection } from "./lsp/operate.js";
 import { deployPreview } from "./commands/deploy-preview.js";
 import { deployApply } from "./commands/deploy-apply.js";
 import { deployApplyArgs, deployPreviewArgs } from "./commands/deploy-args.js";
 import { DeployPlanView } from "./panels/deploy-plan.js";
+import { HistoryView } from "./panels/history-view.js";
+import { historyArgs, rollbackArgs } from "./commands/history-args.js";
+import {
+	openHistoryDiff,
+	HistoryDiffContentProvider,
+	GAFFER_HISTORY_DIFF_SCHEME,
+} from "./commands/history-diff.js";
+import { rollbackFromHistory } from "./commands/history-rollback.js";
+import { makeLoadHistory, historyCommand } from "./commands/history-open.js";
 import { GafferProcess } from "./ipc/process.js";
 import { initProjection } from "./commands/init-projection.js";
 import {
@@ -699,6 +709,76 @@ async function activateAfterTelemetry(
 					wrap(projectionActions({ diff, operate })),
 				),
 				vscode.commands.registerCommand("gaffer.deployPreview", wrap(preview)),
+			);
+		})(),
+		(() => {
+			// The history viewer (opened from the "Manage..." menu's History row): a
+			// cold `gaffer history --json` renders the deploy timeline in the history
+			// webview. A row's diff is served over the LSP's warm per-env connection
+			// (gaffer/diffVersions), like the deployed-vs-local diff; rollback runs a
+			// cold `gaffer rollback --yes --json` behind a native confirm, then reloads
+			// the timeline.
+			const runEnv = (): NodeJS.ProcessEnv | undefined =>
+				gafferRunEnv(telemetry.isOptedOut());
+			const errText = (err: unknown): string =>
+				err instanceof Error ? err.message : String(err);
+			// history and rollback are plain reads/writes: a non-zero exit is a real
+			// error (not a status code carrying a payload), so run them via
+			// runGafferCommand and keep the reason - exit 4 is auth, else the stderr
+			// message - rather than parsing an empty stdout into a generic failure.
+			const classifyFailure = (err: unknown) => {
+				const code = (err as { code?: unknown }).code;
+				const stderr = (err as { cause?: { stderr?: unknown } }).cause?.stderr;
+				return {
+					ok: false as const,
+					auth: code === 4,
+					reason: typeof stderr === "string" && stderr ? stderr : errText(err),
+				};
+			};
+			const run = async (args: string[], cwd: string) => {
+				const r = await runGafferCommand(
+					args,
+					cwd,
+					telemetry,
+					"code_lens",
+					runEnv(),
+				);
+				return r.ok
+					? { ok: true as const, stdout: r.stdout }
+					: classifyFailure(r.err);
+			};
+
+			const historyDiffProvider = new HistoryDiffContentProvider();
+
+			// reload (after a rollback) re-runs the loader; the closure calls it only
+			// later, so it can close over the const declared just below.
+			const historyView = new HistoryView({
+				onDiff: openHistoryDiff({
+					provider: historyDiffProvider,
+					requestDiff: requestDiffVersions,
+				}),
+				onRollback: rollbackFromHistory({
+					runRollback: (cwd, env, name, hash) =>
+						run(rollbackArgs(env, name, hash), cwd),
+					reload: (ctx) => loadHistory(ctx),
+				}),
+			});
+			const loadHistory = makeLoadHistory({
+				view: historyView,
+				runHistory: (cwd, env, name) => run(historyArgs(env, name), cwd),
+			});
+
+			return vscode.Disposable.from(
+				historyView,
+				historyDiffProvider,
+				vscode.workspace.registerTextDocumentContentProvider(
+					GAFFER_HISTORY_DIFF_SCHEME,
+					historyDiffProvider,
+				),
+				vscode.commands.registerCommand(
+					"gaffer.history",
+					wrap(historyCommand(loadHistory)),
+				),
 			);
 		})(),
 		vscode.commands.registerCommand(

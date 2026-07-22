@@ -154,6 +154,10 @@
 			{
 				"command": "gaffer.deployPreview",
 				"title": "Gaffer: Deploy Plan"
+			},
+			{
+				"command": "gaffer.history",
+				"title": "Gaffer: Projection History"
 			}
 		],
 		"debuggers": [
@@ -204,6 +208,10 @@
 				},
 				{
 					"command": "gaffer.deployPreview",
+					"when": "false"
+				},
+				{
+					"command": "gaffer.history",
 					"when": "false"
 				},
 				{

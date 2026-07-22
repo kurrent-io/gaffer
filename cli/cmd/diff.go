@@ -3,8 +3,6 @@ package cmd
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"os"
 
@@ -18,6 +16,7 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 	"github.com/kurrent-io/gaffer/cli/internal/target"
 	"github.com/kurrent-io/gaffer/cli/internal/telemetry"
+	"github.com/kurrent-io/gaffer/cli/internal/versiondiff"
 )
 
 type diffOpts struct {
@@ -74,43 +73,12 @@ func newDiffCmd() *cobra.Command {
 	return cmd
 }
 
-// refKind is which version a --left/--right value names.
-type refKind int
-
-const (
-	refDeployed refKind = iota
-	refLocal
-	refHash
-)
-
-// diffRef is a parsed --left/--right value. hash is the normalised prefix, set
-// only for refHash.
-type diffRef struct {
-	kind refKind
-	hash string
-}
-
-func parseDiffRef(s string) (diffRef, error) {
-	switch s {
-	case "deployed":
-		return diffRef{kind: refDeployed}, nil
-	case "local":
-		return diffRef{kind: refLocal}, nil
-	default:
-		p, err := remote.NormalizeHashPrefix(s)
-		if err != nil {
-			return diffRef{}, fmt.Errorf("invalid ref %q: use 'local', 'deployed', or a content-hash prefix (%w)", s, err)
-		}
-		return diffRef{kind: refHash, hash: p}, nil
-	}
-}
-
 func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
-	left, err := parseDiffRef(opts.Left)
+	left, err := versiondiff.ParseRef(opts.Left)
 	if err != nil {
 		return err
 	}
-	right, err := parseDiffRef(opts.Right)
+	right, err := versiondiff.ParseRef(opts.Right)
 	if err != nil {
 		return err
 	}
@@ -131,7 +99,7 @@ func runDiff(cmd *cobra.Command, name string, opts diffOpts) error {
 	// attribution, provenance) and the one-sided/invalid rendering; every other
 	// combination is a pure source diff between two versions.
 	var derr error
-	if left.kind == refDeployed && right.kind == refLocal {
+	if left.Kind == versiondiff.RefDeployed && right.Kind == versiondiff.RefLocal {
 		derr = runComparisonDiff(ctx, cmd, r, cfg, root, name, opts.JSON)
 	} else {
 		derr = runVersionDiff(ctx, cmd, r, cfg, root, name, left, right, opts.JSON)
@@ -182,12 +150,8 @@ func runComparisonDiff(ctx context.Context, cmd *cobra.Command, r *remote.Client
 // runVersionDiff is a pure source diff between two arbitrary versions - no drift
 // verdict (that's meaningful only for deployed↔local). Both sides must resolve;
 // a missing side is an error rather than a one-sided diff.
-func runVersionDiff(ctx context.Context, cmd *cobra.Command, r *remote.Client, cfg *config.Config, root, name string, left, right diffRef, asJSON bool) error {
-	ls, err := resolveDiffSide(ctx, r, cfg, root, name, left)
-	if err != nil {
-		return err
-	}
-	rs, err := resolveDiffSide(ctx, r, cfg, root, name, right)
+func runVersionDiff(ctx context.Context, cmd *cobra.Command, r *remote.Client, cfg *config.Config, root, name string, left, right versiondiff.Ref, asJSON bool) error {
+	j, ls, rs, err := versiondiff.Build(ctx, r, cfg, root, name, left, right)
 	if err != nil {
 		return err
 	}
@@ -196,110 +160,27 @@ func runVersionDiff(ctx context.Context, cmd *cobra.Command, r *remote.Client, c
 	// pure; the JSON already signals it by omitting that side's hash.
 	warnUncompiledSide(cmd.ErrOrStderr(), name, ls)
 	warnUncompiledSide(cmd.ErrOrStderr(), name, rs)
-	lines := deploy.LineDiff(ls.json.Source, rs.json.Source)
 
 	if asJSON {
-		return encodeDiffJSON(cmd.OutOrStdout(), cliout.DiffJSON{Name: name, Left: ls.json, Right: rs.json, Lines: lines})
+		return encodeDiffJSON(cmd.OutOrStdout(), j)
 	}
 	tw := newTextWriter(cmd.OutOrStdout(), cmd.ErrOrStderr())
 	tw.heading(name)
-	tw.status(tw.styles.muted.Render(transition(ls.label, rs.label)))
+	tw.status(tw.styles.muted.Render(transition(ls.Label, rs.Label)))
 	if argv, ok := externalDiffCommand(os.Getenv); ok {
-		return openSourceDiff(argv, name, ls.label, ls.json.Source, rs.label, rs.json.Source, cmd.OutOrStdout(), cmd.ErrOrStderr())
+		return openSourceDiff(argv, name, ls.Label, ls.JSON.Source, rs.Label, rs.JSON.Source, cmd.OutOrStdout(), cmd.ErrOrStderr())
 	}
 	tw.blank()
-	tw.WriteQueryDiff(lines)
+	tw.WriteQueryDiff(j.Lines)
 	return nil
-}
-
-// resolvedSide is one operand resolved to its JSON shape plus a short label for
-// text output and external-diff filenames. uncompiled carries the compile error
-// when a local side's source doesn't compile - the source still diffs, but the
-// caller surfaces the failure rather than swallow it.
-type resolvedSide struct {
-	json       cliout.DiffSideJSON
-	label      string
-	uncompiled error
 }
 
 // warnUncompiledSide notes on stderr that a side's local definition didn't
 // compile, so a source-only diff isn't mistaken for a clean comparison.
-func warnUncompiledSide(w io.Writer, name string, s resolvedSide) {
-	if s.uncompiled != nil {
-		warningf(w, "local %q doesn't compile, diffing source only: %v", name, s.uncompiled)
+func warnUncompiledSide(w io.Writer, name string, s versiondiff.ResolvedSide) {
+	if s.Uncompiled != nil {
+		warningf(w, "local %q doesn't compile, diffing source only: %v", name, s.Uncompiled)
 	}
-}
-
-// resolveDiffSide reads one side of a version diff. deployed and a hash come from
-// the server; local is built from gaffer.toml. A local definition that doesn't
-// compile still yields its source (from the partial descriptor) but no hash -
-// emit is unknown, so the hash would be misleading.
-func resolveDiffSide(ctx context.Context, r *remote.Client, cfg *config.Config, root, name string, ref diffRef) (resolvedSide, error) {
-	switch ref.kind {
-	case refDeployed:
-		def, err := r.Read(ctx, name)
-		if errors.Is(err, remote.ErrNotFound) {
-			return resolvedSide{}, fmt.Errorf("%q is not deployed", name)
-		}
-		if err != nil {
-			return resolvedSide{}, err
-		}
-		d := def.Descriptor()
-		return resolvedSide{json: cliout.DiffSideJSON{Ref: "deployed", Hash: d.Hash(), Source: d.CanonicalQuery()}, label: "deployed"}, nil
-	case refHash:
-		m, err := r.FindVersionByHash(ctx, name, ref.hash)
-		if err != nil {
-			return resolvedSide{}, err
-		}
-		d := m.Def.Descriptor()
-		return resolvedSide{json: cliout.DiffSideJSON{Ref: "version", Hash: m.Hash, Source: d.CanonicalQuery()}, label: shortRef(m.Hash)}, nil
-	default: // refLocal
-		d, compileErr, err := localDiffDescriptor(cfg, root, name)
-		if err != nil {
-			return resolvedSide{}, err
-		}
-		side := cliout.DiffSideJSON{Ref: "local", Source: d.CanonicalQuery()}
-		// The hash needs emit, which only a successful compile derives; omit it
-		// on a compile failure rather than emit a misleading one.
-		if compileErr == nil {
-			side.Hash = d.Hash()
-		}
-		return resolvedSide{json: side, label: "local", uncompiled: compileErr}, nil
-	}
-}
-
-// localDiffDescriptor builds the local side's descriptor from gaffer.toml. A
-// source that doesn't compile is not fatal for a diff - the query still reads
-// from source - so it returns the partial descriptor and the compile error as a
-// non-fatal note (emit, and so the hash, is then unknown). The error return is
-// reserved for genuinely unresolvable locals: absent from config, a config
-// error, or an unreadable entry.
-func localDiffDescriptor(cfg *config.Config, root, name string) (desc deploy.Descriptor, compileErr, err error) {
-	def := cfg.FindProjection(name)
-	if def == nil {
-		return deploy.Descriptor{}, nil, fmt.Errorf("%q is not in gaffer.toml", name)
-	}
-	if cfgErr := cfg.ProjectionConfigError(name); cfgErr != nil {
-		return deploy.Descriptor{}, nil, cfgErr
-	}
-	source, err := engine.ReadSource(root, def.Entry)
-	if err != nil {
-		return deploy.Descriptor{}, nil, err
-	}
-	proj := engine.NewProjection(root, cfg, def, source)
-	d, cErr := engine.LocalDescriptor(proj)
-	if cErr != nil {
-		return engine.PartialDescriptor(proj), cErr, nil
-	}
-	return d, nil, nil
-}
-
-// shortRef abbreviates a content hash for a human label (git-style leading 7).
-func shortRef(hash string) string {
-	if len(hash) >= 7 {
-		return hash[:7]
-	}
-	return hash
 }
 
 // renderDiffJSON emits the default deployed↔local diff: the two sides, the drift

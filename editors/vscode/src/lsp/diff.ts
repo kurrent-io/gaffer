@@ -41,3 +41,22 @@ export function requestProjectionDiff(
 		ProjectionDiffSchema,
 	);
 }
+
+// requestDiffVersions asks the language server for a diff between two versions of
+// a projection - each ref a content hash, "deployed", or "local" - over its warm
+// per-env connection, for the history viewer. Same response shape as
+// diffProjection (minus the verdict). Throws LspAuthRequiredError when the env
+// needs sign-in, LspUnavailableError otherwise.
+export function requestDiffVersions(
+	name: string,
+	tomlUri: vscode.Uri,
+	env: string,
+	left: string,
+	right: string,
+): Promise<ProjectionDiff> {
+	return sendGafferRequest(
+		"gaffer/diffVersions",
+		{ name, configURI: tomlUri.toString(), env, left, right },
+		ProjectionDiffSchema,
+	);
+}

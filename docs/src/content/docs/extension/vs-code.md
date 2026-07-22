@@ -57,6 +57,8 @@ Each `[[projection]]` header also carries a **Manage...** lens that opens a menu
 
 If the projection isn't deployed to that environment yet, the extension says so rather than diffing against an empty file. If the environment needs authentication, the action offers to sign in first. See [Authentication](#authentication).
 
+**History** opens the projection's deploy timeline on the chosen environment in an editor tab, newest first. Each version carries its operation, content hash, actor, and time, drawn with the same graph as `gaffer history` in the terminal. The graph reads run state as a node (enabled, disabled, or deleted), detours the spine into a lane for a revert, and marks a terminus where a recreate began. Each version's actions sit alongside it: diff it against the previous version, diff it against your local source (both open the diff editor), or roll back to it. Rolling back rewrites the live query to that version behind a native confirm - silent off-production, a modal accept on production. The state is kept and your local files are left untouched, so they show as drift until you update them.
+
 The **operate verbs** act on the running projection. **Pause** stops it after a final checkpoint, and **Resume** restarts it from the last checkpoint. **Abort** stops it without a final checkpoint, so a later resume reprocesses from the last checkpoint written. **Delete** removes it along with its state and checkpoints; if the projection emitted streams, deleting asks whether to remove those too. The menu offers Pause while a projection is running and Resume while it's stopped; Abort appears only while it's running.
 
 Each environment heading notes its status. One that needs authentication shows a single **Sign in** in place of the actions, since none can run until you're signed in. One whose status couldn't be read shows a single **Unavailable** notice instead, since no action can run against an environment that isn't reachable.
@@ -109,8 +111,9 @@ See [MCP](../cli/mcp.md) for the tools and resources gaffer exposes, and for con
 | `Gaffer: Debug from...`      | CodeLens                         | Pick a source (a fixture or a configured environment) and launch with the debugger attached.                                            |
 | `Gaffer: Stop`               | CodeLens or command palette      | Stop the running session.                                                                                                                |
 | `Gaffer: Sign In to Environment` | CodeLens                     | Open a `gaffer auth --env <name>` terminal for an environment that needs authentication.                                                 |
-| `Gaffer: Projection Actions` | CodeLens                         | Open the per-projection action menu, grouped by environment: deploy this projection, diff local against what's deployed, and the operate verbs.                     |
+| `Gaffer: Projection Actions` | CodeLens                         | Open the per-projection action menu, grouped by environment: deploy this projection, diff local against what's deployed, view its deploy history, and the operate verbs.                     |
 | `Gaffer: Deploy Plan`        | CodeLens                         | Open the deploy plan for the whole project against an environment: review the `gaffer deploy --dry-run` plan in an editor tab, then deploy from it. |
+| `Gaffer: Projection History` | CodeLens                         | Open a projection's deploy-history timeline against an environment in an editor tab: diff any version against the previous one or local, and roll back to it. |
 
 ## Telemetry
 

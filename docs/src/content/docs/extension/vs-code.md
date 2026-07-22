@@ -69,7 +69,7 @@ Because these change live state, they confirm before running, in tiers that matc
 
 When you debug against an environment that uses [OAuth](../reference/gaffer-toml.md#envnameoauth) and you haven't signed in yet, the run stops and the extension shows a **Sign in** action. It opens a terminal running `gaffer auth --env <name>`. You sign in through the browser once, and the stored token refreshes automatically for later runs.
 
-The token is kept in your OS keyring where one is available (macOS Keychain, Windows Credential Manager, Linux Secret Service), so nothing prompts for a passphrase. On a host without an OS keyring (a remote or container session), the extension manages an encrypted-file keyring for you. It generates a passphrase, stores it in VS Code's secret storage, and passes it to gaffer, so sign-in and later runs work without prompting. To use the CLI directly on such a host, set `GAFFER_KEYRING_PASSWORD` yourself.
+The token is kept in your OS keyring where one is available (macOS Keychain, Windows Credential Manager, Linux Secret Service), so nothing prompts for a passphrase. On a host without an OS keyring (a remote or container session), the extension manages an encrypted-file keyring for you. It generates a passphrase, stores it in VS Code's secret storage, and passes it to gaffer, so sign-in and later runs work without prompting. This store is isolated to the extension (kept under `keyring-vscode`), so its generated passphrase never locks the store a manual terminal `gaffer` uses. On such a host the CLI keeps its own default store: `gaffer auth` in a terminal signs in there (prompting for a passphrase, or taking `GAFFER_KEYRING_PASSWORD`), independently of the extension.
 
 ## State inspection
 

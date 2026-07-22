@@ -44,6 +44,12 @@ export interface Invocation {
 // prompt. gaffer ignores it when an OS keyring is available.
 let keyringPassword: string | undefined;
 
+// Injected as GAFFER_KEYRING_NAME alongside the passphrase, so the extension's
+// encrypted-file token store is isolated at keyring/vscode. On a host with no OS
+// keyring, that keeps the passphrase-locked extension store from colliding with
+// (and locking out) the user's default CLI store; an OS keyring ignores it.
+const KEYRING_NAME = "vscode";
+
 export function setKeyringPassword(pw: string | undefined): void {
 	keyringPassword = pw;
 }
@@ -65,7 +71,12 @@ export function gafferRunEnv(optedOut: boolean): NodeJS.ProcessEnv | undefined {
 	return {
 		...process.env,
 		...(optedOut ? { GAFFER_TELEMETRY_OPTOUT: "1" } : {}),
-		...(keyringPassword ? { GAFFER_KEYRING_PASSWORD: keyringPassword } : {}),
+		...(keyringPassword
+			? {
+					GAFFER_KEYRING_PASSWORD: keyringPassword,
+					GAFFER_KEYRING_NAME: KEYRING_NAME,
+				}
+			: {}),
 	};
 }
 
@@ -76,7 +87,12 @@ export function gafferRunEnv(optedOut: boolean): NodeJS.ProcessEnv | undefined {
 export function gafferMcpEnv(optedOut: boolean): Record<string, string> {
 	return {
 		...(optedOut ? { GAFFER_TELEMETRY_OPTOUT: "1" } : {}),
-		...(keyringPassword ? { GAFFER_KEYRING_PASSWORD: keyringPassword } : {}),
+		...(keyringPassword
+			? {
+					GAFFER_KEYRING_PASSWORD: keyringPassword,
+					GAFFER_KEYRING_NAME: KEYRING_NAME,
+				}
+			: {}),
 	};
 }
 

@@ -82,7 +82,10 @@ import { registerTypeScriptPlugin } from "./lsp/typescript-plugin.js";
 import { GafferMcpProvider } from "./mcp/provider.js";
 import { runProjection } from "./commands/run-projection.js";
 import { debugProjectionPick } from "./commands/debug-projection-pick.js";
-import { projectionActions } from "./commands/projection-actions.js";
+import {
+	createActionMenu,
+	projectionActions,
+} from "./commands/projection-actions.js";
 import { operateProjection } from "./commands/operate-projection.js";
 import {
 	diffProjection,
@@ -711,7 +714,23 @@ async function activateAfterTelemetry(
 				),
 				vscode.commands.registerCommand(
 					"gaffer.projectionActions",
-					wrap(projectionActions({ diff, operate })),
+					wrap(
+						projectionActions({
+							diff,
+							operate,
+							menu: createActionMenu(),
+							// Live source: the menu repaints as each env's status resolves.
+							// The lens provider re-decodes the actions payload on every
+							// provideCodeLenses (driven by the status poll + the server's
+							// codeLens refresh), so the menu tracks loading -> resolved
+							// without a reopen.
+							watchActions: (name, tomlUri, onUpdate) =>
+								lspCodeLens.onDidChangeActions(() => {
+									const envs = lspCodeLens.getActions(tomlUri, name);
+									if (envs) onUpdate(envs);
+								}),
+						}),
+					),
 				),
 				vscode.commands.registerCommand("gaffer.deployPreview", wrap(preview)),
 			);

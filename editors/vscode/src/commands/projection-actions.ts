@@ -18,14 +18,19 @@ import type { OperateVerb } from "../lsp/operate.js";
 export interface ProjectionActionsEnv {
 	name: string;
 	default: boolean;
-	production?: boolean;
-	state?: string;
-	emits?: boolean;
+	// Optionals arrive off the lens wire (decoded via valibot), where absent and
+	// undefined coincide - hence the explicit `| undefined`.
+	production?: boolean | undefined;
+	state?: string | undefined;
+	emits?: boolean | undefined;
 	// "auth" (sign-in needed) or "unavailable" (a failed read); empty when the env
 	// resolved or has no status yet. Both collapse the env to a single row - "auth"
 	// to a sign-in, "unavailable" to a non-actionable notice - since no action can
 	// run against an env that isn't reachable or authenticated.
-	status?: string;
+	status?: string | undefined;
+	// True while this env's status fetch is in flight. The menu shows its actions
+	// optimistically with a busy spinner and repopulates once the status resolves.
+	loading?: boolean | undefined;
 }
 
 export interface ProjectionActionsArgs {
@@ -60,9 +65,58 @@ export interface ProjectionActionsDeps {
 		production: boolean | undefined;
 		emits: boolean;
 	}) => Promise<void>;
+	// Presents the env-grouped menu and resolves with the chosen action, or
+	// undefined if dismissed. Injected so the dispatch logic stays testable
+	// without driving a real QuickPick lifecycle (see createActionMenu).
+	menu: ActionMenu;
+	// Live source of fresh env snapshots for a projection while the menu is open:
+	// calls onUpdate whenever the status resolves, returning a Disposable to stop.
+	// Omitted by callers without a live source - the menu then shows the one-shot
+	// snapshot, as before.
+	watchActions?: (
+		name: string,
+		tomlUri: vscode.Uri,
+		onUpdate: (envs: ProjectionActionsEnv[]) => void,
+	) => vscode.Disposable;
 }
 
 type ActionItem = vscode.QuickPickItem & { pick?: ProjectionAction };
+
+export type ActionMenu = (args: {
+	title: string;
+	initial: ProjectionActionsEnv[];
+	subscribe?: (
+		onUpdate: (envs: ProjectionActionsEnv[]) => void,
+	) => vscode.Disposable;
+}) => Promise<ProjectionAction | undefined>;
+
+// An env is loading while its status fetch is in flight; the menu then shows a
+// busy spinner and keeps repainting until every env has resolved.
+export function anyLoading(envs: ProjectionActionsEnv[]): boolean {
+	return envs.some((e) => e.loading ?? false);
+}
+
+// Keep the highlighted row across a repaint: the items whose pick was active
+// before. Matched on the pick's env+action, not the label - action labels
+// ($(rocket) Deploy, ...) are identical across envs, so a label match would
+// restore the same row in every env group and jump the highlight to the wrong
+// env. Separators (no pick) never match. Empty when none do, letting VS Code
+// pick a default.
+export function preserveActiveItems(
+	items: readonly ActionItem[],
+	activePicks: readonly (ProjectionAction | undefined)[],
+): ActionItem[] {
+	const wanted = activePicks.filter(
+		(p): p is ProjectionAction => p !== undefined,
+	);
+	return items.filter((i) => {
+		const pick = i.pick;
+		return (
+			pick !== undefined &&
+			wanted.some((w) => w.env === pick.env && w.action === pick.action)
+		);
+	});
+}
 
 // operateRows lists the state-aware operate verbs for one env: pause + abort when
 // running, resume when not, both pause and resume when the state is unknown.
@@ -150,6 +204,14 @@ export function buildActionItems(envs: ProjectionActionsEnv[]): ActionItem[] {
 			});
 			continue;
 		}
+		// Status still in flight: collapse to a single spinner row, like the other
+		// non-resolved states. The menu repaints in place into the real actions once
+		// the status lands (production, runtime state), so acting on unknown state
+		// isn't offered. No pick payload, so selecting it is a no-op.
+		if (env.loading) {
+			items.push({ label: "$(sync~spin) Loading status…" });
+			continue;
+		}
 		items.push({
 			label: "$(rocket) Deploy",
 			pick: { env: env.name, action: "deploy", production: env.production },
@@ -167,17 +229,55 @@ export function buildActionItems(envs: ProjectionActionsEnv[]): ActionItem[] {
 	return items;
 }
 
+// createActionMenu is the production presenter: a live QuickPick that repaints as
+// fresh env snapshots arrive (spinner while any env's status is loading) and
+// resolves with the picked action. The interactive lifecycle lives here so
+// projectionActions - the dispatch - stays unit-testable with a stub menu.
+export function createActionMenu(): ActionMenu {
+	return ({ title, initial, subscribe }) =>
+		new Promise<ProjectionAction | undefined>((resolve) => {
+			const qp = vscode.window.createQuickPick<ActionItem>();
+			qp.placeholder = title;
+			const apply = (envs: ProjectionActionsEnv[]): void => {
+				const prevActive = qp.activeItems.map((i) => i.pick);
+				qp.items = buildActionItems(envs);
+				qp.busy = anyLoading(envs);
+				const restored = preserveActiveItems(qp.items, prevActive);
+				if (restored.length > 0) qp.activeItems = restored;
+			};
+			apply(initial);
+			const sub = subscribe?.((envs) => apply(envs));
+			let settled = false;
+			const settle = (pick: ProjectionAction | undefined): void => {
+				if (settled) return;
+				settled = true;
+				sub?.dispose();
+				qp.dispose();
+				resolve(pick);
+			};
+			qp.onDidAccept(() => settle(qp.selectedItems[0]?.pick));
+			qp.onDidHide(() => settle(undefined));
+			qp.show();
+		});
+}
+
 export function projectionActions(
 	deps: ProjectionActionsDeps,
 ): (args: ProjectionActionsArgs) => Promise<void> {
 	return async (args) => {
 		if (args.envs.length === 0) return;
-		const items = buildActionItems(args.envs);
-		const picked = await vscode.window.showQuickPick(items, {
-			placeHolder: `${args.name}: pick an action`,
+		const watch = deps.watchActions;
+		const pick = await deps.menu({
+			title: `${args.name}: pick an action`,
+			initial: args.envs,
+			...(watch
+				? {
+						subscribe: (onUpdate: (envs: ProjectionActionsEnv[]) => void) =>
+							watch(args.name, args.tomlUri, onUpdate),
+					}
+				: {}),
 		});
-		if (!picked?.pick) return;
-		const pick = picked.pick;
+		if (!pick) return;
 		if (pick.action === "deploy") {
 			await vscode.commands.executeCommand("gaffer.deployPreview", {
 				name: args.name,

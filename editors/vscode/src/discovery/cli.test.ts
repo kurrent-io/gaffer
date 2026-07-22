@@ -115,13 +115,15 @@ describe("gafferRunEnv", () => {
 		expect(gafferRunEnv(false)).toBeUndefined();
 	});
 
-	it("injects GAFFER_KEYRING_PASSWORD once a passphrase is set, even when not opted out", async () => {
+	it("injects GAFFER_KEYRING_PASSWORD + NAME once a passphrase is set, even when not opted out", async () => {
 		const { gafferRunEnv, setKeyringPassword } = await import("./cli.js");
 		try {
 			setKeyringPassword("s3cret");
 			const env = gafferRunEnv(false);
 			if (env === undefined) throw new Error("expected an env override");
 			expect(env.GAFFER_KEYRING_PASSWORD).toBe("s3cret");
+			// The name isolates the extension's file-fallback store from the CLI's.
+			expect(env.GAFFER_KEYRING_NAME).toBe("vscode");
 			expect(env.PATH).toBe(process.env.PATH);
 		} finally {
 			setKeyringPassword(undefined);
@@ -140,12 +142,13 @@ describe("gafferMcpEnv", () => {
 		expect(gafferMcpEnv(true)).toEqual({ GAFFER_TELEMETRY_OPTOUT: "1" });
 	});
 
-	it("includes GAFFER_KEYRING_PASSWORD once a passphrase is set", async () => {
+	it("includes GAFFER_KEYRING_PASSWORD + NAME once a passphrase is set", async () => {
 		const { gafferMcpEnv, setKeyringPassword } = await import("./cli.js");
 		try {
 			setKeyringPassword("s3cret");
 			expect(gafferMcpEnv(false)).toEqual({
 				GAFFER_KEYRING_PASSWORD: "s3cret",
+				GAFFER_KEYRING_NAME: "vscode",
 			});
 		} finally {
 			setKeyringPassword(undefined);

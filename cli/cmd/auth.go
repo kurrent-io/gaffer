@@ -42,7 +42,9 @@ func newAuthCmd() *cobra.Command {
 			"reset a keyring whose passphrase has been forgotten; it needs neither the\n" +
 			"passphrase nor a gaffer project.\n\n" +
 			"GAFFER_NO_OPEN prints the authorization URL instead of opening a browser.\n" +
-			"GAFFER_KEYRING_PASSWORD supplies the keyring passphrase on a host without an OS keyring.",
+			"GAFFER_KEYRING_PASSWORD supplies the keyring passphrase on a host without an OS keyring.\n" +
+			"GAFFER_KEYRING_NAME isolates that encrypted-file store in a per-client directory\n" +
+			"(keyring-<name>), so a client with its own passphrase doesn't lock the shared default.",
 		Example: "gaffer auth --env staging",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

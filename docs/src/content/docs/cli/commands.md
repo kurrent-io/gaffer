@@ -96,6 +96,8 @@ passphrase nor a gaffer project.
 
 GAFFER_NO_OPEN prints the authorization URL instead of opening a browser.
 GAFFER_KEYRING_PASSWORD supplies the keyring passphrase on a host without an OS keyring.
+GAFFER_KEYRING_NAME isolates that encrypted-file store in a per-client directory
+(keyring-<name>), so a client with its own passphrase doesn't lock the shared default.
 
 ```
 gaffer auth [flags]

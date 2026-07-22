@@ -41,7 +41,7 @@ export interface ProjectionActionsArgs {
 // whether to offer the emitted-streams choice.
 export interface ProjectionAction {
 	env: string;
-	action: "deploy" | "diff" | "signin" | OperateVerb;
+	action: "deploy" | "diff" | "history" | "signin" | OperateVerb;
 	production: boolean | undefined;
 	emits?: boolean;
 }
@@ -158,6 +158,10 @@ export function buildActionItems(envs: ProjectionActionsEnv[]): ActionItem[] {
 			label: "$(diff-single) Diff against deployed",
 			pick: { env: env.name, action: "diff", production: env.production },
 		});
+		items.push({
+			label: "$(history) History",
+			pick: { env: env.name, action: "history", production: env.production },
+		});
 		items.push(...operateRows(env));
 	}
 	return items;
@@ -187,6 +191,15 @@ export function projectionActions(
 				name: args.name,
 				tomlUri: args.tomlUri,
 				env: pick.env,
+			});
+			return;
+		}
+		if (pick.action === "history") {
+			await vscode.commands.executeCommand("gaffer.history", {
+				name: args.name,
+				tomlUri: args.tomlUri,
+				env: pick.env,
+				production: pick.production,
 			});
 			return;
 		}

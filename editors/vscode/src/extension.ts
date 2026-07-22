@@ -3,6 +3,7 @@ import {
 	buildGafferArgv,
 	captureGafferCommand,
 	gafferRunEnv,
+	runGafferCommand,
 	setKeyringPassword,
 	tryFetchManifest,
 } from "./discovery/cli.js";
@@ -94,6 +95,19 @@ import { deployPreview } from "./commands/deploy-preview.js";
 import { deployApply } from "./commands/deploy-apply.js";
 import { deployApplyArgs, deployPreviewArgs } from "./commands/deploy-args.js";
 import { DeployPlanView } from "./panels/deploy-plan.js";
+import { HistoryView } from "./panels/history-view.js";
+import {
+	historyArgs,
+	diffVersionArgs,
+	rollbackArgs,
+} from "./commands/history-args.js";
+import {
+	openHistoryDiff,
+	HistoryDiffContentProvider,
+	GAFFER_HISTORY_DIFF_SCHEME,
+} from "./commands/history-diff.js";
+import { rollbackFromHistory } from "./commands/history-rollback.js";
+import { makeLoadHistory, historyCommand } from "./commands/history-open.js";
 import { GafferProcess } from "./ipc/process.js";
 import { initProjection } from "./commands/init-projection.js";
 import {
@@ -699,6 +713,85 @@ async function activateAfterTelemetry(
 					wrap(projectionActions({ diff, operate })),
 				),
 				vscode.commands.registerCommand("gaffer.deployPreview", wrap(preview)),
+			);
+		})(),
+		(() => {
+			// The history viewer (opened from the "Manage..." menu's History row): a
+			// cold `gaffer history --json` renders the deploy timeline in the history
+			// webview. A row's diff opens the native diff editor from a cold `gaffer
+			// diff --left --right --json`; rollback runs `gaffer rollback --yes --json`
+			// behind a native confirm, then reloads the timeline. No warm LSP path
+			// exists for version reads, so all three are cold spawns.
+			const runEnv = (): NodeJS.ProcessEnv | undefined =>
+				gafferRunEnv(telemetry.isOptedOut());
+			const errText = (err: unknown): string =>
+				err instanceof Error ? err.message : String(err);
+			// A one-shot capture keeping stdout + exit code on any exit (history and
+			// diff read their JSON regardless of a non-zero "status" code).
+			const capture = async (args: string[], cwd: string) => {
+				const r = await captureGafferCommand(
+					args,
+					cwd,
+					telemetry,
+					"code_lens",
+					runEnv(),
+				);
+				return r.ok
+					? { ok: true as const, stdout: r.stdout, code: r.code }
+					: { ok: false as const, err: errText(r.err) };
+			};
+
+			const historyDiffProvider = new HistoryDiffContentProvider();
+
+			// reload (after a rollback) re-runs the loader; the closure calls it only
+			// later, so it can close over the const declared just below.
+			const historyView = new HistoryView({
+				onDiff: openHistoryDiff({
+					provider: historyDiffProvider,
+					runDiff: (cwd, env, name, left, right) =>
+						capture(diffVersionArgs(env, name, left, right), cwd),
+				}),
+				onRollback: rollbackFromHistory({
+					// Rollback rejects on a non-zero exit, so its refusal reason (on
+					// stderr) is preserved rather than dropped; auth is exit code 4.
+					runRollback: async (cwd, env, name, hash) => {
+						const r = await runGafferCommand(
+							rollbackArgs(env, name, hash),
+							cwd,
+							telemetry,
+							"code_lens",
+							runEnv(),
+						);
+						if (r.ok) return { ok: true as const, stdout: r.stdout };
+						const code = (r.err as { code?: unknown }).code;
+						const stderr = (r.err as { cause?: { stderr?: unknown } }).cause
+							?.stderr;
+						return {
+							ok: false as const,
+							auth: code === 4,
+							reason:
+								typeof stderr === "string" && stderr ? stderr : errText(r.err),
+						};
+					},
+					reload: (ctx) => loadHistory(ctx),
+				}),
+			});
+			const loadHistory = makeLoadHistory({
+				view: historyView,
+				runHistory: (cwd, env, name) => capture(historyArgs(env, name), cwd),
+			});
+
+			return vscode.Disposable.from(
+				historyView,
+				historyDiffProvider,
+				vscode.workspace.registerTextDocumentContentProvider(
+					GAFFER_HISTORY_DIFF_SCHEME,
+					historyDiffProvider,
+				),
+				vscode.commands.registerCommand(
+					"gaffer.history",
+					wrap(historyCommand(loadHistory)),
+				),
 			);
 		})(),
 		vscode.commands.registerCommand(

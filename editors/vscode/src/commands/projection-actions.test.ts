@@ -63,6 +63,7 @@ describe("buildActionItems", () => {
 		expect(actionLabels(items)).toEqual([
 			"$(rocket) Deploy",
 			"$(diff-single) Diff against deployed",
+			"$(history) History",
 			"$(debug-pause) Pause",
 			"$(debug-start) Resume",
 			"$(trash) Delete",
@@ -76,6 +77,7 @@ describe("buildActionItems", () => {
 		expect(actionLabels(items)).toEqual([
 			"$(rocket) Deploy",
 			"$(diff-single) Diff against deployed",
+			"$(history) History",
 			"$(debug-pause) Pause",
 			"$(debug-stop) Abort",
 			"$(trash) Delete",
@@ -89,6 +91,7 @@ describe("buildActionItems", () => {
 		expect(actionLabels(items)).toEqual([
 			"$(rocket) Deploy",
 			"$(diff-single) Diff against deployed",
+			"$(history) History",
 			"$(debug-start) Resume",
 			"$(trash) Delete",
 		]);
@@ -103,6 +106,7 @@ describe("buildActionItems", () => {
 		expect(actionLabels(items)).toEqual([
 			"$(rocket) Deploy",
 			"$(diff-single) Diff against deployed",
+			"$(history) History",
 			"$(debug-pause) Pause",
 			"$(debug-start) Resume",
 			"$(trash) Delete",
@@ -187,6 +191,29 @@ describe("projectionActions", () => {
 			name: "checkout",
 			env: "prod",
 			tomlUri,
+		});
+	});
+
+	it("routes a history pick to gaffer.history with the confirm-tier production", async () => {
+		const { deps } = capture();
+		getState().executeCommandCalls.length = 0;
+		queueQuickPick({
+			pick: { env: "prod", action: "history", production: true },
+		});
+		await projectionActions(deps)({
+			name: "checkout",
+			tomlUri,
+			envs: [{ name: "prod", default: true, production: true }],
+		});
+		const calls = getState().executeCommandCalls.filter(
+			(c) => c.name === "gaffer.history",
+		);
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.args[0]).toEqual({
+			name: "checkout",
+			env: "prod",
+			tomlUri,
+			production: true,
 		});
 	});
 

@@ -56,6 +56,21 @@ describe("deployPreview", () => {
 		expect(shows[0]?.ctx).toEqual({ env: "staging", tomlUri });
 	});
 
+	it("scopes the dry-run and the plan context to a named projection", async () => {
+		const { shows, view } = fakeView();
+		const calls: { env: string; name: string | undefined }[] = [];
+		await deployPreview({
+			view,
+			runDryRun: (env, _cwd, name) => {
+				calls.push({ env, name });
+				return Promise.resolve({ ok: true, stdout: okPlan, code: 2 });
+			},
+		})({ env: "staging", tomlUri, name: "a" });
+
+		expect(calls).toEqual([{ env: "staging", name: "a" }]);
+		expect(shows[0]?.ctx).toEqual({ env: "staging", tomlUri, name: "a" });
+	});
+
 	it("does nothing in an untrusted workspace", async () => {
 		setTrusted(false);
 		const { shows, view } = fakeView();

@@ -51,13 +51,15 @@ Hovering the header lists those environments one per line, each with its drift v
 
 Each `[[projection]]` header also carries a **Manage...** lens that opens a menu of actions for that projection, grouped by environment. Every action targets an environment, so the lens appears only once the config declares at least one. Each environment is a heading with its actions beneath, in the order they're declared in `gaffer.toml`, the default one labelled.
 
+**Deploy** opens the deploy plan for just this projection against the chosen environment, in the same editor-tab webview as the whole-project [Deploy](#deployment-status) lens, scoped to the one projection. Review the plan, then deploy it behind the same native confirm. A single-projection plan resolves its own change (create, update, or recreate), so a rebuild from zero is bundled into this one action rather than needing a separate trigger.
+
 **Diff against deployed** opens VS Code's diff editor with the projection's local source against what's deployed on the chosen environment. You see exactly what a deploy would change. Both sides are read-only, and the diff never deploys.
 
 If the projection isn't deployed to that environment yet, the extension says so rather than diffing against an empty file. If the environment needs authentication, the action offers to sign in first. See [Authentication](#authentication).
 
 The **operate verbs** act on the running projection. **Pause** stops it after a final checkpoint, and **Resume** restarts it from the last checkpoint. **Abort** stops it without a final checkpoint, so a later resume reprocesses from the last checkpoint written. **Delete** removes it along with its state and checkpoints; if the projection emitted streams, deleting asks whether to remove those too. The menu offers Pause while a projection is running and Resume while it's stopped; Abort appears only while it's running.
 
-Each environment heading notes its status. One that needs authentication shows a single **Sign in** in place of the actions, since none can run until you're signed in. One whose status couldn't be read is marked unavailable but keeps its actions, which report the failure if run.
+Each environment heading notes its status. One that needs authentication shows a single **Sign in** in place of the actions, since none can run until you're signed in. One whose status couldn't be read shows a single **Unavailable** notice instead, since no action can run against an environment that isn't reachable.
 
 Because these change live state, they confirm before running, in tiers that match `gaffer`'s other surfaces. A non-production, reversible verb runs straight away. A production verb, or an irreversible one, asks you to confirm. Deleting on a production environment asks you to type the projection's name. The result is reported as a notification, and an environment that needs authentication offers to sign in first.
 
@@ -107,7 +109,7 @@ See [MCP](../cli/mcp.md) for the tools and resources gaffer exposes, and for con
 | `Gaffer: Debug from...`      | CodeLens                         | Pick a source (a fixture or a configured environment) and launch with the debugger attached.                                            |
 | `Gaffer: Stop`               | CodeLens or command palette      | Stop the running session.                                                                                                                |
 | `Gaffer: Sign In to Environment` | CodeLens                     | Open a `gaffer auth --env <name>` terminal for an environment that needs authentication.                                                 |
-| `Gaffer: Projection Actions` | CodeLens                         | Open the per-projection action menu, grouped by environment. Currently offers diffing local against what's deployed.                     |
+| `Gaffer: Projection Actions` | CodeLens                         | Open the per-projection action menu, grouped by environment: deploy this projection, diff local against what's deployed, and the operate verbs.                     |
 | `Gaffer: Deploy Plan`        | CodeLens                         | Open the deploy plan for the whole project against an environment: review the `gaffer deploy --dry-run` plan in an editor tab, then deploy from it. |
 
 ## Telemetry

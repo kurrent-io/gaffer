@@ -22,6 +22,9 @@ const EXIT_AUTH_REQUIRED = 4;
 export interface DeployPreviewArgs {
 	env: string;
 	tomlUri: vscode.Uri;
+	// Set by the per-projection action menu to scope the plan to one projection;
+	// undefined for the whole-project env-block Deploy lens.
+	name?: string;
 }
 
 export type DryRunResult =
@@ -31,20 +34,25 @@ export type DryRunResult =
 export interface DeployPreviewDeps {
 	// Structural so tests inject a fake in place of the real webview manager.
 	view: Pick<DeployPlanView, "show">;
-	// Runs `gaffer deploy --dry-run --json --env <env>` in the project directory,
-	// returning its stdout and exit code (or a spawn failure). A field so tests
-	// inject a fake in place of a live CLI.
-	runDryRun: (env: string, cwd: string) => Promise<DryRunResult>;
+	// Runs `gaffer deploy [name] --dry-run --json --env <env>` in the project
+	// directory, returning its stdout and exit code (or a spawn failure). `name`
+	// scopes the plan to one projection; undefined plans the whole project. A field
+	// so tests inject a fake in place of a live CLI.
+	runDryRun: (
+		env: string,
+		cwd: string,
+		name: string | undefined,
+	) => Promise<DryRunResult>;
 }
 
 export function deployPreview(
 	deps: DeployPreviewDeps,
 ): (args: DeployPreviewArgs) => Promise<void> {
-	return async ({ env, tomlUri }) => {
+	return async ({ env, tomlUri, name }) => {
 		if (!vscode.workspace.isTrusted) return;
 
 		const cwd = path.dirname(tomlUri.fsPath);
-		const result = await deps.runDryRun(env, cwd);
+		const result = await deps.runDryRun(env, cwd, name);
 		if (!result.ok) {
 			const msg =
 				result.err instanceof Error ? result.err.message : String(result.err);
@@ -66,7 +74,7 @@ export function deployPreview(
 			);
 			return;
 		}
-		deps.view.show(report, { env, tomlUri });
+		deps.view.show(report, { env, tomlUri, ...(name ? { name } : {}) });
 	};
 }
 

@@ -2,7 +2,8 @@
 // "Manage..." CodeLens. Pops a single QuickPick grouped by environment - one
 // separator header per env, the env's actions listed under it - so a single
 // pick runs an action against a specific env (delete adds a second step for its
-// emitted-streams scope). Actions: diff against deployed, and the state-aware
+// emitted-streams scope). Actions: deploy this projection (opens the scoped plan
+// webview via gaffer.deployPreview), diff against deployed, and the state-aware
 // operate verbs (pause/resume/abort/delete).
 // Lives here for symmetry with the other lens-driven command bodies
 // (debug-projection-pick.ts), keeping activate() free of command logic.
@@ -21,8 +22,9 @@ export interface ProjectionActionsEnv {
 	state?: string;
 	emits?: boolean;
 	// "auth" (sign-in needed) or "unavailable" (a failed read); empty when the env
-	// resolved or has no status yet. "auth" collapses the env's actions to a
-	// sign-in; the rest is shown as context and never blocks.
+	// resolved or has no status yet. Both collapse the env to a single row - "auth"
+	// to a sign-in, "unavailable" to a non-actionable notice - since no action can
+	// run against an env that isn't reachable or authenticated.
 	status?: string;
 }
 
@@ -39,7 +41,7 @@ export interface ProjectionActionsArgs {
 // whether to offer the emitted-streams choice.
 export interface ProjectionAction {
 	env: string;
-	action: "diff" | "signin" | OperateVerb;
+	action: "deploy" | "diff" | "signin" | OperateVerb;
 	production: boolean | undefined;
 	emits?: boolean;
 }
@@ -112,18 +114,13 @@ function operateRows(env: ProjectionActionsEnv): ActionItem[] {
 // a single env, so the env's placement is the same whatever the env count. Envs
 // appear in gaffer.toml order (the default is labelled, not reordered); item
 // order within an env is the action order.
-// separatorLabel is the env header row: its name, whether it's the default, and
-// a status note ("sign-in needed" / "unavailable") so the menu carries the same
-// context as the status hover.
+// separatorLabel is the env header row: its name and whether it's the default.
+// An auth env adds a "sign-in needed" note, since its single row ("Sign in") is
+// the fix, not the status. An unavailable env carries no note - its single row
+// states the status itself, so a note would just repeat it.
 function separatorLabel(env: ProjectionActionsEnv): string {
 	const base = env.default ? `${env.name} (default)` : env.name;
-	const note =
-		env.status === "auth"
-			? "sign-in needed"
-			: env.status === "unavailable"
-				? "unavailable"
-				: "";
-	return note ? `${base} · ${note}` : base;
+	return env.status === "auth" ? `${base} · sign-in needed` : base;
 }
 
 export function buildActionItems(envs: ProjectionActionsEnv[]): ActionItem[] {
@@ -142,6 +139,21 @@ export function buildActionItems(envs: ProjectionActionsEnv[]): ActionItem[] {
 			});
 			continue;
 		}
+		// A failed status read means nothing can run against this env - deploy, diff,
+		// and the operate verbs would all just report the same failure - so collapse
+		// to a single non-actionable notice rather than a menu of dead actions. No
+		// pick payload, so selecting it is a no-op.
+		if (env.status === "unavailable") {
+			items.push({
+				label: "$(warning) Unavailable",
+				description: "the environment's status couldn't be read",
+			});
+			continue;
+		}
+		items.push({
+			label: "$(rocket) Deploy",
+			pick: { env: env.name, action: "deploy", production: env.production },
+		});
 		items.push({
 			label: "$(diff-single) Diff against deployed",
 			pick: { env: env.name, action: "diff", production: env.production },
@@ -162,6 +174,14 @@ export function projectionActions(
 		});
 		if (!picked?.pick) return;
 		const pick = picked.pick;
+		if (pick.action === "deploy") {
+			await vscode.commands.executeCommand("gaffer.deployPreview", {
+				name: args.name,
+				env: pick.env,
+				tomlUri: args.tomlUri,
+			});
+			return;
+		}
 		if (pick.action === "diff") {
 			await deps.diff({
 				name: args.name,

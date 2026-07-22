@@ -40,9 +40,20 @@ function summary(failed = 0): CliMessage {
 
 // A run that replays fixed NDJSON lines then exits, recording its call.
 function fakeRun(lines: CliMessage[], code: number | null) {
-	const calls: { env: string; cwd: string; noValidate: boolean }[] = [];
-	const run: DeployApplyDeps["run"] = (env, cwd, noValidate, handlers) => {
-		calls.push({ env, cwd, noValidate });
+	const calls: {
+		env: string;
+		cwd: string;
+		noValidate: boolean;
+		name: string | undefined;
+	}[] = [];
+	const run: DeployApplyDeps["run"] = (
+		env,
+		cwd,
+		noValidate,
+		name,
+		handlers,
+	) => {
+		calls.push({ env, cwd, noValidate, name });
 		for (const l of lines) handlers.onLine(l);
 		handlers.onExit(code);
 	};
@@ -92,6 +103,23 @@ describe("deployApply", () => {
 				},
 			},
 		]);
+	});
+
+	it("threads the projection scope from the context through to the run", async () => {
+		const { calls, run } = fakeRun([summary(0)], 0);
+		await deployApply({ run })(
+			{ env: "staging", tomlUri, name: "orders" },
+			plan(false, ["created"]),
+			false,
+			() => {},
+		);
+		expect(calls[0]?.name).toBe("orders");
+	});
+
+	it("leaves the scope undefined for a whole-project apply", async () => {
+		const { calls, run } = fakeRun([summary(0)], 0);
+		await deployApply({ run })(ctx, plan(false, ["created"]), false, () => {});
+		expect(calls[0]?.name).toBeUndefined();
 	});
 
 	it("threads the bypass flag through to the run", async () => {

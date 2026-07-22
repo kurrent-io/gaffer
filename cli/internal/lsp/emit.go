@@ -230,9 +230,10 @@ type actionsEnv struct {
 	// Emits is whether the deployed projection emits streams, so the editor only
 	// offers the delete-and-emitted-streams choice when it's meaningful.
 	Emits bool `json:"emits,omitempty"`
-	// Status flags a non-actionable env for the menu: "auth" (sign-in needed, so
-	// the actions collapse to a sign-in) or "unavailable" (a failed read, shown as
-	// context but not blocked). Empty when the env resolved, or has no status yet.
+	// Status flags a non-actionable env for the menu, which collapses it to a
+	// single row: "auth" (sign-in needed) to a sign-in, "unavailable" (a failed
+	// read) to a non-actionable notice. Empty when the env resolved, or has no
+	// status yet.
 	Status string `json:"status,omitempty"`
 }
 

@@ -159,6 +159,29 @@ function actionsKey(uri: string, name: string): string {
 	return `${uri}::${name}`;
 }
 
+// Field-wise equality for a projection's env cells, to decide whether a decoded
+// payload actually changed. Runs on every provideCodeLenses, so it avoids the
+// per-refresh allocation of a JSON.stringify compare.
+function sameEnvs(a: ActionsEnv[], b: ActionsEnv[]): boolean {
+	if (a.length !== b.length) return false;
+	for (const [i, x] of a.entries()) {
+		const y = b[i];
+		if (
+			!y ||
+			x.name !== y.name ||
+			x.default !== y.default ||
+			x.production !== y.production ||
+			x.state !== y.state ||
+			x.emits !== y.emits ||
+			x.status !== y.status ||
+			x.loading !== y.loading
+		) {
+			return false;
+		}
+	}
+	return true;
+}
+
 // parseConfigURI guards `vscode.Uri.parse` so a malformed URI
 // from the server doesn't throw out of provideCodeLenses and
 // drop every remaining lens for the document.
@@ -341,8 +364,7 @@ export class LspCodeLensProvider
 		let changed = false;
 		for (const [key, envs] of next) {
 			const prev = this.#actions.get(key);
-			if (!prev || JSON.stringify(prev) !== JSON.stringify(envs))
-				changed = true;
+			if (!prev || !sameEnvs(prev, envs)) changed = true;
 			this.#actions.set(key, envs);
 		}
 		// Drop entries for projections this document no longer reports.

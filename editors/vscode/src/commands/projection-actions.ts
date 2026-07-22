@@ -238,15 +238,6 @@ export function createActionMenu(): ActionMenu {
 		new Promise<ProjectionAction | undefined>((resolve) => {
 			const qp = vscode.window.createQuickPick<ActionItem>();
 			qp.placeholder = title;
-			const apply = (envs: ProjectionActionsEnv[]): void => {
-				const prevActive = qp.activeItems.map((i) => i.pick);
-				qp.items = buildActionItems(envs);
-				qp.busy = anyLoading(envs);
-				const restored = preserveActiveItems(qp.items, prevActive);
-				if (restored.length > 0) qp.activeItems = restored;
-			};
-			apply(initial);
-			const sub = subscribe?.((envs) => apply(envs));
 			let settled = false;
 			const settle = (pick: ProjectionAction | undefined): void => {
 				if (settled) return;
@@ -255,7 +246,31 @@ export function createActionMenu(): ActionMenu {
 				qp.dispose();
 				resolve(pick);
 			};
-			qp.onDidAccept(() => settle(qp.selectedItems[0]?.pick));
+			const apply = (envs: ProjectionActionsEnv[]): void => {
+				const prevActive = qp.activeItems.map((i) => i.pick);
+				qp.items = buildActionItems(envs);
+				qp.busy = anyLoading(envs);
+				const restored = preserveActiveItems(qp.items, prevActive);
+				if (restored.length > 0) qp.activeItems = restored;
+			};
+			apply(initial);
+			const sub = subscribe?.((envs) => {
+				// No actions left (projection removed, or the server dropped and the
+				// cache cleared): close rather than leave a stale menu or a spinner
+				// that never resolves.
+				if (envs.length === 0) {
+					settle(undefined);
+					return;
+				}
+				apply(envs);
+			});
+			// Resolve from the visible highlight (activeItems) when the selection
+			// channel is empty - a repaint replaces qp.items and can clear
+			// selectedItems before the highlight is restored, so preferring
+			// selectedItems alone could accept nothing or the wrong row.
+			qp.onDidAccept(() =>
+				settle(qp.selectedItems[0]?.pick ?? qp.activeItems[0]?.pick),
+			);
 			qp.onDidHide(() => settle(undefined));
 			qp.show();
 		});

@@ -726,8 +726,9 @@ async function activateAfterTelemetry(
 							// without a reopen.
 							watchActions: (name, tomlUri, onUpdate) =>
 								lspCodeLens.onDidChangeActions(() => {
-									const envs = lspCodeLens.getActions(tomlUri, name);
-									if (envs) onUpdate(envs);
+									// Empty when the cache dropped this projection (removed, or
+									// the server went away); the menu closes on that.
+									onUpdate(lspCodeLens.getActions(tomlUri, name) ?? []);
 								}),
 						}),
 					),

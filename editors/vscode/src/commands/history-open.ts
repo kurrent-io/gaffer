@@ -9,20 +9,21 @@ import { log } from "../output.js";
 import { parseHistoryReport } from "./history-schema.js";
 import type { HistoryContext, HistoryView } from "../panels/history-view.js";
 
-// captureGafferCommand's result; `history` prints its JSON on a clean exit and
-// exits 4 when the env needs sign-in.
-export type HistoryCapture =
-	| { ok: true; stdout: string; code: number | null }
-	| { ok: false; err: string };
-
-const EXIT_AUTH = 4;
+// The outcome of a `gaffer history --json` spawn, classified by the wiring:
+// stdout on a clean exit, or a failure split into auth (exit 4, needs sign-in)
+// vs a reason (the stderr message). `history` is a plain read - a non-zero exit
+// is a real error, not a status code with a payload - so its reason must be kept
+// rather than parsed away as empty JSON.
+export type HistoryOutcome =
+	| { ok: true; stdout: string }
+	| { ok: false; auth: boolean; reason: string };
 
 export interface HistoryOpenDeps {
 	runHistory: (
 		cwd: string,
 		env: string,
 		name: string,
-	) => Promise<HistoryCapture>;
+	) => Promise<HistoryOutcome>;
 	view: HistoryView;
 }
 
@@ -36,15 +37,20 @@ export function makeLoadHistory(
 		const cwd = path.dirname(ctx.tomlUri.fsPath);
 		const res = await deps.runHistory(cwd, ctx.env, ctx.name);
 		if (!res.ok) {
-			await fail(
-				ctx,
-				`Couldn't read history for "${ctx.name}": ${res.err}`,
-				deps.view,
-			);
-			return;
-		}
-		if (res.code === EXIT_AUTH) {
-			await offerSignIn(ctx);
+			if (res.auth) {
+				// Clear any stale timeline in an already-open panel (a refresh whose
+				// env now needs sign-in), then offer to sign in.
+				deps.view.reportError(
+					`${ctx.env} needs sign-in to read history for "${ctx.name}".`,
+				);
+				await offerSignIn(ctx);
+			} else {
+				await fail(
+					ctx,
+					`Couldn't read history for "${ctx.name}": ${res.reason}`,
+					deps.view,
+				);
+			}
 			return;
 		}
 		const entries = parseHistoryReport(res.stdout);

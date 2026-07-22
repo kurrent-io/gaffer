@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import {
 	makeLoadHistory,
 	historyCommand,
-	type HistoryCapture,
+	type HistoryOutcome,
 	type HistoryOpenDeps,
 } from "./history-open.js";
 import type { HistoryContext, HistoryView } from "../panels/history-view.js";
@@ -36,11 +36,11 @@ function fakeView() {
 	return { view, shown, errors };
 }
 
-function harness(capture: HistoryCapture) {
+function harness(outcome: HistoryOutcome) {
 	const { view, shown, errors } = fakeView();
 	const deps: HistoryOpenDeps = {
 		view,
-		runHistory: () => Promise.resolve(capture),
+		runHistory: () => Promise.resolve(outcome),
 	};
 	return { shown, errors, load: makeLoadHistory(deps) };
 }
@@ -52,34 +52,41 @@ const LEDGER = JSON.stringify([
 
 describe("makeLoadHistory", () => {
 	it("shows the parsed ledger for the projection", async () => {
-		const h = harness({ ok: true, code: 0, stdout: LEDGER });
+		const h = harness({ ok: true, stdout: LEDGER });
 		await h.load(ctx);
 		expect(h.shown).toHaveLength(1);
 		expect(h.shown[0]?.entries.map((e) => e.version)).toEqual([4, 2]);
 		expect(h.shown[0]?.ctx).toEqual(ctx);
 	});
 
-	it("offers sign-in on exit code 4 and shows nothing", async () => {
-		const h = harness({ ok: true, code: 4, stdout: "" });
+	it("offers sign-in on an auth failure and clears the panel", async () => {
+		const h = harness({ ok: false, auth: true, reason: "sign-in required" });
 		await h.load(ctx);
 		expect(h.shown).toHaveLength(0);
+		// The panel is cleared (reportError) so a stale timeline doesn't linger,
+		// and a sign-in is offered.
+		expect(h.errors[0]).toContain("needs sign-in");
 		expect(
 			getShownMessages().find((m) => m.kind === "error")?.message,
 		).toContain("needs sign-in");
 	});
 
+	it("surfaces the real reason on a non-auth failure", async () => {
+		const h = harness({
+			ok: false,
+			auth: false,
+			reason: `"orders" is not deployed`,
+		});
+		await h.load(ctx);
+		expect(h.shown).toHaveLength(0);
+		expect(h.errors[0]).toContain("is not deployed");
+	});
+
 	it("reports an error on unparseable output", async () => {
-		const h = harness({ ok: true, code: 0, stdout: "not json" });
+		const h = harness({ ok: true, stdout: "not json" });
 		await h.load(ctx);
 		expect(h.shown).toHaveLength(0);
 		expect(h.errors[0]).toContain("Couldn't read the history");
-	});
-
-	it("reports an error when the spawn fails", async () => {
-		const h = harness({ ok: false, err: "ENOENT" });
-		await h.load(ctx);
-		expect(h.shown).toHaveLength(0);
-		expect(h.errors[0]).toContain("ENOENT");
 	});
 });
 

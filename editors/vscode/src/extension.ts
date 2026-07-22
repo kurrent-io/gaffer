@@ -722,10 +722,21 @@ async function activateAfterTelemetry(
 				gafferRunEnv(telemetry.isOptedOut());
 			const errText = (err: unknown): string =>
 				err instanceof Error ? err.message : String(err);
-			// A one-shot capture keeping stdout + exit code on any exit (history reads
-			// its JSON regardless of a non-zero "status" code).
-			const capture = async (args: string[], cwd: string) => {
-				const r = await captureGafferCommand(
+			// history and rollback are plain reads/writes: a non-zero exit is a real
+			// error (not a status code carrying a payload), so run them via
+			// runGafferCommand and keep the reason - exit 4 is auth, else the stderr
+			// message - rather than parsing an empty stdout into a generic failure.
+			const classifyFailure = (err: unknown) => {
+				const code = (err as { code?: unknown }).code;
+				const stderr = (err as { cause?: { stderr?: unknown } }).cause?.stderr;
+				return {
+					ok: false as const,
+					auth: code === 4,
+					reason: typeof stderr === "string" && stderr ? stderr : errText(err),
+				};
+			};
+			const run = async (args: string[], cwd: string) => {
+				const r = await runGafferCommand(
 					args,
 					cwd,
 					telemetry,
@@ -733,8 +744,8 @@ async function activateAfterTelemetry(
 					runEnv(),
 				);
 				return r.ok
-					? { ok: true as const, stdout: r.stdout, code: r.code }
-					: { ok: false as const, err: errText(r.err) };
+					? { ok: true as const, stdout: r.stdout }
+					: classifyFailure(r.err);
 			};
 
 			const historyDiffProvider = new HistoryDiffContentProvider();
@@ -747,33 +758,14 @@ async function activateAfterTelemetry(
 					requestDiff: requestDiffVersions,
 				}),
 				onRollback: rollbackFromHistory({
-					// Rollback rejects on a non-zero exit, so its refusal reason (on
-					// stderr) is preserved rather than dropped; auth is exit code 4.
-					runRollback: async (cwd, env, name, hash) => {
-						const r = await runGafferCommand(
-							rollbackArgs(env, name, hash),
-							cwd,
-							telemetry,
-							"code_lens",
-							runEnv(),
-						);
-						if (r.ok) return { ok: true as const, stdout: r.stdout };
-						const code = (r.err as { code?: unknown }).code;
-						const stderr = (r.err as { cause?: { stderr?: unknown } }).cause
-							?.stderr;
-						return {
-							ok: false as const,
-							auth: code === 4,
-							reason:
-								typeof stderr === "string" && stderr ? stderr : errText(r.err),
-						};
-					},
+					runRollback: (cwd, env, name, hash) =>
+						run(rollbackArgs(env, name, hash), cwd),
 					reload: (ctx) => loadHistory(ctx),
 				}),
 			});
 			const loadHistory = makeLoadHistory({
 				view: historyView,
-				runHistory: (cwd, env, name) => capture(historyArgs(env, name), cwd),
+				runHistory: (cwd, env, name) => run(historyArgs(env, name), cwd),
 			});
 
 			return vscode.Disposable.from(

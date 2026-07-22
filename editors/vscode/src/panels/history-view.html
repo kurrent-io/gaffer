@@ -516,6 +516,11 @@
 						render(msg.name, msg.env);
 						break;
 					case "error": {
+						// Clear the timeline so a stale one (a refresh whose env now fails
+						// or needs sign-in) doesn't linger with live-looking actions.
+						entries = [];
+						rowsEl.replaceChildren();
+						rail.replaceChildren();
 						const d = document.createElement("div");
 						d.className = "notice error";
 						d.textContent = msg.message;

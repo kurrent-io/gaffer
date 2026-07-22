@@ -110,3 +110,20 @@ describe("openHistoryDiff", () => {
 		expect(diffCalls()).toHaveLength(0);
 	});
 });
+
+describe("HistoryDiffContentProvider", () => {
+	it("bounds the cache, evicting the oldest comparison", () => {
+		const provider = new HistoryDiffContentProvider();
+		const first = provider.setSides("e", "p", "h0a", "L0", "h0b", "R0");
+		// 60 more comparisons (61 total = 122 sides) tips past the ~120-entry cap,
+		// so the oldest-inserted comparison is evicted.
+		for (let i = 1; i < 61; i++) {
+			provider.setSides("e", "p", `h${i}a`, `L${i}`, `h${i}b`, `R${i}`);
+		}
+		expect(provider.provideTextDocumentContent(first.left)).toBe("");
+		expect(provider.provideTextDocumentContent(first.right)).toBe("");
+		// A recent comparison is still served.
+		const recent = provider.setSides("e", "p", "hZa", "LZ", "hZb", "RZ");
+		expect(provider.provideTextDocumentContent(recent.left)).toBe("LZ");
+	});
+});

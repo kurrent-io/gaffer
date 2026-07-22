@@ -26,6 +26,13 @@ export class HistoryDiffContentProvider
 	readonly onDidChange = this.#onDidChange.event;
 	readonly #contents = new Map<string, string>();
 
+	// Bound the cache so a long session diffing many versions doesn't grow it
+	// without limit. Keys are per-side, so this holds the sources for the most
+	// recent ~60 comparisons; evicting the oldest by insertion can only blank a
+	// diff editor left open past that many later comparisons, which doesn't happen
+	// in practice.
+	static readonly #maxEntries = 120;
+
 	dispose(): void {
 		this.#onDidChange.dispose();
 		this.#contents.clear();
@@ -47,9 +54,20 @@ export class HistoryDiffContentProvider
 		const r = this.#uri(env, name, right);
 		this.#contents.set(l.toString(), leftSource);
 		this.#contents.set(r.toString(), rightSource);
+		this.#evictOldest();
 		this.#onDidChange.fire(l);
 		this.#onDidChange.fire(r);
 		return { left: l, right: r };
+	}
+
+	// Drop the oldest-inserted entries once over the cap. A Map iterates in
+	// insertion order, so its first keys are the oldest.
+	#evictOldest(): void {
+		while (this.#contents.size > HistoryDiffContentProvider.#maxEntries) {
+			const oldest = this.#contents.keys().next().value;
+			if (oldest === undefined) break;
+			this.#contents.delete(oldest);
+		}
 	}
 
 	// The path ends in `.js` so VS Code syntax-highlights both sides (projection

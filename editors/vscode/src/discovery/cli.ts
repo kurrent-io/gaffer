@@ -45,9 +45,10 @@ export interface Invocation {
 let keyringPassword: string | undefined;
 
 // Injected as GAFFER_KEYRING_NAME alongside the passphrase, so the extension's
-// encrypted-file token store is isolated at keyring/vscode. On a host with no OS
-// keyring, that keeps the passphrase-locked extension store from colliding with
-// (and locking out) the user's default CLI store; an OS keyring ignores it.
+// encrypted-file token store is isolated at keyring-vscode (a sibling of the
+// CLI's default store). On a host with no OS keyring, that keeps the
+// passphrase-locked extension store from colliding with (and locking out) the
+// user's default CLI store; an OS keyring ignores it.
 const KEYRING_NAME = "vscode";
 
 export function setKeyringPassword(pw: string | undefined): void {

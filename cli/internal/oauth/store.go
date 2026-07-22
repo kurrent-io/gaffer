@@ -61,9 +61,10 @@ func fileKeyringDir(dir string) string {
 }
 
 // sanitizeKeyringName reduces an opaque client label to a single safe path
-// segment: only [A-Za-z0-9._-], and never a dot-only token that could traverse.
-// Anything else (separators, empty) yields "", which falls back to the shared
-// default store.
+// segment: it keeps only [A-Za-z0-9._-] and drops every other character, so a
+// separator can't form a nested or traversing path (the remaining allowed
+// characters are still kept - "a/b" becomes "ab"). A result that is empty or a
+// bare "."/".." falls back to the shared default store.
 func sanitizeKeyringName(name string) string {
 	var b strings.Builder
 	for _, r := range name {

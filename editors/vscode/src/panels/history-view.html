@@ -122,20 +122,6 @@
 				display: flex;
 				align-items: center;
 				gap: 0.4em;
-				opacity: 0;
-				transition: opacity 0.1s;
-			}
-			.row:hover .row-actions,
-			.row:focus-within .row-actions {
-				opacity: 1;
-			}
-			.row-actions.busy {
-				opacity: 1;
-			}
-			@media (prefers-reduced-motion: reduce) {
-				.row-actions {
-					transition: none;
-				}
 			}
 			.abtn {
 				font-family: inherit;
@@ -342,7 +328,11 @@
 				const row = document.createElement("div");
 				row.className = "row";
 				row.dataset.version = e.version;
-				const hash = e.contentHash
+				// The hash shows only on a content version - the same rows that get the
+				// diff/rollback actions. A state change carries no content identity of
+				// its own, so its hash column stays blank (matching the CLI timeline).
+				const act = rollable(e);
+				const hash = act
 					? `<span class="hash">${esc(shortHash(e.contentHash))}</span>`
 					: "";
 				const prov = provenance(e);
@@ -358,7 +348,7 @@
 						</div>
 						${provHtml}
 					</div>`;
-				if (rollable(e)) row.appendChild(actionBar(e.version));
+				if (act) row.appendChild(actionBar(e.version));
 				return row;
 			}
 
@@ -508,7 +498,6 @@
 			function markRolling(version) {
 				const bar = rowActions(version);
 				if (!bar) return;
-				bar.classList.add("busy");
 				bar.replaceChildren();
 				const s = document.createElement("span");
 				s.className = "rolling";

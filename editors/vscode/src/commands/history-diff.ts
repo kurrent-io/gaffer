@@ -1,28 +1,20 @@
 // Opens a native diff editor for two versions of a projection, driving the
-// history viewer's "diff previous" / "compare with local" actions. Unlike
-// diff-projection.ts (deployed↔local over the warm LSP), these compare arbitrary
-// versions by content hash, so they cold-spawn `gaffer diff --left --right --json`
-// and render its canonical sources as read-only virtual documents.
+// history viewer's "diff previous" / "compare with local" actions. Like
+// diff-projection.ts, the diff is served over the language server's warm per-env
+// connection (gaffer/diffVersions) rather than a cold `gaffer diff` spawn, so a
+// re-diff is one RPC. Unlike diffProjection it compares arbitrary versions by
+// content hash. Both sides render as read-only virtual documents.
 
-import * as path from "node:path";
 import * as vscode from "vscode";
 import { log } from "../output.js";
-import { parseDiffReport } from "./history-schema.js";
+import { type ProjectionDiff } from "../lsp/diff.js";
+import { LspAuthRequiredError } from "../lsp/request.js";
 import type {
 	HistoryContext,
 	HistoryDiffRequest,
 } from "../panels/history-view.js";
 
 export const GAFFER_HISTORY_DIFF_SCHEME = "gaffer-history-diff";
-
-// captureGafferCommand's result: stdout + exit code kept on any exit (diff exits
-// non-zero when the versions differ, like a deploy dry-run, so the JSON is read
-// regardless of code), or a spawn failure. Exit code 4 is "auth required".
-export type DiffCapture =
-	| { ok: true; stdout: string; code: number | null }
-	| { ok: false; err: string };
-
-const EXIT_AUTH = 4;
 
 // Serves the two diff sides as read-only virtual documents, keyed by (env, name,
 // ref) so re-running the same comparison reuses its documents and refreshes an
@@ -72,14 +64,16 @@ export class HistoryDiffContentProvider
 }
 
 export interface HistoryDiffDeps {
-	// Cold-spawns `gaffer diff --left --right --json` in cwd and returns its capture.
-	runDiff: (
-		cwd: string,
-		env: string,
+	// Fetches the two versions' diff over the LSP warm connection. Throws
+	// LspAuthRequiredError when the env needs sign-in, LspUnavailableError
+	// otherwise. A field so tests inject a fake in place of a live server.
+	requestDiff: (
 		name: string,
+		tomlUri: vscode.Uri,
+		env: string,
 		left: string,
 		right: string,
-	) => Promise<DiffCapture>;
+	) => Promise<ProjectionDiff>;
 	provider: HistoryDiffContentProvider;
 }
 
@@ -89,51 +83,52 @@ export function openHistoryDiff(
 	return async (ctx, req) => {
 		if (!vscode.workspace.isTrusted) return;
 
-		const cwd = path.dirname(ctx.tomlUri.fsPath);
-		const res = await deps.runDiff(cwd, req.env, req.name, req.left, req.right);
-		if (!res.ok) {
-			log(
-				`history diff ${req.name} (${req.left}↔${req.right}) failed: ${res.err}`,
+		let diff: ProjectionDiff;
+		try {
+			diff = await deps.requestDiff(
+				req.name,
+				ctx.tomlUri,
+				req.env,
+				req.left,
+				req.right,
 			);
-			await vscode.window.showErrorMessage(
-				`Couldn't diff "${req.name}": ${res.err}`,
-			);
+		} catch (err) {
+			await reportFailure(req.name, ctx, err);
 			return;
 		}
-		if (res.code === EXIT_AUTH) {
-			await offerSignIn(req.name, ctx);
-			return;
-		}
-		const report = parseDiffReport(res.stdout);
-		if (!report) {
-			log(`history diff ${req.name}: unparseable output (code ${res.code})`);
-			await vscode.window.showErrorMessage(
-				`Couldn't read the diff for "${req.name}".`,
-			);
-			return;
-		}
+
 		const { left, right } = deps.provider.setSides(
 			req.env,
 			req.name,
 			req.left,
-			report.left.source,
+			diff.left.source,
 			req.right,
-			report.right.source,
+			diff.right.source,
 		);
 		await vscode.commands.executeCommand("vscode.diff", left, right, req.title);
 	};
 }
 
-async function offerSignIn(name: string, ctx: HistoryContext): Promise<void> {
-	const signIn = "Sign in";
-	const choice = await vscode.window.showErrorMessage(
-		`${ctx.env} needs sign-in to diff "${name}".`,
-		signIn,
-	);
-	if (choice === signIn) {
-		await vscode.commands.executeCommand("gaffer.signIn", {
-			env: ctx.env,
-			tomlUri: ctx.tomlUri,
-		});
+async function reportFailure(
+	name: string,
+	ctx: HistoryContext,
+	err: unknown,
+): Promise<void> {
+	if (err instanceof LspAuthRequiredError) {
+		const signIn = "Sign in";
+		const choice = await vscode.window.showErrorMessage(
+			`${ctx.env} needs sign-in to diff "${name}".`,
+			signIn,
+		);
+		if (choice === signIn) {
+			await vscode.commands.executeCommand("gaffer.signIn", {
+				env: ctx.env,
+				tomlUri: ctx.tomlUri,
+			});
+		}
+		return;
 	}
+	const detail = err instanceof Error ? err.message : String(err);
+	log(`history diff ${name} --env ${ctx.env} failed: ${detail}`);
+	await vscode.window.showErrorMessage(`Couldn't diff "${name}": ${detail}`);
 }

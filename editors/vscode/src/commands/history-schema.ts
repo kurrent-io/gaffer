@@ -1,8 +1,8 @@
-// The wire shapes the history viewer reads from the CLI: the deploy ledger from
-// `gaffer history --json`, a source diff from `gaffer diff --json`, and a
-// `gaffer rollback --json` result. Validated at the spawn boundary like every
-// other CLI payload - we don't trust the wire format - so the panel and the
-// graph model render a known shape.
+// The wire shapes the history viewer reads from the CLI's cold spawns: the
+// deploy ledger from `gaffer history --json` and a `gaffer rollback --json`
+// result. Validated at the spawn boundary like every other CLI payload - we
+// don't trust the wire format - so the panel renders a known shape. (The
+// per-entry diff goes over the LSP warm connection instead; see lsp/diff.ts.)
 
 import * as v from "valibot";
 
@@ -39,37 +39,6 @@ export type HistoryEntry = v.InferOutput<typeof HistoryEntrySchema>;
 
 export const HistoryReportSchema = v.array(HistoryEntrySchema);
 
-// One diff line (deploy.DiffLine). `kind` maps to a row style; `[emphFrom,emphTo)`
-// are half-open rune-aligned byte offsets into `text` bounding the intraline
-// change (empty span => no intraline highlight). `oldN`/`newN` are 1-based, 0
-// where the side has no line.
-export const DiffLineSchema = v.object({
-	kind: v.picklist(["equal", "removed", "added"]),
-	oldN: v.number(),
-	newN: v.number(),
-	text: v.optional(v.string(), ""),
-	emphFrom: v.optional(v.number(), 0),
-	emphTo: v.optional(v.number(), 0),
-});
-export type DiffLine = v.InferOutput<typeof DiffLineSchema>;
-
-const DiffSideSchema = v.object({
-	ref: v.string(),
-	hash: v.optional(v.string()),
-	source: v.optional(v.string(), ""),
-});
-
-// A source diff (cliout.DiffJSON). The viewer renders `lines`; `left`/`right`
-// carry the canonical source for the "Open in diff editor" pop. verdict/changes
-// are absent on a version-to-version diff and ignored here.
-export const DiffReportSchema = v.object({
-	name: v.string(),
-	left: DiffSideSchema,
-	right: DiffSideSchema,
-	lines: v.array(DiffLineSchema),
-});
-export type DiffReport = v.InferOutput<typeof DiffReportSchema>;
-
 // A rollback result (cli rollbackJSON). `outcome` is "rolled-back" when the live
 // query moved, "unchanged" when the target was already current.
 export const RollbackResultSchema = v.object({
@@ -95,9 +64,6 @@ function parse<TSchema extends v.GenericSchema>(
 
 export const parseHistoryReport = (stdout: string): HistoryEntry[] | null =>
 	parse(HistoryReportSchema, stdout);
-
-export const parseDiffReport = (stdout: string): DiffReport | null =>
-	parse(DiffReportSchema, stdout);
 
 export const parseRollbackResult = (stdout: string): RollbackResult | null =>
 	parse(RollbackResultSchema, stdout);

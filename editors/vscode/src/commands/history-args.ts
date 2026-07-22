@@ -10,28 +10,6 @@ export function historyArgs(env: string, name: string): string[] {
 	return ["history", "--json", "--env", env, "--", name];
 }
 
-// A version-to-version (or version-to-local) source diff. `left`/`right` are refs
-// the CLI understands: "local", "deployed", or a content-hash prefix.
-export function diffVersionArgs(
-	env: string,
-	name: string,
-	left: string,
-	right: string,
-): string[] {
-	return [
-		"diff",
-		"--json",
-		"--env",
-		env,
-		"--left",
-		left,
-		"--right",
-		right,
-		"--",
-		name,
-	];
-}
-
 // Rollback redeploys a prior version by full content hash. `--yes` because the
 // webview runs its own confirm; a non-terminal spawn without it fails closed.
 // The hash is a positional too, so both positionals follow the `--`.

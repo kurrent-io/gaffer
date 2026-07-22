@@ -48,6 +48,7 @@ func (h offloadBlockingHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn,
 // is a cache read or spawns its own work and returns at once.
 var blockingMethods = map[string]struct{}{
 	MethodDiffProjection:    {},
+	MethodDiffVersions:      {},
 	MethodOperateProjection: {},
 }
 
@@ -110,6 +111,9 @@ func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Req
 		// Blocking network read - must also be in blockingMethods, or it
 		// runs inline and freezes the read loop.
 		return s.handleDiffProjection(ctx, req)
+	case MethodDiffVersions:
+		// Blocking network read - must also be in blockingMethods.
+		return s.handleDiffVersions(ctx, req)
 	case MethodOperateProjection:
 		// Blocking network write - must also be in blockingMethods.
 		return s.handleOperateProjection(ctx, req)

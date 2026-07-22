@@ -61,6 +61,13 @@ const (
 	// so the editor's diff wiring is unchanged.
 	MethodDiffProjection = "gaffer/diffProjection"
 
+	// MethodDiffVersions is a gaffer-specific extension: diff any two versions of a
+	// projection (a content hash, "deployed", or "local") over the server's warm
+	// per-env connection, for the history viewer's per-entry diffs. The result is a
+	// cliout.DiffJSON, same as `gaffer diff --left --right --json`, so the editor's
+	// diff wiring is unchanged. Unlike diffProjection it carries no drift verdict.
+	MethodDiffVersions = "gaffer/diffVersions"
+
 	// MethodOperateProjection is a gaffer-specific extension: run an operate verb
 	// (pause/resume/abort/delete) on one projection over the server's warm per-env
 	// connection. The editor renders the confirm tier before calling, so the
@@ -503,6 +510,16 @@ type DiffProjectionParams struct {
 	ConfigURI string `json:"configURI"`
 	Name      string `json:"name"`
 	Env       string `json:"env"`
+}
+
+// DiffVersionsParams identifies the projection and env plus the two refs to diff.
+// Each ref is a content-hash prefix, "deployed", or "local" (see versiondiff.ParseRef).
+type DiffVersionsParams struct {
+	ConfigURI string `json:"configURI"`
+	Name      string `json:"name"`
+	Env       string `json:"env"`
+	Left      string `json:"left"`
+	Right     string `json:"right"`
 }
 
 // OperateProjectionParams identifies the projection, env, and operate verb to run

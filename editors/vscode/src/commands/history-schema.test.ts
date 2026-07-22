@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	parseDiffReport,
-	parseHistoryReport,
-	parseRollbackResult,
-} from "./history-schema.js";
+import { parseHistoryReport, parseRollbackResult } from "./history-schema.js";
 
 describe("parseHistoryReport", () => {
 	it("parses a ledger, defaulting the omitted false/empty fields", () => {
@@ -57,58 +53,6 @@ describe("parseHistoryReport", () => {
 		expect(
 			parseHistoryReport(JSON.stringify({ version: 1, kind: "deploy" })),
 		).toBeNull();
-	});
-});
-
-describe("parseDiffReport", () => {
-	it("parses sides and lines with intraline spans", () => {
-		const report = parseDiffReport(
-			JSON.stringify({
-				name: "orders",
-				left: { ref: "version", hash: "1d77f5a", source: "old\n" },
-				right: { ref: "local", source: "new\n" },
-				lines: [
-					{ kind: "equal", oldN: 1, newN: 1, text: "const x = 1" },
-					{
-						kind: "removed",
-						oldN: 2,
-						newN: 0,
-						text: "let y = 2",
-						emphFrom: 4,
-						emphTo: 5,
-					},
-					{
-						kind: "added",
-						oldN: 0,
-						newN: 2,
-						text: "let z = 2",
-						emphFrom: 4,
-						emphTo: 5,
-					},
-				],
-			}),
-		);
-		expect(report?.name).toBe("orders");
-		expect(report?.left).toMatchObject({ ref: "version", hash: "1d77f5a" });
-		expect(report?.right).toMatchObject({ ref: "local", source: "new\n" });
-		expect(report?.lines).toHaveLength(3);
-		expect(report?.lines[1]).toMatchObject({
-			kind: "removed",
-			emphFrom: 4,
-			emphTo: 5,
-		});
-	});
-
-	it("rejects an unknown line kind", () => {
-		const report = parseDiffReport(
-			JSON.stringify({
-				name: "orders",
-				left: { ref: "local" },
-				right: { ref: "local" },
-				lines: [{ kind: "modified", oldN: 1, newN: 1 }],
-			}),
-		);
-		expect(report).toBeNull();
 	});
 });
 

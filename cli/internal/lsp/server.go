@@ -79,12 +79,13 @@ type Server struct {
 	statusFetch  statusFetchFunc
 	runtimeFetch statusRuntimeFunc
 
-	// diffFetch/operateFetch do one env's warm-connection diff read /
-	// operate write for the gaffer/diffProjection and gaffer/operateProjection
-	// requests. Fields so tests inject fakes in place of a live KurrentDB,
-	// mirroring statusFetch.
-	diffFetch    diffFetchFunc
-	operateFetch operateFetchFunc
+	// diffFetch/versionDiffFetch/operateFetch do one env's warm-connection diff
+	// read / version diff / operate write for the gaffer/diffProjection,
+	// gaffer/diffVersions, and gaffer/operateProjection requests. Fields so tests
+	// inject fakes in place of a live KurrentDB, mirroring statusFetch.
+	diffFetch        diffFetchFunc
+	versionDiffFetch versionDiffFetchFunc
+	operateFetch     operateFetchFunc
 
 	// watches holds one live per-env definition-stream subscription per open
 	// gaffer.toml (key uri\x00env), so a server-side deploy pushes a drift
@@ -182,6 +183,7 @@ func NewServer(opts ServerOptions) *Server {
 	s.runtimeFetch = s.fetchEnvRuntime
 	s.watchRun = s.runEnvWatch
 	s.diffFetch = s.fetchDiff
+	s.versionDiffFetch = s.fetchVersionDiff
 	s.operateFetch = s.performOperate
 	return s
 }

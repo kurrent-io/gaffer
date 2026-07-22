@@ -3,9 +3,10 @@ import * as vscode from "vscode";
 import {
 	openHistoryDiff,
 	HistoryDiffContentProvider,
-	type DiffCapture,
 	type HistoryDiffDeps,
 } from "./history-diff.js";
+import type { ProjectionDiff } from "../lsp/diff.js";
+import { LspAuthRequiredError, LspUnavailableError } from "../lsp/request.js";
 import type {
 	HistoryContext,
 	HistoryDiffRequest,
@@ -35,14 +36,16 @@ const req: HistoryDiffRequest = {
 beforeEach(() => setTrusted(true));
 afterEach(() => resetVscode());
 
-function harness(capture: DiffCapture) {
+function harness(outcome: { resolve: ProjectionDiff } | { reject: unknown }) {
 	const provider = new HistoryDiffContentProvider();
 	const calls: Array<{ left: string; right: string }> = [];
 	const deps: HistoryDiffDeps = {
 		provider,
-		runDiff: (_cwd, _env, _name, left, right) => {
+		requestDiff: (_name, _uri, _env, left, right) => {
 			calls.push({ left, right });
-			return Promise.resolve(capture);
+			return "reject" in outcome
+				? Promise.reject(outcome.reject)
+				: Promise.resolve(outcome.resolve);
 		},
 	};
 	return { provider, calls, run: () => openHistoryDiff(deps)(ctx, req) };
@@ -53,16 +56,13 @@ function diffCalls() {
 }
 
 describe("openHistoryDiff", () => {
-	it("opens the native diff with both sources", async () => {
+	it("opens the native diff with both sources over the LSP", async () => {
 		const h = harness({
-			ok: true,
-			code: 0,
-			stdout: JSON.stringify({
+			resolve: {
 				name: "orders",
 				left: { ref: "version", hash: "1d77f5a", source: "OLD" },
 				right: { ref: "local", source: "NEW" },
-				lines: [],
-			}),
+			},
 		});
 		await h.run();
 		expect(h.calls).toEqual([{ left: "1d77f5a", right: "local" }]);
@@ -78,8 +78,8 @@ describe("openHistoryDiff", () => {
 		expect(title).toBe("orders: v4 ↔ local");
 	});
 
-	it("offers sign-in on exit code 4 and does not open a diff", async () => {
-		const h = harness({ ok: true, code: 4, stdout: "" });
+	it("offers sign-in on an auth error and does not open a diff", async () => {
+		const h = harness({ reject: new LspAuthRequiredError() });
 		await h.run();
 		expect(diffCalls()).toHaveLength(0);
 		expect(
@@ -87,27 +87,24 @@ describe("openHistoryDiff", () => {
 		).toContain("needs sign-in");
 	});
 
-	it("errors on unparseable output", async () => {
-		const h = harness({ ok: true, code: 0, stdout: "not json" });
+	it("reports a generic failure on any other error", async () => {
+		const h = harness({ reject: new LspUnavailableError("boom") });
 		await h.run();
 		expect(diffCalls()).toHaveLength(0);
 		expect(
 			getShownMessages().find((m) => m.kind === "error")?.message,
-		).toContain("Couldn't read the diff");
-	});
-
-	it("errors when the spawn fails to run", async () => {
-		const h = harness({ ok: false, err: "ENOENT" });
-		await h.run();
-		expect(diffCalls()).toHaveLength(0);
-		expect(
-			getShownMessages().find((m) => m.kind === "error")?.message,
-		).toContain("ENOENT");
+		).toContain("Couldn't diff");
 	});
 
 	it("does nothing in an untrusted workspace", async () => {
 		setTrusted(false);
-		const h = harness({ ok: true, code: 0, stdout: "{}" });
+		const h = harness({
+			resolve: {
+				name: "orders",
+				left: { ref: "version", source: "" },
+				right: { ref: "local", source: "" },
+			},
+		});
 		await h.run();
 		expect(h.calls).toHaveLength(0);
 		expect(diffCalls()).toHaveLength(0);

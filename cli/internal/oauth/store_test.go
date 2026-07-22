@@ -3,12 +3,100 @@ package oauth
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/99designs/keyring"
 	"golang.org/x/oauth2"
 )
+
+func TestSanitizeKeyringName(t *testing.T) {
+	cases := map[string]string{
+		"vscode":     "vscode",
+		"vs-code_1":  "vs-code_1",
+		"a/b":        "ab",   // path separators dropped
+		"a\\b":       "ab",   // ditto on windows-style
+		"na me!":     "name", // spaces and punctuation dropped
+		".":          "",     // a dot-only segment can't be a store name
+		"..":         "",     // ...nor a traversal token
+		"":           "",
+		"my.store-2": "my.store-2",
+	}
+	for in, want := range cases {
+		if got := sanitizeKeyringName(in); got != want {
+			t.Errorf("sanitizeKeyringName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// GAFFER_KEYRING_NAME isolates the file-fallback store in a per-client sibling
+// directory (never nested in the default, so the default's Keys/Clear can't trip
+// over it), and a traversal-only name can never escape the config directory.
+func TestFileKeyringDir(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "keyring")
+
+	t.Setenv("GAFFER_KEYRING_NAME", "")
+	if got := fileKeyringDir(dir); got != base {
+		t.Errorf("no name: got %q, want %q", got, base)
+	}
+
+	t.Setenv("GAFFER_KEYRING_NAME", "vscode")
+	if got, want := fileKeyringDir(dir), filepath.Join(dir, "keyring-vscode"); got != want {
+		t.Errorf("named: got %q, want %q", got, want)
+	}
+
+	// A bare traversal token sanitizes to empty and falls back to the default.
+	t.Setenv("GAFFER_KEYRING_NAME", "..")
+	if got := fileKeyringDir(dir); got != base {
+		t.Errorf("traversal name should fall back to base: got %q, want %q", got, base)
+	}
+
+	// Any other name (even a traversal-shaped one, with separators stripped)
+	// stays a direct child of the config dir - never nested in the default store,
+	// never above the config dir.
+	t.Setenv("GAFFER_KEYRING_NAME", "../../etc")
+	got := fileKeyringDir(dir)
+	if filepath.Dir(got) != dir {
+		t.Errorf("sanitized name must stay directly under %q, got %q", dir, got)
+	}
+	if got == base {
+		t.Errorf("a non-empty name must not collide with the default store %q", base)
+	}
+}
+
+// Regression: a named store must not sit inside the default store's directory,
+// or the default store's Clear trips over it ("directory not empty" removing the
+// named subdir). Exercises the file backend (no OS keyring in CI).
+func TestClearIgnoresNamedSiblingStore(t *testing.T) {
+	dir := t.TempDir()
+	id := Identity("iss", "cid", "db.example:2113")
+	t.Setenv("GAFFER_KEYRING_PASSWORD", "pw")
+
+	// The extension's isolated store holds a token.
+	t.Setenv("GAFFER_KEYRING_NAME", "vscode")
+	named, err := OpenTokenStore(dir)
+	if err != nil {
+		t.Fatalf("open named store: %v", err)
+	}
+	if err := named.Save(id, &oauth2.Token{AccessToken: "v"}); err != nil {
+		t.Fatalf("save named: %v", err)
+	}
+
+	// The default store clears its own tokens without tripping over the named store.
+	t.Setenv("GAFFER_KEYRING_NAME", "")
+	def, err := OpenTokenStore(dir)
+	if err != nil {
+		t.Fatalf("open default store: %v", err)
+	}
+	if err := def.Save(id, &oauth2.Token{AccessToken: "d"}); err != nil {
+		t.Fatalf("save default: %v", err)
+	}
+	if _, err := def.Clear(); err != nil {
+		t.Fatalf("clear default store: %v", err)
+	}
+}
 
 // DeleteStoredToken removes the token via the non-prompting opener: the
 // invalid_grant cleanup path runs on RPC goroutines and must never block on a

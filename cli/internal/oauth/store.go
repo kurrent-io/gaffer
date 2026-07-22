@@ -37,8 +37,47 @@ type TokenStore struct {
 // OpenTokenStore opens the token store. The encrypted-file fallback lives under
 // dir/keyring; dir is typically the gaffer user-config directory.
 func OpenTokenStore(dir string) (*TokenStore, error) {
-	keyringDir := filepath.Join(dir, "keyring")
+	keyringDir := fileKeyringDir(dir)
 	return openTokenStore(keyringDir, filePassword(keyringDir))
+}
+
+// fileKeyringDir is where the encrypted-file fallback lives under dir. When
+// GAFFER_KEYRING_NAME is set it isolates the store in a per-client directory
+// (dir/keyring-<name>), so a client that injects its own GAFFER_KEYRING_PASSWORD
+// (the VS Code extension) doesn't lock the store shared with a manual terminal
+// gaffer that has no way to know that passphrase. The name is an opaque label;
+// gaffer owns the path and sanitizes the label to a single safe segment.
+//
+// Named stores are siblings of the default, never nested inside it: the file
+// backend enumerates everything in a store's directory (including subdirectories)
+// as a key, so a store nested under the default would make the default's Keys /
+// Clear trip over it. Only the file backend reads FileDir, so an OS keyring is
+// unaffected.
+func fileKeyringDir(dir string) string {
+	if name := sanitizeKeyringName(os.Getenv("GAFFER_KEYRING_NAME")); name != "" {
+		return filepath.Join(dir, "keyring-"+name)
+	}
+	return filepath.Join(dir, "keyring")
+}
+
+// sanitizeKeyringName reduces an opaque client label to a single safe path
+// segment: only [A-Za-z0-9._-], and never a dot-only token that could traverse.
+// Anything else (separators, empty) yields "", which falls back to the shared
+// default store.
+func sanitizeKeyringName(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		}
+	}
+	s := b.String()
+	if s == "." || s == ".." {
+		return ""
+	}
+	return s
 }
 
 func newTokenStore(kr keyring.Keyring) *TokenStore { return &TokenStore{kr: kr} }
@@ -160,7 +199,7 @@ func nonInteractivePassword(string) (string, error) {
 // is ignored - the caller has already tripped re-sign-in, and the next
 // `gaffer auth` overwrites the token.
 func DeleteStoredToken(dir, identity string) error {
-	store, err := openTokenStore(filepath.Join(dir, "keyring"), nonInteractivePassword)
+	store, err := openTokenStore(fileKeyringDir(dir), nonInteractivePassword)
 	if err != nil {
 		return err
 	}

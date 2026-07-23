@@ -31,7 +31,7 @@ describe("parseHistoryReport", () => {
 			version: 7,
 			kind: "deploy",
 			enabled: true,
-			external: false,
+			outOfBand: false,
 			stateChange: false,
 			deleted: false,
 			actor: "alice",

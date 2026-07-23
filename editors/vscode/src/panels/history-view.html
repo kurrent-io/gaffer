@@ -196,36 +196,39 @@
 			// with the tool folded in for a foreign write.
 			function verbLabel(e) {
 				switch (e.kind) {
-					case "changed-by":
-						return e.tool ? "changed by " + e.tool : "changed externally";
-					case "edited-externally":
-						return "edited externally";
+					case "updated-by":
+						return e.tool ? "updated via " + e.tool : "updated";
 					case "unreadable":
 						return "unreadable metadata";
 					default:
-						return e.kind;
+						return e.kind; // "updated", "deploy", ...
 				}
 			}
-			// Verb colour, matching the CLI's historyKindStyle.
+			// Verb colour, matching the CLI's historyKindStyle: an out-of-band change
+			// (flagged after gaffer began managing the projection) or unreadable
+			// metadata warns; a good content change - gaffer's ops and any neutral
+			// create/update - shares the deploy colour; the rest is coloured by kind.
 			function verbClass(e) {
+				if (e.outOfBand) return "warn";
 				switch (e.kind) {
 					case "deleted":
 						return "delete";
 					case "enabled":
 						return "enable";
-					case "edited-externally":
-					case "changed-by":
 					case "unreadable":
 						return "warn";
 					case "deploy":
 					case "rollback":
 					case "reset":
 					case "recreate":
+					case "created":
+					case "updated":
+					case "updated-by":
 						return "deploy";
 					case "rewritten":
 						return "rewrite";
 					default:
-						return "quiet";
+						return "quiet"; // disabled, reconfigured
 				}
 			}
 			function shortHash(h) {
@@ -242,8 +245,6 @@
 			// The dimmed second line: an out-of-band caution, a reconfigure's knob
 			// changes, or the deployer / tool / source revision.
 			function provenance(e) {
-				if (e.kind === "edited-externally")
-					return { text: "changed outside gaffer", warn: true };
 				if (e.kind === "unreadable")
 					return { text: "deploy metadata could not be read", warn: true };
 				if (e.kind === "reconfigured") {
@@ -258,6 +259,13 @@
 				if (e.toolVersion) via += (via ? " " : "") + e.toolVersion;
 				if (via) parts.push(via);
 				if (e.revision) parts.push("src " + shortRev(e.revision));
+				// A change after gaffer began managing the projection is out-of-band:
+				// keep any attribution (who/what/where) but lead with the caution.
+				if (e.outOfBand)
+					return {
+						text: ["changed outside gaffer", ...parts].join(" · "),
+						warn: true,
+					};
 				return { text: parts.join(" · "), warn: false };
 			}
 			// A content version is a rollback target with a source to diff; state

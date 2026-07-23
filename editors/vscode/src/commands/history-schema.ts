@@ -25,7 +25,7 @@ export const HistoryEntrySchema = v.object({
 	contentHash: v.optional(v.string(), ""),
 	kind: v.string(),
 	enabled: v.optional(v.boolean(), false),
-	external: v.optional(v.boolean(), false),
+	outOfBand: v.optional(v.boolean(), false),
 	stateChange: v.optional(v.boolean(), false),
 	deleted: v.optional(v.boolean(), false),
 	tool: v.optional(v.string()),

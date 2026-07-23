@@ -111,7 +111,7 @@ function entry(version: number, kind: string): HistoryEntry {
 		contentHash: "",
 		kind,
 		enabled: false,
-		external: false,
+		outOfBand: false,
 		stateChange: false,
 		deleted: false,
 	};

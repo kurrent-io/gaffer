@@ -540,14 +540,20 @@
 			function renderDetailActions(e) {
 				const bar = document.createElement("div");
 				bar.className = "d-actions";
-				if (!rollable(e)) return bar;
-				if (e.version === rollingVersion) {
+				// A rollback is in flight: the host rejects a second one until it lands,
+				// so show its progress here whatever version is selected, and offer no
+				// rollback action (a live button would silently no-op).
+				if (rollingVersion !== null) {
 					const s = document.createElement("span");
 					s.className = "rolling";
-					s.textContent = "rolling back…";
+					s.textContent =
+						e.version === rollingVersion
+							? "rolling back…"
+							: "rolling back another version…";
 					bar.appendChild(s);
 					return bar;
 				}
+				if (!rollable(e)) return bar;
 				bar.appendChild(actionBtn("roll back", () => postRollback(e.version)));
 				const prev = actionBtn("diff previous", () =>
 					postDiff(e.version, "previous"),

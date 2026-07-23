@@ -12,7 +12,7 @@ func TestHistoryDiffAt(t *testing.T) {
 		ver(4, "fromAll()\ncount(3)\n", true, gafferLedger(remote.OpDeploy)), // 0: deploy
 		ver(3, "fromAll()\ncount(2)\n", false, nil),                          // 1: disabled (same content as 2)
 		ver(2, "fromAll()\ncount(2)\n", true, gafferLedger(remote.OpDeploy)), // 2: deploy
-		ver(1, "fromAll()\ncount(1)\n", true, nil),                           // 3: edited externally
+		ver(1, "fromAll()\ncount(1)\n", true, nil),                           // 3: updated (metadata-less)
 		ver(0, "fromAll()\ncount(1)\n", true, nil),                           // 4: created
 	})
 

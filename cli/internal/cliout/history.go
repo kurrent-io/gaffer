@@ -6,17 +6,18 @@ import (
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
-// HistoryJSON is the machine shape for one classified version. external is
-// the out-of-band flag (edited outside gaffer); kind is the classification;
-// the tool fields are present only when the version carried metadata. Shared
-// by `gaffer history --json` and the MCP deploy_history tool.
+// HistoryJSON is the machine shape for one classified version. outOfBand
+// is the out-of-band flag (a non-gaffer write after gaffer began managing the
+// projection); kind is the classification; the tool fields are present only when
+// the version carried metadata. Shared by `gaffer history --json` and the MCP
+// deploy_history tool.
 type HistoryJSON struct {
 	Version       int64              `json:"version"`
 	Time          string             `json:"time"`
 	ContentHash   string             `json:"contentHash"`
 	Kind          string             `json:"kind"`
 	Enabled       bool               `json:"enabled"`
-	External      bool               `json:"external"`
+	OutOfBand     bool               `json:"outOfBand"`
 	StateChange   bool               `json:"stateChange,omitempty"`
 	Deleted       bool               `json:"deleted,omitempty"`
 	Tool          string             `json:"tool,omitempty"`
@@ -45,7 +46,7 @@ func BuildHistoryJSON(versions []remote.ClassifiedVersion) []HistoryJSON {
 			ContentHash: cv.ContentHash,
 			Kind:        string(cv.Kind),
 			Enabled:     cv.Enabled(),
-			External:    cv.External(),
+			OutOfBand:   cv.OutOfBand(),
 			StateChange: cv.StateChange(),
 			Deleted:     cv.Deleted,
 		}

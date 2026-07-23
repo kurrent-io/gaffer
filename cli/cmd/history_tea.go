@@ -718,13 +718,17 @@ func (m historyModel) detail(hv historyVersion, width int) string {
 }
 
 // detailTitle is the panel title's style, coloured by what the version is: accent
-// for gaffer's own deploys, warning for an out-of-band change or a delete, muted
-// for a lifecycle event.
+// for a good content change (gaffer's own deploys and any neutral create/update),
+// warning for an out-of-band change or a delete, muted for a lifecycle event.
 func (m historyModel) detailTitle(hv historyVersion) lipgloss.Style {
-	switch hv.Kind {
-	case remote.KindEditedExternally, remote.KindChangedByTool, remote.KindDeleted, remote.KindUnreadable:
+	if hv.OutOfBand() {
 		return m.hs.titleWarn
-	case remote.KindDeploy, remote.KindRollback, remote.KindReset, remote.KindRecreate:
+	}
+	switch hv.Kind {
+	case remote.KindDeleted, remote.KindUnreadable:
+		return m.hs.titleWarn
+	case remote.KindDeploy, remote.KindRollback, remote.KindReset, remote.KindRecreate,
+		remote.KindCreated, remote.KindUpdated, remote.KindUpdatedByTool:
 		return m.hs.titleAccent
 	default:
 		return m.hs.titleMuted

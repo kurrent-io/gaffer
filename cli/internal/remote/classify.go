@@ -8,25 +8,25 @@ import (
 
 // VersionKind is how a version came to be, derived from its tool metadata and how
 // its definition compares to the older adjacent version. The metadata-less kinds
-// (edited-externally / enabled / disabled / reconfigured / rewritten) come from the descriptor
-// diff, so a row reads "edited externally" exactly when gaffer diff would call the
-// two versions drifted - one source of truth with status and diff.
+// (updated / enabled / disabled / reconfigured / rewritten) come from the descriptor
+// diff. Whether a change is out-of-band is a separate, position-dependent signal -
+// see OutOfBand - not baked into the kind.
 type VersionKind string
 
 const (
-	KindDeploy           VersionKind = "deploy"
-	KindRollback         VersionKind = "rollback"
-	KindReset            VersionKind = "reset"
-	KindRecreate         VersionKind = "recreate"
-	KindChangedByTool    VersionKind = "changed-by"        // + tool name
-	KindEditedExternally VersionKind = "edited-externally" // metadata-less, definition changed
-	KindEnabled          VersionKind = "enabled"           // metadata-less, only the enabled flag flipped on
-	KindDisabled         VersionKind = "disabled"          // metadata-less, only the enabled flag flipped off
-	KindReconfigured     VersionKind = "reconfigured"      // metadata-less, content + enabled unchanged, a config knob moved
-	KindRewritten        VersionKind = "rewritten"         // metadata-less, content + enabled + config all unchanged (a no-op rewrite)
-	KindCreated          VersionKind = "created"           // the first version, no gaffer metadata
-	KindDeleted          VersionKind = "deleted"           // a tombstone (delete, or the first half of a recreate)
-	KindUnreadable       VersionKind = "unreadable"        // the version's tool metadata wouldn't decode
+	KindDeploy        VersionKind = "deploy"
+	KindRollback      VersionKind = "rollback"
+	KindReset         VersionKind = "reset"
+	KindRecreate      VersionKind = "recreate"
+	KindUpdatedByTool VersionKind = "updated-by"   // + tool name
+	KindUpdated       VersionKind = "updated"      // metadata-less, definition changed (author unknown)
+	KindEnabled       VersionKind = "enabled"      // metadata-less, only the enabled flag flipped on
+	KindDisabled      VersionKind = "disabled"     // metadata-less, only the enabled flag flipped off
+	KindReconfigured  VersionKind = "reconfigured" // metadata-less, content + enabled unchanged, a config knob moved
+	KindRewritten     VersionKind = "rewritten"    // metadata-less, content + enabled + config all unchanged (a no-op rewrite)
+	KindCreated       VersionKind = "created"      // the first version, no gaffer metadata
+	KindDeleted       VersionKind = "deleted"      // a tombstone (delete, or the first half of a recreate)
+	KindUnreadable    VersionKind = "unreadable"   // the version's tool metadata wouldn't decode
 )
 
 // ClassifiedVersion is one version attributed against its older adjacent
@@ -35,17 +35,24 @@ type ClassifiedVersion struct {
 	Version
 	ContentHash   string            // full content hash of the version's definition; "" when it carries none
 	Kind          VersionKind       // how this version came to be
-	Tool          string            // the tool name, for KindChangedByTool
-	Change        deploy.Comparison // dimensions that changed vs the older version, when edited externally
+	Tool          string            // the tool name, for KindUpdatedByTool
+	Change        deploy.Comparison // dimensions that changed vs the older version, when the content changed
 	HasChange     bool              // whether Change is meaningful
 	ConfigChanges []ConfigChange    // knobs that moved vs the older version, when reconfigured
+	// AfterGaffer is true when a gaffer-attributed write precedes this version in
+	// the read window. It gates the out-of-band warning: a non-gaffer write only
+	// reads as "changed outside gaffer" once gaffer has been managing the projection.
+	AfterGaffer bool
 }
 
-// External reports whether this version changed the definition outside gaffer -
-// a metadata-less edit (edited externally) or another tool's write (changed by).
-// The out-of-band flag, matching deploy's externally-changed attribution.
-func (cv ClassifiedVersion) External() bool {
-	return cv.Kind == KindEditedExternally || cv.Kind == KindChangedByTool
+// OutOfBand reports whether this version changed the projection
+// outside gaffer after gaffer had been managing it: a non-gaffer write - a
+// metadata-less edit (updated) or another tool's write (updated-by) - with a
+// gaffer write earlier in the window. Before gaffer ever wrote, a non-gaffer
+// change isn't a departure from gaffer, just an unattributed edit, so it isn't
+// flagged. The out-of-band signal, matching deploy/status's attribution.
+func (cv ClassifiedVersion) OutOfBand() bool {
+	return cv.AfterGaffer && (cv.Kind == KindUpdated || cv.Kind == KindUpdatedByTool)
 }
 
 // StateChange reports whether this item is a lifecycle/state step (enable, disable,
@@ -57,7 +64,7 @@ func (cv ClassifiedVersion) StateChange() bool {
 	switch cv.Kind {
 	case KindEnabled, KindDisabled, KindReconfigured, KindRewritten, KindReset, KindDeleted:
 		return true
-	default: // deploy, rollback, editedExternally, changedByTool, created, unreadable
+	default: // deploy, rollback, updated, updatedByTool, created, unreadable
 		return false
 	}
 }
@@ -70,12 +77,18 @@ func (cv ClassifiedVersion) Enabled() bool {
 }
 
 // Classify attributes each raw version against the older adjacent version (the
-// next one, since the slice is newest-first).
+// next one, since the slice is newest-first). It walks oldest -> newest so a
+// latch can record whether a gaffer write precedes each version, which gates the
+// out-of-band warning (see OutOfBand).
 func Classify(versions []Version) []ClassifiedVersion {
 	out := make([]ClassifiedVersion, len(versions))
-	for i := range versions {
+	// A gaffer-attributed write seen among the versions strictly older than the
+	// current one. Set as we pass each gaffer write (oldest first), so it reflects
+	// only older versions when assigned to the current one.
+	seenGaffer := false
+	for i := len(versions) - 1; i >= 0; i-- {
 		v := versions[i]
-		cv := ClassifiedVersion{Version: v}
+		cv := ClassifiedVersion{Version: v, AfterGaffer: seenGaffer}
 		if v.Definition != nil {
 			cv.ContentHash = v.Definition.Descriptor().Hash()
 		}
@@ -88,12 +101,15 @@ func Classify(versions []Version) []ClassifiedVersion {
 			cv.ConfigChanges = configChangesBetween(prev.Definition.Config, v.Definition.Config)
 		}
 		out[i] = cv
+		if v.Ledger != nil && v.Ledger.Tool == ToolName {
+			seenGaffer = true
+		}
 	}
 	return out
 }
 
 // classifyVersion attributes one version. A gaffer entry names its operation; a
-// foreign entry is changed-by-tool; a metadata-less version is read from how its
+// foreign entry is updated-by-tool; a metadata-less version is read from how its
 // definition moved against prev (the older adjacent version), which may be nil for
 // the oldest one in view - then only the genuine first version (v0) is a create,
 // and an unattributable later no-op is reported neutrally as "rewritten". A flip
@@ -119,7 +135,7 @@ func classifyVersion(v Version, prev *Version) (VersionKind, string, deploy.Comp
 				return KindDeploy, "", deploy.Comparison{}, false
 			}
 		}
-		return KindChangedByTool, v.Ledger.Tool, deploy.Comparison{}, false
+		return KindUpdatedByTool, v.Ledger.Tool, deploy.Comparison{}, false
 	}
 	if prev == nil || prev.Definition == nil || v.Definition == nil {
 		if v.Number == 0 {
@@ -129,7 +145,7 @@ func classifyVersion(v Version, prev *Version) (VersionKind, string, deploy.Comp
 	}
 	cmp := deploy.Compare(prev.Definition.Descriptor(), v.Definition.Descriptor())
 	if !cmp.InSync() {
-		return KindEditedExternally, "", cmp, true
+		return KindUpdated, "", cmp, true
 	}
 	if v.Definition.Enabled != prev.Definition.Enabled {
 		if v.Definition.Enabled {

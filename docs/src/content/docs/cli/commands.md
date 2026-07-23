@@ -344,9 +344,10 @@ gaffer metadata shows the operation (deploy, rollback, reset, recreate), the
 actor, and the source revision. A recreate shows as a single entry with its
 disable and delete steps folded in; --json keeps every write as its own entry.
 An entry with no gaffer metadata is attributed by what changed:
-edited externally when the definition was changed outside gaffer, changed by
-another tool when it carries that tool's metadata, enabled/disabled for a
-lifecycle change, or reconfigured when a checkpoint setting moved. A content hash
+updated when the definition moved, updated via another tool when it carries that
+tool's metadata, enabled/disabled for a lifecycle change, or reconfigured when a
+checkpoint setting moved. A change made after gaffer began managing the projection
+is flagged as changed outside gaffer. A content hash
 identifies the deployed definition, so a reverted definition is recognisable at a
 glance.
 

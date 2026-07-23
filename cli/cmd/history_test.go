@@ -241,8 +241,13 @@ func TestClassifyHistoryRevertedContentSharesHash(t *testing.T) {
 	if hist[0].Hash != hist[2].Hash {
 		t.Errorf("v2 hash %q != v0 hash %q, want equal (same content)", hist[0].Hash, hist[2].Hash)
 	}
-	if hist[1].Kind != remote.KindEditedExternally {
-		t.Errorf("v1 kind = %q, want edited externally", hist[1].Kind)
+	if hist[1].Kind != remote.KindUpdated {
+		t.Errorf("v1 kind = %q, want changed", hist[1].Kind)
+	}
+	// v1 sits between two gaffer deploys, so a gaffer write precedes it: the
+	// metadata-less edit reads as changed outside gaffer.
+	if !hist[1].OutOfBand() {
+		t.Errorf("v1 should be flagged changed outside gaffer")
 	}
 }
 
@@ -290,7 +295,7 @@ func TestRenderHistoryJSON(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("got %d entries, want 2", len(got))
 	}
-	if got[0].Version != 1 || got[0].Kind != "deploy" || got[0].External {
+	if got[0].Version != 1 || got[0].Kind != "deploy" || got[0].OutOfBand {
 		t.Errorf("entry 0 = %+v", got[0])
 	}
 	if len(got[0].ContentHash) != 64 {
@@ -310,7 +315,7 @@ func TestRenderHistoryJSON(t *testing.T) {
 
 func TestWriteHistory(t *testing.T) {
 	hist := classifyHistory([]remote.Version{
-		ver(3, "c", true, nil),                           // edited externally (content changed, no metadata)
+		ver(3, "c", true, nil),                           // changed (content changed, no metadata) - after gaffer, so out-of-band
 		ver(2, "b", true, gafferLedger(remote.OpDeploy)), // deploy
 		ver(1, "b", false, nil),                          // disabled: same content as v0, enabled flipped off
 		ver(0, "b", true, gafferLedger(remote.OpDeploy)),
@@ -320,10 +325,27 @@ func TestWriteHistory(t *testing.T) {
 	out := buf.String()
 	for _, want := range []string{
 		"deploy", "george@kurrent.io", "Gaffer 1.4.0", "src 9f8e7d6",
-		"edited externally", "⚠ query changed outside gaffer",
+		"updated", "⚠ query changed outside gaffer",
 		"disabled", // state change leads with the state word
 		"Showing 4 of 12 entries",
 	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\n---\n%s", want, out)
+		}
+	}
+}
+
+func TestWriteHistoryForeignAfterGafferKeepsAttribution(t *testing.T) {
+	// A foreign tool's write after a gaffer deploy is out-of-band, but its
+	// attribution (actor, tool, source) must survive alongside the caution.
+	hist := classifyHistory([]remote.Version{
+		ver(1, "b", true, &remote.Ledger{Tool: "Admin UI", ToolVersion: "2.0", Actor: "bob", Revision: "abc1234def", Time: histTime}),
+		ver(0, "a", true, gafferLedger(remote.OpDeploy)),
+	})
+	var buf bytes.Buffer
+	newTextWriter(&buf, &buf).WriteHistory("orders", hist, 2)
+	out := buf.String()
+	for _, want := range []string{"updated via Admin UI", "outside gaffer", "bob", "src "} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\n---\n%s", want, out)
 		}

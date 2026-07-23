@@ -19,18 +19,34 @@
 				--faint: var(--vscode-descriptionForeground, #808080);
 			}
 			body {
+				--panel-width: clamp(300px, 32%, 380px);
+				--header-height: 2.6em;
 				margin: 0;
 				padding: 1.1em 1.3em;
 				font-family: var(--vscode-font-family);
 				font-size: var(--vscode-font-size, 13px);
 				color: var(--vscode-foreground);
+				/* Body is the whole layout grid: header top-left, timeline bottom-left
+				   (scrolls), and the detail panel down the right, spanning both rows.
+				   Nothing on the body itself scrolls. */
+				display: grid;
+				grid-template:
+					"header panel" var(--header-height)
+					"timeline panel" 1fr
+					/ 1fr var(--panel-width);
+				height: 100vh;
+				overflow: hidden;
+				box-sizing: border-box;
 			}
 			.header {
+				grid-area: header;
+				height: var(--header-height);
+				box-sizing: border-box;
 				display: flex;
-				align-items: baseline;
+				align-items: center;
 				gap: 0.5em;
-				padding-bottom: 0.7em;
-				margin-bottom: 0.5em;
+				min-width: 0;
+				padding-right: 1.5em;
 				border-bottom: 1px solid var(--vscode-panel-border);
 			}
 			.header .name {
@@ -62,7 +78,7 @@
 				display: flex;
 				align-items: center;
 				gap: 1em;
-				padding: 0.5em 0.3em 0.5em 0;
+				padding: 0.5em 0.6em;
 			}
 			.body {
 				flex: 1 1 auto;
@@ -117,16 +133,11 @@
 			.prov.warn {
 				color: var(--warn);
 			}
-			.row-actions {
-				flex: none;
-				display: flex;
-				align-items: center;
-				gap: 0.4em;
-			}
 			.abtn {
-				font-family: inherit;
-				font-size: 0.85em;
-				padding: 0.2em 0.7em;
+				font-family: var(--vscode-font-family);
+				font-size: var(--vscode-font-size, 13px);
+				line-height: 1.4;
+				padding: 0.35em 1.1em;
 				border-radius: 2px;
 				border: 1px solid var(--vscode-button-border, transparent);
 				background: var(--vscode-button-secondaryBackground);
@@ -134,7 +145,7 @@
 				cursor: pointer;
 				white-space: nowrap;
 			}
-			.abtn:hover {
+			.abtn:not(:disabled):hover {
 				background: var(--vscode-button-secondaryHoverBackground);
 			}
 			.abtn:disabled {
@@ -154,22 +165,181 @@
 				color: var(--vscode-errorForeground);
 				font-style: normal;
 			}
+
+			/* ---- timeline (left) + detail panel (right) ---- */
+			.timeline-pane {
+				grid-area: timeline;
+				min-width: 0;
+				min-height: 0;
+				overflow-y: auto;
+				padding-right: 1.5em;
+				padding-top: 0.8em;
+			}
+			.row {
+				cursor: pointer;
+				border-radius: 4px;
+			}
+			.row.sel {
+				background: var(
+					--vscode-list-activeSelectionBackground,
+					rgba(127, 127, 127, 0.18)
+				);
+			}
+			.row:focus-visible,
+			.abtn:focus-visible {
+				outline: 1px solid var(--vscode-focusBorder);
+				outline-offset: -1px;
+			}
+			.sr-only {
+				position: absolute;
+				width: 1px;
+				height: 1px;
+				margin: -1px;
+				padding: 0;
+				overflow: hidden;
+				clip: rect(0, 0, 0, 0);
+				white-space: nowrap;
+				border: 0;
+			}
+			/* Detail panel: down the right edge, spanning the header and timeline rows.
+			   Its head (the selected version's verb) stays put; only its body scrolls. */
+			.panel {
+				grid-area: panel;
+				min-height: 0;
+				display: flex;
+				flex-direction: column;
+				overflow: hidden;
+				border-left: 1px solid var(--vscode-panel-border);
+			}
+			.panel-head {
+				flex: 0 0 auto;
+				height: var(--header-height);
+				box-sizing: border-box;
+				display: flex;
+				align-items: center;
+				gap: 0.6em;
+				padding-left: 1.5em;
+				border-bottom: 1px solid var(--vscode-panel-border);
+			}
+			.panel-head .verb {
+				font-weight: 600;
+				font-size: 1.05em;
+			}
+			.panel-body {
+				flex: 1 1 auto;
+				min-height: 0;
+				display: flex;
+				flex-direction: column;
+				overflow-y: auto;
+				padding: 0.8em 0 0 1.5em;
+				font-family: var(--vscode-editor-font-family, monospace);
+				font-size: 0.9em;
+			}
+			@media (max-width: 720px) {
+				body {
+					grid-template:
+						"header" var(--header-height)
+						"timeline" 1fr
+						"panel" 50vh
+						/ 1fr;
+				}
+				.header {
+					padding-right: 0;
+				}
+				.timeline-pane {
+					padding-right: 0;
+				}
+				.panel {
+					border-left: none;
+					border-top: 1px solid var(--vscode-panel-border);
+				}
+				.panel-head {
+					padding-left: 0;
+				}
+				.panel-body {
+					padding-left: 0;
+				}
+			}
+			.d-dot {
+				width: 9px;
+				height: 9px;
+				border-radius: 50%;
+				flex: none;
+			}
+			.d-section {
+				color: var(--vscode-descriptionForeground);
+				font-size: 0.82em;
+				letter-spacing: 0.06em;
+				text-transform: uppercase;
+				margin: 1.4em 0 0.7em;
+			}
+			.d-grid {
+				display: grid;
+				grid-template-columns: 8.5ch 1fr;
+				row-gap: 0.45em;
+				column-gap: 1em;
+			}
+			.d-key {
+				color: var(--vscode-descriptionForeground);
+			}
+			.d-val {
+				overflow-wrap: anywhere;
+			}
+			.d-val.hash {
+				color: var(--deploy);
+				letter-spacing: 0.03em;
+			}
+			.d-note {
+				grid-column: 2;
+				color: var(--vscode-descriptionForeground);
+				font-size: 0.92em;
+			}
+			.d-note.warn {
+				color: var(--warn);
+			}
+			.d-content {
+				margin-bottom: 1.4em;
+			}
+			.d-actions {
+				margin-top: auto;
+				display: flex;
+				gap: 0.5em;
+				flex-wrap: wrap;
+				padding: 0.9em 0;
+				border-top: 1px solid var(--vscode-panel-border);
+			}
+			.d-actions:empty {
+				display: none;
+			}
 		</style>
 	</head>
 	<body>
 		<div class="header" id="header"></div>
-		<div class="timeline">
-			<svg class="rail" id="rail"></svg>
-			<div class="rows" id="rows"></div>
+		<div class="timeline-pane">
+			<div class="timeline">
+				<svg class="rail" id="rail" aria-hidden="true" focusable="false"></svg>
+				<div
+					class="rows"
+					id="rows"
+					role="listbox"
+					aria-label="Deploy versions"
+				></div>
+			</div>
+			<div id="notice"></div>
 		</div>
-		<div id="notice"></div>
+		<div class="panel">
+			<div class="panel-head" id="panelHead"></div>
+			<div class="panel-body" id="detail"></div>
+		</div>
 		<script nonce="{{NONCE}}">
 			const vscode = acquireVsCodeApi();
 			const SVGNS = "http://www.w3.org/2000/svg";
 			const headerEl = document.getElementById("header");
+			const panelHeadEl = document.getElementById("panelHead");
 			const rowsEl = document.getElementById("rows");
 			const rail = document.getElementById("rail");
 			const noticeEl = document.getElementById("notice");
+			const detailEl = document.getElementById("detail");
 
 			// The last-rendered ledger + the token it was rendered under (echoed with a
 			// rollback click so a stale click on a since-refreshed timeline is dropped).
@@ -178,6 +348,10 @@
 			let token = 0;
 			let ctxName = "";
 			let ctxEnv = "";
+			// The version whose detail is shown in the right pane, and the one with a
+			// rollback in flight (its detail shows "rolling back…" in place of actions).
+			let selectedVersion = null;
+			let rollingVersion = null;
 
 			// The collapsed rows and their lane layout (nodeLane + revert spans) are
 			// computed host-side in the one tested model (panels/history-graph.ts) and
@@ -280,6 +454,126 @@
 				return !e.stateChange && !!e.contentHash;
 			}
 
+			// ---- detail pane (selected version) ----
+			// A version "matches an earlier deploy" when it's the newer end (top) of an
+			// accepted revert bracket - its content reappeared from an older version.
+			function matchesEarlier(version) {
+				const i = entries.findIndex((e) => e.version === version);
+				return i >= 0 && graph.spans.some((s) => s.top === i);
+			}
+			// The detail's one-line note: what changed / why it's flagged. The ledger
+			// attribution (actor/tool/source) lives in the metadata block instead, so
+			// this stays the "what", not the "who".
+			function detailNote(e) {
+				if (e.kind === "unreadable")
+					return { text: "deploy metadata could not be read", warn: true };
+				if (e.kind === "reconfigured")
+					return {
+						text: (e.configChanges || [])
+							.map((c) => c.knob + " " + c.from + " → " + c.to)
+							.join(" · "),
+						warn: false,
+					};
+				if (e.changeSummary)
+					return e.outOfBand
+						? { text: e.changeSummary + " outside gaffer", warn: true }
+						: { text: e.changeSummary, warn: false };
+				if (e.outOfBand) return { text: "changed outside gaffer", warn: true };
+				return null;
+			}
+			function detailRow(key, val, valClass) {
+				return `<span class="d-key">${esc(key)}</span><span class="d-val${valClass ? " " + valClass : ""}">${esc(val)}</span>`;
+			}
+			// The selected version's verb heads the detail panel, in a band the same
+			// height as the header so their bottom rules line up across the top.
+			function renderPanelHead(e) {
+				panelHeadEl.replaceChildren();
+				if (!e) return;
+				const dot = document.createElement("span");
+				dot.className = "d-dot";
+				dot.style.background = RUN_VAR[runState(e)];
+				const verb = document.createElement("span");
+				verb.className = "verb op " + verbClass(e);
+				verb.textContent = verbLabel(e);
+				panelHeadEl.append(dot, verb);
+			}
+			function renderDetail() {
+				const e = entries.find((x) => x.version === selectedVersion);
+				renderPanelHead(e);
+				if (!e) {
+					detailEl.replaceChildren();
+					return;
+				}
+				let grid =
+					detailRow("when", fmtTime(e.time)) + detailRow("state", runState(e));
+				// Content identity shows only on a content version; a state change has
+				// none of its own (matching the timeline row and the CLI).
+				if (rollable(e)) {
+					grid += detailRow("content", shortHash(e.contentHash), "hash");
+					if (matchesEarlier(e.version))
+						grid += `<span class="d-note"><span aria-hidden="true">↩</span> matches an earlier deploy</span>`;
+				}
+				const note = detailNote(e);
+				if (note && note.text)
+					grid += `<span class="d-note${note.warn ? " warn" : ""}">${note.warn ? '<span aria-hidden="true">⚠</span> ' : ""}${esc(note.text)}</span>`;
+
+				let meta = "";
+				if (e.tool || e.operation || e.actor || e.revision) {
+					let m = "";
+					if (e.actor) m += detailRow("actor", e.actor);
+					if (e.tool) {
+						const tool = e.tool + (e.toolVersion ? " " + e.toolVersion : "");
+						m += detailRow("tool", tool);
+					}
+					if (e.operation) m += detailRow("operation", e.operation);
+					if (e.revision) m += detailRow("source", shortRev(e.revision));
+					meta = `<div class="d-section">version metadata</div><div class="d-grid">${m}</div>`;
+				}
+
+				detailEl.replaceChildren();
+				const body = document.createElement("div");
+				body.className = "d-content";
+				body.innerHTML = `<div class="d-grid">${grid}</div>${meta}`;
+				detailEl.append(body);
+				detailEl.append(renderDetailActions(e));
+			}
+			function renderDetailActions(e) {
+				const bar = document.createElement("div");
+				bar.className = "d-actions";
+				if (!rollable(e)) return bar;
+				if (e.version === rollingVersion) {
+					const s = document.createElement("span");
+					s.className = "rolling";
+					s.textContent = "rolling back…";
+					bar.appendChild(s);
+					return bar;
+				}
+				bar.appendChild(actionBtn("roll back", () => postRollback(e.version)));
+				const prev = actionBtn("diff previous", () =>
+					postDiff(e.version, "previous"),
+				);
+				if (!hasPreviousContent(e.version)) {
+					prev.disabled = true;
+					prev.title = "No earlier version to compare";
+				}
+				bar.appendChild(prev);
+				bar.appendChild(
+					actionBtn("diff local", () => postDiff(e.version, "local")),
+				);
+				return bar;
+			}
+			// Whether an older content version exists to diff against (mirrors the host's
+			// #previousContent). The oldest content version has nothing before it, so its
+			// "diff previous" is disabled.
+			function hasPreviousContent(version) {
+				const i = entries.findIndex((e) => e.version === version);
+				if (i < 0) return false;
+				for (let j = i + 1; j < entries.length; j++) {
+					if (entries[j].contentHash) return true;
+				}
+				return false;
+			}
+
 			function esc(s) {
 				return String(s)
 					.replace(/&/g, "&amp;")
@@ -314,47 +608,74 @@
 			}
 
 			function render(name, env) {
+				// This singleton panel is reused for any projection/env; version numbers
+				// are per-projection and overlap, so drop the selection on a switch. A
+				// same-projection refresh keeps it (e.g. a rollback re-render).
+				if (name !== ctxName || env !== ctxEnv) selectedVersion = null;
 				ctxName = name;
 				ctxEnv = env;
 				noticeEl.replaceChildren();
 				maxLane = graph.nodeLane.reduce((m, l) => Math.max(m, l), 0);
-				const railW = PAD_L + maxLane * LANE_GAP + 20;
+				const railW = PAD_L + maxLane * LANE_GAP + 12;
 				rowsEl.style.marginLeft = railW + "px";
 				rowsEl.style.setProperty(
 					"--verb-w",
 					entries.reduce((m, e) => Math.max(m, verbLabel(e).length), 0) + "ch",
 				);
 				renderHeader(name, env);
+				// Keep the keyboard user's place across a live/rollback re-render, which
+				// rebuilds every row from scratch.
+				const keepFocus = rowsEl.contains(document.activeElement);
 				rowsEl.replaceChildren();
 				if (entries.length === 0) {
+					selectedVersion = null;
 					const d = document.createElement("div");
 					d.className = "notice";
 					d.textContent = `No deploy history for "${name}" on ${env}.`;
 					noticeEl.appendChild(d);
 					rail.replaceChildren();
+					detailEl.replaceChildren();
+					panelHeadEl.replaceChildren();
 					return;
 				}
+				// Keep the selection if it still exists, else fall back to the newest entry.
+				if (!entries.some((e) => e.version === selectedVersion)) {
+					selectedVersion = entries[0].version;
+				}
 				for (const e of entries) rowsEl.appendChild(renderRow(e));
+				if (keepFocus) {
+					const sel = rowsEl.querySelector('.row[aria-selected="true"]');
+					if (sel) sel.focus();
+				}
 				draw();
+				renderDetail();
 			}
 
 			function renderRow(e) {
 				const row = document.createElement("div");
-				row.className = "row";
+				const selected = e.version === selectedVersion;
+				row.className = "row" + (selected ? " sel" : "");
 				row.dataset.version = e.version;
-				// The hash shows only on a content version - the same rows that get the
-				// diff/rollback actions. A state change carries no content identity of
-				// its own, so its hash column stays blank (matching the CLI timeline).
-				const act = rollable(e);
-				const hash = act
+				row.setAttribute("role", "option");
+				row.setAttribute("aria-selected", selected ? "true" : "false");
+				row.tabIndex = selected ? 0 : -1;
+				// The hash shows only on a content version. A state change carries no
+				// content identity of its own, so its hash column stays blank (matching
+				// the CLI timeline). The diff/rollback actions moved to the detail pane;
+				// a row is now purely selectable.
+				const hash = rollable(e)
 					? `<span class="hash">${esc(shortHash(e.contentHash))}</span>`
 					: "";
 				const prov = provenance(e);
 				const provHtml = prov.text
 					? `<div class="prov${prov.warn ? " warn" : ""}">${esc(prov.text)}</div>`
 					: "";
+				// Run-state otherwise reaches the row only as the rail's dot colour/shape,
+				// which is hidden from assistive tech; carry it as a visually-hidden word
+				// so the option's accessible name includes it while scanning.
 				row.innerHTML = `
 					<div class="body">
+						<span class="sr-only">${esc(runState(e))}</span>
 						<div class="main">
 							<span class="op ${verbClass(e)}">${esc(verbLabel(e))}</span>
 							${hash}
@@ -362,22 +683,45 @@
 						</div>
 						${provHtml}
 					</div>`;
-				if (act) row.appendChild(actionBar(e.version));
+				row.addEventListener("click", () => selectVersion(e.version));
+				row.addEventListener("keydown", onRowKey);
 				return row;
 			}
-
-			function actionBar(version) {
-				const bar = document.createElement("div");
-				bar.className = "row-actions";
-				bar.appendChild(
-					actionBtn("diff previous", () => postDiff(version, "previous")),
-				);
-				bar.appendChild(
-					actionBtn("diff local", () => postDiff(version, "local")),
-				);
-				bar.appendChild(actionBtn("rollback", () => postRollback(version)));
-				return bar;
+			// Keyboard support for the version listbox: Enter/Space selects the focused
+			// row; Up/Down move focus between rows (roving tabindex).
+			function onRowKey(ev) {
+				const row = ev.currentTarget;
+				if (ev.key === "Enter" || ev.key === " ") {
+					ev.preventDefault();
+					selectVersion(Number(row.dataset.version));
+					return;
+				}
+				if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+					ev.preventDefault();
+					const rows = [...rowsEl.querySelectorAll(".row")];
+					const next =
+						rows[rows.indexOf(row) + (ev.key === "ArrowDown" ? 1 : -1)];
+					if (next) {
+						row.tabIndex = -1;
+						next.tabIndex = 0;
+						next.focus();
+					}
+				}
 			}
+
+			// Select a version: highlight its row, sync the option's a11y state, and
+			// drive the detail pane.
+			function selectVersion(version) {
+				selectedVersion = version;
+				rowsEl.querySelectorAll(".row").forEach((r) => {
+					const isSel = Number(r.dataset.version) === version;
+					r.classList.toggle("sel", isSel);
+					r.setAttribute("aria-selected", isSel ? "true" : "false");
+					r.tabIndex = isSel ? 0 : -1;
+				});
+				renderDetail();
+			}
+
 			function actionBtn(label, onClick) {
 				const b = document.createElement("button");
 				b.className = "abtn";
@@ -437,7 +781,7 @@
 				return i + 1 >= entries.length || entries[i + 1].deleted;
 			}
 			function draw() {
-				const railW = PAD_L + maxLane * LANE_GAP + 20;
+				const railW = PAD_L + maxLane * LANE_GAP + 12;
 				rail.setAttribute("width", railW);
 				rail.style.width = railW + "px";
 				const ys = nodeCenters();
@@ -505,18 +849,11 @@
 			}
 
 			// ---- rollback in-flight state ----
-			function rowActions(version) {
-				const row = rowsEl.querySelector(`.row[data-version="${version}"]`);
-				return row ? row.querySelector(".row-actions") : null;
-			}
+			// The detail pane's actions become "rolling back…" for the in-flight
+			// version (it's the selected one - the button that started it lives there).
 			function markRolling(version) {
-				const bar = rowActions(version);
-				if (!bar) return;
-				bar.replaceChildren();
-				const s = document.createElement("span");
-				s.className = "rolling";
-				s.textContent = "rolling back…";
-				bar.appendChild(s);
+				rollingVersion = version;
+				renderDetail();
 			}
 
 			window.addEventListener("message", (event) => {
@@ -527,14 +864,19 @@
 						entries = msg.entries || [];
 						graph = msg.graph || { nodeLane: [], spans: [] };
 						token = msg.token;
+						rollingVersion = null;
 						render(msg.name, msg.env);
 						break;
 					case "error": {
 						// Clear the timeline so a stale one (a refresh whose env now fails
 						// or needs sign-in) doesn't linger with live-looking actions.
 						entries = [];
+						selectedVersion = null;
+						rollingVersion = null;
 						rowsEl.replaceChildren();
 						rail.replaceChildren();
+						detailEl.replaceChildren();
+						panelHeadEl.replaceChildren();
 						const d = document.createElement("div");
 						d.className = "notice error";
 						d.textContent = msg.message;
@@ -546,11 +888,11 @@
 						break;
 					case "rollback-done":
 					case "rollback-error":
-						// Restore the row's actions from the current rows. On success the
-						// host also re-reads and posts a fresh "history" (which re-renders
-						// with the new top entry); re-rendering here first means a reload
-						// that fails can't leave the row stuck on "rolling back…". On error
-						// the host also toasts.
+						// Clear the in-flight state and re-render (restoring the detail's
+						// actions). On success the host also re-reads and posts a fresh
+						// "history"; re-rendering here first means a reload that fails can't
+						// leave the detail stuck on "rolling back…". On error the host toasts.
+						rollingVersion = null;
 						render(ctxName, ctxEnv);
 						break;
 				}

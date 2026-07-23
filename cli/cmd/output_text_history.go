@@ -88,8 +88,13 @@ func (tw *textWriter) historyProvenance(hv historyVersion) string {
 // style and (for the TUI) truncate it to the pane.
 func historyProvenanceText(hv historyVersion) (text string, warn bool) {
 	switch hv.Kind {
-	case remote.KindEditedExternally:
-		return glyphWarning + " " + changeSummary(hv.Change) + " outside gaffer", true
+	case remote.KindUpdated:
+		// A metadata-less content change: show what moved. When it lands after
+		// gaffer began managing the projection it's out-of-band, so add the caution.
+		if hv.OutOfBand() {
+			return glyphWarning + " " + changeSummary(hv.Change) + " outside gaffer", true
+		}
+		return changeSummary(hv.Change), false
 	case remote.KindUnreadable:
 		return glyphWarning + " deploy metadata could not be read", true
 	case remote.KindReconfigured:
@@ -112,30 +117,43 @@ func historyProvenanceText(hv historyVersion) (text string, warn bool) {
 	if hv.Ledger.Revision != "" {
 		parts = append(parts, "src "+shortRevision(hv.Ledger.Revision))
 	}
+	// A foreign tool's write after gaffer began managing the projection is
+	// out-of-band: keep its attribution (who/what/where) but flag it.
+	if hv.OutOfBand() {
+		parts = append([]string{"changed outside gaffer"}, parts...)
+		return glyphWarning + " " + strings.Join(parts, dotSep), true
+	}
 	if len(parts) == 0 {
 		return "", false
 	}
 	return strings.Join(parts, dotSep), false
 }
 
-// historyKindStyle colours the operation label by meaning: gaffer's deploys in
-// cyan; enable green and delete red to match the run-state palette; genuine
-// attention (out-of-band edits, unreadable metadata) in warning orange; a plain
-// no-op rewrite in the faintest dim; everything else - disable, reconfigure,
-// create - a quiet-but-present grey.
+// historyKindStyle colours the operation label by meaning: a good content change
+// - gaffer's deploys and any neutral create/update - in cyan; enable green and
+// delete red to match the run-state palette; genuine attention (out-of-band
+// changes, unreadable metadata) in warning orange; a plain no-op rewrite in the
+// faintest dim; a lifecycle disable/reconfigure a quiet-but-present grey.
 func (tw *textWriter) historyKindStyle(hv historyVersion) lipgloss.Style {
+	if hv.OutOfBand() {
+		return tw.styles.warning
+	}
 	switch hv.Kind {
 	case remote.KindDeleted:
 		return tw.styles.errStatus
 	case remote.KindEnabled:
 		return tw.styles.added
-	case remote.KindEditedExternally, remote.KindChangedByTool, remote.KindUnreadable:
+	case remote.KindUnreadable:
 		return tw.styles.warning
-	case remote.KindDeploy, remote.KindRollback, remote.KindReset, remote.KindRecreate:
+	// A "good" content change - gaffer's own operations and any neutral (not
+	// out-of-band) create/update, whoever made it - shares the deploy colour; it
+	// only goes warning-orange when out-of-band (handled above).
+	case remote.KindDeploy, remote.KindRollback, remote.KindReset, remote.KindRecreate,
+		remote.KindCreated, remote.KindUpdated, remote.KindUpdatedByTool:
 		return tw.styles.label
 	case remote.KindRewritten:
 		return tw.styles.dim
-	default: // disabled, reconfigured, created
+	default: // disabled, reconfigured
 		return tw.styles.muted
 	}
 }
@@ -207,10 +225,10 @@ func joinAnd(items []string) string {
 }
 
 // operationWidth is the display width of the operation column: the widest
-// operation label present, capped so a long "changed by <tool>" doesn't push the
+// operation label present, capped so a long "updated via <tool>" doesn't push the
 // time column off the screen (it truncates instead).
 func operationWidth(versions []historyVersion) int {
-	const cap = 18 // fits "edited externally"
+	const cap = 20 // fits "unreadable metadata"
 	w := 0
 	for _, hv := range versions {
 		if l := lipgloss.Width(hv.eventLabel()); l > w {

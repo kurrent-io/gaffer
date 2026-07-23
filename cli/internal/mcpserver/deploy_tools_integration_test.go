@@ -145,9 +145,10 @@ func TestIntegration_DeployTools(t *testing.T) {
 
 	// A second write, then page with limit 1: the head page carries the total
 	// and classifies its last entry against the trimmed baseline (the update
-	// is metadata-less, so a correct baseline reads it as edited externally,
+	// is metadata-less, so a correct baseline reads it as a content "updated",
 	// not the no-baseline "rewritten" fallback); the before page is strictly
-	// older and, not being a head read, omits the total.
+	// older and, not being a head read, omits the total. No gaffer write exists
+	// in this window, so the change is neutral - not flagged outside gaffer.
 	if err := client.Update(ctx, name, "fromAll().when({ $init() { return {}; } })", remote.UpdateOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -158,8 +159,11 @@ func TestIntegration_DeployTools(t *testing.T) {
 		t.Fatalf("head page: expected 1 entry under limit=1, got %d", len(versions))
 	}
 	head := versions[0].(map[string]any)
-	if head["version"].(float64) != 1 || head["kind"] != "edited-externally" {
+	if head["version"].(float64) != 1 || head["kind"] != "updated" {
 		t.Fatalf("head page entry = %v, want version 1 classified against the baseline", head)
+	}
+	if head["outOfBand"] == true {
+		t.Fatalf("head page entry = %v, want neutral (no gaffer write in window)", head)
 	}
 	if hist["total"].(float64) != 2 {
 		t.Fatalf("head page: expected total=2, got %v", hist["total"])

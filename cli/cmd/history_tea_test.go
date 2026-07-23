@@ -63,7 +63,7 @@ func TestHistoryViewShowsTimelineDetailAndFooter(t *testing.T) {
 	m := newTestHistoryModel(sampleHistory(), 100, 20)
 	out := m.View()
 	for _, want := range []string{
-		"deploy", "edited externally", // operation column on content rows
+		"deploy", "updated", // operation column on content rows
 		"HISTORY", "orders", // footer left
 		"1 of 12",                   // cursor position (no vN)
 		"staging", "localhost:2114", // footer target
@@ -81,7 +81,7 @@ func TestHistoryDetailFollowsCursor(t *testing.T) {
 	if !strings.Contains(m.View(), "george@kurrent.io") {
 		t.Errorf("detail for v7 should name the deployer\n%s", m.View())
 	}
-	// Move to v6 (edited externally): the panel shows the out-of-band caution.
+	// Move to v6 (changed, after a gaffer deploy): the panel shows the out-of-band caution.
 	nm, _ := m.handleKey(key("down"))
 	m = asModel(t, nm)
 	if m.cursor != 1 {
@@ -159,9 +159,9 @@ func TestHistoryPanelPriority(t *testing.T) {
 	if left, right := wide.paneWidths(); right != 46 || left != 54 {
 		t.Errorf("wide = (%d, %d), want (54, 46)", left, right)
 	}
-	blobs := newTestHistoryModel(sampleHistory(), 60, 20)
-	if left, right := blobs.paneWidths(); left != 3 || right != 57 {
-		t.Errorf("blobs = (%d, %d), want (3, 57) - panel expands into the gap", left, right)
+	blobs := newTestHistoryModel(sampleHistory(), 56, 20)
+	if left, right := blobs.paneWidths(); left != 3 || right != 53 {
+		t.Errorf("blobs = (%d, %d), want (3, 53) - panel expands into the gap", left, right)
 	}
 	narrow := newTestHistoryModel(sampleHistory(), 30, 20)
 	if left, right := narrow.paneWidths(); left != 3 || right != 27 {

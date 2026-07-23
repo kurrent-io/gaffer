@@ -20,9 +20,10 @@ var deployHistoryTool = &mcp.Tool{
 		"every write, newest first, one entry per stream write (uncollapsed), with actor, " +
 		"tool, timestamps, and content hashes. Mirrors `gaffer history --json`; the " +
 		"response echoes the resolved env. kind is one of: deploy, rollback, reset, " +
-		"recreate, changed-by (another tool - see the tool field), edited-externally, " +
-		"enabled, disabled, reconfigured, rewritten (a no-op rewrite), created, deleted " +
-		"(a tombstone), unreadable. A contentHash identifies the deployed definition, so " +
+		"recreate, updated-by (another tool - see the tool field), updated (metadata-less " +
+		"edit), enabled, disabled, reconfigured, rewritten (a no-op rewrite), created, " +
+		"deleted (a tombstone), unreadable. outOfBand flags a non-gaffer write " +
+		"made after gaffer began managing the projection. A contentHash identifies the deployed definition, so " +
 		"reverts are recognisable and rollback targets can be picked by hash. Page older " +
 		"entries by passing the previous page's oldest `version` as `before`; `total` " +
 		"(the projection's total write count) is present only on the first (head) page " +

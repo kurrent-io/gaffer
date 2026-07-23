@@ -39,9 +39,10 @@ func newHistoryCmd() *cobra.Command {
 			"actor, and the source revision. A recreate shows as a single entry with its\n" +
 			"disable and delete steps folded in; --json keeps every write as its own entry.\n" +
 			"An entry with no gaffer metadata is attributed by what changed:\n" +
-			"edited externally when the definition was changed outside gaffer, changed by\n" +
-			"another tool when it carries that tool's metadata, enabled/disabled for a\n" +
-			"lifecycle change, or reconfigured when a checkpoint setting moved. A content hash\n" +
+			"updated when the definition moved, updated via another tool when it carries that\n" +
+			"tool's metadata, enabled/disabled for a lifecycle change, or reconfigured when a\n" +
+			"checkpoint setting moved. A change made after gaffer began managing the projection\n" +
+			"is flagged as changed outside gaffer. A content hash\n" +
 			"identifies the deployed definition, so a reverted definition is recognisable at a\n" +
 			"glance.\n\n" +
 			"On a terminal this opens an interactive timeline, the selected entry's detail\n" +
@@ -201,7 +202,7 @@ func (hv historyVersion) operationLabel() string {
 	switch hv.Kind {
 	case remote.KindCreated:
 		return "created"
-	case remote.KindEditedExternally, remote.KindChangedByTool:
+	case remote.KindUpdated, remote.KindUpdatedByTool:
 		return "updated"
 	default:
 		return ""
@@ -213,13 +214,13 @@ func (hv historyVersion) operationLabel() string {
 // read as words here.
 func (hv historyVersion) eventLabel() string {
 	switch hv.Kind {
-	case remote.KindChangedByTool:
+	case remote.KindUpdatedByTool:
 		if hv.Tool != "" {
-			return "changed by " + hv.Tool
+			return "updated via " + hv.Tool
 		}
-		return "changed externally"
-	case remote.KindEditedExternally:
-		return "edited externally"
+		return "updated"
+	case remote.KindUpdated:
+		return "updated"
 	case remote.KindUnreadable:
 		return "unreadable metadata"
 	default:

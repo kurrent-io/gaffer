@@ -122,3 +122,21 @@ func TestEmptyQuery(t *testing.T) {
 		t.Error("two zero-value descriptors should be in sync")
 	}
 }
+
+func TestComparisonChangeSummary(t *testing.T) {
+	cases := []struct {
+		c    Comparison
+		want string
+	}{
+		{Comparison{QueryDiffers: true}, "query changed"},
+		{Comparison{QueryDiffers: true, EmitDiffers: true}, "query and emit changed"},
+		{Comparison{EngineVersionDiffers: true, TrackEmittedStreamsDiffers: true}, "engine version and tracking changed"},
+		{Comparison{QueryDiffers: true, EngineVersionDiffers: true, EmitDiffers: true}, "query, engine version and emit changed"},
+		{Comparison{}, "definition changed"},
+	}
+	for _, tc := range cases {
+		if got := tc.c.ChangeSummary(); got != tc.want {
+			t.Errorf("ChangeSummary(%+v) = %q, want %q", tc.c, got, tc.want)
+		}
+	}
+}

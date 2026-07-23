@@ -79,6 +79,43 @@ func (c Comparison) InSync() bool {
 	return !c.QueryDiffers && !c.EngineVersionDiffers && !c.EmitDiffers && !c.TrackEmittedStreamsDiffers
 }
 
+// ChangeSummary names the dimensions that differ, e.g. "query changed" or
+// "query and emit changed" - what a content change reads as. Falls back to
+// "definition changed" when no dimension is named (a defensive default).
+func (c Comparison) ChangeSummary() string {
+	var dims []string
+	if c.QueryDiffers {
+		dims = append(dims, "query")
+	}
+	if c.EngineVersionDiffers {
+		dims = append(dims, "engine version")
+	}
+	if c.EmitDiffers {
+		dims = append(dims, "emit")
+	}
+	if c.TrackEmittedStreamsDiffers {
+		dims = append(dims, "tracking")
+	}
+	if len(dims) == 0 {
+		return "definition changed"
+	}
+	return joinAnd(dims) + " changed"
+}
+
+// joinAnd joins items as "a", "a and b", or "a, b and c".
+func joinAnd(items []string) string {
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return items[0]
+	case 2:
+		return items[0] + " and " + items[1]
+	default:
+		return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
+	}
+}
+
 // Compare reports how a local descriptor differs from the deployed one. The query
 // comparison uses the canonical form, so it agrees with Hash.
 func Compare(local, deployed Descriptor) Comparison {

@@ -8,9 +8,10 @@ import (
 
 // HistoryJSON is the machine shape for one classified version. outOfBand
 // is the out-of-band flag (a non-gaffer write after gaffer began managing the
-// projection); kind is the classification; the tool fields are present only when
-// the version carried metadata. Shared by `gaffer history --json` and the MCP
-// deploy_history tool.
+// projection); kind is the classification; changeSummary names what moved on a
+// metadata-less update (e.g. "query changed"); the tool fields are present only
+// when the version carried metadata. Shared by `gaffer history --json` and the
+// MCP deploy_history tool.
 type HistoryJSON struct {
 	Version       int64              `json:"version"`
 	Time          string             `json:"time"`
@@ -18,6 +19,7 @@ type HistoryJSON struct {
 	Kind          string             `json:"kind"`
 	Enabled       bool               `json:"enabled"`
 	OutOfBand     bool               `json:"outOfBand"`
+	ChangeSummary string             `json:"changeSummary,omitempty"`
 	StateChange   bool               `json:"stateChange,omitempty"`
 	Deleted       bool               `json:"deleted,omitempty"`
 	Tool          string             `json:"tool,omitempty"`
@@ -49,6 +51,11 @@ func BuildHistoryJSON(versions []remote.ClassifiedVersion) []HistoryJSON {
 			OutOfBand:   cv.OutOfBand(),
 			StateChange: cv.StateChange(),
 			Deleted:     cv.Deleted,
+		}
+		// Only a metadata-less content change (KindUpdated) carries a computed
+		// diff; a foreign tool's write and lifecycle steps don't.
+		if cv.HasChange {
+			j.ChangeSummary = cv.Change.ChangeSummary()
 		}
 		if cv.Definition != nil && !cv.Definition.Time.IsZero() {
 			j.Time = cv.Definition.Time.Format(time.RFC3339)

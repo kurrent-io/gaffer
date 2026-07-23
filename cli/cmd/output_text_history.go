@@ -6,7 +6,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/kurrent-io/gaffer/cli/internal/deploy"
 	"github.com/kurrent-io/gaffer/cli/internal/remote"
 )
 
@@ -92,9 +91,9 @@ func historyProvenanceText(hv historyVersion) (text string, warn bool) {
 		// A metadata-less content change: show what moved. When it lands after
 		// gaffer began managing the projection it's out-of-band, so add the caution.
 		if hv.OutOfBand() {
-			return glyphWarning + " " + changeSummary(hv.Change) + " outside gaffer", true
+			return glyphWarning + " " + hv.Change.ChangeSummary() + " outside gaffer", true
 		}
-		return changeSummary(hv.Change), false
+		return hv.Change.ChangeSummary(), false
 	case remote.KindUnreadable:
 		return glyphWarning + " deploy metadata could not be read", true
 	case remote.KindReconfigured:
@@ -185,42 +184,6 @@ func (tw *textWriter) historyRunStyle(hv historyVersion) lipgloss.Style {
 		return tw.styles.added
 	default:
 		return tw.styles.muted
-	}
-}
-
-// changeSummary names the dimensions that differ between two versions, e.g.
-// "query changed" or "query and emit changed", for the external-edit caution.
-func changeSummary(c deploy.Comparison) string {
-	var dims []string
-	if c.QueryDiffers {
-		dims = append(dims, "query")
-	}
-	if c.EngineVersionDiffers {
-		dims = append(dims, "engine version")
-	}
-	if c.EmitDiffers {
-		dims = append(dims, "emit")
-	}
-	if c.TrackEmittedStreamsDiffers {
-		dims = append(dims, "tracking")
-	}
-	if len(dims) == 0 {
-		return "definition changed"
-	}
-	return joinAnd(dims) + " changed"
-}
-
-// joinAnd joins items as "a", "a and b", or "a, b and c".
-func joinAnd(items []string) string {
-	switch len(items) {
-	case 0:
-		return ""
-	case 1:
-		return items[0]
-	case 2:
-		return items[0] + " and " + items[1]
-	default:
-		return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
 	}
 }
 

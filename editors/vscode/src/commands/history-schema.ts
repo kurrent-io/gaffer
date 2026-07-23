@@ -26,6 +26,8 @@ export const HistoryEntrySchema = v.object({
 	kind: v.string(),
 	enabled: v.optional(v.boolean(), false),
 	outOfBand: v.optional(v.boolean(), false),
+	// What moved on a metadata-less update (e.g. "query changed"); absent otherwise.
+	changeSummary: v.optional(v.string(), ""),
 	stateChange: v.optional(v.boolean(), false),
 	deleted: v.optional(v.boolean(), false),
 	tool: v.optional(v.string()),

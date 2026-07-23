@@ -1,0 +1,30 @@
+/* Shared design tokens for gaffer webviews: semantic tones mapped onto VS
+   Code theme variables (with fallbacks), plus type and layout scales. Every
+   webview entry imports this once. Tokens are prefixed --gx- so they never
+   collide with the editor's own --vscode-* custom properties. */
+:root {
+	--gx-enabled: var(--vscode-charts-green, #89d185);
+	--gx-disabled: var(--vscode-descriptionForeground, #a0a0a0);
+	--gx-deleted: var(--vscode-errorForeground, #f14c4c);
+	--gx-deploy: var(--vscode-charts-blue, #4dc4d6);
+	--gx-warn: var(
+		--vscode-editorWarning-foreground,
+		var(--vscode-charts-orange, #cc8f3f)
+	);
+	--gx-faint: var(--vscode-descriptionForeground, #808080);
+
+	--gx-fg: var(--vscode-foreground);
+	--gx-muted: var(--vscode-descriptionForeground);
+	--gx-font: var(--vscode-font-family);
+	--gx-font-size: var(--vscode-font-size, 13px);
+	--gx-mono: var(--vscode-editor-font-family, monospace);
+
+	--gx-radius: 2px;
+}
+
+body {
+	margin: 0;
+	font-family: var(--gx-font);
+	font-size: var(--gx-font-size);
+	color: var(--gx-fg);
+}

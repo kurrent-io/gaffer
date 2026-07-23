@@ -317,7 +317,7 @@ async function activateAfterTelemetry(
 
 	const stepProvider = new StepProvider();
 	const stateProvider = new StateProvider();
-	const statusProvider = new StatusViewProvider();
+	const statusProvider = new StatusViewProvider(context.extensionUri);
 	const phaseTracker = new PhaseTracker((phase) =>
 		statusProvider.setPhase(phase),
 	);

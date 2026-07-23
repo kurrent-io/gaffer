@@ -58,7 +58,9 @@ export default defineConfig(({ mode }) => ({
 	build: {
 		target: "node18",
 		outDir: "dist",
-		emptyOutDir: true,
+		// Off so a watch rebuild doesn't wipe the sibling dist/webviews bundle;
+		// full builds clean dist/ first (see package.json scripts).
+		emptyOutDir: false,
 		sourcemap: false,
 		lib: {
 			entry: { extension: "src/extension.ts" },

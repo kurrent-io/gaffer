@@ -27,3 +27,9 @@ minimumReleaseAgeExclude:
 overrides:
   "ws@>=8.0.0 <8.21.0": ">=8.21.0 <9.0.0"
   "yaml@>=2.0.0 <2.8.3": ">=2.8.3"
+
+peerDependencyRules:
+  # eslint-plugin-solid@0.14 declares eslint <=9 but runs cleanly on our
+  # eslint 10 (flat config, all rules resolve). Relax only this peer.
+  allowedVersions:
+    "eslint-plugin-solid>eslint": "10"

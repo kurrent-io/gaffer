@@ -1,26 +1,16 @@
 import * as vscode from "vscode";
 import { describe, expect, it } from "vitest";
+import type { StatusUpdateMessage } from "../webviews/status/protocol.js";
 import { StatusViewProvider } from "./status.js";
 import { makeFakeWebviewView } from "../../test/__mocks__/vscode.js";
 
-interface UpdateMessage {
-	type: "update";
-	mode: "running" | "ended";
-	title: string;
-	stats: string[];
-	showPauseButton: boolean;
-	pauseButtonLabel: string;
-	pauseButtonDisabled: boolean;
-	error: string | null;
-}
-
 function lastUpdate(
 	view: ReturnType<typeof makeFakeWebviewView>,
-): UpdateMessage {
+): StatusUpdateMessage {
 	const messages = view.webview.postedMessages;
 	const last = messages.at(-1);
 	if (!last) throw new Error("no messages posted");
-	return last as UpdateMessage;
+	return last as StatusUpdateMessage;
 }
 
 describe("StatusViewProvider", () => {
@@ -28,7 +18,7 @@ describe("StatusViewProvider", () => {
 		// Initial phase is connecting; no events possible yet so the
 		// pause button would be a black hole - hide it until the first
 		// signal arrives.
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		const update = lastUpdate(view);
@@ -39,7 +29,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("setError surfaces the reason in the body and keeps it out of the description chip", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 
@@ -63,7 +53,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("setPhase('catching-up') replaces the Connecting placeholder with Waiting for events and shows the pause button", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.setPhase("catching-up");
@@ -77,7 +67,7 @@ describe("StatusViewProvider", () => {
 		// flipping mode to ended. The panel is hidden in that path
 		// via gaffer.mode, but if it's ever shown we don't want a
 		// clickable pause button on a dead DAP socket.
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.setPhase("disconnected");
@@ -87,7 +77,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("setPhase is a no-op when phase is unchanged", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		const before = view.webview.postedMessages.length;
@@ -95,17 +85,24 @@ describe("StatusViewProvider", () => {
 		expect(view.webview.postedMessages.length).toBe(before);
 	});
 
-	it("populates the webview html with the CSP nonce and template substitution", () => {
-		const provider = new StatusViewProvider();
+	it("renders a shell that loads the bundle under a cspSource-scoped CSP", () => {
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
-		expect(view.webview.html).toContain("default-src");
-		expect(view.webview.html).not.toContain("{{NONCE}}");
-		expect(view.webview.html).not.toContain("{{CSP_SOURCE}}");
+		const html = view.webview.html;
+		// Trailing ';' pins script-src to exactly cspSource - no inline escape.
+		expect(html).toContain(`script-src ${view.webview.cspSource};`);
+		expect(html).toContain(
+			`style-src ${view.webview.cspSource} 'unsafe-inline'`,
+		);
+		expect(html).not.toContain("nonce-");
+		expect(html).toContain('<script type="module" src="');
+		expect(html).toContain("status.js");
+		expect(html).toContain("status.css");
 	});
 
 	it("reset(name) puts the projection name into the title and resets counters", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
@@ -114,7 +111,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("setStats posts a single update reflecting the cumulative totals", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
@@ -126,7 +123,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("setStats is a no-op when nothing has changed", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.setStats(5, 0);
@@ -136,7 +133,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("setPhase writes the label through to the webviewView; survives view re-resolve", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view1 = makeFakeWebviewView();
 		provider.resolveWebviewView(view1 as unknown as vscode.WebviewView);
 		provider.setPhase("catching-up");
@@ -150,7 +147,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("includes processed/errors in stats when non-zero", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
@@ -159,7 +156,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("includes a quirks line when quirks fired, singular at 1", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
@@ -170,7 +167,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("setSkipped surfaces a skipped line with the by-reason breakdown", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
@@ -183,7 +180,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("renders skipped without breakdown when byReason is empty", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
@@ -192,7 +189,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("orders the breakdown by descending count, not alphabetical", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.setSkipped(7, { deleted: 1, "wrong-stream": 4, "no-handler": 2 });
@@ -205,7 +202,7 @@ describe("StatusViewProvider", () => {
 		// Five different reasons compresses to top-3 + "+2 more". Keeps
 		// the line scannable on long fixture runs without losing the
 		// signal that the breakdown is richer.
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.setSkipped(15, {
@@ -223,7 +220,7 @@ describe("StatusViewProvider", () => {
 	it("setSkipped(0, {}) does not surface a skipped line", () => {
 		// Live mode: CLI omits the fields, dispatcher defaults to 0 / {}.
 		// Don't render a "0 skipped" line in that case.
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
@@ -233,7 +230,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("setSkipped is a no-op when neither count nor byReason changes", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.setSkipped(2, { "wrong-stream": 2 });
@@ -246,7 +243,7 @@ describe("StatusViewProvider", () => {
 		// A reason transition (e.g. only "wrong-stream" -> only "deleted")
 		// at the same count is still meaningful - the panel may grow a
 		// breakdown over time.
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.setSkipped(2, { "wrong-stream": 2 });
@@ -256,7 +253,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("reset() clears skipped count", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.setSkipped(2, { "wrong-stream": 2 });
@@ -266,7 +263,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("markEnded flips mode to 'ended', updates title, and hides the pause button", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.reset("checkout");
@@ -279,7 +276,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("re-renders with the right mode when the view is reconstructed", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view1 = makeFakeWebviewView();
 		provider.resolveWebviewView(view1 as unknown as vscode.WebviewView);
 		provider.reset("checkout");
@@ -296,7 +293,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("forwards the 'pause' webview message to workbench.action.debug.pause", async () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		view.webview.emitMessage({ command: "pause" });
@@ -310,7 +307,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("setPausePending(true) disables the button and changes the label to 'Waiting for event to pause'", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.setPhase("catching-up");
@@ -322,7 +319,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("setPausePending(false) restores the default label and re-enables the button", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.setPhase("catching-up");
@@ -334,7 +331,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("setPausePending is a no-op when state is unchanged", () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		const beforeCount = view.webview.postedMessages.length;
@@ -345,7 +342,7 @@ describe("StatusViewProvider", () => {
 	it("reset() clears a stuck pause-pending state", () => {
 		// Disconnects mid-pending shouldn't carry the state into the
 		// next session - the button needs to start clickable.
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		provider.setPausePending(true);
@@ -356,7 +353,7 @@ describe("StatusViewProvider", () => {
 	});
 
 	it("ignores webview messages other than pause", async () => {
-		const provider = new StatusViewProvider();
+		const provider = new StatusViewProvider(vscode.Uri.file("/ext"));
 		const view = makeFakeWebviewView();
 		provider.resolveWebviewView(view as unknown as vscode.WebviewView);
 		view.webview.emitMessage({ command: "garbage" });

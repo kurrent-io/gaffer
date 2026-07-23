@@ -112,6 +112,7 @@ function entry(version: number, kind: string): HistoryEntry {
 		kind,
 		enabled: false,
 		outOfBand: false,
+		changeSummary: "",
 		stateChange: false,
 		deleted: false,
 	};

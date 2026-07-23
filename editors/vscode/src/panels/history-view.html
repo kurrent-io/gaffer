@@ -253,6 +253,12 @@
 					);
 					return { text: parts.join(" · "), warn: false };
 				}
+				// A metadata-less content change names what moved (e.g. "query
+				// changed"); out-of-band, it reads "query changed outside gaffer".
+				if (e.changeSummary)
+					return e.outOfBand
+						? { text: e.changeSummary + " outside gaffer", warn: true }
+						: { text: e.changeSummary, warn: false };
 				const parts = [];
 				if (e.actor) parts.push(e.actor);
 				let via = e.tool || "";

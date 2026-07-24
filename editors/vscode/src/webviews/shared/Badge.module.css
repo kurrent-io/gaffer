@@ -1,0 +1,13 @@
+.badge {
+	padding: 0.05em 0.45em;
+	border-radius: 0.8em;
+	font-size: 0.78em;
+}
+.neutral {
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+}
+.warn {
+	background: var(--vscode-inputValidation-warningBackground);
+	color: var(--gx-fg);
+}

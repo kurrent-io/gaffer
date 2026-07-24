@@ -1,0 +1,8 @@
+.code {
+	font-family: var(--gx-mono);
+	white-space: pre;
+	overflow-x: auto;
+	padding: 0.7em 0.9em;
+	background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.1));
+	border-radius: 4px;
+}

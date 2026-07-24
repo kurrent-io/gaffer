@@ -18,6 +18,10 @@
 	padding: 0.35em 1.1em;
 	font-size: var(--gx-font-size);
 }
+.action {
+	padding: 0.2em 0.7em;
+	font-size: 0.85em;
+}
 
 .primary {
 	background: var(--vscode-button-background);
@@ -29,7 +33,8 @@
 
 /* secondary* vars are optional in some themes; fall back to the primary
    button colours so the variant never renders unstyled. */
-.secondary {
+.secondary,
+.action {
 	background: var(
 		--vscode-button-secondaryBackground,
 		var(--vscode-button-background)
@@ -39,7 +44,8 @@
 		var(--vscode-button-foreground)
 	);
 }
-.secondary:hover:not(:disabled) {
+.secondary:hover:not(:disabled),
+.action:hover:not(:disabled) {
 	background: var(
 		--vscode-button-secondaryHoverBackground,
 		var(--vscode-button-hoverBackground)

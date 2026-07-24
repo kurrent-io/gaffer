@@ -1,0 +1,7 @@
+.label {
+	display: flex;
+	align-items: center;
+	gap: 0.4em;
+	color: var(--gx-muted);
+	font-size: 0.9em;
+}

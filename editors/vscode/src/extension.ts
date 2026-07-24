@@ -66,7 +66,6 @@ import { checkOptOut } from "./telemetry/opt-out.js";
 import { readVscodeTelemetryLevel } from "./telemetry/vscode-config.js";
 import { reportWebviewError } from "./telemetry/webview-error.js";
 import { wrapAsync } from "./telemetry/wrap.js";
-import type { WebviewErrorMessage } from "./webviews/shared/webview-error-message.js";
 import {
 	wrapCodeActionProvider,
 	wrapCodeLensProvider,
@@ -319,7 +318,7 @@ async function activateAfterTelemetry(
 
 	// Webviews report their client-side render errors here; routed into the
 	// exception pipeline under the "webview" phase.
-	const onWebviewError = (msg: WebviewErrorMessage): void =>
+	const onWebviewError = (msg: unknown): void =>
 		reportWebviewError(telemetry, msg);
 
 	const stepProvider = new StepProvider();

@@ -237,12 +237,27 @@ function normaliseFilename(filename: string): string {
 	// reads as third-party (in_app: false), hurting Error-Tracking grouping.
 	if (isWebviewResourceUrl(filename)) {
 		try {
-			return decodeURIComponent(new URL(filename).pathname);
+			return webviewResourceToNativePath(filename);
 		} catch {
 			return filename;
 		}
 	}
 	return filename;
+}
+
+/** Turn a webview-resource URL into the native filesystem path it embeds so it
+ * classifies against `extensionPath` (a native path) under isUnderDir.
+ * `URL.pathname` is always `/`-separated and percent-encoded; on desktop
+ * Windows the drive path arrives as `/C:/Users/...`, which must become
+ * `C:\Users\...` or the raw `startsWith` prefix check fails and gaffer's own
+ * webview frames read as third-party. Not fileURLToPath: that keys off the
+ * host OS, which would mis-handle a Windows-shaped path under a posix test. */
+function webviewResourceToNativePath(filename: string): string {
+	const decoded = decodeURIComponent(new URL(filename).pathname);
+	if (/^\/[A-Za-z]:\//.test(decoded)) {
+		return decoded.slice(1).replace(/\//g, "\\");
+	}
+	return decoded;
 }
 
 function isWebviewResourceUrl(filename: string): boolean {

@@ -15,7 +15,6 @@ import type {
 	DeployInbound,
 	DeploySummaryCounts,
 } from "../webviews/deploy-plan/protocol.js";
-import type { WebviewErrorMessage } from "../webviews/shared/webview-error-message.js";
 import { webviewHtml, webviewRoots } from "./webview-shell.js";
 
 export interface DeployPlanContext {
@@ -65,12 +64,12 @@ export class DeployPlanView implements vscode.Disposable {
 	#planToken = 0;
 	readonly #extensionUri: vscode.Uri;
 	readonly #handlers: DeployPlanHandlers;
-	readonly #reportError: ((msg: WebviewErrorMessage) => void) | undefined;
+	readonly #reportError: ((msg: unknown) => void) | undefined;
 
 	constructor(
 		extensionUri: vscode.Uri,
 		handlers: DeployPlanHandlers,
-		reportError?: (msg: WebviewErrorMessage) => void,
+		reportError?: (msg: unknown) => void,
 	) {
 		this.#extensionUri = extensionUri;
 		this.#handlers = handlers;
@@ -122,7 +121,7 @@ export class DeployPlanView implements vscode.Disposable {
 		if (typeof msg !== "object" || msg === null) return;
 		const command = (msg as { command?: unknown }).command;
 		if (command === "error") {
-			this.#reportError?.(msg as WebviewErrorMessage);
+			this.#reportError?.(msg);
 			return;
 		}
 		if (!this.#ctx) return;

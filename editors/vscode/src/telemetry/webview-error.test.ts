@@ -35,4 +35,13 @@ describe("reportWebviewError", () => {
 		expect((err as Error).message).toBe("x is not a function");
 		expect((err as Error).stack).toContain("status.js:1:2");
 	});
+
+	it("drops malformed messages instead of emitting garbage telemetry", () => {
+		const { telemetry, calls } = fakeTelemetry();
+		reportWebviewError(telemetry, { command: "error", name: 42, message: "x" });
+		reportWebviewError(telemetry, { command: "pause" });
+		reportWebviewError(telemetry, null);
+		reportWebviewError(telemetry, "boom");
+		expect(calls).toHaveLength(0);
+	});
 });

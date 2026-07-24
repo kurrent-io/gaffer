@@ -15,7 +15,6 @@
 import * as vscode from "vscode";
 import type { HistoryEntry } from "../commands/history-schema.js";
 import type { HistoryInbound } from "../webviews/history/protocol.js";
-import type { WebviewErrorMessage } from "../webviews/shared/webview-error-message.js";
 import { collapseHistory, computeHistoryGraph } from "./history-graph.js";
 import { webviewHtml, webviewRoots } from "./webview-shell.js";
 
@@ -71,12 +70,12 @@ export class HistoryView implements vscode.Disposable {
 	#token = 0;
 	readonly #extensionUri: vscode.Uri;
 	readonly #handlers: HistoryViewHandlers;
-	readonly #reportError: ((msg: WebviewErrorMessage) => void) | undefined;
+	readonly #reportError: ((msg: unknown) => void) | undefined;
 
 	constructor(
 		extensionUri: vscode.Uri,
 		handlers: HistoryViewHandlers,
-		reportError?: (msg: WebviewErrorMessage) => void,
+		reportError?: (msg: unknown) => void,
 	) {
 		this.#extensionUri = extensionUri;
 		this.#handlers = handlers;
@@ -145,7 +144,7 @@ export class HistoryView implements vscode.Disposable {
 		if (typeof msg !== "object" || msg === null) return;
 		const command = (msg as { command?: unknown }).command;
 		if (command === "error") {
-			this.#reportError?.(msg as WebviewErrorMessage);
+			this.#reportError?.(msg);
 			return;
 		}
 		if (!this.#ctx) return;

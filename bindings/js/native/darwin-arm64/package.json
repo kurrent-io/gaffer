@@ -1,6 +1,6 @@
 {
 	"name": "@kurrent/gaffer-runtime-darwin-arm64",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "Gaffer projection runtime native binary for macOS arm64",
 	"license": "LicenseRef-KurrentLicenseV1",
 	"repository": {

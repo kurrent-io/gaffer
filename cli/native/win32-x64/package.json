@@ -1,6 +1,6 @@
 {
 	"name": "@kurrent/gaffer-win32-x64",
-	"version": "0.4.2",
+	"version": "0.5.0",
 	"description": "Gaffer CLI binary for Windows x64",
 	"license": "LicenseRef-KurrentLicenseV1",
 	"repository": {

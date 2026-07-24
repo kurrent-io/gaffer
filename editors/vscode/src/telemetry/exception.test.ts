@@ -42,6 +42,29 @@ describe("buildException", () => {
 		expect(entry?.stacktrace.type).toBe("raw");
 	});
 
+	it("recovers the fs path from a webview-resource URL frame and marks it in_app", () => {
+		const out = buildException({
+			err: makeError({
+				name: "TypeError",
+				message: "x is not a function",
+				stack: `    at VersionRow (https://file+.vscode-resource.vscode-cdn.net${EXT_PATH}/dist/webviews/history.js:1:2345)`,
+			}),
+			phase: "webview",
+			extensionPath: EXT_PATH,
+			workspaceFolders: [],
+		});
+		const [entry] = out.properties.exceptions;
+		expect(entry?.in_app).toBe(true);
+		expect(entry?.stacktrace.frames).toEqual([
+			{
+				filename: "history.js",
+				function: "VersionRow",
+				in_app: true,
+				lineno: 1,
+			},
+		]);
+	});
+
 	it("basenames gaffer-owned frames and marks them in_app", () => {
 		const out = buildException({
 			err: makeError({

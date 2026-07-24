@@ -88,10 +88,12 @@ function makeEntry(
 // gaffer throws plain Errors with no brand to allowlist on, so we strip both
 // and keep the diagnostic skeleton (`... stat '<path>'`, `esdb://<redacted>`).
 //
-// Scope: these wrap sites are extension-host surfaces (fs, child_process,
-// vscode API), so paths and connection errors are the leak vectors.
-// Projection / Jint messages - which the contract also forbids - originate
-// in the CLI, not here, so this doesn't attempt general identifier removal.
+// Scope: the callers are extension-host surfaces (fs, child_process, vscode
+// API) and the webview error channel, so paths and connection errors are the
+// leak vectors. Projection / Jint messages - which the contract also forbids -
+// originate in the CLI, not here, and the webviews report framework/runtime
+// errors that don't interpolate the projection data they render, so this
+// doesn't attempt general identifier removal.
 //
 // Rules run in order. The credential rule goes first: a URL with userinfo
 // (`scheme://user:pass@host`) has its authority redacted, keeping the scheme
@@ -227,7 +229,29 @@ function normaliseFilename(filename: string): string {
 			return filename;
 		}
 	}
+	// VS Code serves webview bundles under a rewritten origin
+	// (https://<...>.vscode-resource.vscode-cdn.net/<abs-path> on desktop, or a
+	// vscode-webview:// host), so a webview frame's filename is that URL.
+	// Recover the embedded filesystem path so it classifies against the
+	// extension dir like any host frame - otherwise gaffer's own webview code
+	// reads as third-party (in_app: false), hurting Error-Tracking grouping.
+	if (isWebviewResourceUrl(filename)) {
+		try {
+			return decodeURIComponent(new URL(filename).pathname);
+		} catch {
+			return filename;
+		}
+	}
 	return filename;
+}
+
+function isWebviewResourceUrl(filename: string): boolean {
+	return (
+		/^https?:\/\/[^/]*\bvscode-(resource|cdn)\b/.test(filename) ||
+		filename.startsWith("vscode-webview://") ||
+		filename.startsWith("vscode-webview-resource://") ||
+		filename.startsWith("vscode-resource://")
+	);
 }
 
 /** True when `file` is the directory `dir` or any descendant. Plain

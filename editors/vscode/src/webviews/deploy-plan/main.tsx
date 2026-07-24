@@ -10,15 +10,14 @@ interface VsCodeApi {
 declare function acquireVsCodeApi(): VsCodeApi;
 
 const vscode = acquireVsCodeApi();
-// One signal as the inbound inbox; safe because each host post arrives as its
-// own MessageEvent task (see the history webview for the same note).
-const [message, setMessage] = createSignal<DeployInbound | undefined>(
-	undefined,
-);
+// Queue inbound messages; <DeployPlan> drains them in order. A queue (not a
+// single latest-value signal) keeps every streaming delta even if several
+// arrive before the consumer runs (see the history webview for the same note).
+const [inbox, setInbox] = createSignal<DeployInbound[]>([]);
 
 window.addEventListener("message", (event: MessageEvent) => {
 	const msg = event.data as DeployInbound | undefined;
-	if (msg && typeof msg.type === "string") setMessage(msg);
+	if (msg && typeof msg.type === "string") setInbox((queue) => [...queue, msg]);
 });
 
 const root = document.getElementById("root");
@@ -30,7 +29,11 @@ if (root) {
 					<div role="alert">Failed to render: {String(err)}</div>
 				)}
 			>
-				<DeployPlan message={message()} post={(m) => vscode.postMessage(m)} />
+				<DeployPlan
+					inbox={inbox()}
+					onDrained={() => setInbox([])}
+					post={(m) => vscode.postMessage(m)}
+				/>
 			</ErrorBoundary>
 		),
 		root,

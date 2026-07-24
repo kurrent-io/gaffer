@@ -26,7 +26,8 @@ const PROD_BLOCKED =
 	"This is a production database, so invalid projections can't be skipped. Fix them to deploy.";
 
 export function DeployPlan(props: {
-	message: DeployInbound | undefined;
+	inbox: DeployInbound[];
+	onDrained: () => void;
 	post: (message: DeployOutbound) => void;
 }) {
 	const [report, setReport] = createSignal<PlanReport | null>(null);
@@ -42,11 +43,17 @@ export function DeployPlan(props: {
 	// deploy-started switches the footer into progress mode.
 	const [submitted, setSubmitted] = createSignal(false);
 
+	// Drain the inbox in order, applying every queued message, then clear it - so
+	// no streaming delta is dropped even if several land before this runs. on()
+	// tracks only props.inbox (not the signals handle() writes); clearing can't
+	// lose a message because handle() is synchronous.
 	createEffect(
 		on(
-			() => props.message,
-			(message) => {
-				if (message) handle(message);
+			() => props.inbox,
+			(inbox) => {
+				if (inbox.length === 0) return;
+				for (const msg of inbox) handle(msg);
+				props.onDrained();
 			},
 		),
 	);

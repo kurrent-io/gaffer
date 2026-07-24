@@ -16,7 +16,8 @@ import styles from "./History.module.css";
 const EMPTY_GRAPH: HistoryGraph = { nodeLane: [], spans: [] };
 
 export function History(props: {
-	message: HistoryInbound | undefined;
+	inbox: HistoryInbound[];
+	onDrained: () => void;
 	post: (message: HistoryOutbound) => void;
 }) {
 	const [name, setName] = createSignal("");
@@ -42,13 +43,18 @@ export function History(props: {
 
 	let timeline: HTMLDivElement | undefined;
 
-	// on() tracks only props.message; handle() reads and writes selected/name/env,
-	// so a bare effect would re-fire on its own writes. Keep the untracked pump.
+	// Drain the inbox in order, applying every queued message, then clear it - so
+	// no streaming delta is dropped even if several land before this runs. on()
+	// tracks only props.inbox (not the signals handle() writes), so handle's own
+	// setState can't retrigger this; clearing can't lose a message because
+	// handle() is synchronous, so nothing arrives mid-drain.
 	createEffect(
 		on(
-			() => props.message,
-			(message) => {
-				if (message) handle(message);
+			() => props.inbox,
+			(inbox) => {
+				if (inbox.length === 0) return;
+				for (const msg of inbox) handle(msg);
+				props.onDrained();
 			},
 		),
 	);

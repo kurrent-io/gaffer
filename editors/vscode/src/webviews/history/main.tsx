@@ -10,16 +10,15 @@ interface VsCodeApi {
 declare function acquireVsCodeApi(): VsCodeApi;
 
 const vscode = acquireVsCodeApi();
-// One signal as the inbound inbox. Safe because each host post arrives as its
-// own MessageEvent task, so the effect runs once per message; don't refactor
-// the host to post two messages in a single synchronous turn or one would drop.
-const [message, setMessage] = createSignal<HistoryInbound | undefined>(
-	undefined,
-);
+// Queue inbound messages; <History> drains them in order. A queue (not a
+// single latest-value signal) means a delta can't be lost if several arrive
+// before the consumer runs - we don't depend on the host posting one message
+// per task.
+const [inbox, setInbox] = createSignal<HistoryInbound[]>([]);
 
 window.addEventListener("message", (event: MessageEvent) => {
 	const msg = event.data as HistoryInbound | undefined;
-	if (msg && typeof msg.type === "string") setMessage(msg);
+	if (msg && typeof msg.type === "string") setInbox((queue) => [...queue, msg]);
 });
 
 const root = document.getElementById("root");
@@ -31,7 +30,11 @@ if (root) {
 					<div role="alert">Failed to render: {String(err)}</div>
 				)}
 			>
-				<History message={message()} post={(m) => vscode.postMessage(m)} />
+				<History
+					inbox={inbox()}
+					onDrained={() => setInbox([])}
+					post={(m) => vscode.postMessage(m)}
+				/>
 			</ErrorBoundary>
 		),
 		root,

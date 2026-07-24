@@ -12,7 +12,7 @@ Examples of the telemetry data collected:
 
 - Extension version, host OS and architecture, editor version
 - Whether the gaffer CLI is reachable when the extension activates
-- Crashes in the extension's own code (gaffer-authored error messages with scrubbed stack frames)
+- Crashes in the extension's own code, including render failures in its webviews (error messages with scrubbed stack frames)
 
 What the extension **does not** track:
 
@@ -72,7 +72,7 @@ Records whether the gaffer CLI binary is reachable on the `PATH` when the extens
 
 ### `exception`
 
-Records crashes in the extension's own code (unhandled JS errors in the extension host). Exception messages are always written by gaffer and never propagated from your projection code. Stack frames are scrubbed: file basenames only, user-JS frames dropped entirely.
+Records crashes in the extension's own code: unhandled JS errors in the extension host, and render failures in its webviews (the status, deploy-plan, and history views). A webview has no network egress of its own, so it forwards the error to the host over its message channel and the host sends it. Messages originate in gaffer's own code and the Node / VS Code APIs it calls, never from your projection code, and are scrubbed of filesystem paths and connection-string credentials before sending. Stack frames are scrubbed too: file basenames only, user-JS frames dropped entirely.
 
 <details>
 <summary>Example envelope</summary>
@@ -112,7 +112,7 @@ Records crashes in the extension's own code (unhandled JS errors in the extensio
 						}
 					}
 				],
-				"phase": "activation"
+				"phase": "startup"
 			}
 		}
 	]
@@ -138,7 +138,7 @@ If telemetry collection has already been disabled (for example via `KURRENTDB_TE
 The extension emits events at the boundary of work, not on a periodic schedule:
 
 - `extension_activated` is sent once when the extension activates.
-- `exception` is sent when the extension's own code crashes.
+- `exception` is sent when the extension's own code crashes, including a webview that fails to render.
 
 An extension session that does no work beyond activation emits one event. There is no periodic heartbeat.
 

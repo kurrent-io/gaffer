@@ -423,9 +423,10 @@ export type CLIUnreachableReason =
   | "workspace_untrusted"
   | "unknown_error";
 /**
- * ExceptionPhase is a coarse lifecycle bucket for where an exception fired.
+ * ExceptionPhase is a coarse bucket for where an exception fired - a runtime
+ * lifecycle stage, or "webview" for an editor webview's client-side render.
  */
-export type ExceptionPhase = "startup" | "projection_init" | "event_processing" | "shutdown";
+export type ExceptionPhase = "startup" | "projection_init" | "event_processing" | "shutdown" | "webview";
 
 /**
  * Envelope is the top-level shape POSTed to the worker. One envelope per HTTP

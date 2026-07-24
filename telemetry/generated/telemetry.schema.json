@@ -644,13 +644,14 @@
       "unevaluatedProperties": false
     },
     "ExceptionPhase": {
-      "description": "ExceptionPhase is a coarse lifecycle bucket for where an exception fired.",
+      "description": "ExceptionPhase is a coarse bucket for where an exception fired - a runtime\nlifecycle stage, or \"webview\" for an editor webview's client-side render.",
       "type": "string",
       "enum": [
         "startup",
         "projection_init",
         "event_processing",
-        "shutdown"
+        "shutdown",
+        "webview"
       ]
     },
     "ExceptionProperties": {

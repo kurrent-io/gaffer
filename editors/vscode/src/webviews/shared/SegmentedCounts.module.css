@@ -1,0 +1,6 @@
+.seg {
+	font-weight: 600;
+}
+.sep {
+	color: var(--gx-muted);
+}

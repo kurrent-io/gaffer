@@ -6,20 +6,17 @@
 // (this version vs the previous, or vs local) or roll back to it.
 //
 // One reusable panel, mirroring DeployPlanView: a re-open reveals and re-renders
-// the existing tab. HTML lives in history-view.html (loaded raw at build time);
-// rendered once, then driven by postMessage. CSP is locked to the loaded nonce;
-// localResourceRoots is empty since the template is self-contained. The lane
-// layout (collapse + graph) runs in the webview from the ported model, so the
-// host just forwards the raw ledger.
+// the existing tab. The UI is a Solid bundle (src/webviews/history) loaded via
+// the shared webview shell; rendered once, then driven by postMessage. The
+// classify->collapse->graph pipeline runs host-side in the one tested model
+// (panels/history-graph.ts), and the host posts the collapsed rows + lane
+// layout so the webview only renders.
 
 import * as vscode from "vscode";
 import type { HistoryEntry } from "../commands/history-schema.js";
-import {
-	collapseHistory,
-	computeHistoryGraph,
-	type HistoryGraph,
-} from "./history-graph.js";
-import historyViewTemplate from "./history-view.html?raw";
+import type { HistoryInbound } from "../webviews/history/protocol.js";
+import { collapseHistory, computeHistoryGraph } from "./history-graph.js";
+import { webviewHtml, webviewRoots } from "./webview-shell.js";
 
 export interface HistoryContext {
 	env: string;
@@ -41,20 +38,9 @@ export interface HistoryDiffRequest {
 }
 
 // Extension -> webview. `history` (re)renders the timeline; the rollback messages
-// settle one row's state as an in-flight rollback runs.
-export type HistoryMessage =
-	| {
-			type: "history";
-			name: string;
-			env: string;
-			entries: HistoryEntry[];
-			graph: HistoryGraph;
-			token: number;
-	  }
-	| { type: "error"; message: string }
-	| { type: "rollback-active"; version: number }
-	| { type: "rollback-done"; version: number; outcome: string }
-	| { type: "rollback-error"; version: number; message: string };
+// settle one row's state as an in-flight rollback runs. The shape is the shared
+// contract the webview reads (see webviews/history/protocol.ts).
+export type HistoryMessage = HistoryInbound;
 
 export type HistorySend = (message: HistoryMessage) => void;
 
@@ -82,9 +68,11 @@ export class HistoryView implements vscode.Disposable {
 	// Bumped on every render; a rollback click echoes the token it was shown
 	// against, so a click against a since-refreshed timeline is dropped.
 	#token = 0;
+	readonly #extensionUri: vscode.Uri;
 	readonly #handlers: HistoryViewHandlers;
 
-	constructor(handlers: HistoryViewHandlers) {
+	constructor(extensionUri: vscode.Uri, handlers: HistoryViewHandlers) {
+		this.#extensionUri = extensionUri;
 		this.#handlers = handlers;
 	}
 
@@ -109,13 +97,14 @@ export class HistoryView implements vscode.Disposable {
 				{
 					enableScripts: true,
 					retainContextWhenHidden: true,
-					localResourceRoots: [],
+					localResourceRoots: webviewRoots(this.#extensionUri),
 				},
 			);
-			const nonce = generateNonce();
-			this.#panel.webview.html = historyViewTemplate
-				.replaceAll("{{NONCE}}", nonce)
-				.replaceAll("{{CSP_SOURCE}}", this.#panel.webview.cspSource);
+			this.#panel.webview.html = webviewHtml(
+				this.#panel.webview,
+				this.#extensionUri,
+				"history",
+			);
 			this.#panel.webview.onDidReceiveMessage((msg: unknown) => {
 				this.#handleMessage(msg);
 			});
@@ -148,10 +137,6 @@ export class HistoryView implements vscode.Disposable {
 	#handleMessage(msg: unknown): void {
 		if (typeof msg !== "object" || msg === null || !this.#ctx) return;
 		const command = (msg as { command?: unknown }).command;
-		if (command === "cancel") {
-			this.dispose();
-			return;
-		}
 		if (command === "diff") {
 			this.#onDiff(msg);
 			return;
@@ -256,8 +241,4 @@ export class HistoryView implements vscode.Disposable {
 
 function title(ctx: HistoryContext): string {
 	return `History: ${ctx.name}`;
-}
-
-function generateNonce(): string {
-	return crypto.randomUUID().replaceAll("-", "");
 }

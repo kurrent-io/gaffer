@@ -3,7 +3,8 @@ import { builtinModules } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
-import { defineConfig } from "vitest/config";
+import solid from "vite-plugin-solid";
+import { configDefaults, defineConfig } from "vitest/config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -58,7 +59,9 @@ export default defineConfig(({ mode }) => ({
 	build: {
 		target: "node18",
 		outDir: "dist",
-		emptyOutDir: true,
+		// Off so a watch rebuild doesn't wipe the sibling dist/webviews bundle;
+		// full builds clean dist/ first (see package.json scripts).
+		emptyOutDir: false,
 		sourcemap: false,
 		lib: {
 			entry: { extension: "src/extension.ts" },
@@ -91,16 +94,40 @@ export default defineConfig(({ mode }) => ({
 		conditions: ["node"],
 	},
 	test: {
-		environment: "node",
-		include: ["src/**/*.test.ts", "tsserver-plugin/src/**/*.test.ts"],
-		setupFiles: ["./test/setup.ts"],
-		// Aliases scoped to the test runner only - production
-		// builds must NOT pick up these stubs.
-		alias: {
-			"vscode-languageclient/node": path.resolve(
-				here,
-				"test/__mocks__/vscode-languageclient-node.ts",
-			),
-		},
+		// Two projects: the extension host (Node, mocked vscode) and the Solid
+		// webviews (browser-like DOM, Solid transform). They need different
+		// environments and resolution, so they can't share one runner config.
+		projects: [
+			{
+				extends: true,
+				test: {
+					name: "extension",
+					environment: "node",
+					include: ["src/**/*.test.ts", "tsserver-plugin/src/**/*.test.ts"],
+					exclude: [...configDefaults.exclude, "src/webviews/**"],
+					setupFiles: ["./test/setup.ts"],
+					// Aliases scoped to the test runner only - production
+					// builds must NOT pick up these stubs.
+					alias: {
+						"vscode-languageclient/node": path.resolve(
+							here,
+							"test/__mocks__/vscode-languageclient-node.ts",
+						),
+					},
+				},
+			},
+			{
+				plugins: [solid()],
+				// Resolve Solid's dev/browser build so reactivity works under the
+				// test DOM (matches the standard vite-plugin-solid + vitest setup).
+				resolve: { conditions: ["development", "browser"] },
+				test: {
+					name: "webviews",
+					environment: "happy-dom",
+					include: ["src/webviews/**/*.test.{ts,tsx}"],
+					setupFiles: ["./test/setup.webviews.ts"],
+				},
+			},
+		],
 	},
 }));

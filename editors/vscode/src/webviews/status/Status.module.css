@@ -1,0 +1,53 @@
+.root {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	min-height: 100vh;
+	box-sizing: border-box;
+	gap: 0.5em;
+	padding: 0.6em;
+}
+
+.titleRow {
+	display: flex;
+	gap: 0.35em;
+	align-items: baseline;
+	max-width: 100%;
+}
+.title {
+	font-size: 1em;
+}
+.titleIcon {
+	flex: none;
+	font-weight: bold;
+	color: var(--vscode-errorForeground);
+}
+
+.stats {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.2em;
+}
+.stat {
+	font-size: 0.92em;
+	color: var(--gx-muted);
+}
+
+.error {
+	max-width: 100%;
+	margin-top: 0.4em;
+	font-size: 0.92em;
+	color: var(--vscode-errorForeground);
+	text-align: center;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.caption {
+	margin-top: 0.3em;
+	font-size: 0.85em;
+	font-style: italic;
+	color: var(--gx-muted);
+}

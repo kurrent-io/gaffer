@@ -1,0 +1,18 @@
+.callout {
+	padding: 0.5em 0.7em;
+	border-radius: 2px;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+}
+.warn {
+	border-left: 3px solid var(--vscode-inputValidation-warningBorder);
+	background: var(--vscode-inputValidation-warningBackground);
+}
+.error {
+	border-left: 3px solid
+		var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
+	background: var(
+		--vscode-inputValidation-errorBackground,
+		rgba(244, 135, 113, 0.15)
+	);
+}

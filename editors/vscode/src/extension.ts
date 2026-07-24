@@ -317,7 +317,7 @@ async function activateAfterTelemetry(
 
 	const stepProvider = new StepProvider();
 	const stateProvider = new StateProvider();
-	const statusProvider = new StatusViewProvider();
+	const statusProvider = new StatusViewProvider(context.extensionUri);
 	const phaseTracker = new PhaseTracker((phase) =>
 		statusProvider.setPhase(phase),
 	);
@@ -684,7 +684,7 @@ async function activateAfterTelemetry(
 						.start();
 				},
 			});
-			const deployView = new DeployPlanView({
+			const deployView = new DeployPlanView(context.extensionUri, {
 				onDiff: (ctx, name) => {
 					void diff({ name, tomlUri: ctx.tomlUri, env: ctx.env });
 				},
@@ -778,7 +778,7 @@ async function activateAfterTelemetry(
 
 			// reload (after a rollback) re-runs the loader; the closure calls it only
 			// later, so it can close over the const declared just below.
-			const historyView = new HistoryView({
+			const historyView = new HistoryView(context.extensionUri, {
 				onDiff: openHistoryDiff({
 					provider: historyDiffProvider,
 					requestDiff: requestDiffVersions,

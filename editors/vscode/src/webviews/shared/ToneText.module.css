@@ -1,0 +1,22 @@
+.deploy {
+	color: var(--gx-deploy);
+}
+.enabled {
+	color: var(--gx-enabled);
+}
+.disabled {
+	color: var(--gx-disabled);
+}
+.deleted {
+	color: var(--gx-deleted);
+}
+.warn {
+	color: var(--gx-warn);
+}
+.quiet {
+	color: var(--gx-muted);
+}
+.rewrite {
+	color: var(--gx-faint);
+	opacity: 0.8;
+}

@@ -1,0 +1,29 @@
+.row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5em;
+	padding: 0.4em;
+}
+.unchanged {
+	opacity: 0.55;
+}
+.name {
+	font-weight: 600;
+	flex: 0 0 var(--name-col, 8em);
+}
+.action {
+	margin-left: auto;
+}
+.detailLine {
+	flex-basis: 100%;
+	margin: 0.1em 0.4em 0.4em;
+	/* Both the prose and CodeBlock detail read at the muted 0.9em the old
+	   .detail carried; CodeBlock stays generic and inherits these. */
+	font-size: 0.9em;
+	color: var(--gx-muted);
+}
+.detailText {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}

@@ -7,9 +7,13 @@ build:
     just plugin::build
     pnpm run build
 
-# Watch mode for development
+# Watch mode for development (extension bundle)
 watch:
     pnpm run watch
+
+# Watch mode for the Solid webview bundles
+watch-webviews:
+    pnpm run watch:webviews
 
 # Run extension tests + plugin's typecheck-as-test.
 test:

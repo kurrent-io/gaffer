@@ -3,34 +3,19 @@
 // catch-up state is owned by PhaseTracker and pushed in via
 // setDescription; this provider is just stats + mode.
 //
-// HTML lives in status.html (loaded as a raw string at build time).
-// Rendered once on resolveWebviewView; subsequent updates are posted
-// through `webview.postMessage` and the inline script patches the DOM.
-// Avoids the focus-drop / state-reset that came from reassigning
-// `webview.html` on every counter tick.
-//
-// CSP locked down to the loaded HTML's nonce and the webview's
-// cspSource for styles. `localResourceRoots: []` since the template is
-// fully self-contained.
+// The UI is a Solid bundle (src/webviews/status) loaded via the shared
+// webview shell. Rendered once on resolveWebviewView; subsequent updates
+// are posted through `webview.postMessage` and Solid re-renders reactively.
+// This provider owns all state and computes the message shape; the webview
+// only renders it.
 
 import * as vscode from "vscode";
+import type { StatusUpdateMessage } from "../webviews/status/protocol.js";
 import { type Phase, PHASE_LABELS } from "../debugging/phase-tracker.js";
-import statusTemplate from "./status.html?raw";
-
-interface UpdateMessage {
-	type: "update";
-	mode: "running" | "ended";
-	title: string;
-	stats: string[];
-	showPauseButton: boolean;
-	pauseButtonLabel: string;
-	pauseButtonDisabled: boolean;
-	// Reason the run failed, rendered as a distinct error state in the body.
-	// null when the run hasn't failed.
-	error: string | null;
-}
+import { webviewHtml, webviewRoots } from "./webview-shell.js";
 
 export class StatusViewProvider implements vscode.WebviewViewProvider {
+	readonly #extensionUri: vscode.Uri;
 	#view: vscode.WebviewView | null = null;
 	#name = "";
 	#processed = 0;
@@ -60,18 +45,23 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	// "why" the run stopped rather than a bare "Disconnected". Cleared on reset.
 	#errorReason: string | null = null;
 
+	constructor(extensionUri: vscode.Uri) {
+		this.#extensionUri = extensionUri;
+	}
+
 	resolveWebviewView(webviewView: vscode.WebviewView): void {
 		this.#view = webviewView;
 		webviewView.webview.options = {
 			enableScripts: true,
-			localResourceRoots: [],
+			localResourceRoots: webviewRoots(this.#extensionUri),
 		};
 		webviewView.description = PHASE_LABELS[this.#phase];
 
-		const nonce = generateNonce();
-		webviewView.webview.html = statusTemplate
-			.replaceAll("{{NONCE}}", nonce)
-			.replaceAll("{{CSP_SOURCE}}", webviewView.webview.cspSource);
+		webviewView.webview.html = webviewHtml(
+			webviewView.webview,
+			this.#extensionUri,
+			"status",
+		);
 
 		webviewView.webview.onDidReceiveMessage((msg: { command?: string }) => {
 			if (msg.command === "pause") {
@@ -201,7 +191,7 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 			: this.#mode === "ended"
 				? `Finished ${name}`
 				: `Running ${name}...`;
-		const update: UpdateMessage =
+		const update: StatusUpdateMessage =
 			this.#mode === "ended"
 				? {
 						type: "update",
@@ -227,10 +217,6 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 					};
 		void this.#view.webview.postMessage(update);
 	}
-}
-
-function generateNonce(): string {
-	return crypto.randomUUID().replaceAll("-", "");
 }
 
 // "5 skipped (3 wrong-stream, 2 no-handler)" - top-3 reasons by

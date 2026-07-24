@@ -1,0 +1,96 @@
+.root {
+	padding: 1.2em 1.4em;
+}
+
+.header {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 0.5em 1em;
+	padding-bottom: 0.8em;
+	border-bottom: 1px solid var(--vscode-panel-border);
+}
+.headerLeft {
+	display: flex;
+	align-items: baseline;
+	gap: 0.45em;
+	min-width: 0;
+}
+.env {
+	font-size: 1.2em;
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+.prod {
+	padding: 0.05em 0.55em;
+	border-radius: 0.9em;
+	font-size: 0.72em;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	color: var(--vscode-editorWarning-foreground, var(--vscode-charts-orange));
+	border: 1px solid
+		var(--vscode-editorWarning-foreground, var(--vscode-charts-orange));
+}
+.envKey {
+	color: var(--gx-muted);
+	font-family: var(--gx-mono);
+	font-size: 0.9em;
+	white-space: nowrap;
+}
+
+.plan {
+	list-style: none;
+	margin: 0.4em 0 0;
+	padding: 0;
+}
+.empty {
+	color: var(--gx-muted);
+	font-style: italic;
+}
+.drift {
+	margin: 0.6em 0;
+}
+
+.footer {
+	margin-top: 1.1em;
+	padding-top: 0.8em;
+	border-top: 1px solid var(--vscode-panel-border);
+}
+.footerNote {
+	margin-bottom: 0.7em;
+}
+.footerNote:empty {
+	display: none;
+}
+.footerBar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.8em;
+}
+.footerMessage {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+}
+.actions {
+	display: flex;
+	align-items: center;
+	gap: 0.6em;
+}
+
+.doneHeadline {
+	font-weight: 600;
+}
+.ok {
+	color: var(--vscode-charts-green, var(--vscode-testing-iconPassed));
+}
+.fail {
+	color: var(--vscode-errorForeground);
+}
+.hint {
+	color: var(--gx-muted);
+}

@@ -1,0 +1,12 @@
+.grid {
+	display: grid;
+	grid-template-columns: 8.5ch 1fr;
+	row-gap: 0.45em;
+	column-gap: 1em;
+}
+.key {
+	color: var(--gx-muted);
+}
+.val {
+	overflow-wrap: anywhere;
+}

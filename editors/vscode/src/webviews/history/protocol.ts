@@ -6,6 +6,7 @@
 
 import type { HistoryEntry } from "../../commands/history-schema.js";
 import type { HistoryGraph } from "../../panels/history-graph.js";
+import type { WebviewErrorMessage } from "../shared/webview-error-message.js";
 
 export type { HistoryEntry, HistoryGraph };
 
@@ -27,4 +28,5 @@ export type HistoryInbound =
 // Webview -> host.
 export type HistoryOutbound =
 	| { command: "diff"; version: number; framing: "previous" | "local" }
-	| { command: "rollback"; version: number; token: number };
+	| { command: "rollback"; version: number; token: number }
+	| WebviewErrorMessage;

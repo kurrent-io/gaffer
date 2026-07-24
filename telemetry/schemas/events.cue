@@ -523,8 +523,9 @@ import "strings"
 	phase: #ExceptionPhase
 }
 
-// ExceptionPhase is a coarse lifecycle bucket for where an exception fired.
-#ExceptionPhase: "startup" | "projection_init" | "event_processing" | "shutdown"
+// ExceptionPhase is a coarse bucket for where an exception fired - a runtime
+// lifecycle stage, or "webview" for an editor webview's client-side render.
+#ExceptionPhase: "startup" | "projection_init" | "event_processing" | "shutdown" | "webview"
 
 // ExceptionEntry is one exception in the causal chain.
 #ExceptionEntry: {

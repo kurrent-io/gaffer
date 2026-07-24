@@ -16,6 +16,7 @@ import { webviewHtml, webviewRoots } from "./webview-shell.js";
 
 export class StatusViewProvider implements vscode.WebviewViewProvider {
 	readonly #extensionUri: vscode.Uri;
+	readonly #reportError: ((msg: unknown) => void) | undefined;
 	#view: vscode.WebviewView | null = null;
 	#name = "";
 	#processed = 0;
@@ -45,8 +46,9 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 	// "why" the run stopped rather than a bare "Disconnected". Cleared on reset.
 	#errorReason: string | null = null;
 
-	constructor(extensionUri: vscode.Uri) {
+	constructor(extensionUri: vscode.Uri, reportError?: (msg: unknown) => void) {
 		this.#extensionUri = extensionUri;
+		this.#reportError = reportError;
 	}
 
 	resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -66,6 +68,10 @@ export class StatusViewProvider implements vscode.WebviewViewProvider {
 		webviewView.webview.onDidReceiveMessage((msg: { command?: string }) => {
 			if (msg.command === "pause") {
 				void vscode.commands.executeCommand("workbench.action.debug.pause");
+				return;
+			}
+			if (msg.command === "error") {
+				this.#reportError?.(msg);
 			}
 		});
 

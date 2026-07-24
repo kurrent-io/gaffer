@@ -4,6 +4,7 @@
 // sides can't drift.
 
 import type { PlanItem, PlanReport } from "../../commands/deploy-plan.js";
+import type { WebviewErrorMessage } from "../shared/webview-error-message.js";
 
 export type { PlanItem, PlanReport };
 
@@ -31,4 +32,5 @@ export type DeployInbound =
 export type DeployOutbound =
 	| { command: "cancel" }
 	| { command: "diff"; name: string }
-	| { command: "deploy"; noValidate: boolean; token: number };
+	| { command: "deploy"; noValidate: boolean; token: number }
+	| WebviewErrorMessage;

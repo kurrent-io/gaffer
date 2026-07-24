@@ -223,6 +223,7 @@ const (
 	ExceptionPhaseProjectionInit  ExceptionPhase = "projection_init"
 	ExceptionPhaseShutdown        ExceptionPhase = "shutdown"
 	ExceptionPhaseStartup         ExceptionPhase = "startup"
+	ExceptionPhaseWebview         ExceptionPhase = "webview"
 )
 
 // FileSizeBucket is an int enum mirroring the CUE definition.

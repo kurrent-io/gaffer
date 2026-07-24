@@ -3,6 +3,8 @@
 // The host owns all state and computes the rendered shape; the webview only
 // renders what it receives and posts back the pause command.
 
+import type { WebviewErrorMessage } from "../shared/webview-error-message.js";
+
 export interface StatusUpdateMessage {
 	type: "update";
 	mode: "running" | "ended";
@@ -24,4 +26,4 @@ export type StatusInbound = StatusUpdateMessage;
 export interface StatusPauseCommand {
 	command: "pause";
 }
-export type StatusOutbound = StatusPauseCommand;
+export type StatusOutbound = StatusPauseCommand | WebviewErrorMessage;

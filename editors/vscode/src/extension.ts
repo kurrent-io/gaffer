@@ -64,6 +64,7 @@ import { classifyManifestError } from "./telemetry/manifest-error.js";
 import { runFirstRunNotice } from "./telemetry/notice.js";
 import { checkOptOut } from "./telemetry/opt-out.js";
 import { readVscodeTelemetryLevel } from "./telemetry/vscode-config.js";
+import { reportWebviewError } from "./telemetry/webview-error.js";
 import { wrapAsync } from "./telemetry/wrap.js";
 import {
 	wrapCodeActionProvider,
@@ -315,9 +316,17 @@ async function activateAfterTelemetry(
 			),
 	);
 
+	// Webviews report their client-side render errors here; routed into the
+	// exception pipeline under the "webview" phase.
+	const onWebviewError = (msg: unknown): void =>
+		reportWebviewError(telemetry, msg);
+
 	const stepProvider = new StepProvider();
 	const stateProvider = new StateProvider();
-	const statusProvider = new StatusViewProvider(context.extensionUri);
+	const statusProvider = new StatusViewProvider(
+		context.extensionUri,
+		onWebviewError,
+	);
 	const phaseTracker = new PhaseTracker((phase) =>
 		statusProvider.setPhase(phase),
 	);
@@ -684,12 +693,16 @@ async function activateAfterTelemetry(
 						.start();
 				},
 			});
-			const deployView = new DeployPlanView(context.extensionUri, {
-				onDiff: (ctx, name) => {
-					void diff({ name, tomlUri: ctx.tomlUri, env: ctx.env });
+			const deployView = new DeployPlanView(
+				context.extensionUri,
+				{
+					onDiff: (ctx, name) => {
+						void diff({ name, tomlUri: ctx.tomlUri, env: ctx.env });
+					},
+					onDeploy: apply,
 				},
-				onDeploy: apply,
-			});
+				onWebviewError,
+			);
 			const preview = deployPreview({
 				view: deployView,
 				runDryRun: (env, cwd, name) =>
@@ -778,17 +791,21 @@ async function activateAfterTelemetry(
 
 			// reload (after a rollback) re-runs the loader; the closure calls it only
 			// later, so it can close over the const declared just below.
-			const historyView = new HistoryView(context.extensionUri, {
-				onDiff: openHistoryDiff({
-					provider: historyDiffProvider,
-					requestDiff: requestDiffVersions,
-				}),
-				onRollback: rollbackFromHistory({
-					runRollback: (cwd, env, name, hash) =>
-						run(rollbackArgs(env, name, hash), cwd),
-					reload: (ctx) => loadHistory(ctx),
-				}),
-			});
+			const historyView = new HistoryView(
+				context.extensionUri,
+				{
+					onDiff: openHistoryDiff({
+						provider: historyDiffProvider,
+						requestDiff: requestDiffVersions,
+					}),
+					onRollback: rollbackFromHistory({
+						runRollback: (cwd, env, name, hash) =>
+							run(rollbackArgs(env, name, hash), cwd),
+						reload: (ctx) => loadHistory(ctx),
+					}),
+				},
+				onWebviewError,
+			);
 			const loadHistory = makeLoadHistory({
 				view: historyView,
 				runHistory: (cwd, env, name) => run(historyArgs(env, name), cwd),

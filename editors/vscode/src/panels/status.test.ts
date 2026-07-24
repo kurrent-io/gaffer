@@ -98,7 +98,7 @@ describe("StatusViewProvider", () => {
 		expect(html).not.toContain("nonce-");
 		expect(html).toContain('<script type="module" src="');
 		expect(html).toContain("status.js");
-		expect(html).toContain("status.css");
+		expect(html).toContain("style.css");
 	});
 
 	it("reset(name) puts the projection name into the title and resets counters", () => {

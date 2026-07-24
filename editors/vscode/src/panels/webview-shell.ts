@@ -12,8 +12,8 @@
 import * as vscode from "vscode";
 
 // Entry basename as emitted by the webview build (deterministic, unhashed):
-// dist/webviews/<entry>.js and dist/webviews/<entry>.css.
-export type WebviewEntry = "status";
+// dist/webviews/<entry>.js. All entries share one dist/webviews/style.css.
+export type WebviewEntry = "status" | "history";
 
 export function webviewHtml(
 	webview: vscode.Webview,
@@ -22,7 +22,7 @@ export function webviewHtml(
 ): string {
 	const base = vscode.Uri.joinPath(extensionUri, "dist", "webviews");
 	const script = webview.asWebviewUri(vscode.Uri.joinPath(base, `${entry}.js`));
-	const style = webview.asWebviewUri(vscode.Uri.joinPath(base, `${entry}.css`));
+	const style = webview.asWebviewUri(vscode.Uri.joinPath(base, "style.css"));
 	const csp = [
 		"default-src 'none'",
 		// base-uri and object-src don't inherit from default-src, so pin them.

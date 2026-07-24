@@ -778,7 +778,7 @@ async function activateAfterTelemetry(
 
 			// reload (after a rollback) re-runs the loader; the closure calls it only
 			// later, so it can close over the const declared just below.
-			const historyView = new HistoryView({
+			const historyView = new HistoryView(context.extensionUri, {
 				onDiff: openHistoryDiff({
 					provider: historyDiffProvider,
 					requestDiff: requestDiffVersions,

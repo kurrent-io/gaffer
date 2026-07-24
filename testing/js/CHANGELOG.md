@@ -1,5 +1,18 @@
 # @kurrent/projections-testing
 
+## 0.2.2
+
+### Patch Changes
+
+- ce0de95: Projection info now reports whether a projection writes events. `ProjectionInfo` gains an `emitsEvents` flag, true when the projection calls `emit`, `linkTo`, `linkStreamTo`, or `copyTo`. It is detected on every compile from the source, so consumers no longer need to inspect shape counts.
+
+  `gaffer info` shows it ("Emits events: yes"); `gaffer info --json` and the MCP `get_projection_info` and `validate_projection` tools include `emitsEvents`; the testing library exposes it as `info.settings.emitsEvents`.
+
+- Updated dependencies [ce0de95]
+- Updated dependencies [eeaff5f]
+- Updated dependencies [e59a851]
+  - @kurrent/gaffer-runtime@0.3.1
+
 ## 0.2.1
 
 ### Patch Changes

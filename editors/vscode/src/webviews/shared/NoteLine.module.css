@@ -1,0 +1,7 @@
+.note {
+	color: var(--gx-muted);
+	overflow-wrap: anywhere;
+}
+.warn {
+	color: var(--gx-warn);
+}

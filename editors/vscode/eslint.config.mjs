@@ -30,4 +30,12 @@ export default [
 			},
 		},
 	},
+	{
+		files: ["src/webviews/**/*.{ts,tsx}"],
+		rules: {
+			// Solid's `let el; <div ref={el}>` assigns el through the compiler;
+			// the static rule can't see the write.
+			"no-unassigned-vars": "off",
+		},
+	},
 ];

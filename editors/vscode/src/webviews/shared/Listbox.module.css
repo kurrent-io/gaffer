@@ -1,0 +1,15 @@
+.option {
+	cursor: pointer;
+	border-radius: 4px;
+	padding: 0.5em 0.6em;
+}
+.option:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+.selected {
+	background: var(
+		--vscode-list-activeSelectionBackground,
+		rgba(127, 127, 127, 0.18)
+	);
+}

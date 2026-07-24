@@ -1,0 +1,16 @@
+.dot {
+	display: inline-block;
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	flex: none;
+}
+.enabled {
+	background: var(--gx-enabled);
+}
+.disabled {
+	background: var(--gx-disabled);
+}
+.deleted {
+	background: var(--gx-deleted);
+}

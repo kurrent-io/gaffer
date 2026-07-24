@@ -1,0 +1,9 @@
+.notice {
+	margin-top: 1em;
+	color: var(--gx-muted);
+	font-style: italic;
+}
+.error {
+	color: var(--vscode-errorForeground);
+	font-style: normal;
+}

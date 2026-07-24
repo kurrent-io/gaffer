@@ -1,0 +1,23 @@
+/* Colour per deploy outcome, shared by the row outcome label and the count
+   segments. These are deploy-specific colours (not the --gx-* tones). */
+.created {
+	color: var(
+		--vscode-gitDecoration-addedResourceForeground,
+		var(--vscode-charts-green)
+	);
+}
+.updated {
+	color: var(--vscode-charts-blue, var(--vscode-textLink-foreground));
+}
+.rebuilt,
+.refused {
+	color: var(--vscode-editorWarning-foreground, var(--vscode-charts-orange));
+}
+.skipped,
+.applying {
+	color: var(--gx-muted);
+}
+.invalid,
+.failed {
+	color: var(--vscode-errorForeground);
+}

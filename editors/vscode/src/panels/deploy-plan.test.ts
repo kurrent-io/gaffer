@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 function makeView(handlers: Partial<DeployPlanHandlers> = {}): DeployPlanView {
-	return new DeployPlanView({
+	return new DeployPlanView(vscode.Uri.file("/ext"), {
 		onDiff: handlers.onDiff ?? (() => {}),
 		onDeploy: handlers.onDeploy ?? (() => {}),
 	});
@@ -59,7 +59,7 @@ describe("DeployPlanView", () => {
 		makeView().show(report, { env: "staging", tomlUri });
 		const p = onlyPanel();
 		expect(p.title).toBe("Deploy plan: staging");
-		expect(p.webview.html).toContain("acquireVsCodeApi");
+		expect(p.webview.html).toContain("deploy-plan.js");
 		expect(p.webview.postedMessages).toContainEqual({
 			type: "plan",
 			report,

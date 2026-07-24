@@ -13,7 +13,7 @@ import * as vscode from "vscode";
 
 // Entry basename as emitted by the webview build (deterministic, unhashed):
 // dist/webviews/<entry>.js. All entries share one dist/webviews/style.css.
-export type WebviewEntry = "status" | "history";
+export type WebviewEntry = "status" | "history" | "deploy-plan";
 
 export function webviewHtml(
 	webview: vscode.Webview,

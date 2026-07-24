@@ -684,7 +684,7 @@ async function activateAfterTelemetry(
 						.start();
 				},
 			});
-			const deployView = new DeployPlanView({
+			const deployView = new DeployPlanView(context.extensionUri, {
 				onDiff: (ctx, name) => {
 					void diff({ name, tomlUri: ctx.tomlUri, env: ctx.env });
 				},

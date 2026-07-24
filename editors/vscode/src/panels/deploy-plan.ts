@@ -5,15 +5,17 @@
 // webview's Deploy button applies it and the apply streams back in place.
 //
 // One reusable panel: a new preview reveals and re-renders the existing tab
-// rather than stacking tabs. HTML lives in deploy-plan.html (loaded raw at build
-// time); rendered once, then updated via postMessage so a re-preview doesn't
-// drop scroll/focus. CSP is locked to the loaded nonce and the webview's
-// cspSource for styles; localResourceRoots is empty since the template is
-// self-contained.
+// rather than stacking tabs. The UI is a Solid bundle (src/webviews/deploy-plan)
+// loaded via the shared webview shell; rendered once, then updated via
+// postMessage so a re-preview doesn't drop scroll/focus.
 
 import * as vscode from "vscode";
 import type { PlanReport } from "../commands/deploy-plan.js";
-import deployPlanTemplate from "./deploy-plan.html?raw";
+import type {
+	DeployInbound,
+	DeploySummaryCounts,
+} from "../webviews/deploy-plan/protocol.js";
+import { webviewHtml, webviewRoots } from "./webview-shell.js";
 
 export interface DeployPlanContext {
 	env: string;
@@ -25,27 +27,12 @@ export interface DeployPlanContext {
 }
 
 // The outcome counts from the terminal deploy_summary NDJSON line.
-export interface DeploySummaryCounts {
-	created: number;
-	updated: number;
-	rebuilt: number;
-	skipped: number;
-	refused: number;
-	invalid: number;
-	failed: number;
-}
+export type { DeploySummaryCounts };
 
 // Extension -> webview. `plan` renders the (read-only) plan; the rest drive the
-// apply: `deploy-started` switches the view into progress mode, `deploy-item`
-// settles one projection's row, `deploy-done` shows the final result summary, and
-// `deploy-error` reports an apply that couldn't run.
-export type DeployPlanMessage =
-	| { type: "plan"; report: PlanReport; token: number }
-	| { type: "deploy-started" }
-	| { type: "deploy-active"; name: string }
-	| { type: "deploy-item"; name: string; outcome: string; detail?: string }
-	| { type: "deploy-done"; summary: DeploySummaryCounts }
-	| { type: "deploy-error"; message: string };
+// apply. The shape is the shared contract the webview reads (see
+// webviews/deploy-plan/protocol.ts).
+export type DeployPlanMessage = DeployInbound;
 
 // Sends progress from an in-flight apply back to the webview.
 export type DeploySend = (message: DeployPlanMessage) => void;
@@ -75,9 +62,11 @@ export class DeployPlanView implements vscode.Disposable {
 	// click, so a click against a plan the panel has since re-rendered away from
 	// is dropped (identity, not env-name matching).
 	#planToken = 0;
+	readonly #extensionUri: vscode.Uri;
 	readonly #handlers: DeployPlanHandlers;
 
-	constructor(handlers: DeployPlanHandlers) {
+	constructor(extensionUri: vscode.Uri, handlers: DeployPlanHandlers) {
+		this.#extensionUri = extensionUri;
 		this.#handlers = handlers;
 	}
 
@@ -98,13 +87,14 @@ export class DeployPlanView implements vscode.Disposable {
 				{
 					enableScripts: true,
 					retainContextWhenHidden: true,
-					localResourceRoots: [],
+					localResourceRoots: webviewRoots(this.#extensionUri),
 				},
 			);
-			const nonce = generateNonce();
-			this.#panel.webview.html = deployPlanTemplate
-				.replaceAll("{{NONCE}}", nonce)
-				.replaceAll("{{CSP_SOURCE}}", this.#panel.webview.cspSource);
+			this.#panel.webview.html = webviewHtml(
+				this.#panel.webview,
+				this.#extensionUri,
+				"deploy-plan",
+			);
 			this.#panel.webview.onDidReceiveMessage((msg: unknown) => {
 				this.#handleMessage(msg);
 			});
@@ -173,8 +163,4 @@ export class DeployPlanView implements vscode.Disposable {
 
 function planTitle(ctx: DeployPlanContext): string {
 	return `Deploy plan: ${ctx.name ?? ctx.env}`;
-}
-
-function generateNonce(): string {
-	return crypto.randomUUID().replaceAll("-", "");
 }

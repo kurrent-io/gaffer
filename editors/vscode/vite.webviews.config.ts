@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => ({
 			input: {
 				status: path.resolve(here, "src/webviews/status/main.tsx"),
 				history: path.resolve(here, "src/webviews/history/main.tsx"),
+				"deploy-plan": path.resolve(here, "src/webviews/deploy-plan/main.tsx"),
 			},
 			output: {
 				entryFileNames: "[name].js",

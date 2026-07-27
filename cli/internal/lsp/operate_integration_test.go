@@ -87,8 +87,25 @@ func TestPerformOperate_Integration(t *testing.T) {
 	if got := op(del); got.Outcome != "deleted" {
 		t.Errorf("delete outcome = %q, want deleted", got.Outcome)
 	}
-	if _, err := r.Read(ctx, name); !errors.Is(err, remote.ErrNotFound) {
-		t.Errorf("expected %q gone after delete, got %v", name, err)
+	// Delete is asynchronous server-side: performOperate returns once KurrentDB
+	// accepts the delete, but the projection keeps resolving until the subsystem
+	// finishes tearing it down. Poll until it's actually gone rather than reading
+	// once and racing the removal. Each read is bounded so a stalled RPC can't
+	// outlast the poll deadline, and the last error is surfaced if it never goes.
+	var lastErr error
+	gone := false
+	for deadline := time.Now().Add(waitForTimeout); time.Now().Before(deadline); {
+		rctx, rcancel := context.WithTimeout(ctx, 5*time.Second)
+		_, lastErr = r.Read(rctx, name)
+		rcancel()
+		if errors.Is(lastErr, remote.ErrNotFound) {
+			gone = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !gone {
+		t.Fatalf("projection %q still present after delete (last read err: %v)", name, lastErr)
 	}
 
 	// A verb on a projection that isn't deployed surfaces a clean invalid-params

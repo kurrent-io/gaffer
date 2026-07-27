@@ -145,11 +145,16 @@ describe("deployApply", () => {
 		});
 	});
 
-	it("does not deploy when the confirm modal is dismissed", async () => {
+	it("does not deploy when the confirm modal is dismissed, and signals aborted", async () => {
+		const sent: DeployPlanMessage[] = [];
 		const { calls, run } = fakeRun([summary(0)], 0);
 		// prod, no rebuild -> accept modal; no queued response -> dismissed.
-		await deployApply({ run })(ctx, plan(true, ["created"]), false, () => {});
+		await deployApply({ run })(ctx, plan(true, ["created"]), false, (m) =>
+			sent.push(m),
+		);
 		expect(calls).toHaveLength(0);
+		// Releases the panel's in-flight guard so the plan isn't wedged.
+		expect(sent).toEqual([{ type: "deploy-aborted" }]);
 	});
 
 	it("deploys after the confirm modal is accepted", async () => {
@@ -219,11 +224,15 @@ describe("deployApply", () => {
 		expect(calls).toHaveLength(0);
 	});
 
-	it("does nothing in an untrusted workspace", async () => {
+	it("does nothing in an untrusted workspace, and signals aborted", async () => {
 		setTrusted(false);
+		const sent: DeployPlanMessage[] = [];
 		const { calls, run } = fakeRun([summary()], 0);
-		await deployApply({ run })(ctx, plan(false, ["created"]), false, () => {});
+		await deployApply({ run })(ctx, plan(false, ["created"]), false, (m) =>
+			sent.push(m),
+		);
 		expect(calls).toHaveLength(0);
+		expect(sent).toEqual([{ type: "deploy-aborted" }]);
 	});
 
 	it("maps the full summary counts into deploy-done", async () => {

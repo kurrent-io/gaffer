@@ -141,9 +141,99 @@ describe("DeployPlanView", () => {
 		expect(calls).toBe(2);
 	});
 
+	it("releases the in-flight guard when the apply aborts, re-allowing preview and deploy", () => {
+		let calls = 0;
+		const view = makeView({
+			onDeploy: (_ctx, _rep, _nv, send) => {
+				calls++;
+				send({ type: "deploy-aborted" }); // confirm dismissed / untrusted
+			},
+		});
+		view.show(report, { env: "staging", tomlUri });
+		const wv = onlyPanel().webview;
+		wv.emitMessage({
+			command: "deploy",
+			noValidate: false,
+			token: planToken(),
+		});
+		expect(calls).toBe(1);
+		// Guard released: a re-preview re-renders instead of being dropped...
+		view.show(report, { env: "staging", tomlUri });
+		expect(onlyPanel().revealCount).toBe(2);
+		// ...and a fresh deploy against the new plan is accepted.
+		wv.emitMessage({
+			command: "deploy",
+			noValidate: false,
+			token: planToken(),
+		});
+		expect(calls).toBe(2);
+	});
+
+	it("releases the guard and surfaces an error when the apply throws before signalling", async () => {
+		let calls = 0;
+		const view = makeView({
+			onDeploy: () => {
+				calls++;
+				return Promise.reject(new Error("spawn failed"));
+			},
+		});
+		view.show(report, { env: "staging", tomlUri });
+		const wv = onlyPanel().webview;
+		wv.emitMessage({
+			command: "deploy",
+			noValidate: false,
+			token: planToken(),
+		});
+		await new Promise((r) => setTimeout(r, 0)); // let the rejection's catch run
+		// The webview is told the apply died...
+		expect(wv.postedMessages).toContainEqual({
+			type: "deploy-error",
+			message: "Deploy failed to start.",
+		});
+		// ...and the guard is released, so a fresh deploy is accepted.
+		wv.emitMessage({
+			command: "deploy",
+			noValidate: false,
+			token: planToken(),
+		});
+		expect(calls).toBe(2);
+	});
+
+	it("releases the guard when the apply throws synchronously", () => {
+		let calls = 0;
+		const view = makeView({
+			onDeploy: () => {
+				calls++;
+				throw new Error("spawn failed");
+			},
+		});
+		view.show(report, { env: "staging", tomlUri });
+		const wv = onlyPanel().webview;
+		wv.emitMessage({
+			command: "deploy",
+			noValidate: false,
+			token: planToken(),
+		});
+		expect(wv.postedMessages).toContainEqual({
+			type: "deploy-error",
+			message: "Deploy failed to start.",
+		});
+		// Guard released synchronously: a fresh deploy is accepted.
+		wv.emitMessage({
+			command: "deploy",
+			noValidate: false,
+			token: planToken(),
+		});
+		expect(calls).toBe(2);
+	});
+
 	it("drops a deploy whose plan token is stale", () => {
 		let calls = 0;
-		makeView({ onDeploy: () => calls++ }).show(report, {
+		makeView({
+			onDeploy: () => {
+				calls++;
+			},
+		}).show(report, {
 			env: "staging",
 			tomlUri,
 		});
@@ -166,7 +256,9 @@ describe("DeployPlanView", () => {
 		const seen: unknown[] = [];
 		makeView({
 			onDiff: (ctx, name) => seen.push({ ctx, name }),
-			onDeploy: (ctx) => seen.push(ctx),
+			onDeploy: (ctx) => {
+				seen.push(ctx);
+			},
 		}).show(report, { env: "staging", tomlUri });
 		const wv = onlyPanel().webview;
 		wv.emitMessage({ command: "diff" }); // no name

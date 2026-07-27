@@ -1,4 +1,4 @@
-import { render } from "@solidjs/testing-library";
+import { fireEvent, render } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { describe, expect, it } from "vitest";
 import { DeployPlan } from "./DeployPlan";
@@ -53,5 +53,41 @@ describe("DeployPlan streaming", () => {
 		expect(getByText("Successfully deployed")).toBeTruthy();
 		expect(queryByText("Deploying…")).toBeNull();
 		expect(getByText("created")).toBeTruthy();
+	});
+
+	it("re-enables Deploy after an aborted apply", () => {
+		const [inbox, setInbox] = createSignal<DeployInbound[]>([]);
+		const { getByRole, queryByText } = render(() => (
+			<DeployPlan
+				inbox={inbox()}
+				onDrained={() => setInbox([])}
+				post={() => {}}
+			/>
+		));
+
+		setInbox([
+			{
+				type: "plan",
+				token: 1,
+				report: {
+					verdict: "deployable",
+					changes: 1,
+					env: "staging",
+					plan: [{ name: "orders", outcome: "created" }],
+				},
+			},
+		]);
+
+		const deploy = getByRole("button", { name: "Deploy" }) as HTMLButtonElement;
+		expect(deploy.disabled).toBe(false);
+		fireEvent.click(deploy);
+		// Submitted disables the button until the host answers.
+		expect(deploy.disabled).toBe(true);
+
+		// The apply never started (confirm dismissed): re-arm rather than wedge,
+		// and stay on the plan rather than advancing to a progress state.
+		setInbox([{ type: "deploy-aborted" }]);
+		expect(deploy.disabled).toBe(false);
+		expect(queryByText("Deploying…")).toBeNull();
 	});
 });

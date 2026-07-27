@@ -26,7 +26,11 @@ export type DeployInbound =
 	| { type: "deploy-active"; name: string }
 	| { type: "deploy-item"; name: string; outcome: string; detail?: string }
 	| { type: "deploy-done"; summary: DeploySummaryCounts }
-	| { type: "deploy-error"; message: string };
+	| { type: "deploy-error"; message: string }
+	// The apply never started (confirm dismissed, or workspace untrusted). A
+	// terminal signal with no result: releases the host's in-flight guard and
+	// re-enables the webview's Deploy button so the plan can be deployed again.
+	| { type: "deploy-aborted" };
 
 // Webview -> host.
 export type DeployOutbound =

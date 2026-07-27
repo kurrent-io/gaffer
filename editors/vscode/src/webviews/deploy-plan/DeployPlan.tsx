@@ -97,6 +97,15 @@ export function DeployPlan(props: {
 				setSummary(msg.summary);
 				setPhase("done");
 				break;
+			case "deploy-aborted":
+				// The apply never started; return to the plan and re-arm Deploy.
+				// Senders only abort before deploy-started (phase still reviewing),
+				// but reset unconditionally so the host guard and this view can't
+				// diverge if that ever changes.
+				setPhase("reviewing");
+				setLive({});
+				setSubmitted(false);
+				break;
 			case "deploy-error":
 				setErrorMsg(msg.message);
 				setPhase("error");

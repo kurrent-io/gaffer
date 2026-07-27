@@ -47,7 +47,7 @@ export interface DeployPlanHandlers {
 		report: PlanReport,
 		noValidate: boolean,
 		send: DeploySend,
-	) => void;
+	) => void | Promise<void>;
 }
 
 export class DeployPlanView implements vscode.Disposable {
@@ -146,16 +146,31 @@ export class DeployPlanView implements vscode.Disposable {
 			if ((msg as { token?: unknown }).token !== this.#planToken) return;
 			const noValidate = (msg as { noValidate?: unknown }).noValidate === true;
 			this.#deploying = true;
-			this.#handlers.onDeploy(this.#ctx, this.#report, noValidate, (m) =>
-				this.#sendDeploy(m),
-			);
+			// The guard is only ever released by a terminal message. onDeploy emits
+			// one on every path it controls, but it's fire-and-forget async, so a
+			// throw before a terminal (e.g. the apply spawn failing synchronously)
+			// would otherwise strand the guard. Convert a rejection into one.
+			void Promise.resolve(
+				this.#handlers.onDeploy(this.#ctx, this.#report, noValidate, (m) =>
+					this.#sendDeploy(m),
+				),
+			).catch(() => {
+				this.#sendDeploy({
+					type: "deploy-error",
+					message: "Deploy failed to start.",
+				});
+			});
 		}
 	}
 
 	// Streams an apply message to the webview, releasing the in-flight guard once
 	// the apply settles so the plan can be previewed/deployed again.
 	#sendDeploy(message: DeployPlanMessage): void {
-		if (message.type === "deploy-done" || message.type === "deploy-error") {
+		if (
+			message.type === "deploy-done" ||
+			message.type === "deploy-error" ||
+			message.type === "deploy-aborted"
+		) {
 			this.#deploying = false;
 		}
 		this.#post(message);

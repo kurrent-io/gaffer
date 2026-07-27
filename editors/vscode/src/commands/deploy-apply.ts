@@ -48,10 +48,16 @@ export function deployApply(
 	send: DeploySend,
 ) => Promise<void> {
 	return async (ctx, report, noValidate, send) => {
-		if (!vscode.workspace.isTrusted) return;
+		if (!vscode.workspace.isTrusted) {
+			send({ type: "deploy-aborted" });
+			return;
+		}
 
 		const hasRebuild = (report.plan ?? []).some((p) => p.outcome === "rebuilt");
-		if (!(await confirmDeploy(ctx.env, report.production, hasRebuild))) return;
+		if (!(await confirmDeploy(ctx.env, report.production, hasRebuild))) {
+			send({ type: "deploy-aborted" });
+			return;
+		}
 
 		send({ type: "deploy-started" });
 		const cwd = path.dirname(ctx.tomlUri.fsPath);

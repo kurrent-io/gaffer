@@ -222,9 +222,7 @@ export interface ScaffoldChoices {
 export type WizardFlavor = "name" | "path";
 
 export type StepResult<T> =
-	| { kind: "value"; value: T }
-	| { kind: "back" }
-	| { kind: "cancel" };
+	{ kind: "value"; value: T } | { kind: "back" } | { kind: "cancel" };
 
 // Each renderer gets the previously-entered value (so Back-then-forward
 // preserves what the user already typed/picked) plus the current step

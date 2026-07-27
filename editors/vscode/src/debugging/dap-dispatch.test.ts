@@ -385,12 +385,7 @@ describe("dispatchDapEvent - malformed bodies", () => {
 	const malformed: Array<[string, unknown]> = [
 		["gaffer/stepStart", { event: { sequenceNumber: "x" } }],
 		["gaffer/stepLog", { message: 1 }],
-		[
-			"gaffer/stepEmit",
-			{
-				/* missing streamId */
-			},
-		],
+		["gaffer/stepEmit", {/* missing streamId */}],
 		["gaffer/stepResult", { result: { status: "weird" } }],
 		["gaffer/stepError", { code: "x" /* missing description */ }],
 		["gaffer/state", { partitions: "not-an-array" }],

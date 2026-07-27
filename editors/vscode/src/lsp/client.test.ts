@@ -107,8 +107,7 @@ describe("startLanguageClient invokerId wiring", () => {
 		await flushAllMicrotasks();
 		await runFactory();
 		const opts = spawnMock.mock.calls[0]?.[2] as
-			| { env?: NodeJS.ProcessEnv }
-			| undefined;
+			{ env?: NodeJS.ProcessEnv } | undefined;
 		expect(opts?.env?.GAFFER_TELEMETRY_OPTOUT).toBe("1");
 		// Inheritance: a representative parent-env key passes through so
 		// the child still sees PATH etc. Catches a regression that
@@ -127,8 +126,7 @@ describe("startLanguageClient invokerId wiring", () => {
 		await flushAllMicrotasks();
 		await runFactory();
 		const opts = spawnMock.mock.calls[0]?.[2] as
-			| { env?: NodeJS.ProcessEnv }
-			| undefined;
+			{ env?: NodeJS.ProcessEnv } | undefined;
 		expect(opts?.env).toBeUndefined();
 	});
 
@@ -147,8 +145,7 @@ describe("startLanguageClient invokerId wiring", () => {
 		await flushAllMicrotasks();
 		await runFactory();
 		const opts = spawnMock.mock.calls[0]?.[2] as
-			| { env?: NodeJS.ProcessEnv }
-			| undefined;
+			{ env?: NodeJS.ProcessEnv } | undefined;
 		expect(opts?.env?.GAFFER_KEYRING_PASSWORD).toBe("pw-123");
 		// Not opted out, so no telemetry-optout key; parent env still passes through.
 		expect(opts?.env?.GAFFER_TELEMETRY_OPTOUT).toBeUndefined();

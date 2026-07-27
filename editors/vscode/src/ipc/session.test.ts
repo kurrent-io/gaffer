@@ -11,8 +11,7 @@ const fakeProc = {
 	startCount: 0,
 	killCount: 0,
 	waitForMessageImpl: undefined as
-		| ((type: string, timeoutMs?: number) => Promise<unknown>)
-		| undefined,
+		((type: string, timeoutMs?: number) => Promise<unknown>) | undefined,
 };
 
 vi.mock("./process.js", () => {

@@ -15,8 +15,7 @@ import type { HistoryContext, HistoryView } from "../panels/history-view.js";
 // is a real error, not a status code with a payload - so its reason must be kept
 // rather than parsed away as empty JSON.
 export type HistoryOutcome =
-	| { ok: true; stdout: string }
-	| { ok: false; auth: boolean; reason: string };
+	{ ok: true; stdout: string } | { ok: false; auth: boolean; reason: string };
 
 export interface HistoryOpenDeps {
 	runHistory: (

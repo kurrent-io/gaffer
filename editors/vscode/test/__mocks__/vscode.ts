@@ -191,8 +191,7 @@ export class Position implements vscode.Position {
 	}
 	translate(
 		_lineDeltaOrChange?:
-			| number
-			| { lineDelta?: number; characterDelta?: number },
+			number | { lineDelta?: number; characterDelta?: number },
 		_characterDelta?: number,
 	): Position {
 		throw NOT_IMPLEMENTED("Position.translate");
@@ -250,8 +249,7 @@ export class Range implements vscode.Range {
 	}
 	with(
 		_startOrChange?:
-			| vscode.Position
-			| { start?: vscode.Position; end?: vscode.Position },
+			vscode.Position | { start?: vscode.Position; end?: vscode.Position },
 		_end?: vscode.Position,
 	): Range {
 		throw NOT_IMPLEMENTED("Range.with");
@@ -629,8 +627,7 @@ export function makeFakeTextEditor(
 		setDecorations(
 			decorationType: vscode.TextEditorDecorationType,
 			rangesOrOptions:
-				| readonly vscode.Range[]
-				| readonly vscode.DecorationOptions[],
+				readonly vscode.Range[] | readonly vscode.DecorationOptions[],
 		): void {
 			const key = (decorationType as FakeDecorationType).key;
 			const recorded = (rangesOrOptions as readonly unknown[]).map(

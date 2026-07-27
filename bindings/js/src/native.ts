@@ -290,8 +290,7 @@ export function getNativeBindings(): NativeBindings {
 		sessionGetState: (handle, partition) => {
 			const errSlot = newErrorSlot();
 			const result = sessionGetState(handle, partition, errSlot) as
-				| string
-				| null;
+				string | null;
 			return { result, errorJson: consumeErrorSlot(errSlot) };
 		},
 		sessionGetSharedState: (handle) => {
@@ -307,8 +306,7 @@ export function getNativeBindings(): NativeBindings {
 		sessionGetResult: (handle, partition) => {
 			const errSlot = newErrorSlot();
 			const result = sessionGetResult(handle, partition, errSlot) as
-				| string
-				| null;
+				string | null;
 			return { result, errorJson: consumeErrorSlot(errSlot) };
 		},
 		sessionGetSources: (handle) => {
@@ -319,8 +317,7 @@ export function getNativeBindings(): NativeBindings {
 		sessionGetPartitionKey: (handle, eventJson) => {
 			const errSlot = newErrorSlot();
 			const result = sessionGetPartitionKey(handle, eventJson, errSlot) as
-				| string
-				| null;
+				string | null;
 			return { result, errorJson: consumeErrorSlot(errSlot) };
 		},
 		onEmit: (handle, cb) => {

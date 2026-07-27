@@ -15,8 +15,7 @@ import type { HistoryContext, HistorySend } from "../panels/history-view.js";
 // The wiring adapts a `gaffer rollback --json` spawn to this: stdout on a clean
 // exit, or a classified failure (auth vs a refusal/error reason).
 export type RollbackOutcome =
-	| { ok: true; stdout: string }
-	| { ok: false; auth: boolean; reason: string };
+	{ ok: true; stdout: string } | { ok: false; auth: boolean; reason: string };
 
 const CONSEQUENCE =
 	"Rewrites the live query to this version. State is kept, and your local files are unchanged - so they'll read as drift until you update them.";

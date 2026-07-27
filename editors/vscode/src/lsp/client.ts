@@ -26,7 +26,7 @@ let client: LanguageClient | undefined;
 // first spawn, reused across restarts (including the give-up-then-retry
 // path). Creating it inside spawnLanguageClient would stack duplicate
 // "Gaffer (LSP)" entries in the user's Output dropdown.
-let lspChannel: vscode.OutputChannel | undefined;
+let lspChannel: vscode.LogOutputChannel | undefined;
 
 /** Bound on every `client.stop` call. VS Code's deactivate budget is
  * ~5s; a stuck server can't be allowed to eat the whole budget. */
@@ -145,7 +145,9 @@ async function spawnLanguageClient(
 		);
 	};
 	if (lspChannel === undefined) {
-		lspChannel = vscode.window.createOutputChannel("Gaffer (LSP)");
+		lspChannel = vscode.window.createOutputChannel("Gaffer (LSP)", {
+			log: true,
+		});
 		context.subscriptions.push(lspChannel);
 	}
 	const channel = lspChannel;

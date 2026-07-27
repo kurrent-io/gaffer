@@ -76,9 +76,15 @@ test-integration: _runtime _telemetry _test-integration
 [parallel]
 fix: runtime::fix bindings::fix cli::fix testing::fix editors::fix types::fix telemetry::fix docs::fix
 
+# Fail when pnpm could collapse duplicate dependency versions within
+# existing ranges, so the lockfile stays maximally deduped.
+[private]
+_check-dedupe:
+    pnpm dedupe --check
+
 # Check formatting and linting across all projects
 [parallel]
-check: runtime::check bindings::check cli::check testing::check editors::check types::check telemetry::check docs::check
+check: _check-dedupe runtime::check bindings::check cli::check testing::check editors::check types::check telemetry::check docs::check
 
 # Remove build artifacts across all projects
 [parallel]

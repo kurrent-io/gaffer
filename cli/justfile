@@ -41,8 +41,12 @@ test: _resources
     go test -tags dev -race ./...
 
 # Run integration tests (requires KurrentDB)
+# -p 2 caps concurrent test binaries. The integration run exercises many
+# packages against a live KurrentDB under -race; at full package parallelism the
+# load starves async in-memory tests (the LSP codeLens refresh) past their
+# timeouts. Capping concurrency keeps them from flaking.
 test-integration: _resources
-    go test -tags 'dev integration' -race ./...
+    go test -tags 'dev integration' -race -p 2 ./...
 
 # Run the CLI
 run *args: _resources

@@ -19,7 +19,7 @@
 		"@cfworker/json-schema": "^4.1.1"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.16.7",
+		"@cloudflare/vitest-pool-workers": "^0.18.8",
 		"@eslint/js": "^10.0.1",
 		"@kurrent/gaffer-telemetry": "workspace:*",
 		"@types/node": "^25.9.1",
@@ -28,6 +28,6 @@
 		"typescript": "^6.0.3",
 		"typescript-eslint": "^8.59.4",
 		"vitest": "^4.1.7",
-		"wrangler": "^4.93.0"
+		"wrangler": "^4.114.0"
 	}
 }

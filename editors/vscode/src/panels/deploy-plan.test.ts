@@ -199,6 +199,34 @@ describe("DeployPlanView", () => {
 		expect(calls).toBe(2);
 	});
 
+	it("releases the guard when the apply throws synchronously", () => {
+		let calls = 0;
+		const view = makeView({
+			onDeploy: () => {
+				calls++;
+				throw new Error("spawn failed");
+			},
+		});
+		view.show(report, { env: "staging", tomlUri });
+		const wv = onlyPanel().webview;
+		wv.emitMessage({
+			command: "deploy",
+			noValidate: false,
+			token: planToken(),
+		});
+		expect(wv.postedMessages).toContainEqual({
+			type: "deploy-error",
+			message: "Deploy failed to start.",
+		});
+		// Guard released synchronously: a fresh deploy is accepted.
+		wv.emitMessage({
+			command: "deploy",
+			noValidate: false,
+			token: planToken(),
+		});
+		expect(calls).toBe(2);
+	});
+
 	it("drops a deploy whose plan token is stale", () => {
 		let calls = 0;
 		makeView({

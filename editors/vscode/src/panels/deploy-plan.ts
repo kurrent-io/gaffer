@@ -147,19 +147,25 @@ export class DeployPlanView implements vscode.Disposable {
 			const noValidate = (msg as { noValidate?: unknown }).noValidate === true;
 			this.#deploying = true;
 			// The guard is only ever released by a terminal message. onDeploy emits
-			// one on every path it controls, but it's fire-and-forget async, so a
-			// throw before a terminal (e.g. the apply spawn failing synchronously)
-			// would otherwise strand the guard. Convert a rejection into one.
-			void Promise.resolve(
-				this.#handlers.onDeploy(this.#ctx, this.#report, noValidate, (m) =>
-					this.#sendDeploy(m),
-				),
-			).catch(() => {
+			// one on every path it controls, but a throw before that terminal (e.g.
+			// the apply spawn failing) would otherwise strand the guard. Convert
+			// either failure mode into a terminal: try/catch for a synchronous throw,
+			// .catch for a rejected promise. onDeploy stays called synchronously so
+			// its own send() ordering is unchanged.
+			const failStart = () =>
 				this.#sendDeploy({
 					type: "deploy-error",
 					message: "Deploy failed to start.",
 				});
-			});
+			try {
+				void Promise.resolve(
+					this.#handlers.onDeploy(this.#ctx, this.#report, noValidate, (m) =>
+						this.#sendDeploy(m),
+					),
+				).catch(failStart);
+			} catch {
+				failStart();
+			}
 		}
 	}
 

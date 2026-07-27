@@ -143,10 +143,13 @@
 	}
 
 	.gaffer-hero .hero-backdrop__tape {
-		translate: 71% 7%;
-		transform: rotateX(42deg) rotateZ(-15deg) rotateY(14deg);
+		/* Single transform list, equivalent to the individual translate /
+		   scale properties composed with the rotations (translate, scale,
+		   then transform per the CTM order). Lightning CSS (vite 8's CSS
+		   minifier) drops `translate:` when merging individual transform
+		   properties into `transform`, so don't split these back out. */
+		transform: translate(71%, 7%) scale(2.8) rotateX(42deg) rotateZ(-15deg) rotateY(14deg);
 		transform-origin: center center;
-		scale: 2.8;
 		width: 400px;
 		filter: blur(0.8px);
 	}

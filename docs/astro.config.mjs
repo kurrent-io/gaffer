@@ -1,5 +1,6 @@
 // @ts-check
 import { defineConfig, sessionDrivers } from 'astro/config';
+import { unified } from '@astrojs/markdown-remark';
 import starlight from '@astrojs/starlight';
 import cloudflare from '@astrojs/cloudflare';
 import rehypeAstroRelativeMarkdownLinks from 'astro-rehype-relative-markdown-links';
@@ -93,7 +94,12 @@ export default defineConfig({
       ],
     }),
   ],
+  // Astro 7 defaults to the Sätteri Markdown processor; pin the unified
+  // (remark/rehype) pipeline since the relative-links rewrite is a rehype
+  // plugin.
   markdown: {
-    rehypePlugins: [[rehypeAstroRelativeMarkdownLinks, { collectionBase: false, trailingSlash: 'always' }]],
+    processor: unified({
+      rehypePlugins: [[rehypeAstroRelativeMarkdownLinks, { collectionBase: false, trailingSlash: 'always' }]],
+    }),
   },
 });

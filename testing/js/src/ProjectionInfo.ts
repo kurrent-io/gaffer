@@ -10,9 +10,7 @@ export interface ProjectionInfo {
 
 	/** How events are partitioned: none, by stream (foreachStream), or by custom key (partitionBy). */
 	partitioning:
-		| { type: "none" }
-		| { type: "byStream" }
-		| { type: "byCustomKey" };
+		{ type: "none" } | { type: "byStream" } | { type: "byCustomKey" };
 
 	/** Event types the projection handles, or "all" if it handles any event type. */
 	events: string[] | "all";

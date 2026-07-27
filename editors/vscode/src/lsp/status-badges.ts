@@ -5,12 +5,7 @@ import * as vscode from "vscode";
 // are known states; the rest say why there's no reading: locked (needs
 // sign-in), error (fetch failed), loading (not yet fetched).
 export type BadgeHealth =
-	| "green"
-	| "orange"
-	| "red"
-	| "locked"
-	| "error"
-	| "loading";
+	"green" | "orange" | "red" | "locked" | "error" | "loading";
 
 export interface BadgeCell {
 	range: vscode.Range;

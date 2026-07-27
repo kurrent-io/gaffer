@@ -33,8 +33,7 @@ export type OptOutReason =
 	| { kind: "extension" };
 
 export type OptOutResult =
-	| { disabled: false }
-	| { disabled: true; reason: OptOutReason };
+	{ disabled: false } | { disabled: true; reason: OptOutReason };
 
 export interface CheckOptOutArgs {
 	config: TelemetryConfig;

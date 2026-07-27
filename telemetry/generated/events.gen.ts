@@ -417,11 +417,7 @@ export type Editor = "vscode" | "vscodium" | "cursor" | "windsurf" | "other";
  * a CLI that's actually missing or broken.
  */
 export type CLIUnreachableReason =
-  | "binary_not_found"
-  | "binary_spawn_failed"
-  | "timeout"
-  | "workspace_untrusted"
-  | "unknown_error";
+  "binary_not_found" | "binary_spawn_failed" | "timeout" | "workspace_untrusted" | "unknown_error";
 /**
  * ExceptionPhase is a coarse bucket for where an exception fired - a runtime
  * lifecycle stage, or "webview" for an editor webview's client-side render.

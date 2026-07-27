@@ -51,8 +51,7 @@ function capture(): {
 			menu: (a) => {
 				menuCalls.push(a);
 				const item = getState().quickPickResolutions.shift() as
-					| { pick?: ProjectionAction }
-					| undefined;
+					{ pick?: ProjectionAction } | undefined;
 				return Promise.resolve(item?.pick);
 			},
 		},

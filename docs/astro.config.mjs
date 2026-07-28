@@ -81,6 +81,7 @@ export default defineConfig({
             'getting-started/install',
             'getting-started/first-projection',
             'getting-started/debugging',
+            'getting-started/deploy',
           ],
         },
         {

@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activate } from "./extension.js";
 import * as cliModule from "./discovery/cli.js";
 import { LspCodeLensProvider } from "./lsp/lens-provider.js";
+import { clearServedMethods, setServedMethods } from "./lsp/capabilities.js";
 import { flushAllMicrotasks } from "../test/testutil/promise.js";
 import { makeContext } from "../test/testutil/fake-context.js";
 import {
@@ -889,5 +890,45 @@ describe("runProjection (with a populated projection list)", () => {
 		const msgs = getShownMessages();
 		expect(msgs.some((m) => /Gaffer CLI failed/.test(m.message))).toBe(true);
 		expect(getState().startDebuggingCalls).toEqual([]);
+	});
+});
+
+// Proves the wiring, not just the emitter: the served-method set changing has to
+// reach the CodeLens provider, or the gated affordances stay as they were painted.
+// The downgrade case is the one with nothing else to correct it - the status poll
+// is itself gated, so dropping to a server without gaffer/refreshStatus also
+// removes the server-driven codeLens refresh that would otherwise have repainted
+// the lenses by accident.
+describe("capability changes repaint the lenses", () => {
+	it("fires the registered provider's change event when the served set changes", async () => {
+		await activateBare();
+		// The provider goes through wrapCodeLensProvider for telemetry, which
+		// forwards onDidChangeCodeLenses but isn't an LspCodeLensProvider - so this
+		// asserts on what VS Code was actually handed, not on the inner instance.
+		const provider = getState()
+			.registeredCodeLensProviders.map(
+				(r) => r.provider as vscode.CodeLensProvider,
+			)
+			.find((p) => p.onDidChangeCodeLenses !== undefined);
+		if (!provider?.onDidChangeCodeLenses) {
+			throw new Error(
+				"no codeLens provider with a change event was registered",
+			);
+		}
+
+		let fired = 0;
+		const sub = provider.onDidChangeCodeLenses(() => fired++);
+		try {
+			setServedMethods(new Set(["gaffer/diffProjection"]));
+			expect(fired).toBeGreaterThan(0);
+
+			// And on the way back down, which is the case a stale set makes wrong.
+			fired = 0;
+			clearServedMethods();
+			expect(fired).toBeGreaterThan(0);
+		} finally {
+			sub.dispose();
+			clearServedMethods();
+		}
 	});
 });

@@ -2,11 +2,13 @@ package lsp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -107,9 +109,49 @@ func TestGafferMethodsMatchProtocol(t *testing.T) {
 	})
 }
 
-// TestInitializeAdvertisesGafferMethods pins the wire shape the extension reads.
-// The nesting (experimental.gaffer.methods) is a contract with every client, so
-// a rename here is a breaking change for them, not an internal refactor.
+// TestInitializeAdvertisesGafferMethodsOnTheWire pins the JSON an editor
+// actually receives, by marshalling the result rather than reading the struct.
+// The path `capabilities.experimental.gaffer.methods` is a contract with every
+// client, and the extension matches on it literally
+// (editors/vscode/src/lsp/capabilities.ts) - so renaming a json tag is a breaking
+// change for them, not an internal refactor. Asserting on the Go fields instead
+// would stay green through exactly that rename, while every capability-gated
+// client silently fell back to "serves nothing" and hid its surfaces.
+func TestInitializeAdvertisesGafferMethodsOnTheWire(t *testing.T) {
+	s := NewServer(ServerOptions{})
+	res, err := s.handle(context.Background(), nil, &jsonrpc2.Request{Method: MethodInitialize})
+	if err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+	raw, err := json.Marshal(res)
+	if err != nil {
+		t.Fatalf("marshalling initialize result: %v", err)
+	}
+
+	var wire struct {
+		Capabilities struct {
+			Experimental struct {
+				Gaffer struct {
+					Methods []string `json:"methods"`
+				} `json:"gaffer"`
+			} `json:"experimental"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatalf("decoding initialize result: %v", err)
+	}
+	got := wire.Capabilities.Experimental.Gaffer.Methods
+	if len(got) == 0 {
+		t.Fatalf("no methods at capabilities.experimental.gaffer.methods; got %s", raw)
+	}
+	if !reflect.DeepEqual(got, gafferMethods) {
+		t.Errorf("wire methods = %v, want %v", got, gafferMethods)
+	}
+}
+
+// TestInitializeAdvertisesGafferMethods checks the struct the handler builds. Kept
+// alongside the wire test above because it names the failure differently: this one
+// catches the set being wrong, that one catches it being unreachable.
 func TestInitializeAdvertisesGafferMethods(t *testing.T) {
 	s := NewServer(ServerOptions{})
 	res, err := s.handle(context.Background(), nil, &jsonrpc2.Request{Method: MethodInitialize})

@@ -205,9 +205,14 @@ func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (any
 		},
 		CodeLensProvider:        &CodeLensOptions{},
 		WorkspaceSymbolProvider: &WorkspaceSymbolOptions{},
-		// Advertised unconditionally, unlike HoverProvider below: the served
-		// method set is a fact about this build, not about what the client opted
-		// into. A client that can't use them just ignores the list.
+		// Advertised unconditionally, unlike HoverProvider below: which methods
+		// this build dispatches doesn't depend on what the client opted into, and
+		// a client that can't use them ignores the list.
+		//
+		// It says "dispatched", not "will do something": RefreshStatus is served
+		// either way, but without the statusLens opt-in its handler skips the read
+		// (see loadStatusConfig). A client that wants status has to both opt in and
+		// find the method here.
 		Experimental: &ExperimentalCapabilities{
 			Gaffer: GafferCapabilities{Methods: gafferMethods},
 		},

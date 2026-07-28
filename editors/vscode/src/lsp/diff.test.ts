@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 // Mutable stand-in for the language client. The `mock` prefix lets the hoisted
@@ -10,6 +10,7 @@ vi.mock("./client.js", () => ({
 	getLanguageClient: () => mockClient,
 }));
 
+import { clearServedMethods, setServedMethods } from "./capabilities.js";
 import { requestProjectionDiff } from "./diff.js";
 
 const tomlUri = vscode.Uri.parse("file:///p/sub/gaffer.toml");
@@ -21,6 +22,19 @@ const tomlUri = vscode.Uri.parse("file:///p/sub/gaffer.toml");
 describe("requestProjectionDiff", () => {
 	beforeEach(() => {
 		mockClient = undefined;
+		// A server that serves everything, so these tests pin the request wiring
+		// rather than the capability gate (covered in its own case below).
+		setServedMethods(
+			new Set([
+				"gaffer/diffProjection",
+				"gaffer/diffVersions",
+				"gaffer/operateProjection",
+			]),
+		);
+	});
+
+	afterEach(() => {
+		clearServedMethods();
 	});
 
 	it("sends gaffer/diffProjection with configURI from the toml URI and returns the diff", async () => {

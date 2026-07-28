@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as v from "valibot";
 
 // Mutable stand-in for the language client. The `mock` prefix lets the hoisted
@@ -10,6 +10,7 @@ vi.mock("./client.js", () => ({
 	getLanguageClient: () => mockClient,
 }));
 
+import { clearServedMethods, setServedMethods } from "./capabilities.js";
 import {
 	LSP_AUTH_REQUIRED,
 	LspAuthRequiredError,
@@ -54,6 +55,14 @@ describe("requestError", () => {
 describe("sendGafferRequest", () => {
 	beforeEach(() => {
 		mockClient = undefined;
+		// "gaffer/x" is this file's stand-in method name; served by default so these
+		// cases pin the request scaffold rather than the capability gate, which has
+		// its own case below.
+		setServedMethods(new Set(["gaffer/x"]));
+	});
+
+	afterEach(() => {
+		clearServedMethods();
 	});
 
 	it("throws LspUnavailableError when the language server isn't running", async () => {
@@ -61,6 +70,25 @@ describe("sendGafferRequest", () => {
 		await expect(
 			sendGafferRequest("gaffer/x", {}, Schema),
 		).rejects.toBeInstanceOf(LspUnavailableError);
+	});
+
+	// Gated here, not only at each surface: a surface gates the affordance that
+	// opens it, which isn't the same as gating every request reachable from it. The
+	// deploy plan webview's Diff button and the history viewer's per-row diff both
+	// send a request the check that opened them never covered.
+	it("refuses a method the server doesn't serve, without sending it", async () => {
+		clearServedMethods();
+		const calls: string[] = [];
+		mockClient = {
+			sendRequest: (method) => {
+				calls.push(method);
+				return Promise.resolve({ name: "ok" });
+			},
+		};
+		await expect(sendGafferRequest("gaffer/x", {}, Schema)).rejects.toThrow(
+			/newer gaffer CLI/,
+		);
+		expect(calls).toEqual([]);
 	});
 
 	it("forwards the method and params and returns the validated result", async () => {

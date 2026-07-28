@@ -143,14 +143,17 @@ describe("rollbackFromHistory outcomes", () => {
 
 	// A gaffer without `rollback` would fail the spawn with its own
 	// unknown-command error, which reads as a bug rather than a version gap.
-	it("refuses with a reason when the CLI can't roll back", async () => {
+	//
+	// Asserted on the toast, not on the sent message: the panel's rollback-error
+	// handler reads only the version and releases its in-flight guard, so a test
+	// that checked `message` would pass while the user saw nothing happen.
+	it("refuses with a visible reason when the CLI can't roll back", async () => {
 		const h = harness({ ok: true, stdout: "{}" }, false);
 		await h.run(ctx(false));
 		expect(h.runCalls).toHaveLength(0);
-		expect(h.sent.at(-1)).toMatchObject({
-			type: "rollback-error",
-			message: expect.stringContaining("newer gaffer CLI"),
-		});
+		const err = getShownMessages().find((m) => m.kind === "error");
+		expect(err?.message).toContain("newer gaffer CLI");
+		expect(h.sent.at(-1)).toMatchObject({ type: "rollback-error" });
 	});
 
 	// The refusal must land before the confirm: a production rollback asks for a
@@ -160,9 +163,11 @@ describe("rollbackFromHistory outcomes", () => {
 	it("refuses before prompting for confirmation", async () => {
 		const h = harness({ ok: true, stdout: "{}" }, false);
 		await h.run(ctx(true));
+		// Keyed on the consequence sentence, which only the confirm carries - a
+		// looser match risks colliding with the refusal's own wording.
 		expect(
-			getShownMessages().filter(
-				(m) => m.kind === "warning" && m.message.includes("Roll back"),
+			getShownMessages().filter((m) =>
+				m.message.includes("Rewrites the live query"),
 			),
 		).toHaveLength(0);
 		expect(h.runCalls).toHaveLength(0);

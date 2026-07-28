@@ -283,39 +283,40 @@ export const hasFlag = (
 
 /**
  * Whether the manifest describes a CLI that could run this argv: the subcommand
- * exists and it accepts every flag the argv passes.
+ * exists and it accepts every long flag the argv passes.
  *
- * Takes the argv the extension actually spawns rather than a restated list of
- * command and flag names, so adding a flag to a spawn tightens its own gate.
- * The failure it removes is a gate that passes while the spawn it guards would
- * be rejected by the CLI for a flag added later.
+ * Takes a *subcommand* argv - what the command builders in `src/commands/*-args.ts`
+ * return, e.g. `["deploy", "--dry-run", "--json", "--env", "prod"]` - not the full
+ * spawn argv. `buildGafferArgv` later prepends the binary and the telemetry
+ * linkage flags; passing that through here would read `gaffer` as the subcommand
+ * and never match. Reading the builder's own output is the point: adding a flag
+ * to a spawn tightens that spawn's gate, instead of leaving a gate that passes
+ * for a command the CLI would then reject.
  *
- * The command is the argv's leading non-flag tokens (so a nested subcommand path
- * like `config telemetry status` resolves), flags are `--`-prefixed tokens with
- * any `=value` trimmed, and `--` ends flag parsing. A flag's separate value
- * argument is skipped by not being `--`-prefixed, so `["--env", "prod"]`
- * contributes `env` alone.
+ * Parsing, matching how the builders are written:
+ * - `argv[0]` is the subcommand. Nested paths aren't supported, because a bare
+ *   token can't be told apart from a positional (`["diff", "orders"]` would be
+ *   indistinguishable from a `diff orders` subcommand); no gated spawn needs one,
+ *   and `hasCommand` still takes a full path directly if that changes.
+ * - `--flag` and `--flag=value` contribute `flag`.
+ * - `--` ends flag parsing, so a projection named `--json` (names are
+ *   unconstrained gaffer.toml strings) can't be counted as a flag and make the
+ *   gate depend on the user's projection names.
+ * - Single-dash shorthands are ignored, not checked. `gaffer manifest` records
+ *   only long names (`f.Name` in cli/cmd/manifest.go), so a shorthand can't be
+ *   verified either way - failing on one would hide a surface the CLI can run.
+ *   Prefer the long form in a builder if the flag needs to be gated.
  */
 export function canRunArgv(m: Manifest | null, argv: string[]): boolean {
-	const path: string[] = [];
-	const flags: string[] = [];
-	let positionalsOnly = false;
-	for (const token of argv) {
-		if (token === "--") {
-			positionalsOnly = true;
-			continue;
-		}
-		if (positionalsOnly) continue;
-		if (token.startsWith("--")) {
-			flags.push(token.slice(2).split("=")[0] ?? "");
-			continue;
-		}
-		// A leading bare token is part of the command path; once a flag has been
-		// seen, a bare token is that flag's value or a positional.
-		if (flags.length === 0) path.push(token);
-	}
-	const command = path.join(" ");
+	const [command, ...rest] = argv;
+	if (command === undefined || command.startsWith("-")) return false;
 	if (!hasCommand(m, command)) return false;
+	const flags: string[] = [];
+	for (const token of rest) {
+		if (token === "--") break;
+		if (!token.startsWith("--")) continue;
+		flags.push(token.slice(2).split("=")[0] ?? "");
+	}
 	return flags.every((flag) => hasFlag(m, command, flag));
 }
 

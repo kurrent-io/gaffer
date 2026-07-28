@@ -5,6 +5,7 @@
 
 import * as v from "valibot";
 import { getLanguageClient } from "./client.js";
+import { serverServes } from "./capabilities.js";
 
 // Mirrors the server's CodeAuthRequired (protocol.go): the env needs an
 // interactive sign-in. Keyed off the JSON-RPC error code, not message text, so
@@ -72,6 +73,14 @@ export async function sendGafferRequest<TSchema extends v.GenericSchema>(
 	const client = getLanguageClient();
 	if (!client) {
 		throw new LspUnavailableError("the gaffer language server isn't running");
+	}
+	// Gated here rather than at each call site, so every gaffer/* request is
+	// covered by construction. Surfaces gate their own affordances too, but they
+	// don't cover every route to a request - the deploy plan webview's Diff button
+	// and the history viewer's per-row diff are reached behind capability checks
+	// for the spawn that opened them, not for the request they then send.
+	if (!serverServes(method)) {
+		throw new LspUnavailableError(SKEW_MESSAGE);
 	}
 	let raw: unknown;
 	try {

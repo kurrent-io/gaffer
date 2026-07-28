@@ -49,6 +49,9 @@ let servedMethods: ReadonlySet<string> = new Set();
  * what's served, which the callers read as "don't offer it".
  */
 export function readServedMethods(result: unknown): ReadonlySet<string> {
+	// A start that resolved without a result is normal, not malformed - don't log
+	// it as though the server sent something broken.
+	if (result === undefined || result === null) return new Set();
 	const parsed = v.safeParse(InitializeResultSchema, result);
 	if (!parsed.success) {
 		log(

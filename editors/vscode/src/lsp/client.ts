@@ -11,6 +11,7 @@ import {
 	type Message,
 	RevealOutputChannelOn,
 	type ServerOptions,
+	State,
 } from "vscode-languageclient/node";
 import {
 	buildGafferArgv,
@@ -217,6 +218,22 @@ async function spawnLanguageClient(
 	// extension teardown) waits for the child process to flush.
 	// Bounded by the same STOP_TIMEOUT_MS as the deactivate path so
 	// a stuck server can't hang teardown via either route.
+	// vscode-languageclient restarts the server itself when our error handler
+	// returns CloseAction.Restart: it re-runs the initialize handshake and replaces
+	// initializeResult without spawnLanguageClient running again. Reading the set
+	// only after `await c.start()` below would therefore leave it describing the
+	// server that died - and a crash-restart is exactly when the binary may have
+	// changed underneath us, since replacing it mid-session is what kills the
+	// running one. Tracking the state transitions instead keeps the set tied to
+	// whichever server is actually up.
+	c.onDidChangeState((e) => {
+		if (e.newState === State.Running) {
+			setServedMethods(readServedMethods(c.initializeResult));
+		} else if (e.newState === State.Stopped) {
+			clearServedMethods();
+		}
+	});
+
 	let disposed = false;
 	context.subscriptions.push({
 		dispose: () => {
@@ -233,9 +250,10 @@ async function spawnLanguageClient(
 		// a torn-down session.
 		if (disposed) return;
 		client = c;
-		// Read what this server serves before anything can gate on it. Set on
-		// every start, so a restart onto a different binary (the user updated the
-		// CLI mid-session) re-reads rather than keeping the old set.
+		// Belt-and-braces alongside the onDidChangeState hook above: this runs at a
+		// point where initializeResult is guaranteed populated, so the set is right
+		// even if the Running transition ever fires before the result lands. Setting
+		// it twice is harmless - the same value replaces itself.
 		setServedMethods(readServedMethods(c.initializeResult));
 		log("LSP client started");
 		onReady?.(c);
@@ -309,6 +327,10 @@ export function makeErrorHandler(channel: vscode.OutputChannel): ErrorHandler {
 		// the never-running stale handle and recovery becomes
 		// "reload window".
 		client = undefined;
+		// A permanently-dead server serves nothing. Without this the gates keep
+		// reporting whatever the last live server advertised, so a surface stays
+		// offered with nothing behind it.
+		clearServedMethods();
 		if (!toastShown) {
 			toastShown = true;
 			void showLspCrashed(channel);

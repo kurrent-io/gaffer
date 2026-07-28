@@ -188,7 +188,6 @@ describe("canRunArgv", () => {
 		version: "1.0.0",
 		commands: {
 			deploy: { flags: ["dry-run", "json", "env", "yes"] },
-			"config telemetry status": { flags: ["json"] },
 			bare: {},
 		},
 	};
@@ -232,17 +231,43 @@ describe("canRunArgv", () => {
 		expect(canRunArgv(m, ["deploy", "--nope=1"])).toBe(false);
 	});
 
-	// Manifest keys are full command paths, so a nested subcommand has to resolve
-	// as one key rather than as its first token.
-	it("resolves a nested subcommand path", () => {
-		expect(canRunArgv(m, ["config", "telemetry", "status", "--json"])).toBe(
-			true,
-		);
-		expect(canRunArgv(m, ["config", "telemetry", "--json"])).toBe(false);
-	});
-
 	it("accepts a flagless argv for a command that takes no flags", () => {
 		expect(canRunArgv(m, ["bare"])).toBe(true);
+	});
+
+	// A positional between the command and its flags must not be read as part of
+	// the command name, or the lookup asks for a command called "deploy orders".
+	it("ignores a positional before the flags", () => {
+		expect(canRunArgv(m, ["deploy", "orders", "--json"])).toBe(true);
+	});
+
+	// `gaffer manifest` records only long flag names, so a shorthand can't be
+	// verified either way. Ignoring it beats failing and hiding a surface the CLI
+	// can actually run.
+	it("ignores single-dash shorthands wherever they appear", () => {
+		expect(canRunArgv(m, ["deploy", "-y", "--json"])).toBe(true);
+		expect(canRunArgv(m, ["deploy", "--json", "-y"])).toBe(true);
+	});
+
+	it("rejects an argv with no command", () => {
+		expect(canRunArgv(m, [])).toBe(false);
+		expect(canRunArgv(m, ["--json"])).toBe(false);
+	});
+
+	// The full spawn argv goes through buildGafferArgv, which prepends the binary
+	// and the telemetry linkage flags. That is not what this takes - reading it
+	// would look for a subcommand called "gaffer" - so the mistake should fail
+	// closed rather than pass on a coincidence.
+	it("rejects a full spawn argv rather than misreading the binary as the command", () => {
+		expect(
+			canRunArgv(m, [
+				"gaffer",
+				"--invoker-id=abc",
+				"--invoked-by=vscode",
+				"deploy",
+				"--json",
+			]),
+		).toBe(false);
 	});
 });
 

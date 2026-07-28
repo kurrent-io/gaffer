@@ -34,6 +34,15 @@ export const ErrorAction = {
 	Shutdown: 2,
 } as const;
 
+// Mirrors vscode-languageclient's State enum. The library drives these itself on
+// its internal restart path, which is how a client can end up running a different
+// server binary without the extension respawning it.
+export const State = {
+	Stopped: 1,
+	Starting: 3,
+	Running: 2,
+} as const;
+
 export type Message = unknown;
 export type ErrorHandler = unknown;
 export type ErrorHandlerResult = unknown;
@@ -131,17 +140,47 @@ export class LanguageClient {
 		constructedClients.push(this);
 	}
 
-	async start(): Promise<void> {
-		if (startGate) await startGate;
-		// The real client exposes initializeResult only once the handshake
-		// completes, so populate it here rather than in the constructor - the
-		// extension reads it right after start() resolves.
+	// State-change listeners, as the real client exposes them. Kept so tests can
+	// drive the library's internal restart (see simulateInternalRestart).
+	stateListeners: Array<(e: { newState: number }) => void> = [];
+
+	onDidChangeState(listener: (e: { newState: number }) => void): {
+		dispose: () => void;
+	} {
+		this.stateListeners.push(listener);
+		return { dispose: () => {} };
+	}
+
+	#populateInitializeResult(): void {
 		this.initializeResult = {
 			capabilities:
 				servedMethods === null
 					? {}
 					: { experimental: { gaffer: { methods: [...servedMethods] } } },
 		};
+	}
+
+	async start(): Promise<void> {
+		if (startGate) await startGate;
+		// The real client exposes initializeResult only once the handshake
+		// completes, so populate it here rather than in the constructor - the
+		// extension reads it right after start() resolves.
+		this.#populateInitializeResult();
+		this.#fireState(State.Running);
+	}
+
+	#fireState(newState: number): void {
+		for (const listener of [...this.stateListeners]) listener({ newState });
+	}
+
+	/** Drive vscode-languageclient's own restart path: on CloseAction.Restart it
+	 * re-runs the handshake and replaces initializeResult in place, without the
+	 * extension respawning the client. Tests use this to land a restart on a
+	 * different server (change setLspServedMethods in between). */
+	simulateInternalRestart(): void {
+		this.#fireState(State.Stopped);
+		this.#populateInitializeResult();
+		this.#fireState(State.Running);
 	}
 
 	async stop(_timeout?: number): Promise<void> {

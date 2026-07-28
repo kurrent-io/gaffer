@@ -1,0 +1,22 @@
+{
+  "name": "@kurrent/gaffer-screenshots",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Headless VS Code screenshot capture harness for the gaffer docs",
+  "type": "module",
+  "scripts": {
+    "capture": "tsx src/capture.ts",
+    "check": "prettier --check . && tsc --noEmit",
+    "fix": "prettier --write ."
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "playwright-core": "^1.57.0",
+    "prettier": "^3.9.6",
+    "tsx": "^4.20.6",
+    "typescript": "^6.0.3"
+  }
+}

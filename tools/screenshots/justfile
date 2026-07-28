@@ -1,0 +1,23 @@
+default:
+    @just --list
+
+# Format check + type check.
+check:
+    pnpm run check
+
+# Format.
+fix:
+    pnpm run fix
+
+# Capture VS Code screenshots (needs a display; wrap with xvfb-run headless).
+capture *args:
+    pnpm exec tsx src/capture.ts {{args}}
+
+# Remove captured output. The verified VS Code download survives; drop it
+# with clean-cache when the pin changes underneath you.
+clean:
+    rm -rf out
+
+# Remove the downloaded VS Code build.
+clean-cache:
+    rm -rf .cache

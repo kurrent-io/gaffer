@@ -74,7 +74,7 @@ test-integration: _runtime _telemetry _test-integration
 
 # Format all code and apply lint fixes
 [parallel]
-fix: runtime::fix bindings::fix cli::fix testing::fix editors::fix types::fix telemetry::fix docs::fix
+fix: runtime::fix bindings::fix cli::fix testing::fix editors::fix types::fix telemetry::fix docs::fix screenshots::fix
 
 # Fail when pnpm could collapse duplicate dependency versions within
 # existing ranges, so the lockfile stays maximally deduped.
@@ -84,11 +84,11 @@ _check-dedupe:
 
 # Check formatting and linting across all projects
 [parallel]
-check: _check-dedupe runtime::check bindings::check cli::check testing::check editors::check types::check telemetry::check docs::check
+check: _check-dedupe runtime::check bindings::check cli::check testing::check editors::check types::check telemetry::check docs::check screenshots::check
 
 # Remove build artifacts across all projects
 [parallel]
-clean: runtime::clean bindings::clean cli::clean testing::clean editors::clean types::clean telemetry::clean docs::clean
+clean: runtime::clean bindings::clean cli::clean testing::clean editors::clean types::clean telemetry::clean docs::clean screenshots::clean
 
 mod runtime
 mod bindings
@@ -98,3 +98,4 @@ mod editors 'editors/vscode'
 mod types
 mod telemetry
 mod docs
+mod screenshots 'tools/screenshots'

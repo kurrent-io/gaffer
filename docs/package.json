@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "rehype-external-links": "^3.0.0",
     "wrangler": "^4.114.0"
   }
 }

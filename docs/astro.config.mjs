@@ -4,6 +4,7 @@ import { unified } from '@astrojs/markdown-remark';
 import starlight from '@astrojs/starlight';
 import cloudflare from '@astrojs/cloudflare';
 import rehypeAstroRelativeMarkdownLinks from 'astro-rehype-relative-markdown-links';
+import rehypeExternalLinks from 'rehype-external-links';
 import starlightLlmsTxt from 'starlight-llms-txt';
 
 // Canonical URLs, sitemap, and og:url use `site`. Staging deploys
@@ -102,7 +103,11 @@ export default defineConfig({
   // plugin.
   markdown: {
     processor: unified({
-      rehypePlugins: [[rehypeAstroRelativeMarkdownLinks, { collectionBase: false, trailingSlash: 'always' }]],
+      rehypePlugins: [
+        [rehypeAstroRelativeMarkdownLinks, { collectionBase: false, trailingSlash: 'always' }],
+        // External links leave the walkthrough; keep the reader's place.
+        [rehypeExternalLinks, { target: '_blank', rel: ['noopener'] }],
+      ],
     }),
   },
 });

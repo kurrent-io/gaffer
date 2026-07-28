@@ -36,6 +36,19 @@ describe("requestError", () => {
 		expect(plain.message).toBe("connection refused");
 		expect(requestError("weird").message).toBe("weird");
 	});
+
+	// The backstop for a surface that slipped past its capability gate. The
+	// server's own wording ("method not implemented: gaffer/diffProjection") reads
+	// as a bug, and the fix is updating the CLI rather than retrying.
+	it("maps MethodNotFound to a message naming the version gap", () => {
+		const err = requestError({
+			code: -32601,
+			message: "method not implemented: gaffer/diffProjection",
+		});
+		expect(err).toBeInstanceOf(LspUnavailableError);
+		expect(err.message).toContain("newer gaffer CLI");
+		expect(err.message).not.toContain("method not implemented");
+	});
 });
 
 describe("sendGafferRequest", () => {

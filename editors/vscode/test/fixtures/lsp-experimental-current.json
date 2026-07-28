@@ -1,0 +1,11 @@
+{
+  "gaffer": {
+    "methods": [
+      "gaffer/projectionDetails",
+      "gaffer/refreshStatus",
+      "gaffer/diffProjection",
+      "gaffer/diffVersions",
+      "gaffer/operateProjection"
+    ]
+  }
+}

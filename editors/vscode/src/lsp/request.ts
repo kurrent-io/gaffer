@@ -30,13 +30,30 @@ export class LspUnavailableError extends Error {
 	}
 }
 
+// JSON-RPC MethodNotFound: the running gaffer doesn't implement this request.
+// Surfaces gate on the server's advertised method list (see capabilities.ts) so
+// this shouldn't be reachable - it's the backstop for a surface that gates on the
+// wrong method, or one added without a gate.
+const LSP_METHOD_NOT_FOUND = -32601;
+
+const SKEW_MESSAGE =
+	"this action needs a newer gaffer CLI - update it and reload the window";
+
 // requestError maps a sendRequest rejection to a typed error: the server's
-// CodeAuthRequired becomes a sign-in prompt; anything else is generic.
+// CodeAuthRequired becomes a sign-in prompt, MethodNotFound names the version
+// gap, and anything else is generic.
 export function requestError(
 	err: unknown,
 ): LspAuthRequiredError | LspUnavailableError {
-	if ((err as { code?: unknown })?.code === LSP_AUTH_REQUIRED) {
+	const code = (err as { code?: unknown })?.code;
+	if (code === LSP_AUTH_REQUIRED) {
 		return new LspAuthRequiredError();
+	}
+	// Worth its own message: the server's own text is "method not implemented:
+	// gaffer/<name>", which reads as a bug rather than an out-of-date CLI, and the
+	// user's fix is an update rather than a retry.
+	if (code === LSP_METHOD_NOT_FOUND) {
+		return new LspUnavailableError(SKEW_MESSAGE);
 	}
 	return new LspUnavailableError(
 		err instanceof Error ? err.message : String(err),

@@ -1,3 +1,10 @@
 dist/
 node_modules/
 *.vsix
+
+# Captured verbatim from a gaffer binary (`gaffer manifest`, and the LSP
+# initialize result's experimental block). Reformatting them would mean every
+# regeneration needs a prettier pass to stay green, which invites hand-editing a
+# file whose whole value is being an unedited record of what the CLI emitted.
+test/fixtures/manifest-*.json
+test/fixtures/lsp-experimental-*.json

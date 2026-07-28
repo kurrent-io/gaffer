@@ -37,6 +37,17 @@ description: Connect gaffer's MCP server to Claude Code, Cursor, Continue, Claud
 - **`write-projection`**: draft a projection from a natural-language description.
 - **`fix-projection`**: diagnose and rewrite a broken projection.
 
+## Production databases
+
+A database can declare itself production, and the write tools check that declaration on every deploy and operate call. The declaration is a `production: true` flag in the database's own `$server-info` system stream, not a `gaffer.toml` label or a tool argument. Because it lives in the database, it travels with the cluster no matter who connects or what they call the environment locally. Operators set it from [Navigator](https://navigator.kurrent.io) or the database's embedded web UI (Admin > Database Info); it is absent on Kurrent Cloud and most databases today. An environment can add the tier with [`production = true`](../reference/gaffer-toml.md#envname), and the signals only ever add, so config can never disarm a server-declared production database. [Production safety guards](../getting-started/production.md) covers the model in full.
+
+For an assistant driving the write tools, the guard is a contract rather than advice:
+
+- **A production write always asks a human.** Any write against a production target is confirmed through [MCP elicitation](https://modelcontextprotocol.io/specification/2025-06-18/client/elicitation), mid-call, answered in the client's UI. The assistant cannot answer it, and a declined or cancelled prompt refuses without writing anything. A write with no undo (`deploy_delete`, `deploy_recreate`, a deploy plan that rebuilds) asks everywhere, production or not.
+- **No argument bypasses the guard.** The tools have no `--yes` equivalent: nothing in a tool call's arguments can pre-approve a write. The only permit is the human's answer to that call's confirmation.
+- **Production escalates the ask.** The confirmation front-loads the risk (`PRODUCTION [env.prod]: ...`), and a no-undo write requires the human to type the projection name (the environment name for `deploy_apply`) instead of a one-key accept.
+- **No elicitation, no gated writes.** A client that can't elicit gets a refusal naming the CLI command for the human to run; the tool never falls back to applying silently.
+
 ## Connect your client
 
 `gaffer mcp` is a local stdio server. No auth, no remote endpoint - your MCP client launches it as a subprocess and talks to it over stdin/stdout.

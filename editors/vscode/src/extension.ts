@@ -79,6 +79,7 @@ import {
 	startLanguageClient,
 	stopLanguageClient,
 } from "./lsp/client.js";
+import { onServedMethodsChanged } from "./lsp/capabilities.js";
 import { registerTypeScriptPlugin } from "./lsp/typescript-plugin.js";
 import { GafferMcpProvider } from "./mcp/provider.js";
 import { runProjection } from "./commands/run-projection.js";
@@ -371,6 +372,17 @@ async function activateAfterTelemetry(
 		(client) => {
 			lspCodeLens.setClient(client);
 		},
+	);
+
+	// The served-method set can change without anything else changing - the
+	// language server restarts onto a different binary, or dies for good - and the
+	// gated surfaces are painted from cached state. Repaint the lenses so a
+	// downgrade stops offering actions that would now fail and an upgrade starts
+	// offering ones it can serve, rather than waiting on an unrelated refresh.
+	context.subscriptions.push(
+		onServedMethodsChanged(() => {
+			lspCodeLens.refresh();
+		}),
 	);
 
 	// Wire the tsserver plugin's configuration. Loaded by tsserver
@@ -744,12 +756,23 @@ async function activateAfterTelemetry(
 							// provideCodeLenses (driven by the status poll + the server's
 							// codeLens refresh), so the menu tracks loading -> resolved
 							// without a reopen.
-							watchActions: (name, tomlUri, onUpdate) =>
-								lspCodeLens.onDidChangeActions(() => {
+							watchActions: (name, tomlUri, onUpdate) => {
+								const repaint = (): void => {
 									// Empty when the cache dropped this projection (removed, or
 									// the server went away); the menu closes on that.
 									onUpdate(lspCodeLens.getActions(tomlUri, name) ?? []);
-								}),
+								};
+								// Two independent reasons to repaint an open menu. The actions
+								// payload changes as each env's status resolves; the served-method
+								// set changes when the language server restarts onto a different
+								// binary. The latter doesn't touch the payload, so without it a
+								// menu open across a restart keeps whichever rows it was built
+								// with - the case a downgrade makes wrong.
+								return vscode.Disposable.from(
+									lspCodeLens.onDidChangeActions(repaint),
+									onServedMethodsChanged(repaint),
+								);
+							},
 						}),
 					),
 				),

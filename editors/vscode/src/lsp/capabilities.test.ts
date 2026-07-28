@@ -3,6 +3,7 @@ import {
 	clearServedMethods,
 	METHOD_DIFF_PROJECTION,
 	METHOD_OPERATE_PROJECTION,
+	onServedMethodsChanged,
 	readServedMethods,
 	serverServes,
 	setServedMethods,
@@ -105,5 +106,68 @@ describe("serverServes", () => {
 		setServedMethods(new Set([METHOD_DIFF_PROJECTION]));
 		clearServedMethods();
 		expect(serverServes(METHOD_DIFF_PROJECTION)).toBe(false);
+	});
+});
+
+// The gated surfaces are painted from cached state - CodeLenses and an open
+// action menu - so a change has to push a repaint. Without one, a mid-session CLI
+// swap leaves a downgraded server offering actions that now fail on click, and an
+// upgraded one hiding actions it could serve, until something unrelated repaints.
+describe("onServedMethodsChanged", () => {
+	it("fires when the set gains a method", () => {
+		let fired = 0;
+		const sub = onServedMethodsChanged(() => fired++);
+		setServedMethods(new Set([METHOD_DIFF_PROJECTION]));
+		expect(fired).toBe(1);
+		sub.dispose();
+	});
+
+	it("fires when the set loses a method", () => {
+		setServedMethods(new Set([METHOD_DIFF_PROJECTION]));
+		let fired = 0;
+		const sub = onServedMethodsChanged(() => fired++);
+		setServedMethods(new Set());
+		expect(fired).toBe(1);
+		sub.dispose();
+	});
+
+	it("fires on clear", () => {
+		setServedMethods(new Set([METHOD_DIFF_PROJECTION]));
+		let fired = 0;
+		const sub = onServedMethodsChanged(() => fired++);
+		clearServedMethods();
+		expect(fired).toBe(1);
+		sub.dispose();
+	});
+
+	// The same server's set is written more than once - the state hook and the
+	// post-start read - and each redundant write would otherwise cost a full lens
+	// repaint.
+	it("doesn't fire when the same set is written again", () => {
+		setServedMethods(new Set([METHOD_DIFF_PROJECTION]));
+		let fired = 0;
+		const sub = onServedMethodsChanged(() => fired++);
+		setServedMethods(new Set([METHOD_DIFF_PROJECTION]));
+		expect(fired).toBe(0);
+		sub.dispose();
+	});
+
+	// Same size, different members: a size-only comparison would miss a swap of one
+	// capability for another.
+	it("fires when a same-sized set has different members", () => {
+		setServedMethods(new Set([METHOD_DIFF_PROJECTION]));
+		let fired = 0;
+		const sub = onServedMethodsChanged(() => fired++);
+		setServedMethods(new Set([METHOD_OPERATE_PROJECTION]));
+		expect(fired).toBe(1);
+		sub.dispose();
+	});
+
+	it("stops firing once disposed", () => {
+		let fired = 0;
+		const sub = onServedMethodsChanged(() => fired++);
+		sub.dispose();
+		setServedMethods(new Set([METHOD_DIFF_PROJECTION]));
+		expect(fired).toBe(0);
 	});
 });

@@ -66,24 +66,51 @@ export function readServedMethods(result: unknown): ReadonlySet<string> {
 	return new Set(methods);
 }
 
+// Listeners notified when the set actually changes. Surfaces that gate on it are
+// painted from cached state (CodeLenses, an open action menu), so a change has to
+// push a repaint - without one, a mid-session CLI swap leaves a downgraded server
+// showing actions that now fail on click, and an upgraded one hiding actions it
+// could serve, until something unrelated happens to repaint.
+const changeListeners = new Set<() => void>();
+
+/** Subscribe to served-set changes. Callers repaint whatever they gated. */
+export function onServedMethodsChanged(listener: () => void): {
+	dispose: () => void;
+} {
+	changeListeners.add(listener);
+	return { dispose: () => changeListeners.delete(listener) };
+}
+
+function replaceServedMethods(next: ReadonlySet<string>): void {
+	// Only fire on a real change: the same server's set is written more than once
+	// (the state hook and the post-start read), and each redundant write would
+	// otherwise cost a full lens repaint.
+	const changed =
+		next.size !== servedMethods.size ||
+		[...next].some((m) => !servedMethods.has(m));
+	servedMethods = next;
+	if (!changed) return;
+	for (const listener of [...changeListeners]) listener();
+}
+
 /**
  * Record what the newly-started server serves. Called on every successful
  * start, including restarts - a restart can land on a different binary if the
  * user updated the CLI, so the set is replaced rather than merged.
  */
 export function setServedMethods(methods: ReadonlySet<string>): void {
-	servedMethods = methods;
 	log(
 		methods.size > 0
 			? `LSP serves ${methods.size} gaffer method(s): ${[...methods].sort().join(", ")}`
 			: "LSP advertises no gaffer methods - capability-gated surfaces stay hidden",
 	);
+	replaceServedMethods(methods);
 }
 
 /** Drop the recorded set when no server is running, so a stale capability can't
  * keep a surface visible after the server goes away. */
 export function clearServedMethods(): void {
-	servedMethods = new Set();
+	replaceServedMethods(new Set());
 }
 
 /**

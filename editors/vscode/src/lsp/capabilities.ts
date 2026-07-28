@@ -94,9 +94,15 @@ export function serverServes(method: string): boolean {
 	return servedMethods.has(method);
 }
 
-// The gaffer/* methods the extension gates surfaces on. String literals rather
-// than a shared constant because they're a wire contract with the server: the
-// name here must match what `sendRequest` sends and what the CLI advertises.
+// The gaffer/* methods the extension gates surfaces on and sends. Defined here so
+// each name has a single definition shared by the gate and the send site - the
+// two matching is the whole mechanism, and a name that drifts between them reads
+// as permanently unsupported rather than as an error. served-methods.test.ts
+// checks them against what the CLI actually advertises.
+//
+// projectionDetails is deliberately not gated on: every gaffer the extension can
+// drive serves it, so a gate would add a way to break workspace symbols for no
+// benefit. It has a constant so the name is covered by that test.
 export const METHOD_DIFF_PROJECTION = "gaffer/diffProjection";
 export const METHOD_DIFF_VERSIONS = "gaffer/diffVersions";
 export const METHOD_OPERATE_PROJECTION = "gaffer/operateProjection";

@@ -260,7 +260,7 @@ export function getLanguageClient(): LanguageClient | undefined {
 }
 
 // Must match MethodRefreshStatus in cli/internal/lsp/protocol.go.
-const refreshStatusMethod = "gaffer/refreshStatus";
+const refreshStatusMethod = METHOD_REFRESH_STATUS;
 
 // requestStatusRefresh asks the LSP server to re-read deploy status for one
 // gaffer.toml. Pass poll: true for a routine liveness poll (the server refreshes

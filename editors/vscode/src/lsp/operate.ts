@@ -6,6 +6,7 @@
 import * as vscode from "vscode";
 import * as v from "valibot";
 import { sendGafferRequest } from "./request.js";
+import { METHOD_OPERATE_PROJECTION } from "./capabilities.js";
 
 // The operate verbs the menu offers. recreate/rollback live on other surfaces.
 export type OperateVerb = "pause" | "resume" | "abort" | "delete";
@@ -33,7 +34,7 @@ export function requestOperateProjection(
 	args: OperateRequestArgs,
 ): Promise<OperateResult> {
 	return sendGafferRequest(
-		"gaffer/operateProjection",
+		METHOD_OPERATE_PROJECTION,
 		{
 			name: args.name,
 			configURI: args.tomlUri.toString(),

@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as v from "valibot";
 import { getLanguageClient } from "./client.js";
 import { log } from "../output.js";
+import { METHOD_PROJECTION_DETAILS } from "./capabilities.js";
 
 const EnvSchema = v.object({
 	name: v.string(),
@@ -114,7 +115,7 @@ export async function fetchProjectionDetails(
 	if (!client) return null;
 	let raw: unknown;
 	try {
-		raw = await client.sendRequest("gaffer/projectionDetails", {
+		raw = await client.sendRequest(METHOD_PROJECTION_DETAILS, {
 			name,
 			configURI: tomlUri.toString(),
 		});

@@ -1,9 +1,9 @@
 ---
 title: Install
-description: Install gaffer, write your first projection, and step through it with the debugger.
+description: Install gaffer, write your first projection, step through it with the debugger, and deploy it to a server.
 ---
 
-Gaffer runs KurrentDB projections locally so you can develop, test, and debug them without standing up a database. This section installs the CLI, walks through writing a first projection end-to-end, and shows how to attach a debugger.
+Gaffer runs KurrentDB projections locally so you can develop, test, and debug them without standing up a database. This section installs the CLI, walks through writing a first projection end-to-end, shows how to attach a debugger, and deploys the result to a server.
 
 ## Install the CLI
 

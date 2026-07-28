@@ -1,0 +1,148 @@
+---
+title: Deploy your first projection
+description: Deploy a locally developed projection to a KurrentDB server, see the plan before it applies, and check the result with gaffer status.
+---
+
+Deploying installs a projection on a KurrentDB server, where it runs continuously against the database's events. This page takes the `order-count` projection from [Your first projection](./first-projection.md) and puts it live: `gaffer deploy` builds a plan, shows it, and applies it once you confirm.
+
+## Before you start
+
+You need the `order-count` project from [Your first projection](./first-projection.md) and a KurrentDB server to deploy to. Any server you can reach works. For a disposable local one:
+
+```sh
+docker run -d --name kurrentdb -p 2113:2113 \
+  -e KURRENTDB_CLUSTER_SIZE=1 \
+  -e KURRENTDB_INSECURE=true \
+  -e KURRENTDB_RUN_PROJECTIONS=All \
+  -e KURRENTDB_START_STANDARD_PROJECTIONS=true \
+  -e KURRENTDB_MEM_DB=true \
+  docker.kurrent.io/kurrent-latest/kurrentdb:26.1.1
+```
+
+The server runs user projections only with `KURRENTDB_RUN_PROJECTIONS=All`, and `KURRENTDB_MEM_DB=true` keeps everything in memory, so removing the container wipes it.
+
+## Add an environment
+
+An environment in `gaffer.toml` names a KurrentDB connection that commands target. Add one for the local server:
+
+```toml
+[env.local]
+connection = "kurrentdb://localhost:2113?tls=false"
+default = true
+```
+
+`default = true` makes `local` the environment used when `--env` isn't given. See [`[env.<name>]`](../reference/gaffer-toml.md#envname) for the full schema, including `${VAR}` expansion to keep credentials out of the file and per-environment authentication.
+
+## Deploy
+
+Deploy everything in `gaffer.toml`:
+
+```sh
+gaffer deploy
+```
+
+Deploy compares every projection in `gaffer.toml` with what's on the server and builds a plan. `order-count` isn't deployed yet, so the plan is a single create:
+
+```
+Plan for local:
+  order-count  create
+  1 to create
+```
+
+<!-- TODO(media): vhs tape - gaffer deploy against a fresh local KurrentDB: plan, confirm, apply -->
+
+Confirm the `Apply 1 change to local?` prompt and gaffer applies the plan:
+
+```
+  ✓ order-count  created
+
+1 created · 0 updated · 0 skipped
+```
+
+Validation runs before anything is written: deploy compiles each projection it would create or update, and refuses the whole run if any won't run on the server. A broken projection can't leave the set half-applied.
+
+## See it running
+
+Ask the server what's deployed and how it compares to local:
+
+```sh
+gaffer status
+```
+
+```
+PROJECTION    STATE     PROGRESS   LAST DEPLOY   DEPLOYED VIA   DRIFT
+order-count   running   100%       2026-07-28    Gaffer         in sync
+```
+
+<!-- TODO(media): vhs still - gaffer status table after the first deploy -->
+
+The projection is running on the server, and `in sync` means the deployed definition matches your local source. Name the projection (`gaffer status order-count`) for its detail: runtime state, position, who deployed it, and from which source revision.
+
+## Deploy again
+
+Run the same command again:
+
+```sh
+gaffer deploy
+```
+
+```
+  · order-count  skipped (in sync)
+
+0 created · 0 updated · 1 skipped
+```
+
+Nothing changed, so there's no plan to confirm and nothing is written. Deploy converges the server on `gaffer.toml`: projections missing from the server are created, changed ones are updated, and in-sync ones are skipped, so re-running it is always safe.
+
+## Change it and deploy again
+
+Track the largest order alongside the totals:
+
+```js mark={3,8}
+fromAll().when({
+  $init() {
+    return { count: 0, totalCents: 0, shipped: 0, maxCents: 0 };
+  },
+  OrderPlaced(state, event) {
+    state.count += 1;
+    state.totalCents += event.body.cents;
+    if (event.body.cents > state.maxCents) state.maxCents = event.body.cents;
+    return state;
+  },
+  OrderShipped(state) {
+    state.shipped += 1;
+    return state;
+  },
+});
+```
+
+Deploy plans the changed source as an update:
+
+```
+Plan for local:
+  order-count  update  logic change, continuing from checkpoint
+  1 to update
+  ⓘ 1 logic change(s) continuing from checkpoint - --reset-on-logic-change to rebuild instead
+```
+
+Confirm, and the update applies in place:
+
+```
+  ✓ order-count  updated (logic change, continued from checkpoint)
+
+0 created · 1 updated · 0 skipped
+```
+
+A changed query is a logic change: the new code might have interpreted already-processed events differently (here, `maxCents` ignores any order counted before the change). Deploy keeps the accumulated state, continues from the projection's checkpoint, and flags what it did. Pass `--reset-on-logic-change` to rebuild from zero instead, reprocessing every event with the new logic. See [`gaffer deploy`](../cli/commands.md#gaffer-deploy) for the trade-offs.
+
+## Clean up
+
+Keep the server running if you're carrying on with the walkthrough. Otherwise it's disposable:
+
+```sh
+docker rm -f kurrentdb
+```
+
+## Next steps
+
+This walkthrough deployed interactively; `gaffer deploy` also runs unattended, with `--dry-run` to plan without applying and stable exit codes for pipelines. See [`gaffer deploy`](../cli/commands.md#gaffer-deploy) and the [exit codes](../cli/index.md#exit-codes).

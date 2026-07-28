@@ -162,6 +162,7 @@ Use named fixtures for scenarios you'll re-run (happy path, edge cases). `--even
 ## See also
 
 - **Step through with the debugger**: see [Debugging projections](./debugging.md) for the VS Code extension setup and other editor wireups.
+- **Put it on a server**: deploy the projection to a running KurrentDB with [Deploy your first projection](./deploy.md).
 - **Test from your test suite**: drive projections directly from vitest, jest, or mocha with [`@kurrent/projections-testing`](../testing/nodejs.md).
 - **Use an AI assistant**: point Claude Code, Cursor, Continue, or Copilot at `gaffer mcp` for scaffolding, validation, and debugging tools - see [MCP](../cli/mcp.md).
 - **Partition state per stream**: `foreachStream()` between `fromAll()` and `.when()` gives each stream its own state slice. Useful when you're aggregating per-entity instead of globally.

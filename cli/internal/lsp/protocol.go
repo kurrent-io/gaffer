@@ -83,12 +83,19 @@ const (
 // ServerNotInitialized) so a strict client can't mislabel it.
 const CodeAuthRequired = -32050
 
-// LSP intent codes for code lenses. Per the LSP plan, the server
-// emits a semantic intent in `data.intent` and each editor extension
-// maps it to its native icon / treatment. Five intents cover the
-// surface; the server only emits two (Debug / DebugChoose) - the
-// rest (stop, starting, untrusted) are client-side concerns the
-// extension overrides on top of the server's lens.
+// LSP intent codes for code lenses. The server emits a semantic intent in
+// `data.intent` and each editor extension maps it to its native icon /
+// treatment.
+//
+// The server emits every intent below, but in two tiers: Debug and DebugChoose
+// reach any client, while the rest - the deploy-status family - go only to a
+// client that opted in via initializationOptions.statusLens (see
+// statusLensCapable). A generic LSP client couldn't render them sanely.
+//
+// Distinct from these, and not intents: the extension also overlays its own lens
+// states on top of the server's (a stop action mid-debug-session, an
+// untrusted-workspace prompt). Those are client-side concerns the server knows
+// nothing about.
 const (
 	IntentDebug       = "debug"
 	IntentDebugChoose = "debug-choose"
@@ -109,13 +116,15 @@ const (
 	// lens: any client on the status surface must special-case this intent and
 	// not try to render it as a normal (command-bearing) lens.
 	IntentStatusBadges = "status-badges"
-	// IntentActions marks the per-projection "Manage..." lens: the entry point
-	// to the action menu the client pops (diff against deployed today; operate /
-	// history later). A vscode-only surface, emitted alongside the status lenses.
+	// IntentActions marks the per-projection "Manage..." lens: the entry point to
+	// the action menu the client pops - deploy and history (cold `gaffer` spawns),
+	// diff against deployed, and the operate verbs (both served here as gaffer/*
+	// requests). A vscode-only surface, emitted alongside the status lenses.
 	IntentActions = "actions"
-	// IntentDeployPreview marks the env-block "Preview" lens: it opens the deploy
-	// plan for the whole project against that env (a --dry-run, no apply). A
-	// vscode-only surface, emitted beside the status roll-up.
+	// IntentDeployPreview marks the env-block "Deploy" lens: it opens the deploy
+	// plan for the whole project against that env (a --dry-run, no apply; the
+	// client applies from the plan it rendered). A vscode-only surface, emitted
+	// beside the status roll-up.
 	IntentDeployPreview = "deploy-preview"
 )
 

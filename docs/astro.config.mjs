@@ -86,6 +86,7 @@ export default defineConfig({
             'getting-started/environments',
             'getting-started/production',
             'getting-started/drift',
+            'getting-started/ci',
           ],
         },
         {

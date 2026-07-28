@@ -52,4 +52,4 @@ Recreate is destructive and not reversible, so it always confirms (louder [again
 
 ## Next steps
 
-Drift makes a natural CI gate: `gaffer deploy --dry-run` exits `2` when there's a plan to apply and `0` when everything is in sync. See the [exit codes](../cli/index.md#exit-codes).
+Drift makes a natural CI gate: `gaffer deploy --dry-run` exits `2` when there's a plan to apply and `0` when everything is in sync. [CI/CD integration](./ci.md) builds the pattern out.

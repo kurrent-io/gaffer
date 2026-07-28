@@ -22,7 +22,7 @@ function ctx(production: boolean | undefined): HistoryContext {
 	return { env: "prod", tomlUri, name: "orders", production };
 }
 
-function harness(outcome: RollbackOutcome) {
+function harness(outcome: RollbackOutcome, canRollback = true) {
 	const runCalls: Array<{ hash: string }> = [];
 	const reloads: HistoryContext[] = [];
 	const sent: HistoryMessage[] = [];
@@ -35,6 +35,7 @@ function harness(outcome: RollbackOutcome) {
 			reloads.push(c);
 			return Promise.resolve();
 		},
+		canRollback: () => canRollback,
 	};
 	const run = (c: HistoryContext) =>
 		rollbackFromHistory(deps)(c, { version: 5, hash: "deadbeefcafe" }, (m) =>
@@ -137,6 +138,33 @@ describe("rollbackFromHistory outcomes", () => {
 		setTrusted(false);
 		const h = harness({ ok: true, stdout: "{}" });
 		await h.run(ctx(false));
+		expect(h.runCalls).toHaveLength(0);
+	});
+
+	// A gaffer without `rollback` would fail the spawn with its own
+	// unknown-command error, which reads as a bug rather than a version gap.
+	it("refuses with a reason when the CLI can't roll back", async () => {
+		const h = harness({ ok: true, stdout: "{}" }, false);
+		await h.run(ctx(false));
+		expect(h.runCalls).toHaveLength(0);
+		expect(h.sent.at(-1)).toMatchObject({
+			type: "rollback-error",
+			message: expect.stringContaining("newer gaffer CLI"),
+		});
+	});
+
+	// The refusal must land before the confirm: a production rollback asks for a
+	// modal accept, and asking the user to accept a write that can't run is worse
+	// than not offering it. Keyed off the confirm's own warning prompt, since a
+	// production context is exactly the case that would otherwise show it.
+	it("refuses before prompting for confirmation", async () => {
+		const h = harness({ ok: true, stdout: "{}" }, false);
+		await h.run(ctx(true));
+		expect(
+			getShownMessages().filter(
+				(m) => m.kind === "warning" && m.message.includes("Roll back"),
+			),
+		).toHaveLength(0);
 		expect(h.runCalls).toHaveLength(0);
 	});
 });

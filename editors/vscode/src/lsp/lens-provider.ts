@@ -6,6 +6,14 @@ import type { Manifest } from "../discovery/schemas.js";
 import type { DebugState } from "../types.js";
 import { log } from "../output.js";
 import type { BadgeCell } from "./status-badges.js";
+import { canDeploy } from "../commands/deploy-args.js";
+import { canReadHistory } from "../commands/history-args.js";
+import type { ActionCapabilities } from "../commands/projection-actions.js";
+import {
+	METHOD_DIFF_PROJECTION,
+	METHOD_OPERATE_PROJECTION,
+	serverServes,
+} from "./capabilities.js";
 
 // Sink for the per-projection badge health the server delivers alongside the
 // clickable lenses. Called once per provideCodeLenses with every badge cell
@@ -262,6 +270,26 @@ export class LspCodeLensProvider
 	setDebugState(state: Readonly<DebugState>): void {
 		this.#debugState = { ...state };
 		this.#onDidChange.fire();
+	}
+
+	/**
+	 * Which action-menu rows the installed gaffer can serve. Owned here because
+	 * the provider already holds the manifest, and read by both the "Manage..."
+	 * lens (which hides when nothing is available) and the menu itself (which
+	 * drops the rows that aren't). One source for both, so the lens can't offer an
+	 * entry point into a menu with nothing actionable in it.
+	 *
+	 * Deploy and history are cold spawns, gated on the manifest; diff and the
+	 * operate verbs run over the language server, gated on the methods it
+	 * advertises.
+	 */
+	actionCapabilities(): ActionCapabilities {
+		return {
+			deploy: canDeploy(this.#manifest),
+			history: canReadHistory(this.#manifest),
+			diff: serverServes(METHOD_DIFF_PROJECTION),
+			operate: serverServes(METHOD_OPERATE_PROJECTION),
+		};
 	}
 
 	refresh(): void {
@@ -618,6 +646,11 @@ export class LspCodeLensProvider
 			return null;
 		}
 		if (!vscode.workspace.isTrusted) return null;
+		// Hidden when the installed gaffer can't run the deploy spawns. The old
+		// server not emitting this intent already keeps the lens away from a CLI
+		// that predates deploy, but that is lens absence doing a gate's job: it
+		// holds only as long as no other path produces the intent.
+		if (!canDeploy(this.#manifest)) return null;
 		const tomlUri = parseConfigURI(parsed.output.configURI);
 		if (!tomlUri) return null;
 		return new vscode.CodeLens(range, {
@@ -627,10 +660,12 @@ export class LspCodeLensProvider
 		});
 	}
 
-	// The per-projection "Manage..." lens opens the action menu (diff against
-	// deployed and the operate verbs). Trust-gated because the actions run gaffer
-	// operations; hidden when the manifest lacks `diff` - a proxy for "the gaffer
-	// backing the LSP is capable", since diff and operate ship together.
+	// The per-projection "Manage..." lens opens the action menu (deploy, history,
+	// diff against deployed, and the operate verbs). Trust-gated because the
+	// actions run gaffer operations, and hidden when the installed gaffer can
+	// serve none of them - a menu whose every row is an "Unsupported" notice is
+	// worse than no entry point, and saying it once here beats repeating it per
+	// env. A gaffer that serves some rows keeps the lens; the menu drops the rest.
 	#decorateActions(
 		sl: LspCodeLens,
 		range: vscode.Range,
@@ -646,7 +681,10 @@ export class LspCodeLensProvider
 			return null;
 		}
 		if (!vscode.workspace.isTrusted) return null;
-		if (!hasCommand(this.#manifest, "diff")) return null;
+		const caps = this.actionCapabilities();
+		if (!caps.deploy && !caps.history && !caps.diff && !caps.operate) {
+			return null;
+		}
 		const args = parsed.output;
 		const tomlUri = parseConfigURI(args.configURI);
 		if (!tomlUri) return null;

@@ -100,7 +100,11 @@ import { deployApply } from "./commands/deploy-apply.js";
 import { deployApplyArgs, deployPreviewArgs } from "./commands/deploy-args.js";
 import { DeployPlanView } from "./panels/deploy-plan.js";
 import { HistoryView } from "./panels/history-view.js";
-import { historyArgs, rollbackArgs } from "./commands/history-args.js";
+import {
+	canRollback,
+	historyArgs,
+	rollbackArgs,
+} from "./commands/history-args.js";
 import {
 	openHistoryDiff,
 	HistoryDiffContentProvider,
@@ -731,7 +735,10 @@ async function activateAfterTelemetry(
 						projectionActions({
 							diff,
 							operate,
-							menu: createActionMenu(),
+							// Same source the "Manage..." lens gates on, so the menu can't
+							// be opened by a lens that thinks more is available than the
+							// rows agree with. Re-read per repaint, not captured.
+							menu: createActionMenu(() => lspCodeLens.actionCapabilities()),
 							// Live source: the menu repaints as each env's status resolves.
 							// The lens provider re-decodes the actions payload on every
 							// provideCodeLenses (driven by the status poll + the server's
@@ -802,6 +809,9 @@ async function activateAfterTelemetry(
 						runRollback: (cwd, env, name, hash) =>
 							run(rollbackArgs(env, name, hash), cwd),
 						reload: (ctx) => loadHistory(ctx),
+						// Read per invocation off the live manifest, so a CLI updated
+						// mid-session is picked up without reloading the window.
+						canRollback: () => canRollback(latestManifest),
 					}),
 				},
 				onWebviewError,

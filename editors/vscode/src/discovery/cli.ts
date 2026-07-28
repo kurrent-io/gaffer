@@ -281,6 +281,44 @@ export const hasFlag = (
 	flag: string,
 ): boolean => m?.commands?.[command]?.flags?.includes(flag) ?? false;
 
+/**
+ * Whether the manifest describes a CLI that could run this argv: the subcommand
+ * exists and it accepts every flag the argv passes.
+ *
+ * Takes the argv the extension actually spawns rather than a restated list of
+ * command and flag names, so adding a flag to a spawn tightens its own gate.
+ * The failure it removes is a gate that passes while the spawn it guards would
+ * be rejected by the CLI for a flag added later.
+ *
+ * The command is the argv's leading non-flag tokens (so a nested subcommand path
+ * like `config telemetry status` resolves), flags are `--`-prefixed tokens with
+ * any `=value` trimmed, and `--` ends flag parsing. A flag's separate value
+ * argument is skipped by not being `--`-prefixed, so `["--env", "prod"]`
+ * contributes `env` alone.
+ */
+export function canRunArgv(m: Manifest | null, argv: string[]): boolean {
+	const path: string[] = [];
+	const flags: string[] = [];
+	let positionalsOnly = false;
+	for (const token of argv) {
+		if (token === "--") {
+			positionalsOnly = true;
+			continue;
+		}
+		if (positionalsOnly) continue;
+		if (token.startsWith("--")) {
+			flags.push(token.slice(2).split("=")[0] ?? "");
+			continue;
+		}
+		// A leading bare token is part of the command path; once a flag has been
+		// seen, a bare token is that flag's value or a positional.
+		if (flags.length === 0) path.push(token);
+	}
+	const command = path.join(" ");
+	if (!hasCommand(m, command)) return false;
+	return flags.every((flag) => hasFlag(m, command, flag));
+}
+
 interface ExecOpts {
 	cwd?: string;
 	env?: NodeJS.ProcessEnv;

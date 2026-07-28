@@ -10,6 +10,12 @@ import type { LanguageClient as RealLanguageClient } from "vscode-languageclient
 import { setTrusted } from "../../test/testutil/vscode-state.js";
 import type { Manifest } from "../discovery/schemas.js";
 import type { BadgeCell } from "./status-badges.js";
+import {
+	clearServedMethods,
+	METHOD_DIFF_PROJECTION,
+	METHOD_OPERATE_PROJECTION,
+	setServedMethods,
+} from "./capabilities.js";
 
 // A stub manifest with `dev --debug` available - the lens
 // emission gate that lensState delegates to via hasFlag /
@@ -18,6 +24,22 @@ import type { BadgeCell } from "./status-badges.js";
 const manifestWithDebug: Manifest = {
 	version: "test",
 	commands: { dev: { flags: ["debug"] } },
+};
+
+// A manifest describing a CLI that can run every cold spawn the lenses gate on -
+// the flag lists are what deploy-args.ts / history-args.ts actually pass, so a
+// flag added to a spawn shows up here as a failing test rather than a gate that
+// quietly stops matching.
+const manifestWithDeployAndHistory: Manifest = {
+	version: "test",
+	commands: {
+		dev: { flags: ["debug"] },
+		deploy: {
+			flags: ["dry-run", "json", "env", "yes", "stream", "no-validate"],
+		},
+		history: { flags: ["json", "env"] },
+		rollback: { flags: ["json", "yes", "env"] },
+	},
 };
 
 function fakeLensRange(
@@ -75,6 +97,20 @@ function deployPreviewLens(args: unknown, startLine = 4): unknown {
 	};
 }
 
+// A minimal actions-intent lens, for the capability tests that only care whether
+// the lens survives the gate rather than what it decodes.
+function actionsLens(startLine = 4): unknown {
+	return {
+		range: fakeLensRange(startLine),
+		command: {
+			title: "Manage...",
+			command: "gaffer.projectionActions",
+			arguments: [{ name: "checkout", configURI: "file:///p/gaffer.toml" }],
+		},
+		data: { intent: "actions" },
+	};
+}
+
 function makeClient(): RealLanguageClient {
 	const c = new LanguageClient("test", "test", null, null);
 	return c as unknown as RealLanguageClient;
@@ -97,10 +133,15 @@ async function getLenses(p: LspCodeLensProvider): Promise<vscode.CodeLens[]> {
 describe("LspCodeLensProvider", () => {
 	beforeEach(() => {
 		setTrusted(true);
+		// A current CLI by default; the gating tests narrow this.
+		setServedMethods(
+			new Set([METHOD_DIFF_PROJECTION, METHOD_OPERATE_PROJECTION]),
+		);
 	});
 
 	afterEach(() => {
 		clearLspRequestHandlers();
+		clearServedMethods();
 	});
 
 	it("returns [] when no client is set", async () => {
@@ -387,6 +428,7 @@ describe("LspCodeLensProvider", () => {
 		]);
 		const p = new LspCodeLensProvider();
 		p.setClient(makeClient());
+		p.setManifest(manifestWithDeployAndHistory);
 		const lenses = await getLenses(p);
 		expect(lenses).toHaveLength(1);
 		expect(lenses[0]?.command?.title).toBe("$(rocket) Deploy");
@@ -449,7 +491,7 @@ describe("LspCodeLensProvider", () => {
 		]);
 		const p = new LspCodeLensProvider();
 		p.setClient(makeClient());
-		p.setManifest({ version: "test", commands: { diff: {} } });
+		p.setManifest(manifestWithDeployAndHistory);
 		const lenses = await getLenses(p);
 		expect(lenses).toHaveLength(1);
 		expect(lenses[0]?.command?.title).toBe("$(radio-tower) Manage...");
@@ -543,22 +585,63 @@ describe("LspCodeLensProvider", () => {
 		});
 	});
 
-	it("hides the actions lens when the CLI can't diff", async () => {
+	// The lens is an entry point into the menu, so it survives as long as the menu
+	// has something in it. Only a CLI that can serve no row at all loses it -
+	// otherwise the lens would open a menu whose every row is an "Unsupported"
+	// notice, which is worse than no entry point.
+	it("hides the actions lens when the CLI can serve no action at all", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [actionsLens()]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		// dev --debug only: no deploy, no history, and no served LSP methods.
+		p.setManifest(manifestWithDebug);
+		clearServedMethods();
+		expect(await getLenses(p)).toEqual([]);
+	});
+
+	it("keeps the actions lens when only the cold-spawn actions are available", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [actionsLens()]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		p.setManifest(manifestWithDeployAndHistory);
+		clearServedMethods();
+		expect(await getLenses(p)).toHaveLength(1);
+	});
+
+	it("keeps the actions lens when only the LSP-served actions are available", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [actionsLens()]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		p.setManifest(manifestWithDebug);
+		setServedMethods(new Set([METHOD_OPERATE_PROJECTION]));
+		expect(await getLenses(p)).toHaveLength(1);
+	});
+
+	// The gate this whole change exists for: a CLI that predates deploy. Before,
+	// the lens was kept away only by the old server not emitting the intent.
+	it("hides the deploy-preview lens when the CLI can't deploy", async () => {
 		setLspRequestHandler("textDocument/codeLens", () => [
-			{
-				range: fakeLensRange(4),
-				command: {
-					title: "Manage...",
-					command: "gaffer.projectionActions",
-					arguments: [{ name: "checkout", configURI: "file:///p/gaffer.toml" }],
-				},
-				data: { intent: "actions" },
-			},
+			deployPreviewLens({ env: "staging", configURI: "file:///p/gaffer.toml" }),
 		]);
 		const p = new LspCodeLensProvider();
 		p.setClient(makeClient());
-		// Manifest with dev --debug but no `diff` command → actions lens hidden.
 		p.setManifest(manifestWithDebug);
+		expect(await getLenses(p)).toEqual([]);
+	});
+
+	// Gated on the argv the spawn actually builds, so a CLI with `deploy` but
+	// missing a flag the extension passes is treated as unable to deploy rather
+	// than failing at spawn time.
+	it("hides the deploy-preview lens when deploy lacks a flag the spawn passes", async () => {
+		setLspRequestHandler("textDocument/codeLens", () => [
+			deployPreviewLens({ env: "staging", configURI: "file:///p/gaffer.toml" }),
+		]);
+		const p = new LspCodeLensProvider();
+		p.setClient(makeClient());
+		p.setManifest({
+			version: "test",
+			commands: { deploy: { flags: ["dry-run", "json", "env"] } },
+		});
 		expect(await getLenses(p)).toEqual([]);
 	});
 

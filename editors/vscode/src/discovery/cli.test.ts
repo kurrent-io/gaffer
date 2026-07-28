@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildGafferArgv,
 	captureGafferCommand,
+	canRunArgv,
 	hasCommand,
 	hasFlag,
 	tryFetchManifest,
@@ -176,6 +177,72 @@ describe("hasCommand / hasFlag", () => {
 	it("hasFlag returns false for a missing flag or missing command", () => {
 		expect(hasFlag(m, "dev", "missing")).toBe(false);
 		expect(hasFlag(m, "missing", "debug")).toBe(false);
+	});
+});
+
+// Every cold-spawn capability gate goes through canRunArgv, so its parsing is
+// load-bearing: a token misread as a flag would gate a surface off against a CLI
+// that can run it, and a flag missed would let a spawn through to be rejected.
+describe("canRunArgv", () => {
+	const m: Manifest = {
+		version: "1.0.0",
+		commands: {
+			deploy: { flags: ["dry-run", "json", "env", "yes"] },
+			"config telemetry status": { flags: ["json"] },
+			bare: {},
+		},
+	};
+
+	it("accepts an argv whose command and every flag are present", () => {
+		expect(
+			canRunArgv(m, ["deploy", "--dry-run", "--json", "--env", "prod"]),
+		).toBe(true);
+	});
+
+	it("rejects an argv whose command is absent", () => {
+		expect(canRunArgv(m, ["history", "--json"])).toBe(false);
+	});
+
+	it("rejects an argv passing a flag the command doesn't accept", () => {
+		expect(canRunArgv(m, ["deploy", "--json", "--stream"])).toBe(false);
+	});
+
+	it("rejects everything against a null manifest", () => {
+		expect(canRunArgv(null, ["deploy", "--json"])).toBe(false);
+	});
+
+	// A flag's value is a bare token; reading it as part of the command path would
+	// look for a command called "deploy prod".
+	it("treats a bare token after a flag as that flag's value, not the command", () => {
+		expect(canRunArgv(m, ["deploy", "--env", "prod"])).toBe(true);
+	});
+
+	// `--` ends flag parsing, so a projection literally named "--json" (names are
+	// unconstrained gaffer.toml strings) can't be counted as a flag - which would
+	// make the gate depend on the user's projection names.
+	it("ignores positionals after --", () => {
+		expect(canRunArgv(m, ["deploy", "--json", "--", "orders"])).toBe(true);
+		expect(canRunArgv(m, ["deploy", "--json", "--", "--not-a-flag"])).toBe(
+			true,
+		);
+	});
+
+	it("reads --flag=value as the flag alone", () => {
+		expect(canRunArgv(m, ["deploy", "--env=prod"])).toBe(true);
+		expect(canRunArgv(m, ["deploy", "--nope=1"])).toBe(false);
+	});
+
+	// Manifest keys are full command paths, so a nested subcommand has to resolve
+	// as one key rather than as its first token.
+	it("resolves a nested subcommand path", () => {
+		expect(canRunArgv(m, ["config", "telemetry", "status", "--json"])).toBe(
+			true,
+		);
+		expect(canRunArgv(m, ["config", "telemetry", "--json"])).toBe(false);
+	});
+
+	it("accepts a flagless argv for a command that takes no flags", () => {
+		expect(canRunArgv(m, ["bare"])).toBe(true);
 	});
 });
 

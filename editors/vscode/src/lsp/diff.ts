@@ -6,6 +6,10 @@
 import * as vscode from "vscode";
 import * as v from "valibot";
 import { sendGafferRequest } from "./request.js";
+import {
+	METHOD_DIFF_PROJECTION,
+	METHOD_DIFF_VERSIONS,
+} from "./capabilities.js";
 
 // A diff side as the server reports it. Only source is needed to render;
 // ref/hash are validated so a shape change is caught at the boundary.
@@ -36,7 +40,7 @@ export function requestProjectionDiff(
 	env: string,
 ): Promise<ProjectionDiff> {
 	return sendGafferRequest(
-		"gaffer/diffProjection",
+		METHOD_DIFF_PROJECTION,
 		{ name, configURI: tomlUri.toString(), env },
 		ProjectionDiffSchema,
 	);
@@ -55,7 +59,7 @@ export function requestDiffVersions(
 	right: string,
 ): Promise<ProjectionDiff> {
 	return sendGafferRequest(
-		"gaffer/diffVersions",
+		METHOD_DIFF_VERSIONS,
 		{ name, configURI: tomlUri.toString(), env, left, right },
 		ProjectionDiffSchema,
 	);

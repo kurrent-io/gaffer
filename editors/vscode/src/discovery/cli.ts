@@ -281,6 +281,45 @@ export const hasFlag = (
 	flag: string,
 ): boolean => m?.commands?.[command]?.flags?.includes(flag) ?? false;
 
+/**
+ * Whether the manifest describes a CLI that could run this argv: the subcommand
+ * exists and it accepts every long flag the argv passes.
+ *
+ * Takes a *subcommand* argv - what the command builders in `src/commands/*-args.ts`
+ * return, e.g. `["deploy", "--dry-run", "--json", "--env", "prod"]` - not the full
+ * spawn argv. `buildGafferArgv` later prepends the binary and the telemetry
+ * linkage flags; passing that through here would read `gaffer` as the subcommand
+ * and never match. Reading the builder's own output is the point: adding a flag
+ * to a spawn tightens that spawn's gate, instead of leaving a gate that passes
+ * for a command the CLI would then reject.
+ *
+ * Parsing, matching how the builders are written:
+ * - `argv[0]` is the subcommand. Nested paths aren't supported, because a bare
+ *   token can't be told apart from a positional (`["diff", "orders"]` would be
+ *   indistinguishable from a `diff orders` subcommand); no gated spawn needs one,
+ *   and `hasCommand` still takes a full path directly if that changes.
+ * - `--flag` and `--flag=value` contribute `flag`.
+ * - `--` ends flag parsing, so a projection named `--json` (names are
+ *   unconstrained gaffer.toml strings) can't be counted as a flag and make the
+ *   gate depend on the user's projection names.
+ * - Single-dash shorthands are ignored, not checked. `gaffer manifest` records
+ *   only long names (`f.Name` in cli/cmd/manifest.go), so a shorthand can't be
+ *   verified either way - failing on one would hide a surface the CLI can run.
+ *   Prefer the long form in a builder if the flag needs to be gated.
+ */
+export function canRunArgv(m: Manifest | null, argv: string[]): boolean {
+	const [command, ...rest] = argv;
+	if (command === undefined || command.startsWith("-")) return false;
+	if (!hasCommand(m, command)) return false;
+	const flags: string[] = [];
+	for (const token of rest) {
+		if (token === "--") break;
+		if (!token.startsWith("--")) continue;
+		flags.push(token.slice(2).split("=")[0] ?? "");
+	}
+	return flags.every((flag) => hasFlag(m, command, flag));
+}
+
 interface ExecOpts {
 	cwd?: string;
 	env?: NodeJS.ProcessEnv;

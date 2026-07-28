@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import * as vscode from "vscode";
 import {
+	ALL_ACTIONS_AVAILABLE,
 	anyLoading,
 	buildActionItems,
 	preserveActiveItems,
@@ -188,6 +189,87 @@ describe("buildActionItems", () => {
 		expect(rows.map((i) => i.label)).toEqual(["$(sync~spin) Loading status…"]);
 		expect(rows[0]?.pick).toBeUndefined();
 		expect(actionLabels(items)).toEqual([]);
+	});
+
+	// The extension ships independently of the CLI, so a menu built blind can
+	// offer rows the installed gaffer doesn't implement - they'd fail only once
+	// clicked. Deploy and history are cold spawns gated on the manifest; diff and
+	// the operate verbs run over the language server, gated on what it advertises.
+	describe("capability gating", () => {
+		const env: ProjectionActionsEnv = { name: "prod", default: true };
+
+		it("drops the deploy row when the CLI can't deploy", () => {
+			const items = buildActionItems([env], {
+				...ALL_ACTIONS_AVAILABLE,
+				deploy: false,
+			});
+			expect(actionLabels(items)).not.toContain("$(rocket) Deploy");
+			expect(actionLabels(items)).toContain("$(history) History");
+		});
+
+		it("drops the history row when the CLI can't read history", () => {
+			const items = buildActionItems([env], {
+				...ALL_ACTIONS_AVAILABLE,
+				history: false,
+			});
+			expect(actionLabels(items)).not.toContain("$(history) History");
+			expect(actionLabels(items)).toContain("$(rocket) Deploy");
+		});
+
+		it("drops the diff row when the server doesn't serve diffProjection", () => {
+			const items = buildActionItems([env], {
+				...ALL_ACTIONS_AVAILABLE,
+				diff: false,
+			});
+			expect(actionLabels(items)).not.toContain(
+				"$(diff-single) Diff against deployed",
+			);
+			expect(actionLabels(items)).toContain("$(trash) Delete");
+		});
+
+		// All four verbs go through one LSP method, so they're offered or withheld
+		// together rather than gated per verb.
+		it("drops every operate verb when the server doesn't serve operateProjection", () => {
+			const items = buildActionItems([env], {
+				...ALL_ACTIONS_AVAILABLE,
+				operate: false,
+			});
+			expect(actionLabels(items)).toEqual([
+				"$(rocket) Deploy",
+				"$(history) History",
+				"$(diff-single) Diff against deployed",
+			]);
+		});
+
+		// Same grammar as the unavailable and sign-in collapses, and better than a
+		// bare env header with nothing under it. The "Manage..." lens hides entirely
+		// in this case, so it should normally be unreachable - this is the backstop.
+		it("collapses an env to a single non-actionable notice when nothing is available", () => {
+			const items = buildActionItems([env], {
+				deploy: false,
+				history: false,
+				diff: false,
+				operate: false,
+			});
+			const rows = items.filter(
+				(i) => i.kind !== vscode.QuickPickItemKind.Separator,
+			);
+			expect(rows.map((i) => i.label)).toEqual(["$(warning) Unsupported"]);
+			expect(rows[0]?.pick).toBeUndefined();
+			expect(actionLabels(items)).toEqual([]);
+		});
+
+		// A capability gap must not override the env-level collapses: an env that
+		// needs sign-in still reads as needing sign-in, not as unsupported.
+		it("keeps the sign-in collapse ahead of the capability notice", () => {
+			const items = buildActionItems([{ ...env, status: "auth" }], {
+				deploy: false,
+				history: false,
+				diff: false,
+				operate: false,
+			});
+			expect(actionLabels(items)).toEqual(["$(key) Sign in"]);
+		});
 	});
 });
 

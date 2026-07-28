@@ -5,6 +5,7 @@
 
 import * as v from "valibot";
 import { getLanguageClient } from "./client.js";
+import { serverServes } from "./capabilities.js";
 
 // Mirrors the server's CodeAuthRequired (protocol.go): the env needs an
 // interactive sign-in. Keyed off the JSON-RPC error code, not message text, so
@@ -30,13 +31,30 @@ export class LspUnavailableError extends Error {
 	}
 }
 
+// JSON-RPC MethodNotFound: the running gaffer doesn't implement this request.
+// Surfaces gate on the server's advertised method list (see capabilities.ts) so
+// this shouldn't be reachable - it's the backstop for a surface that gates on the
+// wrong method, or one added without a gate.
+const LSP_METHOD_NOT_FOUND = -32601;
+
+const SKEW_MESSAGE =
+	"this action needs a newer gaffer CLI - update it and reload the window";
+
 // requestError maps a sendRequest rejection to a typed error: the server's
-// CodeAuthRequired becomes a sign-in prompt; anything else is generic.
+// CodeAuthRequired becomes a sign-in prompt, MethodNotFound names the version
+// gap, and anything else is generic.
 export function requestError(
 	err: unknown,
 ): LspAuthRequiredError | LspUnavailableError {
-	if ((err as { code?: unknown })?.code === LSP_AUTH_REQUIRED) {
+	const code = (err as { code?: unknown })?.code;
+	if (code === LSP_AUTH_REQUIRED) {
 		return new LspAuthRequiredError();
+	}
+	// Worth its own message: the server's own text is "method not implemented:
+	// gaffer/<name>", which reads as a bug rather than an out-of-date CLI, and the
+	// user's fix is an update rather than a retry.
+	if (code === LSP_METHOD_NOT_FOUND) {
+		return new LspUnavailableError(SKEW_MESSAGE);
 	}
 	return new LspUnavailableError(
 		err instanceof Error ? err.message : String(err),
@@ -55,6 +73,14 @@ export async function sendGafferRequest<TSchema extends v.GenericSchema>(
 	const client = getLanguageClient();
 	if (!client) {
 		throw new LspUnavailableError("the gaffer language server isn't running");
+	}
+	// Gated here rather than at each call site, so every gaffer/* request is
+	// covered by construction. Surfaces gate their own affordances too, but they
+	// don't cover every route to a request - the deploy plan webview's Diff button
+	// and the history viewer's per-row diff are reached behind capability checks
+	// for the spawn that opened them, not for the request they then send.
+	if (!serverServes(method)) {
+		throw new LspUnavailableError(SKEW_MESSAGE);
 	}
 	let raw: unknown;
 	try {

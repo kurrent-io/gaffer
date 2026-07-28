@@ -39,6 +39,30 @@ export interface ProjectionActionsArgs {
 	envs: ProjectionActionsEnv[];
 }
 
+// Which rows the installed gaffer can actually serve. The extension ships
+// independently of the CLI, so a menu built blind can offer actions the gaffer
+// behind it doesn't implement - they'd fail only once clicked.
+//
+// Deploy and history are cold `gaffer` spawns, gated on the CLI manifest; diff
+// and the operate verbs run over the language server, gated on the methods it
+// advertises. Both are per-install, not per-env, so a row is either offered for
+// every env or for none.
+export interface ActionCapabilities {
+	deploy: boolean;
+	history: boolean;
+	diff: boolean;
+	operate: boolean;
+}
+
+// Every row available: the shape when the CLI matches the extension, and the
+// default for tests that aren't about capability gating.
+export const ALL_ACTIONS_AVAILABLE: ActionCapabilities = {
+	deploy: true,
+	history: true,
+	diff: true,
+	operate: true,
+};
+
 // What a chosen menu row runs: an action against one env. `action` is a
 // discriminant so the dispatch stays exhaustive as verbs are added. production
 // is tri-state for the operate verbs - true/false/undefined (not yet known) - so
@@ -177,7 +201,10 @@ function separatorLabel(env: ProjectionActionsEnv): string {
 	return env.status === "auth" ? `${base} · sign-in needed` : base;
 }
 
-export function buildActionItems(envs: ProjectionActionsEnv[]): ActionItem[] {
+export function buildActionItems(
+	envs: ProjectionActionsEnv[],
+	caps: ActionCapabilities = ALL_ACTIONS_AVAILABLE,
+): ActionItem[] {
 	const items: ActionItem[] = [];
 	for (const env of envs) {
 		items.push({
@@ -212,19 +239,38 @@ export function buildActionItems(envs: ProjectionActionsEnv[]): ActionItem[] {
 			items.push({ label: "$(sync~spin) Loading status…" });
 			continue;
 		}
-		items.push({
-			label: "$(rocket) Deploy",
-			pick: { env: env.name, action: "deploy", production: env.production },
-		});
-		items.push({
-			label: "$(history) History",
-			pick: { env: env.name, action: "history", production: env.production },
-		});
-		items.push({
-			label: "$(diff-single) Diff against deployed",
-			pick: { env: env.name, action: "diff", production: env.production },
-		});
-		items.push(...operateRows(env));
+		// Rows the installed gaffer can't serve are dropped rather than shown and
+		// failed on click. When that leaves nothing, the env collapses to a notice
+		// naming the cause - same grammar as the unavailable and sign-in cases, and
+		// better than a bare env header with no rows under it.
+		const rows: ActionItem[] = [];
+		if (caps.deploy) {
+			rows.push({
+				label: "$(rocket) Deploy",
+				pick: { env: env.name, action: "deploy", production: env.production },
+			});
+		}
+		if (caps.history) {
+			rows.push({
+				label: "$(history) History",
+				pick: { env: env.name, action: "history", production: env.production },
+			});
+		}
+		if (caps.diff) {
+			rows.push({
+				label: "$(diff-single) Diff against deployed",
+				pick: { env: env.name, action: "diff", production: env.production },
+			});
+		}
+		if (caps.operate) rows.push(...operateRows(env));
+		if (rows.length === 0) {
+			items.push({
+				label: "$(warning) Unsupported",
+				description: "update the gaffer CLI to manage projections from here",
+			});
+			continue;
+		}
+		items.push(...rows);
 	}
 	return items;
 }
@@ -233,7 +279,10 @@ export function buildActionItems(envs: ProjectionActionsEnv[]): ActionItem[] {
 // fresh env snapshots arrive (spinner while any env's status is loading) and
 // resolves with the picked action. The interactive lifecycle lives here so
 // projectionActions - the dispatch - stays unit-testable with a stub menu.
-export function createActionMenu(): ActionMenu {
+// caps is read on every repaint, not captured once: the served set is replaced
+// when the language server restarts onto a different binary, so an open menu
+// picks that up rather than showing what the previous gaffer could do.
+export function createActionMenu(caps: () => ActionCapabilities): ActionMenu {
 	return ({ title, initial, subscribe }) =>
 		new Promise<ProjectionAction | undefined>((resolve) => {
 			const qp = vscode.window.createQuickPick<ActionItem>();
@@ -248,7 +297,7 @@ export function createActionMenu(): ActionMenu {
 			};
 			const apply = (envs: ProjectionActionsEnv[]): void => {
 				const prevActive = qp.activeItems.map((i) => i.pick);
-				qp.items = buildActionItems(envs);
+				qp.items = buildActionItems(envs, caps());
 				qp.busy = anyLoading(envs);
 				const restored = preserveActiveItems(qp.items, prevActive);
 				if (restored.length > 0) qp.activeItems = restored;

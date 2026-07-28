@@ -83,12 +83,19 @@ const (
 // ServerNotInitialized) so a strict client can't mislabel it.
 const CodeAuthRequired = -32050
 
-// LSP intent codes for code lenses. Per the LSP plan, the server
-// emits a semantic intent in `data.intent` and each editor extension
-// maps it to its native icon / treatment. Five intents cover the
-// surface; the server only emits two (Debug / DebugChoose) - the
-// rest (stop, starting, untrusted) are client-side concerns the
-// extension overrides on top of the server's lens.
+// LSP intent codes for code lenses. The server emits a semantic intent in
+// `data.intent` and each editor extension maps it to its native icon /
+// treatment.
+//
+// The server emits every intent below, but in two tiers: Debug and DebugChoose
+// reach any client, while the rest - the deploy-status family - go only to a
+// client that opted in via initializationOptions.statusLens (see
+// statusLensCapable). A generic LSP client couldn't render them sanely.
+//
+// Distinct from these, and not intents: the extension also overlays its own lens
+// states on top of the server's (a stop action mid-debug-session, an
+// untrusted-workspace prompt). Those are client-side concerns the server knows
+// nothing about.
 const (
 	IntentDebug       = "debug"
 	IntentDebugChoose = "debug-choose"
@@ -109,13 +116,15 @@ const (
 	// lens: any client on the status surface must special-case this intent and
 	// not try to render it as a normal (command-bearing) lens.
 	IntentStatusBadges = "status-badges"
-	// IntentActions marks the per-projection "Manage..." lens: the entry point
-	// to the action menu the client pops (diff against deployed today; operate /
-	// history later). A vscode-only surface, emitted alongside the status lenses.
+	// IntentActions marks the per-projection "Manage..." lens: the entry point to
+	// the action menu the client pops - deploy and history (cold `gaffer` spawns),
+	// diff against deployed, and the operate verbs (both served here as gaffer/*
+	// requests). A vscode-only surface, emitted alongside the status lenses.
 	IntentActions = "actions"
-	// IntentDeployPreview marks the env-block "Preview" lens: it opens the deploy
-	// plan for the whole project against that env (a --dry-run, no apply). A
-	// vscode-only surface, emitted beside the status roll-up.
+	// IntentDeployPreview marks the env-block "Deploy" lens: it opens the deploy
+	// plan for the whole project against that env (a --dry-run, no apply; the
+	// client applies from the plan it rendered). A vscode-only surface, emitted
+	// beside the status roll-up.
 	IntentDeployPreview = "deploy-preview"
 )
 
@@ -207,6 +216,29 @@ type ServerCapabilities struct {
 	// the hover exists solely to show a projection's per-env deploy status, so
 	// a client that can't render it shouldn't route hovers here.
 	HoverProvider *HoverOptions `json:"hoverProvider,omitempty"`
+	// Experimental carries capabilities with no slot in the LSP spec. LSP has
+	// standard fields for standard features but nothing for a server's custom
+	// requests, and `experimental` is the spec's escape hatch for exactly that.
+	Experimental *ExperimentalCapabilities `json:"experimental,omitempty"`
+}
+
+// ExperimentalCapabilities namespaces gaffer's own capabilities under the
+// spec's open-ended `experimental` slot, so they can't collide with another
+// server's use of the same field.
+type ExperimentalCapabilities struct {
+	Gaffer GafferCapabilities `json:"gaffer"`
+}
+
+// GafferCapabilities tells the client which gaffer/* methods this build
+// actually serves, so an editor extension newer than the CLI it's driving can
+// hide a surface instead of calling a method that isn't there and reporting a
+// generic failure. Without it the only way to discover support is to call and
+// read MethodNotFound off the error.
+//
+// Methods is the wire method names verbatim (not feature aliases) so the client
+// checks the same string it would send, with no mapping to keep in step.
+type GafferCapabilities struct {
+	Methods []string `json:"methods"`
 }
 
 // TextDocumentSyncKind matches LSP spec values: 0=None, 1=Full,

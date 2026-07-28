@@ -4,9 +4,11 @@ import {
 	CloseAction,
 	ErrorAction,
 	LanguageClient,
+	constructedClients,
 	holdLspStart,
 	resetLspMock,
 	sentNotifications,
+	setLspServedMethods,
 } from "../../test/__mocks__/vscode-languageclient-node.js";
 import {
 	makeErrorHandler,
@@ -198,6 +200,127 @@ describe("startLanguageClient invokerId wiring", () => {
 		} as unknown as Parameters<typeof requestStatusRefresh>[0];
 		requestStatusRefresh(uri);
 		expect(sentNotifications).toEqual([]);
+	});
+
+	// A gaffer that predates gaffer/refreshStatus answers the notification with a
+	// MethodNotFound handler error on stderr, and vscode-languageclient pipes
+	// server stderr into the output channel - so an ungated 5s poll would write a
+	// steady stream of errors into the Gaffer (LSP) channel all session.
+	it("requestStatusRefresh is a no-op when the server doesn't serve it", async () => {
+		setTrusted(true);
+		setLspServedMethods(null);
+		spawnMock.mockImplementation(() => fakeChild());
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => "abc-id",
+			isOptedOut: () => false,
+		});
+		await flushAllMicrotasks();
+		const uri = {
+			toString: () => "file:///ws/gaffer.toml",
+		} as unknown as Parameters<typeof requestStatusRefresh>[0];
+		requestStatusRefresh(uri, { poll: true });
+		expect(sentNotifications).toEqual([]);
+	});
+
+	// The mirror of the case below, and the one a stale capability set would
+	// break: stopping has to drop what the old server advertised, or the gate
+	// keeps reporting true with no server behind it.
+	it("stops sending refreshStatus once the client is stopped", async () => {
+		setTrusted(true);
+		spawnMock.mockImplementation(() => fakeChild());
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => "abc-id",
+			isOptedOut: () => false,
+		});
+		await flushAllMicrotasks();
+		await stopLanguageClient();
+		const uri = {
+			toString: () => "file:///ws/gaffer.toml",
+		} as unknown as Parameters<typeof requestStatusRefresh>[0];
+		requestStatusRefresh(uri);
+		expect(sentNotifications).toEqual([]);
+	});
+
+	// vscode-languageclient restarts the server itself on CloseAction.Restart,
+	// re-running the handshake without spawnLanguageClient running again. A
+	// crash-restart is exactly when the binary may have changed, since replacing it
+	// mid-session is what kills the running one - so the set has to follow the
+	// restart, not the spawn.
+	it("drops capabilities when an internal restart lands on an older server", async () => {
+		setTrusted(true);
+		spawnMock.mockImplementation(() => fakeChild());
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => "abc-id",
+			isOptedOut: () => false,
+		});
+		await flushAllMicrotasks();
+		const uri = {
+			toString: () => "file:///ws/gaffer.toml",
+		} as unknown as Parameters<typeof requestStatusRefresh>[0];
+		requestStatusRefresh(uri);
+		expect(sentNotifications).toHaveLength(1);
+
+		// The user replaced the CLI with an older build; the running server died and
+		// the library respawned onto it.
+		setLspServedMethods(null);
+		constructedClients.at(-1)?.simulateInternalRestart();
+		sentNotifications.length = 0;
+		requestStatusRefresh(uri);
+		expect(sentNotifications).toEqual([]);
+	});
+
+	it("picks up capabilities when an internal restart lands on a newer server", async () => {
+		setTrusted(true);
+		setLspServedMethods(null);
+		spawnMock.mockImplementation(() => fakeChild());
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => "abc-id",
+			isOptedOut: () => false,
+		});
+		await flushAllMicrotasks();
+		const uri = {
+			toString: () => "file:///ws/gaffer.toml",
+		} as unknown as Parameters<typeof requestStatusRefresh>[0];
+		requestStatusRefresh(uri);
+		expect(sentNotifications).toEqual([]);
+
+		setLspServedMethods(["gaffer/refreshStatus"]);
+		constructedClients.at(-1)?.simulateInternalRestart();
+		requestStatusRefresh(uri);
+		expect(sentNotifications).toHaveLength(1);
+	});
+
+	// The capability is per-server, so a restart onto a newer binary has to start
+	// polling without the user reloading the window.
+	it("starts sending refreshStatus after a restart onto a server that serves it", async () => {
+		setTrusted(true);
+		setLspServedMethods(null);
+		spawnMock.mockImplementation(() => fakeChild());
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => "abc-id",
+			isOptedOut: () => false,
+		});
+		await flushAllMicrotasks();
+		const uri = {
+			toString: () => "file:///ws/gaffer.toml",
+		} as unknown as Parameters<typeof requestStatusRefresh>[0];
+		requestStatusRefresh(uri);
+		expect(sentNotifications).toEqual([]);
+
+		await stopLanguageClient();
+		setLspServedMethods(["gaffer/refreshStatus"]);
+		startLanguageClient(makeContext(), () => true, {
+			invokerId: () => "abc-id",
+			isOptedOut: () => false,
+		});
+		await flushAllMicrotasks();
+		requestStatusRefresh(uri);
+		expect(sentNotifications).toEqual([
+			{
+				method: "gaffer/refreshStatus",
+				params: { uri: "file:///ws/gaffer.toml", poll: false },
+			},
+		]);
 	});
 
 	it("opts into the status surface via initializationOptions", async () => {

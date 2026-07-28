@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildGafferArgv,
 	captureGafferCommand,
+	canRunArgv,
 	hasCommand,
 	hasFlag,
 	tryFetchManifest,
@@ -176,6 +177,97 @@ describe("hasCommand / hasFlag", () => {
 	it("hasFlag returns false for a missing flag or missing command", () => {
 		expect(hasFlag(m, "dev", "missing")).toBe(false);
 		expect(hasFlag(m, "missing", "debug")).toBe(false);
+	});
+});
+
+// Every cold-spawn capability gate goes through canRunArgv, so its parsing is
+// load-bearing: a token misread as a flag would gate a surface off against a CLI
+// that can run it, and a flag missed would let a spawn through to be rejected.
+describe("canRunArgv", () => {
+	const m: Manifest = {
+		version: "1.0.0",
+		commands: {
+			deploy: { flags: ["dry-run", "json", "env", "yes"] },
+			bare: {},
+		},
+	};
+
+	it("accepts an argv whose command and every flag are present", () => {
+		expect(
+			canRunArgv(m, ["deploy", "--dry-run", "--json", "--env", "prod"]),
+		).toBe(true);
+	});
+
+	it("rejects an argv whose command is absent", () => {
+		expect(canRunArgv(m, ["history", "--json"])).toBe(false);
+	});
+
+	it("rejects an argv passing a flag the command doesn't accept", () => {
+		expect(canRunArgv(m, ["deploy", "--json", "--stream"])).toBe(false);
+	});
+
+	it("rejects everything against a null manifest", () => {
+		expect(canRunArgv(null, ["deploy", "--json"])).toBe(false);
+	});
+
+	// A flag's value is a bare token; reading it as part of the command path would
+	// look for a command called "deploy prod".
+	it("treats a bare token after a flag as that flag's value, not the command", () => {
+		expect(canRunArgv(m, ["deploy", "--env", "prod"])).toBe(true);
+	});
+
+	// `--` ends flag parsing, so a projection literally named "--json" (names are
+	// unconstrained gaffer.toml strings) can't be counted as a flag - which would
+	// make the gate depend on the user's projection names.
+	it("ignores positionals after --", () => {
+		expect(canRunArgv(m, ["deploy", "--json", "--", "orders"])).toBe(true);
+		expect(canRunArgv(m, ["deploy", "--json", "--", "--not-a-flag"])).toBe(
+			true,
+		);
+	});
+
+	it("reads --flag=value as the flag alone", () => {
+		expect(canRunArgv(m, ["deploy", "--env=prod"])).toBe(true);
+		expect(canRunArgv(m, ["deploy", "--nope=1"])).toBe(false);
+	});
+
+	it("accepts a flagless argv for a command that takes no flags", () => {
+		expect(canRunArgv(m, ["bare"])).toBe(true);
+	});
+
+	// A positional between the command and its flags must not be read as part of
+	// the command name, or the lookup asks for a command called "deploy orders".
+	it("ignores a positional before the flags", () => {
+		expect(canRunArgv(m, ["deploy", "orders", "--json"])).toBe(true);
+	});
+
+	// `gaffer manifest` records only long flag names, so a shorthand can't be
+	// verified either way. Ignoring it beats failing and hiding a surface the CLI
+	// can actually run.
+	it("ignores single-dash shorthands wherever they appear", () => {
+		expect(canRunArgv(m, ["deploy", "-y", "--json"])).toBe(true);
+		expect(canRunArgv(m, ["deploy", "--json", "-y"])).toBe(true);
+	});
+
+	it("rejects an argv with no command", () => {
+		expect(canRunArgv(m, [])).toBe(false);
+		expect(canRunArgv(m, ["--json"])).toBe(false);
+	});
+
+	// The full spawn argv goes through buildGafferArgv, which prepends the binary
+	// and the telemetry linkage flags. That is not what this takes - reading it
+	// would look for a subcommand called "gaffer" - so the mistake should fail
+	// closed rather than pass on a coincidence.
+	it("rejects a full spawn argv rather than misreading the binary as the command", () => {
+		expect(
+			canRunArgv(m, [
+				"gaffer",
+				"--invoker-id=abc",
+				"--invoked-by=vscode",
+				"deploy",
+				"--json",
+			]),
+		).toBe(false);
 	});
 });
 

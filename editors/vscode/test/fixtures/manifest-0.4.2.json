@@ -1,0 +1,63 @@
+{
+  "version": "0.4.2",
+  "updateAvailable": null,
+  "commands": {
+    "auth": {
+      "flags": [
+        "clear",
+        "env"
+      ]
+    },
+    "config telemetry off": {
+      "flags": []
+    },
+    "config telemetry on": {
+      "flags": []
+    },
+    "config telemetry status": {
+      "flags": []
+    },
+    "dev": {
+      "flags": [
+        "connection",
+        "debug",
+        "debug-port",
+        "env",
+        "events",
+        "fixture",
+        "json",
+        "start-paused-if-no-breakpoints",
+        "until-caught-up",
+        "yes"
+      ]
+    },
+    "info": {
+      "flags": [
+        "json"
+      ]
+    },
+    "init": {
+      "flags": []
+    },
+    "lsp": {
+      "flags": [
+        "stdio"
+      ]
+    },
+    "mcp": {
+      "flags": [
+        "project"
+      ]
+    },
+    "scaffold": {
+      "flags": [
+        "emit",
+        "engine-version",
+        "name",
+        "partition",
+        "source",
+        "yes"
+      ]
+    }
+  }
+}

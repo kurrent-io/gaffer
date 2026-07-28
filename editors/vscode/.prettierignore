@@ -1,3 +1,14 @@
 dist/
 node_modules/
 *.vsix
+
+# Captured from a gaffer binary (`gaffer manifest`, and the LSP initialize
+# result's experimental block). Reformatting them would mean every regeneration
+# needs a prettier pass to stay green, which invites hand-editing a file whose
+# value is being a faithful record of what the CLI emitted.
+#
+# `manifest-current.json` is the one edit: its `version` is normalised to
+# "current" so a version bump alone doesn't churn the fixture. The command and
+# flag surface it pins is untouched.
+test/fixtures/manifest-*.json
+test/fixtures/lsp-experimental-*.json

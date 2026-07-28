@@ -100,7 +100,11 @@ import { deployApply } from "./commands/deploy-apply.js";
 import { deployApplyArgs, deployPreviewArgs } from "./commands/deploy-args.js";
 import { DeployPlanView } from "./panels/deploy-plan.js";
 import { HistoryView } from "./panels/history-view.js";
-import { historyArgs, rollbackArgs } from "./commands/history-args.js";
+import {
+	canRollback,
+	historyArgs,
+	rollbackArgs,
+} from "./commands/history-args.js";
 import {
 	openHistoryDiff,
 	HistoryDiffContentProvider,
@@ -731,18 +735,33 @@ async function activateAfterTelemetry(
 						projectionActions({
 							diff,
 							operate,
-							menu: createActionMenu(),
+							// Same source the "Manage..." lens gates on, so the menu can't
+							// be opened by a lens that thinks more is available than the
+							// rows agree with. Re-read per repaint, not captured.
+							menu: createActionMenu(() => lspCodeLens.actionCapabilities()),
 							// Live source: the menu repaints as each env's status resolves.
 							// The lens provider re-decodes the actions payload on every
 							// provideCodeLenses (driven by the status poll + the server's
 							// codeLens refresh), so the menu tracks loading -> resolved
 							// without a reopen.
-							watchActions: (name, tomlUri, onUpdate) =>
-								lspCodeLens.onDidChangeActions(() => {
+							watchActions: (name, tomlUri, onUpdate) => {
+								const repaint = (): void => {
 									// Empty when the cache dropped this projection (removed, or
 									// the server went away); the menu closes on that.
 									onUpdate(lspCodeLens.getActions(tomlUri, name) ?? []);
-								}),
+								};
+								// Two independent reasons to repaint an open menu: the actions
+								// payload changes as each env's status resolves, and the
+								// capabilities change when the CLI manifest reloads or the
+								// language server restarts onto a different binary. Neither
+								// capability input touches the payload, so without the second
+								// subscription a menu open across either keeps whichever rows it
+								// was built with - the case a downgrade makes wrong.
+								return vscode.Disposable.from(
+									lspCodeLens.onDidChangeActions(repaint),
+									lspCodeLens.onDidChangeCapabilities(repaint),
+								);
+							},
 						}),
 					),
 				),
@@ -802,6 +821,9 @@ async function activateAfterTelemetry(
 						runRollback: (cwd, env, name, hash) =>
 							run(rollbackArgs(env, name, hash), cwd),
 						reload: (ctx) => loadHistory(ctx),
+						// Read per invocation off the live manifest, so a CLI updated
+						// mid-session is picked up without reloading the window.
+						canRollback: () => canRollback(latestManifest),
 					}),
 				},
 				onWebviewError,

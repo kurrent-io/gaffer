@@ -1,0 +1,143 @@
+{
+  "commands": {
+    "auth": {
+      "flags": [
+        "clear",
+        "env"
+      ]
+    },
+    "config telemetry off": {
+      "flags": []
+    },
+    "config telemetry on": {
+      "flags": []
+    },
+    "config telemetry status": {
+      "flags": []
+    },
+    "delete": {
+      "flags": [
+        "connection",
+        "delete-emitted",
+        "env",
+        "json",
+        "yes"
+      ]
+    },
+    "deploy": {
+      "flags": [
+        "connection",
+        "dry-run",
+        "env",
+        "json",
+        "no-validate",
+        "reset-on-logic-change",
+        "stream",
+        "yes"
+      ]
+    },
+    "dev": {
+      "flags": [
+        "connection",
+        "debug",
+        "debug-port",
+        "env",
+        "events",
+        "fixture",
+        "json",
+        "start-paused-if-no-breakpoints",
+        "until-caught-up",
+        "yes"
+      ]
+    },
+    "diff": {
+      "flags": [
+        "connection",
+        "env",
+        "json",
+        "left",
+        "right"
+      ]
+    },
+    "disable": {
+      "flags": [
+        "abort",
+        "connection",
+        "env",
+        "json",
+        "yes"
+      ]
+    },
+    "enable": {
+      "flags": [
+        "connection",
+        "env",
+        "json"
+      ]
+    },
+    "history": {
+      "flags": [
+        "all",
+        "connection",
+        "env",
+        "json",
+        "limit"
+      ]
+    },
+    "info": {
+      "flags": [
+        "json"
+      ]
+    },
+    "init": {
+      "flags": []
+    },
+    "lsp": {
+      "flags": [
+        "stdio"
+      ]
+    },
+    "mcp": {
+      "flags": [
+        "project"
+      ]
+    },
+    "recreate": {
+      "flags": [
+        "connection",
+        "delete-emitted",
+        "env",
+        "json",
+        "no-validate",
+        "yes"
+      ]
+    },
+    "rollback": {
+      "flags": [
+        "connection",
+        "env",
+        "json",
+        "yes"
+      ]
+    },
+    "scaffold": {
+      "flags": [
+        "emit",
+        "engine-version",
+        "name",
+        "partition",
+        "source",
+        "yes"
+      ]
+    },
+    "status": {
+      "flags": [
+        "connection",
+        "env",
+        "json"
+      ]
+    }
+  },
+  "updateAvailable": null,
+  "version": "current"
+}

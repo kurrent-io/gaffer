@@ -29,6 +29,11 @@ export interface HistoryRollbackDeps {
 	) => Promise<RollbackOutcome>;
 	// Re-read the ledger and re-render the panel after a rollback lands.
 	reload: (ctx: HistoryContext) => Promise<void>;
+	// Whether the installed gaffer can roll back. Checked here rather than by
+	// hiding the timeline's rollback buttons: reading history and rolling back are
+	// separate capabilities, so a CLI that can only read still gets a useful
+	// read-only timeline, and the action explains itself if it can't run.
+	canRollback: () => boolean;
 }
 
 // confirm renders the tier and reports whether to proceed. production is
@@ -55,6 +60,21 @@ export function rollbackFromHistory(
 ) => Promise<void> {
 	return async (ctx, target, send) => {
 		if (!vscode.workspace.isTrusted) {
+			send({ type: "rollback-error", version: target.version, message: "" });
+			return;
+		}
+		// Refused before the confirm, so the user isn't asked to accept a write
+		// that can't run. A bare spawn would fail with gaffer's own unknown-command
+		// error, which reads as a bug rather than a version gap.
+		//
+		// The toast is what the user actually sees: the panel's rollback-error
+		// handler only releases the in-flight guard and doesn't render the message,
+		// so sending alone would make the click do nothing at all - quieter than the
+		// spawn failure this replaces.
+		if (!deps.canRollback()) {
+			await vscode.window.showErrorMessage(
+				`Rolling back "${ctx.name}" needs a newer gaffer CLI. Update it and reload the window.`,
+			);
 			send({ type: "rollback-error", version: target.version, message: "" });
 			return;
 		}

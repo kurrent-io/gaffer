@@ -585,6 +585,64 @@ describe("LspCodeLensProvider", () => {
 		});
 	});
 
+	// actionCapabilities() has two inputs and both move mid-session. A consumer
+	// painted from cached state - an open action menu - needs one signal covering
+	// both, or whichever input it isn't watching leaves it stale. The manifest half
+	// is the one that slipped: a reload doesn't touch the actions payload, so
+	// onDidChangeActions doesn't fire for it.
+	describe("onDidChangeCapabilities", () => {
+		it("fires when the manifest changes what the cold spawns can do", () => {
+			const p = new LspCodeLensProvider();
+			let fired = 0;
+			const sub = p.onDidChangeCapabilities(() => fired++);
+			p.setManifest(manifestWithDeployAndHistory);
+			expect(fired).toBe(1);
+			expect(p.actionCapabilities().deploy).toBe(true);
+
+			p.setManifest(manifestWithDebug);
+			expect(fired).toBe(2);
+			expect(p.actionCapabilities().deploy).toBe(false);
+			sub.dispose();
+			p.dispose();
+		});
+
+		it("fires when the served method set changes", () => {
+			const p = new LspCodeLensProvider();
+			clearServedMethods();
+			let fired = 0;
+			const sub = p.onDidChangeCapabilities(() => fired++);
+			setServedMethods(new Set([METHOD_OPERATE_PROJECTION]));
+			expect(fired).toBe(1);
+			expect(p.actionCapabilities().operate).toBe(true);
+			sub.dispose();
+			p.dispose();
+		});
+
+		// The lenses gate on the same capabilities, so a served-set change has to
+		// repaint them too - the manifest path already did via setManifest.
+		it("also repaints the lenses on a served-set change", () => {
+			const p = new LspCodeLensProvider();
+			clearServedMethods();
+			let fired = 0;
+			const sub = p.onDidChangeCodeLenses(() => fired++);
+			setServedMethods(new Set([METHOD_DIFF_PROJECTION]));
+			expect(fired).toBeGreaterThan(0);
+			sub.dispose();
+			p.dispose();
+		});
+
+		it("stops observing the served set once disposed", () => {
+			const p = new LspCodeLensProvider();
+			clearServedMethods();
+			let fired = 0;
+			const sub = p.onDidChangeCapabilities(() => fired++);
+			p.dispose();
+			setServedMethods(new Set([METHOD_DIFF_PROJECTION]));
+			expect(fired).toBe(0);
+			sub.dispose();
+		});
+	});
+
 	// The lens is an entry point into the menu, so it survives as long as the menu
 	// has something in it. Only a CLI that can serve no row at all loses it -
 	// otherwise the lens would open a menu whose every row is an "Unsupported"

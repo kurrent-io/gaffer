@@ -12,6 +12,7 @@ import type { ActionCapabilities } from "../commands/projection-actions.js";
 import {
 	METHOD_DIFF_PROJECTION,
 	METHOD_OPERATE_PROJECTION,
+	onServedMethodsChanged,
 	serverServes,
 } from "./capabilities.js";
 
@@ -229,6 +230,28 @@ export class LspCodeLensProvider
 	readonly #onDidChangeActions = new vscode.EventEmitter<void>();
 	readonly onDidChangeActions = this.#onDidChangeActions.event;
 
+	// Fires when anything actionCapabilities() derives from changes. It has two
+	// independent inputs - the CLI manifest and the language server's advertised
+	// methods - and both move mid-session: the manifest on a reload after the user
+	// updates the CLI, the served set when the server restarts onto a different
+	// binary. Neither touches the actions payload, so onDidChangeActions doesn't
+	// cover them and a surface watching only that keeps whatever rows it was built
+	// with.
+	//
+	// Owned here because this is where actionCapabilities() lives, so both inputs
+	// converge on one signal rather than each consumer having to know it needs to
+	// subscribe to two things and remember a third if one is added.
+	readonly #onDidChangeCapabilities = new vscode.EventEmitter<void>();
+	readonly onDidChangeCapabilities = this.#onDidChangeCapabilities.event;
+
+	// The served-set half of that signal. Subscribed here rather than in activate()
+	// so the provider can't be constructed without it.
+	readonly #servedMethodsSub = onServedMethodsChanged(() => {
+		this.#onDidChangeCapabilities.fire();
+		// Repaint the lenses too: the "Manage..." and Deploy lenses gate on this.
+		this.#onDidChange.fire();
+	});
+
 	#client: LanguageClient | undefined;
 	#manifest: Manifest | null = null;
 	#debugState: DebugState = { name: null, status: "idle" };
@@ -241,8 +264,10 @@ export class LspCodeLensProvider
 	}
 
 	dispose(): void {
+		this.#servedMethodsSub.dispose();
 		this.#onDidChange.dispose();
 		this.#onDidChangeActions.dispose();
+		this.#onDidChangeCapabilities.dispose();
 	}
 
 	// The live actions envs for a projection, or undefined if none have been
@@ -262,8 +287,13 @@ export class LspCodeLensProvider
 		this.#onDidChange.fire();
 	}
 
+	// The manifest half of onDidChangeCapabilities. Reloaded mid-session whenever
+	// the manifest chain publishes - notably after the user updates the CLI - which
+	// changes what Deploy and History can do without touching anything an open menu
+	// otherwise watches.
 	setManifest(manifest: Manifest | null): void {
 		this.#manifest = manifest;
+		this.#onDidChangeCapabilities.fire();
 		this.#onDidChange.fire();
 	}
 

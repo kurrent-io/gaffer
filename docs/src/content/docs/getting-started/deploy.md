@@ -76,7 +76,7 @@ order-count   running   100%       2026-07-28    Gaffer         in sync
 
 <!-- TODO(media): vhs still - gaffer status table after the first deploy -->
 
-The projection is running on the server, and `in sync` means the deployed definition matches your local source. Name the projection (`gaffer status order-count`) for its detail: runtime state, position, who deployed it, and from which source revision.
+The projection is running on the server, and `in sync` means the deployed definition matches your local source (the other verdicts are covered in [Drift, history and rollback](./drift.md)). Name the projection (`gaffer status order-count`) for its detail: runtime state, position, who deployed it, and from which source revision.
 
 ## Deploy again
 

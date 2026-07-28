@@ -83,6 +83,7 @@ export default defineConfig({
             'getting-started/debugging',
             'getting-started/deploy',
             'getting-started/environments',
+            'getting-started/production',
           ],
         },
         {

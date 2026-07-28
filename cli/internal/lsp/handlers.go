@@ -57,6 +57,29 @@ func blocksReadLoop(method string) bool {
 	return ok
 }
 
+// gafferMethods is every gaffer/* method this build serves, advertised to the
+// client in the initialize result (capabilities.experimental.gaffer.methods).
+// An editor extension can outrun the CLI it drives - the extension auto-updates
+// from the marketplace while the CLI is installed separately - so a client needs
+// to know what this server supports before it offers a surface that depends on
+// it. Without this the only signal is calling the method and reading
+// MethodNotFound off the failure, by which point the user has already clicked
+// something that then errored.
+//
+// Every gaffer/* method MUST be listed here AND dispatched from handle's switch.
+// TestGafferMethodsMatchProtocol checks both directions: an entry the switch
+// doesn't dispatch (advertised but broken), and a gaffer/* method constant
+// missing from this list (works, but clients are told to hide it).
+//
+// Order is the wire order; keep it stable so the advertised list doesn't churn.
+var gafferMethods = []string{
+	MethodProjectionDetails,
+	MethodRefreshStatus,
+	MethodDiffProjection,
+	MethodDiffVersions,
+	MethodOperateProjection,
+}
+
 // handle dispatches a single JSON-RPC message to the right method.
 // jsonrpc2.HandlerWithError takes care of error/result wrapping.
 func (s *Server) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) (any, error) {
@@ -182,6 +205,12 @@ func (s *Server) handleInitialize(_ context.Context, req *jsonrpc2.Request) (any
 		},
 		CodeLensProvider:        &CodeLensOptions{},
 		WorkspaceSymbolProvider: &WorkspaceSymbolOptions{},
+		// Advertised unconditionally, unlike HoverProvider below: the served
+		// method set is a fact about this build, not about what the client opted
+		// into. A client that can't use them just ignores the list.
+		Experimental: &ExperimentalCapabilities{
+			Gaffer: GafferCapabilities{Methods: gafferMethods},
+		},
 	}
 	// Hover serves per-projection deploy status, part of the opt-in status
 	// surface - advertise it only to a client that asked for that surface, so

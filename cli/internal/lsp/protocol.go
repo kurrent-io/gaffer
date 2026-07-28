@@ -207,6 +207,29 @@ type ServerCapabilities struct {
 	// the hover exists solely to show a projection's per-env deploy status, so
 	// a client that can't render it shouldn't route hovers here.
 	HoverProvider *HoverOptions `json:"hoverProvider,omitempty"`
+	// Experimental carries capabilities with no slot in the LSP spec. LSP has
+	// standard fields for standard features but nothing for a server's custom
+	// requests, and `experimental` is the spec's escape hatch for exactly that.
+	Experimental *ExperimentalCapabilities `json:"experimental,omitempty"`
+}
+
+// ExperimentalCapabilities namespaces gaffer's own capabilities under the
+// spec's open-ended `experimental` slot, so they can't collide with another
+// server's use of the same field.
+type ExperimentalCapabilities struct {
+	Gaffer GafferCapabilities `json:"gaffer"`
+}
+
+// GafferCapabilities tells the client which gaffer/* methods this build
+// actually serves, so an editor extension newer than the CLI it's driving can
+// hide a surface instead of calling a method that isn't there and reporting a
+// generic failure. Without it the only way to discover support is to call and
+// read MethodNotFound off the error.
+//
+// Methods is the wire method names verbatim (not feature aliases) so the client
+// checks the same string it would send, with no mapping to keep in step.
+type GafferCapabilities struct {
+	Methods []string `json:"methods"`
 }
 
 // TextDocumentSyncKind matches LSP spec values: 0=None, 1=Full,

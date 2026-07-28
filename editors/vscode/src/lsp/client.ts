@@ -19,6 +19,13 @@ import {
 } from "../discovery/cli.js";
 import { log } from "../output.js";
 import { showLspCrashed, showLspFailedToStart } from "../notifications/lsp.js";
+import {
+	clearServedMethods,
+	METHOD_REFRESH_STATUS,
+	readServedMethods,
+	serverServes,
+	setServedMethods,
+} from "./capabilities.js";
 
 let client: LanguageClient | undefined;
 
@@ -214,6 +221,7 @@ async function spawnLanguageClient(
 	context.subscriptions.push({
 		dispose: () => {
 			disposed = true;
+			clearServedMethods();
 			return c.stop(STOP_TIMEOUT_MS);
 		},
 	});
@@ -225,9 +233,16 @@ async function spawnLanguageClient(
 		// a torn-down session.
 		if (disposed) return;
 		client = c;
+		// Read what this server serves before anything can gate on it. Set on
+		// every start, so a restart onto a different binary (the user updated the
+		// CLI mid-session) re-reads rather than keeping the old set.
+		setServedMethods(readServedMethods(c.initializeResult));
 		log("LSP client started");
 		onReady?.(c);
 	} catch (err) {
+		// A server that never started serves nothing; leaving a previous set in
+		// place would keep surfaces visible with no server behind them.
+		clearServedMethods();
 		const msg = err instanceof Error ? err.message : String(err);
 		log(`LSP client failed to start: ${msg}`);
 		void showLspFailedToStart(msg, channel);
@@ -260,6 +275,13 @@ export function requestStatusRefresh(
 ): void {
 	const c = client;
 	if (!c) return;
+	// Gated here rather than at the call sites (the poll timer and the
+	// sign-in-completed refresh) so neither can reintroduce the noise. A server
+	// that doesn't implement this logs a handler error per notification - and
+	// vscode-languageclient pipes server stderr into the output channel - so an
+	// ungated 5s poll writes a steady stream of MethodNotFound into the Gaffer
+	// (LSP) channel for the whole session against an older CLI.
+	if (!serverServes(METHOD_REFRESH_STATUS)) return;
 	void c.sendNotification(refreshStatusMethod, {
 		uri: uri.toString(),
 		poll: opts.poll ?? false,
@@ -345,6 +367,10 @@ export function makeErrorHandler(channel: vscode.OutputChannel): ErrorHandler {
  * give the server a chance to flush before the host exits.
  */
 export async function stopLanguageClient(): Promise<void> {
+	// Cleared up front, before the awaited stop: the capabilities describe a
+	// server that is going away, and a surface gating on a stale `true` would
+	// stay visible with nothing behind it.
+	clearServedMethods();
 	if (!client) {
 		lspChannel = undefined;
 		return;

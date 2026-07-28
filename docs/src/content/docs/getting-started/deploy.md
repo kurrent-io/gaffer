@@ -145,4 +145,4 @@ docker rm -f kurrentdb
 
 ## Next steps
 
-This walkthrough deployed interactively; `gaffer deploy` also runs unattended, with `--dry-run` to plan without applying and stable exit codes for pipelines. See [`gaffer deploy`](../cli/commands.md#gaffer-deploy) and the [exit codes](../cli/index.md#exit-codes).
+The single local environment here is the smallest case; [Environments and targets](./environments.md) grows it to staging and production, each with its own credentials. For every deploy flag, see [`gaffer deploy`](../cli/commands.md#gaffer-deploy).

@@ -181,17 +181,20 @@ func (tw *textWriter) blank() {
 }
 
 // Severity marker glyphs, defined once so the level's mark stays consistent
-// across every command rather than each site hardcoding its own. All width-1 so
-// they align in a column (avoid the emoji-presentation ℹ and the double-width
-// 🛈, which don't). Use the mark* methods for a styled marker; use these raw
-// glyphs where a caller builds and styles its own string (a TUI line that
-// truncates to a width, say).
+// across every command rather than each site hardcoding its own. Keep them
+// width-1 so they align in a column. Use the mark* methods for a styled
+// marker; use these raw glyphs where a caller builds and styles its own
+// string (a TUI line that truncates to a width, say).
 const (
 	glyphError   = "✗"
 	glyphWarning = "⚠"
-	// U+2139 INFORMATION SOURCE, not the enclosed ⓘ: the enclosed form is
-	// missing from common monospace fonts (JetBrains Mono, DejaVu Sans
-	// Mono) and renders as tofu in terminals using them.
+	// Bare U+2139 INFORMATION SOURCE, no VS16, which renders text-style
+	// width-1 in practice. The enclosed ⓘ was chosen first for its
+	// guaranteed width, but it is missing from common monospace fonts
+	// (JetBrains Mono, DejaVu Sans Mono) and renders as tofu there; a
+	// terminal configured ambiguous-wide may draw ℹ double-width, and
+	// that misalignment is accepted over the tofu. Avoid the double-width
+	// 🛈 outright.
 	glyphInfo = "ℹ"
 )
 

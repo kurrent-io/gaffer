@@ -5,12 +5,6 @@
   },
   "extensions": [
     {
-      "id": "Catppuccin.catppuccin-vsc",
-      "version": "3.19.0",
-      "url": "https://open-vsx.org/api/Catppuccin/catppuccin-vsc/3.19.0/file/Catppuccin.catppuccin-vsc-3.19.0.vsix",
-      "sha256": "ebf347664837edbe91c9920ff3d14c96d4a28beeec0b95137c76058326329780"
-    },
-    {
       "id": "tombi-toml.tombi",
       "version": "1.2.4",
       "url": "https://open-vsx.org/api/tombi-toml/tombi/linux-x64/1.2.4/file/tombi-toml.tombi-1.2.4@linux-x64.vsix",

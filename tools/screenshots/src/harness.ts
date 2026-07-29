@@ -10,11 +10,11 @@ import type { VSCodePaths } from "./vscode.js";
 
 export type Theme = "light" | "dark";
 
-// Catppuccin, matching the vhs tapes' Catppuccin Mocha, so the CLI
-// recordings and editor shots read as one visual family on the docs site.
+// The stock themes: a themed editor reads as branding the docs don't own,
+// and defaults are what most readers' own VS Code looks like.
 const themeNames: Record<Theme, string> = {
-  light: "Catppuccin Latte",
-  dark: "Catppuccin Mocha",
+  light: "Default Light Modern",
+  dark: "Default Dark Modern",
 };
 
 export interface LaunchOptions {

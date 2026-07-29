@@ -5,11 +5,12 @@
 # the regen workflow (which holds a write token) never pulls a floating
 # tag; re-pin to a released image once the API ships.
 #
-# Bump: docker pull docker.eventstore.com/kurrent-staging/kurrentdb:nightly
-#       docker images --digests docker.eventstore.com/kurrent-staging/kurrentdb
+# Bump (queries the registry live; a digest from an old local pull can
+# already be gone from the staging registry):
+#   docker buildx imagetools inspect docker.eventstore.com/kurrent-staging/kurrentdb:nightly
 services:
   kurrentdb:
-    image: docker.eventstore.com/kurrent-staging/kurrentdb@sha256:cf2532c9ccb4b7f68b7017fd4f3da3fdb925b28389067051ea51505de41dd91a
+    image: docker.eventstore.com/kurrent-staging/kurrentdb@sha256:02ae09db9a4218e1c22cd5c731bf09efb8a0351005038fece0feabce6da8f529
     ports:
       - "2113:2113"
     environment:

@@ -3,6 +3,8 @@ title: Deploy your first projection
 description: Deploy a locally developed projection to a KurrentDB server, see the plan before it applies, and check the result with gaffer status.
 ---
 
+import ThemeImage from '../../../components/ThemeImage.astro';
+
 Deploying installs a projection on a KurrentDB server, where it runs continuously against the database's events. This page takes the `order-count` projection from [Your first projection](./first-projection.md) and puts it live: `gaffer deploy` builds a plan, shows it, and applies it once you confirm.
 
 ## Before you start
@@ -49,7 +51,7 @@ Plan for local:
   1 to create
 ```
 
-<!-- TODO(media): vhs tape - gaffer deploy against a fresh local KurrentDB: plan, confirm, apply -->
+{/* TODO(media): vhs tape - gaffer deploy against a fresh local KurrentDB: plan, confirm, apply */}
 
 Confirm the `Apply 1 change to local?` prompt and gaffer applies the plan:
 
@@ -74,9 +76,9 @@ PROJECTION    STATE     PROGRESS   LAST DEPLOY   DEPLOYED VIA   DRIFT
 order-count   running   100%       2026-07-28    Gaffer         in sync
 ```
 
-<!-- TODO(media): vhs still - gaffer status table after the first deploy -->
+{/* TODO(media): vhs still - gaffer status table after the first deploy */}
 
-The projection is running on the server, and `in sync` means the deployed definition matches your local source (the other verdicts are covered in [Drift, history and rollback](./drift.md)). Name the projection (`gaffer status order-count`) for its detail: runtime state, position, who deployed it, and from which source revision.
+The projection is running on the server, and `in sync` means the deployed definition matches your local source (the other verdicts are covered in [Drift, history and rollback](./drift.mdx)). Name the projection (`gaffer status order-count`) for its detail: runtime state, position, who deployed it, and from which source revision.
 
 ## Deploy again
 
@@ -134,6 +136,13 @@ Confirm, and the update applies in place:
 ```
 
 A changed query is a logic change: the new code might have interpreted already-processed events differently (here, `maxCents` ignores any order counted before the change). Deploy keeps the accumulated state, continues from the projection's checkpoint, and flags what it did. Pass `--reset-on-logic-change` to rebuild from zero instead, reprocessing every event with the new logic. See [`gaffer deploy`](../cli/commands.md#gaffer-deploy) for the trade-offs.
+
+The [VS Code extension](../extension/vs-code.mdx#deployment-status) opens the same plan in an editor tab, with logic changes flagged and each update's diff a click away:
+
+<ThemeImage
+	base="/vscode/vscode-deploy-plan"
+	alt="The deploy plan in VS Code: updates flagged as logic changes, unchanged projections, and invalid projections with their compile errors inline"
+/>
 
 ## Clean up
 

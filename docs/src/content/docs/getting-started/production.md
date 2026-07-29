@@ -33,7 +33,7 @@ Don't rely on the server declaring itself. Set `production = true` on every envi
 
 ## One model across surfaces
 
-The target's name and tier are resolved in one place, so a server never rates a different tier depending on which tool reaches it. The [VS Code extension](../extension/vs-code.md) actions and the [MCP server](../cli/mcp.md#production-databases)'s deploy and operate tools share the CLI's resolution, and both add a stronger confirmation on top: a no-undo write against production asks you to type the environment or projection name, where the CLI prompt is a plain confirm.
+The target's name and tier are resolved in one place, so a server never rates a different tier depending on which tool reaches it. The [VS Code extension](../extension/vs-code.mdx) actions and the [MCP server](../cli/mcp.md#production-databases)'s deploy and operate tools share the CLI's resolution, and both add a stronger confirmation on top: a no-undo write against production asks you to type the environment or projection name, where the CLI prompt is a plain confirm.
 
 ## Next steps
 

@@ -1,0 +1,36 @@
+---
+// The light/dark pair of a captured screenshot, showing the variant that
+// matches the reader's Starlight theme. Two <img>s toggled by Starlight's
+// theme utilities (keyed on :root[data-theme]) rather than <picture> with
+// prefers-color-scheme: the site's theme toggle wins over the OS setting,
+// and real <img> elements keep the shot and its alt text in the
+// starlight-llms-txt output. The hidden variant still downloads; that cost
+// is accepted deliberately.
+interface Props {
+	/** Site-root path without the -light/-dark.webp suffix. */
+	base: string;
+	alt: string;
+	width?: number;
+	height?: number;
+}
+const { base, alt, width = 1280, height = 800 } = Astro.props;
+---
+
+<img
+	class="light:sl-hidden"
+	src={`${base}-dark.webp`}
+	{alt}
+	{width}
+	{height}
+	loading="lazy"
+	decoding="async"
+/>
+<img
+	class="dark:sl-hidden"
+	src={`${base}-light.webp`}
+	{alt}
+	{width}
+	{height}
+	loading="lazy"
+	decoding="async"
+/>

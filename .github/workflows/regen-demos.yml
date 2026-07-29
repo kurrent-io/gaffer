@@ -99,9 +99,9 @@ jobs:
       - name: Package the VS Code extension
         run: just editors package
 
-      # The screenshot KurrentDB is the digest-pinned staging nightly
-      # (tools/screenshots/docker-compose.yml); the registry requires
-      # authentication.
+      # The screenshot KurrentDB is the staging nightly - a floating tag,
+      # deliberately (see tools/screenshots/docker-compose.yml); the
+      # registry requires authentication.
       - name: Log in to the staging registry
         env:
           REGISTRY_USER: ${{ secrets.CLOUDSMITH_CICD_USER }}

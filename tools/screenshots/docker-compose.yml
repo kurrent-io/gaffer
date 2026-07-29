@@ -1,16 +1,17 @@
 # The screenshot harness's KurrentDB. The staging nightly rather than a
 # released version: the deploy-ledger metadata API the history shots show
 # (deploy/rollback attribution, the branch-back rail) is unreleased, and a
-# released server degrades history to hash-only entries. Digest-pinned so
-# the regen workflow (which holds a write token) never pulls a floating
-# tag; re-pin to a released image once the API ships.
+# released server degrades history to hash-only entries.
 #
-# Bump (queries the registry live; a digest from an old local pull can
-# already be gone from the staging registry):
-#   docker buildx imagetools inspect docker.eventstore.com/kurrent-staging/kurrentdb:nightly
+# The floating tag is a deliberate exception to the repo's pin-everything
+# discipline: the staging registry drops nightly manifests within days, so
+# a digest pin means re-pinning before every regen dispatch (the first run
+# failed exactly that way). The image is the database the CLI dials during
+# capture, not code executing under the workflow's write token. Replace
+# with a pinned released image once the metadata API ships.
 services:
   kurrentdb:
-    image: docker.eventstore.com/kurrent-staging/kurrentdb@sha256:02ae09db9a4218e1c22cd5c731bf09efb8a0351005038fece0feabce6da8f529
+    image: docker.eventstore.com/kurrent-staging/kurrentdb:nightly
     ports:
       - "2113:2113"
     environment:

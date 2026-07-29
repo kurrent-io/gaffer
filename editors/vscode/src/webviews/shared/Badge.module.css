@@ -9,5 +9,8 @@
 }
 .warn {
 	background: var(--vscode-inputValidation-warningBackground);
-	color: var(--gx-fg);
+	/* The paired token: themes that tint the background set the matching
+	   foreground (Catppuccin pairs peach with near-black). --gx-fg only
+	   happens to work on themes that leave both unset. */
+	color: var(--vscode-inputValidation-warningForeground, var(--gx-fg));
 }

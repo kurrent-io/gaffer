@@ -2,7 +2,12 @@
    (scrolls), the detail panel down the right spanning both rows. Nothing on
    the root itself scrolls. */
 .root {
-	--panel-width: clamp(300px, 32%, 380px);
+	/* The panel takes the width its content wants, up to a cap, at the
+	   timeline's expense - so the action row keeps to one line where
+	   there's room instead of wrapping inside a fixed column. The panel's
+	   own min-width holds the floor, and wrapping remains the fallback
+	   past the cap. */
+	--panel-width: fit-content(420px);
 	--header-height: 2.6em;
 	padding: 1.1em 1.3em;
 	display: grid;

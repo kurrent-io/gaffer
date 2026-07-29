@@ -104,8 +104,8 @@ jobs:
       # authentication.
       - name: Log in to the staging registry
         env:
-          REGISTRY_USER: ${{ secrets.KURRENT_STAGING_REGISTRY_USER }}
-          REGISTRY_TOKEN: ${{ secrets.KURRENT_STAGING_REGISTRY_TOKEN }}
+          REGISTRY_USER: ${{ secrets.CLOUDSMITH_CICD_USER }}
+          REGISTRY_TOKEN: ${{ secrets.CLOUDSMITH_CICD_TOKEN }}
         run: echo "$REGISTRY_TOKEN" | docker login docker.eventstore.com -u "$REGISTRY_USER" --password-stdin
 
       - name: Start KurrentDB for the live panels

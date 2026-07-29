@@ -7,7 +7,7 @@ import { join } from "node:path";
 // the default stays the canonical localhost form; GAFFER_SCREENSHOTS_DB
 // exists for iterating inside a devcontainer, where the compose port binds
 // on the docker host (172.17.0.1), not the container's localhost.
-const connection =
+export const connection =
   process.env.GAFFER_SCREENSHOTS_DB ?? "kurrentdb://localhost:2113?tls=false";
 const localEnv = `[env.local]
 connection = ${JSON.stringify(connection)}

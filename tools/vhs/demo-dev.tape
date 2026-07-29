@@ -1,9 +1,16 @@
 # Demo recording for cli/README.md.
 # Regenerate from the demo/ directory with
-#   vhs ../tools/vhs/demo-dev.tape
+#   VHS_NO_SANDBOX=1 vhs ../tools/vhs/demo-dev.tape  # NO_SANDBOX needed in a devcontainer only
 # or via the "Regenerate demo recordings" workflow on GitHub.
 
 Output ../assets/demo-dev.gif
+
+Set FontSize 14
+Set Width 1200
+Set Height 700
+Set Padding 20
+Set TypingSpeed 50ms
+Set Theme "Catppuccin Mocha"
 
 # Suppress the first-run telemetry disclosure banner so it doesn't
 # appear in the recording. CI runs in a fresh environment each time,
@@ -15,13 +22,6 @@ Env GAFFER_NO_UPDATE_CHECK "1"
 # and render output unstyled, so force a truecolor profile.
 Env CLICOLOR_FORCE "1"
 Env COLORTERM "truecolor"
-
-Set FontSize 14
-Set Width 1200
-Set Height 700
-Set Padding 20
-Set TypingSpeed 50ms
-Set Theme "Catppuccin Mocha"
 
 # Clean, consistent prompt across all demo recordings.
 Hide

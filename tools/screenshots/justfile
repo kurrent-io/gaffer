@@ -19,7 +19,12 @@ capture *args:
 publish:
     pnpm exec tsx src/publish.ts
 
-# Start the digest-pinned KurrentDB the live-panel scenarios seed against.
+# Build the seeded overlay workspace the vhs deploy tapes record from
+# (partial seed: a create and two updates left for the deploy tape's plan).
+prepare-tapes:
+    pnpm exec tsx src/prepare-workspace.ts
+
+# Start the KurrentDB the live-panel scenarios seed against.
 db-up:
     docker compose -f docker-compose.yml up -d --wait
 

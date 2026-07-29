@@ -51,8 +51,6 @@ Plan for local:
   1 to create
 ```
 
-{/* TODO(media): vhs tape - gaffer deploy against a fresh local KurrentDB: plan, confirm, apply */}
-
 Confirm the `Apply 1 change to local?` prompt and gaffer applies the plan:
 
 ```
@@ -62,6 +60,8 @@ Confirm the `Apply 1 change to local?` prompt and gaffer applies the plan:
 ```
 
 Validation runs before anything is written: deploy compiles each projection it would create or update, and refuses the whole run if any won't run on the server. A broken projection can't leave the set half-applied.
+
+![gaffer deploy showing its plan, asking to confirm, then applying: created and updated projections with a final tally](/demo-deploy.gif)
 
 ## See it running
 
@@ -76,7 +76,7 @@ PROJECTION    STATE     PROGRESS   LAST DEPLOY   DEPLOYED VIA   DRIFT
 order-count   running   100%       2026-07-28    Gaffer         in sync
 ```
 
-{/* TODO(media): vhs still - gaffer status table after the first deploy */}
+![The gaffer status table after a deploy: every projection running and in sync, with its deploy date and tool](/demo-status.png)
 
 The projection is running on the server, and `in sync` means the deployed definition matches your local source (the other verdicts are covered in [Drift, history and rollback](./drift.mdx)). Name the projection (`gaffer status order-count`) for its detail: runtime state, position, who deployed it, and from which source revision.
 

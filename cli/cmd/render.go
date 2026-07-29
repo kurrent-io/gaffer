@@ -189,7 +189,10 @@ func (tw *textWriter) blank() {
 const (
 	glyphError   = "✗"
 	glyphWarning = "⚠"
-	glyphInfo    = "ⓘ"
+	// U+2139 INFORMATION SOURCE, not the enclosed ⓘ: the enclosed form is
+	// missing from common monospace fonts (JetBrains Mono, DejaVu Sans
+	// Mono) and renders as tofu in terminals using them.
+	glyphInfo    = "ℹ"
 )
 
 // markError / markWarning / markInfo render the severity glyph in its tint (red /

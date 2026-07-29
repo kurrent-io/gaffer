@@ -65,7 +65,10 @@ export async function ensurePinnedExtensions(
   const paths: string[] = [];
   for (const ext of pin.extensions) {
     const dest = join(cacheRoot, `${ext.id}-${ext.version}.vsix`);
-    if (!(await exists(dest))) {
+    // Re-verify the cache every call, not just on download: an interrupted
+    // download leaves a file that exists but was never checked, and these
+    // install as extension code.
+    if (!(await exists(dest)) || (await sha256Of(dest)) !== ext.sha256) {
       console.log(`downloading extension ${ext.id} ${ext.version}`);
       await downloadVerified(ext.url, ext.sha256, dest);
     }

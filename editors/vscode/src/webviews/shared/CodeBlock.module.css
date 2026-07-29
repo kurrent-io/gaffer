@@ -1,7 +1,11 @@
 .code {
 	font-family: var(--gx-mono);
-	white-space: pre;
-	overflow-x: auto;
+	/* pre-wrap, not pre: diagnostics carry long single lines (quirk
+	   messages), and wrapping in place beats a horizontal scroll that
+	   reads as clipped. Frame alignment survives - only overlong lines
+	   fold. */
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 	padding: 0.7em 0.9em;
 	background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.1));
 	border-radius: 4px;

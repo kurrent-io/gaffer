@@ -9,7 +9,12 @@
 	cursor: pointer;
 }
 .btn:disabled {
-	opacity: 0.5;
+	/* Not whole-element opacity: half-strength label over a still-tinted
+	   background loses contrast on light themes. An untinted pill with the
+	   theme's disabled foreground stays legible everywhere. */
+	background: transparent;
+	border-color: var(--vscode-disabledForeground, var(--gx-muted));
+	color: var(--vscode-disabledForeground, var(--gx-muted));
 	cursor: default;
 }
 

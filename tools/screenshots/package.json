@@ -7,7 +7,8 @@
   "scripts": {
     "capture": "tsx src/capture.ts",
     "check": "prettier --check . && tsc --noEmit",
-    "fix": "prettier --write ."
+    "fix": "prettier --write .",
+    "publish-shots": "tsx src/publish.ts"
   },
   "engines": {
     "node": ">=22"
@@ -16,6 +17,7 @@
     "@types/node": "^25.9.1",
     "playwright-core": "^1.57.0",
     "prettier": "^3.9.6",
+    "sharp": "^0.35.3",
     "tsx": "^4.20.6",
     "typescript": "^6.0.3"
   }

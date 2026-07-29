@@ -13,6 +13,12 @@ fix:
 capture *args:
     pnpm exec tsx src/capture.ts {{args}}
 
+# Encode captured shots into docs/public/vscode/ as WebP, pruning stale
+# frames. Separate from capture so iteration runs never touch the committed
+# media by accident.
+publish:
+    pnpm exec tsx src/publish.ts
+
 # Remove captured output. The verified VS Code download survives; drop it
 # with clean-cache when the pin changes underneath you.
 clean:

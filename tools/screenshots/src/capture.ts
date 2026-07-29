@@ -3,8 +3,11 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { launchVSCode, type Theme } from "./harness.js";
+import type { Page } from "playwright-core";
+
+import { launchVSCode, runCommand, type Theme } from "./harness.js";
 import { scenarios } from "./scenarios.js";
+import { seedDeployState } from "./seed.js";
 import { ensureVSCode, installVsix } from "./vscode.js";
 import { overlayDemoWorkspace } from "./workspace.js";
 
@@ -35,6 +38,26 @@ async function vsixPath(): Promise<string> {
     throw new Error(`${path} not found - run \`just editors package\` first`);
   });
   return path;
+}
+
+// Scenarios share a window per theme, so each must leave no set dressing for
+// the next shot: tabs (webview panels included), the bottom panel, and any
+// debug session all go. Keybindings, not palette text: a keybinding whose
+// context doesn't hold is a no-op, where a palette miss runs some other
+// command.
+async function resetWindow(page: Page) {
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Shift+F5"); // stop debug; no-op when idle
+  await page.waitForTimeout(1_000);
+  await page.keyboard.press("Control+KeyK");
+  await page.keyboard.press("Control+KeyW"); // close all editors (chord)
+  await page.waitForTimeout(500);
+  // Only a toggle command exists for the panel, so close it only when a
+  // scenario left it open.
+  if (await page.locator(".part.panel").isVisible()) {
+    await runCommand(page, "View: Toggle Panel Visibility");
+    await page.waitForTimeout(500);
+  }
 }
 
 async function main(): Promise<void> {
@@ -76,6 +99,12 @@ async function main(): Promise<void> {
       join(staging, "install-udd"),
     );
 
+    // Server state persists across the theme relaunches, so seed once. The
+    // workspace edits (the drifted projection) equally serve both themes.
+    if (selected.some((s) => s.needsDatabase)) {
+      await seedDeployState(repoRoot, workspace);
+    }
+
     for (const theme of ["light", "dark"] as Theme[]) {
       // A fresh user-data-dir per theme: the theme is baked into the
       // settings before launch, and no state leaks between runs.
@@ -93,7 +122,8 @@ async function main(): Promise<void> {
         pathPrepend: [join(repoRoot, "cli")],
       });
       try {
-        for (const scenario of selected) {
+        for (const [i, scenario] of selected.entries()) {
+          if (i > 0) await resetWindow(session.page);
           console.log(`capturing ${scenario.name} (${theme})`);
           try {
             await scenario.run(session.page);

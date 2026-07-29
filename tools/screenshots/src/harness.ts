@@ -105,10 +105,51 @@ export async function launchVSCode(opts: LaunchOptions): Promise<Session> {
   // The workbench element lands before the explorer and keybinding service
   // are ready to take input; give the shell a beat.
   await page.waitForTimeout(3_000);
-  // Disabling chat leaves its (now empty) secondary side bar behind.
-  await runCommand(page, "View: Close Secondary Side Bar");
-  await page.waitForTimeout(500);
+  // Disabling chat leaves its (now empty) secondary side bar behind. Only
+  // a toggle command exists, so check the bar is actually open first.
+  if (await page.locator(".part.auxiliarybar").isVisible()) {
+    await runCommand(page, "View: Toggle Secondary Side Bar Visibility");
+    await page.waitForTimeout(500);
+  }
   return { app, page };
+}
+
+/**
+ * Answer an already-open quick input: type the filter, wait until the
+ * focused row is the one asked for, accept. Enter accepts whatever row is
+ * focused, and a hidden or disabled command silently falls through to the
+ * top fuzzy match - some other command - so a mismatch fails loudly
+ * instead. The wait also covers live QuickPicks that open on a loading
+ * placeholder row and repaint when their data lands.
+ */
+export async function answerQuickInput(
+  page: Page,
+  text: string,
+): Promise<void> {
+  await page.waitForSelector(".quick-input-widget .input", {
+    state: "visible",
+    timeout: 15_000,
+  });
+  await page.keyboard.type(text, { delay: 20 });
+  const focused = page
+    .locator(".quick-input-widget .monaco-list-row.focused")
+    .first();
+  try {
+    await focused
+      .filter({ hasText: new RegExp(escapeRegExp(text), "i") })
+      .waitFor({ timeout: 10_000 });
+  } catch {
+    const label = (await focused.getAttribute("aria-label")) ?? "(no row)";
+    await page.keyboard.press("Escape");
+    throw new Error(
+      `quick input for ${JSON.stringify(text)} focused ${JSON.stringify(label)} instead`,
+    );
+  }
+  await page.keyboard.press("Enter");
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // Press a quick-input chord and wait for the widget before typing, so keys
@@ -119,12 +160,7 @@ async function quickInput(
   text: string,
 ): Promise<void> {
   await page.keyboard.press(chord);
-  await page.waitForSelector(".quick-input-widget .input", {
-    state: "visible",
-    timeout: 10_000,
-  });
-  await page.keyboard.type(text, { delay: 20 });
-  await page.keyboard.press("Enter");
+  await answerQuickInput(page, text);
 }
 
 /** Open a workspace file through quick open, the way a user would. */
@@ -136,8 +172,8 @@ export async function openFile(page: Page, name: string): Promise<void> {
 }
 
 /**
- * Run a command through the command palette. Enter accepts the top fuzzy
- * match, so pass the command's full title, not a fragment.
+ * Run a command through the command palette. The focused match must carry
+ * the given text, so pass the command's full title, not a fragment.
  */
 export async function runCommand(page: Page, command: string): Promise<void> {
   await quickInput(page, "Control+Shift+P", command);

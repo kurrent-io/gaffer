@@ -1,0 +1,14 @@
+{
+  "version": "1.130.0",
+  "sha256": {
+    "linux-x64": "7d6ad3d3a78ac4551c14631f78d7e03c85282ab505c3ce8b1bc04e01fafe88ea"
+  },
+  "extensions": [
+    {
+      "id": "tombi-toml.tombi",
+      "version": "1.2.4",
+      "url": "https://open-vsx.org/api/tombi-toml/tombi/linux-x64/1.2.4/file/tombi-toml.tombi-1.2.4@linux-x64.vsix",
+      "sha256": "0bef01fd83b5bb70083f5b6fdc18a5f658e1d945df0dfae660f6d9ca48447683"
+    }
+  ]
+}

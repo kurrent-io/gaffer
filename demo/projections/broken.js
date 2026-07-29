@@ -7,5 +7,4 @@ fromCategory('order')
     OrderPlaced(state, event) {
       state.count++
       return state
-    // missing closing brace
   })

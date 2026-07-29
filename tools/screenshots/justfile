@@ -1,0 +1,37 @@
+default:
+    @just --list
+
+# Format check + type check.
+check:
+    pnpm run check
+
+# Format.
+fix:
+    pnpm run fix
+
+# Capture VS Code screenshots (needs a display; wrap with xvfb-run headless).
+capture *args:
+    pnpm exec tsx src/capture.ts {{args}}
+
+# Encode captured shots into docs/public/vscode/ as WebP, pruning stale
+# frames. Separate from capture so iteration runs never touch the committed
+# media by accident.
+publish:
+    pnpm exec tsx src/publish.ts
+
+# Start the digest-pinned KurrentDB the live-panel scenarios seed against.
+db-up:
+    docker compose -f docker-compose.yml up -d --wait
+
+# Stop it.
+db-down:
+    docker compose -f docker-compose.yml down
+
+# Remove captured output. The verified VS Code download survives; drop it
+# with clean-cache when the pin changes underneath you.
+clean:
+    rm -rf out
+
+# Remove the downloaded VS Code build.
+clean-cache:
+    rm -rf .cache

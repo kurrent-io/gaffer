@@ -9,6 +9,7 @@ packages:
   - 'editors/vscode/tsserver-plugin'
   - 'telemetry'
   - 'telemetry/worker'
+  - 'tools/screenshots'
   - 'types'
 
 allowBuilds:

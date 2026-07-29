@@ -34,6 +34,7 @@ assets/                    # Banners and demo GIFs referenced from repo / packag
 tools/
   fixtures/                # Shared JSON test fixtures (sources, state, callbacks, etc.)
   kurrentdb/               # Docker compose for integration tests
+  screenshots/             # Playwright/electron VS Code screenshot harness for docs media
   vhs/                     # VHS tape scripts for regenerating recordings under assets/
 ```
 

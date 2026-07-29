@@ -19,9 +19,9 @@ Verify:
 gaffer version
 ```
 
-If you install the [VS Code extension](../extension/vs-code.md) first and skip this step, the extension surfaces a status bar prompt that will run the install for you.
+If you install the [VS Code extension](../extension/vs-code.mdx) first and skip this step, the extension surfaces a status bar prompt that will run the install for you.
 
 ## Integrations
 
-- **VS Code extension**: run/debug lenses on `gaffer.toml`, breakpoint debugging, and projection-API autocomplete. See [the extension](../extension/vs-code.md).
+- **VS Code extension**: run/debug lenses on `gaffer.toml`, breakpoint debugging, and projection-API autocomplete. See [the extension](../extension/vs-code.mdx).
 - **AI assistants** (Claude Code, Cursor, Continue, Copilot): point them at `gaffer mcp` for scaffolding, debugging, and the projection API. See [MCP](../cli/mcp.md).

@@ -3,7 +3,7 @@ title: Other editors
 description: Attach Neovim, Helix, Emacs, or any DAP-aware editor to gaffer's debug server to step through projections.
 ---
 
-Attach Neovim, Helix, Emacs, or any other DAP-aware editor to gaffer's debug server to step through projections from the editor of your choice (VS Code has its own [extension](./vs-code.md)).
+Attach Neovim, Helix, Emacs, or any other DAP-aware editor to gaffer's debug server to step through projections from the editor of your choice (VS Code has its own [extension](./vs-code.mdx)).
 
 ## Start the DAP server
 

@@ -3,7 +3,7 @@ title: Environments and targets
 description: Model your KurrentDB targets as environments in gaffer.toml, select them with --env, and keep each one's credentials in .env files.
 ---
 
-An environment is a named KurrentDB target in `gaffer.toml`. Every command that touches a server (`deploy`, `status`, `diff`, and the rest) resolves one, so growing a project past the single local database from [Deploy your first projection](./deploy.md) means adding blocks, not changing commands.
+An environment is a named KurrentDB target in `gaffer.toml`. Every command that touches a server (`deploy`, `status`, `diff`, and the rest) resolves one, so growing a project past the single local database from [Deploy your first projection](./deploy.mdx) means adding blocks, not changing commands.
 
 ## One block per target
 

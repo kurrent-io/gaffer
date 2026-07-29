@@ -3,6 +3,8 @@ title: VS Code
 description: Install the KurrentDB Gaffer VS Code extension for inline run/debug, breakpoints, state inspection, and projection-API autocomplete.
 ---
 
+import ThemeImage from '../../../components/ThemeImage.astro';
+
 The **KurrentDB Gaffer** extension wires gaffer's debugger, language server, MCP server, and tsserver plugin into VS Code. Run and debug projections from `gaffer.toml`, step through handlers, inspect state as it evolves, see how each environment compares to what's deployed, and get type-aware autocomplete for projection builtins.
 
 ## Install
@@ -25,6 +27,11 @@ Once `gaffer.toml` exists, the extension adds CodeLenses above each projection b
 
 Set breakpoints in the projection JS file. Standard VS Code debug controls work: step over, into, out, continue. The call stack and scopes views populate with the projection's JS frames and variables.
 
+<ThemeImage
+	base="/vscode/vscode-debug-paused"
+	alt="Paused at a breakpoint inside a handler: the call stack and breakpoints in the debug side bar, and the Gaffer panel showing the current event and per-stream state"
+/>
+
 `Gaffer: Debug` is also available from the command palette: it lists every projection in the workspace, then prompts for a source (a fixture or a configured environment) when there's more than one.
 
 ## Deployment status
@@ -37,6 +44,11 @@ When an environment needs authentication, the summary is replaced by a **Sign in
 
 Leading each block, a **Deploy** action opens the deploy plan for the whole project against that environment in an editor tab. It shows what a deploy would create, update, rebuild, or recreate, alongside anything invalid. The plan flags the warnings worth seeing first: a logic change, a faulted projection, a rebuild that re-emits, a definition changed outside gaffer, or a `[database_config]` divergence. An updated projection has a **Diff** action that opens its deployed-vs-local diff, and an invalid one shows its compile error inline. The plan opens read-only (a `gaffer deploy --dry-run`). It appears once the environment's status has resolved and you're signed in, and only when your installed CLI supports deploying - an extension newer than its `gaffer` leaves the action out rather than offering one that fails.
 
+<ThemeImage
+	base="/vscode/vscode-deploy-plan"
+	alt="A deploy plan in an editor tab: updates flagged as logic changes with Diff actions, unchanged projections, and invalid projections with their compile errors inline"
+/>
+
 Deploying is confirmed natively, front-loading production. The confirm tier follows the target: silent for non-production with no rebuild, a modal accept when production or a rebuild is involved, and typing the environment name for a production rebuild. A blocked plan can't deploy until it's fixed. Off production, a checkbox deploys the valid projections and skips the rest. The apply streams each projection's result into the plan in place, then a summary.
 
 The summary appears above bare-key `[env.name]` headers. An environment declared with a quoted key (`[env."my env"]`) has no summary line.
@@ -47,6 +59,11 @@ Each `[[projection]]` header carries a row of small dots, one per environment in
 
 Hovering the header lists those environments one per line, each with its drift verdict and runtime state (running, stopped, aborted, or faulted). An environment that needs sign-in or couldn't be read shows that reason in place of the verdict; the **Sign in** action lives on the `[env.<name>]` block above. Like the environment summary, this is read-only, reads on open and save, and stays current the same way.
 
+<ThemeImage
+	base="/vscode/vscode-toml-lenses"
+	alt="gaffer.toml with Debug, Debug from, and Manage CodeLenses on each projection, per-projection status dots, and the environment's deploy status summary"
+/>
+
 ## Projection actions
 
 Each `[[projection]]` header also carries a **Manage...** lens that opens a menu of actions for that projection, grouped by environment. Every action targets an environment, so the lens appears only once the config declares at least one. Each environment is a heading with its actions beneath, in the order they're declared in `gaffer.toml`, the default one labelled.
@@ -54,6 +71,11 @@ Each `[[projection]]` header also carries a **Manage...** lens that opens a menu
 **Deploy** opens the deploy plan for just this projection against the chosen environment, in the same editor-tab webview as the whole-project [Deploy](#deployment-status) lens, scoped to the one projection. Review the plan, then deploy it behind the same native confirm. A single-projection plan resolves its own change (create, update, or recreate), so a rebuild from zero is bundled into this one action rather than needing a separate trigger.
 
 **History** opens the projection's deploy timeline on the chosen environment in an editor tab, newest first. Each version carries its operation, content hash, actor, and time, drawn with the same graph as `gaffer history` in the terminal. The graph reads run state as a node (enabled, disabled, or deleted), detours the spine into a lane for a revert, and marks a terminus where a recreate began. Selecting a version opens its detail beside the timeline, where its actions live: diff it against the previous version, diff it against your local source (both open the diff editor), or roll back to it. Rolling back rewrites the live query to that version behind a native confirm - silent off-production, a modal accept on production. The state is kept and your local files are left untouched, so they show as drift until you update them.
+
+<ThemeImage
+	base="/vscode/vscode-history-timeline"
+	alt="A projection's deploy timeline: deploy, disable, enable, and rollback versions on a graph, with the selected rollback's metadata and actions in a detail panel"
+/>
 
 **Diff against deployed** opens VS Code's diff editor with the projection's local source against what's deployed on the chosen environment. You see exactly what a deploy would change. Both sides are read-only, and the diff never deploys.
 
@@ -80,6 +102,11 @@ A dedicated **Gaffer** panel opens at the bottom of the editor when a session st
 - **Status**: connection phase (connecting / catching-up / caught-up / disconnected), total events processed, a count of distinct runtime quirks seen, and a skipped-by-reason rollup. Hidden while paused at a breakpoint. If a run drops on a connection failure, the reason appears in this panel and as a notification.
 - **Step**: the event that triggered the current pause, plus a diff of state before and after the handler ran. It also lists what the handler produced as it ran: logs, emitted events, and any runtime quirks that fired. Visible only while paused.
 - **State**: current `state`, then `result` (V1 transformed state, V2 post-handler state), then shared state (for biState projections), then per-partition slices. Always visible.
+
+<ThemeImage
+	base="/vscode/vscode-run-status"
+	alt="The Gaffer panel after a fixture run: the Status view's run summary and the State view's per-stream state slices"
+/>
 
 ## Autocomplete for projection builtins
 

@@ -24,7 +24,7 @@ The `gaffer` CLI scaffolds projections, runs them locally against fixtures or li
 | [`gaffer delete <projection>`](./commands.md#gaffer-delete) | Delete a deployed projection with its state and checkpoint streams (`--delete-emitted` also removes emitted streams). |
 | [`gaffer auth`](./commands.md#gaffer-auth)           | Sign in to an environment's OAuth identity provider and store the token. See [`[env.<name>.oauth]`](../reference/gaffer-toml.md#envnameoauth). |
 | [`gaffer mcp`](./commands.md#gaffer-mcp)             | Start the gaffer MCP server over stdio. See [MCP](./mcp.md).                                                                  |
-| [`gaffer lsp`](./commands.md#gaffer-lsp)             | Start the gaffer LSP server over stdio. Used by the [VS Code extension](../extension/vs-code.md).                             |
+| [`gaffer lsp`](./commands.md#gaffer-lsp)             | Start the gaffer LSP server over stdio. Used by the [VS Code extension](../extension/vs-code.mdx).                             |
 | [`gaffer config`](./commands.md#gaffer-config)       | Manage user-level configuration (telemetry opt-out, anonymous identity).                                                      |
 | [`gaffer version`](./commands.md#gaffer-version)     | Print the gaffer version.                                                                                                     |
 

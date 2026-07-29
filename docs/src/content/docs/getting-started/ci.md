@@ -24,7 +24,7 @@ case $? in
 esac
 ```
 
-Run it on every merge and drift never accumulates. The gate is cheap when in sync, and the apply step re-plans from scratch, so nothing is carried between the two calls. Add `--json` for a machine-readable plan; `gaffer deploy --dry-run --json` emits a verdict envelope (`in-sync`, `deployable`, or `blocked`) with the per-projection plan. See [Drift, history and rollback](./drift.md) for what counts as drift.
+Run it on every merge and drift never accumulates. The gate is cheap when in sync, and the apply step re-plans from scratch, so nothing is carried between the two calls. Add `--json` for a machine-readable plan; `gaffer deploy --dry-run --json` emits a verdict envelope (`in-sync`, `deployable`, or `blocked`) with the per-projection plan. See [Drift, history and rollback](./drift.mdx) for what counts as drift.
 
 ## Non-interactive mode
 
@@ -46,7 +46,7 @@ The [exit-code contract](../cli/index.md#exit-codes) is stable for scripts:
 
 ## Pipeline attribution
 
-Every create and update lands in the [deploy ledger](./drift.md#the-deploy-ledger-and-history) with an actor and source revision. The defaults (the connection's user, the checkout's git commit) describe the pipeline poorly, so set the [`GAFFER_ACTOR` and `GAFFER_REVISION`](../cli/index.md#common-flags) environment variables. The actor becomes the pipeline identity (`ci@deploys`), and the revision the canonical commit, which matters when the checkout's HEAD is a synthetic PR merge commit.
+Every create and update lands in the [deploy ledger](./drift.mdx#the-deploy-ledger-and-history) with an actor and source revision. The defaults (the connection's user, the checkout's git commit) describe the pipeline poorly, so set the [`GAFFER_ACTOR` and `GAFFER_REVISION`](../cli/index.md#common-flags) environment variables. The actor becomes the pipeline identity (`ci@deploys`), and the revision the canonical commit, which matters when the checkout's HEAD is a synthetic PR merge commit.
 
 ## Authentication
 

@@ -1,0 +1,25 @@
+# The screenshot harness's KurrentDB. The staging nightly rather than a
+# released version: the deploy-ledger metadata API the history shots show
+# (deploy/rollback attribution, the branch-back rail) is unreleased, and a
+# released server degrades history to hash-only entries. Digest-pinned so
+# the regen workflow (which holds a write token) never pulls a floating
+# tag; re-pin to a released image once the API ships.
+#
+# Bump: docker pull docker.eventstore.com/kurrent-staging/kurrentdb:nightly
+#       docker images --digests docker.eventstore.com/kurrent-staging/kurrentdb
+services:
+  kurrentdb:
+    image: docker.eventstore.com/kurrent-staging/kurrentdb@sha256:cf2532c9ccb4b7f68b7017fd4f3da3fdb925b28389067051ea51505de41dd91a
+    ports:
+      - "2113:2113"
+    environment:
+      - KURRENTDB_CLUSTER_SIZE=1
+      - KURRENTDB_INSECURE=true
+      - KURRENTDB_RUN_PROJECTIONS=All
+      - KURRENTDB_START_STANDARD_PROJECTIONS=true
+      - KURRENTDB_MEM_DB=true
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:2113/gossip || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 10

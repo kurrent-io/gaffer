@@ -1,8 +1,10 @@
 name: Regenerate demo recordings
 
-# Manually regenerates the VHS demo recordings under assets/ and opens
-# a PR with the updated GIFs. Run from the Actions tab when the CLI
-# output a recording depends on has changed.
+# Manually regenerates the docs media and opens a PR: the VHS demo
+# recordings under assets/ and docs/public/, and the VS Code extension
+# screenshots under docs/public/vscode/ (tools/screenshots). Run from the
+# Actions tab when CLI output or an extension surface a recording depends
+# on has changed.
 
 on:
   workflow_dispatch:
@@ -19,7 +21,7 @@ jobs:
   regen:
     name: Regenerate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -87,20 +89,51 @@ jobs:
             vhs "$tape"
           done
 
+      # ---- VS Code extension screenshots (tools/screenshots) ----
+      # xvfb and the shared libraries VS Code's Electron needs headless.
+      # The harness itself pins and checksum-verifies its VS Code build and
+      # companion extensions (tools/screenshots/src/vscode-pin.json).
+      - name: Install xvfb and VS Code libraries
+        run: sudo apt-get install -y xvfb libnss3 libgtk-3-0 libgbm1 libasound2t64 libxkbfile1 libsecret-1-0
+
+      - name: Package the VS Code extension
+        run: just editors package
+
+      # The screenshot KurrentDB is the digest-pinned staging nightly
+      # (tools/screenshots/docker-compose.yml); the registry requires
+      # authentication.
+      - name: Log in to the staging registry
+        run: echo "${{ secrets.KURRENT_STAGING_REGISTRY_TOKEN }}" | docker login docker.eventstore.com -u "${{ secrets.KURRENT_STAGING_REGISTRY_USER }}" --password-stdin
+
+      - name: Start KurrentDB for the live panels
+        run: just screenshots db-up
+
+      - name: Capture VS Code screenshots
+        run: xvfb-run -a --server-args='-screen 0 1280x800x24' just screenshots capture
+
+      - name: Publish screenshots
+        run: just screenshots publish
+
+      - name: Stop KurrentDB
+        if: always()
+        run: just screenshots db-down
+
       - name: Open PR with updated recordings
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           commit-message: Regenerate demo recordings
           title: Regenerate demo recordings
           body: |
-            Regenerated demo recordings (under `assets/` and `docs/public/`)
+            Regenerated docs media (vhs recordings under `assets/` and
+            `docs/public/`, VS Code screenshots under `docs/public/vscode/`)
             via the
             [Regenerate demo recordings](https://github.com/${{ github.repository }}/actions/workflows/regen-demos.yml)
             workflow.
 
-            Review the rendered GIFs (not the binary diffs) before merging.
+            Review the rendered images (not the binary diffs) before merging.
           branch: regen-demos
           add-paths: |
             assets/*.gif
             docs/public/*.gif
+            docs/public/vscode/*.webp
           labels: documentation

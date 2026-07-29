@@ -94,7 +94,7 @@ jobs:
       # The harness itself pins and checksum-verifies its VS Code build and
       # companion extensions (tools/screenshots/src/vscode-pin.json).
       - name: Install xvfb and VS Code libraries
-        run: sudo apt-get install -y xvfb libnss3 libgtk-3-0 libgbm1 libasound2t64 libxkbfile1 libsecret-1-0
+        run: sudo apt-get update && sudo apt-get install -y xvfb libnss3 libgtk-3-0 libgbm1 libasound2t64 libxkbfile1 libsecret-1-0
 
       - name: Package the VS Code extension
         run: just editors package
@@ -103,7 +103,10 @@ jobs:
       # (tools/screenshots/docker-compose.yml); the registry requires
       # authentication.
       - name: Log in to the staging registry
-        run: echo "${{ secrets.KURRENT_STAGING_REGISTRY_TOKEN }}" | docker login docker.eventstore.com -u "${{ secrets.KURRENT_STAGING_REGISTRY_USER }}" --password-stdin
+        env:
+          REGISTRY_USER: ${{ secrets.KURRENT_STAGING_REGISTRY_USER }}
+          REGISTRY_TOKEN: ${{ secrets.KURRENT_STAGING_REGISTRY_TOKEN }}
+        run: echo "$REGISTRY_TOKEN" | docker login docker.eventstore.com -u "$REGISTRY_USER" --password-stdin
 
       - name: Start KurrentDB for the live panels
         run: just screenshots db-up

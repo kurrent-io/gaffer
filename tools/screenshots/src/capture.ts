@@ -92,8 +92,8 @@ async function main(): Promise<void> {
     );
     const extensionsDir = join(staging, "extensions");
     await mkdir(extensionsDir, { recursive: true });
-    // The gaffer extension under test, plus the pinned companions: the
-    // Catppuccin themes (matching the vhs tapes) and the TOML grammar.
+    // The gaffer extension under test, plus the pinned companions
+    // (currently the TOML grammar).
     for (const vsix of [
       await vsixPath(),
       ...(await ensurePinnedExtensions(join(packageRoot, ".cache"))),

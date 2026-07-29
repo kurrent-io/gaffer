@@ -8,7 +8,7 @@ import type { Page } from "playwright-core";
 import { launchVSCode, runCommand, type Theme } from "./harness.js";
 import { scenarios } from "./scenarios.js";
 import { seedDeployState } from "./seed.js";
-import { ensureVSCode, installVsix } from "./vscode.js";
+import { ensurePinnedExtensions, ensureVSCode, installVsix } from "./vscode.js";
 import { overlayDemoWorkspace } from "./workspace.js";
 
 const repoRoot = resolve(
@@ -92,12 +92,14 @@ async function main(): Promise<void> {
     );
     const extensionsDir = join(staging, "extensions");
     await mkdir(extensionsDir, { recursive: true });
-    installVsix(
-      vscode,
+    // The gaffer extension under test, plus the pinned companions: the
+    // Catppuccin themes (matching the vhs tapes) and the TOML grammar.
+    for (const vsix of [
       await vsixPath(),
-      extensionsDir,
-      join(staging, "install-udd"),
-    );
+      ...(await ensurePinnedExtensions(join(packageRoot, ".cache"))),
+    ]) {
+      installVsix(vscode, vsix, extensionsDir, join(staging, "install-udd"));
+    }
 
     // Server state persists across the theme relaunches, so seed once. The
     // workspace edits (the drifted projection) equally serve both themes.

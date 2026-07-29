@@ -167,14 +167,38 @@ export const scenarios: Scenario[] = [
         timeout: 60_000,
       });
       await expectActiveTab(page, "order-count.js");
-      // The variables side bar is the point of the shot; expand the Local
-      // scope so state and event are visible, then park the mouse so no
-      // hover tooltip photobombs the frame.
+      // Continue past the first event so the State panel has accumulated
+      // state to show, instead of sitting empty. The breakpoint re-arms per
+      // OrderPlaced event, so one continue lands on the next one; the
+      // paused-line check after fails loudly if the run drained instead.
+      await page.keyboard.press("F5");
+      await page.waitForTimeout(2_000);
+      await page.waitForSelector(".debug-top-stack-frame-line", {
+        timeout: 30_000,
+      });
+      // The variables side bar is the point of the shot; make sure the
+      // Local scope is expanded so state and event are visible. The click
+      // toggles, so only click when the variables aren't already showing.
       await runCommand(page, "View: Show Run and Debug");
-      await page
-        .locator(".debug-pane .monaco-list-row", { hasText: "Local" })
-        .first()
-        .click();
+      const stateVar = page
+        .locator(".debug-pane .monaco-list-row", { hasText: "state" })
+        .first();
+      if (!(await stateVar.isVisible().catch(() => false))) {
+        await page
+          .locator(".debug-pane .monaco-list-row", { hasText: "Local" })
+          .first()
+          .click();
+      }
+      // Expand the first per-stream slice in the Gaffer State view too, so
+      // the accumulated values show rather than a collapsed row. The State
+      // view is a webview, so search every frame for it.
+      for (const frame of page.frames()) {
+        const slice = frame.getByText("order-1").first();
+        if (await slice.isVisible().catch(() => false)) {
+          await slice.click();
+          break;
+        }
+      }
       // Park over the activity bar edge: mid-frame coords hover editor
       // text, and the debug variable hover is exactly the photobomb being
       // avoided.

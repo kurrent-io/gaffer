@@ -10,11 +10,11 @@ import type { VSCodePaths } from "./vscode.js";
 
 export type Theme = "light" | "dark";
 
-// Paired to the docs site's own light/dark look; the shot should not read as
-// alien on the page it lands in.
+// Catppuccin, matching the vhs tapes' Catppuccin Mocha, so the CLI
+// recordings and editor shots read as one visual family on the docs site.
 const themeNames: Record<Theme, string> = {
-  light: "Default Light Modern",
-  dark: "Default Dark Modern",
+  light: "Catppuccin Latte",
+  dark: "Catppuccin Mocha",
 };
 
 export interface LaunchOptions {

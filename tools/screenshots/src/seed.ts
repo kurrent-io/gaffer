@@ -53,14 +53,19 @@ export async function seedDeployState(
     await run("deploy", name, "--yes");
   }
 
-  // A comment is a canonical-query change, so this deploys as an update
-  // flagged "logic change" and mints a second content hash to roll back from.
-  console.log("seeding: order-count logic-change update");
+  // Pad order-count's timeline with lifecycle entries around the update:
+  // deploy, disable, deploy (logic change), enable, then the rollback below
+  // gives the history shot every entry kind worth showing. The comment
+  // append is a canonical-query change, so the second deploy is an update
+  // flagged "logic change" and mints the hash to roll back from.
+  console.log("seeding: order-count lifecycle + logic-change update");
+  await run("disable", "order-count", "--yes");
   await appendFile(
     join(workspace, "projections", "order-count.js"),
     "\n// track shipped totals next\n",
   );
   await run("deploy", "order-count", "--yes");
+  await run("enable", "order-count");
 
   console.log("seeding: order-count rollback");
   // --all, and the oldest deploy by kind: a re-used local DB accumulates

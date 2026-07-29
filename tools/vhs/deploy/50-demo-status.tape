@@ -14,6 +14,7 @@ Set FontSize 18
 Set Width 1600
 Set Height 360
 Set Padding 20
+Set Framerate 24
 Set TypingSpeed 50ms
 Set Theme "Catppuccin Mocha"
 

@@ -24,7 +24,7 @@ const initTemplate = `# gaffer.toml - projection toolkit config.
 
 # Environments are the targets you deploy and inspect projections against.
 # Each [env.<name>] is self-contained and carries its own connection.
-# Mark exactly one as default; it is used when --env is omitted.
+# Mark at most one as default; it is used when --env is omitted.
 # ${VAR} in a connection is resolved from the process environment and
 # .env / .env.<name> files, so no credentials need to be committed.
 # production = true opts an env into the production guard tier (louder

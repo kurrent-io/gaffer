@@ -1,9 +1,21 @@
 ---
 title: Other editors
-description: Attach Neovim, Helix, Emacs, or any DAP-aware editor to gaffer's debug server to step through projections.
+description: Wire Neovim, Helix, Emacs, or any LSP- or DAP-aware editor to gaffer's language and debug servers.
 ---
 
-Attach Neovim, Helix, Emacs, or any other DAP-aware editor to gaffer's debug server to step through projections from the editor of your choice (VS Code has its own [extension](./vs-code.mdx)).
+Attach Neovim, Helix, Emacs, or any other DAP-aware editor to gaffer's debug server to step through projections from the editor of your choice, and run its language server for lenses and deploy status (VS Code has its own [extension](./vs-code.mdx) that wires up both).
+
+## Language server
+
+`gaffer lsp` runs the language server the VS Code extension uses, over stdio - spawn it from any LSP client for a workspace containing `gaffer.toml`. Out of the box it serves code lenses on `gaffer.toml` and on each projection's entry JS, plus workspace symbols.
+
+The deploy-status surface - per-projection status, hover details, and the operate commands - is opt-in. Status reads dial your configured environments, so the server withholds that whole surface unless the client asks for it at initialization:
+
+```json
+{ "initializationOptions": { "statusLens": true } }
+```
+
+How to pass `initializationOptions` varies by client (most Neovim and Emacs LSP setups take an `init_options` key); without it, the server behaves as a plain toml lens server.
 
 ## Start the DAP server
 
@@ -32,6 +44,8 @@ Most DAP clients accept an attach configuration shaped like:
 ```
 
 Field names vary by editor. The `type` value is an editor-side identifier you choose; what matters on the wire is `request: attach` and the host/port pair.
+
+The server supports the DAP `restart` request, so a client that offers a restart action can re-run the projection without detaching and re-attaching.
 
 ## Neovim
 

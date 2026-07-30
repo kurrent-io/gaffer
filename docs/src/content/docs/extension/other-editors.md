@@ -3,13 +3,13 @@ title: Other editors
 description: Wire Neovim, Helix, Emacs, or any LSP- or DAP-aware editor to gaffer's language and debug servers.
 ---
 
-Attach Neovim, Helix, Emacs, or any other DAP-aware editor to gaffer's debug server to step through projections from the editor of your choice, and run its language server for lenses and deploy status (VS Code has its own [extension](./vs-code.mdx) that wires up both).
+Attach Neovim, Helix, Emacs, or any other DAP-aware editor to gaffer's debug server to step through projections from the editor of your choice. The language server adds lenses and deploy status (VS Code has its own [extension](./vs-code.mdx) that wires up both).
 
 ## Language server
 
-`gaffer lsp` runs the language server the VS Code extension uses, over stdio - spawn it from any LSP client for a workspace containing `gaffer.toml`. Out of the box it serves code lenses on `gaffer.toml` and on each projection's entry JS, plus workspace symbols.
+`gaffer lsp` runs the language server the VS Code extension uses, over stdio. Spawn it from any LSP client for a workspace containing `gaffer.toml`. Out of the box it serves code lenses on `gaffer.toml` and on each projection's entry JS, plus workspace symbols.
 
-The deploy-status surface - per-projection status, hover details, and the operate commands - is opt-in. Status reads dial your configured environments, so the server withholds that whole surface unless the client asks for it at initialization:
+The deploy-status surface (per-projection status, hover details, and the operate commands) is opt-in. Status reads dial your configured environments, so the server withholds that whole surface unless the client asks for it at initialization:
 
 ```json
 { "initializationOptions": { "statusLens": true } }

@@ -94,7 +94,7 @@ Each `[env.<name>]` block names a deploy target; credentials come from environme
 
 Gaffer ships with Language Server Protocol and Debug Adapter Protocol servers, plus a VS Code extension that wires them up automatically.
 
-- **VS Code** - install the [KurrentDB Gaffer extension](https://gaffer.kurrent.io/extension/vs-code/) for inline diagnostics, run/debug codelens above `gaffer.toml` projections, breakpoint debugging, and per-projection deploy status with deploy, history, and rollback actions.
+- **VS Code** - install the [KurrentDB Gaffer extension](https://gaffer.kurrent.io/extension/vs-code/) for inline diagnostics, run/debug codelens above `gaffer.toml` projections, breakpoint debugging, and per-projection deploy status, with deploy, history, and rollback actions inline.
 - **Other editors** - run `gaffer lsp` over stdio for LSP integration. See the [other editors guide](https://gaffer.kurrent.io/extension/other-editors/) for examples.
 
 ## AI agent integration

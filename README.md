@@ -57,7 +57,7 @@ When a projection works locally, point an environment in `gaffer.toml` at your c
 gaffer deploy --env staging
 ```
 
-Deploy plans first - create/update/skip per projection - and applies only what you confirm. From there, `gaffer status`, `gaffer diff`, and `gaffer history` track what's running against what's in the repo, and `gaffer rollback` steps back to any earlier version. See the [deploy walkthrough](https://gaffer.kurrent.io/getting-started/deploy/).
+Deploy plans first (create, update, or skip per projection) and applies only what you confirm. From there, `gaffer status`, `gaffer diff`, and `gaffer history` track what's running against what's in the repo, and `gaffer rollback` steps back to any earlier version. See the [deploy walkthrough](https://gaffer.kurrent.io/getting-started/deploy/).
 
 ## Packages
 

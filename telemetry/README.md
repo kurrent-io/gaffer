@@ -18,7 +18,7 @@ generated/     - outputs of `just telemetry build` (runs as part of `just init`)
   events.gen.go           (Go types, package `generated`)
   events.gen.ts           (TypeScript types)
 
-worker/        - (later) Cloudflare Worker that ingests envelopes, stitches
+worker/        - Cloudflare Worker that ingests envelopes, stitches
                  sessions, and forwards to PostHog. Lives here so it's
                  colocated with the schema it consumes.
 ```

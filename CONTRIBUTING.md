@@ -51,6 +51,9 @@ just db-down            # stop KurrentDB
 - Branch from `main`.
 - Keep history clean. Rebase rather than merge when updating your branch.
 - Squash on merge is the default.
+- User-visible changes to a published package need a changeset in the
+  same PR (`pnpm changeset`) - see [RELEASING.md](RELEASING.md) for the
+  pre-1.0 bump convention.
 
 ### Commit messages
 

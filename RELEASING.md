@@ -12,6 +12,8 @@ pnpm changeset
 
 Pick the affected packages, the bump level (patch / minor / major), and write a one-line summary. The CLI writes a markdown file under `.changeset/`. Commit it in the same PR as the related code change.
 
+While the packages are pre-1.0, bump levels follow the 0.x semver convention, which inverts the usual instinct: **features and fixes are `patch`; breaking changes are `minor`** (and get a `**Breaking:**` lead in the summary). `major` is reserved for 1.0 itself. Semver treats 0.x minors as the breaking boundary, so filing a feature as `minor` would signal a break that didn't happen.
+
 Internal-tooling, docs-only, and test-only changes don't need a changeset.
 
 ## Lockstep groups

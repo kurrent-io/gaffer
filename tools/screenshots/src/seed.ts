@@ -31,9 +31,14 @@ interface HistoryEntry {
  * - event-counter edited locally after its deploy, so status and the deploy
  *   plan show drift (local ahead: one update among skips)
  *
- * The partial profile stops there and additionally leaves
+ * The full profile pads order-count further - two more logic-change deploys
+ * with a mid-timeline rollback and a disable/enable pair - so the history
+ * shots show a projection with a real service life, ten entries deep. The
+ * partial profile keeps the short lifecycle and additionally leaves
  * order-notifications undeployed, so a recorded `gaffer deploy` has a real
- * plan to confirm and apply: one create, one update, skips.
+ * plan to confirm and apply: one create, one update, skips. The vhs history
+ * tape navigates its timeline by row, so the partial sequence must not
+ * change shape.
  */
 export async function seedDeployState(
   repoRoot: string,
@@ -72,6 +77,37 @@ export async function seedDeployState(
   );
   await run("deploy", "order-count", "--yes");
   await run("enable", "order-count");
+
+  if (profile === "full") {
+    // Extend the timeline for the history shots: a second logic change, a
+    // rollback to the first one (a branch-back mid-timeline, not just at
+    // the top), then a third change behind a disable/enable pair.
+    console.log("seeding: order-count extended timeline");
+    const soFar = JSON.parse(
+      await run("history", "order-count", "--json", "--all"),
+    ) as HistoryEntry[];
+    const firstLogicChange = soFar.find((e) => e.kind === "deploy");
+    if (!firstLogicChange)
+      throw new Error("order-count history has no deploy entry to pad from");
+    await appendFile(
+      join(workspace, "projections", "order-count.js"),
+      "\n// count refunds next\n",
+    );
+    await run("deploy", "order-count", "--yes");
+    await run(
+      "rollback",
+      "order-count",
+      firstLogicChange.contentHash.slice(0, 8),
+      "--yes",
+    );
+    await run("disable", "order-count", "--yes");
+    await appendFile(
+      join(workspace, "projections", "order-count.js"),
+      "\n// alert on large orders next\n",
+    );
+    await run("deploy", "order-count", "--yes");
+    await run("enable", "order-count");
+  }
 
   console.log("seeding: order-count rollback");
   // --all, and the oldest deploy by kind: a re-used local DB accumulates

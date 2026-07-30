@@ -47,7 +47,9 @@ func main() {
 	buf.WriteString(frontmatter)
 
 	root := cmd.NewRootCmd()
+	groups := make(map[string]bool)
 	for _, group := range root.Groups() {
+		groups[group.ID] = true
 		fmt.Fprintf(&buf, "## %s\n\n", group.Title)
 		for _, sub := range root.Commands() {
 			if sub.GroupID != group.ID || sub.Hidden || !sub.IsAvailableCommand() {
@@ -56,9 +58,12 @@ func main() {
 			writeCommand(&buf, sub)
 		}
 	}
+	// A visible command outside every registered group would be silently
+	// dropped by the loop above (cobra only validates GroupID on Execute,
+	// which docgen never calls) - fail generation instead.
 	for _, sub := range root.Commands() {
-		if sub.GroupID == "" && !sub.Hidden && sub.IsAvailableCommand() {
-			fmt.Fprintf(os.Stderr, "ungrouped visible command: %s\n", sub.Name())
+		if !groups[sub.GroupID] && !sub.Hidden && sub.IsAvailableCommand() {
+			fmt.Fprintf(os.Stderr, "command not in a registered group: %s\n", sub.Name())
 			os.Exit(1)
 		}
 	}

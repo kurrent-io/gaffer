@@ -12,7 +12,7 @@ CLI:
 npm i -g @kurrent/gaffer
 ```
 
-VS Code extension - install [KurrentDB Gaffer](https://gaffer.kurrent.io/extension/vs-code/) for run/debug from `gaffer.toml`, breakpoint debugging, and an auto-registered MCP server.
+VS Code extension - install [KurrentDB Gaffer](https://gaffer.kurrent.io/extension/vs-code/) for run/debug from `gaffer.toml`, breakpoint debugging, deploy status and history right in the editor, and an auto-registered MCP server.
 
 Test library:
 
@@ -48,6 +48,16 @@ for (const { state } of projection.run(events)) {
 ```
 
 See the [demo project](demo/) for a complete example with fixtures, errors, partitioned state, and bi-state projections.
+
+## Deploy
+
+When a projection works locally, point an environment in `gaffer.toml` at your cluster and converge it:
+
+```sh
+gaffer deploy --env staging
+```
+
+Deploy plans first (create, update, or skip per projection) and applies only what you confirm. From there, `gaffer status`, `gaffer diff`, and `gaffer history` track what's running against what's in the repo, and `gaffer rollback` steps back to any earlier version. See the [deploy walkthrough](https://gaffer.kurrent.io/getting-started/deploy/).
 
 ## Packages
 

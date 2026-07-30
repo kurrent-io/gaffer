@@ -202,7 +202,7 @@ import "strings"
 	operate_request_count?: #BucketCount
 }
 
-// `gaffer debug` - DAP server for projection debugging.
+// The DAP debug session under `gaffer dev --debug`.
 #DebugCommandInvokedProperties: {
 	#CommandInvokedBaseProperties
 	command: "debug"

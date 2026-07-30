@@ -263,7 +263,7 @@ export type LspCommandInvokedProperties = CommandInvokedBaseProperties & {
   [k: string]: unknown;
 };
 /**
- * `gaffer debug` - DAP server for projection debugging.
+ * The DAP debug session under `gaffer dev --debug`.
  */
 export type DebugCommandInvokedProperties = CommandInvokedBaseProperties & {
   command: "debug";

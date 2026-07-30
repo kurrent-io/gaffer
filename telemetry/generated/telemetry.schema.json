@@ -238,7 +238,7 @@
       "unevaluatedProperties": false
     },
     "DebugCommandInvokedProperties": {
-      "description": "`gaffer debug` - DAP server for projection debugging.",
+      "description": "The DAP debug session under `gaffer dev --debug`.",
       "type": "object",
       "properties": {
         "command": {

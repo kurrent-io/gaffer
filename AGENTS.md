@@ -18,7 +18,10 @@ bindings/
   go/                      # Go bindings (gafferruntime package), FFI tests
   js/                      # JS/TS bindings (@kurrent/gaffer-runtime), koffi FFI
     native/linux-x64/      # Platform-specific native package
-cli/                       # Go CLI (Cobra) - dev, info, init, scaffold, config, mcp, lsp, version; hosts the DAP, LSP, and MCP servers
+cli/                       # Go CLI (Cobra) - command groups: develop (init, scaffold, dev, info),
+                           #   deploy & operate (diff, status, history, deploy, rollback, enable,
+                           #   disable, recreate, delete), tools (auth, config, mcp, lsp, version);
+                           #   hosts the DAP, LSP, and MCP servers
 testing/
   js/                      # @kurrent/projections-testing - test lib wrapping runtime
 editors/
@@ -97,20 +100,30 @@ call-stack and scope panels, and `Run > Debug` integration tied to
 
 The CLI hosts an LSP server (`gaffer lsp`, in `cli/internal/lsp`) over
 stdio. Capabilities: TextDocumentSync, CodeLensProvider,
-WorkspaceSymbolProvider. Parses `gaffer.toml` (only - JS isn't parsed),
-emits lenses on the toml plus on each projection's entry JS by matching
-the open URI against cached parses. The VS Code extension consumes this
-as its source of truth for lensing rather than re-implementing
-in-process; other editors connect over stdio the same way.
+WorkspaceSymbolProvider, plus experimental `gaffer/*` methods
+(refreshStatus, projectionDetails, diffProjection, diffVersions,
+operateProjection) serving the deploy-status and operate surface;
+HoverProvider (per-projection deploy status) is advertised only when
+the client opts in via `initializationOptions.statusLens`, and without
+that opt-in the status reads are skipped entirely. Parses `gaffer.toml`
+(only - JS isn't parsed), emits lenses on the toml plus on each
+projection's entry JS by matching the open URI against cached parses,
+and maintains per-environment deploy status against KurrentDB. The VS
+Code extension consumes this as its source of truth for lensing and
+status rather than re-implementing in-process; other editors connect
+over stdio the same way.
 
 ## MCP server
 
 The CLI hosts an MCP server (`gaffer mcp`, in `cli/internal/mcpserver`)
 that exposes projection lifecycle and debug tools to AI assistants:
 run, validate, stop, scaffold, get state/step/history/timeline, list
-projections and events, debug-continue, step, and evaluate. Breakpoints
-are managed via DAP, not MCP. The `demo/.mcp.json` registers the server
-for the demo project.
+projections and events, debug-continue, step, and evaluate, plus the
+deploy family (deploy_plan, deploy_apply, deploy_status,
+deploy_history, deploy_rollback, deploy_recreate, deploy_delete,
+deploy_pause, deploy_resume, deploy_abort). Breakpoints are managed via
+DAP, not MCP. The `demo/.mcp.json` registers the server for the demo
+project.
 
 ## Telemetry
 

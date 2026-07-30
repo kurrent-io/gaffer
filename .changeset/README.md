@@ -12,6 +12,8 @@ pnpm changeset
 
 Pick the affected packages, the bump level (patch / minor / major), and write a one-line summary. The CLI writes a markdown file here that you commit alongside your code change.
 
+Pre-1.0, the bump levels invert the usual instinct: features and fixes are `patch`, breaking changes are `minor`. See [`RELEASING.md`](../RELEASING.md) for the reasoning.
+
 ## Lockstep behaviour
 
 Two `fixed` groups in [`config.json`](config.json) keep native sub-packages in sync with their parent:

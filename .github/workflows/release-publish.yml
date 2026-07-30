@@ -21,8 +21,9 @@ name: Release publish
 #
 # The VS Code extension publish is a no-op when
 # `editors/vscode/package.json`'s version already exists on the
-# marketplace (`skipDuplicate: true`). Bump the version manually in
-# that file when you want a marketplace release.
+# marketplace (`skipDuplicate: true`). The extension ships when a
+# `gaffer-vscode` changeset bumped its version; add one to cut a
+# marketplace release.
 #
 # Prereqs set out-of-band:
 #   * npm trusted publisher configured on npmjs.com for each published

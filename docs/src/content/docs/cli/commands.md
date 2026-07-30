@@ -3,9 +3,11 @@ title: Commands
 description: Full reference for every gaffer subcommand and its flags.
 ---
 
-Full reference for every gaffer subcommand. Generated from the CLI source; run `just gen-docs` to refresh after touching a command.
+Full reference for every gaffer subcommand, grouped the way `gaffer --help` presents them. Generated from the CLI source; run `just gen-docs` to refresh after touching a command.
 
-## gaffer init
+## Develop locally
+
+### gaffer init
 
 Initialize a new gaffer project.
 
@@ -15,7 +17,7 @@ Creates a starter gaffer.toml in the current directory. Define an environment an
 gaffer init
 ```
 
-## gaffer scaffold
+### gaffer scaffold
 
 Add a new projection to the project.
 
@@ -36,7 +38,7 @@ Flags:
   -y, --yes                  Skip prompts (a path must be supplied without prompting)
 ```
 
-## gaffer dev
+### gaffer dev
 
 Run a projection locally.
 
@@ -61,7 +63,7 @@ Flags:
   -y, --yes                              Skip prompts (a projection and source must be resolvable without prompting)
 ```
 
-## gaffer info
+### gaffer info
 
 Show projection details.
 
@@ -75,194 +77,9 @@ Flags:
       --json   Output as JSON
 ```
 
-## gaffer auth
+## Deploy & operate
 
-Authenticate to an environment's OAuth identity provider.
-
-Signs in to the environment's OAuth identity provider with an interactive browser
-login (authorization code + PKCE) and stores the resulting token, which gaffer
-refreshes automatically. It applies to environments configured for OAuth in
-gaffer.toml. For CI, set KURRENTDB_OAUTH_CLIENT_SECRET instead to use the
-non-interactive client-credentials grant.
-
-The token is bound to the host the environment's connection names and is only
-ever sent there. Environments pointing at the same host share one sign-in;
-a different host needs its own. The connection string must resolve to name
-that host, so an unset ${VAR} or an unparseable connection fails the sign-in.
-
---clear removes every stored token, signing out of all environments. Use it to
-reset a keyring whose passphrase has been forgotten; it needs neither the
-passphrase nor a gaffer project.
-
-GAFFER_NO_OPEN prints the authorization URL instead of opening a browser.
-GAFFER_KEYRING_PASSWORD supplies the keyring passphrase on a host without an OS keyring.
-GAFFER_KEYRING_NAME isolates that encrypted-file store in a per-client directory
-(keyring-<name>), so a client with its own passphrase doesn't lock the shared default.
-
-```
-gaffer auth [flags]
-```
-
-Flags:
-
-```
-      --clear        Remove every stored token, signing out of all environments
-      --env string   Environment to authenticate (defaults to the env marked default)
-```
-
-## gaffer mcp
-
-Start an MCP server for AI agent integration.
-
-```
-gaffer mcp [flags]
-```
-
-Flags:
-
-```
-      --project string   Project directory to use instead of searching from the working directory (also set via GAFFER_PROJECT)
-```
-
-## gaffer lsp
-
-Run the gaffer LSP server over stdio.
-
-Run the gaffer Language Server Protocol server, speaking JSON-RPC over stdin/stdout. Editor extensions spawn this subcommand and connect to it as an LSP client.
-
-```
-gaffer lsp
-```
-
-## gaffer config
-
-Manage gaffer's user configuration.
-
-Read or change gaffer's user-level settings.
-
-Settings live at $XDG_CONFIG_HOME/gaffer/config.toml (on macOS,
-~/Library/Application Support/gaffer/config.toml; on Windows,
-%AppData%/gaffer/config.toml). The GAFFER_CONFIG_DIR environment
-variable overrides the default location.
-
-## gaffer config telemetry
-
-Show or change telemetry settings.
-
-Telemetry is anonymous usage data gaffer sends to Kurrent so we can
-understand which features people use. It is opt-out: enabled by
-default. See https://gaffer.kurrent.io/telemetry/ (and `gaffer config
-telemetry status`) for exactly what is collected and how to turn it off.
-
-## gaffer config telemetry status
-
-Show current telemetry configuration.
-
-Print the current telemetry state, broken down by source. Use this
-to find which layer (user config, environment variable, or workspace
-gaffer.toml) is enabling or disabling telemetry for this invocation.
-
-Always exits 0.
-
-```
-gaffer config telemetry status
-```
-
-## gaffer config telemetry on
-
-Enable telemetry on this machine.
-
-Set the user-level telemetry preference to enabled.
-
-If telemetry isn't already in active use, this mints a fresh per-
-install id and prints a one-time disclosure notice. Existing
-environment-variable or workspace opt-outs still take precedence;
-the command surfaces them so you know what else to change.
-
-```
-gaffer config telemetry on
-```
-
-## gaffer config telemetry off
-
-Disable telemetry on this machine.
-
-Set the user-level telemetry preference to disabled and clear the
-per-install id and salt. Prints the cleared id one last time so you
-can capture it for a deletion request (email privacy@kurrent.io).
-
-```
-gaffer config telemetry off
-```
-
-## gaffer version
-
-Print the gaffer version.
-
-```
-gaffer version
-```
-
-## gaffer delete
-
-Delete a projection from an environment.
-
-Delete a projection from a KurrentDB environment: remove it along with its state and checkpoint streams, leaving any streams it emitted in place.
-
-Destructive and not reversible, so it always confirms (louder against production); --yes skips the prompt. --delete-emitted also removes the streams the projection wrote, for a full clean-up. Acts on what's deployed, named directly, so the projection need not be in gaffer.toml. Pass --json for machine-readable output.
-
-```
-gaffer delete <projection> [flags]
-```
-
-Flags:
-
-```
-      --connection string   KurrentDB connection string (overrides --env)
-      --delete-emitted      Also delete the streams the projection emitted
-      --env string          Environment from gaffer.toml
-      --json                Output as JSON
-  -y, --yes                 Skip the confirmation prompt
-```
-
-## gaffer deploy
-
-Create or update projections on an environment.
-
-Deploy projections from gaffer.toml to a KurrentDB environment: create the ones not yet on the server, update the ones whose definition changed, and skip the ones already in sync (matched by content hash).
-
-With no argument, deploys every projection in gaffer.toml; name one to deploy just it. The emit flag is always sent explicitly so an update never clears it.
-
-A changed query is a logic change: the new code may interpret already-processed events differently, so the accumulated state could now be wrong. By default deploy continues from the existing checkpoint (state is kept) and flags the change. Pass --reset-on-logic-change to rebuild instead, reprocessing from zero with the new logic (slower, and an emitting projection re-emits). A change to engine version or track-emitted-streams can't be applied in place; deploy refuses it and points you at gaffer recreate.
-
-Deploy builds the whole plan first, then validates it: it compiles the projections it would create or update, and if any won't run (fails to compile, or would fault on the server) it refuses before writing anything, so a bad projection can't leave a half-applied set. --no-validate skips the check, deploying the valid projections and refusing the invalid ones individually instead of aborting the whole run.
-
-When the plan would change something, deploy shows it and asks to confirm before applying; updating a projection that's currently faulted is flagged, since the update won't clear the fault, and so is one whose deployed definition was changed outside gaffer since its last deploy (deploying overwrites it). --yes skips the prompt; without a terminal (or with --json) deploy won't apply unconfirmed, so pass --yes in scripts. A production target (a server that declares itself production, or an env with production = true) gets a louder confirm and refuses --no-validate. Pass --json for machine-readable output; add --stream to emit apply progress as NDJSON (one event per line) instead of a single array once the run finishes.
-
---dry-run shows the plan and applies nothing. The exit code is stable for scripts: 0 succeeded (or nothing to do), 1 an error, 2 changes are pending (--dry-run only), 3 refused by a guardrail (confirmation needed but no terminal or --yes, or --no-validate against production).
-
-Each create or update records tool metadata on the projection for attribution: the tool and version, the source revision, and the acting identity. The revision is the project's git commit, suffixed +changes when the tree is dirty; the actor is the user gaffer connects as. For CI, the GAFFER_REVISION and GAFFER_ACTOR environment variables override them (to record the canonical commit or the pipeline identity). A KurrentDB that predates the feature ignores the metadata and deploy is unaffected.
-
-When gaffer.toml declares a [database_config], deploy also checks the target node's live engine settings and warns on a divergence before anything is applied, since the fixtures and local runs assumed the declared values. Advisory only: when the node's options can't be read (no HTTP surface, auth refusal), deploy warns that the check couldn't run instead of failing or reporting a false "in sync".
-
-```
-gaffer deploy [projection] [flags]
-```
-
-Flags:
-
-```
-      --connection string       KurrentDB connection string (overrides --env)
-      --dry-run                 Show the plan and exit without applying (exit 2 if changes are pending)
-      --env string              Environment from gaffer.toml to deploy to
-      --json                    Output as JSON
-      --no-validate             Skip validation: deploy the valid projections and refuse invalid ones per-projection
-      --reset-on-logic-change   Rebuild from zero on a logic change instead of continuing from checkpoint
-      --stream                  Stream apply progress as NDJSON, one event per line (requires --json, not --dry-run)
-  -y, --yes                     Skip the confirmation prompt
-```
-
-## gaffer diff
+### gaffer diff
 
 Compare two versions of a projection.
 
@@ -290,141 +107,7 @@ Flags:
       --right string        Right (compared) side: local, deployed, or a content-hash prefix (default "local")
 ```
 
-## gaffer disable
-
-Disable (stop) a projection on an environment.
-
-Disable a projection on a KurrentDB environment: stop it so it no longer processes events.
-
-By default it writes a final checkpoint, so a later enable resumes from where it stopped. --abort skips that checkpoint, so a later enable replays from the last persisted one. Disabling is recoverable (enable it again), so it confirms only against production; --yes skips that prompt. Acts on what's deployed, named directly, so the projection need not be in gaffer.toml. Pass --json for machine-readable output.
-
-```
-gaffer disable <projection> [flags]
-```
-
-Flags:
-
-```
-      --abort               Disable without writing a checkpoint (replays since the last one when re-enabled)
-      --connection string   KurrentDB connection string (overrides --env)
-      --env string          Environment from gaffer.toml
-      --json                Output as JSON
-  -y, --yes                 Skip the production confirmation prompt
-```
-
-## gaffer enable
-
-Enable (start) a projection on an environment.
-
-Enable a projection on a KurrentDB environment: start it so it resumes processing from its last checkpoint.
-
-Acts on what's deployed, named directly, so the projection need not be in gaffer.toml. Enabling an already-running projection is a no-op on the server. Pass --json for machine-readable output.
-
-```
-gaffer enable <projection> [flags]
-```
-
-Flags:
-
-```
-      --connection string   KurrentDB connection string (overrides --env)
-      --env string          Environment from gaffer.toml
-      --json                Output as JSON
-```
-
-## gaffer history
-
-Show a deployed projection's history.
-
-Show the history of a deployed projection: every operation on it, newest
-first, with who made it and how.
-
-Each entry is one write to the projection on the server. An entry carrying
-gaffer metadata shows the operation (deploy, rollback, reset, recreate), the
-actor, and the source revision. A recreate shows as a single entry with its
-disable and delete steps folded in; --json keeps every write as its own entry.
-An entry with no gaffer metadata is attributed by what changed:
-updated when the definition moved, updated via another tool when it carries that
-tool's metadata, enabled/disabled for a lifecycle change, or reconfigured when a
-checkpoint setting moved. A change made after gaffer began managing the projection
-is flagged as changed outside gaffer. A content hash
-identifies the deployed definition, so a reverted definition is recognisable at a
-glance.
-
-On a terminal this opens an interactive timeline, the selected entry's detail
-alongside; move with the arrow keys (g/G to jump to the ends, q to quit), and a
-reverted definition is drawn as a branch back to the deploy it matched. Press d
-to see the change an entry introduced as a source diff against the version
-before it; the arrows keep working under the diff, walking the definition's
-evolution entry by entry. Press r to roll back to the selected version: a
-confirm shows what would change (see gaffer rollback), and an applied rollback
-reloads the timeline with the new entry on top. Piped or with --json it prints the latest entries
-(--limit, default 100, or --all). Against a server without gaffer metadata it
-degrades to the history with timestamps and content hashes only.
-
-```
-gaffer history <projection> [flags]
-```
-
-Flags:
-
-```
-      --all                 Show all entries, ignoring --limit (piped / --json only)
-      --connection string   KurrentDB connection string (overrides --env)
-      --env string          Environment from gaffer.toml
-      --json                Output as JSON
-      --limit int           Maximum entries to show (piped / --json only) (default 100)
-```
-
-## gaffer recreate
-
-Destroy and rebuild a projection from local config.
-
-Recreate a projection on a KurrentDB environment: disable it, delete it (with its state and checkpoint streams), then create it fresh from gaffer.toml, reprocessing from zero. The create records the same tool metadata deploy stamps (tool and version, source revision, acting identity), so gaffer history shows the whole rebuild as a single recreate entry; a KurrentDB that predates the feature ignores the metadata and recreate is unaffected.
-
-For a change deploy can't apply in place (engine version or track-emitted-streams, both create-only), or a clean-slate rebuild of a wedged projection an in-place reset can't fix. The projection must be in gaffer.toml (recreate builds from local config) and already deployed.
-
-Destructive and not reversible, so it always confirms (louder against production); --yes skips the prompt. It compiles the projection first, before anything is deleted, so a broken local definition can't leave you with nothing to rebuild; --no-validate skips that check, though production refuses it. --delete-emitted also removes the streams the projection wrote (off by default; reprocessing otherwise re-emits and may duplicate into them). Pass --json for machine-readable output.
-
-```
-gaffer recreate <projection> [flags]
-```
-
-Flags:
-
-```
-      --connection string   KurrentDB connection string (overrides --env)
-      --delete-emitted      Also delete the streams the projection emitted
-      --env string          Environment from gaffer.toml
-      --json                Output as JSON
-      --no-validate         Skip the preflight compile check and recreate anyway
-  -y, --yes                 Skip the confirmation prompt
-```
-
-## gaffer rollback
-
-Roll a projection back to a version from its history.
-
-Roll a projection back to a prior version from its history: redeploy that version's definition (query and emit) in place, stamped as a rollback in the deploy ledger.
-
-The target is named by its content hash, from gaffer history's hash column; any unique prefix of at least 4 characters works. Rolling back changes only the deployed definition: processing continues from the current checkpoint, so state built by the newer query is kept (rebuild from zero with gaffer recreate if it must go), and your local files are untouched, so gaffer diff shows the rollback as drift until you reconcile local. A version whose engine version or emitted-stream tracking differs from what's deployed can't be applied in place; update local config and use gaffer recreate instead.
-
-Acts on what's deployed, named directly, so the projection need not be in gaffer.toml. It always confirms, showing the change as a diff first (louder against production); --yes skips the prompt. Pass --json for machine-readable output.
-
-```
-gaffer rollback <projection> <hash> [flags]
-```
-
-Flags:
-
-```
-      --connection string   KurrentDB connection string (overrides --env)
-      --env string          Environment from gaffer.toml
-      --json                Output as JSON
-  -y, --yes                 Skip the confirmation prompt
-```
-
-## gaffer status
+### gaffer status
 
 Show the state of projections on an environment.
 
@@ -470,5 +153,328 @@ Flags:
       --connection string   KurrentDB connection string (overrides --env)
       --env string          Environment from gaffer.toml
       --json                Output as JSON
+```
+
+### gaffer history
+
+Show a deployed projection's history.
+
+Show the history of a deployed projection: every operation on it, newest
+first, with who made it and how.
+
+Each entry is one write to the projection on the server. An entry carrying
+gaffer metadata shows the operation (deploy, rollback, reset, recreate), the
+actor, and the source revision. A recreate shows as a single entry with its
+disable and delete steps folded in; --json keeps every write as its own entry.
+An entry with no gaffer metadata is attributed by what changed:
+updated when the definition moved, updated via another tool when it carries that
+tool's metadata, enabled/disabled for a lifecycle change, or reconfigured when a
+checkpoint setting moved. A change made after gaffer began managing the projection
+is flagged as changed outside gaffer. A content hash
+identifies the deployed definition, so a reverted definition is recognisable at a
+glance.
+
+On a terminal this opens an interactive timeline, the selected entry's detail
+alongside; move with the arrow keys (g/G to jump to the ends, q to quit), and a
+reverted definition is drawn as a branch back to the deploy it matched. Press d
+to see the change an entry introduced as a source diff against the version
+before it; the arrows keep working under the diff, walking the definition's
+evolution entry by entry. Press r to roll back to the selected version: a
+confirm shows what would change (see gaffer rollback), and an applied rollback
+reloads the timeline with the new entry on top. Piped or with --json it prints the latest entries
+(--limit, default 100, or --all). Against a server without gaffer metadata it
+degrades to the history with timestamps and content hashes only.
+
+```
+gaffer history <projection> [flags]
+```
+
+Flags:
+
+```
+      --all                 Show all entries, ignoring --limit (piped / --json only)
+      --connection string   KurrentDB connection string (overrides --env)
+      --env string          Environment from gaffer.toml
+      --json                Output as JSON
+      --limit int           Maximum entries to show (piped / --json only) (default 100)
+```
+
+### gaffer deploy
+
+Create or update projections on an environment.
+
+Deploy projections from gaffer.toml to a KurrentDB environment: create the ones not yet on the server, update the ones whose definition changed, and skip the ones already in sync (matched by content hash).
+
+With no argument, deploys every projection in gaffer.toml; name one to deploy just it. The emit flag is always sent explicitly so an update never clears it.
+
+A changed query is a logic change: the new code may interpret already-processed events differently, so the accumulated state could now be wrong. By default deploy continues from the existing checkpoint (state is kept) and flags the change. Pass --reset-on-logic-change to rebuild instead, reprocessing from zero with the new logic (slower, and an emitting projection re-emits). A change to engine version or track-emitted-streams can't be applied in place; deploy refuses it and points you at gaffer recreate.
+
+Deploy builds the whole plan first, then validates it: it compiles the projections it would create or update, and if any won't run (fails to compile, or would fault on the server) it refuses before writing anything, so a bad projection can't leave a half-applied set. --no-validate skips the check, deploying the valid projections and refusing the invalid ones individually instead of aborting the whole run.
+
+When the plan would change something, deploy shows it and asks to confirm before applying; updating a projection that's currently faulted is flagged, since the update won't clear the fault, and so is one whose deployed definition was changed outside gaffer since its last deploy (deploying overwrites it). --yes skips the prompt; without a terminal (or with --json) deploy won't apply unconfirmed, so pass --yes in scripts. A production target (a server that declares itself production, or an env with production = true) gets a louder confirm and refuses --no-validate. Pass --json for machine-readable output; add --stream to emit apply progress as NDJSON (one event per line) instead of a single array once the run finishes.
+
+--dry-run shows the plan and applies nothing. The exit code is stable for scripts: 0 succeeded (or nothing to do), 1 an error, 2 changes are pending (--dry-run only), 3 refused by a guardrail (confirmation needed but no terminal or --yes, or --no-validate against production).
+
+Each create or update records tool metadata on the projection for attribution: the tool and version, the source revision, and the acting identity. The revision is the project's git commit, suffixed +changes when the tree is dirty; the actor is the user gaffer connects as. For CI, the GAFFER_REVISION and GAFFER_ACTOR environment variables override them (to record the canonical commit or the pipeline identity). A KurrentDB that predates the feature ignores the metadata and deploy is unaffected.
+
+When gaffer.toml declares a [database_config], deploy also checks the target node's live engine settings and warns on a divergence before anything is applied, since the fixtures and local runs assumed the declared values. Advisory only: when the node's options can't be read (no HTTP surface, auth refusal), deploy warns that the check couldn't run instead of failing or reporting a false "in sync".
+
+```
+gaffer deploy [projection] [flags]
+```
+
+Flags:
+
+```
+      --connection string       KurrentDB connection string (overrides --env)
+      --dry-run                 Show the plan and exit without applying (exit 2 if changes are pending)
+      --env string              Environment from gaffer.toml to deploy to
+      --json                    Output as JSON
+      --no-validate             Skip validation: deploy the valid projections and refuse invalid ones per-projection
+      --reset-on-logic-change   Rebuild from zero on a logic change instead of continuing from checkpoint
+      --stream                  Stream apply progress as NDJSON, one event per line (requires --json, not --dry-run)
+  -y, --yes                     Skip the confirmation prompt
+```
+
+### gaffer rollback
+
+Roll a projection back to a version from its history.
+
+Roll a projection back to a prior version from its history: redeploy that version's definition (query and emit) in place, stamped as a rollback in the deploy ledger.
+
+The target is named by its content hash, from gaffer history's hash column; any unique prefix of at least 4 characters works. Rolling back changes only the deployed definition: processing continues from the current checkpoint, so state built by the newer query is kept (rebuild from zero with gaffer recreate if it must go), and your local files are untouched, so gaffer diff shows the rollback as drift until you reconcile local. A version whose engine version or emitted-stream tracking differs from what's deployed can't be applied in place; update local config and use gaffer recreate instead.
+
+Acts on what's deployed, named directly, so the projection need not be in gaffer.toml. It always confirms, showing the change as a diff first (louder against production); --yes skips the prompt. Pass --json for machine-readable output.
+
+```
+gaffer rollback <projection> <hash> [flags]
+```
+
+Flags:
+
+```
+      --connection string   KurrentDB connection string (overrides --env)
+      --env string          Environment from gaffer.toml
+      --json                Output as JSON
+  -y, --yes                 Skip the confirmation prompt
+```
+
+### gaffer enable
+
+Enable (start) a projection on an environment.
+
+Enable a projection on a KurrentDB environment: start it so it resumes processing from its last checkpoint.
+
+Acts on what's deployed, named directly, so the projection need not be in gaffer.toml. Enabling an already-running projection is a no-op on the server. Pass --json for machine-readable output.
+
+```
+gaffer enable <projection> [flags]
+```
+
+Flags:
+
+```
+      --connection string   KurrentDB connection string (overrides --env)
+      --env string          Environment from gaffer.toml
+      --json                Output as JSON
+```
+
+### gaffer disable
+
+Disable (stop) a projection on an environment.
+
+Disable a projection on a KurrentDB environment: stop it so it no longer processes events.
+
+By default it writes a final checkpoint, so a later enable resumes from where it stopped. --abort skips that checkpoint, so a later enable replays from the last persisted one. Disabling is recoverable (enable it again), so it confirms only against production; --yes skips that prompt. Acts on what's deployed, named directly, so the projection need not be in gaffer.toml. Pass --json for machine-readable output.
+
+```
+gaffer disable <projection> [flags]
+```
+
+Flags:
+
+```
+      --abort               Disable without writing a checkpoint (replays since the last one when re-enabled)
+      --connection string   KurrentDB connection string (overrides --env)
+      --env string          Environment from gaffer.toml
+      --json                Output as JSON
+  -y, --yes                 Skip the production confirmation prompt
+```
+
+### gaffer recreate
+
+Destroy and rebuild a projection from local config.
+
+Recreate a projection on a KurrentDB environment: disable it, delete it (with its state and checkpoint streams), then create it fresh from gaffer.toml, reprocessing from zero. The create records the same tool metadata deploy stamps (tool and version, source revision, acting identity), so gaffer history shows the whole rebuild as a single recreate entry; a KurrentDB that predates the feature ignores the metadata and recreate is unaffected.
+
+For a change deploy can't apply in place (engine version or track-emitted-streams, both create-only), or a clean-slate rebuild of a wedged projection an in-place reset can't fix. The projection must be in gaffer.toml (recreate builds from local config) and already deployed.
+
+Destructive and not reversible, so it always confirms (louder against production); --yes skips the prompt. It compiles the projection first, before anything is deleted, so a broken local definition can't leave you with nothing to rebuild; --no-validate skips that check, though production refuses it. --delete-emitted also removes the streams the projection wrote (off by default; reprocessing otherwise re-emits and may duplicate into them). Pass --json for machine-readable output.
+
+```
+gaffer recreate <projection> [flags]
+```
+
+Flags:
+
+```
+      --connection string   KurrentDB connection string (overrides --env)
+      --delete-emitted      Also delete the streams the projection emitted
+      --env string          Environment from gaffer.toml
+      --json                Output as JSON
+      --no-validate         Skip the preflight compile check and recreate anyway
+  -y, --yes                 Skip the confirmation prompt
+```
+
+### gaffer delete
+
+Delete a projection from an environment.
+
+Delete a projection from a KurrentDB environment: remove it along with its state and checkpoint streams, leaving any streams it emitted in place.
+
+Destructive and not reversible, so it always confirms (louder against production); --yes skips the prompt. --delete-emitted also removes the streams the projection wrote, for a full clean-up. Acts on what's deployed, named directly, so the projection need not be in gaffer.toml. Pass --json for machine-readable output.
+
+```
+gaffer delete <projection> [flags]
+```
+
+Flags:
+
+```
+      --connection string   KurrentDB connection string (overrides --env)
+      --delete-emitted      Also delete the streams the projection emitted
+      --env string          Environment from gaffer.toml
+      --json                Output as JSON
+  -y, --yes                 Skip the confirmation prompt
+```
+
+## Tools & config
+
+### gaffer auth
+
+Authenticate to an environment's OAuth identity provider.
+
+Signs in to the environment's OAuth identity provider with an interactive browser
+login (authorization code + PKCE) and stores the resulting token, which gaffer
+refreshes automatically. It applies to environments configured for OAuth in
+gaffer.toml. For CI, set KURRENTDB_OAUTH_CLIENT_SECRET instead to use the
+non-interactive client-credentials grant.
+
+The token is bound to the host the environment's connection names and is only
+ever sent there. Environments pointing at the same host share one sign-in;
+a different host needs its own. The connection string must resolve to name
+that host, so an unset ${VAR} or an unparseable connection fails the sign-in.
+
+--clear removes every stored token, signing out of all environments. Use it to
+reset a keyring whose passphrase has been forgotten; it needs neither the
+passphrase nor a gaffer project.
+
+GAFFER_NO_OPEN prints the authorization URL instead of opening a browser.
+GAFFER_KEYRING_PASSWORD supplies the keyring passphrase on a host without an OS keyring.
+GAFFER_KEYRING_NAME isolates that encrypted-file store in a per-client directory
+(keyring-<name>), so a client with its own passphrase doesn't lock the shared default.
+
+```
+gaffer auth [flags]
+```
+
+Flags:
+
+```
+      --clear        Remove every stored token, signing out of all environments
+      --env string   Environment to authenticate (defaults to the env marked default)
+```
+
+### gaffer config
+
+Manage gaffer's user configuration.
+
+Read or change gaffer's user-level settings.
+
+Settings live at $XDG_CONFIG_HOME/gaffer/config.toml (on macOS,
+~/Library/Application Support/gaffer/config.toml; on Windows,
+%AppData%/gaffer/config.toml). The GAFFER_CONFIG_DIR environment
+variable overrides the default location.
+
+### gaffer config telemetry
+
+Show or change telemetry settings.
+
+Telemetry is anonymous usage data gaffer sends to Kurrent so we can
+understand which features people use. It is opt-out: enabled by
+default. See https://gaffer.kurrent.io/telemetry/ (and `gaffer config
+telemetry status`) for exactly what is collected and how to turn it off.
+
+### gaffer config telemetry status
+
+Show current telemetry configuration.
+
+Print the current telemetry state, broken down by source. Use this
+to find which layer (user config, environment variable, or workspace
+gaffer.toml) is enabling or disabling telemetry for this invocation.
+
+Always exits 0.
+
+```
+gaffer config telemetry status
+```
+
+### gaffer config telemetry on
+
+Enable telemetry on this machine.
+
+Set the user-level telemetry preference to enabled.
+
+If telemetry isn't already in active use, this mints a fresh per-
+install id and prints a one-time disclosure notice. Existing
+environment-variable or workspace opt-outs still take precedence;
+the command surfaces them so you know what else to change.
+
+```
+gaffer config telemetry on
+```
+
+### gaffer config telemetry off
+
+Disable telemetry on this machine.
+
+Set the user-level telemetry preference to disabled and clear the
+per-install id and salt. Prints the cleared id one last time so you
+can capture it for a deletion request (email privacy@kurrent.io).
+
+```
+gaffer config telemetry off
+```
+
+### gaffer mcp
+
+Start an MCP server for AI agent integration.
+
+```
+gaffer mcp [flags]
+```
+
+Flags:
+
+```
+      --project string   Project directory to use instead of searching from the working directory (also set via GAFFER_PROJECT)
+```
+
+### gaffer lsp
+
+Run the gaffer LSP server over stdio.
+
+Run the gaffer Language Server Protocol server, speaking JSON-RPC over stdin/stdout. Editor extensions spawn this subcommand and connect to it as an LSP client.
+
+```
+gaffer lsp
+```
+
+### gaffer version
+
+Print the gaffer version.
+
+```
+gaffer version
 ```
 

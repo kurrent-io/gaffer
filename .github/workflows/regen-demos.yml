@@ -118,6 +118,14 @@ jobs:
             vhs "$tape"
           done
 
+      # The tape recordings above deployed real state onto the server. The
+      # screenshot capture seeds the same projection names, so recreate the
+      # database empty between the phases - otherwise the capture's history
+      # shots pick up the tape phase's entries and the output depends on
+      # what ran before it.
+      - name: Reset KurrentDB for the screenshot capture
+        run: just screenshots db-reset
+
       # ---- VS Code extension screenshots (tools/screenshots) ----
       # xvfb and the shared libraries VS Code's Electron needs headless.
       # The harness itself pins and checksum-verifies its VS Code build and

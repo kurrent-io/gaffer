@@ -32,6 +32,12 @@ db-up:
 db-down:
     docker compose -f docker-compose.yml down
 
+# Recreate it empty (mem-db: down discards all state). Run between the
+# tape recordings and the screenshot capture - both seed the same
+# projection names, so without a reset the capture's history shots pick
+# up whatever the tapes (or a previous local run) deployed.
+db-reset: db-down db-up
+
 # Remove captured output. The verified VS Code download survives; drop it
 # with clean-cache when the pin changes underneath you.
 clean:

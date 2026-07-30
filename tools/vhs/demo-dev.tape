@@ -19,8 +19,12 @@ Set Theme "Catppuccin Mocha"
 Env GAFFER_TELEMETRY_OPTOUT "1"
 # Don't let the once-a-day "update available" notice appear mid-recording.
 Env GAFFER_NO_UPDATE_CHECK "1"
-# Force colour: under ttyd in CI the charm libs detect no colour support
-# and render output unstyled, so force a truecolor profile.
+# Colour under ttyd in CI: the runner exports CI=true, and termenv treats
+# any CI environment as a non-terminal - profile falls to Ascii, and
+# CLICOLOR_FORCE alone only rescues 16-colour ANSI, which collapses the
+# CLI's truecolor diff washes onto the theme palette. Clear CI so the pty
+# is trusted, then COLORTERM selects the truecolor profile.
+Env CI ""
 Env CLICOLOR_FORCE "1"
 Env COLORTERM "truecolor"
 

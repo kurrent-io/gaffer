@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { appendFile } from "node:fs/promises";
+import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -89,10 +89,9 @@ export async function seedDeployState(
     const firstLogicChange = soFar.find((e) => e.kind === "deploy");
     if (!firstLogicChange)
       throw new Error("order-count history has no deploy entry to pad from");
-    await appendFile(
-      join(workspace, "projections", "order-count.js"),
-      "\n// count refunds next\n",
-    );
+    const entry = join(workspace, "projections", "order-count.js");
+    const beforePadding = await readFile(entry, "utf8");
+    await appendFile(entry, "\n// count refunds next\n");
     await run("deploy", "order-count", "--yes");
     await run(
       "rollback",
@@ -101,12 +100,13 @@ export async function seedDeployState(
       "--yes",
     );
     await run("disable", "order-count", "--yes");
-    await appendFile(
-      join(workspace, "projections", "order-count.js"),
-      "\n// alert on large orders next\n",
-    );
+    await appendFile(entry, "\n// alert on large orders next\n");
     await run("deploy", "order-count", "--yes");
     await run("enable", "order-count");
+    // The padding comments exist only to mint distinct content hashes for
+    // the extra deploys; the editor scenarios photograph the local file, so
+    // put it back to the single-comment drift the shots always showed.
+    await writeFile(entry, beforePadding);
   }
 
   console.log("seeding: order-count rollback");

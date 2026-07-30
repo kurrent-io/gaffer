@@ -22,7 +22,7 @@ connection = "kurrentdb+discover://db.example.com:2113"
 production = true
 ```
 
-Each `[env.<name>]` block is self-contained: there is no inheritance or shared base, so every block declares its own full connection and authentication. `default = true` marks the environment used when `--env` is omitted, and exactly one block may carry it. `production = true` opts an environment into the [production guard tier](./production.md), where confirmations name the target as production and some bypasses are refused. See [`[env.<name>]`](../reference/gaffer-toml.md#envname) for every field.
+Each `[env.<name>]` block is self-contained: there is no inheritance or shared base, so every block declares its own full connection and authentication. `default = true` marks the environment used when `--env` is omitted, and at most one block may carry it. `production = true` opts an environment into the [production guard tier](./production.md), where confirmations name the target as production and some bypasses are refused. See [`[env.<name>]`](../reference/gaffer-toml.md#envname) for every field.
 
 ## Select a target
 

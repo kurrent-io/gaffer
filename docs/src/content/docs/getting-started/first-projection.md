@@ -148,6 +148,7 @@ Typing the events path each run gets old. Declare the fixture once in `gaffer.to
 [[projection]]
 name = "order-count"
 entry = "projections/order-count.js"
+engine_version = 2
 fixtures.happy = "fixtures/orders.json"
 ```
 

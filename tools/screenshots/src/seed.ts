@@ -30,10 +30,15 @@ interface HistoryEntry {
  *   update, then a rollback to the original (the timeline's branch-back)
  * - event-counter edited locally after its deploy, so status and the deploy
  *   plan show drift (local ahead: one update among skips)
+ *
+ * The partial profile stops there and additionally leaves
+ * order-notifications undeployed, so a recorded `gaffer deploy` has a real
+ * plan to confirm and apply: one create, one update, skips.
  */
 export async function seedDeployState(
   repoRoot: string,
   workspace: string,
+  profile: "full" | "partial" = "full",
 ): Promise<void> {
   const gaffer = join(repoRoot, "cli", "gaffer");
   const run = async (...args: string[]): Promise<string> => {
@@ -49,6 +54,7 @@ export async function seedDeployState(
   };
 
   for (const name of deployable) {
+    if (profile === "partial" && name === "order-notifications") continue;
     console.log(`seeding: deploy ${name}`);
     await run("deploy", name, "--yes");
   }

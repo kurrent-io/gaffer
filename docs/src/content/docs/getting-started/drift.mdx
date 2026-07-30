@@ -19,7 +19,7 @@ After a deploy, the copy on the server and the source in your project lead separ
 
 When the query differs, the source diff renders inline with the changed spans highlighted; set `GAFFER_EXTERNAL_DIFF` to open an external viewer (`git diff`, `delta`, `difft`). `gaffer status` reports the same verdict for every projection at once, alongside runtime state.
 
-{/* TODO(media): vhs still - gaffer diff on a drifted projection, inline source diff with intraline highlights */}
+![gaffer diff on a drifted projection: the changed line's span highlighted within the inline source diff, and the added lines beneath](/demo-diff.png)
 
 Gaffer treats your project as the canonical source, but it surfaces out-of-band changes rather than refusing them: a deploy over an externally changed projection warns that it will overwrite the change and asks you to confirm, and nothing stops another tool from writing to the server between your deploys. The verdicts exist so that divergence is visible before it matters.
 
@@ -36,7 +36,7 @@ On a terminal, history opens an interactive timeline: arrow keys to move, `d` to
 	alt="The deploy timeline in VS Code: deploy, disable, enable, and rollback versions on a graph, with the selected version's metadata and actions beside it"
 />
 
-{/* TODO(media): vhs tape - gaffer history interactive timeline: walk entries, d for the diff, r to roll back */}
+![The gaffer history timeline: walking deploy, lifecycle, and rollback entries, opening an entry's diff, and reaching the rollback confirm](/demo-history.gif)
 
 Against a server that predates deploy metadata, history degrades to timestamps and content hashes only, and status falls back to plain untracked or drifted verdicts without attribution.
 

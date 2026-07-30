@@ -40,7 +40,7 @@ Plan for staging:
   1 to create
 ```
 
-<!-- TODO(media): vhs tape - gaffer deploy --env staging: plan heading naming the target, confirm prompt -->
+![gaffer deploy --env staging planning against the staging target and asking to confirm](/demo-deploy-staging.gif)
 
 Deploy converges each environment separately: the projection created on `local` in the previous step doesn't exist on `staging` until you deploy it there, and each server's plan is computed against what that server holds.
 

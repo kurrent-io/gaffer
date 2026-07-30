@@ -18,8 +18,8 @@ Set Theme "Catppuccin Mocha"
 Env GAFFER_TELEMETRY_OPTOUT "1"
 # Don't let the once-a-day "update available" notice appear mid-recording.
 Env GAFFER_NO_UPDATE_CHECK "1"
-# Force colour: under ttyd in CI the charm libs detect no colour support
-# and render the prompts unstyled, so force a truecolor profile.
+# Truecolor under ttyd in CI (see demo-dev.tape for the why of each).
+Env CI ""
 Env CLICOLOR_FORCE "1"
 Env COLORTERM "truecolor"
 

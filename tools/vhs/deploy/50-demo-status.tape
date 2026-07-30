@@ -22,6 +22,7 @@ Set Theme "Catppuccin Mocha"
 # and force colour under ttyd (see demo-dev.tape for the why of each).
 Env GAFFER_TELEMETRY_OPTOUT "1"
 Env GAFFER_NO_UPDATE_CHECK "1"
+Env CI ""
 Env CLICOLOR_FORCE "1"
 Env COLORTERM "truecolor"
 

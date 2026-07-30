@@ -45,7 +45,7 @@
 	"capabilities": {
 		"untrustedWorkspaces": {
 			"supported": "limited",
-			"description": "The extension spawns the gaffer CLI as a child process. Workspace settings cannot override `gaffer.command`; CLI-driven actions (init, debugging, LSP, MCP) are disabled until the workspace is trusted."
+			"description": "The extension spawns the gaffer CLI as a child process. Workspace settings cannot override `gaffer.command`; CLI-driven actions (init, debugging, deploy and operate, LSP, MCP) are disabled until the workspace is trusted."
 		}
 	},
 	"scripts": {

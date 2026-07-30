@@ -150,3 +150,12 @@ Opt out at the user level via any of:
 The environment-variable opt-outs are read from your shell or a project [`.env`](#environment-file-env).
 
 Opt out at the project level by setting `telemetry = false` in [`gaffer.toml`](../reference/gaffer-toml.md#telemetry).
+
+## Update check
+
+Once a day, a `gaffer` invocation checks npm for a newer release and prints a one-line notice on stderr when one exists. The notice is withheld when stderr isn't a terminal or the run emits structured output; the check still refreshes its cached result, which editor integrations read. At most one request a day is made, cached in the platform cache directory (set `GAFFER_CACHE_DIR` to override).
+
+Skip the check entirely with either:
+
+- `--no-update-check`, on any command, for a single invocation.
+- `GAFFER_NO_UPDATE_CHECK=1` in the environment, for CI and scripted runs.

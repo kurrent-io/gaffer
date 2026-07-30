@@ -5,6 +5,12 @@ description: Full reference for every gaffer subcommand and its flags.
 
 Full reference for every gaffer subcommand, grouped the way `gaffer --help` presents them. Generated from the CLI source; run `just gen-docs` to refresh after touching a command.
 
+Global flags, accepted by every command:
+
+```
+      --no-update-check   Skip the once-per-day check for a newer gaffer release
+```
+
 ## Develop locally
 
 ### gaffer init

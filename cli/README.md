@@ -54,7 +54,7 @@ Deploy & operate:
 | `gaffer status`                | Show the state of projections on an environment                      |
 | `gaffer history <projection>`  | Show a deployed projection's history                                 |
 | `gaffer deploy`                | Create or update projections on an environment                       |
-| `gaffer rollback <projection>` | Roll a projection back to a version from its history                 |
+| `gaffer rollback <projection> <hash>` | Roll a projection back to a version from its history          |
 | `gaffer enable <projection>`   | Enable (start) a projection on an environment                        |
 | `gaffer disable <projection>`  | Disable (stop) a projection on an environment                        |
 | `gaffer recreate <projection>` | Destroy and rebuild a projection from local config                   |

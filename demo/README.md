@@ -33,11 +33,16 @@ Fixtures (`fixtures/orders.json`, `fixtures/orders-full.json`, `fixtures/quirks-
 
 ## Building from source
 
-If you'd rather run the demo against a local build of the CLI, see the [contributing guide](../CONTRIBUTING.md) for workspace setup, then:
+If you'd rather run the demo against a local build of the CLI, see the [contributing guide](../CONTRIBUTING.md) for workspace setup, then from the repo root (this directory has its own justfile, so the module recipes don't resolve from here):
 
 ```sh
 just runtime publish
 just cli build
+```
+
+and back in this directory:
+
+```sh
 ../cli/gaffer dev order-count --fixture happy
 ```
 

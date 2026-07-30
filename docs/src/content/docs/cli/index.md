@@ -62,7 +62,7 @@ fixtures.full = "fixtures/orders-full.json"
 
 Top-level keys:
 
-- **`[env.<name>]`**: an environment, naming a KurrentDB connection. Each block has a required **`connection`** (the connection string, supporting `${VAR}` expansion so credentials can stay out of the file) and an optional **`default`** bool. Exactly one environment may be the default. An optional **`production`** bool opts the environment into the production guard tier (louder confirmations, `--no-validate` refused). Select an environment with `gaffer dev --env <name>` or pick it from the interactive prompt; `--env` can be omitted on a non-interactive run when one environment is the default. An environment can also authenticate with OAuth, an X.509 client certificate, or basic credentials; see [Authentication](./authentication.md). See [Environment file](#environment-file-env) and the [gaffer.toml reference](../reference/gaffer-toml.md#envname).
+- **`[env.<name>]`**: an environment, naming a KurrentDB connection. Each block has a required **`connection`** (the connection string, supporting `${VAR}` expansion so credentials can stay out of the file) and an optional **`default`** bool. At most one environment may be the default. An optional **`production`** bool opts the environment into the production guard tier (louder confirmations, `--no-validate` refused). Select an environment with `gaffer dev --env <name>` or pick it from the interactive prompt; `--env` can be omitted on a non-interactive run when one environment is the default. An environment can also authenticate with OAuth, an X.509 client certificate, or basic credentials; see [Authentication](./authentication.md). See [Environment file](#environment-file-env) and the [gaffer.toml reference](../reference/gaffer-toml.md#envname).
 
 `engine_version` is set per-`[[projection]]` (`1` or `2`), not at the top level.
 
@@ -115,7 +115,7 @@ Project-level telemetry is opted out by setting `telemetry = false` at the top o
 - **`--fixture <name>`** / **`--events <path>`**: pick a named fixture from `gaffer.toml`, or point at a JSON events file directly. These offline sources are mutually exclusive with the live ones (`--env` / `--connection`); combining the two is a usage error.
 - **`--yes` / `-y`**: skip interactive prompts and accept defaults. Applies to `gaffer scaffold`, `gaffer dev`, `gaffer deploy`, and the guarded operate verbs (`gaffer delete`, `gaffer recreate`, and `gaffer rollback` always, `gaffer disable` against production). For `gaffer deploy`, `gaffer delete`, `gaffer recreate`, `gaffer rollback`, and a production `gaffer disable` it stands in as the confirmation, so pass it in scripts and CI: without a terminal those refuse to act unless `--yes` is given. See [Interactive mode](#interactive-mode).
 - **`GAFFER_ACTOR`** / **`GAFFER_REVISION`** (environment variables, `gaffer deploy`): override the acting identity and source revision recorded in deploy metadata. They default to the connection's user and the project's git commit; set these in CI to record the pipeline identity, or the canonical commit when the checkout's HEAD isn't it (e.g. a PR build's synthetic merge commit).
-- **`GAFFER_TIMEOUT_MS`** (environment variable): bounds how long a projection may run locally before gaffer treats it as hung, in milliseconds, applied to `gaffer dev` and `gaffer test`. Raise it from the 5000ms default only on slow hardware. The [`[database_config]`](../reference/gaffer-toml.md#database_config) timeouts declare the server's configuration and do not affect local runs.
+- **`GAFFER_TIMEOUT_MS`** (environment variable): bounds how long a projection may compile or run locally before gaffer treats it as hung, in milliseconds. It applies wherever gaffer runs the engine locally: `gaffer dev`, and the compile-and-validate steps behind commands like `gaffer deploy`, `gaffer diff`, and `gaffer status`. Raise it from the 5000ms default only on slow hardware. The [`[database_config]`](../reference/gaffer-toml.md#database_config) timeouts declare the server's configuration and do not affect local runs.
 
 ## Content hash
 
@@ -150,3 +150,12 @@ Opt out at the user level via any of:
 The environment-variable opt-outs are read from your shell or a project [`.env`](#environment-file-env).
 
 Opt out at the project level by setting `telemetry = false` in [`gaffer.toml`](../reference/gaffer-toml.md#telemetry).
+
+## Update check
+
+Once a day, a `gaffer` invocation checks npm for a newer release and prints a one-line notice on stderr when one exists. The notice is withheld when stderr isn't a terminal or the run emits structured output; the check still refreshes its cached result, which editor integrations read. At most one request a day is made, cached in the platform cache directory (set `GAFFER_CACHE_DIR` to override).
+
+Skip the check entirely with either:
+
+- `--no-update-check`, on any command, for a single invocation.
+- `GAFFER_NO_UPDATE_CHECK=1` in the environment, for CI and scripted runs.

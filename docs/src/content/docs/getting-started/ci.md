@@ -32,6 +32,8 @@ Deploy fails closed: without a terminal, a run that would change something refus
 
 `--yes` does not weaken validation: the compile-and-diagnostics preflight still runs, and a production target still refuses `--no-validate`. For live progress instead of a single result, `--stream` emits the apply as NDJSON, one event per line (requires `--json`, not combinable with `--dry-run`).
 
+Set `GAFFER_NO_UPDATE_CHECK=1` in the pipeline environment to skip the CLI's [once-a-day update check](../cli/index.md#update-check); in CI its npm request is wasted work on a throwaway container.
+
 ## Exit codes
 
 The [exit-code contract](../cli/index.md#exit-codes) is stable for scripts:

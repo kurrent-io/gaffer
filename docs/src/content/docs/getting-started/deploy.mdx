@@ -94,7 +94,7 @@ gaffer deploy
 0 created · 0 updated · 1 skipped
 ```
 
-Nothing changed, so there's no plan to confirm and nothing is written. Deploy converges the server on `gaffer.toml`: projections missing from the server are created, changed ones are updated, and in-sync ones are skipped, so re-running it is always safe.
+Nothing changed, so there's no plan to confirm and nothing is written. Deploy converges the server on `gaffer.toml`: projections missing from the server are created, changed ones are updated, and in-sync ones are skipped, so re-running it is always safe. Convergence never deletes: a projection you drop from `gaffer.toml` stays on the server (as an [orphan](./drift.mdx)) until you remove it yourself with `gaffer delete`.
 
 ## Change it and deploy again
 

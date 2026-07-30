@@ -47,6 +47,14 @@ func main() {
 	buf.WriteString(frontmatter)
 
 	root := cmd.NewRootCmd()
+
+	// Root's persistent flags apply to every command but appear under
+	// none of them (writeCommand emits local flags only), so surface
+	// them once up front. FlagUsages skips hidden flags.
+	if usage := root.PersistentFlags().FlagUsages(); strings.TrimSpace(usage) != "" {
+		fmt.Fprintf(&buf, "Global flags, accepted by every command:\n\n```\n%s```\n\n", usage)
+	}
+
 	groups := make(map[string]bool)
 	for _, group := range root.Groups() {
 		groups[group.ID] = true

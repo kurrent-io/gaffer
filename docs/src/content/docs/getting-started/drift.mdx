@@ -14,7 +14,7 @@ After a deploy, the copy on the server and the source in your project lead separ
 - **in sync**: the [content hash](../cli/index.md#content-hash) matches; nothing to do.
 - **drifted**: the definitions differ. With deploy metadata present, the drift is attributed: **local ahead** (you edited local since deploying) or **changed externally** (a tool or a direct write changed the server since).
 - **not deployed**: the projection exists locally but not on the server.
-- **untracked**: the projection is on the server but absent from `gaffer.toml`. One that gaffer itself deployed shows as an **orphan** (a deletion candidate); anything else is plain untracked, with its deploying tool named.
+- **untracked**: the projection is on the server but absent from `gaffer.toml`. One that gaffer itself deployed shows as an **orphan** (a deletion candidate; remove it with `gaffer delete <projection>`, which confirms first); anything else is plain untracked, with its deploying tool named.
 - **invalid**: the local definition can't be used - it doesn't compile, or has a config error such as `track_emitted_streams` on engine version 2.
 
 When the query differs, the source diff renders inline with the changed spans highlighted; set `GAFFER_EXTERNAL_DIFF` to open an external viewer (`git diff`, `delta`, `difft`). `gaffer status` reports the same verdict for every projection at once, alongside runtime state.

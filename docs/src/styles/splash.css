@@ -356,8 +356,10 @@
 		border: 1px solid var(--color-shade-30);
 		border-radius: 0.375rem;
 		/* Same block padding as the code block in the flanking panes, so all
-		   three content rows start and end on the same line. */
-		padding: var(--ec-codePadBlk) 0.75rem;
+		   three content rows start and end on the same line. Expressive Code
+		   declares that token on :root; the fallback repeats its value so the
+		   buttons keep their height if it ever narrows that scope. */
+		padding: var(--ec-codePadBlk, 0.75rem) 0.75rem;
 		font-size: var(--sl-text-sm);
 		font-weight: 600;
 		color: var(--color-foreground);

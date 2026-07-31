@@ -5,9 +5,29 @@ description: Connect gaffer's MCP server to Claude Code, Cursor, Continue, Claud
 
 `gaffer mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server that exposes gaffer's projection lifecycle and debugging surface to any MCP-aware AI assistant.
 
+The quickest way in is to let an assistant set it up. Paste this into Claude Code, Cursor, or any MCP client:
+
+```plaintext
+Install the gaffer CLI and register its MCP server, following https://gaffer.kurrent.io/install.txt
+```
+
+That page carries the CLI install and the registration steps for every client. To wire it up by hand instead, see [Manual setup](#manual-setup).
+
+## Try it
+
+Once connected, you can drive gaffer from natural language:
+
+- "Scaffold a projection that counts OrderPlaced events per stream."
+- "Run order-count against the happy fixture and show me the final state."
+- "Update order-count to also track OrderShipped events."
+- "Why isn't my projection handling OrderShipped events?"
+- "Set a breakpoint on the OrderPlaced handler, step through the next event, and tell me what the state looks like."
+
+The `write-projection` and `fix-projection` [prompts](#prompts) wrap the most common flows.
+
 ## What's exposed
 
-**Tools** for the projection lifecycle:
+### Tools
 
 - **`init`**: create a `gaffer.toml` to start a new project when there isn't one yet.
 - **`scaffold`**: create a new projection at an explicit path and register it in `gaffer.toml`. Accepts an `engine_version` argument (`1` or `2`, defaults to `2`).
@@ -22,7 +42,7 @@ description: Connect gaffer's MCP server to Claude Code, Cursor, Continue, Claud
 - **`deploy_pause`** / **`deploy_resume`** / **`deploy_abort`** / **`deploy_recreate`** / **`deploy_rollback`** / **`deploy_delete`**: manage a deployed projection's lifecycle, mirroring `gaffer disable` / `enable` / `disable --abort` / `recreate` / `rollback` / `delete`. Abort skips the final checkpoint a pause writes. Recreate rebuilds from local source, which must compile and pass the diagnostics preflight (no bypass exists). Rollback applies in place, so a target differing in engine version or emitted-stream tracking is refused. Delete accepts `deleteEmitted`, like recreate. Writes are gated with a human in the loop via [MCP elicitation](https://modelcontextprotocol.io/specification/2025-06-18/client/elicitation). A write against a production target (a server that declares itself production, or an environment with `production = true`) asks you to confirm through your MCP client, mid-call; the assistant cannot answer for you. `deploy_recreate` and `deploy_delete` destroy state with no undo, so they ask every time, production or not. A client that doesn't support elicitation cannot perform gated writes; the refusal names the CLI command to run instead. Recreate and rollback stamp the deploy ledger (`operation: recreate` / `rollback`) like their CLI counterparts.
 - **`get_version`**: report the gaffer CLI version backing the server.
 
-**Resources**:
+### Resources
 
 - The full projection API reference.
 - Worked examples covering counters, partitioned state, `emit`, biState, and the rest.
@@ -32,7 +52,9 @@ description: Connect gaffer's MCP server to Claude Code, Cursor, Continue, Claud
 - The current `gaffer.toml`, exposed so the assistant can reason about projection registration.
 - Telemetry disclosure, so the assistant can answer questions about what gaffer collects.
 
-**Prompts** for the two most common workflows:
+### Prompts
+
+The two most common workflows come as registered prompts, which most clients surface as slash commands or a prompt picker.
 
 - **`write-projection`**: draft a projection from a natural-language description.
 - **`fix-projection`**: diagnose and rewrite a broken projection.
@@ -48,7 +70,7 @@ For an assistant driving the write tools, the guard is a contract rather than ad
 - **Production escalates the ask.** The confirmation front-loads the risk (`PRODUCTION [env.prod]: ...`), and a no-undo write requires the human to type the projection name (the environment name for `deploy_apply`) instead of a one-key accept.
 - **No elicitation, no gated writes.** A client that can't elicit gets a refusal naming the CLI command for the human to run; the tool never falls back to applying silently.
 
-## Connect your client
+## Manual setup
 
 `gaffer mcp` is a local stdio server. No auth, no remote endpoint - your MCP client launches it as a subprocess and talks to it over stdin/stdout.
 
@@ -116,18 +138,6 @@ Any MCP-aware client that supports stdio servers works. Point it at:
 - Working directory: any directory. The projection tools need a `gaffer.toml` in the working directory or a parent, or a `--project` / `GAFFER_PROJECT` override; the documentation resources and `get_version` work anywhere.
 
 Most clients accept a JSON entry shaped like Cursor's above. Consult your client's MCP setup docs.
-
-## Example prompts
-
-Once connected, you can drive gaffer from natural language:
-
-- "Scaffold a projection that counts OrderPlaced events per stream."
-- "Run order-count against the happy fixture and show me the final state."
-- "Update order-count to also track OrderShipped events."
-- "Why isn't my projection handling OrderShipped events?"
-- "Set a breakpoint on the OrderPlaced handler, step through the next event, and tell me what the state looks like."
-
-The `write-projection` and `fix-projection` prompts wrap the most common flows. Most clients surface registered prompts as slash commands or a prompt picker.
 
 ## Telemetry
 

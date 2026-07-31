@@ -11,7 +11,7 @@ description: Drive KurrentDB projections from your test suite with @kurrent/proj
 npm install --save-dev @kurrent/projections-testing
 ```
 
-`@kurrent/kurrentdb-client` is a required peer dependency - the package imports it at load time - though it's only exercised when subscribing to a live KurrentDB cluster from a test.
+`@kurrent/kurrentdb-client` is a required peer dependency (the package imports it at load time), though it's only exercised when subscribing to a live KurrentDB cluster from a test.
 
 ## Requirements
 

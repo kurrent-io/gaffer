@@ -24,7 +24,7 @@ var ErrSessionDestroyed = errors.New("session has been destroyed")
 // upstream-quirk-compat code path threw, CompatCode is the throwing
 // quirk's code (with CompatDescription and, when known, CompatFixedIn
 // from the catalogue). That same code also appears in Diagnostics, the
-// complete set of quirks that fired on the throwing event - read
+// complete set of quirks that fired on the throwing event: read
 // CompatCode for "what broke this event", Diagnostics for "everything
 // that fired".
 type ProjectionError interface {

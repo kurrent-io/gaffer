@@ -10,7 +10,7 @@ Wraps the [gaffer runtime](https://github.com/kurrent-io/gaffer/tree/main/runtim
 npm install --save-dev @kurrent/projections-testing
 ```
 
-Requires Node.js 22 or later. `@kurrent/kurrentdb-client` is a peer dependency.
+Requires Node.js 22 or later. `@kurrent/kurrentdb-client` is a required peer dependency (the package imports it at load time).
 
 ## Quick start
 

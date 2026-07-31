@@ -2,7 +2,7 @@
 	"name": "gaffer-vscode",
 	"displayName": "KurrentDB Gaffer (Projections tooling)",
 	"description": "KurrentDB projection toolkit",
-	"version": "0.1.7",
+	"version": "0.1.8",
 	"license": "LicenseRef-KurrentLicenseV1",
 	"private": true,
 	"publisher": "kurrent-io",

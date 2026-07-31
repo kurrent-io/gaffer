@@ -12,10 +12,21 @@ import (
 	"unsafe"
 )
 
-// ErrSessionDestroyed is returned when calling methods on a destroyed session.
+// ErrSessionDestroyed reports use of a destroyed session. The bindings
+// themselves panic when a Session method is called after Destroy; this
+// sentinel exists for callers that wrap sessions behind their own
+// liveness checks and want a stable error to return instead.
 var ErrSessionDestroyed = errors.New("session has been destroyed")
 
 // ProjectionError is the interface implemented by all gaffer error types.
+//
+// Every concrete error type also carries compat fields: when an
+// upstream-quirk-compat code path threw, CompatCode is the throwing
+// quirk's code (with CompatDescription and, when known, CompatFixedIn
+// from the catalogue). That same code also appears in Diagnostics, the
+// complete set of quirks that fired on the throwing event: read
+// CompatCode for "what broke this event", Diagnostics for "everything
+// that fired".
 type ProjectionError interface {
 	error
 	ErrorCode() string
@@ -40,12 +51,8 @@ type JsLocation struct {
 	Column int `json:"column"`
 }
 
-// Compat fields, shared by every error type below: when an upstream-quirk-compat
-// code path threw, CompatCode is the throwing quirk's code (with CompatDescription
-// and, when known, CompatFixedIn from the catalogue). That same code also appears in
-// Diagnostics, which is the complete set of quirks that fired on the throwing event -
-// read CompatCode for "what broke this event", Diagnostics for "everything that fired".
-
+// InvalidProjectionError reports projection source that failed to
+// compile or validate (code "invalid-projection").
 type InvalidProjectionError struct {
 	Desc              string
 	Location          *JsLocation
@@ -61,6 +68,8 @@ func (e *InvalidProjectionError) Error() string            { return e.Msg }
 func (e *InvalidProjectionError) ErrorCode() string        { return "invalid-projection" }
 func (e *InvalidProjectionError) ErrorDescription() string { return e.Desc }
 
+// CompilationTimeoutError reports that compiling the projection
+// exceeded the allowed time (code "compilation-timeout").
 type CompilationTimeoutError struct {
 	Desc              string
 	ElapsedMs         int
@@ -76,6 +85,8 @@ func (e *CompilationTimeoutError) Error() string            { return e.Msg }
 func (e *CompilationTimeoutError) ErrorCode() string        { return "compilation-timeout" }
 func (e *CompilationTimeoutError) ErrorDescription() string { return e.Desc }
 
+// InvalidArgumentError reports a call with an invalid argument (code
+// "invalid-argument"); Field names the offending one.
 type InvalidArgumentError struct {
 	Desc              string
 	Field             string
@@ -90,6 +101,9 @@ func (e *InvalidArgumentError) Error() string            { return e.Msg }
 func (e *InvalidArgumentError) ErrorCode() string        { return "invalid-argument" }
 func (e *InvalidArgumentError) ErrorDescription() string { return e.Desc }
 
+// ProjectionHandlerError reports a handler that threw while processing
+// an event (code "handler-error"), with the JS stack, source location,
+// and the event's context.
 type ProjectionHandlerError struct {
 	Desc              string
 	JsStack           string
@@ -107,6 +121,8 @@ func (e *ProjectionHandlerError) Error() string            { return e.Msg }
 func (e *ProjectionHandlerError) ErrorCode() string        { return "handler-error" }
 func (e *ProjectionHandlerError) ErrorDescription() string { return e.Desc }
 
+// ExecutionTimeoutError reports that processing an event exceeded the
+// allowed time (code "execution-timeout").
 type ExecutionTimeoutError struct {
 	Desc              string
 	ElapsedMs         int
@@ -123,6 +139,8 @@ func (e *ExecutionTimeoutError) Error() string            { return e.Msg }
 func (e *ExecutionTimeoutError) ErrorCode() string        { return "execution-timeout" }
 func (e *ExecutionTimeoutError) ErrorDescription() string { return e.Desc }
 
+// MalformedEventError reports an event the engine couldn't parse or
+// feed (code "malformed-event").
 type MalformedEventError struct {
 	Desc              string
 	Event             EventContext
@@ -137,6 +155,8 @@ func (e *MalformedEventError) Error() string            { return e.Msg }
 func (e *MalformedEventError) ErrorCode() string        { return "malformed-event" }
 func (e *MalformedEventError) ErrorDescription() string { return e.Desc }
 
+// StateSerializationError reports state that couldn't be serialized
+// after a handler ran (code "state-serialization-error").
 type StateSerializationError struct {
 	Desc              string
 	Event             EventContext
@@ -151,6 +171,8 @@ func (e *StateSerializationError) Error() string            { return e.Msg }
 func (e *StateSerializationError) ErrorCode() string        { return "state-serialization-error" }
 func (e *StateSerializationError) ErrorDescription() string { return e.Desc }
 
+// ProjectionTransformError reports a projection transform function
+// that threw (code "projection-transform-error").
 type ProjectionTransformError struct {
 	Desc              string
 	JsStack           string

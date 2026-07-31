@@ -2,6 +2,11 @@
 	"name": "@kurrent/gaffer-linux-x64",
 	"version": "0.4.2",
 	"description": "Gaffer CLI binary for Linux x64",
+	"keywords": [
+		"kurrentdb",
+		"projections",
+		"gaffer"
+	],
 	"license": "LicenseRef-KurrentLicenseV1",
 	"repository": {
 		"type": "git",

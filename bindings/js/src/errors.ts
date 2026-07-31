@@ -1,5 +1,11 @@
 import type { Diagnostic } from "./types.js";
 
+/**
+ * Base class for every error the runtime throws. `code` is the stable
+ * machine-readable discriminator (each subclass fixes its own);
+ * `message` carries the runtime's formatted report, with a source
+ * snippet and caret where the error has a location.
+ */
 export class ProjectionError extends Error {
 	readonly code: string;
 	readonly description: string;
@@ -39,6 +45,10 @@ export class ProjectionError extends Error {
 	}
 }
 
+/**
+ * The projection source failed to compile or validate
+ * (code `invalid-projection`).
+ */
 export class InvalidProjectionError extends ProjectionError {
 	readonly location?: { line: number; column: number };
 	readonly source: string;
@@ -56,6 +66,10 @@ export class InvalidProjectionError extends ProjectionError {
 	}
 }
 
+/**
+ * Compiling the projection exceeded the allowed time
+ * (code `compilation-timeout`).
+ */
 export class CompilationTimeoutError extends ProjectionError {
 	readonly elapsed: number;
 	readonly allowed: number;
@@ -73,6 +87,10 @@ export class CompilationTimeoutError extends ProjectionError {
 	}
 }
 
+/**
+ * A call was made with an invalid argument (code `invalid-argument`);
+ * `field` names the offending one.
+ */
 export class InvalidArgumentError extends ProjectionError {
 	readonly field: string;
 
@@ -87,6 +105,7 @@ export class InvalidArgumentError extends ProjectionError {
 	}
 }
 
+/** The event being processed when an error was thrown. */
 export interface EventContext {
 	eventType: string;
 	streamId: string;
@@ -94,6 +113,10 @@ export interface EventContext {
 	partition?: string;
 }
 
+/**
+ * A handler threw while processing an event (code `handler-error`),
+ * with the JS stack, source location, and the event's context.
+ */
 export class ProjectionHandlerError extends ProjectionError {
 	readonly jsStack?: string;
 	readonly location?: { line: number; column: number };
@@ -117,6 +140,10 @@ export class ProjectionHandlerError extends ProjectionError {
 	}
 }
 
+/**
+ * Processing an event exceeded the allowed time
+ * (code `execution-timeout`).
+ */
 export class ExecutionTimeoutError extends ProjectionError {
 	readonly elapsed: number;
 	readonly allowed: number;
@@ -137,6 +164,9 @@ export class ExecutionTimeoutError extends ProjectionError {
 	}
 }
 
+/**
+ * The engine couldn't parse or feed an event (code `malformed-event`).
+ */
 export class MalformedEventError extends ProjectionError {
 	readonly event: EventContext;
 
@@ -151,6 +181,10 @@ export class MalformedEventError extends ProjectionError {
 	}
 }
 
+/**
+ * State couldn't be serialized after a handler ran
+ * (code `state-serialization-error`).
+ */
 export class StateSerializationError extends ProjectionError {
 	readonly event: EventContext;
 
@@ -165,6 +199,10 @@ export class StateSerializationError extends ProjectionError {
 	}
 }
 
+/**
+ * A projection transform function threw
+ * (code `projection-transform-error`).
+ */
 export class ProjectionTransformError extends ProjectionError {
 	readonly jsStack?: string;
 	readonly location?: { line: number; column: number };

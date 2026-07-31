@@ -35,7 +35,10 @@ if _, err := session.Feed(`{"eventType":"OrderPlaced","streamId":"order-1","sequ
     log.Fatal(err)
 }
 
-state := session.GetState(nil)
+state, err := session.GetState(nil)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Println(*state) // {"count":1}
 ```
 

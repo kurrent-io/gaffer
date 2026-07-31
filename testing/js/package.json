@@ -2,6 +2,16 @@
 	"name": "@kurrent/projections-testing",
 	"version": "0.2.1",
 	"description": "Test library for KurrentDB projections",
+	"keywords": [
+		"kurrentdb",
+		"eventstore",
+		"projections",
+		"event-sourcing",
+		"testing",
+		"vitest",
+		"jest",
+		"mocha"
+	],
 	"license": "Apache-2.0",
 	"repository": {
 		"type": "git",

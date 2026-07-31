@@ -59,13 +59,20 @@ import (
 	"sync/atomic"
 )
 
-// Callback function types.
+// Callback function types, registered per session.
 type (
-	EmitCallback         func(streamID, eventType, data, metadata string, isJson, isLink bool)
-	LogCallback          func(message string)
-	DiagnosticCallback   func(d Diagnostic)
+	// EmitCallback receives each event the projection emits; isLink
+	// distinguishes linkTo from emit.
+	EmitCallback func(streamID, eventType, data, metadata string, isJson, isLink bool)
+	// LogCallback receives the projection's log() output.
+	LogCallback func(message string)
+	// DiagnosticCallback receives each quirk diagnostic as it fires.
+	DiagnosticCallback func(d Diagnostic)
+	// StateChangedCallback receives a partition's serialized state
+	// whenever processing changes it.
 	StateChangedCallback func(partition string, stateJSON string)
-	BreakCallback        func(info BreakInfo)
+	// BreakCallback receives debugger pause notifications.
+	BreakCallback func(info BreakInfo)
 )
 
 // Global callback registry keyed by session handle.

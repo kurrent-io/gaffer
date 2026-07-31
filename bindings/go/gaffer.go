@@ -348,9 +348,6 @@ type SnappedBreakpoint struct {
 	Column int `json:"column"`
 }
 
-// SetBreakpoint sets a breakpoint, snapping to the nearest breakable position.
-// Column is accepted for future column-level breakpoints but currently only line is used for snapping.
-// Returns the actual position (1-based) or nil if no breakable position was found.
 // BreakpointOptions configures a breakpoint.
 type BreakpointOptions struct {
 	Condition    string // JS expression; only pauses if truthy. Empty for unconditional.
@@ -358,6 +355,10 @@ type BreakpointOptions struct {
 	LogMessage   string // Log template with {expr}. When set, logs instead of pausing.
 }
 
+// SetBreakpoint sets a breakpoint, snapping to the nearest breakable
+// position. Column is accepted for future column-level breakpoints but
+// currently only line is used for snapping. Returns the actual snapped
+// position (1-based), or nil if no breakable position was found.
 func (s *Session) SetBreakpoint(line, column int, opts *BreakpointOptions) (*SnappedBreakpoint, error) {
 	s.ensureAlive()
 	var cond, hitCond, logMsg *C.char

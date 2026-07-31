@@ -11,7 +11,7 @@ description: Drive KurrentDB projections from your test suite with @kurrent/proj
 npm install --save-dev @kurrent/projections-testing
 ```
 
-`@kurrent/kurrentdb-client` is a peer dependency, needed only when subscribing to a live KurrentDB cluster from a test.
+`@kurrent/kurrentdb-client` is a required peer dependency - the package imports it at load time - though it's only exercised when subscribing to a live KurrentDB cluster from a test.
 
 ## Requirements
 
@@ -262,9 +262,11 @@ A **`processed`** result (the handler ran) carries:
 | `sharedState` | Shared state for biState projections; `undefined` otherwise.                                                                             |
 | `partition`   | The partition key that was updated. Absent for unpartitioned projections.                                                                |
 | `event`       | The input event, round-tripped verbatim, so you can assert against it.                                                                   |
-| `emitted`     | Events emitted during processing (`emit` / `linkTo`).                                                                                     |
+| `emitted`     | Events emitted during processing (`emit` / `linkTo`); the shape is described below.                                                       |
 | `logs`        | Messages from `log()` calls.                                                                                                              |
 | `diagnostics` | Quirks that fired while processing this event, empty when none. See [State serialization](#state-serialization).                         |
+
+Each entry in `emitted` is a `TestEmittedEvent`: `streamId`, `eventType` (`$>` or `$@` for link events), `data` (parsed from JSON, falling back to the raw string when parsing fails), `metadata` (parsed object, or `null` when none was provided), and `isLink` (true for `linkTo()` events).
 
 A **`skipped`** result (the event never reached the handler) carries the same `event` plus a `reason`: `unhandled`, `non-json`, `link`, `no-partition`, `no-delete-handler`, or `wrong-stream`.
 
@@ -328,11 +330,13 @@ try {
     err.code; // "handler-error", "malformed-event", etc.
     err.description; // human-readable description
     err.diagnostics; // quirks that fired on the throwing event (e.g. quirk.serialize.nonFinite)
+    err.compatCode; // the throwing quirk's code, when a quirk threw
+    err.compatFixedIn; // KurrentDB version that fixes it upstream, when known
   }
 }
 ```
 
-When a quirk throws, `err.diagnostics` carries it (and any quirk that fired earlier in the same event), the same `Diagnostic` shape as `step.diagnostics` on a processed step. So a test can assert on a throwing quirk the same way it asserts on a non-throwing one.
+When a quirk throws, `err.diagnostics` carries it (and any quirk that fired earlier in the same event), the same `Diagnostic` shape as `step.diagnostics` on a processed step. So a test can assert on a throwing quirk the same way it asserts on a non-throwing one. The throwing quirk itself is singled out on `err.compatCode`, with `err.compatDescription` and, when the catalogue knows it, the `err.compatFixedIn` KurrentDB version.
 
 The full error hierarchy: `InvalidProjectionError`, `CompilationTimeoutError`, `InvalidArgumentError`, `ProjectionHandlerError`, `ExecutionTimeoutError`, `MalformedEventError`, `StateSerializationError`, `ProjectionTransformError`.
 

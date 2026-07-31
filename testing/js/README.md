@@ -2,7 +2,7 @@
 
 Test [KurrentDB](https://www.kurrent.io) projections locally with any test runner (vitest, jest, mocha).
 
-Wraps the [gaffer runtime](../../runtime/) to execute projections against test events with the same behaviour as a real KurrentDB instance.
+Wraps the [gaffer runtime](https://github.com/kurrent-io/gaffer/tree/main/runtime) to execute projections against test events with the same behaviour as a real KurrentDB instance.
 
 ## Install
 
@@ -249,11 +249,13 @@ try {
 		err.code; // "handler-error", "malformed-event", etc.
 		err.description; // human-readable description
 		err.diagnostics; // quirks that fired on the throwing event (e.g. quirk.serialize.nonFinite)
+		err.compatCode; // the throwing quirk's code, when a quirk threw
+		err.compatFixedIn; // KurrentDB version that fixes it upstream, when known
 	}
 }
 ```
 
-When a quirk throws, `err.diagnostics` carries it (and any quirk that fired earlier in the same event), the same `Diagnostic` shape as `step.diagnostics` on a processed step - so you assert on a throwing quirk the same way.
+When a quirk throws, `err.diagnostics` carries it (and any quirk that fired earlier in the same event), the same `Diagnostic` shape as `step.diagnostics` on a processed step - so you assert on a throwing quirk the same way. The throwing quirk itself is singled out on `err.compatCode`, with `err.compatDescription` and, when the catalogue knows it, the `err.compatFixedIn` KurrentDB version.
 
 ## Related packages
 

@@ -149,7 +149,7 @@ export class ProjectionTest<
 
 	/**
 	 * Feed a single event to the projection. Returns the step result.
-	 * @throws {ProjectionError} If the projection handler throws, with `input` and `normalized` fields attached.
+	 * @throws {ProjectionError} If the projection handler throws.
 	 */
 	feed(
 		/** A TestEvent, RecordedEvent, or ResolvedEvent. */

@@ -1,6 +1,7 @@
-/* Splash-page-only styles. Extracted from Hero.astro and HeroBackdrop.astro
-   so the splash CSS doesn't ship in the common chunk loaded on every page.
-   Imported from index.mdx via head config. */
+/* Homepage-only styles: the full-bleed hero (extracted from Hero.astro and
+   HeroBackdrop.astro), the install strip, and the card grid. Imported from
+   index.mdx, though Vite folds that into the stylesheet every page loads, so
+   keeping them here is locality rather than a payload saving. */
 
 	.hero-backdrop {
 		/* Catppuccin — Latte in light mode, Mocha in dark. Mocha matches
@@ -92,6 +93,23 @@
 		display: none;
 	}
 
+	/* Starlight's footer renders empty here (splash has no pagination, and the
+	   site sets no edit link or last-updated) but its 1.5rem flex gap still
+	   takes space. Drop it, and zero the brand bar's margin, so the card
+	   grid's own 2rem is the whole gap below the cards. */
+	body:has(.gaffer-hero) .main-pane footer.sl-flex {
+		display: none;
+	}
+
+	body:has(.gaffer-hero) .gaffer-footer {
+		margin-top: 0;
+	}
+
+	/* Only the intro: the install strip's paragraphs are nested in divs. */
+	body:has(.gaffer-hero) .sl-markdown-content > p {
+		text-wrap: pretty;
+	}
+
 	/* The hero bleeds to 100vw, which is wider than the content box when a
 	   scrollbar is present (Chromium reserves its width), so it overflows by
 	   the scrollbar width and adds a horizontal scrollbar. Clip horizontal
@@ -120,12 +138,17 @@
 		margin-inline: calc(50% - 50vw);
 		margin-top: calc(-1 * var(--sl-nav-height, 3.5rem));
 		width: 100vw;
-		height: 100vh;
+		/* `height`, the negative `margin-bottom` below and the overlay's
+		   `padding-bottom` are one geometry: change one, change all three.
+		   min-height stops clip-path cropping the wordmark on viewports too
+		   short to fit the brand block. */
+		height: 50vh;
+		min-height: 20rem;
 		overflow: hidden;
 		/* clip-path is reliable against 3D-transformed children that
 		   overflow: hidden alone won't clip. */
 		clip-path: inset(0);
-		margin-bottom: -30vh;
+		margin-bottom: -15vh;
 	}
 
 	.gaffer-hero .hero-backdrop {
@@ -163,9 +186,9 @@
 		padding-top: 3rem;
 		padding-inline: clamp(1.5rem, 8vw, 6rem);
 		/* Extra bottom padding pushes the brand up into the hero so it
-		   sits ~30vh above the bottom edge; the gradient covers the
-		   space below. */
-		padding-bottom: calc(30vh + 3rem);
+		   clears the overlap the negative margin-bottom opens up; the
+		   gradient covers the space below. */
+		padding-bottom: calc(15vh + 3rem);
 		z-index: 1;
 		background:
 			/* Solid fade at the bottom so the hero blends into the page bg
@@ -236,4 +259,150 @@
 		margin: calc(1rem - var(--centring-offset)) 0 0 0;
 		/* Push subtitle right so it lines up with the start of the wordmark. */
 		padding-left: calc(var(--logomark-width) + var(--brand-gap));
+	}
+
+	/* The install panels and the cards are one 3-column grid, so every panel
+	   edge lines up down the page. Three install panels, then Get started
+	   spanning two with the four surface cards filling the rest. */
+	/* minmax(0, 1fr), not 1fr: a bare 1fr floors each column at its content's
+	   min-content width, so the long prompt would widen its column and squeeze
+	   the others instead of scrolling inside its own box. */
+	.home-install,
+	.home-cards {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 1rem;
+		margin-block: 2rem;
+	}
+
+	.home-cards > :first-child {
+		grid-column: span 2;
+	}
+
+	/* The space between the two rows is the grid's own gap, not the 2rem that
+	   sets the whole block off from the intro and the footer. */
+	.home-install {
+		margin-bottom: 1rem;
+	}
+
+	.home-cards {
+		margin-top: 0;
+	}
+
+	/* Panels are transparent, like the cards. They'd need a background above
+	   the intro, where the hero's fade is still part-transparent. */
+	.home-install__pane {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.75rem;
+		padding: 1rem;
+		min-width: 0;
+		border: 1px solid var(--color-shade-30);
+		border-radius: 0.5rem;
+		box-shadow: var(--sl-shadow-sm);
+	}
+
+	.home-install__label {
+		font-size: var(--sl-text-sm);
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--color-muted);
+		margin: 0;
+	}
+
+	.home-install__note {
+		font-size: var(--sl-text-sm);
+		line-height: 1.5;
+		color: var(--color-muted);
+		/* Share a baseline across both panes whatever sits above them. */
+		margin: auto 0 0 0;
+	}
+
+	/* The strip is `not-content`, so Starlight's link styles don't reach it. */
+	.home-install__note a {
+		color: var(--color-link);
+		text-decoration: underline;
+		text-underline-offset: 0.15em;
+	}
+
+	.home-install .expressive-code {
+		width: 100%;
+		margin: 0;
+	}
+
+	/* The prompt overflows its pane. A classic scrollbar would add ~15px and
+	   break the row's alignment; it stays scrollable without one. */
+	.home-install .expressive-code pre {
+		scrollbar-width: none;
+	}
+
+	.home-install .expressive-code pre::-webkit-scrollbar {
+		display: none;
+	}
+
+	.home-install__buttons {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin: 0;
+	}
+
+	.home-install__buttons a {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		border: 1px solid var(--color-shade-30);
+		border-radius: 0.375rem;
+		/* Same block padding as the code block in the flanking panes, so all
+		   three content rows start and end on the same line. Expressive Code
+		   declares that token on :root; the fallback repeats its value so the
+		   buttons keep their height if it ever narrows that scope. */
+		padding: var(--ec-codePadBlk, 0.75rem) 0.75rem;
+		font-size: var(--sl-text-sm);
+		font-weight: 600;
+		color: var(--color-foreground);
+		text-decoration: none;
+	}
+
+	.home-install__buttons a:hover {
+		background: var(--color-accent-10);
+		border-color: var(--color-accent);
+	}
+
+	/* A panel narrower than 349px clips the CLI command and breaks the registry
+	   buttons onto separate lines (measured). Three panels run out of room at
+	   1312px and two at 853px, so drop a column at each, with ~15px of slack
+	   over the threshold for a fallback monospace before the webfont lands. The
+	   prompt panel takes the full width when it wraps to its own row. */
+	@media (max-width: 82rem) {
+		.home-install {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.home-install > :last-child {
+			grid-column: span 2;
+		}
+	}
+
+	@media (max-width: 56rem) {
+		.home-install {
+			grid-template-columns: 1fr;
+		}
+
+		.home-install > :last-child {
+			grid-column: span 1;
+		}
+	}
+
+	/* The cards only wrap text, so they hold together much longer. */
+	@media (max-width: 50rem) {
+		.home-cards {
+			grid-template-columns: 1fr;
+		}
+
+		.home-cards > :first-child {
+			grid-column: span 1;
+		}
 	}

@@ -1,0 +1,126 @@
+gaffer: install and MCP setup
+=============================
+
+This page is written to be read and acted on by an AI assistant. The landing
+page at https://gaffer.kurrent.io offers a prompt that points here.
+
+Because agents execute what they read here, this file must contain only setup
+instructions the reader has asked for. Do not add anything that reads as
+broader instruction, and do not describe what the tools can do: that belongs
+in the docs at https://gaffer.kurrent.io/cli/mcp/.
+
+gaffer is a toolkit for developing, testing, debugging, and deploying KurrentDB
+projections. Its MCP server exposes that surface to MCP-aware assistants.
+
+
+1. Install the CLI
+------------------
+
+Requires Node.js 22 or later.
+
+  npm install -g @kurrent/gaffer
+
+Platform binaries come in as optional dependencies. Verify with:
+
+  gaffer version
+
+
+2. Register the MCP server
+--------------------------
+
+The server is `gaffer mcp`: a local stdio server, launched as a subprocess by
+the client. No auth and no remote endpoint. It starts whether or not the
+directory is a gaffer project, so it is safe to register globally.
+
+Register it with the client you are running in, and only that one.
+
+Claude Code:
+
+  claude mcp add gaffer -- gaffer mcp
+
+  Confirm with /mcp. To register from outside the project directory, pin it:
+  claude mcp add gaffer -- gaffer mcp --project /path/to/project
+
+VS Code:
+
+  Nothing to do beyond installing the extension (step 3). It registers the
+  MCP server with VS Code's MCP framework automatically.
+
+Cursor:
+
+  Add to .cursor/mcp.json in the workspace, or ~/.cursor/mcp.json globally:
+
+  {
+    "mcpServers": {
+      "gaffer": {
+        "command": "gaffer",
+        "args": ["mcp"]
+      }
+    }
+  }
+
+Claude Desktop:
+
+  Edit the config file, then restart Claude Desktop.
+  macOS:   ~/Library/Application Support/Claude/claude_desktop_config.json
+  Windows: %AppData%\Claude\claude_desktop_config.json
+
+  {
+    "mcpServers": {
+      "gaffer": {
+        "command": "gaffer",
+        "args": ["mcp"]
+      }
+    }
+  }
+
+Any other MCP client that supports stdio servers:
+
+  Command: gaffer
+  Args:    ["mcp"]
+
+  Most clients take a JSON entry shaped like Cursor's above. When the client's
+  launch directory is not the project, add "--project", "/path/to/project" to
+  the args, or set the GAFFER_PROJECT environment variable.
+
+
+3. Add the editor extension
+---------------------------
+
+Optional, unless the client is VS Code: there the extension is what registers
+the MCP server, so step 2 depends on this one.
+
+VS Code, from either registry:
+
+  https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer-vscode
+  https://open-vsx.org/extension/kurrent-io/gaffer-vscode
+
+The extension needs the `gaffer` CLI on PATH, so do step 1 first.
+
+Any other LSP or DAP aware editor can attach to gaffer's language and debug
+servers directly: https://gaffer.kurrent.io/extension/other-editors/
+
+
+4. Confirm it worked
+--------------------
+
+  gaffer version
+
+Then check the client lists gaffer's tools. In Claude Code that is /mcp; in
+Claude Desktop, the slider icon in the chat input.
+
+If the projection tools report that no project was found, the working
+directory has no gaffer.toml in it or a parent. Either run the server's `init`
+tool, run `gaffer init`, or re-register with --project as above.
+
+
+Where to go next
+----------------
+
+Full documentation:  https://gaffer.kurrent.io
+What MCP exposes:    https://gaffer.kurrent.io/cli/mcp/
+First projection:    https://gaffer.kurrent.io/getting-started/first-projection/
+Machine-readable:    https://gaffer.kurrent.io/llms.txt
+
+Telemetry is anonymous and opt-out: `gaffer config telemetry off`, or see
+https://gaffer.kurrent.io/telemetry/cli/

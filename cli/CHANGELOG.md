@@ -1,5 +1,196 @@
 # @kurrent/gaffer
 
+## 0.5.0
+
+### Minor Changes
+
+- bbfd56c: **Breaking:** `gaffer.toml` gains a `[database_config]` section for node-level engine settings, and the top-level `compilation_timeout` / `execution_timeout` keys move into it. A file that still sets them at the top level now fails to load, with a message pointing at the new section.
+
+  `[database_config]` declares the engine configuration expected on a deployment target:
+
+  - `max_state_size` (newly exposed) caps a projection's serialized state in bytes, defaulting to the server's 16 MiB. It is enforced on local runs, so a projection that would exceed the cap faults locally, catching state bloat before deploy.
+  - `compilation_timeout` and `execution_timeout` are declaration only: gaffer records them for deploy-time configuration checks but does not apply them to local runs, since a wall-clock budget measured on a dev machine isn't comparable to the server's. To bound how long a local projection may run before gaffer treats it as hung, set the `GAFFER_TIMEOUT_MS` environment variable (default 5000ms). A per-`[[projection]]` `execution_timeout` is likewise declaration only and no longer affects local runs.
+
+  **`gaffer deploy` and `gaffer status` check the target against the declaration** and warn when the node's live engine settings diverge: one line per differing knob, read from the node's options endpoint. Fixtures and local runs assumed the declared values, so a server enforcing a different `max_state_size` or timeout is visible before it bites. A non-positive `max_state_size` declares the engine default rather than a value.
+
+  The node-options read authenticates exactly like the connection itself: connection-string userinfo, credentials from `.env` / `.env.<env>`, an OAuth bearer token (client-credentials or the login stored by `gaffer auth`, never prompting), or the environment's user certificate presented in the TLS handshake, honouring the connection's `tlsCaFile` and `tlsVerifyCert` settings.
+
+  The check is advisory, but a failure is visible rather than silent. When the node's options can't be read (no HTTP surface, an auth refusal), `status` and `deploy` warn that the check couldn't run instead of reporting a false "no drift", the JSON envelopes carry `configDriftError`, and the MCP deploy confirmation notes the unchecked config. `gaffer status --json` reports a divergence as a `configDrift` array of `{"knob", "server", "local"}`. `gaffer deploy --json` keeps its warning on stderr, so the stdout payload stays clean while CI logs still show it.
+
+- 331f061: **Breaking:** `gaffer.toml` now rejects absolute `entry` and `fixtures.<name>` paths at load time. Previously an absolute path (e.g. `entry = "/etc/passwd"`, or a Windows drive-letter form like `C:\...`) slipped past validation while the scaffold write path already rejected it. Both surfaces now enforce the same rule: paths must be relative to the project root and must not escape it.
+
+### Patch Changes
+
+- bbfd56c: `gaffer deploy` creates or updates projections on an environment from `gaffer.toml`: it creates the ones not yet on the server, updates the ones whose definition changed, and skips the ones already in sync (matched by content hash). With no argument it deploys every projection in `gaffer.toml`; name one to deploy just it. The emit flag is always sent explicitly, so an update never clears it.
+
+  **Plan, then validate, then apply.** Deploy builds the whole plan against the server before touching it, then compiles the projections it would create or update. If any won't run (one that fails to compile, or that compiles but carries errors which would fault on the server), it refuses the run before writing anything, so a bad projection can't leave the earlier ones already applied. `--no-validate` skips the check, deploying the valid projections and refusing the invalid ones individually instead of aborting the whole run.
+
+  **The plan preview** lists each projection with its verdict (`create`, `update`, `rebuild`, `refused`, `invalid`, or `failed`) and a dimmed detail column carrying the refusal reason or the failure error in full. In-sync projections stay a count only, so unchanged ones don't drown the signal. It names the target's reported cluster name, flags an update over a currently-faulted projection (the update won't clear the fault), and cautions when a projection's deployed definition was changed outside gaffer since its last deploy, naming the tool that changed it. Gaffer is the canonical source of truth, so it still deploys: the drift is surfaced, not refused.
+
+  **Confirmation** follows the plan. `--yes` skips the prompt; without a terminal (or with `--json`) deploy won't apply unconfirmed, so pass `--yes` in scripts. A production target (a server that declares itself production, or an env with `production = true`) gets a louder confirmation and refuses `--no-validate`.
+
+  **A changed query is a logic change:** the new code may read already-processed events differently, so the accumulated state could be wrong. By default deploy keeps the checkpoint, applies the update, and flags the change. Pass `--reset-on-logic-change` to rebuild instead: each logic-changed projection is stopped, updated, reset to the beginning, and restarted so it reprocesses from zero. An emitting projection re-emits on a rebuild and may duplicate into its target streams, so the plan warns and points at `gaffer recreate --delete-emitted` for a clean-emit rebuild. A change to engine version or track-emitted-streams can't be applied in place at all; deploy refuses it and points at `gaffer recreate`.
+
+  **Machine-readable output.** `--json` emits the per-projection results as an array. `--dry-run` shows the plan and applies nothing; `--dry-run --json` emits a structured envelope carrying a top-level `verdict` of `in-sync`, `deployable`, or `blocked` (what a real deploy would do), the `changes` count, the resolved `env` and `target`, whether the target is `production`, any `[database_config]` divergence (`configDrift` / `configDriftError`), and the per-projection `plan` array. Each item reports its would-be `outcome` plus the flags a structured consumer needs:
+
+  - **`recreate`**: the `refused` outcome is an engine-version or track-emitted-streams change needing a recreate, not an invalid definition.
+  - **`faulted`**: an update over a currently-faulted projection.
+  - **`emittingReset`**: a rebuild that re-emits.
+  - **`logicChange`**: a continued logic change, so CI can alert on it.
+  - **`externalChange`** / **`externalChangeTool`**: the deployed definition was changed out of band, and the tool that changed it.
+
+  `--json --stream` streams the apply as newline-delimited JSON instead of buffering a single array until the run finishes. Each line is a `type`-tagged event: a `deploy_start` as each projection's RPC begins, a `deploy_result` as it settles (the same per-item shape `--json` emits), and a terminal `deploy_summary` counting the outcomes, so a consumer can render progress live. `--stream` is for the apply: it requires `--json` and can't be combined with `--dry-run`. stdout stays strictly NDJSON. A pre-apply invalid-plan refusal streams the invalid projections then a `deploy_summary` reporting nothing applied, and a run with nothing to deploy emits a single zeroed `deploy_summary`, so a streaming consumer always ends on one. A broken output stream never aborts an in-flight deploy: emitting goes quiet after the first write error and the apply runs to completion.
+
+  **Exit codes** are stable for scripts: `0` succeeded or nothing to do, `1` an error, `2` changes are pending (`--dry-run` only), `3` refused by a guardrail: confirmation was needed but there was no terminal or `--yes`, or `--no-validate` was used against production. Under `--dry-run` the code follows the verdict: `0` in-sync, `2` deployable, `1` blocked. The guardrail exit code `3` also applies to `recreate` and the operate verbs when they can't confirm non-interactively.
+
+  Degrades silently against a KurrentDB without the deploy-metadata field: the external-change detection is skipped and deploy behaves as it otherwise would.
+
+- bbfd56c: Gaffer now records tool metadata on every projection it writes, so a projection carries who changed it and from where: the tool (`Gaffer`) and version, the operation, the source revision, and the acting identity. It follows a shared convention that other KurrentDB tools can write and display, and it's what `gaffer status`, `gaffer diff`, and `gaffer history` read to attribute a change.
+
+  Every mutating command stamps its operation: `gaffer deploy` records `deploy`, `gaffer recreate` records `recreate`, and `gaffer rollback` records `rollback`. A recreate is therefore attributed to gaffer rather than appearing as anonymous lifecycle steps.
+
+  - **`revision`** defaults to the project's git commit (suffixed `+changes` when the working tree is dirty); set `GAFFER_REVISION` in CI to record the canonical commit.
+  - **`actor`** defaults to the identity gaffer connects as (the basic-auth user or OAuth client), omitted for an anonymous connection; set `GAFFER_ACTOR` in CI to record the pipeline identity.
+
+  The metadata rides on the projection's definition event and is best-effort: against a KurrentDB that predates the feature it is silently ignored and the command behaves exactly as before.
+
+- bbfd56c: `gaffer status` shows the runtime state of projections on an environment and how they compare to local config: running, stopped, aborted or faulted, progress, and whether each is in sync, drifted, not deployed, untracked, or invalid. With no argument it lists every local and deployed projection as a table; name a projection for its detail. Pass `--json` for machine-readable output.
+
+  **Ownership and drift are attributed** from the tool metadata gaffer stamps on deploy, so the table says more than `untracked` or `drifted`:
+
+  - A projection on the server but not in local config reads as `orphan` (gaffer deployed it, now gone from `gaffer.toml`, so it's a deletion candidate) or plain `untracked`, with the deploying tool named when its metadata is present. `--json` reports this as `owner`, including `foreign` for a projection another tool manages.
+  - An in-config projection that differs from what's deployed reads as `local ahead` (you've edited local since your deploy) or `changed externally` (a tool or a direct write changed the server since). `--json` splits the latter into `changed-by-tool` and `changed-server`.
+
+  The table gains **LAST DEPLOY** and **DEPLOYED VIA** columns, and naming a projection shows the deploy provenance behind it: when, the tool and version, the deployer, and the source revision. The last-deploy date comes from the event itself, so it shows even for a projection with no tool metadata.
+
+  **An aborted projection** reports its own `aborted` runtime state, distinct from a clean `stopped`. An aborted projection was stopped without a final checkpoint, so resuming it reprocesses from the last checkpoint written, re-emitting for an emitting projection. The state surfaces everywhere `runtime.state` appears: the status table (with a warning tint), the detail block, `--json`, and the `deploy_status` MCP tool. The signal is transient. KurrentDB reports it only while it holds the projection in memory, so it reverts to `stopped` after a server restart, and the absence of `aborted` is not proof of a clean pause.
+
+  **A projection that fails to compile no longer aborts the command.** A compile error is a per-projection condition: `gaffer status` shows the broken projection as `invalid` and still renders the rest of the table with their real runtime state and drift. It exits 0, and the compile error is shown so you know what to fix.
+
+  `gaffer status --json` emits an object: a `projections` array plus a `configDrift` array when the target diverges from `[database_config]`. Each projection carries `owner`, `attribution`, a top-level `lastDeployed` timestamp, `lastWrite` (the tool, its version, the source revision, and the actor), and the deployed definition's content `hash`. The report also names where it landed (the resolved `env`, `target` server, and `production` tier), so it's self-describing without a second call.
+
+  Against a KurrentDB without the deploy-metadata field, the attribution degrades to plain in-sync / drifted / untracked.
+
+- bbfd56c: `gaffer diff <projection>` compares two versions of a projection and reports how they differ. By default it compares the local definition against what's deployed on KurrentDB, reporting its state: in sync, drifted, not deployed, untracked, or invalid. `--left` and `--right` compare any two versions instead. Each is `local`, `deployed`, or a content-hash prefix from `gaffer history` (resolving a hash costs a history read). A version-to-version diff is a pure source diff with no state verdict.
+
+  **The source diff renders in-process** rather than shelling out to an external viewer. Every line of both sides is shown with the changes marked in place: dual line-number gutters, +/- colouring, and the span that changed within a line highlighted. The diff is computed on the same canonical form as the drift verdict, so it always matches the `+N -M` stat that `gaffer diff` and `gaffer status` report. It works without git installed, when piped, and in CI. Set `GAFFER_EXTERNAL_DIFF` to open an external viewer instead (e.g. `git diff`, `delta`, `difft`); it is no longer the default path.
+
+  **The drift verdict is attributed** from the tool metadata gaffer stamps on deploy, matching `gaffer status`: a projection on the server but not in local config reads as `orphan` or `untracked` (naming the deploying tool where known), and one that differs from what's deployed reads as `local ahead` or `changed externally`. `gaffer diff` also shows the deploy provenance behind the projection: when it was deployed, the tool and version, the deployer, and the source revision.
+
+  **A projection that fails to compile no longer aborts the command.** `gaffer diff` still shows the source diff, engine version, and track-emitted-streams, marking `emit` unknown because deriving it needs a successful compile. It exits 0, and the compile error is shown so you know what to fix.
+
+  Pass `--json` for machine-readable output. It carries the two sides as `left` and `right`, each with its `ref`, content `hash`, and canonical `source`. A structured `lines` array gives each row a kind (`equal`, `removed`, or `added`), per-side line numbers, and the changed intraline span. On the default deployed-vs-local diff it adds a `verdict` with the drift state, plus the `owner` and `attribution` fields `gaffer status --json` reports.
+
+- bbfd56c: `gaffer history <projection>` shows a deployed projection's history: every operation on it, newest first, with who made it and how.
+
+  - On a terminal it opens an interactive timeline: a scrolling list on the left, the selected entry's full detail on the right, and a footer naming the projection and target. Navigate with `↑`/`↓` (or `j`/`k`), `g`/`G`, `PgUp`/`PgDn`; `q` or `Esc` quits. Older entries page in as you scroll.
+  - Each entry is one write to the projection. One carrying gaffer metadata shows its operation (deploy, recreate, rollback, reset), the actor, and the source revision. One without is attributed by what changed: `updated` when the definition moved, `updated-by` (with the tool named) for another tool's write, `enabled`/`disabled` for a lifecycle change, `reconfigured` when a checkpoint or performance setting moved, `rewritten` for an identical redeploy, or `created`/`deleted`.
+  - A content hash identifies each deployed definition, so a reverted definition is recognisable at a glance: the timeline draws a revert as a branch off the live line, linking the restored definition back to the earlier one it matched (nested reverts included). A recreate shows as a single entry: the disable and delete writes it performs are folded into the `recreate` row, and the detail panel notes the projection was reprocessed from zero.
+  - Piped or with `--json` it prints the latest entries instead (`--limit`, default 100, or `--all`). Each `--json` entry carries the full content hash, its classification and flags, the tool metadata, and any configuration knobs that moved. A metadata-less `updated` entry also carries a `changeSummary` naming what moved (e.g. `query changed`). It's the same summary the terminal timeline prints, so a consumer doesn't have to fetch and diff the two versions to describe the change. A recreate keeps every underlying write as its own entry, with the create's `kind` set to `recreate`.
+
+  **`d` opens a diff** of the selected entry against the version before it, in an overlay on the timeline. It answers "what changed at this entry" the way `git show` does. The previous _content_ version is the baseline (state changes are skipped; their definition is identical), the first version diffs from empty, and a state-change entry reports "no definition change". The diff uses the same aligned renderer and tints as `gaffer diff`, with any engine version, emit, or tracking change named above it. The arrow keys keep scrubbing the timeline underneath, so the diff re-renders entry by entry, walking a definition's evolution in place. `PgUp`/`PgDn` scroll a long diff; `esc`, `d`, or `q` closes back to the timeline. A baseline on an older page is fetched automatically.
+
+  **Out-of-band edits are flagged only once gaffer is managing the projection.** A content change reads as an out-of-band edit when a gaffer write precedes it, so a server that never round-trips gaffer's tool metadata (such as the V2 projection engine) reads neutrally rather than labelling every write "edited externally", as do edits made before gaffer took over. In `--json` the out-of-band flag is `outOfBand`, true for any non-gaffer write once gaffer has been managing the projection.
+
+  Against a KurrentDB without the deploy-metadata field it degrades to the history with timestamps and content hashes only.
+
+- bbfd56c: `gaffer rollback <projection> <hash>` rolls a deployed projection back to a prior version from its history, stamped `operation: rollback` in the deploy ledger. The target is named by its content hash from `gaffer history`; any unique prefix of 4 or more characters works. It confirms first with the current-to-target query diff (`--yes` skips). The apply is in place: processing continues from the current checkpoint, and local files stay untouched, so `gaffer diff` shows the rollback as drift until local is reconciled. A version differing in engine version or emitted-stream tracking is refused, pointing at `gaffer recreate`.
+
+  The `gaffer history` timeline gains `r`: it opens the same confirm as a modal for the selected entry, applies on `y`, and reloads the timeline so the new rollback entry appears on top.
+
+- bbfd56c: `gaffer recreate <projection>` destroys and rebuilds a deployed projection from local config: stop it, delete it (with its state and checkpoint streams), and create it fresh, reprocessing from zero. It applies a create-only change that deploy can't make in place (engine version, track-emitted-streams), or rebuilds a wedged projection an in-place reset can't fix. The projection is compiled before anything is deleted, so a broken local definition can't leave you with nothing to rebuild; `--no-validate` skips that check (production refuses it). It always confirms, more prominently against production, with `--yes` for non-interactive use. `--delete-emitted` also wipes the emitted streams so the rebuild doesn't re-emit duplicates.
+
+  KurrentDB deletes projections asynchronously, so the rebuild's create waits out a ten-second settle window, retrying if it bounces off the still-registered name with a Conflict. Without it a slow delete could leave the projection deleted but not recreated; if the window does expire, the failure carries the recovery instructions.
+
+- bbfd56c: `gaffer enable`, `gaffer disable`, and `gaffer delete` manage deployed projections on an environment, named directly (they need not be in `gaffer.toml`).
+
+  - `gaffer enable <projection>` starts a projection so it resumes from its last checkpoint.
+  - `gaffer disable <projection>` stops it, writing a final checkpoint; `--abort` skips that checkpoint so a later enable replays from the last one. Disabling is recoverable, so it confirms only against production.
+  - `gaffer delete <projection>` removes the projection with its state and checkpoint streams, keeping emitted streams unless `--delete-emitted` is passed. It always confirms, and disables the projection first since the server won't delete an enabled one.
+
+  `--yes` skips the confirmation; without a terminal (or with `--json`) a guarded verb won't proceed unconfirmed. Production gets a louder confirm, resolved from the server's `$server-info` or an explicit `production = true` on the env, never inferred from the environment's name.
+
+- bbfd56c: A `production = true` flag on an `[env.<name>]` block marks the environment's database as production, activating the production guard tier locally. Deploy and operate confirmations name the target as production, and `--no-validate` is refused.
+
+  - The flag combines with the database's own `$server-info` declaration as an OR, so it is opt-in only. `production = false` (the same as omitting it) defers to the server, and config can never downgrade a database that declares itself production. This activates the guardrail for the production databases that don't populate `$server-info` yet.
+  - Confirmation prompts and messages now name the resolved environment when the server doesn't report a cluster name, including runs on the default environment, which previously showed no target name.
+  - The history timeline gates like `gaffer rollback` does: its footer carries a production badge, and the rollback confirm names the production target.
+
+- bbfd56c: The language server now serves deployment status for `gaffer.toml`, so editors surface it without reimplementing the fetch. On open or save it reads each environment's projection drift and runtime state in-process, reusing the same drift and target reads as `gaffer status`. Editors opt in via a `statusLens` initialization option, so all of this is a no-op for clients that don't render it.
+
+  **Per environment**, a CodeLens above each `[env.<name>]` block rolls up how that environment's projections compare to local config, offers a sign-in action when the environment needs authentication, or shows a muted note when the read can't complete. A **Deploy** lens leads each reachable `[env.X]` block ahead of the roll-up, carrying the env and the declaring `gaffer.toml` so an editor can open the deploy plan for the whole project against that env. It's offered only when the env's status resolved and is authenticated, not while a fetch is in flight, on a fetch error, or when sign-in is needed.
+
+  **Per projection**, a **Manage...** CodeLens above each `[[projection]]` header carries the projection and its configured environments, each environment's production flag, and the projection's runtime state, so an editor can render an action menu that offers pause-vs-resume and picks the right confirmation tier. Each environment's entry carries a `loading` flag while its status fetch is still in flight, so a client can show a spinner and settle into the resolved actions in place. Hovering the header lists each environment's drift verdict and runtime state, one per line with a colored status dot, and the server emits each environment's health on the header in file order for editors to render as a row of inline badges.
+
+  **Refreshes stay cheap.** When a client polls for freshness the server refreshes only live runtime state with a cheap read, reusing the cached drift verdict; the verdict is recomputed only when a drift input actually changed. A local change is caught by file watching, either the config saved or a projection's source file edited. A server-side change is caught by a subscription to each projection's definition stream, so a deploy from outside the editor (the CLI, CI, or another tool) is reflected the moment it lands. The subscriptions are held only for open `gaffer.toml` files, and the timer borrows the same connection for its runtime read instead of dialing every tick. The server also refreshes when the editor signals an out-of-band auth change via `gaffer/refreshStatus`, such as a sign-in completing.
+
+- bbfd56c: The language server now serves the projection actions editors need over its warm per-environment connection, so an editor no longer spawns a `gaffer` process per action, and advertises which of them it supports.
+
+  - **`gaffer/operateProjection`** runs an operate verb (pause / resume / abort / delete) on a projection.
+  - **`gaffer/diffVersions`** diffs any two versions of a projection, each a content hash, `deployed`, or `local`. It uses the same builder as `gaffer diff --left --right`, so the result matches the CLI's `--json` shape. `gaffer diff` itself is unchanged.
+
+  Both are gated on the same `statusLens` initialization option as the deployment-status lenses.
+
+  **The server lists the `gaffer/*` requests it serves** in its initialize result, under `capabilities.experimental.gaffer.methods`. LSP has standard capability fields for standard features but no slot for a server's own requests, so an editor extension driving an older `gaffer` previously had no way to discover support except to send a request and read `MethodNotFound` off the failure, by which point the user had already clicked something. Editors can now hide an action their CLI can't run.
+
+- bbfd56c: The MCP server gains the deploy and projection-management tools, so an assistant can read a deployment and change it with a human in the loop.
+
+  **Read-only**, mirroring the CLI's machine output:
+
+  - **`deploy_status`** shows each projection's runtime state and drift verdict on an environment, plus any `[database_config]` divergence, like `gaffer status --json`.
+  - **`deploy_plan`** previews what a deploy would change without applying anything, like `gaffer deploy --dry-run --json`.
+  - **`deploy_history`** reads a projection's per-deploy audit log with paging, like `gaffer history --json`.
+
+  **Writes:**
+
+  - **`deploy_apply`** deploys projections from `gaffer.toml` like `gaffer deploy`, with the same all-or-nothing compile and diagnostics preflight (no validation bypass), the same per-item results as `gaffer deploy --json`, and every write stamped `operation: deploy` in the ledger.
+  - **`deploy_pause`** / **`deploy_resume`** / **`deploy_abort`** mirror `gaffer disable` / `enable` / `disable --abort`.
+  - **`deploy_recreate`** rebuilds from local config like `gaffer recreate`, gated on the compile and diagnostics preflight, and stamps `operation: recreate`.
+  - **`deploy_rollback`** redeploys a prior version by content hash from `deploy_history`, like `gaffer rollback`, and stamps `operation: rollback`.
+  - **`deploy_delete`** mirrors `gaffer delete`, including `deleteEmitted`.
+
+  All tools accept an `env` argument and default to the default environment; `deploy_status` and `deploy_plan` echo the resolved target and production flag.
+
+  **Confirmation is answered through the MCP client** (elicitation) and the assistant cannot answer it. A write against a production target, whether the server reports itself as production or the env sets `production = true`, requires one: the prompt front-loads `PRODUCTION [env.<name>]:`, states each verb's consequence, and for a deploy names the changed projections, rebuilds, out-of-band overwrites, faulted targets, and any `[database_config]` divergence. Recreate and delete destroy state with no undo, so they ask every time; on production their confirmation requires typing the projection name, and a production deploy plan containing `resetOnLogicChange` rebuilds requires typing the environment name. A client without elicitation support cannot perform gated writes; the refusal names the CLI command to run instead.
+
+- bbfd56c: The deploy and projection-management commands now report the same anonymous usage telemetry as the rest of the CLI. `gaffer deploy`, `status`, `diff`, `history`, `rollback`, `recreate`, `enable`, `disable`, and `delete` each record which command ran and how it finished, including when a guardrail refuses the run. The mutating commands also record whether the target is production. `deploy` and `recreate` record whether validation was skipped, `deploy` whether the run was a dry-run, and `history` whether a rollback was applied from the timeline. Only buckets, booleans, and outcomes are collected. Projection names, connection strings, and content hashes never are. Opt out with `gaffer config telemetry off` or `telemetry = false` in `gaffer.toml`.
+- 9b1f7e8: The Go runtime bindings no longer risk a rare fatal crash (`invalid pointer found on stack`) under GC pressure. The runtime's integer session handles could appear in pointer-typed stack slots during FFI calls; if the GC moved the stack while a callback was running mid-call, the process aborted. Handles now stay integer-typed end-to-end on the Go side, with all casting done in C shims. The crash could hit anything embedding the bindings, including the CLI.
+- ee1f52e: Projection errors that reach the CLI wrapped in another error now keep their original error code and diagnostics. Previously a wrapped feed error was classified as `unexpected-error` and its diagnostics were dropped.
+- ad9aaa7: Connection failures now name the resolution stage that failed (reading the env overlay, expanding the connection string). A certificate environment with multiple problems reports them in resolution order, so a broken `${VAR}` in a cert path surfaces before the TLS check that would follow it.
+- f1c46c3: `gaffer dev --debug` no longer hangs when a Restart arrives as the session is tearing down; the restart returns cleanly during shutdown instead of leaving the debug adapter's read goroutine waiting forever.
+- b2d6a66: Racing debug commands can no longer wedge a debug session. When two resume verbs raced on a paused projection (a double-clicked continue, or the MCP auto-step racing a user step), the loser's command could be queued just as the engine resumed. Its caller then blocked forever, and the stale command silently resumed the next breakpoint instead. The runtime now makes the enqueue atomic with the resume, fails commands that lost the race with an error instead of stranding them, and never carries queued commands across a pause.
+- 17f9ea0: Commands that fail because an environment needs an interactive sign-in now exit with code `4` (distinct from the generic `1`), so a caller can offer a sign-in rather than parsing the error text. This is what the VS Code **Diff against deployed** action keys off to surface its one-click sign-in.
+- ce0de95: Projection info now reports whether a projection writes events. `ProjectionInfo` gains an `emitsEvents` flag, true when the projection calls `emit`, `linkTo`, `linkStreamTo`, or `copyTo`. It is detected on every compile from the source, so consumers no longer need to inspect shape counts.
+
+  `gaffer info` shows it ("Emits events: yes"); `gaffer info --json` and the MCP `get_projection_info` and `validate_projection` tools include `emitsEvents`; the testing library exposes it as `info.settings.emitsEvents`.
+
+- 17f9ea0: Commands that connect to KurrentDB now give up faster when an environment is unreachable: 2 node-discovery attempts instead of the client library's 10, which cuts a failed connect from ~7s to ~1s. A reachable endpoint connects on the first attempt, so this only shortens the unreachable case. Set `maxDiscoverAttempts` in the connection string to override.
+- eeaff5f: Event-processing errors under `engine_version 2` now carry the `quirk.handlerError.wedgesOnV2` (error severity) diagnostic. On deployed V2, an exception thrown while processing an event never faults the projection. It wedges silently: `status` stays `Running` while processing and persistence have stopped, and nothing is logged. Gaffer keeps faulting the event locally, which is the behaviour V2 should have, and the diagnostic rides the error to explain the divergence. It fires for any event-processing throw (handler, state load, `$created`, `$deleted`, state serialization, timeout); a throwing `partitionBy` is exempt because the server computes partition keys on its read loop, which faults properly.
+- e2bf88d: The `gaffer init` template's comment now says at most one environment may be the default; a config with none is valid (`--env` or the interactive picker selects instead).
+- 95a5410: `gaffer dev --json` now exits non-zero if it fails to write its output stream (for example a broken pipe to the editor), instead of silently finishing with a truncated stream.
+- f52a6ac: The KurrentDB Go client is bumped to v1.4.1, fixing a nil-pointer panic when listing projections. Projection status reads go through this path; the client could dereference a nil stream on a failed request or a statistics frame with no details, which the status read caught as an unexpected failure. The client now returns a clear error in both cases instead of panicking.
+- bbfd56c: The published packages declare keywords, so they surface in registry search.
+
+  Two corrections to the published typings land alongside:
+
+  - `@kurrent/gaffer-runtime`'s error hierarchy and `EventContext` now carry class-level JSDoc.
+  - `@kurrent/projections-testing`'s `feed()` hover doc no longer claims thrown errors carry `input` and `normalized` fields. Nothing attaches them.
+
+- 40d8b96: The OAuth token store honours a new `GAFFER_KEYRING_NAME` environment variable: when set, the encrypted-file fallback lives at `<user-config>/keyring-<name>` instead of the shared default, isolating a client's store on a host with no OS keyring. The name is sanitized to a single safe path segment; the OS-keyring path is unaffected.
+- 76b126e: OAuth tokens are now bound to the host the environment's connection names, and gaffer only ever sends a token to the host it was obtained for. Previously a stored token was shared across every environment declaring the same issuer and client ID. A `gaffer.toml` reusing an org's issuer/clientID but pointing its connection elsewhere would therefore receive the user's real bearer token on any connect. An environment naming a different host now finds no token and asks for a fresh `gaffer auth` against that host instead.
+
+  Environments pointing at the same host still share one sign-in, including across projects. Each environment's OAuth settings (such as `ca_file`) now always apply to its own connections, instead of reusing whichever environment connected first in a long-running process. `gaffer auth` now resolves the environment's connection before the browser flow and names the bound host in its success message. A connection string that can't be expanded or parsed fails the sign-in, since there is no host to bind the token to. Existing stored tokens are keyed the old way and won't be found; sign in once per host (or `gaffer auth --clear` first to tidy the keyring).
+
+- b2071d0: A per-projection config error (e.g. `track_emitted_streams` with `engine_version 2`) no longer blocks every command. Previously one misconfigured projection failed `gaffer.toml` loading outright, so `gaffer info <good-projection>` died on an _unrelated_ projection's error. Now config validation splits into structural checks (environments, duplicate names) that stay fatal, and per-projection checks that are deferred; a bad projection only blocks operations on itself. The inspection commands (`status`, `diff`, `info`) show it as `invalid` through one shared rendering; `deploy` refuses just that one; `recreate` and the operate verbs fail only when you name it. Mirrors the per-projection degradation already used for compile errors.
+- 3ad74db: Session teardown in the debug surfaces no longer races in-flight debug commands. Stopping an MCP run or ending/restarting a DAP debug session could free the native projection session while a step or resume from another goroutine was still executing inside it. That use-after-free could crash the process. The engine runner now refuses new session calls once teardown begins and waits out the in-flight ones before freeing the session.
+- 64e1e84: OAuth environments no longer force a spurious re-sign-in when a command's connection and its config-drift check refresh the stored token at the same time. The two now share one refreshing token source per identity. A rotating identity provider (Auth0's reuse detection is the common case) can no longer reject one refresher's token as reused and discard a credential the other just rotated in.
+
+  As a side effect, the config-drift check now shares the connection's unlocked credentials on a file-keyring host, where it previously skipped when it couldn't unlock the keyring on its own.
+
+- e59a851: `track_emitted_streams` with `engine_version 2` is now reported as a diagnostic rather than a config-load error. The runtime emits `quirk.trackEmittedStreams.unsupportedOnV2` (error severity) off the resolved definition, whether the flag comes from `gaffer.toml` or `options({ trackEmittedStreams: true })` in the source. This matches how the other V2 incompatibilities (bi-state, `outputState`) already surface.
+
+  `gaffer info`, `gaffer dev`, and `gaffer diff` now compile such a projection and show its full analysis plus the flag, instead of failing with a bare config error. `gaffer deploy` and `gaffer recreate` still refuse it at preflight (recreate before deleting anything), and the MCP `validate` tool reports it invalid with the diagnostic. The projection session no longer throws on the combination.
+
 ## 0.4.2
 
 ### Patch Changes

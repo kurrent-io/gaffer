@@ -6,21 +6,48 @@ hero:
   tagline: develop. test. debug. deploy.
 ---
 
-import { LinkCard } from '@astrojs/starlight/components';
+import { Code, Icon, LinkCard } from '@astrojs/starlight/components';
 import '../../styles/splash.css';
 
-**Build KurrentDB projections without guessing how they'll run in production.** Projections are server-side JavaScript that turn your events into running totals, derived streams, and read models, but because they run inside the database, they're hard to develop, and even harder to debug. gaffer brings that runtime to your machine. The engine that runs your projection locally is the same one KurrentDB uses, so what you debug is what ships.
+**Build KurrentDB projections without guessing how they'll run in production.** Projections are server-side JavaScript that turn your events into running totals, derived streams, and read models. Because they run inside the database, they're hard to develop, harder to debug, and risky to change once live. gaffer brings that runtime to your machine: scaffold, debug, and test locally, then deploy and see exactly what changes before it applies. The engine you develop against is the one KurrentDB runs, so what you debug is what ships.
+
+<div class="home-install not-content">
+  <div class="home-install__pane">
+    <h2 class="home-install__label">Install the CLI</h2>
+    <Code code="npm install -g @kurrent/gaffer" lang="sh" />
+    <p class="home-install__note">Requires Node.js 22 or later.</p>
+  </div>
+  <div class="home-install__pane">
+    <h2 class="home-install__label">Add the VS Code extension</h2>
+    {/* One line each: MDX wraps multi-line JSX children in a <p>. */}
+    <div class="home-install__buttons">
+      <a href="https://marketplace.visualstudio.com/items?itemName=kurrent-io.gaffer-vscode" target="_blank" rel="noopener"><Icon name="vscode" /><span>VS Code Marketplace</span></a>
+      <a href="https://open-vsx.org/extension/kurrent-io/gaffer-vscode" target="_blank" rel="noopener"><Icon name="puzzle" /><span>Open VSX</span></a>
+    </div>
+    <p class="home-install__note">Or wire <a href="./extension/other-editors/">any LSP or DAP aware editor</a> to gaffer.</p>
+  </div>
+  <div class="home-install__pane">
+    <h2 class="home-install__label">Connect an AI assistant</h2>
+    <Code code="Install the gaffer CLI and register its MCP server, following https://gaffer.kurrent.io/install.txt" lang="plaintext" />
+    <p class="home-install__note">Paste into Claude Code, Cursor, or any MCP client.</p>
+  </div>
+</div>
 
 <div class="home-cards not-content">
   <LinkCard
     title="Get started"
     href="./getting-started/install/"
-    description="Install gaffer, write your first projection, and step through it with the debugger."
+    description="Write your first projection, step through it in the debugger, and deploy it to a server."
   />
   <LinkCard
-    title="Deploy"
-    href="./getting-started/deploy/"
-    description="Plan and apply projections to your environments, then track drift, history, and rollbacks."
+    title="Testing"
+    href="./testing/nodejs/"
+    description="Drive projections from Vitest, Jest, or Mocha. No database, no flakiness."
+  />
+  <LinkCard
+    title="CLI"
+    href="./cli/"
+    description="Scaffold, run, debug, and deploy from your terminal, then track status, drift, and history."
   />
   <LinkCard
     title="VS Code extension"
@@ -28,18 +55,8 @@ import '../../styles/splash.css';
     description="Run and debug from CodeLens, see deploy status inline, get projection-API autocomplete."
   />
   <LinkCard
-    title="CLI"
-    href="./cli/"
-    description="Scaffold, run, and debug projections from your terminal, against fixtures or a live instance."
-  />
-  <LinkCard
-    title="MCP"
+    title="AI assistants"
     href="./cli/mcp/"
-    description="Connect Claude Code, Cursor, Continue, or Claude Desktop to gaffer."
-  />
-  <LinkCard
-    title="Testing"
-    href="./testing/nodejs/"
-    description="Drive projections from Vitest, Jest, or Mocha. No database, no flakiness."
+    description="Connect Claude Code, Cursor, Continue, or Claude Desktop to gaffer over MCP."
   />
 </div>

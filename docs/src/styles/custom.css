@@ -117,6 +117,27 @@
 	margin-top: 2rem;
 }
 
+/* Render Expressive Code's "terminal window" frame (a titlebar of macOS
+   traffic-light dots) as a plain code frame, so a `sh` block matches the `js`
+   or `toml` block above it. Hiding `.header` takes the bar, the dots and the
+   bottom border with it; the other two declarations put back the top edge and
+   copy-button offset the titlebar used to supply.
+
+   Has to be CSS rather than `defaultProps: { frame: 'code' }`: that only
+   reaches `.mdx` fences and the `<Code>` component, and most of the docs are
+   `.md`. Scoped `:not(.has-title)` so a titled block keeps its title. */
+.expressive-code .frame.is-terminal:not(.has-title) {
+	--button-spacing: 0.4rem;
+}
+.expressive-code .frame.is-terminal:not(.has-title) .header {
+	display: none;
+}
+.expressive-code .frame.is-terminal:not(.has-title) pre {
+	border-top: var(--ec-brdWd) solid var(--ec-brdCol);
+	border-top-left-radius: calc(var(--ec-brdRad) + var(--ec-brdWd));
+	border-top-right-radius: calc(var(--ec-brdRad) + var(--ec-brdWd));
+}
+
 /* Starlight switches themes by toggling `data-theme` on the root element.
    Forward that to the CSS `color-scheme` so the `light-dark()` calls in
    colors.css pick the right value. */
@@ -200,24 +221,4 @@ body:has(.gaffer-hero) .content-panel {
 	padding-top: 0;
 }
 
-/* Homepage card grid: featured card (Get started) spans two columns, the
-   other four fill a 3-column row. Stacks on narrow viewports. */
-.home-cards {
-	display: grid;
-	grid-template-columns: repeat(3, 1fr);
-	gap: 1rem;
-	margin-block: 2rem;
-}
-.home-cards > :first-child {
-	grid-column: span 2;
-}
-
-@media (max-width: 50rem) {
-	.home-cards {
-		grid-template-columns: 1fr;
-	}
-	.home-cards > :first-child {
-		grid-column: span 1;
-	}
-}
 

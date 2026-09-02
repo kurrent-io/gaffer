@@ -30,7 +30,7 @@ require (
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/term v0.43.0
 	golang.org/x/text v0.37.0
-	google.golang.org/grpc v1.82.1
+	google.golang.org/grpc v1.83.1
 	modernc.org/sqlite v1.48.0
 )
 
@@ -79,7 +79,7 @@ require (
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	modernc.org/libc v1.70.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
